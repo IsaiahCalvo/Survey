@@ -370,7 +370,9 @@ async function runDevice({ artifactsDir, baseUrl, browser, device, rows, diagnos
     });
 
     if (device === 'mobile') {
-      await activateOne(page.getByRole('button', { name: 'Close document hub', exact: true }), 'mobile close document hub', touch, device);
+      // Owner 2026-09-30: phone sheets have no close X; a tap outside closes them.
+      const backdrop = page.getByRole('button', { name: 'Close document panel', exact: true });
+      if (await backdrop.count()) await backdrop.click({ position: { x: 195, y: 150 } });
     }
     await activateOne(page.getByRole('button', { name: 'Previous page', exact: true }), `${device} previous page`, touch, device);
     await waitForPageOrdinal(page, device, 2);

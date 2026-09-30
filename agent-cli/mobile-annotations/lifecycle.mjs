@@ -256,7 +256,8 @@ async function editShape(page, toolId) {
       await opacity.fill('55');
       await closeColorPicker(page, 'Border color');
     }
-    await page.getByRole('button', { name: 'Close annotation settings', exact: true }).click();
+    // Owner 2026-09-30: phone sheets have no close X; a tap outside closes them.
+    await page.getByRole('button', { name: 'Close text formatting', exact: true }).click({ position: { x: 195, y: 150 } });
   }
 }
 

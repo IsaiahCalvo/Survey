@@ -145,13 +145,18 @@ test('the pair is clamped to the visual viewport so the keyboard cannot bury it'
   assert.match(overlaySrc, /window\.visualViewport\?\.addEventListener\?\.\('resize', schedule\)/);
 });
 
+// 2026-09-30: the editor's own reveal moved into the ONE shared keyboard
+// mechanism (src/mobile/keyboardViewport.js), which every field now uses. The
+// guarantees are the same: a URL-bar collapse is not a keyboard, and the scroll
+// is the measured overflow, nothing more. (Behaviour: tests/mobileKeyboardViewport.)
 test('opening the keyboard scrolls the box back into view by the minimum', () => {
   const start = overlaySrc.indexOf('// On-screen keyboard reveal.');
   assert.ok(start > -1, 'the keyboard reveal must exist');
-  const region = overlaySrc.slice(start, start + 2400);
-  assert.match(region, /const keyboardInset = window\.innerHeight - \(vv\.height \+ vv\.offsetTop\);/);
-  assert.match(region, /if \(keyboardInset < 80\) return;/, 'a URL-bar collapse must not count as a keyboard');
-  assert.match(region, /scroller\.scrollTop \+= overflow;/, 'scroll by the measured overflow, nothing more');
+  assert.match(overlaySrc, /data-keyboard-reveal-target=""/);
+  const shared = readFileSync(new URL('../src/mobile/keyboardViewport.js', import.meta.url), 'utf8');
+  assert.match(shared, /covered < KEYBOARD_MIN_INSET_PX\) return 0;/, 'a URL-bar collapse must not count as a keyboard');
+  assert.match(shared, /export const KEYBOARD_MIN_INSET_PX = 80;/);
+  assert.match(shared, /delta = Math\.max\(0, Math\.min\(rect\.bottom - bottom, rect\.top - top\)\);/, 'scroll by the measured overflow, nothing more');
 });
 
 test('the caret and preventScroll focus behaviour from the edit-modes work is intact', () => {

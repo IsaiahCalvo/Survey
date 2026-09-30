@@ -543,8 +543,20 @@ const SurveySpacesRail = ({
   // 2026-09-17: the hook owns the slide-up too now (see useMobileSheetMotion),
   // so it needs the real open state — this element stays mounted and only
   // toggles .is-collapsed.
-  const { motionStyle: surveySheetMotionStyle, dragHandlers: surveySheetDragHandlers, requestClose: requestSurveySheetClose } =
-    useMobileSheetMotion(collapseSurveySheet, { open: mobileMode && !isSurveyPanelCollapsed });
+  // Owner 2026-09-30: Survey is a browse panel, so it climbs Standard ->
+  // Expanded -> Full like Pages / Spaces (DESIGN-SYSTEM.md "Phone bottom
+  // panels"), which is also the height it rises to when you type in it.
+  const {
+    motionStyle: surveySheetMotionStyle,
+    sheetProps: surveySheetProps,
+    requestClose: requestSurveySheetClose,
+    expanded: surveySheetExpanded,
+    fullscreen: surveySheetFullscreen,
+  } = useMobileSheetMotion(collapseSurveySheet, {
+    open: mobileMode && !isSurveyPanelCollapsed,
+    expandable: mobileMode,
+    fullscreenable: mobileMode,
+  });
 
   const selectSurveyModule = (moduleId) => {
     if (!moduleId || moduleId === selectedModuleId) {
@@ -1171,10 +1183,9 @@ const SurveySpacesRail = ({
                 type="button"
                 className="mobile-pdf-sheet-backdrop"
                 aria-label="Close Survey panel"
-                onClick={() => {
-                  setIsSurveyPanelCollapsed(true);
-                  requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
-                }}
+                // Slide down like a swipe, then collapse (owner 2026-09-30:
+                // a tap outside is how a phone sheet closes).
+                onClick={() => requestSurveySheetClose()}
               />
             )}
             {/* Panel */}
@@ -1185,7 +1196,9 @@ const SurveySpacesRail = ({
             <div
               ref={mobileMode ? undefined : sideOccluderRef}
               data-viewer-occluder={!mobileMode && !isSurveyPanelCollapsed ? 'side' : undefined}
-              className={`${mobileMode ? 'mobile-pdf-sheet mobile-survey-sheet ' : 'survey-rail '}${isSurveyPanelCollapsed ? 'is-collapsed' : ''}`}
+              // Phone: swipe down anywhere + the keyboard lift (owner 2026-09-30).
+              {...(mobileMode ? surveySheetProps : null)}
+              className={`${mobileMode ? 'mobile-pdf-sheet mobile-survey-sheet ' : 'survey-rail '}${mobileMode && surveySheetExpanded ? 'is-expanded ' : ''}${mobileMode && surveySheetFullscreen ? 'is-fullscreen ' : ''}${isSurveyPanelCollapsed ? 'is-collapsed' : ''}`}
               style={{
                 // PASS 7 (DESIGN-SYSTEM.md, owner): every phone panel opens at
                 // Standard - 448px plus the bottom safe area - so the tray does
@@ -1337,9 +1350,6 @@ const SurveySpacesRail = ({
                   {/* Collapse row: mirrors the left rail's top strip. */}
                   <div
                     className={mobileMode ? 'mobile-pdf-sheet__handle mobile-pdf-sheet__handle--wide' : undefined}
-                    onTouchStart={mobileMode ? surveySheetDragHandlers.onTouchStart : undefined}
-                    onTouchMove={mobileMode ? surveySheetDragHandlers.onTouchMove : undefined}
-                    onTouchEnd={mobileMode ? surveySheetDragHandlers.onTouchEnd : undefined}
                     style={{
                       height: '35px',
                       padding: '0 8px',

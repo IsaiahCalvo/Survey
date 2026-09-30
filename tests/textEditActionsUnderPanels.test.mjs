@@ -73,7 +73,9 @@ test('the phone colour sheet and its backdrop opt out of the text editor commit-
   const start = CHROME.indexOf('function MobileColorPickerSurface(');
   const body = CHROME.slice(start, CHROME.indexOf('\n}\n', start));
   assert.match(body, /className="mobile-pdf-colorpicker-backdrop"\s+data-rich-text-toolbar/);
-  assert.match(body, /className="mobile-pdf-colorpicker-surface" data-rich-text-toolbar/);
+  // (2026-09-30: the sheet root now spans several lines - it carries the shared
+  // sheet motion props too.)
+  assert.match(body, /className="mobile-pdf-colorpicker-surface"\s+data-rich-text-toolbar/);
   // ...and the editor still honours that opt-out.
   assert.match(OVERLAY, /t\.closest\('\[data-rich-text-toolbar\]'\)/);
 });

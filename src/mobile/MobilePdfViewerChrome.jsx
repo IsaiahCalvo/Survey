@@ -199,6 +199,14 @@ const TOOL_LABELS = {
  * the demo's never-dim overlay convention.
  */
 function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPreset, minOpacity, onChange, onClose, title, tabs = null }) {
+  // Owner 2026-09-30: the colour sheet moves like every other phone sheet -
+  // it slides up, follows a swipe down from anywhere on it (the gradient and
+  // sliders keep their own drags), and slides off on a tap outside or Done.
+  const {
+    motionStyle,
+    sheetProps,
+    requestClose,
+  } = useMobileSheetMotion(onClose);
   if (typeof document === 'undefined') return null;
   return createPortal(
     <>
@@ -218,7 +226,7 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
         className="mobile-pdf-colorpicker-backdrop"
         data-rich-text-toolbar
         aria-label={`Close ${title || 'color'} picker`}
-        onClick={onClose}
+        onClick={() => requestClose()}
       />
       {/* PASS 7 (boards 17 & 18): the picker is a bottom sheet in the shared
           sheet frame, not a floating panel in the middle of the screen. It
@@ -228,11 +236,18 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
           way. The panel inside it is the app's ONE shared CompactColorPicker
           (project rule) — its presets, grid, gradient and opacity row belong to
           the picker pass, and this only gives them the sheet to sit in. */}
-      <div className="mobile-pdf-colorpicker-surface" data-rich-text-toolbar role="dialog" aria-label={`${title || 'Color'} picker`}>
+      <div
+        className="mobile-pdf-colorpicker-surface"
+        data-rich-text-toolbar
+        role="dialog"
+        aria-label={`${title || 'Color'} picker`}
+        {...sheetProps}
+        style={motionStyle}
+      >
         <div className="mobile-pdf-sheet__handle" />
         <header className="mobile-pdf-tool-sheet__header">
           <strong>{title || 'Color'}</strong>
-          <button type="button" aria-label="Done" onClick={onClose}>Done</button>
+          <button type="button" aria-label="Done" onClick={() => requestClose()}>Done</button>
         </header>
         <div className="mobile-pdf-colorpicker-surface__body">
           <CompactColorPicker
@@ -266,7 +281,7 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
                and never reaches the strip or the page behind. */
             dismissMode="blocking"
             onChange={onChange}
-            onClose={onClose}
+            onClose={() => requestClose()}
           />
         </div>
       </div>
@@ -1238,7 +1253,7 @@ export function MobileToolProperties({ api }) {
   // AnnotationEditPanel.tsx:141-199 / inv-demo §17).
   const {
     motionStyle: textSheetMotionStyle,
-    dragHandlers: textSheetDragHandlers,
+    sheetProps: textSheetProps,
     requestClose: requestTextSheetClose,
   } = useMobileSheetMotion(() => setTextDefaultsOpen(false), { open: textDefaultsOpen });
   /* RESTORED 2026-09-23 (owner: "We had panels for every single annotation ...
@@ -1467,22 +1482,17 @@ export function MobileToolProperties({ api }) {
             className="mobile-pdf-text-defaults is-text"
             data-rich-text-toolbar
             aria-label={`${TOOL_LABELS[tool] || 'Text'} settings`}
+            {...textSheetProps}
             style={textSheetMotionStyle}
           >
-            <div
-              className="mobile-pdf-sheet__handle"
-              onTouchStart={textSheetDragHandlers.onTouchStart}
-              onTouchMove={textSheetDragHandlers.onTouchMove}
-              onTouchEnd={textSheetDragHandlers.onTouchEnd}
-            />
+            <div className="mobile-pdf-sheet__handle" />
+            {/* Owner 2026-09-30: no close X - a tap outside or a swipe down
+                (anywhere on the sheet) closes it. */}
             <header>
               <div>
                 <strong>{TOOL_LABELS[tool] || 'Text'} settings</strong>
                 <span>Focused on Text</span>
               </div>
-              <button type="button" aria-label="Close annotation settings" onPointerDown={keepTextEditFocus} onClick={requestTextSheetClose}>
-                <Icon name="close" size={17} color="currentColor" />
-              </button>
             </header>
             <div className="mobile-pdf-text-defaults__scroll">
               <MobileTextAlignmentCard
@@ -2162,22 +2172,17 @@ export function MobileToolProperties({ api }) {
         <section
           className={`mobile-pdf-text-defaults is-${isEraser ? 'eraser' : sheetTab}${tool === 'callout' ? ' is-callout' : ''}`}
           aria-label={`${sheetTitle} settings`}
+          {...textSheetProps}
           style={textSheetMotionStyle}
         >
-          <div
-            className="mobile-pdf-sheet__handle"
-            onTouchStart={textSheetDragHandlers.onTouchStart}
-            onTouchMove={textSheetDragHandlers.onTouchMove}
-            onTouchEnd={textSheetDragHandlers.onTouchEnd}
-          />
+          <div className="mobile-pdf-sheet__handle" />
+          {/* Owner 2026-09-30: no close X - a tap outside or a swipe down
+              (anywhere on the sheet) closes it. */}
           <header>
             <div>
               <strong>{sheetTitle} settings</strong>
               <span>Focused on {isEraser ? 'Eraser' : sheetTab === 'text' ? 'Text' : 'Shape'}</span>
             </div>
-            <button type="button" aria-label="Close annotation settings" onClick={requestTextSheetClose}>
-              <Icon name="close" size={17} color="currentColor" />
-            </button>
           </header>
           {/* Text/Shape segmented control only for text & callout — pen/shape/
               counter show shape-side cards directly (demo AnnotationEditPanel
@@ -2540,7 +2545,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   // back + 170ms slide-down exit before unmount (inv-demo §17).
   const {
     motionStyle: usersSheetMotionStyle,
-    dragHandlers: usersSheetDragHandlers,
+    sheetProps: usersSheetProps,
     requestClose: requestUsersSheetClose,
   } = useMobileSheetMotion(() => setPresenceOpen(false), { open: presenceOpen });
   const popoverRef = useRef(null);
@@ -2944,21 +2949,15 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
             aria-label="Close active users"
             onClick={requestUsersSheetClose}
           />
-          <section className="mobile-pdf-sheet mobile-pdf-users-sheet" aria-label="Active users" style={usersSheetMotionStyle}>
-            <div
-              className="mobile-pdf-sheet__handle"
-              onTouchStart={usersSheetDragHandlers.onTouchStart}
-              onTouchMove={usersSheetDragHandlers.onTouchMove}
-              onTouchEnd={usersSheetDragHandlers.onTouchEnd}
-            />
+          <section className="mobile-pdf-sheet mobile-pdf-users-sheet" aria-label="Active users" {...usersSheetProps} style={usersSheetMotionStyle}>
+            <div className="mobile-pdf-sheet__handle" />
+            {/* Owner 2026-09-30: no close X - a tap outside or a swipe down
+                (anywhere on the sheet) closes it. */}
             <header>
               <div>
                 <strong>Active users</strong>
                 <span>{presenceCount} viewing this document</span>
               </div>
-              <button type="button" aria-label="Close active users" onClick={requestUsersSheetClose}>
-                <Icon name="close" size={17} color="currentColor" />
-              </button>
             </header>
             <div className="mobile-pdf-users-sheet__list">
               {(presenceUsers.length ? presenceUsers : [{ id: 'current', label: 'You', initials: 'U', isCurrent: true }]).map((person) => (

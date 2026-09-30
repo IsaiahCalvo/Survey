@@ -306,7 +306,7 @@ const PDFSidebar = React.forwardRef(({
   const browsePanel = mobileMode;
   const {
     motionStyle: sheetMotionStyle,
-    dragHandlers: sheetDragHandlers,
+    sheetProps,
     requestClose: requestSheetClose,
     expanded: sheetExpanded,
     fullscreen: sheetFullscreen,
@@ -338,7 +338,8 @@ const PDFSidebar = React.forwardRef(({
     {/* w64 (owner 2026-09-29): with History open, tapping a mark on the page
         shows that mark's history, so the History sheet leaves the page
         above it live (no dim, no tap-to-close cover — like a Maps sheet).
-        It still closes with its close button or a pull down. */}
+        It closes with a swipe down anywhere on it (owner 2026-09-30: no
+        close X on a phone sheet). */}
     {mobileMode && !isCollapsed && activeTab !== 'history' && (
       <button
         type="button"
@@ -353,6 +354,9 @@ const PDFSidebar = React.forwardRef(({
       // desktop, a bottom sheet on the phone (see utils/searchMatchNavigation).
       data-viewer-occluder={isCollapsed ? undefined : (mobileMode ? 'sheet' : 'side')}
       ref={mobileMode ? undefined : sideOccluderRef}
+      // Phone: swipe down anywhere on the sheet + the keyboard lift (owner
+      // 2026-09-30, see useMobileSheetMotion).
+      {...(mobileMode ? sheetProps : null)}
       className={`${mobileMode ? 'mobile-pdf-sheet ' : ''}${mobileMode && sheetExpanded ? 'is-expanded ' : ''}${mobileMode && sheetFullscreen ? 'is-fullscreen ' : ''}${isCollapsed ? 'is-collapsed' : ''}`} style={{
       // The tall detent overrides the content-measured height. It has to be
       // written here, not from the stylesheet: this inline custom property
@@ -381,9 +385,6 @@ const PDFSidebar = React.forwardRef(({
       {/* Collapse/Expand Button */}
       <div
         className={mobileMode ? 'mobile-pdf-sheet__handle' : undefined}
-        onTouchStart={mobileMode ? sheetDragHandlers.onTouchStart : undefined}
-        onTouchMove={mobileMode ? sheetDragHandlers.onTouchMove : undefined}
-        onTouchEnd={mobileMode ? sheetDragHandlers.onTouchEnd : undefined}
         style={{
         height: '35px',
         padding: '0 8px',
@@ -431,16 +432,9 @@ const PDFSidebar = React.forwardRef(({
 
       {!isCollapsed && (
         <>
-          {mobileMode && activeTab === 'history' && (
-            <button
-              type="button"
-              className="mobile-history-close"
-              aria-label="Close version history"
-              onClick={requestSheetClose}
-            >
-              <Icon name="close" size={17} color="currentColor" />
-            </button>
-          )}
+          {/* Owner 2026-09-30: no close X on a phone sheet. History closes with
+              a swipe down (anywhere on it); it has no tap-outside cover, so a
+              tap on the page still picks a mark (w64). */}
           {/* Tab Navigation */}
           {mobileStandalonePanel ? null : (
           <div className={mobileMode ? 'mobile-pdf-hub-tabs' : undefined} style={{
@@ -559,16 +553,8 @@ const PDFSidebar = React.forwardRef(({
                 </button>
               );
             })}
-            {mobileMode && (
-              <button
-                type="button"
-                className="mobile-pdf-hub-close"
-                aria-label="Close document hub"
-                onClick={requestSheetClose}
-              >
-                <Icon name="close" size={16} color="currentColor" />
-              </button>
-            )}
+            {/* Owner 2026-09-30: the row holds only the three tabs; the sheet
+                closes by a tap outside it or a swipe down. */}
           </div>
           )}
 

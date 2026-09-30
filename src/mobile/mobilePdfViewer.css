@@ -2997,6 +2997,47 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-sheet.is-collapsed { display: none !important; }
 
+/* ON-SCREEN KEYBOARD, BOTTOM SHEETS (owner 2026-09-30: "the keyboard must
+   never cover what you type into"). Every phone bottom sheet carries
+   data-mobile-sheet (useMobileSheetMotion's sheetProps). While the keyboard is
+   up - or predicted, from the moment a field takes focus (keyboardViewport.js
+   step 4) - the sheet stands ON the keyboard instead of behind it, and is
+   capped to the strip of screen left between the top bar and the keyboard.
+   A browse sheet also steps to its Full height when you start typing in it
+   (the hook), so it fills that whole strip.
+   - `bottom` moves with no transition on purpose: WebKit measures the focused
+     field in the same task to decide whether to pan the whole page, and a
+     sheet still gliding up would read as covered - that pan, snapped back a
+     frame later, was the flicker.
+   - The home-indicator padding is not needed on top of a keyboard.
+   - The second shadow paints the sheet's colour under it for the few frames
+     before the keyboard has risen into that space, so the page never shows
+     through the gap. It is drawn only outside the sheet's box.
+   Inert at rest: no data-keyboard-open, and the inset is 0. */
+html[data-keyboard-open='true'] [data-mobile-sheet] {
+  bottom: var(--keyboard-inset, 0px) !important;
+  max-height: calc(100dvh - var(--keyboard-inset, 0px) - var(--app-chrome-top, 34px) - 8px) !important;
+  padding-bottom: 12px !important;
+  box-shadow:
+    0 -15px 38px rgba(0, 0, 0, 0.5),
+    0 var(--keyboard-inset, 0px) 0 var(--keyboard-inset, 0px) var(--surface-1);
+}
+
+/* Swipe down anywhere on a sheet (owner 2026-09-30, like Drawboard): the
+   sheet's lists hand a pull that starts at their top straight to the sheet
+   (useMobileSheetMotion), so they must not rubber-band it away first. */
+[data-mobile-sheet],
+[data-mobile-sheet] * {
+  overscroll-behavior-y: none;
+}
+
+/* No close button on a bottom sheet (owner 2026-09-30): a tap outside it or a
+   swipe down closes it. The Survey sheet's header X is hidden here rather than
+   removed from SurveySpacesRail.jsx, whose header another pass is reworking. */
+.mobile-survey-sheet .mobile-survey-close[aria-label='Close Survey panel'] {
+  display: none !important;
+}
+
 /* Board 16/17/18: a 20px row holding a 36x4 handle. DESIGN-SYSTEM.md asks for
    an 18px row and a 42x4 handle; where the two disagree the board wins for
    looks, and it is the board every approved sheet was drawn against. */
@@ -3134,7 +3175,10 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-hub-tabs {
   min-height: 40px;
-  padding: 4px 48px 4px 16px;
+  /* 16px both sides: the close X that took the right 48px is gone (owner
+     2026-09-30 - a sheet closes by a tap outside or a swipe down), so the
+     three tabs centre in the row on their own. */
+  padding: 4px 16px;
   box-sizing: border-box;
   align-items: center !important;
   justify-content: center;
@@ -3163,23 +3207,6 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-hub-tabs .mobile-pdf-hub-tab > span { display: none !important; }
-
-.mobile-pdf-hub-close {
-  position: absolute !important;
-  /* UX 2026-09-16: same 16px gutter as the tab row and the page strip. */
-  right: 16px;
-  top: 4px;
-  width: 32px !important;
-  height: 32px !important;
-  min-width: 32px !important;
-  padding: 0 !important;
-  display: grid !important;
-  place-items: center;
-  color: var(--text-1) !important;
-  background: var(--surface-3) !important;
-  border: 0 !important;
-  border-radius: 16px !important;
-}
 
 .mobile-pages-panel {
   background: var(--surface-2) !important;
@@ -3421,22 +3448,6 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   background: #fafaf8 !important;
   border: 1px solid #e5e5de;
   border-radius: 5px !important;
-}
-
-.mobile-history-close {
-  position: absolute;
-  top: 23px;
-  right: 16px;
-  z-index: 5;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  color: var(--text-1);
-  background: transparent;
-  border: 0;
-  border-radius: 6px;
 }
 
 /* 2026-09-17: the old `mobilePdfSheetIn` keyframe (24px nudge + fade) is gone.
