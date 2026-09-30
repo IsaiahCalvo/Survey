@@ -102,3 +102,16 @@
   box-shadow: 0 0 0 2px var(--focus);
   border-radius: 2px;
 }
+
+/* PHONE (owner report 2026-09-30, "toasts must never be hidden"): bottom: 8px
+   put the toast under the mobile viewer's dock (z 5850) and under any open
+   bottom sheet (z 7200+), so an eraser "Undo" was invisible. On a phone it
+   sits just above the dock and above every sheet; --mobile-viewer-dock-height
+   already includes the home-indicator inset (mobilePdfViewer.css). */
+@media screen and (max-width: 720px) {
+  html.survey-viewer-open .undo-toast {
+    bottom: calc(var(--mobile-viewer-dock-height, 62px) + 8px);
+    z-index: 100000;
+    max-width: calc(100vw - 32px);
+  }
+}

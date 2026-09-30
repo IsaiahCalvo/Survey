@@ -122,7 +122,15 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
       input.parentElement.dataset.value = nextName || ' ';
     }
     if (nextName !== space.name) {
-      onRenameSpace?.(space.id, nextName);
+      // A refused rename (duplicate name, no permission) leaves space.name, and
+      // so this uncontrolled input's key, unchanged: put the real name back
+      // instead of leaving the refused text showing as a second "Space 2".
+      if (onRenameSpace?.(space.id, nextName) !== true) {
+        input.value = space.name || '';
+        if (input.parentElement) {
+          input.parentElement.dataset.value = space.name || ' ';
+        }
+      }
     }
   }, [onRenameSpace, space.id, space.name]);
 
@@ -855,22 +863,40 @@ const SpacesPanel = ({
 
   const handleCreateSpace = useCallback(() => {
     if (!requireSpaceManagement()) return;
-    const name = `Space ${spaces.length + 1}`;
+    // Next UNUSED number, not the count: after a delete, `Space ${length + 1}`
+    // can equal a surviving space's name ("Space 2") and the create was refused
+    // with a duplicate-name toast (owner's phone report 2026-09-30).
+    const takenNames = new Set((spaces || []).map((space) => (
+      typeof space?.name === 'string' ? space.name.trim().toLowerCase() : ''
+    )));
+    let counter = (spaces || []).length + 1;
+    while (takenNames.has(`space ${counter}`)) counter += 1;
+    const name = `Space ${counter}`;
     if (onSpaceCreate) {
       onSpaceCreate({
         name,
         assignedPages: []
       });
     }
-  }, [requireSpaceManagement, spaces.length, onSpaceCreate]);
+  }, [requireSpaceManagement, spaces, onSpaceCreate]);
 
   const handleRenameSpace = useCallback((spaceId, nextName) => {
     if (!requireSpaceManagement()) return;
     const name = nextName?.trim();
-    if (spaceId && name && onSpaceUpdate) {
+    if (!name) return false;
+    // Same rule as PDFViewer's handleSpaceUpdate (which keeps the final say);
+    // checked here too so the row knows to put the old name back.
+    const lowered = name.toLowerCase();
+    if ((spaces || []).some((space) => space?.id !== spaceId
+      && typeof space?.name === 'string' && space.name.trim().toLowerCase() === lowered)) {
+      showToast('A space with this name already exists. Please choose a different name.', 'error');
+      return false;
+    }
+    if (spaceId && onSpaceUpdate) {
       onSpaceUpdate(spaceId, { name });
     }
-  }, [onSpaceUpdate, requireSpaceManagement]);
+    return true;
+  }, [onSpaceUpdate, requireSpaceManagement, spaces]);
 
   const handleDelete = useCallback((spaceId) => {
     if (!requireSpaceManagement()) return;

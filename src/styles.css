@@ -2814,3 +2814,57 @@ textarea:focus-visible,
 }
 .chrome-history:not(:disabled):hover { background: var(--hover); border-color: transparent; }
 .chrome-history:not(:disabled):active { background: var(--pressed); }
+
+/* PHONE TOASTS (owner report 2026-09-30: a Spaces error toast sat half behind
+   the status bar and the top bar, only "...exists. Please choose a different
+   name." readable). ToastHost portals to <body>; on a phone the stack sits at
+   the TOP, just under the app's top bar, so the dock, the bottom sheets and the
+   on-screen keyboard can never cover it.
+   --app-toast-chrome-bottom is the measured bottom edge of the visible top bar
+   (ToastHost sets it on the host each time the stack changes). The fallbacks
+   mirror the bars' own rules: home header 96px (hub.css --mobile-header-h),
+   viewer header 34px, each below env() on the web / Capacitor and flush with
+   the top inside the Expo shell, which pads its WebView natively.
+   The max() floor with the safe-area insets covers a shell whose WebView runs
+   UNDER the status bar: the stack then still starts below the status bar even
+   if the bar itself did not clear it. (In today's Expo shell the published
+   --native-safe-area-top is only informational; at worst the floor lowers the
+   toast by a few px there.)
+   The stack spans the width (16px gutters) so a sentence wraps to 1-2 lines
+   instead of a 3-line column; `!important` beats the host's desktop inline
+   placement (bottom: 24, centred by translateX). Desktop is untouched. */
+@media screen and (max-width: 720px) {
+  .app-toast-host {
+    --app-toast-chrome-fallback: calc(env(safe-area-inset-top, 0px) + 96px);
+    top: calc(max(
+      var(--app-toast-chrome-bottom, var(--app-toast-chrome-fallback)),
+      var(--native-safe-area-top, 0px),
+      env(safe-area-inset-top, 0px)
+    ) + 8px) !important;
+    bottom: auto !important;
+    left: 16px !important;
+    right: 16px !important;
+    transform: none !important;
+    max-width: none !important;
+  }
+  html.survey-viewer-open .app-toast-host {
+    --app-toast-chrome-fallback: calc(var(--native-safe-area-top, env(safe-area-inset-top, 0px)) + 34px);
+  }
+  html[data-native-shell="expo"] .app-toast-host {
+    --app-toast-chrome-fallback: 96px;
+  }
+  html[data-native-shell="expo"].survey-viewer-open .app-toast-host {
+    --app-toast-chrome-fallback: 34px;
+  }
+}
+
+/* PHONE: the "Document locked" banner is `top: 0` (inline, for desktop), which
+   on the phone covered the viewer header (back / undo / redo, and it swallowed
+   their taps) and, outside the Expo shell, sat under the status bar. Hang it
+   from the bottom of the top chrome instead (--app-chrome-top, measured by
+   AppShell; it already includes the header's safe-area padding). */
+@media screen and (max-width: 720px) {
+  html.survey-viewer-open .document-lock-banner {
+    top: var(--app-chrome-top, 34px) !important;
+  }
+}

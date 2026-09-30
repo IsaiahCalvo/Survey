@@ -16,6 +16,16 @@
   animation: confirm-delete-modal-fade-in 120ms cubic-bezier(0, 0, 0.2, 1);
 }
 
+/* PHONE (owner report 2026-09-30, "toasts must never be hidden"): 1300 sat
+   under the mobile viewer's header/dock (5850-5900) and bottom sheets
+   (7200-7400), so a delete confirmation asked from a sheet opened BEHIND it.
+   On a phone it clears all of them (still under the toasts at 100000). */
+@media screen and (max-width: 720px) {
+  .confirm-delete-modal__backdrop {
+    z-index: 9000;
+  }
+}
+
 @keyframes confirm-delete-modal-fade-in {
   from { opacity: 0; }
   to   { opacity: 1; }
