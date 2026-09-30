@@ -353,7 +353,7 @@ jobs:
       # function sources so a new import busts it and an unchanged tree reuses
       # the whole module graph.
       - name: Cache Deno modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/deno
           key: deno-${{ runner.os }}-${{ env.DENO_VERSION }}-${{ hashFiles('supabase/functions/deno.json', 'supabase/functions/**/*.ts') }}
@@ -392,7 +392,7 @@ jobs:
       # big win, but it costs ~1s and keeps the build fast if the config ever
       # grows a heavier pre-bundle step.
       - name: Cache Vite build artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules/.vite
           key: vite-${{ runner.os }}-${{ hashFiles('package-lock.json', 'vite.config.js') }}
