@@ -98,19 +98,6 @@ const ACTION_PAIR_Z_INDEX = 5100;
 
 const deepClone = (value) => JSON.parse(JSON.stringify(value));
 
-// Nearest scrollable ancestor — used only for the on-screen-keyboard reveal.
-const findScrollableAncestor = (node) => {
-  let el = node?.parentElement || null;
-  while (el && el !== document.body && el !== document.documentElement) {
-    const style = window.getComputedStyle(el);
-    const overflowY = style.overflowY;
-    if ((overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay')
-      && el.scrollHeight > el.clientHeight + 1) return el;
-    el = el.parentElement;
-  }
-  return document.scrollingElement || document.documentElement;
-};
-
 // Shared 2D context for the new-text tight-fit width measurement. Canvas
 // measureText tracks DOM text width closely for single-name fonts; the +2px
 // breathing room in the commit builder absorbs sub-pixel disagreement.
@@ -737,54 +724,18 @@ export default function TextEditOverlay({
   // On-screen keyboard reveal.
   //
   // UX 2026-09-16 — on a phone the keyboard slides up over the bottom of the
-  // screen. If the box you are typing in is down there you end up typing blind.
-  // When visualViewport reports that the keyboard has taken real estate (the
-  // >=80px test keeps a browser URL bar collapse from counting), scroll the
-  // viewer by the SMALLEST amount that brings the box and its tick/cross back
-  // into the visible strip.
-  //
-  // This does not contradict the "opening an editor never moves the page" rule
-  // above: that rule is about focus-time reveal, where the browser guesses
-  // against a box whose final position has not landed yet. This fires only on a
-  // real keyboard-open event, moves by a measured minimum, and never runs on
-  // desktop (no keyboard inset, so it returns immediately).
-  //
-  // When the whole document already fits the screen there is nothing to scroll
-  // and this does nothing — the keyboard simply covers part of the page, as it
-  // does in every app. The tick/cross pair is clamped separately above, so it
-  // stays reachable either way.
-  useEffect(() => {
-    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
-    if (!vv) return undefined;
-    let frame = 0;
-    const reveal = () => {
-      frame = 0;
-      const box = boxRef.current;
-      if (!box || committedRef.current) return;
-      const keyboardInset = window.innerHeight - (vv.height + vv.offsetTop);
-      if (keyboardInset < 80) return;
-      const needed = ACTION_BOX_GAP + ACTION_TOUCH_TARGET + ACTION_EDGE_MARGIN;
-      const rect = box.getBoundingClientRect();
-      const overflow = (rect.bottom + needed) - (vv.offsetTop + vv.height);
-      if (overflow <= 0) return;
-      const scroller = findScrollableAncestor(box);
-      if (scroller) scroller.scrollTop += overflow;
-    };
-    // 2026-09-22: deferred one frame so the keyboard controller
-    // (src/mobile/keyboardViewport.js) has published --keyboard-inset first.
-    // That inset is what grows the PDF scroller's range; scrolling in the same
-    // tick as the resize clamps short of the keyboard for a box on the last
-    // line of the last page, and the caret stays hidden.
-    const schedule = () => {
-      if (frame) return;
-      frame = requestAnimationFrame(reveal);
-    };
-    vv.addEventListener('resize', schedule);
-    return () => {
-      if (frame) cancelAnimationFrame(frame);
-      vv.removeEventListener('resize', schedule);
-    };
-  }, []);
+  // screen; if the box you are typing in is down there you end up typing blind.
+  // Since 2026-09-30 (owner: "the keyboard must never cover what you type
+  // into", everywhere) this is done by the ONE shared mechanism in
+  // src/mobile/keyboardViewport.js, not by a reveal of this editor's own: the
+  // box below carries data-keyboard-reveal-target plus a margin for the
+  // tick/cross pair, and the controller scrolls the PDF viewer by the SMALLEST
+  // amount that brings both above the keyboard - a frame after the inset lands,
+  // again while you type (a callout growing a line), and never on desktop (no
+  // keyboard, no inset). data-keyboard-reveal-defer keeps it out of the
+  // focus-time pass: the editor focuses before its final on-page box is
+  // applied, and a reveal against that stale box is what once jumped the page.
+  // The tick/cross pair is clamped separately above, so it stays reachable.
 
   // Mount: seed text, focus, select-all for existing text (parity with the
   // fabric path's enterEditing + selectAll), initial broadcasts.
@@ -1004,6 +955,9 @@ export default function TextEditOverlay({
       >
         <div
           ref={boxRef}
+          data-keyboard-reveal-target=""
+          data-keyboard-reveal-defer=""
+          data-keyboard-reveal-margin={ACTION_BOX_GAP + ACTION_TOUCH_TARGET + ACTION_EDGE_MARGIN}
           onMouseDown={(e) => {
             // Clicks in the gutter/padding keep focus in the editor.
             if (e.target !== editableRef.current) {

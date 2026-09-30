@@ -391,7 +391,8 @@ async function runBookmarksAndPages(page, baseUrl) {
   await page.getByText('No bookmarks yet', { exact: true }).waitFor();
   snapshot = await persistedSnapshot(page, storageKeys);
   assert.deepEqual(snapshot.sidebar.bookmarks, []);
-  await page.getByRole('button', { name: 'Close document hub', exact: true }).click();
+  // Owner 2026-09-30: phone sheets have no close X; a tap outside closes them.
+  await page.getByRole('button', { name: 'Close document panel', exact: true }).click({ position: { x: 195, y: 150 } });
   await reloadViewer(page, baseUrl);
   const reloaded = await persistedSnapshot(page, storageKeys);
   assert.deepEqual(reloaded.sidebar.bookmarks, []);

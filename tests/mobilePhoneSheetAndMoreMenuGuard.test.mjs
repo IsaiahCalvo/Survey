@@ -111,7 +111,11 @@ test('one motion source: the hook owns open, drag and close; no sheet keyframe',
   assert.match(sheetMotion, /export const SHEET_OPEN_EASING = 'cubic-bezier\(/);
   // The close finishes before the real unmount fires.
   assert.match(sheetMotion, /export const SHEET_CLOSE_UNMOUNT_MS = SHEET_CLOSE_MS \+ \d+;/);
-  assert.match(sheetMotion, /\}, SHEET_CLOSE_UNMOUNT_MS\);/);
+  // (2026-09-30: a released swipe closes at the finger's speed, so its unmount
+  // waits that close's own duration plus the same buffer; a bare close still
+  // waits SHEET_CLOSE_UNMOUNT_MS.)
+  assert.match(sheetMotion, /: SHEET_CLOSE_UNMOUNT_MS\);/);
+  assert.match(sheetMotion, /motion\.ms \+ \(SHEET_CLOSE_UNMOUNT_MS - SHEET_CLOSE_MS\)/);
   // The entrance slides from fully offscreen, not a 24px nudge.
   assert.match(sheetMotion, /enterPhase === 'parked'[\s\S]{0,140}translateY\(100%\)/);
   // Transform/opacity only — never top/height, so pdf.js keeps its frame budget.
@@ -140,4 +144,37 @@ test('the browse panels keep their taller detents alongside the motion source', 
   // ...and the taller detent still comes out of CSS height, never the hook's
   // transform, so it cannot compete with the pdf.js render.
   assert.doesNotMatch(sheetMotion, /motionStyle = \{[\s\S]{0,200}(height|top):/);
+});
+
+/*
+ * Owner 2026-09-30: (1) no close X on any phone bottom sheet - a tap outside or
+ * a swipe down closes it; the Pages / Search / Bookmarks row holds only its
+ * three tabs. (2) A swipe down that starts ANYWHERE on a sheet drags it, while
+ * list scrolling, taps and drag-grip reorders keep working. Proven live in
+ * headless Chromium; these pin the wiring.
+ */
+test('phone sheets have no close X and take a swipe from anywhere', () => {
+  const survey = read('../src/SurveySpacesRail.jsx');
+  assert.doesNotMatch(sidebar, /mobile-pdf-hub-close|mobile-history-close/);
+  assert.doesNotMatch(mobileCss, /\.mobile-pdf-hub-close|\.mobile-history-close/);
+  assert.doesNotMatch(mobileChrome, /<button type="button" aria-label="Close (annotation settings|active users)"/);
+  assert.match(mobileCss, /\.mobile-survey-sheet \.mobile-survey-close\[aria-label='Close Survey panel'\] \{\s*display: none !important;/);
+
+  // Every sheet spreads the hook's sheetProps (ref + data-mobile-sheet) on its
+  // root instead of wiring touch handlers to the grab handle only.
+  assert.doesNotMatch(sidebar + mobileChrome + survey, /dragHandlers|DragHandlers\.onTouch/);
+  assert.match(sidebar, /\{\.\.\.\(mobileMode \? sheetProps : null\)\}/);
+  assert.match(survey, /\{\.\.\.\(mobileMode \? surveySheetProps : null\)\}/);
+  assert.equal((mobileChrome.match(/\{\.\.\.(textSheetProps|usersSheetProps|sheetProps)\}/g) || []).length, 4);
+  assert.match(sheetMotion, /sheetProps: \{ ref: sheetRef, 'data-mobile-sheet': 'true' \}/);
+
+  // Native listener so the move can be cancelled once the sheet owns it.
+  assert.match(sheetMotion, /addEventListener\('touchmove', onTouchMove, \{ passive: false \}\)/);
+  // A grip, a slider or a control with its own touch-action:none keeps its drag.
+  assert.match(sheetMotion, /'\[data-drag-rearrange-handle\]'/);
+  assert.match(sheetMotion, /'\.mobile-bookmark-grip'/);
+  assert.match(sheetMotion, /touchAction === 'none'/);
+  // Lists scroll first and hand over at their top; sideways moves are ignored.
+  assert.match(sheetMotion, /g\.scrollers\.some\(\(el\) => el\.scrollTop > 0\)/);
+  assert.match(sheetMotion, /Math\.abs\(dx\) > Math\.abs\(dy\)/);
 });

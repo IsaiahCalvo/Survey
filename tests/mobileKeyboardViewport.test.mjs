@@ -30,8 +30,11 @@ import {
   KEYBOARD_INSET_VAR,
   KEYBOARD_MIN_INSET_PX,
   KEYBOARD_OPEN_ATTR,
+  KEYBOARD_PREDICT_FRACTION,
   createKeyboardViewportController,
+  isKeyboardEditable,
   measureKeyboardInset,
+  revealAboveKeyboard,
 } from '../src/mobile/keyboardViewport.js';
 
 const MOBILE_VIEWER_CSS_SOURCE = readFileSync(new URL('../src/mobile/mobilePdfViewer.css', import.meta.url), 'utf8');
@@ -242,7 +245,11 @@ test('the mobile shell is pinned so the document has no reveal scroll to give', 
   assert.match(MOBILE_VIEWER_CSS_SOURCE, /--keyboard-inset:\s*0px;/, '--keyboard-inset needs a 0px default');
 });
 
-test('only the PDF scroller spends the keyboard inset', () => {
+// 2026-09-30 (owner: "the keyboard must NEVER cover what you type into"): the
+// inset now has exactly TWO consumers - the PDF scroller's range (below) and
+// the bottom sheets, which stand on the keyboard instead of behind it. The
+// header, rail and dock still never read it.
+test('only the PDF scroller and the bottom sheets spend the keyboard inset', () => {
   assert.match(
     MOBILE_VIEWER_CSS_SOURCE,
     /html\.survey-viewer-open\[data-keyboard-open='true'\] \[data-mobile-pdf-surface='true'\] \[data-pdfjs-content='true'\] \{\s*box-sizing: content-box;\s*padding-bottom: var\(--keyboard-inset, 0px\);/,
@@ -250,9 +257,17 @@ test('only the PDF scroller spends the keyboard inset', () => {
     // eat the node's inline height instead of extending its box, and the PDF
     // gained ZERO extra scroll range (measured live 2026-09-22).
   );
+  const sheetRule = /html\[data-keyboard-open='true'\] \[data-mobile-sheet\] \{([^}]*)\}/.exec(MOBILE_VIEWER_CSS_SOURCE);
+  assert.ok(sheetRule, 'the sheets must lift onto the keyboard');
+  assert.match(sheetRule[1], /bottom: var\(--keyboard-inset, 0px\) !important;/);
+  assert.match(sheetRule[1], /max-height: calc\(100dvh - var\(--keyboard-inset, 0px\)/);
+  // The lift must not glide: WebKit measures the focused field in the same
+  // task, and a sheet still on its way up reads as covered (the flicker).
+  assert.doesNotMatch(sheetRule[1], /transition/);
   // Nothing else may react to it: the header, rail and dock stay put.
   const consumers = MOBILE_VIEWER_CSS_SOURCE.match(/var\(--keyboard-inset/g) || [];
-  assert.equal(consumers.length, 1, 'exactly one rule may read --keyboard-inset');
+  const inSheetRule = sheetRule[1].match(/var\(--keyboard-inset/g) || [];
+  assert.equal(consumers.length, 1 + inSheetRule.length, 'only these two rules may read --keyboard-inset');
 });
 
 test('the phone viewer mounts the keyboard controller and tears it down', () => {
@@ -273,11 +288,103 @@ test('Capacitor is told not to resize or scroll the web view for the keyboard', 
   assert.match(CAPACITOR_CONFIG_SOURCE, /contentInset: 'never'/);
 });
 
-test('the text editor reveals the caret a frame after the inset lands', () => {
-  assert.match(
-    TEXT_EDIT_OVERLAY_SOURCE,
-    /vv\.addEventListener\('resize', schedule\);/,
-    'the keyboard reveal must be scheduled, not run inside the resize tick',
-  );
-  assert.match(TEXT_EDIT_OVERLAY_SOURCE, /frame = requestAnimationFrame\(reveal\);/);
+// 2026-09-30: the text editor no longer runs its own reveal; the shared
+// controller does it for every field. The editor's box names itself as the
+// reveal target (with room for the tick/cross) and opts out of the focus-time
+// pass, because it focuses before its final on-page box is applied.
+test('the text editor uses the shared reveal, a frame after the inset lands', () => {
+  assert.match(TEXT_EDIT_OVERLAY_SOURCE, /data-keyboard-reveal-target=""/);
+  assert.match(TEXT_EDIT_OVERLAY_SOURCE, /data-keyboard-reveal-defer=""/);
+  assert.match(TEXT_EDIT_OVERLAY_SOURCE, /data-keyboard-reveal-margin=\{ACTION_BOX_GAP \+ ACTION_TOUCH_TARGET \+ ACTION_EDGE_MARGIN\}/);
+  assert.doesNotMatch(TEXT_EDIT_OVERLAY_SOURCE, /findScrollableAncestor/);
+  const source = readFileSync(new URL('../src/mobile/keyboardViewport.js', import.meta.url), 'utf8');
+  // The inset-change reveal is scheduled, not run inside the resize tick.
+  assert.match(source, /if \(next > 0\) scheduleReveal\(\);/);
+  assert.match(source, /if \(raf\) revealFrame = raf\(reveal\);/);
+});
+
+const fakeInput = () => ({ nodeType: 1, tagName: 'INPUT', getAttribute: () => 'text', closest: () => null });
+
+test('a field taking focus lifts for a PREDICTED keyboard in the same task', () => {
+  const phone = createFakePhone();
+  const listeners = new Map();
+  phone.win.addEventListener = (type, fn) => listeners.set(type, fn);
+  phone.win.removeEventListener = (type) => listeners.delete(type);
+  const controller = createKeyboardViewportController({ window: phone.win, root: phone.root, predict: true });
+
+  // No keyboard yet: the focus alone publishes the guess, synchronously, so
+  // the sheets are already clear of the keyboard when WebKit measures the
+  // field (no pan, no snap back, no flicker).
+  listeners.get('focusin')({ target: fakeInput() });
+  const guess = Math.round(PHONE_H * KEYBOARD_PREDICT_FRACTION);
+  assert.ok(controller.getInset() === guess || controller.getInset() >= KEYBOARD_MIN_INSET_PX);
+  assert.equal(phone.attributes.get(KEYBOARD_OPEN_ATTR), 'true');
+
+  // The real keyboard replaces the guess...
+  phone.raiseKeyboard(KEYBOARD_H);
+  assert.equal(controller.getInset(), KEYBOARD_H);
+  phone.lowerKeyboard();
+  assert.equal(controller.getInset(), 0);
+  // ...and is the next guess.
+  listeners.get('focusin')({ target: fakeInput() });
+  assert.equal(controller.getInset(), KEYBOARD_H);
+  controller.dispose();
+});
+
+test('no prediction without an on-screen keyboard, and never for a button', () => {
+  const phone = createFakePhone();
+  const listeners = new Map();
+  phone.win.addEventListener = (type, fn) => listeners.set(type, fn);
+  phone.win.removeEventListener = (type) => listeners.delete(type);
+  const controller = createKeyboardViewportController({ window: phone.win, root: phone.root, predict: false });
+  listeners.get('focusin')({ target: fakeInput() });
+  assert.equal(controller.getInset(), 0);
+  controller.dispose();
+
+  const touch = createKeyboardViewportController({ window: phone.win, root: phone.root, predict: true });
+  listeners.get('focusin')({ target: { nodeType: 1, tagName: 'BUTTON', getAttribute: () => null } });
+  assert.equal(touch.getInset(), 0);
+  touch.dispose();
+});
+
+test('isKeyboardEditable: text fields and contenteditable, not checkboxes', () => {
+  const input = (type, extra = {}) => ({ nodeType: 1, tagName: 'INPUT', getAttribute: () => type, ...extra });
+  assert.equal(isKeyboardEditable(input(null)), true);
+  assert.equal(isKeyboardEditable(input('search')), true);
+  assert.equal(isKeyboardEditable(input('number')), true);
+  assert.equal(isKeyboardEditable(input('checkbox')), false);
+  assert.equal(isKeyboardEditable(input('range')), false);
+  assert.equal(isKeyboardEditable(input('text', { readOnly: true })), false);
+  assert.equal(isKeyboardEditable({ nodeType: 1, tagName: 'TEXTAREA' }), true);
+  assert.equal(isKeyboardEditable({ nodeType: 1, tagName: 'DIV', isContentEditable: true }), true);
+  assert.equal(isKeyboardEditable(null), false);
+});
+
+test('revealAboveKeyboard scrolls the field\'s own list by the smallest amount', () => {
+  // A list (top 100, bottom 800) whose row sits at 560-600: under a
+  // 336px keyboard (visible to 508). It must end with its bottom at 508 - 12.
+  const list = {
+    scrollTop: 0,
+    scrollHeight: 2000,
+    clientHeight: 400,
+    parentElement: null,
+    getBoundingClientRect: () => ({ top: 100, bottom: 800 }),
+  };
+  const field = {
+    parentElement: list,
+    closest: () => null,
+    getAttribute: () => null,
+    getBoundingClientRect: () => ({ top: 560 - list.scrollTop, bottom: 600 - list.scrollTop, height: 40 }),
+  };
+  const win = {
+    innerHeight: PHONE_H,
+    getComputedStyle: (el) => ({ overflowY: el === list ? 'auto' : 'visible' }),
+    document: { body: {}, documentElement: {}, querySelectorAll: () => [] },
+  };
+  field.ownerDocument = win.document;
+  const moved = revealAboveKeyboard(field, { win, inset: KEYBOARD_H });
+  assert.equal(moved, true);
+  assert.equal(list.scrollTop, 600 - (PHONE_H - KEYBOARD_H - 12));
+  // Already visible: nothing moves.
+  assert.equal(revealAboveKeyboard(field, { win, inset: KEYBOARD_H }), false);
 });

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { isKeyboardEditable } from './keyboardViewport';
 
 /*
  * Mobile bottom-sheet motion system — one motion source per sheet.
@@ -101,13 +102,100 @@ function prefersReducedMotion() {
   );
 }
 
+/*
+ * SWIPE DOWN ANYWHERE (owner 2026-09-30, "like Drawboard"): a downward swipe
+ * that starts ANYWHERE on a sheet - a row, a button, the header - drags the
+ * sheet, not only one that starts on the grab handle. The gesture is read off
+ * native listeners on the sheet element (sheetProps.ref) so the move can be
+ * preventDefault-ed once the sheet owns it (React's touch props are passive).
+ * What it must never break, and how:
+ *   - a tap stays a tap: nothing engages until the finger travels SHEET_SLOP_PX,
+ *     and a click that follows a real drag is swallowed;
+ *   - list scrolling: a pull inside a list that is scrolled down scrolls the
+ *     list; the moment the list reaches its top while the finger keeps pulling,
+ *     the sheet takes over from there (the hand-over), and the lists do not
+ *     rubber-band (overscroll-behavior in mobilePdfViewer.css);
+ *   - sideways moves (a horizontal strip, a slider) are never a dismiss;
+ *   - a touch that starts on a drag grip, a slider, the focused text field, or
+ *     anything that set `touch-action: none` for its own gesture belongs to
+ *     that control - a reorder from a grip is never a dismiss.
+ * Upward: a pull up that starts outside a scrolling list steps an expandable
+ * sheet up a detent, as the handle always did.
+ * Release settles with the finger's velocity: a flick carries the sheet off at
+ * the speed it was thrown (SHEET_FLING_EASING starts at 3x the average speed).
+ */
+export const SHEET_SLOP_PX = 8;
+// Starts at slope 3, so a close of `ms = 3 * distance / velocity` leaves the
+// finger at exactly the velocity it was released with.
+export const SHEET_FLING_EASING = 'cubic-bezier(0.2, 0.6, 0.35, 1)';
+const SHEET_FLING_MIN_MS = 150;
+const SHEET_FLING_MAX_MS = 320;
+// A finger that stopped before lifting has no velocity to carry.
+const SHEET_VELOCITY_STALE_MS = 90;
+const SHEET_HEIGHT_TRANSITION = `height ${SHEET_SPRING_MS}ms ${SHEET_SPRING_EASING}`;
+
+// Controls with a drag gesture of their own. A touch that starts on one of
+// these (inside the sheet) is theirs, never the sheet's.
+const FOREIGN_GESTURE_SELECTOR = [
+  '[data-drag-rearrange-handle]',
+  '[aria-roledescription="sortable"]',
+  '.mobile-bookmark-grip',
+  '[data-sheet-no-drag]',
+  'input[type="range"]',
+  '[role="slider"]',
+].join(',');
+
+function nowMs(event) {
+  return event?.timeStamp || (typeof performance !== 'undefined' ? performance.now() : Date.now());
+}
+
+function isForeignGesture(target, sheet) {
+  if (!target || !sheet) return true;
+  const doc = sheet.ownerDocument;
+  if (doc?.body?.classList?.contains('drag-rearrange-dragging')) return true;
+  const foreign = target.closest?.(FOREIGN_GESTURE_SELECTOR);
+  if (foreign && sheet.contains(foreign)) return true;
+  // Moving a finger on the field you are typing in moves the caret.
+  if (target === doc?.activeElement && isKeyboardEditable(target)) return true;
+  const view = doc?.defaultView;
+  for (let el = target; el && el !== sheet; el = el.parentElement) {
+    if (el.classList?.contains('mobile-pdf-sheet__handle')) break;
+    if (view?.getComputedStyle?.(el).touchAction === 'none') return true;
+  }
+  return false;
+}
+
+function scrollersBetween(target, sheet) {
+  const view = sheet?.ownerDocument?.defaultView;
+  const list = [];
+  for (let el = target; el && el !== sheet; el = el.parentElement) {
+    const overflowY = view?.getComputedStyle?.(el).overflowY;
+    if ((overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay')
+      && el.scrollHeight > el.clientHeight + 1) list.push(el);
+  }
+  return list;
+}
+
+function suppressNextClick(doc) {
+  if (!doc) return;
+  const until = (typeof performance !== 'undefined' ? performance.now() : Date.now()) + 450;
+  const swallow = (event) => {
+    doc.removeEventListener('click', swallow, true);
+    if ((typeof performance !== 'undefined' ? performance.now() : Date.now()) > until) return;
+    event.stopPropagation();
+    event.preventDefault();
+  };
+  doc.addEventListener('click', swallow, true);
+  setTimeout(() => doc.removeEventListener('click', swallow, true), 500);
+}
+
 /**
  * @param {() => void} onClose  the real collapse/unmount setter; called AFTER
  *                              the slide-down completes (or immediately under
  *                              reduced motion).
  * @param {object} [options]
- * @param {(event: TouchEvent) => boolean} [options.canStartDrag]  guard so the
- *   drag only engages from the handle / when inner scroll is at top.
+ * @param {(event: TouchEvent) => boolean} [options.canStartDrag]  extra guard:
+ *   return false to keep a touch from ever dragging the sheet.
  * @param {boolean} [options.expandable]  opt this sheet into the taller second
  *   detent (the Pages / Search / Bookmarks tray). Off for everything else.
  * @param {boolean} [options.fullscreenable]  also allow the THIRD step, full
@@ -116,11 +204,17 @@ function prefersReducedMotion() {
  *   the slide-up entrance. Sheets that mount only while open can leave this at
  *   its default; sheets that stay mounted and toggle a collapsed class (the hub
  *   tray, the survey rail) must pass their real open state.
+ *
+ * Spread the returned `sheetProps` on the sheet's root element: it attaches
+ * the swipe-anywhere gesture and marks the sheet (data-mobile-sheet) for the
+ * keyboard lift in mobilePdfViewer.css.
  */
 export function useMobileSheetMotion(onClose, options = {}) {
   const { canStartDrag, expandable = false, fullscreenable = false, open = true } = options;
   const [dragY, setDragY] = useState(0);
   const [closing, setClosing] = useState(false);
+  // { ms, easing } of a velocity-matched close, or null for the plain slide.
+  const [closeMotion, setCloseMotion] = useState(null);
   const [springing, setSpringing] = useState(false);
   // 0 Standard | 1 Expanded | 2 Full screen. `expanded` below is kept as the
   // boolean every existing caller reads: it means "taller than Standard".
@@ -131,12 +225,16 @@ export function useMobileSheetMotion(onClose, options = {}) {
     open && !prefersReducedMotion() ? 'parked' : null
   ));
   const wasOpenRef = useRef(open);
-
-  const startYRef = useRef(null);
-  const lastYRef = useRef(null);
-  const lastTRef = useRef(0);
-  const vyRef = useRef(0);
-  const engagedRef = useRef(false);
+  const [sheetEl, setSheetEl] = useState(null);
+  const sheetElRef = useRef(null);
+  const sheetRef = useCallback((el) => {
+    sheetElRef.current = el;
+    setSheetEl(el);
+  }, []);
+  const gestureRef = useRef({ mode: null });
+  // { from, to } while a sheet is raised for typing (see onFocusIn below).
+  const typingRestoreRef = useRef(null);
+  const springTimerRef = useRef(0);
 
   // Park before paint on the frame the sheet becomes visible, so the entrance
   // always starts from fully offscreen (a passive effect here would let the
@@ -169,7 +267,12 @@ export function useMobileSheetMotion(onClose, options = {}) {
     return () => window.clearTimeout(timer);
   }, [enterPhase]);
 
-  const requestClose = useCallback(() => {
+  /**
+   * Slide the sheet off and then fire the real close. Buttons and backdrops
+   * call it bare (their click event is ignored); a released drag passes
+   * { velocity, travel } so the slide continues at the speed of the flick.
+   */
+  const requestClose = useCallback((fling) => {
     if (closing) return;
     if (prefersReducedMotion()) {
       setDragY(0);
@@ -178,66 +281,47 @@ export function useMobileSheetMotion(onClose, options = {}) {
       onClose?.();
       return;
     }
+    let motion = null;
+    const velocity = typeof fling?.velocity === 'number' ? fling.velocity : 0;
+    const travel = typeof fling?.travel === 'number' ? fling.travel : 0;
+    const height = sheetElRef.current?.offsetHeight || 0;
+    if (velocity > 0 && height > 0) {
+      const remaining = Math.max(0, height - travel);
+      const ms = Math.round(Math.min(SHEET_FLING_MAX_MS, Math.max(
+        SHEET_FLING_MIN_MS,
+        (3 * remaining) / Math.max(velocity, 0.5),
+      )));
+      motion = { ms, easing: SHEET_FLING_EASING };
+    }
     // keep the sheet mounted + slide it down, then fire the real close
     setSpringing(false);
     setEnterPhase(null);
+    setCloseMotion(motion);
     setClosing(true);
     window.setTimeout(() => {
       setClosing(false);
+      setCloseMotion(null);
       setDragY(0);
       setDetent(SHEET_DETENT_STANDARD);
       onClose?.();
-    }, SHEET_CLOSE_UNMOUNT_MS);
+    }, motion ? motion.ms + (SHEET_CLOSE_UNMOUNT_MS - SHEET_CLOSE_MS) : SHEET_CLOSE_UNMOUNT_MS);
   }, [closing, onClose]);
 
-  const onTouchStart = useCallback((event) => {
-    if (typeof canStartDrag === 'function' && !canStartDrag(event)) {
-      startYRef.current = null;
+  const springBack = useCallback(() => {
+    if (prefersReducedMotion()) {
+      setDragY(0);
       return;
     }
-    const y = event.touches?.[0]?.clientY ?? null;
-    startYRef.current = y;
-    lastYRef.current = y;
-    lastTRef.current = event.timeStamp || (typeof performance !== 'undefined' ? performance.now() : Date.now());
-    vyRef.current = 0;
-    engagedRef.current = false;
-    setSpringing(false);
-  }, [canStartDrag]);
+    setSpringing(true);
+    setDragY(0);
+    window.clearTimeout(springTimerRef.current);
+    springTimerRef.current = window.setTimeout(() => setSpringing(false), SHEET_SPRING_MS);
+  }, []);
+  useEffect(() => () => window.clearTimeout(springTimerRef.current), []);
 
-  const onTouchMove = useCallback((event) => {
-    const startY = startYRef.current;
-    if (startY == null || closing) return;
-    const y = event.touches?.[0]?.clientY;
-    if (y == null) return;
-    const dy = y - startY;
-    // Downward pull always engages. An upward move engages only on a sheet
-    // that HAS a taller detent to reach — everywhere else an upward/neutral
-    // move must never hijack the sheet's inner scroll (the demo starts the
-    // responder from the handle only). Note the sheet is never translated
-    // upward: it is anchored to the bottom, so moving it up would open a gap
-    // beneath it. The snap on release is the feedback.
-    if (dy <= 0 && !engagedRef.current && !expandable) return;
-    engagedRef.current = true;
-    // A grab during the entrance takes over immediately — the old CSS keyframe
-    // outranked this transform and swallowed the gesture.
-    setEnterPhase(null);
-    const now = event.timeStamp || (typeof performance !== 'undefined' ? performance.now() : Date.now());
-    const dt = now - (lastTRef.current || now);
-    if (dt > 0) vyRef.current = (y - (lastYRef.current ?? y)) / dt;
-    lastYRef.current = y;
-    lastTRef.current = now;
-    setDragY(Math.max(0, dy));
-  }, [closing, expandable]);
-
-  const onTouchEnd = useCallback(() => {
-    const startY = startYRef.current;
-    startYRef.current = null;
-    if (startY == null) return;
-    const engaged = engagedRef.current;
-    engagedRef.current = false;
-    if (!engaged) return;
-    const travel = (lastYRef.current ?? startY) - startY;
-    const vy = vyRef.current;
+  const release = useCallback((travel, vy) => {
+    // You moved the sheet yourself: it stays where you put it after typing.
+    if (travel !== 0) typingRestoreRef.current = null;
     // Upward release on an expandable sheet: step UP one detent, at most to the
     // sheet's own ceiling (Expanded, or Full screen for a browse panel).
     if (expandable && travel < 0) {
@@ -248,37 +332,194 @@ export function useMobileSheetMotion(onClose, options = {}) {
       return;
     }
     const dy = Math.max(0, travel);
+    if (dy <= 0) {
+      setDragY(0);
+      return;
+    }
+    // Pulled down and then pushed back up before letting go: stay.
+    if (vy < -0.25) {
+      springBack();
+      return;
+    }
     if (dy > SHEET_DISMISS_DY || vy > SHEET_DISMISS_VY) {
       // From a tall detent a downward pull steps back ONE height instead of
       // dismissing, so Full screen takes three pulls to close and a panel is
-      // never lost in one gesture.
+      // never lost in one gesture. The transform springs home on the same
+      // 260ms curve the height steps down on, so the top edge moves as one.
       if (detent > SHEET_DETENT_STANDARD) {
         setDetent((current) => current - 1);
-        setDragY(0);
+        springBack();
         return;
       }
-      requestClose();
-    } else if (dy > 0) {
-      // spring back home
-      if (prefersReducedMotion()) {
-        setDragY(0);
-        return;
-      }
-      setSpringing(true);
-      setDragY(0);
-      window.setTimeout(() => setSpringing(false), SHEET_SPRING_MS);
+      requestClose({ velocity: vy, travel: dy });
+      return;
     }
-  }, [requestClose, expandable, detent, maxDetent]);
+    springBack();
+  }, [detent, expandable, maxDetent, requestClose, springBack]);
+
+  // Everything the native listeners read, fresh every render.
+  const liveRef = useRef(null);
+  liveRef.current = { canStartDrag, closing, detent, expandable, maxDetent, open, release };
+
+  useEffect(() => {
+    const sheet = sheetEl;
+    if (!sheet) return undefined;
+    const g = gestureRef.current;
+
+    const onTouchStart = (event) => {
+      const live = liveRef.current;
+      g.mode = null;
+      if (live.closing || event.touches?.length !== 1) return;
+      if (typeof live.canStartDrag === 'function' && !live.canStartDrag(event)) return;
+      if (isForeignGesture(event.target, sheet)) return;
+      const touch = event.touches[0];
+      g.mode = 'pending';
+      g.x0 = touch.clientX;
+      g.y0 = touch.clientY;
+      g.anchorY = touch.clientY;
+      g.lastY = touch.clientY;
+      g.lastT = nowMs(event);
+      g.vy = 0;
+      g.scrollers = scrollersBetween(event.target, sheet);
+    };
+
+    const onTouchMove = (event) => {
+      if (!g.mode || g.mode === 'ignore') return;
+      const touch = event.touches?.[0];
+      if (!touch) return;
+      const live = liveRef.current;
+      const y = touch.clientY;
+      const prevY = g.lastY;
+      const now = nowMs(event);
+      const dt = now - g.lastT;
+      if (dt > 0) g.vy = (0.7 * ((y - prevY) / dt)) + (0.3 * g.vy);
+      g.lastY = y;
+      g.lastT = now;
+
+      if (g.mode === 'pending') {
+        const dx = touch.clientX - g.x0;
+        const dy = y - g.y0;
+        if (Math.abs(dx) < SHEET_SLOP_PX && Math.abs(dy) < SHEET_SLOP_PX) return;
+        if (Math.abs(dx) > Math.abs(dy)) {
+          g.mode = 'ignore';
+          return;
+        }
+        if (dy > 0) {
+          if (g.scrollers.some((el) => el.scrollTop > 0)) {
+            g.mode = 'watch';
+            return;
+          }
+          g.mode = 'drag';
+          g.anchorY = y;
+        } else if (live.expandable && live.detent < live.maxDetent && g.scrollers.length === 0) {
+          g.mode = 'expand';
+          g.anchorY = g.y0;
+        } else {
+          g.mode = 'ignore';
+          return;
+        }
+        // A grab during the entrance takes over immediately.
+        setEnterPhase(null);
+        setSpringing(false);
+      }
+
+      if (g.mode === 'watch') {
+        // The hand-over: the list has reached its top and the finger is still
+        // pulling down - from here on the sheet follows it.
+        if (y > prevY && g.scrollers.every((el) => el.scrollTop <= 0)) {
+          g.mode = 'drag';
+          g.anchorY = y;
+          setEnterPhase(null);
+          setSpringing(false);
+        } else {
+          return;
+        }
+      }
+
+      if (event.cancelable) event.preventDefault();
+      if (g.mode === 'drag') {
+        // Note the sheet is never translated upward: it is anchored to the
+        // bottom, so moving it up would open a gap beneath it.
+        setDragY(Math.max(0, y - g.anchorY));
+      }
+    };
+
+    const onTouchEnd = (event) => {
+      const mode = g.mode;
+      g.mode = null;
+      if (mode !== 'drag' && mode !== 'expand') return;
+      // A down-drag pushed back above where it started is a spring-back, not
+      // a pull up; a pull up is never a dismiss.
+      const travel = mode === 'drag'
+        ? Math.max(0, g.lastY - g.anchorY)
+        : Math.min(0, g.lastY - g.anchorY);
+      const vy = nowMs(event) - g.lastT > SHEET_VELOCITY_STALE_MS ? 0 : g.vy;
+      if (Math.abs(travel) >= SHEET_SLOP_PX || mode === 'drag') suppressNextClick(sheet.ownerDocument);
+      if (event.type === 'touchcancel') {
+        liveRef.current.release(0, 0);
+        return;
+      }
+      liveRef.current.release(travel, vy);
+    };
+
+    // Owner 2026-09-30: start typing in a browse sheet and it rises to its
+    // tallest height, so the field and its list sit in all the room left above
+    // the keyboard (keyboardViewport.js lifts the sheet onto the keyboard and
+    // scrolls the field into view).
+    const onFocusIn = (event) => {
+      const live = liveRef.current;
+      if (!live.open || !live.expandable || !isKeyboardEditable(event.target)) return;
+      if (live.detent < live.maxDetent) {
+        typingRestoreRef.current = { from: live.detent, to: live.maxDetent };
+        setDetent(live.maxDetent);
+      }
+    };
+    // ...and once you are done typing (focus left every field in the sheet),
+    // it settles back to the height it had, unless you moved it meanwhile.
+    let focusOutFrame = 0;
+    const onFocusOut = () => {
+      if (!typingRestoreRef.current) return;
+      window.cancelAnimationFrame(focusOutFrame);
+      focusOutFrame = window.requestAnimationFrame(() => {
+        const restore = typingRestoreRef.current;
+        const active = sheet.ownerDocument?.activeElement;
+        if (!restore || (sheet.contains(active) && isKeyboardEditable(active))) return;
+        typingRestoreRef.current = null;
+        setDetent((current) => (current === restore.to ? restore.from : current));
+      });
+    };
+
+    sheet.addEventListener('touchstart', onTouchStart, { passive: true });
+    sheet.addEventListener('touchmove', onTouchMove, { passive: false });
+    sheet.addEventListener('touchend', onTouchEnd);
+    sheet.addEventListener('touchcancel', onTouchEnd);
+    sheet.addEventListener('focusin', onFocusIn);
+    sheet.addEventListener('focusout', onFocusOut);
+    return () => {
+      window.cancelAnimationFrame(focusOutFrame);
+      sheet.removeEventListener('focusout', onFocusOut);
+      sheet.removeEventListener('touchstart', onTouchStart, { passive: true });
+      sheet.removeEventListener('touchmove', onTouchMove, { passive: false });
+      sheet.removeEventListener('touchend', onTouchEnd);
+      sheet.removeEventListener('touchcancel', onTouchEnd);
+      sheet.removeEventListener('focusin', onFocusIn);
+      g.mode = null;
+    };
+  }, [sheetEl]);
 
   // Merge into the sheet element's inline style. Only ever transform +
-  // transition, so this never invalidates layout for the pdf.js render.
+  // transition, so this never invalidates layout for the pdf.js render. (The
+  // spring's transition also carries the height leg, so a detent step that
+  // lands with it moves the top edge as one motion.)
   let motionStyle = null;
   if (closing) {
     motionStyle = prefersReducedMotion()
       ? null
       : {
         transform: 'translateY(100%)',
-        transition: `transform ${SHEET_CLOSE_MS}ms ${SHEET_CLOSE_EASING}`,
+        transition: closeMotion
+          ? `transform ${closeMotion.ms}ms ${closeMotion.easing}`
+          : `transform ${SHEET_CLOSE_MS}ms ${SHEET_CLOSE_EASING}`,
       };
   } else if (dragY > 0 && !springing) {
     // finger-follow: no transition so it tracks 1:1
@@ -286,7 +527,7 @@ export function useMobileSheetMotion(onClose, options = {}) {
   } else if (springing) {
     motionStyle = {
       transform: 'translateY(0)',
-      transition: `transform ${SHEET_SPRING_MS}ms ${SHEET_SPRING_EASING}`,
+      transition: `transform ${SHEET_SPRING_MS}ms ${SHEET_SPRING_EASING}, ${SHEET_HEIGHT_TRANSITION}`,
     };
   } else if (enterPhase === 'parked') {
     motionStyle = { transform: 'translateY(100%)', transition: 'none' };
@@ -299,7 +540,8 @@ export function useMobileSheetMotion(onClose, options = {}) {
 
   return {
     motionStyle: motionStyle || {},
-    dragHandlers: { onTouchStart, onTouchMove, onTouchEnd },
+    // Spread on the sheet's root element.
+    sheetProps: { ref: sheetRef, 'data-mobile-sheet': 'true' },
     requestClose,
     closing,
     // `expanded` stays the boolean it always was - "taller than Standard" - so
