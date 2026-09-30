@@ -5,7 +5,7 @@ import test from 'node:test';
 const appShell = await readFile(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
 
 test('collapsed zoom rail shows zoom in above the level and zoom out below it', () => {
-  const collapsedStart = appShell.indexOf('if (rightRailCollapsed)');
+  const collapsedStart = appShell.indexOf('if (!railPanelEl)');
   const collapsedEnd = appShell.indexOf('// Expanded 320px survey panel', collapsedStart);
 
   assert.ok(collapsedStart >= 0 && collapsedEnd > collapsedStart, 'collapsed zoom rail exists');

@@ -159,6 +159,36 @@
   }
 }
 
+/* Desktop Survey panel expand / collapse (owner 2026-09-30). Expand: the panel
+   is laid out once at its open 320px and slides in from where the 48px rail
+   was (320 - 48 = 272px), so no row re-wraps mid-motion. Collapse: only the
+   collapsed strip is left, and it narrows back to the rail. The expanded rail
+   footer is inside the panel, so it rides the same motion. */
+@keyframes surveyRailExpand {
+  from {
+    transform: translateX(272px);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes surveyRailCollapse {
+  from {
+    width: 320px;
+  }
+  to {
+    width: 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #chrome-right-host .survey-rail {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -679,6 +709,10 @@
   white-space: nowrap;
   /* The side groups are not gap rows, so each rule keeps its full 8px inset. */
   --chrome-row-gap: 0px;
+  /* 2026-09-30: an absolute box pinned by right:100% only gets the sub-row's
+     own width to shrink-to-fit into, so a content-sized module pill would
+     overflow onto the category chips. The side is always its content's width. */
+  width: max-content;
 }
 
 .survey-subrow__side--start { right: 100%; }
@@ -781,6 +815,38 @@
 
 .survey-subrow__keep[aria-checked='true'] .survey-subrow__track::after {
   transform: translateX(10px);
+}
+
+/* Module pill (owner 2026-09-30): exactly as wide as its LONGEST module name -
+   every name sits in one grid cell, only the current one visible - so switching
+   module never moves anything, capped at 220px with an ellipsis. The pill's
+   width token is `auto` for this one pill (PDFViewer passes width="auto"). */
+.survey-subrow__side--start .chrome-pill {
+  max-width: 220px;
+}
+
+.survey-subrow__fit {
+  display: grid;
+  grid-template-columns: minmax(0, max-content);
+}
+
+.survey-subrow__fit > span {
+  grid-area: 1 / 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.survey-subrow__fit > .is-ghost {
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .survey-subrow__track,
+  .survey-subrow__track::after {
+    transition: none;
+  }
 }
 /* ===== end SURVEY SUB-ROW ===== */
 

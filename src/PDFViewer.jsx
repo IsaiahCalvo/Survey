@@ -25448,6 +25448,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         onSelectEntity: handleMobileSurveyEntitySelect,
         keepCategoryActive: surveyKeepCategoryActive,
         onKeepCategoryActiveChange: setSurveyKeepCategoryActive,
+        // Owner 2026-09-30: the phone survey strip's Exit (same handler as the
+        // Survey panel's "Exit Survey").
+        onExit: handleCloseSurveyMode,
       } : null,
       regionEditing: showRegionSelection,
       regionToolbarApi: mobileRegionToolbarApi,
@@ -25613,6 +25616,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleMobileSurveyCategorySelect,
     handleMobileSurveyEntitySelect,
     surveyKeepCategoryActive,
+    handleCloseSurveyMode,
     showRegionSelection,
     mobileRegionToolbarApi,
     showAnnotationColorPicker,
@@ -37659,7 +37663,23 @@ ${pageBlocks}
                       onOpenChange={setSurveyModuleMenuOpen}
                       label="Survey module"
                       value={selectedModule?.id || ''}
-                      triggerContent={modules.length === 0 ? 'No modules' : undefined}
+                      /* Owner 2026-09-30: the pill is exactly as wide as its
+                         LONGEST module name (every name stacked in one grid
+                         cell, only the current one visible), capped at 220px
+                         (styles.css .survey-subrow__fit). */
+                      triggerContent={modules.length === 0 ? 'No modules' : (
+                        <span className="survey-subrow__fit">
+                          {modules.map((module) => (
+                            <span
+                              key={module.id}
+                              aria-hidden={module.id === selectedModule?.id ? undefined : 'true'}
+                              className={module.id === selectedModule?.id ? undefined : 'is-ghost'}
+                            >
+                              {module.name || 'Untitled module'}
+                            </span>
+                          ))}
+                        </span>
+                      )}
                       options={modules.map((module) => ({
                         value: module.id,
                         label: module.name || 'Untitled module'
@@ -37670,8 +37690,8 @@ ${pageBlocks}
                         setActiveTool('survey-marker');
                       }}
                       disabled={modules.length === 0}
-                      width="var(--chrome-field-w-module)"
-                      contentWidth="var(--chrome-field-w-module)"
+                      width="auto"
+                      contentWidth="var(--radix-popover-trigger-width)"
                       dataMarker="data-survey-module-menu"
                     />
                     <div className="chrome-divider" aria-hidden="true" />
@@ -37713,12 +37733,15 @@ ${pageBlocks}
                       type="button"
                       role="switch"
                       aria-checked={surveyKeepCategoryActive}
+                      aria-label="Repeat category"
                       className="survey-subrow__keep tertiary"
                       onClick={() => setSurveyKeepCategoryActive((on) => !on)}
                       {...chromeTip('Keep the category armed after placing a Survey Marker', 'below')}
                     >
                       <span className="survey-subrow__track" aria-hidden="true" />
-                      <span>Keep active</span>
+                      {/* Owner 2026-09-30: "Keep active" -> "Repeat" (it keeps
+                          the CATEGORY armed), same word as the phone bar. */}
+                      <span>Repeat</span>
                     </button>
                   </div>
                 </div>

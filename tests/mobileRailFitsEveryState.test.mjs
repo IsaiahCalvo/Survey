@@ -110,7 +110,20 @@ const DOCK = (() => {
 assert.equal(DOCK, 62);
 
 const railPadding = decl(ruleBody('.mobile-pdf-tools'), 'padding');
-const RAIL_PAD_TOP = px(railPadding.split(/\s+/)[0], '.mobile-pdf-tools padding-top');
+// RULED CHANGE 2026-09-30 (owner: "the top bar spans the full width and the
+// left rail sits below it ... when the top bar is not shown the rail grows
+// upward, but its icons stay exactly where they are"). The tool strip lies over
+// the top of the rail now, so the rail's top inset is its old 7px PLUS the
+// strip's painted band, always - whether or not a strip is up - which is what
+// keeps the chips from moving. The column loses that band from its budget.
+const STRIP_BAND = token('--mobile-strip-band-h');
+assert.equal(STRIP_BAND, 36);
+const RAIL_PAD_TOP = (() => {
+  const match = /^calc\((\d+)px\s*\+\s*var\(--mobile-strip-band-h\)\)/.exec(railPadding);
+  assert.ok(match, `the rail's top inset must be its own px plus the strip band (found: ${railPadding})`);
+  return Number(match[1]) + STRIP_BAND;
+})();
+assert.equal(RAIL_PAD_TOP, 43);
 const RAIL_PAD_BOTTOM = (() => {
   const match = /calc\(var\(--mobile-viewer-dock-height\)\s*([-+])\s*(\d+)px\)/.exec(railPadding);
   assert.ok(
@@ -298,7 +311,9 @@ test('the phone tool rail fits a 375x812 screen in every bounded state', () => {
   // RULED CHANGE 2026-09-21 (pass 7, board 1: chips 28px): 589, not 581. The
   // footer is four rail chips, so a 2px-smaller chip hands the tool column 8px
   // back. Derived from the tokens; the column only ever gained room.
-  assert.equal(BUDGET, 589, `the tool column has ${BUDGET}px on a 375x812 screen`);
+  // RULED CHANGE 2026-09-30: 553, not 589 - the strip band the rail now keeps
+  // free above its first chip (see RAIL_PAD_TOP).
+  assert.equal(BUDGET, 553, `the tool column has ${BUDGET}px on a 375x812 screen`);
   const overflowing = [];
   for (const [name, height, measured] of states()) {
     if (measured !== null) {
@@ -314,13 +329,16 @@ test('the phone tool rail fits a 375x812 screen in every bounded state', () => {
   );
 });
 
-test('the tightened state also clears a phone with a 34px home-indicator reserve', () => {
+test('on a phone with a 34px home-indicator reserve the tightened state overflows by at most the strip band', () => {
   // An iPhone 17 Pro: 874px tall, 96px of header (34 + a 62px top inset) and a
   // 34px reserve under the dock, so the column gets 557px where a 375x812
   // browser viewport gives it 581px. Measured on the simulator, 2026-09-16.
   const deviceBudget = 874 - 96 - RAIL_PAD_TOP - ((52 + 34) - 6) - FOOTER;
   // 565, not 557: the same 8px the 28px chip hands back (see above).
-  assert.equal(deviceBudget, 565);
+  // RULED CHANGE 2026-09-30: 529 - the strip band the rail now reserves.
+  // The Expo shell gives the same number (an 812px web view under a 62px
+  // native top inset, a 34px header and the 34px bottom inset).
+  assert.equal(deviceBudget, 529);
   const worstGroup = Math.max(...Object.values(TOOL_GROUPS));
   const crowded = column(DENSE, [
     ...head(DENSE),
@@ -328,10 +346,18 @@ test('the tightened state also clears a phone with a 34px home-indicator reserve
     divider(DENSE), surveyStrip(DENSE, SURVEY_CATEGORIES),
     divider(DENSE), surveyStrip(DENSE, SURVEY_ENTITIES),
   ]);
+  // KNOWN TRADE (2026-09-30, reported to the owner): the owner's full-width
+  // strip costs the rail 36px, and the one crowded state - a tool group's
+  // sub-strip open beside the survey category + entity strips - wants 553px
+  // of 529 on an iPhone 17 Pro, so there, and only there, the column's
+  // overflow-y safety valve scrolls 24px. Spacing is already at its floor in
+  // that state; the only way back is smaller chips, which the owner has ruled
+  // out. This pins the overflow so it cannot quietly grow.
+  assert.equal(crowded, 553);
   assert.ok(
-    crowded <= deviceBudget,
-    `the crowded rail state wants ${crowded}px of the ${deviceBudget}px an iPhone 17 Pro gives it, `
-    + 'so the rail scrolls on the device even though it fits a 375x812 viewport',
+    crowded - deviceBudget <= STRIP_BAND,
+    `the crowded rail state wants ${crowded}px of the ${deviceBudget}px an iPhone 17 Pro gives it - `
+    + 'more than the strip band the full-width strip took from it',
   );
 });
 

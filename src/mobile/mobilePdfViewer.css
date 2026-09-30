@@ -74,6 +74,11 @@
   --mobile-strip-control-h: 20px;  /* every tool-properties control, one height */
   --mobile-strip-gap: 4px;         /* board: the setting-toolbar gap */
   --mobile-strip-divider-inset: 5px; /* board: divider side margin */
+  /* The tool strip's painted band (its box is 8px taller - see
+     .mobile-pdf-properties). RULED 2026-09-30 (owner): the strip spans the
+     whole width and the rail starts under it, so the rail reserves exactly this
+     much above its first chip whether or not a strip is showing. */
+  --mobile-strip-band-h: 36px;
   --mobile-strip-type: 11px;       /* board: every strip label */
   --mobile-strip-disc: 16px;       /* board: the painted colour disc */
   --mobile-strip-disc-button: 22px;/* board: the box that disc sits in */
@@ -759,8 +764,15 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      positions to the pixel - and hands the column back 34px before it has to
      scroll. The remaining -6px is what the stack's own -5px/-3px nudges already
      lift the last chip by, so its 2px clearance over the dock is unchanged, and
-     the inset still tracks the safe area through the dock token. */
-  padding: 7px 0 calc(var(--mobile-viewer-dock-height) - 6px);
+     the inset still tracks the safe area through the dock token.
+     RULED CHANGE 2026-09-30 (owner: "the top bar spans the full width and the
+     left rail sits below it ... when the top bar is not shown the rail grows
+     upward, but its icons stay exactly where they are"). The tool strip now
+     lies over the top of the rail (see .mobile-pdf-properties), so the rail
+     always keeps the strip's band free above its first chip: the chips sit 7px
+     under the strip's rule with a strip up, and do not move when it goes - the
+     rail's own surface simply fills the band then. */
+  padding: calc(7px + var(--mobile-strip-band-h)) 0 calc(var(--mobile-viewer-dock-height) - 6px);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -1281,11 +1293,16 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    pointer events and its children take them back - the trick the bottom dock
    uses. The bar could not do this while it scrolled (WebKit will not scroll a
    container that is not hit-testable); it does not scroll any more, so it can. */
+/* RULED CHANGE 2026-09-30 (owner): the strip spans the phone edge to edge,
+   over the top of the tool rail, where it used to start at the rail's right
+   edge. The rail keeps --mobile-strip-band-h free above its chips, so nothing
+   of the rail is covered, and the strip stacks above the rail (5750). The
+   centred controls gain the rail's 36px of band. */
 .mobile-pdf-properties {
   position: absolute;
   top: 0;
-  left: var(--mobile-rail-w);
-  width: calc(100vw - var(--mobile-rail-w));
+  left: 0;
+  width: 100vw;
   max-width: none;
   height: 44px;
   min-height: 44px;
@@ -1303,7 +1320,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border: 0;
   border-radius: 0;
   box-shadow: none;
-  z-index: 5700;
+  z-index: 5760;
   /* RULED CHANGE 2026-09-17 (owner): NO mask-image here. The bar paints to the
      screen edge with no fade. Pinned by tests/mobileStripEdgeFade.test.mjs.
      Do not reintroduce it, gated or otherwise, without an owner ruling. */
@@ -1317,6 +1334,25 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-properties > * {
   pointer-events: auto;
   flex: 0 0 auto;
+}
+
+/* The phone's other top bar - the text-selection action bar, which PDFViewer
+   portals into #chrome-sub-toolbar-host (shown on the phone only for text
+   select / text markup) - spans edge to edge too, over the tool strip it sits
+   on, rather than starting at the rail's right edge. The host lives in the
+   page column, which clips (overflow: hidden) and starts right of the rail, so
+   on the phone it is pinned to the viewport directly under the header instead.
+   The two tops are the header's own two heights (see .mobile-pdf-header).
+   `!important` beats the host's inline position in AppShell.jsx. */
+.mobile-pdf-work-area #chrome-sub-toolbar-host {
+  position: fixed !important;
+  top: calc(34px + var(--native-safe-area-top, env(safe-area-inset-top, 0px))) !important;
+  left: 0 !important;
+  right: 0 !important;
+}
+
+html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
+  top: 34px !important;
 }
 
 /* The one narrow-screen step (see the base rule): 375px phones get 4px of side
@@ -1435,8 +1471,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   gap: 5px;
 }
 
-.mobile-pdf-properties--actions > button,
-.mobile-pdf-properties__keep {
+.mobile-pdf-properties--actions > button {
   height: var(--mobile-strip-control-h);
   min-height: var(--mobile-strip-control-h);
   padding: 0 9px;
@@ -1482,7 +1517,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-properties__text-button,
 .mobile-pdf-properties__segmented > button,
 .mobile-pdf-properties--actions > button,
-.mobile-pdf-properties__keep {
+.mobile-pdf-properties__keep,
+.mobile-pdf-properties__exit {
   position: relative;
 }
 
@@ -1496,17 +1532,17 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-properties__more::after,
 .mobile-pdf-properties__text-button::after,
 .mobile-pdf-properties--actions > button::after,
-.mobile-pdf-properties__keep::after {
+.mobile-pdf-properties__keep::after,
+.mobile-pdf-properties__exit::after {
   content: '';
   position: absolute;
   inset-block: -5px -19px;
   inset-inline: -2px;
 }
 
-/* The two controls on this bar with a 1px border: the border moves the padding
-   box the pad is measured from in by 1px, so they take their own pair. */
-.mobile-pdf-properties--actions > button::after,
-.mobile-pdf-properties__keep::after {
+/* The one control on this bar with a 1px border: the border moves the padding
+   box the pad is measured from in by 1px, so it takes its own pair. */
+.mobile-pdf-properties--actions > button::after {
   inset-block: -6px -20px;
 }
 
@@ -1612,33 +1648,137 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-color: var(--accent);
 }
 
+/* SURVEY STRIP (owner 2026-09-30: "Keep Active looks bad - a box around a
+   checkbox with text"; the module pill is far wider than it needs; add a short
+   Exit). Decided design:
+      [ Module v ] (switch) Repeat  ...  | Exit
+   The bar keeps its ruled `safe center` (see the survey rule above: the
+   owner's "never move an existing control"). Two auto margins share the spare
+   width - one before the pill, one before the rule - so the pill + switch pair
+   sits centred in the room left of the rule and Exit is pinned to the
+   trailing edge.
+
+   The pill is as wide as its LONGEST option (MobileStyledSelect fitOptions) and
+   may shrink to 72px, ellipsising, when the row runs out of room. */
+.mobile-pdf-properties--survey > .mobile-styled-select {
+  flex: 0 1 auto;
+  min-width: 72px;
+  margin-inline-start: auto;
+}
+
+.mobile-pdf-properties--survey > .mobile-styled-select .mobile-styled-select__trigger {
+  width: 100%;
+  max-width: 100%;
+}
+
+.mobile-pdf-properties--survey > .mobile-pdf-properties__divider--push {
+  margin-inline-start: auto;
+}
+
+/* "Repeat" (was "Keep active"; it keeps the CATEGORY armed after a marker is
+   placed): the desktop survey row's switch (.survey-subrow__keep in
+   src/styles.css) at the strip's scale - a 24x14 track with a 10px knob, then
+   the word in the strip's 11px/600, 6px apart. No plate, no border. Off: a
+   --surface-3 track with an inset --border-strong ring, word --text-2. On: an
+   --accent track, knob +10px, word --text-1. One button; its 44px pad is the
+   shared -5/-19/-2 above. */
 .mobile-pdf-properties__keep {
+  height: var(--mobile-strip-control-h);
+  padding: 0 2px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  font: 600 var(--mobile-strip-type)/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
 }
 
-.mobile-pdf-properties__keep > span {
-  width: 14px;
+.mobile-pdf-properties__keep[aria-checked='true'] {
+  color: var(--text-1);
+}
+
+.mobile-pdf-properties__keep-track {
+  position: relative;
+  flex: 0 0 auto;
+  width: 24px;
   height: 14px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--border-strong);
-  border-radius: 3px;
-  font-size: 9px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  transition: background 0.2s ease, box-shadow 0.2s ease;
 }
 
-.mobile-pdf-properties__keep.is-active {
-  color: var(--accent);
+.mobile-pdf-properties__keep-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s ease;
 }
 
-/* DELIBERATE EXCEPTION: `> span` is the CHECKBOX box, and a ticked checkbox is
-   a filled box with a dark tick everywhere in this app and every other. There
-   is no glyph outside the box to turn gold. */
-.mobile-pdf-properties__keep.is-active > span {
-  color: var(--accent-text);
+.mobile-pdf-properties__keep[aria-checked='true'] .mobile-pdf-properties__keep-track {
   background: var(--accent);
-  border-color: var(--accent);
+  box-shadow: none;
+}
+
+.mobile-pdf-properties__keep[aria-checked='true'] .mobile-pdf-properties__keep-track::after {
+  transform: translateX(10px);
+}
+
+/* Exit: a red WORD (owner: red, not gold - on this strip gold text means "on").
+   --danger-text is the token tokens.css gives red words, and the one the
+   Survey panel's own "Exit Survey" wears, so red already means "leave Survey"
+   there. 700 12px, at least 44px wide, 20px painted; with the shared pad the
+   hit area is about 49 x 44. */
+.mobile-pdf-properties__exit {
+  min-width: 44px;
+  height: var(--mobile-strip-control-h);
+  padding: 0 6px;
+  box-sizing: border-box;
+  color: var(--danger-text);
+  background: transparent;
+  border: 0;
+  font: 700 12px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  white-space: nowrap;
+  transition: opacity 90ms ease-out;
+}
+
+.mobile-pdf-properties__exit:active { opacity: 0.6; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-pdf-properties__keep-track,
+  .mobile-pdf-properties__keep-track::after,
+  .mobile-pdf-properties__exit {
+    transition: none;
+  }
+}
+
+/* MobileStyledSelect fitOptions: every option label stacked in one grid cell,
+   only the current one visible, so the pill is its longest option's width. */
+.mobile-styled-select__fit {
+  display: grid;
+  grid-template-columns: minmax(0, max-content);
+}
+
+.mobile-styled-select__fit > span {
+  grid-area: 1 / 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mobile-styled-select__fit-ghost {
+  visibility: hidden;
 }
 
 .mobile-pdf-properties__color {
