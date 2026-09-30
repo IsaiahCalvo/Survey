@@ -10,6 +10,8 @@ Steps each time there's something to test:
   VITE_TURNSTILE_SITE_KEY= VITE_DEV_AUTO_LOGIN_EMAIL= VITE_DEV_AUTO_LOGIN_PASSWORD= \
     npx vite build --outDir /tmp/herenow-dist --emptyOutDir
   node scripts/herenow-publish.mjs /tmp/herenow-dist   # prints siteUrl
+  (Or use Here.now's own agent skill: `npx skills add heredotnow/skill --skill here-now`
+   — same result; the repo script already works with no install.)
 Rules: ALWAYS blank the VITE_DEV_AUTO_LOGIN_* vars (a local build otherwise bakes the
 owner's password into the public files); anonymous links expire after 24 h, so post a
 fresh one each testing day and give the owner the new link; SPA mode needs an API key
