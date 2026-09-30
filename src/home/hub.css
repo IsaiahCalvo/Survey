@@ -4123,6 +4123,73 @@
     border-bottom: 0;
   }
 
+  /* EVERY TAB'S PANEL IS ITS SCROLL BOX (owner 2026-09-30: "the panel should
+     always reach the bottom of the available area on every tab, like
+     Documents"). Documents and Archive draw the panel ON the list that
+     scrolls, so it always stands from under the search row to just above the
+     tab bar, all four edges stay put while the rows scroll inside, and a short
+     or empty list leaves its empty space inside the panel. Projects and
+     Templates drew it on the row group INSIDE their scroll box instead, so it
+     stopped 14px short (the box's bottom pad) on Projects, hugged the rows on
+     Templates, scrolled its top edge away with a long list, and the empty
+     states had no panel at all. The panel now moves out to the scroll box on
+     those two tabs as well — the project list, the template list, their empty
+     states and their loading skeletons; a drilled-in project and an open
+     template are their own cards and keep their own layout. The row group
+     keeps its clip, and it still stretches to the panel's full height (the
+     rules above), so the last row's 1px closing shadow shows when there is
+     room below and is cut off when the rows fill the panel. */
+  .survey-hub .projects-mobile-layout:has(> .projects-mobile-drill-view > [data-sortable-rearrange-list]),
+  .survey-hub .projects-mobile-layout:has(> .projects-mobile-drill-view > .hub-loading-mobile-panel),
+  .survey-hub .projects-mobile-layout:not(:has(> .projects-mobile-browser)),
+  .survey-hub .templates-mobile-layout:has(> .templates-mobile-browser) {
+    background: var(--ink-700);
+    border: 1px solid var(--ink-500);
+    border-radius: 10px;
+    /* Same foot as Documents: no pad under the last row, the phone's safe
+       inset outside the panel. */
+    padding-bottom: 0 !important;
+    margin-bottom: var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px));
+  }
+
+  /* On the phone web page the box does not scroll (the page does), so it
+     clips here to keep a picked row's fill inside the rounded corners. In the
+     native shell it is the scroller, which clips on its own — overriding its
+     overflow there would stop it scrolling. */
+  .survey-hub:not(.hub-native-shell-expo) .projects-mobile-layout:has(> .projects-mobile-drill-view > [data-sortable-rearrange-list]),
+  .survey-hub:not(.hub-native-shell-expo) .projects-mobile-layout:not(:has(> .projects-mobile-browser)),
+  .survey-hub:not(.hub-native-shell-expo) .templates-mobile-layout:has(> .templates-mobile-browser) {
+    overflow: hidden;
+  }
+
+  .survey-hub .projects-mobile-layout > .projects-mobile-drill-view > [data-sortable-rearrange-list],
+  .survey-hub .projects-mobile-layout > .projects-mobile-drill-view > .hub-loading-mobile-panel,
+  .survey-hub .templates-mobile-layout > .templates-mobile-browser > [data-sortable-rearrange-list],
+  .survey-hub .templates-mobile-layout > .templates-mobile-browser > .hub-loading-mobile-panel {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    margin-bottom: 0;
+  }
+
+  /* The native shell's Templates list never had a height to scroll in: the
+     editor body under .ed-scope is forced to height:auto for the open
+     template's page flow, so the list's height:100% resolved to its content,
+     the body grew past the tab bar and .ed-scope (overflow hidden) cut the
+     rest off — a long template list could not be scrolled. On the list only,
+     the body takes .ed-scope's height, the way Documents' body takes its
+     tab's, so the list box stops above the tab bar and scrolls. That body is
+     a flex column where Documents' is a block, so the list also stops
+     flexing: as a flex item its safe-inset margin would come out of its
+     height and end it 10px above where Documents ends. */
+  .survey-hub.hub-native-shell-expo .ed-scope > .templates-editor-body:has(> .templates-mobile-layout > .templates-mobile-browser) {
+    height: 100% !important;
+  }
+
+  .survey-hub.hub-native-shell-expo .ed-scope > .templates-editor-body > .templates-mobile-layout:has(> .templates-mobile-browser) {
+    flex: none;
+  }
+
   /* THE TEMPLATES EDITOR. Its category rows and its entity rows already sit in
      a card — the section panel and the entities sheet — so they become a flush
      group inside it rather than a second card. Every row takes a line above it,
