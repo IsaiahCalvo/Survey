@@ -138,6 +138,7 @@ const SHEET_HEIGHT_TRANSITION = `height ${SHEET_SPRING_MS}ms ${SHEET_SPRING_EASI
 // these (inside the sheet) is theirs, never the sheet's.
 const FOREIGN_GESTURE_SELECTOR = [
   '[data-drag-rearrange-handle]',
+  '[data-drag-handle]',
   '[aria-roledescription="sortable"]',
   '.mobile-bookmark-grip',
   '[data-sheet-no-drag]',
