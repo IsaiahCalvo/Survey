@@ -1,13 +1,9 @@
-Open the Survey-BetaSafeS2 repo (github.com, owner isaiahcalvo) on branch handoff/2026-09-29-testing. It holds everything on my local main as of 2026-09-29 plus this test pack. (Local main and this branch must be pushed first; if you cannot see them, stop and tell me.)
+Open the Kal-Voe/Survey repo, branch handoff/2026-09-29-testing. It holds everything we built on 2026-09-28/29 plus a test pack in docs/handoff-2026-09-29/.
 
-Read docs/handoff-2026-09-29/CLOUD-TESTING-SETUP.md first and give me a link I can open on my laptop and phone (try Tailscale, fall back to here.now). Then read docs/handoff-2026-09-29/WHAT-WE-BUILT.md and docs/handoff-2026-09-29/TEST-PLAN.md and understand everything we built. Also follow the repo's CLAUDE.md rules (high-risk files, zoom rules, never tighten edge-function CORS, verify in the app before saying done).
+First, read CLOUD-TESTING-SETUP.md and get me a link I can open on my laptop and phone: build the app and post it to Here.now exactly as that file says (no password, blank the dev-login settings). Get the database address and public key from the Supabase connector. If Here.now is blocked, tell me which network setting to change.
 
-I am going to test it hands-on. Give me ONE test at a time from TEST-PLAN.md, in order: what to test, how, and what to look for. Then wait for my reply before the next one.
+Then read WHAT-WE-BUILT.md and TEST-PLAN.md and understand everything we built. Follow the repo's CLAUDE.md rules.
 
-When I report a problem: fix it using helper agents, check the fix yourself in the running app, then ask me to re-test that one item before moving on. Never skip a test or move on with a known failure without telling me.
+I'm going to test it hands-on. Give me ONE test at a time from TEST-PLAN.md, in order: what to test, how, and what to look for. Wait for my reply before the next one. When I report a problem, fix it with helper agents, check the fix yourself, post a fresh link, and ask me to re-test that item before moving on.
 
-Rules:
-- Keep replies short and in plain, non-technical English. No file names, code or jargon unless I ask.
-- Never use or open my Google Chrome. Use your own built-in browser; helpers use headless Chromium only.
-- Supabase is on the Pro plan, but keep test traffic small: throwaway documents, short runs, no big repeated downloads.
-- Do not touch Excel write-back or apply database changes without asking me.
+Rules: short, plain, non-technical replies. Never use or open my Google Chrome. Keep database traffic small. Don't change Excel write-back or the database without asking me.
