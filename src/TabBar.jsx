@@ -25,6 +25,7 @@ import {
   sortableKeyboardCoordinates,
   useSortable,
 } from '@dnd-kit/sortable';
+import { CALM_STRIP_AUTO_SCROLL } from './reorder/dragAutoScroll.js';
 import { CSS } from '@dnd-kit/utilities';
 import Icon from './Icons';
 // Phase 30 — per-tab subscription to the dual-write retry queue. Each tab
@@ -449,6 +450,7 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onPag
           sensors={sensors}
           collisionDetection={closestCenter}
           modifiers={tabModifiers}
+          autoScroll={CALM_STRIP_AUTO_SCROLL}
           onDragEnd={handleTabDragEnd}
         >
           <SortableContext items={pdfTabs.map((tab) => tab.id)} strategy={horizontalListSortingStrategy}>

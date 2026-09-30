@@ -88,6 +88,7 @@ import {
   toHex6,
 } from '../services/templateConfigShape';
 import { moveItemById } from '../reorder/flatReorderUtils.js';
+import { CALM_STRIP_AUTO_SCROLL } from '../reorder/dragAutoScroll.js';
 import { pickByIds, removeByIds, duplicateAfterByIds } from './selectionById.js';
 import { flagRequiredInput, isBlank } from '../components/requiredInput';
 import './TemplatesEditor.css';
@@ -451,6 +452,7 @@ function SortableModuleTabs({
       sensors={sensors}
       collisionDetection={closestCenter}
       modifiers={modifiers}
+      autoScroll={CALM_STRIP_AUTO_SCROLL}
       onDragStart={({ active }) => {
         dragClampBoundsRef.current = getModuleTabClampBounds(active.id);
         setActiveId(active.id);

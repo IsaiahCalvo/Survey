@@ -3679,6 +3679,36 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   flex: 0 0 auto;
 }
 
+/* UX 2026-09-30 (owner: drags into / out of folders must feel controlled) —
+   the dragged row's slot is a stacking context so its landing slot can sit
+   UNDER the lifted row, in the gap the other rows opened. */
+.mobile-bookmark-slot.is-dragging {
+  position: relative;
+  z-index: 2;
+}
+
+.mobile-bookmark-drop-slot {
+  position: absolute;
+  z-index: -1;
+  right: 0;
+  height: 44px;
+  pointer-events: none;
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+  transition: top 160ms ease, left 120ms ease-out;
+}
+
+/* The folder the row will land IN (soft accent tint + accent edge), and a
+   folder it is about to enter while the short dwell runs (lighter tint). */
+.mobile-bookmark-row[data-bookmark-drop-target='true'] {
+  background: linear-gradient(var(--accent-soft-strong), var(--accent-soft-strong)), var(--surface-2);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.mobile-bookmark-row[data-bookmark-drop-target='pending'] {
+  background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--surface-2);
+}
+
 /* One line of the list. The depth indent is padding INSIDE the row (set per
    row as --mobile-bookmark-depth-inset), so the hairline still runs from edge
    to edge while nested rows step in. 44px band, content centred. */
