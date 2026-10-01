@@ -234,8 +234,6 @@
 .hub-btn.hub-btn--tertiary:not(:disabled):hover,
 .survey-hub .btn.tertiary:not(:disabled):hover,
 .survey-hub .btn.ghost:not(:disabled):hover { background: transparent; color: var(--text-1); }
-.hub-btn.hub-btn--tertiary:not(:disabled):hover > svg,
-.survey-hub .btn.tertiary:not(:disabled):hover > svg { color: currentColor; }
 .hub-btn.hub-btn--tertiary:not(:disabled):active,
 .survey-hub .btn.tertiary:not(:disabled):active,
 .survey-hub .btn.ghost:not(:disabled):active,
