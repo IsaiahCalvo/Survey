@@ -133,13 +133,13 @@ test('one motion source: the hook owns open, drag and close; no sheet keyframe',
 test('the browse panels keep their taller height alongside the motion source', () => {
   // RULED CHANGE 2026-10-01 (owner: "two heights: the small one and the big
   // one"): Standard and Full, nothing between. A pull down from Full comes
-  // back to Standard before a further pull can dismiss; a sheet may opt out
-  // (pullDownCloses - the Survey panel closes in one pull from any height and
-  // reopens where it was).
+  // back to Standard before a further pull can dismiss. RULED CHANGE
+  // 2026-10-01 (owner: "The Survey panel closes on the first swipe" - make it
+  // like Spaces): no sheet opts out any more, the Survey panel included.
   assert.match(sheetMotion, /export const SHEET_DETENT_FULL = 1;/);
-  assert.match(sheetMotion, /const canClose = !expandable \|\| drag\.start === SHEET_DETENT_STANDARD \|\| pullDownCloses;/);
-  assert.match(sheetMotion, /pullDownCloses = false \} = options;/);
-  assert.match(read('../src/SurveySpacesRail.jsx'), /pullDownCloses: mobileMode,/);
+  assert.match(sheetMotion, /const canClose = !expandable \|\| drag\.start === SHEET_DETENT_STANDARD;/);
+  assert.doesNotMatch(sheetMotion, /pullDownCloses = false/);
+  assert.doesNotMatch(read('../src/SurveySpacesRail.jsx'), /pullDownCloses/);
   assert.match(mobileCss, /\.mobile-pdf-sheet\.is-fullscreen \{[\s\S]{0,80}--mobile-sheet-height: var\(--mobile-panel-full\);/);
   assert.match(sidebar, /expandable: browsePanel,/);
   // ...and the React-rendered motion is still transform only, never top or

@@ -27,7 +27,7 @@ import { watchLightPopover } from './components/dismissRules.js';
 import { useConfirmDialog } from './components/dialogPrompts';
 import SurveyMarkerNotes from './components/SurveyMarkerNotes';
 import { normalizeNoteMedia } from './services/surveyMediaService';
-import { SHEET_DETENT_FULL, SHEET_DETENT_STANDARD, useMobileSheetMotion } from './mobile/useMobileSheetMotion';
+import { SHEET_DETENT_STANDARD, endSheetReveal, revealInSheet, useMobileSheetMotion } from './mobile/useMobileSheetMotion';
 // Phone Survey panel look (layout B, one card divided). Every rule in it is
 // scoped to .mobile-survey-sheet, which only the phone sheet carries.
 import './mobile/mobileSurveyPanel.css';
@@ -577,21 +577,7 @@ const SurveySpacesRail = ({
     open: mobileMode && !isSurveyPanelCollapsed,
     expandable: mobileMode,
     fullscreenable: mobileMode,
-    // Owner 2026-10-01: a swipe down closes the whole panel from any height
-    // (even Full screen with a Survey Marker open); reopening restores the
-    // open category / Survey Marker and the scroll (below). "< Categories"
-    // is the way back a level.
-    pullDownCloses: mobileMode,
   });
-
-  // Owner 2026-10-01: opening anything in the phone accordion takes the sheet
-  // to Full screen; closing everything brings it back to Standard. Only on a
-  // change (or when the sheet opens), so a pull up on a closed list still
-  // works as before.
-  useEffect(() => {
-    if (!mobileMode || isSurveyPanelCollapsed) return;
-    setSurveySheetDetent(mobileAccordionOpen ? SHEET_DETENT_FULL : SHEET_DETENT_STANDARD);
-  }, [mobileMode, isSurveyPanelCollapsed, mobileAccordionOpen, setSurveySheetDetent]);
 
   // Close everything in the phone accordion (the "Categories" back button).
   const collapseMobileAccordion = () => {
@@ -622,6 +608,32 @@ const SurveySpacesRail = ({
     // Only on the reopen itself.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mobileMode, isSurveyPanelCollapsed]);
+
+  // Owner 2026-10-01 ("Door -> Door 1 sent the panel to full height, though the
+  // one item was already visible"): opening a category or a Survey Marker
+  // grows the sheet only when what opened would not fit (useMobileSheetMotion
+  // revealInSheet); closing everything lets it settle back (endSheetReveal).
+  // On a reopen the list keeps its restored scroll.
+  const surveyRevealRef = useRef({ open: false, key: '' });
+  useEffect(() => {
+    const was = surveyRevealRef.current;
+    const open = mobileMode && !isSurveyPanelCollapsed;
+    surveyRevealRef.current = { open, key: mobileAccordionKey };
+    const list = mobileSurveyListRef.current;
+    if (!open || !list) return;
+    if (!mobileAccordionOpen) { endSheetReveal(list); return; }
+    // Only what just opened (all of it on a reopen): closing a Survey Marker
+    // inside an open category moves nothing.
+    const [cats, markerId] = mobileAccordionKey.split('|');
+    const [wasCats, wasMarkerId] = was.open ? was.key.split('|') : ['', ''];
+    const marker = markerId && markerId !== wasMarkerId ? document.getElementById(`highlight-item-${markerId}`) : null;
+    const card = !marker && cats && cats !== wasCats
+      ? list.querySelector('.survey-marker-category-main[aria-expanded="true"]')?.closest('.survey-marker-category-card')
+      : null;
+    if (marker || card) revealInSheet(marker || card, { anchor: marker || card.querySelector('.survey-marker-category-row') || card, scroll: was.open });
+    // mobileAccordionKey names what is open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mobileMode, isSurveyPanelCollapsed, mobileAccordionKey]);
 
   // Owner 2026-10-01 ("Yes, inline like phone"): a Survey Marker just placed
   // on desktop opens here with its name field focused and selected. While the

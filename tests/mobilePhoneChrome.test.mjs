@@ -43,8 +43,10 @@ test('the sheet backdrop dims to 30% black', () => {
  * one"). Supersedes pass 7's Standard / Expanded (70dvh) / Full: a browse panel
  * rests at Standard or Full. A release lands on the nearest of the two (where
  * the throw is heading), a firm flick goes the way it was thrown, and a pull
- * down from Full comes back to Standard rather than dismissing (unless the
- * sheet opts into pullDownCloses - the Survey panel).
+ * down from Full comes back to Standard rather than dismissing. RULED CHANGE
+ * 2026-10-01 (owner: "the first swipe down should drop the panel to its small
+ * size, and a second swipe down should close it"): no sheet opts out any more -
+ * the Survey panel's pullDownCloses is gone.
  */
 test('the hub sheet has two heights, Standard and Full', () => {
   assert.match(sheetMotion, /export const SHEET_DETENT_STANDARD = 0;/);
@@ -53,8 +55,9 @@ test('the hub sheet has two heights, Standard and Full', () => {
   // Nearest height to the projected release, flicks go the way they were thrown.
   assert.match(sheetMotion, /if \(-vy > SHEET_DISMISS_VY\) return SHEET_DETENT_FULL;/);
   assert.match(sheetMotion, /const projected = drag\.top \+ Math\.max\(-3, Math\.min\(3, vy\)\) \* SHEET_PROJECT_MS;/);
-  // A pull down from Full does not dismiss (unless pullDownCloses).
-  assert.match(sheetMotion, /const canClose = !expandable \|\| drag\.start === SHEET_DETENT_STANDARD \|\| pullDownCloses;/);
+  // A pull down from Full does not dismiss - not even a hard flick.
+  assert.match(sheetMotion, /const canClose = !expandable \|\| drag\.start === SHEET_DETENT_STANDARD;/);
+  assert.doesNotMatch(sheetMotion, /pullDownCloses = /);
   assert.doesNotMatch(css, /\.is-expanded \{|--mobile-panel-expanded/);
   // Full screen stops clear of the app's top bar.
   assert.match(css, /--mobile-panel-full: calc\(100dvh - var\(--app-chrome-top, 34px\) - 18px\);/);

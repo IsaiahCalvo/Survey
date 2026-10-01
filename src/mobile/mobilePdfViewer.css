@@ -3225,10 +3225,11 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 /* The big height (owner 2026-10-01: two heights, "the small one and the big
    one"): full screen, stopping 18px below the app's top bar so the iPhone
    status area and the header are never covered. Only the browse panels reach
-   it - a pull up, typing in the panel, or a Survey category opening - and it is
-   never their starting height. A pull down goes back to Standard (the Survey
-   panel closes instead, useMobileSheetMotion pullDownCloses). The 70% middle
-   step (.is-expanded) is gone. */
+   it - a pull up, typing in the panel, or opening something that would not fit
+   at Standard (useMobileSheetMotion, WHEN A SHEET CHANGES HEIGHT ON ITS OWN) -
+   and it is never their starting height. A pull down goes back to Standard on
+   every sheet; the next one closes. The 70% middle step (.is-expanded) is
+   gone. */
 .mobile-pdf-sheet.is-fullscreen {
   --mobile-sheet-height: var(--mobile-panel-full);
 }
