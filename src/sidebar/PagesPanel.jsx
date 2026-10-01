@@ -14,15 +14,37 @@ import { useTooltip } from '../components/Tooltip';
 import { watchLightPopover } from '../components/dismissRules.js';
 import { placeAnchoredMenu } from '../utils/floatingUiGeometry.js';
 import { getPageViewBase, pageViewKey, pageViewUprightKey } from '../utils/pageViewDocument.js';
+import {
+  getCachedPageThumbnails,
+  rememberPageThumbnails,
+  encodeCanvasToDataUrl,
+  predecodeImage,
+  takePriorityJob,
+} from './pagesPanelThumbnailCache.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const FAST_THUMBNAIL_SCALE = 0.15; // Ultra-fast, low-res (was 0.2)
 const CRISP_THUMBNAIL_SCALE = 0.5; // Slower, high-res
 const THUMBNAIL_DPR_CAP = 1;
-const CRISP_DPR_CAP = 2;
+// The crisp pass draws at the card's on-screen width x devicePixelRatio (up
+// to 3), never larger than the old fixed 0.5 x 2 = 1.0 page scale. A phone
+// card is ~155px wide, so a letter page is ~465px, not 612px: ~40% fewer
+// pixels to draw and encode for the same sharpness on screen.
+const CRISP_DPR_CAP = 3;
+const CRISP_MAX_PIXEL_SCALE = 1;
 const THUMBNAIL_JPEG_QUALITY = 0.72;
 const EAGER_PRELOAD_COUNT = 6;
-const CONCURRENCY_LIMIT = 4;
+// pdf.js paints a page on the main thread in ~15ms slices, one slice per task
+// per frame: four at once could take a whole 60ms frame (2026-10-01 profile).
+const CONCURRENCY_LIMIT = 2;
+// While the list is moving, only the cheap low-res pass runs; crisp redraws
+// wait until it has been still this long.
+const SCROLL_SETTLE_MS = 180;
+// Once the list is still, low-res images for pages just off screen (this many
+// cards either side) are drawn one at a time, so scrolling to them shows a
+// picture instead of an empty box.
+const IDLE_PREFILL_DELAY_MS = 400;
+const IDLE_PREFILL_SPAN = 16;
 // The page menu's layer: above the phone dock (6750), sheets and popovers
 // (up to 7400), below modals (10000+), the tooltip and toasts.
 const PAGE_MENU_Z = 9000;
@@ -95,8 +117,10 @@ const PagesPanel = ({
   // native title= (the OS tooltip takes ~1.5s and is OS-styled, so mixing the
   // two showed users two different tooltips on the same control).
   const tip = useTooltip();
-  const [thumbnails, setThumbnails] = useState({});
-  const [pageAspectRatios, setPageAspectRatios] = useState({});
+  // A reopened panel starts with everything it drew for this document
+  // (pagesPanelThumbnailCache.js): a drawn thumbnail never goes blank again.
+  const [thumbnails, setThumbnails] = useState(() => getCachedPageThumbnails(pdfDoc)?.thumbnails || {});
+  const [pageAspectRatios, setPageAspectRatios] = useState(() => getCachedPageThumbnails(pdfDoc)?.ratios || {});
   const [contextMenu, setContextMenu] = useState(null);
   const [selectedPage, setSelectedPage] = useState(pageNum);
   const [mobileSelectMode, setMobileSelectMode] = useState(false);
@@ -108,7 +132,13 @@ const PagesPanel = ({
   const observerRef = useRef(null);
   const containerRef = useRef(null);
   const isMountedRef = useRef(true);
-  const thumbnailsRef = useRef({});
+  const thumbnailsRef = useRef(thumbnails);
+  const lastScrollAtRef = useRef(0);
+  const settleTimerRef = useRef(null);
+  const pendingResultsRef = useRef(new Map());
+  const flushFrameRef = useRef(0);
+  const idleFillTimerRef = useRef(null);
+  const idleFillRef = useRef(() => {});
 
   // Queue State
   const queueRef = useRef({
@@ -119,9 +149,17 @@ const PagesPanel = ({
   const runningWorkersRef = useRef(0);
   const pendingRequestsRef = useRef(new Set()); // Track pages currently in queue or running
 
+  // thumbnailsRef is written wherever thumbnails change (a finished image in
+  // applyThumbnailResult, a document change below) and is never copied back
+  // from state: a render that commits after a batched flush but before that
+  // flush's own render would otherwise drop the newest images from the ref,
+  // and their pages were queued and drawn a second time.
+
+  // Write-through: whatever is on screen for this document survives the
+  // panel closing (the phone sheet unmounts it).
   useEffect(() => {
-    thumbnailsRef.current = thumbnails;
-  }, [thumbnails]);
+    rememberPageThumbnails(pdfDoc, thumbnails, pageAspectRatios);
+  }, [pdfDoc, thumbnails, pageAspectRatios]);
 
   const getRotationDelta = useCallback((pageNumber) => {
     const transform = pageTransformations?.[pageNumber];
@@ -239,6 +277,9 @@ const PagesPanel = ({
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
+      if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+      if (idleFillTimerRef.current) clearTimeout(idleFillTimerRef.current);
+      if (flushFrameRef.current) cancelAnimationFrame(flushFrameRef.current);
       // Cancel all running tasks
       activeTasksRef.current.forEach(task => task.cancel());
       activeTasksRef.current.clear();
@@ -334,19 +375,19 @@ const PagesPanel = ({
       thumbnailsRef.current = remapped.thumbnails;
       setThumbnails(remapped.thumbnails);
       setPageAspectRatios(remapped.ratios);
+    } else {
+      // A different document: start from what was drawn for IT (if it was
+      // open before), never from the previous document's images.
+      const cached = getCachedPageThumbnails(pdfDoc);
+      thumbnailsRef.current = cached?.thumbnails || {};
+      setThumbnails(cached?.thumbnails || {});
+      setPageAspectRatios(cached?.ratios || {});
     }
+    pendingResultsRef.current.clear();
   }
-  const thumbnailDocRef = useRef(null);
+  // The images themselves follow the document in the render above (derived
+  // state); this only drops the previous document's queued work.
   useEffect(() => {
-    const previousDoc = thumbnailDocRef.current;
-    thumbnailDocRef.current = pdfDoc;
-    const sameDocument = previousDoc && pdfDoc && previousDoc !== pdfDoc
-      && getPageViewBase(previousDoc) === getPageViewBase(pdfDoc);
-    if (!sameDocument) {
-      setThumbnails({});
-      setPageAspectRatios({});
-    }
-
     // Reset Queue
     activeTasksRef.current.forEach(task => task.cancel());
     activeTasksRef.current.clear();
@@ -362,16 +403,7 @@ const PagesPanel = ({
     const ratioWidth = normalized.width || normalized.containerWidth;
     const ratioHeight = normalized.height || normalized.containerHeight;
     if (ratioWidth && ratioHeight) {
-      setPageAspectRatios((prev) => {
-        const ratioValue = (ratioHeight / ratioWidth) * 100;
-        if (prev[pageNumber] && Math.abs(prev[pageNumber] - ratioValue) < 0.5) {
-          return prev;
-        }
-        return {
-          ...prev,
-          [pageNumber]: ratioValue
-        };
-      });
+      // Applied with the image itself in the batched flush below.
     } else if (normalized.src) {
       const img = new Image();
       img.onload = () => {
@@ -393,25 +425,56 @@ const PagesPanel = ({
       img.src = normalized.src;
     }
 
-    setThumbnails((prev) => ({
-      ...prev,
-      [pageNumber]: normalized
-    }));
+    // Several thumbnails finishing close together land in ONE render of the
+    // list (one per frame at most), not one full-list render each.
+    pendingResultsRef.current.set(pageNumber, normalized);
+    thumbnailsRef.current = { ...thumbnailsRef.current, [pageNumber]: normalized };
+    if (!flushFrameRef.current) {
+      flushFrameRef.current = requestAnimationFrame(() => {
+        flushFrameRef.current = 0;
+        if (!isMountedRef.current || pendingResultsRef.current.size === 0) return;
+        const batch = Object.fromEntries(pendingResultsRef.current);
+        pendingResultsRef.current.clear();
+        setThumbnails((prev) => ({ ...prev, ...batch }));
+        setPageAspectRatios((prev) => {
+          let next = prev;
+          Object.entries(batch).forEach(([page, thumb]) => {
+            const w = thumb.width || thumb.containerWidth;
+            const h = thumb.height || thumb.containerHeight;
+            if (!w || !h) return;
+            const ratioValue = (h / w) * 100;
+            if (prev[page] && Math.abs(prev[page] - ratioValue) < 0.5) return;
+            if (next === prev) next = { ...prev };
+            next[page] = ratioValue;
+          });
+          return next;
+        });
+      });
+    }
   }, []);
 
   const renderPdfJsThumbnail = useCallback(async (pageNumber, quality = 'fast', onCancel) => {
     if (!pdfDoc) return null;
     const page = await pdfDoc.getPage(pageNumber);
 
-    const scale = quality === 'crisp' ? CRISP_THUMBNAIL_SCALE : FAST_THUMBNAIL_SCALE;
     const dprCap = quality === 'crisp' ? CRISP_DPR_CAP : THUMBNAIL_DPR_CAP;
+    const dpr = Math.min(window.devicePixelRatio || 1, dprCap);
+    let scale = quality === 'crisp' ? CRISP_THUMBNAIL_SCALE : FAST_THUMBNAIL_SCALE;
+    if (quality === 'crisp') {
+      const cardWidth = thumbnailRefs.current[pageNumber]?.clientWidth || 0;
+      const base = page.getViewport({ scale: 1 });
+      const sideways = getRotationDelta(pageNumber) % 180 !== 0;
+      const pageWidth = sideways ? base.height : base.width;
+      if (cardWidth > 0 && pageWidth > 0) {
+        scale = Math.min(cardWidth / pageWidth, CRISP_MAX_PIXEL_SCALE / dpr);
+      }
+    }
 
     const viewport = page.getViewport({ scale });
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d', { alpha: false });
     if (!context) return null;
 
-    const dpr = Math.min(window.devicePixelRatio || 1, dprCap);
     canvas.width = viewport.width * dpr;
     canvas.height = viewport.height * dpr;
     canvas.style.width = `${viewport.width}px`;
@@ -439,29 +502,96 @@ const PagesPanel = ({
       throw error;
     }
 
+    const src = await encodeCanvasToDataUrl(canvas, 'image/jpeg', THUMBNAIL_JPEG_QUALITY);
+    // Free the bitmap now: iOS caps total canvas memory and collects
+    // detached canvases late.
+    canvas.width = 0;
+    canvas.height = 0;
+    if (!src) return null;
     return {
-      src: canvas.toDataURL('image/jpeg', THUMBNAIL_JPEG_QUALITY),
+      src,
       width: viewport.width,
       height: viewport.height,
       source: 'pdfjs',
       quality
     };
+  }, [pdfDoc, getRotationDelta]);
+
+  // The page the viewer has already drawn is the quickest first image there
+  // is: one downscale copy of its finished raster (no pdf.js work, a few ms),
+  // the same idea as pdf.js's own viewer thumbnails. Only a visible viewer
+  // canvas of the same shape counts (inactive tabs are display:none). It stays
+  // quality 'fast', so the pdf.js crisp pass still replaces it once the list
+  // is still (that pass also draws PDF-native annotations, which the viewer
+  // raster leaves to the app's own layers).
+  const seedThumbnailFromViewer = useCallback(async (pageNumber) => {
+    if (!pdfDoc || typeof document === 'undefined') return null;
+    const source = [...document.querySelectorAll(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"] > canvas`)]
+      .find((c) => c.width > 0 && c.height > 0 && !(c.width === 300 && c.height === 150) && c.getClientRects().length > 0);
+    if (!source) return null;
+    const page = await pdfDoc.getPage(pageNumber);
+    const base = page.getViewport({ scale: 1 });
+    const pageRatio = base.width / base.height;
+    if (Math.abs((source.width / source.height) - pageRatio) > pageRatio * 0.02) return null;
+    // One CSS pixel per card pixel: a quick, small first image (encoded in a
+    // millisecond or two); the crisp pass sharpens it.
+    const dpr = 1;
+    const cardWidth = thumbnailRefs.current[pageNumber]?.clientWidth || 160;
+    const width = Math.max(1, Math.min(source.width, Math.round(cardWidth * dpr)));
+    const height = Math.max(1, Math.round(width / pageRatio));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { alpha: false });
+    if (!context) return null;
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(source, 0, 0, width, height);
+    const src = await encodeCanvasToDataUrl(canvas, 'image/jpeg', THUMBNAIL_JPEG_QUALITY);
+    canvas.width = 0;
+    canvas.height = 0;
+    if (!src) return null;
+    return { src, width: base.width, height: base.height, source: 'viewer', quality: 'fast' };
   }, [pdfDoc]);
+
+  const isPageOnScreen = useCallback((pageNumber) => {
+    const container = containerRef.current;
+    const card = thumbnailRefs.current[pageNumber];
+    if (!container || !card) return false;
+    const box = container.getBoundingClientRect();
+    const rect = card.getBoundingClientRect();
+    return rect.bottom > box.top && rect.top < box.bottom;
+  }, []);
 
   const processQueue = useCallback(async () => {
     if (runningWorkersRef.current >= CONCURRENCY_LIMIT) return;
 
-    // LIFO Strategy: Pop from end of array
-    // Prioritize FAST (initial load) over CRISP (enhancement)
-    let job = queueRef.current.fast.pop(); // Try fast first
+    // LIFO, on-screen pages first. FAST (first image) always before CRISP.
+    let job = takePriorityJob(queueRef.current.fast, isPageOnScreen);
     let type = 'fast';
 
-    if (!job) {
-      job = queueRef.current.crisp.pop(); // Then crisp
+    if (!job && queueRef.current.crisp.length > 0) {
+      // Crisp redraws wait for the list to stop moving, so a fling only
+      // pays for the cheap low-res pass.
+      const sinceScroll = Date.now() - lastScrollAtRef.current;
+      if (sinceScroll < SCROLL_SETTLE_MS) {
+        if (!settleTimerRef.current) {
+          settleTimerRef.current = setTimeout(() => {
+            settleTimerRef.current = null;
+            if (!isMountedRef.current) return;
+            for (let i = 0; i < CONCURRENCY_LIMIT; i += 1) processQueue();
+          }, SCROLL_SETTLE_MS - sinceScroll + 10);
+        }
+        return;
+      }
+      job = takePriorityJob(queueRef.current.crisp, isPageOnScreen);
       type = 'crisp';
     }
 
-    if (!job) return; // No jobs
+    if (!job) {
+      if (runningWorkersRef.current === 0) idleFillRef.current();
+      return; // No jobs
+    }
 
     const { pageNumber } = job;
     runningWorkersRef.current++;
@@ -476,9 +606,8 @@ const PagesPanel = ({
     try {
       let thumbnailResult = null;
 
-      // For fast thumbnails, we check if Pdfjs provided one (unlikely given previous issues, but safe optimization)
-      if (type === 'fast' && typeof getThumbnail === 'function') {
-        // ... (existing logic for external provider if needed, mostly unused now)
+      if (type === 'fast') {
+        thumbnailResult = await seedThumbnailFromViewer(pageNumber).catch(() => null);
       }
 
       if (!thumbnailResult && pdfDoc) {
@@ -489,11 +618,14 @@ const PagesPanel = ({
 
       if (isMountedRef.current && thumbnailResult) {
         let normalized = normalizeThumbnailResult(thumbnailResult);
+        // Decoded before it is shown: the swap never paints an empty box.
+        if (normalized?.src) await predecodeImage(normalized.src);
 
         applyThumbnailResult(pageNumber, normalized);
 
-        // Schedule upgrade if fast
-        if (type === 'fast') {
+        // Schedule upgrade if fast (an idle prefill of an off-screen page
+        // stops at low-res; it is upgraded when it scrolls into view).
+        if (type === 'fast' && !job.prefill) {
           // Add to crisp queue
           queueRef.current.crisp.push({ pageNumber });
           // Trigger queue check
@@ -514,7 +646,7 @@ const PagesPanel = ({
         processQueue(); // Loop
       }
     }
-  }, [pdfDoc, getThumbnail, applyThumbnailResult, renderPdfJsThumbnail, normalizeThumbnailResult]);
+  }, [pdfDoc, applyThumbnailResult, renderPdfJsThumbnail, normalizeThumbnailResult, isPageOnScreen, seedThumbnailFromViewer]);
 
   const scheduleThumbnail = useCallback((pageNumber, priority = 'fast') => {
     if (!Number.isFinite(pageNumber) || pageNumber < 1) return;
@@ -569,11 +701,52 @@ const PagesPanel = ({
     pendingRequestsRef.current.delete(pageNumber);
   }, []);
 
+  // Idle prefill: while the list is still and nothing else is queued, draw the
+  // low-res image of the nearest undrawn page within IDLE_PREFILL_SPAN cards
+  // of the screen, one at a time. Any scroll pushes it back.
+  idleFillRef.current = () => {
+    if (idleFillTimerRef.current || !isMountedRef.current) return;
+    idleFillTimerRef.current = setTimeout(() => {
+      idleFillTimerRef.current = null;
+      if (!isMountedRef.current) return;
+      if (runningWorkersRef.current > 0 || queueRef.current.fast.length > 0 || queueRef.current.crisp.length > 0) return;
+      if (Date.now() - lastScrollAtRef.current < IDLE_PREFILL_DELAY_MS) { idleFillRef.current(); return; }
+      const container = containerRef.current;
+      if (!container || container.getClientRects().length === 0) return;
+      let first = -1;
+      let last = -1;
+      allowedPages.forEach((pageNumber, index) => {
+        if (!isPageOnScreen(pageNumber)) return;
+        if (first === -1) first = index;
+        last = index;
+      });
+      if (first === -1) return;
+      let next = null;
+      for (let step = 1; step <= IDLE_PREFILL_SPAN && next == null; step += 1) {
+        for (const index of [last + step, first - step]) {
+          const pageNumber = allowedPages[index];
+          if (pageNumber && !thumbnailsRef.current[pageNumber] && !activeTasksRef.current.has(pageNumber)) {
+            next = pageNumber;
+            break;
+          }
+        }
+      }
+      if (next == null) return;
+      queueRef.current.fast.unshift({ pageNumber: next, prefill: true });
+      processQueue();
+    }, IDLE_PREFILL_DELAY_MS);
+  };
+
+  // Only "do we know any page shapes yet" gates the observer. It used to
+  // depend on the whole ratio map, so every new thumbnail tore the observer
+  // down and rebuilt it (and re-queued the first pages) mid-scroll.
+  const hasAspectRatios = Object.keys(pageAspectRatios).length > 0;
+
   // Set up Intersection Observer for lazy loading thumbnails
   useEffect(() => {
     const hasProvider = typeof getThumbnail === 'function';
     if (!hasProvider && !pdfDoc) return;
-    if (!hasProvider && Object.keys(pageAspectRatios).length === 0) return;
+    if (!hasProvider && !hasAspectRatios) return;
     if (allowedPages.length === 0) return;
 
     // Clean up existing observer
@@ -626,7 +799,16 @@ const PagesPanel = ({
         observerRef.current = null;
       }
     };
-  }, [allowedPages, generateThumbnail, cancelThumbnail, getThumbnail, pageAspectRatios, pdfDoc]);
+  }, [allowedPages, generateThumbnail, cancelThumbnail, getThumbnail, hasAspectRatios, pdfDoc]);
+
+  // Remember when the list last moved (crisp redraws wait for it to settle).
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return undefined;
+    const onScroll = () => { lastScrollAtRef.current = Date.now(); };
+    container.addEventListener('scroll', onScroll, { passive: true });
+    return () => container.removeEventListener('scroll', onScroll);
+  }, []);
 
   useEffect(() => {
     if (allowedPages.length === 0) return;
@@ -1026,37 +1208,6 @@ const PagesPanel = ({
                 </div>
               )}
 
-              {mobileMode && (
-                <button
-                  type="button"
-                  aria-label={`Page ${pageNumber} actions`}
-                  data-page-menu-anchor="true"
-                  {...tip(`Page ${pageNumber} actions`, 'below')}
-                  onClick={(event) => handleContextMenu(event, pageNumber)}
-                  style={{
-                    position: 'absolute',
-                    right: 6,
-                    bottom: 6,
-                    width: 30,
-                    height: 30,
-                    padding: 0,
-                    display: 'grid',
-                    placeItems: 'center',
-                    color: 'var(--text-2)',
-                    /* UX: the overflow button sits ON a page thumbnail, so it needs a
-                       plate it can be read against without hiding the page. --surface-1 at
-                       the same 84% it always had; the channels used to be the retired
-                       ramp's #12151c typed out as rgba(), which the hex sweep never saw. */
-                    background: 'color-mix(in srgb, var(--surface-1) 84%, transparent)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 6,
-                    zIndex: 2,
-                  }}
-                >
-                  <Icon name="more" size={16} color="currentColor" />
-                </button>
-              )}
-
               {mobileMode && mobileSelectMode && (
                 <span className={`mobile-page-select-indicator${isMobileSelected ? ' is-selected' : ''}`} aria-hidden="true">
                   {isMobileSelected ? <Icon name="check" size={13} color="currentColor" /> : null}
@@ -1088,17 +1239,56 @@ const PagesPanel = ({
                       transformOrigin: 'center center'
                     }}
                   />
-                ) : (
-                  <div style={{
-                    position: 'absolute',
-                    top: '50%',
-                    left: '50%',
-                    transform: 'translate(-50%, -50%)',
-                    color: 'var(--text-3)',
-                    fontSize: '10px'
-                  }}>
-                    Loading...
-                  </div>
+                ) : null}
+                {/* Owner 2026-10-01: no "Loading..." text. A page not drawn
+                    yet is the plain paper box above, in the page's own shape;
+                    its low-res image lands in it a moment later. */}
+                {mobileMode && (
+                  <button
+                    type="button"
+                    aria-label={`Page ${pageNumber} actions`}
+                    {...tip(`Page ${pageNumber} actions`, 'below')}
+                    onClick={(event) => handleContextMenu(event, pageNumber)}
+                    style={{
+                      /* Owner 2026-10-01 (iPhone): the old control was a see-through
+                         bordered square straddling the thumbnail's corner, so the card
+                         border, the paper edge, its own border and the page lines all
+                         stacked up in one corner ("a layered bun"). Now: a 44px
+                         invisible touch area holding ONE solid 28px circle. It lives
+                         inside the paper box, so the circle always sits on the page,
+                         8px in from its corner, even on a landscape page whose paper
+                         is shorter than the card. Styled like the page-number badge
+                         (top right), with the level ⋯ glyph. */
+                      position: 'absolute',
+                      right: 0,
+                      bottom: 0,
+                      width: 44,
+                      height: 44,
+                      padding: 0,
+                      display: 'grid',
+                      placeItems: 'center',
+                      color: 'var(--text-1)',
+                      background: 'transparent',
+                      border: 0,
+                      zIndex: 2,
+                    }}
+                  >
+                    <span
+                      data-page-menu-anchor="true"
+                      aria-hidden="true"
+                      style={{
+                        width: 28,
+                        height: 28,
+                        display: 'grid',
+                        placeItems: 'center',
+                        borderRadius: '50%',
+                        background: 'var(--surface-3)',
+                        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
+                      }}
+                    >
+                      <Icon name="moreHorizontal" size={18} color="currentColor" />
+                    </span>
+                  </button>
                 )}
               </div>
             </div>
