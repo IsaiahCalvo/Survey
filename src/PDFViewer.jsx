@@ -11165,7 +11165,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return;
     }
 
-    if (activeTool === 'pan' && isPanningRef.current) {
+    // Owner 2026-10-01 (Spaces toolbar): the Pan tool itself (tool bar, rail,
+    // M) stays armed too, not only a held Space; an area tool hands back.
+    if (activeTool === 'pan') {
       return;
     }
 
@@ -34896,6 +34898,7 @@ ${pageBlocks}
             active={showRegionSelection}
             mobileMode={mobileMode}
             onMobileToolbarApiChange={setMobileRegionToolbarApi}
+            onRequestRegionTool={() => setActiveTool(REGION_EDIT_TOOL)}
             activeTool={activeTool}
             onRegionComplete={handleRegionComplete}
             onCancel={handleCancelRegionEdit}
