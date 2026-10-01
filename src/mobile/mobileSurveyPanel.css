@@ -9,10 +9,12 @@
    Intended UX, every state of the phone Survey sheet:
    - HEADER: one slim 44px line. A one-line title (or the chosen template's
      name, which is its own switcher: a tap shows the templates in place of
-     the category list), then the export glyph. No eyebrow, no round plated
-     buttons. Exit lives in the survey bar above the page only (owner
-     2026-10-01: one Exit). While anything in the accordion is open the sheet
-     is Full screen and the line holds only "< Categories", the way back.
+     the category list), and the red "Exit Survey" word on the right - in
+     every state, the picker, the template view and "< Categories" alike
+     (owner 2026-10-01, after a debate: one Exit, always in the same spot; the
+     survey bar above the page has none). No eyebrow, no round plated buttons.
+     While anything in the accordion is open the sheet is Full screen and the
+     line holds "< Categories", the way back, and Exit.
    - BODY: flat on the sheet colour (--sheet-bg), like Pages, Bookmarks and
      Spaces (owner 2026-10-01: "Go ahead and remove the box" - it was an
      inset rounded --surface-2 card on a --surface-1 sheet). Rows are
@@ -25,9 +27,9 @@
          one lists its Survey Markers as indented lines under it;
        * ONE ACCORDION (owner 2026-10-01, the desktop's tree): a tap on a
          category opens it ("+ Place" at the end of its line places one); a
-         tap on a Survey Marker opens it inline - the name field with Locate
-         at its end, the entity (dot and full name) under it, the whole
-         checklist, then the notes slot;
+         tap on a Survey Marker opens it inline: its line stays put (only the
+         entity chevron and the name's field well appear) and the whole
+         checklist, then the notes slot, slide open under it;
        * notes: the note edited in place and the media strip, inside the
          open Survey Marker's notes slot (src/components/SurveyMarkerNotes.jsx).
    - Gold means only "what a touch on the page will do now" (survey calm gold,
@@ -217,9 +219,12 @@
   gap: 0;
 }
 
-/* Exit Survey: a quiet red word, not an outlined block in its own band. */
+/* Exit Survey: a quiet red word, not an outlined block in its own band
+   (13px/600, --sheet-action). Owner 2026-10-01 (after a debate): it is THE
+   Exit, on the right of the header in every panel state, with the header's
+   full 44px tap height. */
 .mobile-survey-sheet .mobile-survey-exit {
-  height: 32px;
+  height: 44px;
   padding: 0 8px;
   color: var(--danger-text);
   background: transparent;
@@ -789,49 +794,6 @@
   border-top: 1px solid var(--border);
 }
 
-.mobile-survey-sheet .mobile-survey-item-row {
-  width: 100%;
-  /* A nested line (sheet scale sub-row, 40px) with the sheet's row text:
-     400 14px/18px, one step quieter than its category's 500 name. */
-  min-height: var(--sheet-row-h-sub);
-  box-sizing: border-box;
-  padding: 0 var(--sheet-pad-x) 0 var(--survey-indent);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--text-1);
-  background: transparent;
-  border: 0;
-  font: var(--sheet-row-text);
-  text-align: left;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.mobile-survey-sheet .mobile-survey-item-row:active {
-  background: var(--pressed);
-  transition: background 90ms ease-out;
-}
-
-.mobile-survey-sheet .mobile-survey-item-dot {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 8px;
-  border-radius: 50%;
-}
-
-.mobile-survey-sheet .mobile-survey-item-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mobile-survey-sheet .mobile-survey-item-row.is-open .mobile-survey-item-name {
-  font-weight: 600;
-}
-
 /* Badges: a note glyph, a media count, and the checklist's answered/total.
    Quiet --text-3 ink; a fully answered checklist reads in the success ink. */
 .mobile-survey-sheet .mobile-survey-item-badges {
@@ -864,58 +826,80 @@
   color: var(--danger-text);
 }
 
-.mobile-survey-sheet .mobile-survey-item-chevron {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
-  display: grid;
-  place-items: center;
-  color: var(--text-3);
-  transition: transform 0.2s ease;
-}
-
-/* ---------- THE OPEN SURVEY MARKER (inline) ------------------------------ */
-
-/* Indented under its row like the row's own name; every line keeps the
-   full-width hairline the rest of the panel uses. */
-.mobile-survey-sheet .mobile-survey-open {
-  display: flex;
-  flex-direction: column;
-}
-
-/* The open Survey Marker is ONE line (owner 2026-10-01, second pass: "I
-   don't like the header being two lines"), in place of its row:
-     [entity dot + caret] [name field] [Locate] [close chevron]
-   - the entity button's dot sits where the row's dot was (x 28); a tap opens
-     the entity menu, whose names are whole (they wrap, never "Subcontr...");
-   - Locate: a target in --text-2 when the marker is on the page; an orange
-     pin-plus (#f0883e, the palette's orange, not the gold accent) when it is
-     not - a tap then places it;
-   - the chevron closes the marker (the row comes back).
-   Every control is a 44px-tall hit area; the line is 48px. */
-.mobile-survey-sheet .mobile-survey-open-tools {
+/* ---------- A SURVEY MARKER: ONE LINE, CLOSED OR OPEN ------------------- */
+/* Owner 2026-10-01 ("Expanding 'Camera 1' changes too much: rows change
+   height and width, and the text changes. Make it calm"). Closed and open
+   are the SAME 44px line (--sheet-row-h):
+     [dot + entity chevron] [name] [Locate] [3/3] [chevron]
+   - x 28: the entity dot. Open, the entity menu's small chevron fades in
+     beside it (its room is kept while closed, so nothing moves).
+   - The name: one field, read-only closed and editable open - same x, size,
+     weight and baseline (it is the same element) - and only the field's
+     well appears behind it when open. The well ends 6px before Locate.
+   - Locate (the magnifier, blue on the page / orange not placed), the
+     answered count and the chevron sit in fixed columns in both states.
+   - Closed, the whole line opens the marker (an invisible cover button
+     behind the controls); Locate is its own button above it.
+   Every control keeps a 44px-tall hit area. */
+.mobile-survey-sheet .mobile-survey-marker-line {
   position: relative;
   box-sizing: border-box;
-  min-height: 48px;
+  height: var(--sheet-row-h);
   padding: 0 4px 0 var(--sheet-pad-x);
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) 44px 40px;
+  grid-template-columns: 36px minmax(0, 1fr) 36px auto 36px;
   align-items: center;
-  column-gap: 2px;
+  column-gap: 0;
   /* Its hairline is the list row's own (the sortable wrapper draws it). */
   border-top: 0;
 }
 
-.mobile-survey-sheet .mobile-survey-entity-chip,
-.mobile-survey-sheet .mobile-survey-entity-chip:active {
-  width: 40px;
+.mobile-survey-sheet .mobile-survey-marker-cover,
+.mobile-survey-sheet .mobile-survey-marker-cover:active {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* A full-width ROW takes the house pressed fill while the finger is down. */
+.mobile-survey-sheet .mobile-survey-marker-cover:active {
+  background: var(--pressed);
+  transition: background 90ms ease-out;
+}
+
+/* Closed, the dot, the name and the badges let a tap through to the cover. */
+.mobile-survey-sheet .mobile-survey-marker:not(.is-open) .mobile-survey-marker-lead,
+.mobile-survey-sheet .mobile-survey-marker:not(.is-open) .mobile-survey-marker-field,
+.mobile-survey-sheet .mobile-survey-marker .mobile-survey-item-badges {
+  pointer-events: none;
+}
+
+.mobile-survey-sheet .mobile-survey-marker-line > :not(.mobile-survey-marker-cover):not(.mobile-survey-detail-menu) {
+  position: relative;
+  z-index: 1;
+}
+
+/* The lead: the entity dot (x 28), then the entity menu's chevron. Open, it
+   is the entity button, its hit area reaching back to the sheet's edge. */
+.mobile-survey-sheet .mobile-survey-marker-lead,
+.mobile-survey-sheet .mobile-survey-marker-lead:active {
+  width: 36px;
   height: 44px;
   box-sizing: border-box;
   margin: 0;
   padding: 0 0 0 12px;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   color: var(--text-3);
   background: transparent;
   border: 0;
@@ -924,67 +908,127 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-.mobile-survey-sheet .mobile-survey-entity-chip > .mobile-survey-detail-entity-dot {
-  width: 10px;
-  height: 10px;
-  flex: 0 0 10px;
+.mobile-survey-sheet .mobile-survey-marker-lead > .mobile-survey-marker-dot {
   transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
 }
 
-.mobile-survey-sheet .mobile-survey-entity-chip.is-empty > .mobile-survey-detail-entity-dot {
+.mobile-survey-sheet .mobile-survey-marker-lead.is-empty > .mobile-survey-marker-dot {
   border-style: dashed !important;
 }
 
-.mobile-survey-sheet .mobile-survey-entity-chip > svg {
-  flex: 0 0 auto;
-  transition: transform 150ms cubic-bezier(0.33, 1, 0.68, 1);
+.mobile-survey-sheet .mobile-survey-marker-entity-chev {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transition: opacity 180ms ease-out, transform 150ms cubic-bezier(0.33, 1, 0.68, 1);
 }
 
-.mobile-survey-sheet .mobile-survey-entity-chip:active > .mobile-survey-detail-entity-dot {
+.mobile-survey-sheet .mobile-survey-marker.is-open .mobile-survey-marker-entity-chev {
+  opacity: 1;
+}
+
+.mobile-survey-sheet .mobile-survey-marker-lead:active > .mobile-survey-marker-dot {
   transform: scale(0.88);
 }
 
-.mobile-survey-sheet .mobile-survey-entity-chip[aria-expanded='true'] {
+.mobile-survey-sheet .mobile-survey-marker-lead[aria-expanded='true'] {
   color: var(--text-1);
 }
 
-.mobile-survey-sheet .mobile-survey-entity-chip[aria-expanded='true'] > svg {
+.mobile-survey-sheet .mobile-survey-marker-lead[aria-expanded='true'] > .mobile-survey-marker-entity-chev {
   transform: rotate(180deg);
+}
+
+/* The name's box. Closed it is clear; open it is a field, so a grey well
+   fades in behind the same text - no edge, no gold. The text is 400 14px
+   (the sheet's row text) in both states, 8px into the box. */
+.mobile-survey-sheet .mobile-survey-marker-field {
+  min-width: 0;
+  height: 32px;
+  margin-right: 6px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  color: var(--text-1);
+  background: transparent;
+  border-radius: 6px;
+  font: var(--sheet-row-text);
+  transition: background-color 200ms ease-out;
+}
+
+.mobile-survey-sheet .mobile-survey-marker.is-open .mobile-survey-marker-field {
+  background: var(--surface-1);
+}
+
+/* The name field, the same element closed (read-only) and open. Every phone
+   field is held at 16px so iOS never zooms the page on focus (index.html,
+   data-mobile-viewport="locked"), so it keeps 16px type and is drawn at
+   14/16 scale: 14px on screen, the sheet's row text. Its box is 16/14 of the
+   well so the scaled field fills it; the text sits 8px into the well. */
+.mobile-survey-sheet input.mobile-survey-marker-name {
+  --name-scale: 0.875;
+  flex: 0 0 auto;
+  width: calc(100% / var(--name-scale));
+  min-width: 0;
+  height: calc(32px / var(--name-scale));
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 calc(4px / var(--name-scale)) 0 calc(8px / var(--name-scale));
+  color: var(--text-1);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  font: inherit;
+  font-size: 16px;
+  line-height: calc(18 / 14);
+  text-overflow: ellipsis;
+  transform: scale(var(--name-scale));
+  transform-origin: left center;
+}
+
+.mobile-survey-sheet .mobile-survey-marker:not(.is-open) input.mobile-survey-marker-name {
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .mobile-survey-sheet .mobile-survey-locate,
 .mobile-survey-sheet .mobile-survey-locate:active,
-.mobile-survey-sheet .mobile-survey-open-close,
-.mobile-survey-sheet .mobile-survey-open-close:active {
-  width: 44px;
+.mobile-survey-sheet .mobile-survey-marker-toggle,
+.mobile-survey-sheet .mobile-survey-marker-toggle:active {
+  width: 36px;
   height: 44px;
+  margin: 0;
   padding: 0;
   display: grid;
   place-items: center;
-  color: var(--text-2);
   background: transparent;
   border: 0;
+  border-radius: 0;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 
-.mobile-survey-sheet .mobile-survey-open-close,
-.mobile-survey-sheet .mobile-survey-open-close:active {
-  width: 40px;
-  color: var(--text-1);
+/* Locate, restored (owner 2026-10-01: "its look changed without being
+   asked. Restore the original"): the magnifier the Survey panel always had
+   (git: 7699981 and before), blue #4a90e2 when the Survey Marker is on the
+   page - a tap goes to it - and orange #f5a623 when it is not - a tap places
+   it. The same two colours as the desktop rail. */
+.mobile-survey-sheet .mobile-survey-locate,
+.mobile-survey-sheet .mobile-survey-locate:active {
+  color: #4a90e2;
 }
 
-.mobile-survey-sheet .mobile-survey-open-close > svg {
-  transform: rotate(180deg);
-}
-
-.mobile-survey-sheet .mobile-survey-locate.is-unplaced {
-  color: #f0883e;
+.mobile-survey-sheet .mobile-survey-locate.is-unplaced,
+.mobile-survey-sheet .mobile-survey-locate.is-unplaced:active {
+  color: #f5a623;
 }
 
 .mobile-survey-sheet .mobile-survey-locate > svg {
-  width: 18px;
-  height: 18px;
   transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
 }
 
@@ -992,24 +1036,51 @@
   transform: scale(0.88);
 }
 
-.mobile-survey-sheet .mobile-survey-open-close:active > svg {
-  transform: rotate(180deg) scale(0.88);
+/* The answered count sits between Locate and the chevron in both states. */
+.mobile-survey-sheet .mobile-survey-marker .mobile-survey-item-badges {
+  padding: 0 4px;
 }
 
-/* A closed row whose marker is not on the page: the same orange pin-plus,
-   small, after its name (an indicator, not a button). */
-.mobile-survey-sheet .mobile-survey-item-unplaced {
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  color: #f0883e;
+.mobile-survey-sheet .mobile-survey-marker-toggle,
+.mobile-survey-sheet .mobile-survey-marker-toggle:active {
+  color: var(--text-3);
 }
 
-.mobile-survey-sheet .mobile-survey-open .mobile-survey-check-item {
+.mobile-survey-sheet .mobile-survey-marker.is-open .mobile-survey-marker-toggle {
+  color: var(--text-1);
+}
+
+.mobile-survey-sheet .mobile-survey-marker-toggle > svg {
+  transition: transform 200ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.mobile-survey-sheet .mobile-survey-marker.is-open .mobile-survey-marker-toggle > svg {
+  transform: rotate(180deg);
+}
+
+/* The checklist and the note slide open under the line: its height eases
+   from 0 to the content's own height (and back; MobileSurveyMarkerCollapse
+   in SurveySpacesRail.jsx sets the heights), clipped while it moves. */
+.mobile-survey-sheet .mobile-survey-marker-body {
+  height: 0;
+  overflow: hidden;
+  transition: height 220ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-survey-sheet .mobile-survey-marker-body,
+  .mobile-survey-sheet .mobile-survey-marker-field,
+  .mobile-survey-sheet .mobile-survey-marker-entity-chev,
+  .mobile-survey-sheet .mobile-survey-marker-toggle > svg {
+    transition: none;
+  }
+}
+
+.mobile-survey-sheet .mobile-survey-marker .mobile-survey-check-item {
   padding-left: var(--survey-indent);
 }
 
-.mobile-survey-sheet .mobile-survey-open .mobile-survey-detail-empty {
+.mobile-survey-sheet .mobile-survey-marker .mobile-survey-detail-empty {
   min-height: 40px;
   /* The sheet scale's empty state: 500 13px/18px in --text-3. */
   font-weight: 500;
@@ -1039,45 +1110,6 @@
   font-size: 13px;
   font-weight: 400;
   text-transform: none;
-}
-
-/* The name is a field, so it keeps a grey well - no edge, no gold. */
-.mobile-survey-sheet .mobile-survey-detail-name-wrap {
-  flex: 1;
-  min-width: 0;
-  position: relative;
-  height: 36px;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  overflow: hidden;
-  background: var(--surface-1);
-  border: 0;
-  border-radius: 6px;
-}
-
-/* Reads at the sheet scale's row-title size, 500 14px (owner 2026-10-01: it
-   was too big). Every phone field is held at 16px so iOS never zooms the
-   page on focus (index.html, data-mobile-viewport="locked"), so the field
-   keeps 16px type and is drawn at 14/16 scale: 14px on screen, no zoom. Its
-   box is 16/14 of the well so the scaled field fills it exactly. */
-.mobile-survey-sheet .mobile-survey-detail-name {
-  --name-scale: 0.875;
-  flex: 0 0 auto;
-  width: calc(100% / var(--name-scale));
-  min-width: 0;
-  height: calc(36px / var(--name-scale));
-  box-sizing: border-box;
-  padding: 0 4px 0 calc(10px / var(--name-scale));
-  color: var(--text-1);
-  background: transparent;
-  border: 0;
-  outline: none;
-  font: inherit;
-  font-size: 16px;
-  font-weight: 600;
-  transform: scale(var(--name-scale));
-  transform-origin: left center;
 }
 
 .mobile-survey-sheet .mobile-survey-detail-menu {

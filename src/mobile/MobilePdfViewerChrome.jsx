@@ -1366,7 +1366,7 @@ export function MobileToolProperties({ api }) {
       <div className="mobile-pdf-properties mobile-pdf-properties--survey" data-mobile-tool-properties="true" role="toolbar" aria-label="Survey placement" ref={topOverlayRef}>
         {/* App-styled dropdown (OWNER DECISION 3) replaces the OS module roller. */}
         {/* Owner 2026-09-30 (survey bar design, decided after a design review):
-              [ Module v ] (switch) Reuse  ...  | Exit
+              [ Module v ] (switch) Reuse   (centred)
             - The pill is exactly as wide as its LONGEST module name
               (fitOptions: every name sits invisibly in one grid cell), so
               switching module never moves the switch; it shrinks and
@@ -1375,9 +1375,10 @@ export function MobileToolProperties({ api }) {
               relabelled "Repeat", then "Reuse" (owner 2026-10-01): it keeps
               the CATEGORY armed after a Survey Marker is placed (PDFViewer
               clears selectedCategoryId otherwise).
-            - Exit is a red word on the trailing edge after a rule; it calls
-              the same handler as the Survey panel's "Exit Survey", with no
-              confirm step. */}
+            - No Exit here any more (owner 2026-10-01, after a debate): the
+              red "Exit Survey" lives in the Survey panel's header, on the
+              right, in every panel state, so there is one Exit in one
+              place. */}
         <MobileStyledSelect
           ariaLabel="Survey module"
           fitOptions
@@ -1398,19 +1399,6 @@ export function MobileToolProperties({ api }) {
           <span className="mobile-pdf-properties__keep-track" aria-hidden="true" />
           <span>Reuse</span>
         </button>
-        {survey.onExit ? (
-          <>
-            <span aria-hidden="true" className="mobile-pdf-properties__divider mobile-pdf-properties__divider--push" />
-            <button
-              type="button"
-              className="mobile-pdf-properties__exit"
-              aria-label="Exit Survey mode"
-              onClick={() => survey.onExit()}
-            >
-              Exit
-            </button>
-          </>
-        ) : null}
       </div>
     );
   }

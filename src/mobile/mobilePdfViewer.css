@@ -1529,8 +1529,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 .mobile-pdf-properties__text-button,
 .mobile-pdf-properties__segmented > button,
 .mobile-pdf-properties--actions > button,
-.mobile-pdf-properties__keep,
-.mobile-pdf-properties__exit {
+.mobile-pdf-properties__keep {
   position: relative;
 }
 
@@ -1544,8 +1543,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 .mobile-pdf-properties__more::after,
 .mobile-pdf-properties__text-button::after,
 .mobile-pdf-properties--actions > button::after,
-.mobile-pdf-properties__keep::after,
-.mobile-pdf-properties__exit::after {
+.mobile-pdf-properties__keep::after {
   content: '';
   position: absolute;
   inset-block: -5px -19px;
@@ -1661,29 +1659,22 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 }
 
 /* SURVEY STRIP (owner 2026-09-30: "Keep Active looks bad - a box around a
-   checkbox with text"; the module pill is far wider than it needs; add a short
-   Exit). Decided design:
-      [ Module v ] (switch) Reuse   ...  | Exit
+   checkbox with text"; the module pill is far wider than it needs).
+      [ Module v ] (switch) Reuse
 
    The pill is as wide as its LONGEST option (MobileStyledSelect fitOptions) and
    may shrink to 72px, ellipsising, when the row runs out of room.
 
-   RULED CHANGE 2026-10-01 (owner: the strip must line up with the header above
-   it). Two columns of the header carry over:
-   - "| Exit" sits centred under Undo / Redo. The header pins that pair 7px from
-     the right edge, two --mobile-control-h buttons wide, so its centre line is
-     100% - (7px + --mobile-control-h). Exit is taken out of flow and centred on
-     that line, and the rule is drawn by Exit itself (::before) rather than by
-     the divider span, so the rule-plus-word pair - whatever the word's font
-     width - is one box whose centre IS the line: rule, 9px of air, word.
-   - The module pill + switch are the only controls left in flow, so the bar's
-     `safe center` centres them on the bar's centre line, which is the page
-     navigation's (the header centres it at 50%). The bar reserves the same room
-     on BOTH sides - the Undo / Redo centre line's inset plus half of Exit's
-     44px target plus one strip gap - so the pair stays centred and the pill
-     shrinks (ellipsising) before the switch could reach Exit's target. */
+   Owner 2026-10-01 (after a debate): the strip's red "| Exit" is gone - Exit
+   lives in the Survey panel's header, right side, in every panel state. The
+   pill + switch are the only controls, and the bar's `safe center` centres
+   them on the bar's centre line (the page navigation's, which the header
+   centres at 50%). The room Exit reserved on both sides is given back: only
+   the sheet's 16px side inset stays, so a long module name keeps its width
+   before it ever ellipsises; a short one is unchanged (the pill is only as
+   wide as its longest module). */
 .mobile-pdf-properties--survey {
-  padding-inline: calc(7px + var(--mobile-control-h) + 22px + var(--mobile-strip-gap));
+  padding-inline: var(--sheet-pad-x, 16px);
 }
 
 .mobile-pdf-properties--survey > .mobile-styled-select {
@@ -1705,36 +1696,6 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 
 .mobile-pdf-properties--survey > .mobile-styled-select .mobile-styled-select__fit {
   text-align: center;
-}
-
-.mobile-pdf-properties--survey > .mobile-pdf-properties__divider--push {
-  display: none;
-}
-
-.mobile-pdf-properties--survey > .mobile-pdf-properties__exit {
-  position: absolute;
-  top: calc((var(--mobile-strip-band-h) - var(--mobile-strip-control-h)) / 2);
-  left: calc(100% - 7px - var(--mobile-control-h));
-  min-width: 0;
-  padding: 0 0 0 10px;
-  transform: translateX(-50%);
-}
-
-/* The strip's divider (1 x 16, --border), drawn at Exit's leading edge. */
-.mobile-pdf-properties--survey > .mobile-pdf-properties__exit::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: calc((var(--mobile-strip-control-h) - 16px) / 2);
-  width: 1px;
-  height: 16px;
-  background: var(--border);
-}
-
-/* Exit's box is now only as wide as rule + word, so its pad is centred on it at
-   the full 44px rather than hanging 2px off each side. */
-.mobile-pdf-properties--survey > .mobile-pdf-properties__exit::after {
-  inset-inline: calc(50% - 22px);
 }
 
 /* "Reuse" (was "Keep active", then "Repeat"; it keeps the CATEGORY armed
@@ -1797,30 +1758,9 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   transform: translateX(10px);
 }
 
-/* Exit: a red WORD (owner: red, not gold - on this strip gold text means "on").
-   --danger-text is the token tokens.css gives red words, and the one the
-   Survey panel's own "Exit Survey" wears, so red already means "leave Survey"
-   there. 700 12px, at least 44px wide, 20px painted; with the shared pad the
-   hit area is about 49 x 44. */
-.mobile-pdf-properties__exit {
-  min-width: 44px;
-  height: var(--mobile-strip-control-h);
-  padding: 0 6px;
-  box-sizing: border-box;
-  color: var(--danger-text);
-  background: transparent;
-  border: 0;
-  font: 700 12px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
-  white-space: nowrap;
-  transition: opacity 90ms ease-out;
-}
-
-.mobile-pdf-properties__exit:active { opacity: 0.6; }
-
 @media (prefers-reduced-motion: reduce) {
   .mobile-pdf-properties__keep-track,
-  .mobile-pdf-properties__keep-track::after,
-  .mobile-pdf-properties__exit {
+  .mobile-pdf-properties__keep-track::after {
     transition: none;
   }
 }

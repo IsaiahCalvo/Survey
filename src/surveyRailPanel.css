@@ -892,19 +892,18 @@
   color: var(--text-2);
 }
 
-/* Locate: a target in quiet ink when the marker is on the page; an orange
-   pin-plus when it is not (owner 2026-10-01: "we need a way to indicate
-   whether it's on the page or not"). #f0883e is the palette's orange - not
-   the app's gold accent. The open chevron closes the line. */
-.survey-rail .survey-rail__locate {
-  color: var(--text-3);
-}
+/* Locate, restored (owner 2026-10-01: "its look changed without being
+   asked. Restore the original"): the Survey panel's original magnifier
+   (git 7699981 and before) - blue #4a90e2 when the marker is on the page
+   (click = go to it), orange #f5a623 when it is not (click = place it). The
+   phone sheet uses the same two colours. The open chevron closes the line. */
+.survey-rail .survey-rail__locate,
 .survey-rail .survey-rail__marker-line.is-open .survey-rail__locate {
-  color: var(--text-2);
+  color: #4a90e2;
 }
 .survey-rail .survey-rail__locate.is-unplaced,
 .survey-rail .survey-rail__marker-line.is-open .survey-rail__locate.is-unplaced {
-  color: #f0883e;
+  color: #f5a623;
 }
 .survey-rail .survey-rail__marker-toggle {
   flex-basis: 28px;
@@ -1193,7 +1192,6 @@
   .survey-rail .survey-rail__foot-more:not(:disabled):hover,
   .survey-rail .survey-marker-category-select:hover,
   .survey-rail .survey-rail__marker-toggle:hover,
-  .survey-rail .survey-rail__locate:not(.is-unplaced):hover,
   .survey-rail .survey-marker-select-action:not(:disabled):not(.survey-marker-select-action-danger):hover {
     color: var(--text-1);
   }
@@ -1236,11 +1234,15 @@
   background-color: var(--pressed) !important;
 }
 
-/* "Not on the page" keeps its orange under the pointer (the rail's shared
+/* Locate keeps its blue / orange under the pointer (the rail's shared
    button hover would otherwise brighten it to --text-1). */
 @media (hover: hover) and (pointer: fine) {
-  #chrome-right-host .survey-rail .survey-rail__marker-line .survey-rail__locate.is-unplaced:hover {
-    /* states.css 2c paints a glyph-only button's hover ink with !important. */
-    color: #f0883e !important;
+  /* states.css 2c paints a glyph-only button's hover ink --text-1 with
+     !important at (1 id, 6 classes); the class is repeated to outrank it. */
+  #chrome-right-host .survey-rail .survey-rail__marker-line button.survey-rail__locate.survey-rail__locate.survey-rail__locate:hover:not(:active) {
+    color: #4a90e2 !important;
+  }
+  #chrome-right-host .survey-rail .survey-rail__marker-line button.survey-rail__locate.survey-rail__locate.is-unplaced:hover:not(:active) {
+    color: #f5a623 !important;
   }
 }
