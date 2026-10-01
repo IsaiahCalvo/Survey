@@ -645,9 +645,13 @@ test('mobile viewer rails do not mix flex shorthand with flexShrink during reren
 test('mobile Survey and Spaces drawers follow their content', () => {
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /else \{\s*setOpenCategory\(null\)/);
   assert.match(SURVEY_RAIL_SOURCE, /mobile-survey-template-menu/);
-  // 2026-07-12 Phase C (vocabulary rule): the mobile hint spells out the full
-  // product term "Survey Marker" — never bare "marker".
-  assert.match(SURVEY_RAIL_SOURCE, /Tap category to place a Survey Marker/);
+  // DELIBERATE ASSERTION CHANGE 2026-10-01 (owner: the phone Survey panel works
+  // like desktop, one accordion): a tap on a category OPENS it, so the old
+  // "Tap category to place a Survey Marker" hint is gone. Placing is each row's
+  // own "+ Place", whose label still spells out the full product term "Survey
+  // Marker" (2026-07-12 Phase C vocabulary rule) — never bare "marker".
+  assert.doesNotMatch(SURVEY_RAIL_SOURCE, /Tap category to place a Survey Marker/);
+  assert.match(SURVEY_RAIL_SOURCE, /aria-label=\{`Place a Survey Marker in \$\{category\.name/);
   assert.match(SPACES_PANEL_SOURCE, /Array\.isArray\(space\.assignedPages\)/);
   // 2026-07-12 Phase B (defect #4): the spaces sheet now follows MEASURED
   // panel content instead of predicted row heights — the metrics callback

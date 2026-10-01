@@ -275,6 +275,31 @@
 
 /* ---------- MODULE TABS -------------------------------------------------- */
 
+/* Owner 2026-10-01 (desktop parity): a module tab shows its WHOLE name -
+   "Existing Survey Data", never "Existing Sur...". Tabs take their name's
+   width and the row scrolls sideways when they do not all fit; the edge that
+   has more tabs beyond it fades out so the row reads as scrollable. The fade
+   follows the scroll position (a scroll-driven animation); a row that does not
+   overflow has no scroll timeline, so it never fades. */
+@property --survey-tabs-fade-start {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --survey-tabs-fade-end {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
+@keyframes survey-rail-tabs-fade {
+  0% { --survey-tabs-fade-start: 0px; --survey-tabs-fade-end: 28px; }
+  8% { --survey-tabs-fade-start: 28px; }
+  92% { --survey-tabs-fade-end: 28px; }
+  100% { --survey-tabs-fade-start: 28px; --survey-tabs-fade-end: 0px; }
+}
+
 .survey-rail .survey-rail__tabs {
   flex: 0 0 auto;
   display: flex;
@@ -283,12 +308,16 @@
   scrollbar-width: none;
   padding: 0 6px;
   border-bottom: 1px solid var(--border);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--survey-tabs-fade-start), #000 calc(100% - var(--survey-tabs-fade-end)), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 var(--survey-tabs-fade-start), #000 calc(100% - var(--survey-tabs-fade-end)), transparent 100%);
+  animation: survey-rail-tabs-fade linear both;
+  animation-timeline: scroll(self inline);
 }
 
 .survey-rail .survey-rail__tabs > button {
-  flex: 1 1 0;
+  flex: 1 0 auto;
   min-width: 64px;
-  max-width: 150px;
+  max-width: none;
   height: 32px;
   box-sizing: border-box;
   padding: 2px 8px 0;
@@ -310,9 +339,6 @@
 }
 
 .survey-rail .survey-rail__tabs > button > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -591,6 +617,30 @@
 
 .survey-rail .survey-rail__marker-action:active svg {
   transform: scale(0.88);
+}
+
+/* Media count and checklist progress on a marker line (owner 2026-10-01,
+   the phone row's badges): quiet --text-3 ink, a fully answered checklist in
+   the success ink. */
+.survey-rail .survey-rail__marker-badges {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px 0 4px;
+  color: var(--text-3);
+  font-size: var(--sv-small-type);
+  font-variant-numeric: tabular-nums;
+}
+
+.survey-rail .survey-rail__marker-badges .survey-marker-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.survey-rail .survey-rail__marker-badges .survey-marker-progress.is-done {
+  color: var(--success-text);
 }
 
 /* ---- an open Survey Marker's detail: lines indented under its name ---- */
