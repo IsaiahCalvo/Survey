@@ -223,7 +223,9 @@ test('rail glyphs come from one constant per tier', () => {
   // 24. 17-in-28 = 0.607 is the same fill the rail tier carries, so the band
   // this file guards is unchanged — there is simply one chip size now.
   assert.match(chrome, /const SUBTOOL_GLYPH = 17;/);
-  assert.match(chrome, /const DOCK_GLYPH = 17;/);
+  // RULED CHANGE 2026-10-01 (owner, iPhone): the dock glyphs draw at 20 in
+  // the same 30px controls ("bigger, but the row must not grow").
+  assert.match(chrome, /const DOCK_GLYPH = 20;/);
   // RULED CHANGE 2026-09-21 (pass 7): 12, because the strip control is 20px on
   // the approved boards where it was 24. 12-in-20 is the same fill 14-in-24 was.
   assert.match(chrome, /const STRIP_GLYPH = 12;/);

@@ -56,14 +56,15 @@ const HISTORY_GLYPH = 14;
 // every other tier carries, and 12 is also the glyph size the boards' own
 // segmented toggles draw (boards 6 and 7).
 const STRIP_GLYPH = 12;
-const DOCK_GLYPH = 17;
 // Owner 2026-10-01 (iPhone): "The icons for pages, search, and bookmarks, I
 // would prefer them to be bigger. I don't want the actual row that they're in
 // to grow." The Pages / Search / Bookmarks glyph in the dock pill draws at 20
-// (it was DOCK_GLYPH, 17); the 30px pill, its label and its chevron are
-// unchanged, and the Spaces / Survey circles either side keep 17. Same 1.5
-// stroke on the 24 grid - the glyph simply draws larger.
+// (it was 17); then "make the Spaces and Survey dock icons match too", so the
+// circles either side draw at 20 as well. The 30px pill, its label and its
+// chevron and the circles' size are unchanged. Same 1.5 stroke on the 24 grid
+// - the glyphs simply draw larger.
 const DOCK_HUB_GLYPH = 20;
+const DOCK_GLYPH = 20;
 
 /**
  * Keeps the live text editor focused while one of its formatting buttons is
