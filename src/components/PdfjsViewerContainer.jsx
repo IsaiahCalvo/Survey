@@ -42,6 +42,7 @@ import { resolvePinchCommitCursor, resolvePinchEndTransition } from '../utils/mo
 import { createPanMomentumRunner, createPanVelocityTracker } from '../utils/panMomentum';
 import { trackSurveyAnalyticsEvent } from '../utils/surveyAnalytics';
 import PdfjsTextLayer from './PdfjsTextLayer';
+import { getPageViewBase, getPageViewSizes, pageViewKey, pageViewUprightKey } from '../utils/pageViewDocument.js';
 import {
   getDocumentMinimumScale,
   getWheelZoomScale,
@@ -284,6 +285,14 @@ function isPdfDocumentProxy(source) {
   return Boolean(source && typeof source.getPage === 'function' && Number.isFinite(source.numPages));
 }
 
+// Raster-cache namespace of a document. A page view (instant page operations,
+// utils/pageViewDocument.js) shares its base document's namespace and names
+// each page by what it shows, so a moved page paints from cache at once.
+function rasterDocKey(pdf) {
+  const base = getPageViewBase(pdf);
+  return (base?.fingerprints && base.fingerprints[0]) || base?.fingerprint || 'doc';
+}
+
 // Normalize the app's documentSource into pdf.js getDocument params. The app
 // passes a Uint8Array (PDFViewer setPdfjsDocumentBytes); we also accept
 // ArrayBuffer, a data: URI, or a plain URL string for parity. pdf.js neuters
@@ -339,8 +348,9 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
 
     // Already drawn this page at this zoom/rotation? Paint it back instantly —
     // no re-raster, no "loading" flash on scroll-return.
-    const docKey = (pdf?.fingerprints && pdf.fingerprints[0]) || pdf?.fingerprint || 'doc';
-    const cacheKey = `${docKey}:${pageIndex}:${baseScale.toFixed(3)}:${DPR}:${rotation}`;
+    const docKey = rasterDocKey(pdf);
+    const keyTail = `${baseScale.toFixed(3)}:${DPR}:${rotation}`;
+    const cacheKey = `${docKey}:${pageViewKey(pdf, pageIndex)}:${keyTail}`;
     const cachedCanvas = pageRasterCacheGet(cacheKey);
     if (cachedCanvas) {
       const c = canvasRef.current;
@@ -350,6 +360,22 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
         c.getContext('2d', { alpha: false }).drawImage(cachedCanvas, 0, 0);
       }
       return () => { cancelled = true; };
+    }
+    // A page the user just rotated: turn its upright bitmap now, so the page
+    // shows rotated in the same frame; the sharp raster replaces it below.
+    const upright = pageViewUprightKey(pdf, pageIndex);
+    const uprightCanvas = upright ? pageRasterCacheGet(`${docKey}:${upright.key}:${keyTail}`) : null;
+    if (uprightCanvas && canvasRef.current) {
+      const c = canvasRef.current;
+      const quarter = upright.rotation % 180 !== 0;
+      c.width = quarter ? uprightCanvas.height : uprightCanvas.width;
+      c.height = quarter ? uprightCanvas.width : uprightCanvas.height;
+      const turnCtx = c.getContext('2d', { alpha: false });
+      turnCtx.save();
+      turnCtx.translate(c.width / 2, c.height / 2);
+      turnCtx.rotate((upright.rotation * Math.PI) / 180);
+      turnCtx.drawImage(uprightCanvas, -uprightCanvas.width / 2, -uprightCanvas.height / 2);
+      turnCtx.restore();
     }
 
     (async () => {
@@ -1253,16 +1279,94 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   }, []);
 
   // ---- load document --------------------------------------------------------
+  // Owner 2026-10-01 (instant page operations): when the new source is a page
+  // view over the SAME loaded document (utils/pageViewDocument.js), it is
+  // swapped in place before the browser paints — zoom and scroll kept, the
+  // page under the reader kept under the reader, moved pages painted from the
+  // raster cache — instead of a fresh open.
+  const latestActiveSourceRef = useRef(activeSource);
+  latestActiveSourceRef.current = activeSource;
+  const pageViewAnchorRef = useRef(null);
+  const pageViewSwapSeqRef = useRef(0);
+  useLayoutEffect(() => {
+    const next = documentSource;
+    const prev = pdfRef.current;
+    if (!prev || !isPdfDocumentProxy(next) || next === prev) return;
+    if (getPageViewBase(next) !== getPageViewBase(prev)) return;
+    const seq = ++pageViewSwapSeqRef.current;
+    // Anchor: the page at the top of the reader and how far into it.
+    const el = scrollerRef.current;
+    const index = Math.max(0, (currentPageRef.current || 1) - 1);
+    const key = pageViewKey(prev, index);
+    const offset = el ? el.scrollTop - (topsRef.current[index] ?? 0) : 0;
+    pdfRef.current = next;
+    numPagesRef.current = next.numPages;
+    thumbCacheRef.current.clear();
+    const known = getPageViewSizes(next) || {};
+    const fallback = Object.values(known)[0] || { width: 612, height: 792 };
+    const sizes = Array.from({ length: next.numPages }, (_, i) => {
+      const size = known[i + 1] || fallback;
+      return { w: size.width, h: size.height };
+    });
+    // Where the anchor page went: the same content nearest its old slot.
+    let anchor = -1;
+    for (let d = 0; d < next.numPages && anchor < 0; d += 1) {
+      if (index - d >= 0 && pageViewKey(next, index - d) === key) anchor = index - d;
+      else if (index + d < next.numPages && pageViewKey(next, index + d) === key) anchor = index + d;
+    }
+    pageViewAnchorRef.current = {
+      index: anchor >= 0 ? anchor : Math.min(index, next.numPages - 1),
+      offset: anchor >= 0 ? offset : 0,
+    };
+    if (currentPageRef.current > next.numPages) currentPageRef.current = next.numPages;
+    setActiveSource(next);
+    setNumPages(next.numPages);
+    setPageSizes(sizes.slice());
+    const missing = sizes.map((_, i) => i).filter((i) => !known[i + 1]);
+    if (missing.length === 0) return;
+    (async () => {
+      const measured = await Promise.all(missing.map(async (i) => {
+        try {
+          const vp = (await next.getPage(i + 1)).getViewport({ scale: 1 });
+          return { i, size: { w: vp.width, h: vp.height } };
+        } catch { return null; }
+      }));
+      if (seq !== pageViewSwapSeqRef.current || pdfRef.current !== next) return;
+      measured.forEach((m) => { if (m) sizes[m.i] = m.size; });
+      setPageSizes(sizes.slice());
+    })();
+  }, [documentSource]);
+
   useEffect(() => {
     let cancelled = false;
     const loadStartedAt = performance.now();
     const externalPdf = isPdfDocumentProxy(activeSource) ? activeSource : null;
     const params = buildGetDocumentParams(activeSource, activePassword);
+    let task = null;
+    const unload = () => {
+      cancelled = true;
+      const next = latestActiveSourceRef.current;
+      const prev = pdfRef.current;
+      // A page-view swap (above) already replaced the document in place.
+      // (On unmount `next` is still this run's source, so it unloads.)
+      if (prev && next !== activeSource && isPdfDocumentProxy(next)
+        && getPageViewBase(next) === getPageViewBase(prev)) return;
+      try { task?.destroy?.(); } catch { /* noop */ }
+      pdfRef.current = null;
+      thumbCacheRef.current.clear();
+      if (prev) {
+        pageRasterCacheClearDocument(rasterDocKey(prev));
+        if (getPageViewBase(prev) !== getPageViewBase(externalPdf)) { try { prev.destroy(); } catch { /* noop */ } }
+      }
+      cb.current.onPageContainersChange?.({}, { reason: 'document_unload', count: 0 });
+      cb.current.onDocumentUnload?.();
+    };
+    if (externalPdf && pdfRef.current === externalPdf) return unload;
     setPageSizes([]); setNumPages(0); setRange([0, -1]);
     pageContainerMapRef.current = {};
     if (!externalPdf && !params) return undefined;
 
-    const task = externalPdf ? null : pdfjsLib.getDocument(params);
+    task = externalPdf ? null : pdfjsLib.getDocument(params);
     (async () => {
       try {
         const pdf = externalPdf || await task.promise;
@@ -1339,20 +1443,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       }
     })();
 
-    return () => {
-      cancelled = true;
-      try { task?.destroy?.(); } catch { /* noop */ }
-      const prev = pdfRef.current;
-      pdfRef.current = null;
-      thumbCacheRef.current.clear();
-      if (prev) {
-        const docKey = (prev.fingerprints && prev.fingerprints[0]) || prev.fingerprint || 'doc';
-        pageRasterCacheClearDocument(docKey);
-        if (prev !== externalPdf) { try { prev.destroy(); } catch { /* noop */ } }
-      }
-      cb.current.onPageContainersChange?.({}, { reason: 'document_unload', count: 0 });
-      cb.current.onDocumentUnload?.();
-    };
+    return unload;
   }, [activeSource, activePassword]);
 
   // ---- layout: cumulative offsets ------------------------------------------
@@ -1409,6 +1500,28 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   containerHRef.current = containerH;
   topsRef.current = layout.tops;
   padTopRef.current = layout.padTop;
+
+  // After a page-view swap, keep the page the reader was on under the reader
+  // (it may have moved, or pages above it may have come or gone).
+  useLayoutEffect(() => {
+    const anchor = pageViewAnchorRef.current;
+    const el = scrollerRef.current;
+    if (!anchor || !el || layout.tops.length !== numPagesRef.current) return;
+    pageViewAnchorRef.current = null;
+    const top = layout.tops[anchor.index];
+    if (!Number.isFinite(top)) return;
+    el.scrollTop = Math.max(0, top + anchor.offset);
+    const previous = currentPageRef.current;
+    currentPageRef.current = anchor.index + 1;
+    if (previous !== currentPageRef.current) {
+      cb.current.onPageChanged?.({
+        currentPageNumber: currentPageRef.current,
+        previousPageNumber: previous ?? null,
+        pageCount: numPagesRef.current,
+        raw: { scrollTop: el.scrollTop },
+      });
+    }
+  }, [layout]);
 
   // ---- current-page detection + onPageChanged ------------------------------
   const detectCurrentPage = useCallback(() => {

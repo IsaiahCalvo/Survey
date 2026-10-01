@@ -1,58 +1,140 @@
-// usePageOperations — durable PDF page mutation handlers for the thumbnail
-// sidebar. PDF bytes are persisted first; the corresponding page-addressed
-// app state is committed only after that persistence succeeds.
+// usePageOperations — page mutation handlers for the thumbnail sidebar.
+//
+// Owner 2026-10-01: every page operation (cut, copy, paste, add, delete, move,
+// rotate, mirror, reset) must look instant on phone and desktop. So an
+// operation is applied OPTIMISTICALLY: the page-addressed app state
+// (annotations, survey markers, spaces, bookmarks, page names) is remapped and
+// the viewer's in-memory page view (utils/pageViewDocument.js) is updated in
+// the same tick, and the expensive part — rewriting the PDF bytes with pdf-lib
+// and uploading the new version — runs in the background. Operations that
+// arrive while a rewrite is pending are coalesced into ONE rewrite + upload.
+// If the rewrite or the upload fails, every operation that was not saved is
+// rolled back (state and view) and the user is told.
 
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { showToast } from '../utils/toast';
 import { createPageMutationFile } from '../utils/pageMutationFile.js';
 import { transformPageState } from '../utils/pageAnnotationReindex.js';
-// PERF (KAL-384): pdfPageMutation pulls in pdf-lib (~429 kB). Page add /
-// delete / rotate / reorder is a deliberate user action, so the module is
-// imported dynamically at the call site below instead of at first viewer paint.
-import { persistThenCommitPageMutation } from '../utils/pageMutationTransaction.js';
+// PERF (KAL-384): pdfPageMutation pulls in pdf-lib (~429 kB). It is loaded in
+// a worker (or, as a fallback, imported dynamically) only when a page
+// operation is saved, never at first viewer paint.
+import { mutatePdfPagesOffThread } from '../utils/pdfPageMutationOffThread.js';
+
+// Short: long enough that a burst of taps (move down, move down, ...) becomes
+// one rewrite, short enough that the upload starts right away.
+const FLUSH_DELAY_MS = 150;
+
+const OPERATION_VERBS = {
+  delete: 'delete',
+  insert: 'add',
+  duplicate: 'duplicate',
+  copy: 'paste',
+  move: 'move',
+  reorder: 'move',
+  rotate: 'rotate',
+};
+
+const deepCopy = (value) => {
+  if (value == null) return value;
+  try {
+    if (typeof structuredClone === 'function') return structuredClone(value);
+  } catch { /* fall through */ }
+  return JSON.parse(JSON.stringify(value));
+};
+
+// The rolled-back marks must be NEW objects: the cloud capture skips a mark
+// whose object is the very one it last saw from the document (useAnnotationDoc
+// viewer capture), so restoring the old references would leave the shared
+// document on the failed operation's page numbers.
+function freshCopyOfPageState(state) {
+  return {
+    ...state,
+    annotationsByPage: deepCopy(state.annotationsByPage || {}),
+    surveyMarkers: deepCopy(state.surveyMarkers || {}),
+    annotations: deepCopy(state.annotations || {}),
+  };
+}
 
 export function usePageOperations({
   pdfFile,
   onUpdatePDFFile,
   getPageState,
   commitPageState,
+  // (operation) => previousView | null — apply the operation to the viewer's
+  // page view now; returns what to hand back to restorePageView on rollback.
+  applyPageView,
+  restorePageView,
   setPageNames,
   setPageTransformations,
   clipboardPage,
   setClipboardPage,
   clipboardType,
   setClipboardType,
+  flushDelayMs = FLUSH_DELAY_MS,
 }) {
+  // The newest PDF bytes this hook knows about: the prop, or a rewrite of ours
+  // that React has not rendered yet. Files we produced never reset the chain.
   const pdfFileRef = useRef(pdfFile);
   const renderedPdfFileRef = useRef(pdfFile);
+  const ownFilesRef = useRef(new WeakSet());
   const pageStateRef = useRef(null);
   if (renderedPdfFileRef.current !== pdfFile) {
     renderedPdfFileRef.current = pdfFile;
-    pdfFileRef.current = pdfFile;
-    pageStateRef.current = null;
-  }
-  const mutationQueueRef = useRef(Promise.resolve());
-
-  const executeMutation = useCallback(async (operation, errorVerb) => {
-    const currentPdfFile = pdfFileRef.current;
-    if (!currentPdfFile || !onUpdatePDFFile) {
-      showToast('PDF file not available for manipulation', 'error');
-      return false;
+    if (!pdfFile || !ownFilesRef.current.has(pdfFile)) {
+      pdfFileRef.current = pdfFile;
+      pageStateRef.current = null;
     }
+  }
 
+  // Operations applied on screen but not yet written into the PDF bytes, each
+  // with the state/view it replaced (for rollback).
+  const pendingRef = useRef([]);
+  const chainRef = useRef(Promise.resolve());
+  const timerRef = useRef(null);
+  const statusRef = useRef({ pending: 0, savedCount: 0, failedCount: 0 });
+  const mountedRef = useRef(true);
+  const callbacksRef = useRef({});
+  callbacksRef.current = { onUpdatePDFFile, commitPageState, restorePageView };
+
+  const publishStatus = useCallback(() => {
+    statusRef.current.pending = pendingRef.current.length;
+    if (typeof window !== 'undefined' && import.meta.env?.DEV) {
+      // Dev-only probe for the page-operation timing/consistency harness.
+      window.__surveyPageOps = { ...statusRef.current, file: pdfFileRef.current };
+    }
+  }, []);
+
+  const rollback = useCallback((records, error) => {
+    const first = records[0];
+    if (!first) return;
+    const { commitPageState: commit, restorePageView: restore } = callbacksRef.current;
+    if (first.viewBefore !== undefined) restore?.(first.viewBefore);
+    if (first.stateBefore) {
+      const restored = freshCopyOfPageState(first.stateBefore);
+      commit?.(restored, { type: 'rollback' });
+      pageStateRef.current = null;
+    }
+    statusRef.current.failedCount += 1;
+    const verb = OPERATION_VERBS[first.operation?.type] || 'change';
+    const what = records.length > 1 ? 'the last page changes' : `the page ${verb}`;
+    showToast(`Couldn't save ${what}, so it was undone. ${error?.message || ''}`.trim(), 'error');
+  }, []);
+
+  // Write every pending operation into the PDF bytes in one pdf-lib pass and
+  // hand the new file to the persistence callback (upload for cloud docs).
+  const runBatch = useCallback(async () => {
+    const records = pendingRef.current.slice();
+    if (records.length === 0) return;
+    const currentPdfFile = pdfFileRef.current;
     try {
-      const sourceState = pageStateRef.current
-        || (typeof getPageState === 'function' ? getPageState() : null);
-      const nextState = sourceState ? transformPageState(sourceState, operation) : null;
-      const pdfOperation = operation?.type === 'rotate'
-        ? {
-          ...operation,
-          delta: Number(operation.delta || 0)
-            + Number(sourceState?.pageTransformations?.[operation.page]?.rotation || 0),
-        }
-        : operation;
-      const { mutatePdfPages } = await import('../utils/pdfPageMutation.js');
-      const pdfBytes = await mutatePdfPages(await currentPdfFile.arrayBuffer(), pdfOperation);
+      if (!currentPdfFile || !callbacksRef.current.onUpdatePDFFile) {
+        throw new Error('PDF file not available for manipulation');
+      }
+      // pdf-lib runs in a worker: the rewrite never janks the UI it follows.
+      const pdfBytes = await mutatePdfPagesOffThread(
+        () => currentPdfFile.arrayBuffer(),
+        records.map((record) => record.pdfOperation),
+      );
       const newFile = createPageMutationFile(pdfBytes, currentPdfFile);
       // 2026-04-30 fix: preserve all Supabase metadata across page-mutation
       // round-trips so the per-user delete authority gate keeps resolving
@@ -65,34 +147,107 @@ export function usePageOperations({
       newFile.contentSha256 = currentPdfFile.contentSha256 || null;
       newFile.user_id = currentPdfFile.user_id || null;
       newFile.filePath = currentPdfFile.filePath || null;
-
-      // This callback is the production storage boundary. Never publish the
-      // remapped metadata before the new PDF bytes are durable.
-      await persistThenCommitPageMutation({
-        file: newFile,
-        state: nextState,
-        operation,
-        persist: onUpdatePDFFile,
-        commit: commitPageState,
-      });
-      // A second page action can arrive before React has rendered the new File
-      // prop. Keep the serialized operation queue on the just-persisted bytes
-      // so rapid taps cannot branch from a stale page count or overwrite work.
+      ownFilesRef.current.add(newFile);
+      await callbacksRef.current.onUpdatePDFFile(newFile);
       pdfFileRef.current = newFile;
-      pageStateRef.current = nextState;
+      pendingRef.current = pendingRef.current.slice(records.length);
+      statusRef.current.savedCount += 1;
+      publishStatus();
+    } catch (error) {
+      console.error('Error saving page change:', error);
+      // Everything still pending was applied on top of this batch, so it goes
+      // too: back to the state and view before the first unsaved operation.
+      const dropped = pendingRef.current.slice();
+      pendingRef.current = [];
+      publishStatus();
+      if (mountedRef.current) rollback(dropped, error);
+    }
+  }, [publishStatus, rollback]);
+
+  const flush = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    const next = chainRef.current.then(() => {
+      if (pendingRef.current.length > 0) return runBatch();
+      return undefined;
+    });
+    chainRef.current = next.catch(() => {});
+    return next.then(() => pdfFileRef.current, () => pdfFileRef.current);
+  }, [runBatch]);
+
+  const scheduleFlush = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      flush();
+    }, flushDelayMs);
+  }, [flush, flushDelayMs]);
+
+  // A page change still being written must not be lost to a reload/close.
+  useEffect(() => {
+    mountedRef.current = true;
+    if (typeof window === 'undefined') return undefined;
+    const onBeforeUnload = (event) => {
+      if (pendingRef.current.length === 0) return undefined;
+      flush();
+      event.preventDefault();
+      event.returnValue = '';
+      return '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => {
+      mountedRef.current = false;
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      // Leaving the document (tab closed / switched away) must still save.
+      if (pendingRef.current.length > 0) flush();
+    };
+  }, [flush]);
+
+  const executeMutation = useCallback((operation, errorVerb) => {
+    if (!pdfFileRef.current || !onUpdatePDFFile) {
+      showToast('PDF file not available for manipulation', 'error');
+      return false;
+    }
+    try {
+      // The getter is normally current (PDFViewer's ref is written by the
+      // commit itself and by every render). Only when it still returns the
+      // very state the previous operation started from — it has not caught
+      // up yet — does this chain on that operation's result. Anything edited
+      // since (new marks, renamed pages) is in the getter's newer state.
+      const fromGetter = typeof getPageState === 'function' ? getPageState() : null;
+      const chained = pageStateRef.current;
+      const sourceState = chained && (!fromGetter || chained.base === fromGetter)
+        ? chained.next
+        : fromGetter;
+      const nextState = sourceState ? transformPageState(sourceState, operation) : null;
+      const pdfOperation = operation?.type === 'rotate'
+        ? {
+          ...operation,
+          delta: Number(operation.delta || 0)
+            + Number(sourceState?.pageTransformations?.[operation.page]?.rotation || 0),
+        }
+        : operation;
+      // View first, then the remapped state, in the same tick: React renders
+      // the moved page and its annotations together.
+      const viewBefore = typeof applyPageView === 'function' ? applyPageView(pdfOperation) : undefined;
+      if (nextState) commitPageState(nextState, operation);
+      pageStateRef.current = { base: fromGetter, next: nextState };
+      pendingRef.current.push({ operation, pdfOperation, stateBefore: sourceState, viewBefore });
+      publishStatus();
+      scheduleFlush();
       return true;
     } catch (error) {
       console.error(`Error ${errorVerb} page:`, error);
       showToast(`Error ${errorVerb} page: ${error.message}`, 'error');
       return false;
     }
-  }, [commitPageState, getPageState, onUpdatePDFFile]);
+  }, [applyPageView, commitPageState, getPageState, onUpdatePDFFile, publishStatus, scheduleFlush]);
 
-  const runMutation = useCallback((operation, errorVerb) => {
-    const result = mutationQueueRef.current.then(() => executeMutation(operation, errorVerb));
-    mutationQueueRef.current = result.catch(() => false);
-    return result;
-  }, [executeMutation]);
+  const runMutation = useCallback((operation, errorVerb) => (
+    Promise.resolve(executeMutation(operation, errorVerb))
+  ), [executeMutation]);
 
   const handleDuplicatePage = useCallback((pageNumber) => (
     runMutation({ type: 'duplicate', page: pageNumber }, 'duplicating')
@@ -206,5 +361,8 @@ export function usePageOperations({
     handleRotatePageCW,
     handleRotatePageCCW,
     handleInsertBlankPage,
+    // Resolves (with the newest File) once every page change on screen is in
+    // the PDF bytes — export/print read the bytes, so they wait for it.
+    flushPageOperations: flush,
   };
 }

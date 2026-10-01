@@ -319,6 +319,8 @@ import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
+import { usePageViewDocument } from './hooks/usePageViewDocument.js';
+import { getPageViewBase } from './utils/pageViewDocument.js';
 import { getSelectFamilyTransition, loadSelectMode, saveSelectMode } from './utils/selectModes.js';
 import { resolveToolBarGroup, TOOL_BAR_GROUPS } from './utils/toolbarRows.js';
 import { cycleLassoMode } from './utils/lassoSelection.js';
@@ -8161,8 +8163,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // NEW: Item and Annotation system state
   const [pdfId, setPdfId] = useState(null);
   const pdfSearchDocumentKey = useMemo(
-    () => `${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}:${numPages || 0}`,
-    [pdfFile?.id, pdfFile?.name, pdfId, numPages]
+    // A page operation (move/rotate/...) changes what text sits on which page
+    // even when the count stays the same: the page view version keys it.
+    () => `${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}:${numPages || 0}:${pdfDoc?.__pageViewVersion || 0}`,
+    [pdfFile?.id, pdfFile?.name, pdfId, numPages, pdfDoc]
   );
   const previousPdfSelectionContextRef = useRef(null);
   useLayoutEffect(() => {
@@ -9113,6 +9117,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   };
   const spacePageNavigationTimersRef = useRef([]);
   const pageSizesRef = useRef({});
+  // Owner 2026-10-01 (instant page operations): page operations swap in an
+  // in-memory page view over the loaded document; see the hook.
+  const {
+    applyPageView: applyPageViewOperationToViewer,
+    restorePageView: restorePageViewDocument,
+    markFileCurrent: markPageViewFileCurrent,
+    isFileCurrent: isPageViewFileCurrent,
+    isViewOver: isPageViewOver,
+  } = usePageViewDocument({
+    pdfDoc,
+    pageObjects,
+    pageSizesRef,
+    pageRenderCacheRef,
+    setPdfDoc,
+    setNumPages,
+    setPageSizes,
+    setPageHeights,
+  });
   const manualZoomScaleRef = useRef(initialZoomPreferences.manualScale);
   // Bug #2.6 calibration: Pdfjs's page div at 100% is pdfPageSize.width * electronFactor
   // CSS pixels (Electron/browser zoom factor). Calibrated on first known-good measurement
@@ -14092,9 +14114,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     regionOverlayDisabled: regionOverlayDisabled || new Map(),
   };
   const getPageStructureState = useCallback(() => pageStructureStateRef.current, []);
-  const persistPageMutationFile = useCallback((file) => (
-    onUpdatePDFFile?.(file, tabId)
-  ), [onUpdatePDFFile, tabId]);
+  const persistPageMutationFile = useCallback((file) => {
+    // The background save of a page operation: these bytes are already on
+    // screen as a page view, so the load effect must not re-open them.
+    markPageViewFileCurrent(file);
+    return onUpdatePDFFile?.(file, tabId);
+  }, [markPageViewFileCurrent, onUpdatePDFFile, tabId]);
   const commitPageStructureState = useCallback((next, operation) => {
     pageStructureStateRef.current = next;
     annotationsByPageRef.current = next.annotationsByPage;
@@ -14170,11 +14195,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleRotatePageCW,
     handleRotatePageCCW,
     handleInsertBlankPage,
+    flushPageOperations,
   } = usePageOperations({
     pdfFile,
     onUpdatePDFFile: persistPageMutationFile,
     getPageState: getPageStructureState,
     commitPageState: commitPageStructureState,
+    applyPageView: applyPageViewOperationToViewer,
+    restorePageView: restorePageViewDocument,
     setPageNames,
     setPageTransformations,
     clipboardPage,
@@ -22823,7 +22851,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         embeddedPdfNativeAnnotationHandling: 'preserve-unedited-native-annots-skip-unedited-imported-copies-export-edited-imported-copies',
         note: 'Explicit export generates a PDF copy from original PDF bytes. Unedited imported PDF-native app copies are skipped to avoid duplication; edited imported copies are exported from app state.'
       }));
-      const sourcePdfForExport = pdfFile;
+      // Page operations save in the background; export the bytes that match
+      // the pages on screen.
+      const sourcePdfForExport = (await flushPageOperations()) || pdfFile;
       if (typeof pdfjsViewerRef.current?.saveAsBlob === 'function') {
         console.log('[PDFSaveExport] source PDF selection ' + JSON.stringify({
           actionType: 'pdf-export',
@@ -22924,6 +22954,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     annotationsByPage,
     callouts,
     deletedPdfAnnotations,
+    flushPageOperations,
     pageSizes,
     pdfFile,
     spaces,
@@ -22956,7 +22987,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         import('./utils/permanentPdfRedaction.js'),
       ]);
       const annotatedBytes = await savePDFWithAnnotationsPdfLib(
-        pdfFile,
+        (await flushPageOperations()) || pdfFile,
         redactionAnnotationsByPage,
         pageSizes,
         null,
@@ -23014,6 +23045,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     applyRedactionsBusy,
     callouts,
     deletedPdfAnnotations,
+    flushPageOperations,
     numPages,
     pageSizes,
     pdfFile,
@@ -23294,11 +23326,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
   }, [bookmarks.length, pdfOutlinePageLookup]);
 
+  // Page operations (usePageViewDocument): the load token of the last real
+  // load, and the latest file/token for the effect cleanup below.
+  const pageViewLoadTokenRef = useRef(null);
+  const latestPdfFileRef = useRef(pdfFile);
+  latestPdfFileRef.current = pdfFile;
+  const latestLoadRetryTokenRef = useRef(loadRetryToken);
+  latestLoadRetryTokenRef.current = loadRetryToken;
   // Load PDF
   useEffect(() => {
     if (!pdfFile) {
       return;
     }
+    // Background save of a page operation: these bytes are already on screen.
+    // (A retry — new loadRetryToken — always loads.)
+    if (isPageViewFileCurrent(pdfFile) && pageViewLoadTokenRef.current === loadRetryToken) {
+      return;
+    }
+    pageViewLoadTokenRef.current = loadRetryToken;
     let isCancelled = false;
 
     const loadPDF = async () => {
@@ -23528,6 +23573,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             loadedPageSizes[pageNumber] = { width: viewport.width, height: viewport.height };
           });
 
+          // A page operation during this sizing loop switched the viewer to a
+          // page view whose numbering differs from this document's; the view
+          // measures its own pages (usePageViewDocument).
+          if (isPageViewOver(pdf)) continue;
           setPageHeights((prev) => ({ ...prev, ...batchHeights }));
           setPageSizes((prev) => ({ ...prev, ...batchSizes }));
           setPageObjects((prev) => ({ ...prev, ...batchPages }));
@@ -23876,16 +23925,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setPdfLoadError(null);
     loadPDF();
     return () => {
+      // A page operation's background save swaps pdfFile while this load may
+      // still be sizing pages; those bytes are already on screen, so the load
+      // keeps running.
+      if (isPageViewFileCurrent(latestPdfFileRef.current)
+        && pageViewLoadTokenRef.current === latestLoadRetryTokenRef.current) return;
       isCancelled = true;
     };
   }, [pdfFile, loadRetryToken]);
 
   // PDFViewer owns the single pdf.js document proxy. The mobile renderer reuses
   // it instead of parsing and retaining a second copy of the same PDF.
+  // A page view (instant page operations) shares its base document, so only a
+  // different base is destroyed.
+  const pdfBaseDoc = getPageViewBase(pdfDoc);
   useEffect(() => () => {
-    if (!pdfDoc) return;
-    try { pdfDoc.destroy(); } catch { /* noop */ }
-  }, [pdfDoc]);
+    if (!pdfBaseDoc) return;
+    try { pdfBaseDoc.destroy(); } catch { /* noop */ }
+  }, [pdfBaseDoc]);
 
   // KAL-46 / sleep-wake recovery watchdog.
   //
@@ -33435,7 +33492,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 spaces,
               });
               const annotatedBytes = await savePDFWithFlattenedRegularAnnotationsForPrint(
-                pdfFile,
+                (await flushPageOperations()) || pdfFile,
                 printableRegularPayload.annotationsByPage,
                 pageSizes,
                 {

@@ -19,8 +19,7 @@ function reorderPages(pdf, from, to) {
   pdf.insertPage(to - 1, moved);
 }
 
-export async function mutatePdfPages(inputBytes, operation) {
-  const pdf = await PDFDocument.load(inputBytes);
+async function applyOperation(pdf, operation) {
   const count = pdf.getPageCount();
   const type = operation?.type;
 
@@ -49,6 +48,27 @@ export async function mutatePdfPages(inputBytes, operation) {
   } else {
     throw new Error(`Unsupported PDF page mutation: ${type}`);
   }
+}
 
+async function mutateOnce(inputBytes, operation) {
+  const pdf = await PDFDocument.load(inputBytes);
+  await applyOperation(pdf, operation);
   return pdf.save();
+}
+
+export async function mutatePdfPages(inputBytes, operation) {
+  return mutateOnce(inputBytes, operation);
+}
+
+// Several page operations, in order, for ONE upload (usePageOperations
+// coalesces quick successive taps). Each operation still gets its own
+// load + save: pdf-lib mis-orders pages when several removePage/insertPage
+// calls run on one loaded document (tests/pageViewDocument.test.mjs, seed 18:
+// delete, move, rotate, delete, copy, move put page 3 where page 4 belonged).
+export async function mutatePdfPagesBatch(inputBytes, operations) {
+  let bytes = inputBytes;
+  for (const operation of operations || []) {
+    bytes = await mutateOnce(bytes, operation);
+  }
+  return bytes;
 }
