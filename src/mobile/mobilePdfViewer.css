@@ -4028,10 +4028,12 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   right: 0;
   height: 44px;
   pointer-events: none;
-  /* Quiet and neutral (UX 2026-10-01, owner: no gold glow on a drag — the
-     folder tint and the gold slot are gone; nothing here is accent). */
-  background: var(--hover);
-  box-shadow: inset 2px 0 0 var(--border-strong);
+  /* The app's one drag slot (tokens.css DRAG LIFT, owner 2026-10-01): a quiet
+     dashed outline, no gold, the same as every other list's landing gap. */
+  box-sizing: border-box;
+  background: var(--drag-slot-bg);
+  border: var(--drag-slot-border);
+  border-radius: var(--drag-lift-radius);
   /* The drag's one glide (BookmarksPanel BOOKMARK_DRAG_GLIDE, UX 2026-10-01):
      rows, slot and indent all move on the same 180ms ease-out. */
   transition: top 180ms cubic-bezier(0.25, 0.5, 0.25, 1), left 180ms cubic-bezier(0.25, 0.5, 0.25, 1);
@@ -4056,13 +4058,11 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   transition: padding-left 180ms cubic-bezier(0.25, 0.5, 0.25, 1);
 }
 
-/* Lifted row while dragging — the phone equivalent of the desktop clone's
-   shadow + lighter surface, so the finger has something that looks picked up. */
+/* Lifted row while dragging. Its look is the app's one picked-up look
+   (data-drag-lifted, states.css); this only stacks it above the other rows. */
 .mobile-bookmark-row.is-dragging {
   position: relative;
   z-index: 2;
-  background: var(--surface-3);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.34);
 }
 
 /* The app's grip icon, quiet like the desktop's. 24px wide in the layout; an
@@ -4091,8 +4091,8 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   transform: translate(-50%, -50%);
 }
 
+/* No gold on a held grip (owner 2026-10-01: nothing a drag paints is accent). */
 .mobile-bookmark-row.is-dragging .mobile-bookmark-grip {
-  color: var(--accent);
   cursor: grabbing;
 }
 

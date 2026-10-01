@@ -1053,7 +1053,7 @@ export default function ProjectsFolderTree({
                          checked stays gold and 1.4px is unchanged. */
                       <span
                         onClick={(e) => { e.stopPropagation(); toggleProjSel(p.id); }}
-                        style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--gold)' : 'var(--border-strong)'}`, background: isSel ? 'var(--gold)' : 'transparent', borderRadius: 2, padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 4 }}
+                        data-drag-keep-fill style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--gold)' : 'var(--border-strong)'}`, background: isSel ? 'var(--gold)' : 'transparent', borderRadius: 2, padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 4 }}
                       >
                         {isSel && <Icon name="check" size={10} color="var(--accent-text)" />}
                       </span>

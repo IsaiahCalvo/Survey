@@ -329,18 +329,19 @@ function SortableModuleTab({
       {...(!isRenaming ? attributes : {})}
       {...(!isRenaming ? listeners : {})}
       data-module-tab-id={mod.id}
+      // Owner 2026-10-01: the held tab takes the app's one picked-up look
+      // (states.css [data-drag-lifted]) - one solid surface, soft shadow, no
+      // gold, no scale, no inner block behind its label or count.
+      data-drag-lifted={isDragging ? '' : undefined}
       style={{
-        transform: [CSS.Transform.toString(transform), isDragging ? 'scale(1.04)' : null].filter(Boolean).join(' ') || undefined,
+        transform: CSS.Transform.toString(transform),
         transition: tabTransition || undefined,
         display: 'flex',
         alignItems: 'center',
         marginBottom: -1,
         borderBottom: isOn ? '2px solid var(--ink)' : '2px solid transparent',
         borderRadius: '5px 5px 0 0',
-        // Owner 2026-10-01: no gold while dragging - the held tab lifts
-        // (lighter surface, soft shadow, a hair larger) instead.
-        background: isDragging ? 'var(--surface-3, var(--hover))' : (isOn ? 'var(--hover)' : 'transparent'),
-        boxShadow: isDragging ? '0 10px 24px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.08)' : 'none',
+        background: isOn ? 'var(--hover)' : 'transparent',
         cursor: isRenaming ? 'text' : (isDragging ? 'grabbing' : 'grab'),
         flex: '1 1 0',
         minWidth: 32,
@@ -348,7 +349,6 @@ function SortableModuleTab({
         overflow: 'hidden',
         position: 'relative',
         zIndex: isDragging ? 4 : (isOn ? 1 : 0),
-        opacity: isDragging ? 0.94 : 1,
         touchAction: 'none',
         userSelect: isDragging || isSorting ? 'none' : undefined,
       }}
@@ -2133,7 +2133,7 @@ export default function TemplatesEditor({
                             {t.roster.slice(0, 10).map((r) => {
                               const sw = entitySwatch(r);
                               return (
-                                <span key={r.id} style={{ width: 14, height: 14, borderRadius: '50%', background: sw.fill, border: `1.5px solid ${sw.border}` }}></span>
+                                <span key={r.id} data-drag-keep-fill style={{ width: 14, height: 14, borderRadius: '50%', background: sw.fill, border: `1.5px solid ${sw.border}` }}></span>
                               );
                             })}
                             {t.roster.length > 10 && (
@@ -2146,7 +2146,7 @@ export default function TemplatesEditor({
                       {tplEdit ? (
                         <span
                           onClick={(e) => { e.stopPropagation(); toggleTplSel(t.id); }}
-                          style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--rule-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 4 }}
+                          data-drag-keep-fill style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--rule-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 4 }}
                         >
                           {isSel && <Icon name="check" size={10} color="var(--paper)" />}
                         </span>
@@ -2363,7 +2363,7 @@ export default function TemplatesEditor({
                         {catEdit && (
                           <span
                             onClick={(e) => { e.stopPropagation(); toggleCatSel(c.id); }}
-                            style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--rule-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            data-drag-keep-fill style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--rule-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           >
                             {isSel && <Icon name="check" size={10} color="var(--paper)" />}
                           </span>
@@ -2608,7 +2608,7 @@ export default function TemplatesEditor({
                           entityEdit ? (
                             <span
                               onClick={(e) => { e.stopPropagation(); toggleEntitySel(r.id); }}
-                              style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--rule-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
+                              data-drag-keep-fill style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--rule-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
                             >
                               {isSel && <Icon name="check" size={10} color="var(--paper)" />}
                             </span>
@@ -3390,7 +3390,7 @@ export default function TemplatesEditor({
                           {...listeners}
                           isDragging={isDragging}
                         />
-                        <span onClick={() => toggleModSel(mod.id)} style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--border-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span onClick={() => toggleModSel(mod.id)} data-drag-keep-fill style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--border-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           {isSel && <Icon name="check" size={10} color="var(--accent-text)" />}
                         </span>
                         <input

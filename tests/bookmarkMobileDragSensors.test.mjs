@@ -93,17 +93,36 @@ test('phone rows are dnd-kit sortables sharing the desktop projection', () => {
 
 /*
  * UX 2026-10-01 — owner: "I don't want the yellow glow". The landing slot is
- * a quiet neutral fill on both layouts; nothing a drag paints is accent.
+ * quiet and neutral on both layouts; nothing a drag paints is accent.
+ * Second pass the same day ("a uniform colour / uniform style when it gets
+ * picked up"): the slot is now the app's ONE drag slot (--drag-slot-*, the
+ * dashed outline every vertical list shows), and the lifted row is the app's
+ * one lift (data-drag-lifted), not a per-panel surface + shadow.
  */
-test('the drag landing slot is neutral, never gold', () => {
+test('the drag landing slot is the shared neutral slot, never gold', () => {
   const desktopRow = source.slice(source.indexOf('const BookmarkTreeRow = ('), source.indexOf('const MobileBookmarkRow = ('));
   const slot = desktopRow.slice(desktopRow.indexOf('data-bookmark-drop-slot'));
-  assert.match(slot.slice(0, 700), /background: 'var\(--hover\)'/);
+  assert.match(slot.slice(0, 700), /background: 'var\(--drag-slot-bg\)'/);
+  assert.match(slot.slice(0, 700), /border: 'var\(--drag-slot-border\)'/);
   assert.doesNotMatch(slot.slice(0, 700), /--accent/);
   const css = readFileSync(fileURLToPath(new URL('../src/mobile/mobilePdfViewer.css', import.meta.url)), 'utf8');
   const rule = css.slice(css.indexOf('.mobile-bookmark-drop-slot {'));
-  assert.doesNotMatch(rule.slice(0, rule.indexOf('}')), /--accent/);
+  const body = rule.slice(0, rule.indexOf('}'));
+  assert.doesNotMatch(body, /--accent/);
+  assert.match(body, /border: var\(--drag-slot-border\)/);
   assert.doesNotMatch(css, /data-bookmark-drop-target/);
+});
+
+test('both bookmark layouts lift with the shared picked-up look', () => {
+  const desktopRow = source.slice(source.indexOf('const BookmarkTreeRow = ('), source.indexOf('const MobileBookmarkRow = ('));
+  const mobileRow = source.slice(source.indexOf('const MobileBookmarkRow = ('), source.indexOf('const BookmarksPanel = ('));
+  assert.match(desktopRow, /data-drag-lifted=\{isClone \|\| isActiveRow \? '' : undefined\}/);
+  assert.match(mobileRow, /data-drag-lifted=\{isDragging \? '' : undefined\}/);
+  const css = readFileSync(fileURLToPath(new URL('../src/mobile/mobilePdfViewer.css', import.meta.url)), 'utf8');
+  const lifted = css.slice(css.indexOf('.mobile-bookmark-row.is-dragging {'));
+  assert.doesNotMatch(lifted.slice(0, lifted.indexOf('}')), /background|box-shadow/);
+  const grip = css.slice(css.indexOf('.mobile-bookmark-row.is-dragging .mobile-bookmark-grip {'));
+  assert.doesNotMatch(grip.slice(0, grip.indexOf('}')), /--accent/);
 });
 
 /*

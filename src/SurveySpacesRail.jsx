@@ -3284,13 +3284,15 @@ const SurveySpacesRail = ({
                                                 // mobileSurveyPanel.css on the sortable wrapper.
                                                 // Desktop (2026-09-23, desktop survey polish): the same -
                                                 // a line, no box; surveyRailPanel.css draws its hairline.
-                                                // A carried one lifts on the selected surface.
-                                                background: mobileMode ? 'transparent' : (isDragging ? 'var(--surface-3)' : 'transparent'),
+                                                // A carried one takes the app's one picked-up look
+                                                // from its sortable wrapper (data-drag-lifted,
+                                                // states.css; owner 2026-10-01: no focus ring).
+                                                background: 'transparent',
                                                 border: 0,
                                                 borderRadius: 0,
                                                 overflow: (isEntityDropdownOpenForMarker || reviewMessage) ? 'visible' : 'hidden',
                                                 flexShrink: 0,
-                                                boxShadow: isDragging ? '0 10px 22px rgba(0, 0, 0, 0.34), inset 0 0 0 2px var(--focus)' : 'none',
+                                                boxShadow: 'none',
                                                 transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease'
                                               }}>
                                                 {/* Phone (owner 2026-10-01): an item row is the desktop

@@ -1005,6 +1005,15 @@ const PagesPanel = ({
 
   // Handle drag start for internal reordering
   const handleDragStart = useCallback((e, pageNumber) => {
+    // The browser draws the dragged picture from the card as it looks right
+    // now, so for that one moment it wears the app's one picked-up look
+    // (states.css [data-drag-lifted], owner 2026-10-01); a frame later the card
+    // left behind goes back to its own (dimmed) look.
+    const card = e.currentTarget;
+    if (card?.setAttribute) {
+      card.setAttribute('data-drag-lifted', '');
+      requestAnimationFrame(() => card.removeAttribute('data-drag-lifted'));
+    }
     setDraggedPage(pageNumber);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('application/pdf-page-internal', pageNumber.toString());
@@ -1149,12 +1158,15 @@ const PagesPanel = ({
                 /* Phone: the card takes its grid cell (two columns, see
                    .mobile-pages-track in mobilePdfViewer.css); no fixed box. */
                 boxSizing: 'border-box',
-                background: isSelected ? 'var(--surface-3)' : (dragOverPage === pageNumber ? 'var(--surface-3)' : 'transparent'),
-                border: isSelected ? '1px solid var(--accent)' : (dragOverPage === pageNumber ? '1px solid var(--accent)' : '1px solid transparent'),
+                // The page a drag will land on shows the app's one drag slot
+                // (a quiet dashed outline, no gold - owner 2026-10-01).
+                background: dragOverPage === pageNumber ? 'var(--drag-slot-bg)' : (isSelected ? 'var(--surface-3)' : 'transparent'),
+                border: dragOverPage === pageNumber ? 'var(--drag-slot-border)' : (isSelected ? '1px solid var(--accent)' : '1px solid transparent'),
                 borderRadius: '4px',
                 cursor: mobileMode ? 'pointer' : (draggedPage === pageNumber ? 'grabbing' : 'grab'),
                 touchAction: mobileMode ? 'pan-y' : undefined,
-                opacity: draggedPage === pageNumber ? 0.82 : 1,
+                // The card left behind while its page is carried.
+                opacity: draggedPage === pageNumber ? 0.45 : 1,
                 zIndex: draggedPage === pageNumber ? 1 : 'auto',
                 transition: draggedPage === pageNumber ? 'none' : 'background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease',
                 contentVisibility: mobileMode ? 'visible' : 'auto',
@@ -1215,7 +1227,7 @@ const PagesPanel = ({
               )}
 
               {/* Thumbnail */}
-              <div className={mobileMode ? 'mobile-page-preview' : undefined} style={{
+              <div className={mobileMode ? 'mobile-page-preview' : undefined} data-drag-keep-fill style={{
                 position: 'relative',
                 width: '100%',
                 paddingBottom: `${displayRatio}%`,
