@@ -164,7 +164,8 @@ function TabItem({
         fontSize: '12px',
         color: isActive ? TAB_TEXT_ACTIVE : TAB_TEXT,
         zIndex: isDragging ? 5 : undefined,
-        boxShadow: isDragging ? '0 10px 26px rgba(0,0,0,0.35), inset 0 0 0 1px var(--accent-press)' : 'none',
+        // Owner 2026-10-01: a held tab lifts with a soft shadow, no gold ring.
+        boxShadow: isDragging ? '0 10px 24px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.08)' : 'none',
         touchAction: isHome ? undefined : 'none',
       }}
       onMouseEnter={(e) => {

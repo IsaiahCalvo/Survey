@@ -330,15 +330,17 @@ function SortableModuleTab({
       {...(!isRenaming ? listeners : {})}
       data-module-tab-id={mod.id}
       style={{
-        transform: CSS.Transform.toString(transform),
+        transform: [CSS.Transform.toString(transform), isDragging ? 'scale(1.04)' : null].filter(Boolean).join(' ') || undefined,
         transition: tabTransition || undefined,
         display: 'flex',
         alignItems: 'center',
         marginBottom: -1,
         borderBottom: isOn ? '2px solid var(--ink)' : '2px solid transparent',
         borderRadius: '5px 5px 0 0',
-        background: isDragging ? 'var(--accent-soft)' : (isOn ? 'var(--hover)' : 'transparent'),
-        boxShadow: isDragging ? '0 12px 26px rgba(0,0,0,0.35), inset 0 0 0 1px var(--accent-press)' : 'none',
+        // Owner 2026-10-01: no gold while dragging - the held tab lifts
+        // (lighter surface, soft shadow, a hair larger) instead.
+        background: isDragging ? 'var(--surface-3, var(--hover))' : (isOn ? 'var(--hover)' : 'transparent'),
+        boxShadow: isDragging ? '0 10px 24px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.08)' : 'none',
         cursor: isRenaming ? 'text' : (isDragging ? 'grabbing' : 'grab'),
         flex: '1 1 0',
         minWidth: 32,
