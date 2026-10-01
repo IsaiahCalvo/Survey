@@ -3896,20 +3896,11 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
   right: 0;
   height: 44px;
   pointer-events: none;
-  background: var(--accent-soft);
-  box-shadow: inset 2px 0 0 var(--accent);
+  /* Quiet and neutral (UX 2026-10-01, owner: no gold glow on a drag — the
+     folder tint and the gold slot are gone; nothing here is accent). */
+  background: var(--hover);
+  box-shadow: inset 2px 0 0 var(--border-strong);
   transition: top 160ms ease, left 120ms ease-out;
-}
-
-/* The folder the row will land IN (soft accent tint + accent edge), and a
-   folder it is about to enter while the short dwell runs (lighter tint). */
-.mobile-bookmark-row[data-bookmark-drop-target='true'] {
-  background: linear-gradient(var(--accent-soft-strong), var(--accent-soft-strong)), var(--surface-2);
-  box-shadow: inset 2px 0 0 var(--accent);
-}
-
-.mobile-bookmark-row[data-bookmark-drop-target='pending'] {
-  background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--surface-2);
 }
 
 /* One line of the list. The depth indent is padding INSIDE the row (set per

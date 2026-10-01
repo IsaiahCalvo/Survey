@@ -109,7 +109,6 @@ const BookmarkTreeRow = ({
   isGroupAnimationActive = false,
   childCount = 0,
   isSelected = false,
-  dropTargetState = null,
   landingSlot = null,
   numPages,
   onToggle,
@@ -244,20 +243,23 @@ const BookmarkTreeRow = ({
         onClick={() => {
           if (isClone || isEditMode) return;
           onSelect?.(item.id);
-          if (!isFolder) onNavigate?.(item);
+          // UX 2026-10-01 (owner: tapping a folder opens / closes it at once):
+          // a click anywhere on a folder row folds it, like the phone row; a
+          // bookmark row jumps to its page.
+          if (isFolder) {
+            if (item.children?.length) onToggle?.(item.id);
+          } else {
+            onNavigate?.(item);
+          }
         }}
-        data-bookmark-drop-target={dropTargetState === 'into' ? 'true' : dropTargetState === 'pending' ? 'pending' : undefined}
         style={{
           transform: isClone ? undefined : sortableTransform,
-          // The lifted row eases its projected indent; while a drag is live the
-          // drop-target tint fades in and out instead of blinking.
+          // The lifted row eases its projected indent.
           transition: groupAnimationState || isGroupAnimationActive
             ? undefined
             : isActiveRow
               ? 'padding-left 120ms ease-out'
-              : isDraggingAny
-                ? [transition, 'background-color 120ms ease, box-shadow 120ms ease'].filter(Boolean).join(', ')
-                : transition,
+              : transition,
           display: 'flex',
           alignItems: 'center',
           gap: 6,
@@ -269,22 +271,13 @@ const BookmarkTreeRow = ({
           borderRadius: 0,
           // Quiet states only: the hover step or the SELECTED surface, never
           // a gold box. The lifted (dragging) row keeps a raised surface.
-          // UX 2026-09-30 — the folder the dragged row will land IN wears the
-          // soft accent tint with an accent edge; a folder it is about to
-          // enter (the dwell is still running) wears the lighter tint only.
-          background: isClone || isActiveRow
-            ? 'var(--surface-2)'
-            : dropTargetState === 'into'
-              ? 'var(--accent-soft-strong)'
-              : dropTargetState === 'pending'
-                ? 'var(--accent-soft)'
-                : isSelected ? 'var(--surface-3)' : 'transparent',
+          // UX 2026-10-01 (owner): no gold tint on the folder a drag lands in
+          // either; the neutral landing slot below says where it goes.
+          background: isClone || isActiveRow ? 'var(--surface-2)' : isSelected ? 'var(--surface-3)' : 'transparent',
           border: 'none',
           borderBottom: '1px solid var(--border)',
           color: 'var(--text-2)',
-          boxShadow: isClone || isActiveRow
-            ? '0 12px 24px rgba(0,0,0,0.32)'
-            : dropTargetState === 'into' ? 'inset 2px 0 0 var(--accent)' : 'none',
+          boxShadow: isClone || isActiveRow ? '0 12px 24px rgba(0,0,0,0.32)' : 'none',
           cursor: isEditMode ? 'default' : 'pointer',
           pointerEvents: isSorting ? 'none' : undefined,
           marginLeft: isClone ? `${cloneRelativeInset}px` : undefined,
@@ -512,10 +505,10 @@ const BookmarkTreeRow = ({
         )}
       </div>
       {isActiveRow && landingSlot ? (
-        // Where the drop will land: a soft slot in the gap the rows opened,
-        // stepped in to the projected depth. It sits under the lifted row and
-        // shows whenever the row is not right on top of it (e.g. while a
-        // folder dwell holds the slot).
+        // Where the drop will land: a quiet neutral slot in the gap the rows
+        // opened, stepped in to the projected depth (no gold — owner,
+        // 2026-10-01). It sits under the lifted row and shows whenever the
+        // row is not right on top of it (e.g. while a folder dwell holds it).
         <div
           aria-hidden="true"
           data-bookmark-drop-slot
@@ -527,8 +520,8 @@ const BookmarkTreeRow = ({
             left: landingSlot.depth * BOOKMARK_INDENTATION_WIDTH,
             right: 0,
             height: BOOKMARK_ROW_HEIGHT_PX,
-            background: 'var(--accent-soft)',
-            boxShadow: 'inset 2px 0 0 var(--accent)',
+            background: 'var(--hover)',
+            boxShadow: 'inset 2px 0 0 var(--border-strong)',
             transition: 'top 160ms ease, left 120ms ease-out',
           }}
         />
@@ -579,7 +572,6 @@ const MobileBookmarkRow = ({
   item,
   depth,
   projectedDepth,
-  dropTargetState = null,
   landingSlot = null,
   isEditMode = false,
   onToggle,
@@ -619,7 +611,6 @@ const MobileBookmarkRow = ({
     >
       <div
         ref={setDraggableNodeRef}
-        data-bookmark-drop-target={dropTargetState === 'into' ? 'true' : dropTargetState === 'pending' ? 'pending' : undefined}
         className={`mobile-bookmark-row${isDragging ? ' is-dragging' : ''}`}
         style={{
           // The depth indent lives INSIDE the row (padding), so every row's
@@ -813,13 +804,6 @@ const BookmarksPanel = ({
   const projected = dragIntent
     ? { depth: dragIntent.depth, parentId: dragIntent.parentId, slotOffsetY: dragIntent.slotOffsetY }
     : null;
-  // Drop-target feedback: the folder the row will land in is highlighted; a
-  // folder it is about to enter (dwell still running) gets a lighter tint.
-  const dropTargetFolderId = projected?.parentId ?? null;
-  const pendingDropFolderId = dragIntent?.pending?.intoId ?? null;
-  const getDropTargetState = (itemId) => (
-    itemId === dropTargetFolderId ? 'into' : itemId === pendingDropFolderId ? 'pending' : null
-  );
 
   /*
    * UX 2026-09-30 — collision detection IS the drag intent. dnd-kit calls this
@@ -1008,8 +992,25 @@ const BookmarksPanel = ({
   }, []);
 
   const toggleExpand = useCallback((folderId) => {
-    if (expandedFolders.has(folderId)) {
-      animateCollapseFolders([folderId]);
+    if (expandedFolders.has(folderId) && !collapsingFolderIds.includes(folderId)) {
+      // UX 2026-10-01 (owner: opening a folder was instant but closing it took
+      // about a second) — a tap closes the folder in the same frame. It used
+      // to run the 240ms fold-up (and on the phone, which has no fold-up
+      // animation, simply wait 240ms with nothing changing, not even the
+      // arrow) before the children went away. The animated fold stays for
+      // folders a drag opened and closes again (animateCollapseFolders).
+      const pendingExpand = expandTimeoutsRef.current.get(folderId);
+      if (pendingExpand) {
+        clearTimeout(pendingExpand);
+        expandTimeoutsRef.current.delete(folderId);
+      }
+      setExpandingFolderIds((ids) => (ids.includes(folderId) ? ids.filter((id) => id !== folderId) : ids));
+      setExpandedFolders((prev) => {
+        if (!prev.has(folderId)) return prev;
+        const next = new Set(prev);
+        next.delete(folderId);
+        return next;
+      });
       return;
     }
 
@@ -1026,7 +1027,7 @@ const BookmarksPanel = ({
       expandTimeoutsRef.current.delete(folderId);
     }, GROUP_COLLAPSE_ANIMATION_MS);
     expandTimeoutsRef.current.set(folderId, timeout);
-  }, [animateCollapseFolders, expandedFolders, expandFolderOnly]);
+  }, [collapsingFolderIds, expandedFolders, expandFolderOnly]);
 
   const persistBookmarkTree = useCallback((nextTree) => {
     if (!onBookmarkUpdate) return;
@@ -1887,7 +1888,6 @@ const BookmarksPanel = ({
                   item={item}
                   depth={depth}
                   projectedDepth={item.id === activeId && projected ? projected.depth : null}
-                  dropTargetState={activeId ? getDropTargetState(item.id) : null}
                   landingSlot={item.id === activeId && projected ? { offsetY: projected.slotOffsetY, depth: projected.depth } : null}
                   isEditMode={isEditMode}
                   onToggle={toggleExpand}
@@ -2183,8 +2183,7 @@ const BookmarksPanel = ({
                     item={item}
                     depth={item.depth}
                     projectedDepth={item.id === activeId && projected ? projected.depth : null}
-                    dropTargetState={activeId ? getDropTargetState(item.id) : null}
-                    landingSlot={item.id === activeId && projected ? { offsetY: projected.slotOffsetY, depth: projected.depth } : null}
+                      landingSlot={item.id === activeId && projected ? { offsetY: projected.slotOffsetY, depth: projected.depth } : null}
                     activeDepth={activeSortableItem?.depth}
                     isEditMode={isEditMode}
                     isDraggingAny={Boolean(activeId)}
