@@ -130,26 +130,20 @@ test('one motion source: the hook owns open, drag and close; no sheet keyframe',
   assert.match(sidebar, /useMobileSheetMotion\(closePanel, \{[\s\S]{0,200}open: mobileMode && !isCollapsed,/);
 });
 
-test('the browse panels keep their taller detents alongside the motion source', () => {
-  // RULED CHANGE 2026-09-21 (pass 7): a third step. Drag up past 48px -> 70dvh ->
-  // full screen; drag down steps back ONE height at a time before a further pull
-  // can dismiss. The boolean `expanded` is a numbered detent now, so the two
-  // regexes below read the step rather than setExpanded(false); the behaviour
-  // they guard is the same and there is one more of it.
-  assert.match(sheetMotion, /export const SHEET_EXPAND_DY = 48;/);
-  assert.match(sheetMotion, /export const SHEET_EXPANDED_HEIGHT = '70dvh';/);
-  assert.match(sheetMotion, /export const SHEET_DETENT_FULL = 2;/);
-  assert.match(sheetMotion, /if \(expandable && travel < 0\)/);
-  // Owner 2026-10-01: a sheet may opt out (pullDownCloses - the Survey panel
-  // closes in one pull from any height and reopens where it was); the
-  // default still steps back one height.
-  assert.match(sheetMotion, /if \(detent > SHEET_DETENT_STANDARD && !pullDownCloses\) \{\s*setDetent\(\(current\) => current - 1\);/);
+test('the browse panels keep their taller height alongside the motion source', () => {
+  // RULED CHANGE 2026-10-01 (owner: "two heights: the small one and the big
+  // one"): Standard and Full, nothing between. A pull down from Full comes
+  // back to Standard before a further pull can dismiss; a sheet may opt out
+  // (pullDownCloses - the Survey panel closes in one pull from any height and
+  // reopens where it was).
+  assert.match(sheetMotion, /export const SHEET_DETENT_FULL = 1;/);
+  assert.match(sheetMotion, /const canClose = !expandable \|\| drag\.start === SHEET_DETENT_STANDARD \|\| pullDownCloses;/);
   assert.match(sheetMotion, /pullDownCloses = false \} = options;/);
   assert.match(read('../src/SurveySpacesRail.jsx'), /pullDownCloses: mobileMode,/);
-  assert.match(mobileCss, /\.mobile-pdf-sheet\.is-expanded \{[\s\S]{0,160}--mobile-sheet-height: var\(--mobile-panel-expanded\);/);
+  assert.match(mobileCss, /\.mobile-pdf-sheet\.is-fullscreen \{[\s\S]{0,80}--mobile-sheet-height: var\(--mobile-panel-full\);/);
   assert.match(sidebar, /expandable: browsePanel,/);
-  // ...and the taller detent still comes out of CSS height, never the hook's
-  // transform, so it cannot compete with the pdf.js render.
+  // ...and the React-rendered motion is still transform only, never top or
+  // height, so it cannot compete with the pdf.js render.
   assert.doesNotMatch(sheetMotion, /motionStyle = \{[\s\S]{0,200}(height|top):/);
 });
 
@@ -211,20 +205,25 @@ test('dock closes slide, dock switches hand over, and height changes glide', () 
   assert.match(sidebar, /contentKey: activeTab === 'spaces' \|\| activeTab === 'history' \? activeTab : 'hub',/);
   assert.match(sheetMotion, /'data-sheet-swap': enterPhase === 'swap'/);
   assert.match(mobileCss, /\[data-mobile-sheet\]\[data-sheet-swap='a'\] > :not\(\.mobile-pdf-sheet__handle\)/);
-  // The resize glide owns height: a registered property the sheet reads while
-  // it runs, and no CSS height transition on the phone sheets to fight it.
-  assert.match(mobileCss, /@property --sheet-glide-height \{\s*syntax: '<length>';/);
-  assert.match(mobileCss, /:root \[data-mobile-sheet\]\[data-sheet-glide\] \{\s*height: var\(--sheet-glide-height\) !important;/);
-  assert.match(sheetMotion, /'--sheet-glide-height': `\$\{startHeight\}px`/);
+  // RULED CHANGE 2026-10-01 (owner: the swipe "needs to be way smoother", no
+  // snap at the end): no height animates any more. A height change glides with
+  // `translate` only (FLIP), holding the taller box for the slide so the foot
+  // stays behind the dock; a drag writes one translate per move, never React
+  // state; a release springs from the finger's speed. The old animated
+  // --sheet-glide-height (a layout per frame) is gone.
+  assert.doesNotMatch(mobileCss, /--sheet-glide-height|data-sheet-glide/);
+  assert.match(mobileCss, /:root \[data-mobile-sheet\]\[data-sheet-hold='full'\]:not\(\[data-sheet-at-rest\]\) \{\s*--mobile-sheet-height: var\(--mobile-panel-full\) !important;/);
+  assert.match(mobileCss, /:root \[data-mobile-sheet\]\[data-sheet-hold='px'\]:not\(\[data-sheet-at-rest\]\) \{\s*height: var\(--sheet-hold-height\) !important;/);
+  assert.doesNotMatch(sheetMotion, /setDragY|useState\(0\);\s*\/\/ drag/);
+  assert.match(sheetMotion, /engineRef\.current\?\.dragBy\(y - g\.anchorY\);/);
+  assert.match(sheetMotion, /springKeyframes\(fromY, toY, velocity, \{ min: 0 \}\)/);
   assert.match(sidebar, /transition: mobileMode \? 'none' : 'width 0\.2s ease, height 0\.26s/);
   assert.match(survey, /transition: mobileMode \? 'none' : 'right 0\.2s ease, top 0\.2s ease, height 0\.2s ease'/);
-  // The keyboard lift lands in layout at once (no CSS transition on it, so
-  // every measurement sees where the sheet is going); since 2026-10-01 the
-  // glide carries BOTH edges there on screen, the bottom one with a translate,
-  // on the keyboard's own clock (owner: "the keyboard needs to come up smooth").
-  assert.doesNotMatch(mobileCss, /html\[data-keyboard-open='true'\] \[data-mobile-sheet\] \{[^}]*transition/);
-  assert.match(sheetMotion, /translate: `0 \$\{shift\}px`/);
-  assert.match(sheetMotion, /if \(keyboardMoved\) timing = \{ ms: KEYBOARD_MOTION_MS, easing: KEYBOARD_MOTION_EASING \};/);
+  // The keyboard lift of a one-height sheet lands in layout at once (no CSS
+  // transition on it); the glide carries it there on the keyboard's own clock.
+  assert.doesNotMatch(mobileCss, /html\[data-keyboard-open='true'\] \[data-mobile-sheet\]:not\(\[data-sheet-keyboard='pad'\]\) \{[^}]*transition/);
+  assert.match(sheetMotion, /if \(keyboardMoved\) animatePad\(\);/);
+  assert.match(sheetMotion, /\? \{ ms: KEYBOARD_MOTION_MS, easing: KEYBOARD_MOTION_EASING \}/);
   assert.match(mobileCss, /:root \[data-mobile-sheet\]\[data-sheet-at-rest\] \{\s*translate: none !important;/);
   // Reduced motion: no glide and no hand-over fade.
   assert.match(sheetMotion, /live\.enterPhase === 'parked' \|\| prefersReducedMotion\(\)/);

@@ -42,6 +42,7 @@ const MOBILE_VIEWER_CSS_SOURCE = readFileSync(new URL('../src/mobile/mobilePdfVi
 const APP_SHELL_SOURCE = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
 const CAPACITOR_CONFIG_SOURCE = readFileSync(new URL('../capacitor.config.ts', import.meta.url), 'utf8');
 const TEXT_EDIT_OVERLAY_SOURCE = readFileSync(new URL('../src/components/TextEditOverlay.jsx', import.meta.url), 'utf8');
+const SHEET_MOTION_SOURCE = readFileSync(new URL('../src/mobile/useMobileSheetMotion.js', import.meta.url), 'utf8');
 
 // A 390x844 phone (iPhone 14/15/16/17 logical size).
 const PHONE_W = 390;
@@ -247,9 +248,14 @@ test('the mobile shell is pinned so the document has no reveal scroll to give', 
 });
 
 // 2026-09-30 (owner: "the keyboard must NEVER cover what you type into"): the
-// inset now has exactly TWO consumers - the PDF scroller's range (below) and
-// the bottom sheets, which stand on the keyboard instead of behind it. The
-// header, rail and dock still never read it.
+// inset has exactly these consumers - the PDF scroller's range (below) and
+// the bottom sheets. The header, rail and dock still never read it.
+// RULED CHANGE 2026-10-01 (owner, iPhone: "When I bring up the keyboard and
+// dismiss it, there's this jump of the survey panel ... very flickery"): a
+// browse panel ('pad') no longer stands on the keyboard - it stays where it is
+// (at Full while you type) and only its content area ends at the keyboard, so
+// its edges never move with the keyboard. Only the one-height sheets ('lift')
+// still stand on it. This test used to pin the lift for EVERY sheet.
 test('only the PDF scroller and the bottom sheets spend the keyboard inset', () => {
   assert.match(
     MOBILE_VIEWER_CSS_SOURCE,
@@ -258,20 +264,30 @@ test('only the PDF scroller and the bottom sheets spend the keyboard inset', () 
     // eat the node's inline height instead of extending its box, and the PDF
     // gained ZERO extra scroll range (measured live 2026-09-22).
   );
-  const sheetRule = /html\[data-keyboard-open='true'\] \[data-mobile-sheet\] \{([^}]*)\}/.exec(MOBILE_VIEWER_CSS_SOURCE);
-  assert.ok(sheetRule, 'the sheets must lift onto the keyboard');
-  // 2026-10-01: a sheet stands on the dock at rest, so with the keyboard up it
-  // stands on whichever is higher - the keyboard or the dock's top edge.
-  assert.match(sheetRule[1], /bottom: max\(var\(--keyboard-inset, 0px\), var\(--mobile-dock-bar-height\)\) !important;/);
-  assert.match(sheetRule[1], /max-height: calc\(100dvh - max\(var\(--keyboard-inset, 0px\), var\(--mobile-dock-bar-height\)\)/);
+  const padRule = /html\[data-keyboard-open='true'\] \[data-mobile-sheet\]\[data-sheet-keyboard='pad'\] \{([^}]*)\}/.exec(MOBILE_VIEWER_CSS_SOURCE);
+  assert.ok(padRule, 'a browse panel pads its content for the keyboard');
+  // Only padding: no bottom / height / max-height, so the sheet's edges stay.
+  assert.match(padRule[1], /padding-bottom: calc\(max\(0px, var\(--keyboard-inset, 0px\) - var\(--mobile-dock-bar-height\)\) \+ 12px\);/);
+  assert.doesNotMatch(padRule[1], /(^|\s)(bottom|height|max-height|top):/);
+  // Not !important: the hook eases it on the keyboard's clock with a Web
+  // Animation, which an !important declaration would override.
+  assert.doesNotMatch(padRule[1], /!important/);
+  const liftRule = /html\[data-keyboard-open='true'\] \[data-mobile-sheet\]:not\(\[data-sheet-keyboard='pad'\]\) \{([^}]*)\}/.exec(MOBILE_VIEWER_CSS_SOURCE);
+  assert.ok(liftRule, 'the one-height sheets lift onto the keyboard');
+  // A sheet stands on the dock at rest, so with the keyboard up it stands on
+  // whichever is higher - the keyboard or the dock's top edge.
+  assert.match(liftRule[1], /bottom: max\(var\(--keyboard-inset, 0px\), var\(--mobile-dock-bar-height\)\) !important;/);
+  assert.match(liftRule[1], /max-height: calc\(100dvh - max\(var\(--keyboard-inset, 0px\), var\(--mobile-dock-bar-height\)\)/);
   // No CSS transition: the box lands in the focus task so every measurement
   // sees where the sheet is going; what the eye sees is useMobileSheetMotion's
-  // glide on the keyboard's clock (2026-10-01).
-  assert.doesNotMatch(sheetRule[1], /transition/);
+  // glide on the keyboard's clock.
+  assert.doesNotMatch(liftRule[1], /transition/);
   // Nothing else may react to it: the header, rail and dock stay put.
   const consumers = MOBILE_VIEWER_CSS_SOURCE.match(/var\(--keyboard-inset/g) || [];
-  const inSheetRule = sheetRule[1].match(/var\(--keyboard-inset/g) || [];
-  assert.equal(consumers.length, 1 + inSheetRule.length, 'only these two rules may read --keyboard-inset');
+  const inSheetRules = (padRule[1] + liftRule[1]).match(/var\(--keyboard-inset/g) || [];
+  assert.equal(consumers.length, 1 + inSheetRules.length, 'only these rules may read --keyboard-inset');
+  // The hook tells the two kinds apart.
+  assert.match(SHEET_MOTION_SOURCE, /'data-sheet-keyboard': expandable \? 'pad' : 'lift',/);
 });
 
 test('the phone viewer mounts the keyboard controller and tears it down', () => {

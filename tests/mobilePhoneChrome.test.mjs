@@ -38,39 +38,36 @@ test('the sheet backdrop dims to 30% black', () => {
 });
 
 /*
- * RULED CHANGE 2026-09-21 (pass 7 / DESIGN-SYSTEM.md "Phone bottom panels"):
- * THREE named heights, not two. A browse panel opens at Standard, climbs to
- * Expanded (70dvh) on a pull up and to full screen on a second pull, and a pull
- * down steps back ONE height at a time. The hook's boolean `expanded` became a
- * numbered detent, so the two assertions that read `setExpanded(false)` out of it
- * now read the step instead; what they guard - "a pull down from a tall detent
- * steps back rather than dismissing" - is unchanged.
+ * RULED CHANGE 2026-10-01 (owner, iPhone: "We have three different heights for
+ * the bottom panel; I think we can get away with two: the small one and the big
+ * one"). Supersedes pass 7's Standard / Expanded (70dvh) / Full: a browse panel
+ * rests at Standard or Full. A release lands on the nearest of the two (where
+ * the throw is heading), a firm flick goes the way it was thrown, and a pull
+ * down from Full comes back to Standard rather than dismissing (unless the
+ * sheet opts into pullDownCloses - the Survey panel).
  */
-test('the hub sheet steps through its three named heights', () => {
-  assert.match(sheetMotion, /export const SHEET_EXPAND_DY = 48/);
-  assert.match(sheetMotion, /export const SHEET_EXPANDED_HEIGHT = '70dvh'/);
-  // Drag up past the threshold (or flick up) climbs one detent, capped at the
-  // sheet's own ceiling.
-  assert.match(sheetMotion, /-travel > SHEET_EXPAND_DY \|\| -vy > SHEET_DISMISS_VY/);
-  assert.match(sheetMotion, /Math\.min\(maxDetent, current \+ 1\)/);
-  // Drag down from a tall detent steps back one height instead of dismissing
-  // (unless the sheet opts into pullDownCloses - the Survey panel, owner
-  // 2026-10-01).
-  assert.match(sheetMotion, /if \(detent > SHEET_DETENT_STANDARD && !pullDownCloses\) \{[\s\S]{0,120}current - 1/);
-  assert.match(css, /\.mobile-pdf-sheet\.is-expanded \{[^}]*--mobile-sheet-height: var\(--mobile-panel-expanded\)/);
-  assert.match(css, /--mobile-panel-expanded: 70dvh/);
+test('the hub sheet has two heights, Standard and Full', () => {
+  assert.match(sheetMotion, /export const SHEET_DETENT_STANDARD = 0;/);
+  assert.match(sheetMotion, /export const SHEET_DETENT_FULL = 1;/);
+  assert.doesNotMatch(sheetMotion, /SHEET_EXPANDED_HEIGHT|SHEET_DETENT_EXPANDED/);
+  // Nearest height to the projected release, flicks go the way they were thrown.
+  assert.match(sheetMotion, /if \(-vy > SHEET_DISMISS_VY\) return SHEET_DETENT_FULL;/);
+  assert.match(sheetMotion, /const projected = drag\.top \+ Math\.max\(-3, Math\.min\(3, vy\)\) \* SHEET_PROJECT_MS;/);
+  // A pull down from Full does not dismiss (unless pullDownCloses).
+  assert.match(sheetMotion, /const canClose = !expandable \|\| drag\.start === SHEET_DETENT_STANDARD \|\| pullDownCloses;/);
+  assert.doesNotMatch(css, /\.is-expanded \{|--mobile-panel-expanded/);
   // Full screen stops clear of the app's top bar.
-  assert.match(css, /\.mobile-pdf-sheet\.is-fullscreen \{[^}]*100dvh/);
+  assert.match(css, /--mobile-panel-full: calc\(100dvh - var\(--app-chrome-top, 34px\) - 18px\);/);
+  assert.match(css, /\.mobile-pdf-sheet\.is-fullscreen \{[^}]*--mobile-sheet-height: var\(--mobile-panel-full\)/);
   // The browse panels opt in. RULED 2026-09-28 owner: History option A —
   // History is a long feed now, so it opts in too.
   assert.match(sidebar, /const browsePanel = mobileMode;/);
   assert.match(sidebar, /expandable: browsePanel/);
-  assert.match(sidebar, /fullscreenable: browsePanel/);
-  assert.match(sidebar, /sheetExpanded \? 'is-expanded ' : ''/);
+  assert.doesNotMatch(sidebar, /is-expanded/);
   assert.match(sidebar, /sheetFullscreen \? 'is-fullscreen ' : ''/);
   // The inline custom property is what actually takes effect; a stylesheet
   // rule alone would lose to it.
-  assert.match(sidebar, /sheetExpanded \? SHEET_EXPANDED_HEIGHT :/);
+  assert.match(sidebar, /sheetFullscreen \? 'var\(--mobile-panel-full\)' : MOBILE_PANEL_STANDARD/);
 });
 
 // RULED CHANGE 2026-09-17 (owner: "the animation of it panning up and coming
