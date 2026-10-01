@@ -908,9 +908,11 @@
 }
 
 /* The chosen answer (owner 2026-10-01): its word in the answer's colour on a
-   small plate of the same hue - Y green, N red, N/A gold - so chosen vs not
-   reads at a glance; the others stay --text-3 with no plate. The same three
-   pairs as the desktop rail (surveyRailPanel.css). */
+   small plate of the same hue - Y green, N red, N/A neutral grey - so chosen
+   vs not reads at a glance; the others stay --text-3 with no plate. N/A is
+   the desktop's neutral: bright --text-1 ink (its look before the plates) on
+   a --border grey plate, 7:1; gold stays the selection accent only. The same
+   three pairs as the desktop rail (surveyRailPanel.css). */
 .mobile-survey-sheet .mobile-survey-check-btn.is-active {
   height: 24px;
   border-radius: 5px;
@@ -918,7 +920,7 @@
 }
 .mobile-survey-sheet .mobile-survey-check-btn.is-yes { color: var(--success-text); background: var(--success-soft); }
 .mobile-survey-sheet .mobile-survey-check-btn.is-no { color: var(--danger-text); background: var(--danger-soft); }
-.mobile-survey-sheet .mobile-survey-check-btn.is-na { color: var(--accent); background: var(--accent-soft); }
+.mobile-survey-sheet .mobile-survey-check-btn.is-na { color: var(--text-1); background: var(--border); }
 
 .mobile-survey-sheet .mobile-survey-detail-empty {
   box-sizing: border-box;

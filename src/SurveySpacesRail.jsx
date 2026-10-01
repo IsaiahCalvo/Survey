@@ -3831,21 +3831,21 @@ const SurveySpacesRail = ({
                                                                   fontWeight: 600,
                                                                   borderRadius: '3px',
                                                                   /* Same pairs as the chosen Y / N / N/A answer above
-                                                                     (owner 2026-10-01): Y green, N red, N/A gold - the
-                                                                     word in the answer's colour on a plate of its hue. */
+                                                                     (owner 2026-10-01): Y green, N red, N/A neutral grey -
+                                                                     the word in the answer's colour on a plate of its hue. */
                                                                   background: sel === 'Y'
                                                                     ? 'var(--success-soft)'
                                                                     : sel === 'N'
                                                                       ? 'var(--danger-soft)'
                                                                       : sel === 'N/A'
-                                                                        ? 'var(--accent-soft)'
+                                                                        ? 'var(--border)'
                                                                         : 'var(--surface-3)',
                                                                   color: sel === 'Y'
                                                                     ? 'var(--success-text)'
                                                                     : sel === 'N'
                                                                       ? 'var(--danger-text)'
                                                                       : sel === 'N/A'
-                                                                        ? 'var(--accent)'
+                                                                        ? 'var(--text-1)'
                                                                         : 'var(--text-3)',
                                                                   textAlign: 'center',
                                                                 }}

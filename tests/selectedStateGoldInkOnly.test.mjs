@@ -127,15 +127,6 @@ const EXCEPTIONS = [
       + 'point of the ruling, not a departure from it. Each of these paints the '
       + 'edge on a border the element already carries at rest, so nothing moves.',
   },
-  {
-    match: /\.survey-rail__answer\.is-active\.is-na/,
-    why: 'the Survey checklist ANSWER colours, not the selection accent. Owner '
-      + '2026-10-01: "Y green, N red, NA yellow/gold, and selected vs unselected '
-      + 'must be obvious". Each chosen answer wears a small tint of its OWN '
-      + 'colour (--success-soft / --danger-soft / --accent-soft), so the gold '
-      + 'here means "N/A", the same way an entity disc keeps its own colour. '
-      + 'Only the N/A tint is gold, so only it needs this entry.',
-  },
 ];
 
 const excepted = (selector) => EXCEPTIONS.find((e) => e.match.test(selector));

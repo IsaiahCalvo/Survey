@@ -686,7 +686,7 @@
 }
 
 /* Y / N / N/A: one grey well; the answers are words with invisible pads and
-   the chosen one is lit (Yes green, No red, N/A gold). The phone's rule,
+   the chosen one is lit (Yes green, No red, N/A neutral). The phone's rule,
    sized for the rail. */
 .survey-rail .survey-rail__answers {
   flex: 0 0 auto;
@@ -722,9 +722,9 @@
   transform: scale(0.88);
 }
 
-/* The chosen answer (owner 2026-10-01): Y green, N red, N/A gold, each its
-   word on a small plate of the same hue; the phone sheet uses the same pairs
-   (mobileSurveyPanel.css). */
+/* The chosen answer (owner 2026-10-01): Y green, N red, N/A neutral grey
+   (--text-1 on a --border plate), each its word on a small plate; the phone
+   sheet uses the same pairs (mobileSurveyPanel.css). */
 .survey-rail .survey-rail__answer.is-active {
   height: 18px;
   border-radius: 4px;
@@ -732,7 +732,7 @@
 }
 .survey-rail .survey-rail__answer.is-yes { color: var(--success-text); background: var(--success-soft); }
 .survey-rail .survey-rail__answer.is-no { color: var(--danger-text); background: var(--danger-soft); }
-.survey-rail .survey-rail__answer.is-na { color: var(--accent); background: var(--accent-soft); }
+.survey-rail .survey-rail__answer.is-na { color: var(--text-1); background: var(--border); }
 
 .survey-rail .survey-rail__archived {
   padding: 2px 3px 7px var(--sv-detail-indent);
@@ -805,5 +805,5 @@
   background-color: var(--danger-soft) !important;
 }
 #chrome-right-host .survey-rail .survey-rail__answers > button.survey-rail__answer.is-active.is-na:not(:disabled):not([aria-disabled='true']) {
-  background-color: var(--accent-soft) !important;
+  background-color: var(--border) !important;
 }
