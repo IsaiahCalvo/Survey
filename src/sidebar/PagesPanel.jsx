@@ -11,6 +11,7 @@ import Icon from '../Icons';
 import Spinner from '../components/Spinner';
 import { useTooltip } from '../components/Tooltip';
 import { watchLightPopover } from '../components/dismissRules.js';
+import { getPageViewBase, pageViewKey, pageViewUprightKey } from '../utils/pageViewDocument.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const FAST_THUMBNAIL_SCALE = 0.15; // Ultra-fast, low-res (was 0.2)
@@ -21,6 +22,43 @@ const THUMBNAIL_JPEG_QUALITY = 0.72;
 const EAGER_PRELOAD_COUNT = 6;
 const CONCURRENCY_LIMIT = 4;
 
+
+// Thumbnails drawn for `previousDoc`, re-addressed to the pages of `nextDoc`
+// (a page view over the same document). null when the documents differ.
+function remapThumbnailsToView(previousDoc, nextDoc, previousThumbs) {
+  if (!previousDoc || !nextDoc || previousDoc === nextDoc) return null;
+  if (getPageViewBase(previousDoc) !== getPageViewBase(nextDoc)) return null;
+  const byKey = new Map();
+  const byUpright = new Map();
+  for (let page = 1; page <= (previousDoc.numPages || 0); page += 1) {
+    const thumb = previousThumbs?.[page];
+    if (!thumb || thumb.quality === 'stale') continue;
+    byKey.set(pageViewKey(previousDoc, page - 1), thumb);
+    const upright = pageViewUprightKey(previousDoc, page - 1);
+    byUpright.set(upright ? upright.key : pageViewKey(previousDoc, page - 1), { thumb, rotation: upright?.rotation || 0 });
+  }
+  const thumbnails = {};
+  const ratios = {};
+  for (let page = 1; page <= (nextDoc.numPages || 0); page += 1) {
+    const exact = byKey.get(pageViewKey(nextDoc, page - 1));
+    if (exact) {
+      thumbnails[page] = exact;
+      if (exact.width && exact.height) ratios[page] = (exact.height / exact.width) * 100;
+      continue;
+    }
+    const upright = pageViewUprightKey(nextDoc, page - 1);
+    const source = byUpright.get(upright ? upright.key : pageViewKey(nextDoc, page - 1));
+    if (!source) continue;
+    const turn = (((upright?.rotation || 0) - source.rotation) % 360 + 360) % 360;
+    thumbnails[page] = { ...source.thumb, quality: 'stale', cssRotate: turn };
+    if (source.thumb.width && source.thumb.height) {
+      ratios[page] = turn % 180 !== 0
+        ? (source.thumb.width / source.thumb.height) * 100
+        : (source.thumb.height / source.thumb.width) * 100;
+    }
+  }
+  return { thumbnails, ratios };
+}
 
 const PagesPanel = ({
   pdfDoc,
@@ -231,6 +269,20 @@ const PagesPanel = ({
     return Array.from({ length: numPages }, (_, i) => i + 1);
   }, [activeSpacePages, shouldShowPage, numPages]);
 
+  // A card is keyed by what it shows (pageViewDocument), not its number, so
+  // a moved page keeps its DOM node and already-decoded image.
+  const cardKeys = useMemo(() => {
+    const keys = {};
+    const seen = new Map();
+    allowedPages.forEach((pageNumber) => {
+      const key = pageViewKey(pdfDoc, pageNumber - 1);
+      const count = seen.get(key) || 0;
+      seen.set(key, count + 1);
+      keys[pageNumber] = `${key}#${count}`;
+    });
+    return keys;
+  }, [allowedPages, pdfDoc]);
+
   // Update selected page when pageNum prop changes
   useEffect(() => {
     if (allowedPages.includes(pageNum)) {
@@ -264,9 +316,31 @@ const PagesPanel = ({
     getAspectRatios();
   }, [pdfDoc, numPages, getThumbnail]);
 
+  // Owner 2026-10-01 (instant page operations): a page operation swaps in a
+  // page view over the same loaded document (utils/pageViewDocument.js). Keep
+  // every thumbnail already drawn, moved to its page's new slot, in the SAME
+  // render that shows the new page order (derived state, no blank frame); a
+  // just-rotated page shows its old image turned until the new one is drawn.
+  const [thumbnailDoc, setThumbnailDoc] = useState(pdfDoc);
+  if (thumbnailDoc !== pdfDoc) {
+    setThumbnailDoc(pdfDoc);
+    const remapped = remapThumbnailsToView(thumbnailDoc, pdfDoc, thumbnailsRef.current);
+    if (remapped) {
+      thumbnailsRef.current = remapped.thumbnails;
+      setThumbnails(remapped.thumbnails);
+      setPageAspectRatios(remapped.ratios);
+    }
+  }
+  const thumbnailDocRef = useRef(null);
   useEffect(() => {
-    setThumbnails({});
-    setPageAspectRatios({});
+    const previousDoc = thumbnailDocRef.current;
+    thumbnailDocRef.current = pdfDoc;
+    const sameDocument = previousDoc && pdfDoc && previousDoc !== pdfDoc
+      && getPageViewBase(previousDoc) === getPageViewBase(pdfDoc);
+    if (!sameDocument) {
+      setThumbnails({});
+      setPageAspectRatios({});
+    }
 
     // Reset Queue
     activeTasksRef.current.forEach(task => task.cancel());
@@ -443,6 +517,7 @@ const PagesPanel = ({
     // Check if already has a better or equal thumbnail
     const existing = thumbnailsRef.current[pageNumber];
     if (existing?.quality === 'crisp') return;
+    // 'stale' (a moved/rotated stand-in) is redrawn like a missing thumbnail.
     if (priority === 'fast' && existing?.quality === 'fast') {
       if (queueRef.current.crisp.find(j => j.pageNumber === pageNumber)) return;
       queueRef.current.crisp.push({ pageNumber });
@@ -804,8 +879,9 @@ const PagesPanel = ({
           const transformState = pageTransformations[pageNumber] || { rotation: 0, mirrorH: false, mirrorV: false };
           const rotationDelta = getRotationDelta(pageNumber);
           const transforms = [];
-          if (rotationDelta) {
-            transforms.push(`rotate(${rotationDelta}deg)`);
+          const thumbnailTurn = (rotationDelta + (Number(thumbnailMeta?.cssRotate) || 0)) % 360;
+          if (thumbnailTurn) {
+            transforms.push(`rotate(${thumbnailTurn}deg)`);
           }
           if (transformState.mirrorH) {
             transforms.push('scaleX(-1)');
@@ -817,7 +893,7 @@ const PagesPanel = ({
 
           return (
             <div
-              key={pageNumber}
+              key={cardKeys[pageNumber]}
               className={mobileMode ? `mobile-page-card${isSelected ? ' is-active' : ''}${isMobileSelected ? ' is-selected' : ''}` : undefined}
               ref={el => { thumbnailRefs.current[pageNumber] = el; }}
               data-page-number={pageNumber}
