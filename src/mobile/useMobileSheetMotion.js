@@ -4,6 +4,8 @@ import {
   KEYBOARD_MOTION_MS,
   SHEET_AT_REST_ATTR,
   isKeyboardEditable,
+  keyboardClockRunning,
+  keyboardFollowFrames,
 } from './keyboardViewport.js';
 
 /*
@@ -841,8 +843,6 @@ export function useMobileSheetMotion(onClose, options = {}) {
     let drag = null;
     let backdrop = null;
     let backdropAnim = null;
-    let padAnim = null;
-    let lastPad = null;
     let finishFrame = 0;
     let pinned = [];
     let pinnedAnims = [];
@@ -985,6 +985,9 @@ export function useMobileSheetMotion(onClose, options = {}) {
     // resting box the sheet's CSS gives it now.
     const glide = (from, natural, timing) => {
       window.cancelAnimationFrame(finishFrame);
+      // Already gliding: the new glide continues the motion; from rest it
+      // starts at the curve's own beginning (keyboardFollowFrames).
+      const fromRest = !anim;
       stopAnim();
       if (!from || !natural
         || (Math.abs(from.top - natural.top) < 1 && Math.abs(from.bottom - natural.bottom) < 1)) {
@@ -1007,6 +1010,17 @@ export function useMobileSheetMotion(onClose, options = {}) {
       mode = 'glide';
       clearPinned();
       pinned = findPinned();
+      // While the keyboard moves, every glide rides ITS clock (one clock for
+      // the keyboard, the sheets and the lists - keyboardViewport.js): from
+      // where the top edge is now to rest, landing with the keyboard. A
+      // correction of the keyboard's height mid-way starts here again from
+      // the edge's current place, so it bends the motion instead of adding a
+      // second one.
+      const follow = timing.keyboard ? keyboardFollowFrames(y0, y1, view.performance.now(), { fromRest }) : null;
+      if (follow) {
+        run(follow.points, follow.ms, follow.easing, settleToRest);
+        return;
+      }
       run(
         [{ y: y0, offset: 0 }, { y: y1, offset: 1 }],
         timing.ms,
@@ -1022,29 +1036,11 @@ export function useMobileSheetMotion(onClose, options = {}) {
       readKeyboardSignature(),
     ].join('|');
 
-    // KEYBOARD PADDING (expandable sheets, mobilePdfViewer.css): the sheet
-    // does not move for the keyboard; its content area ends at the keyboard
-    // top. The padding that does this eases on the keyboard's clock, so rows
-    // are covered / uncovered behind the keyboard as it moves, and a list
-    // scrolled to its end comes back down WITH the keyboard instead of
-    // jumping when the room returns.
-    const animatePad = () => {
-      if (el.getAttribute('data-sheet-keyboard') !== 'pad') return;
-      const fromPad = padAnim ? parseFloat(view.getComputedStyle(el).paddingBottom) : lastPad;
-      padAnim?.cancel();
-      padAnim = null;
-      const toPad = parseFloat(view.getComputedStyle(el).paddingBottom);
-      lastPad = toPad;
-      if (!canAnimate || fromPad == null || !Number.isFinite(fromPad) || Math.abs(toPad - fromPad) < 1
-        || prefersReducedMotion()) return;
-      const next = el.animate(
-        [{ paddingBottom: `${fromPad}px` }, { paddingBottom: `${toPad}px` }],
-        { duration: KEYBOARD_MOTION_MS, easing: KEYBOARD_MOTION_EASING },
-      );
-      padAnim = next;
-      next.onfinish = () => { if (padAnim === next) padAnim = null; };
-    };
-
+    // KEYBOARD (mobilePdfViewer.css, keyboardViewport.js): an expandable
+    // sheet does not move for the keyboard at all - the keyboard slides over
+    // its lower part and its lists get scroll room at their end, so nothing
+    // in it is laid out again per frame. A one-height sheet stands on the
+    // keyboard: its box lands at once and the glide below carries it there.
     const handle = (source) => {
       if (source === 'resize' && (anim || mode === 'drag')) return; // our own hold
       const nextSignature = readSignature();
@@ -1053,8 +1049,6 @@ export function useMobileSheetMotion(onClose, options = {}) {
       const nextKeyboard = readKeyboardSignature();
       const keyboardMoved = nextKeyboard !== keyboardSignature;
       keyboardSignature = nextKeyboard;
-      if (keyboardMoved) animatePad();
-      else if (!padAnim) lastPad = parseFloat(view.getComputedStyle(el).paddingBottom);
       // A drag or its settle owns the sheet; it lets go of the hold itself.
       if (mode === 'drag' || mode === 'settle') return;
       const live = liveRef.current || {};
@@ -1080,8 +1074,11 @@ export function useMobileSheetMotion(onClose, options = {}) {
         settleToRest();
         return;
       }
-      const timing = keyboardMoved
-        ? { ms: KEYBOARD_MOTION_MS, easing: KEYBOARD_MOTION_EASING }
+      // Anything that changes while the keyboard moves was caused by it (the
+      // lift, a browse panel rising to Full as you start typing, settling
+      // back as you finish): it all goes on the keyboard's clock.
+      const timing = keyboardMoved || keyboardClockRunning(view.performance.now())
+        ? { ms: KEYBOARD_MOTION_MS, easing: KEYBOARD_MOTION_EASING, keyboard: true }
         : { ms: SHEET_RESIZE_MS, easing: SHEET_RESIZE_EASING };
       glide(from, natural, timing);
     };
@@ -1235,20 +1232,17 @@ export function useMobileSheetMotion(onClose, options = {}) {
 
     signature = readSignature();
     keyboardSignature = readKeyboardSignature();
-    lastPad = parseFloat(view.getComputedStyle(el).paddingBottom);
     box = naturalBox();
     const mutations = new MutationObserver(() => handle('mutation'));
     mutations.observe(el, { attributes: true, attributeFilter: ['class', 'style'] });
     mutations.observe(root, { attributes: true, attributeFilter: ['class', 'style', 'data-keyboard-open'] });
-    // border-box: the keyboard padding changes the content box every frame
-    // while it eases, and that is not a resize of the sheet.
+    // border-box: only the sheet's own box counts as a resize.
     const resizes = typeof ResizeObserver === 'function' ? new ResizeObserver(() => handle('resize')) : null;
     resizes?.observe(el, { box: 'border-box' });
     return () => {
       mutations.disconnect();
       resizes?.disconnect();
       window.cancelAnimationFrame(finishFrame);
-      padAnim?.cancel();
       clearBackdrop();
       stopAnim();
       setHold(null);

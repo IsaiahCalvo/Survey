@@ -29,9 +29,21 @@ import { readFileSync } from 'node:fs';
 import {
   KEYBOARD_INSET_VAR,
   KEYBOARD_MIN_INSET_PX,
+  KEYBOARD_MOTION_EASING,
+  KEYBOARD_MOTION_MS,
   KEYBOARD_OPEN_ATTR,
   KEYBOARD_PREDICT_FRACTION,
+  KEYBOARD_RETARGET_MS,
+  KEYBOARD_SCROLL_ROOM_ATTR,
+  KEYBOARD_SCROLL_ROOM_VAR,
   createKeyboardViewportController,
+  getKeyboardClock,
+  keyboardClockRunning,
+  keyboardClockValue,
+  keyboardFollowFrames,
+  resetKeyboardClock,
+  retargetKeyboardClock,
+  startKeyboardClock,
   isKeyboardEditable,
   isAppleTouchWebKit,
   measureKeyboardInset,
@@ -170,11 +182,16 @@ test('a 336px keyboard publishes the inset and the open marker; the chrome never
   assert.equal(phone.attributes.get(KEYBOARD_OPEN_ATTR), 'true');
 
   // The bug: header, rail and dock used to ride up with the document. The
-  // controller writes one variable and one attribute on <html> and nothing
-  // else, so no chrome rectangle can change.
+  // controller writes only the keyboard variables and markers on <html> and
+  // nothing else, so no chrome rectangle can change.
+  // 2026-10-01 (owner: "a smoother animation when things ... come back
+  // down"): besides the inset it publishes the PDF scroller's room
+  // (--keyboard-scroll-room), which outlives the inset by the length of the
+  // keyboard's slide down so the page can glide back out of it.
   assert.deepEqual(chromeRects(), before);
-  assert.deepEqual([...phone.styles.keys()], [KEYBOARD_INSET_VAR]);
-  assert.deepEqual([...phone.attributes.keys()], [KEYBOARD_OPEN_ATTR]);
+  assert.deepEqual([...phone.styles.keys()].sort(), [KEYBOARD_INSET_VAR, KEYBOARD_SCROLL_ROOM_VAR].sort());
+  assert.deepEqual([...phone.attributes.keys()].sort(), [KEYBOARD_OPEN_ATTR, KEYBOARD_SCROLL_ROOM_ATTR].sort());
+  assert.equal(phone.styles.get(KEYBOARD_SCROLL_ROOM_VAR), `${KEYBOARD_H}px`);
 
   controller.dispose();
 });
@@ -204,7 +221,31 @@ test('closing the keyboard puts everything back', () => {
   assert.equal(controller.getInset(), 0);
   assert.equal(phone.styles.get(KEYBOARD_INSET_VAR), '0px');
   assert.equal(phone.attributes.get(KEYBOARD_OPEN_ATTR), undefined);
+  // No timers in this fake window: the scroll room goes with the inset.
+  assert.equal(phone.styles.has(KEYBOARD_SCROLL_ROOM_VAR), false);
+  assert.equal(phone.attributes.has(KEYBOARD_SCROLL_ROOM_ATTR), false);
 
+  controller.dispose();
+});
+
+test('the PDF scroll room is held until the keyboard has finished going down', () => {
+  const phone = createFakePhone();
+  const timers = [];
+  let now = 1000;
+  phone.win.performance = { now: () => now };
+  phone.win.setTimeout = (fn, ms) => { timers.push({ fn, ms }); return timers.length; };
+  phone.win.clearTimeout = () => {};
+  const controller = createKeyboardViewportController({ window: phone.win, root: phone.root });
+  phone.raiseKeyboard(KEYBOARD_H);
+  now += 600;
+  phone.lowerKeyboard();
+  assert.equal(controller.getInset(), 0);
+  assert.equal(phone.styles.get(KEYBOARD_SCROLL_ROOM_VAR), `${KEYBOARD_H}px`, 'still there while the keyboard slides down');
+  const drop = timers.find((t) => t.ms >= KEYBOARD_MOTION_MS);
+  assert.ok(drop, 'dropped when the slide is over');
+  drop.fn();
+  assert.equal(phone.styles.has(KEYBOARD_SCROLL_ROOM_VAR), false);
+  assert.equal(phone.attributes.has(KEYBOARD_SCROLL_ROOM_ATTR), false);
   controller.dispose();
 });
 
@@ -236,6 +277,9 @@ test('disposing clears the inset so a closed viewer leaves no residue', () => {
 
   assert.equal(phone.styles.has(KEYBOARD_INSET_VAR), false);
   assert.equal(phone.attributes.has(KEYBOARD_OPEN_ATTR), false);
+  assert.equal(phone.styles.has(KEYBOARD_SCROLL_ROOM_VAR), false);
+  assert.equal(phone.attributes.has(KEYBOARD_SCROLL_ROOM_ATTR), false);
+  assert.equal(getKeyboardClock().phase, null, 'the keyboard clock is reset');
 });
 
 test('the mobile shell is pinned so the document has no reveal scroll to give', () => {
@@ -256,22 +300,31 @@ test('the mobile shell is pinned so the document has no reveal scroll to give', 
 // (at Full while you type) and only its content area ends at the keyboard, so
 // its edges never move with the keyboard. Only the one-height sheets ('lift')
 // still stand on it. This test used to pin the lift for EVERY sheet.
-test('only the PDF scroller and the bottom sheets spend the keyboard inset', () => {
+// RULED CHANGE 2026-10-01 (owner, iPhone, after that: "it needs a smoother
+// animation when things move up out of the way of the keyboard and come back
+// down"): a browse panel's content area no longer ENDS at the keyboard (a
+// bottom padding eased per frame - a layout of the whole panel on every frame,
+// and an edge moving on its own). Its lists keep their height and get scroll
+// room at their end instead (keyboardViewport.js applyRooms), and the PDF
+// scroller's room is --keyboard-scroll-room, held until the keyboard is down.
+// This test used to pin the eased padding.
+test('only the bottom sheets spend the keyboard inset; browse panels get scroll room', () => {
   assert.match(
     MOBILE_VIEWER_CSS_SOURCE,
-    /html\.survey-viewer-open\[data-keyboard-open='true'\] \[data-mobile-pdf-surface='true'\] \[data-pdfjs-content='true'\] \{\s*box-sizing: content-box;\s*padding-bottom: var\(--keyboard-inset, 0px\);/,
+    /html\.survey-viewer-open\[data-keyboard-scroll-room\] \[data-mobile-pdf-surface='true'\] \[data-pdfjs-content='true'\] \{\s*box-sizing: content-box;\s*padding-bottom: var\(--keyboard-scroll-room, 0px\);/,
     // content-box is load-bearing: the app's global border-box made the padding
     // eat the node's inline height instead of extending its box, and the PDF
     // gained ZERO extra scroll range (measured live 2026-09-22).
   );
-  const padRule = /html\[data-keyboard-open='true'\] \[data-mobile-sheet\]\[data-sheet-keyboard='pad'\] \{([^}]*)\}/.exec(MOBILE_VIEWER_CSS_SOURCE);
-  assert.ok(padRule, 'a browse panel pads its content for the keyboard');
-  // Only padding: no bottom / height / max-height, so the sheet's edges stay.
-  assert.match(padRule[1], /padding-bottom: calc\(max\(0px, var\(--keyboard-inset, 0px\) - var\(--mobile-dock-bar-height\)\) \+ 12px\);/);
-  assert.doesNotMatch(padRule[1], /(^|\s)(bottom|height|max-height|top):/);
-  // Not !important: the hook eases it on the keyboard's clock with a Web
-  // Animation, which an !important declaration would override.
-  assert.doesNotMatch(padRule[1], /!important/);
+  // No browse-panel padding rule any more: the sheet's box never changes.
+  assert.doesNotMatch(MOBILE_VIEWER_CSS_SOURCE, /\[data-sheet-keyboard='pad'\] \{/);
+  const roomRule = /\[data-mobile-sheet\] \[data-keyboard-room\]::after \{([^}]*)\}/.exec(MOBILE_VIEWER_CSS_SOURCE);
+  assert.ok(roomRule, 'a list in a browse panel gets room at its end');
+  assert.match(roomRule[1], /content: '';/);
+  assert.match(roomRule[1], /height: var\(--keyboard-room, 0px\);/);
+  assert.match(roomRule[1], /flex: none;/);
+  // ...and a list sized by its content keeps its height instead of growing.
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\[data-mobile-sheet\] \[data-keyboard-room\] \{\s*max-height: var\(--keyboard-room-hold, none\) !important;/);
   const liftRule = /html\[data-keyboard-open='true'\] \[data-mobile-sheet\]:not\(\[data-sheet-keyboard='pad'\]\) \{([^}]*)\}/.exec(MOBILE_VIEWER_CSS_SOURCE);
   assert.ok(liftRule, 'the one-height sheets lift onto the keyboard');
   // A sheet stands on the dock at rest, so with the keyboard up it stands on
@@ -284,8 +337,8 @@ test('only the PDF scroller and the bottom sheets spend the keyboard inset', () 
   assert.doesNotMatch(liftRule[1], /transition/);
   // Nothing else may react to it: the header, rail and dock stay put.
   const consumers = MOBILE_VIEWER_CSS_SOURCE.match(/var\(--keyboard-inset/g) || [];
-  const inSheetRules = (padRule[1] + liftRule[1]).match(/var\(--keyboard-inset/g) || [];
-  assert.equal(consumers.length, 1 + inSheetRules.length, 'only these rules may read --keyboard-inset');
+  const inSheetRules = liftRule[1].match(/var\(--keyboard-inset/g) || [];
+  assert.equal(consumers.length, inSheetRules.length, 'only the lift rule may read --keyboard-inset');
   // The hook tells the two kinds apart.
   assert.match(SHEET_MOTION_SOURCE, /'data-sheet-keyboard': expandable \? 'pad' : 'lift',/);
 });
@@ -547,7 +600,102 @@ test('revealAboveKeyboard with animate glides the list on the keyboard clock', (
   frames.shift()();
   assert.ok(list.scrollTop > 0 && list.scrollTop < target);
   assert.equal(revealAboveKeyboard(field, { win, inset: KEYBOARD_H, animate: true }), false);
-  now = 400;
+  now = KEYBOARD_MOTION_MS + 100;
   while (frames.length) frames.shift()();
   assert.equal(Math.round(list.scrollTop), target);
+});
+
+/*
+ * OWNER 2026-10-01 (iPhone, third pass): "it needs a smoother animation when
+ * things move up out of the way of the keyboard and come back down". One
+ * clock for everything that moves for the keyboard: it starts at the focus /
+ * blur, runs the keyboard's curve for the keyboard's real duration (~0.5s, not
+ * the 0.25s UIKit reports), and a corrected height bends it - never a jump.
+ */
+test('the keyboard clock: the real curve and length, started by the focus', () => {
+  assert.equal(KEYBOARD_MOTION_MS, 500);
+  assert.equal(KEYBOARD_MOTION_EASING, 'cubic-bezier(0.38, 0.7, 0.125, 1)');
+  const phone = createFakePhone();
+  const listeners = new Map();
+  let now = 5000;
+  phone.win.performance = { now: () => now };
+  phone.win.addEventListener = (type, fn) => listeners.set(type, fn);
+  phone.win.removeEventListener = (type) => listeners.delete(type);
+  const controller = createKeyboardViewportController({ window: phone.win, root: phone.root, predict: true });
+  listeners.get('focusin')({ target: fakeInput() });
+  const clock = getKeyboardClock();
+  assert.equal(clock.phase, 'show');
+  assert.equal(clock.start, 5000, 'starts at the focus, before any resize event');
+  assert.equal(clock.from, 0);
+  assert.equal(clock.to, controller.getInset(), 'heading for the predicted height');
+  // The real keyboard is 40px shorter than the guess: same end, no jump.
+  now = 5100;
+  const before = keyboardClockValue(now);
+  phone.raiseKeyboard(clock.to - 40);
+  assert.equal(getKeyboardClock().start + getKeyboardClock().ms, 5000 + KEYBOARD_MOTION_MS, 'same end');
+  assert.ok(Math.abs(keyboardClockValue(now) - before) < 0.5, 'no jump');
+  assert.ok(Math.abs(keyboardClockValue(5000 + KEYBOARD_MOTION_MS) - (clock.to - 40)) < 0.5, 'lands on the real height');
+  controller.dispose();
+});
+
+test('a late height correction gets a short glide of its own, from where the clock is', () => {
+  startKeyboardClock('show', 0, 346, 0);
+  // Safari reports the height only when the keyboard has finished.
+  retargetKeyboardClock(336, 600);
+  const c = getKeyboardClock();
+  assert.equal(c.start, 600);
+  assert.equal(c.ms, KEYBOARD_RETARGET_MS);
+  assert.equal(keyboardClockValue(600), 346);
+  assert.equal(keyboardClockValue(600 + KEYBOARD_RETARGET_MS), 336);
+  resetKeyboardClock();
+});
+
+test('followers land with the keyboard: keyframes on the rest of the clock', () => {
+  startKeyboardClock('show', 0, 336, 1000);
+  // From the start: the curve itself.
+  const fresh = keyboardFollowFrames(0, -266, 1000);
+  assert.equal(fresh.ms, KEYBOARD_MOTION_MS);
+  assert.equal(fresh.easing, KEYBOARD_MOTION_EASING);
+  // Part-way, already moving (a correction): sampled, ending at the same time.
+  const mid = keyboardFollowFrames(-100, -250, 1200);
+  assert.equal(mid.ms, KEYBOARD_MOTION_MS - 200);
+  assert.equal(mid.easing, 'linear');
+  assert.equal(mid.points[0].y, -100);
+  assert.equal(mid.points.at(-1).y, -250);
+  for (let i = 1; i < mid.points.length; i += 1) assert.ok(mid.points[i].y <= mid.points[i - 1].y, 'one direction only');
+  // Part-way but still at rest (a busy frame at the blur): the curve's own
+  // gentle start, squeezed into what is left - no kick.
+  const rest = keyboardFollowFrames(0, -100, 1200, { fromRest: true });
+  assert.equal(rest.easing, KEYBOARD_MOTION_EASING);
+  assert.equal(rest.ms, KEYBOARD_MOTION_MS - 200);
+  // No keyboard motion: nothing to follow.
+  assert.equal(keyboardClockRunning(1600), false);
+  assert.equal(keyboardFollowFrames(0, 10, 1600), null);
+  resetKeyboardClock();
+});
+
+test('the blur starts the clock down at once, from where the keyboard is', () => {
+  const phone = createFakePhone();
+  const listeners = new Map();
+  let now = 0;
+  phone.win.performance = { now: () => now };
+  phone.win.addEventListener = (type, fn) => listeners.set(type, fn);
+  phone.win.removeEventListener = (type) => listeners.delete(type);
+  const frames = [];
+  phone.win.requestAnimationFrame = (fn) => { frames.push(fn); return frames.length; };
+  phone.win.document.activeElement = null;
+  const controller = createKeyboardViewportController({ window: phone.win, root: phone.root, predict: true });
+  const flush = () => { while (frames.length) frames.shift()(); };
+  phone.raiseKeyboard(KEYBOARD_H);
+  flush();
+  now = 2000;
+  listeners.get('focusout')({});
+  now = 2016;
+  flush();
+  const c = getKeyboardClock();
+  assert.equal(c.phase, 'hide');
+  assert.equal(c.start, 2000, 'the clock starts at the blur, not a frame later');
+  assert.equal(c.from, KEYBOARD_H);
+  assert.equal(c.to, 0);
+  controller.dispose();
 });

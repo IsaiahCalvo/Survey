@@ -242,8 +242,8 @@ html.survey-viewer-open #root {
      the scroller's clientHeight, which the viewer's layout maths reads — so a
      caret on the last line of the last page can still be scrolled clear of the
      keyboard, and the reveal in src/components/TextEditOverlay.jsx has the
-     range it needs. Inert when the keyboard is down: no `data-keyboard-open`,
-     and --keyboard-inset is 0px regardless.
+     range it needs. Inert when the keyboard is down: no
+     `data-keyboard-scroll-room` once it has finished going down.
 
      `box-sizing: content-box` is load-bearing and was found the hard way
      (measured live 2026-09-22): the app's global border-box makes the padding
@@ -252,9 +252,15 @@ html.survey-viewer-open #root {
      keyboard. Content-box makes the padding ADD to that height, which is the
      whole point. The node's children are absolutely positioned, so nothing
      inside it shifts either way. */
-  html.survey-viewer-open[data-keyboard-open='true'] [data-mobile-pdf-surface='true'] [data-pdfjs-content='true'] {
+  /* OWNER 2026-10-01 (iPhone: "a smoother animation when things ... come back
+     down"): the room is --keyboard-scroll-room, not the inset itself. It is
+     the inset while the keyboard is up, but keyboardViewport.js holds it
+     until the keyboard is DOWN, so a page scrolled into it glides back out on
+     the keyboard's clock instead of being clamped 100+px in one frame when
+     the room vanished at the blur. */
+  html.survey-viewer-open[data-keyboard-scroll-room] [data-mobile-pdf-surface='true'] [data-pdfjs-content='true'] {
     box-sizing: content-box;
-    padding-bottom: var(--keyboard-inset, 0px);
+    padding-bottom: var(--keyboard-scroll-room, 0px);
   }
 }
 
@@ -3243,17 +3249,44 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
    the page in a gap under the sheet, and every frame re-laid out the panel.
    Now a browse panel ('pad': Pages, Search, Bookmarks, Spaces, History,
    Survey) does not move for the keyboard at all. It is at Full whenever you
-   type (the hook raises it), the keyboard simply slides up over its lower part,
-   and the sheet's content area ends at the keyboard's top edge (this padding),
-   so a field can always be scrolled above it (keyboardViewport.js
-   revealAboveKeyboard). The padding eases on the keyboard's clock (the hook),
-   so rows are covered and uncovered behind the moving keyboard and a list
-   scrolled to its end comes back down WITH the keyboard on dismiss.
-   The keyboard covers the dock, so only the part of it above the dock's top
-   (where the sheet's foot is) needs padding. Not !important: the hook's Web
-   Animation of it must be able to win while it eases. */
-html[data-keyboard-open='true'] [data-mobile-sheet][data-sheet-keyboard='pad'] {
-  padding-bottom: calc(max(0px, var(--keyboard-inset, 0px) - var(--mobile-dock-bar-height)) + 12px);
+   type (the hook raises it) and the keyboard simply slides up over its lower
+   part.
+
+   OWNER 2026-10-01 (after that: "it needs a smoother animation when things
+   move up out of the way of the keyboard and come back down"). The sheet's
+   content area used to END at the keyboard (a bottom padding eased on the
+   keyboard's clock): that re-laid out the whole panel on every frame of the
+   keyboard, and its eased edge was one more thing moving on its own. Now the
+   panel's lists keep their height - the keyboard covers their lower part, as
+   it covers any app - and each list gets that much extra scroll ROOM at its
+   end instead (keyboardViewport.js applyRooms marks it data-keyboard-room and
+   sets --keyboard-room), so every row can still be scrolled above the
+   keyboard. The room is below the last row: adding it or taking it away
+   changes nothing on screen. A list the keyboard made scroll comes back with
+   a compositor glide on the keyboard's clock (keyboardViewport.js).
+   A list sized by its content (the Survey list) would grow by the room
+   instead of scrolling into it, so it is held at the height it had
+   (--keyboard-room-hold) for as long as the room is there. */
+[data-mobile-sheet] [data-keyboard-room] {
+  max-height: var(--keyboard-room-hold, none) !important;
+}
+
+[data-mobile-sheet] [data-keyboard-room]::after {
+  content: '';
+  display: block;
+  flex: none;
+  grid-column: 1 / -1;
+  height: var(--keyboard-room, 0px);
+  pointer-events: none;
+}
+
+/* While a list carries the field you are typing in to its place (a compositor
+   glide, keyboardViewport.js), the iOS caret - drawn by WebKit from the
+   field's laid-out box, not from the animated one - would stand still beside
+   the moving field. It is hidden for that half second and appears where the
+   field lands. */
+[data-keyboard-gliding] {
+  caret-color: transparent !important;
 }
 
 /* A one-height sheet ('lift': the colour, tool "..." and text sheets, Active
