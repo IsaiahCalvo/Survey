@@ -74,8 +74,30 @@ export const SHEET_CLOSE_UNMOUNT_MS = SHEET_CLOSE_MS + 30;
  * carry the sheet (its top edge plus SHEET_PROJECT_MS of the finger's speed),
  * and a firm flick (SHEET_DISMISS_VY) always goes the way it was thrown. A pull
  * down past SHEET_DISMISS_DY (or a downward flick) from Standard closes the
- * sheet; from Full it steps down to Standard, unless the sheet passed
- * `pullDownCloses` (the Survey panel closes from any height).
+ * sheet; from Full it steps down to Standard - however hard the flick - so
+ * from Full it takes two swipes to close (owner 2026-10-01: "the first swipe
+ * down should drop the panel to its small size, and a second swipe down should
+ * close it. The Spaces panel already works this way."). Every sheet works this
+ * way; the Survey panel's one-swipe close (`pullDownCloses`) is gone.
+ *
+ * WHEN A SHEET CHANGES HEIGHT ON ITS OWN (owner 2026-10-01: "Expanding a
+ * category with a single item sent the panel all the way to full height,
+ * though the one item was already perfectly visible"). One rule, here:
+ *  - It GROWS (Standard -> Full) for two reasons only:
+ *      typing   - a field in it takes the focus (the keyboard must never
+ *                 cover what you type into);
+ *      revealing - something you opened (revealInSheet) would not fit in the
+ *                 part of the list you can see. If it fits, nothing moves. If
+ *                 a short scroll of the list shows all of it without pushing
+ *                 the row you tapped off the top, the list scrolls and the
+ *                 sheet stays. Only otherwise does it grow to Full (and the
+ *                 list scrolls as far as it then needs, the tapped row kept
+ *                 in view). Content already in view never grows it.
+ *  - It SHRINKS back on its own only when every reason it grew for is gone
+ *    (you finished typing; you closed what you opened - endSheetReveal) and
+ *    only to the height it had before. If you moved the sheet yourself in
+ *    the meantime, it stays where you put it. An explicit control
+ *    (setDetent - e.g. the Survey "Locate" button) always wins.
  */
 export const SHEET_DETENT_STANDARD = 0;
 export const SHEET_DETENT_FULL = 1;
@@ -86,6 +108,47 @@ export const SHEET_PROJECT_MS = 180;
 // Upward travel that alone (a slow pull) is still "nearest Standard". Kept for
 // the guard tests' vocabulary; the nearest-height rule above decides.
 export const SHEET_EXPAND_DY = 48;
+
+/*
+ * REVEAL (see WHEN A SHEET CHANGES HEIGHT ON ITS OWN above). A panel that has
+ * just opened something calls revealInSheet(block, { anchor }) - `block` is
+ * the opened thing (the row and what it revealed), `anchor` the row that was
+ * tapped - and endSheetReveal(anyElementInTheSheet) once it has closed it all
+ * again. Both are DOM events that bubble to the sheet, so a panel needs no
+ * props from the hook.
+ */
+export const SHEET_REVEAL_EVENT = 'mobilesheetreveal';
+export function revealInSheet(block, { anchor = block, scroll = true } = {}) {
+  if (!block || typeof CustomEvent !== 'function') return;
+  block.dispatchEvent(new CustomEvent(SHEET_REVEAL_EVENT, { bubbles: true, detail: { block, anchor, scroll } }));
+}
+export function endSheetReveal(el) {
+  if (!el || typeof CustomEvent !== 'function') return;
+  el.dispatchEvent(new CustomEvent(SHEET_REVEAL_EVENT, { bubbles: true, detail: { end: true } }));
+}
+
+/*
+ * The reveal rule as numbers (screen px, + is down). `viewTop` / `viewBottom`
+ * bound the part of the list you can see now; `anchorTop` is the tapped row's
+ * top, `blockBottom` the opened block's bottom once laid out; `scrollRoom` is
+ * how much further the list can scroll; `fullGain` how much taller the visible
+ * part gets at Full (0 when the sheet cannot grow). Returns { grow, scrollBy }.
+ */
+export function planSheetReveal({ viewTop, viewBottom, anchorTop, blockBottom, scrollRoom = 0, fullGain = 0 }) {
+  const hidden = blockBottom - viewBottom;
+  if (!(hidden > 1)) return { grow: false, scrollBy: 0 };
+  // Scrolling further than this would push the tapped row off the top.
+  const keepAnchor = Math.max(0, anchorTop - viewTop);
+  const room = Math.max(0, scrollRoom);
+  if (hidden <= Math.min(keepAnchor, room) + 1) return { grow: false, scrollBy: Math.ceil(hidden) };
+  if (fullGain > 1) {
+    const stillHidden = hidden - fullGain;
+    // At Full the list shows fullGain more px, so it has that much less room.
+    const scrollBy = stillHidden > 1 ? Math.min(stillHidden, keepAnchor, Math.max(0, room - fullGain)) : 0;
+    return { grow: true, scrollBy: Math.max(0, Math.ceil(scrollBy)) };
+  }
+  return { grow: false, scrollBy: Math.ceil(Math.min(hidden, keepAnchor, room)) };
+}
 
 /*
  * SETTLE (owner 2026-10-01: "when I swipe up and down to make it grow, that
@@ -341,10 +404,8 @@ function suppressNextClick(doc) {
  *   Standard up to Full, and rises to Full when you type in it.
  * @param {boolean} [options.fullscreenable]  accepted for older callers; with
  *   two heights an expandable sheet's taller height IS Full.
- * @param {boolean} [options.pullDownCloses]  a downward pull past the dismiss
- *   threshold closes the sheet from ANY height instead of stepping down to
- *   Standard first (the Survey panel, owner 2026-10-01: one swipe closes it and
- *   reopening restores where you were).
+ * (`pullDownCloses` is gone - owner 2026-10-01: every sheet steps down from
+ *   Full to Standard first, like Spaces.)
  * @param {boolean} [options.open]  whether the sheet is currently shown. Drives
  *   the slide-up entrance. Sheets that mount only while open can leave this at
  *   its default; sheets that stay mounted and toggle a collapsed class (the hub
@@ -359,7 +420,7 @@ function suppressNextClick(doc) {
  * keyboard rules in mobilePdfViewer.css.
  */
 export function useMobileSheetMotion(onClose, options = {}) {
-  const { canStartDrag, contentKey, expandable = false, open = true, pullDownCloses = false } = options;
+  const { canStartDrag, contentKey, expandable = false, open = true } = options;
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const closeTimerRef = useRef(0);
@@ -394,8 +455,46 @@ export function useMobileSheetMotion(onClose, options = {}) {
     setSheetEl(el);
   }, []);
   const gestureRef = useRef({ mode: null });
-  // { from, to } while a sheet is raised for typing (see onFocusIn below).
-  const typingRestoreRef = useRef(null);
+  // Why the sheet stands taller than it was (WHEN A SHEET CHANGES HEIGHT ON
+  // ITS OWN, header): `reasons` holds 'typing' / 'reveal' while they last,
+  // `from` the height to settle back to once they are all gone. Empty when the
+  // height is the user's own choice.
+  const growRef = useRef({ from: null, reasons: new Set() });
+  const forgetGrow = () => {
+    growRef.current.reasons.clear();
+    growRef.current.from = null;
+  };
+  const setDetentByHand = useCallback((next) => {
+    growRef.current.reasons.clear();
+    growRef.current.from = null;
+    setDetent(next);
+  }, []);
+  // Grow to Full for `reason`. A sheet already at Full for another of our
+  // reasons notes this one too; one the user put at Full is left alone.
+  const raiseFor = (reason) => {
+    const grow = growRef.current;
+    const live = liveRef.current || {};
+    if (grow.reasons.size) {
+      grow.reasons.add(reason);
+      return true;
+    }
+    if (!live.open || !live.expandable || live.detent >= live.maxDetent) return false;
+    grow.from = live.detent;
+    grow.reasons.add(reason);
+    setDetent(live.maxDetent);
+    return true;
+  };
+  // `reason` is over: once nothing holds the sheet up, back to where it was.
+  const lowerFor = (reason) => {
+    const grow = growRef.current;
+    if (!grow.reasons.delete(reason) || grow.reasons.size) return;
+    const { from } = grow;
+    grow.from = null;
+    // Closing (the tap that closed it also took the focus): it slides off at
+    // the height it has, and reopens at Standard anyway.
+    if (from === null || liveRef.current?.closing) return;
+    setDetent((current) => (current === SHEET_DETENT_FULL ? from : current));
+  };
 
   // PANEL TO PANEL hand-over (see the header). `registry` is this sheet's entry.
   const registry = registryRef.current;
@@ -414,6 +513,7 @@ export function useMobileSheetMotion(onClose, options = {}) {
     setClosing(false);
     setCloseMotion(null);
     setDetent(SHEET_DETENT_STANDARD);
+    forgetGrow();
     setEnterPhase(null);
     onCloseRef.current?.();
   };
@@ -504,6 +604,7 @@ export function useMobileSheetMotion(onClose, options = {}) {
     if (open === wasOpenRef.current) return;
     wasOpenRef.current = open;
     engineRef.current?.reset();
+    forgetGrow();
     if (!open) {
       registry.openTick = -1;
       registry.awaitingHandover = false;
@@ -573,6 +674,7 @@ export function useMobileSheetMotion(onClose, options = {}) {
     if (prefersReducedMotion()) {
       engineRef.current?.reset();
       setDetent(SHEET_DETENT_STANDARD);
+      forgetGrow();
       onClose?.();
       return;
     }
@@ -633,6 +735,7 @@ export function useMobileSheetMotion(onClose, options = {}) {
       setClosing(false);
       setCloseMotion(null);
       setDetent(SHEET_DETENT_STANDARD);
+      forgetGrow();
       onClose?.();
     }, motion ? motion.ms + (SHEET_CLOSE_UNMOUNT_MS - SHEET_CLOSE_MS) : SHEET_CLOSE_UNMOUNT_MS);
     // finishCloseNow / registry only touch refs and state setters.
@@ -648,7 +751,9 @@ export function useMobileSheetMotion(onClose, options = {}) {
   const chooseRelease = useCallback((drag, vy) => {
     const restTop = drag.start === SHEET_DETENT_FULL ? drag.topFull : drag.topStandard;
     const travel = drag.top - restTop; // + is down
-    const canClose = !expandable || drag.start === SHEET_DETENT_STANDARD || pullDownCloses;
+    // From Full a pull down (even a hard flick) only steps down to Standard;
+    // the next one closes (owner 2026-10-01, every sheet like Spaces).
+    const canClose = !expandable || drag.start === SHEET_DETENT_STANDARD;
     const pushedBack = vy < -0.25;
     if (canClose && travel > 0 && !pushedBack && (travel > SHEET_DISMISS_DY || vy > SHEET_DISMISS_VY)) return 'close';
     if (!expandable) return SHEET_DETENT_STANDARD;
@@ -659,14 +764,14 @@ export function useMobileSheetMotion(onClose, options = {}) {
     return Math.abs(projected - drag.topFull) < Math.abs(projected - drag.topStandard)
       ? SHEET_DETENT_FULL
       : SHEET_DETENT_STANDARD;
-  }, [expandable, pullDownCloses]);
+  }, [expandable]);
 
   const release = useCallback((vy, cancelled) => {
     const engine = engineRef.current;
     const drag = engine?.dragState();
     if (!engine || !drag) return;
     // You moved the sheet yourself: it stays where you put it after typing.
-    if (Math.abs(drag.top - drag.startTop) >= 1) typingRestoreRef.current = null;
+    if (Math.abs(drag.top - drag.startTop) >= 1) forgetGrow();
     const choice = cancelled ? drag.start : chooseRelease(drag, vy);
     if (choice === 'close') {
       engine.endDragForClose();
@@ -679,7 +784,7 @@ export function useMobileSheetMotion(onClose, options = {}) {
 
   // Everything the native listeners read, fresh every render.
   const liveRef = useRef(null);
-  liveRef.current = { canStartDrag, closing, detent, enterPhase, expandable, maxDetent, open, pullDownCloses, release };
+  liveRef.current = { canStartDrag, closing, detent, enterPhase, expandable, maxDetent, open, release };
 
   // ---------------------------------------------------------------- the gesture
   useEffect(() => {
@@ -772,28 +877,115 @@ export function useMobileSheetMotion(onClose, options = {}) {
     // the field and its list sit in all the room left above the keyboard
     // (keyboardViewport.js scrolls the field into view).
     const onFocusIn = (event) => {
-      const live = liveRef.current;
-      if (!live.open || !live.expandable || !isKeyboardEditable(event.target)) return;
-      if (live.detent < live.maxDetent) {
-        typingRestoreRef.current = { from: live.detent, to: live.maxDetent };
-        setDetent(live.maxDetent);
-      }
+      if (!isKeyboardEditable(event.target)) return;
+      raiseFor('typing');
     };
     // ...and once you are done typing (focus left every field in the sheet),
-    // it settles back to the height it had, unless you moved it meanwhile.
+    // it settles back to the height it had, unless you moved it meanwhile or
+    // something you opened still needs the room (lowerFor).
     let focusOutFrame = 0;
     const onFocusOut = () => {
-      if (!typingRestoreRef.current) return;
+      if (!growRef.current.reasons.has('typing')) return;
       window.cancelAnimationFrame(focusOutFrame);
       focusOutFrame = window.requestAnimationFrame(() => {
-        const restore = typingRestoreRef.current;
         const active = sheet.ownerDocument?.activeElement;
-        if (!restore || (sheet.contains(active) && isKeyboardEditable(active))) return;
-        typingRestoreRef.current = null;
-        // Closing (the tap that closed it also took the focus): it slides off
-        // at the height it has, and reopens at Standard anyway.
-        if (liveRef.current?.closing) return;
-        setDetent((current) => (current === restore.to ? restore.from : current));
+        if (sheet.contains(active) && isKeyboardEditable(active)) return;
+        lowerFor('typing');
+      });
+    };
+
+    // REVEAL (WHEN A SHEET CHANGES HEIGHT ON ITS OWN, header). Measured two
+    // frames after the call, once what was opened is laid out (and after a
+    // panel's own scroll-into-place for it, which runs in the next frame).
+    let revealFrame = 0;
+    const view = sheet.ownerDocument?.defaultView;
+    const scrollerOf = (el) => {
+      for (let node = el?.parentElement; node && node !== sheet; node = node.parentElement) {
+        const overflowY = view?.getComputedStyle?.(node).overflowY;
+        if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') return node;
+      }
+      return null;
+    };
+    // The lowest the list's visible part can reach: a list sized by its
+    // content (the Survey list) grows into the empty space under it before it
+    // scrolls, so it is measured stretched (flex-grow, undone before paint).
+    const listBand = (scroller) => {
+      const kept = scroller.scrollTop;
+      const held = [];
+      for (let node = scroller; node && node !== sheet; node = node.parentElement) {
+        held.push([node, node.style.flexGrow]);
+        node.style.flexGrow = '1';
+      }
+      try {
+        const rect = scroller.getBoundingClientRect();
+        return { top: rect.top, bottom: rect.bottom, clientHeight: scroller.clientHeight };
+      } finally {
+        held.forEach(([node, value]) => { node.style.flexGrow = value; });
+        if (scroller.scrollTop !== kept) scroller.scrollTop = kept;
+      }
+    };
+    const measureReveal = (detail) => {
+      const live = liveRef.current || {};
+      const { block } = detail;
+      if (!live.open || live.closing || !block?.isConnected || !sheet.contains(block)) return;
+      const engine = engineRef.current;
+      if (!engine || engine.dragState()) return;
+      const anchor = detail.anchor?.isConnected ? detail.anchor : block;
+      const scroller = scrollerOf(block);
+      const canGrow = live.expandable && live.detent < live.maxDetent;
+      // Read first: it lays the sheet out at both heights for a moment, and a
+      // list that fits at Full is scrolled back to its top by the browser
+      // while it does - put the list back where it was, before any paint.
+      const keptScroll = scroller?.scrollTop ?? 0;
+      const fullGain = canGrow ? engine.fullGain() : 0;
+      if (scroller && scroller.scrollTop !== keptScroll) scroller.scrollTop = keptScroll;
+      const sheetRect = sheet.getBoundingClientRect();
+      const blockRect = block.getBoundingClientRect();
+      // A block that is still unfolding (an expand animation) is measured at
+      // the height it is unfolding to.
+      const growth = Math.max(0, block.scrollHeight - blockRect.height);
+      const band = scroller ? listBand(scroller) : { top: sheetRect.top, bottom: sheetRect.bottom, clientHeight: 0 };
+      let viewBottom = Math.min(band.bottom, sheetRect.bottom);
+      const root = sheet.ownerDocument.documentElement;
+      if (root.getAttribute('data-keyboard-open') === 'true') {
+        const inset = parseFloat(root.style.getPropertyValue('--keyboard-inset')) || 0;
+        if (inset > 0) viewBottom = Math.min(viewBottom, view.innerHeight - inset);
+      }
+      const plan = planSheetReveal({
+        viewTop: Math.max(band.top, sheetRect.top),
+        viewBottom,
+        anchorTop: anchor.getBoundingClientRect().top,
+        blockBottom: blockRect.bottom + growth,
+        scrollRoom: scroller ? scroller.scrollHeight + growth - band.clientHeight - scroller.scrollTop : 0,
+        fullGain,
+      });
+      if (plan.grow) raiseFor('reveal');
+      if (!plan.scrollBy || !scroller || detail.scroll === false) return;
+      // Grown: the list scrolls once the sheet has its Full box (until then
+      // the list could not scroll that far).
+      let waits = 0;
+      const scrollList = () => {
+        if (plan.grow && !sheet.classList.contains('is-fullscreen') && waits < 12) {
+          waits += 1;
+          revealFrame = window.requestAnimationFrame(scrollList);
+          return;
+        }
+        const top = scroller.scrollTop + plan.scrollBy;
+        if (typeof scroller.scrollTo === 'function' && !prefersReducedMotion()) scroller.scrollTo({ top, behavior: 'smooth' });
+        else scroller.scrollTop = top;
+      };
+      scrollList();
+    };
+    const onReveal = (event) => {
+      const detail = event.detail || {};
+      event.stopPropagation();
+      window.cancelAnimationFrame(revealFrame);
+      if (detail.end) {
+        lowerFor('reveal');
+        return;
+      }
+      revealFrame = window.requestAnimationFrame(() => {
+        revealFrame = window.requestAnimationFrame(() => measureReveal(detail));
       });
     };
 
@@ -803,8 +995,11 @@ export function useMobileSheetMotion(onClose, options = {}) {
     sheet.addEventListener('touchcancel', onTouchEnd);
     sheet.addEventListener('focusin', onFocusIn);
     sheet.addEventListener('focusout', onFocusOut);
+    sheet.addEventListener(SHEET_REVEAL_EVENT, onReveal);
     return () => {
       window.cancelAnimationFrame(focusOutFrame);
+      window.cancelAnimationFrame(revealFrame);
+      sheet.removeEventListener(SHEET_REVEAL_EVENT, onReveal);
       sheet.removeEventListener('focusout', onFocusOut);
       sheet.removeEventListener('touchstart', onTouchStart, { passive: true });
       sheet.removeEventListener('touchmove', onTouchMove, { passive: false });
@@ -1144,12 +1339,9 @@ export function useMobileSheetMotion(onClose, options = {}) {
         setTranslate(y);
         setPinned(y);
         if (backdrop) {
-          // The dim lightens as the sheet heads off the bottom: from Full for
-          // a sheet that one pull closes from there (Survey), else from
+          // The dim lightens as the sheet heads off the bottom from
           // Standard, the last height before closed.
-          const from = liveRef.current?.pullDownCloses && drag.start === SHEET_DETENT_FULL
-            ? drag.topFull
-            : drag.topStandard;
+          const from = drag.topStandard;
           const span = Math.max(1, box.bottom - from);
           const opacity = Math.max(0, Math.min(1, 1 - ((drag.top - from) / span)));
           backdrop.style.opacity = String(Math.round(opacity * 1000) / 1000);
@@ -1157,6 +1349,15 @@ export function useMobileSheetMotion(onClose, options = {}) {
       },
 
       dragState: () => (mode === 'drag' && drag ? { ...drag } : null),
+
+      // How much taller an expandable sheet stands at Full than at Standard
+      // (REVEAL). Read with the named holds, like a drag does.
+      fullGain: () => {
+        if (mode === 'drag') return 0;
+        const standard = withHold('standard', layoutBox);
+        const full = withHold('full', layoutBox);
+        return Math.max(0, standard.top - full.top);
+      },
 
       // Released toward a height: spring there from the finger's speed, then
       // let go of the hold on the frame where both boxes coincide.
@@ -1335,7 +1536,9 @@ export function useMobileSheetMotion(onClose, options = {}) {
     expanded: detent > SHEET_DETENT_STANDARD,
     fullscreen: detent >= SHEET_DETENT_FULL,
     detent,
-    setDetent,
-    setExpanded: (next) => setDetent(next ? SHEET_DETENT_FULL : SHEET_DETENT_STANDARD),
+    // An explicit height from the panel (a button) - the user's choice, so
+    // nothing settles it back afterwards.
+    setDetent: setDetentByHand,
+    setExpanded: (next) => setDetentByHand(next ? SHEET_DETENT_FULL : SHEET_DETENT_STANDARD),
   };
 }
