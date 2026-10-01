@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  BOOKMARK_CHILD_SLOT_DWELL_MS,
   BOOKMARK_INDENTATION_WIDTH,
   BOOKMARK_NEST_DWELL_MS,
   applyBookmarkTreeProjection,
@@ -316,7 +317,9 @@ test('drag intent: a clear move left un-nests at once, a wobble does not', () =>
   const out = drag.at(y, 16, -13);
   assert.equal(out.parentId, null, 'half an indent left steps out');
   assert.equal(out.depth, 0);
-  assert.equal(drag.at(y, 32, 0).parentId, null, 'drifting back keeps it out');
+  // (UX 2026-10-01: a step's anchor moves one 18px level, so drifting back
+  // stays out inside the 12px dead band, and going all the way back undoes it.)
+  assert.equal(drag.at(y, 32, -3).parentId, null, 'drifting back keeps it out');
   assert.equal(drag.at(y, 48, 6).parentId, 'f', 'a clear move right goes back in');
 });
 
@@ -331,14 +334,31 @@ test('drag intent: resting on the line under the folder from inside settles once
   assert.ok(nests.length <= 2, `nesting changed at most once (${nests.join(' -> ')})`);
 });
 
-test('drag intent: going between an open folder\'s children still waits', () => {
+// UX 2026-10-01 (nested folders): a slot strictly between two children has
+// one possible depth, so its rest is the shorter BOOKMARK_CHILD_SLOT_DWELL_MS
+// (it was the full 300ms, which made placing a row in a sub-folder slow).
+test('drag intent: going between an open folder\'s children still waits (shorter)', () => {
   const drag = makeDrag(openTree(), 'c');
   const between = drag.centerOf('f2') - ROW / 4; // over f2's upper part: between f1 and f2
   const first = drag.at(between, 0);
   assert.equal(first.parentId, null, 'no instant nest');
-  assert.equal(first.wakeAt, BOOKMARK_NEST_DWELL_MS);
-  const entered = drag.at(between + 1, BOOKMARK_NEST_DWELL_MS + 5);
+  assert.equal(first.wakeAt, BOOKMARK_CHILD_SLOT_DWELL_MS);
+  assert.ok(BOOKMARK_CHILD_SLOT_DWELL_MS < BOOKMARK_NEST_DWELL_MS);
+  assert.equal(drag.at(between + 1, BOOKMARK_CHILD_SLOT_DWELL_MS - 40).parentId, null);
+  const entered = drag.at(between + 1, BOOKMARK_CHILD_SLOT_DWELL_MS + 5);
   assert.equal(entered.parentId, 'f');
+});
+
+test('drag intent: a resting finger near a row line keeps its dwell', () => {
+  // over f2 right at the before/after line (80% down): a tremor across it
+  // used to swap the pending slot each frame and restart the rest forever.
+  const drag = makeDrag(openTree(), 'c');
+  const line = drag.centerOf('f2') - ROW / 2 + 0.8 * ROW;
+  let state;
+  for (let now = 0; now <= BOOKMARK_NEST_DWELL_MS + 40; now += 16) {
+    state = drag.at(line + 3 * Math.sin(now / 20), now);
+  }
+  assert.equal(state.parentId, 'f');
 });
 
 test('drag intent: same-level reorders commit at once', () => {
@@ -347,4 +367,103 @@ test('drag intent: same-level reorders commit at once', () => {
   assert.equal(moved.overId, 'f1');
   assert.equal(moved.parentId, 'f');
   assert.equal(moved.pending, null);
+});
+
+/*
+ * UX 2026-10-01 — owner (iPhone): "I was able to get a bookmark into a
+ * subgroup of a grouped folder a lot easier before … moving an outside
+ * bookmark in and out of those". A folder B inside a folder A, both open.
+ */
+const nestedTree = (closedB = false) => [
+  bookmark('t1'),
+  folder('A', 'A', [
+    bookmark('a1'),
+    folder('B', 'B', [bookmark('b1'), bookmark('b2'), bookmark('b3')], closedB),
+    bookmark('a3'),
+  ]),
+  bookmark('t3'),
+  bookmark('t4'),
+];
+
+test('nested drag: a finger resting on the sub-folder it went into stays in', () => {
+  // Entering B through its header's middle moves the slot under the header;
+  // the finger is still on the header's middle, which used to be B's own
+  // "upper half = out" line, so tremor flipped the row in and out (and out
+  // won: it is instant, in needs the dwell).
+  const drag = makeDrag(nestedTree(true), 't4');
+  const middle = drag.centerOf('B');
+  const parents = new Set();
+  for (let now = 0; now <= 1500; now += 16) {
+    const state = drag.at(middle + 4 * Math.sin(now / 40), now);
+    if (now > BOOKMARK_NEST_DWELL_MS + 20) parents.add(state.parentId);
+  }
+  assert.deepEqual([...parents], ['B']);
+  assert.equal(drag.intent.intoId, 'B', 'still "into" B, so a closed B opens under the finger');
+  // a clear move up over the header's top quarter still leaves at once
+  const out = drag.at(drag.centerOf('B') - ROW * 0.3, 1600);
+  assert.equal(out.parentId, 'A');
+  assert.equal(out.wakeAt, null);
+});
+
+test('nested drag: from the root, one step right reaches the end of the sub-folder', () => {
+  // The slot under B's last child shows A's level for a row coming from the
+  // root; a step right must go one level deeper than what the slot shows.
+  const drag = makeDrag(nestedTree(), 't4');
+  const y = drag.centerOf('a3') - ROW / 4; // over a3's upper part: after b3
+  drag.at(y, 0, 0);
+  const stepped = drag.at(y, 16, 20);
+  assert.equal(stepped.pending?.intoId, 'B');
+  // a thumb wobbling across the step line does not restart the rest
+  drag.at(y, 100, 16);
+  drag.at(y, 200, 20);
+  const entered = drag.at(y, BOOKMARK_NEST_DWELL_MS + 20, 21);
+  assert.equal(entered.parentId, 'B');
+  assert.equal(entered.depth, 2);
+});
+
+test('nested drag: a diagonal move keeps its sideways surplus for the next level', () => {
+  // Up and right at once: the first 18px step lands on the slot under A's
+  // last row (A's level); the rest of the move right must still count, so
+  // ~36px right reaches B's end, as it did before the 2026-09-30 rules.
+  const drag = makeDrag(nestedTree(), 't4');
+  const underA = drag.centerOf('t3') - ROW / 4; // between a3 and t3
+  assert.equal(drag.at(underA, 0, 6).parentId, null, 'a root-level move: at once');
+  const atA = drag.at(underA, 16, 20);
+  assert.equal(atA.parentId, 'A');
+  const endOfB = drag.centerOf('a3') - ROW / 4; // between b3 and a3
+  let state = drag.at(endOfB, 32, 30);
+  assert.equal(state.parentId, 'A', 'still A: 30px is one level and a half');
+  state = drag.at(endOfB, 48, 37);
+  assert.equal(state.parentId, 'B', 'two levels right of where the drag began');
+  assert.equal(state.depth, 2);
+});
+
+test('nested drag: a long move left steps out more than one level at once', () => {
+  const drag = makeDrag(nestedTree(), 'b2');
+  const y = drag.centerOf('b3') + ROW / 4; // between b3 and a3, moving down
+  const first = drag.at(y, 0, 0);
+  assert.equal(first.parentId, 'B', 'the end of B keeps the depth it came with');
+  assert.equal(drag.at(y, 16, -40).parentId, 'A', 'the slot only goes up to A');
+  const drag2 = makeDrag(nestedTree(), 'b2');
+  const y2 = drag2.centerOf('a3') + ROW / 4; // between a3 and t3: A or root
+  drag2.at(y2, 0, 0);
+  assert.equal(drag2.at(y2, 16, -42).parentId, null, 'about two indents left is the root');
+});
+
+test('nested drag: rows auto-scrolling under a still finger are not a rest', () => {
+  // The finger holds still at the list edge while the list scrolls an open
+  // folder's children past it (120px/s): no slot is rested on, so nothing
+  // nests. The rest is measured against the row's own rect, not the screen.
+  const items = removeChildrenOf(flattenBookmarkTreeForSort([
+    bookmark('a'),
+    folder('f', 'Folder', [bookmark('f1'), bookmark('f2'), bookmark('f3'), bookmark('f4'), bookmark('f5')]),
+    bookmark('z'),
+  ]), ['z']);
+  let intent = createBookmarkDragIntent(items, 'z');
+  for (let now = 0; now <= 1500; now += 16) {
+    const offset = -200 + now * 0.12;
+    const rects = new Map(items.map((item, index) => [item.id, { top: index * ROW + offset, height: ROW }]));
+    intent = resolveBookmarkDragIntent(intent, { items, activeId: 'z', rects, centerY: 50, now }).intent;
+    assert.notEqual(intent.parentId, 'f', `nested at ${now}ms`);
+  }
 });
