@@ -32,8 +32,10 @@ import { getViewerSideOccluders, subscribeViewerSideOccluders } from '../utils/v
  *     [data-undo-redo-controls]      Undo / Redo, pinned left
  *     [data-toolbar-export]          Export (optional)
  *     [data-tool-toolbar]            the Draw / Shapes / Text icons (w47:
- *                                    centred on the canvas span — the
- *                                    formatting row's host — and fixed there)
+ *                                    centred on the column between the rails
+ *                                    — the formatting row's host — and fixed
+ *                                    there; an open side panel never moves
+ *                                    them, owner 2026-10-01)
  *     [data-toolbar-left-block]      Pan / Select and their rule, hung off
  *                                    the icons' left edge (w48)
  *     [data-toolbar-subtools]        the loadout, hanging off the icons'
@@ -83,10 +85,6 @@ const samePlan = (a, b) => (
   && a.compact.join('|') === b.compact.join('|')
   && a.overflow.join('|') === b.overflow.join('|')
 );
-
-/** The rows' height (--chrome-bar-h): the band a side panel must overlap to
- * count as covering the canvas under the tool bar. */
-const BAR_HEIGHT = 36;
 
 const CANONICAL = TOOLBAR_SLOTS.map((slot) => slot.id);
 
@@ -208,25 +206,26 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
     const clusterRect = cluster.getBoundingClientRect();
 
     // RULED 2026-09-26 owner: fixed centred groups + animated loadouts (w47).
-    // The group icons centre on the canvas span: the column between the two
-    // rails (the host the lower rows live in), less any side panel open over
-    // it — worked out even while the formatting row is hidden, since the tool
-    // bar centres on it too. Nothing read here depends on the tool, the pick
-    // or the loadout showing, so the icons never move with them.
+    // The group icons centre on the column between the two slim rails (the
+    // host the lower rows live in). Nothing read here depends on the tool,
+    // the pick or the loadout showing, so the icons never move with them.
+    // Owner 2026-10-01 (desktop chrome): "when I expand any of the rails ...
+    // it pushes the top bar ... Those should not get affected by the left or
+    // right rails." An open side panel (Pages / Search / Bookmarks / Spaces /
+    // Survey) is NOT taken off that column any more: the panels open below
+    // the tool bar, never over it, so the icons, Pan / Select and the loadout
+    // stay put while a panel opens or closes. Only the window width (Undo /
+    // Redo and Export) can slide them. Rows 2 and 3 centre under the icons
+    // too; they only slide off that centre if an open panel would otherwise
+    // cover them (usableRowSpan below).
     const formatRow = formatRowRef?.current;
     const column = formatRow?.parentElement || null;
     const columnRect = column?.getBoundingClientRect();
     let canvasLeft = 0;
     let canvasRight = hostRect.width;
     if (columnRect && columnRect.width > 0) {
-      const span = usableRowSpan({
-        left: columnRect.left,
-        width: columnRect.width,
-        top: columnRect.top,
-        bottom: columnRect.top + Math.max(columnRect.height, BAR_HEIGHT),
-      });
-      canvasLeft = columnRect.left + span.left - hostRect.left;
-      canvasRight = columnRect.left + span.right - hostRect.left;
+      canvasLeft = columnRect.left - hostRect.left;
+      canvasRight = columnRect.right - hostRect.left;
     }
     // Where the icons sit with no shift: their box less the shift drawn now.
     const drawnShift = -(parseFloat(cluster.style.left) || 0);
@@ -404,10 +403,15 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
     watchPanels();
     const unsubscribe = subscribeViewerSideOccluders(watchPanels);
     // A panel that slides in by transform changes no size: catch its end.
+    // The Survey panel slides in with a CSS ANIMATION (surveyRailExpand,
+    // 2026-09-30), which ends in animationend, not transitionend: without
+    // that one the plan was last made mid-slide and a narrow window's row 2
+    // stayed under the open Survey panel (measured at 1024px, 2026-10-01).
     const onTransitionEnd = (event) => {
       if (event.target?.closest?.('[data-viewer-occluder], .survey-rail')) measureAndPlan();
     };
     document.addEventListener('transitionend', onTransitionEnd, true);
+    document.addEventListener('animationend', onTransitionEnd, true);
     return () => {
       observer.disconnect();
       contentObserver.disconnect();
@@ -416,6 +420,7 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
       attributeObserver?.disconnect();
       unsubscribe();
       document.removeEventListener('transitionend', onTransitionEnd, true);
+      document.removeEventListener('animationend', onTransitionEnd, true);
     };
   }, [enabled, hostRef, formatRowRef, measureAndPlan]);
 

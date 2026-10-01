@@ -2259,13 +2259,13 @@ export default function App({ devPreviewReturnTab = null }) {
                 position: 'relative',
                 // RULED 2026-09-26 owner: fixed centred groups + animated
                 // loadouts (w47). The plan's `shift` centres THESE icons
-                // (Draw / Shapes / Text) on the canvas between the rails (or
-                // between an open side panel and the far rail), keeping room
-                // on their right for the widest loadout and on their left for
-                // Pan / Select, clear of Undo/Redo (useResponsiveToolbar). It
-                // depends on the window and panels only — never on the tool,
-                // the pick or the loadout — so the icons never move as you
-                // work. Negative = right of the bar centre.
+                // (Draw / Shapes / Text) on the canvas between the rails,
+                // keeping room on their right for the widest loadout and on
+                // their left for Pan / Select, clear of Undo/Redo
+                // (useResponsiveToolbar). It depends on the window only —
+                // never on the tool, the pick, the loadout or (owner
+                // 2026-10-01) an open side panel — so the icons never move as
+                // you work. Negative = right of the bar centre.
                 left: toolbarPlan.shift ? `${-toolbarPlan.shift}px` : undefined,
                 display: 'flex',
                 alignItems: 'center',

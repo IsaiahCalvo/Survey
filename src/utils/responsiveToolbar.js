@@ -26,10 +26,12 @@
  *       Undo/Redo): Pan / Select and their rule hang off the icons' LEFT
  *       edge at a fixed offset, so they move only when the icons do;
  *     - the Draw / Shapes / Text icons are centred on the canvas span (the
- *       span between the two side rails, or between an open side panel and
- *       the far rail) and NEVER move when you switch tools, pick a mark or
- *       open something — their spot depends on the window and the panels
- *       only;
+ *       span between the two side rails) and NEVER move when you switch
+ *       tools, pick a mark or open something — their spot depends on the
+ *       window only. Owner 2026-10-01: opening or closing a side panel
+ *       (Pages / Search / Bookmarks / Spaces / Survey) must not move them
+ *       either; the panels open below the tool bar, so the hook no longer
+ *       takes an open panel off the span (useResponsiveToolbar);
  *     - the "loadout" (the chosen group's own tools, Select's Box / Lasso /
  *       Text, a picked mark's group tools) hangs off the icons' right edge
  *       and grows rightward from that fixed anchor, so nothing else moves

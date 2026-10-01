@@ -301,3 +301,27 @@ test('Areas mode: the area tools take the loadout, the actions take row 2, no dr
   assert.equal((actions.match(/btn-primary/g) || []).length, 2, 'Done, and the inline full-page answer');
   assert.match(actions, /className="btn btn-sm btn-primary" onClick=\{regionApi\.confirm\}/);
 });
+
+test('owner 2026-10-01: opening or closing a side panel never moves the tool bar', () => {
+  // "When I expand any of the rails ... it pushes the top bar ... Those should
+  // not get affected by the left or right rails." The group icons (and Pan /
+  // Select and the loadout hung off them) centre on the column between the two
+  // slim rails; an open Pages / Search / Bookmarks / Spaces / Survey panel is
+  // not taken off that column (the panels open below the tool bar).
+  const hook = readFileSync(new URL('../src/hooks/useResponsiveToolbar.js', import.meta.url), 'utf8');
+  const topPlan = hook.slice(hook.indexOf('let canvasLeft = 0;'), hook.indexOf('const top = planTopBar('));
+  assert.match(topPlan, /canvasLeft = columnRect\.left - hostRect\.left;\s*canvasRight = columnRect\.right - hostRect\.left;/);
+  assert.doesNotMatch(topPlan, /usableRowSpan/);
+  // Rows 2 and 3 still keep clear of an open panel, and re-plan when the
+  // Survey panel's slide-in ANIMATION ends (not only on transitionend).
+  assert.match(hook, /const span = usableRowSpan\(rowRect\);/);
+  assert.match(hook, /document\.addEventListener\('animationend', onTransitionEnd, true\);/);
+});
+
+test('owner 2026-10-01: the desktop survey module pill centres its label like the phone pill', () => {
+  const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+  const pill = css.slice(css.indexOf('.survey-subrow__side--start .chrome-pill {'));
+  assert.match(pill.slice(0, pill.indexOf('}')), /padding-left: calc\(var\(--chrome-field-pad-x\) \+ 9px \+ var\(--chrome-gap\)\);/);
+  const fit = css.slice(css.indexOf('.survey-subrow__fit {'));
+  assert.match(fit.slice(0, fit.indexOf('}')), /text-align: center;/);
+});
