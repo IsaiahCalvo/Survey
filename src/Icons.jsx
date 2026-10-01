@@ -716,14 +716,18 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
-    // Duplicate icon - two overlapping rounded squares with plus in front
+    // Duplicate — Lucide "copy-plus" (lucide-static v1.49.0, ISC). Owner
+    // 2026-10-01: the page actions (Cut / Copy / Paste / Duplicate / Rotate /
+    // Mirror / Reset) show the Lucide glyphs everywhere; see the note above
+    // `scissors` for the two house adjustments (stroke 1.5, rect rx ratio).
     duplicate: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        {/* Back square */}
-        <rect x="3" y="5" width="14" height="14" rx="1.56" stroke={color} strokeWidth="1.5" fill="none" />
-        {/* Front square with plus */}
-        <rect x="7" y="1" width="14" height="14" rx="1.56" stroke={color} strokeWidth="1.5" fill="none" />
-        <path d="M14 8V14M11 11H17" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <g stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="15" x2="15" y1="12" y2="18" />
+          <line x1="12" x2="18" y1="15" y2="15" />
+          <rect width="14" height="14" x="8" y="8" rx="1.56" ry="1.56" />
+          <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+        </g>
       </svg>
     ),
 
@@ -790,81 +794,109 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
-    // Scissors/Cut icon
+    // Cut / Copy / Paste / Rotate / Mirror / Reset — owner 2026-10-01: the
+    // Lucide glyphs (lucide-static v1.49.0, ISC) everywhere these actions are
+    // offered, phone and desktop. Geometry is Lucide's own, verbatim, on its
+    // 24 grid with round caps and joins; the stroke is the house 1.5 rather
+    // than Lucide's 2 (the 2026-09-16 one-weight ruling at the top of this
+    // file, enforced by tests/iconSetConsistency.test.mjs), and a <rect>'s rx
+    // is the house ninth of its shorter side (copy 2 -> 1.56, the clipboard
+    // clip 1 -> 0.44; same test). Paths are untouched.
+
+    // Cut — Lucide "scissors".
     scissors: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <circle cx="6" cy="6" r="3" stroke={color} strokeWidth="1.5" fill="none" />
-        <circle cx="18" cy="6" r="3" stroke={color} strokeWidth="1.5" fill="none" />
-        <path d="M8.12 8.12L15.88 15.88" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M8.12 15.88L15.88 8.12" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-        <circle cx="6" cy="18" r="3" stroke={color} strokeWidth="1.5" fill="none" />
-        <circle cx="18" cy="18" r="3" stroke={color} strokeWidth="1.5" fill="none" />
+        <g stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="6" cy="6" r="3" />
+          <path d="M8.12 8.12 12 12" />
+          <path d="M20 4 8.12 15.88" />
+          <circle cx="6" cy="18" r="3" />
+          <path d="M14.8 14.8 20 20" />
+        </g>
       </svg>
     ),
 
-    // Copy icon
+    // Copy — Lucide "copy".
     copy: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <rect x="9" y="9" width="13" height="13" rx="1.44" stroke={color} strokeWidth="1.5" fill="none" />
-        <path d="M5 15H4C2.93913 15 1.92172 14.5786 1.17157 13.8284C0.421427 13.0783 0 12.0609 0 11V4C0 2.93913 0.421427 1.92172 1.17157 1.17157C1.92172 0.421427 2.93913 0 4 0H11C12.0609 0 13.0783 0.421427 13.8284 1.17157C14.5786 1.92172 15 2.93913 15 4V5" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <g stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <rect width="14" height="14" x="8" y="8" rx="1.56" ry="1.56" />
+          <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+        </g>
       </svg>
     ),
 
-    // Paste icon - clipboard with paper.
-    // UX 2026-09-16: one weight. This glyph used to carry three (1.5 clipboard,
-    // 1.2 paper, 1.0 text lines) — the only icon in the set that shaded its own
-    // detail. The inner paper rectangle and the fourth text line are gone: at
-    // the house 1.5 weight four lines 2 units apart merge into a block, so the
-    // detail was traded for the shared weight, which is the rule that matters.
+    // Paste — Lucide "clipboard".
     paste: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        {/* Clipboard body */}
-        <rect x="6" y="4" width="12" height="16" rx="1.33" stroke={color} strokeWidth="1.5" fill="none" />
-        {/* Clipboard clip */}
-        <rect x="8" y="2" width="8" height="4" rx="0.44" stroke={color} strokeWidth="1.5" fill="none" />
-        {/* Text lines on the clipboard */}
-        <path d="M9 10H15" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M9 13.5H15" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M9 17H13" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <g stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <rect width="8" height="4" x="8" y="2" rx="0.44" ry="0.44" />
+          <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+        </g>
       </svg>
     ),
 
-    // Rotate icon
+    // Rotate — Lucide "refresh-cw".
     rotate: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M1 4V10H7" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M23 20V14H17" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M20.49 9C19.7967 7.04557 18.4615 5.36328 16.6618 4.21405C14.8621 3.06482 12.6915 2.51013 10.5 2.63024C8.30846 2.75035 6.19479 3.53998 4.5 4.9M3.51 15C4.20334 16.9544 5.53847 18.6367 7.33818 19.786C9.13789 20.9352 11.3085 21.4899 13.5 21.3698C15.6915 21.2496 17.8052 20.46 19.5 19.1" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <g stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+          <path d="M21 3v5h-5" />
+          <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+          <path d="M8 16H3v5" />
+        </g>
       </svg>
     ),
 
-    // Flip horizontal icon
+    // Mirror horizontally — Lucide "triangles-centerline-dashed-vertical"
+    // (two triangles facing each other across a dashed vertical axis).
     flipHorizontal: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M8 3H3C2.44772 3 2 3.44772 2 4V20C2 20.5523 2.44772 21 3 21H8" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M16 3H21C21.5523 3 22 3.44772 22 4V20C22 20.5523 21.5523 21 21 21H16" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M12 2V22" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M8 7L12 3L16 7" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M8 17L12 21L16 17" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <g stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 14v2" />
+          <path d="M12 20v2" />
+          <path d="M12 2v2" />
+          <path d="M12 8v2" />
+          <path d="M20.288 16.703A1 1 0 0022 16V8a1 1 0 00-1.712-.703l-3.99 3.991a1 1 0 00-.001 1.424z" />
+          <path d="M3.712 16.703A1 1 0 012 16V8a1 1 0 011.712-.703l3.99 3.991a1 1 0 01.001 1.424z" />
+        </g>
       </svg>
     ),
 
-    // Flip vertical icon
+    // Mirror vertically — Lucide "triangles-centerline-dashed-horizontal".
     flipVertical: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M3 8V3C3 2.44772 3.44772 2 4 2H20C20.5523 2 21 2.44772 21 3V8" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M3 16V21C3 21.5523 3.44772 22 4 22H20C20.5523 22 21 21.5523 21 21V16" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M2 12H22" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M7 8L3 12L7 16" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M17 8L21 12L17 16" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <g stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M10 12H8" />
+          <path d="M16 12h-2" />
+          <path d="M22 12h-2" />
+          <path d="M4 12H2" />
+          <path d="M7.298 20.288A1 1 0 008 22h8a1 1 0 00.703-1.712l-3.991-3.99a1 1 0 00-1.424-.001z" />
+          <path d="M7.298 3.712A1 1 0 018 2h8a1 1 0 01.703 1.712l-3.991 3.99a1 1 0 01-1.424.001z" />
+        </g>
       </svg>
     ),
 
-    // Reset icon - checkmark in circle
+    // Reset — Lucide "rotate-cw-fading-clock" turned to run COUNTER-clockwise
+    // (owner 2026-10-01: reset winds the page back). Every path except the
+    // clock hands is mirrored about the vertical centre line x = 12 (x -> 24-x,
+    // relative dx negated, arc sweep flags flipped), so the arrowhead now
+    // points back from 12 o'clock towards 10 o'clock and the fading dashes run
+    // down the left. The hands "M12 7v5l4 2" are Lucide's, untouched.
     reset: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <circle cx="12" cy="12" r="10" stroke={color} strokeWidth="1.5" fill="none" />
-        <path d="M8 12L11 15L16 9" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <g stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 3a9.75 9.75 0 0 0-6.74 2.74" />
+          <path d="M5.26 5.74 3 8" />
+          <path d="M3 8V3" />
+          <path d="M16.5 19.794c6-3.464 6-12.124 0-15.588" />
+          <path d="M16.5 4.206A9 9 0 0 0 12 3" />
+          <path d="M12 7v5l4 2" />
+          <path d="M10 20.775A9 9 0 0 0 12 21" />
+          <path d="M5 17.656a9 9 0 0 0 1.5 1.456" />
+          <path d="M3 12a9 9 0 0 0 .228 2" />
+          <path d="M3 8h5" />
+        </g>
       </svg>
     ),
     // Undo icon

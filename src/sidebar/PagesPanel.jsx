@@ -6,11 +6,13 @@
  * click-to-navigate, drag reorder (onReorderPages), and a right-click context menu
  * for cut/copy/paste/duplicate/rotate/mirror/reset/delete. Honors pageTransformations.
  */
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import Spinner from '../components/Spinner';
 import { useTooltip } from '../components/Tooltip';
 import { watchLightPopover } from '../components/dismissRules.js';
+import { placeAnchoredMenu } from '../utils/floatingUiGeometry.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const FAST_THUMBNAIL_SCALE = 0.15; // Ultra-fast, low-res (was 0.2)
@@ -20,6 +22,9 @@ const CRISP_DPR_CAP = 2;
 const THUMBNAIL_JPEG_QUALITY = 0.72;
 const EAGER_PRELOAD_COUNT = 6;
 const CONCURRENCY_LIMIT = 4;
+// The page menu's layer: above the phone dock (6750), sheets and popovers
+// (up to 7400), below modals (10000+), the tooltip and toasts.
+const PAGE_MENU_Z = 9000;
 
 
 const PagesPanel = ({
@@ -593,14 +598,59 @@ const PagesPanel = ({
   const handleContextMenu = useCallback((e, pageNumber) => {
     e.preventDefault();
     e.stopPropagation();
-    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1000;
-    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
-    setContextMenu({
-      pageNumber,
-      x: Math.max(8, Math.min(e.clientX, viewportWidth - 196)),
-      y: Math.max(8, Math.min(e.clientY, viewportHeight - 420))
-    });
+    // The press point only; the menu is placed once it has been measured
+    // (placeContextMenu below).
+    setContextMenu({ pageNumber, x: e.clientX, y: e.clientY });
   }, []);
+
+  // Owner 2026-10-01 (iPhone): the page menu was drawn inside the Pages sheet,
+  // so the dock painted over its last rows (Delete sat under the dock) and it
+  // opened on top of the very thumbnail it acts on. It now renders in a
+  // portal on <body> above the dock and sheets (below modals), and is placed
+  // from its measured size before paint:
+  //   - phone: beside the page's "..." button, inside the band between the
+  //     top bar and the dock, covering as little of that thumbnail as the
+  //     width allows (placeAnchoredMenu), scrolling if taller than the band;
+  //   - desktop: at the right-click point, flipped to stay in the window.
+  const placeContextMenu = useCallback(() => {
+    const el = contextMenuRef.current;
+    if (!el || !contextMenu || typeof window === 'undefined') return;
+    el.style.maxHeight = 'none';
+    const rect = el.getBoundingClientRect();
+    const vv = window.visualViewport;
+    let top = 0;
+    let bottom = vv ? Math.min(window.innerHeight, vv.offsetTop + vv.height) : window.innerHeight;
+    if (mobileMode) {
+      const header = document.querySelector('[data-mobile-pdf-header]')?.getBoundingClientRect();
+      if (header && header.height > 0) top = Math.max(top, header.bottom);
+      const dock = document.querySelector('.mobile-pdf-dock')?.getBoundingClientRect();
+      if (dock && dock.height > 0 && dock.top < bottom) bottom = dock.top;
+    }
+    const card = mobileMode ? thumbnailRefs.current[contextMenu.pageNumber] : null;
+    const anchorEl = card?.querySelector('[data-page-menu-anchor]');
+    const position = placeAnchoredMenu({
+      anchor: anchorEl ? anchorEl.getBoundingClientRect() : { left: contextMenu.x, top: contextMenu.y },
+      avoid: anchorEl ? card.getBoundingClientRect() : null,
+      width: rect.width,
+      height: rect.height,
+      bounds: { left: 0, top, right: window.innerWidth, bottom },
+    });
+    el.style.left = `${position.left}px`;
+    el.style.top = `${position.top}px`;
+    el.style.maxHeight = position.maxHeight == null ? '' : `${position.maxHeight}px`;
+  }, [contextMenu, mobileMode]);
+
+  useLayoutEffect(() => {
+    if (!contextMenu) return undefined;
+    placeContextMenu();
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    window.addEventListener('resize', placeContextMenu);
+    vv?.addEventListener('resize', placeContextMenu);
+    return () => {
+      window.removeEventListener('resize', placeContextMenu);
+      vv?.removeEventListener('resize', placeContextMenu);
+    };
+  }, [contextMenu, placeContextMenu]);
 
   const movePageByOffset = useCallback((pageNumber, offset) => {
     const index = allowedPages.indexOf(pageNumber);
@@ -896,7 +946,7 @@ const PagesPanel = ({
                   aria-label={clipboardType === 'cut' ? `Page ${pageNumber} cut to clipboard` : `Page ${pageNumber} copied to clipboard`}
                   {...tip(clipboardType === 'cut' ? 'Cut — ready to paste' : 'Copied — ready to paste', 'below')}
                 >
-                  <Icon name="copy" size={12} color="var(--accent)" />
+                  <Icon name={clipboardType === 'cut' ? 'scissors' : 'copy'} size={12} color="var(--accent)" />
                 </div>
               )}
 
@@ -904,6 +954,7 @@ const PagesPanel = ({
                 <button
                   type="button"
                   aria-label={`Page ${pageNumber} actions`}
+                  data-page-menu-anchor="true"
                   {...tip(`Page ${pageNumber} actions`, 'below')}
                   onClick={(event) => handleContextMenu(event, pageNumber)}
                   style={{
@@ -1024,7 +1075,7 @@ const PagesPanel = ({
             onClick={() => handlePaste(pageNum)}
             disabled={!clipboardPage}
           >
-            <Icon name="copy" size={15} color="currentColor" />
+            <Icon name="paste" size={15} color="currentColor" />
             <span>Paste</span>
           </button>
           <i />
@@ -1044,8 +1095,8 @@ const PagesPanel = ({
         </div>
       )}
 
-      {/* Context Menu */}
-      {contextMenu && (
+      {/* Context Menu — portalled to <body> (see placeContextMenu). */}
+      {contextMenu && typeof document !== 'undefined' && createPortal(
         <>
           {/* UX: mobile parity (Phase D) — demo's near-invisible dismiss layer
               (rgba(0,0,0,0.01); never dims the page — styles.ts:856-860). Tap
@@ -1054,7 +1105,7 @@ const PagesPanel = ({
           {mobileMode && (
             <div
               onPointerDown={() => setContextMenu(null)}
-              style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.01)' }}
+              style={{ position: 'fixed', inset: 0, zIndex: PAGE_MENU_Z - 1, background: 'rgba(0,0,0,0.01)' }}
             />
           )}
         <div
@@ -1069,9 +1120,8 @@ const PagesPanel = ({
             border: '1px solid var(--border)',
             borderRadius: '9px',
             padding: '6px',
-            zIndex: 10000,
+            zIndex: PAGE_MENU_Z,
             width: '188px',
-            maxHeight: 'calc(100dvh - 16px)',
             overflowY: 'auto',
             fontFamily: FONT_FAMILY
           } : {
@@ -1082,9 +1132,8 @@ const PagesPanel = ({
             border: '1px solid var(--border)',
             borderRadius: '6px',
             padding: '4px',
-            zIndex: 10000,
+            zIndex: PAGE_MENU_Z,
             minWidth: '180px',
-            maxHeight: 'calc(100dvh - 16px)',
             overflowY: 'auto',
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
             fontFamily: FONT_FAMILY
@@ -1334,7 +1383,8 @@ const PagesPanel = ({
             Delete
           </button>
         </div>
-        </>
+        </>,
+        document.body,
       )}
     </div>
   );
