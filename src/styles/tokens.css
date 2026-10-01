@@ -210,10 +210,18 @@
   /* Owner 2026-10-01: a Survey checklist "Y" answer is GREEN. --success fails
      as a word (4.45 on surface-1, 3.38 on surface-3), so the answer takes this
      label twin, the green --danger-text is to --danger: 6.73 on surface-1,
-     5.11 on surface-3. -soft is its tint, derived like --danger-soft, for the
-     chosen answer's small plate. Survey answers only. */
+     5.11 on surface-3. Survey answers only. */
   --success-text: #6fae8e;
-  --success-soft: rgba(84, 140, 113, 0.20);
+  /* The chosen Survey answer's chip (owner 2026-10-01: "make Y and N look as
+     polished as N/A"). N/A is a solid --border grey plate with --text-1 on it
+     (6.9:1); Y and N are the same kind of chip in their hue: an opaque plate
+     (--success 55% / --danger 52% over surface-1) with a near-white label of
+     the same hue, 7.0:1 each. Solid, so it reads the same on surface-1, -2
+     and -3. Survey answers only (phone sheet, desktop rail, archived badge). */
+  --success-plate: #39594d;
+  --on-success-plate: #eef5f1;
+  --danger-plate: #7c3b3d;
+  --on-danger-plate: #fbeceb;
   /* The destructive twin of --accent-soft, derived from --danger the same way
      (the base colour at 14-16% alpha) rather than invented: the hover wash on a
      small remove/delete control, which used to be a #3a1f1f dark-red literal.

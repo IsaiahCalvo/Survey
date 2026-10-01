@@ -249,17 +249,20 @@ export function SurveyMediaUploadTile({ variant, disabled, onFiles, onRecordAudi
 
   return (
     <>
+      {/* Owner 2026-10-01: a one-line "+ Media" pill (the "+ Place" look),
+          not a 64px tile whose words wrapped onto three lines. */}
       <button
         ref={tileRef}
         type="button"
-        className="survey-media-tile survey-media-tile--upload"
+        className="survey-media-add"
+        aria-label="Upload media"
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={disabled}
         onClick={() => setOpen((value) => !value)}
       >
-        <Icon name="plus" size={18} color="currentColor" />
-        <span>Upload media</span>
+        <Icon name="plus" size={14} color="currentColor" />
+        <span>Media</span>
       </button>
       <input ref={photoRef} type="file" accept="image/*" capture="environment" hidden onChange={handleChange} />
       <input ref={videoRef} type="file" accept="video/*" capture="environment" hidden onChange={handleChange} />

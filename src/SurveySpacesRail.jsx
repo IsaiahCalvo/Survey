@@ -9,7 +9,7 @@
 // tab or Spaces UI. The Spaces panel lives in the LEFT rail (PDFSidebar).
 // Accurate rename candidate: SurveyRail.jsx.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import Icon from './Icons';
 import CreateCategoryModal from './components/CreateCategoryModal';
@@ -559,8 +559,11 @@ const SurveySpacesRail = ({
     open: mobileMode && !isSurveyPanelCollapsed,
     expandable: mobileMode,
     fullscreenable: mobileMode,
-    // Swipe down closes one level of the accordion before it moves the sheet.
-    onPullDown: () => collapseMobileAccordionLevel(),
+    // Owner 2026-10-01: a swipe down closes the whole panel from any height
+    // (even Full screen with a Survey Marker open); reopening restores the
+    // open category / Survey Marker and the scroll (below). "< Categories"
+    // is the way back a level.
+    pullDownCloses: mobileMode,
   });
 
   // Owner 2026-10-01: opening anything in the phone accordion takes the sheet
@@ -579,21 +582,28 @@ const SurveySpacesRail = ({
     setExpandedCategories((prev) => (Object.keys(prev || {}).length ? {} : prev));
   };
 
-  // One level per swipe down: the open Survey Marker (its inline note saves
-  // as it closes), then the categories. Returns true when it used the swipe.
-  const collapseMobileAccordionLevel = () => {
-    if (!mobileMode) return false;
-    if (mobileDetailMarkerId) {
-      setMobileDetailDropdown(null);
-      setExpandedSurveyMarkers({});
-      return true;
-    }
-    if (Object.values(expandedCategories || {}).some(Boolean)) {
-      setExpandedCategories({});
-      return true;
-    }
-    return false;
-  };
+  // Phone: where the list was, so closing the panel (a swipe, the dock, a
+  // tap outside) and opening it again comes back to the same place. Saved on
+  // every scroll with the accordion state it belongs to; restored only when
+  // the same category / Survey Marker is still open (a tap on another placed
+  // Survey Marker opens that one instead).
+  const mobileAccordionKey = mobileMode
+    ? `${Object.keys(expandedCategories || {}).filter((id) => expandedCategories[id]).join(',')}|${mobileDetailMarkerId || ''}`
+    : '';
+  const mobileSurveyListRef = useRef(null);
+  const mobileListScrollRef = useRef({ top: 0, key: '' });
+  const mobileListRestoredRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!mobileMode || isSurveyPanelCollapsed) return;
+    const list = mobileSurveyListRef.current;
+    const saved = mobileListScrollRef.current;
+    if (!list || !saved.top || saved.key !== mobileAccordionKey) return;
+    list.scrollTop = saved.top;
+    // The open Survey Marker's bring-to-top (below) skips this reopen.
+    mobileListRestoredRef.current = Boolean(mobileDetailMarkerId);
+    // Only on the reopen itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mobileMode, isSurveyPanelCollapsed]);
 
   // Phone: tapping a category opens it (and closes any other, one accordion).
   const toggleMobileCategory = (categoryId) => {
@@ -655,6 +665,10 @@ const SurveySpacesRail = ({
       setCopiedItemSelection({});
       setActiveTool('select');
     }
+    if (mobileMode) {
+      collapseMobileAccordion();
+      mobileListScrollRef.current = { top: 0, key: '' };
+    }
     setIsSurveyPanelCollapsed(true);
   };
 
@@ -713,24 +727,25 @@ const SurveySpacesRail = ({
     setMobileDetailDropdown(null);
   }, [mobileDetailMarkerId]);
 
-  // UX (mobile demo parity): collapsing the sheet closes the accordion so the
-  // next open starts on the category list at Standard height — mirrors the
-  // demo survey dock button clearing the selected marker before opening the
-  // setup sheet (demo App.tsx:389-393). A placement or a tap on a placed
-  // Survey Marker opens the sheet with its own category and marker open.
+  // Owner 2026-10-01: closing the sheet KEEPS the accordion (the open
+  // category and Survey Marker) so reopening comes back to the same place;
+  // only its menus close. (It used to clear it, after the demo's dock button.) A placement or a tap on a placed Survey
+  // Marker still opens the sheet with its own category and marker open
+  // (PDFViewer replaces the open set). Exiting Survey starts fresh.
   useEffect(() => {
-    if (mobileMode && isSurveyPanelCollapsed) {
-      setExpandedSurveyMarkers((prev) => (Object.keys(prev || {}).length ? {} : prev));
-      setExpandedCategories((prev) => (Object.keys(prev || {}).length ? {} : prev));
-      setMobileDetailDropdown(null);
-    }
-  }, [mobileMode, isSurveyPanelCollapsed, setExpandedSurveyMarkers, setExpandedCategories]);
+    if (mobileMode && isSurveyPanelCollapsed) setMobileDetailDropdown(null);
+  }, [mobileMode, isSurveyPanelCollapsed]);
 
   // Phone: bring the open Survey Marker to the top of the list (after a
   // placement it can be far down a long category). Scrolls the list only -
   // never scrollIntoView, which would also nudge the overflow-hidden sheet.
   useEffect(() => {
     if (!mobileMode || !mobileDetailMarkerId || isSurveyPanelCollapsed) return undefined;
+    // Reopened where the finger left it: keep that scroll.
+    if (mobileListRestoredRef.current) {
+      mobileListRestoredRef.current = false;
+      return undefined;
+    }
     const frame = requestAnimationFrame(() => {
       const row = document.getElementById(`highlight-item-${mobileDetailMarkerId}`);
       const list = row?.closest('.mobile-survey-list');
@@ -1192,9 +1207,11 @@ const SurveySpacesRail = ({
 
   // Phone: the open Survey Marker, inline under its row in the accordion
   // (owner 2026-10-01, replaces the separate detail view and its Survey Marker
-  // dropdown). Entity chip, name and Locate on one line, the whole checklist
-  // (no inner scroll), then the notes slot. Same handlers and store writes as
-  // the desktop row.
+  // dropdown). Entity, name and Locate on one line, the whole checklist (no
+  // inner scroll), then the notes slot. Same handlers and store writes as the
+  // desktop row. Owner polish 2026-10-01: the entity is its colour dot with
+  // its name small underneath (still the entity menu), the name reads at the
+  // panel's row size, Locate is the magnifier glyph alone.
   const renderMobileOpenSurveyMarker = (surveyMarker, category, markerName, fallbackName) => {
     const annotationId = surveyMarker.id;
     const markerModuleId = surveyMarker.moduleId || selectedModuleId;
@@ -1228,8 +1245,7 @@ const SurveySpacesRail = ({
                 borderColor: entityColor ? 'var(--ink-ring-strong)' : 'var(--text-3)'
               }}
             />
-            <span className="mobile-survey-entity-chip-label">{entityName}</span>
-            <Icon name="chevronDown" size={12} color="currentColor" />
+            <span className="mobile-survey-entity-chip-label">{currentEntityId || entityName !== 'None' ? entityName : 'Entity'}</span>
           </button>
           <div className="mobile-survey-detail-name-wrap">
             <input
@@ -1258,7 +1274,8 @@ const SurveySpacesRail = ({
           <button
             type="button"
             className={`mobile-survey-locate${isPlaced ? '' : ' is-unplaced'}`}
-            aria-label={isPlaced ? 'Jump to this Survey Marker' : 'Place on page'}
+            aria-label={isPlaced ? 'Locate on page' : 'Place on page'}
+            title={isPlaced ? 'Locate on page' : 'Place on page'}
             onClick={() => {
               if (isPlaced) {
                 handleLocateItemOnPDF(surveyMarker);
@@ -1267,8 +1284,7 @@ const SurveySpacesRail = ({
               }
             }}
           >
-            <Icon name="search" size={14} color="currentColor" />
-            <span>{isPlaced ? 'Locate' : 'Place'}</span>
+            <Icon name="search" size={16} color="currentColor" />
           </button>
           {mobileDetailDropdown === 'entity' && (
             <div className="mobile-survey-detail-menu mobile-survey-detail-entity-menu" role="listbox" aria-label="Entity">
@@ -2313,7 +2329,14 @@ const SurveySpacesRail = ({
                   {/* Panel content. Phone and desktop are the same tree (owner
                       2026-10-01): categories, their Survey Markers, and the open
                       Survey Marker inline - the phone's separate detail view is gone. */}
-                  <div className={mobileMode ? 'mobile-survey-list' : 'survey-rail__list'} style={mobileMode ? undefined : { fontFamily: FONT_FAMILY }}>
+                  <div
+                    ref={mobileMode ? mobileSurveyListRef : undefined}
+                    className={mobileMode ? 'mobile-survey-list' : 'survey-rail__list'}
+                    style={mobileMode ? undefined : { fontFamily: FONT_FAMILY }}
+                    onScroll={mobileMode ? (event) => {
+                      mobileListScrollRef.current = { top: event.currentTarget.scrollTop, key: mobileAccordionKey };
+                    } : undefined}
+                  >
                     {selectedModuleId ? (() => {
                       const module = (selectedTemplate.modules || selectedTemplate.spaces || [])?.find(m => m.id === selectedModuleId);
                       if (!module) return null;
@@ -3865,20 +3888,20 @@ const SurveySpacesRail = ({
                                                                   fontSize: '10px',
                                                                   fontWeight: 600,
                                                                   borderRadius: '3px',
-                                                                  /* Same pairs as the chosen Y / N / N/A answer above
+                                                                  /* Same chips as the chosen Y / N / N/A answer above
                                                                      (owner 2026-10-01): Y green, N red, N/A neutral grey -
-                                                                     the word in the answer's colour on a plate of its hue. */
+                                                                     a near-white word on a solid plate of its hue. */
                                                                   background: sel === 'Y'
-                                                                    ? 'var(--success-soft)'
+                                                                    ? 'var(--success-plate)'
                                                                     : sel === 'N'
-                                                                      ? 'var(--danger-soft)'
+                                                                      ? 'var(--danger-plate)'
                                                                       : sel === 'N/A'
                                                                         ? 'var(--border)'
                                                                         : 'var(--surface-3)',
                                                                   color: sel === 'Y'
-                                                                    ? 'var(--success-text)'
+                                                                    ? 'var(--on-success-plate)'
                                                                     : sel === 'N'
-                                                                      ? 'var(--danger-text)'
+                                                                      ? 'var(--on-danger-plate)'
                                                                       : sel === 'N/A'
                                                                         ? 'var(--text-1)'
                                                                         : 'var(--text-3)',

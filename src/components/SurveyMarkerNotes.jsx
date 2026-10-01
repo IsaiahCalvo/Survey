@@ -68,7 +68,14 @@ function SurveyNoteField({ text, onSave, variant, autoFocus, onAutoFocused, read
     const el = fieldRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
+    // border-box: the height also carries the 1px border, or a one-line
+    // note loses 2px to its own edge.
+    const height = el.scrollHeight + el.offsetHeight - el.clientHeight;
+    el.style.height = `${height}px`;
+    // Phone: the field is drawn at --note-scale (surveyMarkerNotes.css), so
+    // give back the layout space the scale takes off its height.
+    const scale = parseFloat(getComputedStyle(el).getPropertyValue('--note-scale')) || 1;
+    el.style.marginBottom = scale < 1 ? `${-height * (1 - scale)}px` : '';
   }, [draft]);
 
   useEffect(() => {
@@ -282,8 +289,9 @@ export default function SurveyMarkerNotes({
         onAutoFocused={onAutoFocused}
         readOnly={!canEdit}
       />
+      {/* No "Media" heading (owner 2026-10-01: nothing big for no reason):
+          the "+ Media" pill names the strip, thumbnails follow the note. */}
       <div className="survey-marker-notes__media">
-        <span className="survey-notes__label">Media</span>
         <SurveyMediaStrip
           variant={variant}
           items={items}
