@@ -8,10 +8,11 @@
 
    Intended UX, every state of the phone Survey sheet:
    - HEADER: one slim 44px line. A one-line title (or the chosen template's
-     name, which is its own switcher), then the export glyph. No eyebrow, no
-     round plated buttons. Exit lives in the survey bar above the page only
-     (owner 2026-10-01: one Exit). While anything in the accordion is open the
-     sheet is Full screen and the line leads with "< Categories", the way back.
+     name, which is its own switcher: a tap shows the templates in place of
+     the category list), then the export glyph. No eyebrow, no round plated
+     buttons. Exit lives in the survey bar above the page only (owner
+     2026-10-01: one Exit). While anything in the accordion is open the sheet
+     is Full screen and the line holds only "< Categories", the way back.
    - BODY: ONE rounded lighter blue-grey panel (--surface-2, a --border edge,
      radius 10 - the home lists' panel, see src/home/hub.css "ONE PANEL PER
      LIST" and "TEMPLATE DETAIL — LAYOUT B"). Inside it, rows are lines parted
@@ -84,14 +85,17 @@
   white-space: nowrap;
 }
 
-/* Full screen: "< Categories" leads the line and closes the whole accordion
-   (the sheet then returns to Standard). The template name stays beside it. */
+/* Full screen: "< Categories" stands ALONE on the line (owner 2026-10-01:
+   "the back button must not be inline with the template dropdown") and
+   closes the whole accordion (the sheet then returns to Standard). The
+   template name is not shown at this level; the module tabs and the open
+   category carry the context. A real 44px pad, at the sheet title's size. */
 .mobile-survey-sheet .mobile-survey-back,
 .mobile-survey-sheet .mobile-survey-back:active {
   flex: 0 0 auto;
-  height: 32px;
-  margin-left: -8px;
-  padding: 0 6px 0 2px;
+  height: 44px;
+  margin-left: -10px;
+  padding: 0 14px 0 4px;
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -99,37 +103,49 @@
   background: transparent;
   border: 0;
   font: inherit;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
+  line-height: 20px;
   white-space: nowrap;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-survey-sheet .mobile-survey-back > svg {
+  flex: 0 0 auto;
 }
 
 .mobile-survey-sheet .mobile-survey-back:active {
   opacity: 0.6;
 }
 
-.mobile-survey-sheet .mobile-survey-head.is-drilled .mobile-survey-template-button {
-  color: var(--text-3);
-  font-size: 13px;
-  font-weight: 500;
+/* The back line's own "Categories" says where it goes, so the panel's
+   "Categories" head line steps aside while a category is open. */
+.mobile-survey-sheet .mobile-survey-head.is-drilled ~ .mobile-survey-card .mobile-survey-categories-heading {
+  display: none;
 }
 
-/* The chosen template's name IS the template switcher. */
+/* The chosen template's name IS the template switcher: the sheet title
+   (700 16px/20px, the shared sheet scale) with a bare 14px chevron after it -
+   no disc or plate behind it. The whole 44px line is its hit area. While the
+   templates are showing (.is-switching) the chevron turns up, so the same
+   control opens and closes the list. */
 .mobile-survey-sheet .mobile-survey-template-button {
   max-width: 100%;
-  height: 32px;
+  height: 44px;
   padding: 0;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   color: var(--text-1);
   background: transparent;
   border: 0;
   font: inherit;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -142,79 +158,43 @@
 
 .mobile-survey-sheet .mobile-survey-template-button > svg {
   flex: 0 0 auto;
-  color: var(--text-3);
+  color: var(--text-2);
+  transition: transform 150ms cubic-bezier(0.33, 1, 0.68, 1);
 }
 
-/* The template switcher's menu (owner 2026-10-01: "far too big and looks
-   bad"). It is the app's dropdown menu now - the survey bar's module pill menu
-   (.mobile-styled-select__menu in mobilePdfViewer.css): a --surface-2 card
-   with a subtle --border, 9px corners, 5px padding, 26px rows at the chrome's
-   11px/600 - and it is only as wide as its LONGEST name plus the check
-   column, never a fixed 286px slab. A name too long for the screen
-   ellipsises. */
-.mobile-survey-sheet .mobile-survey-template-menu {
-  position: absolute;
-  left: -8px;
-  top: calc(100% + 4px);
-  z-index: 40;
-  box-sizing: content-box;
-  width: max-content;
-  min-width: 0;
-  max-width: calc(100vw - 48px);
-  max-height: 244px;
-  overflow-y: auto;
-  padding: 5px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  box-shadow: 0 10px 24px -4px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35);
-  scrollbar-width: none;
+.mobile-survey-sheet .mobile-survey-template-button[aria-expanded="true"] > svg {
+  transform: rotate(180deg);
 }
 
-.mobile-survey-sheet .mobile-survey-template-menu::-webkit-scrollbar { display: none; }
+.mobile-survey-sheet .mobile-survey-template-button:active > span {
+  opacity: 0.6;
+}
 
-/* Every row keeps a 12px check column, filled only on the chosen row, so the
-   menu's width does not depend on which template is chosen. */
-.mobile-survey-sheet .mobile-survey-template-menu > button {
-  height: 26px;
-  min-height: 26px;
-  padding: 0 8px;
-  display: grid;
-  grid-template-columns: minmax(0, max-content) 12px;
-  justify-content: space-between;
-  align-items: center;
-  column-gap: 12px;
+@media (prefers-reduced-motion: reduce) {
+  .mobile-survey-sheet .mobile-survey-template-button > svg { transition: none; }
+}
+
+/* Choosing a template: a quiet Cancel takes Export's place (the Spaces
+   sheet's action word, 600 13px, --text-1 - never gold). */
+.mobile-survey-sheet .mobile-survey-cancel {
+  flex: 0 0 auto;
+  height: 44px;
+  min-width: 44px;
+  padding: 0 10px;
   color: var(--text-1);
   background: transparent;
   border: 0;
-  border-radius: 6px;
-  font: 600 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
-  letter-spacing: -0.01em;
-  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 
-.mobile-survey-sheet .mobile-survey-template-menu > button > span {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.mobile-survey-sheet .mobile-survey-template-menu > button > svg {
-  grid-column: 2;
-}
-
-.mobile-survey-sheet .mobile-survey-template-menu > button:active {
-  background: var(--pressed);
-}
-
-/* Selected = gold ink and the check glyph. No fill, no gold edge. */
-.mobile-survey-sheet .mobile-survey-template-menu > button.is-active {
-  color: var(--accent);
+.mobile-survey-sheet .mobile-survey-cancel:active {
+  opacity: 0.6;
 }
 
 .mobile-survey-sheet .mobile-survey-head-actions {
@@ -326,6 +306,12 @@
   overflow: visible;
 }
 
+/* Hidden while the template list takes its place (the [hidden] attribute
+   loses to the display above without this). */
+.mobile-survey-sheet .mobile-survey-card[hidden] {
+  display: none;
+}
+
 /* Template picker: the panel is the list of templates. */
 .mobile-survey-sheet .mobile-survey-picker-body {
   flex: 1;
@@ -384,6 +370,98 @@
   color: var(--text-3);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+
+/* ---------- TEMPLATE SWITCH LIST ----------------------------------------- */
+/* The entry picker's panel and rows, shown in place of the category list
+   (owner 2026-10-01, "hybrid"). Sized on the shared sheet scale: 44px rows,
+   names 500 14px/18px (a long one wraps to two lines), meta 500 12px/14px in
+   --text-3, and a 16px check column on every row so the names line up. The
+   current template is gold ink with a check - no fill. */
+.mobile-survey-sheet .mobile-survey-switch-list .mobile-survey-template-row {
+  padding-block: 6px;
+}
+
+.mobile-survey-sheet .mobile-survey-switch-list .mobile-survey-template-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.mobile-survey-sheet .mobile-survey-switch-list .mobile-survey-template-meta {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 14px;
+}
+
+.mobile-survey-sheet .mobile-survey-switch-check {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+}
+
+.mobile-survey-sheet .mobile-survey-switch-list .mobile-survey-template-row[aria-current="true"] .mobile-survey-template-name {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.mobile-survey-sheet .mobile-survey-switch-empty {
+  min-height: 44px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  color: var(--text-3);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* A filter field, only from 15 templates. 16px text so iOS does not zoom. */
+.mobile-survey-sheet .mobile-survey-switch-search {
+  position: relative;
+  display: block;
+  margin: 0 0 8px;
+}
+
+.mobile-survey-sheet .mobile-survey-switch-search > input {
+  width: 100%;
+  height: 36px;
+  box-sizing: border-box;
+  padding: 0 12px 0 32px;
+  color: var(--text-1);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 400;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* The engine's own clear glyph is a loud white X; the field is short-lived. */
+.mobile-survey-sheet .mobile-survey-switch-search > input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.mobile-survey-sheet .mobile-survey-switch-search > input::placeholder {
+  color: var(--text-3);
+}
+
+.mobile-survey-sheet .mobile-survey-switch-search > svg {
+  position: absolute;
+  left: 11px;
+  top: 11px;
+  color: var(--text-3);
+  pointer-events: none;
 }
 
 /* ---------- MODULE TABS -------------------------------------------------- */
