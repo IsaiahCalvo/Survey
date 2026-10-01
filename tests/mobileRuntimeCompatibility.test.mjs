@@ -644,7 +644,14 @@ test('mobile viewer rails do not mix flex shorthand with flexShrink during reren
 
 test('mobile Survey and Spaces drawers follow their content', () => {
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /else \{\s*setOpenCategory\(null\)/);
-  assert.match(SURVEY_RAIL_SOURCE, /mobile-survey-template-menu/);
+  // DELIBERATE ASSERTION CHANGE 2026-10-01 (owner: template switcher, the
+  // "hybrid" design): the phone's template popover (.mobile-survey-template-menu)
+  // is gone. Tapping the template title now swaps the category list for an
+  // in-sheet list of templates, so the guard pins that list (and that the old
+  // popover does not come back as a second way to switch).
+  assert.doesNotMatch(SURVEY_RAIL_SOURCE, /mobile-survey-template-menu/);
+  assert.match(SURVEY_RAIL_SOURCE, /className="mobile-survey-card mobile-survey-template-list mobile-survey-switch-list"/);
+  assert.match(SURVEY_RAIL_SOURCE, /className="survey-rail__title-button"/);
   // DELIBERATE ASSERTION CHANGE 2026-10-01 (owner: the phone Survey panel works
   // like desktop, one accordion): a tap on a category OPENS it, so the old
   // "Tap category to place a Survey Marker" hint is gone. Placing is each row's

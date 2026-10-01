@@ -465,7 +465,12 @@ const SurveySpacesRail = ({
     railToggledRef.current = true;
   }
   const [openEntityDropdownId, setOpenEntityDropdownId] = useState(null);
+  // The template switcher (owner 2026-10-01, "hybrid" design): the template
+  // name in the panel header is a button. Phone: it swaps the category list
+  // for an in-sheet list of templates. Desktop: it opens a small menu under
+  // the rail header. The one way to switch template on each screen.
   const [isTemplateSelectorOpen, setIsTemplateSelectorOpen] = useState(false);
+  const [templateSwitchQuery, setTemplateSwitchQuery] = useState('');
   // Mobile-only export menu in the sheet header (demo SurveySheet.tsx:324-348);
   // desktop keeps its bottom EXPORT bar untouched.
   const [isMobileExportMenuOpen, setIsMobileExportMenuOpen] = useState(false);
@@ -482,6 +487,8 @@ const SurveySpacesRail = ({
   const [isCreateCategoryModalOpen, setIsCreateCategoryModalOpen] = useState(false);
   const [railIconHover, setRailIconHover] = useState(null);
   const templateSelectorRef = useRef(null);
+  const templateTitleButtonRef = useRef(null);
+  const templateSwitchListRef = useRef(null);
   const mobileExportMenuRef = useRef(null);
   const surveyMarkerDragRestoreRef = useRef(null);
   const availableSurveyTemplates = Array.isArray(surveyTemplates) ? surveyTemplates : [];
@@ -699,14 +706,83 @@ const SurveySpacesRail = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collapseRequestKey]);
 
+  // Phone: the template list is showing in place of the category list. Only
+  // from the category list itself (the title is hidden while a category is
+  // open, so an open accordion always wins).
+  const isMobileTemplateSwitching = mobileMode && isTemplateSelectorOpen && !mobileAccordionOpen;
+
+  const closeTemplateSwitcher = useCallback(({ focusTitle = true } = {}) => {
+    setIsTemplateSelectorOpen(false);
+    setTemplateSwitchQuery('');
+    if (focusTitle) {
+      requestAnimationFrame(() => templateTitleButtonRef.current?.focus({ preventScroll: true }));
+    }
+  }, []);
+
+  // Switch to another template. The current one only closes the switcher.
+  const switchSurveyTemplate = (template) => {
+    if (template && template.id !== selectedTemplate?.id) {
+      // Another template starts on its category list.
+      if (mobileMode) collapseMobileAccordion();
+      onSelectSurveyTemplate?.(template);
+    }
+    closeTemplateSwitcher();
+  };
+
+  // The switcher never outlives what it belongs to: closing the panel, an
+  // accordion opening (a placed Survey Marker tapped), another template, or
+  // desktop's category-select mode (whose title is the module, not the
+  // template) all put it away.
+  useEffect(() => {
+    if (!isTemplateSelectorOpen) return;
+    if (isSurveyPanelCollapsed || mobileAccordionOpen || (!mobileMode && categorySelectModeActive)) {
+      setIsTemplateSelectorOpen(false);
+      setTemplateSwitchQuery('');
+    }
+  }, [isTemplateSelectorOpen, isSurveyPanelCollapsed, mobileAccordionOpen, mobileMode, categorySelectModeActive]);
+  useEffect(() => {
+    setIsTemplateSelectorOpen(false);
+    setTemplateSwitchQuery('');
+  }, [selectedTemplate?.id]);
+
+  // Focus lands on the current template when the list or menu opens.
   useEffect(() => {
     if (!isTemplateSelectorOpen) return undefined;
-    // Light popover — shared dismiss rules R1/R2/R5 (src/components/dismissRules.js).
+    const frame = requestAnimationFrame(() => {
+      const list = templateSwitchListRef.current;
+      const current = list?.querySelector('[aria-current="true"], [aria-checked="true"]');
+      current?.focus({ preventScroll: !mobileMode });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [isTemplateSelectorOpen, mobileMode]);
+
+  // Desktop: the template menu is a light popover — shared dismiss rules
+  // R1/R2/R5 (src/components/dismissRules.js). The phone's list is part of
+  // the sheet, so a tap elsewhere in it does not close it.
+  useEffect(() => {
+    if (!isTemplateSelectorOpen || mobileMode) return undefined;
     return watchLightPopover({
       contains: (target) => !templateSelectorRef.current || templateSelectorRef.current.contains(target),
-      close: () => setIsTemplateSelectorOpen(false),
+      close: (_event, reason) => closeTemplateSwitcher({ focusTitle: reason === 'escape' }),
     });
-  }, [isTemplateSelectorOpen]);
+  }, [isTemplateSelectorOpen, mobileMode, closeTemplateSwitcher]);
+
+  // Desktop menu keys: up / down / Home / End move between templates.
+  const handleTemplateMenuKeyDown = (event) => {
+    const items = [...(templateSwitchListRef.current?.querySelectorAll('[role="menuitemradio"]') || [])];
+    if (!items.length) return;
+    const index = items.indexOf(document.activeElement);
+    let next = null;
+    if (event.key === 'ArrowDown') next = items[(index + 1) % items.length];
+    else if (event.key === 'ArrowUp') next = items[(index - 1 + items.length) % items.length];
+    else if (event.key === 'Home') next = items[0];
+    else if (event.key === 'End') next = items[items.length - 1];
+    else if (event.key === 'Tab') { closeTemplateSwitcher({ focusTitle: false }); return; }
+    if (next) {
+      event.preventDefault();
+      next.focus();
+    }
+  };
 
   useEffect(() => {
     if (!isMobileExportMenuOpen) return undefined;
@@ -1758,7 +1834,21 @@ const SurveySpacesRail = ({
                       name as a 13px title, then "Export" as a quiet glyph-and-word
                       (with a small caret for the linked workbook's actions) and the
                       close glyph. The 18px title and the gold EXPORT box are gone. */}
-                  <div className={mobileMode ? `mobile-survey-head${mobileAccordionOpen ? ' is-drilled' : ''}` : 'survey-rail__head'}>
+                  {/* Owner 2026-10-01 (template switcher, "hybrid" design):
+                      - Phone, category list: the template name IS the sheet title,
+                        a button with a bare chevron (no disc). A tap swaps the
+                        category list for the list of templates (.is-switching):
+                        the chevron turns up, Export gives its place to a quiet
+                        Cancel.
+                      - Phone, a category open (Full screen): "< Categories" stands
+                        ALONE on the line (owner: "the back button must not be
+                        inline with the template dropdown"); the template name is
+                        not shown at that level.
+                      - Desktop: the 13px rail title is a menu button; its menu
+                        lists the templates (28px rows, the current one checked).
+                        In category-select mode the title is the module's name and
+                        the button is disabled. */}
+                  <div className={mobileMode ? `mobile-survey-head${mobileAccordionOpen ? ' is-drilled' : ''}${isMobileTemplateSwitching ? ' is-switching' : ''}` : 'survey-rail__head'}>
                     {/* Phone, Full screen (owner 2026-10-01): the way back. Closes
                         everything in the accordion, which also returns the sheet
                         to Standard height. */}
@@ -1769,56 +1859,91 @@ const SurveySpacesRail = ({
                         aria-label="Back to categories"
                         onClick={collapseMobileAccordion}
                       >
-                        <Icon name="chevronLeft" size={16} color="currentColor" />
+                        <Icon name="chevronLeft" size={20} color="currentColor" />
                         <span>Categories</span>
                       </button>
                     )}
                     <div
-                      ref={mobileMode ? templateSelectorRef : undefined}
+                      ref={mobileMode ? undefined : templateSelectorRef}
                       className={mobileMode ? 'mobile-survey-head-title' : undefined}
-                      style={{ flex: 1, minWidth: 0, position: 'relative' }}
+                      style={{ flex: 1, minWidth: 0 }}
                     >
                       {mobileMode ? (
-                        <>
+                        !mobileAccordionOpen && (
                           <button
                             type="button"
+                            ref={templateTitleButtonRef}
                             className="mobile-survey-template-button"
-                            aria-label="Choose survey template"
-                            aria-expanded={isTemplateSelectorOpen}
-                            onClick={() => setIsTemplateSelectorOpen((open) => !open)}
+                            aria-label={`Template: ${selectedTemplate.name || 'Survey'}. Switch template`}
+                            aria-expanded={isMobileTemplateSwitching}
+                            aria-controls="survey-template-list"
+                            onClick={() => {
+                              if (isMobileTemplateSwitching) closeTemplateSwitcher();
+                              else setIsTemplateSelectorOpen(true);
+                            }}
                           >
                             <span>{selectedTemplate.name || 'Survey'}</span>
-                            <Icon name="chevronDown" size={13} color="currentColor" />
+                            <Icon name="chevronDown" size={14} color="currentColor" />
                           </button>
-                          {isTemplateSelectorOpen && (
-                            <div className="mobile-survey-template-menu" role="listbox">
-                              {availableSurveyTemplates.map((template) => (
-                                <button
-                                  key={template.id}
-                                  type="button"
-                                  role="option"
-                                  aria-selected={template.id === selectedTemplate.id}
-                                  className={template.id === selectedTemplate.id ? 'is-active' : ''}
-                                  onClick={() => {
-                                    // Another template starts on its category list.
-                                    if (template.id !== selectedTemplate.id) collapseMobileAccordion();
-                                    onSelectSurveyTemplate?.(template);
-                                    setIsTemplateSelectorOpen(false);
-                                  }}
-                                >
-                                  <span>{template.name || 'Untitled Template'}</span>
-                                  {template.id === selectedTemplate.id ? <Icon name="check" size={12} color="currentColor" /> : null}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </>
+                        )
                       ) : (
                         <h2 className="survey-rail__title">
-                          {categorySelectModeActive && selectedModuleId
-                            ? ((selectedTemplate.modules || selectedTemplate.spaces || []).find(m => m.id === selectedModuleId)?.name || 'Survey')
-                            : (selectedTemplate.name || 'Survey')}
+                          <button
+                            type="button"
+                            ref={templateTitleButtonRef}
+                            className="survey-rail__title-button"
+                            aria-haspopup="menu"
+                            aria-expanded={isTemplateSelectorOpen}
+                            aria-controls={isTemplateSelectorOpen ? 'survey-rail-template-menu' : undefined}
+                            aria-label={categorySelectModeActive
+                              ? undefined
+                              : `Template: ${selectedTemplate.name || 'Survey'}. Switch template`}
+                            disabled={categorySelectModeActive}
+                            onClick={() => {
+                              if (isTemplateSelectorOpen) closeTemplateSwitcher({ focusTitle: false });
+                              else setIsTemplateSelectorOpen(true);
+                            }}
+                          >
+                            <span>
+                              {categorySelectModeActive && selectedModuleId
+                                ? ((selectedTemplate.modules || selectedTemplate.spaces || []).find(m => m.id === selectedModuleId)?.name || 'Survey')
+                                : (selectedTemplate.name || 'Survey')}
+                            </span>
+                            {!categorySelectModeActive && <Icon name="chevronDown" size={10} color="currentColor" />}
+                          </button>
                         </h2>
+                      )}
+                      {!mobileMode && isTemplateSelectorOpen && (
+                        <div
+                          id="survey-rail-template-menu"
+                          ref={templateSwitchListRef}
+                          className="survey-rail__template-menu"
+                          role="menu"
+                          aria-label="Switch template"
+                          onKeyDown={handleTemplateMenuKeyDown}
+                        >
+                          {availableSurveyTemplates.map((template) => {
+                            const isCurrent = template.id === selectedTemplate.id;
+                            const moduleCount = ((template.modules || template.spaces) || []).length;
+                            return (
+                              <button
+                                key={template.id}
+                                type="button"
+                                role="menuitemradio"
+                                aria-checked={isCurrent}
+                                tabIndex={isCurrent ? 0 : -1}
+                                className="survey-rail__menu-item survey-rail__template-option"
+                                onClick={() => switchSurveyTemplate(template)}
+                              >
+                                <span className="survey-rail__template-option-name">{template.name || 'Untitled template'}</span>
+                                <span className="survey-rail__template-option-meta">{moduleCount} module{moduleCount === 1 ? '' : 's'}</span>
+                                <span className="survey-rail__template-option-check" aria-hidden="true">
+                                  {isCurrent ? <Icon name="check" size={12} color="currentColor" /> : null}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
                       )}
                       {mobileMode && !categorySelectModeActive && selectedTemplate.linkedExcelPath && lastSyncMessage && (() => {
                         // Color the banner by the message's tone so warnings (close Excel,
@@ -1853,7 +1978,19 @@ const SurveySpacesRail = ({
                           demo blue). Wires the SAME handlers as the desktop bottom
                           export bar: "Export Excel" = handleExportSurveyToExcel(),
                           "Sync Microsoft 365" = push to the linked workbook. */}
-                      {mobileMode && (
+                      {/* Phone, choosing a template: Export steps aside for a quiet
+                          Cancel (the Spaces sheet's action word, never gold). A tap
+                          on a template is what switches; Cancel only leaves. */}
+                      {isMobileTemplateSwitching && (
+                        <button
+                          type="button"
+                          className="mobile-survey-cancel"
+                          onClick={() => closeTemplateSwitcher()}
+                        >
+                          Cancel
+                        </button>
+                      )}
+                      {mobileMode && !isMobileTemplateSwitching && (
                         <div className="mobile-survey-sheet-export-wrap" ref={mobileExportMenuRef}>
                           <button
                             type="button"
@@ -2277,9 +2414,70 @@ const SurveySpacesRail = ({
                       object as the home Documents, Projects and Templates lists. No
                       card per row. On desktop this wrapper is display: contents, so
                       the rail's layout is exactly what it was. */}
+                  {/* Phone, choosing a template (owner 2026-10-01, "hybrid"):
+                      the templates take the category list's place in the sheet -
+                      the entry picker's own rows, with a check column; the current
+                      one is gold ink with a check. A tap switches and lands on
+                      the new template's category list. A filter field only from
+                      15 templates. The sheet keeps its height. */}
+                  {isMobileTemplateSwitching && (() => {
+                    const query = templateSwitchQuery.trim().toLowerCase();
+                    const showSearch = availableSurveyTemplates.length >= 15;
+                    const shown = showSearch && query
+                      ? availableSurveyTemplates.filter((template) => (template.name || 'Untitled template').toLowerCase().includes(query))
+                      : availableSurveyTemplates;
+                    return (
+                      <div className="mobile-survey-picker-body mobile-survey-switch">
+                        {showSearch && (
+                          <label className="mobile-survey-switch-search">
+                            <Icon name="search" size={14} color="currentColor" />
+                            <input
+                              type="search"
+                              placeholder="Find a template"
+                              aria-label="Find a template"
+                              value={templateSwitchQuery}
+                              onChange={(event) => setTemplateSwitchQuery(event.target.value)}
+                            />
+                          </label>
+                        )}
+                        <div
+                          id="survey-template-list"
+                          ref={templateSwitchListRef}
+                          className="mobile-survey-card mobile-survey-template-list mobile-survey-switch-list"
+                          role="group"
+                          aria-label="Switch template"
+                        >
+                          {shown.length === 0 ? (
+                            <div className="mobile-survey-switch-empty">No templates match</div>
+                          ) : shown.map((template) => {
+                            const isCurrent = template.id === selectedTemplate.id;
+                            const moduleCount = ((template.modules || template.spaces) || []).length;
+                            return (
+                              <button
+                                key={template.id}
+                                type="button"
+                                className="mobile-survey-template-row"
+                                aria-current={isCurrent ? 'true' : undefined}
+                                onClick={() => switchSurveyTemplate(template)}
+                              >
+                                <span className="mobile-survey-template-name">{template.name || 'Untitled template'}</span>
+                                <span className="mobile-survey-template-meta">
+                                  {moduleCount} module{moduleCount === 1 ? '' : 's'}
+                                </span>
+                                <span className="mobile-survey-switch-check" aria-hidden="true">
+                                  {isCurrent ? <Icon name="check" size={16} color="currentColor" /> : null}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <div
                     className={mobileMode ? 'mobile-survey-card' : undefined}
                     style={mobileMode ? undefined : { display: 'contents' }}
+                    hidden={isMobileTemplateSwitching || undefined}
                   >
                   {/* Module navigator. Phone: a row of module TABS pinned to the top
                       of the panel (active = bright ink with a 2px ink bar, the home
