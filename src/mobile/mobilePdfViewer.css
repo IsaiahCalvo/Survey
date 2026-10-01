@@ -3946,7 +3946,9 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
      folder tint and the gold slot are gone; nothing here is accent). */
   background: var(--hover);
   box-shadow: inset 2px 0 0 var(--border-strong);
-  transition: top 160ms ease, left 120ms ease-out;
+  /* The drag's one glide (BookmarksPanel BOOKMARK_DRAG_GLIDE, UX 2026-10-01):
+     rows, slot and indent all move on the same 180ms ease-out. */
+  transition: top 180ms cubic-bezier(0.25, 0.5, 0.25, 1), left 180ms cubic-bezier(0.25, 0.5, 0.25, 1);
 }
 
 /* One line of the list. The depth indent is padding INSIDE the row (set per
@@ -3965,7 +3967,7 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
   box-sizing: border-box;
   background: var(--surface-2);
   border-bottom: 1px solid var(--border);
-  transition: padding-left 120ms ease-out;
+  transition: padding-left 180ms cubic-bezier(0.25, 0.5, 0.25, 1);
 }
 
 /* Lifted row while dragging — the phone equivalent of the desktop clone's
