@@ -706,11 +706,24 @@ const SurveySpacesRail = ({
     // inside an open category moves nothing.
     const [cats, markerId] = mobileAccordionKey.split('|');
     const [wasCats, wasMarkerId] = was.open ? was.key.split('|') : ['', ''];
-    const marker = markerId && markerId !== wasMarkerId ? document.getElementById(`highlight-item-${markerId}`) : null;
+    // The phone's open Survey Marker carries #mobile-survey-open-marker (the
+    // desktop rail row is #highlight-item-<id>).
+    const marker = markerId && markerId !== wasMarkerId
+      ? (list.querySelector('#mobile-survey-open-marker') || document.getElementById(`highlight-item-${markerId}`))
+      : null;
     const card = !marker && cats && cats !== wasCats
       ? list.querySelector('.survey-marker-category-main[aria-expanded="true"]')?.closest('.survey-marker-category-card')
       : null;
-    if (marker || card) revealInSheet(marker || card, { anchor: marker || card.querySelector('.survey-marker-category-row') || card, scroll: was.open });
+    if (marker || card) {
+      const block = marker || card;
+      const anchor = marker || card.querySelector('.survey-marker-category-row') || card;
+      revealInSheet(block, { anchor, scroll: was.open });
+      // Once the slide open and any growth have settled, finish the job with a
+      // scroll if a few px are still under the edge (no height change then).
+      if (was.open && typeof window !== 'undefined') {
+        window.setTimeout(() => { if (block.isConnected) revealInSheet(block, { anchor, scroll: true }); }, 420);
+      }
+    }
     // mobileAccordionKey names what is open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mobileMode, isSurveyPanelCollapsed, mobileAccordionKey]);

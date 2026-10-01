@@ -82,6 +82,6 @@ test('the rule lives in the shared hook, and the Survey panel asks it instead of
   assert.match(hook, /if \(!grow\.reasons\.delete\(reason\) \|\| grow\.reasons\.size\) return;/);
   assert.match(hook, /if \(Math\.abs\(drag\.top - drag\.startTop\) >= 1\) forgetGrow\(\);/);
   assert.doesNotMatch(rail, /mobileAccordionOpen \? SHEET_DETENT_FULL/);
-  assert.match(rail, /revealInSheet\(marker \|\| card/);
+  assert.match(rail, /revealInSheet\(block, \{ anchor, scroll: was\.open \}\)/);
   assert.match(rail, /endSheetReveal\(list\)/);
 });

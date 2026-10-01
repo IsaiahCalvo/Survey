@@ -943,7 +943,15 @@ export function useMobileSheetMotion(onClose, options = {}) {
       const blockRect = block.getBoundingClientRect();
       // A block that is still unfolding (an expand animation) is measured at
       // the height it is unfolding to.
-      const growth = Math.max(0, block.scrollHeight - blockRect.height);
+      // That covers a block clipping its own content and any part of it that
+      // runs a measured-height slide (an inline px height while it unfolds,
+      // e.g. the Survey Marker body).
+      let growth = Math.max(0, block.scrollHeight - blockRect.height);
+      block.querySelectorAll?.('[style*="height"]').forEach((el) => {
+        const h = el.style.height;
+        if (!h || h === 'auto' || !h.endsWith('px')) return;
+        growth += Math.max(0, el.scrollHeight - el.clientHeight);
+      });
       const band = scroller ? listBand(scroller) : { top: sheetRect.top, bottom: sheetRect.bottom, clientHeight: 0 };
       let viewBottom = Math.min(band.bottom, sheetRect.bottom);
       const root = sheet.ownerDocument.documentElement;
