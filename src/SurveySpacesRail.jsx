@@ -1296,11 +1296,13 @@ const SurveySpacesRail = ({
 
   // Phone: the open Survey Marker, inline under its row in the accordion
   // (owner 2026-10-01, replaces the separate detail view and its Survey Marker
-  // dropdown). Entity, name and Locate on one line, the whole checklist (no
+  // dropdown). Name and Locate, the entity under them, the whole checklist (no
   // inner scroll), then the notes slot. Same handlers and store writes as the
-  // desktop row. Owner polish 2026-10-01: the entity is its colour dot with
-  // its name small underneath (still the entity menu), the name reads at the
-  // panel's row size, Locate is the magnifier glyph alone.
+  // desktop row. Owner polish 2026-10-01: the name reads at the panel's row
+  // size, Locate is the magnifier glyph alone, and (second pass, "the word
+  // 'Subcontractor' is getting cut off") the entity sits on its own line under
+  // the name field - its dot and its whole name, still the entity menu. The
+  // DOM order is unchanged; mobileSurveyPanel.css places the three on a grid.
   const renderMobileOpenSurveyMarker = (surveyMarker, category, markerName, fallbackName) => {
     const annotationId = surveyMarker.id;
     const markerModuleId = surveyMarker.moduleId || selectedModuleId;
@@ -1315,13 +1317,14 @@ const SurveySpacesRail = ({
     ];
     const checklist = (category?.checklist || []).filter((item) => item && item.archived !== true);
     const isPlaced = Boolean(surveyMarker.bounds && surveyMarker.pageNumber);
+    const hasEntity = Boolean(currentEntityId || entityName !== 'None');
 
     return (
       <div className="mobile-survey-open" data-testid="mobile-survey-open-marker">
         <div className="mobile-survey-open-tools mobile-survey-detail-dropdown-wrap">
           <button
             type="button"
-            className="mobile-survey-entity-chip"
+            className={`mobile-survey-entity-chip${hasEntity ? '' : ' is-empty'}`}
             aria-label={`Entity: ${entityName}. Choose Survey Marker entity`}
             aria-haspopup="listbox"
             aria-expanded={mobileDetailDropdown === 'entity'}
@@ -1334,7 +1337,7 @@ const SurveySpacesRail = ({
                 borderColor: entityColor ? 'var(--ink-ring-strong)' : 'var(--text-3)'
               }}
             />
-            <span className="mobile-survey-entity-chip-label">{currentEntityId || entityName !== 'None' ? entityName : 'Entity'}</span>
+            <span className="mobile-survey-entity-chip-label">{hasEntity ? entityName : 'Entity'}</span>
           </button>
           <div className="mobile-survey-detail-name-wrap">
             <input
