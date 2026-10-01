@@ -558,6 +558,7 @@ const SurveySpacesRail = ({
   // panels"), which is also the height it rises to when you type in it.
   const {
     motionStyle: surveySheetMotionStyle,
+    backdropStyle: surveyBackdropStyle,
     sheetProps: surveySheetProps,
     requestClose: requestSurveySheetClose,
     expanded: surveySheetExpanded,
@@ -1196,6 +1197,7 @@ const SurveySpacesRail = ({
                 // Slide down like a swipe, then collapse (owner 2026-09-30:
                 // a tap outside is how a phone sheet closes).
                 onClick={() => requestSurveySheetClose()}
+                style={surveyBackdropStyle}
               />
             )}
             {/* Panel */}
