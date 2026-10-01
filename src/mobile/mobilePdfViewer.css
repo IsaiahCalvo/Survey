@@ -3195,10 +3195,13 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
    capped to the strip of screen left between the top bar and the keyboard.
    A browse sheet also steps to its Full height when you start typing in it
    (the hook), so it fills that whole strip.
-   - `bottom` moves with no transition on purpose: WebKit measures the focused
-     field in the same task to decide whether to pan the whole page, and a
-     sheet still gliding up would read as covered - that pan, snapped back a
-     frame later, was the flicker.
+   - `bottom` has no CSS transition: the box lands in the focus task, so every
+     measurement (the reveal scroll, WebKit) sees where the sheet is going.
+     What the eye sees is useMobileSheetMotion's resize glide, which carries
+     both edges there on the keyboard's own clock (owner 2026-10-01: "the
+     keyboard needs to come up smooth"; keyboardViewport.js step 7). The
+     whole-page pan that once made an instant lift necessary is now prevented
+     at its source (keyboardViewport.js step 6).
    - The home-indicator padding is not needed on top of a keyboard.
    - The second shadow paints the sheet's colour under it for the few frames
      before the keyboard has risen into that space, so the page never shows
@@ -3222,7 +3225,7 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
    detent / keyboard height. The selector outranks the keyboard rule above, and
    the cap is lifted for the glide only: the glide starts from where the top
    edge WAS, which can be taller than the new cap while the keyboard goes down.
-   The bottom edge is never animated - the keyboard lift stays instant. */
+   The bottom edge moves only with the keyboard, on the keyboard's clock. */
 @property --sheet-glide-height {
   syntax: '<length>';
   inherits: false;
@@ -3232,6 +3235,14 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
 :root [data-mobile-sheet][data-sheet-glide] {
   height: var(--sheet-glide-height) !important;
   max-height: none !important;
+}
+
+/* Since 2026-10-01 the glide also animates `translate` (the bottom edge riding
+   up and down with the keyboard). A measurement of where the sheet is going
+   (keyboardViewport.js withSheetsAtRest, the hook's own measure) sets this for
+   one synchronous read; !important outranks the running animation. */
+:root [data-mobile-sheet][data-sheet-at-rest] {
+  translate: none !important;
 }
 
 /* PANEL TO PANEL (owner 2026-10-01): switching panels from the dock keeps the

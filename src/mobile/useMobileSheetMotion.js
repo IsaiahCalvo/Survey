@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { isKeyboardEditable } from './keyboardViewport';
+import {
+  KEYBOARD_MOTION_EASING,
+  KEYBOARD_MOTION_MS,
+  SHEET_AT_REST_ATTR,
+  isKeyboardEditable,
+} from './keyboardViewport';
 
 /*
  * Mobile bottom-sheet motion system — one motion source per sheet.
@@ -104,15 +109,18 @@ export const SHEET_SPRING_EASING = 'cubic-bezier(0.22, 1.15, 0.36, 1)';
  * --keyboard-inset), or its own content - the new box is laid out at once and
  * the sheet's HEIGHT then glides from where its top edge was to where it now
  * is (SHEET_RESIZE_MS on the entrance's iOS curve). Height, not a transform:
- * the bottom edge is already where it belongs (on the dock, or on the
- * keyboard), so only the top edge travels; a translated sheet would open a gap
- * under itself while the keyboard goes down.
+ * unless the keyboard moved, the bottom edge is already where it belongs (on
+ * the dock), so only the top edge travels.
  *
- * The keyboard flicker 52a745a fixed stays fixed: the lift still lands in the
- * focus task with no transition (keyboardViewport.js step 4) - only the top
- * edge eases afterwards - and a glide never starts the focused field lower
- * than the lifted sheet's bottom edge (minus a margin), so WebKit never finds
- * it covered and has nothing to pan. The page itself is never moved.
+ * The keyboard (owner 2026-10-01: "whenever the keyboard comes up it needs to
+ * come up smooth"): the lift still lands in layout in the focus task
+ * (keyboardViewport.js step 4), but on screen BOTH edges now glide there - the
+ * bottom edge with a `translate` that starts at the dock and ends on the
+ * keyboard - on the keyboard's own clock (KEYBOARD_MOTION_MS / _EASING), so the
+ * sheet rises with the keyboard and settles back down with it. The instant
+ * lift used to be what kept WebKit from panning the page; that pan is now
+ * prevented at its source (keyboardViewport.js step 6). The page itself is
+ * never moved.
  *
  * Mechanics: the Web Animations API animates a registered custom property
  * (--sheet-glide-height, @property in mobilePdfViewer.css) while
@@ -123,9 +131,6 @@ export const SHEET_SPRING_EASING = 'cubic-bezier(0.22, 1.15, 0.36, 1)';
  */
 export const SHEET_RESIZE_MS = 240;
 export const SHEET_RESIZE_EASING = SHEET_OPEN_EASING;
-// A glide never starts the focused field closer than this to the sheet's
-// (lifted) bottom edge.
-const SHEET_RESIZE_FIELD_MARGIN_PX = 12;
 
 /*
  * PANEL TO PANEL (owner 2026-10-01: "switching from one panel to another via the
@@ -824,12 +829,13 @@ export function useMobileSheetMotion(onClose, options = {}) {
     let box = null;
     let anim = null;
     let signature = '';
+    let keyboardSignature = '';
     let mutations = null;
+    const readKeyboardSignature = () => `${root.getAttribute('data-keyboard-open') || ''}|${root.style.getPropertyValue('--keyboard-inset')}`;
     const readSignature = () => [
       el.className,
       el.style.getPropertyValue('--mobile-sheet-height'),
-      root.getAttribute('data-keyboard-open') || '',
-      root.style.getPropertyValue('--keyboard-inset'),
+      readKeyboardSignature(),
     ].join('|');
     const stop = () => {
       if (anim) {
@@ -839,55 +845,46 @@ export function useMobileSheetMotion(onClose, options = {}) {
       }
       el.removeAttribute('data-sheet-glide');
     };
-    // The box the sheet's own CSS gives it right now, plus how far below its
-    // top edge the focused field (if it holds one) ends.
+    // The box the sheet's own CSS gives it right now (a running glide's
+    // height and lift lifted for the measurement - SHEET_AT_REST_ATTR).
     const measureNatural = () => {
       const gliding = el.hasAttribute('data-sheet-glide');
       if (gliding) el.removeAttribute('data-sheet-glide');
+      el.setAttribute(SHEET_AT_REST_ATTR, '');
       const natural = sheetLayoutBox(el);
-      let fieldEnd = 0;
-      let field = null;
-      const active = doc.activeElement;
-      if (natural && active && active !== el && el.contains(active) && isKeyboardEditable(active)) {
-        const rect = el.getBoundingClientRect();
-        fieldEnd = active.getBoundingClientRect().bottom - rect.top;
-        field = active;
-      }
+      el.removeAttribute(SHEET_AT_REST_ATTR);
       if (gliding) el.setAttribute('data-sheet-glide', '');
-      return natural ? { ...natural, fieldEnd, field } : null;
+      return natural;
     };
-    const currentTop = () => {
+    // Where the sheet's edges are on screen this frame.
+    const currentBox = () => {
       if (!box) return null;
-      if (!anim) return box.top;
-      const height = parseFloat(view.getComputedStyle(el).getPropertyValue('--sheet-glide-height'));
-      return Number.isFinite(height) ? box.bottom - height : box.top;
+      if (!anim) return { top: box.top, bottom: box.bottom };
+      const computed = view.getComputedStyle(el);
+      const height = parseFloat(computed.getPropertyValue('--sheet-glide-height'));
+      const shift = parseFloat(String(computed.translate || '').split(' ')[1]) || 0;
+      const bottom = box.bottom + shift;
+      return { top: Number.isFinite(height) ? bottom - height : box.top + shift, bottom };
     };
-    const glide = (fromTop, natural, timing) => {
-      let startHeight = natural.bottom - fromTop;
-      // Growing while typing: never start the field below the sheet's foot.
-      // Try the full glide first; only a field it would push under the foot
-      // (one that hangs from the sheet's top) makes the glide start taller.
-      if (startHeight < natural.height && natural.fieldEnd > 0 && natural.field) {
-        el.setAttribute('data-sheet-glide', '');
-        // !important so it also wins over a glide already running.
-        el.style.setProperty('--sheet-glide-height', `${Math.max(0, startHeight)}px`, 'important');
-        const covered = natural.field.getBoundingClientRect().bottom
-          > el.getBoundingClientRect().bottom - SHEET_RESIZE_FIELD_MARGIN_PX;
-        el.style.removeProperty('--sheet-glide-height');
-        if (!anim) el.removeAttribute('data-sheet-glide');
-        mutations?.takeRecords();
-        if (covered) startHeight = Math.max(startHeight, natural.fieldEnd + SHEET_RESIZE_FIELD_MARGIN_PX);
-      }
-      startHeight = Math.max(0, Math.min(startHeight, view.innerHeight || startHeight));
+    // Both edges travel from where they are to where the sheet's CSS now puts
+    // them: the height (top edge) and a translate (bottom edge - only ever
+    // non-zero when the keyboard lifts or lowers the sheet, step 7 in
+    // keyboardViewport.js) run on one clock, so the sheet moves as one piece.
+    const glide = (from, natural, timing) => {
+      const startHeight = Math.max(0, Math.min(from.bottom - from.top, view.innerHeight || Infinity));
+      const shift = from.bottom - natural.bottom;
       box = natural;
-      if (Math.abs(startHeight - natural.height) < 1) {
+      if (Math.abs(startHeight - natural.height) < 1 && Math.abs(shift) < 1) {
         stop();
         return;
       }
       el.setAttribute('data-sheet-glide', '');
       const previous = anim;
       const next = el.animate(
-        [{ '--sheet-glide-height': `${startHeight}px` }, { '--sheet-glide-height': `${natural.height}px` }],
+        [
+          { '--sheet-glide-height': `${startHeight}px`, translate: `0 ${shift}px` },
+          { '--sheet-glide-height': `${natural.height}px`, translate: '0 0' },
+        ],
         { duration: timing.ms, easing: timing.easing, fill: 'forwards' },
       );
       anim = next;
@@ -903,22 +900,26 @@ export function useMobileSheetMotion(onClose, options = {}) {
       const nextSignature = readSignature();
       if (source === 'mutation' && nextSignature === signature) return;
       signature = nextSignature;
+      const nextKeyboard = readKeyboardSignature();
+      const keyboardMoved = nextKeyboard !== keyboardSignature;
+      keyboardSignature = nextKeyboard;
       const live = liveRef.current || {};
       if (!live.open || live.closing || live.enterPhase === 'parked' || prefersReducedMotion()) {
         stop();
         box = sheetLayoutBox(el);
         return;
       }
-      const fromTop = currentTop();
+      const from = currentBox();
       const natural = measureNatural();
-      if (!natural || fromTop == null) {
+      if (!natural || !from) {
         stop();
         box = natural;
         return;
       }
-      glide(fromTop, natural, live.springing
-        ? { ms: SHEET_SPRING_MS, easing: SHEET_SPRING_EASING }
-        : { ms: SHEET_RESIZE_MS, easing: SHEET_RESIZE_EASING });
+      let timing = { ms: SHEET_RESIZE_MS, easing: SHEET_RESIZE_EASING };
+      if (keyboardMoved) timing = { ms: KEYBOARD_MOTION_MS, easing: KEYBOARD_MOTION_EASING };
+      else if (live.springing) timing = { ms: SHEET_SPRING_MS, easing: SHEET_SPRING_EASING };
+      glide(from, natural, timing);
     };
     glideRef.current = {
       // PANEL TO PANEL: stand where the old sheet's top edge was, then glide.
@@ -930,10 +931,11 @@ export function useMobileSheetMotion(onClose, options = {}) {
           box = natural;
           return;
         }
-        glide(fromTop, { ...natural, fieldEnd: 0 }, { ms: SHEET_RESIZE_MS, easing: SHEET_RESIZE_EASING });
+        glide({ top: fromTop, bottom: natural.bottom }, natural, { ms: SHEET_RESIZE_MS, easing: SHEET_RESIZE_EASING });
       },
     };
     signature = readSignature();
+    keyboardSignature = readKeyboardSignature();
     box = sheetLayoutBox(el);
     mutations = new MutationObserver(() => handle('mutation'));
     mutations.observe(el, { attributes: true, attributeFilter: ['class', 'style'] });

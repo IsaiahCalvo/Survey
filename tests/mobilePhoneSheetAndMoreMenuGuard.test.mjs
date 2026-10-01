@@ -218,8 +218,14 @@ test('dock closes slide, dock switches hand over, and height changes glide', () 
   assert.match(sheetMotion, /'--sheet-glide-height': `\$\{startHeight\}px`/);
   assert.match(sidebar, /transition: mobileMode \? 'none' : 'width 0\.2s ease, height 0\.26s/);
   assert.match(survey, /transition: mobileMode \? 'none' : 'right 0\.2s ease, top 0\.2s ease, height 0\.2s ease'/);
-  // The keyboard lift itself stays instant (52a745a): no transition on it.
+  // The keyboard lift lands in layout at once (no CSS transition on it, so
+  // every measurement sees where the sheet is going); since 2026-10-01 the
+  // glide carries BOTH edges there on screen, the bottom one with a translate,
+  // on the keyboard's own clock (owner: "the keyboard needs to come up smooth").
   assert.doesNotMatch(mobileCss, /html\[data-keyboard-open='true'\] \[data-mobile-sheet\] \{[^}]*transition/);
+  assert.match(sheetMotion, /translate: `0 \$\{shift\}px`/);
+  assert.match(sheetMotion, /if \(keyboardMoved\) timing = \{ ms: KEYBOARD_MOTION_MS, easing: KEYBOARD_MOTION_EASING \};/);
+  assert.match(mobileCss, /:root \[data-mobile-sheet\]\[data-sheet-at-rest\] \{\s*translate: none !important;/);
   // Reduced motion: no glide and no hand-over fade.
   assert.match(sheetMotion, /live\.enterPhase === 'parked' \|\| prefersReducedMotion\(\)/);
   assert.match(sheetMotion, /if \(!tracksOpen \|\| prefersReducedMotion\(\)\) return false;/);

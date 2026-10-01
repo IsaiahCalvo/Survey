@@ -33,6 +33,7 @@ import {
   KEYBOARD_PREDICT_FRACTION,
   createKeyboardViewportController,
   isKeyboardEditable,
+  isAppleTouchWebKit,
   measureKeyboardInset,
   revealAboveKeyboard,
 } from '../src/mobile/keyboardViewport.js';
@@ -263,8 +264,9 @@ test('only the PDF scroller and the bottom sheets spend the keyboard inset', () 
   // stands on whichever is higher - the keyboard or the dock's top edge.
   assert.match(sheetRule[1], /bottom: max\(var\(--keyboard-inset, 0px\), var\(--mobile-dock-bar-height\)\) !important;/);
   assert.match(sheetRule[1], /max-height: calc\(100dvh - max\(var\(--keyboard-inset, 0px\), var\(--mobile-dock-bar-height\)\)/);
-  // The lift must not glide: WebKit measures the focused field in the same
-  // task, and a sheet still on its way up reads as covered (the flicker).
+  // No CSS transition: the box lands in the focus task so every measurement
+  // sees where the sheet is going; what the eye sees is useMobileSheetMotion's
+  // glide on the keyboard's clock (2026-10-01).
   assert.doesNotMatch(sheetRule[1], /transition/);
   // Nothing else may react to it: the header, rail and dock stay put.
   const consumers = MOBILE_VIEWER_CSS_SOURCE.match(/var\(--keyboard-inset/g) || [];
@@ -389,4 +391,147 @@ test('revealAboveKeyboard scrolls the field\'s own list by the smallest amount',
   assert.equal(list.scrollTop, 600 - (PHONE_H - KEYBOARD_H - 12));
   // Already visible: nothing moves.
   assert.equal(revealAboveKeyboard(field, { win, inset: KEYBOARD_H }), false);
+});
+
+/*
+ * OWNER 2026-10-01 (iPhone): "tapping the name of a marker, the whole app moves
+ * up quickly, even the header ... a whole flicker". WebKit on an iPhone CENTRES
+ * a focused text field above the keyboard (forceScroll, because text fields get
+ * the accessory bar) and skips that only for a focus made with preventScroll.
+ * So on iOS every field focus is made that way: taps are taken over, and
+ * focus() calls on fields get preventScroll.
+ */
+const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
+
+test('isAppleTouchWebKit: iPhone, iPad and iPadOS desktop mode only', () => {
+  assert.equal(isAppleTouchWebKit({ navigator: { userAgent: IPHONE_UA } }), true);
+  assert.equal(isAppleTouchWebKit({ navigator: { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', maxTouchPoints: 5 } }), true);
+  assert.equal(isAppleTouchWebKit({ navigator: { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', maxTouchPoints: 0 } }), false);
+  assert.equal(isAppleTouchWebKit({ navigator: { userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/128 Mobile' } }), false);
+});
+
+function iosPhone() {
+  const phone = createFakePhone();
+  const listeners = new Map();
+  phone.win.addEventListener = (type, fn) => listeners.set(type, fn);
+  phone.win.removeEventListener = (type) => listeners.delete(type);
+  phone.win.navigator = { userAgent: IPHONE_UA, maxTouchPoints: 5 };
+  const calls = [];
+  class FakeElement {}
+  FakeElement.prototype.focus = function focus(options) { calls.push({ el: this, options }); phone.win.document.activeElement = this; };
+  phone.win.HTMLElement = FakeElement;
+  phone.win.MouseEvent = class { constructor(type, init) { this.type = type; Object.assign(this, init); } };
+  return { phone, listeners, calls, FakeElement };
+}
+
+test('iOS: a focus() on a field gets preventScroll; a button keeps what it asked', () => {
+  const { phone, calls, FakeElement } = iosPhone();
+  const original = FakeElement.prototype.focus;
+  const controller = createKeyboardViewportController({ window: phone.win, root: phone.root, predict: true });
+  const field = Object.assign(new FakeElement(), { nodeType: 1, tagName: 'INPUT', getAttribute: () => 'text' });
+  const button = Object.assign(new FakeElement(), { nodeType: 1, tagName: 'BUTTON', getAttribute: () => null });
+  field.focus();
+  field.focus({ preventScroll: false });
+  button.focus();
+  assert.deepEqual(calls.map((c) => c.options?.preventScroll), [true, true, undefined]);
+  controller.dispose();
+  assert.equal(FakeElement.prototype.focus, original, 'dispose restores focus()');
+});
+
+test('iOS: a tap on an unfocused field is taken over - preventScroll focus, click replayed', () => {
+  const { phone, listeners, calls, FakeElement } = iosPhone();
+  const controller = createKeyboardViewportController({ window: phone.win, root: phone.root, predict: true });
+  const dispatched = [];
+  const field = Object.assign(new FakeElement(), {
+    nodeType: 1, tagName: 'INPUT', value: '', isConnected: true,
+    getAttribute: () => 'text',
+    closest: () => field,
+    contains: (n) => n === field,
+    dispatchEvent: (e) => dispatched.push(e.type),
+  });
+  phone.win.document.activeElement = null;
+  listeners.get('touchstart')({ touches: [{ clientX: 100, clientY: 600 }], target: field, timeStamp: 0 });
+  let prevented = false;
+  listeners.get('touchend')({ type: 'touchend', touches: [], changedTouches: [{ clientX: 101, clientY: 600 }], timeStamp: 120, cancelable: true, preventDefault: () => { prevented = true; } });
+  assert.equal(prevented, true, 'the native tap (and its focus + page pan) is cancelled');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options.preventScroll, true);
+  assert.deepEqual(dispatched, ['click']);
+
+  // A drag that starts on a field is a scroll, not a tap: left alone.
+  phone.win.document.activeElement = null;
+  calls.length = 0;
+  listeners.get('touchstart')({ touches: [{ clientX: 100, clientY: 600 }], target: field, timeStamp: 0 });
+  listeners.get('touchmove')({ touches: [{ clientX: 100, clientY: 640 }] });
+  prevented = false;
+  listeners.get('touchend')({ type: 'touchend', touches: [], changedTouches: [{ clientX: 100, clientY: 640 }], timeStamp: 200, cancelable: true, preventDefault: () => { prevented = true; } });
+  assert.equal(prevented, false);
+  assert.equal(calls.length, 0);
+  controller.dispose();
+});
+
+test('not iOS: taps and focus() are left to the browser', () => {
+  const { phone, listeners, FakeElement } = iosPhone();
+  phone.win.navigator = { userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/128 Mobile', maxTouchPoints: 5 };
+  const original = FakeElement.prototype.focus;
+  const controller = createKeyboardViewportController({ window: phone.win, root: phone.root, predict: true });
+  assert.equal(FakeElement.prototype.focus, original);
+  assert.equal(listeners.has('touchend'), false);
+  controller.dispose();
+});
+
+test('leaving the last field starts the sheets down at once, before the viewport reports it', () => {
+  const phone = createFakePhone();
+  const listeners = new Map();
+  phone.win.addEventListener = (type, fn) => listeners.set(type, fn);
+  phone.win.removeEventListener = (type) => listeners.delete(type);
+  const frames = [];
+  phone.win.requestAnimationFrame = (fn) => { frames.push(fn); return frames.length; };
+  phone.win.document.activeElement = null;
+  const controller = createKeyboardViewportController({ window: phone.win, root: phone.root, predict: true });
+  const flush = () => { while (frames.length) frames.shift()(); };
+  phone.raiseKeyboard(KEYBOARD_H);
+  flush();
+  assert.equal(controller.getInset(), KEYBOARD_H);
+  // Focus leaves; the visual viewport still says the keyboard is up.
+  listeners.get('focusout')({});
+  flush();
+  assert.equal(controller.getInset(), 0, 'the inset drops with the blur, not after the keyboard is gone');
+  phone.lowerKeyboard();
+  flush();
+  assert.equal(controller.getInset(), 0);
+  controller.dispose();
+});
+
+test('revealAboveKeyboard with animate glides the list on the keyboard clock', () => {
+  const list = {
+    scrollTop: 0, scrollHeight: 2000, clientHeight: 400, parentElement: null,
+    getBoundingClientRect: () => ({ top: 100, bottom: 800 }),
+  };
+  const field = {
+    parentElement: list, closest: () => null, getAttribute: () => null,
+    getBoundingClientRect: () => ({ top: 560 - list.scrollTop, bottom: 600 - list.scrollTop, height: 40 }),
+  };
+  let now = 0;
+  const frames = [];
+  const win = {
+    innerHeight: PHONE_H,
+    performance: { now: () => now },
+    requestAnimationFrame: (fn) => { frames.push(fn); return frames.length; },
+    cancelAnimationFrame: () => {},
+    getComputedStyle: (el) => ({ overflowY: el === list ? 'auto' : 'visible' }),
+    document: { body: {}, documentElement: {}, querySelectorAll: () => [] },
+  };
+  field.ownerDocument = win.document;
+  const target = 600 - (PHONE_H - KEYBOARD_H - 12);
+  assert.equal(revealAboveKeyboard(field, { win, inset: KEYBOARD_H, animate: true }), true);
+  assert.equal(list.scrollTop, 0, 'nothing jumps in the focus task');
+  // A second reveal mid-glide measures against the target: no extra scroll.
+  now = 100;
+  frames.shift()();
+  assert.ok(list.scrollTop > 0 && list.scrollTop < target);
+  assert.equal(revealAboveKeyboard(field, { win, inset: KEYBOARD_H, animate: true }), false);
+  now = 400;
+  while (frames.length) frames.shift()();
+  assert.equal(Math.round(list.scrollTop), target);
 });
