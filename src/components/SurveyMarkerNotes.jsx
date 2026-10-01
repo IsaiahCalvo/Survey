@@ -46,7 +46,7 @@ const noteText = (note) => {
 const mediaErrorMessage = (error, fallback) => (error?.code && error?.message ? error.message : fallback);
 
 /** The note, edited in place: grows with its text, saves when you leave it. */
-function SurveyNoteField({ text, onSave, variant, autoFocus, onAutoFocused, readOnly }) {
+function SurveyNoteField({ text, onSave, variant, autoFocus, onAutoFocused, readOnly, accessory }) {
   const [draft, setDraft] = useState(text);
   const [savedVisible, setSavedVisible] = useState(false);
   const fieldRef = useRef(null);
@@ -122,40 +122,55 @@ function SurveyNoteField({ text, onSave, variant, autoFocus, onAutoFocused, read
   }, [commit]);
 
   return (
+    // Owner 2026-10-01 (second pass): no "Notes" heading on a row of its
+    // own - the field says what it is ("Add a note…"), and the media button
+    // (`accessory`, a paperclip) sits inside it at its end.
     <div className={`survey-notes survey-notes--${variant}`} data-testid="survey-notes">
-      <div className="survey-notes__head">
-        <span className="survey-notes__label">Notes</span>
-        <span className={`survey-notes__saved${savedVisible ? ' is-visible' : ''}`} aria-live="polite" data-testid="survey-notes-saved">
-          {savedVisible ? (<><Icon name="check" size={12} color="currentColor" />Saved</>) : null}
-        </span>
+      <div className={`survey-notes__box${readOnly ? ' is-readonly' : ''}`}>
+        <div className="survey-notes__text">
+          <textarea
+            ref={fieldRef}
+            className="survey-notes__field"
+            aria-label="Survey Marker notes"
+            placeholder={readOnly ? 'No notes' : 'Add a note\u2026'}
+            rows={1}
+            value={draft}
+            readOnly={readOnly}
+            onChange={(event) => setDraft(event.target.value)}
+            onFocus={() => { focusedRef.current = true; setSavedVisible(false); }}
+            onBlur={() => {
+              focusedRef.current = false;
+              if (commit()) {
+                setSavedVisible(true);
+                window.clearTimeout(savedTimerRef.current);
+                savedTimerRef.current = window.setTimeout(() => setSavedVisible(false), SAVED_TICK_MS);
+              }
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                event.stopPropagation();
+                setDraft(savedRef.current);
+                draftRef.current = savedRef.current;
+                event.currentTarget.blur();
+              }
+            }}
+          />
+        </div>
+        {/* "Saved": for a moment after you leave the field, a green check
+            takes the paperclip's place (the word is read out, and is its
+            tooltip) - nothing covers the note's own words. */}
+        <div className="survey-notes__aside" onPointerDown={() => setSavedVisible(false)}>
+          {accessory}
+          <span
+            className={`survey-notes__saved${savedVisible ? ' is-visible' : ''}`}
+            aria-live="polite"
+            title={savedVisible ? 'Saved' : undefined}
+            data-testid="survey-notes-saved"
+          >
+            {savedVisible ? (<><Icon name="check" size={variant === 'phone' ? 16 : 14} color="currentColor" /><span className="survey-notes__saved-word">Saved</span></>) : null}
+          </span>
+        </div>
       </div>
-      <textarea
-        ref={fieldRef}
-        className="survey-notes__field"
-        aria-label="Survey Marker notes"
-        placeholder={readOnly ? 'No notes' : 'Add a note'}
-        rows={1}
-        value={draft}
-        readOnly={readOnly}
-        onChange={(event) => setDraft(event.target.value)}
-        onFocus={() => { focusedRef.current = true; }}
-        onBlur={() => {
-          focusedRef.current = false;
-          if (commit()) {
-            setSavedVisible(true);
-            window.clearTimeout(savedTimerRef.current);
-            savedTimerRef.current = window.setTimeout(() => setSavedVisible(false), SAVED_TICK_MS);
-          }
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            event.stopPropagation();
-            setDraft(savedRef.current);
-            draftRef.current = savedRef.current;
-            event.currentTarget.blur();
-          }
-        }}
-      />
     </div>
   );
 }
@@ -278,8 +293,33 @@ export default function SurveyMarkerNotes({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canEdit, documentId, markerId]);
 
+  // Desktop: files dropped anywhere on the note block are added (the strip
+  // is not drawn until there is media, so it cannot be the drop target).
+  const [dragOver, setDragOver] = useState(false);
+  const dragDepthRef = useRef(0);
+  const hasFiles = (event) => Array.from(event.dataTransfer?.types || []).includes('Files');
+  const dropHandlers = variant === 'desktop' && canEdit ? {
+    onDragEnter: (event) => { if (!hasFiles(event)) return; event.preventDefault(); dragDepthRef.current += 1; setDragOver(true); },
+    onDragOver: (event) => { if (!hasFiles(event)) return; event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; },
+    onDragLeave: () => { dragDepthRef.current = Math.max(0, dragDepthRef.current - 1); if (!dragDepthRef.current) setDragOver(false); },
+    onDrop: (event) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      dragDepthRef.current = 0;
+      setDragOver(false);
+      const files = Array.from(event.dataTransfer.files || []);
+      if (files.length) uploadFiles(files);
+    },
+  } : {};
+  const hasMedia = items.length > 0 || pending.length > 0;
+
   return (
-    <div className={`survey-marker-notes survey-marker-notes--${variant}`} data-testid="survey-marker-notes">
+    <div
+      className={`survey-marker-notes survey-marker-notes--${variant}${dragOver ? ' is-drag-over' : ''}`}
+      data-testid="survey-marker-notes"
+      {...dropHandlers}
+    >
       <SurveyNoteField
         key={markerId}
         text={noteText(note)}
@@ -288,29 +328,28 @@ export default function SurveyMarkerNotes({
         autoFocus={autoFocusNote}
         onAutoFocused={onAutoFocused}
         readOnly={!canEdit}
+        accessory={canEdit ? (
+          <SurveyMediaUploadTile
+            variant={variant}
+            recording={recorder.state !== 'idle'}
+            onFiles={uploadFiles}
+            onRecordAudio={recorder.start}
+          />
+        ) : null}
       />
-      {/* No "Media" heading (owner 2026-10-01: nothing big for no reason):
-          the "+ Media" pill names the strip, thumbnails follow the note. */}
-      <div className="survey-marker-notes__media">
+      <SurveyAudioRecorderBar recorder={recorder} />
+      {/* Thumbnails only once there is media: no empty strip, no heading. */}
+      {hasMedia ? (
         <SurveyMediaStrip
           variant={variant}
           items={items}
           pending={pending}
           canRemove={canEdit}
           onRemove={removeItem}
-          onDropFiles={canEdit ? uploadFiles : null}
-        >
-          {canEdit ? (
-            <SurveyMediaUploadTile
-              variant={variant}
-              recording={recorder.state !== 'idle'}
-              onFiles={uploadFiles}
-              onRecordAudio={recorder.start}
-            />
-          ) : null}
-        </SurveyMediaStrip>
-        <SurveyAudioRecorderBar recorder={recorder} />
-      </div>
+          onDropFiles={null}
+        />
+      ) : null}
+      {dragOver ? <div className="survey-media__drop-hint">Drop photos, videos or audio to add them</div> : null}
       {typeof document !== 'undefined'
         ? createPortal(<div className="survey-media-confirm-layer">{confirmDialogElement}</div>, document.body)
         : null}

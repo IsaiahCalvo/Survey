@@ -5,70 +5,111 @@
 .survey-marker-notes {
   display: grid;
   gap: 8px;
-  padding: 8px 14px 10px 24px;
+  padding: 8px 14px 12px 24px;
   border-top: 1px solid var(--border);
 }
 
 .survey-marker-notes--desktop {
   gap: 8px;
-  padding: 6px 8px 10px var(--sv-detail-indent, 64px);
+  padding: 4px var(--sv-detail-right, 8px) 10px var(--sv-detail-indent, 64px);
   border-top: 0;
 }
 
-.survey-notes,
-.survey-marker-notes__media {
+.survey-marker-notes.is-drag-over .survey-notes__box {
+  /* Survey calm gold (2026-10-01): neutral drop target, no gold wash. */
+  outline: 1px dashed var(--text-3);
+  outline-offset: 2px;
+}
+
+.survey-notes {
   display: grid;
-  gap: 6px;
   min-width: 0;
 }
 
-.survey-notes__head {
+/* Owner 2026-10-01 (second pass, "the Add Media looks weird"): ONE field.
+   No "Notes" heading, no "+ Media" line: the well holds the note and, at its
+   end, the paperclip that opens the photo / video / audio menu. */
+.survey-notes__box {
+  position: relative;
+  min-width: 0;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 18px;
+  align-items: flex-start;
+  /* The well the name field uses: one step below the panel. */
+  background: var(--surface-1);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  transition: border-color 120ms ease-out;
 }
 
-.survey-notes__label {
-  color: var(--text-3);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 16px;
+.survey-notes__box:focus-within {
+  border-color: var(--border-strong);
+}
+
+.survey-notes__box.is-readonly {
+  background: transparent;
+}
+
+.survey-notes__text {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The paperclip's column; "Saved" (a green check) covers it for a moment
+   after you leave the field. */
+.survey-notes__aside {
+  position: relative;
+  flex: 0 0 auto;
+  align-self: flex-start;
 }
 
 .survey-notes__saved {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
   color: var(--success-text);
-  font-size: 12px;
-  font-weight: 500;
+  background: var(--surface-1);
+  border-radius: 0 8px 8px 0;
+  pointer-events: none;
   opacity: 0;
   transition: opacity 160ms ease-out;
+}
+
+.survey-notes__saved:empty {
+  display: none;
 }
 
 .survey-notes__saved.is-visible {
   opacity: 1;
 }
 
+/* The word is for screen readers (and the tooltip); the check is what shows. */
+.survey-notes__saved-word {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 /* One line until it has words, then grows with them (SurveyNoteField sets
-   the height; owner 2026-10-01: "big for no reason"); no grip, no inner
-   scroll, so a long note reads top to bottom in the panel's own scroll. */
+   the height); no grip, no inner scroll, so a long note reads top to bottom
+   in the panel's own scroll. */
 .survey-notes__field {
   width: 100%;
   min-height: 0;
   box-sizing: border-box;
   margin: 0;
-  padding: 6px 10px;
+  padding: 6px 0 6px 10px;
   display: block;
   overflow: hidden;
   resize: none;
   color: var(--text-1);
-  /* The well the name field uses: one step below the panel. */
-  background: var(--surface-1);
-  border: 1px solid transparent;
-  border-radius: 8px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
   outline: none;
   font: inherit;
   font-size: 14px;
@@ -76,20 +117,19 @@
   line-height: 1.35;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  transition: border-color 120ms ease-out;
 }
 
 /* Phone: every phone field is held at 16px so iOS never zooms the page on
    focus (index.html, data-mobile-viewport="locked"), which made the note
    read bigger than everything round it. It keeps 16px type and is drawn at
    14/16 scale - the note's own 14px - from its top-left corner; it is 16/14
-   as wide as the column so it fills it, and SurveyNoteField hands back the
+   as wide as its column so it fills it, and SurveyNoteField hands back the
    height the scale takes off. */
 .survey-notes--phone .survey-notes__field {
   --note-scale: 0.875;
   width: calc(100% / var(--note-scale));
-  padding: calc(6px / var(--note-scale)) calc(10px / var(--note-scale));
-  border-radius: calc(8px / var(--note-scale));
+  /* 40px tall on one line: 11 + 18 + 11 on screen. */
+  padding: calc(11px / var(--note-scale)) 0 calc(11px / var(--note-scale)) calc(12px / var(--note-scale));
   font-size: 16px;
   /* 14px/18px on screen: the sheet scale's row-title type. */
   line-height: calc(18px / var(--note-scale));
@@ -97,23 +137,74 @@
   transform-origin: top left;
 }
 
-.survey-notes--desktop .survey-notes__field {
-  padding: 5px 8px;
-  font-size: 13px;
+.survey-notes--desktop .survey-notes__box {
   border-radius: 6px;
+}
+
+.survey-notes--desktop .survey-notes__field {
+  padding: 6px 0 6px 8px;
+  font-size: 13px;
+  line-height: 16px;
+}
+
+.survey-notes--desktop .survey-notes__saved {
+  background: var(--surface-2);
+  border-radius: 0 6px 6px 0;
 }
 
 .survey-notes__field::placeholder {
   color: var(--text-3);
 }
 
-.survey-notes__field:focus {
-  border-color: var(--border-strong);
+.survey-notes__field[readonly] {
+  padding-left: 0;
 }
 
-.survey-notes__field[readonly] {
+/* The paperclip: a glyph at the field's end, its pad the field's height
+   (44 x 40 on the phone, 28 x 28 on desktop). --text-2 at rest, bright ink
+   while its menu is open; no plate. */
+.survey-notes__media-btn {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 40px;
+  margin: -1px 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
   background: transparent;
-  padding-left: 0;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.survey-notes__media-btn > svg {
+  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.survey-notes__media-btn:active > svg {
+  transform: scale(0.88);
+}
+
+.survey-notes__media-btn[aria-expanded='true'] {
+  color: var(--text-1);
+}
+
+.survey-notes__media-btn:disabled {
+  color: var(--text-disabled);
+  cursor: default;
+}
+
+.survey-notes--desktop .survey-notes__media-btn {
+  width: 28px;
+  height: 28px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .survey-notes__media-btn:not(:disabled):hover {
+    color: var(--text-1);
+  }
 }
 
 /* ---- media strip -------------------------------------------------------- */
@@ -244,56 +335,6 @@
 
 .survey-media-thumb.is-pending .survey-media-tile > img {
   opacity: 0.55;
-}
-
-/* "+ Media" (aria-label "Upload media"): one line, the Survey panel's
-   "+ Place" pill - a well one step below the panel, --text-1 ink, no gold.
-   It ends the strip, centred on the thumbnails' line. */
-.survey-media-add {
-  flex: 0 0 auto;
-  height: 28px;
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0 10px 0 8px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--text-1);
-  background: var(--surface-1);
-  border: 0;
-  border-radius: 14px;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
-}
-
-.survey-media-add:active {
-  transform: scale(0.94);
-  background: var(--pressed);
-}
-
-.survey-media-add[aria-expanded='true'] {
-  background: var(--pressed);
-}
-
-.survey-media-add:disabled {
-  color: var(--text-disabled);
-  cursor: default;
-}
-
-.survey-marker-notes--desktop .survey-media-add {
-  height: 24px;
-  border-radius: 12px;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .survey-media-add:not(:disabled):hover {
-    background: var(--hover);
-  }
 }
 
 /* Desktop remove: a small round ✕ on the thumbnail's corner, on hover. */
@@ -652,9 +693,29 @@
 
 /* Desktop: the rail is the --surface-1 panel, so its wells step up one
    (the Entity field's grey). */
-.survey-marker-notes--desktop .survey-notes__field:not([readonly]),
+.survey-marker-notes--desktop .survey-notes__box:not(.is-readonly),
 .survey-marker-notes--desktop .survey-media-tile,
-.survey-marker-notes--desktop .survey-media-add,
 .survey-marker-notes--desktop .survey-media-recorder {
   background: var(--surface-2);
+}
+
+/* Thumbnails under the note, only once there is media: 56px on the phone,
+   48px in the 320px desktop rail (5 to a line), wrapping. */
+.survey-marker-notes--phone .survey-media-thumb,
+.survey-marker-notes--phone .survey-media-tile {
+  width: 56px;
+  height: 56px;
+  flex-basis: 56px;
+}
+
+.survey-marker-notes--desktop .survey-media__grid {
+  gap: 6px;
+}
+
+.survey-marker-notes--desktop .survey-media-thumb,
+.survey-marker-notes--desktop .survey-media-tile {
+  width: 48px;
+  height: 48px;
+  flex-basis: 48px;
+  border-radius: 6px;
 }

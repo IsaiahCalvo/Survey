@@ -13,7 +13,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { flushSync } from 'react-dom';
 import Icon from './Icons';
 import CreateCategoryModal from './components/CreateCategoryModal';
-import EntityIndicator from './components/EntityIndicator';
 import Spinner from './components/Spinner';
 import { useTooltip } from './components/Tooltip';
 import DragRearrangeHandle from './reorder/DragRearrangeHandle';
@@ -894,7 +893,7 @@ const SurveySpacesRail = ({
     if (!openEntityDropdownId) return undefined;
     // Light popover — shared dismiss rules R1/R2/R5 (src/components/dismissRules.js).
     return watchLightPopover({
-      contains: (target) => Boolean(target.closest('.survey-marker-entity-select-wrap')),
+      contains: (target) => Boolean(target.closest('.survey-marker-entity-select-wrap, .survey-rail__entity-wrap')),
       close: () => setOpenEntityDropdownId(null),
     });
   }, [openEntityDropdownId]);
@@ -1194,16 +1193,16 @@ const SurveySpacesRail = ({
     );
   };
 
-  // Phone: the open Survey Marker, inline under its row in the accordion
-  // (owner 2026-10-01, replaces the separate detail view and its Survey Marker
-  // dropdown). Name and Locate, the entity under them, the whole checklist (no
-  // inner scroll), then the notes slot. Same handlers and store writes as the
-  // desktop row. Owner polish 2026-10-01: the name reads at the panel's row
-  // size, Locate is the magnifier glyph alone, and (second pass, "the word
-  // 'Subcontractor' is getting cut off") the entity sits on its own line under
-  // the name field - its dot and its whole name, still the entity menu. The
-  // DOM order is unchanged; mobileSurveyPanel.css places the three on a grid.
-  const renderMobileOpenSurveyMarker = (surveyMarker, category, markerName, fallbackName) => {
+  // Phone: the open Survey Marker, inline in the accordion (owner 2026-10-01,
+  // replaces the separate detail view). Second pass (owner: "I don't like the
+  // header being two lines... the item name with Locate, and underneath the
+  // entity dropdown"): the open marker REPLACES its row with ONE line -
+  //   [entity dot = the entity menu] [name field] [Locate] [close chevron]
+  // - the desktop rail's line at phone size. The entity's full name is in its
+  // menu (wrapped, never cut) and the button's label; the dot keeps its colour.
+  // Locate: a target when the marker is on the page, an orange pin-plus when
+  // it is not ("Not on the page - tap to place").
+  const renderMobileOpenSurveyMarker = (surveyMarker, category, markerName, fallbackName, onClose) => {
     const annotationId = surveyMarker.id;
     const markerModuleId = surveyMarker.moduleId || selectedModuleId;
     const { moduleData } = findMarkerMatchingItem(annotationId, markerModuleId, category);
@@ -1225,7 +1224,7 @@ const SurveySpacesRail = ({
           <button
             type="button"
             className={`mobile-survey-entity-chip${hasEntity ? '' : ' is-empty'}`}
-            aria-label={`Entity: ${entityName}. Choose Survey Marker entity`}
+            aria-label={`Entity: ${hasEntity ? entityName : 'none'}. Choose Survey Marker entity`}
             aria-haspopup="listbox"
             aria-expanded={mobileDetailDropdown === 'entity'}
             onClick={() => setMobileDetailDropdown(prev => (prev === 'entity' ? null : 'entity'))}
@@ -1237,7 +1236,7 @@ const SurveySpacesRail = ({
                 borderColor: entityColor ? 'var(--ink-ring-strong)' : 'var(--text-3)'
               }}
             />
-            <span className="mobile-survey-entity-chip-label">{hasEntity ? entityName : 'Entity'}</span>
+            <Icon name="chevronDown" size={12} color="currentColor" />
           </button>
           <div className="mobile-survey-detail-name-wrap">
             <input
@@ -1266,8 +1265,9 @@ const SurveySpacesRail = ({
           <button
             type="button"
             className={`mobile-survey-locate${isPlaced ? '' : ' is-unplaced'}`}
-            aria-label={isPlaced ? 'Locate on page' : 'Place on page'}
-            title={isPlaced ? 'Locate on page' : 'Place on page'}
+            data-testid={isPlaced ? undefined : 'survey-marker-unplaced-tag'}
+            aria-label={isPlaced ? 'Locate on page' : 'Not on the page. Place on page'}
+            title={isPlaced ? 'Locate on page' : 'Not on the page \u2014 tap to place'}
             onClick={() => {
               if (isPlaced) {
                 // Survey audit P1-5: lower the sheet to its standard height so
@@ -1280,7 +1280,16 @@ const SurveySpacesRail = ({
               }
             }}
           >
-            <Icon name="search" size={16} color="currentColor" />
+            <Icon name={isPlaced ? 'locate' : 'pinPlus'} size={18} color="currentColor" />
+          </button>
+          <button
+            type="button"
+            className="mobile-survey-open-close"
+            aria-label={`Close ${markerName}`}
+            aria-expanded="true"
+            onClick={onClose}
+          >
+            <Icon name="chevronDown" size={14} color="currentColor" />
           </button>
           {mobileDetailDropdown === 'entity' && (
             <div className="mobile-survey-detail-menu mobile-survey-detail-entity-menu" role="listbox" aria-label="Entity">
@@ -1308,17 +1317,15 @@ const SurveySpacesRail = ({
                       }}
                     />
                     <span>{option.name}</span>
+                    <span className="mobile-survey-detail-check" aria-hidden="true">
+                      {isSelectedOption ? <Icon name="check" size={14} color="currentColor" /> : null}
+                    </span>
                   </button>
                 );
               })}
             </div>
           )}
         </div>
-        {!isPlaced && (
-          <div className="mobile-survey-open-note-line">
-            <span className="survey-marker-unplaced-tag" data-testid="survey-marker-unplaced-tag">Not on page</span>
-          </div>
-        )}
 
         {/* The whole checklist, every row - no 4-row window scrolling inside
             a sheet that also scrolls. */}
@@ -1900,399 +1907,6 @@ const SurveySpacesRail = ({
                           Cancel
                         </button>
                       )}
-                      {mobileMode && !isMobileTemplateSwitching && (
-                        <div className="mobile-survey-sheet-export-wrap" ref={mobileExportMenuRef}>
-                          <button
-                            type="button"
-                            className={`mobile-survey-sheet-export${isMobileExportMenuOpen ? ' is-open' : ''}`}
-                            aria-label="Export survey data"
-                            aria-haspopup="menu"
-                            aria-expanded={isMobileExportMenuOpen}
-                            disabled={isExporting}
-                            onClick={() => setIsMobileExportMenuOpen((open) => !open)}
-                          >
-                            {isExporting
-                              // UX: trackColor is the unfilled ring behind the
-                              // spinner — a track, so it takes the raised
-                              // surface step like every other track.
-                              ? <Spinner size={14} color="var(--text-1)" trackColor="var(--surface-3)" />
-                              : <Icon name="upload" size={16} color="currentColor" />}
-                          </button>
-                          {isMobileExportMenuOpen && (
-                            <div className="mobile-survey-sheet-export-menu" role="menu">
-                              <button
-                                type="button"
-                                role="menuitem"
-                                disabled={isExporting}
-                                onClick={() => {
-                                  setIsMobileExportMenuOpen(false);
-                                  handleExportSurveyToExcel();
-                                }}
-                              >
-                                <strong>Export Excel</strong>
-                                <span>Create workbook from survey data</span>
-                              </button>
-                              <button
-                                type="button"
-                                role="menuitem"
-                                disabled={isExporting || !selectedTemplate.linkedExcelPath || linkedExcelExists !== true}
-                                onClick={() => {
-                                  setIsMobileExportMenuOpen(false);
-                                  handleExportSurveyToExcel(selectedTemplate.linkedExcelPath);
-                                }}
-                              >
-                                <strong>Sync Microsoft 365</strong>
-                                <span>Update the shared workbook location</span>
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      {/* Desktop Excel EXPORT - moved up from the Select row into the
-                          header as a quiet glyph-and-word (Spaces' Export). Same
-                          handlers and menu items as before; with a linked workbook a
-                          small caret beside the word opens the Excel actions menu. */}
-                      {!mobileMode && (
-                                <div ref={exportMenuRef} className="survey-rail__export">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleExportSurveyToExcel()} // Default action: Export new
-                                      disabled={isExporting}
-                                      className="survey-rail__head-btn"
-                                      {...tip('Export survey data to Excel', 'below')}
-                                    >
-                                      {isExporting
-                                        ? <Spinner size={13} color="var(--text-1)" trackColor="var(--surface-3)" />
-                                        : <Icon name="upload" size={14} color="currentColor" />}
-                                      <span>{isExporting ? 'Exporting' : 'Export'}</span>
-                                    </button>
-                                  {(selectedTemplate.linkedExcelPath && linkedExcelExists === true) && (
-                                    <button
-                                      type="button"
-                                      onClick={() => !isExporting && setShowExportMenu(!showExportMenu)}
-                                      disabled={isExporting}
-                                      className="survey-rail__head-btn survey-rail__head-btn--caret"
-                                      aria-label="Excel actions"
-                                      aria-haspopup="menu"
-                                      aria-expanded={showExportMenu}
-                                    >
-                                      <Icon name="chevronDown" size={10} color="currentColor" />
-                                    </button>
-                                  )}
-
-                                    {showExportMenu && (
-                                      <div className="survey-marker-export-compact-menu">
-                          <div
-                            onClick={async () => {
-                              const excelPath = selectedTemplate.linkedExcelPath;
-                              const isOneDrive = selectedTemplate.isOneDrive;
-
-
-                              if (!excelPath) {
-                                showToast('No Excel file is linked to this survey.', 'error');
-                                setShowExportMenu(false);
-                                return;
-                              }
-
-                              // Check if the path is actually a local file path (even if isOneDrive flag is set)
-                              // Local paths start with / and contain /Users/ or /Library/ or drive letters on Windows
-                              const isLocalFilePath = excelPath.startsWith('/Users/') ||
-                                excelPath.startsWith('/Library/') ||
-                                excelPath.match(/^[A-Za-z]:[\\/]/) || // Windows drive letter
-                                excelPath.includes('/CloudStorage/'); // OneDrive sync folder
-
-                              // For OneDrive API paths (like /Documents/file.xlsx), try to construct local sync folder path
-                              if (isOneDrive && !isLocalFilePath && window.electronAPI) {
-                                try {
-                                  // Get home directory and find OneDrive folders
-                                  const homeDir = await window.electronAPI.getHomeDir();
-                                  const cloudStoragePath = `${homeDir}/Library/CloudStorage`;
-
-                                  console.log('Looking for OneDrive file. Excel path:', excelPath);
-                                  console.log('Home dir:', homeDir);
-                                  console.log('CloudStorage path:', cloudStoragePath);
-
-                                  // List CloudStorage directory to find OneDrive folders
-                                  const cloudStorageContents = await window.electronAPI.listDir(cloudStoragePath);
-                                  console.log('CloudStorage contents:', cloudStorageContents);
-
-                                  const oneDriveFolders = cloudStorageContents.filter(name =>
-                                    name.startsWith('OneDrive') || name.includes('OneDrive')
-                                  );
-                                  console.log('OneDrive folders found:', oneDriveFolders);
-
-                                  // Build list of possible paths
-                                  const possibleLocalPaths = [];
-
-                                  // Add CloudStorage OneDrive folders
-                                  for (const folder of oneDriveFolders) {
-                                    possibleLocalPaths.push(`${cloudStoragePath}/${folder}${excelPath}`);
-                                  }
-
-                                  // Also try legacy OneDrive locations in home directory
-                                  possibleLocalPaths.push(`${homeDir}/OneDrive${excelPath}`);
-                                  possibleLocalPaths.push(`${homeDir}/OneDrive - Personal${excelPath}`);
-
-                                  console.log('Trying these local paths:', possibleLocalPaths);
-
-                                  let localPathFound = null;
-                                  for (const localPath of possibleLocalPaths) {
-                                    try {
-                                      const exists = await window.electronAPI.fileExists(localPath);
-                                      console.log(`Checking ${localPath}: ${exists ? 'EXISTS' : 'not found'}`);
-                                      if (exists) {
-                                        localPathFound = localPath;
-                                        break;
-                                      }
-                                    } catch (e) {
-                                      console.log(`Error checking ${localPath}:`, e);
-                                      // Continue trying other paths
-                                    }
-                                  }
-
-                                  if (localPathFound) {
-                                    console.log('Found local file at:', localPathFound);
-                                    // Open the local file directly
-                                    const result = await window.electronAPI.openPath(localPathFound);
-                                    if (result) {
-                                      console.error('Failed to open local OneDrive file:', result);
-                                      showToast(`Failed to open Excel file:\n${result}`, 'error');
-                                    }
-                                    setShowExportMenu(false);
-                                    return;
-                                  }
-
-                                  // If local file not found, fall through to web approach
-                                  console.log('Local OneDrive file not found, trying web approach...');
-                                } catch (err) {
-                                  console.error('Error searching for local OneDrive file:', err);
-                                  // Fall through to web approach
-                                }
-                              }
-
-                              // Handle OneDrive API files - try desktop Excel first, fall back to web
-                              if (isOneDrive && !isLocalFilePath) {
-                                console.log('Trying web approach for OneDrive file...');
-                                console.log('graphClient available:', !!graphClient);
-                                try {
-                                  // Get the file's web URL from OneDrive
-                                  if (graphClient) {
-                                    console.log('Fetching file metadata from Graph API:', `/me/drive/root:${excelPath}`);
-                                    const driveItem = await graphClient.api(`/me/drive/root:${excelPath}`).get();
-                                    console.log('Drive item response:', driveItem);
-                                    console.log('webUrl:', driveItem?.webUrl);
-                                    console.log('downloadUrl:', driveItem?.['@microsoft.graph.downloadUrl']);
-
-                                    // Get webUrl, or construct one from the downloadUrl/id
-                                    let webUrl = driveItem?.webUrl;
-
-                                    // If no webUrl, try to open the file directly using downloadUrl
-                                    if (!webUrl && driveItem?.['@microsoft.graph.downloadUrl']) {
-                                      // For personal OneDrive, construct the web URL
-                                      // Format: https://onedrive.live.com/edit.aspx?cid=<driveId>&resid=<itemId>
-                                      const downloadUrl = driveItem['@microsoft.graph.downloadUrl'];
-                                      console.log('No webUrl, using downloadUrl to open file');
-
-                                      // Open the download URL which should trigger Excel to open
-                                      window.open(downloadUrl, '_blank');
-                                      setShowExportMenu(false);
-                                      return;
-                                    }
-
-                                    if (webUrl) {
-                                      console.log('Opening with webUrl:', webUrl);
-
-                                      // In Electron, use shell.openExternal to open the URL
-                                      // This will open in the default browser and Excel Online can handle it
-                                      if (window.electronAPI?.openExternal) {
-                                        try {
-                                          await window.electronAPI.openExternal(webUrl);
-                                          console.log('Opened webUrl with shell.openExternal');
-                                        } catch (e) {
-                                          console.error('Failed to open with openExternal:', e);
-                                          // Fallback to window.open
-                                          window.open(webUrl, '_blank');
-                                        }
-                                      } else {
-                                        // Not in Electron, just open in new tab
-                                        window.open(webUrl, '_blank');
-                                      }
-                                    } else {
-                                      showToast('Could not get the OneDrive file URL. Please open the file manually from OneDrive.', 'error');
-                                    }
-                                  } else {
-                                    showToast('Please sign in to Microsoft to open OneDrive files.', 'warn');
-                                  }
-                                } catch (err) {
-                                  console.error('Error opening OneDrive file:', err);
-                                  showToast(`Error opening OneDrive file:\n${err.message}`, 'error');
-                                }
-                                setShowExportMenu(false);
-                                return;
-                              }
-
-                              // Handle local files
-                              if (window.electronAPI) {
-                                try {
-                                  // Check if file exists first
-                                  const exists = await window.electronAPI.fileExists(excelPath);
-
-                                  if (!exists) {
-                                    showToast(`Excel file not found at:\n${excelPath}\n\nThe file may have been moved or deleted.`, 'error');
-                                    setShowExportMenu(false);
-                                    return;
-                                  }
-
-                                  const result = await window.electronAPI.openPath(excelPath);
-                                  if (result) {
-                                    // shell.openPath returns an error string if it fails, empty string on success
-                                    console.error('Failed to open Excel file:', result);
-                                    showToast(`Failed to open Excel file:\n${result}\n\nPath: ${excelPath}`, 'error');
-                                  }
-                                } catch (err) {
-                                  console.error('Error opening Excel file:', err);
-                                  showToast(`Error opening Excel file:\n${err.message}\n\nPath: ${excelPath}`, 'error');
-                                }
-                              } else {
-                                showToast('This feature is only available in the desktop app.', 'error');
-                              }
-                              setShowExportMenu(false);
-                            }}
-                            role="menuitem"
-                            className="survey-rail__menu-item"
-                          >
-                            <Icon name="document" size={14} color="currentColor" />
-                            Open Excel
-                          </div>
-                          <div
-                            onClick={() => {
-                              handleExportSurveyToExcel(selectedTemplate.linkedExcelPath);
-                              setShowExportMenu(false);
-                            }}
-                            role="menuitem"
-                            className="survey-rail__menu-item"
-                          >
-                            <Icon name="upload" size={14} color="currentColor" />
-                            Push to Excel
-                          </div>
-                          {/* "Pull from Excel" reads the last SAVED copy from disk, which on
-                              a local file open in Excel is stale and overlaps the automatic
-                              import-on-save — so it's only offered for OneDrive workbooks. */}
-                          {selectedTemplate?.isOneDrive && (
-                          <div
-                            onClick={() => {
-                              handleSyncFromExcel();
-                              setShowExportMenu(false);
-                            }}
-                            role="menuitem"
-                            className="survey-rail__menu-item"
-                          >
-                            <Icon name="download" size={14} color="currentColor" />
-                            Pull from Excel
-                          </div>
-                          )}
-                          {selectedTemplate?.isOneDrive && (() => {
-                            // Amendment (b) capability gate: a refused verdict keeps the
-                            // toggle visible but inert-with-reason. Clicking re-checks
-                            // (retry); the plain-English reason comes from the shared
-                            // excelSyncStatus vocabulary — never an inline literal here.
-                            const gateRefused = !liveSyncEnabled && liveSyncGate && !liveSyncGate.allowed
-                              && liveSyncGate.reasonCode !== 'checking';
-                            const gateChecking = !liveSyncEnabled && liveSyncGate?.reasonCode === 'checking';
-                            return (
-                            <div
-                              onClick={() => {
-                                if (liveSyncSupported === false) return;
-                                if (typeof onLiveSyncToggle === 'function') onLiveSyncToggle();
-                              }}
-                              role="menuitem"
-                              className="survey-rail__menu-item"
-                              style={{
-                                // Calm gold (2026-10-01): a live link is the house
-                                // "ok" green, beside warning amber and error red.
-                                color: liveSyncEnabled && liveSyncStatus === 'connected'
-                                  ? 'var(--success-text)'
-                                  : liveSyncStatus === 'connecting' || gateChecking
-                                    ? 'var(--warning)'
-                                    : liveSyncStatus === 'error' || liveSyncSupported === false
-                                      ? 'var(--danger-text)'
-                                      : 'var(--text-2)',
-                                cursor: liveSyncSupported === false ? 'not-allowed' : 'pointer'
-                              }}
-                              {...tip(
-                                liveSyncSupported === false
-                                  ? 'Live sync requires Microsoft 365 Business account'
-                                  : gateRefused || gateChecking
-                                    ? liveSyncGateStatus(liveSyncGate.reasonCode).label
-                                    : liveSyncEnabled && liveSyncStatus === 'connected'
-                                      ? 'Live sync is active - changes sync in real-time'
-                                      : liveSyncStatus === 'connecting'
-                                        ? 'Connecting to Excel...'
-                                        : liveSyncStatus === 'error'
-                                          ? 'Live sync error - click to retry'
-                                          : 'Enable live sync for real-time Excel updates',
-                                'below'
-                              )}
-                            >
-                              <span style={{ width: '14px', textAlign: 'center', fontSize: '12px' }}>
-                                {liveSyncStatus === 'connecting' || gateChecking
-                                  ? '...'
-                                  : liveSyncEnabled && liveSyncStatus === 'connected'
-                                    ? '●'
-                                    : '○'}
-                              </span>
-                              Live Sync
-                            </div>
-                            );
-                          })()}
-                          {selectedTemplate?.isOneDrive && (() => {
-                            // Slice 4 — guided "Verify Live Sync": a READ-ONLY,
-                            // step-by-step check of the whole live-sync path. The
-                            // verdict (and the running state) comes from the shared
-                            // excelSyncStatus vocabulary — never an inline literal.
-                            const verifying = liveSyncVerify?.state === 'checking';
-                            const verdict = liveSyncVerify?.state === 'done'
-                              ? liveSyncVerifyStatus(liveSyncVerify.verdictCode)
-                              : null;
-                            const verdictColor = verdict ? SYNC_TONE_COLORS[verdict.tone]?.color : null;
-                            return (
-                            <div
-                              onClick={() => {
-                                if (verifying) return;
-                                if (typeof onVerifyLiveSync === 'function') onVerifyLiveSync();
-                              }}
-                              role="menuitem"
-                              className="survey-rail__menu-item"
-                              style={{
-                                color: verifying ? 'var(--warning)' : (verdictColor || 'var(--text-2)'),
-                                cursor: verifying ? 'wait' : 'pointer'
-                              }}
-                              {...tip(
-                                verifying
-                                  ? liveSyncVerifyStatus('verifying').label
-                                  : verdict
-                                    ? verdict.label
-                                    : liveSyncVerifyStatus('idle').label,
-                                'below'
-                              )}
-                            >
-                              <span style={{ width: '14px', textAlign: 'center', fontSize: '12px' }}>
-                                {verifying ? '...' : verdict ? (liveSyncVerify.ready ? <Icon name="check" size={14} /> : '!') : '○'}
-                              </span>
-                              Verify Live Sync
-                            </div>
-                            );
-                          })()}
-                                      </div>
-                                    )}
-                                </div>
-                      )}
-                      {/* Owner 2026-09-30: Export sat flush against the X that
-                          exits Survey mode, so one was easily hit for the other.
-                          A rule with 8px of air each side now separates the two
-                          hit areas (desktop only; the phone sheet has its own
-                          spacing). */}
-                      {!mobileMode && <span className="survey-rail__head-rule" aria-hidden="true" />}
                       <button
                         onClick={() => {
                           if (mobileMode) {
@@ -3211,6 +2825,30 @@ const SurveySpacesRail = ({
                                                 <span>Place</span>
                                               </button>
                                             )}
+                                            {/* Owner 2026-10-01 ("that Select line should get
+                                                moved over"): an open category's Select is a small
+                                                word in its own row, not a line of its own under it.
+                                                While selecting, the toolbar line takes its place. */}
+                                            {!mobileMode && isExpanded && surveyMarkerCount > 0 && !copyModeActive && !categorySelectModeActive && !isItemSelectModeActiveForCategory && (
+                                              <button
+                                                type="button"
+                                                className="survey-marker-category-select"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setItemSelectModeActive(prev => ({
+                                                    ...prev,
+                                                    [category.id]: true
+                                                  }));
+                                                  setSelectedItemsInCategory(prev => ({
+                                                    ...prev,
+                                                    [category.id]: {}
+                                                  }));
+                                                }}
+                                                aria-label={`Select Survey Markers in ${category.name || 'category'}`}
+                                              >
+                                                Select
+                                              </button>
+                                            )}
                                             {!mobileMode && surveyMarkerCount > 0 && (
                                               <button
                                                 className="survey-marker-category-arrow"
@@ -3259,29 +2897,9 @@ const SurveySpacesRail = ({
                                           {/* UX (mobile demo parity): the inline item Select /
                                               All / Copy / Delete toolbar is desktop-only admin
                                               chrome — not part of the demo's mobile sheet. */}
-                                          {!copyModeActive && !mobileMode && (
-                                            <div
-                                              className={`survey-marker-inline-select-row${categorySelectModeActive ? ' is-placeholder' : ''}`}
-                                              aria-hidden={categorySelectModeActive ? 'true' : undefined}
-                                            >
-                                              {categorySelectModeActive ? null : !isItemSelectModeActiveForCategory ? (
-                                                <button
-                                                  type="button"
-                                                  onClick={() => {
-                                                    setItemSelectModeActive(prev => ({
-                                                      ...prev,
-                                                      [category.id]: true
-                                                    }));
-                                                    setSelectedItemsInCategory(prev => ({
-                                                      ...prev,
-                                                      [category.id]: {}
-                                                    }));
-                                                  }}
-                                                  className="survey-marker-select-mode-toggle"
-                                                >
-                                                  Select
-                                                </button>
-                                              ) : (
+                                          {!copyModeActive && !mobileMode && !categorySelectModeActive && isItemSelectModeActiveForCategory && (
+                                            <div className="survey-marker-inline-select-row">
+                                              {(
                                                 <div className="survey-marker-select-toolbar" role="toolbar" aria-label="Item selection actions">
                                               <button
                                                 type="button"
@@ -3515,11 +3133,12 @@ const SurveySpacesRail = ({
                                                   const isOpenOnPhone = annotationId === mobileDetailMarkerId;
                                                   return (
                                                     <>
+                                                      {!isOpenOnPhone && (
                                                       <button
                                                         type="button"
-                                                        className={`mobile-survey-item-row${isOpenOnPhone ? ' is-open' : ''}`}
-                                                        aria-label={`${isOpenOnPhone ? 'Close' : 'Open'} ${surveyMarkerName}`}
-                                                        aria-expanded={isOpenOnPhone}
+                                                        className="mobile-survey-item-row"
+                                                        aria-label={`Open ${surveyMarkerName}`}
+                                                        aria-expanded={false}
                                                         onClick={(e) => {
                                                           e.stopPropagation();
                                                           setMobileDetailDropdown(null);
@@ -3529,6 +3148,11 @@ const SurveySpacesRail = ({
                                                       >
                                                         <span className="mobile-survey-item-dot" style={{ background: dotColor || 'var(--border-strong)' }} aria-hidden="true" />
                                                         <span className="mobile-survey-item-name">{surveyMarkerName}</span>
+                                                        {!(surveyMarker.bounds && surveyMarker.pageNumber) && (
+                                                          <span className="mobile-survey-item-unplaced" role="img" aria-label="Not on the page">
+                                                            <Icon name="pinPlus" size={14} color="currentColor" />
+                                                          </span>
+                                                        )}
                                                         {renderSurveyMarkerBadges(annotationId, category, 'mobile-survey-item-badges')}
                                                         <span
                                                           className="mobile-survey-item-chevron"
@@ -3538,18 +3162,47 @@ const SurveySpacesRail = ({
                                                           <Icon name="chevronDown" size={12} color="currentColor" />
                                                         </span>
                                                       </button>
-                                                      {isOpenOnPhone && renderMobileOpenSurveyMarker(surveyMarker, category, surveyMarkerName, fallbackName)}
+                                                      )}
+                                                      {isOpenOnPhone && renderMobileOpenSurveyMarker(surveyMarker, category, surveyMarkerName, fallbackName, () => {
+                                                        setMobileDetailDropdown(null);
+                                                        setExpandedSurveyMarkers({});
+                                                      })}
                                                     </>
                                                   );
                                                 })()}
-                                                {/* SurveyMarker header - clickable to expand */}
-                                                {!mobileMode && (
-                                                <div className="survey-rail__marker-line">
-                                                  {/* UX (mobile demo parity): marker rows lose the
-                                                      desktop drag handle / select circle on mobile —
-                                                      demo item rows are plain tap rows
-                                                      (styles.ts:3155-3165). */}
-                                                  {mobileMode ? null : isMarkerSelectable ? (
+                                                {/* Owner 2026-10-01 (second pass) - ONE line per Survey
+                                                    Marker, open or not, the phone's open line too:
+                                                    [grip in the gutter] [entity dot = the entity menu]
+                                                    [name] [media / progress] [Locate] [open chevron].
+                                                    - The grip sits in the 28px gutter the category grips
+                                                      use, so the dot sits under the category's name: no
+                                                      wasted left space ("everything's pushed to the right").
+                                                    - The separate "Entity [● Subcontractor]" line is gone:
+                                                      the dot IS the entity menu (its full name in the menu,
+                                                      the tooltip and the label).
+                                                    - No "Add item notes" button: the open marker's note
+                                                      field is the way to add a note.
+                                                    - Locate: a target when the marker is on the page, an
+                                                      orange pin-plus when it is not (click to place). */}
+                                                {!mobileMode && (() => {
+                                                  const surveyMarkerData = surveyMarkers[annotationId];
+                                                  const { moduleData } = findMarkerMatchingItem(annotationId, selectedModuleId, category);
+                                                  const currentEntityId = moduleData.entityId || surveyMarkerData?.entityId || '';
+                                                  const currentEntity = currentEntityId ? entitiesMap.get(currentEntityId) : null;
+                                                  const selectedEntityColor = currentEntity?.color || moduleData.entityColor || surveyMarkerData?.entityColor || null;
+                                                  const selectedEntityName = currentEntity?.name || moduleData.entityName || surveyMarkerData?.entityName || '';
+                                                  const isEntityDropdownOpen = openEntityDropdownId === entityDropdownId;
+                                                  const entityOptions = [
+                                                    { id: '', name: 'None', color: null },
+                                                    ...((selectedTemplate?.entities || []).map(entity => ({ id: entity.id, name: entity.name, color: entity.color })))
+                                                  ];
+                                                  const isPlaced = Boolean(surveyMarker.bounds && surveyMarker.pageNumber);
+                                                  const progress = getSurveyMarkerProgress(annotationId, category);
+                                                  const { text: noteTextValue, mediaCount } = getSurveyMarkerNoteInfo(annotationId);
+                                                  const entityLabel = selectedEntityName ? `Entity: ${selectedEntityName}` : 'Entity: none';
+                                                  return (
+                                                <div className={`survey-rail__marker-line${isSurveyMarkerExpanded ? ' is-open' : ''}`}>
+                                                  {isMarkerSelectable ? (
                                                     <SurveyMarkerLeadingSelect
                                                       selected={isMarkerSelected}
                                                       onClick={toggleMarkerSelection}
@@ -3567,78 +3220,66 @@ const SurveySpacesRail = ({
                                                   )}
 
                                                   <div className="survey-rail__marker-main">
-
-                                                      {/* 2026-09-23 (desktop survey polish): the open/close
-                                                          chevron leads, then the entity dot (10px, the
-                                                          phone's small dot) and the name. */}
-                                                      <button
-                                                        type="button"
-                                                        className="survey-marker-expand-toggle"
-                                                        onClick={(e) => {
-                                                          e.stopPropagation();
-                                                          toggleSurveyMarkerExpanded(annotationId);
-                                                        }}
-                                                        {...tip(isSurveyMarkerExpanded ? 'Collapse' : 'Expand', 'below')}
-                                                        aria-label={isSurveyMarkerExpanded ? 'Collapse marker details' : 'Expand marker details'}
-                                                        style={{
-                                                          width: '18px',
-                                                          height: '20px',
-                                                          padding: 0,
-                                                          background: 'transparent',
-                                                          border: 0,
-                                                          color: isSurveyMarkerExpanded ? 'var(--text-2)' : 'var(--text-3)',
-                                                          cursor: 'pointer',
-                                                          display: 'flex',
-                                                          alignItems: 'center',
-                                                          justifyContent: 'center',
-                                                          flexShrink: 0,
-                                                          transform: isSurveyMarkerExpanded ? 'rotate(90deg)' : 'none',
-                                                          transition: 'color 0.15s ease, transform 0.15s ease'
-                                                        }}
-                                                      >
-                                                        <Icon name="chevronRight" size={12} />
-                                                      </button>
-                                                      {(() => {
-                                                        // Get entity entity for indicator - data-driven from category item's entity field
-                                                        let indicatorColor = null;
-                                                        let indicatorTooltip = null;
-                                                        if (selectedTemplate && selectedModuleId) {
-                                                          const surveyMarkerData = surveyMarkers[annotationId];
-                                                          const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
-                                                          const surveyMarkerName = surveyMarkerData?.name || surveyMarker.name || '';
-                                                          const matchingItem = itemsByNameType.get(`${surveyMarkerName}\0${categoryName}`);
-
-                                                          // Try to get entityId from item's module data first, then from surveyMarkerData
-                                                          let entityId = null;
-                                                          if (matchingItem) {
-                                                            const moduleName = getModuleName(selectedTemplate, selectedModuleId);
-                                                            const dataKey = getModuleDataKey(moduleName);
-                                                            const moduleData = matchingItem[dataKey] || {};
-                                                            entityId = moduleData.entityId;
-                                                          }
-                                                          // Fallback to surveyMarkerData if not found in item
-                                                          if (!entityId && surveyMarkerData?.entityId) {
-                                                            entityId = surveyMarkerData.entityId;
-                                                          }
-
-                                                          if (entityId) {
-                                                            const entity = entitiesMap.get(entityId);
-                                                            if (entity) {
-                                                              // Use the exact color from entity.color without transformation
-                                                              indicatorColor = entity.color;
-                                                              indicatorTooltip = entity.name;
-                                                            }
-                                                          }
-                                                        }
-
-                                                        return (
-                                                          <EntityIndicator
-                                                            color={indicatorColor}
-                                                            size={10}
-                                                            tooltipText={indicatorTooltip}
+                                                      <div className="survey-rail__entity-wrap">
+                                                        <button
+                                                          type="button"
+                                                          className="survey-rail__entity-btn"
+                                                          aria-haspopup="listbox"
+                                                          aria-expanded={isEntityDropdownOpen}
+                                                          aria-label={`${entityLabel}. Change entity`}
+                                                          {...tip(selectedEntityName || 'No entity', 'below')}
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setOpenEntityDropdownId(isEntityDropdownOpen ? null : entityDropdownId);
+                                                          }}
+                                                        >
+                                                          <span
+                                                            className={`survey-rail__entity-dot${selectedEntityColor ? '' : ' is-empty'}`}
+                                                            style={selectedEntityColor ? { background: selectedEntityColor } : undefined}
                                                           />
-                                                        );
-                                                      })()}
+                                                          <span className="survey-rail__entity-caret" aria-hidden="true">
+                                                            <Icon name="chevronDown" size={10} color="currentColor" />
+                                                          </span>
+                                                        </button>
+                                                        {isEntityDropdownOpen && (
+                                                          <div
+                                                            className="survey-marker-entity-options survey-rail__entity-menu"
+                                                            role="listbox"
+                                                            aria-label="Entity"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                          >
+                                                            {entityOptions.map(option => {
+                                                              const optionValue = option.id || '';
+                                                              const isSelectedOption = currentEntityId === optionValue;
+                                                              return (
+                                                                <button
+                                                                  key={optionValue || 'none'}
+                                                                  type="button"
+                                                                  className={`survey-marker-entity-option${isSelectedOption ? ' is-selected' : ''}`}
+                                                                  role="option"
+                                                                  aria-selected={isSelectedOption}
+                                                                  onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    applyEntitySelectionForMarker(annotationId, selectedModuleId, category, optionValue);
+                                                                    setOpenEntityDropdownId(null);
+                                                                  }}
+                                                                >
+                                                                  <span
+                                                                    className="survey-marker-entity-option-swatch"
+                                                                    style={getEntitySwatchStyle(option.color)}
+                                                                  />
+                                                                  <span className="survey-marker-entity-option-label">
+                                                                    {option.name}
+                                                                  </span>
+                                                                  <span className="survey-rail__entity-check" aria-hidden="true">
+                                                                    {isSelectedOption ? <Icon name="check" size={12} color="currentColor" /> : null}
+                                                                  </span>
+                                                                </button>
+                                                              );
+                                                            })}
+                                                          </div>
+                                                        )}
+                                                      </div>
                                                       <span className="survey-marker-name-fit" data-value={surveyMarkerName || ' '}>
                                                         <input
                                                           type="text"
@@ -3695,19 +3336,8 @@ const SurveySpacesRail = ({
                                                           }}
                                                         />
                                                       </span>
-                                                      {/* UX (owner ruling 2026-09-28, Cut = pick up the
-                                                          placement): an item with no box on the PDF (cut
-                                                          and not pasted yet, or imported from Excel) says
-                                                          so in words next to its name. The orange Locate
-                                                          button at the end of the row places it again. */}
-                                                      {!(surveyMarker.bounds && surveyMarker.pageNumber) && (
-                                                        <span className="survey-marker-unplaced-tag" data-testid="survey-marker-unplaced-tag">
-                                                          Not on page
-                                                        </span>
-                                                      )}
                                                       <div
                                                         className="survey-marker-expand-spacer"
-                                                        {...tip(isSurveyMarkerExpanded ? 'Collapse' : 'Expand', 'below')}
                                                         aria-hidden="true"
                                                         onClick={(e) => {
                                                           e.stopPropagation();
@@ -3730,194 +3360,56 @@ const SurveySpacesRail = ({
                                                     }}
                                                   />
 
-                                                  {/* Media count and checklist progress, as on the
-                                                      phone row (owner 2026-10-01, desktop parity). The
-                                                      note itself is the Notes button's own ink below. */}
-                                                  {(() => {
-                                                    const progress = getSurveyMarkerProgress(annotationId, category);
-                                                    const { total } = progress;
-                                                    const { mediaCount } = getSurveyMarkerNoteInfo(annotationId);
-                                                    if (!total && !mediaCount) return null;
-                                                    return (
-                                                      <span className="survey-rail__marker-badges">
-                                                        {mediaCount > 0 ? (
-                                                          <span className="survey-marker-badge" aria-label={`${mediaCount} media attachment${mediaCount === 1 ? '' : 's'}`}>
-                                                            <Icon name="image" size={12} color="currentColor" />
-                                                            <span>{mediaCount}</span>
-                                                          </span>
-                                                        ) : null}
-                                                        {total > 0 ? renderSurveyMarkerProgress(progress) : null}
-                                                      </span>
-                                                    );
-                                                  })()}
+                                                  {/* A note that exists is a small glyph on the CLOSED
+                                                      line (an indicator, not a button); media count and
+                                                      checklist progress as on the phone row. */}
+                                                  {(noteTextValue && !isSurveyMarkerExpanded) || mediaCount > 0 || progress.total > 0 ? (
+                                                    <span className="survey-rail__marker-badges">
+                                                      {noteTextValue && !isSurveyMarkerExpanded ? (
+                                                        <span className="survey-marker-badge" aria-label="Has a note" title="Has a note">
+                                                          <Icon name="note" size={12} color="currentColor" />
+                                                        </span>
+                                                      ) : null}
+                                                      {mediaCount > 0 ? (
+                                                        <span className="survey-marker-badge" aria-label={`${mediaCount} media attachment${mediaCount === 1 ? '' : 's'}`}>
+                                                          <Icon name="image" size={12} color="currentColor" />
+                                                          <span>{mediaCount}</span>
+                                                        </span>
+                                                      ) : null}
+                                                      {progress.total > 0 ? renderSurveyMarkerProgress(progress) : null}
+                                                    </span>
+                                                  ) : null}
 
-                                                  {/* Item-level Notes button. A note glyph (owner
-                                                      2026-10-01: the pencil read as "rename"). It opens
-                                                      the Survey Marker with the caret in its inline
-                                                      Notes field (the Note dialog is gone). */}
-                                                  <button
-                                                    onClick={(e) => {
-                                                      e.stopPropagation();
-                                                      if (!isSurveyMarkerExpanded) toggleSurveyMarkerExpanded(annotationId);
-                                                      setNoteFocusRequestId(annotationId);
-                                                    }}
-                                                    // 2026-09-23 (desktop survey polish): a bare glyph in an
-                                                    // invisible column pad - no hover plate, no dimmed
-                                                    // opacity. Brighter ink when a note exists (calm gold
-                                                    // 2026-10-01: --text-2, the phone's colour, not gold).
-                                                    className="survey-rail__marker-action"
-                                                    style={{
-                                                      color: surveyMarkers[annotationId]?.note?.text ? 'var(--text-2)' : 'var(--text-3)'
-                                                    }}
-                                                    {...tip(surveyMarkers[annotationId]?.note?.text ? "Edit item notes" : "Add item notes", 'below')}
-                                                    aria-label={surveyMarkers[annotationId]?.note?.text ? "Edit item notes" : "Add item notes"}
-                                                  >
-                                                    <Icon name="note" size={14} />
-                                                  </button>
-
-                                                  {/* Locate Button (Magnifying Glass) */}
                                                   <button
                                                     type="button"
                                                     onClick={(e) => {
                                                       e.stopPropagation();
-                                                      // Check if item has location (bounds and pageNumber)
-                                                      const hasLocation = surveyMarker.bounds && surveyMarker.pageNumber;
-
-                                                      if (hasLocation) {
-                                                        handleLocateItemOnPDF(surveyMarker);
-                                                      } else {
-                                                        // Prompt to surveyMarker
-                                                        setPendingLocationItem(surveyMarker);
-                                                      }
+                                                      if (isPlaced) handleLocateItemOnPDF(surveyMarker);
+                                                      else setPendingLocationItem(surveyMarker);
                                                     }}
-                                                    className="survey-rail__marker-action survey-rail__marker-action--end"
-                                                    style={{
-                                                      // Quiet when the Survey Marker is on the page; orange
-                                                      // when it still needs a location - the one that needs
-                                                      // you is the one that stands out (2026-09-23: was gold
-                                                      // on every placed line, a gold glyph per row).
-                                                      color: (surveyMarker.bounds && surveyMarker.pageNumber) ? 'var(--text-3)' : 'var(--warning)',
-                                                    }}
-                                                    {...tip(surveyMarker.bounds && surveyMarker.pageNumber ? "Jump to this Survey Marker" : "Place on page", 'below')}
-                                                    aria-label={surveyMarker.bounds && surveyMarker.pageNumber ? "Jump to this Survey Marker" : "Place on page"}
+                                                    className={`survey-rail__marker-action survey-rail__locate${isPlaced ? '' : ' is-unplaced'}`}
+                                                    data-testid={isPlaced ? undefined : 'survey-marker-unplaced-tag'}
+                                                    {...tip(isPlaced ? 'Locate on page' : 'Not on the page \u2014 click to place', 'below')}
+                                                    aria-label={isPlaced ? 'Locate on page' : 'Not on the page. Place on page'}
                                                   >
-                                                    <Icon name="search" size={14} />
+                                                    <Icon name={isPlaced ? 'locate' : 'pinPlus'} size={15} color="currentColor" />
                                                   </button>
 
+                                                  <button
+                                                    type="button"
+                                                    className="survey-rail__marker-action survey-rail__marker-toggle"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      toggleSurveyMarkerExpanded(annotationId);
+                                                    }}
+                                                    aria-expanded={Boolean(isSurveyMarkerExpanded)}
+                                                    aria-label={isSurveyMarkerExpanded ? 'Collapse marker details' : 'Expand marker details'}
+                                                  >
+                                                    <Icon name="chevronDown" size={14} color="currentColor" />
+                                                  </button>
                                                 </div>
-                                                )}
-
-                                                {/* Entity selector */}
-                                                {
-                                                  !mobileMode && isSurveyMarkerExpanded && selectedTemplate && selectedModuleId && (() => {
-                                                    // Find the item associated with this surveyMarker
-                                                    const surveyMarkerData = surveyMarkers[annotationId];
-                                                    const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
-                                                    const surveyMarkerName = surveyMarkerData?.name || surveyMarker.name || '';
-                                                    const matchingItem = itemsByNameType.get(`${surveyMarkerName}\0${categoryName}`);
-
-                                                    // Get module-specific data
-                                                    const moduleName = getModuleName(selectedTemplate, selectedModuleId);
-                                                    const dataKey = getModuleDataKey(moduleName);
-                                                    const moduleData = matchingItem?.[dataKey] || {};
-
-                                                    // Get current entity status from item's module-specific data (preferred) or from survey marker annotation (legacy)
-                                                    const currentEntityId = moduleData.entityId || surveyMarkerData?.entityId;
-                                                    const entities = selectedTemplate?.entities || [];
-                                                    const currentEntity = currentEntityId ? entities.find(entity => entity.id === currentEntityId) : null;
-                                                    const selectedEntityColor = currentEntity?.color || moduleData.entityColor || surveyMarkerData?.entityColor;
-                                                    const selectedEntityName = currentEntity?.name || moduleData.entityName || surveyMarkerData?.entityName || 'None';
-                                                    const isEntityDropdownOpen = openEntityDropdownId === entityDropdownId;
-                                                    const entityOptions = [
-                                                      { id: '', name: 'None', color: null },
-                                                      ...entities.map(entity => ({
-                                                        id: entity.id,
-                                                        name: entity.name,
-                                                        color: entity.color
-                                                      }))
-                                                    ];
-                                                    // Delegates to the shared helper (see applyEntitySelectionForMarker
-                                                    // above) so the mobile detail view and this desktop row perform
-                                                    // byte-identical store writes.
-                                                    const handleEntitySelection = (entityId) => {
-                                                      applyEntitySelectionForMarker(annotationId, selectedModuleId, category, entityId);
-                                                    };
-
-                                                    /* UX 2026-09-23 (desktop survey polish): an open Survey
-                                                       Marker's detail is LINES indented under its name - no
-                                                       grey plate, no box per line. The Entity picker is a grey
-                                                       field (no edge, no gold ring) on the right. */
-                                                    return (
-                                                      <div className="survey-rail__detail-line">
-                                                        <div className="survey-marker-entity-row">
-                                                          <span className="survey-marker-entity-label">
-                                                            Entity
-                                                          </span>
-                                                          <div className="survey-marker-entity-select-wrap">
-                                                            <button
-                                                              type="button"
-                                                              className="survey-marker-entity-trigger"
-                                                              aria-haspopup="listbox"
-                                                              aria-expanded={isEntityDropdownOpen}
-                                                              onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setOpenEntityDropdownId(isEntityDropdownOpen ? null : entityDropdownId);
-                                                              }}
-                                                            >
-                                                              <span className="survey-marker-entity-trigger-content">
-                                                                <span
-                                                                  className="survey-marker-entity-swatch"
-                                                                  style={getEntitySwatchStyle(selectedEntityColor)}
-                                                                />
-                                                                <span className="survey-marker-entity-trigger-label">
-                                                                  {selectedEntityName}
-                                                                </span>
-                                                              </span>
-                                                              <span className={`survey-marker-entity-caret${isEntityDropdownOpen ? ' is-open' : ''}`}>
-                                                                <Icon name="chevronDown" size={12} />
-                                                              </span>
-                                                            </button>
-                                                            {isEntityDropdownOpen && (
-                                                              <div
-                                                                className="survey-marker-entity-options"
-                                                                role="listbox"
-                                                                aria-label="Entity"
-                                                                onClick={(e) => e.stopPropagation()}
-                                                              >
-                                                                {entityOptions.map(option => {
-                                                                  const optionValue = option.id || '';
-                                                                  const isSelectedOption = (currentEntityId || '') === optionValue;
-                                                                  return (
-                                                                    <button
-                                                                      key={optionValue || 'none'}
-                                                                      type="button"
-                                                                      className={`survey-marker-entity-option${isSelectedOption ? ' is-selected' : ''}`}
-                                                                      role="option"
-                                                                      aria-selected={isSelectedOption}
-                                                                      onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        handleEntitySelection(optionValue);
-                                                                        setOpenEntityDropdownId(null);
-                                                                      }}
-                                                                    >
-                                                                      <span
-                                                                        className="survey-marker-entity-option-swatch"
-                                                                        style={getEntitySwatchStyle(option.color)}
-                                                                      />
-                                                                      <span className="survey-marker-entity-option-label">
-                                                                        {option.name}
-                                                                      </span>
-                                                                    </button>
-                                                                  );
-                                                                })}
-                                                              </div>
-                                                            )}
-                                                          </div>
-                                                        </div>
-                                                      </div>
-                                                    );
-                                                  })()
-                                                }
+                                                  );
+                                                })()}
 
                                                 {/* Expanded checklist items — active items only.
                                                     KAL-44: archived items are rendered separately
@@ -4152,6 +3644,385 @@ const SurveySpacesRail = ({
                     )}
                   </div>
                   </div>
+                  {/* Owner 2026-10-01 ("the export button being so close to the X
+                      close button for survey is just weird"): Export left the
+                      header for the panel's foot - one quiet line at the bottom of
+                      the Survey panel (desktop: just above the zoom / page footer;
+                      phone: the sheet's last line, hidden while you type). The
+                      header keeps only the template name and the X. "Export to
+                      Excel" creates the workbook; with a linked workbook a "..."
+                      beside it holds that workbook's actions. Same handlers. */}
+                  {!isMobileTemplateSwitching && (
+                    <div className={mobileMode ? 'mobile-survey-foot' : 'survey-rail__foot'}>
+                      <button
+                        type="button"
+                        className={mobileMode ? 'mobile-survey-foot__export' : 'survey-rail__foot-export'}
+                        onClick={() => handleExportSurveyToExcel()}
+                        disabled={isExporting}
+                        {...(mobileMode ? {} : tip('Create an Excel workbook from this survey', 'above'))}
+                      >
+                        {isExporting
+                          ? <Spinner size={mobileMode ? 16 : 14} color="var(--text-1)" trackColor="var(--surface-3)" />
+                          : <Icon name="upload" size={mobileMode ? 16 : 14} color="currentColor" />}
+                        <span>{isExporting ? 'Exporting\u2026' : 'Export to Excel'}</span>
+                      </button>
+                      {mobileMode ? (
+                        (selectedTemplate.linkedExcelPath && linkedExcelExists === true) ? (
+                          <div className="mobile-survey-sheet-export-wrap" ref={mobileExportMenuRef}>
+                            <button
+                              type="button"
+                              className={`mobile-survey-foot__more${isMobileExportMenuOpen ? ' is-open' : ''}`}
+                              aria-label="Linked workbook actions"
+                              aria-haspopup="menu"
+                              aria-expanded={isMobileExportMenuOpen}
+                              disabled={isExporting}
+                              onClick={() => setIsMobileExportMenuOpen((open) => !open)}
+                            >
+                              <Icon name="moreHorizontal" size={18} color="currentColor" />
+                            </button>
+                            {isMobileExportMenuOpen && (
+                              <div className="mobile-survey-sheet-export-menu" role="menu">
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  disabled={isExporting}
+                                  onClick={() => {
+                                    setIsMobileExportMenuOpen(false);
+                                    handleExportSurveyToExcel(selectedTemplate.linkedExcelPath);
+                                  }}
+                                >
+                                  <strong>Sync Microsoft 365</strong>
+                                  <span>Update the shared workbook</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ) : null
+                      ) : (
+                        <div ref={exportMenuRef} className="survey-rail__export">
+                          {(selectedTemplate.linkedExcelPath && linkedExcelExists === true) && (
+                            <button
+                              type="button"
+                              onClick={() => !isExporting && setShowExportMenu(!showExportMenu)}
+                              disabled={isExporting}
+                              className="survey-rail__foot-more"
+                              aria-label="Linked workbook actions"
+                              aria-haspopup="menu"
+                              aria-expanded={showExportMenu}
+                              {...tip('Linked workbook', 'above')}
+                            >
+                              <Icon name="moreHorizontal" size={16} color="currentColor" />
+                            </button>
+                          )}
+                                    {showExportMenu && (
+                                      <div className="survey-marker-export-compact-menu">
+                          <div
+                            onClick={async () => {
+                              const excelPath = selectedTemplate.linkedExcelPath;
+                              const isOneDrive = selectedTemplate.isOneDrive;
+
+
+                              if (!excelPath) {
+                                showToast('No Excel file is linked to this survey.', 'error');
+                                setShowExportMenu(false);
+                                return;
+                              }
+
+                              // Check if the path is actually a local file path (even if isOneDrive flag is set)
+                              // Local paths start with / and contain /Users/ or /Library/ or drive letters on Windows
+                              const isLocalFilePath = excelPath.startsWith('/Users/') ||
+                                excelPath.startsWith('/Library/') ||
+                                excelPath.match(/^[A-Za-z]:[\\/]/) || // Windows drive letter
+                                excelPath.includes('/CloudStorage/'); // OneDrive sync folder
+
+                              // For OneDrive API paths (like /Documents/file.xlsx), try to construct local sync folder path
+                              if (isOneDrive && !isLocalFilePath && window.electronAPI) {
+                                try {
+                                  // Get home directory and find OneDrive folders
+                                  const homeDir = await window.electronAPI.getHomeDir();
+                                  const cloudStoragePath = `${homeDir}/Library/CloudStorage`;
+
+                                  console.log('Looking for OneDrive file. Excel path:', excelPath);
+                                  console.log('Home dir:', homeDir);
+                                  console.log('CloudStorage path:', cloudStoragePath);
+
+                                  // List CloudStorage directory to find OneDrive folders
+                                  const cloudStorageContents = await window.electronAPI.listDir(cloudStoragePath);
+                                  console.log('CloudStorage contents:', cloudStorageContents);
+
+                                  const oneDriveFolders = cloudStorageContents.filter(name =>
+                                    name.startsWith('OneDrive') || name.includes('OneDrive')
+                                  );
+                                  console.log('OneDrive folders found:', oneDriveFolders);
+
+                                  // Build list of possible paths
+                                  const possibleLocalPaths = [];
+
+                                  // Add CloudStorage OneDrive folders
+                                  for (const folder of oneDriveFolders) {
+                                    possibleLocalPaths.push(`${cloudStoragePath}/${folder}${excelPath}`);
+                                  }
+
+                                  // Also try legacy OneDrive locations in home directory
+                                  possibleLocalPaths.push(`${homeDir}/OneDrive${excelPath}`);
+                                  possibleLocalPaths.push(`${homeDir}/OneDrive - Personal${excelPath}`);
+
+                                  console.log('Trying these local paths:', possibleLocalPaths);
+
+                                  let localPathFound = null;
+                                  for (const localPath of possibleLocalPaths) {
+                                    try {
+                                      const exists = await window.electronAPI.fileExists(localPath);
+                                      console.log(`Checking ${localPath}: ${exists ? 'EXISTS' : 'not found'}`);
+                                      if (exists) {
+                                        localPathFound = localPath;
+                                        break;
+                                      }
+                                    } catch (e) {
+                                      console.log(`Error checking ${localPath}:`, e);
+                                      // Continue trying other paths
+                                    }
+                                  }
+
+                                  if (localPathFound) {
+                                    console.log('Found local file at:', localPathFound);
+                                    // Open the local file directly
+                                    const result = await window.electronAPI.openPath(localPathFound);
+                                    if (result) {
+                                      console.error('Failed to open local OneDrive file:', result);
+                                      showToast(`Failed to open Excel file:\n${result}`, 'error');
+                                    }
+                                    setShowExportMenu(false);
+                                    return;
+                                  }
+
+                                  // If local file not found, fall through to web approach
+                                  console.log('Local OneDrive file not found, trying web approach...');
+                                } catch (err) {
+                                  console.error('Error searching for local OneDrive file:', err);
+                                  // Fall through to web approach
+                                }
+                              }
+
+                              // Handle OneDrive API files - try desktop Excel first, fall back to web
+                              if (isOneDrive && !isLocalFilePath) {
+                                console.log('Trying web approach for OneDrive file...');
+                                console.log('graphClient available:', !!graphClient);
+                                try {
+                                  // Get the file's web URL from OneDrive
+                                  if (graphClient) {
+                                    console.log('Fetching file metadata from Graph API:', `/me/drive/root:${excelPath}`);
+                                    const driveItem = await graphClient.api(`/me/drive/root:${excelPath}`).get();
+                                    console.log('Drive item response:', driveItem);
+                                    console.log('webUrl:', driveItem?.webUrl);
+                                    console.log('downloadUrl:', driveItem?.['@microsoft.graph.downloadUrl']);
+
+                                    // Get webUrl, or construct one from the downloadUrl/id
+                                    let webUrl = driveItem?.webUrl;
+
+                                    // If no webUrl, try to open the file directly using downloadUrl
+                                    if (!webUrl && driveItem?.['@microsoft.graph.downloadUrl']) {
+                                      // For personal OneDrive, construct the web URL
+                                      // Format: https://onedrive.live.com/edit.aspx?cid=<driveId>&resid=<itemId>
+                                      const downloadUrl = driveItem['@microsoft.graph.downloadUrl'];
+                                      console.log('No webUrl, using downloadUrl to open file');
+
+                                      // Open the download URL which should trigger Excel to open
+                                      window.open(downloadUrl, '_blank');
+                                      setShowExportMenu(false);
+                                      return;
+                                    }
+
+                                    if (webUrl) {
+                                      console.log('Opening with webUrl:', webUrl);
+
+                                      // In Electron, use shell.openExternal to open the URL
+                                      // This will open in the default browser and Excel Online can handle it
+                                      if (window.electronAPI?.openExternal) {
+                                        try {
+                                          await window.electronAPI.openExternal(webUrl);
+                                          console.log('Opened webUrl with shell.openExternal');
+                                        } catch (e) {
+                                          console.error('Failed to open with openExternal:', e);
+                                          // Fallback to window.open
+                                          window.open(webUrl, '_blank');
+                                        }
+                                      } else {
+                                        // Not in Electron, just open in new tab
+                                        window.open(webUrl, '_blank');
+                                      }
+                                    } else {
+                                      showToast('Could not get the OneDrive file URL. Please open the file manually from OneDrive.', 'error');
+                                    }
+                                  } else {
+                                    showToast('Please sign in to Microsoft to open OneDrive files.', 'warn');
+                                  }
+                                } catch (err) {
+                                  console.error('Error opening OneDrive file:', err);
+                                  showToast(`Error opening OneDrive file:\n${err.message}`, 'error');
+                                }
+                                setShowExportMenu(false);
+                                return;
+                              }
+
+                              // Handle local files
+                              if (window.electronAPI) {
+                                try {
+                                  // Check if file exists first
+                                  const exists = await window.electronAPI.fileExists(excelPath);
+
+                                  if (!exists) {
+                                    showToast(`Excel file not found at:\n${excelPath}\n\nThe file may have been moved or deleted.`, 'error');
+                                    setShowExportMenu(false);
+                                    return;
+                                  }
+
+                                  const result = await window.electronAPI.openPath(excelPath);
+                                  if (result) {
+                                    // shell.openPath returns an error string if it fails, empty string on success
+                                    console.error('Failed to open Excel file:', result);
+                                    showToast(`Failed to open Excel file:\n${result}\n\nPath: ${excelPath}`, 'error');
+                                  }
+                                } catch (err) {
+                                  console.error('Error opening Excel file:', err);
+                                  showToast(`Error opening Excel file:\n${err.message}\n\nPath: ${excelPath}`, 'error');
+                                }
+                              } else {
+                                showToast('This feature is only available in the desktop app.', 'error');
+                              }
+                              setShowExportMenu(false);
+                            }}
+                            role="menuitem"
+                            className="survey-rail__menu-item"
+                          >
+                            <Icon name="document" size={14} color="currentColor" />
+                            Open Excel
+                          </div>
+                          <div
+                            onClick={() => {
+                              handleExportSurveyToExcel(selectedTemplate.linkedExcelPath);
+                              setShowExportMenu(false);
+                            }}
+                            role="menuitem"
+                            className="survey-rail__menu-item"
+                          >
+                            <Icon name="upload" size={14} color="currentColor" />
+                            Push to Excel
+                          </div>
+                          {/* "Pull from Excel" reads the last SAVED copy from disk, which on
+                              a local file open in Excel is stale and overlaps the automatic
+                              import-on-save — so it's only offered for OneDrive workbooks. */}
+                          {selectedTemplate?.isOneDrive && (
+                          <div
+                            onClick={() => {
+                              handleSyncFromExcel();
+                              setShowExportMenu(false);
+                            }}
+                            role="menuitem"
+                            className="survey-rail__menu-item"
+                          >
+                            <Icon name="download" size={14} color="currentColor" />
+                            Pull from Excel
+                          </div>
+                          )}
+                          {selectedTemplate?.isOneDrive && (() => {
+                            // Amendment (b) capability gate: a refused verdict keeps the
+                            // toggle visible but inert-with-reason. Clicking re-checks
+                            // (retry); the plain-English reason comes from the shared
+                            // excelSyncStatus vocabulary — never an inline literal here.
+                            const gateRefused = !liveSyncEnabled && liveSyncGate && !liveSyncGate.allowed
+                              && liveSyncGate.reasonCode !== 'checking';
+                            const gateChecking = !liveSyncEnabled && liveSyncGate?.reasonCode === 'checking';
+                            return (
+                            <div
+                              onClick={() => {
+                                if (liveSyncSupported === false) return;
+                                if (typeof onLiveSyncToggle === 'function') onLiveSyncToggle();
+                              }}
+                              role="menuitem"
+                              className="survey-rail__menu-item"
+                              style={{
+                                // Calm gold (2026-10-01): a live link is the house
+                                // "ok" green, beside warning amber and error red.
+                                color: liveSyncEnabled && liveSyncStatus === 'connected'
+                                  ? 'var(--success-text)'
+                                  : liveSyncStatus === 'connecting' || gateChecking
+                                    ? 'var(--warning)'
+                                    : liveSyncStatus === 'error' || liveSyncSupported === false
+                                      ? 'var(--danger-text)'
+                                      : 'var(--text-2)',
+                                cursor: liveSyncSupported === false ? 'not-allowed' : 'pointer'
+                              }}
+                              {...tip(
+                                liveSyncSupported === false
+                                  ? 'Live sync requires Microsoft 365 Business account'
+                                  : gateRefused || gateChecking
+                                    ? liveSyncGateStatus(liveSyncGate.reasonCode).label
+                                    : liveSyncEnabled && liveSyncStatus === 'connected'
+                                      ? 'Live sync is active - changes sync in real-time'
+                                      : liveSyncStatus === 'connecting'
+                                        ? 'Connecting to Excel...'
+                                        : liveSyncStatus === 'error'
+                                          ? 'Live sync error - click to retry'
+                                          : 'Enable live sync for real-time Excel updates',
+                                'below'
+                              )}
+                            >
+                              <span style={{ width: '14px', textAlign: 'center', fontSize: '12px' }}>
+                                {liveSyncStatus === 'connecting' || gateChecking
+                                  ? '...'
+                                  : liveSyncEnabled && liveSyncStatus === 'connected'
+                                    ? '●'
+                                    : '○'}
+                              </span>
+                              Live Sync
+                            </div>
+                            );
+                          })()}
+                          {selectedTemplate?.isOneDrive && (() => {
+                            // Slice 4 — guided "Verify Live Sync": a READ-ONLY,
+                            // step-by-step check of the whole live-sync path. The
+                            // verdict (and the running state) comes from the shared
+                            // excelSyncStatus vocabulary — never an inline literal.
+                            const verifying = liveSyncVerify?.state === 'checking';
+                            const verdict = liveSyncVerify?.state === 'done'
+                              ? liveSyncVerifyStatus(liveSyncVerify.verdictCode)
+                              : null;
+                            const verdictColor = verdict ? SYNC_TONE_COLORS[verdict.tone]?.color : null;
+                            return (
+                            <div
+                              onClick={() => {
+                                if (verifying) return;
+                                if (typeof onVerifyLiveSync === 'function') onVerifyLiveSync();
+                              }}
+                              role="menuitem"
+                              className="survey-rail__menu-item"
+                              style={{
+                                color: verifying ? 'var(--warning)' : (verdictColor || 'var(--text-2)'),
+                                cursor: verifying ? 'wait' : 'pointer'
+                              }}
+                              {...tip(
+                                verifying
+                                  ? liveSyncVerifyStatus('verifying').label
+                                  : verdict
+                                    ? verdict.label
+                                    : liveSyncVerifyStatus('idle').label,
+                                'below'
+                              )}
+                            >
+                              <span style={{ width: '14px', textAlign: 'center', fontSize: '12px' }}>
+                                {verifying ? '...' : verdict ? (liveSyncVerify.ready ? <Icon name="check" size={14} /> : '!') : '○'}
+                              </span>
+                              Verify Live Sync
+                            </div>
+                            );
+                          })()}
+                                      </div>
+                                    )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   </>
                   ) : (
                     <div style={{
