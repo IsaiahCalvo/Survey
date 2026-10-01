@@ -643,6 +643,16 @@
   color: var(--success-text);
 }
 
+.survey-rail .survey-rail__marker-badges .survey-marker-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.survey-rail .survey-rail__marker-badges .survey-marker-progress.is-no {
+  color: var(--danger-text);
+}
+
 /* ---- an open Survey Marker's detail: lines indented under its name ---- */
 .survey-rail .survey-rail__detail-line {
   min-height: var(--sv-line-h);

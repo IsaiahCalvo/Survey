@@ -704,6 +704,16 @@
   color: var(--success-text);
 }
 
+.mobile-survey-sheet .survey-marker-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.mobile-survey-sheet .survey-marker-progress.is-no {
+  color: var(--danger-text);
+}
+
 .mobile-survey-sheet .mobile-survey-item-chevron {
   width: 16px;
   height: 16px;

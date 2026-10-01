@@ -1168,7 +1168,26 @@ const SurveySpacesRail = ({
     const active = (category?.checklist || []).filter((item) => item && item.archived !== true);
     const responses = surveyMarkers?.[annotationId]?.checklistResponses || {};
     const answered = active.filter((item) => Boolean(responses[item.id]?.selection)).length;
-    return { answered, total: active.length };
+    const no = active.filter((item) => responses[item.id]?.selection === 'N').length;
+    return { answered, total: active.length, no };
+  };
+  // The "answered/total" count. Owner 2026-10-01 (after a design debate):
+  // green with a check only when every item is answered Y or N/A (the same
+  // rule that marks the PDF marker Complete); red as soon as any item is N,
+  // finished or not; grey otherwise. The check keeps "done" readable without
+  // telling red from green.
+  const renderSurveyMarkerProgress = ({ answered, total, no }) => {
+    const done = total > 0 && answered === total && no === 0;
+    const state = no > 0 ? ' is-no' : done ? ' is-done' : '';
+    const label = done
+      ? `All ${total} checklist items answered, complete`
+      : `${answered} of ${total} checklist items answered${no > 0 ? `, ${no} answered No` : ''}`;
+    return (
+      <span className={`survey-marker-progress${state}`} aria-label={label} title={label}>
+        {done ? <Icon name="check" size={12} color="currentColor" /> : null}
+        {answered}/{total}
+      </span>
+    );
   };
   const getSurveyMarkerNoteInfo = (annotationId) => {
     const note = surveyMarkers?.[annotationId]?.note || {};
@@ -1178,7 +1197,8 @@ const SurveySpacesRail = ({
     return { text: typeof note.text === 'string' ? note.text.trim() : '', mediaCount };
   };
   const renderSurveyMarkerBadges = (annotationId, category, className) => {
-    const { answered, total } = getSurveyMarkerProgress(annotationId, category);
+    const progress = getSurveyMarkerProgress(annotationId, category);
+    const { total } = progress;
     const { text, mediaCount } = getSurveyMarkerNoteInfo(annotationId);
     return (
       <span className={className}>
@@ -1193,14 +1213,7 @@ const SurveySpacesRail = ({
             <span>{mediaCount}</span>
           </span>
         ) : null}
-        {total > 0 ? (
-          <span
-            className={`survey-marker-progress${answered === total ? ' is-done' : ''}`}
-            aria-label={`${answered} of ${total} checklist items answered`}
-          >
-            {answered}/{total}
-          </span>
-        ) : null}
+        {total > 0 ? renderSurveyMarkerProgress(progress) : null}
       </span>
     );
   };
@@ -3582,7 +3595,8 @@ const SurveySpacesRail = ({
                                                       phone row (owner 2026-10-01, desktop parity). The
                                                       note itself is the Notes button's own ink below. */}
                                                   {(() => {
-                                                    const { answered, total } = getSurveyMarkerProgress(annotationId, category);
+                                                    const progress = getSurveyMarkerProgress(annotationId, category);
+                                                    const { total } = progress;
                                                     const { mediaCount } = getSurveyMarkerNoteInfo(annotationId);
                                                     if (!total && !mediaCount) return null;
                                                     return (
@@ -3593,14 +3607,7 @@ const SurveySpacesRail = ({
                                                             <span>{mediaCount}</span>
                                                           </span>
                                                         ) : null}
-                                                        {total > 0 ? (
-                                                          <span
-                                                            className={`survey-marker-progress${answered === total ? ' is-done' : ''}`}
-                                                            aria-label={`${answered} of ${total} checklist items answered`}
-                                                          >
-                                                            {answered}/{total}
-                                                          </span>
-                                                        ) : null}
+                                                        {total > 0 ? renderSurveyMarkerProgress(progress) : null}
                                                       </span>
                                                     );
                                                   })()}
