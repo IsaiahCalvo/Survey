@@ -1906,6 +1906,10 @@ const SurveySpacesRail = ({
                         );
                       })()}
                     </div>
+                    {/* Spaces chunk B: the space new Survey Markers are tagged with. */}
+                    {activeSpaceId && (spaces || []).some((s) => s?.id === activeSpaceId) && (
+                      <span className="survey-active-space">{(spaces || []).find((s) => s?.id === activeSpaceId)?.name || 'Space'}</span>
+                    )}
                     <div className={mobileMode ? 'mobile-survey-head-actions' : 'survey-rail__head-actions'}>
                       {/* Owner 2026-10-01: ONE Exit. The survey bar above the page
                           has it, so the sheet no longer repeats it as a red word. */}

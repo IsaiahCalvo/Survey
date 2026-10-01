@@ -9,6 +9,7 @@ import { composeTextColor, splitTextColor } from '../utils/textColorOpacity';
 import { resolveFontSizeDraft } from '../utils/selectedTextFormatting.js';
 import { ChosenCheck, QuickColourDots, QuickPaintSwatch } from '../components/QuickStyleControls';
 import DismissBarrier from '../components/DismissBarrier';
+import ActiveSpaceChip from '../sidebar/ActiveSpaceChip';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS, ensureRgbaOpacity, getCategoryGlyphLabel } from '../viewerShared';
 import { getMobileSyncPresentation, getMobileTextMarkupPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
@@ -1035,7 +1036,7 @@ function MobilePanelColorSwatch({ color, chosen, label, onPick }) {
 // the pdf.js viewer: zoomController FIT_HEIGHT + PDFViewer handleZoomModeSelect).
 const ZOOM_FIT_OPTIONS = ZOOM_MODE_OPTIONS.filter((option) => option.id !== 'manual');
 
-export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi, bottomToolbarApi }) {
+export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi, bottomToolbarApi, activeSpace = null, onOpenSpaces = null, onTurnOffSpace = null }) {
   // OWNER DECISION 2 (2026-07-12): the page pill has two tap zones — the
   // fraction opens an inline page-jump input (type-to-jump), the chevron opens
   // the zoom/fit dropdown ONLY. The old combined page+zoom single surface is
@@ -1249,6 +1250,19 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           <Icon name="redo" size={HISTORY_GLYPH} color="currentColor" />
         </button>
       </div>
+      {/* Spaces chunk B: the active space, floating just under the top bar
+          (and under a tool strip when one is open - see the CSS). The words
+          open the Spaces sheet; x turns the space off. */}
+      {activeSpace && (
+        <div className="mobile-pdf-header__space">
+          <ActiveSpaceChip
+            name={activeSpace.name}
+            pageCount={activeSpace.pageCount}
+            onOpen={onOpenSpaces}
+            onTurnOff={onTurnOffSpace}
+          />
+        </div>
+      )}
     </header>
   );
 }

@@ -261,6 +261,9 @@ const PDFSidebar = React.forwardRef(({
   // the first touch and every drag), and the sheet comes back - with the space
   // that was being edited still open - on Confirm / Cancel.
   const regionEditHidSheetRef = React.useRef(false);
+  // Spaces chunk B: which spaces are open survives the panel closing (the
+  // phone sheet unmounts SpacesPanel each time it closes).
+  const spacesExpandedStoreRef = React.useRef(null);
   const [regionEditReturnSpaceId, setRegionEditReturnSpaceId] = useState(null);
   React.useEffect(() => {
     if (!mobileMode) return;
@@ -686,6 +689,7 @@ const PDFSidebar = React.forwardRef(({
                 onSpaceRemovePage={onSpaceRemovePage}
                 getSpaceRemovalImpact={getSpaceRemovalImpact}
                 initiallyExpandedSpaceId={mobileMode ? regionEditReturnSpaceId : null}
+                expandedSpacesStoreRef={spacesExpandedStoreRef}
                 onNavigateToPage={onNavigateToSpacePage}
                 onReorderSpaces={onReorderSpaces}
                 onExportSpaceCSV={onExportSpaceCSV}
@@ -708,8 +712,9 @@ const PDFSidebar = React.forwardRef(({
                 mobileMode={mobileMode}
                 mobilePanelVisible={mobileMode && activeTab === 'spaces' && !isCollapsed}
                 onMobilePanelMetricsChange={handleMobileSpacesMetricsChange}
-                // UX 2026-09-23 (owner: phone Spaces panel polished): Exit is a
-                // quiet red word at the end of the list, not a footer band.
+                // Spaces chunk B: the phone header's neutral "Done" (it took
+                // over from the red "Exit Spaces / Regions" link): leaves
+                // Spaces mode and closes the sheet.
                 onExitSpacesAction={mobileMode ? () => {
                   onExitSpaceMode?.();
                   closePanel();
