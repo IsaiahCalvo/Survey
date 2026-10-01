@@ -318,6 +318,86 @@ const SurveyMarkerReviewIndicator = ({
   );
 };
 
+// Phone: the open Survey Marker's checklist + note slide open and shut under
+// its line (owner 2026-10-01: "animate expand and collapse, with no jumps").
+// The block's measured height is eased 0 -> its content height (and back);
+// the layout height changes every frame, so the sheet (and anything observing
+// its size) follows smoothly. Open, it settles on `height: auto` at exactly
+// the height it eased to, so nothing snaps when it finishes. (A 0fr -> 1fr
+// grid row was tried first: Chromium sizes the box and its track differently
+// mid-way, leaving a blank band under the clipped content.) While it closes
+// it keeps showing what it showed last (the parent stops building the block
+// for a closed marker), then unmounts. Reduced motion: no slide.
+const MOBILE_MARKER_SLIDE_MS = 220;
+const MobileSurveyMarkerCollapse = ({ open, children }) => {
+  const [mounted, setMounted] = useState(open);
+  const lastChildrenRef = useRef(children);
+  const ref = useRef(null);
+  // Mounted already open (the sheet reopening on an open marker): no slide.
+  const skipFirstRef = useRef(open);
+  if (open && children) lastChildrenRef.current = children;
+
+  useLayoutEffect(() => {
+    if (open && !mounted) setMounted(true);
+  }, [open, mounted]);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    el.inert = !open;
+    const reduce = typeof window !== 'undefined'
+      && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (skipFirstRef.current || reduce) {
+      skipFirstRef.current = false;
+      if (open) {
+        el.style.height = 'auto';
+        el.style.overflow = 'visible';
+      } else {
+        setMounted(false);
+      }
+      return undefined;
+    }
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (open) {
+        el.style.height = 'auto';
+        el.style.overflow = 'visible';
+      } else {
+        setMounted(false);
+      }
+    };
+    const from = el.getBoundingClientRect().height;
+    const to = open ? el.scrollHeight : 0;
+    el.style.overflow = 'hidden';
+    el.style.height = `${from}px`;
+    el.getBoundingClientRect();
+    el.style.height = `${to}px`;
+    const onEnd = (e) => {
+      if (e.target === el && e.propertyName === 'height') finish();
+    };
+    el.addEventListener('transitionend', onEnd);
+    const timer = setTimeout(finish, MOBILE_MARKER_SLIDE_MS * 3);
+    return () => {
+      done = true;
+      el.removeEventListener('transitionend', onEnd);
+      clearTimeout(timer);
+    };
+  }, [open, mounted]);
+
+  if (!mounted) return null;
+  return (
+    <div
+      ref={ref}
+      className="mobile-survey-marker-body"
+      aria-hidden={open ? undefined : 'true'}
+    >
+      {open ? children : lastChildrenRef.current}
+    </div>
+  );
+};
+
 const SurveySpacesRail = ({
   activeSpaceId,
   addCategoryAsNewTemplate,
@@ -1193,61 +1273,181 @@ const SurveySpacesRail = ({
     );
   };
 
-  // Phone: the open Survey Marker, inline in the accordion (owner 2026-10-01,
-  // replaces the separate detail view). Second pass (owner: "I don't like the
-  // header being two lines... the item name with Locate, and underneath the
-  // entity dropdown"): the open marker REPLACES its row with ONE line -
-  //   [entity dot = the entity menu] [name field] [Locate] [close chevron]
-  // - the desktop rail's line at phone size. The entity's full name is in its
-  // menu (wrapped, never cut) and the button's label; the dot keeps its colour.
-  // Locate: a target when the marker is on the page, an orange pin-plus when
-  // it is not ("Not on the page - tap to place").
-  const renderMobileOpenSurveyMarker = (surveyMarker, category, markerName, fallbackName, onClose) => {
+  // Phone: a Survey Marker in the accordion - ONE line, the same line closed
+  // and open (owner 2026-10-01: "Expanding 'Camera 1' changes too much ...
+  // make it calm"):
+  //   [entity dot (+ its menu chevron when open)] [name] [Locate] [3/3] [chevron]
+  // - Closed, the whole line opens the marker; Locate is its own button.
+  // - Open, only two things change: the entity's menu chevron appears beside
+  //   the dot, and the name gets a field well behind it (it is now editable).
+  //   The name keeps its x, size, weight and baseline; Locate, the count and
+  //   the chevron keep their places. The line is 44px in both states.
+  // - The checklist and the note slide open under it (MobileSurveyMarkerCollapse).
+  // Locate is the original control restored (owner 2026-10-01: "its look
+  // changed without being asked"): the magnifier, blue when the marker is on
+  // the page (tap = go to it), orange when it is not (tap = place it).
+  const renderMobileSurveyMarker = (surveyMarker, category, markerName, fallbackName, { isOpen, dotColor, onOpen, onClose }) => {
     const annotationId = surveyMarker.id;
     const markerModuleId = surveyMarker.moduleId || selectedModuleId;
-    const { moduleData } = findMarkerMatchingItem(annotationId, markerModuleId, category);
-    const currentEntityId = moduleData.entityId || surveyMarkers[annotationId]?.entityId;
-    const currentEntity = currentEntityId ? entitiesMap.get(currentEntityId) : null;
-    const entityColor = currentEntity?.color || moduleData.entityColor || surveyMarkers[annotationId]?.entityColor || null;
-    const entityName = currentEntity?.name || moduleData.entityName || surveyMarkers[annotationId]?.entityName || 'None';
-    const entityOptions = [
-      { id: '', name: 'None', color: null },
-      ...((selectedTemplate?.entities || []).map(entity => ({ id: entity.id, name: entity.name, color: entity.color })))
-    ];
-    const checklist = (category?.checklist || []).filter((item) => item && item.archived !== true);
     const isPlaced = Boolean(surveyMarker.bounds && surveyMarker.pageNumber);
-    const hasEntity = Boolean(currentEntityId || entityName !== 'None');
+    let entityMenu = null;
+    let entityLabel = '';
+    let hasEntity = Boolean(dotColor);
+    let body = null;
+    if (isOpen) {
+      const { moduleData } = findMarkerMatchingItem(annotationId, markerModuleId, category);
+      const currentEntityId = moduleData.entityId || surveyMarkers[annotationId]?.entityId;
+      const currentEntity = currentEntityId ? entitiesMap.get(currentEntityId) : null;
+      const entityName = currentEntity?.name || moduleData.entityName || surveyMarkers[annotationId]?.entityName || 'None';
+      hasEntity = Boolean(currentEntityId || entityName !== 'None');
+      entityLabel = `Entity: ${hasEntity ? entityName : 'none'}. Choose Survey Marker entity`;
+      const entityOptions = [
+        { id: '', name: 'None', color: null },
+        ...((selectedTemplate?.entities || []).map(entity => ({ id: entity.id, name: entity.name, color: entity.color })))
+      ];
+      if (mobileDetailDropdown === 'entity') {
+        entityMenu = (
+          <div className="mobile-survey-detail-menu mobile-survey-detail-entity-menu" role="listbox" aria-label="Entity">
+            {entityOptions.map(option => {
+              const isSelectedOption = (currentEntityId || '') === (option.id || '');
+              return (
+                <button
+                  key={option.id || 'none'}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelectedOption}
+                  className={isSelectedOption ? 'is-active' : ''}
+                  onClick={() => {
+                    applyEntitySelectionForMarker(annotationId, markerModuleId, category, option.id);
+                    setMobileDetailDropdown(null);
+                  }}
+                >
+                  <span
+                    className="mobile-survey-detail-entity-dot"
+                    style={{
+                      background: option.color || 'transparent',
+                      // UX: a USER colour gets the shared ink ring, no colour
+                      // gets ordinary chrome.
+                      borderColor: option.color ? 'var(--ink-ring-strong)' : 'var(--border-strong)'
+                    }}
+                  />
+                  <span>{option.name}</span>
+                  <span className="mobile-survey-detail-check" aria-hidden="true">
+                    {isSelectedOption ? <Icon name="check" size={14} color="currentColor" /> : null}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        );
+      }
+      const checklist = (category?.checklist || []).filter((item) => item && item.archived !== true);
+      body = (
+        <>
+          {/* The whole checklist, every row - no 4-row window scrolling inside
+              a sheet that also scrolls. */}
+          <div className="mobile-survey-detail-checklist">
+            {checklist.length ? checklist.map(item => {
+              const response = surveyMarkers[annotationId]?.checklistResponses?.[item.id]?.selection;
+              return (
+                <div key={item.id} className="mobile-survey-check-item">
+                  <span className="mobile-survey-check-text">{item.text}</span>
+                  <div className="mobile-survey-check-group">
+                    {['Y', 'N', 'N/A'].map(option => (
+                      <button
+                        key={option}
+                        type="button"
+                        className={`mobile-survey-check-btn${response === option ? ` is-active is-${option === 'Y' ? 'yes' : option === 'N' ? 'no' : 'na'}` : ''}`}
+                        aria-pressed={response === option}
+                        aria-label={`${item.text} ${option}`}
+                        onClick={() => applyChecklistResponseSelection(annotationId, markerModuleId, category, surveyMarker.name || '', item.id, option)}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            }) : (
+              <div className="mobile-survey-detail-empty">No checklist items</div>
+            )}
+          </div>
+
+          {/* NOTES / MEDIA SLOT: the note edited in place and the media strip
+              (audit chunk B, owner 2026-10-01) - the same block the desktop
+              row shows. */}
+          <div className="mobile-survey-open-notes" data-slot="survey-notes-media">
+            {renderSurveyMarkerNotes(annotationId, 'phone')}
+          </div>
+        </>
+      );
+    }
+    const dotStyle = {
+      background: dotColor || 'transparent',
+      borderColor: dotColor ? 'var(--ink-ring-strong)' : 'var(--text-3)'
+    };
+    const lead = (
+      <>
+        <span className="mobile-survey-marker-dot mobile-survey-detail-entity-dot" style={dotStyle} />
+        <span className="mobile-survey-marker-entity-chev" aria-hidden="true">
+          <Icon name="chevronDown" size={10} color="currentColor" />
+        </span>
+      </>
+    );
 
     return (
-      <div className="mobile-survey-open" data-testid="mobile-survey-open-marker">
-        <div className="mobile-survey-open-tools mobile-survey-detail-dropdown-wrap">
-          <button
-            type="button"
-            className={`mobile-survey-entity-chip${hasEntity ? '' : ' is-empty'}`}
-            aria-label={`Entity: ${hasEntity ? entityName : 'none'}. Choose Survey Marker entity`}
-            aria-haspopup="listbox"
-            aria-expanded={mobileDetailDropdown === 'entity'}
-            onClick={() => setMobileDetailDropdown(prev => (prev === 'entity' ? null : 'entity'))}
-          >
-            <span
-              className="mobile-survey-detail-entity-dot"
-              style={{
-                background: entityColor || 'transparent',
-                borderColor: entityColor ? 'var(--ink-ring-strong)' : 'var(--text-3)'
+      <div
+        className={`mobile-survey-marker${isOpen ? ' is-open' : ''}`}
+        data-testid={isOpen ? 'mobile-survey-open-marker' : undefined}
+      >
+        <div className="mobile-survey-marker-line mobile-survey-detail-dropdown-wrap">
+          {/* Closed: the whole line is the open button (behind the controls). */}
+          {!isOpen && (
+            <button
+              type="button"
+              className="mobile-survey-marker-cover"
+              aria-label={`Open ${markerName}`}
+              aria-expanded={false}
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpen();
               }}
             />
-            <Icon name="chevronDown" size={12} color="currentColor" />
-          </button>
-          <div className="mobile-survey-detail-name-wrap">
+          )}
+          {isOpen ? (
+            <button
+              type="button"
+              className={`mobile-survey-marker-lead mobile-survey-entity-chip${hasEntity ? '' : ' is-empty'}`}
+              aria-label={entityLabel}
+              aria-haspopup="listbox"
+              aria-expanded={mobileDetailDropdown === 'entity'}
+              onClick={() => setMobileDetailDropdown(prev => (prev === 'entity' ? null : 'entity'))}
+            >
+              {lead}
+            </button>
+          ) : (
+            <span className={`mobile-survey-marker-lead${hasEntity ? '' : ' is-empty'}`} aria-hidden="true">
+              {lead}
+            </span>
+          )}
+          {/* The name is the SAME field closed and open, so its letters cannot
+              move: closed it is read-only, out of the tab order and lets a tap
+              through to the line's open button; open it is editable and its
+              well shows. (A text span swapped for a field rode 1.3px off on
+              the engine's own field centring.) */}
+          <span className="mobile-survey-marker-field" aria-hidden={isOpen ? undefined : 'true'}>
             <input
               type="text"
-              className="mobile-survey-detail-name"
+              className="mobile-survey-marker-name mobile-survey-detail-name"
               defaultValue={markerName}
               key={`${annotationId}:${markerName}`}
+              readOnly={!isOpen}
+              tabIndex={isOpen ? undefined : -1}
               aria-label={`Rename ${markerName}`}
               placeholder="Name"
               onFocus={() => setMobileDetailDropdown(null)}
               onBlur={(e) => {
+                if (!isOpen) return;
                 const nextName = (e.currentTarget.value || '').trim() || fallbackName;
                 e.currentTarget.value = nextName;
                 commitSurveyMarkerName(annotationId, surveyMarker.categoryId, markerName, nextName, fallbackName);
@@ -1261,14 +1461,15 @@ const SurveySpacesRail = ({
                 }
               }}
             />
-          </div>
+          </span>
           <button
             type="button"
             className={`mobile-survey-locate${isPlaced ? '' : ' is-unplaced'}`}
             data-testid={isPlaced ? undefined : 'survey-marker-unplaced-tag'}
             aria-label={isPlaced ? 'Locate on page' : 'Not on the page. Place on page'}
-            title={isPlaced ? 'Locate on page' : 'Not on the page \u2014 tap to place'}
-            onClick={() => {
+            title={isPlaced ? 'Locate on page' : 'Not on the page — tap to place'}
+            onClick={(e) => {
+              e.stopPropagation();
               if (isPlaced) {
                 // Survey audit P1-5: lower the sheet to its standard height so
                 // the page shows above it; the viewer then fits the marker in
@@ -1280,88 +1481,27 @@ const SurveySpacesRail = ({
               }
             }}
           >
-            <Icon name={isPlaced ? 'locate' : 'pinPlus'} size={18} color="currentColor" />
+            <Icon name="search" size={15} color="currentColor" />
           </button>
+          {renderSurveyMarkerBadges(annotationId, category, 'mobile-survey-item-badges')}
           <button
             type="button"
-            className="mobile-survey-open-close"
-            aria-label={`Close ${markerName}`}
-            aria-expanded="true"
-            onClick={onClose}
+            className="mobile-survey-marker-toggle"
+            aria-label={isOpen ? `Close ${markerName}` : `Open ${markerName}`}
+            aria-expanded={isOpen}
+            // Closed, the line itself is the open button; this is only the glyph.
+            aria-hidden={isOpen ? undefined : 'true'}
+            tabIndex={isOpen ? undefined : -1}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (isOpen) onClose(); else onOpen();
+            }}
           >
-            <Icon name="chevronDown" size={14} color="currentColor" />
+            <Icon name="chevronDown" size={12} color="currentColor" />
           </button>
-          {mobileDetailDropdown === 'entity' && (
-            <div className="mobile-survey-detail-menu mobile-survey-detail-entity-menu" role="listbox" aria-label="Entity">
-              {entityOptions.map(option => {
-                const isSelectedOption = (currentEntityId || '') === (option.id || '');
-                return (
-                  <button
-                    key={option.id || 'none'}
-                    type="button"
-                    role="option"
-                    aria-selected={isSelectedOption}
-                    className={isSelectedOption ? 'is-active' : ''}
-                    onClick={() => {
-                      applyEntitySelectionForMarker(annotationId, markerModuleId, category, option.id);
-                      setMobileDetailDropdown(null);
-                    }}
-                  >
-                    <span
-                      className="mobile-survey-detail-entity-dot"
-                      style={{
-                        background: option.color || 'transparent',
-                        // UX: a USER colour gets the shared ink ring, no colour
-                        // gets ordinary chrome.
-                        borderColor: option.color ? 'var(--ink-ring-strong)' : 'var(--border-strong)'
-                      }}
-                    />
-                    <span>{option.name}</span>
-                    <span className="mobile-survey-detail-check" aria-hidden="true">
-                      {isSelectedOption ? <Icon name="check" size={14} color="currentColor" /> : null}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          {entityMenu}
         </div>
-
-        {/* The whole checklist, every row - no 4-row window scrolling inside
-            a sheet that also scrolls. */}
-        <div className="mobile-survey-detail-checklist">
-          {checklist.length ? checklist.map(item => {
-            const response = surveyMarkers[annotationId]?.checklistResponses?.[item.id]?.selection;
-            return (
-              <div key={item.id} className="mobile-survey-check-item">
-                <span className="mobile-survey-check-text">{item.text}</span>
-                <div className="mobile-survey-check-group">
-                  {['Y', 'N', 'N/A'].map(option => (
-                    <button
-                      key={option}
-                      type="button"
-                      className={`mobile-survey-check-btn${response === option ? ` is-active is-${option === 'Y' ? 'yes' : option === 'N' ? 'no' : 'na'}` : ''}`}
-                      aria-pressed={response === option}
-                      aria-label={`${item.text} ${option}`}
-                      onClick={() => applyChecklistResponseSelection(annotationId, markerModuleId, category, surveyMarker.name || '', item.id, option)}
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            );
-          }) : (
-            <div className="mobile-survey-detail-empty">No checklist items</div>
-          )}
-        </div>
-
-        {/* NOTES / MEDIA SLOT: the note edited in place and the media strip
-            (audit chunk B, owner 2026-10-01) - the same block the desktop
-            row shows. */}
-        <div className="mobile-survey-open-notes" data-slot="survey-notes-media">
-          {renderSurveyMarkerNotes(annotationId, 'phone')}
-        </div>
+        <MobileSurveyMarkerCollapse open={isOpen}>{body}</MobileSurveyMarkerCollapse>
       </div>
     );
   };
@@ -1887,8 +2027,13 @@ const SurveySpacesRail = ({
                       <span className="survey-active-space">{(spaces || []).find((s) => s?.id === activeSpaceId)?.name || 'Space'}</span>
                     )}
                     <div className={mobileMode ? 'mobile-survey-head-actions' : 'survey-rail__head-actions'}>
-                      {/* Owner 2026-10-01: ONE Exit. The survey bar above the page
-                          has it, so the sheet no longer repeats it as a red word. */}
+                      {/* Owner 2026-10-01 (after a debate): ONE Exit, and it is
+                          here - the red "Exit Survey" on the right of the panel
+                          header in EVERY state (template picker, template view,
+                          "< Categories", choosing a template), so it is always in
+                          the same spot whenever the panel is open. The survey bar
+                          above the page no longer has one. A swipe down or a tap
+                          outside only closes the sheet; it never leaves Survey. */}
                       {/* UX (mobile demo parity): 34px round export button in the sheet
                           header opening a 218px menu with 48px rows (demo
                           SurveySheet.tsx:324-348, styles.ts:2731-2775; accent gold, not
@@ -1905,6 +2050,11 @@ const SurveySpacesRail = ({
                           onClick={() => closeTemplateSwitcher()}
                         >
                           Cancel
+                        </button>
+                      )}
+                      {mobileMode && (
+                        <button type="button" className="mobile-survey-exit" onClick={exitSurveyMode}>
+                          Exit Survey
                         </button>
                       )}
                       <button
@@ -3131,44 +3281,19 @@ const SurveySpacesRail = ({
                                                     || surveyMarkers[annotationId]?.entityColor
                                                     || null;
                                                   const isOpenOnPhone = annotationId === mobileDetailMarkerId;
-                                                  return (
-                                                    <>
-                                                      {!isOpenOnPhone && (
-                                                      <button
-                                                        type="button"
-                                                        className="mobile-survey-item-row"
-                                                        aria-label={`Open ${surveyMarkerName}`}
-                                                        aria-expanded={false}
-                                                        onClick={(e) => {
-                                                          e.stopPropagation();
-                                                          setMobileDetailDropdown(null);
-                                                          // One open Survey Marker at a time.
-                                                          setExpandedSurveyMarkers(isOpenOnPhone ? {} : { [annotationId]: true });
-                                                        }}
-                                                      >
-                                                        <span className="mobile-survey-item-dot" style={{ background: dotColor || 'var(--border-strong)' }} aria-hidden="true" />
-                                                        <span className="mobile-survey-item-name">{surveyMarkerName}</span>
-                                                        {!(surveyMarker.bounds && surveyMarker.pageNumber) && (
-                                                          <span className="mobile-survey-item-unplaced" role="img" aria-label="Not on the page">
-                                                            <Icon name="pinPlus" size={14} color="currentColor" />
-                                                          </span>
-                                                        )}
-                                                        {renderSurveyMarkerBadges(annotationId, category, 'mobile-survey-item-badges')}
-                                                        <span
-                                                          className="mobile-survey-item-chevron"
-                                                          aria-hidden="true"
-                                                          style={{ transform: isOpenOnPhone ? 'rotate(180deg)' : 'rotate(0deg)' }}
-                                                        >
-                                                          <Icon name="chevronDown" size={12} color="currentColor" />
-                                                        </span>
-                                                      </button>
-                                                      )}
-                                                      {isOpenOnPhone && renderMobileOpenSurveyMarker(surveyMarker, category, surveyMarkerName, fallbackName, () => {
-                                                        setMobileDetailDropdown(null);
-                                                        setExpandedSurveyMarkers({});
-                                                      })}
-                                                    </>
-                                                  );
+                                                  return renderMobileSurveyMarker(surveyMarker, category, surveyMarkerName, fallbackName, {
+                                                    isOpen: isOpenOnPhone,
+                                                    dotColor,
+                                                    onOpen: () => {
+                                                      setMobileDetailDropdown(null);
+                                                      // One open Survey Marker at a time.
+                                                      setExpandedSurveyMarkers({ [annotationId]: true });
+                                                    },
+                                                    onClose: () => {
+                                                      setMobileDetailDropdown(null);
+                                                      setExpandedSurveyMarkers({});
+                                                    },
+                                                  });
                                                 })()}
                                                 {/* Owner 2026-10-01 (second pass) - ONE line per Survey
                                                     Marker, open or not, the phone's open line too:
@@ -3182,8 +3307,8 @@ const SurveySpacesRail = ({
                                                       the tooltip and the label).
                                                     - No "Add item notes" button: the open marker's note
                                                       field is the way to add a note.
-                                                    - Locate: a target when the marker is on the page, an
-                                                      orange pin-plus when it is not (click to place). */}
+                                                    - Locate: the magnifier, blue when the marker is on the
+                                                      page, orange when it is not (click to place). */}
                                                 {!mobileMode && (() => {
                                                   const surveyMarkerData = surveyMarkers[annotationId];
                                                   const { moduleData } = findMarkerMatchingItem(annotationId, selectedModuleId, category);
@@ -3402,7 +3527,10 @@ const SurveySpacesRail = ({
                                                     {...tip(isPlaced ? 'Locate on page' : 'Not on the page \u2014 click to place', 'below')}
                                                     aria-label={isPlaced ? 'Locate on page' : 'Not on the page. Place on page'}
                                                   >
-                                                    <Icon name={isPlaced ? 'locate' : 'pinPlus'} size={15} color="currentColor" />
+                                                    {/* The original Locate (restored, owner 2026-10-01):
+                                                        the magnifier, blue on the page / orange not
+                                                        placed (surveyRailPanel.css). */}
+                                                    <Icon name="search" size={14} color="currentColor" />
                                                   </button>
 
                                                   <button
@@ -4040,7 +4168,10 @@ const SurveySpacesRail = ({
                       minHeight: 0,
                       display: 'flex',
                       flexDirection: 'column',
-                      background: 'var(--surface-1)',
+                      // Owner 2026-10-01 ("one panel colour"): on the phone the
+                      // picker is flat on the sheet's --sheet-bg like the
+                      // template view; it painted a darker --surface-1 over it.
+                      background: mobileMode ? 'transparent' : 'var(--surface-1)',
                       fontFamily: FONT_FAMILY
                     }}>
                       {/* UX 2026-09-23 (owner: phone Survey panel integrated): the
@@ -4056,6 +4187,21 @@ const SurveySpacesRail = ({
                           <h2 className="mobile-survey-head-title">Choose a survey template</h2>
                         ) : (
                           <h2 className="survey-rail__title">Choose a survey template</h2>
+                        )}
+                        {/* Owner 2026-10-01: desktop gets the same X as the
+                            template view's header (it had no button here). */}
+                        {!mobileMode && (
+                          <div className="survey-rail__head-actions">
+                            <button
+                              type="button"
+                              onClick={exitSurveyMode}
+                              className="survey-rail__head-btn survey-rail__head-btn--glyph"
+                              aria-label="Close Survey panel"
+                              {...tip('Exit Survey', 'below')}
+                            >
+                              <Icon name="close" size={16} color="currentColor" />
+                            </button>
+                          </div>
                         )}
                         {mobileMode && (
                           <div className="mobile-survey-head-actions">
