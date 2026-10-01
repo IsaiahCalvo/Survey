@@ -219,3 +219,39 @@ test('the phone panel offers New folder, creating an empty folder in the shared 
   // Empty folder: it must NOT require or create child bookmarks.
   assert.doesNotMatch(handler, /groupBookmarks/);
 });
+
+/*
+ * UX 2026-10-01 — owner (iPhone): "still a little jitteriness … moving in and
+ * out of bookmark groups … super smooth". Measured per frame: the lifted row
+ * trailed the finger by a frame (more while auto-scrolling), a folder opening
+ * mid-drag shoved the rows under it a whole row per child in one frame (and on
+ * desktop stripped every row's offset), and rows / slot / indent used three
+ * clocks. Pin the fixes.
+ */
+test('bookmark drags stay smooth: finger-locked row, gliding layout, one clock', () => {
+  // The lifted row is placed from the finger every animation frame.
+  assert.match(source, /const placeLiftedBookmarkRow = \(list, live\) =>/);
+  assert.match(source, /requestAnimationFrame\(function placeEachFrame\(\)/);
+  assert.match(source, /window\.addEventListener\('pointermove', onPointerMove, \{ capture: true, passive: true \}\)/);
+  // Mid-drag layout shifts glide (and new rows fade in) instead of jumping.
+  assert.match(source, /const glideBookmarkLayoutShift = \(row, shift\) =>/);
+  assert.match(source, /if \(shift\) glideBookmarkLayoutShift\(row, shift\);/);
+  // A drag-opened folder no longer runs the fold-down keyframes mid-drag.
+  const autoExpand = source.slice(
+    source.indexOf('autoExpandTimerRef.current = setTimeout(() => {'),
+    source.indexOf('// The lifted row follows the finger'),
+  );
+  assert.ok(autoExpand.length > 0);
+  assert.doesNotMatch(autoExpand, /setExpandingFolderIds/);
+  // A fold animation never strips the parted rows' offsets during a drag.
+  assert.match(source, /isGroupAnimationActive && !isDraggingAny/);
+  // One glide for rows (both layouts), slot and indent.
+  assert.match(source, /export const BOOKMARK_SORT_TRANSITION = \{ duration: BOOKMARK_DRAG_GLIDE_MS, easing: BOOKMARK_DRAG_GLIDE_EASING \};/);
+  assert.equal(source.match(/transition: BOOKMARK_SORT_TRANSITION,/g)?.length, 2);
+  const glide = /const BOOKMARK_DRAG_GLIDE_MS = (\d+);\s*const BOOKMARK_DRAG_GLIDE_EASING = '([^']+)';/.exec(source);
+  assert.ok(glide, 'the drag glide constants');
+  const css = readFileSync(fileURLToPath(new URL('../src/mobile/mobilePdfViewer.css', import.meta.url)), 'utf8');
+  const ruleOf = (selector) => { const rule = css.slice(css.indexOf(`${selector} {`)); return rule.slice(0, rule.indexOf('}')); };
+  assert.ok(ruleOf('.mobile-bookmark-drop-slot').includes(`top ${glide[1]}ms ${glide[2]}, left ${glide[1]}ms ${glide[2]}`));
+  assert.ok(ruleOf('.mobile-bookmark-row').includes(`padding-left ${glide[1]}ms ${glide[2]}`));
+});
