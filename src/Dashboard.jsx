@@ -47,15 +47,21 @@ const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pr
 
 // Convert hex color to rgba with default opacity (default 0.2, but surveyMarkers use 1.0)
 const hexToRgba = (hex, opacity = 0.2) => {
-  // Remove # if present
-  hex = hex.replace('#', '');
-
-  // Parse RGB values
-  const r = parseInt(hex.substring(0, 2), 16);
-  const g = parseInt(hex.substring(2, 4), 16);
-  const b = parseInt(hex.substring(4, 6), 16);
-
-  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+  // Survey audit (2026-10-01): unreadable values (the old default 'Removed'
+  // entity's 'var(--text-3)') fall back to a plain grey, never rgba(NaN...).
+  // Same reader as viewerShared.js parseColorRgb.
+  const trimmed = typeof hex === 'string' ? hex.trim() : '';
+  const rgbMatch = trimmed.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*[\d.]+\s*)?\)$/i);
+  const hexMatch = trimmed.match(/^#?([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+  let rgb = [149, 158, 174]; // #959eae
+  if (rgbMatch) {
+    rgb = rgbMatch.slice(1, 4).map(Number);
+  } else if (hexMatch) {
+    let digits = hexMatch[1];
+    if (digits.length === 3) digits = digits.split('').map((d) => d + d).join('');
+    rgb = [0, 2, 4].map((i) => parseInt(digits.substring(i, i + 2), 16));
+  }
+  return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${opacity})`;
 };
 
 const serializeError = (error) => {
@@ -1577,7 +1583,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       { id: `entity-${Date.now()}-2`, name: 'Subcontractor', color: hexToRgba('#FFF5C3', 0.2) },
       { id: `entity-${Date.now()}-3`, name: 'My Company', color: hexToRgba('#CBDCFF', 0.2) },
       { id: `entity-${Date.now()}-4`, name: '100% Complete', color: hexToRgba('#B2FFB2', 0.2) },
-      { id: `entity-${Date.now()}-5`, name: 'Removed', color: hexToRgba('var(--text-3)', 0.2) }
+      { id: `entity-${Date.now()}-5`, name: 'Removed', color: hexToRgba('#959eae', 0.2) }
     ]);
   };
 
@@ -1594,7 +1600,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       { id: `entity-${Date.now()}-2`, name: 'Subcontractor', color: hexToRgba('#FFF5C3', 0.2) },
       { id: `entity-${Date.now()}-3`, name: 'My Company', color: hexToRgba('#CBDCFF', 0.2) },
       { id: `entity-${Date.now()}-4`, name: '100% Complete', color: hexToRgba('#B2FFB2', 0.2) },
-      { id: `entity-${Date.now()}-5`, name: 'Removed', color: hexToRgba('var(--text-3)', 0.2) }
+      { id: `entity-${Date.now()}-5`, name: 'Removed', color: hexToRgba('#959eae', 0.2) }
     ];
     const loadedEntities = template.entities || defaultEntities;
     // Ensure all loaded entities have rgba format with 20% opacity

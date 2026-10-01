@@ -754,7 +754,7 @@
 
 /* "Keep active": the app's switch (the Spaces one) at the chrome's 20px pill
    height, then its word. The whole control is one button with an invisible
-   pad; hover brightens the word, never a plate. On = gold track. */
+   pad; hover brightens the word, never a plate. On = a neutral ink track. */
 .survey-subrow__keep {
   height: var(--chrome-field-h);
   padding: 0 2px;
@@ -810,12 +810,23 @@
 }
 
 .survey-subrow__keep[aria-checked='true'] .survey-subrow__track {
-  background: var(--accent);
+  /* Survey calm gold (2026-10-01): Reuse is a setting, not "what a touch on
+     the page will do now", so ON is a neutral ink track, not gold. */
+  background: var(--text-2);
   box-shadow: none;
 }
 
 .survey-subrow__keep[aria-checked='true'] .survey-subrow__track::after {
   transform: translateX(10px);
+}
+
+/* Survey calm gold (2026-10-01): the current module in the survey bar's menu
+   is bright ink with a weight step, not gold (the shared AnnotationDropdown
+   keeps its gold current row everywhere else). */
+.annotation-dropdown__popover[data-survey-module-menu] .annotation-dropdown__options > button.is-active,
+.annotation-dropdown__popover[data-survey-module-menu] .annotation-dropdown__option.is-active {
+  color: var(--text-1);
+  font-weight: 600;
 }
 
 /* Module pill (owner 2026-09-30): exactly as wide as its LONGEST module name -
@@ -2132,8 +2143,9 @@ input[type="text"].spaces-item__add-input:focus-visible {
 }
 
 .survey-unplaced-dismiss-all:hover {
-  border-color: var(--accent);
-  background: var(--accent-soft-strong);
+  /* Survey calm gold (2026-10-01): hovers are the house --hover, never gold. */
+  color: var(--text-1);
+  background: var(--hover);
 }
 
 .survey-unplaced-notice {
@@ -2353,8 +2365,8 @@ input[type="text"].spaces-item__add-input:focus-visible {
 }
 
 .survey-marker-review-tooltip-actions button:hover {
-  border-color: var(--accent);
-  background: var(--accent-soft-strong);
+  color: var(--text-1);
+  background: var(--hover);
 }
 
 .survey-marker-leading-control {
@@ -2404,12 +2416,13 @@ input[type="text"].spaces-item__add-input:focus-visible {
 }
 
 .survey-marker-leading-check.is-selected .survey-marker-leading-checkbox {
-  border-color: var(--accent);
-  background: var(--accent);
+  /* Survey calm gold: a ticked box is bright ink, not gold. */
+  border-color: var(--text-1);
+  background: var(--text-1);
 }
 
 .survey-marker-leading-checkmark {
-  color: var(--accent-text);
+  color: var(--surface-1);
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
@@ -2443,7 +2456,7 @@ input[type="text"].spaces-item__add-input:focus-visible {
   margin-bottom: 0;
   background: transparent;
   border: 0;
-  color: var(--accent);
+  color: var(--text-1);
   border-radius: 2px;
   padding: 2px 4px;
   font-family: inherit;
@@ -2464,11 +2477,9 @@ input[type="text"].spaces-item__add-input:focus-visible {
   margin-bottom: 0;
 }
 
-/* UX: the hover IS the warm wash. The `color: var(--accent)` this rule used to
-   repeat is the resting colour, so it painted nothing; a declaration that
-   cannot change anything is dead weight in a hover rule. */
+/* Survey calm gold (2026-10-01): the hover is the house --hover plate. */
 .survey-marker-select-mode-toggle:hover {
-  background: var(--accent-soft);
+  background: var(--hover);
 }
 
 .survey-marker-select-action {
@@ -2491,9 +2502,8 @@ input[type="text"].spaces-item__add-input:focus-visible {
 }
 
 .survey-marker-select-action:hover:not(:disabled) {
-  border-color: var(--accent);
   color: var(--text-1);
-  background: var(--accent-soft);
+  background: var(--hover);
 }
 
 /* A disabled control is the quietest thing on the panel: the subtle edge, to
@@ -2547,133 +2557,10 @@ input[type="text"].spaces-item__add-input:focus-visible {
   flex-wrap: nowrap;
 }
 
-.survey-marker-category-select-button {
-  height: 24px;
-  flex: none;
-  padding: 0 10px;
-  /* UX: rests one surface step below its own hover, so the fill lifts
-     --surface-2 -> --surface-3 under the pointer. It used to declare
-     --surface-3 on both sides, which painted nothing. */
-  background: var(--surface-2);
-  /* A FILLED button, not an outlined one — the fill above is its definition and
-     it lifts a whole surface step on hover, so the edge is decoration. */
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  color: var(--text-2);
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.survey-marker-category-select-button:hover {
-  border-color: var(--accent);
-  color: var(--text-1);
-  background: var(--hover);
-}
-
-.survey-marker-category-create-button {
-  width: 32px;
-  height: 24px;
-  flex: 0 0 32px;
-  padding: 0;
-  background: var(--accent);
-  border: 1px solid var(--accent);
-  border-radius: 5px;
-  color: var(--accent-text);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* UX: a gold control hovers UP to --accent-light and presses DOWN to
-   --accent-press (tokens.css "HOW STATES ARE BUILT"). These used to darken on
-   hover, which reads as already-pressed; .auth-submit-btn had it right. */
-.survey-marker-category-create-button:hover {
-  background: var(--accent-light);
-  border-color: var(--accent-light);
-}
-
-/* Compact survey EXPORT control — lives at the right end of the Select row
-   (where the create-category plus button used to be; the plus moved down to
-   the "Categories" heading row). Height is locked to 24px so it matches
-   .survey-marker-category-create-button exactly. Replaces the old
-   bottom-pinned EXPORT bar: the panel bottom now belongs to the zoom cluster,
-   so the export dropdown opens DOWNWARD from this top-of-panel anchor
-   (same pattern as .spaces-header-export-menu in the left rail). */
-.survey-marker-export-compact-cluster {
-  position: relative;
-  flex: none;
-  display: inline-flex;
-  align-items: stretch;
-  height: 24px;
-}
-
-.survey-marker-export-compact-button {
-  height: 24px;
-  flex: none;
-  padding: 0 12px;
-  background: var(--accent);
-  border: 1px solid var(--accent-press);
-  border-radius: 5px;
-  color: var(--accent-text);
-  font-family: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  line-height: 1;
-  text-transform: uppercase;
-  cursor: pointer;
-  white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.survey-marker-export-compact-cluster .survey-marker-export-compact-button {
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
-  border-right: none;
-}
-
-.survey-marker-export-compact-chevron {
-  width: 22px;
-  height: 24px;
-  flex: 0 0 22px;
-  padding: 0;
-  background: var(--accent);
-  border: 1px solid var(--accent-press);
-  border-left: 1px solid rgba(0, 0, 0, 0.15);
-  border-radius: 0 5px 5px 0;
-  color: var(--accent-text);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-/* UX: a gold control hovers UP to --accent-light and presses DOWN to
-   --accent-press (tokens.css "HOW STATES ARE BUILT"). These used to darken on
-   hover, which reads as already-pressed; .auth-submit-btn had it right. */
-.survey-marker-export-compact-button:hover:not(:disabled),
-.survey-marker-export-compact-chevron:hover:not(:disabled) {
-  background: var(--accent-light);
-  border-color: var(--accent-light);
-}
-
-.survey-marker-export-compact-button:disabled,
-.survey-marker-export-compact-chevron:disabled {
-  background: var(--disabled-fill);
-  border-color: var(--border);
-  color: var(--text-disabled);
-  cursor: not-allowed;
-}
-
+/* Survey calm gold (2026-10-01): the solid-gold legacy "Select" category
+   button, "+" create-category button and EXPORT compact button/chevron rules
+   were deleted - no element has carried those classes since d6a578e (the
+   desktop Survey panel rebuild). The export menu below is still live. */
 .survey-marker-export-compact-menu {
   position: absolute;
   top: calc(100% + 6px);
@@ -2730,13 +2617,10 @@ input[type="text"].spaces-item__add-input:focus-visible {
   transition: background 0.15s ease, opacity 0.15s ease;
 }
 
-/* UX 2026-09-17 (owner ruling: a selected thing does not get a warm fill). A
-   category card is a ROW, not a tool button, so it keeps the approved row cue —
-   the gold edge it already carries in its resting 1px border — and drops the
-   warm wash behind it. tokens.css: "--accent-soft ... never on a whole row or
-   panel, because a large warm wash is how the rejected brown happened." */
+/* Survey calm gold (2026-10-01): a chosen category card is a neutral edge;
+   gold is kept for the ARMED category (its top-bar disc and rail-row edge). */
 .survey-marker-category-card.is-active {
-  border-color: var(--accent);
+  border-color: var(--border-strong);
 }
 
 .survey-marker-category-row {
@@ -2868,7 +2752,7 @@ input[type="text"].spaces-item__add-input:focus-visible {
 
 .survey-marker-entity-trigger:focus,
 .survey-marker-entity-trigger[aria-expanded="true"] {
-  border-color: var(--accent);
+  border-color: var(--border-strong);
   box-shadow: 0 0 0 2px var(--focus);
 }
 
@@ -2962,13 +2846,11 @@ input[type="text"].spaces-item__add-input:focus-visible {
   color: var(--text-1);
 }
 
-/* UX 2026-09-17 (revision-2 palette, owner approved): a selected row is a real
-   surface step plus a 2px gold edge, never the old #2a2218 warm wash. The edge
-   is an inset shadow rather than a border so the row's box never changes size —
-   a real border here would shift every label by 2px on selection. */
+/* Survey calm gold (2026-10-01): the current entity is bright ink on a
+   surface step - no gold edge (gold is kept for the armed category). */
 .survey-marker-entity-option.is-selected {
   background: var(--surface-3);
-  box-shadow: inset 2px 0 var(--accent);
+  box-shadow: none;
   color: var(--text-1);
 }
 

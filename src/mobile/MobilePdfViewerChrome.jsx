@@ -2918,7 +2918,17 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                     className={bottomToolbarApi.surveyToolbar.selectedEntityId === entity.id && activeTool === 'survey-marker' ? 'is-active' : ''}
                     aria-label={`Survey entity ${entity.name || 'Untitled Entity'}`}
                     title={entity.name || 'Untitled Entity'}
-                    onClick={() => toggleSurveyPick(bottomToolbarApi.surveyToolbar.selectedEntityId === entity.id, () => bottomToolbarApi.surveyToolbar.onSelectEntity?.(entity.id))}
+                    onClick={() => {
+                      // Survey audit P1-3: a second tap on the picked entity
+                      // drops just the entity while a category is armed (it
+                      // used to disarm the whole tool).
+                      const toolbar = bottomToolbarApi.surveyToolbar;
+                      if (toolbar.selectedEntityId === entity.id && toolbar.selectedCategoryId && activeTool === 'survey-marker') {
+                        toolbar.onSelectEntity?.(null);
+                        return;
+                      }
+                      toggleSurveyPick(toolbar.selectedEntityId === entity.id, () => toolbar.onSelectEntity?.(entity.id));
+                    }}
                   >
                     <span style={{ background: entity.color || 'var(--border-strong)' }} />
                   </button>

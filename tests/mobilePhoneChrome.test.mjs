@@ -136,7 +136,10 @@ test('tapping an open tool group closes its strip and hands the tool back to Pan
   // An armed survey category / entity disc disarms to Pan on a second tap.
   assert.match(chrome, /const toggleSurveyPick = \(picked, arm\) => \{\s*if \(picked && activeTool === 'survey-marker'\) \{\s*selectTool\('pan'\);\s*return;\s*\}\s*arm\(\);/);
   assert.match(chrome, /toggleSurveyPick\(bottomToolbarApi\.surveyToolbar\.selectedCategoryId === category\.id,/);
-  assert.match(chrome, /toggleSurveyPick\(bottomToolbarApi\.surveyToolbar\.selectedEntityId === entity\.id,/);
+  // Survey audit P1-3 (2026-10-01): with a category armed, a second tap on the
+  // picked entity drops only the entity (it used to disarm the category too).
+  assert.match(chrome, /toggleSurveyPick\(toolbar\.selectedEntityId === entity\.id,/);
+  assert.match(chrome, /toolbar\.selectedEntityId === entity\.id && toolbar\.selectedCategoryId && activeTool === 'survey-marker'\) \{\s*toolbar\.onSelectEntity\?\.\(null\);/);
   // Opening a group still arms its last-used tool.
   assert.match(chrome, /const toggleCategory = \(groupId\) => \{[\s\S]{0,1600}selectTool\(preferred && TOOL_TO_GROUP\[preferred\] === groupId \? preferred : group\.fallback\)/);
 });

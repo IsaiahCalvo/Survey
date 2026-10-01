@@ -125,9 +125,10 @@
 }
 
 .survey-media.is-drag-over {
-  outline: 1px dashed var(--accent);
+  /* Survey calm gold (2026-10-01): neutral drop target, no gold wash. */
+  outline: 1px dashed var(--text-3);
   outline-offset: 3px;
-  background: var(--accent-soft);
+  background: var(--hover);
 }
 
 .survey-media__grid {
@@ -139,7 +140,7 @@
 
 .survey-media__drop-hint {
   margin-top: 6px;
-  color: var(--accent);
+  color: var(--text-2);
   font-size: 12px;
 }
 
@@ -211,7 +212,7 @@
 }
 
 .survey-media-tile__audio > svg {
-  color: var(--accent);
+  color: var(--text-2);
 }
 
 .survey-media-tile__placeholder {
@@ -448,7 +449,7 @@
 }
 
 .survey-media-sheet__group > button > svg {
-  color: var(--accent);
+  color: var(--text-2);
 }
 
 .survey-media-sheet__group > button:active,
@@ -595,7 +596,7 @@
   height: 120px;
   display: grid;
   place-items: center;
-  color: var(--accent);
+  color: var(--text-2);
   background: var(--surface-2);
   border-radius: 24px;
 }

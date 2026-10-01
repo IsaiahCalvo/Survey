@@ -79,8 +79,12 @@ test('PDFViewer draws a group\'s tools into the tool bar, keyed on the picked ma
   assert.match(pdfViewer, /setSubToolContextTool\(\(prev\) => \(prev === subToolTool \? prev : subToolTool\)\)/);
   assert.match(pdfViewer, /document\.getElementById\('chrome-subtools-host'\)/);
   assert.match(pdfViewer, /TOOL_BAR_GROUPS\.includes\(toolBarGroup\) && subToolsHostEl/);
-  // The Survey row keeps its own bar under the tool bar.
-  assert.match(pdfViewer, /activeCategoryDropdown && !TOOL_BAR_GROUPS\.includes\(activeCategoryDropdown\) && subRowHost/);
+  // The Survey row keeps its own bar under the tool bar. Survey audit P1-1
+  // (2026-10-01): it shows whenever survey mode is on with a template chosen
+  // (it used to follow activeCategoryDropdown === 'survey', which Select / Pan
+  // cleared, so the bar vanished for good).
+  assert.match(pdfViewer, /const subRowGroup = \(showSurveyPanel && selectedTemplate\)\s*\? 'survey'\s*: \(activeCategoryDropdown && !TOOL_BAR_GROUPS\.includes\(activeCategoryDropdown\) \? activeCategoryDropdown : null\);/);
+  assert.match(pdfViewer, /if \(subRowGroup && subRowHost\) \{\s*rows\.push\(renderSubRow\(subRowGroup, subRowHost, false\)\);/);
   for (const group of ['draw', 'shape', 'review', 'survey']) {
     assert.match(pdfViewer, new RegExp(`\\{subRowCategory === '${group}' && `), group);
   }

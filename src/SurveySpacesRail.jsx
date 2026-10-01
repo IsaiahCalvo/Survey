@@ -37,6 +37,8 @@ import './mobile/mobileSurveyPanel.css';
 import './surveyRailPanel.css';
 import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH } from './viewerShared';
 import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
+import { resolveAutoCompleteEntity } from './utils/surveyAutoEntity.js';
+import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -388,6 +390,16 @@ const SurveySpacesRail = ({
   scale,
   selectedCategories,
   selectedCategoryId,
+  // Survey calm gold (2026-10-01): true while the Survey Marker tool is armed,
+  // so the chosen category is gold only when a touch on the page places it.
+  surveyPlacementArmed = false,
+  // Owner 2026-10-01 ("Yes, inline like phone"): { id, tick } - focus that
+  // new desktop Survey Marker's name; undoSurveyMarkerPlacement(id) takes a
+  // just-placed marker back as one Undo step (true when it did);
+  // rememberSurveyEntity(id) - the entity a new desktop marker starts with.
+  surveyMarkerNameFocusRequest = null,
+  undoSurveyMarkerPlacement,
+  rememberSurveyEntity,
   selectedItemsInCategory,
   selectedModuleId,
   selectedSpaceId,
@@ -611,6 +623,33 @@ const SurveySpacesRail = ({
     // Only on the reopen itself.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mobileMode, isSurveyPanelCollapsed]);
+
+  // Owner 2026-10-01 ("Yes, inline like phone"): a Survey Marker just placed
+  // on desktop opens here with its name field focused and selected. While the
+  // name is untouched, Escape takes the placement back (one Undo step);
+  // typing, Enter or leaving the field keeps it.
+  const justPlacedSurveyMarkerIdRef = useRef(null);
+  useEffect(() => {
+    if (mobileMode || !surveyMarkerNameFocusRequest?.id || typeof window === 'undefined') return undefined;
+    const targetId = String(surveyMarkerNameFocusRequest.id);
+    let frames = 0;
+    let raf = 0;
+    const tryFocus = () => {
+      const input = Array.from(document.querySelectorAll('.survey-rail input[data-survey-marker-name-input]'))
+        .find((el) => el.getAttribute('data-survey-marker-name-input') === targetId);
+      if (input && input.offsetParent !== null) {
+        justPlacedSurveyMarkerIdRef.current = targetId;
+        input.focus({ preventScroll: false });
+        input.select();
+        input.scrollIntoView?.({ block: 'nearest' });
+        return;
+      }
+      frames += 1;
+      if (frames < 40) raf = window.requestAnimationFrame(tryFocus);
+    };
+    raf = window.requestAnimationFrame(tryFocus);
+    return () => window.cancelAnimationFrame(raf);
+  }, [mobileMode, surveyMarkerNameFocusRequest]);
 
   // Phone: tapping a category opens it (and closes any other, one accordion).
   const toggleMobileCategory = (categoryId) => {
@@ -885,7 +924,8 @@ const SurveySpacesRail = ({
   }, [items]);
 
   const commitSurveyMarkerName = (annotationId, categoryId, previousName, nextRawName, fallbackName) => {
-    const nextName = (nextRawName || '').trim() || fallbackName;
+    // BL-22 resolver (was the desktop Name pop-up's): blank -> the default name.
+    const nextName = resolveSurveyMarkerPromptName(nextRawName ?? '', fallbackName ?? '') || fallbackName;
     const oldName = (previousName || '').trim() || fallbackName;
     if (!annotationId || nextName === oldName) return;
 
@@ -935,10 +975,12 @@ const SurveySpacesRail = ({
   // Same writes as the desktop expanded-row entity dropdown (handleEntitySelection
   // below): patch the marker annotation, then mirror onto the linked item's
   // module-specific data and its annotations. entityId '' / null clears.
-  const applyEntitySelectionForMarker = (annotationId, markerModuleId, category, entityId) => {
+  const applyEntitySelectionForMarker = (annotationId, markerModuleId, category, entityId, { automatic = false } = {}) => {
     const { matchingItem, moduleData, dataKey } = findMarkerMatchingItem(annotationId, markerModuleId, category);
     const entities = selectedTemplate?.entities || [];
     const entity = entityId ? entities.find(e => e.id === entityId) : null;
+    // A user's pick is what the next desktop Survey Marker starts with.
+    if (!automatic && typeof rememberSurveyEntity === 'function') rememberSurveyEntity(entity?.id || null);
 
     setSurveyMarkers(prev => ({
       ...prev,
@@ -981,208 +1023,66 @@ const SurveySpacesRail = ({
     }
   };
 
-  // Verbatim re-housing of the desktop checklist Y/N/N-A click handler
-  // (previously inline in the expanded marker row) so the mobile detail view
-  // and the desktop row share one implementation, including the KAL-44
-  // auto-"Complete"-entity behavior when every active item is Y or N/A.
+  // The checklist Y/N/N-A click handler, shared by the desktop row and the
+  // phone's open Survey Marker. Owner ruling 2026-10-01 (auto entity): "When
+  // every checklist answer is Y or N/A, set the entity to Complete by itself,
+  // but never undo it." The rule lives in utils/surveyAutoEntity.js: every
+  // ACTIVE item answered Y or N/A -> the template's Complete entity; a later
+  // answer never clears or changes the entity; no Space has to be selected
+  // (it used to run only with selectedSpaceId set, and cleared the entity to
+  // None as soon as one answer was not Y / N/A).
   const applyChecklistResponseSelection = (annotationId, markerModuleId, category, markerRowName, checklistItemId, option) => {
-    setSurveyMarkers(prev => {
-      const updated = {
-        ...prev,
-        [annotationId]: {
-          ...prev[annotationId],
-          checklistResponses: {
-            ...prev[annotationId]?.checklistResponses,
-            [checklistItemId]: {
-              ...prev[annotationId]?.checklistResponses?.[checklistItemId],
-              selection: option
-            }
+    const currentMarker = surveyMarkers[annotationId] || {};
+    const nextResponses = {
+      ...currentMarker.checklistResponses,
+      [checklistItemId]: {
+        ...currentMarker.checklistResponses?.[checklistItemId],
+        selection: option
+      }
+    };
+    setSurveyMarkers(prev => ({
+      ...prev,
+      [annotationId]: {
+        ...prev[annotationId],
+        checklistResponses: {
+          ...prev[annotationId]?.checklistResponses,
+          [checklistItemId]: {
+            ...prev[annotationId]?.checklistResponses?.[checklistItemId],
+            selection: option
           }
-        }
-      };
-
-      // Check if all checklist items are Y or N/A.
-      // KAL-44: archived items don't gate auto-complete; only
-      // active items count toward "all complete".
-      const updatedSurveyMarker = updated[annotationId];
-      const activeChecklist = (category.checklist || []).filter(it => it && it.archived !== true);
-      if (updatedSurveyMarker && activeChecklist.length > 0 && selectedTemplate && selectedSpaceId) {
-        const allItemsComplete = activeChecklist.every(checklistItem => {
-          const response = updatedSurveyMarker.checklistResponses?.[checklistItem.id];
-          const selection = response?.selection;
-          return selection === 'Y' || selection === 'N/A';
-        });
-
-        // Find the item associated with this surveyMarker
-        const surveyMarkerData = updated[annotationId];
-        const categoryName = getCategoryName(selectedTemplate, markerModuleId, category.id);
-        const surveyMarkerName = surveyMarkerData?.name || markerRowName || '';
-        const matchingItem = itemsByNameType.get(`${surveyMarkerName}\0${categoryName}`);
-
-        // Get module-specific data
-        const moduleName = getModuleName(selectedTemplate, markerModuleId);
-        const dataKey = getModuleDataKey(moduleName);
-        const moduleData = matchingItem?.[dataKey] || {};
-
-        // If all items are Y or N/A, automatically set entity to "Complete"
-        if (allItemsComplete) {
-          // Find the "Complete" entity
-          const entities = selectedTemplate.entities || [];
-          const completeEntity = entities.find(e =>
-            e.name.toLowerCase().includes('complete')
-          );
-
-          if (completeEntity) {
-            const entityColor = normalizeSurveyMarkerColor(completeEntity.color) || completeEntity.color || hexToRgba('#E3D1FB', DEFAULT_SURVEY_MARKER_OPACITY);
-            // Update item's module-specific data with Complete entity status
-            if (matchingItem) {
-              const updatedItem = {
-                ...matchingItem,
-                [dataKey]: {
-                  ...moduleData,
-                  entityId: completeEntity.id,
-                  entityName: completeEntity.name,
-                  entityColor: entityColor
-                }
-              };
-
-              setItems(prev2 => ({
-                ...prev2,
-                [matchingItem.itemId]: updatedItem
-              }));
-
-              // Update all annotations for this item in this module with the new color
-              setAnnotations(prev2 => {
-                const updatedAnns = { ...prev2 };
-                Object.values(updatedAnns).forEach(ann => {
-                  const annModuleId = ann.moduleId || ann.spaceId; // Support legacy spaceId
-                  if (ann.itemId === matchingItem.itemId && annModuleId === markerModuleId) {
-                    updatedAnns[ann.annotationId] = {
-                      ...ann,
-                      entityId: completeEntity.id,
-                      entityName: completeEntity.name,
-                      entityColor: entityColor
-                    };
-                  }
-                });
-                return updatedAnns;
-              });
-
-              // Update surveyMarker color on PDF
-              if (surveyMarkerData?.pageNumber && surveyMarkerData?.bounds) {
-                setNewSurveyMarkersByPage(prev2 => {
-                  const pageSurveyMarkers = prev2[surveyMarkerData.pageNumber] || [];
-                  // Remove any existing surveyMarker with this annotationId or same bounds (regardless of needsEntity or color)
-                  const filtered = pageSurveyMarkers.filter(h => {
-                    // Keep surveyMarkers that don't match by ID or bounds
-                    const hasMatchingId = h.annotationId === annotationId;
-                    const hasMatchingBounds = h.x === surveyMarkerData.bounds.x &&
-                      h.y === surveyMarkerData.bounds.y &&
-                      h.width === surveyMarkerData.bounds.width &&
-                      h.height === surveyMarkerData.bounds.height;
-                    // Remove if it matches by ID or bounds
-                    return !hasMatchingId && !hasMatchingBounds;
-                  });
-                  return {
-                    ...prev2,
-                    [surveyMarkerData.pageNumber]: [
-                      ...filtered,
-                      {
-                        ...surveyMarkerData.bounds,
-                        color: entityColor,
-                        annotationId: annotationId
-                      }
-                    ]
-                  };
-                });
-              }
-            }
-
-            // Update survey marker annotation with Complete entity status
-            updated[annotationId] = {
-              ...updated[annotationId],
-              entityId: completeEntity.id,
-              entityName: completeEntity.name,
-              entityColor: entityColor
-            };
-          }
-        } else {
-          // Not all items are Y or N/A - remove entity status (set to None)
-          if (matchingItem) {
-            const updatedItem = {
-              ...matchingItem,
-              [dataKey]: {
-                ...moduleData,
-                entityId: undefined,
-                entityName: undefined,
-                entityColor: undefined
-              }
-            };
-
-            setItems(prev2 => ({
-              ...prev2,
-              [matchingItem.itemId]: updatedItem
-            }));
-
-            // Update all annotations for this item in this space
-            setAnnotations(prev2 => {
-              const updatedAnns = { ...prev2 };
-              Object.values(updatedAnns).forEach(ann => {
-                if (ann.itemId === matchingItem.itemId && ann.spaceId === selectedSpaceId) {
-                  updatedAnns[ann.annotationId] = {
-                    ...ann,
-                    entityId: undefined,
-                    entityName: undefined,
-                    entityColor: undefined
-                  };
-                }
-              });
-              return updatedAnns;
-            });
-
-            // Update surveyMarker on PDF - revert to "needs entity" state (transparent with dashed outline)
-            if (surveyMarkerData?.pageNumber && surveyMarkerData?.bounds) {
-              setNewSurveyMarkersByPage(prev2 => {
-                const pageSurveyMarkers = prev2[surveyMarkerData.pageNumber] || [];
-                // Remove any existing surveyMarker with this annotationId or same bounds (regardless of needsEntity or color)
-                const filtered = pageSurveyMarkers.filter(h => {
-                  // Keep surveyMarkers that don't match by ID or bounds
-                  const hasMatchingId = h.annotationId === annotationId;
-                  const hasMatchingBounds = h.x === surveyMarkerData.bounds.x &&
-                    h.y === surveyMarkerData.bounds.y &&
-                    h.width === surveyMarkerData.bounds.width &&
-                    h.height === surveyMarkerData.bounds.height;
-                  // Remove if it matches by ID or bounds
-                  return !hasMatchingId && !hasMatchingBounds;
-                });
-                // Add "needs entity" surveyMarker (transparent with dashed outline)
-                return {
-                  ...prev2,
-                  [surveyMarkerData.pageNumber]: [
-                    ...filtered,
-                    {
-                      ...surveyMarkerData.bounds,
-                      needsEntity: true,
-                      annotationId: annotationId
-                    }
-                  ]
-                };
-              });
-            }
-          }
-
-          // Update survey marker annotation to remove entity status
-          updated[annotationId] = {
-            ...updated[annotationId],
-            entityId: undefined,
-            entityName: undefined,
-            entityColor: undefined
-          };
         }
       }
+    }));
 
-      return updated;
+    const { moduleData } = findMarkerMatchingItem(annotationId, markerModuleId, category);
+    const completeEntity = resolveAutoCompleteEntity({
+      checklist: category?.checklist,
+      responses: nextResponses,
+      entities: selectedTemplate?.entities,
+      currentEntityId: moduleData?.entityId || currentMarker.entityId || null,
     });
+    if (!completeEntity) return;
+    applyEntitySelectionForMarker(annotationId, markerModuleId, category, completeEntity.id, { automatic: true });
+    // Repaint the box on the page in the Complete colour (the same write the
+    // old rule made, kept to this marker's own id).
+    if (currentMarker.pageNumber && currentMarker.bounds) {
+      const color = normalizeSurveyMarkerColor(completeEntity.color)
+        || completeEntity.color
+        || hexToRgba('#E3D1FB', DEFAULT_SURVEY_MARKER_OPACITY);
+      setNewSurveyMarkersByPage(prev => {
+        const pageMarkers = prev[currentMarker.pageNumber] || [];
+        const existing = pageMarkers.find(h => h.annotationId === annotationId) || {};
+        const painted = { ...existing, ...currentMarker.bounds, color, annotationId };
+        delete painted.needsEntity;
+        return {
+          ...prev,
+          [currentMarker.pageNumber]: [
+            ...pageMarkers.filter(h => h.annotationId !== annotationId),
+            painted
+          ]
+        };
+      });
+    }
   };
 
   // The open Survey Marker's note, edited inline (SurveyMarkerNotes) on the
@@ -1370,6 +1270,10 @@ const SurveySpacesRail = ({
             title={isPlaced ? 'Locate on page' : 'Place on page'}
             onClick={() => {
               if (isPlaced) {
+                // Survey audit P1-5: lower the sheet to its standard height so
+                // the page shows above it; the viewer then fits the marker in
+                // that visible strip (PDFViewer handleLocateItemOnPDF).
+                setSurveySheetDetent(SHEET_DETENT_STANDARD);
                 handleLocateItemOnPDF(surveyMarker);
               } else {
                 setPendingLocationItem(surveyMarker);
@@ -1595,8 +1499,11 @@ const SurveySpacesRail = ({
                 instead of pushing or sitting below it, mirroring the left rail's
                 top collapse row. */}
             <div
+              // Survey audit P1-5: the phone sheet is a bottom occluder (as the
+              // phone Pages sheet is), so "Locate on page" fits the marker in
+              // the page left above it.
               ref={mobileMode ? undefined : sideOccluderRef}
-              data-viewer-occluder={!mobileMode && !isSurveyPanelCollapsed ? 'side' : undefined}
+              data-viewer-occluder={isSurveyPanelCollapsed ? undefined : (mobileMode ? 'sheet' : 'side')}
               // Phone: swipe down anywhere + the keyboard lift (owner 2026-09-30).
               {...(mobileMode ? surveySheetProps : null)}
               className={`${mobileMode ? 'mobile-pdf-sheet mobile-survey-sheet ' : 'survey-rail '}${mobileMode && surveySheetExpanded ? 'is-expanded ' : ''}${mobileMode && surveySheetFullscreen ? 'is-fullscreen ' : ''}${isSurveyPanelCollapsed ? 'is-collapsed' : ''}`}
@@ -2301,8 +2208,10 @@ const SurveySpacesRail = ({
                               role="menuitem"
                               className="survey-rail__menu-item"
                               style={{
+                                // Calm gold (2026-10-01): a live link is the house
+                                // "ok" green, beside warning amber and error red.
                                 color: liveSyncEnabled && liveSyncStatus === 'connected'
-                                  ? 'var(--accent)'
+                                  ? 'var(--success-text)'
                                   : liveSyncStatus === 'connecting' || gateChecking
                                     ? 'var(--warning)'
                                     : liveSyncStatus === 'error' || liveSyncSupported === false
@@ -3143,8 +3052,17 @@ const SurveySpacesRail = ({
                                   const isCategorySelected = selectedCategories[category.id] === true;
                                   const isCategorySelectModeActive = categorySelectModeActive;
                                   const isCategoryActive = (isCategorySelectModeActive && isCategorySelected) || selectedCategoryId === category.id;
-                                  const buttonTextColor = isCategoryActive ? 'var(--accent)' : 'var(--text-2)';
-                                  const buttonSubTextColor = isCategoryActive ? 'var(--accent)' : 'var(--text-3)';
+                                  // Survey calm gold (owner 2026-10-01: "I hate all the yellow it
+                                  // has on desktop"): gold only means "what a touch on the page will
+                                  // do now" - the ARMED category. Desktop marks its row with a 2px
+                                  // gold edge (surveyRailPanel.css .is-armed); the phone keeps gold
+                                  // ink on its name. A chosen-but-not-armed or select-mode category
+                                  // is neutral ink.
+                                  const isCategoryArmed = surveyPlacementArmed
+                                    && !isCategorySelectModeActive
+                                    && selectedCategoryId === category.id;
+                                  const buttonTextColor = mobileMode && isCategoryArmed ? 'var(--accent)' : 'var(--text-1)';
+                                  const buttonSubTextColor = isCategoryActive ? 'var(--text-2)' : 'var(--text-3)';
 
                                   // Item-level selection state
                                   const isItemSelectModeActiveForCategory = itemSelectModeActive[category.id] === true;
@@ -3192,7 +3110,7 @@ const SurveySpacesRail = ({
 
                                         return (
                                     <div
-                                      className={`survey-marker-category-card${isCategoryActive ? ' is-active' : ''}`}
+                                      className={`survey-marker-category-card${isCategoryActive ? ' is-active' : ''}${isCategoryArmed ? ' is-armed' : ''}`}
                                       style={{
                                         transition: isDragging ? 'none' : undefined
                                       }}
@@ -3305,7 +3223,8 @@ const SurveySpacesRail = ({
                                                 }}
                                                 aria-label={isExpanded ? `Hide Survey Markers in ${category.name || 'category'}` : `Show Survey Markers in ${category.name || 'category'}`}
                                                 style={{
-                                                  color: isArrowActive ? 'var(--accent)' : 'var(--text-3)'
+                                                  // Calm gold: an open chevron is neutral ink.
+                                                  color: isArrowActive ? 'var(--text-2)' : 'var(--text-3)'
                                                 }}
                                               >
                                                 <span
@@ -3667,7 +3586,7 @@ const SurveySpacesRail = ({
                                                           padding: 0,
                                                           background: 'transparent',
                                                           border: 0,
-                                                          color: isSurveyMarkerExpanded ? 'var(--accent)' : 'var(--text-3)',
+                                                          color: isSurveyMarkerExpanded ? 'var(--text-2)' : 'var(--text-3)',
                                                           cursor: 'pointer',
                                                           display: 'flex',
                                                           alignItems: 'center',
@@ -3725,6 +3644,7 @@ const SurveySpacesRail = ({
                                                           type="text"
                                                           size={1}
                                                           className="survey-marker-name-inline"
+                                                          data-survey-marker-name-input={annotationId}
                                                           defaultValue={surveyMarkerName}
                                                           key={`${annotationId}:${surveyMarkerName}`}
                                                           {...tip('Rename Survey Marker', 'below')}
@@ -3732,11 +3652,17 @@ const SurveySpacesRail = ({
                                                           onClick={(e) => e.stopPropagation()}
                                                           onDoubleClick={(e) => e.currentTarget.select()}
                                                           onInput={(e) => {
+                                                            if (justPlacedSurveyMarkerIdRef.current === String(annotationId)) {
+                                                              justPlacedSurveyMarkerIdRef.current = null;
+                                                            }
                                                             if (e.currentTarget.parentElement) {
                                                               e.currentTarget.parentElement.dataset.value = e.currentTarget.value || ' ';
                                                             }
                                                           }}
                                                           onBlur={(e) => {
+                                                            if (justPlacedSurveyMarkerIdRef.current === String(annotationId)) {
+                                                              justPlacedSurveyMarkerIdRef.current = null;
+                                                            }
                                                             const nextName = (e.currentTarget.value || '').trim() || fallbackName;
                                                             e.currentTarget.value = nextName;
                                                             if (e.currentTarget.parentElement) {
@@ -3748,6 +3674,18 @@ const SurveySpacesRail = ({
                                                             if (e.key === 'Enter') {
                                                               e.currentTarget.blur();
                                                             } else if (e.key === 'Escape') {
+                                                              // A Survey Marker just placed, name untouched:
+                                                              // Escape takes the placement back (one Undo step).
+                                                              if (
+                                                                justPlacedSurveyMarkerIdRef.current === String(annotationId)
+                                                                && e.currentTarget.value === surveyMarkerName
+                                                                && typeof undoSurveyMarkerPlacement === 'function'
+                                                              ) {
+                                                                justPlacedSurveyMarkerIdRef.current = null;
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                if (undoSurveyMarkerPlacement(annotationId)) return;
+                                                              }
                                                               e.currentTarget.value = surveyMarkerName;
                                                               if (e.currentTarget.parentElement) {
                                                                 e.currentTarget.parentElement.dataset.value = surveyMarkerName || ' ';
@@ -3825,10 +3763,11 @@ const SurveySpacesRail = ({
                                                     }}
                                                     // 2026-09-23 (desktop survey polish): a bare glyph in an
                                                     // invisible column pad - no hover plate, no dimmed
-                                                    // opacity. Gold ink only when a note exists.
+                                                    // opacity. Brighter ink when a note exists (calm gold
+                                                    // 2026-10-01: --text-2, the phone's colour, not gold).
                                                     className="survey-rail__marker-action"
                                                     style={{
-                                                      color: surveyMarkers[annotationId]?.note?.text ? 'var(--accent)' : 'var(--text-3)'
+                                                      color: surveyMarkers[annotationId]?.note?.text ? 'var(--text-2)' : 'var(--text-3)'
                                                     }}
                                                     {...tip(surveyMarkers[annotationId]?.note?.text ? "Edit item notes" : "Add item notes", 'below')}
                                                     aria-label={surveyMarkers[annotationId]?.note?.text ? "Edit item notes" : "Add item notes"}
@@ -4174,9 +4113,10 @@ const SurveySpacesRail = ({
                                          own hover so the pointer gets an
                                          answer on both properties - the fill
                                          lifts --surface-2 -> --surface-3 and
-                                         the gold edge lifts --accent ->
-                                         --accent-light. */
-                                      border: '1px solid var(--accent)',
+                                         the edge lifts --border-strong ->
+                                         --text-3 (calm gold 2026-10-01: an
+                                         empty state is not gold). */
+                                      border: '1px solid var(--border-strong)',
                                       background: 'var(--surface-2)',
                                       color: 'var(--text-1)',
                                       fontSize: '13px',
@@ -4190,11 +4130,11 @@ const SurveySpacesRail = ({
                                     }}
                                     onMouseEnter={(event) => {
                                       event.currentTarget.style.background = 'var(--hover)';
-                                      event.currentTarget.style.borderColor = 'var(--accent-light)';
+                                      event.currentTarget.style.borderColor = 'var(--text-3)';
                                     }}
                                     onMouseLeave={(event) => {
                                       event.currentTarget.style.background = 'var(--surface-2)';
-                                      event.currentTarget.style.borderColor = 'var(--accent)';
+                                      event.currentTarget.style.borderColor = 'var(--border-strong)';
                                     }}
                                   >
                                     Create category

@@ -30,9 +30,11 @@
          checklist, then the notes slot;
        * notes: the note edited in place and the media strip, inside the
          open Survey Marker's notes slot (src/components/SurveyMarkerNotes.jsx).
-   - Gold stays a minimal accent: the selected thing is gold INK (the active
-     category name, the chosen checklist answer, a note that exists), never a
-     gold box, ring or underline.
+   - Gold means only "what a touch on the page will do now" (survey calm gold,
+     owner 2026-10-01): the armed category. A current item in a list or menu
+     (the template in the switcher, the entity in the detail menu) is bright
+     --text-1 ink with a --text-2 check; an open menu's trigger is neutral.
+     Never a gold box, ring or underline.
    - Glyph buttons have invisible hit areas: no hover or press plate; the
      glyph shrinks to 0.88 while pressed. A full-width ROW still takes the
      house --pressed fill while the finger is down, as the home rows do.
@@ -255,7 +257,7 @@
 }
 
 .mobile-survey-sheet .mobile-survey-sheet-export.is-open {
-  color: var(--accent);
+  color: var(--text-1);
 }
 
 .mobile-survey-sheet .mobile-survey-sheet-export:disabled {
@@ -418,11 +420,11 @@
   height: 16px;
   display: grid;
   place-items: center;
-  color: var(--accent);
+  color: var(--text-2);
 }
 
 .mobile-survey-sheet .mobile-survey-switch-list .mobile-survey-template-row[aria-current="true"] .mobile-survey-template-name {
-  color: var(--accent);
+  color: var(--text-1);
   font-weight: 600;
 }
 
@@ -1069,8 +1071,8 @@
 
 .mobile-survey-sheet .mobile-survey-detail-menu > button:active { background: var(--pressed); }
 
-/* Selected = gold ink, no fill. */
-.mobile-survey-sheet .mobile-survey-detail-menu > button.is-active { color: var(--accent); }
+/* Selected = bright ink, no fill (survey calm gold, 2026-10-01). */
+.mobile-survey-sheet .mobile-survey-detail-menu > button.is-active { color: var(--text-1); font-weight: 600; }
 
 .mobile-survey-sheet .mobile-survey-detail-menu > button > span:last-child {
   flex: 1;
@@ -1197,4 +1199,18 @@
 .mobile-survey-sheet .mobile-survey-close:active > svg,
 .mobile-survey-sheet .survey-marker-category-arrow:active svg {
   transform: scale(0.88);
+}
+
+/* Survey audit P1-5 (2026-10-01, phone "Locate on page"): while the Survey
+   sheet is up it covers the bottom half of the page, and a Survey Marker near
+   the end of the last page could never be scrolled up above it - the viewer
+   ran out of page. Give the viewer that much extra room to scroll below the
+   last page while the sheet is open (like an iOS sheet's content inset), so
+   Locate can land the marker in the page you can still see. The page itself
+   does not move when the sheet opens; the room goes when the sheet closes. */
+body:has(.mobile-survey-sheet:not(.is-collapsed)) .survey-pdfjs-viewer.survey-pdfjs-mobile-surface::after {
+  content: '';
+  display: block;
+  height: var(--mobile-panel-standard, 50vh);
+  pointer-events: none;
 }

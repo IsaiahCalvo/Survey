@@ -1161,7 +1161,9 @@ export default function App({ devPreviewReturnTab = null }) {
     { id: `entity-${Date.now()}-2`, name: 'Subcontractor', color: '#FFF5C3' },
     { id: `entity-${Date.now()}-3`, name: 'My Company', color: '#CBDCFF' },
     { id: `entity-${Date.now()}-4`, name: '100% Complete', color: '#B2FFB2' },
-    { id: `entity-${Date.now()}-5`, name: 'Removed', color: 'var(--text-3)' }
+    // A real hex grey: a CSS variable cannot be read by hexToRgba, the page's
+    // marker fill or the Excel export (survey audit 2026-10-01).
+    { id: `entity-${Date.now()}-5`, name: 'Removed', color: '#959eae' }
   ].map(entity => ({
     ...entity,
     color: hexToRgba(entity.color, 0.2)
