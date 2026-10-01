@@ -39849,6 +39849,8 @@ ${pageBlocks}
                           const existingSurveyMarker = prev[annotationId] || {};
 
                           const newNote = {
+                            // Keep stored media refs (note.media) and anything else this dialog does not edit.
+                            ...(existingSurveyMarker.note && typeof existingSurveyMarker.note === 'object' ? existingSurveyMarker.note : {}),
                             text: noteDialogContent.text,
                             photos: noteDialogContent.photos,
                             videos: noteDialogContent.videos
