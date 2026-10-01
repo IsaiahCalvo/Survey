@@ -678,7 +678,18 @@ const SurveySpacesRail = ({
   }, [expandRequestKey]);
 
   useEffect(() => {
-    if (collapseRequestKey > 0) setIsSurveyPanelCollapsed(true);
+    if (collapseRequestKey <= 0) return;
+    // Owner 2026-10-01 (iPhone: closing from the dock was abrupt): on the phone
+    // the sheet slides down behind the dock like a swipe, or - when another
+    // panel is opening in the same tap - hands over to it in place
+    // (useMobileSheetMotion, PANEL TO PANEL).
+    if (mobileMode && !isSurveyPanelCollapsed) {
+      requestSurveySheetClose();
+      return;
+    }
+    setIsSurveyPanelCollapsed(true);
+    // Only a new request runs this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collapseRequestKey]);
 
   useEffect(() => {
@@ -1632,7 +1643,9 @@ const SurveySpacesRail = ({
                   : (railToggledRef.current
                     ? (isSurveyPanelCollapsed ? 'surveyRailCollapse 0.2s ease' : 'surveyRailExpand 0.2s ease')
                     : 'slideInRight 0.3s ease-out'),
-                transition: 'right 0.2s ease, top 0.2s ease, height 0.2s ease',
+                // Phone: the sheet hook's resize glide owns every height
+                // change (2026-10-01), so no CSS height leg to fight it.
+                transition: mobileMode ? 'none' : 'right 0.2s ease, top 0.2s ease, height 0.2s ease',
                 // Phase F: finger-follow / spring-back / slide-down exit, plus
                 // (2026-09-17) the slide-up entrance — one transform timeline.
                 ...(mobileMode ? surveySheetMotionStyle : null)

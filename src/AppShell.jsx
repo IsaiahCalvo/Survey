@@ -1674,7 +1674,11 @@ export default function App({ devPreviewReturnTab = null }) {
   }, [mobileDocumentPanelState.activePanel, openMobileDocumentPanel]);
 
   const openMobileSurveyPanel = useCallback(() => {
-    leftRailApi?.ref?.current?.closePanel?.();
+    // Opening Survey over an open Pages / Spaces sheet: that sheet holds still
+    // until Survey takes its place (a dock switch keeps the sheet standing and
+    // fades the content, see useMobileSheetMotion PANEL TO PANEL). Survey opens
+    // a render or two later, through the right rail's API.
+    leftRailApi?.ref?.current?.closePanel?.(mobileSurveyPanelOpen ? undefined : { handover: true });
     setMobileAuxCloseRequestKey((key) => key + 1);
     if (mobileSurveyPanelOpen) {
       setMobileSurveyCollapseRequestKey((key) => key + 1);
