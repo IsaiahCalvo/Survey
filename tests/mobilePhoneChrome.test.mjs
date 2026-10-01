@@ -130,8 +130,14 @@ test('zoomIn and zoomOut still step by the shared 1.25x factor', () => {
   assert.match(viewer, /const zoomOut = useCallback\(\(\) => \{[\s\S]{0,900}basisScale \/ TOOLBAR_ZOOM_STEP_FACTOR/);
 });
 
-test('tapping an open tool group closes its strip', () => {
-  assert.match(chrome, /const toggleCategory = \(groupId\) => \{[\s\S]{0,900}if \(openCategory === groupId\) \{\s*setOpenCategory\(null\);\s*return;/);
+test('tapping an open tool group closes its strip and hands the tool back to Pan', () => {
+  // RULED CHANGE 2026-10-01 (owner): closing a group by tapping its icon used to
+  // leave its tool armed, so the icon stayed gold on a closed group.
+  assert.match(chrome, /const toggleCategory = \(groupId\) => \{[\s\S]{0,1600}if \(openCategory === groupId\) \{\s*setOpenCategory\(null\);\s*if \(activeGroup === groupId\) selectTool\('pan'\);\s*return;/);
+  // An armed survey category / entity disc disarms to Pan on a second tap.
+  assert.match(chrome, /const toggleSurveyPick = \(picked, arm\) => \{\s*if \(picked && activeTool === 'survey-marker'\) \{\s*selectTool\('pan'\);\s*return;\s*\}\s*arm\(\);/);
+  assert.match(chrome, /toggleSurveyPick\(bottomToolbarApi\.surveyToolbar\.selectedCategoryId === category\.id,/);
+  assert.match(chrome, /toggleSurveyPick\(bottomToolbarApi\.surveyToolbar\.selectedEntityId === entity\.id,/);
   // Opening a group still arms its last-used tool.
   assert.match(chrome, /const toggleCategory = \(groupId\) => \{[\s\S]{0,1600}selectTool\(preferred && TOOL_TO_GROUP\[preferred\] === groupId \? preferred : group\.fallback\)/);
 });
