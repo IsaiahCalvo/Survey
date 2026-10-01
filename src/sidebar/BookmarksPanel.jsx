@@ -289,7 +289,6 @@ const BookmarkTreeRow = ({
         // moved INSIDE the row (paddingLeft below) so every divider still runs
         // from edge to edge while nested rows step their content in.
         padding: 0,
-        opacity: isDragging && !isClone ? 0.92 : 1,
         position: 'relative',
         zIndex: isActiveRow ? 2 : undefined,
         width: isClone ? `${cloneWidth}px` : 'auto',
@@ -307,6 +306,9 @@ const BookmarkTreeRow = ({
     >
       <div
         ref={isClone ? undefined : setDraggableNodeRef}
+        // The app's one picked-up look (states.css [data-drag-lifted], owner
+        // 2026-10-01): solid raised surface, soft shadow, no inner block.
+        data-drag-lifted={isClone || isActiveRow ? '' : undefined}
         onClick={() => {
           if (isClone || isEditMode) return;
           onSelect?.(item.id);
@@ -337,14 +339,14 @@ const BookmarkTreeRow = ({
           padding: `0 12px 0 ${5 + (isClone ? 0 : rowInset)}px`,
           borderRadius: 0,
           // Quiet states only: the hover step or the SELECTED surface, never
-          // a gold box. The lifted (dragging) row keeps a raised surface.
+          // a gold box. The lifted (dragging) row takes the shared lift.
           // UX 2026-10-01 (owner): no gold tint on the folder a drag lands in
           // either; the neutral landing slot below says where it goes.
-          background: isClone || isActiveRow ? 'var(--surface-2)' : isSelected ? 'var(--surface-3)' : 'transparent',
+          background: isSelected && !isActiveRow ? 'var(--surface-3)' : 'transparent',
           border: 'none',
           borderBottom: '1px solid var(--border)',
           color: 'var(--text-2)',
-          boxShadow: isClone || isActiveRow ? '0 12px 24px rgba(0,0,0,0.32)' : 'none',
+          boxShadow: 'none',
           cursor: isEditMode ? 'default' : 'pointer',
           pointerEvents: isSorting ? 'none' : undefined,
           marginLeft: isClone ? `${cloneRelativeInset}px` : undefined,
@@ -572,10 +574,11 @@ const BookmarkTreeRow = ({
         )}
       </div>
       {isActiveRow && landingSlot ? (
-        // Where the drop will land: a quiet neutral slot in the gap the rows
-        // opened, stepped in to the projected depth (no gold — owner,
-        // 2026-10-01). It sits under the lifted row and shows whenever the
-        // row is not right on top of it (e.g. while a folder dwell holds it).
+        // Where the drop will land: the app's one drag slot (a quiet dashed
+        // outline, --drag-slot-*) in the gap the rows opened, stepped in to
+        // the projected depth (no gold — owner, 2026-10-01). It sits under
+        // the lifted row and shows whenever the row is not right on top of
+        // it (e.g. while a folder dwell holds it).
         // Its `top` is set from the live layout after each commit (the
         // panel's drag layout effect), so a folder opening mid-drag never
         // throws it off its gap.
@@ -589,8 +592,10 @@ const BookmarkTreeRow = ({
             left: landingSlot.depth * BOOKMARK_INDENTATION_WIDTH,
             right: 0,
             height: BOOKMARK_ROW_HEIGHT_PX,
-            background: 'var(--hover)',
-            boxShadow: 'inset 2px 0 0 var(--border-strong)',
+            boxSizing: 'border-box',
+            background: 'var(--drag-slot-bg)',
+            border: 'var(--drag-slot-border)',
+            borderRadius: 'var(--drag-lift-radius)',
             transition: `top ${BOOKMARK_DRAG_GLIDE}, left ${BOOKMARK_DRAG_GLIDE}`,
           }}
         />
@@ -682,6 +687,7 @@ const MobileBookmarkRow = ({
       <div
         ref={setDraggableNodeRef}
         className={`mobile-bookmark-row${isDragging ? ' is-dragging' : ''}`}
+        data-drag-lifted={isDragging ? '' : undefined}
         style={{
           // The depth indent lives INSIDE the row (padding), so every row's
           // hairline still runs edge to edge while nested rows step in.

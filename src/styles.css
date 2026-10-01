@@ -1138,11 +1138,9 @@ input[type="text"].survey-marker-name-inline:focus {
   background: var(--sp-bg);
 }
 
-/* The one space a pointer is carrying lifts off the list. */
-.spaces-item.is-dragging .spaces-item__block {
-  background: var(--surface-3);
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.32);
-}
+/* The one space a pointer is carrying lifts off the list with the app's one
+   picked-up look: SortableRearrangeRow marks its wrapper data-drag-lifted
+   (states.css), so nothing here paints a second surface. */
 
 .spaces-item__row {
   display: flex;
@@ -2057,9 +2055,6 @@ input[type="text"].spaces-item__add-input:focus-visible {
 @media (hover: hover) and (pointer: fine) {
   .spaces-item__row:hover {
     background: var(--hover);
-  }
-  .spaces-item.is-dragging .spaces-item__row:hover {
-    background: transparent;
   }
   .spaces-panel__head-btn:not(:disabled):hover,
   .spaces-item__icon:not(:disabled):hover,

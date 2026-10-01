@@ -49,7 +49,7 @@ export const Icon = ({ name, size = 14, color, style, className }) => (
 
 /* Round initials badge. */
 export const Avatar = ({ initials, color = 'var(--gold)', size = 22 }) => (
-  <div style={{ width: size, height: size, borderRadius: '50%', background: color, color: 'var(--accent-text)', display: 'grid', placeItems: 'center', fontSize: size * 0.42, fontWeight: 800, flex: 'none' }}>{initials}</div>
+  <div data-drag-keep-fill style={{ width: size, height: size, borderRadius: '50%', background: color, color: 'var(--accent-text)', display: 'grid', placeItems: 'center', fontSize: size * 0.42, fontWeight: 800, flex: 'none' }}>{initials}</div>
 );
 
 /* Overlapping row of avatars — used to preview a team compactly.

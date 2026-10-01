@@ -320,3 +320,92 @@
 [data-glyph-only] { -webkit-tap-highlight-color: transparent; }
 [data-glyph-only] > * { transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1); }
 [data-glyph-only]:not(:disabled):active > * { transform: scale(0.88); }
+
+/* --------------------------------------------------------------------------
+   DRAG LIFT — the one "picked up" look (owner 2026-10-01).
+   -------------------------------------------------------------------------- */
+/* "This drag and drop still looks kind of ugly … just a uniform colour /
+   uniform style when it gets picked up — especially where only a section got
+   grey." The held module tab showed two greys: the tab's own lift plus a
+   darker block wherever a child (its label button, a count, a field, a hover
+   or pressed rule) still painted its own fill, and a translucent tab let the
+   neighbour's label show through. Rows used a 62% ghost instead of a lift.
+
+   Every drag-to-reorder item now sets `data-drag-lifted` on the element that
+   moves (SortableRearrangeRow's wrapper, a tab, a bookmark row) and this rule
+   is the whole look: one solid --drag-lift-bg surface edge to edge, the soft
+   --drag-lift-shadow, 6px corners, no gold, no ring, fully opaque.
+   Children keep their text colour and position but paint NO fill, shadow or
+   ring of their own. The things whose fill IS information - a colour swatch,
+   an entity dot, an avatar, a ticked box - are listed in the :not() below (or
+   carry data-drag-keep-fill) and keep it.
+
+   WHY A CASCADE LAYER. The hover / pressed / selected rules above (and
+   hub.css's) are !important with long :not() chains, so no plain selector
+   here could outrank them all. An !important declaration inside a layer beats
+   every unlayered !important one regardless of specificity, so the lifted item
+   wins without a selector arms race and without touching those rules. */
+@layer drag-lift {
+  [data-drag-lifted] {
+    background-color: var(--drag-lift-bg) !important;
+    background-image: none !important;
+    box-shadow: var(--drag-lift-shadow) !important;
+    border-color: transparent !important;
+    border-radius: var(--drag-lift-radius) !important;
+    outline: none !important;
+    opacity: 1 !important;
+    filter: none !important;
+    cursor: grabbing !important;
+  }
+  [data-drag-lifted] * {
+    cursor: grabbing !important;
+  }
+  [data-drag-lifted] :not(
+    [data-drag-keep-fill], [data-drag-keep-fill] *,
+    [title='Edit color'], [title='Edit color'] *, [aria-label='Edit color'], [aria-label='Edit color'] *,
+    [data-quick-colour-preset], [data-quick-colour-custom], [data-quick-paint-swatch], [data-ink-swatch],
+    [data-color-picker-hue], [data-color-picker-hue] *, [data-color-picker-opacity], [data-color-picker-opacity] *,
+    [data-color-picker-spectrum], [data-color-picker-spectrum] *, .hero-swatch,
+    .templates-mobile-swatches > i, .templates-mobile-check.checked,
+    .survey-rail__entity-dot, .mobile-survey-marker-dot, .mobile-survey-detail-entity-dot, .projects-mobile-file-icon,
+    [role='switch'], [role='switch'] *, [role='checkbox'][aria-checked='true'],
+    img, canvas, video, svg, svg *
+  ) {
+    background-color: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+  }
+  /* The row inside the moving wrapper: its own edge (a card border, the gold
+     "current" bar, a list hairline) gives way to the lift's hairline, so the
+     item has one edge, not two. Deeper rules (a checklist's dashed lines)
+     stay: they are content. */
+  [data-drag-lifted] > :not([data-drag-keep-fill]) {
+    border-color: transparent !important;
+  }
+  /* A held grip is :active the whole drag; its glyph keeps its size. */
+  [data-drag-lifted] [data-glyph-only] > *,
+  [data-drag-lifted] [data-drag-rearrange-handle] > * {
+    transform: none !important;
+  }
+  /* The slot the lifted item will land in: one quiet dashed outline, the same
+     in every vertical list. SortableRearrangeList places it from the drag's
+     layout (--drag-slot-top / --drag-slot-height); a pseudo-element so the
+     list's :first-child / :last-child rules never see an extra node. */
+  [data-sortable-rearrange-list][data-drag-slot] {
+    position: relative;
+  }
+  [data-sortable-rearrange-list][data-drag-slot]::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: var(--drag-slot-top, 0px);
+    height: var(--drag-slot-height, 0px);
+    box-sizing: border-box;
+    border: var(--drag-slot-border);
+    border-radius: var(--drag-lift-radius);
+    background: var(--drag-slot-bg);
+    pointer-events: none;
+  }
+}

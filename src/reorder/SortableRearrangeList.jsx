@@ -27,6 +27,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { CALM_LIST_AUTO_SCROLL } from './dragAutoScroll.js';
+import { getDragSlotRect } from './dragSlot.js';
 
 export const DENSE_ROW_DRAG_OPACITY = 0.62;
 
@@ -138,6 +139,34 @@ const getDragClampBounds = (layoutSnapshot) => {
   };
 };
 
+// The dashed landing slot (see ./dragSlot.js): this list's own rows, measured
+// when the drag starts, in the list's coordinates.
+const measureSlotRows = (listNode) => {
+  if (!listNode) return null;
+  const listRect = listNode.getBoundingClientRect();
+  return Array.from(listNode.querySelectorAll('[data-sortable-rearrange-item]'))
+    .filter((node) => node.closest('[data-sortable-rearrange-list]') === listNode)
+    .map((node) => {
+      const rect = node.getBoundingClientRect();
+      return {
+        id: node.dataset.sortableRearrangeItem,
+        top: rect.top - listRect.top - listNode.clientTop,
+        height: rect.height,
+      };
+    });
+};
+
+const showDragSlot = (listNode, rect) => {
+  if (!listNode || !rect) return;
+  listNode.style.setProperty('--drag-slot-top', `${rect.top.toFixed(1)}px`);
+  listNode.style.setProperty('--drag-slot-height', `${rect.height.toFixed(1)}px`);
+  listNode.setAttribute('data-drag-slot', '');
+};
+
+const hideDragSlot = (listNode) => {
+  listNode?.removeAttribute('data-drag-slot');
+};
+
 export function SortableRearrangeList({
   ids,
   onReorder,
@@ -160,6 +189,8 @@ export function SortableRearrangeList({
   const dragDiagRef = useRef(null);
   const dragClampBoundsRef = useRef(null);
   const lastOverIdRef = useRef(null);
+  const listRef = useRef(null);
+  const slotRowsRef = useRef(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -282,6 +313,8 @@ export function SortableRearrangeList({
     }
     setActiveId(null);
     dragClampBoundsRef.current = null;
+    slotRowsRef.current = null;
+    hideDragSlot(listRef.current);
     finishDragDiag('end', {
       overId: over?.id ?? null,
       didReorder,
@@ -337,6 +370,8 @@ export function SortableRearrangeList({
           useDragOverlay: false,
           variableHeight,
         }));
+        slotRowsRef.current = measureSlotRows(listRef.current);
+        showDragSlot(listRef.current, getDragSlotRect(slotRowsRef.current, active.id, active.id));
         setActiveId(active.id);
         onDragStart?.({ activeId: active.id });
       }}
@@ -363,6 +398,9 @@ export function SortableRearrangeList({
           diag.overId = overId;
           diag.overChangeCount += 1;
         }
+        if (slotRowsRef.current) {
+          showDragSlot(listRef.current, getDragSlotRect(slotRowsRef.current, active.id, overId ?? active.id));
+        }
         onDragOver?.({
           activeId: active.id,
           overId,
@@ -373,6 +411,8 @@ export function SortableRearrangeList({
         const cancelledActiveId = active?.id ?? activeId;
         setActiveId(null);
         dragClampBoundsRef.current = null;
+        slotRowsRef.current = null;
+        hideDragSlot(listRef.current);
         finishDragDiag('cancel', {
           overId: null,
           didReorder: false,
@@ -383,6 +423,7 @@ export function SortableRearrangeList({
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         <DropTransformSuppressionContext.Provider value={dropTransformSuppressionValue}>
           <div
+            ref={listRef}
             data-sortable-rearrange-list={String(activeId ?? '')}
             // Owner 2026-09-22: no `minHeight: 100%` here. Inside a padded
             // scroll container it made the list taller than the container's
@@ -407,6 +448,9 @@ export function SortableRearrangeRow({
   disableSettledTransition = false,
   draggingOpacity = DENSE_ROW_DRAG_OPACITY,
   forceDraggingVisual = false,
+  // The shared "picked up" look (states.css [data-drag-lifted]). On by default
+  // for every list; pass false only for a row that draws its own.
+  lift = true,
   transition: transitionOption,
   wrapperStyle = null,
 }) {
@@ -441,7 +485,9 @@ export function SortableRearrangeRow({
   const style = {
     transform: isDropTransformSuppressed ? 'none' : CSS.Translate.toString(transform),
     transition: rowTransition,
-    opacity: isDraggingVisual ? draggingOpacity : 1,
+    // A lifted row is solid (owner 2026-10-01: one uniform picked-up look);
+    // a list that opts out of the lift keeps its ghost opacity.
+    opacity: isDraggingVisual && !lift ? draggingOpacity : 1,
     zIndex: isDraggingVisual ? 1 : 0,
     position: 'relative',
     width: '100%',
@@ -461,12 +507,18 @@ export function SortableRearrangeRow({
       style,
       itemAttributes: {
         'data-sortable-rearrange-item': String(id),
+        ...(isDraggingVisual && lift ? { 'data-drag-lifted': '' } : {}),
       },
     });
   }
 
   return (
-    <div ref={setNodeRef} data-sortable-rearrange-item={String(id)} style={style}>
+    <div
+      ref={setNodeRef}
+      data-sortable-rearrange-item={String(id)}
+      data-drag-lifted={isDraggingVisual && lift ? '' : undefined}
+      style={style}
+    >
       {children({
         attributes,
         listeners,

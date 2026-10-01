@@ -137,6 +137,10 @@ function TabItem({
       {...sortableAttributes}
       {...sortableListeners}
       data-pdf-tab-id={!isHome ? tab.id : undefined}
+      // Owner 2026-10-01: the held tab takes the app's one picked-up look
+      // (states.css [data-drag-lifted]): solid raised surface, soft shadow,
+      // no gold edge, fully opaque so no neighbour shows through.
+      data-drag-lifted={isDragging ? '' : undefined}
       onClick={() => onTabClick(tab.id)}
       onDragOver={(e) => !isHome && onPageDragOver(e, tab.id)}
       onDragLeave={(e) => !isHome && onPageDragLeave(e, tab.id)}
@@ -156,7 +160,6 @@ function TabItem({
         borderTop: isActive ? `2px solid ${TAB_ACCENT}` : (dragOverTabId === tab.id ? `2px solid ${TAB_ACCENT}` : '2px solid transparent'),
         cursor: isHome ? 'pointer' : (isDragging ? 'grabbing' : 'grab'),
         userSelect: 'none',
-        opacity: isDragging ? 0.92 : 1,
         transition: isDragging
           ? 'background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease'
           : [sortableStyle.transition, 'background 0.15s ease', 'border-color 0.15s ease', 'box-shadow 0.15s ease'].filter(Boolean).join(', '),
@@ -164,8 +167,7 @@ function TabItem({
         fontSize: '12px',
         color: isActive ? TAB_TEXT_ACTIVE : TAB_TEXT,
         zIndex: isDragging ? 5 : undefined,
-        // Owner 2026-10-01: a held tab lifts with a soft shadow, no gold ring.
-        boxShadow: isDragging ? '0 10px 24px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.08)' : 'none',
+        boxShadow: 'none',
         touchAction: isHome ? undefined : 'none',
       }}
       onMouseEnter={(e) => {
@@ -215,6 +217,7 @@ function TabItem({
             flexShrink: 0
           }}
           title="Unsaved changes (Cmd/Ctrl+S to save)"
+          data-drag-keep-fill
         />
       ) : (
         <div style={{ width: '12px', marginRight: '7px', flexShrink: 0 }} />
@@ -238,6 +241,7 @@ function TabItem({
           role="status"
           aria-label="This document has unsaved changes"
           title="This document has unsaved changes"
+          data-drag-keep-fill
           style={{
             width: '6px',
             height: '6px',

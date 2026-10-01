@@ -276,6 +276,23 @@
   --accent-red: var(--danger);
   --overlay-scrim: rgba(13, 15, 20, 0.55);
 
+  /* --- DRAG LIFT (owner 2026-10-01) ------------------------------------ */
+  /* "A uniform colour / uniform style when it gets picked up." Every
+     drag-to-reorder item in the app - tabs, template / category / item /
+     entity rows, project and file rows, bookmarks, Spaces, Survey categories
+     and markers, the picture of a dragged page, desktop and phone - lifts with exactly this look and nothing
+     else: ONE raised surface edge to edge (no child keeps a fill of its own),
+     a soft drop shadow with a faint neutral hairline, 6px corners on every item,
+     no gold, no focus ring, no scale (the text stays exactly where it was).
+     The rule that applies it is `[data-drag-lifted]` in states.css.
+     The slot the item will land in is one quiet dashed outline, the same in
+     every vertical list (SortableRearrangeList) and in Bookmarks. */
+  --drag-lift-bg: var(--surface-3);
+  --drag-lift-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --drag-lift-radius: 6px;
+  --drag-slot-bg: rgba(255, 255, 255, 0.02);
+  --drag-slot-border: 1px dashed var(--border-strong);
+
   /* --- PHONE SHEET SCALE (owner 2026-10-01) ---------------------------- */
   /* "Consistency across all bottom panels (text sizes and spacing)." Every
      phone bottom sheet - Pages / Search / Bookmarks, Spaces, Survey, History,
