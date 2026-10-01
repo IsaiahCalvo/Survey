@@ -163,14 +163,17 @@
   font-weight: 700;
 }
 
-/* Phone sheet: bigger text and a 44px-tall row to tap. */
+/* Phone sheet: bigger text and a 44px-tall row to tap, on the shared phone
+   sheet scale (src/styles/tokens.css, owner 2026-10-01: "consistency across
+   all bottom panels"). Desktop keeps the compact sizes above. */
 .mobile-search-panel .search-text-panel__results {
-  background: var(--surface-2);
+  background: var(--sheet-bg);
 }
 
 .mobile-search-panel .search-text-panel__status {
   height: 34px;
-  font-size: 13px;
+  font: var(--sheet-row-meta);
+  font-variant-numeric: tabular-nums;
 }
 
 .mobile-search-panel .search-text-panel__icon-button {
@@ -184,15 +187,15 @@
 
 .mobile-search-panel .search-text-group__header {
   padding: 12px 0 4px;
-  font-size: 12px;
+  font: var(--sheet-section);
+  font-variant-numeric: tabular-nums;
 }
 
 .mobile-search-panel .search-text-result {
-  min-height: 44px;
+  min-height: var(--sheet-row-h);
   box-sizing: border-box;
-  padding: 12px 8px;
+  padding: 13px 8px;
   margin: 0 -8px;
-  font-size: 14px;
-  line-height: 20px;
+  font: var(--sheet-row-text);
   contain-intrinsic-size: auto 44px;
 }

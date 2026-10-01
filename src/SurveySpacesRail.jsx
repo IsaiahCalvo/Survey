@@ -2006,7 +2006,7 @@ const SurveySpacesRail = ({
                               // spinner — a track, so it takes the raised
                               // surface step like every other track.
                               ? <Spinner size={14} color="var(--text-1)" trackColor="var(--surface-3)" />
-                              : <Icon name="upload" size={17} color="currentColor" />}
+                              : <Icon name="upload" size={16} color="currentColor" />}
                           </button>
                           {isMobileExportMenuOpen && (
                             <div className="mobile-survey-sheet-export-menu" role="menu">

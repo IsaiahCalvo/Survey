@@ -2300,11 +2300,12 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
    put a 16px word and a 14px word on two baselines 1px apart — the kind of
    near-miss the eye reads as sloppy. `align-items: baseline` puts them on ONE
    baseline; `flex-wrap: wrap` + `align-content: center` then centres that
-   single line inside the 38px row, which a baseline-aligned flex line does not
+   single line inside the 44px row, which a baseline-aligned flex line does not
    do on its own. The title takes the slack and ellipsizes, so the row can
    never actually wrap. */
 .mobile-pdf-tool-sheet__header {
-  min-height: 38px;
+  /* The shared phone sheet head height (tokens.css PHONE SHEET SCALE). */
+  min-height: var(--sheet-head-h);
   flex: 0 0 auto;
   display: flex;
   flex-wrap: wrap;
@@ -2313,7 +2314,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   justify-content: space-between;
   gap: 12px;
   color: var(--text-1);
-  font: 700 16px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  font: var(--sheet-title);
 }
 
 .mobile-pdf-tool-sheet__header > strong {
@@ -2350,24 +2351,26 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   color: var(--accent);
   background: transparent;
   border: 0;
-  font: 700 14px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  /* The sheet scale's action word, 600 13px - every sheet's Done / Add /
+     Edit / Exit is this size (it was 700 14px here only). Stays gold. */
+  font: var(--sheet-action);
   white-space: nowrap;
 }
 
-/* Done is painted at its own 14px so it can share the title's baseline; the
+/* Done is painted at its own 13px so it can share the title's baseline; the
    finger still gets the app's usual 44px box, the same painted-small /
-   hit-large trick the tool strip uses. Vertically the pad overshoots (14 + 30 =
+   hit-large trick the tool strip uses. Vertically the pad overshoots (13 + 31 =
    44); sideways it stops at the button's edges, because the 44px min-width above
    already gives it the full 44 and a pad that spilled past the box is what made
    the header overrun the sheet. */
 .mobile-pdf-tool-sheet__header > button::after {
   content: '';
   position: absolute;
-  inset: -15px 0;
+  inset: -15.5px 0;
 }
 
 .mobile-pdf-text-defaults > header {
-  height: 40px;
+  height: var(--sheet-head-h);
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -2390,14 +2393,12 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
    label under it is 11/600. */
 .mobile-pdf-text-defaults > header span {
   color: var(--text-3);
-  font-size: 11px;
-  font-weight: 600;
+  font: var(--sheet-label);
   order: 2;
 }
 
 .mobile-pdf-text-defaults > header strong {
-  font-size: 16px;
-  font-weight: 700;
+  font: var(--sheet-title);
 }
 
 .mobile-pdf-text-defaults > header > button {
@@ -3334,15 +3335,26 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
   font: 700 16px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 
+/* 2026-10-01 (owner: "consistency across all bottom panels"): on the shared
+   PHONE SHEET SCALE (src/styles/tokens.css) - the sheet colour, a 44px head
+   with the 16/700 title and a 12px --text-3 subtitle, and full-width 44px
+   rows parted by hairlines (they were 50px bordered cards with 12/700 names
+   and 10px meta, the one sheet built that way). Two classes, so the colour
+   wins over the base sheet's !important --surface-1. */
+.mobile-pdf-sheet.mobile-pdf-users-sheet {
+  background: var(--sheet-bg) !important;
+}
+
 .mobile-pdf-users-sheet {
   /* Standard, like every other phone panel (pass 7). Was 276px + inset. */
   --mobile-sheet-height: var(--mobile-panel-standard);
-  padding: 0 16px 12px;
+  padding: 0 var(--sheet-pad-x) 12px;
   color: var(--text-1);
+  font-family: var(--sheet-font);
 }
 
 .mobile-pdf-users-sheet > header {
-  min-height: 48px;
+  min-height: var(--sheet-head-h);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3352,11 +3364,11 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
 .mobile-pdf-users-sheet > header > div {
   min-width: 0;
   display: grid;
-  gap: 3px;
+  gap: 2px;
 }
 
-.mobile-pdf-users-sheet > header strong { font-size: 15px; font-weight: 900; }
-.mobile-pdf-users-sheet > header span { color: var(--text-3); font-size: 11px; font-weight: 700; }
+.mobile-pdf-users-sheet > header strong { font: var(--sheet-title); }
+.mobile-pdf-users-sheet > header span { color: var(--text-3); font: var(--sheet-subtitle); }
 .mobile-pdf-users-sheet > header button { width: 32px; height: 32px; padding: 0; display: grid; place-items: center; color: var(--text-1); background: transparent; border: 0; border-radius: 6px; }
 
 .mobile-pdf-users-sheet__list {
@@ -3364,22 +3376,28 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
   /* The list scrolls inside the panel; the header and its close action stay put
      (DESIGN-SYSTEM.md: "Keep the header and Done or close action visible while
      the body scrolls"). */
-  max-height: calc(100% - 66px);
+  max-height: calc(100% - 62px);
+  /* The rows' hairlines reach both sheet edges, as on every other sheet. */
+  margin: 0 calc(-1 * var(--sheet-pad-x));
   display: grid;
-  gap: 5px;
+  align-content: start;
+  gap: 0;
   overflow-y: auto;
+  border-top: var(--sheet-divider);
 }
 
 .mobile-pdf-users-sheet__row {
-  min-height: 50px;
-  padding: 6px 8px;
+  min-height: var(--sheet-row-h);
+  box-sizing: border-box;
+  padding: 4px var(--sheet-pad-x);
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) auto;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 9px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 7px;
+  gap: var(--sheet-gap);
+  background: transparent;
+  border: 0;
+  border-bottom: var(--sheet-divider);
+  border-radius: 0;
 }
 
 .mobile-pdf-users-sheet__avatar {
@@ -3396,9 +3414,9 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
 }
 
 .mobile-pdf-users-sheet__row p { min-width: 0; margin: 0; display: grid; gap: 2px; }
-.mobile-pdf-users-sheet__row p strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.mobile-pdf-users-sheet__row p span { color: var(--text-3); font-size: 10px; }
-.mobile-pdf-users-sheet__row em { color: var(--accent); font-size: 10px; font-style: normal; font-weight: 800; }
+.mobile-pdf-users-sheet__row p strong { overflow: hidden; font: var(--sheet-row-title); text-overflow: ellipsis; white-space: nowrap; }
+.mobile-pdf-users-sheet__row p span { color: var(--text-3); font: var(--sheet-row-meta); }
+.mobile-pdf-users-sheet__row em { color: var(--accent); font: var(--sheet-row-meta); font-style: normal; font-weight: 600; }
 
 /* The phone Survey panel's own rules (header, one-card body, module tabs,
    category and Survey Marker lines, marker detail, notes) moved to
@@ -3453,7 +3471,7 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
 .mobile-pdf-hub-tabs .mobile-pdf-hub-tab > span { display: none !important; }
 
 .mobile-pages-panel {
-  background: var(--surface-2) !important;
+  background: var(--sheet-bg) !important;
 }
 /* The sheet paints its bottom safe-inset padding in its own --surface-1, so
    under a --surface-2 panel that band read as a darker stripe along the bottom
@@ -3462,11 +3480,11 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
    above keep their own inline --surface-1. */
 .mobile-pdf-sheet:has(.mobile-pages-panel),
 .mobile-pdf-sheet:has(.mobile-search-panel) {
-  background: var(--surface-2) !important;
+  background: var(--sheet-bg) !important;
 }
 
 .mobile-search-panel {
-  background: var(--surface-2) !important;
+  background: var(--sheet-bg) !important;
 }
 
 .mobile-search-panel__bar {
@@ -3512,15 +3530,16 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
 
 .mobile-search-empty strong {
   color: var(--text-1);
-  font-size: 14px;
-  font-weight: 800;
+  /* Sheet scale (tokens.css): the empty state's lead line is a row title at
+     700 - it was 14/800, the one 800 on any sheet. */
+  font: var(--sheet-row-title);
+  font-weight: 700;
 }
 
 .mobile-search-empty span {
   max-width: 280px;
   color: var(--text-3);
-  font-size: 12px;
-  line-height: 1.35;
+  font: var(--sheet-empty);
 }
 
 .mobile-pages-counter {
@@ -3790,8 +3809,8 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
   flex-direction: column;
   padding: 0 0 calc(var(--mobile-bottom-inset, 10px) + 8px);
   overflow-y: auto;
-  background: var(--surface-2);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  background: var(--sheet-bg);
+  font-family: var(--sheet-font);
 }
 
 /* The header: "+ Add" left, "Edit" right, one hairline under it — the same
@@ -3826,7 +3845,7 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
   color: var(--text-2);
   background: transparent;
   border: 0;
-  font: 600 13px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  font: var(--sheet-action);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
@@ -3898,7 +3917,7 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
   border: 1px solid transparent;
   border-radius: 6px;
   outline: none;
-  font: 400 16px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  font: 400 16px/1 var(--sheet-font);
 }
 
 .mobile-bookmark-editor input:focus {
@@ -3914,7 +3933,7 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
   color: var(--accent);
   background: transparent;
   border: 0;
-  font: 600 14px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  font: var(--sheet-action);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
@@ -4034,6 +4053,9 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
   color: var(--text-3);
   background: transparent;
   border: 0;
+  /* A <button> does not inherit type: without this the bookmark name and its
+     page tag rendered in the UA's Arial 13.3px (consistency audit 2026-10-01). */
+  font: inherit;
   text-align: left;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -4067,9 +4089,7 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
   flex: 1;
   min-width: 0;
   color: var(--text-1);
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1.2;
+  font: var(--sheet-row-title);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4079,7 +4099,7 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
 .mobile-bookmark-page {
   flex: 0 0 auto;
   color: var(--text-3);
-  font-size: 12px;
+  font: var(--sheet-row-meta);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -4150,8 +4170,7 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
 
 .mobile-bookmark-empty span {
   color: var(--text-3);
-  font-size: 13px;
-  font-weight: 500;
+  font: var(--sheet-empty);
 }
 /* ====================== end Bookmarks: phone panel ====================== */
 
@@ -4170,14 +4189,18 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
    on the sheet's gutter. Nothing here paints a fill or a border.
    Spaces chunk B: the header and type follow the phone Survey sheet
    (mobileSurveyPanel.css) so the two panels read as one family - a 44px
-   head with a 15/600 title and quiet words on the right ("Done" neutral,
+   head with the sheet title and quiet words on the right ("Done" neutral,
    not red), 44px rows, 40px lines, 12px meta ink.
+   2026-10-01 (owner: "consistency across all bottom panels"): the sizes
+   below point at the shared PHONE SHEET SCALE in src/styles/tokens.css. The
+   title went 15/600 -> 16/700 and a space's name 15/600 -> 14/500, the row
+   title every other sheet uses (15/600 was as loud as the heading).
    ========================================================================== */
 /* Two classes so these win over styles.css whatever the load order. */
 .spaces-panel.mobile-spaces-panel {
-  --sp-bg: var(--surface-2);
-  --sp-edge: 16px;
-  --sp-head-h: 44px;
+  --sp-bg: var(--sheet-bg);
+  --sp-edge: var(--sheet-pad-x);
+  --sp-head-h: var(--sheet-head-h);
   --sp-head-btn-pad: 8px;
   --sp-pad-r: 2px;
   --sp-grip-w: 44px;       /* 12px glyph centred at 22 -> starts at the 16px edge */
@@ -4185,23 +4208,44 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
   --sp-col-w: 44px;
   --sp-switch-w: 44px;
   --sp-end-w: 44px;
-  --sp-row-h: 44px;
-  --sp-line-h: 40px;
+  --sp-row-h: var(--sheet-row-h);
+  --sp-line-h: var(--sheet-row-h-sub);
   --sp-field-h: 32px;
-  --sp-glyph: 16px;
+  --sp-glyph: var(--sheet-icon);
   --sp-track-w: 36px;
   --sp-track-h: 22px;
   --sp-knob: 18px;
   --sp-badge: 20px;
   --sp-badge-type: 11px;
-  --sp-title-type: 15px;
+  --sp-title-type: 16px;
   --sp-status-type: 10.5px;
   --sp-head-type: 13px;
-  /* Chunk B: the name is text at rest (the Survey sheet's 15/600 title
-     size); the rename field is 16px below, so iOS never zooms on focus. */
-  --sp-name-type: 15px;
+  /* Chunk B: the name is text at rest, at the sheet row title's 14px; the
+     rename field is 16px below, so iOS never zooms on focus. */
+  --sp-name-type: 14px;
   --sp-label-type: 14px;
   --sp-small-type: 12px;
+  font-family: var(--sheet-font);
+}
+
+/* The space's name at the sheet row title, 500 14px/18px. styles.css sets
+   600 for desktop, so the weight is overridden here, phone only. */
+.mobile-spaces-panel .spaces-item__name {
+  font: var(--sheet-row-title);
+}
+
+.mobile-spaces-panel .spaces-item__meta {
+  font: var(--sheet-row-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+.mobile-spaces-panel .spaces-list__empty {
+  font: var(--sheet-empty);
+}
+
+/* The "Add" word at the end of "+ Add pages": the sheet's action word. */
+.mobile-spaces-panel .spaces-item__add-go {
+  font: var(--sheet-action);
 }
 
 .mobile-spaces-panel .spaces-item__add-input,
@@ -4227,9 +4271,7 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
   min-width: 0;
   margin: 0;
   color: var(--text-1);
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 20px;
+  font: var(--sheet-title);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4261,9 +4303,7 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
   background: transparent;
   border: 0;
   color: var(--text-1);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
+  font: var(--sheet-action);
   white-space: nowrap;
   -webkit-tap-highlight-color: transparent;
   transition: opacity 90ms ease-out;

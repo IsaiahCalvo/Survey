@@ -275,4 +275,41 @@
      backdrop-filter: blur(8px); keep theme.js overlay in sync with it. */
   --accent-red: var(--danger);
   --overlay-scrim: rgba(13, 15, 20, 0.55);
+
+  /* --- PHONE SHEET SCALE (owner 2026-10-01) ---------------------------- */
+  /* "Consistency across all bottom panels (text sizes and spacing)." Every
+     phone bottom sheet - Pages / Search / Bookmarks, Spaces, Survey, History,
+     Active users and the settings sheets - takes its type and spacing from
+     here instead of picking its own. Layout comes from the Spaces sheet (44px
+     rows, 16px side inset, 16px glyphs, full-width hairlines); the 16/700
+     title is the 2026-09-22 "ONE TYPE SCALE" ruling.
+     The type tokens are `font` shorthands: use them as `font: var(--sheet-x)`.
+     The shorthand resets font-variant, so a rule that wants tabular-nums
+     declares font-variant-numeric AFTER the font line. Colour is not part of
+     a token: meta, section labels and empty states are --text-3.
+     Phone FIELDS are not on this scale: they render at 16px so iOS never
+     zooms on focus (index.html); a field that must look smaller is drawn at
+     a scale, see .mobile-survey-detail-name. Desktop does not use these. */
+  --sheet-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --sheet-bg: var(--surface-2);
+  --sheet-head-h: 44px;
+  --sheet-title: 700 16px/20px var(--sheet-font);
+  --sheet-subtitle: 500 12px/16px var(--sheet-font);   /* --text-3 */
+  --sheet-section: 600 12px/16px var(--sheet-font);    /* --text-3, no caps, no tracking */
+  --sheet-label: 600 11px/1 var(--sheet-font);         /* a field label in a settings card */
+  --sheet-row-h: 44px;
+  --sheet-row-h-sub: 40px;                            /* a nested line: a page, a Survey Marker, a check */
+  --sheet-row-title: 500 14px/18px var(--sheet-font);
+  --sheet-row-title-strong: 600 14px/18px var(--sheet-font); /* the open / current row */
+  --sheet-row-text: 400 14px/18px var(--sheet-font);   /* running text in a row: a search hit, a nested name */
+  --sheet-row-meta: 500 12px/14px var(--sheet-font);   /* --text-3 */
+  --sheet-action: 600 13px/1 var(--sheet-font);        /* Add, Edit, Done, Exit, Cancel */
+  --sheet-chip-h: 28px;
+  --sheet-chip: 600 12px/1 var(--sheet-font);          /* + Place, Y / N / N/A */
+  --sheet-empty: 500 13px/18px var(--sheet-font);      /* --text-3 */
+  --sheet-pad-x: 16px;
+  --sheet-gap: 8px;
+  --sheet-icon: 16px;
+  --sheet-icon-sm: 14px;
+  --sheet-divider: 1px solid var(--border);
 }

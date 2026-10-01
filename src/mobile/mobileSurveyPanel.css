@@ -43,8 +43,12 @@
    it without depending on stylesheet load order.
    ========================================================================== */
 
+/* Type and row sizes come from the shared PHONE SHEET SCALE in
+   src/styles/tokens.css (owner 2026-10-01: "consistency across all bottom
+   panels"), so this sheet, Spaces, Bookmarks, Search, History and Active
+   users read as one family. */
 .mobile-survey-sheet {
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  font-family: var(--sheet-font);
 }
 
 /* ---------- HEADER ------------------------------------------------------- */
@@ -76,9 +80,7 @@
 .mobile-survey-sheet h2.mobile-survey-head-title {
   margin: 0;
   color: var(--text-1);
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 20px;
+  font: var(--sheet-title);
   letter-spacing: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -140,10 +142,7 @@
   color: var(--text-1);
   background: transparent;
   border: 0;
-  font: inherit;
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 20px;
+  font: var(--sheet-title);
   text-align: left;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -184,10 +183,7 @@
   color: var(--text-1);
   background: transparent;
   border: 0;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1;
+  font: var(--sheet-action);
   white-space: nowrap;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -211,9 +207,7 @@
   color: var(--danger-text);
   background: transparent;
   border: 0;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
+  font: var(--sheet-action);
   white-space: nowrap;
   -webkit-tap-highlight-color: transparent;
   transition: opacity 90ms ease-out;
@@ -358,8 +352,7 @@
   flex: 1;
   min-width: 0;
   color: var(--text-1);
-  font-size: 13px;
-  font-weight: 500;
+  font: var(--sheet-row-title);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -368,7 +361,7 @@
 .mobile-survey-sheet .mobile-survey-template-meta {
   flex: 0 0 auto;
   color: var(--text-3);
-  font-size: 12px;
+  font: var(--sheet-row-meta);
   font-variant-numeric: tabular-nums;
 }
 
@@ -567,9 +560,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  color: var(--text-2);
-  font-size: 12px;
-  font-weight: 600;
+  color: var(--text-3);
+  font: var(--sheet-section);
   text-transform: none;
 }
 
@@ -601,7 +593,7 @@
 }
 
 .mobile-survey-sheet .survey-marker-category-row {
-  min-height: 40px;
+  min-height: var(--sheet-row-h);
   gap: 0;
 }
 
@@ -610,10 +602,10 @@
 }
 
 .mobile-survey-sheet .survey-marker-category-main {
-  min-height: 40px;
+  min-height: var(--sheet-row-h);
   padding: 0 12px;
   gap: 8px;
-  font-size: 13px;
+  font: var(--sheet-row-title);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -624,7 +616,7 @@
 
 .mobile-survey-sheet .survey-marker-category-main-count {
   margin: 0;
-  font-size: 12px;
+  font: var(--sheet-row-meta);
   opacity: 1;
   font-variant-numeric: tabular-nums;
 }
@@ -641,7 +633,7 @@
 .mobile-survey-sheet .survey-marker-category-arrow:hover,
 .mobile-survey-sheet .survey-marker-category-arrow:active {
   width: 40px;
-  min-height: 40px;
+  min-height: var(--sheet-row-h);
   flex: 0 0 40px;
   padding: 0;
   display: grid;
@@ -677,7 +669,7 @@
 .mobile-survey-sheet .mobile-survey-place:active {
   flex: 0 0 auto;
   align-self: center;
-  height: 28px;
+  height: var(--sheet-chip-h);
   margin: 0 8px 0 2px;
   padding: 0 10px 0 8px;
   display: inline-flex;
@@ -687,9 +679,7 @@
   background: var(--surface-1);
   border: 0;
   border-radius: 14px;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
+  font: var(--sheet-chip);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
@@ -701,13 +691,13 @@
 }
 
 .mobile-survey-sheet .mobile-survey-item-empty {
-  min-height: 38px;
+  min-height: var(--sheet-row-h-sub);
   box-sizing: border-box;
   padding: 0 14px 0 24px;
   display: flex;
   align-items: center;
   color: var(--text-3);
-  font-size: 12px;
+  font: var(--sheet-empty);
   border-top: 1px solid var(--border);
 }
 
@@ -719,7 +709,9 @@
 
 .mobile-survey-sheet .mobile-survey-item-row {
   width: 100%;
-  min-height: 38px;
+  /* A nested line (sheet scale sub-row, 40px) with the sheet's row text:
+     400 14px/18px, one step quieter than its category's 500 name. */
+  min-height: var(--sheet-row-h-sub);
   box-sizing: border-box;
   padding: 0 14px 0 24px;
   display: flex;
@@ -728,9 +720,7 @@
   color: var(--text-1);
   background: transparent;
   border: 0;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 400;
+  font: var(--sheet-row-text);
   text-align: left;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -768,7 +758,7 @@
   align-items: center;
   gap: 8px;
   color: var(--text-3);
-  font-size: 12px;
+  font: var(--sheet-row-meta);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1102,10 +1092,8 @@
   background: transparent;
   border: 0;
   border-radius: 0;
-  font: inherit;
   /* The sheet scale's chip type: 600 12px. */
-  font-size: 12px;
-  font-weight: 600;
+  font: var(--sheet-chip);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
