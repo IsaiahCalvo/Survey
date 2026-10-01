@@ -3288,7 +3288,17 @@ const SurveySpacesRail = ({
                                                           data-survey-marker-name-input={annotationId}
                                                           defaultValue={surveyMarkerName}
                                                           key={`${annotationId}:${surveyMarkerName}`}
-                                                          {...tip('Rename Survey Marker', 'below')}
+                                                          {...(({ onFocus, onMouseEnter, ...renameTip }) => ({
+                                                            // Owner 2026-10-01: a just-placed marker's name field is
+                                                            // focused, and its "Rename" chip sat over the Entity
+                                                            // control (onBlur below never hid it). No chip while
+                                                            // the field is focused; focusing hides a hover chip.
+                                                            ...renameTip,
+                                                            onFocus: renameTip.onMouseLeave,
+                                                            onMouseEnter: (e) => {
+                                                              if (e.currentTarget !== e.currentTarget.ownerDocument.activeElement) onMouseEnter?.(e);
+                                                            },
+                                                          }))(tip('Rename Survey Marker', 'below'))}
                                                           aria-label={`Rename ${surveyMarkerName}`}
                                                           onClick={(e) => e.stopPropagation()}
                                                           onDoubleClick={(e) => e.currentTarget.select()}
