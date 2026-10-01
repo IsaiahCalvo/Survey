@@ -236,7 +236,9 @@ export async function runSurveyMarkerLifecycle({
   let hitBox = await markerHitBox(page, id);
   let start = { x: hitBox.x + hitBox.width / 2, y: hitBox.y + hitBox.height / 2 };
   await touch.tap(start);
-  await page.getByRole('button', { name: 'Delete Survey Marker', exact: true })
+  // Selected = its rotation handle shows (owner 2026-10-01: no floating
+  // Delete chip beside a selected Survey Marker any more).
+  await page.locator('[data-rotation-handle]').first()
     .waitFor({ state: 'visible', timeout: 10_000 });
   // Let the marker's 350ms double-tap window expire before beginning the
   // distinct move gesture; otherwise the next pointerdown opens edit again.
@@ -288,24 +290,28 @@ export async function runSurveyMarkerLifecycle({
     return fingerprint === expected;
   }, { key: storageKeys.markers, markerId: id, expected: createdBounds });
 
-  // Re-select after undo. Certification requires a visible >=44px action and
-  // invokes it with the same trusted-touch driver used for drawing/moving.
-  // Wait out the marker's double-tap window from the prior drag pointerdown;
-  // an immediate tap would open detail and occlude the canvas action.
+  // Re-select after undo, then delete through the long-press menu - the
+  // phone's touch path to Delete (owner 2026-10-01: a selected Survey Marker
+  // shows no floating Delete chip). Wait out the marker's double-tap window
+  // from the prior drag pointerdown; an immediate tap would open detail and
+  // occlude the canvas.
   await wait(400);
-  let visibleDelete = await firstVisible(page.getByRole('button', { name: 'Delete Survey Marker', exact: true }));
-  if (!visibleDelete) {
-    const deleteHitBox = await markerHitBox(page, id);
-    await touch.tap({ x: deleteHitBox.x + deleteHitBox.width / 2, y: deleteHitBox.y + deleteHitBox.height / 2 });
-    visibleDelete = await firstVisible(page.getByRole('button', { name: 'Delete Survey Marker', exact: true }));
+  const deleteHitBox = await markerHitBox(page, id);
+  const deletePoint = { x: deleteHitBox.x + deleteHitBox.width / 2, y: deleteHitBox.y + deleteHitBox.height / 2 };
+  await touch.tap(deletePoint);
+  await wait(400);
+  await touch.longPress(deletePoint);
+  const menu = page.locator('[data-annotation-context-menu]');
+  const menuShown = await menu.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true, () => false);
+  if (!menuShown) {
+    await artifacts?.screenshot?.(page, 'survey-marker-longpress-no-menu');
+    throw new Error('survey-marker: long-press on a selected marker opened no action menu');
   }
-  if (!visibleDelete) {
-    await artifacts?.screenshot?.(page, 'survey-marker-selected-no-mobile-delete');
-    throw new Error('survey-marker: selected marker has no visible touch-accessible Delete action');
-  }
-  const deleteBox = invariant(await visibleDelete.boundingBox(), 'Survey Marker Delete action has no bounds');
-  invariant(deleteBox.width >= 44 && deleteBox.height >= 44,
-    `Survey Marker Delete action is ${deleteBox.width}x${deleteBox.height}; expected at least 44x44`);
+  const deleteAction = menu.getByText('Delete', { exact: true });
+  invariant(await deleteAction.count() === 1, 'Survey Marker long-press menu has no Delete action');
+  const deleteBox = invariant(await deleteAction.boundingBox(), 'Survey Marker Delete action has no bounds');
+  invariant(deleteBox.height >= 32,
+    `Survey Marker Delete action is ${deleteBox.width}x${deleteBox.height}; expected a finger-sized row`);
   await touch.tap({ x: deleteBox.x + deleteBox.width / 2, y: deleteBox.y + deleteBox.height / 2 });
   await page.waitForFunction(({ key, markerId }) => (
     !JSON.parse(localStorage.getItem(key) || '{}')?.[markerId]

@@ -205,8 +205,15 @@
   /* The warning's own tint, derived the same way --accent-soft and
      --danger-soft are, rather than re-typing the olive's channels. */
   --warning-soft: rgba(152, 156, 74, 0.14);
-  /* Status DOTS only (owner amendment b). Never a button, border or text. */
+  /* Status DOTS (owner amendment b). Never a button or border. */
   --success: #548c71;
+  /* Owner 2026-10-01: a Survey checklist "Y" answer is GREEN. --success fails
+     as a word (4.45 on surface-1, 3.38 on surface-3), so the answer takes this
+     label twin, the green --danger-text is to --danger: 6.73 on surface-1,
+     5.11 on surface-3. -soft is its tint, derived like --danger-soft, for the
+     chosen answer's small plate. Survey answers only. */
+  --success-text: #6fae8e;
+  --success-soft: rgba(84, 140, 113, 0.20);
   /* The destructive twin of --accent-soft, derived from --danger the same way
      (the base colour at 14-16% alpha) rather than invented: the hover wash on a
      small remove/delete control, which used to be a #3a1f1f dark-red literal.

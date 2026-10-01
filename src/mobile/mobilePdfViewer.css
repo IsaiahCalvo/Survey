@@ -192,22 +192,10 @@ html.survey-viewer-open #root {
   overscroll-behavior: none;
 }
 
-/* Select-mode Survey Marker action. The SVG owns selection geometry; this
-   action group stays hidden outside the narrow mobile viewer. Its viewBox
-   dimensions are container-measured so the button remains 76x48 CSS px. */
-.survey-marker-touch-delete {
-  display: none;
-}
-
 /* Screen-only: the html/body/#root pin below must never apply while the
    browser paginates for paper (printable width < 720px clipped every print
    to one sheet). */
 @media screen and (max-width: 720px) {
-  html.survey-viewer-open .survey-marker-touch-delete {
-    display: inline;
-    overflow: visible;
-  }
-
   html.survey-viewer-open,
   html.survey-viewer-open body,
   html.survey-viewer-open #root,
@@ -1690,8 +1678,8 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   inset-inline: calc(50% - 22px);
 }
 
-/* "Repeat" (was "Keep active"; it keeps the CATEGORY armed after a marker is
-   placed): the desktop survey row's switch (.survey-subrow__keep in
+/* "Reuse" (was "Keep active", then "Repeat"; it keeps the CATEGORY armed
+   after a marker is placed): the desktop survey row's switch (.survey-subrow__keep in
    src/styles.css) at the strip's scale - a 24x14 track with a 10px knob, then
    the word in the strip's 11px/600, 6px apart. No plate, no border. Off: a
    --surface-3 track with an inset --border-strong ring, word --text-2. On: an

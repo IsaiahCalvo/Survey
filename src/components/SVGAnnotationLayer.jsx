@@ -4143,27 +4143,6 @@ const SVGAnnotationLayer = memo(({
     });
   }, [selectedSurveyMarkerEntry, surveyMarkerPreviewBounds]);
 
-  const selectedSurveyMarkerDeleteBounds = useMemo(() => {
-    if (!selectedSurveyMarkerRotationBounds) return null;
-    // inverseScale is derived from the SVG element's measured client width,
-    // keeping this touch target 76x48 CSS px without coordinating zoom in JS.
-    const controlWidth = 76 * inverseScale;
-    // Four-pixel safety margin keeps the measured target >=44px after SVG
-    // subpixel rounding on high-DPR mobile viewports.
-    const controlHeight = 48 * inverseScale;
-    const gap = 8 * inverseScale;
-    const marker = selectedSurveyMarkerRotationBounds;
-    const preferredX = marker.x + marker.width + gap;
-    const preferredY = marker.y - controlHeight - gap;
-    const fallbackY = marker.y + marker.height + gap;
-    return {
-      x: Math.max(0, Math.min(width - controlWidth, preferredX)),
-      y: Math.max(0, Math.min(height - controlHeight, preferredY >= 0 ? preferredY : fallbackY)),
-      width: controlWidth,
-      height: controlHeight,
-    };
-  }, [height, inverseScale, selectedSurveyMarkerRotationBounds, width]);
-
   const rotationInputAnnotationIndex = selectedSurveyMarkerRotationBounds
     ? `survey:${selectedSurveyMarkerId}`
     : selectedAnnotationIndex;
@@ -6671,56 +6650,10 @@ const SVGAnnotationLayer = memo(({
           the page's one stack. They are stored outside annotations.objects,
           so renderSurveyMarkerEntry owns their click, move and resize. */}
       {stackedMarks}
-      {isSelectTool && selectedSurveyMarkerDeleteBounds && typeof onDeleteSurveyMarker === 'function' && (
-        <g
-          className="survey-marker-touch-delete"
-          role="button"
-          aria-label="Delete Survey Marker"
-          tabIndex={0}
-          transform={`translate(${selectedSurveyMarkerDeleteBounds.x} ${selectedSurveyMarkerDeleteBounds.y})`}
-          pointerEvents="all"
-          style={{ cursor: 'pointer' }}
-          onPointerDown={(e) => e.stopPropagation()}
-          onPointerUp={(e) => {
-            // One pointer release owns touch/mouse activation. Avoid also
-            // handling the synthetic click a touch release may emit.
-            e.preventDefault();
-            e.stopPropagation();
-            deleteSelectedSurveyMarker();
-          }}
-          onKeyDown={(e) => {
-            if (e.key !== 'Enter' && e.key !== ' ') return;
-            e.preventDefault();
-            e.stopPropagation();
-            deleteSelectedSurveyMarker();
-          }}
-        >
-          {/* UX 2026-09-22: the Delete chip's own red comes from the palette
-              now instead of two literals (#6f3037 / #8c3a42). var() is only
-              valid in a CSS declaration, never in an SVG presentation
-              attribute, so it travels on `style`, not on `fill`. */}
-          <rect
-            width={selectedSurveyMarkerDeleteBounds.width}
-            height={selectedSurveyMarkerDeleteBounds.height}
-            rx={8 * inverseScale}
-            style={{ fill: 'var(--danger-fill)', stroke: 'var(--danger)' }}
-            strokeWidth={inverseScale}
-          />
-          <text
-            x={selectedSurveyMarkerDeleteBounds.width / 2}
-            y={selectedSurveyMarkerDeleteBounds.height / 2}
-            fill="#fff"
-            fontFamily="Helvetica"
-            fontSize={12 * inverseScale}
-            fontWeight="800"
-            textAnchor="middle"
-            dominantBaseline="central"
-            pointerEvents="none"
-          >
-            Delete
-          </text>
-        </g>
-      )}
+      {/* Owner 2026-10-01: selecting a Survey Marker never shows a floating
+          Delete chip beside it (phone or desktop, one or many). Delete stays
+          on the long-press / right-click menu, the Delete key and the Survey
+          panel. */}
       {/* w52: callouts are drawn inside stackedMarks above (one stack); a
           selected callout's handles sit here, above every mark. */}
       {filteredCallouts.selectedOverlays}

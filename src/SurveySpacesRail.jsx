@@ -1479,7 +1479,7 @@ const SurveySpacesRail = ({
                                   }}
                                 >
                                   <span>{template.name || 'Untitled Template'}</span>
-                                  {template.id === selectedTemplate.id ? <Icon name="check" size={13} color="currentColor" /> : null}
+                                  {template.id === selectedTemplate.id ? <Icon name="check" size={12} color="currentColor" /> : null}
                                 </button>
                               ))}
                             </div>
@@ -3709,9 +3709,9 @@ const SurveySpacesRail = ({
                                                     const response = surveyMarkers[annotationId]?.checklistResponses?.[item.id] || {};
                                                     const isSelected = response.selection;
                                                     // Y / N / N/A: one grey well, the answers are words and
-                                                    // the chosen one is lit ink (Yes gold, No red, N/A
-                                                    // bright) - the phone's rule. They were three filled
-                                                    // light-grey boxes that turned solid gold / red.
+                                                    // the chosen one is lit on a plate of its hue (Yes
+                                                    // green, No red, N/A gold; owner 2026-10-01) - the
+                                                    // phone's rule.
                                                     return (
                                                       <div key={item.id} className="survey-rail__detail-line">
                                                         <span className="survey-rail__detail-text">
@@ -3816,21 +3816,23 @@ const SurveySpacesRail = ({
                                                                   fontSize: '10px',
                                                                   fontWeight: 600,
                                                                   borderRadius: '3px',
-                                                                  /* Same rule as the Y/N buttons above: the answered-value pill
-                                                                     is a filled control, so "yes" is gold and "no" is --danger.
-                                                                     --success stays on status dots only. */
+                                                                  /* Same pairs as the chosen Y / N / N/A answer above
+                                                                     (owner 2026-10-01): Y green, N red, N/A gold - the
+                                                                     word in the answer's colour on a plate of its hue. */
                                                                   background: sel === 'Y'
-                                                                    ? 'var(--accent)'
+                                                                    ? 'var(--success-soft)'
                                                                     : sel === 'N'
-                                                                      ? 'var(--danger)'
-                                                                      : sel
-                                                                        ? 'var(--text-disabled)'
+                                                                      ? 'var(--danger-soft)'
+                                                                      : sel === 'N/A'
+                                                                        ? 'var(--accent-soft)'
                                                                         : 'var(--surface-3)',
                                                                   color: sel === 'Y'
-                                                                    ? 'var(--accent-text)'
-                                                                    : sel
-                                                                      ? '#FFFFFF'
-                                                                      : 'var(--text-3)',
+                                                                    ? 'var(--success-text)'
+                                                                    : sel === 'N'
+                                                                      ? 'var(--danger-text)'
+                                                                      : sel === 'N/A'
+                                                                        ? 'var(--accent)'
+                                                                        : 'var(--text-3)',
                                                                   textAlign: 'center',
                                                                 }}
                                                               >
