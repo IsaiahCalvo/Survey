@@ -4205,14 +4205,13 @@
      (2026-10-01): the page no longer scrolls, so without a height the bottom
      of a long template would be cut off with no way to reach it. There the
      box scrolls the open template's card, the way a drilled-in project
-     scrolls. The native shell is left list-only, as it was. */
-  .survey-hub.hub-native-shell-expo .ed-scope > .templates-editor-body:has(> .templates-mobile-layout > .templates-mobile-browser),
-  .survey-hub:not(.hub-native-shell-expo) .ed-scope > .templates-editor-body:has(> .templates-mobile-layout) {
+     scrolls. The native shell does the same (owner's app could not reach
+     the last categories of a long open template either). */
+  .survey-hub .ed-scope > .templates-editor-body:has(> .templates-mobile-layout) {
     height: 100% !important;
   }
 
-  .survey-hub.hub-native-shell-expo .ed-scope > .templates-editor-body > .templates-mobile-layout:has(> .templates-mobile-browser),
-  .survey-hub:not(.hub-native-shell-expo) .ed-scope > .templates-editor-body > .templates-mobile-layout {
+  .survey-hub .ed-scope > .templates-editor-body > .templates-mobile-layout {
     flex: none;
   }
 
