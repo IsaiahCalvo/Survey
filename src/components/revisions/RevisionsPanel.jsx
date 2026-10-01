@@ -108,7 +108,7 @@ function ensureHistoryPanelStyle() {
       --dh-c-created: #4a90e2; --dh-c-edited: var(--success, #548c71); --dh-c-deleted: var(--danger, #d95a56);
       --dh-c-restored: #6fd3d8; --dh-c-other: var(--text-3);
       display: flex; flex-direction: column; min-height: 0; height: 100%; background: var(--surface-1); color: var(--text-2); }
-    .dh-panel--phone { --dh-edge: 16px; --dh-row-pad: 11px; --dh-type: 14px; --dh-meta: 12.5px; --dh-glyph: 20px; background: var(--surface-2); }
+    .dh-panel--phone { --dh-edge: var(--sheet-pad-x, 16px); --dh-row-pad: 11px; --dh-type: 14px; --dh-meta: 12px; --dh-glyph: 20px; background: var(--sheet-bg, var(--surface-2)); font-family: var(--sheet-font, inherit); }
     .dh-head { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 8px var(--dh-edge) 10px; border-bottom: 1px solid var(--border); }
     .dh-headrow { display: flex; align-items: center; gap: 8px; min-height: 28px; }
     .dh-count { flex: 1; display: flex; align-items: baseline; gap: 8px; color: var(--text-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -188,6 +188,14 @@ function ensureHistoryPanelStyle() {
     .dh-foot { flex: none; padding: 9px var(--dh-edge); border-top: 1px solid var(--border); color: var(--text-3); font-size: 11.5px; }
     .dh-link { padding: 0; border: 0; background: none; color: var(--text-2); font: inherit; font-size: 11.5px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
     .dh-link:hover { color: var(--text-1); }
+    /* Phone: the shared PHONE SHEET SCALE (src/styles/tokens.css, owner
+       2026-10-01 "consistency across all bottom panels") - a 16/700 title,
+       12/600 day labels in sentence case (no caps or tracking on the phone),
+       12px meta and the sheet's empty-state line. */
+    .dh-panel--phone .dh-title { font: var(--sheet-title); }
+    .dh-panel--phone .dh-day { font: var(--sheet-section); letter-spacing: 0; text-transform: none; }
+    .dh-panel--phone .dh-empty { font: var(--sheet-empty); }
+    .dh-panel--phone .dh-row .dh-m { font: var(--sheet-row-meta); }
     .dh-panel--phone .dh-row { min-height: 44px; }
     .dh-panel--phone .dh-chip { padding: 8px 6px; font-size: 13px; }
     .dh-panel--phone .dh-legend { font-size: 12px; }
