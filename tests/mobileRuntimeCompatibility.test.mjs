@@ -623,6 +623,17 @@ test('native mobile home remains viewport-contained with a solid full-width tab 
   assert.match(HUB_CSS_SOURCE, /\.survey-hub \.mobile-home-tabs::before \{\s*display: none/);
 });
 
+// 2026-10-01 (owner: "on mobile web the box moves when I scroll"): the phone
+// web home is a fixed frame like the app — the page never scrolls, only the
+// rows inside the list's panel do.
+test('phone web home scrolls the list box, not the page, like the native shell', () => {
+  assert.match(HUB_CSS_SOURCE, /html\.survey-hub-mobile-scroll-page,\s*body\.survey-hub-mobile-scroll-page \{[\s\S]{0,120}height: 100dvh !important;[\s\S]{0,80}overflow: hidden !important;\s*overscroll-behavior: none;/);
+  assert.match(HUB_CSS_SOURCE, /\.survey-hub\.hub-native-shell-expo \.templates-mobile-layout,\s*\.survey-hub:not\(\.hub-native-shell-expo\) \.documents-mobile-list,\s*\.survey-hub:not\(\.hub-native-shell-expo\) \.projects-mobile-layout,\s*\.survey-hub:not\(\.hub-native-shell-expo\) \.templates-mobile-layout \{[\s\S]{0,80}overflow-y: auto;\s*overscroll-behavior-y: contain;/);
+  assert.match(HUB_CSS_SOURCE, /\.survey-hub:not\(\.hub-native-shell-expo\) \.archive-mobile-list \{[\s\S]{0,80}overflow-y: auto;/);
+  // The old phone-web clip on the box would stop it scrolling.
+  assert.doesNotMatch(HUB_CSS_SOURCE, /\.survey-hub:not\(\.hub-native-shell-expo\) \.templates-mobile-layout:has\(> \.templates-mobile-browser\) \{\s*overflow: hidden;/);
+});
+
 // DELIBERATE ASSERTION CHANGE 2026-09-22: the phone left host went from a fixed
 // 44px to var(--mobile-rail-w) (36px, board 1) after the owner saw an empty
 // 8px strip beside the rail. The flex-shorthand guard itself is unchanged.

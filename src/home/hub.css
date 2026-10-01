@@ -869,45 +869,44 @@
     overflow: hidden !important;
   }
 
+  /* THE PHONE WEB PAGE IS A FIXED FRAME, like the app's (owner 2026-10-01:
+     "in Expo Go I scroll within the box ... on mobile web the box moves when
+     I scroll, which is wrong"). The page used to grow with the list and
+     scroll as a whole, so the panel's top edge scrolled away under the
+     header. Now the page is exactly the visible screen and never scrolls;
+     the hub below sizes the list's panel to it and only the rows inside the
+     panel scroll — the same rules as the native shell (see THE BOX SCROLLS
+     further down). 100dvh, not 100%: in iOS Safari it is the screen you can
+     actually see between the top bar and the bottom browser bar, so the
+     panel's bottom edge sits just above that bar. `overscroll-behavior:
+     none` stops the whole page rubber-banding when a drag starts on the
+     header. (The class names still say "scroll" for history; the page no
+     longer does.) */
   html.survey-hub-mobile-scroll-page,
   body.survey-hub-mobile-scroll-page {
-    height: auto !important;
-    min-height: 100%;
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
-    overscroll-behavior-y: auto;
+    height: 100% !important;
+    height: 100dvh !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    overscroll-behavior: none;
   }
 
-  #root.survey-hub-mobile-scroll-root {
-    height: auto !important;
-    min-height: 100dvh;
-    overflow: visible !important;
-  }
-
+  #root.survey-hub-mobile-scroll-root,
   #root.survey-hub-mobile-scroll-root > div {
-    height: auto !important;
-    min-height: 100dvh !important;
-    overflow: visible !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
   }
 
   /* Viewer-open guard (2026-07-08): the hub stays mounted while a document is
      open (AppShell overlays the viewer tab on top of it). On mobile the hub's
-     fixed header/tab bar and the page-scroll overrides above would bleed
-     through and break the viewer's viewport-sized frame. AppShell stamps
-     `survey-viewer-open` on <html> whenever the viewer is visible; these
-     rules restore the app frame and hide the hub's fixed chrome. */
+     fixed header/tab bar would bleed through the viewer, so they hide while
+     AppShell stamps `survey-viewer-open` on <html>. (The page frame above is
+     already the viewport-sized frame the viewer needs; it keeps the plain
+     100% height it always had there, so the viewer's frame is unchanged.) */
   html.survey-viewer-open.survey-hub-mobile-scroll-page,
   html.survey-viewer-open body.survey-hub-mobile-scroll-page {
     height: 100% !important;
-    min-height: 0;
-    overflow: hidden !important;
-  }
-
-  html.survey-viewer-open #root.survey-hub-mobile-scroll-root,
-  html.survey-viewer-open #root.survey-hub-mobile-scroll-root > div {
-    height: 100% !important;
-    min-height: 0 !important;
-    overflow: hidden !important;
   }
 
   html.survey-viewer-open .survey-hub .header,
@@ -1909,9 +1908,12 @@
     padding: 0 0 14px;
   }
 
+  /* No min-height here any more: the phone page is a fixed frame and the
+     list's height comes from THE BOX SCROLLS rules below (2026-10-01). A
+     screen-tall min-height on a later, equally specific rail rule pushed the
+     Templates panel 8px past the bottom of the screen. */
   .survey-hub.hub-mobile-nav-rail .documents-mobile-list,
   .survey-hub.hub-mobile-nav-rail .projects-mobile-layout {
-    min-height: calc(100dvh - var(--mobile-header-h));
     /* 2026-07-12 (defect #8): var-first inset (Android WebView env()=0). */
     padding-bottom: calc(14px + var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
   }
@@ -1924,23 +1926,40 @@
     border-radius: 8px;
   }
 
+  /* THE BOX SCROLLS, NOT THE PAGE — in the native shell and, since
+     2026-10-01, on the phone web page too (owner: "in Expo Go I scroll within
+     a box ... on mobile web the box moves when I scroll, which is wrong").
+     The hub is exactly the screen, the header and the tab bar stay put, the
+     tab's body takes the height between them, and the list's panel is the
+     scroller: its four edges never move and only the rows inside it scroll.
+     Every rule in this set carries the native-shell selector unchanged plus
+     its phone-web twin (`:not(.hub-native-shell-expo)`), so the two can never
+     drift apart. The web page itself is held to the screen by the
+     html/body frame rules at the top of this block. */
   .survey-hub.hub-native-shell-expo,
   .survey-hub.hub-native-shell-expo .shell,
-  .survey-hub.hub-native-shell-expo .main {
+  .survey-hub.hub-native-shell-expo .main,
+  .survey-hub:not(.hub-native-shell-expo),
+  .survey-hub:not(.hub-native-shell-expo) .shell,
+  .survey-hub:not(.hub-native-shell-expo) .main {
     height: 100%;
     min-height: 0;
     max-height: 100%;
     overflow: hidden;
   }
 
-  .survey-hub.hub-native-shell-expo .main {
+  .survey-hub.hub-native-shell-expo .main,
+  .survey-hub:not(.hub-native-shell-expo) .main {
     display: flex;
     flex-direction: column;
   }
 
   .survey-hub.hub-native-shell-expo .documents-ledger-body,
   .survey-hub.hub-native-shell-expo .projects-tab-body,
-  .survey-hub.hub-native-shell-expo .ed-scope {
+  .survey-hub.hub-native-shell-expo .ed-scope,
+  .survey-hub:not(.hub-native-shell-expo) .documents-ledger-body,
+  .survey-hub:not(.hub-native-shell-expo) .projects-tab-body,
+  .survey-hub:not(.hub-native-shell-expo) .ed-scope {
     flex: 1 !important;
     height: auto !important;
     min-height: 0 !important;
@@ -1949,7 +1968,10 @@
 
   .survey-hub.hub-native-shell-expo .documents-mobile-list,
   .survey-hub.hub-native-shell-expo .projects-mobile-layout,
-  .survey-hub.hub-native-shell-expo .templates-mobile-layout {
+  .survey-hub.hub-native-shell-expo .templates-mobile-layout,
+  .survey-hub:not(.hub-native-shell-expo) .documents-mobile-list,
+  .survey-hub:not(.hub-native-shell-expo) .projects-mobile-layout,
+  .survey-hub:not(.hub-native-shell-expo) .templates-mobile-layout {
     flex: 1;
     height: 100%;
     min-height: 0;
@@ -2981,7 +3003,7 @@
   }
 
   .survey-hub.hub-mobile-nav-rail .templates-mobile-layout {
-    min-height: calc(100dvh - var(--mobile-header-h));
+    /* No screen-tall min-height: see the Documents rail rule. */
     /* 2026-07-12 (defect #8): var-first inset (Android WebView env()=0). */
     padding-bottom: calc(14px + var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
   }
@@ -3852,11 +3874,12 @@
   }
 
   .survey-hub.hub-mobile-nav-rail .archive-mobile-list {
-    min-height: calc(100dvh - var(--mobile-header-h));
+    /* No screen-tall min-height: see the Documents rail rule. */
     padding-bottom: calc(14px + var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
   }
 
-  .survey-hub.hub-native-shell-expo .archive-mobile-list {
+  .survey-hub.hub-native-shell-expo .archive-mobile-list,
+  .survey-hub:not(.hub-native-shell-expo) .archive-mobile-list {
     flex: 1;
     height: 100%;
     min-height: 0;
@@ -4152,15 +4175,11 @@
     margin-bottom: var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px));
   }
 
-  /* On the phone web page the box does not scroll (the page does), so it
-     clips here to keep a picked row's fill inside the rounded corners. In the
-     native shell it is the scroller, which clips on its own — overriding its
-     overflow there would stop it scrolling. */
-  .survey-hub:not(.hub-native-shell-expo) .projects-mobile-layout:has(> .projects-mobile-drill-view > [data-sortable-rearrange-list]),
-  .survey-hub:not(.hub-native-shell-expo) .projects-mobile-layout:not(:has(> .projects-mobile-browser)),
-  .survey-hub:not(.hub-native-shell-expo) .templates-mobile-layout:has(> .templates-mobile-browser) {
-    overflow: hidden;
-  }
+  /* No clip rule of its own: on the phone web page and in the native shell
+     alike this box is the scroller, and a scroller clips to its rounded
+     corners on its own, so a picked row's fill stays inside them. (Phone web
+     used to clip it here with overflow: hidden while the page scrolled; that
+     would now stop the box scrolling.) */
 
   .survey-hub .projects-mobile-layout > .projects-mobile-drill-view > [data-sortable-rearrange-list],
   .survey-hub .projects-mobile-layout > .projects-mobile-drill-view > .hub-loading-mobile-panel,
@@ -4181,12 +4200,19 @@
      tab's, so the list box stops above the tab bar and scrolls. That body is
      a flex column where Documents' is a block, so the list also stops
      flexing: as a flex item its safe-inset margin would come out of its
-     height and end it 10px above where Documents ends. */
-  .survey-hub.hub-native-shell-expo .ed-scope > .templates-editor-body:has(> .templates-mobile-layout > .templates-mobile-browser) {
+     height and end it 10px above where Documents ends.
+     On the phone web page the same holds for an OPEN template as well
+     (2026-10-01): the page no longer scrolls, so without a height the bottom
+     of a long template would be cut off with no way to reach it. There the
+     box scrolls the open template's card, the way a drilled-in project
+     scrolls. The native shell is left list-only, as it was. */
+  .survey-hub.hub-native-shell-expo .ed-scope > .templates-editor-body:has(> .templates-mobile-layout > .templates-mobile-browser),
+  .survey-hub:not(.hub-native-shell-expo) .ed-scope > .templates-editor-body:has(> .templates-mobile-layout) {
     height: 100% !important;
   }
 
-  .survey-hub.hub-native-shell-expo .ed-scope > .templates-editor-body > .templates-mobile-layout:has(> .templates-mobile-browser) {
+  .survey-hub.hub-native-shell-expo .ed-scope > .templates-editor-body > .templates-mobile-layout:has(> .templates-mobile-browser),
+  .survey-hub:not(.hub-native-shell-expo) .ed-scope > .templates-editor-body > .templates-mobile-layout {
     flex: none;
   }
 
