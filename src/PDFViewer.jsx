@@ -35977,7 +35977,9 @@ ${pageBlocks}
                                     width: '100%',
                                     height: '100%',
                                     pointerEvents: 'none',
-                                    zIndex: 99
+                                    // Above the SVG annotation layer (100): the Spaces
+                                    // area editor now renders inside this target.
+                                    zIndex: 101
                                   }}
                                 >
                                   <div

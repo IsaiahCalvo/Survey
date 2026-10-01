@@ -31,7 +31,8 @@ test('phone Region layer lets two fingers reach the PDF viewer and has finger-si
   // The full-page layer is see-through to touches on the phone, so a pinch or
   // two-finger pan lands in the PDF scroller; the one-finger press is picked up
   // by the document capture listener instead.
-  assert.match(REGION_SOURCE, /pointerEvents: \(activeTool === 'pan' \|\| mobileMode\) \? 'none' : 'auto'/);
+  // (Space held = hand-pan also lets the press through, owner 2026-10-01.)
+  assert.match(REGION_SOURCE, /pointerEvents: \(activeTool === 'pan' \|\| mobileMode \|\| isSpacePressed\) \? 'none' : 'auto'/);
   assert.match(REGION_SOURCE, /closest\?\.\('\.survey-pdfjs-viewer'\)/);
   // A second finger drops the half-drawn shape / puts a dragged area back.
   assert.match(REGION_SOURCE, /const PDFJS_PINCH_START_EVENT = 'survey-pdfjs-pinch-start'/);
@@ -70,4 +71,30 @@ test('mobile Region subtools expose persistent Select mode', () => {
     MOBILE_CHROME_SOURCE,
     /name: 'Delete'|>Delete<|Delete<\/button>/,
   );
+});
+
+// Owner 2026-10-01: "I can't pan or zoom in spaces mode" / "the region lags
+// behind the pan" / "on mobile I can't move one handle".
+test('area editor lives inside the page and lets scroll, zoom and hand-pan through', () => {
+  // Portalled into the page target: moves and scales with the page in the
+  // same frame, and wheel / ctrl+wheel over it reach the PDF scroller.
+  assert.match(REGION_SOURCE, /createPortal\(\(\s*<div\s+ref=\{containerRef\}/);
+  assert.match(REGION_SOURCE, /\), targetElement\)\}/);
+  assert.doesNotMatch(REGION_SOURCE, /left: `\$\{canvasRect\.left\}px`/);
+  // Page size measured container-aware (offsetWidth) and applied before paint.
+  assert.match(REGION_SOURCE, /let width = targetElement\.offsetWidth;/);
+  assert.match(REGION_SOURCE, /flushSync\(\(\) => setCanvasRect\(nextRect\)\)/);
+  // Space held: the viewer pans; the tool does not start a draw.
+  assert.match(REGION_SOURCE, /if \(spacePanArmed\(\)\) return;/);
+  // Zoom controls and the page scroller do not cancel the edit.
+  assert.match(REGION_SOURCE, /event\.target\.closest\(REGION_EDIT_PASS_THROUGH_CHROME\)/);
+});
+
+test('point handles move one point on desktop and phone; double-tap / double-click gives a bounding box', () => {
+  // The phone-only "rectangle corner resizes the rectangle" branch is gone.
+  assert.doesNotMatch(REGION_SOURCE, /Phone: a rectangle's corner resizes the rectangle/);
+  assert.match(REGION_SOURCE, /const useVertexHandles = vertexCount <= 32 && boxEditRegionId !== selectedRegion\.regionId;/);
+  assert.match(REGION_SOURCE, /registerRegionTap\(interactionState\.tapRegionId, event\.clientX, event\.clientY\)/);
+  assert.match(REGION_SOURCE, /onDoubleClick=\{handleLayerDoubleClick\}/);
+  assert.match(REGION_SOURCE, /const DOUBLE_TAP_MS = 350;/);
 });
