@@ -201,6 +201,10 @@ function suppressNextClick(doc) {
  *   detent (the Pages / Search / Bookmarks tray). Off for everything else.
  * @param {boolean} [options.fullscreenable]  also allow the THIRD step, full
  *   screen, from Expanded. Browse panels only; requires expandable.
+ * @param {() => boolean} [options.onPullDown]  called when a downward release
+ *   passes the dismiss threshold, before the sheet steps down a detent or
+ *   closes. Return true when the caller used the pull itself (the Survey panel
+ *   collapses one accordion level); the sheet then springs back where it is.
  * @param {boolean} [options.open]  whether the sheet is currently shown. Drives
  *   the slide-up entrance. Sheets that mount only while open can leave this at
  *   its default; sheets that stay mounted and toggle a collapsed class (the hub
@@ -211,7 +215,10 @@ function suppressNextClick(doc) {
  * keyboard lift in mobilePdfViewer.css.
  */
 export function useMobileSheetMotion(onClose, options = {}) {
-  const { canStartDrag, expandable = false, fullscreenable = false, open = true } = options;
+  const { canStartDrag, expandable = false, fullscreenable = false, open = true, onPullDown } = options;
+  // Read at release time, so the caller's latest state decides.
+  const onPullDownRef = useRef(onPullDown);
+  onPullDownRef.current = onPullDown;
   const [dragY, setDragY] = useState(0);
   const [closing, setClosing] = useState(false);
   // { ms, easing } of a velocity-matched close, or null for the plain slide.
@@ -346,6 +353,12 @@ export function useMobileSheetMotion(onClose, options = {}) {
       return;
     }
     if (dy > SHEET_DISMISS_DY || vy > SHEET_DISMISS_VY) {
+      // The sheet's own content may take the pull first (one level of the
+      // Survey accordion closes per pull, owner 2026-10-01).
+      if (typeof onPullDownRef.current === 'function' && onPullDownRef.current()) {
+        springBack();
+        return;
+      }
       // From a tall detent a downward pull steps back ONE height instead of
       // dismissing, so Full screen takes three pulls to close and a panel is
       // never lost in one gesture. The transform springs home on the same
