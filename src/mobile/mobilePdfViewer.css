@@ -3215,6 +3215,47 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
     0 var(--keyboard-inset, 0px) 0 var(--keyboard-inset, 0px) var(--surface-1);
 }
 
+/* RESIZE GLIDE (owner 2026-10-01: the sheet SNAPPED to its typing / full-screen
+   height). While useMobileSheetMotion glides a sheet between two heights it
+   animates --sheet-glide-height (registered below so it interpolates) and sets
+   [data-sheet-glide], which makes the box read that value instead of its
+   detent / keyboard height. The selector outranks the keyboard rule above, and
+   the cap is lifted for the glide only: the glide starts from where the top
+   edge WAS, which can be taller than the new cap while the keyboard goes down.
+   The bottom edge is never animated - the keyboard lift stays instant. */
+@property --sheet-glide-height {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
+:root [data-mobile-sheet][data-sheet-glide] {
+  height: var(--sheet-glide-height) !important;
+  max-height: none !important;
+}
+
+/* PANEL TO PANEL (owner 2026-10-01): switching panels from the dock keeps the
+   sheet standing and fades the new panel's content in (useMobileSheetMotion,
+   SHEET_SWAP_MS). The grab handle stays put, so the frame reads as one sheet.
+   Two identical keyframes so a second switch inside the fade restarts it. */
+[data-mobile-sheet][data-sheet-swap='a'] > :not(.mobile-pdf-sheet__handle) {
+  animation: mobileSheetSwapInA 200ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+
+[data-mobile-sheet][data-sheet-swap='b'] > :not(.mobile-pdf-sheet__handle) {
+  animation: mobileSheetSwapInB 200ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+
+@keyframes mobileSheetSwapInA {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes mobileSheetSwapInB {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 /* Swipe down anywhere on a sheet (owner 2026-09-30, like Drawboard): the
    sheet's lists hand a pull that starts at their top straight to the sheet
    (useMobileSheetMotion), so they must not rubber-band it away first. */
@@ -3660,6 +3701,11 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
   }
   .mobile-pdf-tools__subtools {
     animation: none !important;
+  }
+  /* Owner 2026-10-01: under reduced motion a sheet opens and closes at once,
+     and so does the dim behind it. */
+  .mobile-pdf-sheet-backdrop {
+    animation: none;
   }
 }
 

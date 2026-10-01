@@ -168,7 +168,9 @@ test('phone sheets have no close X and take a swipe from anywhere', () => {
   assert.match(sidebar, /\{\.\.\.\(mobileMode \? sheetProps : null\)\}/);
   assert.match(survey, /\{\.\.\.\(mobileMode \? surveySheetProps : null\)\}/);
   assert.equal((mobileChrome.match(/\{\.\.\.(textSheetProps|usersSheetProps|sheetProps)\}/g) || []).length, 4);
-  assert.match(sheetMotion, /sheetProps: \{ ref: sheetRef, 'data-mobile-sheet': 'true' \}/);
+  // (2026-10-01: sheetProps also carries data-sheet-swap, the panel-to-panel
+  // content fade, so this reads the two original keys and not the object end.)
+  assert.match(sheetMotion, /sheetProps: \{\s*ref: sheetRef,\s*'data-mobile-sheet': 'true',/);
 
   // Native listener so the move can be cancelled once the sheet owns it.
   assert.match(sheetMotion, /addEventListener\('touchmove', onTouchMove, \{ passive: false \}\)/);
@@ -179,4 +181,41 @@ test('phone sheets have no close X and take a swipe from anywhere', () => {
   // Lists scroll first and hand over at their top; sideways moves are ignored.
   assert.match(sheetMotion, /g\.scrollers\.some\(\(el\) => el\.scrollTop > 0\)/);
   assert.match(sheetMotion, /Math\.abs\(dx\) > Math\.abs\(dy\)/);
+});
+
+/*
+ * Owner 2026-10-01 (iPhone): (1) closing a sheet from the dock / programmatically
+ * was a pop while opening slid - every close now slides down behind the dock on
+ * the entrance's own curve, and a dock switch keeps the sheet standing and
+ * fades the content; (2) a height change (typing, keyboard, detents, Survey
+ * full screen) snapped - it now glides. Proven with frame logs in headless
+ * Chromium; these pin the wiring.
+ */
+test('dock closes slide, dock switches hand over, and height changes glide', () => {
+  const survey = read('../src/SurveySpacesRail.jsx');
+  const appShell = read('../src/AppShell.jsx');
+  // Same curve family both ways.
+  assert.match(sheetMotion, /export const SHEET_CLOSE_EASING = SHEET_OPEN_EASING;/);
+  // The dock's close goes through the hook, not straight to the collapse.
+  assert.match(sidebar, /if \(!isCollapsed && activeTab === panelId\) \{\s*closePanelSmoothly\(\);/);
+  assert.match(sidebar, /closePanel: closePanelSmoothly,/);
+  assert.match(sidebar, /mobileSheetCloseRef\.current = mobileMode \? requestSheetClose : null;/);
+  assert.match(survey, /if \(mobileMode && !isSurveyPanelCollapsed\) \{\s*requestSurveySheetClose\(\);/);
+  assert.match(appShell, /closePanel\?\.\(mobileSurveyPanelOpen \? undefined : \{ handover: true \}\)/);
+  // Panel to panel: one sheet swaps content in place; two sheets hand over.
+  assert.match(sidebar, /contentKey: activeTab === 'spaces' \|\| activeTab === 'history' \? activeTab : 'hub',/);
+  assert.match(sheetMotion, /'data-sheet-swap': enterPhase === 'swap'/);
+  assert.match(mobileCss, /\[data-mobile-sheet\]\[data-sheet-swap='a'\] > :not\(\.mobile-pdf-sheet__handle\)/);
+  // The resize glide owns height: a registered property the sheet reads while
+  // it runs, and no CSS height transition on the phone sheets to fight it.
+  assert.match(mobileCss, /@property --sheet-glide-height \{\s*syntax: '<length>';/);
+  assert.match(mobileCss, /:root \[data-mobile-sheet\]\[data-sheet-glide\] \{\s*height: var\(--sheet-glide-height\) !important;/);
+  assert.match(sheetMotion, /'--sheet-glide-height': `\$\{startHeight\}px`/);
+  assert.match(sidebar, /transition: mobileMode \? 'none' : 'width 0\.2s ease, height 0\.26s/);
+  assert.match(survey, /transition: mobileMode \? 'none' : 'right 0\.2s ease, top 0\.2s ease, height 0\.2s ease'/);
+  // The keyboard lift itself stays instant (52a745a): no transition on it.
+  assert.doesNotMatch(mobileCss, /html\[data-keyboard-open='true'\] \[data-mobile-sheet\] \{[^}]*transition/);
+  // Reduced motion: no glide and no hand-over fade.
+  assert.match(sheetMotion, /live\.enterPhase === 'parked' \|\| prefersReducedMotion\(\)/);
+  assert.match(sheetMotion, /if \(!tracksOpen \|\| prefersReducedMotion\(\)\) return false;/);
 });

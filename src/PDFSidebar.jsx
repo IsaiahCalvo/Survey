@@ -240,6 +240,21 @@ const PDFSidebar = React.forwardRef(({
   const closePanel = useCallback(() => {
     setIsCollapsed(true);
   }, []);
+  // Owner 2026-10-01 (iPhone: closing from the dock was abrupt): on the phone a
+  // close asked for from outside the sheet - its dock button pressed again,
+  // another panel opening, Spaces' Done - slides the sheet down behind the dock
+  // exactly like a swipe or a tap outside, then collapses it. The hook's
+  // requestClose lands in this ref below. `{ handover: true }` (AppShell, when
+  // the dock is opening Survey in its place) lets the next panel take over in
+  // place instead (useMobileSheetMotion, PANEL TO PANEL).
+  const mobileSheetCloseRef = React.useRef(null);
+  const closePanelSmoothly = useCallback((closeOptions) => {
+    if (mobileMode && mobileSheetCloseRef.current) {
+      mobileSheetCloseRef.current(closeOptions?.handover === true ? { handover: true } : undefined);
+      return;
+    }
+    closePanel();
+  }, [closePanel, mobileMode]);
 
   const handleMobileSpacesMetricsChange = useCallback(({ expandedPageRows = 0, contentHeight = null } = {}) => {
     setMobileSpacesPageRows(expandedPageRows);
@@ -250,11 +265,11 @@ const PDFSidebar = React.forwardRef(({
 
   const togglePanel = useCallback((panelId, options = {}) => {
     if (!isCollapsed && activeTab === panelId) {
-      closePanel();
+      closePanelSmoothly();
       return;
     }
     openPanel(panelId, options);
-  }, [activeTab, closePanel, isCollapsed, openPanel]);
+  }, [activeTab, closePanelSmoothly, isCollapsed, openPanel]);
 
   // Spaces chunk A (phone): Edit areas draws on the page, so the Spaces sheet
   // and its backdrop leave while the region tool is on (the backdrop swallowed
@@ -284,12 +299,12 @@ const PDFSidebar = React.forwardRef(({
 
   useImperativeHandle(ref, () => ({
     openPanel,
-    closePanel,
+    closePanel: closePanelSmoothly,
     togglePanel,
     openSearchPanel: ({ focus = true, select = true } = {}) => {
       openPanel('search', { focus, select });
     }
-  }), [closePanel, openPanel, togglePanel]);
+  }), [closePanelSmoothly, openPanel, togglePanel]);
 
   React.useEffect(() => {
     if (!mobileMode || typeof onPanelStateChange !== 'function') return;
@@ -342,7 +357,13 @@ const PDFSidebar = React.forwardRef(({
       expandable: browsePanel,
       fullscreenable: browsePanel,
       open: mobileMode && !isCollapsed,
+      // Owner 2026-10-01: a dock switch between the hub, Spaces and History
+      // keeps the sheet up and fades the new panel in. The hub's own three
+      // tabs are one panel here, so flipping them inside the sheet stays as
+      // it was.
+      contentKey: activeTab === 'spaces' || activeTab === 'history' ? activeTab : 'hub',
     });
+  mobileSheetCloseRef.current = mobileMode ? requestSheetClose : null;
   const expandedNavigationTabs = mobileMode
     ? tabs.filter((tab) => tab.id !== 'spaces')
     : tabs.concat(
@@ -404,9 +425,10 @@ const PDFSidebar = React.forwardRef(({
       borderRight: mobileMode ? 'none' : '1px solid var(--border)',
       display: 'flex',
       flexDirection: 'column',
-      // The height leg eases the step between the compact and tall detents
-      // with the same 260ms spring curve the sheet's spring-back uses.
-      transition: 'width 0.2s ease, height 0.26s cubic-bezier(0.22, 1.15, 0.36, 1)',
+      // Phone: every height change (detents, the keyboard) is the sheet
+      // hook's resize glide now (2026-10-01), so no CSS height leg here - a
+      // second engine on the same property would fight it.
+      transition: mobileMode ? 'none' : 'width 0.2s ease, height 0.26s cubic-bezier(0.22, 1.15, 0.36, 1)',
       flexShrink: 0,
       // Phase F: finger-follow / spring-back / slide-down exit (mobile only).
       ...(mobileMode ? sheetMotionStyle : null)
@@ -717,7 +739,7 @@ const PDFSidebar = React.forwardRef(({
                 // Spaces mode and closes the sheet.
                 onExitSpacesAction={mobileMode ? () => {
                   onExitSpaceMode?.();
-                  closePanel();
+                  closePanelSmoothly();
                 } : null}
               />
             </div>
