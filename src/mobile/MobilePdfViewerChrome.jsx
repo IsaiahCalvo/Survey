@@ -2660,6 +2660,18 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
     bottomToolbarApi?.setActiveCategoryDropdown?.(null);
   };
 
+  // 2026-10-01 (owner: rail toggles must read the way they look): a survey
+  // category or entity disc that is already armed (gold) disarms on a second
+  // tap and hands the tool back to Pan, like a closed tool group. Any other tap
+  // arms it exactly as before.
+  const toggleSurveyPick = (picked, arm) => {
+    if (picked && activeTool === 'survey-marker') {
+      selectTool('pan');
+      return;
+    }
+    arm();
+  };
+
   const toggleCategory = (groupId) => {
     const group = TOOL_GROUPS[groupId];
     // UX 2026-09-16 (phone chrome pass): a second tap on the group that is
@@ -2668,8 +2680,15 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
     // change, not a tool change. Reference: Drawboard PDF's phone rail
     // collapses an expanded group on a repeat tap. Opening a group still arms
     // its last-used tool (unchanged).
+    // RULED CHANGE 2026-10-01 (owner: closing a group that way left its icon
+    // gold, because its tool stayed armed): the repeat tap now also hands the
+    // tool back to Pan, so a closed group is never the live one. Pan, not
+    // "whatever came before": it is the phone's resting tool, the tool a
+    // one-shot Survey Marker placement already returns to, and the same
+    // result every time, whatever was armed before the group opened.
     if (openCategory === groupId) {
       setOpenCategory(null);
+      if (activeGroup === groupId) selectTool('pan');
       return;
     }
     setOpenCategory(groupId);
@@ -2800,7 +2819,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                     className={bottomToolbarApi.surveyToolbar.selectedCategoryId === category.id && activeTool === 'survey-marker' ? 'is-active' : ''}
                     aria-label={`Survey category ${category.name || 'Untitled Category'}`}
                     title={category.name || 'Untitled Category'}
-                    onClick={() => bottomToolbarApi.surveyToolbar.onSelectCategory?.(category.id)}
+                    onClick={() => toggleSurveyPick(bottomToolbarApi.surveyToolbar.selectedCategoryId === category.id, () => bottomToolbarApi.surveyToolbar.onSelectCategory?.(category.id))}
                   >
                     {categoryGlyph(category.name)}
                   </button>
@@ -2822,7 +2841,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                     className={bottomToolbarApi.surveyToolbar.selectedEntityId === entity.id && activeTool === 'survey-marker' ? 'is-active' : ''}
                     aria-label={`Survey entity ${entity.name || 'Untitled Entity'}`}
                     title={entity.name || 'Untitled Entity'}
-                    onClick={() => bottomToolbarApi.surveyToolbar.onSelectEntity?.(entity.id)}
+                    onClick={() => toggleSurveyPick(bottomToolbarApi.surveyToolbar.selectedEntityId === entity.id, () => bottomToolbarApi.surveyToolbar.onSelectEntity?.(entity.id))}
                   >
                     <span style={{ background: entity.color || 'var(--border-strong)' }} />
                   </button>

@@ -5,6 +5,13 @@ import test from 'node:test';
 /*
  * UX CONTRACT (owner rule): a rail is never scrollable.
  *
+ * RULED CHANGE 2026-10-01 (owner, phone survey mode): "opening a tool group
+ * squeezes the categories together - it must not; if the rail runs out of room
+ * it should scroll rather than compress". The rail keeps ONE pitch in every
+ * state now. Every state WITHOUT the survey strips still has to fit 375x812
+ * without scrolling; a tool group's sub-strip open beside the survey category /
+ * entity strips is allowed to scroll the column instead of tightening it.
+ *
  * The phone tool rail keeps `overflow-y: auto` as a safety valve - the survey
  * category and entity strips are built from template DATA, so no fixed pitch can
  * promise a fit for every template - but every state the app can put the rail in
@@ -187,30 +194,20 @@ const RELAXED = {
   subPad: tokenDefault(MAIN, '--rail-sub-pad'),
 };
 
-const DENSE = (() => {
-  const body = ruleBody('.mobile-pdf-tools__main:has(.mobile-pdf-tools__subtools):has(.mobile-pdf-tools__survey-categories)');
-  assert.ok(
-    body,
-    'the crowded rail state (a tool sub-strip open together with the survey strips) must '
-    + 'tighten its pitch; without it the column overflows 375x812 by 62px and the rail scrolls',
-  );
-  return {
-    gap: px(decl(body, '--rail-pitch-gap'), 'dense --rail-pitch-gap'),
-    dividerMargin: px(decl(body, '--rail-divider-margin'), 'dense --rail-divider-margin'),
-    subGap: px(decl(body, '--rail-sub-gap'), 'dense --rail-sub-gap'),
-    subPad: px(decl(body, '--rail-sub-pad'), 'dense --rail-sub-pad'),
-  };
-})();
-
-// The dense state must tighten spacing only. A smaller chip is a smaller target.
-for (const [key, value] of Object.entries(DENSE)) {
-  assert.ok(value <= RELAXED[key], `dense --rail-${key} (${value}px) must not be looser than ${RELAXED[key]}px`);
+// RULED CHANGE 2026-10-01: no state tightens the pitch any more. The crowded
+// state (a tool sub-strip open beside the survey strips) used to override the
+// four --rail-* tokens, which squeezed every chip - the survey discs included -
+// closer together while a group was open. Nothing may override them now.
+for (const name of ['--rail-pitch-gap', '--rail-divider-margin', '--rail-sub-gap', '--rail-sub-pad']) {
+  const declared = [...CSS_BARE.matchAll(new RegExp(`${name}\\s*:`, 'g'))].length;
+  assert.equal(declared, 1, `${name} must be declared once (on the tool column) - a second declaration re-tightens the rail in some state`);
 }
-assert.match(
+assert.doesNotMatch(
   CSS_BARE,
-  /\.mobile-pdf-tools__main:has\(\.mobile-pdf-tools__subtools\):has\(\.mobile-pdf-tools__survey-entities\)/,
-  'the dense pitch must also apply when only the entity strip is open beside a sub-strip',
+  /\.mobile-pdf-tools__main:has\(/,
+  'the tool column must not change its pitch depending on what it contains',
 );
+
 // Every chip's hit pad follows the live gap, so tightening it never overlaps two
 // pads (an overlap steals the neighbour's taps).
 assert.match(CSS_BARE, /inset-block: calc\(var\(--rail-pitch-gap, var\(--mobile-rail-gap\)\) \/ -2\)/);
@@ -278,7 +275,7 @@ const states = () => {
   // Re-measured live at 390x844 (Playwright, mobile UA + touch) for Draw, Shapes
   // and Text. "Nothing open" and the survey rows are unchanged, because neither
   // contains a sub-tool chip.
-  // The three DENSE states are recomputed from the same tokens rather than
+  // The three crowded states were recomputed from the same tokens rather than
   // re-measured (they need a survey module loaded): Draw 438 -> 437, Shapes
   // 542 -> 553, Text 412 -> 408. They do not all grow, because the crowded state
   // also gave up its sub-strip padding and half its gap to stay inside the
@@ -286,7 +283,10 @@ const states = () => {
   // previously recorded live numbers to the pixel before the change, which is
   // what makes recomputing them trustworthy.
   const live = { draw: 295, shape: 423, review: 263 };
-  const liveDense = { draw: 437, shape: 553, review: 408 };
+  // RULED CHANGE 2026-10-01: the same pitch as every other state (no dense
+  // override), re-measured live at 390x844 with 2 categories + 5 entities:
+  // Draw 533, Shapes 661, Text 501 (scrollHeight of the tool column).
+  const liveDense = { draw: 533, shape: 661, review: 501 };
   for (const [id, tools] of Object.entries(TOOL_GROUPS)) {
     out.push([
       `${id} group open`,
@@ -295,11 +295,11 @@ const states = () => {
     ]);
     out.push([
       `${id} group open beside the survey rows`,
-      column(DENSE, [
-        ...head(DENSE),
-        divider(DENSE), subStrip(DENSE, tools),
-        divider(DENSE), surveyStrip(DENSE, SURVEY_CATEGORIES),
-        divider(DENSE), surveyStrip(DENSE, SURVEY_ENTITIES),
+      column(RELAXED, [
+        ...head(RELAXED),
+        divider(RELAXED), subStrip(RELAXED, tools),
+        divider(RELAXED), surveyStrip(RELAXED, SURVEY_CATEGORIES),
+        divider(RELAXED), surveyStrip(RELAXED, SURVEY_ENTITIES),
       ]),
       liveDense[id] ?? null,
     ]);
@@ -321,44 +321,31 @@ test('the phone tool rail fits a 375x812 screen in every bounded state', () => {
     }
     if (height > BUDGET) overflowing.push(`${name} wants ${height}px of ${BUDGET}px`);
   }
+  // RULED CHANGE 2026-10-01: only a tool group open beside the survey strips
+  // may scroll (owner: scroll rather than compress). Every other state fits.
   assert.deepEqual(
-    overflowing,
+    overflowing.filter((line) => !/beside the survey rows/.test(line)),
     [],
-    'the rail would have to scroll in these states - tighten the pitch for them rather than '
-    + `scrolling: ${overflowing.join('; ')}`,
+    `the rail would have to scroll in these states: ${overflowing.join('; ')}`,
   );
 });
 
-test('on a phone with a 34px home-indicator reserve the tightened state overflows by at most the strip band', () => {
-  // An iPhone 17 Pro: 874px tall, 96px of header (34 + a 62px top inset) and a
-  // 34px reserve under the dock, so the column gets 557px where a 375x812
-  // browser viewport gives it 581px. Measured on the simulator, 2026-09-16.
-  const deviceBudget = 874 - 96 - RAIL_PAD_TOP - ((52 + 34) - 6) - FOOTER;
-  // 565, not 557: the same 8px the 28px chip hands back (see above).
-  // RULED CHANGE 2026-09-30: 529 - the strip band the rail now reserves.
-  // The Expo shell gives the same number (an 812px web view under a 62px
-  // native top inset, a 34px header and the 34px bottom inset).
-  assert.equal(deviceBudget, 529);
+test('a tool group open beside the survey strips scrolls the column instead of compressing it', () => {
+  // RULED CHANGE 2026-10-01 (owner): the crowded state keeps the normal pitch,
+  // so it can outgrow the screen; the column's overflow-y scroll is how its far
+  // end stays reachable. It used to tighten every gap here instead, which is the
+  // squeeze the owner reported. Pin the numbers so a change is deliberate.
   const worstGroup = Math.max(...Object.values(TOOL_GROUPS));
-  const crowded = column(DENSE, [
-    ...head(DENSE),
-    divider(DENSE), subStrip(DENSE, worstGroup),
-    divider(DENSE), surveyStrip(DENSE, SURVEY_CATEGORIES),
-    divider(DENSE), surveyStrip(DENSE, SURVEY_ENTITIES),
+  const crowded = column(RELAXED, [
+    ...head(RELAXED),
+    divider(RELAXED), subStrip(RELAXED, worstGroup),
+    divider(RELAXED), surveyStrip(RELAXED, SURVEY_CATEGORIES),
+    divider(RELAXED), surveyStrip(RELAXED, SURVEY_ENTITIES),
   ]);
-  // KNOWN TRADE (2026-09-30, reported to the owner): the owner's full-width
-  // strip costs the rail 36px, and the one crowded state - a tool group's
-  // sub-strip open beside the survey category + entity strips - wants 553px
-  // of 529 on an iPhone 17 Pro, so there, and only there, the column's
-  // overflow-y safety valve scrolls 24px. Spacing is already at its floor in
-  // that state; the only way back is smaller chips, which the owner has ruled
-  // out. This pins the overflow so it cannot quietly grow.
-  assert.equal(crowded, 553);
-  assert.ok(
-    crowded - deviceBudget <= STRIP_BAND,
-    `the crowded rail state wants ${crowded}px of the ${deviceBudget}px an iPhone 17 Pro gives it - `
-    + 'more than the strip band the full-width strip took from it',
-  );
+  assert.equal(crowded, 661);
+  // The survey discs keep their pitch whether or not the group is open.
+  assert.equal(RELAXED.subGap, token('--mobile-rail-sub-gap'));
+  assert.equal(RELAXED.gap, token('--mobile-rail-gap'));
 });
 
 test('the tool rail keeps overflow-y as its safety valve and never scrolls sideways', () => {
@@ -367,23 +354,16 @@ test('the tool rail keeps overflow-y as its safety valve and never scrolls sidew
   assert.equal(decl(MAIN, 'overscroll-behavior-x'), 'contain');
 });
 
-test('the survey rows are the only unbounded part of the rail, and the limit is stated', () => {
-  // Each extra survey row costs a sub-chip plus the dense gap. State where the
-  // safety valve takes over so nobody has to rediscover it on a device.
-  const worstGroup = Math.max(...Object.values(TOOL_GROUPS));
-  const withRows = (rows) => column(DENSE, [
-    ...head(DENSE),
-    divider(DENSE), subStrip(DENSE, worstGroup),
-    divider(DENSE), surveyStrip(DENSE, Math.ceil(rows / 2)),
-    divider(DENSE), surveyStrip(DENSE, Math.floor(rows / 2)),
+test('the survey rows alone fit the screen at the normal pitch', () => {
+  // With no tool group open, the module the test ships (2 categories + 5
+  // entities) fits without scrolling; past that the rows are data and the
+  // column's overflow-y scroll takes over.
+  const withRows = (rows) => column(RELAXED, [
+    ...head(RELAXED),
+    divider(RELAXED), surveyStrip(RELAXED, Math.ceil(rows / 2)),
+    divider(RELAXED), surveyStrip(RELAXED, Math.floor(rows / 2)),
   ]);
-  let rows = SURVEY_CATEGORIES + SURVEY_ENTITIES;
-  assert.ok(
-    withRows(rows) <= BUDGET,
-    `the rail no longer fits the ${rows} survey rows the test module ships beside an open tool group`,
-  );
-  while (withRows(rows + 1) <= BUDGET) rows += 1;
-  assert.ok(rows >= SURVEY_CATEGORIES + SURVEY_ENTITIES);
+  assert.ok(withRows(SURVEY_CATEGORIES + SURVEY_ENTITIES) <= BUDGET);
 });
 
 test('the More menu is a popover, so opening it cannot change the rail column', () => {
