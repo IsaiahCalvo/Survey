@@ -1260,8 +1260,10 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
       </div>
       {/* Spaces chunk B: the active space, floating just under the top bar
           (and under a tool strip when one is open - see the CSS). The words
-          open the Spaces sheet; x turns the space off. */}
-      {activeSpace && (
+          open the Spaces sheet; x turns the space off. Hidden while drawing
+          a space's areas: it sat over the top of the page and blocked
+          starting an area there (owner 2026-10-01). */}
+      {activeSpace && !bottomToolbarApi?.regionEditing && (
         <div className="mobile-pdf-header__space">
           <ActiveSpaceChip
             name={activeSpace.name}
