@@ -4117,7 +4117,7 @@ export default function App({ devPreviewReturnTab = null }) {
                      same field height, same house radius. */
                   style={{ background: 'transparent', border: 'none', color: 'var(--accent)', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', padding: '0 4px', borderRadius: 'var(--chrome-radius)', cursor: 'pointer', lineHeight: 1 }}
                 >
-                  {api.pageNum}
+                  {api.activeSpaceHasNoPages ? 0 : api.pageNum}
                 </button>
               );
               // Fit-mode popup — one list for both variants; only the anchor
@@ -4212,7 +4212,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         midpoint of the two numbers by construction. */}
                     <span aria-hidden="true" data-rail-page-dot style={RAIL_PAGE_DOT_STYLE} />
                     <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 'var(--chrome-field-h)', color: 'var(--text-3)', fontSize: '10px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-                      {api.numPages}
+                      {api.activeSpaceHasNoPages ? 0 : api.numPages}
                     </span>
                     <span {...chromeTip('Next page', 'left')} style={{ display: 'inline-flex' }}>
                       <button
@@ -4329,7 +4329,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   <span style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums' }}>
                     {pageValue}
                     <span aria-hidden="true" data-rail-page-dot style={RAIL_PAGE_DOT_STYLE} />
-                    <span style={{ color: 'var(--text-3)', padding: '0 4px' }}>{api.numPages}</span>
+                    <span style={{ color: 'var(--text-3)', padding: '0 4px' }}>{api.activeSpaceHasNoPages ? 0 : api.numPages}</span>
                   </span>
                   <span {...chromeTip('Next page', 'above')} style={{ display: 'inline-flex' }}>
                     <button

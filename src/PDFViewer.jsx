@@ -17,6 +17,7 @@ import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
 import { jsonEqual } from './utils/jsonEqual.js';
 import { mergeEditOntoCurrent } from './utils/dragCommitMerge.js';
+import { countSpaceCascadeImpact, isSpaceScopedEntry, resolveSpaceCascadeScope } from './utils/spaceCascadeImpact.js';
 import { EMBEDDED_IMPORT_INCOMPLETE_KEY, EMBEDDED_IMPORT_MARKER_KEY, embeddedImportDecision, embeddedImportFailedPages, embeddedImportMarkerDecision, selectEmbeddedImportObjects } from './utils/embeddedImportGate.js';
 import { READ_ONLY_BLOCKED_KEYS } from './utils/toolShortcuts.js';
 import { sanitizeTemplateConfig } from './utils/templateConfig.js';
@@ -14678,36 +14679,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const cascadeDeleteScopedAppState = useCallback(({ spaceId, pageIds = null, regionIds = null, reason = 'space-scope-delete' }) => {
     if (!spaceId) return;
-    const pageSet = Array.isArray(pageIds) && pageIds.length > 0
-      ? new Set(pageIds.map(Number).filter(Number.isFinite))
-      : null;
-    const sourceSpace = spacesRef.current.find((space) => space?.id === spaceId);
-    const hasExplicitRegionIds = Array.isArray(regionIds) && regionIds.length > 0;
-    const collectedRegionIds = new Set(
-      hasExplicitRegionIds
-        ? regionIds.filter(Boolean)
-        : []
-    );
-    if (!hasExplicitRegionIds) {
-      (sourceSpace?.assignedPages || []).forEach((page) => {
-        const pageNumber = Number(page?.pageId);
-        if (pageSet && !pageSet.has(pageNumber)) return;
-        (page?.regions || []).forEach((region) => {
-          if (region?.regionId) collectedRegionIds.add(region.regionId);
-        });
-      });
-    }
-
-    const shouldDeleteScopedEntry = (entry) => {
-      if (!entry) return false;
-      const pageNumber = Number(entry.pageNumber ?? entry.page ?? entry.pageId);
-      if (pageSet && Number.isFinite(pageNumber) && !pageSet.has(pageNumber)) return false;
-      if (entry.regionId && collectedRegionIds.has(entry.regionId)) return true;
-      if (hasExplicitRegionIds) return false;
-      if (entry.spaceId === spaceId) return true;
-      if (entry.moduleId === spaceId) return true;
-      return false;
-    };
+    // Spaces chunk A: one rule for this cascade and the confirm that counts it
+    // first (utils/spaceCascadeImpact.js).
+    const scope = resolveSpaceCascadeScope({
+      spaceId,
+      space: spacesRef.current.find((space) => space?.id === spaceId),
+      pageIds,
+      regionIds,
+    });
+    const { pageSet, regionIds: collectedRegionIds } = scope;
+    const shouldDeleteScopedEntry = (entry) => isSpaceScopedEntry(entry, scope);
 
     const cloudDeleteIds = new Set();
     Object.entries(annotationsByPageRef.current || {}).forEach(([pageKey, pageData]) => {
@@ -14827,12 +14808,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleSpaceRemovePage = useCallback((spaceId, pageId) => {
     if (!requireSpaceManagement()) return;
-    cascadeDeleteScopedAppState({
+    // Spaces chunk A: one Undo step — the space's page list plus exactly the
+    // marks the cascade removed (same shape as space:delete; see
+    // historyStacks.scopeLegacyRestoreToOwnSlices).
+    const removePageContext = { spaceId, pageId, updateKeys: ['assignedPages'] };
+    addHistoryCheckpoint('space:remove-page', removePageContext);
+    removePageContext.cascadeIds = cascadeDeleteScopedAppState({
       spaceId,
       pageIds: [pageId],
       reason: 'space-page-delete',
-    });
-    // No undo step records this cascade: it must not be claimed by a later one.
+    }) || [];
+    // The step above owns this cascade: it must not be claimed by a later one.
     pendingSpaceCascadeRef.current = null;
 
     // KAL-313 / history F1 (2026-06-11): the sidebar trash button on a region
@@ -14892,7 +14878,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       return nextSpaces;
     });
-  }, [activeSpaceId, cascadeDeleteScopedAppState, pdfFile?.id, requireSpaceManagement, user]);
+  }, [activeSpaceId, addHistoryCheckpoint, cascadeDeleteScopedAppState, pdfFile?.id, requireSpaceManagement, user]);
+
+  // Spaces chunk A: what removing these pages (null = the whole space) would
+  // delete, for the confirm in SpacesPanel. Reads the live refs the cascade
+  // reads, so the number shown is the number deleted.
+  const getSpaceRemovalImpact = useCallback((spaceId, pageIds = null) => countSpaceCascadeImpact({
+    spaceId,
+    space: (spacesRef.current || []).find((space) => space?.id === spaceId) || null,
+    pageIds,
+    annotationsByPage: annotationsByPageRef.current || {},
+    callouts: calloutsRef.current || [],
+    surveyMarkers: surveyMarkersRef.current || {},
+    getMarkId: getHistoryAnnotationId,
+  }), []);
 
   const handleSpaceRenamePage = useCallback((spaceId, pageId, newLabel) => {
     if (!requireSpaceManagement()) return;
@@ -21286,6 +21285,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [addHistoryCheckpoint, activeSpaceId, selectedSpaceId, cascadeDeleteScopedAppState, pdfFile?.id, requireSpaceManagement, user]);
 
   const handleSetActiveSpace = useCallback((spaceId) => {
+    // Spaces chunk A: a space with no pages filters out every page and blanked
+    // the viewer. Refuse to turn it on; SpacesPanel also disables its switch.
+    const targetSpace = spaceId ? (spacesRef.current || []).find((s) => s.id === spaceId) : null;
+    if (targetSpace && (targetSpace.assignedPages || []).length === 0) {
+      showToast(`Add pages to ${targetSpace.name || 'this space'} first.`, 'warn');
+      return;
+    }
     debugLog('[SPACE TOGGLE] Activating space - regions enabled, annotations with regionId should be shown:', { spaceId, previousActiveSpaceId: activeSpaceId });
     clearAnnotationSelectionForContextChange('region-open');
     setActiveSpaceId(spaceId);
@@ -21359,6 +21365,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => {
     pdfjsActiveSpacePagesRef.current = Array.isArray(activeSpacePages) ? activeSpacePages : [];
   }, [activeSpacePages]);
+
+  // Spaces chunk A: the active space lost its pages (pages removed elsewhere,
+  // an Undo, a collaborator). The viewer then shows nothing, so it shows the
+  // "No pages in <space>" card instead and the page counters stop claiming a
+  // page that is not shown.
+  const activeSpaceHasNoPages = Boolean(activeSpaceId) && Array.isArray(activeSpacePages) && activeSpacePages.length === 0;
+  const activeSpaceName = activeSpaceHasNoPages
+    ? (spaces.find((s) => s.id === activeSpaceId)?.name || 'this space')
+    : null;
 
   const annotationSpaceId = activeSpaceId ?? selectedSpaceId ?? null;
 
@@ -25553,6 +25568,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageNum,
       pageInputValue,
       numPages,
+      activeSpaceHasNoPages,
       // [InteractionDiag] route toolbar tool selection through the logged
       // wrapper so every tool-button click emits a tool-intent marker.
       setActiveTool: setActiveToolLogged,
@@ -25660,6 +25676,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     pageNum,
     pageInputValue,
     numPages,
+    activeSpaceHasNoPages,
     setTooltip,
     handleStrokeColorChangePhased,
     handleStrokeOpacityChangePhased,
@@ -34112,6 +34129,7 @@ ${pageBlocks}
       onSpaceAssignPages: handleSpaceAssignPages,
       onSpaceRenamePage: handleSpaceRenamePage,
       onSpaceRemovePage: handleSpaceRemovePage,
+      getSpaceRemovalImpact,
       onNavigateToSpacePage: handleNavigateToSpacePage,
       onReorderSpaces: handleReorderSpaces,
       onExportSpaceCSV: handleExportSpaceToCSV,
@@ -34217,6 +34235,7 @@ ${pageBlocks}
     handleSpaceAssignPages,
     handleSpaceRenamePage,
     handleSpaceRemovePage,
+    getSpaceRemovalImpact,
     handleNavigateToSpacePage,
     handleReorderSpaces,
     handleExportSpaceToCSV,
@@ -35025,6 +35044,40 @@ ${pageBlocks}
                 </div>
               );
             })()}
+            {/* Spaces chunk A: an active space with no pages hides every page;
+                say so instead of leaving a blank viewer. */}
+            {activeSpaceHasNoPages && (
+              <div
+                style={{ position: 'absolute', inset: 0, zIndex: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, pointerEvents: 'none' }}
+              >
+                <div
+                  role="status"
+                  data-space-empty-card
+                  style={{ pointerEvents: 'auto', width: '100%', maxWidth: 320, boxSizing: 'border-box', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 16px 14px', color: 'var(--text-1)', fontFamily: FONT_FAMILY, textAlign: 'center' }}
+                >
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>No pages in {activeSpaceName}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 6, lineHeight: 1.45 }}>
+                    Add pages to this space, or turn it off to see the whole document.
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 14 }}>
+                    <button
+                      type="button"
+                      onClick={handleExitSpaceMode}
+                      style={{ minHeight: 36, padding: '0 14px', background: 'transparent', border: '1px solid var(--border-strong)', borderRadius: 6, color: 'var(--text-2)', fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}
+                    >
+                      Turn off space
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => pdfSidebarRef.current?.openPanel?.('spaces')}
+                      style={{ minHeight: 36, padding: '0 14px', background: 'var(--accent)', border: 0, borderRadius: 6, color: 'var(--accent-text)', fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}
+                    >
+                      Add pages
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             {(
               <>
                 <div

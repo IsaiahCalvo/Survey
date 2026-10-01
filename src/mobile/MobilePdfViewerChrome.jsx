@@ -1128,7 +1128,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
                   setPageEditing(false);
                 }}
               />
-              <span className="mobile-pdf-header__page-total">/ {bottomToolbarApi?.numPages || 1}</span>
+              <span className="mobile-pdf-header__page-total">/ {bottomToolbarApi?.activeSpaceHasNoPages ? 0 : (bottomToolbarApi?.numPages || 1)}</span>
             </span>
           ) : (
             /* UX: the WHOLE "n / N" fraction is the page-jump tap zone (owner
@@ -1140,8 +1140,8 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
               aria-label="Jump to page"
               onClick={openPageEdit}
             >
-              {bottomToolbarApi?.pageNum || 1}
-              <span className="mobile-pdf-header__page-total">/ {bottomToolbarApi?.numPages || 1}</span>
+              {bottomToolbarApi?.activeSpaceHasNoPages ? 0 : (bottomToolbarApi?.pageNum || 1)}
+              <span className="mobile-pdf-header__page-total">/ {bottomToolbarApi?.activeSpaceHasNoPages ? 0 : (bottomToolbarApi?.numPages || 1)}</span>
             </button>
           )}
           <button
