@@ -1646,6 +1646,17 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 .mobile-pdf-properties--survey > .mobile-styled-select .mobile-styled-select__trigger {
   width: 100%;
   max-width: 100%;
+  /* Owner 2026-10-01 ("this text should be centred in the dropdown"): the
+     pill is as wide as its longest module, so a short current name ("h") sat
+     at the left of a wide pill. The label is centred in the PILL, not just in
+     the room left of the chevron: the start side reserves the chevron's 9px +
+     the gap, mirroring it, so the label's box is symmetric about the pill's
+     centre while the chevron stays on the trailing edge. */
+  padding-inline-start: calc(6px + 9px + var(--mobile-strip-gap));
+}
+
+.mobile-pdf-properties--survey > .mobile-styled-select .mobile-styled-select__fit {
+  text-align: center;
 }
 
 .mobile-pdf-properties--survey > .mobile-pdf-properties__divider--push {
