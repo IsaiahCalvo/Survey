@@ -138,3 +138,96 @@
 .ed-scope .btn-ink:active { background: var(--accent-press); border-color: var(--accent-press); }
 .ed-scope .btn-line:hover { background: var(--hover); }
 .ed-scope .btn-line:active { background: var(--pressed); }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   CATEGORY + ENTITY ROWS (owner decision 2026-10-01: the row looked "off,
+   weird, random"). One rhythm for both, 40px tall, 6px side pad:
+     [grip 24][chevron 22 | dot 22][name = its own text][......][count][⋮ 28]
+   The name's text starts 56px in, and the checklist items line up under it.
+   A click anywhere on the row opens / closes it (the chevron is only the
+   cue); the name renames and its hit box is just its text (hover tint + text
+   cursor); the grip only drags; in Select mode a click ticks the row.
+   ───────────────────────────────────────────────────────────────────────── */
+.ed-scope .tpl-cat-row,
+.ed-scope .tpl-entity-row {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+.ed-scope .tpl-entity-row { height: 40px; }
+.ed-scope .tpl-cat-row.is-selected { background: var(--surface-3); }
+.ed-scope .tpl-cat-row > [data-drag-rearrange-handle],
+.ed-scope .tpl-entity-row > [data-drag-rearrange-handle] {
+  flex: none;
+  opacity: 0.45;
+}
+.ed-scope .tpl-cat-row:hover > [data-drag-rearrange-handle],
+.ed-scope .tpl-entity-row:hover > [data-drag-rearrange-handle],
+.ed-scope [data-drag-rearrange-handle]:focus-visible {
+  opacity: 1;
+}
+.ed-scope .tpl-cat-chevron {
+  flex: none;
+  width: 22px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+/* The button turns, not its glyph: the app-wide press rule scales a lone
+   glyph, which would un-turn an open chevron under the pointer. */
+.ed-scope .tpl-cat-chevron { transition: transform 0.15s; }
+.ed-scope .tpl-cat-chevron > svg { width: 16px; height: 16px; }
+.ed-scope .tpl-cat-row.is-open > .tpl-cat-chevron { transform: rotate(90deg); }
+.ed-scope .tpl-cat-row:hover .tpl-cat-chevron { color: var(--text-1); }
+.ed-scope .tpl-entity-row > button[title="Edit color"] { flex: none; }
+.ed-scope .tpl-cat-name,
+.ed-scope .tpl-entity-name {
+  --aw-pad: 4px;
+  flex: 0 1 auto;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+.ed-scope .tpl-cat-name > input,
+.ed-scope .tpl-entity-name > input {
+  padding-block: 3px;
+  border-radius: 4px;
+  cursor: text;
+}
+.ed-scope .tpl-cat-name > input:hover,
+.ed-scope .tpl-entity-name > input:hover { background: var(--hover); }
+.ed-scope .tpl-cat-name > input:focus,
+.ed-scope .tpl-entity-name > input:focus { background: transparent; }
+/* In Select mode the name is part of the row: a click ticks, never renames. */
+.ed-scope .is-selecting > .tpl-cat-name > input,
+.ed-scope .is-selecting > .tpl-entity-name > input { pointer-events: none; }
+.ed-scope .tpl-cat-count {
+  flex: none;
+  margin-left: auto;
+  padding-left: 12px;
+  font-size: 12px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ed-scope .tpl-cat-more,
+.ed-scope .tpl-entity-more {
+  flex: none;
+  width: 28px;
+  height: 28px;
+}
+.ed-scope .tpl-cat-more { margin-left: 4px; }
+.ed-scope .tpl-entity-more,
+.ed-scope .tpl-entity-check { margin-left: auto; }
+/* The tick sits centred in the ⋮ slot it replaces. */
+.ed-scope .tpl-cat-check { flex: none; margin: 0 7px 0 11px; }
+.ed-scope .tpl-entity-check { flex: none; margin-right: 7px; }
+.ed-scope .tpl-entity-row.is-selected { background: var(--surface-3); }

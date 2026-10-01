@@ -932,22 +932,20 @@ export default function ProjectsFolderTree({
       <div className="projects-desktop-layout" style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 8, height: '100%', minHeight: 0 }}>
         {/* LEFT — tree */}
         <div className="card" style={{ padding: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '4px 6px 6px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <button
-              className="btn primary"
-              style={{ alignSelf: 'flex-start' }}
-              onClick={handleNewProject}
-            >
-              <Icon name="plus" size={11} />New project
-            </button>
-            <div className="hub-select-actions" style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'nowrap', height: 22, overflow: 'hidden' }}>
+          {/* Owner 2026-10-01: one header line - the page's one gold action
+              on the left, the quiet Select on the right. In select mode the
+              bulk actions take the gold button's place and Done stays where
+              Select was, so the list under it never moves. */}
+          <div className="hub-section-head hub-panel-head">
+            {!jobsEdit ? (
               <button
-                data-testid="project-select-toggle"
-                onClick={() => { const next = !jobsEdit; setJobsEdit(next); if (!next) setSelProj(new Set()); }}
-                className="hub-btn hub-btn--tertiary"
+                className="btn primary"
+                onClick={handleNewProject}
               >
-                {jobsEdit ? 'Done' : 'Select'}
+                <Icon name="plus" size={11} />New project
               </button>
+            ) : null}
+            <div className="hub-select-actions hub-section-actions">
               {jobsEdit && (
                 <>
                   {(() => {
@@ -982,6 +980,13 @@ export default function ProjectsFolderTree({
                   ><Icon name="trash" size={11} /></button>
                 </>
               )}
+              <button
+                data-testid="project-select-toggle"
+                onClick={() => { const next = !jobsEdit; setJobsEdit(next); if (!next) setSelProj(new Set()); }}
+                className="hub-btn hub-btn--tertiary hub-section-btn"
+              >
+                {jobsEdit ? 'Done' : 'Select'}
+              </button>
             </div>
           </div>
           <div className="slim-scroll hub-side-list" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
@@ -1089,7 +1094,11 @@ export default function ProjectsFolderTree({
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {/* Inline rename field. Typing raises Cancel / Save in the
                       header's subtitle row; Enter saves, Escape backs out. */}
+                  {/* Text-width field (owner 2026-10-01): the rename target
+                      is the name itself, not the whole header line. */}
+                  <span className="hub-autowidth hub-title-field" data-value={projectNameField(open).value} style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.015em' }}>
                   <input
+                    size={1}
                     key={open.id}
                     {...projectNameField(open)}
                     title="Click to rename"
@@ -1097,14 +1106,14 @@ export default function ProjectsFolderTree({
                     style={{
                       background: 'transparent', color: 'var(--bone-100)',
                       border: 0, borderBottom: '1px dashed transparent',
-                      padding: '2px 0', fontSize: 22, fontWeight: 700, letterSpacing: '-0.015em',
-                      outline: 'none', width: '100%', cursor: 'text', fontFamily: 'inherit',
+                      padding: '2px 0', outline: 'none', cursor: 'text',
                     }}
                     onMouseEnter={(e) => { e.currentTarget.style.borderBottomColor = 'var(--ink-500)'; }}
                     onMouseLeave={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.style.borderBottomColor = 'transparent'; }}
                     onFocus={(e) => { e.currentTarget.style.borderBottom = '1px solid var(--gold)'; }}
                     onBlur={(e) => { e.currentTarget.style.borderBottom = '1px dashed transparent'; }}
                   />
+                  </span>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flex: 'none' }}>
                   {/* Add files — opens the OS file picker; picked PDFs are
@@ -1119,8 +1128,8 @@ export default function ProjectsFolderTree({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 148px', gap: 0, flex: 1, overflow: 'hidden' }}>
                 {/* Files */}
                 <div className="slim-scroll" style={{ padding: '10px 14px', overflow: 'auto', position: 'relative' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, height: 22, marginBottom: 4, overflow: 'hidden', flexWrap: 'nowrap', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 10.5, letterSpacing: 0.06, textTransform: 'uppercase', color: 'var(--ink-200)', fontWeight: 700 }}>Files</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, height: 28, marginBottom: 4, overflow: 'hidden', flexWrap: 'nowrap', justifyContent: 'space-between' }}>
+                    <span className="hub-section-label" style={{ fontSize: 10.5, letterSpacing: 0.06, textTransform: 'uppercase', color: 'var(--ink-200)', fontWeight: 700 }}>Files<span className="hub-section-count">{openFiles.length}</span></span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 'none' }}>
                       {fileSelect && (() => {
                         // Effective selection is DERIVED from the current rows
@@ -1172,7 +1181,7 @@ export default function ProjectsFolderTree({
                       })()}
                       <button
                         onClick={() => { const next = !fileSelect; setFileSelect(next); if (!next) setSelFiles(new Set()); }}
-                        className="hub-btn hub-btn--tertiary"
+                        className="hub-btn hub-btn--tertiary hub-section-btn"
                       >
                         {fileSelect ? 'Done' : 'Select'}
                       </button>
@@ -1345,25 +1354,28 @@ export default function ProjectsFolderTree({
                     drilled-in project is ONE panel, the same lighter blue-grey
                     box as the other phone lists. The name block sits on top, a
                     hairline runs edge to edge, then a "Files" heading carries
-                    Add files and Team as quiet gold words (not outlined boxes),
+                    Add files and Team as quiet words (not outlined boxes),
                     and the file rows are lines in the same panel. The panel
                     hugs its rows instead of stretching to the foot of the
                     screen. Matches the Templates editor's layout B mock. */}
                 <div className="projects-mobile-project-card">
                   <div className="projects-mobile-project-head">
-                    <input
-                      key={`mobile-project-name-${mobileDrillProject.id}`}
-                      className="projects-mobile-title-input"
-                      {...projectNameField(mobileDrillProject)}
-                      title="Tap to rename"
-                    />
+                    <span className="hub-autowidth projects-mobile-title-field" data-value={projectNameField(mobileDrillProject).value}>
+                      <input
+                        size={1}
+                        key={`mobile-project-name-${mobileDrillProject.id}`}
+                        className="projects-mobile-title-input"
+                        {...projectNameField(mobileDrillProject)}
+                        title="Tap to rename"
+                      />
+                    </span>
                     <span>{mobileDrillAllFiles.length} {mobileDrillAllFiles.length === 1 ? 'file' : 'files'} · {projectLastEditedLabel(mobileDrillProject.id)}</span>
                   </div>
                   <div className="projects-mobile-project-files-head">
-                    <span>Files</span>
+                    <span>Files<b className="hub-section-count">{mobileDrillFiles.length}</b></span>
                     <span className="projects-mobile-project-files-actions">
-                      <button type="button" className="hub-btn hub-btn--tertiary" onClick={() => addFiles(mobileDrillProject)}><Icon name="upload" size={12} />Add files</button>
-                      <button type="button" className="hub-btn hub-btn--tertiary" aria-label="Manage team" onClick={() => setTeamModalProject(mobileDrillProject)}><Icon name="users" size={12} />Team</button>
+                      <button type="button" className="hub-btn hub-btn--tertiary hub-section-btn" onClick={() => addFiles(mobileDrillProject)}><Icon name="upload" size={12} />Add files</button>
+                      <button type="button" className="hub-btn hub-btn--tertiary hub-section-btn" aria-label="Manage team" onClick={() => setTeamModalProject(mobileDrillProject)}><Icon name="users" size={12} />Team</button>
                     </span>
                   </div>
                   <div className="projects-mobile-file-list">
