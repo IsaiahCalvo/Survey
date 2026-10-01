@@ -26,6 +26,8 @@ import { compareSurveyMarkersForOrder } from './utils/surveyMarkerOrdering';
 import { showToast } from './utils/toast';
 import { watchLightPopover } from './components/dismissRules.js';
 import { useConfirmDialog } from './components/dialogPrompts';
+import SurveyMarkerNotes from './components/SurveyMarkerNotes';
+import { normalizeNoteMedia } from './services/surveyMediaService';
 import { SHEET_DETENT_FULL, SHEET_DETENT_STANDARD, useMobileSheetMotion } from './mobile/useMobileSheetMotion';
 // Phone Survey panel look (layout B, one card divided). Every rule in it is
 // scoped to .mobile-survey-sheet, which only the phone sheet carries.
@@ -403,8 +405,6 @@ const SurveySpacesRail = ({
   setItemSelectModeActive,
   setItems,
   setNewSurveyMarkersByPage,
-  setNoteDialogContent,
-  setNoteDialogOpen,
   setPendingLocationItem,
   setSelectedCategories,
   setSelectedCategoryId,
@@ -434,6 +434,9 @@ const SurveySpacesRail = ({
   collapseRequestKey = 0,
   onCollapseChange = null,
   mobileMode = false,
+  // Owner or editor of the document (PDFViewer's canRestoreFromHistory): may
+  // add and remove Survey media and move legacy inline media to storage.
+  canEditSurveyMarkers = true,
 }) => {
   // KAL-65: rail controls use the app's instant shared tooltip, never a native
   // title= (the OS tooltip takes ~1.5s and is styled by the OS, so mixing the
@@ -466,12 +469,12 @@ const SurveySpacesRail = ({
   // Mobile-only export menu in the sheet header (demo SurveySheet.tsx:324-348);
   // desktop keeps its bottom EXPORT bar untouched.
   const [isMobileExportMenuOpen, setIsMobileExportMenuOpen] = useState(false);
-  // Phone: state of the open Survey Marker inside the accordion - whether its
-  // entity menu is open, and the notes editor with its local draft (committed
-  // only on Save, mirroring the desktop Note dialog's draft-then-save behavior).
+  // Phone: whether the open Survey Marker's entity menu is open.
   const [mobileDetailDropdown, setMobileDetailDropdown] = useState(null); // 'entity' | null
-  const [mobileNotesEditorOpen, setMobileNotesEditorOpen] = useState(false);
-  const [mobileNoteDraft, setMobileNoteDraft] = useState({ text: '', photos: [], videos: [] });
+  // Desktop: the note glyph on a marker line opens the marker and puts the
+  // caret in its inline Notes field (the 600px Note dialog is gone).
+  const [noteFocusRequestId, setNoteFocusRequestId] = useState(null);
+  const clearNoteFocusRequest = useCallback(() => setNoteFocusRequestId(null), []);
   // Desktop-only Create Category flow: the plus button in the "Categories"
   // heading row opens CreateCategoryModal (the old route opened a template
   // editor that has since been removed, leaving the button dead). Persistence
@@ -571,25 +574,15 @@ const SurveySpacesRail = ({
 
   // Close everything in the phone accordion (the "Categories" back button).
   const collapseMobileAccordion = () => {
-    setMobileNotesEditorOpen(false);
     setMobileDetailDropdown(null);
     setExpandedSurveyMarkers((prev) => (Object.keys(prev || {}).length ? {} : prev));
     setExpandedCategories((prev) => (Object.keys(prev || {}).length ? {} : prev));
   };
 
-  // One level per swipe down: the notes editor (only when nothing unsaved
-  // would be lost), then the open Survey Marker, then the categories. Returns
-  // true when it used the swipe.
+  // One level per swipe down: the open Survey Marker (its inline note saves
+  // as it closes), then the categories. Returns true when it used the swipe.
   const collapseMobileAccordionLevel = () => {
     if (!mobileMode) return false;
-    if (mobileNotesEditorOpen) {
-      const saved = surveyMarkers?.[mobileDetailMarkerId]?.note || {};
-      const unchanged = (mobileNoteDraft.text || '') === (saved.text || '')
-        && mobileNoteDraft.photos.length === (Array.isArray(saved.photos) ? saved.photos.length : 0)
-        && mobileNoteDraft.videos.length === (Array.isArray(saved.videos) ? saved.videos.length : 0);
-      if (unchanged) setMobileNotesEditorOpen(false);
-      return true;
-    }
     if (mobileDetailMarkerId) {
       setMobileDetailDropdown(null);
       setExpandedSurveyMarkers({});
@@ -704,10 +697,9 @@ const SurveySpacesRail = ({
   }, [isSurveyPanelCollapsed]);
 
   // Reset detail-local UI whenever the selected Survey Marker changes so the
-  // notes takeover / dropdowns never carry over to another marker.
+  // dropdowns never carry over to another marker.
   useEffect(() => {
     setMobileDetailDropdown(null);
-    setMobileNotesEditorOpen(false);
   }, [mobileDetailMarkerId]);
 
   // UX (mobile demo parity): collapsing the sheet closes the accordion so the
@@ -719,7 +711,6 @@ const SurveySpacesRail = ({
     if (mobileMode && isSurveyPanelCollapsed) {
       setExpandedSurveyMarkers((prev) => (Object.keys(prev || {}).length ? {} : prev));
       setExpandedCategories((prev) => (Object.keys(prev || {}).length ? {} : prev));
-      setMobileNotesEditorOpen(false);
       setMobileDetailDropdown(null);
     }
   }, [mobileMode, isSurveyPanelCollapsed, setExpandedSurveyMarkers, setExpandedCategories]);
@@ -1092,52 +1083,57 @@ const SurveySpacesRail = ({
     });
   };
 
-  // ——— Mobile in-sheet notes editor (demo SurveySheet.tsx:191-283) ———
-  const openMobileNotesEditor = () => {
-    const note = surveyMarkers?.[mobileDetailMarkerId]?.note || {};
-    setMobileNoteDraft({
-      text: note.text || '',
-      photos: Array.isArray(note.photos) ? note.photos : [],
-      videos: Array.isArray(note.videos) ? note.videos : []
-    });
-    setMobileDetailDropdown(null);
-    setMobileNotesEditorOpen(true);
-  };
-
-  // Same write as the desktop Note dialog's Save (PDFViewer Note Dialog):
-  // patch the marker's `note` through setSurveyMarkers so persistence and
-  // sync see the identical operation.
-  const saveMobileNotes = () => {
-    const annotationId = mobileDetailMarkerId;
+  // The open Survey Marker's note, edited inline (SurveyMarkerNotes) on the
+  // phone and the desktop. Same write the retired Notes screen and Note
+  // dialog made - patch the marker's `note` through setSurveyMarkers - so
+  // persistence, sync and the Excel row see the identical operation. The
+  // patch is functional, so a text save and an upload finishing at the same
+  // moment both land. `requireExisting`: an upload that finishes after its
+  // Survey Marker was deleted must not bring a stub of it back.
+  const updateSurveyMarkerNote = useCallback((annotationId, updater, { requireExisting = false } = {}) => {
     if (!annotationId) return;
-    setSurveyMarkers(prev => ({
-      ...prev,
-      [annotationId]: {
-        ...(prev[annotationId] || {}),
-        note: {
-          text: mobileNoteDraft.text,
-          photos: mobileNoteDraft.photos,
-          videos: mobileNoteDraft.videos
+    setSurveyMarkers(prev => {
+      const existing = prev?.[annotationId];
+      if (!existing && requireExisting) return prev;
+      const rawNote = existing?.note;
+      let prevNote = {};
+      if (rawNote && typeof rawNote === 'object') {
+        prevNote = rawNote;
+      } else if (typeof rawNote === 'string') {
+        // document_annotations.notes is TEXT: an object note can arrive as
+        // JSON text; anything else is a plain-text note.
+        try {
+          const parsed = rawNote.trim().startsWith('{') ? JSON.parse(rawNote) : null;
+          prevNote = parsed && typeof parsed === 'object' ? parsed : { text: rawNote };
+        } catch {
+          prevNote = { text: rawNote };
         }
       }
-    }));
-    setMobileNotesEditorOpen(false);
-  };
-
-  // Reuses the desktop Note dialog's FileReader/dataUrl attachment shape
-  // ({ name, dataUrl }) so saved attachments render in both editors.
-  const addMobileNoteMedia = (kind, fileList) => {
-    const files = Array.from(fileList || []);
-    if (!files.length) return;
-    Promise.all(files.map(file => new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (event) => resolve({ name: file.name, dataUrl: event.target.result });
-      reader.readAsDataURL(file);
-    }))).then(media => {
-      setMobileNoteDraft(prev => ({ ...prev, [kind]: [...prev[kind], ...media] }));
+      const nextNote = updater(prevNote);
+      if (!nextNote || nextNote === prevNote) return prev;
+      return {
+        ...prev,
+        [annotationId]: {
+          ...(existing || {}),
+          note: nextNote
+        }
+      };
     });
-  };
+  }, [setSurveyMarkers]);
 
+  const renderSurveyMarkerNotes = (annotationId, variant) => (
+    <SurveyMarkerNotes
+      key={annotationId}
+      variant={variant}
+      note={surveyMarkers?.[annotationId]?.note}
+      markerId={annotationId}
+      documentId={pdfFile?.id || null}
+      canEdit={canEditSurveyMarkers !== false}
+      onUpdateNote={(updater, options) => updateSurveyMarkerNote(annotationId, updater, options)}
+      autoFocusNote={noteFocusRequestId === annotationId}
+      onAutoFocused={clearNoteFocusRequest}
+    />
+  );
 
   // Item-row badges, shared by the phone and the desktop rows: checklist
   // progress ("2/3" answered of the category's active items) and whether the
@@ -1150,8 +1146,9 @@ const SurveySpacesRail = ({
   };
   const getSurveyMarkerNoteInfo = (annotationId) => {
     const note = surveyMarkers?.[annotationId]?.note || {};
-    const mediaCount = (Array.isArray(note.photos) ? note.photos.length : 0)
-      + (Array.isArray(note.videos) ? note.videos.length : 0);
+    // Every photo, video and audio clip: stored refs (note.media) and any
+    // legacy inline photos / videos.
+    const mediaCount = normalizeNoteMedia(note).length;
     return { text: typeof note.text === 'string' ? note.text.trim() : '', mediaCount };
   };
   const renderSurveyMarkerBadges = (annotationId, category, className) => {
@@ -1165,7 +1162,7 @@ const SurveySpacesRail = ({
           </span>
         ) : null}
         {mediaCount > 0 ? (
-          <span className="survey-marker-badge" aria-label={`${mediaCount} photo or video attachment${mediaCount === 1 ? '' : 's'}`}>
+          <span className="survey-marker-badge" aria-label={`${mediaCount} media attachment${mediaCount === 1 ? '' : 's'}`}>
             <Icon name="image" size={12} color="currentColor" />
             <span>{mediaCount}</span>
           </span>
@@ -1201,9 +1198,6 @@ const SurveySpacesRail = ({
     ];
     const checklist = (category?.checklist || []).filter((item) => item && item.archived !== true);
     const isPlaced = Boolean(surveyMarker.bounds && surveyMarker.pageNumber);
-    const { text: noteText, mediaCount } = getSurveyMarkerNoteInfo(annotationId);
-    const imageGlyph = <Icon name="image" size={15} color="currentColor" />;
-    const videoGlyph = <Icon name="video" size={15} color="currentColor" />;
 
     return (
       <div className="mobile-survey-open" data-testid="mobile-survey-open-marker">
@@ -1332,113 +1326,11 @@ const SurveySpacesRail = ({
           )}
         </div>
 
-        {/* NOTES / MEDIA SLOT. Today: the note entry point, opening the
-            existing in-sheet editor right here. The inline Notes block and
-            Media strip (audit chunk B) replace what is inside this slot. */}
+        {/* NOTES / MEDIA SLOT: the note edited in place and the media strip
+            (audit chunk B, owner 2026-10-01) - the same block the desktop
+            row shows. */}
         <div className="mobile-survey-open-notes" data-slot="survey-notes-media">
-          {mobileNotesEditorOpen ? (
-            <div className="mobile-survey-notes">
-              <div className="mobile-survey-notes-card">
-                <textarea
-                  aria-label="Survey Marker notes"
-                  value={mobileNoteDraft.text}
-                  onChange={(e) => setMobileNoteDraft(prev => ({ ...prev, text: e.target.value }))}
-                  placeholder="Add details..."
-                />
-              </div>
-              <div className="mobile-survey-notes-card">
-                <div className="mobile-survey-notes-attach-header">
-                  <span className="mobile-survey-detail-label">Attachments</span>
-                  <div className="mobile-survey-notes-upload-row">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      style={{ display: 'none' }}
-                      id={`mobile-note-photos-${annotationId}`}
-                      onChange={(e) => {
-                        addMobileNoteMedia('photos', e.target.files);
-                        e.target.value = '';
-                      }}
-                    />
-                    <label htmlFor={`mobile-note-photos-${annotationId}`} className="mobile-survey-notes-upload">
-                      {imageGlyph}
-                      <span>Photo</span>
-                    </label>
-                    <input
-                      type="file"
-                      accept="video/*"
-                      multiple
-                      style={{ display: 'none' }}
-                      id={`mobile-note-videos-${annotationId}`}
-                      onChange={(e) => {
-                        addMobileNoteMedia('videos', e.target.files);
-                        e.target.value = '';
-                      }}
-                    />
-                    <label htmlFor={`mobile-note-videos-${annotationId}`} className="mobile-survey-notes-upload">
-                      {videoGlyph}
-                      <span>Video</span>
-                    </label>
-                  </div>
-                </div>
-                {mobileNoteDraft.photos.map((photo, index) => (
-                  <div key={`photo-${index}`} className="mobile-survey-notes-attachment">
-                    <span className="mobile-survey-notes-thumb">{imageGlyph}</span>
-                    <span className="mobile-survey-notes-attachment-name">{photo?.name || 'Photo'}</span>
-                    <button
-                      type="button"
-                      aria-label={`Remove ${photo?.name || 'photo'}`}
-                      onClick={() => setMobileNoteDraft(prev => ({ ...prev, photos: prev.photos.filter((_, itemIndex) => itemIndex !== index) }))}
-                    >
-                      <Icon name="close" size={13} />
-                    </button>
-                  </div>
-                ))}
-                {mobileNoteDraft.videos.map((video, index) => (
-                  <div key={`video-${index}`} className="mobile-survey-notes-attachment">
-                    <span className="mobile-survey-notes-thumb">{videoGlyph}</span>
-                    <span className="mobile-survey-notes-attachment-name">{video?.name || 'Video'}</span>
-                    <button
-                      type="button"
-                      aria-label={`Remove ${video?.name || 'video'}`}
-                      onClick={() => setMobileNoteDraft(prev => ({ ...prev, videos: prev.videos.filter((_, itemIndex) => itemIndex !== index) }))}
-                    >
-                      <Icon name="close" size={13} />
-                    </button>
-                  </div>
-                ))}
-                {!mobileNoteDraft.photos.length && !mobileNoteDraft.videos.length && (
-                  <span className="mobile-survey-notes-empty">No attachments.</span>
-                )}
-              </div>
-              <div className="mobile-survey-notes-footer">
-                <button type="button" className="mobile-survey-notes-cancel" onClick={() => setMobileNotesEditorOpen(false)}>
-                  Cancel
-                </button>
-                <button type="button" className="mobile-survey-notes-save" onClick={saveMobileNotes}>
-                  Save
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              className={`mobile-survey-note-entry${noteText ? ' has-note' : ''}`}
-              aria-label={noteText ? 'Edit Survey Marker notes' : 'Add Survey Marker notes'}
-              onClick={openMobileNotesEditor}
-            >
-              <Icon name="note" size={15} color="currentColor" />
-              <span className="mobile-survey-note-entry-text">{noteText || 'Add a note, photo or video'}</span>
-              {mediaCount > 0 ? (
-                <span className="survey-marker-badge">
-                  <Icon name="image" size={12} color="currentColor" />
-                  <span>{mediaCount}</span>
-                </span>
-              ) : null}
-              <Icon name="chevronRight" size={12} color="var(--text-3)" />
-            </button>
-          )}
+          {renderSurveyMarkerNotes(annotationId, 'phone')}
         </div>
       </div>
     );
@@ -3461,7 +3353,6 @@ const SurveySpacesRail = ({
                                                         aria-expanded={isOpenOnPhone}
                                                         onClick={(e) => {
                                                           e.stopPropagation();
-                                                          setMobileNotesEditorOpen(false);
                                                           setMobileDetailDropdown(null);
                                                           // One open Survey Marker at a time.
                                                           setExpandedSurveyMarkers(isOpenOnPhone ? {} : { [annotationId]: true });
@@ -3661,7 +3552,7 @@ const SurveySpacesRail = ({
                                                     return (
                                                       <span className="survey-rail__marker-badges">
                                                         {mediaCount > 0 ? (
-                                                          <span className="survey-marker-badge" aria-label={`${mediaCount} photo or video attachment${mediaCount === 1 ? '' : 's'}`}>
+                                                          <span className="survey-marker-badge" aria-label={`${mediaCount} media attachment${mediaCount === 1 ? '' : 's'}`}>
                                                             <Icon name="image" size={12} color="currentColor" />
                                                             <span>{mediaCount}</span>
                                                           </span>
@@ -3679,25 +3570,14 @@ const SurveySpacesRail = ({
                                                   })()}
 
                                                   {/* Item-level Notes button. A note glyph (owner
-                                                      2026-10-01: the pencil read as "rename"). */}
+                                                      2026-10-01: the pencil read as "rename"). It opens
+                                                      the Survey Marker with the caret in its inline
+                                                      Notes field (the Note dialog is gone). */}
                                                   <button
                                                     onClick={(e) => {
                                                       e.stopPropagation();
-                                                      const surveyMarkerData = surveyMarkers[annotationId];
-                                                      const existingNote = surveyMarkerData?.note;
-
-                                                      if (existingNote) {
-                                                        setNoteDialogContent({
-                                                          text: existingNote.text || '',
-                                                          photos: existingNote.photos || [],
-                                                          videos: existingNote.videos || []
-                                                        });
-                                                      } else {
-                                                        setNoteDialogContent({ text: '', photos: [], videos: [] });
-                                                      }
-
-                                                      // For item-level notes, we only need the annotationId
-                                                      setNoteDialogOpen(annotationId);
+                                                      if (!isSurveyMarkerExpanded) toggleSurveyMarkerExpanded(annotationId);
+                                                      setNoteFocusRequestId(annotationId);
                                                     }}
                                                     // 2026-09-23 (desktop survey polish): a bare glyph in an
                                                     // invisible column pad - no hover plate, no dimmed
@@ -4001,6 +3881,11 @@ const SurveySpacesRail = ({
                                                     );
                                                   })()
                                                 }
+
+                                                {/* Notes and media, inline (owner 2026-10-01,
+                                                    replaces the 600px Note dialog) - the same
+                                                    block the phone's open Survey Marker shows. */}
+                                                {!mobileMode && isSurveyMarkerExpanded && renderSurveyMarkerNotes(annotationId, 'desktop')}
                                               </div>
                                                   );
                                                 }}

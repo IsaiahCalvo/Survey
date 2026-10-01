@@ -485,6 +485,11 @@ function SurveyApp() {
         setBuiltInZoomControls={false}
         allowsBackForwardNavigationGestures
         allowsInlineMediaPlayback
+        // Survey media (owner 2026-10-01): the in-app audio recorder calls
+        // getUserMedia. Grant the camera / microphone to the Survey site
+        // itself without a second web prompt (iOS still asks once, with the
+        // app.json usage strings); any other page in this view is asked.
+        mediaCapturePermissionGrantType="grantIfSameHostElsePrompt"
         setSupportMultipleWindows={false}
         automaticallyAdjustContentInsets={false}
         automaticallyAdjustsScrollIndicatorInsets={false}

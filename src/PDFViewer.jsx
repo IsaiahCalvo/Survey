@@ -8063,8 +8063,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Legacy state (to be migrated)
   const [surveyResponses, setSurveyResponses] = useState({}); // { [itemId]: { selection: 'Y'|'N'|'N/A', note: { text, photos, videos } } }
-  const [noteDialogOpen, setNoteDialogOpen] = useState(null); // null or itemId
-  const [noteDialogContent, setNoteDialogContent] = useState({ text: '', photos: [], videos: [] });
   const [pendingSurveyMarker, setPendingSurveyMarker] = useState(null); // { pageNumber, x, y, width, height, id }
   const [showSpaceSelection, setShowSpaceSelection] = useState(false);
   const [surveyMarkers, setSurveyMarkers] = useState({}); // { [annotationId]: { pageNumber, bounds, categoryId, spaceId, checklistResponses: { [itemId]: { selection, note } } } }
@@ -22305,8 +22303,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setTransferState(null);
     setCopiedItemSelection({});
     setSurveyResponses({});
-    setNoteDialogOpen(null);
-    setNoteDialogContent({ text: '', photos: [], videos: [] });
     // UX 2026-07-17 — snap the tool back to Pan ONLY on a real document
     // change. This effect re-runs for the same open document on
     // zoom/scroll-driven callback identity churn (see the history-wipe gate
@@ -23209,30 +23205,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const removeListener = window.electronAPI.onBeforeQuit(handleBeforeQuit);
     return removeListener;
   }, [hasUnsavedAnnotations, handleSaveDocument]);
-
-  // Load note content when note dialog opens
-  useEffect(() => {
-    if (!noteDialogOpen) {
-      return;
-    }
-
-    // For item-level notes, noteDialogOpen is just the annotationId
-    const annotationId = noteDialogOpen;
-
-
-    const existingNote = surveyMarkers[annotationId]?.note;
-
-
-    if (existingNote) {
-      setNoteDialogContent({
-        text: existingNote.text || '',
-        photos: existingNote.photos || [],
-        videos: existingNote.videos || []
-      });
-    } else {
-      setNoteDialogContent({ text: '', photos: [], videos: [] });
-    }
-  }, [noteDialogOpen, surveyMarkers]);
 
   // Migrate legacy surveyMarkers to new system (one-time, when template is selected)
   useEffect(() => {
@@ -34375,8 +34347,6 @@ ${pageBlocks}
       setItemSelectModeActive,
       setItems,
       setNewSurveyMarkersByPage,
-      setNoteDialogContent,
-      setNoteDialogOpen,
       setPendingLocationItem,
       setSelectedCategories,
       setSelectedCategoryId,
@@ -34399,6 +34369,8 @@ ${pageBlocks}
       onDismissUnplacedRow: handleDismissUnplacedRow,
       onDismissAllUnplacedRows: handleDismissAllUnplacedRows,
       onResolveExcelConflict: handleResolveExcelConflict,
+      // Survey media: owner or editor (same rule as Restore in History).
+      canEditSurveyMarkers: canRestoreFromHistory,
       user,
       expandRequestKey: rightRailExpandRequestKey,
       onCollapseChange: handleRightRailCollapseChange,
@@ -34510,8 +34482,6 @@ ${pageBlocks}
     setItemSelectModeActive,
     setItems,
     setNewSurveyMarkersByPage,
-    setNoteDialogContent,
-    setNoteDialogOpen,
     setPendingLocationItem,
     setSelectedCategories,
     setSelectedCategoryId,
@@ -34534,6 +34504,7 @@ ${pageBlocks}
     handleDismissUnplacedRow,
     handleDismissAllUnplacedRows,
     handleResolveExcelConflict,
+    canRestoreFromHistory,
     user,
     rightRailExpandRequestKey,
     handleRightRailCollapseChange,
@@ -39562,338 +39533,6 @@ ${pageBlocks}
               </>
             );
           })()
-        }
-
-        {/* Note Dialog */}
-        {
-          noteDialogOpen && (
-            <>
-              <div
-                onClick={() => setNoteDialogOpen(null)}
-                style={{
-                  position: 'fixed',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  background: COLORS.modal.overlay,
-                  backdropFilter: 'blur(8px)',
-                  WebkitBackdropFilter: 'blur(8px)',
-                  zIndex: 10001,
-                  animation: 'fadeIn 0.2s ease-out',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    background: COLORS.modal.surface,
-                    border: `1px solid ${COLORS.modal.border}`,
-                    borderRadius: '8px',
-                    padding: '24px',
-                    width: '600px',
-                    maxWidth: '90vw',
-                    maxHeight: '80vh',
-                    overflow: 'auto',
-                    boxShadow: SHADOWS.xl,
-                    animation: 'fadeIn 0.2s ease-out'
-                  }}
-                >
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    marginBottom: '20px'
-                  }}>
-                    <h3 style={{
-                      margin: 0,
-                      fontSize: '18px',
-                      fontWeight: '600',
-                      color: COLORS.modal.textPrimary,
-                      fontFamily: FONT_FAMILY
-                    }}>
-                      Note
-                    </h3>
-                    <button
-                      onClick={() => setNoteDialogOpen(null)}
-                      className="btn btn-icon btn-icon-sm"
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--text-3)'
-                      }}
-                    >
-                      <Icon name="close" size={18} />
-                    </button>
-                  </div>
-
-                  <div style={{ marginBottom: '16px' }}>
-                    <label style={{
-                      display: 'block',
-                      marginBottom: '8px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      color: COLORS.modal.textPrimary
-                    }}>
-                      Notes
-                    </label>
-                    <textarea
-                      value={noteDialogContent.text}
-                      onChange={(e) => setNoteDialogContent(prev => ({ ...prev, text: e.target.value }))}
-                      rows={6}
-                      style={{
-                        width: '100%',
-                        padding: '10px',
-                        background: COLORS.modal.panel,
-                        color: COLORS.modal.textPrimary,
-                        border: `1px solid ${COLORS.modal.borderStrong}`,
-                        borderRadius: '5px',
-                        fontSize: '14px',
-                        fontFamily: FONT_FAMILY,
-                        resize: 'vertical'
-                      }}
-                      placeholder="Enter your notes..."
-                    />
-                  </div>
-
-                  <div style={{ marginBottom: '16px' }}>
-                    <label style={{
-                      display: 'block',
-                      marginBottom: '8px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      color: COLORS.modal.textPrimary
-                    }}>
-                      Photos
-                    </label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={(e) => {
-                        const files = Array.from(e.target.files || []);
-                        const photoPromises = files.map(file => {
-                          return new Promise((resolve) => {
-                            const reader = new FileReader();
-                            reader.onload = (event) => {
-                              resolve({ name: file.name, dataUrl: event.target.result });
-                            };
-                            reader.readAsDataURL(file);
-                          });
-                        });
-                        Promise.all(photoPromises).then(photos => {
-                          setNoteDialogContent(prev => ({
-                            ...prev,
-                            photos: [...prev.photos, ...photos]
-                          }));
-                        });
-                      }}
-                      style={{ display: 'none' }}
-                      id={`photo-upload-${noteDialogOpen}`}
-                    />
-                    <label
-                      htmlFor={`photo-upload-${noteDialogOpen}`}
-                      className="btn btn-secondary btn-md"
-                      style={{ cursor: 'pointer', display: 'inline-block' }}
-                    >
-                      Upload photos
-                    </label>
-                    {noteDialogContent.photos.length > 0 && (
-                      <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {noteDialogContent.photos.map((photo, idx) => (
-                          <div key={idx} style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            padding: '8px',
-                            background: COLORS.modal.panel,
-                            borderRadius: '4px'
-                          }}>
-                            <img src={photo.dataUrl} alt={photo.name} style={{
-                              width: '60px',
-                              height: '60px',
-                              objectFit: 'cover',
-                              borderRadius: '4px'
-                            }} />
-                            <span style={{ flex: 1, color: COLORS.modal.textPrimary, fontSize: '13px' }}>{photo.name}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setNoteDialogContent(prev => ({
-                                  ...prev,
-                                  photos: prev.photos.filter((_, i) => i !== idx)
-                                }));
-                              }}
-                              className="btn btn-icon btn-icon-sm"
-                              style={{ background: COLORS.modal.secondaryButton, border: `1px solid ${COLORS.modal.borderStrong}` }}
-                              onMouseEnter={handleModalSecondaryButtonMouseEnter}
-                              onMouseLeave={handleModalSecondaryButtonMouseLeave}
-                            >
-                              <Icon name="close" size={14} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div style={{ marginBottom: '20px' }}>
-                    <label style={{
-                      display: 'block',
-                      marginBottom: '8px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      color: COLORS.modal.textPrimary
-                    }}>
-                      Videos
-                    </label>
-                    <input
-                      type="file"
-                      accept="video/*"
-                      multiple
-                      onChange={(e) => {
-                        const files = Array.from(e.target.files || []);
-                        const videoPromises = files.map(file => {
-                          return new Promise((resolve) => {
-                            const reader = new FileReader();
-                            reader.onload = (event) => {
-                              resolve({ name: file.name, dataUrl: event.target.result });
-                            };
-                            reader.readAsDataURL(file);
-                          });
-                        });
-                        Promise.all(videoPromises).then(videos => {
-                          setNoteDialogContent(prev => ({
-                            ...prev,
-                            videos: [...prev.videos, ...videos]
-                          }));
-                        });
-                      }}
-                      style={{ display: 'none' }}
-                      id={`video-upload-${noteDialogOpen}`}
-                    />
-                    <label
-                      htmlFor={`video-upload-${noteDialogOpen}`}
-                      className="btn btn-secondary btn-md"
-                      style={{ cursor: 'pointer', display: 'inline-block' }}
-                    >
-                      Upload videos
-                    </label>
-                    {noteDialogContent.videos.length > 0 && (
-                      <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {noteDialogContent.videos.map((video, idx) => (
-                          <div key={idx} style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            padding: '8px',
-                            background: COLORS.modal.panel,
-                            borderRadius: '4px'
-                          }}>
-                            <video src={video.dataUrl} style={{
-                              width: '60px',
-                              height: '60px',
-                              objectFit: 'cover',
-                              borderRadius: '4px'
-                            }} />
-                            <span style={{ flex: 1, color: COLORS.modal.textPrimary, fontSize: '13px' }}>{video.name}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setNoteDialogContent(prev => ({
-                                  ...prev,
-                                  videos: prev.videos.filter((_, i) => i !== idx)
-                                }));
-                              }}
-                              className="btn btn-icon btn-icon-sm"
-                              style={{ background: COLORS.modal.secondaryButton, border: `1px solid ${COLORS.modal.borderStrong}` }}
-                              onMouseEnter={handleModalSecondaryButtonMouseEnter}
-                              onMouseLeave={handleModalSecondaryButtonMouseLeave}
-                            >
-                              <Icon name="close" size={14} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-                    <button
-                      type="button"
-                      onClick={() => setNoteDialogOpen(null)}
-                      className="btn btn-default btn-md"
-                      style={{
-                        background: COLORS.modal.secondaryButton,
-                        border: `1px solid ${COLORS.modal.borderStrong}`,
-                        color: COLORS.modal.textPrimary
-                      }}
-                      onMouseEnter={handleModalSecondaryButtonMouseEnter}
-                      onMouseLeave={handleModalSecondaryButtonMouseLeave}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-
-                        // For item-level notes, noteDialogOpen is just the annotationId
-                        const annotationId = noteDialogOpen;
-
-
-                        // Update survey marker annotation with item-level note
-                        setSurveyMarkers(prev => {
-
-                          const existingSurveyMarker = prev[annotationId] || {};
-
-                          const newNote = {
-                            // Keep stored media refs (note.media) and anything else this dialog does not edit.
-                            ...(existingSurveyMarker.note && typeof existingSurveyMarker.note === 'object' ? existingSurveyMarker.note : {}),
-                            text: noteDialogContent.text,
-                            photos: noteDialogContent.photos,
-                            videos: noteDialogContent.videos
-                          };
-
-                          const updated = {
-                            ...prev,
-                            [annotationId]: {
-                              ...existingSurveyMarker, // Preserve all existing data
-                              note: newNote  // Save note at surveyMarker level
-                            }
-                          };
-
-
-                          // Save to localStorage immediately
-                          if (pdfId) {
-                            saveSurveyMarkers(pdfId, updated);
-                          } else {
-                            console.warn('Cannot save to localStorage: pdfId is null');
-                          }
-
-                          return updated;
-                        });
-
-                        setNoteDialogOpen(null);
-                        setNoteDialogContent({ text: '', photos: [], videos: [] }); // Clear dialog content
-                      }}
-                      className="btn btn-primary btn-md"
-                      style={{
-                        background: COLORS.modal.primaryButton,
-                        border: `1px solid ${COLORS.modal.borderStrong}`,
-                        color: COLORS.modal.textPrimary
-                      }}
-                      onMouseEnter={handleModalPrimaryButtonMouseEnter}
-                      onMouseLeave={handleModalPrimaryButtonMouseLeave}
-                    >
-                      Save
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </>
-          )
         }
 
         {/* Item Transfer - Destination Selection Modal */}

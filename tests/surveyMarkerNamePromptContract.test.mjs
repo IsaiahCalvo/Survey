@@ -50,12 +50,15 @@ test('custom name is trimmed on commit', () => {
 // ---- Layer 2: source-contract tripwires ----
 
 const modalStart = src.indexOf('{/* Name Prompt Modal');
-const modalEnd = src.indexOf('{/* Note Dialog */}', modalStart);
+// The block ends where the next modal starts. (It was the Note Dialog until
+// that dialog was replaced by the inline Notes block in the Survey rail,
+// 2026-10-01.)
+const modalEnd = src.indexOf('{/* Item Transfer - Destination Selection Modal */}', modalStart);
 const modalBlock = src.slice(modalStart, modalEnd);
 
 test('the Name Prompt Modal block exists and is delimited', () => {
   assert.ok(modalStart !== -1, 'Name Prompt Modal comment marker missing');
-  assert.ok(modalEnd > modalStart, 'Note Dialog end marker missing after the modal');
+  assert.ok(modalEnd > modalStart, 'Item Transfer end marker missing after the modal');
 });
 
 test('modal input displays via the null-coalescing sentinel, exactly once', () => {
