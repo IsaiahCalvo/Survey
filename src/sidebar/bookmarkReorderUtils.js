@@ -181,17 +181,26 @@ export const getBookmarkProjection = (
  *
  *   - Same-level reorders commit at once (with a few px of slot hysteresis so
  *     a finger resting on a row boundary does not see-saw the rows).
- *   - Depth is sticky: it stays what it was until the drag moves a clear
- *     BOOKMARK_DEPTH_STEP_RATIO of an indent sideways (18px) from where the
- *     depth last changed — and that sideways step commits at once.
+ *   - Depth is sticky: it stays what it was until the drag moves clearly
+ *     sideways from where the depth last changed — half an indent (12px) to
+ *     step OUT a level, BOOKMARK_DEPTH_STEP_RATIO of one (18px) to step IN —
+ *     and that sideways step commits at once. Re-anchoring at each change
+ *     gives the step back its own hysteresis (12px + 18px apart).
  *   - A folder row has three zones: its top quarter drops before it, its
  *     bottom quarter after it, and its middle half INTO it (Finder-style).
- *   - Any change of parent caused by moving up or down (into a folder's middle,
- *     into an open folder's children, or out of a folder's range) waits
- *     BOOKMARK_NEST_DWELL_MS. Going in needs the drag to REST there — same
- *     slot, within BOOKMARK_DWELL_STILL_RATIO of a row — for that long, so a
- *     drag that keeps moving, however slowly, passes a folder by; coming out
- *     needs it to stay outside the folder for that long.
+ *     The folder the row is already in has no "into" zone: the upper half of
+ *     its header drops above it (out), the lower half keeps the row inside.
+ *   - Going INTO a folder by moving up or down (its middle, or between an
+ *     open folder's children) waits BOOKMARK_NEST_DWELL_MS, and needs the drag
+ *     to REST there — same slot, within BOOKMARK_DWELL_STILL_RATIO of a row —
+ *     for that long, so a drag that keeps moving, however slowly, passes a
+ *     folder by.
+ *   - Coming OUT of a folder (past its last child, above its header, or a
+ *     clear move left) commits at once (UX 2026-10-01, owner: the 300ms wait
+ *     to leave a folder felt sticky and laggy — "it doesn't feel as good,
+ *     especially when moving a bookmark OUT of a grouped bookmark folder").
+ *     Flip-flopping at the boundary is held off by the slot / depth
+ *     hysteresis above, never by a timer.
  *
  * Geometry is dnd-kit's own: `rects` are the rows' layout rects (transform
  * free) and `centerY` / `dx` come from the dragged row's collision rect, all in
@@ -202,6 +211,7 @@ export const getBookmarkProjection = (
  */
 export const BOOKMARK_NEST_DWELL_MS = 300;
 export const BOOKMARK_DEPTH_STEP_RATIO = 0.75;
+export const BOOKMARK_DEPTH_STEP_OUT_RATIO = 0.5;
 export const BOOKMARK_SLOT_HYSTERESIS_RATIO = 0.2;
 export const BOOKMARK_FOLDER_EDGE_RATIO = 0.25;
 export const BOOKMARK_DWELL_STILL_RATIO = 0.15;
@@ -283,7 +293,10 @@ export const resolveBookmarkDragIntent = (intent, {
   let intoItem = null;
   if (hovered) {
     const { item, index, rel, below } = hovered;
-    if (item.type === 'folder') {
+    if (item.type === 'folder' && item.id === intent.parentId) {
+      // The row's own folder: above the header's middle is out, below is in.
+      targetIndex = rel < 0.5 ? beforeIndex(index) : afterIndex(index);
+    } else if (item.type === 'folder') {
       if (rel < BOOKMARK_FOLDER_EDGE_RATIO) targetIndex = beforeIndex(index);
       else if (rel > 1 - BOOKMARK_FOLDER_EDGE_RATIO) targetIndex = afterIndex(index);
       else {
@@ -302,7 +315,7 @@ export const resolveBookmarkDragIntent = (intent, {
   const { newItems, maxDepth, minDepth } = getSlotBounds(items, activeIndex, targetIndex);
   const clampDepth = (value) => Math.max(minDepth, Math.min(value, maxDepth));
   const stepRatio = (dx - intent.anchorX) / indentationWidth;
-  const step = stepRatio >= BOOKMARK_DEPTH_STEP_RATIO ? 1 : stepRatio <= -BOOKMARK_DEPTH_STEP_RATIO ? -1 : 0;
+  const step = stepRatio >= BOOKMARK_DEPTH_STEP_RATIO ? 1 : stepRatio <= -BOOKMARK_DEPTH_STEP_OUT_RATIO ? -1 : 0;
   let depth;
   let stepped = false;
   if (intoItem) {
@@ -329,24 +342,34 @@ export const resolveBookmarkDragIntent = (intent, {
     slotOffsetY: Math.round((landingTop - (activeRect?.top ?? 0)) * 10) / 10,
   };
 
+  // Coming out: the new parent is the root or one of the folders the row is
+  // already inside (e.g. a sub-folder's row moving up to its parent's level).
+  const parentOf = (id) => items.find((item) => item.id === id)?.parentId ?? null;
+  let leaving = parentId === null;
+  for (let ancestor = parentOf(intent.parentId); !leaving && ancestor; ancestor = parentOf(ancestor)) {
+    if (ancestor === parentId) leaving = true;
+  }
+
   let next;
   let wakeAt = null;
-  if (parentId === intent.parentId || (stepped && targetIndex === committedIndex)) {
+  if (parentId === intent.parentId || leaving || (stepped && targetIndex === committedIndex)) {
+    // Same folder, coming out, or a clear sideways step: at once. A sideways
+    // step re-anchors where it happened, so the next one is measured from
+    // there; a depth change from moving up / down keeps the old anchor (a
+    // thumb's sideways wobble at that moment must not become the anchor).
     next = {
       ...intent,
       ...candidate,
-      anchorX: stepped ? intent.anchorX + step * indentationWidth : intent.anchorX,
+      anchorX: stepped ? dx : intent.anchorX,
       pending: null,
     };
   } else {
-    // Going deeper (or into a folder) must rest on one slot; coming out only
-    // has to stay out of the folder.
-    const entering = parentId !== null && depth >= intent.depth;
-    const key = entering ? `in:${parentId}:${candidate.overId}` : `out:${parentId}`;
+    // Going into a folder must REST on one slot for the dwell.
+    const key = `in:${parentId}:${candidate.overId}`;
     const stillLimit = shift * BOOKMARK_DWELL_STILL_RATIO;
     const restarted = !intent.pending
       || intent.pending.key !== key
-      || (entering && Math.abs(centerY - intent.pending.y) > stillLimit);
+      || Math.abs(centerY - intent.pending.y) > stillLimit;
     const pending = restarted
       ? { key, since: now, y: centerY, parentId }
       : intent.pending;
@@ -355,7 +378,7 @@ export const resolveBookmarkDragIntent = (intent, {
     } else {
       next = {
         ...intent,
-        pending: { ...pending, intoId: entering ? parentId : null },
+        pending: { ...pending, intoId: parentId },
       };
       wakeAt = pending.since + dwellMs;
     }

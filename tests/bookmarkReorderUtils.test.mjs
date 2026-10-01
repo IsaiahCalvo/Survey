@@ -274,25 +274,71 @@ test('drag intent: sideways nesting needs a clear move, with hysteresis back', (
   assert.equal(drag.at(y, 48, 5).parentId, null, 'a clear move back un-nests at once');
 });
 
-test('drag intent: moving out above a folder waits, but does not need a still finger', () => {
+/*
+ * UX 2026-10-01 — owner: after the 2026-09-30 round, moving a bookmark OUT of
+ * a folder felt sticky ("it doesn't feel as good, especially when moving a
+ * bookmark OUT of a grouped bookmark folder"). Leaving used to wait 300ms
+ * outside the folder (the test this replaces pinned that wait); it now
+ * commits on the first frame the drag is clearly out. Going IN keeps its dwell.
+ */
+test('drag intent: moving out above a folder header is immediate', () => {
   const drag = makeDrag(openTree(), 'f1');
   let now = 0;
   const start = drag.centerOf('f1');
   const target = drag.centerOf('a');
-  let firstOutsideAt = null;
+  let firstOutside = null;
   for (let y = start; y >= target; y -= 2, now += 16) {
     const state = drag.at(y, now);
-    if (firstOutsideAt === null && y < drag.centerOf('f') - ROW / 4) {
-      firstOutsideAt = now;
-      assert.equal(state.parentId, 'f', 'leaving the folder is not instant');
+    if (firstOutside === null && y < drag.centerOf('f')) {
+      firstOutside = state;
+      assert.equal(state.parentId, null, 'above the header middle the row is out at once');
+      assert.equal(state.wakeAt, null, 'no timer');
     }
   }
-  while (now < firstOutsideAt + BOOKMARK_NEST_DWELL_MS + 32) {
-    drag.at(target - 3 + (now % 32 === 0 ? 4 : 0), now);
-    now += 16;
-  }
+  assert.ok(firstOutside);
   assert.equal(drag.intent.parentId, null);
   assert.equal(drag.intent.overId, 'a');
+});
+
+test('drag intent: moving down past the last child un-nests at once', () => {
+  const drag = makeDrag(openTree(), 'f2');
+  const out = drag.at(drag.centerOf('c') - ROW / 2 + 0.25 * ROW, 0);
+  assert.equal(out.parentId, null);
+  assert.equal(out.depth, 0);
+  assert.equal(out.overId, 'c');
+  assert.equal(out.wakeAt, null);
+});
+
+test('drag intent: a clear move left un-nests at once, a wobble does not', () => {
+  const drag = makeDrag(openTree(), 'f2');
+  const y = drag.centerOf('f2');
+  assert.equal(drag.at(y, 0, -10).parentId, 'f', '10px left is a wobble');
+  const out = drag.at(y, 16, -13);
+  assert.equal(out.parentId, null, 'half an indent left steps out');
+  assert.equal(out.depth, 0);
+  assert.equal(drag.at(y, 32, 0).parentId, null, 'drifting back keeps it out');
+  assert.equal(drag.at(y, 48, 6).parentId, 'f', 'a clear move right goes back in');
+});
+
+test('drag intent: resting on the line under the folder from inside settles once', () => {
+  const drag = makeDrag(openTree(), 'f2');
+  const boundary = drag.centerOf('f2') + ROW / 2; // the line between f2 and c
+  const nests = [];
+  for (let now = 0; now <= 2000; now += 16) {
+    const state = drag.at(boundary + 7 * Math.sin(now / 60), now, 8 * Math.sin(now / 90));
+    if (nests.at(-1) !== state.parentId) nests.push(state.parentId);
+  }
+  assert.ok(nests.length <= 2, `nesting changed at most once (${nests.join(' -> ')})`);
+});
+
+test('drag intent: going between an open folder\'s children still waits', () => {
+  const drag = makeDrag(openTree(), 'c');
+  const between = drag.centerOf('f2') - ROW / 4; // over f2's upper part: between f1 and f2
+  const first = drag.at(between, 0);
+  assert.equal(first.parentId, null, 'no instant nest');
+  assert.equal(first.wakeAt, BOOKMARK_NEST_DWELL_MS);
+  const entered = drag.at(between + 1, BOOKMARK_NEST_DWELL_MS + 5);
+  assert.equal(entered.parentId, 'f');
 });
 
 test('drag intent: same-level reorders commit at once', () => {

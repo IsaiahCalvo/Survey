@@ -83,10 +83,42 @@ test('phone rows are dnd-kit sortables sharing the desktop projection', () => {
   }
   assert.match(mobileBranch, /<SortableContext items=\{sortedIds\}/);
   // The projected depth drives the live reparent feedback on the phone too,
-  // with the same drop-target highlight and landing slot as desktop.
+  // with the same landing slot as desktop. (UX 2026-10-01, owner: no gold
+  // glow — the folder drop-target tint the 2026-09-30 round added is gone,
+  // so no dropTargetState is passed any more.)
   assert.match(mobileBranch, /projectedDepth=\{item\.id === activeId && projected \? projected\.depth : null\}/);
-  assert.match(mobileBranch, /dropTargetState=\{activeId \? getDropTargetState\(item\.id\) : null\}/);
+  assert.doesNotMatch(source, /dropTargetState|data-bookmark-drop-target/);
   assert.match(mobileBranch, /landingSlot=\{item\.id === activeId && projected \?/);
+});
+
+/*
+ * UX 2026-10-01 — owner: "I don't want the yellow glow". The landing slot is
+ * a quiet neutral fill on both layouts; nothing a drag paints is accent.
+ */
+test('the drag landing slot is neutral, never gold', () => {
+  const desktopRow = source.slice(source.indexOf('const BookmarkTreeRow = ('), source.indexOf('const MobileBookmarkRow = ('));
+  const slot = desktopRow.slice(desktopRow.indexOf('data-bookmark-drop-slot'));
+  assert.match(slot.slice(0, 700), /background: 'var\(--hover\)'/);
+  assert.doesNotMatch(slot.slice(0, 700), /--accent/);
+  const css = readFileSync(fileURLToPath(new URL('../src/mobile/mobilePdfViewer.css', import.meta.url)), 'utf8');
+  const rule = css.slice(css.indexOf('.mobile-bookmark-drop-slot {'));
+  assert.doesNotMatch(rule.slice(0, rule.indexOf('}')), /--accent/);
+  assert.doesNotMatch(css, /data-bookmark-drop-target/);
+});
+
+/*
+ * UX 2026-10-01 — owner: opening a folder was instant but closing it took
+ * about a second. A tap now drops the folder from expandedFolders in the same
+ * handler (no 240ms fold-up timer first), and a desktop folder row folds on a
+ * click anywhere, like the phone row.
+ */
+test('tapping an open folder closes it in the same frame', () => {
+  const toggle = source.slice(source.indexOf('const toggleExpand = useCallback('), source.indexOf('const persistBookmarkTree = useCallback('));
+  const closeBranch = toggle.slice(0, toggle.indexOf('return;'));
+  assert.match(closeBranch, /setExpandedFolders\(/);
+  assert.doesNotMatch(closeBranch, /animateCollapseFolders\(|setTimeout/);
+  const desktopRow = source.slice(source.indexOf('const BookmarkTreeRow = ('), source.indexOf('const MobileBookmarkRow = ('));
+  assert.match(desktopRow, /if \(isFolder\) \{\s*if \(item\.children\?\.length\) onToggle\?\.\(item\.id\);\s*\} else \{\s*onNavigate\?\.\(item\);/);
 });
 
 /*
