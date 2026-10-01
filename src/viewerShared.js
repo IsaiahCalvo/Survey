@@ -377,17 +377,33 @@ export const RAIL_CONTROL_GLYPH = CHROME_FIELD_GLYPH;
 export const RAIL_SPLIT_CONTROL_W = 36;
 export const RAIL_CARET = 10;
 
+// Survey audit (2026-10-01): entity colours are user data and may hold a
+// value that is not a colour this code can read - the old default "Removed"
+// entity was saved as 'var(--text-3)', which turned into rgba(NaN, NaN, NaN).
+// Read #rgb / #rrggbb / #rrggbbaa (with or without '#') and rgb()/rgba();
+// anything else falls back to ENTITY_FALLBACK_HEX, a plain grey, so a marker
+// and the Excel export always get a real colour. Saved data is not rewritten.
+export const ENTITY_FALLBACK_HEX = '#959eae';
+const ENTITY_FALLBACK_RGB = [149, 158, 174];
+export const parseColorRgb = (value) => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  const rgbMatch = trimmed.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*[\d.]+\s*)?\)$/i);
+  if (rgbMatch) {
+    const rgb = rgbMatch.slice(1, 4).map(Number);
+    return rgb.every((n) => n <= 255) ? rgb : null;
+  }
+  const hexMatch = trimmed.match(/^#?([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+  if (!hexMatch) return null;
+  let digits = hexMatch[1];
+  if (digits.length === 3) digits = digits.split('').map((d) => d + d).join('');
+  return [0, 2, 4].map((i) => parseInt(digits.substring(i, i + 2), 16));
+};
+
 // Convert hex color to rgba with default opacity (default 0.2, but surveyMarkers use 1.0)
 export const hexToRgba = (hex, opacity = 0.2) => {
-  // Remove # if present
-  hex = hex.replace('#', '');
-
-  // Parse RGB values
-  const r = parseInt(hex.substring(0, 2), 16);
-  const g = parseInt(hex.substring(2, 4), 16);
-  const b = parseInt(hex.substring(4, 6), 16);
-
-  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+  const rgb = parseColorRgb(hex) || ENTITY_FALLBACK_RGB;
+  return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${opacity})`;
 };
 
 // Ensure color is in rgba format with specified opacity (default 0.2, but surveyMarkers use 1.0)
@@ -1266,11 +1282,10 @@ export const normalizeSurveyMarkerColor = (color, fallbackOpacity = DEFAULT_SURV
     return `rgba(${r}, ${g}, ${b}, ${fallbackOpacity})`;
   }
 
-  if (trimmed.startsWith('#')) {
-    return hexToRgba(trimmed, fallbackOpacity);
-  }
-
-  return trimmed;
+  // Hex, or anything unreadable (a saved 'var(--text-3)', 'rgba(NaN, ...)'):
+  // hexToRgba falls back to the grey ENTITY_FALLBACK_HEX (survey audit
+  // 2026-10-01) instead of handing the page an invalid fill.
+  return hexToRgba(trimmed, fallbackOpacity);
 };
 
 export const getCategoryGlyphLabel = (name) => {

@@ -28,7 +28,8 @@ const ledgerHeader = {
   padding: '8px 0',
 };
 
-const RIBBON = ['#d8a84e', '#7ab7e6', '#a6e07a', '#c293e6', '#e69a7a', '#9aa3b2'];
+// Survey calm gold (2026-10-01): no ribbon colour equals the accent gold.
+const RIBBON = ['#f0883e', '#7ab7e6', '#a6e07a', '#c293e6', '#e69a7a', '#9aa3b2'];
 const MENU_HEX = {
   card: 'var(--surface-2)',
   rule: 'var(--border)',

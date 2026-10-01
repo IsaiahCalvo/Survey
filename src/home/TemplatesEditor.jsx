@@ -170,13 +170,18 @@ const getModuleTabClampBounds = (activeId) => {
   };
 };
 
-/* Accent ribbon — templates may not store an accent colour. */
-const ACCENTS = ['#e07a5e', '#7ab7e6', '#c293e6', '#a6e07a', '#d8a84e', '#9aa3b2'];
+/* Accent ribbon — templates may not store an accent colour.
+   Survey calm gold (2026-10-01): no user colour equals the app's accent gold
+   (#d8a84e) any more - a gold marker or entity read as app chrome. Its slot is
+   a distinct orange, #f0883e. */
+const ACCENTS = ['#e07a5e', '#7ab7e6', '#c293e6', '#a6e07a', '#f0883e', '#9aa3b2'];
 
-/* Entity colours cycled through when a brand-new entity is created. */
+/* Entity colours cycled through when a brand-new entity is created. Real hex
+   only: the last slot was 'var(--text-3)', which hexToRgba, the page's marker
+   fill and the Excel export cannot read (it became rgba(NaN...)). */
 const ENTITY_COLORS = [
-  '#e07a5e', '#7ab7e6', '#c293e6', '#a6e07a', '#d8a84e', '#ec8a9a',
-  '#5fc7b0', 'var(--text-3)',
+  '#e07a5e', '#7ab7e6', '#c293e6', '#a6e07a', '#f0883e', '#ec8a9a',
+  '#5fc7b0', '#959eae',
 ];
 
 /* Monotonic id generator — every new module/category/item/entity gets a

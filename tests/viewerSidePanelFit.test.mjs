@@ -130,7 +130,9 @@ test('wiring: auto re-fits are marked and never land; user fits use the band', (
 
   // Both desktop panels register as side panels.
   const rail = read('../src/SurveySpacesRail.jsx');
-  assert.match(rail, /ref=\{mobileMode \? undefined : sideOccluderRef\}\s*data-viewer-occluder=\{!mobileMode && !isSurveyPanelCollapsed \? 'side' : undefined\}/);
+  // Survey audit P1-5 (2026-10-01): the phone Survey sheet is a 'sheet'
+  // occluder (like the phone Pages sheet), so Locate fits above it.
+  assert.match(rail, /ref=\{mobileMode \? undefined : sideOccluderRef\}\s*data-viewer-occluder=\{isSurveyPanelCollapsed \? undefined : \(mobileMode \? 'sheet' : 'side'\)\}/);
   const sidebar = read('../src/PDFSidebar.jsx');
   assert.match(sidebar, /data-viewer-occluder=\{isCollapsed \? undefined : \(mobileMode \? 'sheet' : 'side'\)\}\s*ref=\{mobileMode \? undefined : sideOccluderRef\}/);
 });

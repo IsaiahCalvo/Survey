@@ -1741,8 +1741,9 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
    after a marker is placed): the desktop survey row's switch (.survey-subrow__keep in
    src/styles.css) at the strip's scale - a 24x14 track with a 10px knob, then
    the word in the strip's 11px/600, 6px apart. No plate, no border. Off: a
-   --surface-3 track with an inset --border-strong ring, word --text-2. On: an
-   --accent track, knob +10px, word --text-1. One button; its 44px pad is the
+   --surface-3 track with an inset --border-strong ring, word --text-2. On: a
+   neutral --text-2 ink track (survey calm gold 2026-10-01: Reuse is a setting,
+   gold is kept for the armed category), knob +10px, word --text-1. One button; its 44px pad is the
    shared -5/-19/-2 above. */
 .mobile-pdf-properties__keep {
   height: var(--mobile-strip-control-h);
@@ -1788,7 +1789,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 }
 
 .mobile-pdf-properties__keep[aria-checked='true'] .mobile-pdf-properties__keep-track {
-  background: var(--accent);
+  background: var(--text-2);
   box-shadow: none;
 }
 

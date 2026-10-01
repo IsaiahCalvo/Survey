@@ -302,7 +302,6 @@ import { isLiveFormWidgetTarget } from './utils/formWidgetPointerTargets.js';
 import { resolveSafeSnapshot } from './utils/safeSnapshot';
 import { canManageCollaborativeSpaces } from './utils/collaborativeSpaceAccess';
 import { combineCollaborationSyncStatus } from './utils/collaborationSyncStatus';
-import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt';
 import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
 import { scopeHistoryStateForCalloutRestore } from './utils/calloutHistoryScope';
 import { shouldRunSurveyMarkerSync } from './utils/surveyMarkerSyncSafety';
@@ -8146,6 +8145,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [pendingSurveyMarkerName, setPendingSurveyMarkerName] = useState(null); // { surveyMarker, categoryId } when prompting for name
   const [surveyMarkerNameInput, setSurveyMarkerNameInput] = useState(null); // Name prompt input; null = untouched (show category-derived default), any string ('' included) = user's text
   const [pendingEntitySelection, setPendingEntitySelection] = useState(null); // { surveyMarker, categoryId } when prompting for Entity
+  // Owner 2026-10-01 ("Yes, inline like phone"): a Survey Marker placed on
+  // desktop opens in the Survey rail with its name field focused - no Entity /
+  // Name pop-ups. { id, tick } asks the rail to focus that marker's name.
+  const [surveyMarkerNameFocusRequest, setSurveyMarkerNameFocusRequest] = useState(null);
+  // The entity last picked for a Survey Marker on desktop (the rail's Entity
+  // menu); a new desktop marker starts with it, like the phone's entity disc.
+  const lastSurveyEntityIdRef = useRef(null);
+  const rememberSurveyEntity = useCallback((entityId) => {
+    lastSurveyEntityIdRef.current = entityId || null;
+  }, []);
   const [mobileSurveyEntityId, setMobileSurveyEntityId] = useState(null);
   // Pending Survey Marker deletion participates in legacy Undo/Redo. Keep the
   // entire transient prompt/preview slice together so restoring the marker
@@ -25186,14 +25195,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setMobileSurveyEntityId(null);
     setActiveToolLogged('survey-marker');
   }, [setActiveToolLogged]);
+  // Survey audit P1-3 (2026-10-01): the category and the entity are two
+  // independent picks for the next Survey Marker. Picking one keeps the other
+  // (an entity tap used to disarm the category, so the next drag opened a
+  // surprise "Categorize" dialog).
   const handleMobileSurveyCategorySelect = useCallback((categoryId) => {
     setSelectedCategoryId(categoryId || null);
-    setMobileSurveyEntityId(null);
     setActiveToolLogged('survey-marker');
   }, [setActiveToolLogged]);
   const handleMobileSurveyEntitySelect = useCallback((entityId) => {
     setMobileSurveyEntityId(entityId || null);
-    setSelectedCategoryId(null);
     setActiveToolLogged('survey-marker');
   }, [setActiveToolLogged]);
 
@@ -29625,6 +29636,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }, 300);
   }, [surveyMarkers, selectedTemplate, showSurveyPanel, rightRailCollapsed, requestRightRailExpand, mobileMode]);
 
+  // Survey audit P1-5 (phone "Locate on page"): newest locate wins.
+  const surveyLocateTokenRef = useRef(0);
+
   // Locate item on PDF (Forward Navigation)
   const handleLocateItemOnPDF = useCallback((surveyMarker) => {
     if (!surveyMarker) return;
@@ -29646,6 +29660,87 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         annotationId,
         tick: Date.now(),
       });
+    }
+
+    // Survey audit P1-5 (phone): the Survey sheet has just been lowered to
+    // its standard height (SurveySpacesRail). Once it has settled, fit the
+    // marker in the page you can still see - above the sheet, beside the tool
+    // rail - with drawing around it: the box takes at most ~40% of that area's
+    // width and height (it used to fill the width, under a full-screen sheet).
+    // The zoom goes through the normal viewer zoom, so zoomGeneration and the
+    // pdf.js commit run exactly as for the zoom buttons.
+    if (mobileMode && typeof window !== 'undefined' && typeof document !== 'undefined') {
+      const token = surveyLocateTokenRef.current + 1;
+      surveyLocateTokenRef.current = token;
+      const isCurrent = () => surveyLocateTokenRef.current === token;
+      const readInsets = () => {
+        const container = containerRef.current;
+        if (!container) return { left: 0, right: 0, top: 0, bottom: 0 };
+        const occluders = Array.from(document.querySelectorAll('[data-viewer-occluder], .mobile-pdf-tools, .mobile-pdf-properties'))
+          .filter((node) => node.getClientRects().length > 0)
+          .map((node) => node.getBoundingClientRect());
+        return resolveViewerOcclusionInsets(container.getBoundingClientRect(), occluders);
+      };
+      const readRenderedScale = () => {
+        const pageContainer =
+          pageContainersRef.current?.[pageNumber] ||
+          pdfjsPageContainersStateRef.current?.[pageNumber] ||
+          pdfjsViewerRef.current?.getPageContainer?.(pageNumber) ||
+          null;
+        const pageElement = resolvePageContentElement(pageContainer) || pageContainer;
+        const pageRect = pageElement?.getBoundingClientRect?.();
+        const pageSize = pageSizesRef.current?.[pageNumber] || {};
+        if (!pageRect || !(pageRect.width > 0) || !(Number(pageSize.width) > 0)) return null;
+        return pageRect.width / Number(pageSize.width);
+      };
+      const centerInVisibleArea = () => {
+        const insets = readInsets();
+        return centerPageBoundsInViewer(pageNumber, bounds, {
+          behavior: 'auto',
+          retryBehavior: 'auto',
+          maxRetries: 18,
+          retryDelay: 60,
+          navigateFirst: true,
+          leftInset: insets.left,
+          rightInset: insets.right,
+          topInset: insets.top,
+          bottomInset: insets.bottom,
+        });
+      };
+      window.setTimeout(() => {
+        if (!isCurrent()) return;
+        const container = containerRef.current;
+        if (!container) return;
+        const insets = readInsets();
+        const visibleWidth = Math.max(80, container.clientWidth - insets.left - insets.right);
+        const visibleHeight = Math.max(80, container.clientHeight - insets.top - insets.bottom);
+        const boxWidth = Math.max(1, Number(bounds.width) || 1);
+        const boxHeight = Math.max(1, Number(bounds.height) || 1);
+        const fitScale = Math.min((visibleWidth * 0.4) / boxWidth, (visibleHeight * 0.4) / boxHeight);
+        const targetScale = Math.min(3, Math.max(0.35, fitScale));
+        const currentScale = readRenderedScale() || Math.max(0.01, Number(scaleRef.current) || 1);
+        debugMark('survey_locate_phone', { pageNumber, annotationId, insets, visibleWidth, visibleHeight, currentScale, targetScale });
+        if (Math.abs(targetScale - currentScale) / currentScale < 0.04) {
+          centerInVisibleArea();
+          return;
+        }
+        centerPageBoundsInViewer(pageNumber, bounds, { behavior: 'auto', navigateFirst: true, maxRetries: 18, retryDelay: 60 });
+        setScaleWithViewportPreservation(targetScale, { preserveCenter: false, mode: ZOOM_MODES.MANUAL });
+        const startedAt = Date.now();
+        const waitForZoom = () => {
+          if (!isCurrent()) return;
+          const rendered = readRenderedScale();
+          if ((rendered && Math.abs(rendered - targetScale) / targetScale < 0.015) || Date.now() - startedAt > 1500) {
+            centerInVisibleArea();
+            // The viewer re-anchors its scroll a layout pass after the commit.
+            window.setTimeout(() => { if (isCurrent()) centerInVisibleArea(); }, 120);
+            return;
+          }
+          window.setTimeout(waitForZoom, 30);
+        };
+        window.setTimeout(waitForZoom, 30);
+      }, 320);
+      return;
     }
 
     const currentScale = Math.max(0.01, Number(scaleRef.current) || Number(scale) || 1);
@@ -29828,6 +29923,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     centerSurveyMarkerElementInViewer,
     centerPageBoundsInViewer,
     goToPage,
+    mobileMode,
     resolvePageContentElement,
     scale,
     setActiveTool,
@@ -30582,6 +30678,55 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setPendingSurveyMarkerName(nextPendingUi.pendingSurveyMarkerName);
     setSurveyMarkerNameInput(nextPendingUi.surveyMarkerNameInput);
   }, [addHistoryCheckpoint, handleSurveyMarkerDeleted, surveyMarkers]);
+
+  // Survey audit P1-2 (2026-10-01): taking back a Survey Marker that was just
+  // drawn is ONE Undo step. When the newest Undo step is this marker's own
+  // placement ('highlight:create'), the history engine undoes it - the page,
+  // the marker and any open placement UI go back to how they were before the
+  // drag - and this returns true. Otherwise it changes nothing and returns
+  // false (something else happened since, so a blind Undo would undo that).
+  const undoSurveyMarkerPlacement = useCallback((annotationId) => {
+    if (!annotationId) return false;
+    const undoMeta = undoHistoryMetaRef.current;
+    const topMeta = undoMeta[undoMeta.length - 1] || null;
+    if (topMeta?.reason !== 'highlight:create' || String(topMeta?.context?.annotationId ?? '') !== String(annotationId)) {
+      return false;
+    }
+    handleUndo();
+    return true;
+  }, [handleUndo]);
+
+  // The Categorize dialog (a marker drawn with no category armed): Escape,
+  // its X and a click off it take the marker back. Falls back to dropping the
+  // pending marker locally, as that dialog always did.
+  const cancelSurveyMarkerPlacement = useCallback((annotationId) => {
+    if (!annotationId) return;
+    if (undoSurveyMarkerPlacement(annotationId)) return;
+    const nextPendingUi = deletePendingSurveyMarkerUi(
+      pendingSurveyMarkerUiRef.current,
+      annotationId,
+    );
+    pendingSurveyMarkerUiRef.current = nextPendingUi;
+    setNewSurveyMarkersByPage(nextPendingUi.newSurveyMarkersByPage);
+    setPendingSurveyMarker(nextPendingUi.pendingSurveyMarker);
+    setPendingSurveyMarkerSelection(nextPendingUi.pendingSurveyMarkerSelection);
+    setPendingEntitySelection(nextPendingUi.pendingEntitySelection);
+    setPendingSurveyMarkerName(nextPendingUi.pendingSurveyMarkerName);
+    setSurveyMarkerNameInput(nextPendingUi.surveyMarkerNameInput);
+  }, [undoSurveyMarkerPlacement]);
+
+  const categorizeDialogMarkerId = mobileMode ? null : (pendingSurveyMarker?.id || null);
+  useEffect(() => {
+    if (!categorizeDialogMarkerId || typeof window === 'undefined') return undefined;
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      event.preventDefault();
+      event.stopPropagation();
+      cancelSurveyMarkerPlacement(categorizeDialogMarkerId);
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [categorizeDialogMarkerId, cancelSurveyMarkerPlacement]);
 
   // UX: w53 — Delete with several Survey Markers selected (a family
   // selection of markers only) deletes them as ONE undo step. Each marker
@@ -31438,29 +31583,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const entities = selectedTemplate?.entities || [];
 
       if (!hasEntity && entities.length > 0) {
-        if (mobileMode) {
-          // UX: on mobile the entity is assigned in the Survey Marker detail
-          // sheet (which has the entity picker), never the desktop centered
-          // modal — open the detail view for the just-located marker instead
-          // (same sequence as commitMobileSurveyMarker; adversarial review
-          // defect 2, 2026-07-12).
-          setExpandedCategories({ [pendingLocationItem.categoryId]: true });
-          setExpandedSurveyMarkers({ [annotationId]: true });
-          setShowSurveyPanel(true);
-          requestRightRailExpand();
-        } else {
-          // Prompt for Entity since it wasn't set in Excel
-          setPendingEntitySelection({
-            surveyMarker: {
-              id: annotationId,
-              pageNumber,
-              bounds,
-              moduleId: effectiveModuleId,
-              regionId: pageRegionId
-            },
-            categoryId: pendingLocationItem.categoryId
-          });
-        }
+        // UX: the entity is assigned in the open Survey Marker (it has the
+        // entity menu), never a centred modal - open the just-located marker
+        // in the panel (same sequence as commitMobileSurveyMarker; adversarial
+        // review defect 2, 2026-07-12). Owner 2026-10-01 ("Yes, inline like
+        // phone"): desktop too - the desktop Entity pop-up is gone.
+        setExpandedCategories({ [pendingLocationItem.categoryId]: true });
+        setExpandedSurveyMarkers({ [annotationId]: true });
+        setShowSurveyPanel(true);
+        requestRightRailExpand();
       }
 
       setPendingLocationItem(null);
@@ -31516,74 +31647,40 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       };
     });
 
-    // If a category is already selected, show Entity dialog first
+    // If a category is already selected, place the Survey Marker straight
+    // away with its default name and open it in the Survey panel.
     if (selectedCategoryId) {
-      // Check if template has Entities
-      const entities = selectedTemplate?.entities || [];
-      if (mobileMode) {
-        // UX (mobile demo parity): commit instantly with the default name and
-        // open the marker detail sheet (demo App.tsx:1155) — the desktop
-        // Entity/Name modal chain below stays desktop-only.
-        commitMobileSurveyMarker({
-          id: annotationId,
-          // Owner ruling 2026-09-28: the creator stamp (lock rights).
-          ...(user?.id ? { userId: user.id } : {}),
-          pageNumber,
-          bounds,
-          moduleId: effectiveModuleId,
-          regionId: pageRegionId,
-          ...(mobileSelectedEntity ? {
-            entityId: mobileSelectedEntity.id,
-            entityName: mobileSelectedEntity.name,
-            entityColor: mobileSelectedEntityColor,
-          } : {})
-        }, selectedCategoryId);
-      } else if (mobileSelectedEntity) {
-        setPendingSurveyMarkerName({
-          surveyMarker: {
-            id: annotationId,
-            // Owner ruling 2026-09-28: the creator stamp (lock rights).
-            ...(user?.id ? { userId: user.id } : {}),
-            pageNumber,
-            bounds,
-            moduleId: effectiveModuleId,
-            regionId: pageRegionId,
-            entityId: mobileSelectedEntity.id,
-            entityName: mobileSelectedEntity.name,
-            entityColor: mobileSelectedEntityColor,
-          },
-          categoryId: selectedCategoryId
-        });
-        setSurveyMarkerNameInput(null);
-      } else if (entities.length > 0) {
-        // Show Entity selection dialog
-        setPendingEntitySelection({
-          surveyMarker: {
-            id: annotationId,
-            // Owner ruling 2026-09-28: the creator stamp (lock rights).
-            ...(user?.id ? { userId: user.id } : {}),
-            pageNumber,
-            bounds,
-            moduleId: effectiveModuleId,
-            regionId: pageRegionId
-          },
-          categoryId: selectedCategoryId
-        });
-      } else {
-        // No Entities, go directly to name prompt
-        setPendingSurveyMarkerName({
-          surveyMarker: {
-            id: annotationId,
-            // Owner ruling 2026-09-28: the creator stamp (lock rights).
-            ...(user?.id ? { userId: user.id } : {}),
-            pageNumber,
-            bounds,
-            moduleId: effectiveModuleId,
-            regionId: pageRegionId
-          },
-          categoryId: selectedCategoryId
-        });
-        setSurveyMarkerNameInput(null); // Reset input
+      // UX (mobile demo parity): commit instantly with the default name and
+      // open the marker (demo App.tsx:1155). Owner 2026-10-01 ("Yes, inline
+      // like phone"): desktop too - the Entity and Name pop-ups are gone; the
+      // new marker opens in the rail with its name field focused and its
+      // Entity menu right there. Escape on that untouched name takes the
+      // placement back (one Undo step, SurveySpacesRail). The entity it starts
+      // with: the phone's entity disc, else (desktop) the last one picked.
+      const placementEntity = mobileSelectedEntity || (!mobileMode
+        ? (selectedTemplate?.entities || []).find((entity) => entity.id === lastSurveyEntityIdRef.current) || null
+        : null);
+      const placementEntityColor = placementEntity
+        ? (normalizeSurveyMarkerColor(placementEntity.color)
+          || placementEntity.color
+          || hexToRgba('#E3D1FB', DEFAULT_SURVEY_MARKER_OPACITY))
+        : null;
+      commitMobileSurveyMarker({
+        id: annotationId,
+        // Owner ruling 2026-09-28: the creator stamp (lock rights).
+        ...(user?.id ? { userId: user.id } : {}),
+        pageNumber,
+        bounds,
+        moduleId: effectiveModuleId,
+        regionId: pageRegionId,
+        ...(placementEntity ? {
+          entityId: placementEntity.id,
+          entityName: placementEntity.name,
+          entityColor: placementEntityColor,
+        } : {})
+      }, selectedCategoryId);
+      if (!mobileMode) {
+        setSurveyMarkerNameFocusRequest({ id: annotationId, tick: Date.now() });
       }
 
       if (!surveyKeepCategoryActive) {
@@ -34384,6 +34481,15 @@ ${pageBlocks}
       scale,
       selectedCategories,
       selectedCategoryId,
+      // Survey calm gold (2026-10-01): the rail paints the chosen category
+      // gold only while a touch on the page would place it.
+      surveyPlacementArmed: activeTool === 'survey-marker',
+      // Owner 2026-10-01 (desktop placing inline): focus a new marker's name;
+      // Escape on it untouched takes the placement back; the rail reports the
+      // entity a user picks so the next marker starts with it.
+      surveyMarkerNameFocusRequest,
+      undoSurveyMarkerPlacement,
+      rememberSurveyEntity,
       selectedItemsInCategory,
       selectedModuleId,
       selectedSpaceId,
@@ -34521,6 +34627,10 @@ ${pageBlocks}
     scale,
     selectedCategories,
     selectedCategoryId,
+    activeTool,
+    surveyMarkerNameFocusRequest,
+    undoSurveyMarkerPlacement,
+    rememberSurveyEntity,
     selectedItemsInCategory,
     selectedModuleId,
     selectedSpaceId,
@@ -37905,8 +38015,16 @@ ${pageBlocks}
           if (TOOL_BAR_GROUPS.includes(toolBarGroup) && subToolsHostEl) {
             rows.push(renderSubRow(toolBarGroup, subToolsHostEl, true));
           }
-          if (activeCategoryDropdown && !TOOL_BAR_GROUPS.includes(activeCategoryDropdown) && subRowHost) {
-            rows.push(renderSubRow(activeCategoryDropdown, subRowHost, false));
+          // Survey audit P1-1 (2026-10-01): the Survey row shows whenever survey
+          // mode is on with a template chosen. It used to follow
+          // activeCategoryDropdown === 'survey', which Select / Pan / "Jump to
+          // marker" cleared and nothing restored, so a rail category could arm
+          // placement with no bar on screen.
+          const subRowGroup = (showSurveyPanel && selectedTemplate)
+            ? 'survey'
+            : (activeCategoryDropdown && !TOOL_BAR_GROUPS.includes(activeCategoryDropdown) ? activeCategoryDropdown : null);
+          if (subRowGroup && subRowHost) {
+            rows.push(renderSubRow(subRowGroup, subRowHost, false));
           }
           return rows;
         })()}
@@ -38576,36 +38694,17 @@ ${pageBlocks}
             <>
               <div
                 onClick={() => {
-                  // Remove the pending surveyMarker from the canvas
-                  const surveyMarkerToRemove = pendingSurveyMarker;
-                  setNewSurveyMarkersByPage(prev => {
-                    const updated = { ...prev };
-                    if (updated[surveyMarkerToRemove.pageNumber]) {
-                      updated[surveyMarkerToRemove.pageNumber] = updated[surveyMarkerToRemove.pageNumber].filter(
-                        h => h.annotationId !== surveyMarkerToRemove.id
-                      );
-                      // Clean up empty arrays
-                      if (updated[surveyMarkerToRemove.pageNumber].length === 0) {
-                        delete updated[surveyMarkerToRemove.pageNumber];
-                      }
-                    }
-                    return updated;
-                  });
-
-                  // Add to removal list to ensure canvas cleanup
-                  if (surveyMarkerToRemove.bounds) {
-                    setSurveyMarkersToRemoveByPage(prev => ({
-                      ...prev,
-                      [surveyMarkerToRemove.pageNumber]: [...(prev[surveyMarkerToRemove.pageNumber] || []), surveyMarkerToRemove.bounds]
-                    }));
-                  }
-
-                  setPendingSurveyMarker(null);
+                  // Survey audit P1-2: a click off the dialog takes the marker
+                  // back as one Undo step.
+                  cancelSurveyMarkerPlacement(pendingSurveyMarker.id);
                 }}
                 style={{
                   position: 'fixed',
                   top: 0,
-                  left: 0,
+                  // Survey audit P1-3: on the phone the tool rail lies over the
+                  // left edge of the page, so the dialog centres in the area
+                  // beside it instead of sliding under it.
+                  left: mobileMode ? 'var(--mobile-rail-w, 36px)' : 0,
                   right: 0,
                   bottom: 0,
                   background: COLORS.modal.overlay,
@@ -38619,6 +38718,9 @@ ${pageBlocks}
                 }}
               >
                 <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="survey-marker-categorize-dialog-title"
                   onClick={(e) => e.stopPropagation()}
                   style={{
                     background: COLORS.modal.surface,
@@ -38626,7 +38728,7 @@ ${pageBlocks}
                     borderRadius: '8px',
                     padding: '24px',
                     width: '500px',
-                    maxWidth: '90vw',
+                    maxWidth: mobileMode ? 'calc(100% - 24px)' : '90vw',
                     maxHeight: '80vh',
                     overflow: 'auto',
                     boxShadow: SHADOWS.xl,
@@ -38639,7 +38741,7 @@ ${pageBlocks}
                     justifyContent: 'space-between',
                     marginBottom: '20px'
                   }}>
-                    <h3 style={{
+                    <h3 id="survey-marker-categorize-dialog-title" style={{
                       margin: 0,
                       fontSize: '18px',
                       fontWeight: '600',
@@ -38651,32 +38753,12 @@ ${pageBlocks}
                       Categorize Survey Marker
                     </h3>
                     <button
+                      type="button"
+                      aria-label="Cancel Survey Marker"
                       onClick={() => {
-                        // Remove the pending surveyMarker from the canvas
-                        const surveyMarkerToRemove = pendingSurveyMarker;
-                        setNewSurveyMarkersByPage(prev => {
-                          const updated = { ...prev };
-                          if (updated[surveyMarkerToRemove.pageNumber]) {
-                            updated[surveyMarkerToRemove.pageNumber] = updated[surveyMarkerToRemove.pageNumber].filter(
-                              h => h.annotationId !== surveyMarkerToRemove.id
-                            );
-                            // Clean up empty arrays
-                            if (updated[surveyMarkerToRemove.pageNumber].length === 0) {
-                              delete updated[surveyMarkerToRemove.pageNumber];
-                            }
-                          }
-                          return updated;
-                        });
-
-                        // Add to removal list to ensure canvas cleanup
-                        if (surveyMarkerToRemove.bounds) {
-                          setSurveyMarkersToRemoveByPage(prev => ({
-                            ...prev,
-                            [surveyMarkerToRemove.pageNumber]: [...(prev[surveyMarkerToRemove.pageNumber] || []), surveyMarkerToRemove.bounds]
-                          }));
-                        }
-
-                        setPendingSurveyMarker(null);
+                        // Survey audit P1-2: X takes the marker back as one
+                        // Undo step.
+                        cancelSurveyMarkerPlacement(pendingSurveyMarker.id);
                       }}
                       className="btn btn-icon btn-icon-sm"
                       style={{
@@ -38709,38 +38791,23 @@ ${pageBlocks}
                           <button
                             key={category.id}
                             onClick={() => {
-                              if (mobileMode) {
-                                // UX (mobile demo parity): once categorized on mobile,
-                                // commit with the default name and open the marker
-                                // detail sheet instead of chaining the desktop
-                                // Entity/Name modals (demo App.tsx:1155).
-                                commitMobileSurveyMarker(pendingSurveyMarker, category.id);
-                                setPendingSurveyMarker(null);
-                                return;
+                              // UX (mobile demo parity): once categorized, commit
+                              // with the default name and open the marker in the
+                              // panel (demo App.tsx:1155). Owner 2026-10-01
+                              // ("Yes, inline like phone"): desktop too - no
+                              // Entity / Name pop-ups; desktop focuses the name.
+                              const placementEntity = (pendingSurveyMarker.entityId || mobileMode)
+                                ? null
+                                : (selectedTemplate?.entities || []).find((entity) => entity.id === lastSurveyEntityIdRef.current) || null;
+                              commitMobileSurveyMarker(placementEntity ? {
+                                ...pendingSurveyMarker,
+                                entityId: placementEntity.id,
+                                entityName: placementEntity.name,
+                                entityColor: normalizeSurveyMarkerColor(placementEntity.color) || placementEntity.color,
+                              } : pendingSurveyMarker, category.id);
+                              if (!mobileMode) {
+                                setSurveyMarkerNameFocusRequest({ id: pendingSurveyMarker.id, tick: Date.now() });
                               }
-                              // Check if template has Entities
-                              const entities = selectedTemplate?.entities || [];
-                              if (pendingSurveyMarker.entityId || pendingSurveyMarker.entityColor) {
-                                setPendingSurveyMarkerName({
-                                  surveyMarker: pendingSurveyMarker,
-                                  categoryId: category.id
-                                });
-                                setSurveyMarkerNameInput(null);
-                              } else if (entities.length > 0) {
-                                // Show Entity selection dialog first
-                                setPendingEntitySelection({
-                                  surveyMarker: pendingSurveyMarker,
-                                  categoryId: category.id
-                                });
-                              } else {
-                                // No Entities, go directly to name prompt
-                                setPendingSurveyMarkerName({
-                                  surveyMarker: pendingSurveyMarker,
-                                  categoryId: category.id
-                                });
-                                setSurveyMarkerNameInput(null); // Reset input
-                              }
-                              // Clear pending surveyMarker modal
                               setPendingSurveyMarker(null);
                             }}
                             className="btn btn-default btn-md"
@@ -38781,816 +38848,10 @@ ${pageBlocks}
           )
         }
 
-        {/* Entity Selection Dialog */}
-        {
-          pendingEntitySelection && selectedTemplate && selectedModuleId && (() => {
-            const entities = selectedTemplate.entities || [];
-
-            return (
-              <>
-                <div
-                  onClick={() => {
-                    // Cancel - proceed without entity selection
-                    setPendingSurveyMarkerName({
-                      surveyMarker: pendingEntitySelection.surveyMarker,
-                      categoryId: pendingEntitySelection.categoryId
-                    });
-                    setPendingEntitySelection(null);
-                    setSurveyMarkerNameInput(null);
-                  }}
-                  style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    background: COLORS.modal.overlay,
-                    backdropFilter: 'blur(8px)',
-                    WebkitBackdropFilter: 'blur(8px)',
-                    zIndex: 10003,
-                    animation: 'fadeIn 0.2s ease-out',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                >
-                  <div
-                    onClick={(e) => e.stopPropagation()}
-                    style={{
-                      background: COLORS.modal.surface,
-                      border: `1px solid ${COLORS.modal.border}`,
-                      borderRadius: '8px',
-                      padding: '24px',
-                      width: '500px',
-                      maxWidth: '90vw',
-                      boxShadow: SHADOWS.xl,
-                      animation: 'fadeIn 0.2s ease-out'
-                    }}
-                  >
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      marginBottom: '20px'
-                    }}>
-                      <h3 style={{
-                        margin: 0,
-                        fontSize: '18px',
-                        fontWeight: '600',
-                        color: COLORS.modal.textPrimary,
-                        fontFamily: FONT_FAMILY
-                      }}>
-                        Entity
-                      </h3>
-                      <button
-                        onClick={() => {
-                          // Cancel - proceed without entity selection
-                          setPendingSurveyMarkerName({
-                            surveyMarker: pendingEntitySelection.surveyMarker,
-                            categoryId: pendingEntitySelection.categoryId
-                          });
-                          setPendingEntitySelection(null);
-                          setSurveyMarkerNameInput(null);
-                        }}
-                        className="btn btn-icon btn-icon-sm"
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: 'var(--text-3)'
-                        }}
-                      >
-                        <Icon name="close" size={18} />
-                      </button>
-                    </div>
-
-                    <div style={{
-                      fontSize: '14px',
-                      color: COLORS.modal.textMuted,
-                      marginBottom: '16px'
-                    }}>
-                      Select the entity responsible for this highlight:
-                    </div>
-
-                    <div style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '8px',
-                      maxHeight: '400px',
-                      overflowY: 'auto'
-                    }}>
-                      {entities.map(entity => (
-                        <button
-                          key={entity.id}
-                          onClick={() => {
-                            // Apply entity color and proceed to name prompt
-                            // Use the entity's saved opacity for surveyMarkers
-                            const entityColor = normalizeSurveyMarkerColor(entity.color) || entity.color || hexToRgba('#E3D1FB', DEFAULT_SURVEY_MARKER_OPACITY);
-
-                            // Store surveyMarker with entity info
-                            setSurveyMarkers(prev => ({
-                              ...prev,
-                              [pendingEntitySelection.surveyMarker.id]: {
-                                ...pendingEntitySelection.surveyMarker,
-                                categoryId: pendingEntitySelection.categoryId,
-                                entityId: entity.id,
-                                entityName: entity.name,
-                                entityColor: entityColor,
-                                checklistResponses: {}
-                              }
-                            }));
-
-                            // Update existing surveyMarker on page with entity color (rgba with 100% opacity)
-                            // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
-                            setNewSurveyMarkersByPage(prev => {
-                              const pageSurveyMarkers = prev[pendingEntitySelection.surveyMarker.pageNumber] || [];
-                              // Remove existing surveyMarker with this annotationId (if it exists)
-                              const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingEntitySelection.surveyMarker.id);
-                              // Add the new surveyMarker with color
-                              return {
-                                ...prev,
-                                [pendingEntitySelection.surveyMarker.pageNumber]: [
-                                  ...filtered,
-                                  buildSurveyMarkerPreview(
-                                    pendingEntitySelection.surveyMarker,
-                                    { color: entityColor }
-                                  )
-                                ]
-                              };
-                            });
-
-                            // Proceed to name prompt
-                            setPendingSurveyMarkerName({
-                              surveyMarker: {
-                                ...pendingEntitySelection.surveyMarker,
-                                entityId: entity.id,
-                                entityName: entity.name,
-                                entityColor: entityColor
-                              },
-                              categoryId: pendingEntitySelection.categoryId
-                            });
-                            setPendingEntitySelection(null);
-                            setSurveyMarkerNameInput(null);
-                          }}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '12px',
-                            padding: '12px 16px',
-                            background: COLORS.modal.panel,
-                            border: `1px solid ${COLORS.modal.borderStrong}`,
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                            transition: 'background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease',
-                            textAlign: 'left'
-                          }}
-                          onMouseEnter={handleModalOptionMouseEnter}
-                          onMouseLeave={handleModalOptionMouseLeave}
-                        >
-                          <div
-                            style={{
-                              width: '24px',
-                              height: '24px',
-                              borderRadius: '4px',
-                              background: entity.color,
-                              // UX: an entity swatch filled with the USER's
-                              // chosen colour — the shared ink ring, same as
-                              // every other colour swatch in the app.
-                              border: '1px solid var(--ink-ring)',
-                              flexShrink: 0
-                            }}
-                          />
-                          <span style={{
-                            color: COLORS.modal.textPrimary,
-                            fontSize: '14px',
-                            fontWeight: '500',
-                            fontFamily: FONT_FAMILY
-                          }}>
-                            {entity.name}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </>
-            );
-          })()
-        }
-
-        {/* Name Prompt Modal (after categorizing surveyMarker) */}
-        {
-          pendingSurveyMarkerName && selectedTemplate && selectedModuleId && (() => {
-            const module = ((selectedTemplate.modules || selectedTemplate.spaces) || [])?.find(m => m.id === selectedModuleId);
-            const category = module?.categories?.find(c => c.id === pendingSurveyMarkerName.categoryId);
-            const categoryName = category?.name?.trim() || 'Untitled Category';
-            const existingSurveyMarkers = Object.values(surveyMarkers).filter(h => h.categoryId === pendingSurveyMarkerName.categoryId);
-            const defaultName = generateDefaultSurveyMarkerName(categoryName, existingSurveyMarkers);
-
-            return (
-              <>
-                <div
-                  onClick={() => {
-                    // Cancel - save with default name
-                    // Compute color first so it can be saved with surveyMarkerData
-                    const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
-                      ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
-                      : null; // No Entity yet — render as needs-Entity (blue dashed)
-                    const surveyMarkerData = {
-                      ...pendingSurveyMarkerName.surveyMarker,
-                      categoryId: pendingSurveyMarkerName.categoryId,
-                      name: defaultName,
-                      checklistResponses: {},
-                      color: highlightColor
-                    };
-                    setSurveyMarkers(prev => ({
-                      ...prev,
-                      [pendingSurveyMarkerName.surveyMarker.id]: surveyMarkerData
-                    }));
-
-                    // Update existing surveyMarker with color if Entity was selected (ensure 100% opacity)
-                    // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
-                    setNewSurveyMarkersByPage(prev => {
-                      const pageSurveyMarkers = prev[pendingSurveyMarkerName.surveyMarker.pageNumber] || [];
-                      // Remove existing surveyMarker with this annotationId (if it exists)
-                      const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingSurveyMarkerName.surveyMarker.id);
-                      // Add the new surveyMarker with color
-                      return {
-                        ...prev,
-                        [pendingSurveyMarkerName.surveyMarker.pageNumber]: [
-                          ...filtered,
-                          buildSurveyMarkerPreview(
-                            pendingSurveyMarkerName.surveyMarker,
-                            (highlightColor ? { color: highlightColor } : { needsEntity: true })
-                          )
-                        ]
-                      };
-                    });
-
-                    setPendingSurveyMarkerName(null);
-                    setSurveyMarkerNameInput(null);
-                    setShowSurveyPanel(true);
-                  }}
-                  style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    background: COLORS.modal.overlay,
-                    backdropFilter: 'blur(8px)',
-                    WebkitBackdropFilter: 'blur(8px)',
-                    zIndex: 10002,
-                    animation: 'fadeIn 0.2s ease-out',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                >
-                  <div
-                    onClick={(e) => e.stopPropagation()}
-                    style={{
-                      background: COLORS.modal.surface,
-                      border: `1px solid ${COLORS.modal.border}`,
-                      borderRadius: '8px',
-                      padding: '24px',
-                      width: '500px',
-                      maxWidth: '90vw',
-                      boxShadow: SHADOWS.xl,
-                      animation: 'fadeIn 0.2s ease-out'
-                    }}
-                  >
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      marginBottom: '20px'
-                    }}>
-                      <h3 style={{
-                        margin: 0,
-                        fontSize: '18px',
-                        fontWeight: '600',
-                        color: COLORS.modal.textPrimary,
-                        fontFamily: FONT_FAMILY
-                      }}>
-                        Name highlight
-                      </h3>
-                      <button
-                        onClick={() => {
-                          // Cancel - save with default name
-                          // Compute color first so it can be saved with surveyMarkerData
-                          const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
-                            ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
-                            : null; // No Entity yet — render as needs-Entity (blue dashed)
-                          const surveyMarkerData = {
-                            ...pendingSurveyMarkerName.surveyMarker,
-                            categoryId: pendingSurveyMarkerName.categoryId,
-                            name: defaultName,
-                            checklistResponses: {},
-                            color: highlightColor
-                          };
-                          setSurveyMarkers(prev => ({
-                            ...prev,
-                            [pendingSurveyMarkerName.surveyMarker.id]: surveyMarkerData
-                          }));
-
-                          // If entity was selected, also store it in the item's module-specific data
-                          if (surveyMarkerData.entityId && selectedTemplate && selectedModuleId) {
-                            // Find or create item for this surveyMarker
-                            const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingSurveyMarkerName.categoryId);
-                            const moduleName = getModuleName(selectedTemplate, selectedModuleId);
-                            const dataKey = getModuleDataKey(moduleName);
-
-                            // Find existing item by name and category
-                            const existingItem = Object.values(items).find(item =>
-                              item.name === defaultName &&
-                              item.itemType === categoryName
-                            );
-
-                            if (existingItem) {
-                              // Update existing item's module-specific data with entity
-                              const moduleData = existingItem[dataKey] || {};
-                              const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
-
-                              if (entity) {
-                                setItems(prev => ({
-                                  ...prev,
-                                  [existingItem.itemId]: {
-                                    ...existingItem,
-                                    [dataKey]: {
-                                      ...moduleData,
-                                      entityId: entity.id,
-                                      entityName: entity.name,
-                                      entityColor: entity.color
-                                    }
-                                  }
-                                }));
-                              }
-                            } else {
-                              // Create new item with entity in module-specific data
-                              const newItem = createItem(
-                                selectedTemplate,
-                                selectedModuleId,
-                                pendingSurveyMarkerName.categoryId,
-                                defaultName,
-                                1
-                              );
-
-                              const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
-                              if (entity) {
-                                newItem[dataKey] = {
-                                  entityId: entity.id,
-                                  entityName: entity.name,
-                                  entityColor: entity.color
-                                };
-                              }
-
-                              setItems(prev => ({
-                                ...prev,
-                                [newItem.itemId]: newItem
-                              }));
-
-                              // Also create annotation for this item
-                              const annotation = createAnnotation(
-                                pendingSurveyMarkerName.surveyMarker.bounds,
-                                'highlight',
-                                selectedTemplate,
-                                selectedSpaceId,
-                                newItem.itemId,
-                                categoryName
-                              );
-
-                              // Set entity on annotation
-                              if (entity) {
-                                annotation.entityId = entity.id;
-                                annotation.entityName = entity.name;
-                                annotation.entityColor = entity.color;
-                              }
-
-                              setAnnotations(prev => ({
-                                ...prev,
-                                [annotation.annotationId]: annotation
-                              }));
-                            }
-                          }
-
-                          // Update existing surveyMarker with color if Entity was selected (ensure 100% opacity)
-                          // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
-                          setNewSurveyMarkersByPage(prev => {
-                            const pageSurveyMarkers = prev[pendingSurveyMarkerName.surveyMarker.pageNumber] || [];
-                            // Remove existing surveyMarker with this annotationId (if it exists)
-                            const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingSurveyMarkerName.surveyMarker.id);
-                            // Add the new surveyMarker with color
-                            return {
-                              ...prev,
-                              [pendingSurveyMarkerName.surveyMarker.pageNumber]: [
-                                ...filtered,
-                                buildSurveyMarkerPreview(
-                                  pendingSurveyMarkerName.surveyMarker,
-                                  (highlightColor ? { color: highlightColor } : { needsEntity: true })
-                                )
-                              ]
-                            };
-                          });
-
-                          setPendingSurveyMarkerName(null);
-                          setSurveyMarkerNameInput(null);
-                          setShowSurveyPanel(true);
-                        }}
-                        className="btn btn-icon btn-icon-sm"
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: 'var(--text-3)'
-                        }}
-                      >
-                        <Icon name="close" size={18} />
-                      </button>
-                    </div>
-
-                    <p style={{ color: COLORS.modal.textMuted, fontSize: '14px', marginBottom: '16px' }}>
-                      Category: <strong style={{ color: COLORS.modal.textPrimary }}>{category?.name || 'Untitled category'}</strong>
-                    </p>
-
-                    <input
-                      type="text"
-                      autoFocus
-                      value={surveyMarkerNameInput ?? defaultName}
-                      onChange={(e) => setSurveyMarkerNameInput(e.target.value)}
-                      onFocus={(e) => { if (surveyMarkerNameInput === null) e.target.select(); }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          const name = resolveSurveyMarkerPromptName(surveyMarkerNameInput, defaultName);
-                          // Compute color first so it can be saved with surveyMarkerData
-                          const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
-                            ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
-                            : null; // No Entity yet — render as needs-Entity (blue dashed)
-                          const surveyMarkerData = {
-                            ...pendingSurveyMarkerName.surveyMarker,
-                            categoryId: pendingSurveyMarkerName.categoryId,
-                            name: name,
-                            checklistResponses: {},
-                            color: highlightColor
-                          };
-                          setSurveyMarkers(prev => ({
-                            ...prev,
-                            [pendingSurveyMarkerName.surveyMarker.id]: surveyMarkerData
-                          }));
-
-                          // Update existing surveyMarker with color if Entity was selected (ensure 100% opacity)
-                          // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
-                          setNewSurveyMarkersByPage(prev => {
-                            const pageSurveyMarkers = prev[pendingSurveyMarkerName.surveyMarker.pageNumber] || [];
-                            // Remove existing surveyMarker with this annotationId (if it exists)
-                            const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingSurveyMarkerName.surveyMarker.id);
-                            // Add the new surveyMarker with color
-                            return {
-                              ...prev,
-                              [pendingSurveyMarkerName.surveyMarker.pageNumber]: [
-                                ...filtered,
-                                buildSurveyMarkerPreview(
-                                  pendingSurveyMarkerName.surveyMarker,
-                                  (highlightColor ? { color: highlightColor } : { needsEntity: true })
-                                )
-                              ]
-                            };
-                          });
-
-                          setPendingSurveyMarkerName(null);
-                          setSurveyMarkerNameInput(null);
-                          setShowSurveyPanel(true);
-                        } else if (e.key === 'Escape') {
-                          // Cancel - save with default name
-                          // Compute color first so it can be saved with surveyMarkerData
-                          const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
-                            ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
-                            : null; // No Entity yet — render as needs-Entity (blue dashed)
-                          const surveyMarkerData = {
-                            ...pendingSurveyMarkerName.surveyMarker,
-                            categoryId: pendingSurveyMarkerName.categoryId,
-                            name: defaultName,
-                            checklistResponses: {},
-                            color: highlightColor
-                          };
-                          setSurveyMarkers(prev => ({
-                            ...prev,
-                            [pendingSurveyMarkerName.surveyMarker.id]: surveyMarkerData
-                          }));
-
-                          // Update existing surveyMarker with color if Entity was selected (ensure 100% opacity)
-                          // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
-                          setNewSurveyMarkersByPage(prev => {
-                            const pageSurveyMarkers = prev[pendingSurveyMarkerName.surveyMarker.pageNumber] || [];
-                            // Remove existing surveyMarker with this annotationId (if it exists)
-                            const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingSurveyMarkerName.surveyMarker.id);
-                            // Add the new surveyMarker with color
-                            return {
-                              ...prev,
-                              [pendingSurveyMarkerName.surveyMarker.pageNumber]: [
-                                ...filtered,
-                                buildSurveyMarkerPreview(
-                                  pendingSurveyMarkerName.surveyMarker,
-                                  (highlightColor ? { color: highlightColor } : { needsEntity: true })
-                                )
-                              ]
-                            };
-                          });
-
-                          setPendingSurveyMarkerName(null);
-                          setSurveyMarkerNameInput(null);
-                          setShowSurveyPanel(true);
-                        }
-                      }}
-                      style={{
-                        width: '100%',
-                        padding: '12px 16px',
-                        background: 'var(--surface-0)',
-                        border: `1px solid ${COLORS.modal.borderStrong}`,
-                        borderRadius: '6px',
-                        color: COLORS.modal.textPrimary,
-                        fontSize: '14px',
-                        fontFamily: FONT_FAMILY,
-                        outline: 'none',
-                        marginBottom: '16px'
-                      }}
-                      placeholder="Enter name"
-                    />
-
-                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                      <button
-                        onClick={() => {
-                          // Cancel - save with default name
-                          // Compute color first so it can be saved with surveyMarkerData
-                          const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
-                            ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
-                            : null; // No Entity yet — render as needs-Entity (blue dashed)
-                          const surveyMarkerData = {
-                            ...pendingSurveyMarkerName.surveyMarker,
-                            categoryId: pendingSurveyMarkerName.categoryId,
-                            name: defaultName,
-                            checklistResponses: {},
-                            color: highlightColor
-                          };
-                          setSurveyMarkers(prev => ({
-                            ...prev,
-                            [pendingSurveyMarkerName.surveyMarker.id]: surveyMarkerData
-                          }));
-
-                          // If entity was selected, also store it in the item's module-specific data
-                          if (surveyMarkerData.entityId && selectedTemplate && selectedModuleId) {
-                            // Find or create item for this surveyMarker
-                            const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingSurveyMarkerName.categoryId);
-                            const moduleName = getModuleName(selectedTemplate, selectedModuleId);
-                            const dataKey = getModuleDataKey(moduleName);
-
-                            // Find existing item by name and category
-                            const existingItem = Object.values(items).find(item =>
-                              item.name === defaultName &&
-                              item.itemType === categoryName
-                            );
-
-                            if (existingItem) {
-                              // Update existing item's module-specific data with entity
-                              const moduleData = existingItem[dataKey] || {};
-                              const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
-
-                              if (entity) {
-                                setItems(prev => ({
-                                  ...prev,
-                                  [existingItem.itemId]: {
-                                    ...existingItem,
-                                    [dataKey]: {
-                                      ...moduleData,
-                                      entityId: entity.id,
-                                      entityName: entity.name,
-                                      entityColor: entity.color
-                                    }
-                                  }
-                                }));
-                              }
-                            } else {
-                              // Create new item with entity in module-specific data
-                              const newItem = createItem(
-                                selectedTemplate,
-                                selectedModuleId,
-                                pendingSurveyMarkerName.categoryId,
-                                defaultName,
-                                1
-                              );
-
-                              const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
-                              if (entity) {
-                                newItem[dataKey] = {
-                                  entityId: entity.id,
-                                  entityName: entity.name,
-                                  entityColor: entity.color
-                                };
-                              }
-
-                              setItems(prev => ({
-                                ...prev,
-                                [newItem.itemId]: newItem
-                              }));
-
-                              // Also create annotation for this item
-                              const annotation = createAnnotation(
-                                pendingSurveyMarkerName.surveyMarker.bounds,
-                                'highlight',
-                                selectedTemplate,
-                                selectedSpaceId,
-                                newItem.itemId,
-                                categoryName
-                              );
-
-                              // Set entity on annotation
-                              if (entity) {
-                                annotation.entityId = entity.id;
-                                annotation.entityName = entity.name;
-                                annotation.entityColor = entity.color;
-                              }
-
-                              setAnnotations(prev => ({
-                                ...prev,
-                                [annotation.annotationId]: annotation
-                              }));
-                            }
-                          }
-
-                          // Update existing surveyMarker with color if Entity was selected (ensure 100% opacity)
-                          // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
-                          setNewSurveyMarkersByPage(prev => {
-                            const pageSurveyMarkers = prev[pendingSurveyMarkerName.surveyMarker.pageNumber] || [];
-                            // Remove existing surveyMarker with this annotationId (if it exists)
-                            const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingSurveyMarkerName.surveyMarker.id);
-                            // Add the new surveyMarker with color
-                            return {
-                              ...prev,
-                              [pendingSurveyMarkerName.surveyMarker.pageNumber]: [
-                                ...filtered,
-                                buildSurveyMarkerPreview(
-                                  pendingSurveyMarkerName.surveyMarker,
-                                  (highlightColor ? { color: highlightColor } : { needsEntity: true })
-                                )
-                              ]
-                            };
-                          });
-
-                          setPendingSurveyMarkerName(null);
-                          setSurveyMarkerNameInput(null);
-                          setShowSurveyPanel(true);
-                        }}
-                        className="btn btn-default btn-md"
-                        style={{
-                          padding: '10px 20px',
-                          background: COLORS.modal.secondaryButton,
-                          border: `1px solid ${COLORS.modal.borderStrong}`,
-                          color: COLORS.modal.textPrimary
-                        }}
-                        onMouseEnter={handleModalSecondaryButtonMouseEnter}
-                        onMouseLeave={handleModalSecondaryButtonMouseLeave}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={() => {
-                          const name = resolveSurveyMarkerPromptName(surveyMarkerNameInput, defaultName);
-                          // Compute color first so it can be saved with surveyMarkerData
-                          const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
-                            ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
-                            : null; // No Entity yet — render as needs-Entity (blue dashed)
-                          const surveyMarkerData = {
-                            ...pendingSurveyMarkerName.surveyMarker,
-                            categoryId: pendingSurveyMarkerName.categoryId,
-                            name: name,
-                            checklistResponses: {},
-                            color: highlightColor
-                          };
-                          setSurveyMarkers(prev => ({
-                            ...prev,
-                            [pendingSurveyMarkerName.surveyMarker.id]: surveyMarkerData
-                          }));
-
-                          // If entity was selected, also store it in the item's module-specific data
-                          if (surveyMarkerData.entityId && selectedTemplate && selectedModuleId) {
-                            // Find or create item for this surveyMarker
-                            const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingSurveyMarkerName.categoryId);
-                            const moduleName = getModuleName(selectedTemplate, selectedModuleId);
-                            const dataKey = getModuleDataKey(moduleName);
-
-                            // Find existing item by name and category
-                            const existingItem = Object.values(items).find(item =>
-                              item.name === name &&
-                              item.itemType === categoryName
-                            );
-
-                            if (existingItem) {
-                              // Update existing item's module-specific data with entity
-                              const moduleData = existingItem[dataKey] || {};
-                              const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
-
-                              if (entity) {
-                                setItems(prev => ({
-                                  ...prev,
-                                  [existingItem.itemId]: {
-                                    ...existingItem,
-                                    [dataKey]: {
-                                      ...moduleData,
-                                      entityId: entity.id,
-                                      entityName: entity.name,
-                                      entityColor: entity.color
-                                    }
-                                  }
-                                }));
-                              }
-                            } else {
-                              // Create new item with entity in space-specific data
-                              const newItem = createItem(
-                                selectedTemplate,
-                                selectedSpaceId,
-                                pendingSurveyMarkerName.categoryId,
-                                name,
-                                1
-                              );
-
-                              const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
-                              if (entity) {
-                                newItem[dataKey] = {
-                                  entityId: entity.id,
-                                  entityName: entity.name,
-                                  entityColor: entity.color
-                                };
-                              }
-
-                              setItems(prev => ({
-                                ...prev,
-                                [newItem.itemId]: newItem
-                              }));
-
-                              // Also create annotation for this item
-                              const annotation = createAnnotation(
-                                pendingSurveyMarkerName.surveyMarker.bounds,
-                                'highlight',
-                                selectedTemplate,
-                                selectedSpaceId,
-                                newItem.itemId,
-                                categoryName
-                              );
-
-                              // Set entity on annotation
-                              if (entity) {
-                                annotation.entityId = entity.id;
-                                annotation.entityName = entity.name;
-                                annotation.entityColor = entity.color;
-                              }
-
-                              setAnnotations(prev => ({
-                                ...prev,
-                                [annotation.annotationId]: annotation
-                              }));
-                            }
-                          }
-
-                          // Update existing surveyMarker with color if Entity was selected (ensure 100% opacity)
-                          // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
-                          setNewSurveyMarkersByPage(prev => {
-                            const pageSurveyMarkers = prev[pendingSurveyMarkerName.surveyMarker.pageNumber] || [];
-                            // Remove existing surveyMarker with this annotationId (if it exists)
-                            const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingSurveyMarkerName.surveyMarker.id);
-                            // Add the new surveyMarker with color
-                            return {
-                              ...prev,
-                              [pendingSurveyMarkerName.surveyMarker.pageNumber]: [
-                                ...filtered,
-                                buildSurveyMarkerPreview(
-                                  pendingSurveyMarkerName.surveyMarker,
-                                  (highlightColor ? { color: highlightColor } : { needsEntity: true })
-                                )
-                              ]
-                            };
-                          });
-
-                          setPendingSurveyMarkerName(null);
-                          setSurveyMarkerNameInput(null);
-                          setShowSurveyPanel(true);
-                        }}
-                        className="btn btn-primary btn-md"
-                        style={{
-                          padding: '10px 20px',
-                          background: COLORS.modal.primaryButton,
-                          border: `1px solid ${COLORS.modal.borderStrong}`,
-                          color: COLORS.modal.textPrimary
-                        }}
-                        onMouseEnter={handleModalPrimaryButtonMouseEnter}
-                        onMouseLeave={handleModalPrimaryButtonMouseLeave}
-                      >
-                        Save
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </>
-            );
-          })()
-        }
+        {/* Owner 2026-10-01 ("Yes, inline like phone"): the desktop Entity and
+            Name placement pop-ups that stood here are gone. A new Survey
+            Marker opens in the Survey rail with its name focused and its Entity
+            menu beside it (handleSurveyMarkerCreated / commitMobileSurveyMarker). */}
 
         {/* Item Transfer - Destination Selection Modal */}
         {

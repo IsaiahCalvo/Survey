@@ -20,9 +20,12 @@
      its right), then each category is a 32px line; its Survey Markers are
      indented lines under it, each parted by a full-width hairline; an open
      Survey Marker's Entity and checklist are lines indented under its name.
-   - Gold stays minimal: the chosen category's name and count, "Done" while
-     selecting, a note that exists, the Yes answer. Never a gold box, ring
-     or underline.
+   - Gold means only "what a touch on the page will do now" (owner
+     2026-10-01: "I hate all the yellow it has on desktop"): the ARMED
+     category's top-bar disc and a 2px gold edge on its rail row, plus a
+     dialog's single primary button. Current menu items are bright ink with
+     a grey check; open chevrons, a note that exists, Done, Reuse are neutral.
+     Never a gold box, ring, wash or underline.
    - Glyph buttons have invisible pads: no plate on hover or press; hover
      brightens the ink, press shrinks the glyph. Full-width ROWS keep the
      house --hover fill under the pointer.
@@ -190,12 +193,13 @@
   height: 12px;
   display: grid;
   place-items: center;
-  color: var(--accent);
+  color: var(--text-2);
 }
 
-/* The current template is gold ink and the check. No fill, no gold edge. */
+/* The current template is bright ink plus a grey check. Gold in survey mode is
+   kept for the armed category only (what a touch on the page will do now). */
 .survey-rail .survey-rail__template-option[aria-checked='true'] .survey-rail__template-option-name {
-  color: var(--accent);
+  color: var(--text-1);
 }
 
 .survey-rail .survey-rail__template-option:focus-visible {
@@ -528,7 +532,7 @@
 }
 
 .survey-rail .survey-rail__head-btn.is-done {
-  color: var(--accent);
+  color: var(--text-1);
 }
 
 .survey-rail .survey-rail__head-btn.is-danger {
@@ -603,6 +607,15 @@
   border-radius: 0;
 }
 
+/* Survey calm gold (2026-10-01): the ARMED category's row is the one gold
+   cue in the panel - the app's selected-row look (a surface step plus a 2px
+   gold edge), the twin of its gold disc in the survey bar. Its name and count
+   stay neutral ink. */
+.survey-rail .survey-marker-category-card.is-armed .survey-marker-category-row {
+  background: var(--surface-3);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
 /* The row takes the hover fill; the name and chevron inside it are pads. */
 .survey-rail .survey-marker-category-main:hover,
 .survey-rail .survey-marker-category-arrow:hover,
@@ -654,7 +667,7 @@
 }
 
 .survey-rail .survey-marker-select-toolbar .survey-marker-select-mode-toggle {
-  color: var(--accent);
+  color: var(--text-1);
 }
 
 /* Hover and press plates are taken off by the #chrome-right-host opt-out at
@@ -861,11 +874,11 @@
   font-weight: 600;
 }
 
-/* The current entity is gold INK, nothing else (the menus' shared rule). */
+/* The current entity is bright INK, nothing else (the menus' shared rule). */
 .survey-rail .survey-marker-entity-option.is-selected {
   background: transparent;
   box-shadow: none;
-  color: var(--accent);
+  color: var(--text-1);
 }
 
 .survey-rail .survey-marker-entity-option.is-selected:hover {
@@ -967,9 +980,6 @@
   .survey-rail .survey-rail__head-btn:not(:disabled):hover,
   .survey-rail .survey-marker-select-action:not(:disabled):not(.survey-marker-select-action-danger):hover {
     color: var(--text-1);
-  }
-  .survey-rail .survey-rail__head-btn.is-done:hover {
-    color: var(--accent-light);
   }
   .survey-rail .survey-rail__head-btn:not(:disabled):hover svg,
   .survey-rail .survey-rail__marker-action:hover svg,
