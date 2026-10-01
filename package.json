@@ -122,7 +122,11 @@
     "npmRebuild": false,
     "mac": {
       "target": "dmg",
-      "icon": "build/icon.icns"
+      "icon": "build/icon.icns",
+      "extendInfo": {
+        "NSCameraUsageDescription": "Survey uses the camera to take photos and videos for your Survey Markers.",
+        "NSMicrophoneUsageDescription": "Survey uses the microphone to record audio notes for your Survey Markers."
+      }
     },
     "win": {
       "target": "nsis",

@@ -545,6 +545,32 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    // Survey media (owner 2026-10-01): Take photo, Record audio, and the
+    // play mark on a video thumbnail.
+    camera: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <g stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 8.5A1.5 1.5 0 0 1 4.5 7H7.5L9 4.5H15L16.5 7H19.5A1.5 1.5 0 0 1 21 8.5V18A1.5 1.5 0 0 1 19.5 19.5H4.5A1.5 1.5 0 0 1 3 18Z" />
+          <circle cx="12" cy="13" r="3.5" />
+        </g>
+      </svg>
+    ),
+
+    mic: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <g stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 6A3 3 0 0 1 15 6V11A3 3 0 0 1 9 11Z" />
+          <path d="M5.5 11A6.5 6.5 0 0 0 18.5 11M12 17.5V21" />
+        </g>
+      </svg>
+    ),
+
+    play: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M8 5.5V18.5L18.5 12Z" fill={color} stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinejoin="round" />
+      </svg>
+    ),
+
     // Shape icons.
     // Rectangle is the size reference for this row: an 18-unit box, so ink
     // including the stroke spans 19.5 of the 24 grid. It is also the corner
