@@ -46,6 +46,7 @@ import { COLORS } from './theme.js';
 // Phase 21: cloud sync for all annotation types — see
 // .planning/phases/21-cloud-sync-all-annotations/CONTEXT.md
 import { normalizePageRegions } from './utils/annotationVisibilityRules.js';
+import { getRegionOutlineCoordinates } from './utils/regionOutline.js';
 import { coercePageNumber } from './utils/bookmarkPageIds.js';
 import { getMarkLockedBy } from './lib/collab/permissionScope.js';
 export { coercePageNumber, normalizeBookmarkPageIds } from './utils/bookmarkPageIds.js';
@@ -1575,7 +1576,8 @@ const traceRegionPath = (ctx, region, scaleFactor = 1) => {
     return false;
   }
 
-  const coords = region.coordinates;
+  // Curved (freehand) areas export the same smooth outline the editor draws.
+  const coords = getRegionOutlineCoordinates(region);
   ctx.moveTo(coords[0] * scaleFactor, coords[1] * scaleFactor);
   for (let i = 2; i < coords.length; i += 2) {
     ctx.lineTo(coords[i] * scaleFactor, coords[i + 1] * scaleFactor);

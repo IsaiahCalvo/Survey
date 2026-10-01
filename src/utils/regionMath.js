@@ -1,5 +1,6 @@
 // Import martinez-polygon-clipping for polygon boolean operations
 import { union, diff, intersection } from '../vendor/martinezPolygonClipping.js';
+import { buildSmoothVertexLookup, regionHasSmoothOutline, thinBooleanResultRing } from './regionOutline.js';
 
 export const REGION_OPERATIONS = {
   ADD: 'add',
@@ -329,8 +330,12 @@ export const mergeRegions = (region1, region2) => {
   }
 };
 
-// Subtract a region from another region
-export const subtractRegionFromRegion = (subjectRegion, subtractRegion) => {
+// Subtract a region from another region.
+// options.thinTolerance (page units, default 1): when either outline has
+// smooth (freehand) points, the result is thinned along its curved parts so a
+// curved bite keeps few points; rectangle corners and the points where the cut
+// crosses an edge are kept exactly. Straight-only inputs come out as before.
+export const subtractRegionFromRegion = (subjectRegion, subtractRegion, options = {}) => {
   if (!subjectRegion || !subtractRegion) {
     return null;
   }
@@ -360,8 +365,17 @@ export const subtractRegionFromRegion = (subjectRegion, subtractRegion) => {
     // Note: When a region is subtracted, we preserve the sourceRegions from the subject
     // but create new region IDs since the geometry has changed
     const resultRegions = [];
+    const hasSmooth = regionHasSmoothOutline(subjectRegion) || regionHasSmoothOutline(subtractRegion);
+    const smoothLookup = hasSmooth ? buildSmoothVertexLookup([subjectRegion, subtractRegion]) : null;
+    const thinTolerance = Number.isFinite(options?.thinTolerance) && options.thinTolerance > 0 ? options.thinTolerance : 1;
     for (const polygon of result) {
-      const coords = polygonToRegionCoords(polygon);
+      let coords = polygonToRegionCoords(polygon);
+      let smoothVertices;
+      if (smoothLookup && coords) {
+        const thinned = thinBooleanResultRing(coords, smoothLookup, thinTolerance);
+        coords = thinned.coordinates;
+        smoothVertices = thinned.smoothVertices;
+      }
       if (coords && coords.length >= 6) {
         const isRectangular = subjectRegion.shapeType === 'rectangular' && polygon.length === 5;
         const originCenter = calculateRegionCenter(coords);
@@ -371,6 +385,7 @@ export const subtractRegionFromRegion = (subjectRegion, subtractRegion) => {
           shapeType: isRectangular ? 'rectangular' : 'polygon',
           operation: subjectRegion.operation,
           coordinates: coords,
+          ...(smoothVertices ? { smoothVertices } : {}),
           // Preserve sourceRegions if the subject had them (for unmerge capability)
           // If the subject was already a merged region, preserve that history
           sourceRegions: subjectRegion.sourceRegions || undefined,
