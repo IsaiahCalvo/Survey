@@ -935,18 +935,17 @@ const SpacesPanel = ({
 
   // Spaces chunk A: deleting a space also deletes what was placed in it (the
   // cascade), so the confirm says so, with counts. Undo restores it all.
-  const handleDelete = useCallback(async (spaceId) => {
+  const handleDelete = useCallback((spaceId) => {
     if (!requireSpaceManagement()) return;
     const space = (spaces || []).find((entry) => entry?.id === spaceId);
     const impact = getSpaceRemovalImpact?.(spaceId, null) || null;
-    const confirmed = await askConfirm(buildDeleteSpaceConfirm({
+    askConfirm(buildDeleteSpaceConfirm({
       spaceName: space?.name,
       pageCount: space?.assignedPages?.length || 0,
       impact,
-    }));
-    if (confirmed && onSpaceDelete) {
-      onSpaceDelete(spaceId);
-    }
+    })).then((confirmed) => {
+      if (confirmed && onSpaceDelete) onSpaceDelete(spaceId);
+    });
   }, [askConfirm, getSpaceRemovalImpact, onSpaceDelete, requireSpaceManagement, spaces]);
 
   const handleToggleExpand = useCallback((spaceId) => {
@@ -1093,7 +1092,7 @@ const SpacesPanel = ({
   // Spaces chunk A: removing a page also deletes the marks placed in this
   // space on it and its drawn areas - ask first when there is any, with the
   // counts. A bare page assignment goes without a question (one Undo step).
-  const handleRemovePage = useCallback(async (spaceId, pageId) => {
+  const handleRemovePage = useCallback((spaceId, pageId) => {
     if (!requireSpaceManagement()) return;
     if (!onSpaceRemovePage) return;
     const space = (spaces || []).find((entry) => entry?.id === spaceId);
@@ -1102,8 +1101,13 @@ const SpacesPanel = ({
       pageId,
       impact: getSpaceRemovalImpact?.(spaceId, [pageId]) || null,
     });
-    if (prompt && !(await askConfirm(prompt))) return;
-    onSpaceRemovePage(spaceId, pageId);
+    if (!prompt) {
+      onSpaceRemovePage(spaceId, pageId);
+      return;
+    }
+    askConfirm(prompt).then((confirmed) => {
+      if (confirmed) onSpaceRemovePage(spaceId, pageId);
+    });
   }, [askConfirm, getSpaceRemovalImpact, onSpaceRemovePage, requireSpaceManagement, spaces]);
 
   const handleRenameRegion = useCallback((spaceId, pageId, label) => {

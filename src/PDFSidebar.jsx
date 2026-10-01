@@ -264,8 +264,9 @@ const PDFSidebar = React.forwardRef(({
   const [regionEditReturnSpaceId, setRegionEditReturnSpaceId] = useState(null);
   React.useEffect(() => {
     if (!mobileMode) return;
+    const spacesSheetOpen = !isCollapsed && activeTab === 'spaces';
     if (isRegionSelectionActive) {
-      if (!isCollapsed && activeTab === 'spaces') {
+      if (spacesSheetOpen) {
         regionEditHidSheetRef.current = true;
         setRegionEditReturnSpaceId(activeSpaceId || null);
         closePanel();
