@@ -933,17 +933,18 @@ input[type="text"].survey-marker-name-inline:focus {
    documents, projects and templates; dividers but integrated within the
    panel" — on desktop AND phone, the same design sized for each.
 
-   Structure (src/sidebar/SpacesPanel.jsx):
-     .spaces-panel__head  [+ Add]      Spaces / status      [Export]
-     .spaces-item         grip  Space name ........ count  (switch)  trash
-       .spaces-item__add          [ Add pages, e.g. 3, 6-9 ]         Add
-       .spaces-region             (1) Region 1  edit  bulb (switch)  trash
+   Structure (src/sidebar/SpacesPanel.jsx), Spaces chunk B (2026-10-01):
+     .spaces-panel__head  [+ Add] ........ [Exit space x] [Export]
+                          phone: Spaces  [+ Add] [export] Done
+     .spaces-item         grip > Space 2 ...... 3 pages · 2 areas (switch) ...
+       .spaces-region             p.3  Page 3 ............ Draw area   ...
+       .spaces-item__add          +  [ Add pages ]                     Add
    A space is a row parted from the next by a hairline that reaches both
    edges; its pages are indented lines under it (a to-do list nested under
-   its parent) — no card per space, none per region. Every line shares the
-   same right-hand COLUMNS, so switches, trash cans, bulbs/count and the
-   "Add" word each sit on one x, and the name, the add field and the page
-   badges all start on the same indent.
+   its parent) — no card per space, none per region. Every line ends in the
+   same `more` column, and the name, the page chips and the add field all
+   start on the same indent. The lightbulb, overlay switch, pencil and trash
+   cans of the old rows live in the `more` menus (.spaces-menu).
 
    Hit areas: every glyph owns a whole column and the row's full height —
    an invisible pad, never a plate. Glyph buttons press by tightening the
@@ -962,10 +963,10 @@ input[type="text"].survey-marker-name-inline:focus {
   --sp-pad-r: 3px;          /* right inset of every line's last column */
   --sp-grip-w: 36px;        /* grip column; its glyph lands on --sp-edge */
   --sp-indent: 40px;        /* where the name, add field and page badges start */
-  --sp-col-w: 24px;         /* edit / bulb / count columns */
+  --sp-col-w: 28px;         /* chunk B: 28px hit boxes */
   --sp-switch-w: 36px;
-  --sp-end-w: 32px;         /* trash / "Add" column: 3 + (32-14)/2 = the 12px edge */
-  --sp-row-h: 32px;         /* a space row, the add row */
+  --sp-end-w: 28px;         /* `more` / "Add" column */
+  --sp-row-h: 28px;         /* a space row, the add row (chunk B: 28px) */
   --sp-line-h: 28px;        /* a page line */
   --sp-field-h: 24px;
   --sp-glyph: 14px;
@@ -982,7 +983,7 @@ input[type="text"].survey-marker-name-inline:focus {
   --sp-small-type: 11px;
 }
 
-/* ---- header: [+ Add]  title on the true centre  [Export] ---------------- */
+/* ---- header: [+ Add] ... [Exit space] [Export]; phone: title first ------ */
 .spaces-panel__head {
   position: relative;
   flex: 0 0 var(--sp-head-h);
@@ -1178,50 +1179,36 @@ input[type="text"].survey-marker-name-inline:focus {
   .spaces-item__chevron > svg { transition: none; }
 }
 
-/* The name sizes to its text (a hidden mirror in ::after), so the empty part
-   of the row stays a tap-to-open target instead of a rename field. */
-.spaces-item__name-fit {
-  display: inline-grid;
-  align-items: center;
+/* Chunk B: the name is text at rest (a tap on it opens the space like the
+   rest of the row); Rename in `more` swaps in a field. */
+.spaces-item__name {
   flex: 0 1 auto;
   min-width: 1ch;
-  max-width: 100%;
   margin-left: calc(var(--sp-indent) - var(--sp-grip-w));
-  overflow: hidden;
-}
-
-.spaces-item__name-fit::after,
-.spaces-item__name {
-  grid-area: 1 / 1;
-  min-width: 1ch;
   padding: 0;
+  color: var(--text-1);
   font-family: inherit;
   font-size: var(--sp-name-type);
   font-weight: 600;
   letter-spacing: 0;
-}
-
-.spaces-item__name-fit::after {
-  content: attr(data-value);
-  visibility: hidden;
-  white-space: pre;
-}
-
-.spaces-item__name {
-  width: 100%;
-  max-width: 100%;
-  height: calc(var(--sp-row-h) - 4px);
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-  outline: none;
-  color: var(--text-1);
   line-height: 1.2;
-  cursor: text;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.spaces-item__name-input {
+  flex: 1 1 auto;
+  height: var(--sp-field-h);
+  margin-right: 6px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  background: var(--surface-3);
+  border: 0;
+  border-radius: 6px;
+  box-shadow: none;
+  outline: none;
+  cursor: text;
 }
 
 /* Owner ruling: a field shows focus by its caret only — no underline, no
@@ -1239,14 +1226,20 @@ input[type="text"].spaces-item__name:focus-visible {
   align-self: stretch;
 }
 
-.spaces-item__count {
-  flex: 0 0 var(--sp-col-w);
-  text-align: center;
+/* "3 pages · 2 areas": quiet ink before the switch. It gives way (ellipsis)
+   before the name does. */
+.spaces-item__meta {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding-right: 4px;
   color: var(--text-3);
   font-size: var(--sp-small-type);
-  font-weight: 600;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
-  line-height: 1;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ---- switch: the column is the hit area, the track is drawn inside ------ */
@@ -1333,25 +1326,17 @@ input[type="text"].spaces-item__name:focus-visible {
   height: var(--sp-glyph);
 }
 
-.spaces-item__delete {
+.spaces-item__more {
   flex-basis: var(--sp-end-w);
   width: var(--sp-end-w);
-  color: var(--danger);
+  color: var(--text-3);
 }
 
-/* UX 2026-09-17 (owner ruling): region-edit ON turns the pencil gold and
-   leaves its chrome alone — ink only. */
-.spaces-region__edit.is-editing,
-.spaces-region__visibility.is-on {
-  color: var(--accent);
+.spaces-item__more.is-open {
+  color: var(--text-1);
 }
 
-.spaces-region__visibility:disabled {
-  color: var(--text-disabled);
-  cursor: not-allowed;
-}
-
-/* ---- expanded space: add field, then the page lines -------------------- */
+/* ---- expanded space: the page lines, then "+ Add pages" ---------------- */
 .spaces-item__body {
   padding: 0 var(--sp-pad-r) 4px var(--sp-indent);
 }
@@ -1360,6 +1345,16 @@ input[type="text"].spaces-item__name:focus-visible {
   display: flex;
   align-items: center;
   min-height: var(--sp-row-h);
+}
+
+/* The "+" sits where the page chips start, so the add line reads as the
+   next item of the list. */
+.spaces-item__add-glyph {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding-right: 8px;
+  color: var(--text-3);
 }
 
 .spaces-item__add-input {
@@ -1460,7 +1455,8 @@ input[type="text"].spaces-item__add-input:focus-visible {
   min-height: var(--sp-line-h);
 }
 
-/* The page badge: a small quiet disc. Its tap pad is the line's full height. */
+/* The "p.3" chip: small quiet ink on a pill. Its tap pad is the line's full
+   height. */
 .spaces-region__page {
   position: relative;
   appearance: none;
@@ -1493,13 +1489,13 @@ input[type="text"].spaces-item__add-input:focus-visible {
   justify-content: center;
   min-width: var(--sp-badge);
   height: var(--sp-badge);
-  padding: 0 4px;
+  padding: 0 5px;
   box-sizing: border-box;
   border-radius: 999px;
   background: var(--surface-3);
-  color: var(--text-2);
+  color: var(--text-3);
   font-size: var(--sp-badge-type);
-  font-weight: 700;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   line-height: 1;
   transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1), color 90ms ease-out;
@@ -1520,6 +1516,9 @@ input[type="text"].spaces-item__add-input:focus-visible {
 
 .spaces-region__label {
   appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   max-width: 100%;
   height: 100%;
   padding: 0;
@@ -1534,11 +1533,60 @@ input[type="text"].spaces-item__add-input:focus-visible {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  cursor: text;
+  cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 
+.spaces-region__label > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .spaces-region__label:active {
+  color: var(--text-1);
+}
+
+/* "marks hidden": the state the old lightbulb showed at rest. */
+.spaces-region__hint {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  font-size: var(--sp-small-type);
+  font-weight: 500;
+}
+
+/* "Draw area" (an action, so it reads as one) or "2 areas" (quiet ink; it
+   still opens the area tool). While the tool is on: "Drawing..." in gold ink. */
+.spaces-region__areas {
+  appearance: none;
+  flex: 0 0 auto;
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 4px 0 8px;
+  background: transparent;
+  border: 0;
+  color: var(--text-3);
+  font-family: inherit;
+  font-size: var(--sp-small-type);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 90ms ease-out;
+}
+
+.spaces-region__areas.is-empty {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.spaces-region__areas.is-editing {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.spaces-region__areas:active {
   color: var(--text-1);
 }
 
@@ -1566,28 +1614,423 @@ input[type="text"].spaces-item__add-input:focus-visible {
   box-shadow: none;
 }
 
-/* ---- phone: "Exit Spaces / Regions" as a red word, not a band ---------- */
-.spaces-list__exit {
-  appearance: none;
-  display: flex;
-  align-items: center;
-  width: 100%;
-  min-height: var(--sp-row-h);
-  padding: 0 var(--sp-edge);
-  background: transparent;
-  border: 0;
-  color: var(--danger-text);
-  font-family: inherit;
-  font-size: var(--sp-label-type);
-  font-weight: 600;
-  text-align: left;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  transition: color 90ms ease-out;
+.spaces-panel__head-fill {
+  flex: 1 1 auto;
 }
 
-.spaces-list__exit:active {
-  color: var(--danger);
+/* Desktop, while a space is on: a small chip that turns it off. */
+.spaces-panel__exit-chip {
+  appearance: none;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  margin-right: 2px;
+  padding: 0 7px 0 8px;
+  background: var(--surface-3);
+  border: 0;
+  border-radius: 999px;
+  color: var(--text-1);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.spaces-panel__exit-chip > svg {
+  color: var(--text-3);
+}
+
+/* ---- the `more` menus (portalled; AnchoredPopover hangs them under it) -- */
+.spaces-menu,
+.spaces-export--menu {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translate(-50%, 0);
+  margin-top: 2px;
+  min-width: 168px;
+  padding: 4px;
+  box-sizing: border-box;
+  display: grid;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+}
+
+.spaces-menu__item {
+  appearance: none;
+  min-height: 28px;
+  padding: 4px 8px;
+  display: grid;
+  align-content: center;
+  gap: 1px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.spaces-menu__item > small {
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 400;
+}
+
+.spaces-menu__item.is-danger {
+  color: var(--danger-text);
+}
+
+.spaces-menu__item[aria-disabled='true'] {
+  color: var(--text-disabled);
+  cursor: default;
+}
+
+.spaces-menu__item:not([aria-disabled='true']):active {
+  background: var(--pressed);
+}
+
+.spaces-menu--phone {
+  min-width: 212px;
+  padding: 5px;
+  border-radius: 12px;
+}
+
+.spaces-menu--phone .spaces-menu__item {
+  min-height: 44px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 15px;
+}
+
+.spaces-menu--phone .spaces-menu__item > small {
+  font-size: 12px;
+}
+
+/* ---- "Export <space>": desktop menu under Export, phone sheet ----------- */
+.spaces-export--menu {
+  left: auto;
+  right: -40px;
+  transform: none;
+  width: 236px;
+}
+
+.spaces-export__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 8px;
+}
+
+.spaces-export__head > strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-1);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.spaces-export__close {
+  appearance: none;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--text-2);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.spaces-export__label {
+  padding: 4px 8px 2px;
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.spaces-export__spaces {
+  display: grid;
+  max-height: 168px;
+  overflow-y: auto;
+}
+
+.spaces-export__space {
+  appearance: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 16px;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 8px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.spaces-export__space > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spaces-export__space > small {
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+/* The chosen space: brighter ink and a gold check - never a gold box. */
+.spaces-export__space.is-chosen {
+  color: var(--text-1);
+}
+
+.spaces-export__space.is-chosen > svg {
+  color: var(--accent);
+}
+
+.spaces-export__actions {
+  display: grid;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.spaces-export__action {
+  appearance: none;
+  display: grid;
+  gap: 1px;
+  min-height: 32px;
+  padding: 4px 8px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.spaces-export__action > small {
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 400;
+}
+
+.spaces-export__space:active,
+.spaces-export__action:not(:disabled):active {
+  background: var(--pressed);
+}
+
+/* Phone: a small sheet of its own over the Spaces sheet, standing on the dock
+   like every phone sheet (bottom: --mobile-dock-bar-height). */
+.spaces-export-sheet__backdrop {
+  position: fixed;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  background: rgba(0, 0, 0, 0.32);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.spaces-export-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--mobile-dock-bar-height, 0px);
+  max-height: calc(100dvh - var(--mobile-dock-bar-height, 0px) - 64px);
+  overflow-y: auto;
+  padding: 6px 12px 12px;
+  box-sizing: border-box;
+  background: var(--surface-1);
+  border-radius: 14px 14px 0 0;
+  box-shadow: 0 -15px 38px rgba(0, 0, 0, 0.5);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+}
+
+.spaces-export-sheet .spaces-export__head {
+  min-height: 44px;
+  padding: 0 4px;
+}
+
+.spaces-export-sheet .spaces-export__head > strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.spaces-export-sheet .spaces-export__close {
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 13px;
+  text-align: right;
+}
+
+.spaces-export-sheet .spaces-export__label {
+  padding: 6px 4px 6px;
+  font-size: 12px;
+}
+
+.spaces-export-sheet .spaces-export__spaces {
+  max-height: 220px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.spaces-export-sheet .spaces-export__space {
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 0;
+  font-size: 14px;
+}
+
+.spaces-export-sheet .spaces-export__space + .spaces-export__space {
+  border-top: 1px solid var(--border);
+}
+
+.spaces-export-sheet .spaces-export__space > small {
+  font-size: 12px;
+}
+
+.spaces-export-sheet .spaces-export__actions {
+  margin-top: 12px;
+  padding-top: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.spaces-export-sheet .spaces-export__action {
+  min-height: 52px;
+  padding: 8px 12px;
+  border-radius: 0;
+  font-size: 14px;
+}
+
+.spaces-export-sheet .spaces-export__action + .spaces-export__action {
+  border-top: 1px solid var(--border);
+}
+
+.spaces-export-sheet .spaces-export__action > small {
+  font-size: 12px;
+}
+
+/* ---- the active space outside the panel (Spaces chunk B) ---------------
+   "Space 2 · 3 pages  x": desktop tool bar (left of Export) and the phone's
+   top area (src/AppShell.jsx, src/mobile/MobilePdfViewerChrome.jsx). The
+   words open the Spaces panel; x turns the space off. */
+.active-space-chip {
+  display: inline-flex;
+  align-items: stretch;
+  max-width: 220px;
+  height: 22px;
+  box-sizing: border-box;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-1);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.active-space-chip__open,
+.active-space-chip__off {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.active-space-chip__open {
+  gap: 5px;
+  min-width: 0;
+  padding: 0 2px 0 8px;
+}
+
+.active-space-chip__open > svg {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
+.active-space-chip__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.active-space-chip__meta {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.active-space-chip__off {
+  flex: 0 0 auto;
+  padding: 0 7px 0 4px;
+  color: var(--text-3);
+}
+
+.active-space-chip__off:active,
+.active-space-chip__open:active {
+  color: var(--text-1);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .active-space-chip__off:hover { color: var(--text-1); }
+  .active-space-chip__open:hover .active-space-chip__name { text-decoration: underline; text-underline-offset: 2px; }
+}
+
+/* Survey panel header mirror (src/SurveySpacesRail.jsx): the space new
+   Survey Markers are tagged with, read-only. */
+.survey-active-space {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
+  align-self: center;
+  padding: 3px 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--surface-3);
+  border-radius: 999px;
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 /* ---- hover: desktop pointer only, ink brightens, never a box ----------- */
@@ -1599,9 +2042,18 @@ input[type="text"].spaces-item__add-input:focus-visible {
     background: transparent;
   }
   .spaces-panel__head-btn:not(:disabled):hover,
-  .spaces-item__icon:not(:disabled):not(.spaces-item__delete):not(.is-editing):not(.is-on):hover,
+  .spaces-item__icon:not(:disabled):hover,
   .spaces-region__label:hover,
+  .spaces-region__areas:not(.is-editing):hover,
   .spaces-item__add-go:not(.has-value):hover {
+    color: var(--text-1);
+  }
+  .spaces-menu__item:not([aria-disabled='true']):hover,
+  .spaces-export__space:hover,
+  .spaces-export__action:not(:disabled):hover {
+    background: var(--hover);
+  }
+  .spaces-panel__exit-chip:hover > svg {
     color: var(--text-1);
   }
   .spaces-item__add-go.has-value:hover {
@@ -1613,9 +2065,6 @@ input[type="text"].spaces-item__add-input:focus-visible {
   }
   .spaces-item__icon > svg {
     transition: transform 120ms ease-out;
-  }
-  .spaces-list__exit:hover {
-    color: var(--danger);
   }
 }
 /* ===== end SPACES PANEL — ONE LIST, DIVIDED ===== */

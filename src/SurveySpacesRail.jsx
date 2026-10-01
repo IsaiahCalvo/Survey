@@ -1512,6 +1512,10 @@ const SurveySpacesRail = ({
                         );
                       })()}
                     </div>
+                    {/* Spaces chunk B: the space new Survey Markers are tagged with. */}
+                    {activeSpaceId && (spaces || []).some((s) => s?.id === activeSpaceId) && (
+                      <span className="survey-active-space">{(spaces || []).find((s) => s?.id === activeSpaceId)?.name || 'Space'}</span>
+                    )}
                     <div className={mobileMode ? 'mobile-survey-head-actions' : 'survey-rail__head-actions'}>
                       {/* UX 2026-09-23 (owner: phone Survey panel integrated): Exit
                           Survey moved up from its own full-width outlined footer

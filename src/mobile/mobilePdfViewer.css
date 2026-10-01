@@ -4115,9 +4115,13 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
    The design itself — one divided list, indented page lines, shared columns,
    invisible hit pads — lives in styles.css ("SPACES PANEL — ONE LIST,
    DIVIDED"), shared with desktop. The phone only resizes it: 44px rows,
-   44px page lines and a 44x44 tap pad on every control, a 36x22 switch, 16px
-   glyphs, and a 16px edge so the grip, the title row and the trash cans sit
+   40px page lines and a 44x44 tap pad on every control, a 36x22 switch, 16px
+   glyphs, and a 16px edge so the grip, the title and the `more` glyphs sit
    on the sheet's gutter. Nothing here paints a fill or a border.
+   Spaces chunk B: the header and type follow the phone Survey sheet
+   (mobileSurveyPanel.css) so the two panels read as one family - a 44px
+   head with a 15/600 title and quiet words on the right ("Done" neutral,
+   not red), 44px rows, 40px lines, 12px meta ink.
    ========================================================================== */
 /* Two classes so these win over styles.css whatever the load order. */
 .spaces-panel.mobile-spaces-panel {
@@ -4132,7 +4136,7 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
   --sp-switch-w: 44px;
   --sp-end-w: 44px;
   --sp-row-h: 44px;
-  --sp-line-h: 44px;
+  --sp-line-h: 40px;
   --sp-field-h: 32px;
   --sp-glyph: 16px;
   --sp-track-w: 36px;
@@ -4143,27 +4147,126 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
   --sp-title-type: 15px;
   --sp-status-type: 10.5px;
   --sp-head-type: 13px;
-  /* The phone forces every input to 16px so iOS never zooms on focus
-     (index.html), so the space name — an input — is 16 here, and the
-     mirror that sizes it uses the same number. */
-  --sp-name-type: 16px;
+  /* Chunk B: the name is text at rest (the Survey sheet's 15/600 title
+     size); the rename field is 16px below, so iOS never zooms on focus. */
+  --sp-name-type: 15px;
   --sp-label-type: 14px;
   --sp-small-type: 12px;
 }
 
 .mobile-spaces-panel .spaces-item__add-input,
+.mobile-spaces-panel .spaces-item__name-input,
 .mobile-spaces-panel .spaces-region__name-input {
   font-size: 16px;
   border-radius: 8px;
   padding: 0 10px;
 }
 
-.mobile-spaces-panel .spaces-header-export-menu {
-  min-width: 116px;
+/* Chunk B header: "Spaces" title, then + Add, the export glyph and Done -
+   the Survey sheet's head line (.mobile-survey-head). */
+.mobile-spaces-panel .spaces-panel__head {
+  justify-content: flex-start;
+  align-items: center;
+  gap: 0;
+  padding: 0 6px 0 16px;
+  border-bottom: 0;
 }
 
-.mobile-spaces-panel .spaces-header-export-menu-button {
-  min-height: 36px;
+.mobile-spaces-panel .spaces-panel__heading {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  color: var(--text-1);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-spaces-panel .spaces-panel__head-btn,
+.mobile-spaces-panel .spaces-panel__done {
+  height: 32px;
+}
+
+.mobile-spaces-panel .spaces-panel__head-btn--add {
+  margin-left: 0;
+}
+
+.mobile-spaces-panel .spaces-panel__head-btn--export.is-glyph {
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+}
+
+.mobile-spaces-panel .spaces-panel__head-btn--export.is-glyph svg {
+  width: 16px;
+  height: 16px;
+}
+
+.mobile-spaces-panel .spaces-panel__done {
+  appearance: none;
+  padding: 0 8px;
+  background: transparent;
+  border: 0;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 90ms ease-out;
+}
+
+.mobile-spaces-panel .spaces-panel__done:active {
+  opacity: 0.6;
+}
+
+/* Active-space chip (chunk B): floats centred over the page area just under
+   the top bar (the 44px tool rail on the left is skipped, so it centres on
+   the page). A tool strip (.mobile-pdf-properties, 36px painted) opens in the
+   same place, so while one is on screen the chip drops below it. It sits
+   under every sheet (z 6500) and the zoom menu (7200). */
+.mobile-pdf-header__space {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: calc(50% + 22px);
+  transform: translateX(-50%);
+  max-width: calc(100vw - 44px - 24px);
+  z-index: 1;
+  transition: top 140ms ease-out;
+}
+
+html:has([data-mobile-tool-properties]) .mobile-pdf-header__space {
+  top: calc(100% + 36px + 8px);
+}
+
+.mobile-pdf-header__space .active-space-chip {
+  max-width: 100%;
+  height: 30px;
+  font-size: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+.mobile-pdf-header__space .active-space-chip__open {
+  padding: 0 2px 0 11px;
+}
+
+.mobile-pdf-header__space .active-space-chip__off {
+  /* 12px glyph, 36px-wide tap pad to the chip's edge. */
+  min-width: 34px;
+  justify-content: center;
+  padding: 0 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-pdf-header__space { transition: none; }
+}
+
+/* The list starts under a hairline, as the Survey sheet's panel does. */
+.mobile-spaces-panel .spaces-list {
+  border-top: 1px solid var(--border);
 }
 /* ===== end SPACES PANEL — PHONE SIZES ===== */
 

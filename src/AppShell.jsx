@@ -33,6 +33,7 @@ import { placeUnderOpenerAvoiding, slotDefinition, TEXT_ROW_CAPTION_ROOM, TIGHT_
 import { recentPressedControl, registerLightPopover } from './components/dismissRules.js';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from './utils/annotationSize';
 import SurveySpacesRail from './SurveySpacesRail';
+import ActiveSpaceChip from './sidebar/ActiveSpaceChip';
 import TabBar from './TabBar';
 import {
   MobilePdfViewerDock,
@@ -1685,6 +1686,28 @@ export default function App({ devPreviewReturnTab = null }) {
     }
   }, [leftRailApi, mobileSurveyPanelOpen, rightRailApi]);
 
+  // Spaces chunk B: the active space, named outside the Spaces panel - a chip
+  // in the desktop tool bar and under the phone's top bar. Its words open the
+  // Spaces panel, its x turns the space off (the panel switch's handler).
+  const activeSpaceForChip = useMemo(() => {
+    const id = leftRailApi?.activeSpaceId;
+    if (!id) return null;
+    const space = (leftRailApi?.spaces || []).find((entry) => entry?.id === id);
+    if (!space) return null;
+    return { id, name: space.name || 'Space', pageCount: space.assignedPages?.length || 0 };
+  }, [leftRailApi?.activeSpaceId, leftRailApi?.spaces]);
+  const openSpacesFromChip = useCallback(() => {
+    if (isMobileViewer) {
+      if (mobileDocumentPanelState.isOpen && mobileDocumentPanelState.activePanel === 'spaces') return;
+      openMobileDocumentPanel('spaces');
+      return;
+    }
+    leftRailApi?.ref?.current?.openPanel?.('spaces');
+  }, [isMobileViewer, leftRailApi, mobileDocumentPanelState, openMobileDocumentPanel]);
+  const turnOffSpaceFromChip = useCallback(() => {
+    leftRailApi?.onExitSpaceMode?.();
+  }, [leftRailApi]);
+
   useEffect(() => {
     if (isViewerVisible) return;
     setMobileSurveyPanelOpen(false);
@@ -1946,6 +1969,13 @@ export default function App({ devPreviewReturnTab = null }) {
             onBack={handleBack}
             topToolbarApi={topToolbarApi}
             bottomToolbarApi={bottomToolbarApi}
+            // The header layer sits above the sheets' layer, so the chip
+            // would float over a tall or keyboard-lifted sheet: it steps
+            // aside while any phone sheet is up (the Spaces sheet names the
+            // space itself, the dock's layers button stays gold).
+            activeSpace={(mobileDocumentPanelState.isOpen || mobileSurveyPanelOpen || mobileAuxPanel) ? null : activeSpaceForChip}
+            onOpenSpaces={openSpacesFromChip}
+            onTurnOffSpace={turnOffSpaceFromChip}
           />
         ) : (
         <div
@@ -2003,10 +2033,22 @@ export default function App({ devPreviewReturnTab = null }) {
               padding: 0,
               zIndex: 1
             }}>
+              {/* Spaces chunk B: the active space, left of Export. While it
+                  shows, IT carries data-toolbar-export, so the tool bar's plan
+                  (useResponsiveToolbar) keeps the tools clear of the chip. */}
+              {activeSpaceForChip && (
+                <ActiveSpaceChip
+                  data-toolbar-export="true"
+                  name={activeSpaceForChip.name}
+                  pageCount={activeSpaceForChip.pageCount}
+                  onOpen={openSpacesFromChip}
+                  onTurnOff={turnOffSpaceFromChip}
+                />
+              )}
               {/* Export annotated PDF — browser-visible entry point for the
                   same handler the desktop File menu drives. */}
               <button
-                data-toolbar-export="true"
+                data-toolbar-export={activeSpaceForChip ? undefined : 'true'}
                 onClick={bottomToolbarApi.exportAnnotatedPdf}
                 {...chromeTip('Export annotated PDF', 'below')}
                 aria-label="Export annotated PDF"
