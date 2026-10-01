@@ -590,9 +590,16 @@ const PDFSidebar = React.forwardRef(({
                       tokens, not the desktop rail's. */}
                   {/* UX 2026-09-22: the resting grey is --text-2, the same one
                       the collapsed rail draws — see the note there. */}
+                  {/* Owner 2026-10-01 (iPhone): "I would prefer them to be
+                      bigger. I don't want the actual row that they're in to
+                      grow." The phone's Pages / Search / Bookmarks tab glyphs
+                      draw at 22 (were 16) inside the same 34x32 tab, so the
+                      40px tab row keeps its height; the 1.5 stroke is on the
+                      24 grid, so the line weight scales with the glyph like
+                      every other Lucide mark. */}
                   <Icon
                     name={tab.icon}
-                    size={mobileMode ? 16 : RAIL_GLYPH}
+                    size={mobileMode ? 22 : RAIL_GLYPH}
                     color={isActive ? 'var(--accent)' : 'var(--text-2)'}
                   />
                   <span style={{

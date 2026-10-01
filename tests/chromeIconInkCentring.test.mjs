@@ -71,9 +71,10 @@ test('the Fit menu is the same kind of menu as its two siblings', () => {
 test('the panel tabs are one glyph size, open or collapsed', () => {
   assert.match(
     sidebar,
-    /size=\{mobileMode \? 16 : RAIL_GLYPH\}/,
+    /size=\{mobileMode \? 22 : RAIL_GLYPH\}/,
     'the expanded tab strip draws the same four tabs as the collapsed rail, so on the desktop it '
-    + 'takes the same RAIL_GLYPH; the phone keeps its own tier\'s 16',
+    + 'takes the same RAIL_GLYPH; the phone draws 22 (owner 2026-10-01: bigger Pages / Search / '
+    + 'Bookmarks icons in the same 34x32 tab, the row does not grow)',
   );
   assert.match(
     sidebar,
