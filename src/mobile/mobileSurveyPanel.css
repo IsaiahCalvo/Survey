@@ -234,13 +234,13 @@
   opacity: 0.6;
 }
 
-/* Export and close: bare glyphs, invisible 32px hit areas. */
+/* Close: a bare glyph, an invisible 32px hit area. The export menu's anchor
+   (now in the footer) keeps its wrap. */
 .mobile-survey-sheet .mobile-survey-sheet-export-wrap {
   position: relative;
   flex: 0 0 auto;
 }
 
-.mobile-survey-sheet .mobile-survey-sheet-export,
 .mobile-survey-sheet .mobile-survey-close {
   width: 32px;
   height: 32px;
@@ -256,19 +256,10 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-.mobile-survey-sheet .mobile-survey-sheet-export.is-open {
-  color: var(--text-1);
-}
-
-.mobile-survey-sheet .mobile-survey-sheet-export:disabled {
-  color: var(--text-disabled);
-  cursor: not-allowed;
-}
-
 .mobile-survey-sheet .mobile-survey-sheet-export-menu {
   position: absolute;
   right: 0;
-  top: 36px;
+  bottom: calc(100% + 4px);
   z-index: 80;
   width: 232px;
   padding: 4px;
@@ -299,6 +290,73 @@
 .mobile-survey-sheet .mobile-survey-sheet-export-menu > button:disabled { opacity: 0.38; cursor: not-allowed; }
 .mobile-survey-sheet .mobile-survey-sheet-export-menu > button > strong { font-size: 13px; font-weight: 600; }
 .mobile-survey-sheet .mobile-survey-sheet-export-menu > button > span { color: var(--text-3); font-size: 11px; font-weight: 400; }
+
+/* ---------- FOOTER: Export (owner 2026-10-01) ---------------------------- */
+/* "The export button being so close to the X ... is just weird": Export is
+   the sheet's last line, as on desktop - "Export to Excel" (the sheet's action
+   type), and a "..." with the linked workbook's Sync when there is one. It
+   steps aside while you type (a field in the sheet has focus), so the
+   keyboard never has to make room for it. */
+.mobile-survey-sheet .mobile-survey-foot {
+  flex: 0 0 auto;
+  min-height: 48px;
+  box-sizing: border-box;
+  margin-top: auto;
+  padding: 0 6px 0 calc(var(--sheet-pad-x) - 8px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: var(--sheet-divider);
+}
+
+.mobile-survey-sheet:has(input:focus, textarea:focus) .mobile-survey-foot {
+  display: none;
+}
+
+.mobile-survey-sheet .mobile-survey-foot__export,
+.mobile-survey-sheet .mobile-survey-foot__more {
+  height: 44px;
+  min-width: 44px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-1);
+  background: transparent;
+  border: 0;
+  font: var(--sheet-action);
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-survey-sheet .mobile-survey-foot__more {
+  width: 44px;
+  padding: 0;
+  justify-content: center;
+  color: var(--text-2);
+}
+
+.mobile-survey-sheet .mobile-survey-foot__more.is-open {
+  color: var(--text-1);
+}
+
+.mobile-survey-sheet .mobile-survey-foot__export:disabled,
+.mobile-survey-sheet .mobile-survey-foot__more:disabled {
+  color: var(--text-disabled);
+}
+
+.mobile-survey-sheet .mobile-survey-foot__export:not(:disabled):active {
+  opacity: 0.6;
+}
+
+.mobile-survey-sheet .mobile-survey-foot__more > svg {
+  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.mobile-survey-sheet .mobile-survey-foot__more:not(:disabled):active > svg {
+  transform: scale(0.88);
+}
 
 /* ---------- THE BODY ----------------------------------------------------- */
 
@@ -825,64 +883,45 @@
   flex-direction: column;
 }
 
-/* The open Survey Marker's first lines (owner 2026-10-01: the entity name
-   was cut to "Subcontra...", and the dot / name / magnifier line felt off).
-   Two short rows, on the open block's 28px indent:
-     1. the NAME field filling the line, Locate at the end of it;
-     2. the ENTITY under it: the colour dot and the entity's FULL name side
-        by side, left-aligned with the field - a long name wraps, never
-        ellipsises. A tap still opens the entity menu.
-   Locate is the sheet's 16px glyph in a 44px hit area, centred on the name
-   field; its glyph's right edge sits on the 16px edge, like the Y / N / N/A
-   group and "+ Place" below and above it. */
+/* The open Survey Marker is ONE line (owner 2026-10-01, second pass: "I
+   don't like the header being two lines"), in place of its row:
+     [entity dot + caret] [name field] [Locate] [close chevron]
+   - the entity button's dot sits where the row's dot was (x 28); a tap opens
+     the entity menu, whose names are whole (they wrap, never "Subcontr...");
+   - Locate: a target in --text-2 when the marker is on the page; an orange
+     pin-plus (#f0883e, the palette's orange, not the gold accent) when it is
+     not - a tap then places it;
+   - the chevron closes the marker (the row comes back).
+   Every control is a 44px-tall hit area; the line is 48px. */
 .mobile-survey-sheet .mobile-survey-open-tools {
   position: relative;
   box-sizing: border-box;
-  padding: 0 2px 6px var(--survey-indent);
+  min-height: 48px;
+  padding: 0 4px 0 var(--sheet-pad-x);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 44px;
-  grid-template-rows: 44px auto;
-  grid-template-areas:
-    "name locate"
-    "entity entity";
+  grid-template-columns: 40px minmax(0, 1fr) 44px 40px;
   align-items: center;
-  column-gap: 4px;
-  border-top: 1px solid var(--border);
+  column-gap: 2px;
+  /* Its hairline is the list row's own (the sortable wrapper draws it). */
+  border-top: 0;
 }
 
-.mobile-survey-sheet .mobile-survey-open-tools > .mobile-survey-detail-name-wrap { grid-area: name; }
-.mobile-survey-sheet .mobile-survey-open-tools > .mobile-survey-locate { grid-area: locate; }
-.mobile-survey-sheet .mobile-survey-open-tools > .mobile-survey-entity-chip { grid-area: entity; }
-
-/* The entity: no plate and no caret (owner 2026-10-01), its dot then its
-   name in the sheet's row meta type (500 12px/14px). --text-2 once one is
-   set, --text-3 for the "Entity" placeholder. Tucked 4px up under the
-   field so the two read as one block; a 32px-tall hit area. */
 .mobile-survey-sheet .mobile-survey-entity-chip,
 .mobile-survey-sheet .mobile-survey-entity-chip:active {
-  justify-self: start;
-  min-width: 44px;
-  max-width: 100%;
-  min-height: 32px;
+  width: 40px;
+  height: 44px;
   box-sizing: border-box;
-  margin: -4px var(--sheet-pad-x) 0 0;
-  padding: 4px 8px 4px 0;
+  margin: 0;
+  padding: 0 0 0 12px;
   display: inline-flex;
-  flex-direction: row;
   align-items: center;
-  gap: 8px;
-  color: var(--text-2);
+  gap: 3px;
+  color: var(--text-3);
   background: transparent;
   border: 0;
   border-radius: 0;
-  font: var(--sheet-row-meta);
-  text-align: left;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-}
-
-.mobile-survey-sheet .mobile-survey-entity-chip.is-empty {
-  color: var(--text-3);
 }
 
 .mobile-survey-sheet .mobile-survey-entity-chip > .mobile-survey-detail-entity-dot {
@@ -892,31 +931,31 @@
   transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
 }
 
-.mobile-survey-sheet .mobile-survey-entity-chip:active > .mobile-survey-detail-entity-dot {
-  transform: scale(0.88);
+.mobile-survey-sheet .mobile-survey-entity-chip.is-empty > .mobile-survey-detail-entity-dot {
+  border-style: dashed !important;
 }
 
-.mobile-survey-sheet .mobile-survey-entity-chip:active > .mobile-survey-entity-chip-label {
-  opacity: 0.6;
+.mobile-survey-sheet .mobile-survey-entity-chip > svg {
+  flex: 0 0 auto;
+  transition: transform 150ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.mobile-survey-sheet .mobile-survey-entity-chip:active > .mobile-survey-detail-entity-dot {
+  transform: scale(0.88);
 }
 
 .mobile-survey-sheet .mobile-survey-entity-chip[aria-expanded='true'] {
   color: var(--text-1);
 }
 
-/* The whole name, always: it wraps (at a word, or anywhere in one very long
-   word) instead of ellipsising. */
-.mobile-survey-sheet .mobile-survey-entity-chip-label {
-  min-width: 0;
-  white-space: normal;
-  overflow-wrap: anywhere;
+.mobile-survey-sheet .mobile-survey-entity-chip[aria-expanded='true'] > svg {
+  transform: rotate(180deg);
 }
 
-/* Locate: the magnifier glyph alone (aria-label / title "Locate on page"),
-   orange when the Survey Marker is not on the page yet ("Place on page"),
-   like the desktop's locate glyph. */
 .mobile-survey-sheet .mobile-survey-locate,
-.mobile-survey-sheet .mobile-survey-locate:active {
+.mobile-survey-sheet .mobile-survey-locate:active,
+.mobile-survey-sheet .mobile-survey-open-close,
+.mobile-survey-sheet .mobile-survey-open-close:active {
   width: 44px;
   height: 44px;
   padding: 0;
@@ -929,13 +968,23 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+.mobile-survey-sheet .mobile-survey-open-close,
+.mobile-survey-sheet .mobile-survey-open-close:active {
+  width: 40px;
+  color: var(--text-1);
+}
+
+.mobile-survey-sheet .mobile-survey-open-close > svg {
+  transform: rotate(180deg);
+}
+
 .mobile-survey-sheet .mobile-survey-locate.is-unplaced {
-  color: var(--warning);
+  color: #f0883e;
 }
 
 .mobile-survey-sheet .mobile-survey-locate > svg {
-  width: var(--sheet-icon);
-  height: var(--sheet-icon);
+  width: 18px;
+  height: 18px;
   transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
 }
 
@@ -943,11 +992,17 @@
   transform: scale(0.88);
 }
 
-.mobile-survey-sheet .mobile-survey-open-note-line {
-  min-height: 30px;
-  padding: 0 var(--sheet-pad-x) 6px var(--survey-indent);
-  display: flex;
-  align-items: center;
+.mobile-survey-sheet .mobile-survey-open-close:active > svg {
+  transform: rotate(180deg) scale(0.88);
+}
+
+/* A closed row whose marker is not on the page: the same orange pin-plus,
+   small, after its name (an indicator, not a button). */
+.mobile-survey-sheet .mobile-survey-item-unplaced {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  color: #f0883e;
 }
 
 .mobile-survey-sheet .mobile-survey-open .mobile-survey-check-item {
@@ -991,8 +1046,8 @@
   flex: 1;
   min-width: 0;
   position: relative;
-  height: 32px;
-  margin: 6px 0;
+  height: 36px;
+  margin: 0;
   display: flex;
   align-items: center;
   overflow: hidden;
@@ -1011,7 +1066,7 @@
   flex: 0 0 auto;
   width: calc(100% / var(--name-scale));
   min-width: 0;
-  height: calc(32px / var(--name-scale));
+  height: calc(36px / var(--name-scale));
   box-sizing: border-box;
   padding: 0 4px 0 calc(10px / var(--name-scale));
   color: var(--text-1);
@@ -1020,7 +1075,7 @@
   outline: none;
   font: inherit;
   font-size: 16px;
-  font-weight: 500;
+  font-weight: 600;
   transform: scale(var(--name-scale));
   transform-origin: left center;
 }
@@ -1044,12 +1099,33 @@
 }
 
 .mobile-survey-sheet .mobile-survey-detail-entity-menu {
-  /* Opens under the entity line, left-aligned with it. */
+  /* Opens under the open line, from its dot to the sheet's edge, so a long
+     entity name shows whole (it wraps). 44px rows. */
   top: calc(100% - 2px);
-  left: var(--survey-indent);
-  /* As wide as the line, so a long entity name shows whole. */
+  left: var(--sheet-pad-x);
   right: var(--sheet-pad-x);
   width: auto;
+  max-height: 264px;
+}
+
+.mobile-survey-sheet .mobile-survey-detail-entity-menu > button {
+  min-height: 44px;
+  padding: 6px 10px;
+  font: var(--sheet-row-title);
+}
+
+.mobile-survey-sheet .mobile-survey-detail-entity-menu > button > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.mobile-survey-sheet .mobile-survey-detail-check {
+  flex: 0 0 14px;
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
 }
 
 .mobile-survey-sheet .mobile-survey-detail-menu > button {
@@ -1074,7 +1150,7 @@
 /* Selected = bright ink, no fill (survey calm gold, 2026-10-01). */
 .mobile-survey-sheet .mobile-survey-detail-menu > button.is-active { color: var(--text-1); font-weight: 600; }
 
-.mobile-survey-sheet .mobile-survey-detail-menu > button > span:last-child {
+.mobile-survey-sheet .mobile-survey-detail-menu:not(.mobile-survey-detail-entity-menu) > button > span:last-child {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -1100,7 +1176,7 @@
 }
 
 .mobile-survey-sheet .mobile-survey-check-item {
-  height: 40px;
+  height: var(--sheet-row-h);
   box-sizing: border-box;
   padding: 0 var(--sheet-pad-x) 0 12px;
   display: flex;
@@ -1129,7 +1205,7 @@
    answers are words with invisible hit areas and the chosen one is lit ink. */
 .mobile-survey-sheet .mobile-survey-check-group {
   flex-shrink: 0;
-  height: 28px;
+  height: 32px;
   padding: 0 2px;
   display: flex;
   align-items: center;
@@ -1140,8 +1216,8 @@
 
 .mobile-survey-sheet .mobile-survey-check-btn,
 .mobile-survey-sheet .mobile-survey-check-btn:active {
-  min-width: 34px;
-  height: 28px;
+  min-width: 40px;
+  height: 32px;
   padding: 0 6px;
   display: grid;
   place-items: center;
@@ -1166,7 +1242,7 @@
    no plate. Gold stays the selection accent only. The same three chips as
    the desktop rail (surveyRailPanel.css) and the archived-answer badge. */
 .mobile-survey-sheet .mobile-survey-check-btn.is-active {
-  height: 24px;
+  height: 26px;
   border-radius: 5px;
 }
 .mobile-survey-sheet .mobile-survey-check-btn.is-yes { color: var(--on-success-plate); background: var(--success-plate); }
@@ -1189,13 +1265,11 @@
 
 /* ---------- THE GLYPH PRESS ---------------------------------------------- */
 /* Invisible hit areas: the glyph itself shrinks while pressed. */
-.mobile-survey-sheet .mobile-survey-sheet-export > svg,
 .mobile-survey-sheet .mobile-survey-close > svg,
 .mobile-survey-sheet .survey-marker-category-arrow svg {
   transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
 }
 
-.mobile-survey-sheet .mobile-survey-sheet-export:not(:disabled):active > svg,
 .mobile-survey-sheet .mobile-survey-close:active > svg,
 .mobile-survey-sheet .survey-marker-category-arrow:active svg {
   transform: scale(0.88);

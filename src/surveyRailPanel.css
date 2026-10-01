@@ -44,7 +44,12 @@
   --sv-col-sm: 24px;      /* a smaller glyph column (notes, review) */
   --sv-grip-w: 28px;      /* category grip column */
   --sv-marker-indent: 28px; /* where a Survey Marker line starts */
-  --sv-detail-indent: 64px; /* where a Survey Marker's detail lines start */
+  /* Owner 2026-10-01 (second pass, "everything's pushed to the right too
+     much"): a Survey Marker's grip sits in the same 28px gutter as its
+     category's, its entity dot under the category's name (x 30), and its
+     open lines - checklist, note - start under its name (x 60). */
+  --sv-detail-indent: 60px; /* where a Survey Marker's detail lines start */
+  --sv-detail-right: 8px;   /* their right edge */
   --sv-name-type: 13px;
   --sv-label-type: 12px;
   --sv-small-type: 11px;
@@ -247,18 +252,6 @@
   justify-content: center;
 }
 
-/* Between Export and the exit X (owner 2026-09-30: too easy to hit the wrong
-   one). A 1px x 16px hairline with 8px of air each side, so the two buttons'
-   full-height pads are 17px apart instead of touching. */
-.survey-rail .survey-rail__head-rule {
-  width: 1px;
-  height: 16px;
-  margin: 0 8px;
-  align-self: center;
-  flex: 0 0 auto;
-  background: var(--border);
-}
-
 /* The caret beside Export hugs the word: a narrow pad of its own. */
 .survey-rail .survey-rail__head-btn--caret {
   width: 18px;
@@ -284,6 +277,74 @@
 .survey-rail .survey-rail__head-btn:disabled {
   color: var(--text-disabled);
   cursor: not-allowed;
+}
+
+/* ---------- FOOTER: Export (owner 2026-10-01) ---------------------------
+   "The export button being so close to the X close button for survey is just
+   weird": Export left the header for the panel's foot, one 40px line with a
+   hairline above it, just over the zoom / page footer. "Export to Excel" is a
+   quiet glyph-and-word; a linked workbook's actions sit behind a "..." at the
+   right. Its menu opens upwards. */
+.survey-rail .survey-rail__foot {
+  flex: 0 0 auto;
+  height: 40px;
+  box-sizing: border-box;
+  margin-top: auto;
+  padding: 0 calc(var(--sv-edge) - 6px) 0 calc(var(--sv-edge) - 6px);
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  background: var(--surface-1);
+  border-top: 1px solid var(--border);
+}
+
+/* AppShell portals the zoom / page / fit row into the panel, pinned to its
+   bottom (absolute, 37px). The Export line sits just above it. */
+.survey-rail:has([data-rail-footer-row]) .survey-rail__foot {
+  margin-bottom: 37px;
+}
+
+.survey-rail .survey-rail__foot-export,
+.survey-rail .survey-rail__foot-more {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font: inherit;
+  font-size: var(--sv-label-type);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 90ms ease-out;
+}
+
+.survey-rail .survey-rail__foot-more {
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+}
+
+.survey-rail .survey-rail__foot-export:disabled,
+.survey-rail .survey-rail__foot-more:disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.survey-rail .survey-rail__foot-more[aria-expanded='true'] {
+  color: var(--text-1);
+}
+
+.survey-rail .survey-rail__foot svg {
+  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.survey-rail .survey-rail__foot button:not(:disabled):active svg {
+  transform: scale(0.88);
 }
 
 .survey-rail .survey-rail__export {
@@ -317,7 +378,11 @@
 }
 
 .survey-rail .survey-marker-export-compact-menu {
-  top: calc(100% + 2px);
+  /* Opens upwards from the footer, right-aligned with its "...". */
+  top: auto;
+  bottom: calc(100% + 4px);
+  right: 0;
+  left: auto;
   width: 200px;
   display: flex;
   flex-direction: column;
@@ -600,6 +665,24 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* An open category's "Select" (owner 2026-10-01: it was a line of its own,
+   indented to nothing): a small quiet word in the row, before the count. */
+.survey-rail .survey-marker-category-select {
+  appearance: none;
+  flex: 0 0 auto;
+  align-self: stretch;
+  padding: 0 8px;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font: inherit;
+  font-size: var(--sv-small-type);
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 90ms ease-out;
+}
+
 .survey-rail .survey-marker-category-arrow {
   flex: 0 0 var(--sv-col);
   width: var(--sv-col);
@@ -634,9 +717,10 @@
 
 /* ---- per-category Select line (inside an open category) ---- */
 .survey-rail .survey-marker-inline-select-row {
-  height: 24px;
+  height: 28px;
   margin: 0;
-  padding: 0 var(--sv-edge) 0 calc(var(--sv-marker-indent) + 18px);
+  /* The words start under the Survey Markers' dots (6px is their own pad). */
+  padding: 0 var(--sv-edge) 0 calc(var(--sv-grip-w) - 4px);
   gap: 2px;
   border-top: 1px solid var(--border);
   overflow: visible;
@@ -687,23 +771,25 @@
 }
 
 .survey-rail .survey-rail__marker-line {
-  min-height: var(--sv-line-h);
+  min-height: 30px;
   display: flex;
   align-items: center;
   gap: 0;
-  padding: 0 3px 0 calc(var(--sv-marker-indent) - 4px);
+  padding: 0 3px 0 0;
   box-sizing: border-box;
 }
-
+/* The grip (or select circle) in the category grips' 28px gutter. */
 .survey-rail .survey-rail__marker-line > [data-drag-rearrange-handle],
 .survey-rail .survey-rail__marker-line > .survey-marker-leading-control {
-  flex: 0 0 18px;
-  width: 18px !important;
-  height: var(--sv-line-h) !important;
+  flex: 0 0 var(--sv-grip-w);
+  width: var(--sv-grip-w) !important;
+  height: 30px !important;
   align-self: stretch;
+  margin: 0;
+  padding-left: 4px;
+  box-sizing: border-box;
   color: var(--text-3);
 }
-
 .survey-rail .survey-rail__marker-main {
   flex: 1 1 auto;
   min-width: 0;
@@ -712,6 +798,127 @@
   align-items: center;
   gap: 6px;
   padding: 0 4px 0 2px;
+}
+.survey-rail .survey-rail__marker-line.is-open .survey-marker-name-inline {
+  font-weight: 600;
+}
+.survey-rail .survey-rail__marker-line.is-open .survey-marker-name-fit::after {
+  font-weight: 600;
+}
+
+/* The entity dot IS the entity menu (owner 2026-10-01: no separate Entity
+   line): the 10px dot and a small caret, a 24 x 22 pad. The caret shows on
+   the open line, under the pointer and while the menu is open. */
+.survey-rail .survey-rail__entity-wrap {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+}
+.survey-rail .survey-rail__entity-btn {
+  appearance: none;
+  width: 24px;
+  height: 22px;
+  padding: 0 0 0 1px;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  color: var(--text-3);
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.survey-rail .survey-rail__entity-dot {
+  flex: 0 0 10px;
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 1px solid var(--ink-ring-strong);
+}
+.survey-rail .survey-rail__entity-dot.is-empty {
+  background: transparent;
+  border: 1px dashed var(--text-3);
+}
+.survey-rail .survey-rail__entity-caret {
+  display: grid;
+  opacity: 0;
+  transition: opacity 90ms ease-out;
+}
+.survey-rail .survey-rail__marker-line.is-open .survey-rail__entity-caret,
+.survey-rail .survey-rail__entity-btn[aria-expanded='true'] .survey-rail__entity-caret,
+.survey-rail .survey-rail__entity-btn:focus-visible .survey-rail__entity-caret {
+  opacity: 1;
+}
+.survey-rail .survey-rail__entity-btn[aria-expanded='true'] {
+  color: var(--text-1);
+}
+.survey-rail .survey-rail__entity-btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 0;
+}
+/* Its menu: under the dot, wide enough for a whole entity name; a long one
+   wraps (never "Subcontr..."). The current one is bright ink with a check. */
+.survey-rail .survey-marker-entity-options.survey-rail__entity-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: -2px;
+  right: auto;
+  width: 248px;
+  max-width: calc(320px - 40px);
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+}
+.survey-rail .survey-rail__entity-menu .survey-marker-entity-option {
+  height: auto;
+  min-height: 28px;
+  padding: 5px 8px;
+  gap: 8px;
+  align-items: center;
+  text-align: left;
+}
+.survey-rail .survey-rail__entity-menu .survey-marker-entity-option-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+}
+.survey-rail .survey-rail__entity-check {
+  flex: 0 0 12px;
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+}
+
+/* Locate: a target in quiet ink when the marker is on the page; an orange
+   pin-plus when it is not (owner 2026-10-01: "we need a way to indicate
+   whether it's on the page or not"). #f0883e is the palette's orange - not
+   the app's gold accent. The open chevron closes the line. */
+.survey-rail .survey-rail__locate {
+  color: var(--text-3);
+}
+.survey-rail .survey-rail__marker-line.is-open .survey-rail__locate {
+  color: var(--text-2);
+}
+.survey-rail .survey-rail__locate.is-unplaced,
+.survey-rail .survey-rail__marker-line.is-open .survey-rail__locate.is-unplaced {
+  color: #f0883e;
+}
+.survey-rail .survey-rail__marker-toggle {
+  flex-basis: 28px;
+  width: 28px;
+  color: var(--text-3);
+}
+.survey-rail .survey-rail__marker-toggle > svg {
+  transition: transform 150ms ease;
+}
+.survey-rail .survey-rail__marker-toggle[aria-expanded='true'] {
+  color: var(--text-2);
+}
+.survey-rail .survey-rail__marker-toggle[aria-expanded='true'] > svg {
+  transform: rotate(180deg);
 }
 
 .survey-rail .survey-rail__marker-main .survey-marker-name-inline,
@@ -797,7 +1004,7 @@
 .survey-rail .survey-rail__detail-line {
   min-height: var(--sv-line-h);
   box-sizing: border-box;
-  padding: 3px 3px 3px var(--sv-detail-indent);
+  padding: 3px var(--sv-detail-right) 3px var(--sv-detail-indent);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -891,7 +1098,7 @@
 .survey-rail .survey-rail__answers {
   flex: 0 0 auto;
   height: 22px;
-  margin-right: calc(var(--sv-col) - 22px);
+  margin-right: 0;
   padding: 0 1px;
   display: flex;
   align-items: center;
@@ -958,6 +1165,8 @@
    or word presses by shrinking or brightening its ink. The category name and
    chevron keep the press, because their line is the thing being pressed. */
 #chrome-right-host .survey-rail .survey-rail__head button:not(:disabled):active,
+#chrome-right-host .survey-rail .survey-rail__foot > button:not(:disabled):active,
+#chrome-right-host .survey-rail .survey-rail__foot .survey-rail__foot-more:not(:disabled):active,
 #chrome-right-host .survey-rail .survey-rail__tabs button:not(:disabled):active,
 #chrome-right-host .survey-rail .survey-rail__list button:not(.survey-marker-category-main):not(.survey-marker-category-arrow):not(.survey-marker-entity-option):not(:disabled):active {
   background-color: transparent !important;
@@ -965,6 +1174,8 @@
 
 @media (hover: hover) and (pointer: fine) {
   #chrome-right-host .survey-rail .survey-rail__head button:not(:disabled):not([aria-disabled='true']):hover:not(:active),
+  #chrome-right-host .survey-rail .survey-rail__foot > button:not(:disabled):not([aria-disabled='true']):hover:not(:active),
+  #chrome-right-host .survey-rail .survey-rail__foot .survey-rail__foot-more:not(:disabled):not([aria-disabled='true']):hover:not(:active),
   #chrome-right-host .survey-rail .survey-rail__tabs button:not(:disabled):not([aria-disabled='true']):hover:not(:active),
   #chrome-right-host .survey-rail .survey-rail__list button:not(.survey-marker-entity-option):not(:disabled):not([aria-disabled='true']):hover:not(:active) {
     background-color: transparent !important;
@@ -978,8 +1189,16 @@
     background: var(--hover);
   }
   .survey-rail .survey-rail__head-btn:not(:disabled):hover,
+  .survey-rail .survey-rail__foot-export:not(:disabled):hover,
+  .survey-rail .survey-rail__foot-more:not(:disabled):hover,
+  .survey-rail .survey-marker-category-select:hover,
+  .survey-rail .survey-rail__marker-toggle:hover,
+  .survey-rail .survey-rail__locate:not(.is-unplaced):hover,
   .survey-rail .survey-marker-select-action:not(:disabled):not(.survey-marker-select-action-danger):hover {
     color: var(--text-1);
+  }
+  .survey-rail .survey-rail__entity-btn:hover .survey-rail__entity-caret {
+    opacity: 1;
   }
   .survey-rail .survey-rail__head-btn:not(:disabled):hover svg,
   .survey-rail .survey-rail__marker-action:hover svg,
@@ -1005,18 +1224,6 @@
   background-color: var(--border) !important;
 }
 
-/* "+ Media" (surveyMarkerNotes.css) is a pill, so it keeps a plate under the
-   pointer and while pressed instead of losing it to the opt-outs above: the
-   class is repeated only to tie their specificity, and this comes after. */
-@media (hover: hover) and (pointer: fine) {
-  #chrome-right-host .survey-rail .survey-rail__list button.survey-media-add.survey-media-add.survey-media-add:not(:disabled):hover {
-    background-color: var(--hover) !important;
-  }
-}
-#chrome-right-host .survey-rail .survey-rail__list button.survey-media-add.survey-media-add.survey-media-add:not(:disabled):active {
-  background-color: var(--pressed) !important;
-}
-
 /* The template menu sits inside the header, whose buttons opt out of the
    shared hover / press plates above. Its rows are whole-line options, so they
    take the plates back: the class is repeated only to outrank those rules. */
@@ -1027,4 +1234,13 @@
 }
 #chrome-right-host .survey-rail .survey-rail__template-menu button.survey-rail__template-option.survey-rail__template-option:not(:disabled):active {
   background-color: var(--pressed) !important;
+}
+
+/* "Not on the page" keeps its orange under the pointer (the rail's shared
+   button hover would otherwise brighten it to --text-1). */
+@media (hover: hover) and (pointer: fine) {
+  #chrome-right-host .survey-rail .survey-rail__marker-line .survey-rail__locate.is-unplaced:hover {
+    /* states.css 2c paints a glyph-only button's hover ink with !important. */
+    color: #f0883e !important;
+  }
 }

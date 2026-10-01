@@ -571,6 +571,34 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    // Survey Marker locate (owner 2026-10-01): a target = "on the page,
+    // go to it"; a pin with a plus = "not on the page yet, place it".
+    locate: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <g stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="7" />
+          <path d="M12 2.5V5.5M12 18.5V21.5M2.5 12H5.5M18.5 12H21.5" />
+        </g>
+        <circle cx="12" cy="12" r="2.2" fill={color} />
+      </svg>
+    ),
+
+    pinPlus: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <g stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 21.5C12 21.5 5.5 15.9 5.5 10A6.5 6.5 0 0 1 18.5 10C18.5 15.9 12 21.5 12 21.5Z" />
+          <path d="M12 7.5V12.5M9.5 10H14.5" />
+        </g>
+      </svg>
+    ),
+
+    // Survey note: add a photo, video or audio clip.
+    paperclip: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M20 11.5L12 19.5A5 5 0 0 1 4.9 12.4L13.4 3.9A3.3 3.3 0 0 1 18.1 8.6L9.7 17A1.7 1.7 0 0 1 7.3 14.6L15 6.9" stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+
     // Shape icons.
     // Rectangle is the size reference for this row: an 18-unit box, so ink
     // including the stroke spans 19.5 of the 24 grid. It is also the corner

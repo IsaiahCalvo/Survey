@@ -161,7 +161,7 @@ export function SurveyAudioRecorderBar({ recorder }) {
 }
 
 /**
- * The one "Upload media" tile and its menu. Phone: an action sheet from the
+ * The note field's media button (a paperclip) and its menu. Phone: an action sheet from the
  * bottom of the screen. Desktop: a small menu under the tile, without the
  * camera items (a desktop browser opens a file picker for them anyway).
  */
@@ -186,10 +186,10 @@ export function SurveyMediaUploadTile({ variant, disabled, onFiles, onRecordAudi
   useLayoutEffect(() => {
     if (!open || isPhone || !tileRef.current) return;
     const rect = tileRef.current.getBoundingClientRect();
-    const menuHeight = 96;
+    const menuHeight = 72;
     const below = rect.bottom + 6 + menuHeight <= window.innerHeight;
     setMenuPos({
-      left: Math.max(8, Math.min(rect.left, window.innerWidth - 208)),
+      left: Math.max(8, Math.min(rect.right - 200, window.innerWidth - 208)),
       top: below ? rect.bottom + 6 : Math.max(8, rect.top - 6 - menuHeight),
     });
   }, [open, isPhone]);
@@ -249,20 +249,21 @@ export function SurveyMediaUploadTile({ variant, disabled, onFiles, onRecordAudi
 
   return (
     <>
-      {/* Owner 2026-10-01: a one-line "+ Media" pill (the "+ Place" look),
-          not a 64px tile whose words wrapped onto three lines. */}
+      {/* Owner 2026-10-01 (second pass: "the Add Media looks weird"): the
+          media button is a paperclip glyph INSIDE the note field, at its end -
+          no "+ Media" pill on a line of its own. Same menu as before. */}
       <button
         ref={tileRef}
         type="button"
-        className="survey-media-add"
-        aria-label="Upload media"
+        className="survey-notes__media-btn"
+        aria-label="Add photo, video or audio"
+        title="Add photo, video or audio"
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={disabled}
         onClick={() => setOpen((value) => !value)}
       >
-        <Icon name="plus" size={14} color="currentColor" />
-        <span>Media</span>
+        <Icon name="paperclip" size={isPhone ? 18 : 15} color="currentColor" />
       </button>
       <input ref={photoRef} type="file" accept="image/*" capture="environment" hidden onChange={handleChange} />
       <input ref={videoRef} type="file" accept="video/*" capture="environment" hidden onChange={handleChange} />
