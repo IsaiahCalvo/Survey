@@ -72,7 +72,7 @@ import { useViewerTopOverlayRef } from './utils/viewerTopOverlay.js';
 import DismissBarrier from './components/DismissBarrier.jsx';
 import { sanitizeZoomInput } from './utils/pageNavigationMath.js';
 import { showsColourRule, showsPaintSwatch, showsQuickColourDots } from './utils/toolbarColourGroup.js';
-import { resolveToolBarGroup, showsFormatRow } from './utils/toolbarRows.js';
+import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, showsFormatRow } from './utils/toolbarRows.js';
 
 // The dot between the current page and the page total in the right-rail
 // footer: a drawn 2px circle in the total's grey (see the rail audit note at
@@ -1645,6 +1645,30 @@ export default function App({ devPreviewReturnTab = null }) {
   useDropInRow(textBarEl, textFormatRowEl, chromeMotion);
   const selectArmed = !!bottomToolbarApi && isSelectFamilyTool(bottomToolbarApi.activeTool);
   const selectModesInToolBar = selectArmed && toolBarGroup === 'select';
+  // Owner 2026-10-01 (Spaces toolbar): "it shouldn't be in a floating toolbar
+  // ... make it into a sub-toolbar option." While a Space's areas are being
+  // edited the tool bar is in AREAS mode: the area shapes and the Add /
+  // Subtract mode stand where a group's tools go (the loadout, so they morph
+  // in like any group switch), the app's own Select picks areas (one Select,
+  // V as always), Pan and zoom stay, and row 2 holds the actions (Delete area,
+  // Full page, Cancel, Done). The drawing groups wait, dimmed, until Done or
+  // Cancel. RegionSelectionTool publishes the state; PDFViewer forwards it.
+  // The tool publishes its state a render after the viewer enters the mode;
+  // until then the bar draws the tool's opening state (Rectangle, Add), so
+  // the Areas tools take over in the same frame as the mode and morph in as
+  // one change instead of the old set leaving first.
+  const regionApi = !isMobileViewer && isAreaEditing(bottomToolbarApi)
+    ? (bottomToolbarApi.regionToolbarApi || REGION_TOOLBAR_OPENING_STATE)
+    : null;
+  const areasMode = Boolean(regionApi);
+  const areasPanArmed = areasMode && bottomToolbarApi?.activeTool === 'pan';
+  // A group left open from before (Draw's row) must not draw its tools beside
+  // the Areas tools.
+  useEffect(() => {
+    if (areasMode && bottomToolbarApi?.activeCategoryDropdown) {
+      bottomToolbarApi.setActiveCategoryDropdown?.(null);
+    }
+  }, [areasMode, bottomToolbarApi]);
   // A popover whose opener sits in row 2 closes when the row goes away (Pan,
   // Survey Marker placement, closing the document): its anchor has no box left
   // to open under. Desktop only — the phone draws its own pickers.
@@ -1907,6 +1931,89 @@ export default function App({ devPreviewReturnTab = null }) {
                     })}
                   </div>
   );
+
+  // Areas mode (owner 2026-10-01, see regionApi above). The shapes and the
+  // mode toggle are the loadout's 28px .chrome-subcontrol buttons with the
+  // gold-glyph armed state, like pen / highlighter / eraser; a rule between
+  // the two pairs. While Pan or Select is armed no shape is lit, but Add /
+  // Subtract still say which way the next shape will go.
+  const renderAreaTools = () => {
+    const drawing = regionApi.toolType !== 'move' && !areasPanArmed;
+    const tool = (key, label, icon, active, onClick) => (
+      <button
+        key={key}
+        type="button"
+        className={`btn chrome-subcontrol ${active ? 'btn-active' : 'btn-ghost'}`}
+        aria-pressed={active}
+        data-morph-icon={icon}
+        data-area-tool={key}
+        onClick={onClick}
+        {...chromeTip(label, 'below')}
+        aria-label={label}
+      >
+        <Icon name={icon} size={CHROME_GLYPH} />
+      </button>
+    );
+    return (
+      <div
+        data-area-tools="true"
+        role="group"
+        aria-label="Area tools"
+        style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-tool-gap)' }}
+      >
+        {tool('rectangle', 'Rectangle area', 'rect', drawing && regionApi.toolType === 'rectangular', () => regionApi.setToolType?.('rectangular'))}
+        {tool('freehand', 'Freehand area', 'pen', drawing && regionApi.toolType === 'freehand', () => regionApi.setToolType?.('freehand'))}
+        <div className="chrome-divider" />
+        {tool('add', 'Add to area', 'plus', regionApi.selectionMode === 'add', () => regionApi.setSelectionMode?.('add'))}
+        {tool('subtract', 'Subtract from area', 'minus', regionApi.selectionMode === 'subtract', () => regionApi.setSelectionMode?.('subtract'))}
+      </div>
+    );
+  };
+  // Row 2 in Areas mode: what can be done to the areas, then how to leave -
+  // Cancel neutral, Done the one gold button. Full page asks first (inline,
+  // in this row) when it would replace areas already drawn.
+  const renderAreaActions = () => {
+    if (regionApi.fullPageConfirmPending) {
+      return (
+        <div data-area-actions="confirm-full-page" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-gap)' }}>
+          <span style={{ color: 'var(--text-2)', fontSize: '12px' }}>Replace these areas with the full page?</span>
+          <button type="button" className="btn btn-sm btn-default" onClick={regionApi.cancelFullPage}>Keep areas</button>
+          <button type="button" className="btn btn-sm btn-primary" onClick={regionApi.confirmFullPage}>Use full page</button>
+        </div>
+      );
+    }
+    return (
+      <div data-area-actions="true" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-gap)' }}>
+        <span style={{ color: 'var(--text-2)', fontSize: '12px', fontWeight: 600, marginRight: '4px' }}>Areas</span>
+        <button
+          type="button"
+          className="btn btn-sm btn-default"
+          disabled={!regionApi.canDelete}
+          onClick={regionApi.deleteSelected}
+          {...chromeTip(regionApi.canDelete ? 'Delete the picked areas' : 'Pick an area with Select to delete it', 'below')}
+        >
+          Delete area
+        </button>
+        {regionApi.canSetFullPage && (
+          <button
+            type="button"
+            className="btn btn-sm btn-default"
+            onClick={regionApi.setFullPage}
+            {...chromeTip('Use the whole page as the area', 'below')}
+          >
+            Full page
+          </button>
+        )}
+        <div className="chrome-divider" />
+        <button type="button" className="btn btn-sm btn-default" onClick={regionApi.cancel} {...chromeTip('Leave without saving', 'below')}>
+          Cancel
+        </button>
+        <button type="button" className="btn btn-sm btn-primary" onClick={regionApi.confirm} {...chromeTip('Save the areas (Enter)', 'below')}>
+          Done
+        </button>
+      </div>
+    );
+  };
 
   const toolbarOverflowItems = [];
   toolbarOverflowSlotsRef.current = [];
@@ -2208,7 +2315,9 @@ export default function App({ devPreviewReturnTab = null }) {
                 const isSelect = t.id === 'select';
                 const isTextSelect = bottomToolbarApi.activeTool === 'text-select';
                 const isActive = isSelect
-                  ? (bottomToolbarApi.activeTool === 'select' || isTextSelect)
+                  ? (areasMode
+                    ? (regionApi.toolType === 'move' && !areasPanArmed)
+                    : (bottomToolbarApi.activeTool === 'select' || isTextSelect))
                   : bottomToolbarApi.activeTool === t.id;
                 const label = isSelect
                   ? getSelectFamilyLabel(bottomToolbarApi.activeTool, bottomToolbarApi.selectionMode)
@@ -2224,6 +2333,11 @@ export default function App({ devPreviewReturnTab = null }) {
                   data-select-tool={isSelect ? 'true' : undefined}
                   aria-label={label}
                   onClick={() => {
+                    if (isSelect && areasMode) {
+                      // Areas mode: the same Select picks and moves areas.
+                      regionApi.setToolType?.('move');
+                      return;
+                    }
                     if (isSelect) {
                       bottomToolbarApi.setActiveTool(
                         isTextSelect || bottomToolbarApi.selectionMode === 'text'
@@ -2292,6 +2406,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 className={`btn chrome-control ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'draw' || ['pen', 'highlighter', 'text-highlight', 'eraser'].includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
                 data-tool-group="true"
                 aria-label="Draw"
+                disabled={areasMode}
               >
                 <Icon name="drawGroup" size={CHROME_GLYPH} />
               </button>
@@ -2312,6 +2427,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 className={`btn chrome-control ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'shape' || ['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'].includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
                 data-tool-group="true"
                 aria-label="Shapes"
+                disabled={areasMode}
               >
                 <Icon name="shapes" size={CHROME_GLYPH} />
               </button>
@@ -2331,6 +2447,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 className={`btn chrome-control ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'review' || REVIEW_TOOL_IDS.includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
                 data-tool-group="true"
                 aria-label="Text"
+                disabled={areasMode}
               >
                 <Icon name="textGroup" size={CHROME_GLYPH} />
               </button>
@@ -2414,9 +2531,10 @@ export default function App({ devPreviewReturnTab = null }) {
                 {/* The rule between the group icons and the group's tools —
                     the same shared rule, same 8px inset, as the one on the
                     cluster's other edge. Only there when tools follow it. */}
-                {((toolBarGroup && toolBarGroup !== 'select') || selectModesInToolBar) && (
+                {((toolBarGroup && toolBarGroup !== 'select') || selectModesInToolBar || areasMode) && (
                   <div className="chrome-divider" />
                 )}
+                {areasMode && renderAreaTools()}
                 {/* RULED 2026-09-26 owner: select modes in top bar (w46).
                     Select's Box / Lasso / Text modes stand where a group's
                     tools go — with nothing picked, or a pick no drawing group
@@ -2523,6 +2641,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   prototype-context-toolbar.html. Other tools keep the
                   rectangle swatch until they migrate. */}
               <div data-toolbar-settings-row="true" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-settings-gap, var(--chrome-gap))', position: 'relative' }}>
+                {areasMode && renderAreaActions()}
                 {showTextFormatting && textFormatRowEl && createPortal(
                   /* 2026-05-26: the formatting controls drop into the sub-row
                      beneath the top strip (mirrors the Draw / Shape category

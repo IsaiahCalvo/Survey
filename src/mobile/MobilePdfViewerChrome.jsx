@@ -18,6 +18,7 @@ import { tooltipForLabel } from '../utils/toolShortcuts.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
 import useRailGroupMotion from './useRailGroupMotion.js';
 import { useViewerTopOverlayRef } from '../utils/viewerTopOverlay.js';
+import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE } from '../utils/toolbarRows.js';
 import './mobilePdfViewer.css';
 
 // UX 2026-09-16 (phone sweep, owner ruling "everything reads a little big").
@@ -1342,11 +1343,14 @@ export function MobileToolProperties({ api }) {
       );
     }
     return (
-      <div className="mobile-pdf-properties mobile-pdf-properties--actions" data-mobile-tool-properties="true" role="toolbar" aria-label="Region editing" ref={topOverlayRef}>
-        <button type="button" className="mobile-pdf-properties__primary" onClick={region.confirm}>Confirm</button>
+      // Owner 2026-10-01 (Spaces toolbar): the same actions, in the same order,
+      // as the desktop tool bar's Areas row - what you can do to the areas,
+      // then Cancel, then Done (the one gold button) on the trailing edge.
+      <div className="mobile-pdf-properties mobile-pdf-properties--actions" data-mobile-tool-properties="true" role="toolbar" aria-label="Area editing" ref={topOverlayRef}>
         <button type="button" disabled={!region.canDelete} onClick={region.deleteSelected}>Delete</button>
         <button type="button" disabled={!region.canSetFullPage} onClick={region.setFullPage}>Full page</button>
         <button type="button" onClick={region.cancel}>Cancel</button>
+        <button type="button" className="mobile-pdf-properties__primary" onClick={region.confirm}>Done</button>
       </div>
     );
   }
@@ -2670,6 +2674,16 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
 
   const activeTool = bottomToolbarApi?.activeTool || 'pan';
   const activeGroup = TOOL_TO_GROUP[activeTool] || null;
+  // Owner 2026-10-01 (Spaces toolbar): while a Space's areas are edited the
+  // rail's own Select picks areas (no second Select), the area tools are the
+  // open group's tools (so they morph in like a group switch), and the drawing
+  // groups wait, dimmed, until Done or Cancel. Pan stays Pan.
+  // Until the tool publishes its state (a render after the mode starts) the
+  // rail draws its opening state, so the area tools morph in as one change.
+  const regionApi = isAreaEditing(bottomToolbarApi) ? (bottomToolbarApi.regionToolbarApi || REGION_TOOLBAR_OPENING_STATE) : null;
+  const regionPanArmed = Boolean(regionApi) && activeTool === 'pan';
+  const regionDrawing = Boolean(regionApi) && regionApi.toolType !== 'move' && !regionPanArmed;
+  const railGroupKey = regionApi ? 'areas' : openCategory;
   const userInitial = presenceUsers[0]?.initials || 'U';
   const presenceCount = Math.max(presenceUsers.length, 1);
 
@@ -2700,7 +2714,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   const [groupSlotEl, setGroupSlotEl] = useState(null);
   const [groupGhostLayerEl, setGroupGhostLayerEl] = useState(null);
   useRailGroupMotion({
-    wrap: groupToolsEl, box: groupBoxEl, slot: groupSlotEl, layer: groupGhostLayerEl, groupKey: openCategory, glyphPx: SUBTOOL_GLYPH,
+    wrap: groupToolsEl, box: groupBoxEl, slot: groupSlotEl, layer: groupGhostLayerEl, groupKey: railGroupKey, glyphPx: SUBTOOL_GLYPH,
   });
 
   const selectTool = (toolId) => {
@@ -2772,9 +2786,15 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
               control the desktop bar draws, so a mode picked on one platform
               reads the same on the other. */}
           <RailButton
-            active={activeTool === 'select' || activeTool === 'text-select'}
+            active={regionApi
+              ? (regionApi.toolType === 'move' && !regionPanArmed)
+              : (activeTool === 'select' || activeTool === 'text-select')}
             label={getSelectFamilyLabel(activeTool, bottomToolbarApi?.selectionMode)}
             onClick={() => {
+              if (regionApi) {
+                regionApi.setToolType?.('move');
+                return;
+              }
               setOpenCategory(null);
               selectTool(
                 activeTool === 'text-select' || bottomToolbarApi?.selectionMode === 'text'
@@ -2791,10 +2811,11 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
           {Object.entries(TOOL_GROUPS).map(([groupId, group]) => (
             <RailButton
               key={groupId}
-              active={activeGroup === groupId || openCategory === groupId}
+              active={!regionApi && (activeGroup === groupId || openCategory === groupId)}
+              disabled={Boolean(regionApi)}
               icon={group.icon}
               label={group.label}
-              onClick={() => toggleCategory(groupId)}
+              onClick={() => { if (!regionApi) toggleCategory(groupId); }}
             />
           ))}
           {/* Owner 2026-10-01: the desktop group-switch morph on the phone
@@ -2803,12 +2824,49 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
               glide open and shut instead of popping in and out. */}
           <div
             ref={setGroupToolsEl}
-            className={`mobile-pdf-tools__group-tools${openCategory ? ' is-open' : ''}`}
+            className={`mobile-pdf-tools__group-tools${railGroupKey ? ' is-open' : ''}`}
           >
             <div className="mobile-pdf-tools__divider is-short" />
             <div ref={setGroupBoxEl} className="mobile-pdf-tools__subtools is-group">
               <div ref={setGroupSlotEl} className="mobile-pdf-tools__group-slot">
-                {(TOOL_GROUPS[openCategory]?.tools || []).map((tool) => (
+                {regionApi && (
+                  <>
+                    <RailButton
+                      active={regionDrawing && regionApi.toolType === 'rectangular'}
+                      icon="rect"
+                      glyph={SUBTOOL_GLYPH}
+                      label="Rectangle area"
+                      data-morph-icon="rect"
+                      onClick={() => regionApi.setToolType?.('rectangular')}
+                    />
+                    <RailButton
+                      active={regionDrawing && regionApi.toolType === 'freehand'}
+                      icon="pen"
+                      glyph={SUBTOOL_GLYPH}
+                      label="Freehand area"
+                      data-morph-icon="pen"
+                      onClick={() => regionApi.setToolType?.('freehand')}
+                    />
+                    <div className="mobile-pdf-tools__divider is-short" />
+                    <RailButton
+                      active={regionApi.selectionMode === 'add'}
+                      icon="plus"
+                      glyph={SUBTOOL_GLYPH}
+                      label="Add to area"
+                      data-morph-icon="plus"
+                      onClick={() => regionApi.setSelectionMode?.('add')}
+                    />
+                    <RailButton
+                      active={regionApi.selectionMode === 'subtract'}
+                      icon="minus"
+                      glyph={SUBTOOL_GLYPH}
+                      label="Subtract from area"
+                      data-morph-icon="minus"
+                      onClick={() => regionApi.setSelectionMode?.('subtract')}
+                    />
+                  </>
+                )}
+                {!regionApi && (TOOL_GROUPS[openCategory]?.tools || []).map((tool) => (
                   <RailButton
                     key={tool.id}
                     active={activeTool === tool.id}
@@ -2824,44 +2882,6 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
               <div ref={setGroupGhostLayerEl} className="mobile-pdf-tools__group-ghosts" data-loadout-ghost-layer="true" aria-hidden="true" />
             </div>
           </div>
-          {bottomToolbarApi?.regionEditing && bottomToolbarApi?.regionToolbarApi && (
-            <>
-              <div className="mobile-pdf-tools__divider is-short" />
-              <div className="mobile-pdf-tools__subtools" aria-label="Region tools">
-                <RailButton
-                  active={bottomToolbarApi.regionToolbarApi.toolType === 'move'}
-                  icon="cursor"
-                  label="Select region"
-                  onClick={() => bottomToolbarApi.regionToolbarApi.setToolType?.('move')}
-                />
-                <RailButton
-                  active={bottomToolbarApi.regionToolbarApi.toolType === 'rectangular'}
-                  icon="rect"
-                  label="Rectangular region"
-                  onClick={() => bottomToolbarApi.regionToolbarApi.setToolType?.('rectangular')}
-                />
-                <RailButton
-                  active={bottomToolbarApi.regionToolbarApi.toolType === 'freehand'}
-                  icon="pen"
-                  label="Freehand region"
-                  onClick={() => bottomToolbarApi.regionToolbarApi.setToolType?.('freehand')}
-                />
-                <div className="mobile-pdf-tools__divider is-short" />
-                <RailButton
-                  active={bottomToolbarApi.regionToolbarApi.selectionMode === 'add'}
-                  icon="plus"
-                  label="Additive region mode"
-                  onClick={() => bottomToolbarApi.regionToolbarApi.setSelectionMode?.('add')}
-                />
-                <RailButton
-                  active={bottomToolbarApi.regionToolbarApi.selectionMode === 'subtract'}
-                  icon="minus"
-                  label="Subtractive region mode"
-                  onClick={() => bottomToolbarApi.regionToolbarApi.setSelectionMode?.('subtract')}
-                />
-              </div>
-            </>
-          )}
           {bottomToolbarApi?.showSurveyPanel
             && bottomToolbarApi?.surveyToolbar
             && !bottomToolbarApi?.regionEditing

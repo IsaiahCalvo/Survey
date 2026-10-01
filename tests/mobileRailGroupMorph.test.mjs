@@ -23,7 +23,11 @@ test('the phone rail runs the desktop loadout motion, not a copy of it', () => {
 
 test('the group block stays mounted so a switch can morph slot by slot', () => {
   assert.doesNotMatch(chrome, /\{openCategory && \(\s*<>\s*<div className="mobile-pdf-tools__divider is-short" \/>/);
-  assert.match(chrome, /className=\{`mobile-pdf-tools__group-tools\$\{openCategory \? ' is-open' : ''\}`\}/);
+  // DELIBERATE ASSERTION CHANGE (owner 2026-10-01, Spaces toolbar): the block
+  // is open for the open group OR for the Areas tools while a Space's areas
+  // are edited (railGroupKey), so the area tools morph in like a group.
+  assert.match(chrome, /const railGroupKey = regionApi \? 'areas' : openCategory;/);
+  assert.match(chrome, /className=\{`mobile-pdf-tools__group-tools\$\{railGroupKey \? ' is-open' : ''\}`\}/);
   assert.match(chrome, /data-morph-icon=\{tool\.icon\}/, 'each sub-tool names its glyph for the morph');
   assert.match(chrome, /data-loadout-ghost-layer="true"/);
 });

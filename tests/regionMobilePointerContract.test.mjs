@@ -59,11 +59,18 @@ test('phone hit-test helper finds the area under a finger', () => {
   assert.equal(isPointInFlatPolygon(80, 80, tri), false);
 });
 
-test('mobile Region subtools expose persistent Select mode', () => {
+test('area editing uses the app\'s own Select (no second Select, no floating bar)', () => {
+  // DELIBERATE ASSERTION CHANGE (owner 2026-10-01, Spaces toolbar): "We
+  // shouldn't have two different Select tools." The separate "Select region"
+  // rail chip is gone; the rail's Select arms the area Select while editing.
+  assert.doesNotMatch(MOBILE_CHROME_SOURCE, /label="Select region"/);
   assert.match(
     MOBILE_CHROME_SOURCE,
-    /label="Select region"[\s\S]{0,180}?setToolType\?\.\('move'\)/,
+    /if \(regionApi\) \{\s*regionApi\.setToolType\?\.\('move'\);/,
   );
+  // And the desktop floating toolbar is gone from the tool itself.
+  assert.doesNotMatch(REGION_SOURCE, /Region selection\n/);
+  assert.doesNotMatch(REGION_SOURCE, />Additive<\/option>/);
   assert.match(REGION_SOURCE, /canDelete: selectedRegionIds\.size > 0/);
   assert.match(REGION_SOURCE, /deleteSelected: handleDeleteSelected/);
   assert.match(

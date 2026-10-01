@@ -284,7 +284,8 @@
    Inside the strip the lift is cancelled; the hover colors/ring stay. */
 #chrome-sub-toolbar-host .btn:not(:disabled):hover,
 #chrome-subtools-host .btn:not(:disabled):hover,
-[data-select-mode-toggle] .btn:not(:disabled):hover {
+[data-select-mode-toggle] .btn:not(:disabled):hover,
+[data-area-tools] .btn:not(:disabled):hover {
   transform: none;
 }
 
@@ -3178,10 +3179,12 @@ textarea:focus-visible,
    icons, so they answer the pointer exactly as those icons do — one hover look
    across the whole bar.
    w46 (owner 2026-09-26: select modes in top bar): Select's Box / Lasso / Text
-   modes are tools in that same spot, so they share every rule here. */
+   modes are tools in that same spot, so they share every rule here, and so
+   do the Areas tools (owner 2026-10-01, Spaces toolbar). */
 .btn[data-tool-group]:hover:not(:disabled),
 #chrome-subtools-host .btn:hover:not(:disabled),
-[data-select-mode-toggle] .btn:hover:not(:disabled) {
+[data-select-mode-toggle] .btn:hover:not(:disabled),
+[data-area-tools] .btn:hover:not(:disabled) {
   background: var(--hover);
   border-color: var(--border);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
@@ -3194,7 +3197,8 @@ textarea:focus-visible,
    stays the active cue; the border stays 1px so the box never jiggles. */
 #chrome-sub-toolbar-host .btn-active:hover:not(:disabled),
 #chrome-subtools-host .btn-active:hover:not(:disabled),
-[data-select-mode-toggle] .btn-active:hover:not(:disabled) {
+[data-select-mode-toggle] .btn-active:hover:not(:disabled),
+[data-area-tools] .btn-active:hover:not(:disabled) {
   background: var(--hover);
   border-color: var(--border);
 }
@@ -3206,7 +3210,8 @@ textarea:focus-visible,
 .btn[data-tool-group]:active:not(:disabled),
 #chrome-sub-toolbar-host .btn-active:active:not(:disabled),
 #chrome-subtools-host .btn:active:not(:disabled),
-[data-select-mode-toggle] .btn:active:not(:disabled) {
+[data-select-mode-toggle] .btn:active:not(:disabled),
+[data-area-tools] .btn:active:not(:disabled) {
   background: var(--pressed);
   border-color: var(--border);
 }

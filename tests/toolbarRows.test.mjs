@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs';
 import {
   FORMAT_ROW_TOOLS,
   TOOL_BAR_GROUPS,
+  isAreaEditing,
   resolveToolBarGroup,
   showsFormatRow,
 } from '../src/utils/toolbarRows.js';
@@ -141,7 +142,8 @@ test('Select mode: the modes sit in the tool bar with nothing picked, or for a m
   const toolBar = appShell.slice(appShell.indexOf('data-toolbar-subtools="true"'), appShell.indexOf('id="chrome-subtools-host"'));
   assert.match(toolBar, /\{selectModesInToolBar && renderSelectModeToggle\(\)\}/);
   // The same rule before them as before a group's tools.
-  assert.match(toolBar, /\(\(toolBarGroup && toolBarGroup !== 'select'\) \|\| selectModesInToolBar\) && \(\s*<div className="chrome-divider" \/>/);
+  // (2026-10-01, Spaces toolbar: the Areas tools take the same rule.)
+  assert.match(toolBar, /\(\(toolBarGroup && toolBarGroup !== 'select'\) \|\| selectModesInToolBar \|\| areasMode\) && \(\s*<div className="chrome-divider" \/>/);
   // They answer the pointer exactly as the group tools beside them do.
   const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
   assert.match(css, /#chrome-subtools-host \.btn:hover:not\(:disabled\),\s*\[data-select-mode-toggle\] \.btn:hover:not\(:disabled\)/);
@@ -267,4 +269,31 @@ test('w47: the room kept for the widest loadout matches the Shapes group\'s seve
   const listed = shapes.slice(0, shapes.indexOf('].map(')).match(/\{ id: '[a-z-]+', label: /g) || [];
   assert.equal(listed.length, 7);
   assert.equal(WIDEST_SUBTOOLS_WIDTH, listed.length * 28 + (listed.length - 1) * 6 + 17);
+});
+
+// Owner 2026-10-01 (Spaces toolbar): "it shouldn't be in a floating toolbar ...
+// make it into a sub-toolbar option ... we shouldn't have two different Select
+// tools." While a Space's areas are edited the desktop tool bar is in Areas
+// mode: the area tools stand where a group's tools go, the app's own Select
+// picks areas, and row 2 holds the actions.
+test('Areas mode: the area tools take the loadout, the actions take row 2, no drawing group shows', () => {
+  // The viewer publishes its armed tool a frame early, so either signal counts.
+  assert.equal(isAreaEditing({ regionEditing: true, activeTool: 'pan' }), true);
+  assert.equal(isAreaEditing({ regionEditing: false, activeTool: 'region-edit' }), true);
+  assert.equal(isAreaEditing({ regionEditing: false, activeTool: 'select' }), false);
+  assert.equal(showsFormatRow({ regionEditing: true, activeTool: 'pan', contextTool: 'pan' }), true);
+  // A Draw row left open from before never shows beside the Areas tools.
+  assert.equal(resolveToolBarGroup({ activeTool: 'region-edit', activeCategoryDropdown: 'draw' }), null);
+  assert.equal(resolveToolBarGroup({ activeTool: 'pan', activeCategoryDropdown: 'draw', regionEditing: true }), null);
+
+  const toolBar = appShell.slice(appShell.indexOf('data-toolbar-subtools="true"'), appShell.indexOf('id="chrome-subtools-host"'));
+  assert.match(toolBar, /\{areasMode && renderAreaTools\(\)\}/);
+  const row2 = appShell.slice(appShell.indexOf('data-chrome-settings-holder="true"'), appShell.indexOf('data-eraser-mode-toggle="true"'));
+  assert.match(row2, /\{areasMode && renderAreaActions\(\)\}/);
+  // One Select: in Areas mode the app's Select button arms the area Select.
+  assert.match(appShell, /if \(isSelect && areasMode\) \{\s*\/\/[^\n]*\n\s*regionApi\.setToolType\?\.\('move'\);/);
+  // Done is the one gold button of the action row.
+  const actions = appShell.slice(appShell.indexOf('const renderAreaActions'), appShell.indexOf('const toolbarOverflowItems'));
+  assert.equal((actions.match(/btn-primary/g) || []).length, 2, 'Done, and the inline full-page answer');
+  assert.match(actions, /className="btn btn-sm btn-primary" onClick=\{regionApi\.confirm\}/);
 });

@@ -107,6 +107,10 @@ const RegionSelectionTool = ({
   active,
   mobileMode = false,
   onMobileToolbarApiChange = null,
+  // Owner 2026-10-01 (Spaces toolbar): the app's Pan tool stays usable while
+  // editing areas. Picking an area tool (Select, Rectangle, Freehand) while
+  // Pan is armed asks the viewer to hand the pointer back to this tool.
+  onRequestRegionTool = null,
   onRegionComplete,
   onCancel,
   currentSpaceId,
@@ -172,7 +176,6 @@ const RegionSelectionTool = ({
   // Ref to the overlay's inline <svg> — RotationInputField self-positions by
   // querying [data-rotation-handle="mtr"] inside this svg.
   const overlaySvgRef = useRef(null);
-  const [isToolDropdownOpen, setIsToolDropdownOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState(null); // { x, y, pageX, pageY, regionId, type, canMerge, canUnmerge }
   const canvasRectRef = useRef(null);
   const lastTargetDebugKeyRef = useRef(null);
@@ -688,7 +691,6 @@ const RegionSelectionTool = ({
     setIsDrawing(false);
     setInteractionState(null);
     setIsCursorOverCanvas(false);
-    setIsToolDropdownOpen(false);
     if (toolType !== 'move') {
       setSelectedRegionIds(new Set());
     }
@@ -2017,18 +2019,14 @@ const RegionSelectionTool = ({
   const handleSetFullPage = useCallback(() => {
     if (!onSetFullPage) return;
 
-    if (mobileMode) {
-      // Demo parity: every Full Page press routes through the inline confirm
-      // step in the strip (the demo always confirms, not only when areas exist).
+    // Demo parity: every phone Full Page press routes through the inline
+    // confirm step in the strip (the demo always confirms, not only when areas
+    // exist). Owner 2026-10-01 (Spaces toolbar): desktop asks the same way in
+    // the tool bar's Areas row instead of a browser dialog, and only when there
+    // are areas that Full page would replace.
+    if (mobileMode || regions.length > 0) {
       setIsFullPageConfirmPending(true);
       return;
-    }
-
-    // Warn user if they have existing selections that will be cleared
-    if (regions.length > 0) {
-      if (!window.confirm(`You have ${regions.length} area${regions.length !== 1 ? 's' : ''} defined within this region. Setting the region to Full Page will remove all existing areas. Are you sure you want to continue?`)) {
-        return;
-      }
     }
 
     onSetFullPage();
@@ -2227,9 +2225,34 @@ const RegionSelectionTool = ({
     setInteractionState(null);
   }, [selectedRegionIds, pushUndoSnapshot]);
 
+  // Owner 2026-10-01 (Spaces toolbar): one Select, and the area tools in the
+  // app's own tool chrome. Choosing a tool from the chrome or the keyboard
+  // goes through these two, so a tool picked while the app's Pan tool is armed
+  // also puts Pan down, and Add / Subtract picked while selecting goes back to
+  // the last shape tool (the mode only means something while drawing).
+  const activeToolRef = useRef(activeTool);
+  activeToolRef.current = activeTool;
+  const chooseToolType = useCallback((nextToolType) => {
+    if (nextToolType !== 'move' && nextToolType !== 'rectangular' && nextToolType !== 'freehand') return;
+    setToolType(nextToolType);
+    if (nextToolType !== 'move') setLastDrawingTool(nextToolType);
+    if (activeToolRef.current === 'pan' && typeof onRequestRegionTool === 'function') onRequestRegionTool();
+  }, [onRequestRegionTool]);
+  const chooseSelectionMode = useCallback((nextMode) => {
+    if (nextMode !== REGION_OPERATIONS.ADD && nextMode !== REGION_OPERATIONS.SUBTRACT) return;
+    setSelectionMode(nextMode);
+    if (toolType === 'move') chooseToolType(lastDrawingTool);
+    else if (activeToolRef.current === 'pan' && typeof onRequestRegionTool === 'function') onRequestRegionTool();
+  }, [toolType, lastDrawingTool, chooseToolType, onRequestRegionTool]);
+
+  // The tool's state and actions for the app chrome. Published on desktop as
+  // well as the phone since 2026-10-01 (the desktop floating toolbar is gone):
+  // AppShell draws the desktop Areas tools from it, MobilePdfViewerChrome the
+  // phone rail and strip. (The prop keeps its old "mobile" name so the viewer
+  // wiring did not have to change.)
   useEffect(() => {
     if (typeof onMobileToolbarApiChange !== 'function') return;
-    if (!active || !mobileMode) {
+    if (!active) {
       onMobileToolbarApiChange(null);
       return;
     }
@@ -2238,25 +2261,26 @@ const RegionSelectionTool = ({
       selectionMode,
       canSetFullPage,
       canDelete: selectedRegionIds.size > 0,
-      setToolType,
-      setSelectionMode,
+      setToolType: chooseToolType,
+      setSelectionMode: chooseSelectionMode,
       confirm: handleConfirm,
       cancel: handleCancel,
       deleteSelected: handleDeleteSelected,
       setFullPage: handleSetFullPage,
-      // Inline full-page confirm step (mobile only — see handleSetFullPage).
+      // Inline full-page confirm step (see handleSetFullPage).
       fullPageConfirmPending: isFullPageConfirmPending,
       confirmFullPage: applyFullPage,
       cancelFullPage: cancelFullPageConfirm,
     });
   }, [
     active,
-    mobileMode,
     onMobileToolbarApiChange,
     toolType,
     selectionMode,
     canSetFullPage,
     selectedRegionIds,
+    chooseToolType,
+    chooseSelectionMode,
     handleConfirm,
     handleCancel,
     handleDeleteSelected,
@@ -2579,6 +2603,23 @@ const RegionSelectionTool = ({
     return () => window.removeEventListener('click', handleClick);
   }, []);
 
+  // Owner 2026-10-01 (Spaces toolbar): the app's keys while editing areas —
+  // V = Select (as everywhere), Esc = drop the shape being drawn (or put a
+  // half-dragged area back), else let go of the picked areas, and Enter =
+  // Done. Read through a ref so the listener below never re-subscribes (its
+  // cleanup clears the held Shift / Alt / Space state).
+  const keyboardActionsRef = useRef({});
+  keyboardActionsRef.current = {
+    chooseToolType,
+    confirm: handleConfirm,
+    abandon: abandonTouchInteraction,
+    busy: isDrawing || interactionState !== null,
+    hasSelection: selectedRegionIds.size > 0,
+    contextMenuOpen: contextMenu !== null,
+    closeContextMenu: () => setContextMenu(null),
+    clearSelection: () => setSelectedRegionIds(new Set()),
+  };
+
   // Track keyboard modifiers (Shift, Option/Alt, Space) for mode override
   useEffect(() => {
     if (!active) return;
@@ -2613,8 +2654,42 @@ const RegionSelectionTool = ({
         !isEditableKeyboardTarget()
       ) {
         stopRegionKeyboardShortcut(event);
-        setToolType('move');
-        setIsToolDropdownOpen(false);
+        keyboardActionsRef.current.chooseToolType?.('move');
+        return;
+      }
+      if (
+        event.key === 'Escape' &&
+        !event.metaKey && !event.ctrlKey && !event.altKey &&
+        !isEditableKeyboardTarget()
+      ) {
+        const actions = keyboardActionsRef.current;
+        if (actions.contextMenuOpen) {
+          stopRegionKeyboardShortcut(event);
+          actions.closeContextMenu();
+        } else if (actions.busy) {
+          stopRegionKeyboardShortcut(event);
+          actions.abandon();
+        } else if (actions.hasSelection) {
+          stopRegionKeyboardShortcut(event);
+          actions.clearSelection();
+        }
+        return;
+      }
+      if (
+        event.key === 'Enter' &&
+        !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey &&
+        !event.isComposing &&
+        !isEditableKeyboardTarget() &&
+        // The Areas action buttons, a dialog or a menu answer Enter
+        // themselves (Cancel must stay Cancel). Any other button merely kept
+        // focus after a click (a tool, or the Spaces panel's "Draw area",
+        // which would otherwise toggle the session off), so Enter is Done.
+        !document.activeElement?.closest?.('[data-area-actions], [data-mobile-tool-properties], [role="dialog"], [role="menu"], [role="alertdialog"]')
+      ) {
+        const actions = keyboardActionsRef.current;
+        if (actions.contextMenuOpen || actions.busy) return;
+        stopRegionKeyboardShortcut(event);
+        actions.confirm();
         return;
       }
       // Shift forces additive mode
@@ -2688,6 +2763,12 @@ const RegionSelectionTool = ({
       // REGION history while this tool is active — clicking those buttons
       // must not cancel the edit session.
       if (event.target.closest('[data-undo-redo-controls="true"]')) {
+        return;
+      }
+      // Owner 2026-10-01 (Spaces toolbar): the area tools and actions now live
+      // in the app's tool bar and its row 2, and Pan and zoom stay usable, so
+      // pressing those must not end the session either.
+      if (event.target.closest('[data-tool-toolbar="true"], #chrome-sub-toolbar-host, #chrome-right-host [aria-label*="zoom" i]')) {
         return;
       }
       handleCancel();
@@ -2861,314 +2942,11 @@ const RegionSelectionTool = ({
 
   return (
     <>
-      {/* Toolbar */}
-      {!mobileMode && <div
-        data-region-selection-ui="true"
-        style={{
-          position: 'fixed',
-          bottom: '20px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: '#2b2b2b',
-          border: '1px solid #555',
-          borderRadius: '8px',
-          padding: '8px',
-          display: 'flex',
-          gap: '6px',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexWrap: 'wrap',
-          maxWidth: 'calc(100vw - 32px)',
-          zIndex: 100001,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-          fontFamily: FONT_FAMILY
-        }}
-      >
-        <div style={{ fontSize: '13px', color: 'var(--text-1)', marginRight: '6px' }}>
-          Region selection
-        </div>
-
-        {/* Select Button - Separate button for selecting/transforming regions */}
-        <button
-          onClick={() => {
-            if (toolType === 'move') {
-              // If already in move mode, switch to rectangular drawing tool
-              setToolType('rectangular');
-            } else {
-              // Otherwise, switch to move mode
-              setToolType('move');
-            }
-          }}
-          className={`btn btn-sm ${toolType === 'move' ? 'btn-active' : 'btn-default'}`}
-          style={{
-            padding: '4px 8px',
-            /* UX 2026-09-22: was a #4a90e2 BLUE fill when armed on a #3a3a3a
-               grey, with a #555 edge — three colours the palette does not have,
-               and a selected state painted in the one hue reserved for
-               selection HANDLES. tokens.css: a selected control is "a gold
-               GLYPH with no fill". So the armed tool now says so in gold and
-               keeps the same transparent box as when it is idle. */
-            background: 'transparent',
-            color: toolType === 'move' ? 'var(--accent)' : 'var(--text-2)',
-            border: '1px solid var(--border-strong)',
-            borderRadius: '4px',
-            fontSize: '12px',
-            cursor: 'pointer',
-            fontFamily: FONT_FAMILY,
-            marginRight: '6px',
-            fontWeight: toolType === 'move' ? '500' : '400'
-          }}
-        >
-          <Icon name="pan" size={14} style={{ marginRight: '4px', verticalAlign: 'middle' }} />
-          Select
-        </button>
-
-        {/* Tool Type Selection - Custom Dropdown */}
-        <div
-          style={{
-            position: 'relative',
-            marginRight: '6px'
-          }}
-        >
-          <button
-            onClick={(e) => {
-              // Check if clicking on the arrow (right side of button)
-              const rect = e.currentTarget.getBoundingClientRect();
-              const clickX = e.clientX - rect.left;
-              const buttonWidth = rect.width;
-
-              // If click is in the right 30px (arrow area), toggle dropdown
-              if (clickX > buttonWidth - 30) {
-                e.stopPropagation();
-                setIsToolDropdownOpen(!isToolDropdownOpen);
-              } else {
-                // Click on button body - exit selection mode if in move mode
-                if (toolType === 'move') {
-                  setToolType('rectangular');
-                }
-                setIsToolDropdownOpen(false);
-              }
-            }}
-            style={{
-              padding: '4px 8px',
-              paddingRight: '28px',
-              /* Armed = gold glyph, no fill — see the Move button above. */
-              background: 'transparent',
-              color: (toolType === 'rectangular' || toolType === 'freehand') ? 'var(--accent)' : 'var(--text-2)',
-              border: '1px solid var(--border-strong)',
-              borderRadius: '4px',
-              fontSize: '12px',
-              cursor: 'pointer',
-              fontFamily: FONT_FAMILY,
-              minWidth: '110px',
-              fontWeight: '500',
-              textAlign: 'center',
-              position: 'relative',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
-            {toolType === 'move' ? 'Rectangular' : (toolType === 'rectangular' ? 'Rectangular' : 'Freehand')}
-            <span
-              style={{
-                position: 'absolute',
-                right: '6px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                pointerEvents: 'none',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '14px',
-                height: '14px'
-              }}
-            >
-              {/* UX: the shared dropdown chevron. This hand-drew the SAME path
-                  data as <Icon name="chevronDown" /> at stroke 2.5 against the
-                  house 1.5, so the Rectangular/Freehand caret read 167% heavier
-                  than the Width and Line-style carets in the same toolbar.
-                  Reference behaviour matched: those carets, and the spaces
-                  rail's, which are both this Icon at 14px. */}
-              <Icon name="chevronDown" size={14} color="#fff" style={{ width: '14px', height: '14px' }} />
-            </span>
-          </button>
-
-          {/* Dropdown Menu */}
-          {isToolDropdownOpen && (
-            <>
-              <div
-                style={{
-                  position: 'fixed',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  zIndex: 100000
-                }}
-                onClick={() => setIsToolDropdownOpen(false)}
-              />
-              <div
-                style={{
-                  position: 'absolute',
-                  bottom: '100%',
-                  left: 0,
-                  marginBottom: '4px',
-                  background: '#3a3a3a',
-                  border: '1px solid #555',
-                  borderRadius: '4px',
-                  minWidth: '110px',
-                  zIndex: 100001,
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-                  overflow: 'hidden'
-                }}
-              >
-                <button
-                  onClick={() => {
-                    setToolType('rectangular');
-                    setIsToolDropdownOpen(false);
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '6px 12px',
-                    background: 'transparent',
-                    color: toolType === 'rectangular' ? 'var(--accent)' : 'var(--text-2)',
-                    border: 'none',
-                    fontSize: '12px',
-                    cursor: 'pointer',
-                    fontFamily: FONT_FAMILY,
-                    textAlign: 'left',
-                    fontWeight: toolType === 'rectangular' ? '500' : '400'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (toolType !== 'rectangular') {
-                      e.currentTarget.style.background = 'var(--hover)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (toolType !== 'rectangular') {
-                      e.currentTarget.style.background = 'transparent';
-                    }
-                  }}
-                >
-                  Rectangular
-                </button>
-                <button
-                  onClick={() => {
-                    setToolType('freehand');
-                    setIsToolDropdownOpen(false);
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '6px 12px',
-                    background: 'transparent',
-                    color: toolType === 'freehand' ? 'var(--accent)' : 'var(--text-2)',
-                    border: 'none',
-                    fontSize: '12px',
-                    cursor: 'pointer',
-                    fontFamily: FONT_FAMILY,
-                    textAlign: 'left',
-                    borderTop: '1px solid #555',
-                    fontWeight: toolType === 'freehand' ? '500' : '400'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (toolType !== 'freehand') {
-                      e.currentTarget.style.background = 'var(--hover)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (toolType !== 'freehand') {
-                      e.currentTarget.style.background = 'transparent';
-                    }
-                  }}
-                >
-                  Freehand
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Selection Mode Dropdown (always visible, disabled in selection mode) */}
-        <select
-          value={selectionMode}
-          onChange={(e) => setSelectionMode(e.target.value)}
-          disabled={toolType === 'move'}
-          style={{
-            padding: '4px 8px',
-            background: toolType === 'move' ? '#2a2a2a' : '#3a3a3a',
-            color: toolType === 'move' ? '#666' : '#fff',
-            border: '1px solid #555',
-            borderRadius: '4px',
-            fontSize: '12px',
-            cursor: toolType === 'move' ? 'not-allowed' : 'pointer',
-            fontFamily: FONT_FAMILY,
-            marginRight: '8px',
-            minWidth: '110px',
-            textAlign: 'center',
-            opacity: toolType === 'move' ? 0.5 : 1,
-            transition: 'opacity 0.2s ease, background-color 0.2s ease, color 0.2s ease'
-          }}
-        >
-          <option value={REGION_OPERATIONS.ADD}>Additive</option>
-          <option value={REGION_OPERATIONS.SUBTRACT}>Subtractive</option>
-        </select>
-
-        {/* Action Buttons */}
-        <div style={{ display: 'flex', gap: '4px' }}>
-          {effectiveToolType === 'move' && selectedRegionIds.size > 0 && (
-            <button
-              onClick={handleDeleteSelected}
-              className="btn btn-default btn-sm"
-              style={{
-                padding: '6px 12px',
-                background: '#611',
-                color: 'var(--text-1)',
-                border: 'none',
-                borderRadius: '4px',
-                fontSize: '12px',
-                cursor: 'pointer',
-                fontFamily: FONT_FAMILY
-              }}
-            >
-              Delete
-            </button>
-          )}
-          {canSetFullPage && (
-            <button
-              onClick={handleSetFullPage}
-              className="btn btn-default btn-sm"
-              style={{
-                padding: '6px 12px',
-                background: '#555',
-                color: 'var(--text-1)',
-                border: 'none',
-                borderRadius: '4px',
-                fontSize: '12px',
-                cursor: 'pointer',
-                fontFamily: FONT_FAMILY
-              }}
-            >
-              Full page
-            </button>
-          )}
-          <button
-            onClick={handleConfirm}
-            className="btn btn-primary btn-sm"
-            style={{ padding: '6px 12px' }}
-          >
-            Confirm
-          </button>
-          <button
-            onClick={handleCancel}
-            className="btn btn-default btn-sm"
-            style={{ padding: '6px 12px' }}
-          >
-            Cancel
-          </button>
-        </div>
-      </div>}
-
+      {/* Owner 2026-10-01: no floating toolbar. The area tools live in the
+          app's own chrome: the desktop tool bar's Areas loadout + row 2
+          actions (AppShell), the phone rail + top strip
+          (MobilePdfViewerChrome), both driven by the API published to
+          onMobileToolbarApiChange above. */}
       {/* Canvas Interaction Layer */}
       {canvasRect && (
           <div

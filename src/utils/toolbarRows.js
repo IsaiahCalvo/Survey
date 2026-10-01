@@ -23,6 +23,29 @@
 // always agree on which group is showing.
 import { isSelectFamilyTool } from './selectModes.js';
 
+/**
+ * What the Areas tools show for the one render between the viewer entering
+ * area editing and RegionSelectionTool publishing its own state: the tool's
+ * opening state (Rectangle, Add), with nothing to press yet.
+ */
+export const REGION_TOOLBAR_OPENING_STATE = Object.freeze({
+  toolType: 'rectangular',
+  selectionMode: 'add',
+  canDelete: false,
+  canSetFullPage: false,
+  fullPageConfirmPending: false,
+});
+
+/**
+ * Whether the viewer is editing a Space's areas. The viewer publishes its
+ * armed tool a frame ahead of the rest of its state (a layout effect), so the
+ * area-edit tool (viewerShared REGION_EDIT_TOOL) counts as well as the
+ * regionEditing flag: the bar then switches to the Areas tools in one frame.
+ */
+export function isAreaEditing(api) {
+  return Boolean(api && (api.regionEditing || api.activeTool === 'region-edit'));
+}
+
 /** The tool groups whose tools sit in the tool bar. */
 export const TOOL_BAR_GROUPS = Object.freeze(['draw', 'shape', 'review', 'forms']);
 
@@ -53,7 +76,10 @@ export const TOOL_GROUP_BY_TOOL = Object.freeze({
  * `contextTool` is the picked mark's own tool while Select is armed (see
  * PDFViewer's toolbar publish), else the armed tool.
  */
-export function resolveToolBarGroup({ activeTool, activeCategoryDropdown, contextTool } = {}) {
+export function resolveToolBarGroup({ activeTool, activeCategoryDropdown, contextTool, regionEditing } = {}) {
+  // Editing a Space's areas: the tool bar shows the Areas tools instead
+  // (AppShell), never a drawing group's.
+  if (regionEditing || activeTool === 'region-edit') return null;
   if (TOOL_BAR_GROUPS.includes(activeCategoryDropdown)) return activeCategoryDropdown;
   if (isSelectFamilyTool(activeTool)) return TOOL_GROUP_BY_TOOL[contextTool] || 'select';
   return TOOL_GROUP_BY_TOOL[activeTool] || null;
@@ -84,6 +110,9 @@ export const FORMAT_ROW_TOOLS = Object.freeze([
  */
 export function showsFormatRow(api) {
   if (!api) return false;
+  // Owner 2026-10-01 (Spaces toolbar): while a Space's areas are being edited
+  // row 2 holds the Areas actions (Delete area, Full page, Cancel, Done).
+  if (isAreaEditing(api)) return true;
   if (api.activeTool === 'eraser' || api.richTextEditor) return true;
   return FORMAT_ROW_TOOLS.includes(api.contextTool) || FORMAT_ROW_TOOLS.includes(api.activeTool);
 }
