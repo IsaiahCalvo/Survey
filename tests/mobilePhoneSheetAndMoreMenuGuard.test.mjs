@@ -57,7 +57,9 @@ test('every browse panel opens at Standard; a settings sheet fits its content', 
   assert.doesNotMatch(sidebar, /activeTab === 'history'\)\s*return\s*\d/);
   assert.doesNotMatch(sidebar, /activeTab === 'spaces'\)\s*\{/);
   // The browse sheets read the Standard token.
-  assert.match(mobileCss, /height: var\(--mobile-sheet-height, var\(--mobile-panel-standard\)\) !important/);
+  // (2026-10-01: less the safe-area inset, which the dock under the sheet
+  // now carries - SHEETS STAND ON THE DOCK.)
+  assert.match(mobileCss, /height: calc\(var\(--mobile-sheet-height, var\(--mobile-panel-standard\)\) - var\(--mobile-bottom-inset\)\) !important/);
   assert.match(mobileCss, /\.mobile-pdf-users-sheet \{[\s\S]{0,200}--mobile-sheet-height: var\(--mobile-panel-standard\)/);
 
   /*

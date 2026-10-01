@@ -259,8 +259,10 @@ test('only the PDF scroller and the bottom sheets spend the keyboard inset', () 
   );
   const sheetRule = /html\[data-keyboard-open='true'\] \[data-mobile-sheet\] \{([^}]*)\}/.exec(MOBILE_VIEWER_CSS_SOURCE);
   assert.ok(sheetRule, 'the sheets must lift onto the keyboard');
-  assert.match(sheetRule[1], /bottom: var\(--keyboard-inset, 0px\) !important;/);
-  assert.match(sheetRule[1], /max-height: calc\(100dvh - var\(--keyboard-inset, 0px\)/);
+  // 2026-10-01: a sheet stands on the dock at rest, so with the keyboard up it
+  // stands on whichever is higher - the keyboard or the dock's top edge.
+  assert.match(sheetRule[1], /bottom: max\(var\(--keyboard-inset, 0px\), var\(--mobile-dock-bar-height\)\) !important;/);
+  assert.match(sheetRule[1], /max-height: calc\(100dvh - max\(var\(--keyboard-inset, 0px\), var\(--mobile-dock-bar-height\)\)/);
   // The lift must not glide: WebKit measures the focused field in the same
   // task, and a sheet still on its way up reads as covered (the flicker).
   assert.doesNotMatch(sheetRule[1], /transition/);
