@@ -37,7 +37,10 @@ export function buildSurveyMarkerRow({
     // carry a standalone space_id; that column stays null for this type.
     space_id: null,
     name: annotation.name || null,
-    notes: annotation.notes || annotation.note || null,
+    // `note` is what every editor writes; `notes` is only the copy a DB row
+    // was read with, so it may be stale (e.g. still holding base64 media that
+    // has since moved to Storage refs). Prefer `note`.
+    notes: annotation.note || annotation.notes || null,
     entity_id: annotation.entityId || null,
     entity_name: annotation.entityName || null,
     checklist_responses: annotation.checklistResponses || {},

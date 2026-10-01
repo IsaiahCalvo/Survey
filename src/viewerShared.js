@@ -1752,15 +1752,63 @@ export const savePDFData = (pdfId, items, annotations) => {
   }
 };
 
+// Inline (base64) note photos/videos are what push this cache past the ~5MB
+// localStorage quota, and one failed setItem used to stop caching EVERY marker
+// of the document. When the full map does not fit, drop the bytes of the
+// largest inline media first (the item keeps its name, marked cacheOmitted —
+// see normalizeNoteMedia in services/surveyMediaService.js) until it fits, so
+// every marker's other fields keep caching. Warns once per document.
+const surveyMarkerCacheWarned = new Set();
+const warnSurveyMarkerCacheOnce = (pdfId, message, error) => {
+  if (surveyMarkerCacheWarned.has(pdfId)) return;
+  surveyMarkerCacheWarned.add(pdfId);
+  console.warn(`[surveyMarkers cache] ${message}`, error || '');
+};
+const SURVEY_MARKER_CACHE_MAX_TRIES = 8;
+
 export const saveSurveyMarkers = (pdfId, surveyMarkers) => {
-  if (!pdfId) return;
+  if (!pdfId) return false;
+  const key = `surveyMarkers_${pdfId}`;
+  let fullError = null;
   try {
-    const key = `surveyMarkers_${pdfId}`;
-    const data = JSON.stringify(surveyMarkers);
-    localStorage.setItem(key, data);
+    localStorage.setItem(key, JSON.stringify(surveyMarkers));
+    return true;
   } catch (e) {
-    console.error('Error saving survey marker annotations:', e);
+    fullError = e;
   }
+  const heavy = [];
+  for (const [id, marker] of Object.entries(surveyMarkers || {})) {
+    for (const noteKey of ['note', 'notes']) {
+      const note = marker?.[noteKey];
+      if (!note || typeof note !== 'object') continue;
+      for (const field of ['photos', 'videos']) {
+        (Array.isArray(note[field]) ? note[field] : []).forEach((item, index) => {
+          const url = item && typeof item === 'object' ? item.dataUrl : null;
+          if (typeof url === 'string' && url) heavy.push({ id, noteKey, field, index, bytes: url.length });
+        });
+      }
+    }
+  }
+  heavy.sort((a, b) => b.bytes - a.bytes);
+  const reduced = { ...surveyMarkers };
+  for (let i = 0; i < heavy.length; i += 1) {
+    const { id, noteKey, field, index } = heavy[i];
+    const marker = reduced[id];
+    const list = marker[noteKey][field].slice();
+    list[index] = { name: list[index]?.name, dataUrl: null, cacheOmitted: true };
+    reduced[id] = { ...marker, [noteKey]: { ...marker[noteKey], [field]: list } };
+    // Try after each of the largest few, then only once everything is dropped.
+    if (i < SURVEY_MARKER_CACHE_MAX_TRIES - 1 || i === heavy.length - 1) {
+      try {
+        localStorage.setItem(key, JSON.stringify(reduced));
+        warnSurveyMarkerCacheOnce(pdfId, `Too large for this device's cache; cached ${pdfId} without ${i + 1} inline photo/video file(s).`, fullError);
+        return true;
+      } catch { /* drop the next one */ }
+    }
+  }
+  // The previous snapshot stays (setItem is atomic on failure).
+  warnSurveyMarkerCacheOnce(pdfId, `Could not cache survey markers for ${pdfId} on this device.`, fullError);
+  return false;
 };
 
 export const saveAnnotationsByPage = (pdfId, annotationsByPage) => {
