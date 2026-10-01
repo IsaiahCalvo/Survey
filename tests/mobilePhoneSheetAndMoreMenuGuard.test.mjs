@@ -140,7 +140,12 @@ test('the browse panels keep their taller detents alongside the motion source', 
   assert.match(sheetMotion, /export const SHEET_EXPANDED_HEIGHT = '70dvh';/);
   assert.match(sheetMotion, /export const SHEET_DETENT_FULL = 2;/);
   assert.match(sheetMotion, /if \(expandable && travel < 0\)/);
-  assert.match(sheetMotion, /if \(detent > SHEET_DETENT_STANDARD\) \{\s*setDetent\(\(current\) => current - 1\);/);
+  // Owner 2026-10-01: a sheet may opt out (pullDownCloses - the Survey panel
+  // closes in one pull from any height and reopens where it was); the
+  // default still steps back one height.
+  assert.match(sheetMotion, /if \(detent > SHEET_DETENT_STANDARD && !pullDownCloses\) \{\s*setDetent\(\(current\) => current - 1\);/);
+  assert.match(sheetMotion, /pullDownCloses = false \} = options;/);
+  assert.match(read('../src/SurveySpacesRail.jsx'), /pullDownCloses: mobileMode,/);
   assert.match(mobileCss, /\.mobile-pdf-sheet\.is-expanded \{[\s\S]{0,160}--mobile-sheet-height: var\(--mobile-panel-expanded\);/);
   assert.match(sidebar, /expandable: browsePanel,/);
   // ...and the taller detent still comes out of CSS height, never the hook's

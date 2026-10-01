@@ -727,68 +727,79 @@
   position: relative;
   min-height: 44px;
   box-sizing: border-box;
-  padding: 0 8px 0 18px;
+  padding: 0 6px 0 16px;
   display: flex;
   align-items: center;
   gap: 4px;
   border-top: 1px solid var(--border);
 }
 
-/* The entity is a chip - dot, name, caret - so "None" still reads as a
-   control (an empty circle on its own did not). */
+/* The entity (owner 2026-10-01): its colour dot with the entity's name in
+   small type underneath ("Entity" while none is set), no plate and no caret -
+   a tap still opens the entity menu. Narrow, so the name field gets the
+   line. */
 .mobile-survey-sheet .mobile-survey-entity-chip,
 .mobile-survey-sheet .mobile-survey-entity-chip:active {
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 128px;
-  height: 30px;
-  padding: 0 8px;
+  flex: 0 0 auto;
+  min-width: 40px;
+  max-width: 76px;
+  height: 40px;
+  padding: 0 4px;
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
-  gap: 6px;
-  color: var(--text-1);
-  background: var(--surface-1);
+  justify-content: center;
+  gap: 2px;
+  color: var(--text-3);
+  background: transparent;
   border: 0;
-  border-radius: 15px;
+  border-radius: 6px;
   font: inherit;
+  /* The shared sheet scale's row meta: 500 12px/14px in --text-3. */
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
+  line-height: 14px;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 
-.mobile-survey-sheet .mobile-survey-entity-chip:active {
-  background: var(--pressed);
+.mobile-survey-sheet .mobile-survey-entity-chip > .mobile-survey-detail-entity-dot {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
 }
 
-.mobile-survey-sheet .mobile-survey-entity-chip > svg {
-  flex: 0 0 auto;
-  color: var(--text-3);
+.mobile-survey-sheet .mobile-survey-entity-chip:active > .mobile-survey-detail-entity-dot {
+  transform: scale(0.88);
+}
+
+.mobile-survey-sheet .mobile-survey-entity-chip[aria-expanded='true'] {
+  color: var(--text-1);
 }
 
 .mobile-survey-sheet .mobile-survey-entity-chip-label {
+  max-width: 100%;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Locate: glyph and word, no box. Orange when the Survey Marker is not on
-   the page yet (it reads "Place" then), like the desktop's locate glyph. */
+/* Locate: the magnifier glyph alone (aria-label / title "Locate on page"),
+   a 36px invisible hit area. Orange when the Survey Marker is not on the page
+   yet ("Place on page"), like the desktop's locate glyph. */
 .mobile-survey-sheet .mobile-survey-locate,
 .mobile-survey-sheet .mobile-survey-locate:active {
   flex: 0 0 auto;
-  height: 32px;
-  padding: 0 6px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: grid;
+  place-items: center;
   color: var(--text-2);
   background: transparent;
   border: 0;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
@@ -797,8 +808,12 @@
   color: var(--warning);
 }
 
-.mobile-survey-sheet .mobile-survey-locate:active {
-  opacity: 0.6;
+.mobile-survey-sheet .mobile-survey-locate > svg {
+  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.mobile-survey-sheet .mobile-survey-locate:active > svg {
+  transform: scale(0.88);
 }
 
 .mobile-survey-sheet .mobile-survey-open-note-line {
@@ -814,6 +829,9 @@
 
 .mobile-survey-sheet .mobile-survey-open .mobile-survey-detail-empty {
   min-height: 40px;
+  /* The sheet scale's empty state: 500 13px/18px in --text-3. */
+  font-weight: 500;
+  line-height: 18px;
 }
 
 /* The notes slot: SurveyMarkerNotes (src/components/surveyMarkerNotes.css)
@@ -844,24 +862,34 @@
   margin: 0 4px;
   display: flex;
   align-items: center;
-  overflow: visible;
+  overflow: hidden;
   background: var(--surface-1);
   border: 0;
   border-radius: 6px;
 }
 
+/* Reads at the sheet scale's row-title size, 500 14px (owner 2026-10-01: it
+   was too big). Every phone field is held at 16px so iOS never zooms the
+   page on focus (index.html, data-mobile-viewport="locked"), so the field
+   keeps 16px type and is drawn at 14/16 scale: 14px on screen, no zoom. Its
+   box is 16/14 of the well so the scaled field fills it exactly. */
 .mobile-survey-sheet .mobile-survey-detail-name {
-  flex: 1;
+  --name-scale: 0.875;
+  flex: 0 0 auto;
+  width: calc(100% / var(--name-scale));
   min-width: 0;
-  height: 30px;
-  padding: 0 4px 0 10px;
+  height: calc(30px / var(--name-scale));
+  box-sizing: border-box;
+  padding: 0 4px 0 calc(10px / var(--name-scale));
   color: var(--text-1);
   background: transparent;
   border: 0;
   outline: none;
   font: inherit;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 500;
+  transform: scale(var(--name-scale));
+  transform-origin: left center;
 }
 
 .mobile-survey-sheet .mobile-survey-detail-menu {
@@ -882,7 +910,7 @@
 }
 
 .mobile-survey-sheet .mobile-survey-detail-entity-menu {
-  top: 40px;
+  top: 42px;
   left: 6px;
   right: auto;
   width: 230px;
@@ -953,8 +981,10 @@
   flex: 1;
   min-width: 0;
   color: var(--text-1);
-  font-size: 13px;
-  font-weight: 400;
+  /* The sheet scale's row title: 500 14px/18px. */
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 18px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -985,7 +1015,8 @@
   border: 0;
   border-radius: 0;
   font: inherit;
-  font-size: 11px;
+  /* The sheet scale's chip type: 600 12px. */
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -996,19 +1027,17 @@
   transform: scale(0.88);
 }
 
-/* The chosen answer (owner 2026-10-01): its word in the answer's colour on a
-   small plate of the same hue - Y green, N red, N/A neutral grey - so chosen
-   vs not reads at a glance; the others stay --text-3 with no plate. N/A is
-   the desktop's neutral: bright --text-1 ink (its look before the plates) on
-   a --border grey plate, 7:1; gold stays the selection accent only. The same
-   three pairs as the desktop rail (surveyRailPanel.css). */
+/* The chosen answer (owner 2026-10-01): a small solid chip - Y green, N red,
+   N/A neutral grey - each a near-white word on an opaque plate of its hue
+   (7:1), so chosen vs not reads at a glance; the others stay --text-3 with
+   no plate. Gold stays the selection accent only. The same three chips as
+   the desktop rail (surveyRailPanel.css) and the archived-answer badge. */
 .mobile-survey-sheet .mobile-survey-check-btn.is-active {
   height: 24px;
   border-radius: 5px;
-  font-weight: 700;
 }
-.mobile-survey-sheet .mobile-survey-check-btn.is-yes { color: var(--success-text); background: var(--success-soft); }
-.mobile-survey-sheet .mobile-survey-check-btn.is-no { color: var(--danger-text); background: var(--danger-soft); }
+.mobile-survey-sheet .mobile-survey-check-btn.is-yes { color: var(--on-success-plate); background: var(--success-plate); }
+.mobile-survey-sheet .mobile-survey-check-btn.is-no { color: var(--on-danger-plate); background: var(--danger-plate); }
 .mobile-survey-sheet .mobile-survey-check-btn.is-na { color: var(--text-1); background: var(--border); }
 
 .mobile-survey-sheet .mobile-survey-detail-empty {

@@ -4,8 +4,8 @@
 
 .survey-marker-notes {
   display: grid;
-  gap: 10px;
-  padding: 10px 14px 14px 24px;
+  gap: 8px;
+  padding: 8px 14px 10px 24px;
   border-top: 1px solid var(--border);
 }
 
@@ -34,6 +34,7 @@
   color: var(--text-3);
   font-size: 12px;
   font-weight: 600;
+  line-height: 16px;
 }
 
 .survey-notes__saved {
@@ -51,14 +52,15 @@
   opacity: 1;
 }
 
-/* Grows with its text (SurveyNoteField sets the height); no grip, no inner
+/* One line until it has words, then grows with them (SurveyNoteField sets
+   the height; owner 2026-10-01: "big for no reason"); no grip, no inner
    scroll, so a long note reads top to bottom in the panel's own scroll. */
 .survey-notes__field {
   width: 100%;
-  min-height: 40px;
+  min-height: 0;
   box-sizing: border-box;
   margin: 0;
-  padding: 9px 10px;
+  padding: 6px 10px;
   display: block;
   overflow: hidden;
   resize: none;
@@ -71,15 +73,32 @@
   font: inherit;
   font-size: 14px;
   font-weight: 400;
-  line-height: 1.45;
+  line-height: 1.35;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   transition: border-color 120ms ease-out;
 }
 
+/* Phone: every phone field is held at 16px so iOS never zooms the page on
+   focus (index.html, data-mobile-viewport="locked"), which made the note
+   read bigger than everything round it. It keeps 16px type and is drawn at
+   14/16 scale - the note's own 14px - from its top-left corner; it is 16/14
+   as wide as the column so it fills it, and SurveyNoteField hands back the
+   height the scale takes off. */
+.survey-notes--phone .survey-notes__field {
+  --note-scale: 0.875;
+  width: calc(100% / var(--note-scale));
+  padding: calc(6px / var(--note-scale)) calc(10px / var(--note-scale));
+  border-radius: calc(8px / var(--note-scale));
+  font-size: 16px;
+  /* 14px/18px on screen: the sheet scale's row-title type. */
+  line-height: calc(18px / var(--note-scale));
+  transform: scale(var(--note-scale));
+  transform-origin: top left;
+}
+
 .survey-notes--desktop .survey-notes__field {
-  min-height: 32px;
-  padding: 6px 8px;
+  padding: 5px 8px;
   font-size: 13px;
   border-radius: 6px;
 }
@@ -114,6 +133,7 @@
 .survey-media__grid {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
 }
 
@@ -225,26 +245,54 @@
   opacity: 0.55;
 }
 
-/* The one Upload media tile: a quiet dashed square with its words. */
-.survey-media-tile--upload {
-  gap: 2px;
-  align-content: center;
-  color: var(--accent);
-  background: transparent;
-  border: 1px dashed var(--border-strong);
-  font-size: 10px;
+/* "+ Media" (aria-label "Upload media"): one line, the Survey panel's
+   "+ Place" pill - a well one step below the panel, --text-1 ink, no gold.
+   It ends the strip, centred on the thumbnails' line. */
+.survey-media-add {
+  flex: 0 0 auto;
+  height: 28px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 10px 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-1);
+  background: var(--surface-1);
+  border: 0;
+  border-radius: 14px;
+  font: inherit;
+  font-size: 12px;
   font-weight: 600;
-  line-height: 1.1;
-  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
 }
 
-.survey-media-tile--upload[aria-expanded='true'] {
-  border-color: var(--accent);
+.survey-media-add:active {
+  transform: scale(0.94);
+  background: var(--pressed);
 }
 
-.survey-media-tile--upload:disabled {
+.survey-media-add[aria-expanded='true'] {
+  background: var(--pressed);
+}
+
+.survey-media-add:disabled {
   color: var(--text-disabled);
   cursor: default;
+}
+
+.survey-marker-notes--desktop .survey-media-add {
+  height: 24px;
+  border-radius: 12px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .survey-media-add:not(:disabled):hover {
+    background: var(--hover);
+  }
 }
 
 /* Desktop remove: a small round ✕ on the thumbnail's corner, on hover. */
@@ -604,7 +652,8 @@
 /* Desktop: the rail is the --surface-1 panel, so its wells step up one
    (the Entity field's grey). */
 .survey-marker-notes--desktop .survey-notes__field:not([readonly]),
-.survey-marker-notes--desktop .survey-media-tile:not(.survey-media-tile--upload),
+.survey-marker-notes--desktop .survey-media-tile,
+.survey-marker-notes--desktop .survey-media-add,
 .survey-marker-notes--desktop .survey-media-recorder {
   background: var(--surface-2);
 }

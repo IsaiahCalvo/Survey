@@ -296,10 +296,10 @@ function suppressNextClick(doc) {
  *   detent (the Pages / Search / Bookmarks tray). Off for everything else.
  * @param {boolean} [options.fullscreenable]  also allow the THIRD step, full
  *   screen, from Expanded. Browse panels only; requires expandable.
- * @param {() => boolean} [options.onPullDown]  called when a downward release
- *   passes the dismiss threshold, before the sheet steps down a detent or
- *   closes. Return true when the caller used the pull itself (the Survey panel
- *   collapses one accordion level); the sheet then springs back where it is.
+ * @param {boolean} [options.pullDownCloses]  a downward pull past the dismiss
+ *   threshold closes the sheet from ANY height instead of stepping down one
+ *   detent first (the Survey panel, owner 2026-10-01: one swipe closes it and
+ *   reopening restores where you were).
  * @param {boolean} [options.open]  whether the sheet is currently shown. Drives
  *   the slide-up entrance. Sheets that mount only while open can leave this at
  *   its default; sheets that stay mounted and toggle a collapsed class (the hub
@@ -314,10 +314,7 @@ function suppressNextClick(doc) {
  * keyboard lift in mobilePdfViewer.css.
  */
 export function useMobileSheetMotion(onClose, options = {}) {
-  const { canStartDrag, contentKey, expandable = false, fullscreenable = false, open = true, onPullDown } = options;
-  // Read at release time, so the caller's latest state decides.
-  const onPullDownRef = useRef(onPullDown);
-  onPullDownRef.current = onPullDown;
+  const { canStartDrag, contentKey, expandable = false, fullscreenable = false, open = true, pullDownCloses = false } = options;
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const closeTimerRef = useRef(0);
@@ -643,17 +640,13 @@ export function useMobileSheetMotion(onClose, options = {}) {
       return;
     }
     if (dy > SHEET_DISMISS_DY || vy > SHEET_DISMISS_VY) {
-      // The sheet's own content may take the pull first (one level of the
-      // Survey accordion closes per pull, owner 2026-10-01).
-      if (typeof onPullDownRef.current === 'function' && onPullDownRef.current()) {
-        springBack();
-        return;
-      }
       // From a tall detent a downward pull steps back ONE height instead of
       // dismissing, so Full screen takes three pulls to close and a panel is
       // never lost in one gesture. The transform springs home on the same
       // 260ms curve the height steps down on, so the top edge moves as one.
-      if (detent > SHEET_DETENT_STANDARD) {
+      // A sheet that keeps its place when reopened (pullDownCloses) closes
+      // from any height in one pull.
+      if (detent > SHEET_DETENT_STANDARD && !pullDownCloses) {
         setDetent((current) => current - 1);
         springBack();
         return;
@@ -662,7 +655,7 @@ export function useMobileSheetMotion(onClose, options = {}) {
       return;
     }
     springBack();
-  }, [detent, expandable, maxDetent, requestClose, springBack]);
+  }, [detent, expandable, maxDetent, pullDownCloses, requestClose, springBack]);
 
   // Everything the native listeners read, fresh every render.
   const liveRef = useRef(null);

@@ -53,8 +53,10 @@ test('the hub sheet steps through its three named heights', () => {
   // sheet's own ceiling.
   assert.match(sheetMotion, /-travel > SHEET_EXPAND_DY \|\| -vy > SHEET_DISMISS_VY/);
   assert.match(sheetMotion, /Math\.min\(maxDetent, current \+ 1\)/);
-  // Drag down from a tall detent steps back one height instead of dismissing.
-  assert.match(sheetMotion, /if \(detent > SHEET_DETENT_STANDARD\) \{[\s\S]{0,120}current - 1/);
+  // Drag down from a tall detent steps back one height instead of dismissing
+  // (unless the sheet opts into pullDownCloses - the Survey panel, owner
+  // 2026-10-01).
+  assert.match(sheetMotion, /if \(detent > SHEET_DETENT_STANDARD && !pullDownCloses\) \{[\s\S]{0,120}current - 1/);
   assert.match(css, /\.mobile-pdf-sheet\.is-expanded \{[^}]*--mobile-sheet-height: var\(--mobile-panel-expanded\)/);
   assert.match(css, /--mobile-panel-expanded: 70dvh/);
   // Full screen stops clear of the app's top bar.
