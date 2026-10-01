@@ -1,4 +1,7 @@
--- PROPOSED - NOT APPLIED. Needs the owner's go-ahead; prod "Survey" is
+-- APPLIED to prod 2026-10-01 (owner-approved) as migration survey_media_bucket_20261001,
+-- with the bucket limit lowered to 50 MiB to match the project's global upload limit.
+-- Verified: bucket, 3 policies, parser, trigger, usage unchanged, upload/read/delete probe.
+-- (Originally: PROPOSED - NOT APPLIED. Needs the owner's go-ahead; prod "Survey" is
 -- hand-managed (apply in the SQL editor / Management API, then record the
 -- version). Kept out of supabase/migrations/ because deploy-production runs
 -- `supabase db push`. Rollback: supabase/rollbacks/20261001_survey_media_bucket.down.sql
@@ -9,7 +12,7 @@
 -- up yet" and existing inline (base64) note media keeps working.
 --
 -- What it does:
---   1. private bucket "survey-media", 100 MiB per file, photo/video/audio types
+--   1. private bucket "survey-media", 50 MiB per file (the project's global upload limit), photo/video/audio types
 --      only. Object name: <document_id>/<marker_id>/<media_id>.<ext>;
 --   2. storage.objects policies (no UPDATE policy: media objects are immutable,
 --      so upsert/overwrite/move are refused):
@@ -79,7 +82,7 @@
 --   -- a) bucket
 --   SELECT id, public, file_size_limit, allowed_mime_types
 --     FROM storage.buckets WHERE id = 'survey-media';
---     -- expect: public = false, 104857600, 16 MIME types
+--     -- expect: public = false, 52428800, 16 MIME types
 --   -- b) policies (expect exactly 3 rows: DELETE, INSERT, SELECT; no UPDATE)
 --   SELECT policyname, cmd, roles FROM pg_policies
 --    WHERE schemaname = 'storage' AND tablename = 'objects'
@@ -134,7 +137,7 @@ VALUES (
   'survey-media',
   'survey-media',
   false,
-  104857600,
+  52428800,
   ARRAY[
     'image/jpeg', 'image/png', 'image/heic', 'image/heif', 'image/webp',
     'video/mp4', 'video/quicktime', 'video/webm',

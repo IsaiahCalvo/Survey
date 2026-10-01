@@ -22,7 +22,7 @@ import { supabase } from '../supabaseClient.js';
 export const SURVEY_MEDIA_BUCKET = 'survey-media';
 export const SURVEY_MEDIA_LIMITS = {
   photoMaxEdge: 2560,
-  videoMaxBytes: 100 * 1024 * 1024,
+  videoMaxBytes: 50 * 1024 * 1024,
   audioMaxBytes: 25 * 1024 * 1024,
   // A photo that cannot be re-encoded here (e.g. HEIC on desktop Chromium) is
   // uploaded as-is; this caps that case.

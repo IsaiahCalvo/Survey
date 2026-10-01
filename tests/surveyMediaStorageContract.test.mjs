@@ -27,11 +27,11 @@ describe('proposed survey-media migration (static)', () => {
     assert.match(MIGRATION, /VERIFY AFTER APPLYING/);
   });
 
-  it('creates a private 100 MiB bucket with exactly the app MIME list', () => {
+  it('creates a private 50 MiB bucket with exactly the app MIME list', () => {
     assert.equal(SURVEY_MEDIA_BUCKET, 'survey-media');
     const bucket = /INSERT INTO storage\.buckets[\s\S]*?VALUES \(([\s\S]*?)\)\s*ON CONFLICT/.exec(SQL);
     assert.ok(bucket);
-    assert.match(bucket[1], /'survey-media',\s*'survey-media',\s*false,\s*104857600/);
+    assert.match(bucket[1], /'survey-media',\s*'survey-media',\s*false,\s*52428800/);
     const mimes = [...bucket[1].matchAll(/'([a-z]+\/[a-z0-9.+-]+)'/g)].map((m) => m[1]);
     assert.deepEqual(mimes.sort(), [...SURVEY_MEDIA_ALLOWED_MIME_TYPES].sort());
     assert.match(SQL, /ON CONFLICT \(id\) DO UPDATE\s+SET public = false/);

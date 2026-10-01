@@ -163,12 +163,12 @@ describe('normalizeNoteMedia', () => {
 describe('limits', () => {
   it('enforces the contract limits with a sentence the UI can show', () => {
     assert.equal(SURVEY_MEDIA_LIMITS.photoMaxEdge, 2560);
-    assert.equal(SURVEY_MEDIA_LIMITS.videoMaxBytes, 100 * 1024 * 1024);
+    assert.equal(SURVEY_MEDIA_LIMITS.videoMaxBytes, 50 * 1024 * 1024);
     assert.equal(SURVEY_MEDIA_LIMITS.audioMaxBytes, 25 * 1024 * 1024);
-    assert.equal(checkSurveyMediaLimits({ kind: 'video', size: 100 * 1024 * 1024, name: 'v.mov' }), null);
+    assert.equal(checkSurveyMediaLimits({ kind: 'video', size: 50 * 1024 * 1024, name: 'v.mov' }), null);
     const tooBig = checkSurveyMediaLimits({ kind: 'video', size: 140 * 1024 * 1024, name: 'v.mov' });
     assert.equal(tooBig.code, 'too-large');
-    assert.equal(tooBig.message, '"v.mov" is 140 MB. Videos can be up to 100 MB.');
+    assert.equal(tooBig.message, '"v.mov" is 140 MB. Videos can be up to 50 MB.');
     assert.equal(checkSurveyMediaLimits({ kind: 'audio', size: 26 * 1024 * 1024, name: 'r.m4a' }).code, 'too-large');
     assert.equal(checkSurveyMediaLimits({ kind: 'audio', size: 0, name: 'r.m4a' }).code, 'empty-file');
   });
@@ -178,7 +178,7 @@ describe('limits', () => {
     __setSurveyMediaClientForTests(client);
     await assert.rejects(
       uploadSurveyMedia({ documentId: DOC, markerId: MARKER, file: sizedFile('v.mov', 'video/quicktime', 101 * 1024 * 1024) }),
-      (err) => err.code === 'too-large' && /Videos can be up to 100 MB/.test(err.message),
+      (err) => err.code === 'too-large' && /Videos can be up to 50 MB/.test(err.message),
     );
     await assert.rejects(
       uploadSurveyMedia({ documentId: DOC, markerId: MARKER, file: sizedFile('r.m4a', 'audio/mp4', 30 * 1024 * 1024), kind: 'audio' }),
