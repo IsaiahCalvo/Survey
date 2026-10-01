@@ -10,7 +10,7 @@ import { resolveFontSizeDraft } from '../utils/selectedTextFormatting.js';
 import { ChosenCheck, QuickColourDots, QuickPaintSwatch } from '../components/QuickStyleControls';
 import DismissBarrier from '../components/DismissBarrier';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from '../components/Callout/types';
-import { ZOOM_MODE_OPTIONS, ensureRgbaOpacity } from '../viewerShared';
+import { ZOOM_MODE_OPTIONS, ensureRgbaOpacity, getCategoryGlyphLabel } from '../viewerShared';
 import { getMobileSyncPresentation, getMobileTextMarkupPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
 import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectFamilyTransition, getSelectModeIconName } from '../utils/selectModes.js';
 import { tooltipForLabel } from '../utils/toolShortcuts.js';
@@ -519,11 +519,10 @@ function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = fa
   );
 }
 
-const categoryGlyph = (name) => {
-  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
-  if (parts.length > 1) return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase();
-  return (parts[0] || '?').slice(0, 2).toUpperCase();
-};
+// Owner 2026-10-01: the rail's category discs read exactly like the desktop
+// survey row's chips - the initial of each word ("Cameras" -> C, "Access
+// Control" -> AC) - from the one shared helper, not the first two letters.
+const categoryGlyph = getCategoryGlyphLabel;
 
 const toHexColor = (value, fallback = '#d8a84e') => {
   const source = String(value || '').trim();
@@ -1335,14 +1334,15 @@ export function MobileToolProperties({ api }) {
       <div className="mobile-pdf-properties mobile-pdf-properties--survey" data-mobile-tool-properties="true" role="toolbar" aria-label="Survey placement" ref={topOverlayRef}>
         {/* App-styled dropdown (OWNER DECISION 3) replaces the OS module roller. */}
         {/* Owner 2026-09-30 (survey bar design, decided after a design review):
-              [ Module v ] (switch) Repeat  ...  | Exit
+              [ Module v ] (switch) Reuse  ...  | Exit
             - The pill is exactly as wide as its LONGEST module name
               (fitOptions: every name sits invisibly in one grid cell), so
               switching module never moves the switch; it shrinks and
               ellipsises only when the row runs out of room.
             - "Keep active" is the desktop survey row's plateless switch,
-              relabelled "Repeat": it keeps the CATEGORY armed after a Survey
-              Marker is placed (PDFViewer clears selectedCategoryId otherwise).
+              relabelled "Repeat", then "Reuse" (owner 2026-10-01): it keeps
+              the CATEGORY armed after a Survey Marker is placed (PDFViewer
+              clears selectedCategoryId otherwise).
             - Exit is a red word on the trailing edge after a rule; it calls
               the same handler as the Survey panel's "Exit Survey", with no
               confirm step. */}
@@ -1360,11 +1360,11 @@ export function MobileToolProperties({ api }) {
           className="mobile-pdf-properties__keep"
           role="switch"
           aria-checked={Boolean(survey.keepCategoryActive)}
-          aria-label="Repeat category"
+          aria-label="Reuse category"
           onClick={() => survey.onKeepCategoryActiveChange?.(!survey.keepCategoryActive)}
         >
           <span className="mobile-pdf-properties__keep-track" aria-hidden="true" />
-          <span>Repeat</span>
+          <span>Reuse</span>
         </button>
         {survey.onExit ? (
           <>

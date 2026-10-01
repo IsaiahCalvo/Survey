@@ -686,8 +686,8 @@
 }
 
 /* Y / N / N/A: one grey well; the answers are words with invisible pads and
-   the chosen one is lit ink (Yes gold, No red, N/A bright). The phone's
-   rule, sized for the rail. */
+   the chosen one is lit (Yes green, No red, N/A gold). The phone's rule,
+   sized for the rail. */
 .survey-rail .survey-rail__answers {
   flex: 0 0 auto;
   height: 22px;
@@ -722,10 +722,17 @@
   transform: scale(0.88);
 }
 
-.survey-rail .survey-rail__answer.is-active { font-weight: 700; }
-.survey-rail .survey-rail__answer.is-yes { color: var(--accent); }
-.survey-rail .survey-rail__answer.is-no { color: var(--danger-text); }
-.survey-rail .survey-rail__answer.is-na { color: var(--text-1); }
+/* The chosen answer (owner 2026-10-01): Y green, N red, N/A gold, each its
+   word on a small plate of the same hue; the phone sheet uses the same pairs
+   (mobileSurveyPanel.css). */
+.survey-rail .survey-rail__answer.is-active {
+  height: 18px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+.survey-rail .survey-rail__answer.is-yes { color: var(--success-text); background: var(--success-soft); }
+.survey-rail .survey-rail__answer.is-no { color: var(--danger-text); background: var(--danger-soft); }
+.survey-rail .survey-rail__answer.is-na { color: var(--accent); background: var(--accent-soft); }
 
 .survey-rail .survey-rail__archived {
   padding: 2px 3px 7px var(--sv-detail-indent);
@@ -785,4 +792,18 @@
   .survey-rail .survey-rail__answer:not(.is-active):hover {
     color: var(--text-1);
   }
+}
+
+/* The chosen answer keeps its plate under the pointer and while pressed: the
+   #chrome-right-host opt-outs above (and states.css 2c) clear every button's
+   background with !important. This selector ties the hover opt-out's
+   specificity and comes after it, so it wins. */
+#chrome-right-host .survey-rail .survey-rail__answers > button.survey-rail__answer.is-active.is-yes:not(:disabled):not([aria-disabled='true']) {
+  background-color: var(--success-soft) !important;
+}
+#chrome-right-host .survey-rail .survey-rail__answers > button.survey-rail__answer.is-active.is-no:not(:disabled):not([aria-disabled='true']) {
+  background-color: var(--danger-soft) !important;
+}
+#chrome-right-host .survey-rail .survey-rail__answers > button.survey-rail__answer.is-active.is-na:not(:disabled):not([aria-disabled='true']) {
+  background-color: var(--accent-soft) !important;
 }

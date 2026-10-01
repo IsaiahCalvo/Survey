@@ -111,36 +111,67 @@
   color: var(--text-3);
 }
 
+/* The template switcher's menu (owner 2026-10-01: "far too big and looks
+   bad"). It is the app's dropdown menu now - the survey bar's module pill menu
+   (.mobile-styled-select__menu in mobilePdfViewer.css): a --surface-2 card
+   with a subtle --border, 9px corners, 5px padding, 26px rows at the chrome's
+   11px/600 - and it is only as wide as its LONGEST name plus the check
+   column, never a fixed 286px slab. A name too long for the screen
+   ellipsises. */
 .mobile-survey-sheet .mobile-survey-template-menu {
   position: absolute;
-  left: 0;
-  top: calc(100% + 2px);
+  left: -8px;
+  top: calc(100% + 4px);
   z-index: 40;
-  width: min(286px, calc(100vw - 82px));
-  padding: 4px;
-  display: grid;
-  gap: 0;
+  box-sizing: content-box;
+  width: max-content;
+  min-width: 0;
+  max-width: calc(100vw - 48px);
+  max-height: 244px;
+  overflow-y: auto;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   background: var(--surface-2);
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  box-shadow: 0 10px 24px -4px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35);
+  scrollbar-width: none;
 }
 
+.mobile-survey-sheet .mobile-survey-template-menu::-webkit-scrollbar { display: none; }
+
+/* Every row keeps a 12px check column, filled only on the chosen row, so the
+   menu's width does not depend on which template is chosen. */
 .mobile-survey-sheet .mobile-survey-template-menu > button {
-  min-height: 40px;
-  padding: 0 10px;
-  display: flex;
-  align-items: center;
+  height: 26px;
+  min-height: 26px;
+  padding: 0 8px;
+  display: grid;
+  grid-template-columns: minmax(0, max-content) 12px;
   justify-content: space-between;
-  gap: 8px;
+  align-items: center;
+  column-gap: 12px;
   color: var(--text-1);
   background: transparent;
   border: 0;
   border-radius: 6px;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
+  font: 600 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  letter-spacing: -0.01em;
   text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-survey-sheet .mobile-survey-template-menu > button > span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mobile-survey-sheet .mobile-survey-template-menu > button > svg {
+  grid-column: 2;
 }
 
 .mobile-survey-sheet .mobile-survey-template-menu > button:active {
@@ -849,10 +880,18 @@
   transform: scale(0.88);
 }
 
-.mobile-survey-sheet .mobile-survey-check-btn.is-active { font-weight: 700; }
-.mobile-survey-sheet .mobile-survey-check-btn.is-yes { color: var(--accent); }
-.mobile-survey-sheet .mobile-survey-check-btn.is-no { color: var(--danger-text); }
-.mobile-survey-sheet .mobile-survey-check-btn.is-na { color: var(--text-1); }
+/* The chosen answer (owner 2026-10-01): its word in the answer's colour on a
+   small plate of the same hue - Y green, N red, N/A gold - so chosen vs not
+   reads at a glance; the others stay --text-3 with no plate. The same three
+   pairs as the desktop rail (surveyRailPanel.css). */
+.mobile-survey-sheet .mobile-survey-check-btn.is-active {
+  height: 24px;
+  border-radius: 5px;
+  font-weight: 700;
+}
+.mobile-survey-sheet .mobile-survey-check-btn.is-yes { color: var(--success-text); background: var(--success-soft); }
+.mobile-survey-sheet .mobile-survey-check-btn.is-no { color: var(--danger-text); background: var(--danger-soft); }
+.mobile-survey-sheet .mobile-survey-check-btn.is-na { color: var(--accent); background: var(--accent-soft); }
 
 .mobile-survey-sheet .mobile-survey-detail-empty {
   box-sizing: border-box;

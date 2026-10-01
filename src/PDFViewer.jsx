@@ -37770,15 +37770,16 @@ ${pageBlocks}
                       type="button"
                       role="switch"
                       aria-checked={surveyKeepCategoryActive}
-                      aria-label="Repeat category"
+                      aria-label="Reuse category"
                       className="survey-subrow__keep tertiary"
                       onClick={() => setSurveyKeepCategoryActive((on) => !on)}
-                      {...chromeTip('Keep the category armed after placing a Survey Marker', 'below')}
+                      {...chromeTip('Reuse the category: keep it armed after placing a Survey Marker', 'below')}
                     >
                       <span className="survey-subrow__track" aria-hidden="true" />
-                      {/* Owner 2026-09-30: "Keep active" -> "Repeat" (it keeps
-                          the CATEGORY armed), same word as the phone bar. */}
-                      <span>Repeat</span>
+                      {/* Owner 2026-09-30: "Keep active" -> "Repeat"; 2026-10-01:
+                          "Repeat" -> "Reuse" (it keeps the CATEGORY armed), same
+                          word as the phone bar. */}
+                      <span>Reuse</span>
                     </button>
                   </div>
                 </div>
