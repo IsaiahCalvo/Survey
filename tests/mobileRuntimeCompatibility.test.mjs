@@ -653,9 +653,12 @@ test('mobile Survey and Spaces drawers follow their content', () => {
   // panel content instead of predicted row heights — the metrics callback
   // reports contentHeight alongside the legacy expandedPageRows fallback.
   assert.match(SPACES_PANEL_SOURCE, /onMobilePanelMetricsChange\(\{ expandedPageRows, contentHeight \}\)/);
-  // 2026-07-12 Phase B (S3): every bottom sheet bakes home-indicator
-  // clearance into itself, like the demo's paddingBottom: inset + 10..14.
-  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-sheet \{[\s\S]{0,1200}padding-bottom: calc\(12px \+ var\(--mobile-bottom-inset\)\)/);
+  // 2026-07-12 Phase B (S3) baked home-indicator clearance into every bottom
+  // sheet. DELIBERATE CHANGE 2026-10-01 (owner: the dock hid the foot of the
+  // sheets): a sheet now stands on the dock, which clears the home indicator
+  // itself, so the sheet ends at the dock's top edge and keeps only its 12px.
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-sheet \{[\s\S]{0,200}bottom: var\(--mobile-dock-bar-height\) !important;/);
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-sheet \{[\s\S]{0,1600}padding-bottom: 12px;/);
 });
 
 // DELIBERATE ASSERTION CHANGE (2026-09-17, revision-2 palette approved by the

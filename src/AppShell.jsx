@@ -1653,14 +1653,15 @@ export default function App({ devPreviewReturnTab = null }) {
     setShowFontColorPicker(false);
     if (bottomToolbarApi?.showAnnotationColorPicker) bottomToolbarApi.setShowAnnotationColorPicker?.(false);
   }, [formatRowShown, isMobileViewer, bottomToolbarApi]);
-  const mobileViewerPanelOpen = Boolean(
-    mobileDocumentPanelState.isOpen
-    || mobileSurveyPanelOpen
-    || mobileAuxPanel
-  );
+  // 2026-10-01: the dock stays usable under an open sheet, so a dock button can
+  // now be pressed while the Active users sheet (the tool rail's own state) is
+  // up. Opening another panel asks the rail to slide that sheet away, keeping
+  // one phone sheet at a time.
+  const [mobileAuxCloseRequestKey, setMobileAuxCloseRequestKey] = useState(0);
 
   const openMobileDocumentPanel = useCallback((panelId) => {
     setMobileSurveyCollapseRequestKey((key) => key + 1);
+    setMobileAuxCloseRequestKey((key) => key + 1);
     leftRailApi?.ref?.current?.togglePanel?.(panelId);
   }, [leftRailApi]);
 
@@ -1673,6 +1674,7 @@ export default function App({ devPreviewReturnTab = null }) {
 
   const openMobileSurveyPanel = useCallback(() => {
     leftRailApi?.ref?.current?.closePanel?.();
+    setMobileAuxCloseRequestKey((key) => key + 1);
     if (mobileSurveyPanelOpen) {
       setMobileSurveyCollapseRequestKey((key) => key + 1);
       return;
@@ -3724,6 +3726,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 leftRailApi={leftRailApi}
                 onOpenPanel={openMobileDocumentPanel}
                 onAuxPanelStateChange={setMobileAuxPanel}
+                auxCloseRequestKey={mobileAuxCloseRequestKey}
               />
             )}
             {leftRailApi && (
@@ -4383,15 +4386,17 @@ export default function App({ devPreviewReturnTab = null }) {
             refreshes"): the dock used to unmount the moment a phone panel
             opened and mount again only after the panel had finished sliding
             down, so it vanished under a rising sheet and popped back in, in one
-            frame, as the sheet landed. It stays mounted now, underneath the
-            sheets and their backdrop (z-index 5850 < 6400 < 6500): a closing
-            sheet uncovers the dock already in place, and an opening one slides
-            over it. While covered it is inert, and it keeps its resting look -
-            a highlight lit only while a panel is open would switch off on the
-            frame the sheet lands, the same pop in miniature. */}
+            frame, as the sheet landed. It stays mounted, and it keeps its
+            resting look - a highlight lit only while a panel is open would
+            switch off on the frame the sheet lands, the same pop in miniature.
+            Owner 2026-10-01 (iPhone: "the panel needs to show over the bottom
+            bar ... and I should be able to see the bottom bar"): every sheet
+            now stands ON the dock (mobilePdfViewer.css, SHEETS STAND ON THE
+            DOCK), so the dock is never covered and stays usable while a panel
+            is open - its buttons switch panels (each handler closes the one
+            that is open) - and a closing sheet tucks away behind it. */}
         {isMobileViewer && (
           <MobilePdfViewerDock
-            covered={mobileViewerPanelOpen}
             onOpenPanel={openMobileDocumentPanel}
             onToggleHub={toggleMobileDocumentHub}
             onOpenSurvey={openMobileSurveyPanel}

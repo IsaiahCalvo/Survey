@@ -2577,7 +2577,7 @@ export function MobileToolProperties({ api }) {
   );
 }
 
-export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenPanel, onAuxPanelStateChange }) {
+export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenPanel, onAuxPanelStateChange, auxCloseRequestKey = 0 }) {
   const [openCategory, setOpenCategory] = useState(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [presenceOpen, setPresenceOpen] = useState(false);
@@ -2652,6 +2652,15 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
     onAuxPanelStateChange?.(presenceOpen ? 'users' : null);
     return () => onAuxPanelStateChange?.(null);
   }, [onAuxPanelStateChange, presenceOpen]);
+
+  // Another panel was opened (the dock stays usable under this sheet since
+  // 2026-10-01): slide the Active users sheet away so only one sheet is up.
+  const auxCloseKeyRef = useRef(auxCloseRequestKey);
+  useEffect(() => {
+    if (auxCloseKeyRef.current === auxCloseRequestKey) return;
+    auxCloseKeyRef.current = auxCloseRequestKey;
+    if (presenceOpen) requestUsersSheetClose();
+  }, [auxCloseRequestKey, presenceOpen, requestUsersSheetClose]);
 
   useEffect(() => {
     if (activeGroup) {

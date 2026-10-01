@@ -2260,14 +2260,15 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;
+  /* Stands on the dock (see SHEETS STAND ON THE DOCK at .mobile-pdf-sheet). */
+  bottom: var(--mobile-dock-bar-height);
   z-index: 6500;
   height: auto;
-  max-height: calc(100dvh - var(--app-chrome-top, 34px) - 18px);
-  /* Board 16/17/18 sheet frame: 16px of side padding, 24px under the body for the
-     home indicator, the toolbar surface, a border-strong top edge and a 16px top
-     radius. */
-  padding: 0 16px calc(24px + var(--mobile-bottom-inset));
+  max-height: calc(100dvh - var(--app-chrome-top, 34px) - 18px - var(--mobile-dock-bar-height));
+  /* Board 16/17/18 sheet frame: 16px of side padding, 24px under the body, the
+     toolbar surface, a border-strong top edge and a 16px top radius. (The
+     home-indicator inset belongs to the dock below it now.) */
+  padding: 0 16px 24px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -2850,7 +2851,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
    edit sheet, above its z:6500. */
 .mobile-pdf-colorpicker-backdrop {
   position: fixed;
-  inset: 0;
+  inset: 0 0 var(--mobile-dock-bar-height);
   padding: 0;
   background: rgba(0, 0, 0, 0.01);
   border: 0;
@@ -2865,7 +2866,8 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;
+  /* Stands on the dock (see SHEETS STAND ON THE DOCK at .mobile-pdf-sheet). */
+  bottom: var(--mobile-dock-bar-height);
   /* SETTINGS SHEET HEIGHT (ruled 2026-09-22, owner): content height, never a
      named panel height. `auto` + the same max-height cap; the body below keeps
      `flex: 1 1 auto; min-height: 0; overflow-y: auto`, so if the content ever
@@ -2875,8 +2877,8 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
      drag-to-dismiss maths (finger dy, not a fraction of the height) is
      unchanged. */
   height: auto;
-  max-height: calc(100dvh - var(--app-chrome-top, 34px) - 18px);
-  padding: 0 16px calc(24px + var(--mobile-bottom-inset));
+  max-height: calc(100dvh - var(--app-chrome-top, 34px) - 18px - var(--mobile-dock-bar-height));
+  padding: 0 16px 24px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -2952,7 +2954,14 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 5850;
+  /* 2026-10-01: above every phone sheet and backdrop (sheets 6500, the colour
+     sheet 6700), below the popovers and menus (7200+), modals and toasts. The
+     sheets now stand on top of the dock instead of reaching under it, so this
+     only decides who wins the strip a closing sheet slides through: the dock,
+     so a sheet tucks away behind it. (It used to be 5850, which already beat
+     the hub and Survey sheets - their hosts are a 5600 stacking context - but
+     not the tool and colour sheets.) */
+  z-index: 6750;
   /* UX 2026-09-09 (iOS Simulator pass): the dock is taller than its painted
      surface (the top 16pt is a transparent gutter), and that gutter swallowed
      taps meant for the page - a polygon vertex placed just above the bar was
@@ -3066,7 +3075,9 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
    sheet, and dimming twice would black the page out.) */
 .mobile-pdf-sheet-backdrop {
   position: fixed;
-  inset: 0;
+  /* Stops at the dock: the dock stays undimmed and tappable under an open
+     sheet (owner 2026-10-01, see SHEETS STAND ON THE DOCK below). */
+  inset: 0 0 var(--mobile-dock-bar-height);
   padding: 0;
   background: rgba(0, 0, 0, 0.3);
   border: 0;
@@ -3084,16 +3095,43 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
    default below was 392px, which is the Compact size, now defined and assigned to
    nothing. The panels that measured their own content (Pages 310, Version history
    264, Active users 276, Spaces from its rows) all stand at Standard, so the tray
-   no longer changes height when you move between them. */
+   no longer changes height when you move between them.
+
+   SHEETS STAND ON THE DOCK (owner 2026-10-01, iPhone: "The panel needs to show
+   over the bottom bar because it's getting blocked, and I should be able to
+   see the bottom bar"). Every phone bottom sheet - this class (Pages / Search /
+   Bookmarks / Spaces / History, Survey, Active users), the tool "..." and text
+   sheet, and the colour sheet - now ends at the TOP of the dock's painted bar
+   (--mobile-dock-bar-height, which tracks the safe area) instead of the screen
+   bottom, so nothing of a sheet is ever behind the dock and the dock stays in
+   sight and usable below it.
+   Why the dock covered the sheets: the sheets render inside #chrome-left-host /
+   #chrome-right-host, each `position: relative; z-index: 5600` (AppShell), i.e.
+   a stacking context at 5600. A sheet's own z-index 6500 only orders it INSIDE
+   that host, so the whole host - sheet included - painted under the dock
+   (z-index 5850, a direct child of body). An elementFromPoint probe still
+   returned the sheet at the dock because the dock is pointer-events: none
+   around its buttons (and was inert while "covered"), so hit-testing said
+   "sheet on top" while painting said "dock on top".
+   - The box drops the home-indicator inset from its height and padding: the
+     dock below it carries that inset now, so Standard keeps its 448px and the
+     sheet's top edge rises only by the dock's 36px bar.
+   - The cap subtracts the dock too, so Full still stops 18px under the top bar.
+   - The dock is above every sheet (z-index 6750, see .mobile-pdf-dock), so a
+     sheet sliding shut tucks BEHIND the dock rather than over it: the hook's
+     translateY(100%) parks it with its top at the dock's top edge, where the
+     opaque bar hides it. No dock remount, no pop (ce50954 stands).
+   - The keyboard rule below still wins: with the keyboard up a sheet stands on
+     the keyboard (which covers the dock), never lower than the dock's top. */
 .mobile-pdf-sheet {
   position: fixed !important;
   left: 0 !important;
   right: 0 !important;
-  bottom: 0 !important;
+  bottom: var(--mobile-dock-bar-height) !important;
   top: auto !important;
   width: 100% !important;
-  height: var(--mobile-sheet-height, var(--mobile-panel-standard)) !important;
-  max-height: calc(100dvh - var(--app-chrome-top, 34px) - 18px) !important;
+  height: calc(var(--mobile-sheet-height, var(--mobile-panel-standard)) - var(--mobile-bottom-inset)) !important;
+  max-height: calc(100dvh - var(--app-chrome-top, 34px) - 18px - var(--mobile-dock-bar-height)) !important;
   box-sizing: border-box;
   background: var(--surface-1) !important;
   border: 0 !important;
@@ -3102,14 +3140,12 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   border-radius: 16px 16px 0 0;
   box-shadow: 0 -15px 38px rgba(0, 0, 0, 0.5);
   overflow: hidden;
-  /* UX 2026-07-12 (S3, demo parity): every bottom sheet bakes the home-
-     indicator clearance into itself, exactly like the demo's RN sheets
-     (paddingBottom: bottomInset + 10..14). Sheet heights already include
-     the inset (base + --mobile-bottom-inset), so the footer rows (Exit
-     Spaces, Exit Survey, pages action pills) land above the unsafe zone
-     instead of flush against the physical screen bottom. The users sheet
-     keeps its own equivalent padding override below (css order wins). */
-  padding-bottom: calc(12px + var(--mobile-bottom-inset));
+  /* UX 2026-07-12 (S3, demo parity) baked the home-indicator clearance into
+     every sheet (12px + --mobile-bottom-inset). Since 2026-10-01 a sheet stands
+     on the dock, which clears the home indicator itself, so the sheet keeps
+     only its 12px. The users sheet keeps its own equivalent padding override
+     below (css order wins). */
+  padding-bottom: 12px;
   z-index: 6500 !important;
   /* UX (owner ruling 2026-09-17): NO keyframe here. The entrance used to be
      `animation: mobilePdfSheetIn 180ms ease-out !important`, a 24px nudge +
@@ -3158,8 +3194,10 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
      through the gap. It is drawn only outside the sheet's box.
    Inert at rest: no data-keyboard-open, and the inset is 0. */
 html[data-keyboard-open='true'] [data-mobile-sheet] {
-  bottom: var(--keyboard-inset, 0px) !important;
-  max-height: calc(100dvh - var(--keyboard-inset, 0px) - var(--app-chrome-top, 34px) - 8px) !important;
+  /* Never below the dock's top edge (a small inset - a hardware keyboard's
+     accessory bar - would otherwise tuck the sheet's foot behind the dock). */
+  bottom: max(var(--keyboard-inset, 0px), var(--mobile-dock-bar-height)) !important;
+  max-height: calc(100dvh - max(var(--keyboard-inset, 0px), var(--mobile-dock-bar-height)) - var(--app-chrome-top, 34px) - 8px) !important;
   padding-bottom: 12px !important;
   box-shadow:
     0 -15px 38px rgba(0, 0, 0, 0.5),
@@ -3236,7 +3274,7 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
 .mobile-pdf-users-sheet {
   /* Standard, like every other phone panel (pass 7). Was 276px + inset. */
   --mobile-sheet-height: var(--mobile-panel-standard);
-  padding: 0 16px calc(12px + var(--mobile-bottom-inset));
+  padding: 0 16px 12px;
   color: var(--text-1);
 }
 
