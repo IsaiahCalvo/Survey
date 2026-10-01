@@ -18,7 +18,7 @@ import SpacesPanel from './sidebar/SpacesPanel';
 import SyncStatusChip from './components/SyncStatusChip';
 import PresenceAvatars from './components/PresenceAvatars';
 import RevisionsPanel from './components/revisions/RevisionsPanel';
-import { SHEET_EXPANDED_HEIGHT, useMobileSheetMotion } from './mobile/useMobileSheetMotion';
+import { useMobileSheetMotion } from './mobile/useMobileSheetMotion';
 import { useTooltip } from './components/Tooltip';
 import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH } from './viewerShared';
 import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
@@ -337,9 +337,10 @@ const PDFSidebar = React.forwardRef(({
   // PASS 7 (2026-09-21, DESIGN-SYSTEM.md "Phone bottom panels"): the browse
   // panels are the ones with content that can run long, so they are the ones
   // that can be pulled taller: Pages, Search and Bookmarks (the hub tray) and
-  // Spaces. Each opens at Standard, climbs to Expanded (70%) on a pull up, and
-  // to full screen on a second pull; pulling down steps back one height at a
-  // time. History (a long feed since option A, 2026-09-28) opts in too.
+  // Spaces. Each opens at Standard and has one taller height, Full (owner
+  // 2026-10-01: two heights, "the small one and the big one"): a pull up goes
+  // there, a pull down comes back. History (a long feed since option A,
+  // 2026-09-28) opts in too.
   // 2026-09-17: the hook also owns the slide-UP entrance (the CSS keyframe that
   // used to do it fought this transform), so it needs the sheet's open state —
   // this element stays mounted and only toggles .is-collapsed.
@@ -351,11 +352,9 @@ const PDFSidebar = React.forwardRef(({
     backdropStyle: sheetBackdropStyle,
     sheetProps,
     requestClose: requestSheetClose,
-    expanded: sheetExpanded,
     fullscreen: sheetFullscreen,
   } = useMobileSheetMotion(closePanel, {
       expandable: browsePanel,
-      fullscreenable: browsePanel,
       open: mobileMode && !isCollapsed,
       // Owner 2026-10-01: a dock switch between the hub, Spaces and History
       // keeps the sheet up and fades the new panel in. The hub's own three
@@ -379,7 +378,7 @@ const PDFSidebar = React.forwardRef(({
   // depending on which panel was in it. Every panel inside is flex:1, so the one
   // height simply lets each fill the tray and its empty state centre itself (see
   // .mobile-bookmark-empty / .mobile-search-empty). A long list is what the
-  // Expanded and full-screen detents above are for.
+  // Full height above is for.
   const MOBILE_PANEL_STANDARD = 'var(--mobile-panel-standard)';
 
   return (
@@ -407,17 +406,12 @@ const PDFSidebar = React.forwardRef(({
       // Phone: swipe down anywhere on the sheet + the keyboard lift (owner
       // 2026-09-30, see useMobileSheetMotion).
       {...(mobileMode ? sheetProps : null)}
-      className={`${mobileMode ? 'mobile-pdf-sheet ' : ''}${mobileMode && sheetExpanded ? 'is-expanded ' : ''}${mobileMode && sheetFullscreen ? 'is-fullscreen ' : ''}${isCollapsed ? 'is-collapsed' : ''}`} style={{
-      // The tall detent overrides the content-measured height. It has to be
-      // written here, not from the stylesheet: this inline custom property
-      // always wins over a rule, so a CSS-only override would be ignored.
-      // The taller detents override the Standard height. They have to be written
-      // here, not from the stylesheet: this inline custom property always wins
-      // over a rule, so a CSS-only override would be ignored.
+      className={`${mobileMode ? 'mobile-pdf-sheet ' : ''}${mobileMode && sheetFullscreen ? 'is-fullscreen ' : ''}${isCollapsed ? 'is-collapsed' : ''}`} style={{
+      // The two heights (owner 2026-10-01: "the small one and the big one").
+      // Full has to be written here, not only from the stylesheet: this inline
+      // custom property always wins over a non-important rule.
       '--mobile-sheet-height': mobileMode
-        ? (sheetFullscreen
-          ? 'calc(100dvh - var(--app-chrome-top, 34px) - 18px)'
-          : (sheetExpanded ? SHEET_EXPANDED_HEIGHT : MOBILE_PANEL_STANDARD))
+        ? (sheetFullscreen ? 'var(--mobile-panel-full)' : MOBILE_PANEL_STANDARD)
         : undefined,
       width: mobileMode ? (isCollapsed ? '0px' : '100%') : (isCollapsed ? '48px' : '272px'),
       height: '100%',

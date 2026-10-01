@@ -4,7 +4,7 @@ import {
   KEYBOARD_MOTION_MS,
   SHEET_AT_REST_ATTR,
   isKeyboardEditable,
-} from './keyboardViewport';
+} from './keyboardViewport.js';
 
 /*
  * Mobile bottom-sheet motion system — one motion source per sheet.
@@ -23,22 +23,15 @@ import {
  *     vanished in mid-travel instead of finishing its slide.
  *  4. 170-180ms ease-out at phone scale reads as abrupt.
  *
- * Now the hook owns the whole arc and writes ONLY transform (+ its transition),
- * never top/height, so it still never competes with the pdf.js render:
+ * Now the hook owns the whole arc, and it only ever moves the sheet with
+ * `transform` (open / close, from React) and `translate` (drag, settle, height
+ * glides - written straight to the element, see the MOTION ENGINE below):
  *  - open: parked at translateY(100%) for one frame, then a single slide to 0
  *    over SHEET_OPEN_MS with an iOS-style decelerating curve.
  *  - close: one slide to translateY(100%) over SHEET_CLOSE_MS, at full opacity,
  *    and the real unmount/collapse fires only after that finishes.
- *  - drag: finger-follow via translateY (demo SurveySetupSheet.tsx:51-96 /
- *    inv-demo §17); release past dy>82px or vy>0.65px/ms dismisses, otherwise a
- *    short lightly-underdamped spring-back.
- *  - second detent (opt-in via options.expandable): dragging UP past 48px, or
- *    flicking up faster than the dismiss velocity, snaps the sheet to a taller
- *    70%-of-screen detent; dragging down from there returns it to its compact
- *    height before a further pull can dismiss it. The detent itself is still
- *    the sheet's CSS height; since 2026-10-01 the step between two heights is
- *    eased by the RESIZE GLIDE below (a custom-property animation on the
- *    fixed-position sheet only - its inline style stays transform-only).
+ *  - drag: the sheet's top edge stays under the finger, up and down; release
+ *    settles to the nearest height with the finger's speed (below).
  *  - prefers-reduced-motion short-circuits every easing. Finger-follow drag is
  *    direct manipulation, so it stays.
  */
@@ -61,75 +54,67 @@ export const SHEET_CLOSE_MS = 220;
 export const SHEET_CLOSE_EASING = SHEET_OPEN_EASING;
 // Small buffer so the final frame of the close paints before the real unmount.
 export const SHEET_CLOSE_UNMOUNT_MS = SHEET_CLOSE_MS + 30;
-// UX 2026-09-16 (phone reach pass): upward travel that commits to the taller
-// detent. Half the dismiss distance, because expanding is the cheap, reversible
-// direction. Reference: Drawboard PDF's phone page list opens to roughly two
-// thirds of the screen rather than one fixed short tray.
-export const SHEET_EXPAND_DY = 48; // px of upward travel
-export const SHEET_EXPANDED_HEIGHT = '70dvh';
+
 /*
- * PASS 7 (2026-09-21, DESIGN-SYSTEM.md "Phone bottom panels"): THREE named
- * heights, and a browse panel can climb two of them.
+ * TWO HEIGHTS (owner 2026-10-01, iPhone: "We have three different heights for
+ * the bottom panel; I think we can get away with two: the small one and the big
+ * one"). Supersedes PASS 7's Standard / Expanded (70%) / Full.
  *
- *   0 Standard   448px + the bottom safe area. Every browse panel opens here.
- *   1 Expanded   70% of the visible screen. Reached only by pulling up.
- *   2 Full       the app area below the status bar. A second pull up.
+ *   Standard   448px + the bottom safe area. Every browse panel opens here.
+ *   Full       the app area below the status bar, down to the dock.
  *
- * Pulling down steps Full -> Expanded -> Standard -> closed, so a panel is never
- * lost in one gesture from the top. Only the browse panels (Pages, Search,
- * Bookmarks, Spaces, Survey, Version history, Active users) opt into this.
+ * A browse panel (Pages, Search, Bookmarks, Spaces, Version history, Survey)
+ * passes `expandable` and can be pulled between the two; starting to type in
+ * one takes it to Full. A SETTINGS sheet (colour, tool "...", text formatting)
+ * and Active users have one height and never grow.
  *
- * RULED CHANGE 2026-09-22 (owner): these three heights are for BROWSE panels
- * only. A SETTINGS sheet - the color picker, the tool "..." sheet, the text
- * formatting sheet - is exactly as tall as its content (handle + header + body
- * + the bottom safe area) and never taller, so it names no height here: its CSS
- * is `height: auto` under the same max-height cap. Nothing in this hook has to
- * change for that, because the hook writes ONLY transform - translateY(100%)
- * parks a content-height sheet fully offscreen just as it does a 448px one, and
- * the dismiss test is finger travel and velocity, never a fraction of the
- * height. A settings sheet still passes expandable:false, which is now the
- * stronger statement that it has no taller detent to reach at all.
+ * A release lands on the NEAREST of the two heights to where the throw would
+ * carry the sheet (its top edge plus SHEET_PROJECT_MS of the finger's speed),
+ * and a firm flick (SHEET_DISMISS_VY) always goes the way it was thrown. A pull
+ * down past SHEET_DISMISS_DY (or a downward flick) from Standard closes the
+ * sheet; from Full it steps down to Standard, unless the sheet passed
+ * `pullDownCloses` (the Survey panel closes from any height).
  */
 export const SHEET_DETENT_STANDARD = 0;
-export const SHEET_DETENT_EXPANDED = 1;
-export const SHEET_DETENT_FULL = 2;
-// spring-back settle approximating damping24/stiffness260/mass.75 — a brief
-// overshoot then settle; kept subtle so it reads as a snap, not a bounce.
+export const SHEET_DETENT_FULL = 1;
+// How far ahead (ms of the finger's speed) a release looks to pick the nearest
+// height - a gentle throw carries past the half-way mark, a drag that stops
+// does not.
+export const SHEET_PROJECT_MS = 180;
+// Upward travel that alone (a slow pull) is still "nearest Standard". Kept for
+// the guard tests' vocabulary; the nearest-height rule above decides.
+export const SHEET_EXPAND_DY = 48;
+
+/*
+ * SETTLE (owner 2026-10-01: "when I swipe up and down to make it grow, that
+ * animation needs to be way smoother"). After a release the sheet runs a
+ * critically damped spring from where the finger left it, starting at the
+ * finger's own speed, so there is no speed step at the hand-off and no bounce
+ * at the end. SHEET_SPRING_OMEGA (rad/s) puts a 270px Standard <-> Full move at
+ * ~300ms; shorter moves finish sooner. The spring is precomputed into
+ * keyframes for the Web Animations API, so it runs on the compositor - no
+ * layout and no React render per frame.
+ */
+export const SHEET_SPRING_OMEGA = 27;
+export const SHEET_SPRING_MIN_MS = 140;
+export const SHEET_SPRING_MAX_MS = 420;
+// The old CSS spring-back, still what a plain glide falls back to under the
+// resize clock (SHEET_RESIZE_*).
 export const SHEET_SPRING_MS = 260;
 export const SHEET_SPRING_EASING = 'cubic-bezier(0.22, 1.15, 0.36, 1)';
 
 /*
- * OWNER 2026-10-01 (iPhone): "tapping into the search input makes the sheet SNAP
- * to a larger size" - and the same for every height change that is not a drag:
- * a detent step, typing (the sheet rises onto the keyboard and to Full), the
- * keyboard going away, the Survey accordion's full screen.
- *
- * The RESIZE GLIDE. Whatever changes the sheet's box - its detent class, its
- * --mobile-sheet-height, the keyboard lift (html[data-keyboard-open] and
- * --keyboard-inset), or its own content - the new box is laid out at once and
- * the sheet's HEIGHT then glides from where its top edge was to where it now
- * is (SHEET_RESIZE_MS on the entrance's iOS curve). Height, not a transform:
- * unless the keyboard moved, the bottom edge is already where it belongs (on
- * the dock), so only the top edge travels.
- *
- * The keyboard (owner 2026-10-01: "whenever the keyboard comes up it needs to
- * come up smooth"): the lift still lands in layout in the focus task
- * (keyboardViewport.js step 4), but on screen BOTH edges now glide there - the
- * bottom edge with a `translate` that starts at the dock and ends on the
- * keyboard - on the keyboard's own clock (KEYBOARD_MOTION_MS / _EASING), so the
- * sheet rises with the keyboard and settles back down with it. The instant
- * lift used to be what kept WebKit from panning the page; that pan is now
- * prevented at its source (keyboardViewport.js step 6). The page itself is
- * never moved.
- *
- * Mechanics: the Web Animations API animates a registered custom property
- * (--sheet-glide-height, @property in mobilePdfViewer.css) while
- * [data-sheet-glide] makes the sheet's height read it. It never writes the
- * inline `transition` that the callers and this hook's transform phases own,
- * so the two compose: a detent step that lands with a spring-back glides on the
- * spring's own curve and the top edge still moves as one.
+ * HEIGHT GLIDE (owner 2026-10-01: "tapping into the search input makes the
+ * sheet SNAP to a larger size"). Whatever changes a sheet's resting box - its
+ * height class, --mobile-sheet-height, the keyboard lift of a settings sheet,
+ * or its own content - the new box is laid out at once and the sheet then
+ * GLIDES there with `translate` only (a FLIP): it is moved back to where its
+ * top edge was and slides to rest. Getting SHORTER, the old height is held
+ * (data-sheet-hold) for the slide so the bottom edge never lifts off the dock,
+ * and is let go on the last frame, when the two boxes coincide on screen. No
+ * height animates, so nothing inside the sheet is laid out per frame.
  */
-export const SHEET_RESIZE_MS = 240;
+export const SHEET_RESIZE_MS = 260;
 export const SHEET_RESIZE_EASING = SHEET_OPEN_EASING;
 
 /*
@@ -138,7 +123,7 @@ export const SHEET_RESIZE_EASING = SHEET_OPEN_EASING;
  * switch behaves like a tab switch under an iOS sheet (Find My, Maps): the
  * sheet STAYS where it is and its content fades through to the new panel
  * (SHEET_SWAP_MS); if the new panel stands at another height, the top edge
- * glides there (the resize glide). The dim behind it never changes. A drop and
+ * glides there (the height glide). The dim behind it never changes. A drop and
  * a rise would read as two separate events, take twice as long, and flash the
  * page between them; a fade-through keeps the place and the context.
  * - One sheet element (Pages / Search / Bookmarks <-> Spaces <-> History in
@@ -158,6 +143,15 @@ export const SHEET_SWAP_MS = 200;
 const SHEET_HANDOVER_OPEN_WAIT_MS = 160;
 const SHEET_HANDOVER_CLOSE_WAIT_MS = 300;
 
+// The sheet's height hold (see HEIGHT GLIDE and the drag): 'full' | 'standard'
+// lay it out at that named height, 'px' at --sheet-hold-height. CSS in
+// mobilePdfViewer.css; data-sheet-at-rest lifts it for a measurement.
+const SHEET_HOLD_ATTR = 'data-sheet-hold';
+// While the sheet glides with its bottom edge above where it will rest (a
+// settings sheet coming down off the keyboard), paint the sheet's colour under
+// it so the page never shows through behind the falling keyboard.
+const SHEET_FILL_ATTR = 'data-sheet-fill';
+
 // Every mounted sheet, for the hand-over above.
 const sheetRegistry = new Set();
 // One "tick" per animation frame: a close and an open in the same tick are one
@@ -175,19 +169,52 @@ function currentSheetTick() {
   return sheetTick;
 }
 
-// The sheet's laid-out box, without the hook's own translateY.
-function sheetLayoutBox(el) {
-  if (!el?.getBoundingClientRect) return null;
-  const rect = el.getBoundingClientRect();
-  if (!rect.height) return null;
-  let ty = 0;
+// The vertical part of the sheet's React-owned transform (open / close).
+function transformY(el) {
   try {
     const transform = el.ownerDocument?.defaultView?.getComputedStyle?.(el).transform;
-    if (transform && transform !== 'none') ty = new DOMMatrixReadOnly(transform).m42 || 0;
+    if (transform && transform !== 'none') return new DOMMatrixReadOnly(transform).m42 || 0;
   } catch {
-    ty = 0;
+    return 0;
   }
-  return { top: rect.top - ty, bottom: rect.bottom - ty, height: rect.height };
+  return 0;
+}
+
+// The vertical part of the engine's own `translate` (inline or animated).
+function translateY(el) {
+  const value = el.ownerDocument?.defaultView?.getComputedStyle?.(el).translate;
+  if (!value || value === 'none') return 0;
+  return parseFloat(String(value).split(' ')[1]) || 0;
+}
+
+/*
+ * A critically damped spring from `from` to `to`, starting at `velocity`
+ * (px/ms, same sign as the motion), sampled into Web Animations keyframes for
+ * `translate` (and as plain { y, offset } points). No frame goes below `min`:
+ * a held-tall sheet may never rise past Full, or its foot would lift off the
+ * dock.
+ */
+export function springKeyframes(from, to, velocity = 0, { omega = SHEET_SPRING_OMEGA, min = -Infinity } = {}) {
+  const w = omega / 1000; // per ms
+  const x0 = from - to;
+  const v0 = Number.isFinite(velocity) ? velocity : 0;
+  const at = (t) => (x0 + (v0 + w * x0) * t) * Math.exp(-w * t);
+  const speed = (t) => (v0 - w * (v0 + w * x0) * t) * Math.exp(-w * t);
+  const step = 1000 / 60;
+  let end = SHEET_SPRING_MIN_MS;
+  for (let t = step; t <= SHEET_SPRING_MAX_MS; t += step) {
+    end = t;
+    if (Math.abs(at(t)) < 0.5 && Math.abs(speed(t)) < 0.05 && t >= SHEET_SPRING_MIN_MS) break;
+  }
+  const count = Math.max(2, Math.round(end / step));
+  const points = [];
+  for (let i = 0; i <= count; i += 1) {
+    const t = (end * i) / count;
+    const y = i === count ? to : Math.max(min, to + at(t));
+    points.push({ y: Math.round(y * 100) / 100, offset: i / count });
+  }
+  const frames = points.map(({ y, offset }) => ({ translate: `0 ${y}px`, offset }));
+  return { frames, points, ms: Math.round(end) };
 }
 
 // Sheets live in the browser only; useLayoutEffect keeps the parked frame from
@@ -220,10 +247,19 @@ function prefersReducedMotion() {
  *   - a touch that starts on a drag grip, a slider, the focused text field, or
  *     anything that set `touch-action: none` for its own gesture belongs to
  *     that control - a reorder from a grip is never a dismiss.
- * Upward: a pull up that starts outside a scrolling list steps an expandable
- * sheet up a detent, as the handle always did.
- * Release settles with the finger's velocity: a flick carries the sheet off at
- * the speed it was thrown (SHEET_FLING_EASING starts at 3x the average speed).
+ * Upward: a pull up that starts outside a scrolling list lifts an expandable
+ * sheet toward Full, as the handle always did.
+ *
+ * OWNER 2026-10-01 ("way smoother"): what made the drag lag was a React render
+ * of the whole panel (PDFSidebar, the Survey rail) on every touchmove, and a
+ * pull UP that did not move the sheet at all until the finger lifted - then the
+ * sheet's height animated, re-laying out every row on every frame. Now a drag
+ * writes one `translate` to the sheet per move and nothing else: no React
+ * state, no layout. An expandable sheet is laid out at Full for the drag
+ * (data-sheet-hold, one layout when the drag takes hold) and pushed down to
+ * where it stands, so pulling it up only reveals more of it from behind the
+ * dock. The release springs (SETTLE above) and the hold is let go on the last
+ * frame, where the held and the resting box coincide on screen.
  */
 export const SHEET_SLOP_PX = 8;
 // Starts at slope 3, so a close of `ms = 3 * distance / velocity` leaves the
@@ -245,6 +281,8 @@ const FOREIGN_GESTURE_SELECTOR = [
   'input[type="range"]',
   '[role="slider"]',
 ].join(',');
+
+const BACKDROP_SELECTOR = '.mobile-pdf-sheet-backdrop, .mobile-pdf-colorpicker-backdrop';
 
 function nowMs(event) {
   return event?.timeStamp || (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -297,13 +335,13 @@ function suppressNextClick(doc) {
  * @param {object} [options]
  * @param {(event: TouchEvent) => boolean} [options.canStartDrag]  extra guard:
  *   return false to keep a touch from ever dragging the sheet.
- * @param {boolean} [options.expandable]  opt this sheet into the taller second
- *   detent (the Pages / Search / Bookmarks tray). Off for everything else.
- * @param {boolean} [options.fullscreenable]  also allow the THIRD step, full
- *   screen, from Expanded. Browse panels only; requires expandable.
+ * @param {boolean} [options.expandable]  a browse panel: it can be pulled from
+ *   Standard up to Full, and rises to Full when you type in it.
+ * @param {boolean} [options.fullscreenable]  accepted for older callers; with
+ *   two heights an expandable sheet's taller height IS Full.
  * @param {boolean} [options.pullDownCloses]  a downward pull past the dismiss
- *   threshold closes the sheet from ANY height instead of stepping down one
- *   detent first (the Survey panel, owner 2026-10-01: one swipe closes it and
+ *   threshold closes the sheet from ANY height instead of stepping down to
+ *   Standard first (the Survey panel, owner 2026-10-01: one swipe closes it and
  *   reopening restores where you were).
  * @param {boolean} [options.open]  whether the sheet is currently shown. Drives
  *   the slide-up entrance. Sheets that mount only while open can leave this at
@@ -316,10 +354,10 @@ function suppressNextClick(doc) {
  *
  * Spread the returned `sheetProps` on the sheet's root element: it attaches
  * the swipe-anywhere gesture and marks the sheet (data-mobile-sheet) for the
- * keyboard lift in mobilePdfViewer.css.
+ * keyboard rules in mobilePdfViewer.css.
  */
 export function useMobileSheetMotion(onClose, options = {}) {
-  const { canStartDrag, contentKey, expandable = false, fullscreenable = false, open = true, pullDownCloses = false } = options;
+  const { canStartDrag, contentKey, expandable = false, open = true, pullDownCloses = false } = options;
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const closeTimerRef = useRef(0);
@@ -328,21 +366,20 @@ export function useMobileSheetMotion(onClose, options = {}) {
   const [swapSeq, setSwapSeq] = useState(0);
   // True while a sheet that took over from another stays open (backdropStyle).
   const [backdropInstant, setBackdropInstant] = useState(false);
-  // The resize glide's handle (installed with the sheet element, below).
-  const glideRef = useRef(null);
+  // The MOTION ENGINE (installed with the sheet element, below): drag, settle,
+  // height glides - everything that moves the sheet with `translate`.
+  const engineRef = useRef(null);
   // This sheet's entry in the hand-over registry. Stable object; its methods
   // are refreshed every render so they always see the latest state setters.
   const registryRef = useRef(null);
   if (!registryRef.current) registryRef.current = { openTick: -1, closeTick: -1, closeFromTop: null };
-  const [dragY, setDragY] = useState(0);
   const [closing, setClosing] = useState(false);
   // { ms, easing } of a velocity-matched close, or null for the plain slide.
   const [closeMotion, setCloseMotion] = useState(null);
-  const [springing, setSpringing] = useState(false);
-  // 0 Standard | 1 Expanded | 2 Full screen. `expanded` below is kept as the
-  // boolean every existing caller reads: it means "taller than Standard".
+  // 0 Standard | 1 Full. `expanded` / `fullscreen` below are kept as the
+  // booleans existing callers read; with two heights both mean "at Full".
   const [detent, setDetent] = useState(SHEET_DETENT_STANDARD);
-  const maxDetent = fullscreenable ? SHEET_DETENT_FULL : SHEET_DETENT_EXPANDED;
+  const maxDetent = expandable ? SHEET_DETENT_FULL : SHEET_DETENT_STANDARD;
   // null = idle | 'parked' = held offscreen for one frame | 'settling' = sliding up
   const [enterPhase, setEnterPhase] = useState(() => (
     open && !prefersReducedMotion() ? 'parked' : null
@@ -355,12 +392,8 @@ export function useMobileSheetMotion(onClose, options = {}) {
     setSheetEl(el);
   }, []);
   const gestureRef = useRef({ mode: null });
-  // The sheet's height when a drag took hold, so the backdrop's dim can follow
-  // the finger as a fraction of the way off (see backdropStyle below).
-  const dragHeightRef = useRef(0);
   // { from, to } while a sheet is raised for typing (see onFocusIn below).
   const typingRestoreRef = useRef(null);
-  const springTimerRef = useRef(0);
 
   // PANEL TO PANEL hand-over (see the header). `registry` is this sheet's entry.
   const registry = registryRef.current;
@@ -375,10 +408,9 @@ export function useMobileSheetMotion(onClose, options = {}) {
     registry.closeTick = -1;
     registry.closeFromTop = null;
     registry.handingOver = false;
+    engineRef.current?.reset();
     setClosing(false);
     setCloseMotion(null);
-    setDragY(0);
-    setSpringing(false);
     setDetent(SHEET_DETENT_STANDARD);
     setEnterPhase(null);
     onCloseRef.current?.();
@@ -390,12 +422,10 @@ export function useMobileSheetMotion(onClose, options = {}) {
     // enterPhase below clears it): the swap's own render can land a frame or
     // two after this call, and the backdrop must stay clear until it does.
     registry.openTick = -1;
-    setDragY(0);
-    setSpringing(false);
     setEnterPhase('swap');
     setSwapSeq((n) => n + 1);
     setBackdropInstant(true);
-    glideRef.current?.glideFrom(fromTop);
+    engineRef.current?.glideFrom(fromTop);
   };
   registry.vanish = finishCloseNow;
   registry.swapIn = beginSwapIn;
@@ -471,6 +501,7 @@ export function useMobileSheetMotion(onClose, options = {}) {
   useSheetLayoutEffect(() => {
     if (open === wasOpenRef.current) return;
     wasOpenRef.current = open;
+    engineRef.current?.reset();
     if (!open) {
       registry.openTick = -1;
       registry.awaitingHandover = false;
@@ -478,8 +509,6 @@ export function useMobileSheetMotion(onClose, options = {}) {
       setBackdropInstant(false);
       return;
     }
-    setDragY(0);
-    setSpringing(false);
     // Replacing a sheet that is leaving in this same tick: take its place.
     if (claimSwap()) return;
     setEnterPhase(prefersReducedMotion() ? null : 'parked');
@@ -528,7 +557,7 @@ export function useMobileSheetMotion(onClose, options = {}) {
   /**
    * Slide the sheet off and then fire the real close. Buttons and backdrops
    * call it bare (their click event is ignored); a released drag passes
-   * { velocity, travel } so the slide continues at the speed of the flick.
+   * { velocity } so the slide continues at the speed of the flick.
    */
   const requestClose = useCallback((fling) => {
     if (closing || registry.handingOver) return;
@@ -540,15 +569,14 @@ export function useMobileSheetMotion(onClose, options = {}) {
       return;
     }
     if (prefersReducedMotion()) {
-      setDragY(0);
-      setSpringing(false);
+      engineRef.current?.reset();
       setDetent(SHEET_DETENT_STANDARD);
       onClose?.();
       return;
     }
     const sheet = sheetElRef.current;
     const tick = currentSheetTick();
-    // A released drag passes { velocity, travel }; a dock switch may pass
+    // A released drag passes { velocity }; a dock switch may pass
     // { handover: true }; buttons pass their click event (ignored).
     const dragged = typeof fling?.velocity === 'number';
     if (!dragged && tracksOpen) {
@@ -580,18 +608,18 @@ export function useMobileSheetMotion(onClose, options = {}) {
     }
     let motion = null;
     const velocity = typeof fling?.velocity === 'number' ? fling.velocity : 0;
-    const travel = typeof fling?.travel === 'number' ? fling.travel : 0;
-    const height = sheetElRef.current?.offsetHeight || 0;
+    // The close slides the sheet by its own laid-out height (translateY(100%)
+    // on top of wherever the drag left it).
+    const height = sheet?.offsetHeight || 0;
     if (velocity > 0 && height > 0) {
-      const remaining = Math.max(0, height - travel);
       const ms = Math.round(Math.min(SHEET_FLING_MAX_MS, Math.max(
         SHEET_FLING_MIN_MS,
-        (3 * remaining) / Math.max(velocity, 0.5),
+        (3 * height) / Math.max(velocity, 0.5),
       )));
       motion = { ms, easing: SHEET_FLING_EASING };
     }
     // keep the sheet mounted + slide it down, then fire the real close
-    setSpringing(false);
+    engineRef.current?.stopForClose();
     setEnterPhase(null);
     setCloseMotion(motion);
     setClosing(true);
@@ -599,9 +627,9 @@ export function useMobileSheetMotion(onClose, options = {}) {
     closeTimerRef.current = window.setTimeout(() => {
       registry.closeTick = -1;
       registry.closeFromTop = null;
+      engineRef.current?.reset();
       setClosing(false);
       setCloseMotion(null);
-      setDragY(0);
       setDetent(SHEET_DETENT_STANDARD);
       onClose?.();
     }, motion ? motion.ms + (SHEET_CLOSE_UNMOUNT_MS - SHEET_CLOSE_MS) : SHEET_CLOSE_UNMOUNT_MS);
@@ -610,62 +638,48 @@ export function useMobileSheetMotion(onClose, options = {}) {
   }, [closing, onClose, open, tracksOpen]);
   requestCloseRef.current = requestClose;
 
-  const springBack = useCallback(() => {
-    if (prefersReducedMotion()) {
-      setDragY(0);
-      return;
-    }
-    setSpringing(true);
-    setDragY(0);
-    window.clearTimeout(springTimerRef.current);
-    springTimerRef.current = window.setTimeout(() => setSpringing(false), SHEET_SPRING_MS);
-  }, []);
-  useEffect(() => () => window.clearTimeout(springTimerRef.current), []);
+  /*
+   * Where a released drag goes. `drag` is the engine's record of the drag:
+   * the start height, the resting tops of Standard / Full, and where the top
+   * edge is now. Returns 'close' or a detent.
+   */
+  const chooseRelease = useCallback((drag, vy) => {
+    const restTop = drag.start === SHEET_DETENT_FULL ? drag.topFull : drag.topStandard;
+    const travel = drag.top - restTop; // + is down
+    const canClose = !expandable || drag.start === SHEET_DETENT_STANDARD || pullDownCloses;
+    const pushedBack = vy < -0.25;
+    if (canClose && travel > 0 && !pushedBack && (travel > SHEET_DISMISS_DY || vy > SHEET_DISMISS_VY)) return 'close';
+    if (!expandable) return SHEET_DETENT_STANDARD;
+    if (-vy > SHEET_DISMISS_VY) return SHEET_DETENT_FULL;
+    if (vy > SHEET_DISMISS_VY) return SHEET_DETENT_STANDARD;
+    // Nearest height to where the throw is heading.
+    const projected = drag.top + Math.max(-3, Math.min(3, vy)) * SHEET_PROJECT_MS;
+    return Math.abs(projected - drag.topFull) < Math.abs(projected - drag.topStandard)
+      ? SHEET_DETENT_FULL
+      : SHEET_DETENT_STANDARD;
+  }, [expandable, pullDownCloses]);
 
-  const release = useCallback((travel, vy) => {
+  const release = useCallback((vy, cancelled) => {
+    const engine = engineRef.current;
+    const drag = engine?.dragState();
+    if (!engine || !drag) return;
     // You moved the sheet yourself: it stays where you put it after typing.
-    if (travel !== 0) typingRestoreRef.current = null;
-    // Upward release on an expandable sheet: step UP one detent, at most to the
-    // sheet's own ceiling (Expanded, or Full screen for a browse panel).
-    if (expandable && travel < 0) {
-      if (-travel > SHEET_EXPAND_DY || -vy > SHEET_DISMISS_VY) {
-        setDetent((current) => Math.min(maxDetent, current + 1));
-      }
-      setDragY(0);
+    if (Math.abs(drag.top - drag.startTop) >= 1) typingRestoreRef.current = null;
+    const choice = cancelled ? drag.start : chooseRelease(drag, vy);
+    if (choice === 'close') {
+      engine.endDragForClose();
+      requestClose({ velocity: vy });
       return;
     }
-    const dy = Math.max(0, travel);
-    if (dy <= 0) {
-      setDragY(0);
-      return;
-    }
-    // Pulled down and then pushed back up before letting go: stay.
-    if (vy < -0.25) {
-      springBack();
-      return;
-    }
-    if (dy > SHEET_DISMISS_DY || vy > SHEET_DISMISS_VY) {
-      // From a tall detent a downward pull steps back ONE height instead of
-      // dismissing, so Full screen takes three pulls to close and a panel is
-      // never lost in one gesture. The transform springs home on the same
-      // 260ms curve the height steps down on, so the top edge moves as one.
-      // A sheet that keeps its place when reopened (pullDownCloses) closes
-      // from any height in one pull.
-      if (detent > SHEET_DETENT_STANDARD && !pullDownCloses) {
-        setDetent((current) => current - 1);
-        springBack();
-        return;
-      }
-      requestClose({ velocity: vy, travel: dy });
-      return;
-    }
-    springBack();
-  }, [detent, expandable, maxDetent, pullDownCloses, requestClose, springBack]);
+    if (choice !== detent) setDetent(choice);
+    engine.settle(choice, cancelled ? 0 : vy);
+  }, [chooseRelease, detent, requestClose]);
 
   // Everything the native listeners read, fresh every render.
   const liveRef = useRef(null);
-  liveRef.current = { canStartDrag, closing, detent, enterPhase, expandable, maxDetent, open, release, springing };
+  liveRef.current = { canStartDrag, closing, detent, enterPhase, expandable, maxDetent, open, pullDownCloses, release };
 
+  // ---------------------------------------------------------------- the gesture
   useEffect(() => {
     const sheet = sheetEl;
     if (!sheet) return undefined;
@@ -686,6 +700,15 @@ export function useMobileSheetMotion(onClose, options = {}) {
       g.lastT = nowMs(event);
       g.vy = 0;
       g.scrollers = scrollersBetween(event.target, sheet);
+    };
+
+    const engage = (y) => {
+      g.mode = 'drag';
+      g.anchorY = y;
+      engineRef.current?.beginDrag();
+      // A grab during the entrance takes over immediately (the engine has
+      // already folded the entrance's transform into its own translate).
+      if (liveRef.current.enterPhase) setEnterPhase(null);
     };
 
     const onTouchMove = (event) => {
@@ -714,65 +737,38 @@ export function useMobileSheetMotion(onClose, options = {}) {
             g.mode = 'watch';
             return;
           }
-          g.mode = 'drag';
-          g.anchorY = y;
-        } else if (live.expandable && live.detent < live.maxDetent && g.scrollers.length === 0) {
-          g.mode = 'expand';
-          g.anchorY = g.y0;
-        } else {
+        } else if (!(live.expandable && live.detent < live.maxDetent && g.scrollers.length === 0)) {
           g.mode = 'ignore';
           return;
         }
-        dragHeightRef.current = sheet.offsetHeight || 0;
-        // A grab during the entrance takes over immediately.
-        setEnterPhase(null);
-        setSpringing(false);
+        // The sheet takes the finger where it is now, so the edge does not
+        // jump by the slop distance.
+        engage(y);
       }
 
       if (g.mode === 'watch') {
         // The hand-over: the list has reached its top and the finger is still
         // pulling down - from here on the sheet follows it.
-        if (y > prevY && g.scrollers.every((el) => el.scrollTop <= 0)) {
-          g.mode = 'drag';
-          g.anchorY = y;
-          dragHeightRef.current = sheet.offsetHeight || 0;
-          setEnterPhase(null);
-          setSpringing(false);
-        } else {
-          return;
-        }
+        if (y > prevY && g.scrollers.every((el) => el.scrollTop <= 0)) engage(y);
+        else return;
       }
 
       if (event.cancelable) event.preventDefault();
-      if (g.mode === 'drag') {
-        // Note the sheet is never translated upward: it is anchored to the
-        // bottom, so moving it up would open a gap beneath it.
-        setDragY(Math.max(0, y - g.anchorY));
-      }
+      engineRef.current?.dragBy(y - g.anchorY);
     };
 
     const onTouchEnd = (event) => {
       const mode = g.mode;
       g.mode = null;
-      if (mode !== 'drag' && mode !== 'expand') return;
-      // A down-drag pushed back above where it started is a spring-back, not
-      // a pull up; a pull up is never a dismiss.
-      const travel = mode === 'drag'
-        ? Math.max(0, g.lastY - g.anchorY)
-        : Math.min(0, g.lastY - g.anchorY);
+      if (mode !== 'drag') return;
       const vy = nowMs(event) - g.lastT > SHEET_VELOCITY_STALE_MS ? 0 : g.vy;
-      if (Math.abs(travel) >= SHEET_SLOP_PX || mode === 'drag') suppressNextClick(sheet.ownerDocument);
-      if (event.type === 'touchcancel') {
-        liveRef.current.release(0, 0);
-        return;
-      }
-      liveRef.current.release(travel, vy);
+      suppressNextClick(sheet.ownerDocument);
+      liveRef.current.release(vy, event.type === 'touchcancel');
     };
 
-    // Owner 2026-09-30: start typing in a browse sheet and it rises to its
-    // tallest height, so the field and its list sit in all the room left above
-    // the keyboard (keyboardViewport.js lifts the sheet onto the keyboard and
-    // scrolls the field into view).
+    // Owner 2026-09-30: start typing in a browse sheet and it rises to Full, so
+    // the field and its list sit in all the room left above the keyboard
+    // (keyboardViewport.js scrolls the field into view).
     const onFocusIn = (event) => {
       const live = liveRef.current;
       if (!live.open || !live.expandable || !isKeyboardEditable(event.target)) return;
@@ -792,6 +788,9 @@ export function useMobileSheetMotion(onClose, options = {}) {
         const active = sheet.ownerDocument?.activeElement;
         if (!restore || (sheet.contains(active) && isKeyboardEditable(active))) return;
         typingRestoreRef.current = null;
+        // Closing (the tap that closed it also took the focus): it slides off
+        // at the height it has, and reopens at Standard anyway.
+        if (liveRef.current?.closing) return;
         setDetent((current) => (current === restore.to ? restore.from : current));
       });
     };
@@ -814,145 +813,455 @@ export function useMobileSheetMotion(onClose, options = {}) {
     };
   }, [sheetEl]);
 
-  // The RESIZE GLIDE (see the header). Watches everything that can move the
-  // sheet's box and glides its height from the old top edge to the new one.
+  /*
+   * ------------------------------------------------------------ MOTION ENGINE
+   * Owns the sheet's `translate` (never `transform`, which is React's open /
+   * close slide - the two add up), the height hold, the backdrop's dim during a
+   * drag, and the keyboard padding of an expandable sheet. All of it is
+   * written straight to the elements: a drag frame costs one style write and a
+   * composite, never a React render or a layout.
+   *
+   * `box` is the laid-out box the current translate is measured from - the
+   * resting box when idle - so a glide that starts while another runs picks
+   * up from where the top edge is on screen.
+   */
   useEffect(() => {
     const el = sheetEl;
     const doc = el?.ownerDocument;
     const view = doc?.defaultView;
-    if (!el || !view || typeof el.animate !== 'function') {
-      glideRef.current = null;
+    if (!el || !view) {
+      engineRef.current = null;
       return undefined;
     }
     const root = doc.documentElement;
-    // The laid-out box the sheet rests at, or is gliding to.
-    let box = null;
+    const canAnimate = typeof el.animate === 'function';
+    let mode = 'idle'; // 'idle' | 'glide' | 'drag' | 'settle'
     let anim = null;
+    let box = null;
+    let drag = null;
+    let backdrop = null;
+    let backdropAnim = null;
+    let padAnim = null;
+    let lastPad = null;
+    let finishFrame = 0;
+    let pinned = [];
+    let pinnedAnims = [];
     let signature = '';
     let keyboardSignature = '';
-    let mutations = null;
+
+    // The laid-out box, ignoring every transform and translate (offset* are
+    // layout values; a fixed sheet's offsetTop is its distance from the top of
+    // the viewport).
+    const layoutBox = () => {
+      const top = el.offsetTop;
+      const height = el.offsetHeight;
+      return { top, bottom: top + height, height };
+    };
+    const withHold = (hold, read) => {
+      const previous = el.getAttribute(SHEET_HOLD_ATTR);
+      if (hold) el.setAttribute(SHEET_HOLD_ATTR, hold);
+      else el.removeAttribute(SHEET_HOLD_ATTR);
+      try { return read(); } finally {
+        if (previous) el.setAttribute(SHEET_HOLD_ATTR, previous);
+        else el.removeAttribute(SHEET_HOLD_ATTR);
+      }
+    };
+    const naturalBox = () => withHold(null, layoutBox);
+    const setHold = (hold, px) => {
+      if (hold === 'px') el.style.setProperty('--sheet-hold-height', `${px}px`);
+      else el.style.removeProperty('--sheet-hold-height');
+      if (hold) el.setAttribute(SHEET_HOLD_ATTR, hold);
+      else el.removeAttribute(SHEET_HOLD_ATTR);
+    };
+    const setTranslate = (y) => {
+      el.style.translate = Math.abs(y) < 0.01 ? '' : `0 ${Math.round(y * 100) / 100}px`;
+    };
+    // Where the top / bottom edges are on screen, leaving out React's
+    // open / close transform.
+    const visibleBox = () => {
+      const base = box || layoutBox();
+      const ty = translateY(el);
+      return { top: base.top + ty, bottom: base.bottom + ty };
+    };
+    /*
+     * BOTTOM BARS. While the sheet is laid out taller than it shows (a held
+     * drag, a glide), its foot is down behind the dock - and so is anything
+     * pinned to its bottom edge (the Pages "+ Add / Paste / Select" bar). Such
+     * a bar is found once per motion (a full-width element, not in a list,
+     * ending on the sheet's content bottom) and carried back up by the amount
+     * the sheet hangs below its foot, so it stays exactly where it stood.
+     */
+    const findPinned = () => {
+      const rect = el.getBoundingClientRect();
+      const computed = view.getComputedStyle(el);
+      const contentBottom = rect.bottom - (parseFloat(computed.paddingBottom) || 0) - (parseFloat(computed.borderBottomWidth) || 0);
+      const found = [];
+      const visit = (node, depth) => {
+        for (const child of node.children) {
+          const r = child.getBoundingClientRect();
+          if (!r.height || r.bottom < contentBottom - 1.5 || r.top >= contentBottom) continue;
+          const overflowY = view.getComputedStyle(child).overflowY;
+          if (overflowY === 'auto' || overflowY === 'scroll') continue;
+          if (Math.abs(r.bottom - contentBottom) < 1.5 && r.height < 120 && r.width > rect.width * 0.5) {
+            found.push(child);
+          } else if (depth < 5) {
+            visit(child, depth + 1);
+          }
+        }
+      };
+      visit(el, 0);
+      return found;
+    };
+    const setPinned = (y) => {
+      pinned.forEach((bar) => { bar.style.translate = y > 0.01 ? `0 ${-Math.round(y * 100) / 100}px` : ''; });
+    };
+    const clearPinned = () => {
+      pinnedAnims.forEach((a) => a.cancel());
+      pinnedAnims = [];
+      pinned.forEach((bar) => bar.style.removeProperty('translate'));
+      pinned = [];
+    };
+    const stopAnim = () => {
+      pinnedAnims.forEach((a) => a.cancel());
+      pinnedAnims = [];
+      if (!anim) return;
+      const done = anim;
+      anim = null;
+      done.onfinish = null;
+      done.cancel();
+    };
+    const findBackdrop = () => {
+      const prev = el.previousElementSibling;
+      return prev?.matches?.(BACKDROP_SELECTOR) ? prev : null;
+    };
+    const clearBackdrop = () => {
+      backdropAnim?.cancel();
+      backdropAnim = null;
+      if (backdrop) {
+        backdrop.style.removeProperty('opacity');
+        backdrop.style.removeProperty('transition');
+      }
+      backdrop = null;
+    };
+    // Back to rest: no translate, no hold, no fill.
+    const settleToRest = () => {
+      window.cancelAnimationFrame(finishFrame);
+      finishFrame = 0;
+      stopAnim();
+      clearPinned();
+      setHold(null);
+      setTranslate(0);
+      el.removeAttribute(SHEET_FILL_ATTR);
+      mode = 'idle';
+      drag = null;
+      box = naturalBox();
+    };
+
+    // A translate run through `points` ([{ y, offset }], y against the
+    // laid-out box) - the sheet, and its bottom bars counter to it; `done`
+    // runs on the last frame.
+    const run = (points, ms, easing, done) => {
+      stopAnim();
+      if (!canAnimate || ms <= 0) {
+        done();
+        return;
+      }
+      const at = (y) => `0 ${Math.round(y * 100) / 100}px`;
+      const next = el.animate(points.map(({ y, offset }) => ({ translate: at(y), offset })), { duration: ms, easing, fill: 'forwards' });
+      setTranslate(0);
+      if (pinned.length && points.some(({ y }) => y > 0.01)) {
+        const counter = points.map(({ y, offset }) => ({ translate: at(-Math.max(0, y)), offset }));
+        pinnedAnims = pinned.map((bar) => bar.animate(counter, { duration: ms, easing, fill: 'forwards' }));
+        setPinned(0);
+      }
+      anim = next;
+      next.onfinish = () => {
+        if (anim !== next) return;
+        done();
+      };
+    };
+
+    // HEIGHT GLIDE (see the header): from the edges on screen now to the
+    // resting box the sheet's CSS gives it now.
+    const glide = (from, natural, timing) => {
+      window.cancelAnimationFrame(finishFrame);
+      stopAnim();
+      if (!from || !natural
+        || (Math.abs(from.top - natural.top) < 1 && Math.abs(from.bottom - natural.bottom) < 1)) {
+        settleToRest();
+        return;
+      }
+      const fromHeight = from.bottom - from.top;
+      // Getting shorter: keep the old height for the slide, so the foot of the
+      // sheet stays down on the dock (or behind the keyboard) the whole way.
+      const hold = natural.height < fromHeight - 0.5;
+      setHold(hold ? 'px' : null, fromHeight);
+      const base = hold
+        ? { top: natural.bottom - fromHeight, bottom: natural.bottom, height: fromHeight }
+        : natural;
+      box = base;
+      const y0 = from.top - base.top;
+      const y1 = natural.top - base.top;
+      if (from.bottom < natural.bottom - 1) el.setAttribute(SHEET_FILL_ATTR, '');
+      else el.removeAttribute(SHEET_FILL_ATTR);
+      mode = 'glide';
+      clearPinned();
+      pinned = findPinned();
+      run(
+        [{ y: y0, offset: 0 }, { y: y1, offset: 1 }],
+        timing.ms,
+        timing.easing,
+        settleToRest,
+      );
+    };
+
     const readKeyboardSignature = () => `${root.getAttribute('data-keyboard-open') || ''}|${root.style.getPropertyValue('--keyboard-inset')}`;
     const readSignature = () => [
       el.className,
       el.style.getPropertyValue('--mobile-sheet-height'),
       readKeyboardSignature(),
     ].join('|');
-    const stop = () => {
-      if (anim) {
-        const done = anim;
-        anim = null;
-        done.cancel();
-      }
-      el.removeAttribute('data-sheet-glide');
-    };
-    // The box the sheet's own CSS gives it right now (a running glide's
-    // height and lift lifted for the measurement - SHEET_AT_REST_ATTR).
-    const measureNatural = () => {
-      const gliding = el.hasAttribute('data-sheet-glide');
-      if (gliding) el.removeAttribute('data-sheet-glide');
-      el.setAttribute(SHEET_AT_REST_ATTR, '');
-      const natural = sheetLayoutBox(el);
-      el.removeAttribute(SHEET_AT_REST_ATTR);
-      if (gliding) el.setAttribute('data-sheet-glide', '');
-      return natural;
-    };
-    // Where the sheet's edges are on screen this frame.
-    const currentBox = () => {
-      if (!box) return null;
-      if (!anim) return { top: box.top, bottom: box.bottom };
-      const computed = view.getComputedStyle(el);
-      const height = parseFloat(computed.getPropertyValue('--sheet-glide-height'));
-      const shift = parseFloat(String(computed.translate || '').split(' ')[1]) || 0;
-      const bottom = box.bottom + shift;
-      return { top: Number.isFinite(height) ? bottom - height : box.top + shift, bottom };
-    };
-    // Both edges travel from where they are to where the sheet's CSS now puts
-    // them: the height (top edge) and a translate (bottom edge - only ever
-    // non-zero when the keyboard lifts or lowers the sheet, step 7 in
-    // keyboardViewport.js) run on one clock, so the sheet moves as one piece.
-    const glide = (from, natural, timing) => {
-      const startHeight = Math.max(0, Math.min(from.bottom - from.top, view.innerHeight || Infinity));
-      const shift = from.bottom - natural.bottom;
-      box = natural;
-      if (Math.abs(startHeight - natural.height) < 1 && Math.abs(shift) < 1) {
-        stop();
-        return;
-      }
-      el.setAttribute('data-sheet-glide', '');
-      const previous = anim;
+
+    // KEYBOARD PADDING (expandable sheets, mobilePdfViewer.css): the sheet
+    // does not move for the keyboard; its content area ends at the keyboard
+    // top. The padding that does this eases on the keyboard's clock, so rows
+    // are covered / uncovered behind the keyboard as it moves, and a list
+    // scrolled to its end comes back down WITH the keyboard instead of
+    // jumping when the room returns.
+    const animatePad = () => {
+      if (el.getAttribute('data-sheet-keyboard') !== 'pad') return;
+      const fromPad = padAnim ? parseFloat(view.getComputedStyle(el).paddingBottom) : lastPad;
+      padAnim?.cancel();
+      padAnim = null;
+      const toPad = parseFloat(view.getComputedStyle(el).paddingBottom);
+      lastPad = toPad;
+      if (!canAnimate || fromPad == null || !Number.isFinite(fromPad) || Math.abs(toPad - fromPad) < 1
+        || prefersReducedMotion()) return;
       const next = el.animate(
-        [
-          { '--sheet-glide-height': `${startHeight}px`, translate: `0 ${shift}px` },
-          { '--sheet-glide-height': `${natural.height}px`, translate: '0 0' },
-        ],
-        { duration: timing.ms, easing: timing.easing, fill: 'forwards' },
+        [{ paddingBottom: `${fromPad}px` }, { paddingBottom: `${toPad}px` }],
+        { duration: KEYBOARD_MOTION_MS, easing: KEYBOARD_MOTION_EASING },
       );
-      anim = next;
-      previous?.cancel();
-      next.onfinish = () => {
-        if (anim !== next) return;
-        stop();
-        box = sheetLayoutBox(el) || box;
-      };
+      padAnim = next;
+      next.onfinish = () => { if (padAnim === next) padAnim = null; };
     };
+
     const handle = (source) => {
-      if (source === 'resize' && anim) return; // the glide itself resizing
+      if (source === 'resize' && (anim || mode === 'drag')) return; // our own hold
       const nextSignature = readSignature();
       if (source === 'mutation' && nextSignature === signature) return;
       signature = nextSignature;
       const nextKeyboard = readKeyboardSignature();
       const keyboardMoved = nextKeyboard !== keyboardSignature;
       keyboardSignature = nextKeyboard;
+      if (keyboardMoved) animatePad();
+      else if (!padAnim) lastPad = parseFloat(view.getComputedStyle(el).paddingBottom);
+      // A drag or its settle owns the sheet; it lets go of the hold itself.
+      if (mode === 'drag' || mode === 'settle') return;
       const live = liveRef.current || {};
-      if (!live.open || live.closing || live.enterPhase === 'parked' || prefersReducedMotion()) {
-        stop();
-        box = sheetLayoutBox(el);
+      // Sliding shut: the close carries the sheet from where it is, at the
+      // height it had (a field losing focus to the tap that closes it must
+      // not drop a Full sheet to Standard under the slide).
+      if (live.closing) {
+        const was = box;
+        const now = naturalBox();
+        if (was && now.height < was.height - 0.5) {
+          setHold('px', was.height);
+          box = layoutBox();
+        }
         return;
       }
-      const from = currentBox();
-      const natural = measureNatural();
-      if (!natural || !from) {
-        stop();
-        box = natural;
+      if (!live.open || live.enterPhase === 'parked' || prefersReducedMotion()) {
+        settleToRest();
         return;
       }
-      let timing = { ms: SHEET_RESIZE_MS, easing: SHEET_RESIZE_EASING };
-      if (keyboardMoved) timing = { ms: KEYBOARD_MOTION_MS, easing: KEYBOARD_MOTION_EASING };
-      else if (live.springing) timing = { ms: SHEET_SPRING_MS, easing: SHEET_SPRING_EASING };
+      const from = visibleBox();
+      const natural = naturalBox();
+      if (from.bottom - from.top < 1 || natural.height < 1) {
+        settleToRest();
+        return;
+      }
+      const timing = keyboardMoved
+        ? { ms: KEYBOARD_MOTION_MS, easing: KEYBOARD_MOTION_EASING }
+        : { ms: SHEET_RESIZE_MS, easing: SHEET_RESIZE_EASING };
       glide(from, natural, timing);
     };
-    glideRef.current = {
+
+    const engine = {
       // PANEL TO PANEL: stand where the old sheet's top edge was, then glide.
       glideFrom: (fromTop) => {
         signature = readSignature();
-        const natural = measureNatural();
-        if (!natural || typeof fromTop !== 'number' || prefersReducedMotion()) {
-          stop();
-          box = natural;
+        const natural = naturalBox();
+        if (typeof fromTop !== 'number' || prefersReducedMotion()) {
+          settleToRest();
           return;
         }
         glide({ top: fromTop, bottom: natural.bottom }, natural, { ms: SHEET_RESIZE_MS, easing: SHEET_RESIZE_EASING });
       },
+
+      // The finger took the sheet. Everything on screen stays exactly where
+      // it is: a running glide / settle / entrance is folded into one
+      // translate, and an expandable sheet is laid out at Full and pushed down
+      // to where it stands.
+      beginDrag: () => {
+        window.cancelAnimationFrame(finishFrame);
+        finishFrame = 0;
+        const live = liveRef.current || {};
+        const visualTop = el.getBoundingClientRect().top;
+        stopAnim();
+        clearBackdrop();
+        // React's entrance transform, if a grab lands mid-slide.
+        el.style.transition = 'none';
+        el.style.transform = 'none';
+        el.removeAttribute(SHEET_FILL_ATTR);
+        const start = live.detent === SHEET_DETENT_FULL ? SHEET_DETENT_FULL : SHEET_DETENT_STANDARD;
+        let topStandard;
+        let topFull;
+        if (live.expandable) {
+          topStandard = withHold('standard', layoutBox).top;
+          topFull = withHold('full', layoutBox).top;
+          setHold('full');
+        } else {
+          setHold(null);
+          topStandard = layoutBox().top;
+          topFull = topStandard;
+        }
+        box = layoutBox();
+        const startY = visualTop - box.top;
+        setTranslate(startY);
+        clearPinned();
+        pinned = findPinned();
+        setPinned(startY);
+        backdrop = findBackdrop();
+        if (backdrop) backdrop.style.transition = 'none';
+        drag = { start, startY, y: startY, top: visualTop, startTop: visualTop, topStandard, topFull };
+        mode = 'drag';
+      },
+
+      // Follow the finger: `dy` px from where the drag took hold. Never above
+      // the tallest resting top (the foot would lift off the dock).
+      dragBy: (dy) => {
+        if (mode !== 'drag' || !drag) return;
+        const y = Math.max(0, drag.startY + dy);
+        drag.y = y;
+        drag.top = box.top + y;
+        setTranslate(y);
+        setPinned(y);
+        if (backdrop) {
+          // The dim lightens as the sheet heads off the bottom: from Full for
+          // a sheet that one pull closes from there (Survey), else from
+          // Standard, the last height before closed.
+          const from = liveRef.current?.pullDownCloses && drag.start === SHEET_DETENT_FULL
+            ? drag.topFull
+            : drag.topStandard;
+          const span = Math.max(1, box.bottom - from);
+          const opacity = Math.max(0, Math.min(1, 1 - ((drag.top - from) / span)));
+          backdrop.style.opacity = String(Math.round(opacity * 1000) / 1000);
+        }
+      },
+
+      dragState: () => (mode === 'drag' && drag ? { ...drag } : null),
+
+      // Released toward a height: spring there from the finger's speed, then
+      // let go of the hold on the frame where both boxes coincide.
+      settle: (target, velocity) => {
+        if (!drag) return;
+        const targetTop = target === SHEET_DETENT_FULL ? drag.topFull : drag.topStandard;
+        const fromY = drag.y;
+        const toY = targetTop - box.top;
+        const fade = backdrop;
+        backdrop = null;
+        drag = null;
+        mode = 'settle';
+        // The detent's class / --mobile-sheet-height must have landed before
+        // the hold goes, or the sheet would show its old height for a frame.
+        const wantsFull = target === SHEET_DETENT_FULL;
+        let waits = 0;
+        const finish = () => {
+          const isFull = el.classList.contains('is-fullscreen');
+          if (liveRef.current?.expandable && isFull !== wantsFull && waits < 12) {
+            waits += 1;
+            finishFrame = window.requestAnimationFrame(finish);
+            return;
+          }
+          settleToRest();
+          signature = readSignature();
+        };
+        if (fade) {
+          const opacity = parseFloat(fade.style.opacity);
+          fade.style.removeProperty('opacity');
+          fade.style.removeProperty('transition');
+          if (canAnimate && Number.isFinite(opacity) && opacity < 0.999 && !prefersReducedMotion()) {
+            backdropAnim = fade.animate([{ opacity }, { opacity: 1 }], { duration: 260, easing: SHEET_OPEN_EASING });
+          }
+        }
+        if (prefersReducedMotion()) {
+          finish();
+          return;
+        }
+        // Never above the box's own top: that would lift its foot off the dock.
+        const { points, ms } = springKeyframes(fromY, toY, velocity, { min: 0 });
+        run(points, ms, 'linear', finish);
+      },
+
+      // A released drag that closes the sheet: React's close slide takes it
+      // from here, on top of where the finger left it (translate stays).
+      endDragForClose: () => {
+        drag = null;
+        mode = 'settle';
+        if (backdrop) {
+          backdrop.style.removeProperty('transition');
+          backdrop = null;
+        }
+      },
+      // Any close: stop gliding where the sheet is; the close slide carries it.
+      stopForClose: () => {
+        if (mode === 'glide' && anim) {
+          const ty = translateY(el);
+          stopAnim();
+          setTranslate(ty);
+          setPinned(ty);
+        }
+        el.removeAttribute(SHEET_FILL_ATTR);
+      },
+      // The sheet closed or (re)opened: nothing of the engine may linger.
+      reset: () => {
+        clearBackdrop();
+        settleToRest();
+        signature = readSignature();
+        keyboardSignature = readKeyboardSignature();
+      },
     };
+    engineRef.current = engine;
+
     signature = readSignature();
     keyboardSignature = readKeyboardSignature();
-    box = sheetLayoutBox(el);
-    mutations = new MutationObserver(() => handle('mutation'));
+    lastPad = parseFloat(view.getComputedStyle(el).paddingBottom);
+    box = naturalBox();
+    const mutations = new MutationObserver(() => handle('mutation'));
     mutations.observe(el, { attributes: true, attributeFilter: ['class', 'style'] });
     mutations.observe(root, { attributes: true, attributeFilter: ['class', 'style', 'data-keyboard-open'] });
+    // border-box: the keyboard padding changes the content box every frame
+    // while it eases, and that is not a resize of the sheet.
     const resizes = typeof ResizeObserver === 'function' ? new ResizeObserver(() => handle('resize')) : null;
-    resizes?.observe(el);
+    resizes?.observe(el, { box: 'border-box' });
     return () => {
       mutations.disconnect();
       resizes?.disconnect();
-      stop();
-      glideRef.current = null;
+      window.cancelAnimationFrame(finishFrame);
+      padAnim?.cancel();
+      clearBackdrop();
+      stopAnim();
+      setHold(null);
+      setTranslate(0);
+      el.removeAttribute(SHEET_FILL_ATTR);
+      if (engineRef.current === engine) engineRef.current = null;
     };
   }, [sheetEl]);
 
-  // Merge into the sheet element's inline style. Only ever transform +
-  // transition, so this never invalidates layout for the pdf.js render. (A
-  // height change - detent, keyboard - is the resize glide's, above.)
+  // Merge into the sheet element's inline style: React's part of the motion is
+  // the open / close slide, transform + transition only, so it never
+  // invalidates layout for the pdf.js render. (Drag, settle and height glides
+  // are the engine's `translate`, above.)
   let motionStyle = null;
   if (closing) {
     motionStyle = prefersReducedMotion()
@@ -963,14 +1272,6 @@ export function useMobileSheetMotion(onClose, options = {}) {
           ? `transform ${closeMotion.ms}ms ${closeMotion.easing}`
           : `transform ${SHEET_CLOSE_MS}ms ${SHEET_CLOSE_EASING}`,
       };
-  } else if (dragY > 0 && !springing) {
-    // finger-follow: no transition so it tracks 1:1
-    motionStyle = { transform: `translateY(${dragY}px)`, transition: 'none' };
-  } else if (springing) {
-    motionStyle = {
-      transform: 'translateY(0)',
-      transition: `transform ${SHEET_SPRING_MS}ms ${SHEET_SPRING_EASING}`,
-    };
   } else if (enterPhase === 'parked') {
     motionStyle = { transform: 'translateY(100%)', transition: 'none' };
   } else if (enterPhase === 'settling') {
@@ -989,9 +1290,10 @@ export function useMobileSheetMotion(onClose, options = {}) {
    * was then removed in one frame together with the sheet, so the entire screen
    * brightened in a single step right as the sheet landed - read as the page
    * and the dock "refreshing". The backdrop now goes with the sheet: it lightens
-   * as a drag pulls the sheet down, fades out on the sheet's own close curve
-   * (same duration and easing, so the dim always matches how far the sheet has
-   * left), and is already clear on the frame the real close unmounts it.
+   * as a drag pulls the sheet down (the engine, written straight to the
+   * backdrop), fades out on the sheet's own close curve (same duration and
+   * easing, so the dim always matches how far the sheet has left), and is
+   * already clear on the frame the real close unmounts it.
    * Spread on the sheet's backdrop element's style. Opacity only - no layout.
    */
   let backdropStyle = null;
@@ -1004,13 +1306,6 @@ export function useMobileSheetMotion(onClose, options = {}) {
           ? `opacity ${closeMotion.ms}ms ${closeMotion.easing}`
           : `opacity ${SHEET_CLOSE_MS}ms ${SHEET_CLOSE_EASING}`,
       };
-  } else if (dragY > 0 && !springing && dragHeightRef.current > 0) {
-    backdropStyle = {
-      opacity: Math.max(0, 1 - (dragY / dragHeightRef.current)),
-      transition: 'none',
-    };
-  } else if (springing) {
-    backdropStyle = { opacity: 1, transition: `opacity ${SHEET_SPRING_MS}ms ease-out` };
   } else if (enterPhase === 'parked' && registry.awaitingHandover) {
     // Waiting offscreen to take over from the sheet still up: its dim is the
     // one showing, so this one stays clear (no double dim for those frames).
@@ -1030,20 +1325,23 @@ export function useMobileSheetMotion(onClose, options = {}) {
     backdropStyle: backdropStyle || undefined,
     // Spread on the sheet's root element. data-sheet-swap runs the PANEL TO
     // PANEL content fade (mobilePdfViewer.css); it alternates a/b so a second
-    // swap inside the fade restarts it.
+    // swap inside the fade restarts it. data-sheet-keyboard says how the
+    // keyboard treats the sheet (mobilePdfViewer.css): a browse panel stays put
+    // and pads its content ('pad'), a one-height sheet stands on it ('lift').
     sheetProps: {
       ref: sheetRef,
       'data-mobile-sheet': 'true',
+      'data-sheet-keyboard': expandable ? 'pad' : 'lift',
       'data-sheet-swap': enterPhase === 'swap' ? (swapSeq % 2 ? 'a' : 'b') : undefined,
     },
     requestClose,
     closing,
-    // `expanded` stays the boolean it always was - "taller than Standard" - so
-    // callers that only need two states are untouched.
+    // `expanded` / `fullscreen` stay the booleans they always were for the
+    // callers; with two heights both mean "at Full".
     expanded: detent > SHEET_DETENT_STANDARD,
     fullscreen: detent >= SHEET_DETENT_FULL,
     detent,
     setDetent,
-    setExpanded: (next) => setDetent(next ? SHEET_DETENT_EXPANDED : SHEET_DETENT_STANDARD),
+    setExpanded: (next) => setDetent(next ? SHEET_DETENT_FULL : SHEET_DETENT_STANDARD),
   };
 }

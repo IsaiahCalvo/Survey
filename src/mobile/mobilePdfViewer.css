@@ -99,14 +99,17 @@
   --mobile-sheet-field-w: 96px;    /* the sheet's aligned-field variant */
   --mobile-dock-control-h: 30px;   /* Drawboard bottom-bar controls 24-33pt */
 
-  /* PHONE BOTTOM PANEL HEIGHTS — three named sizes and nothing else
-     (DESIGN-SYSTEM.md "Phone bottom panels" + phone-panel-height-rules.html).
-     Standard is the starting height for every BROWSE panel (Pages, Search,
-     Bookmarks, Spaces, Survey, Version history, Active users). Compact is
-     defined and deliberately assigned to nothing: it is held for a future
-     browse panel with very little content. Expanded and Full screen are never
-     a starting height — they are only ever reached by pulling a Standard panel
-     upward.
+  /* PHONE BOTTOM PANEL HEIGHTS (DESIGN-SYSTEM.md "Phone bottom panels" +
+     phone-panel-height-rules.html). Standard is the starting height for every
+     BROWSE panel (Pages, Search, Bookmarks, Spaces, Survey, Version history,
+     Active users). Compact is defined and deliberately assigned to nothing: it
+     is held for a future browse panel with very little content.
+     OWNER 2026-10-01 (iPhone): "three different heights for the bottom panel;
+     I think we can get away with two: the small one and the big one". A browse
+     panel rests at Standard or Full and nothing between (the 70% Expanded step
+     is gone); Full is reached by pulling it up, by typing in it, or by opening
+     a Survey category. The sheet stops at the dock, so Full is this less the
+     dock (the .mobile-pdf-sheet max-height).
 
      RULED CHANGE 2026-09-22 (owner): a SETTINGS sheet is NOT sized from this
      list. The color picker, the tool "..." sheet and the text formatting sheet
@@ -117,7 +120,7 @@
      content ever outgrows it. */
   --mobile-panel-compact: calc(392px + var(--mobile-bottom-inset));
   --mobile-panel-standard: calc(448px + var(--mobile-bottom-inset));
-  --mobile-panel-expanded: 70dvh;
+  --mobile-panel-full: calc(100dvh - var(--app-chrome-top, 34px) - 18px);
 
   /* HEADER PAGE PILL (owner ruling 2026-09-17, phone build: "The page
      navigation, '2 / 99', doesn't fit properly; it needs to fit 3 digits, a
@@ -3167,48 +3170,59 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
      one transform timeline. Do not reintroduce an animation on this class. */
 }
 
-/* UX 2026-09-16 (phone reach pass): the hub tray's second, taller detent.
-   Drag the grab handle UP and the tray grows from its content-measured height
-   (Pages was 320px — 39% of a 812px screen) to 70% of the screen, so you can
-   scan far more page thumbnails without scrolling. Drag down and it steps back
-   to the compact height before a further pull dismisses it. Reference:
-   Drawboard PDF's phone page list opens to about two thirds of the screen. */
-.mobile-pdf-sheet.is-expanded {
-  --mobile-sheet-height: var(--mobile-panel-expanded);
-}
-
-/* The third step, and the last: full screen, stopping 18px below the app's top
-   bar so the iPhone status area and the header are never covered. Only the
-   browse panels can reach it, and only by a second pull up from Expanded
-   (DESIGN-SYSTEM.md: "Expanded and Full screen are never the starting height").
-   Pulling down steps Full -> Expanded -> Standard -> closed. */
+/* The big height (owner 2026-10-01: two heights, "the small one and the big
+   one"): full screen, stopping 18px below the app's top bar so the iPhone
+   status area and the header are never covered. Only the browse panels reach
+   it - a pull up, typing in the panel, or a Survey category opening - and it is
+   never their starting height. A pull down goes back to Standard (the Survey
+   panel closes instead, useMobileSheetMotion pullDownCloses). The 70% middle
+   step (.is-expanded) is gone. */
 .mobile-pdf-sheet.is-fullscreen {
-  --mobile-sheet-height: calc(100dvh - var(--app-chrome-top, 34px) - 18px);
+  --mobile-sheet-height: var(--mobile-panel-full);
 }
 
 .mobile-pdf-sheet.is-collapsed { display: none !important; }
 
 /* ON-SCREEN KEYBOARD, BOTTOM SHEETS (owner 2026-09-30: "the keyboard must
    never cover what you type into"). Every phone bottom sheet carries
-   data-mobile-sheet (useMobileSheetMotion's sheetProps). While the keyboard is
-   up - or predicted, from the moment a field takes focus (keyboardViewport.js
-   step 4) - the sheet stands ON the keyboard instead of behind it, and is
-   capped to the strip of screen left between the top bar and the keyboard.
-   A browse sheet also steps to its Full height when you start typing in it
-   (the hook), so it fills that whole strip.
+   data-mobile-sheet and data-sheet-keyboard (useMobileSheetMotion's
+   sheetProps). Both rules are inert at rest: no data-keyboard-open, and the
+   inset is 0.
+
+   OWNER 2026-10-01 (iPhone): "When I bring up the keyboard and dismiss it,
+   there's this jump of the survey panel ... very flickery". The Survey panel
+   at Full used to STAND ON the keyboard: its foot rose 266px with the keyboard
+   and its top dropped 10px to a different cap, then both came back on dismiss,
+   on our copy of the keyboard's clock - any drift from the real keyboard showed
+   the page in a gap under the sheet, and every frame re-laid out the panel.
+   Now a browse panel ('pad': Pages, Search, Bookmarks, Spaces, History,
+   Survey) does not move for the keyboard at all. It is at Full whenever you
+   type (the hook raises it), the keyboard simply slides up over its lower part,
+   and the sheet's content area ends at the keyboard's top edge (this padding),
+   so a field can always be scrolled above it (keyboardViewport.js
+   revealAboveKeyboard). The padding eases on the keyboard's clock (the hook),
+   so rows are covered and uncovered behind the moving keyboard and a list
+   scrolled to its end comes back down WITH the keyboard on dismiss.
+   The keyboard covers the dock, so only the part of it above the dock's top
+   (where the sheet's foot is) needs padding. Not !important: the hook's Web
+   Animation of it must be able to win while it eases. */
+html[data-keyboard-open='true'] [data-mobile-sheet][data-sheet-keyboard='pad'] {
+  padding-bottom: calc(max(0px, var(--keyboard-inset, 0px) - var(--mobile-dock-bar-height)) + 12px);
+}
+
+/* A one-height sheet ('lift': the colour, tool "..." and text sheets, Active
+   users) has no Full to grow to, so it stands ON the keyboard instead of
+   behind it, capped to the strip of screen left between the top bar and the
+   keyboard.
    - `bottom` has no CSS transition: the box lands in the focus task, so every
      measurement (the reveal scroll, WebKit) sees where the sheet is going.
-     What the eye sees is useMobileSheetMotion's resize glide, which carries
-     both edges there on the keyboard's own clock (owner 2026-10-01: "the
-     keyboard needs to come up smooth"; keyboardViewport.js step 7). The
-     whole-page pan that once made an instant lift necessary is now prevented
-     at its source (keyboardViewport.js step 6).
+     What the eye sees is useMobileSheetMotion's height glide, a `translate`
+     that carries the sheet there on the keyboard's own clock.
    - The home-indicator padding is not needed on top of a keyboard.
    - The second shadow paints the sheet's colour under it for the few frames
      before the keyboard has risen into that space, so the page never shows
-     through the gap. It is drawn only outside the sheet's box.
-   Inert at rest: no data-keyboard-open, and the inset is 0. */
-html[data-keyboard-open='true'] [data-mobile-sheet] {
+     through the gap. It is drawn only outside the sheet's box. */
+html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pad']) {
   /* Never below the dock's top edge (a small inset - a hardware keyboard's
      accessory bar - would otherwise tuck the sheet's foot behind the dock). */
   bottom: max(var(--keyboard-inset, 0px), var(--mobile-dock-bar-height)) !important;
@@ -3219,29 +3233,44 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
     0 var(--keyboard-inset, 0px) 0 var(--keyboard-inset, 0px) var(--surface-1);
 }
 
-/* RESIZE GLIDE (owner 2026-10-01: the sheet SNAPPED to its typing / full-screen
-   height). While useMobileSheetMotion glides a sheet between two heights it
-   animates --sheet-glide-height (registered below so it interpolates) and sets
-   [data-sheet-glide], which makes the box read that value instead of its
-   detent / keyboard height. The selector outranks the keyboard rule above, and
-   the cap is lifted for the glide only: the glide starts from where the top
-   edge WAS, which can be taller than the new cap while the keyboard goes down.
-   The bottom edge moves only with the keyboard, on the keyboard's clock. */
-@property --sheet-glide-height {
-  syntax: '<length>';
-  inherits: false;
-  initial-value: 0px;
+/* HEIGHT HOLD (useMobileSheetMotion, owner 2026-10-01: the swipe "needs to be
+   way smoother", no snap at the end). The hook moves a sheet between its two
+   heights with `translate` only, never by animating its height, and holds the
+   TALLER of the two boxes for the motion so the sheet's foot stays down behind
+   the dock the whole way:
+   - 'full' / 'standard': laid out at that named height (a drag takes hold at
+     Full and is pushed down to where it stands);
+   - 'px': laid out at --sheet-hold-height, the height it had (a sheet getting
+     shorter keeps its old height for the slide).
+   The hold is let go on the motion's last frame, where the held box and the
+   resting box coincide on screen. !important outranks the inline
+   --mobile-sheet-height a browse panel sets, and the keyboard cap. */
+:root [data-mobile-sheet][data-sheet-hold='full']:not([data-sheet-at-rest]) {
+  --mobile-sheet-height: var(--mobile-panel-full) !important;
 }
 
-:root [data-mobile-sheet][data-sheet-glide] {
-  height: var(--sheet-glide-height) !important;
+:root [data-mobile-sheet][data-sheet-hold='standard']:not([data-sheet-at-rest]) {
+  --mobile-sheet-height: var(--mobile-panel-standard) !important;
+}
+
+:root [data-mobile-sheet][data-sheet-hold='px']:not([data-sheet-at-rest]) {
+  height: var(--sheet-hold-height) !important;
   max-height: none !important;
 }
 
-/* Since 2026-10-01 the glide also animates `translate` (the bottom edge riding
-   up and down with the keyboard). A measurement of where the sheet is going
-   (keyboardViewport.js withSheetsAtRest, the hook's own measure) sets this for
-   one synchronous read; !important outranks the running animation. */
+/* A sheet gliding DOWN from above its resting foot (a settings sheet leaving
+   the keyboard) paints its colour beneath itself, like the keyboard rule's
+   second shadow, so the page never flashes between it and the keyboard. */
+:root [data-mobile-sheet][data-sheet-fill] {
+  box-shadow:
+    0 -15px 38px rgba(0, 0, 0, 0.5),
+    0 360px 0 360px var(--surface-1);
+}
+
+/* A measurement of where a sheet is going (keyboardViewport.js
+   withSheetsAtRest, the hook's own measure) sets this for one synchronous
+   read: no hold (above) and no translate. !important outranks the hook's
+   running Web Animation. */
 :root [data-mobile-sheet][data-sheet-at-rest] {
   translate: none !important;
 }
@@ -3517,9 +3546,16 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
    Search / Bookmarks, so an empty Search has to fill that tray rather than sit
    as a 142px block at the top of it. flex:1 inside the flex-column results
    container centres the message in the tray. */
+/* OWNER 2026-10-01 (two heights, a drag that moves the sheet with translate
+   only): a drag lays the panel out at Full while it still shows at Standard,
+   so a message centred in "all the room there is" dropped ~137px the moment
+   a finger took the sheet, and jumped back on the release. It now centres in
+   the room the Standard height gives it (448 less the 148px above and below
+   it) and keeps that place at Full. */
 .mobile-search-empty {
   flex: 1;
   min-height: 142px;
+  max-height: calc(var(--mobile-panel-standard) - var(--mobile-bottom-inset) - 148px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -4160,6 +4196,8 @@ html[data-keyboard-open='true'] [data-mobile-sheet] {
 .mobile-bookmark-empty {
   flex: 1;
   min-height: 76px;
+  /* Centred in the Standard room, as .mobile-search-empty (2026-10-01). */
+  max-height: calc(var(--mobile-panel-standard) - var(--mobile-bottom-inset) - 160px);
   display: flex;
   flex-direction: column;
   align-items: center;

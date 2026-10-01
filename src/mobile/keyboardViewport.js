@@ -76,11 +76,20 @@
  *      field from our own code (rename, autoFocus, search) gets preventScroll.
  *      WebKit then never pans; the keyboard is ours to follow.
  *   7. Everything that follows the keyboard moves ON the keyboard's own clock
- *      (KEYBOARD_MOTION_MS / _EASING): the sheet's lift (useMobileSheetMotion)
- *      and the reveal scroll in step 5 both glide instead of jumping, so the
- *      field rides up in one movement with the keyboard and back down with it.
- *      Closing drops the inset the frame focus leaves the last field, so the
- *      sheet starts down with the keyboard instead of waiting for it.
+ *      (KEYBOARD_MOTION_MS / _EASING): the reveal scroll in step 5 glides
+ *      instead of jumping, and so does what the sheets do with the inset
+ *      (useMobileSheetMotion). Closing drops the inset the frame focus leaves
+ *      the last field, so that starts down with the keyboard instead of
+ *      waiting for it.
+ *
+ * OWNER 2026-10-01 (iPhone, after step 7): "When I bring up the keyboard and
+ * dismiss it, there's this jump of the survey panel ... very flickery". A
+ * browse panel no longer rides the keyboard at all (mobilePdfViewer.css, the
+ * 'pad' keyboard rule): it is at Full while you type, the keyboard slides over
+ * its lower part, and only its content area ends at the keyboard. Nothing of
+ * the sheet moves on open or dismiss, so there is nothing to drift from the
+ * real keyboard. The one-height sheets (colour, tool, text, Active users)
+ * still stand on the keyboard.
  */
 
 export const KEYBOARD_INSET_VAR = '--keyboard-inset';
@@ -138,11 +147,10 @@ export const KEYBOARD_REVEAL_DEFER_ATTR = 'data-keyboard-reveal-defer';
  */
 export const KEYBOARD_MOTION_MS = 250;
 export const KEYBOARD_MOTION_EASING = 'cubic-bezier(0.38, 0.7, 0.125, 1)';
-// While a sheet glides (useMobileSheetMotion), this attribute pins it to its
-// resting box for a measurement (mobilePdfViewer.css drops the glide's
-// translate); the hook's own data-sheet-glide is lifted for the same instant.
+// While a sheet moves (useMobileSheetMotion), this attribute pins it to its
+// resting box for a measurement: mobilePdfViewer.css drops the hook's
+// translate and its height hold for that instant.
 export const SHEET_AT_REST_ATTR = 'data-sheet-at-rest';
-const SHEET_GLIDE_ATTR = 'data-sheet-glide';
 
 function cubicBezier(x1, y1, x2, y2) {
   const cx = 3 * x1; const bx = 3 * (x2 - x1) - cx; const ax = 1 - cx - bx;
@@ -178,18 +186,18 @@ function prefersReducedMotion(win) {
  * attributes go back before anything paints.
  */
 export function withSheetsAtRest(doc, measure) {
-  const gliding = doc?.querySelectorAll ? [...doc.querySelectorAll(`[data-mobile-sheet][${SHEET_GLIDE_ATTR}]`)] : [];
-  gliding.forEach((sheet) => {
-    sheet.removeAttribute(SHEET_GLIDE_ATTR);
-    sheet.setAttribute(SHEET_AT_REST_ATTR, '');
-  });
+  const moving = doc?.querySelectorAll
+    ? [...doc.querySelectorAll('[data-mobile-sheet]')].filter((sheet) => (
+      sheet.hasAttribute('data-sheet-hold')
+      || Boolean(sheet.style?.translate)
+      || Boolean(sheet.getAnimations?.().length)
+    ))
+    : [];
+  moving.forEach((sheet) => sheet.setAttribute(SHEET_AT_REST_ATTR, ''));
   try {
     return measure();
   } finally {
-    gliding.forEach((sheet) => {
-      sheet.removeAttribute(SHEET_AT_REST_ATTR);
-      sheet.setAttribute(SHEET_GLIDE_ATTR, '');
-    });
+    moving.forEach((sheet) => sheet.removeAttribute(SHEET_AT_REST_ATTR));
   }
 }
 
