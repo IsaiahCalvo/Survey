@@ -354,14 +354,34 @@
 
 /* ---------- MODULE TABS -------------------------------------------------- */
 
+/* Owner 2026-10-01 (iPhone, "elements are colliding"): the tab row was painted
+   over the "Categories" head line and the first category row, leaving its own
+   slot empty. Headless Chromium and WebKit both lay it out correctly, so the
+   row is now built so nothing about it can drift on the device:
+   - it scrolls SIDEWAYS ONLY. `overflow-x: auto` alone computes overflow-y to
+     auto too, and the active bar's -1px margin made the content 1px taller
+     than the box, so the row was also a 1px VERTICAL scroller - one the sheet's
+     swipe-down hand-over and iOS's own scrolling both act on. overflow-y is
+     hidden and nothing overflows downward any more: the hairline and the 2px
+     active bar are inset shadows inside the row's own 40px.
+   - it is its own stacking context (isolation), so WebKit composites the
+     scrolling row as an ordinary child layer of the sheet and repositions it
+     with the sheet's slide/height steps, instead of tracking it as a detached
+     scroll layer. Same for the category list below it.
+   Many or long module names still scroll sideways (min 76 / max 160px tabs,
+   ellipsis inside). */
 .mobile-survey-sheet .mobile-survey-module-tabs {
   flex: 0 0 auto;
+  position: relative;
+  isolation: isolate;
   display: flex;
   justify-content: flex-start;
   overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
   scrollbar-width: none;
   padding: 0 4px;
-  border-bottom: 1px solid var(--border);
+  box-shadow: inset 0 -1px 0 var(--border);
 }
 
 .mobile-survey-sheet .mobile-survey-module-tabs::-webkit-scrollbar {
@@ -369,8 +389,12 @@
 }
 
 .mobile-survey-sheet .mobile-survey-module-tabs > button {
-  flex: 1 1 0;
-  min-width: 76px;
+  /* Equal shares of the row while every name fits; a tab never shrinks below
+     its own name (up to the 160px cap, where the name ellipsises), so with
+     many modules the row scrolls instead of cutting each name to "Exi...".
+     The 76px floor is the label's own min-width below. */
+  flex: 1 0 0;
+  min-width: fit-content;
   max-width: 160px;
   height: 40px;
   box-sizing: border-box;
@@ -381,9 +405,6 @@
   color: var(--text-3);
   background: transparent;
   border: 0;
-  /* The bar sits ON the hairline under the tabs, not 1px above it. */
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
   border-radius: 0;
   font: inherit;
   font-size: 13px;
@@ -393,16 +414,19 @@
 }
 
 .mobile-survey-sheet .mobile-survey-module-tabs > button > span {
-  min-width: 0;
+  min-width: 60px;
+  max-width: 144px;
+  text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* The 2px bar sits ON the row's hairline (both are the row's bottom pixels). */
 .mobile-survey-sheet .mobile-survey-module-tabs > button.is-active {
   color: var(--text-1);
   font-weight: 600;
-  border-bottom-color: var(--text-1);
+  box-shadow: inset 0 -2px 0 var(--text-1);
 }
 
 .mobile-survey-sheet .mobile-survey-module-tabs > button:active > span {
@@ -414,6 +438,9 @@
 .mobile-survey-sheet .mobile-survey-list {
   flex: 0 1 auto;
   min-height: 0;
+  /* Its own stacking context, like the tab row above (see there). */
+  position: relative;
+  isolation: isolate;
   overflow-y: auto;
   /* Clip a pressed last row to the panel's rounded corner. */
   border-radius: 0 0 9px 9px;

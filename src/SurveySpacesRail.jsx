@@ -1977,7 +1977,21 @@ const SurveySpacesRail = ({
                             aria-selected={isActive}
                             className={isActive ? 'is-active' : undefined}
                             onClick={(event) => {
-                              event.currentTarget.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+                              // Bring a half-hidden tab into the row by scrolling
+                              // the ROW sideways only. scrollIntoView also scrolls
+                              // every ancestor that can scroll - including the
+                              // phone sheet, which is overflow: hidden, so a
+                              // nudge there could never be scrolled back and left
+                              // the panel's rows offset under the tabs (owner
+                              // 2026-10-01, "elements are colliding").
+                              const tab = event.currentTarget;
+                              const row = tab.parentElement;
+                              if (row) {
+                                const tabBox = tab.getBoundingClientRect();
+                                const rowBox = row.getBoundingClientRect();
+                                if (tabBox.left < rowBox.left) row.scrollLeft -= rowBox.left - tabBox.left;
+                                else if (tabBox.right > rowBox.right) row.scrollLeft += tabBox.right - rowBox.right;
+                              }
                               selectSurveyModule(module.id);
                             }}
                           >
