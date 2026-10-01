@@ -23,7 +23,9 @@ const policy = (name) => {
 describe('proposed survey-media migration (static)', () => {
   it('stays out of supabase/migrations so `db push` cannot apply it', () => {
     assert.equal(existsSync(new URL('../supabase/migrations/20261001_survey_media_bucket.sql', import.meta.url)), false);
-    assert.match(MIGRATION, /^-- PROPOSED - NOT APPLIED/);
+    // Applied to prod by hand on 2026-10-01; the header records that, and the
+    // file stays out of migrations/ so `db push` never re-runs it.
+    assert.match(MIGRATION, /^-- APPLIED to prod 2026-10-01/);
     assert.match(MIGRATION, /VERIFY AFTER APPLYING/);
   });
 
