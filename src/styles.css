@@ -835,11 +835,19 @@
    width token is `auto` for this one pill (PDFViewer passes width="auto"). */
 .survey-subrow__side--start .chrome-pill {
   max-width: 220px;
+  /* Owner 2026-10-01 ("the text is not centred when it should be, like it is
+     on mobile"): the label is centred in the PILL, as the phone's module pill
+     does it (mobilePdfViewer.css, .mobile-pdf-properties--survey). The start
+     side reserves the chevron's 9px + the pill gap on top of the chevron-side
+     inset, mirroring the chevron, so the label's box is symmetric about the
+     pill's centre while the chevron stays on the trailing edge. */
+  padding-left: calc(var(--chrome-field-pad-x) + 9px + var(--chrome-gap));
 }
 
 .survey-subrow__fit {
   display: grid;
   grid-template-columns: minmax(0, max-content);
+  text-align: center;
 }
 
 .survey-subrow__fit > span {
