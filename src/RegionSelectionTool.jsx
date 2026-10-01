@@ -33,6 +33,31 @@ const REGION_HANDLE_BLUE = HANDLE_RING;
 const REGION_HANDLE_STROKE = HANDLE_RING;
 const REGION_HANDLE_FILL = HANDLE_FILL;
 const REGION_HISTORY_LIMIT = 100;
+// Phone (owner 2026-10-01: "Spaces don't work: draw, select, move"). A finger
+// needs a 44px target, not the 11px dot a mouse can hit. The dot stays the
+// same size; an invisible pad around it takes the touch.
+const TOUCH_HANDLE_HIT_PX = 44;
+// A finger that lands and lifts within this many screen px is a tap, not a drag.
+const TOUCH_TAP_SLOP_PX = 10;
+// PdfjsViewerContainer fires this on window when two fingers start a pinch.
+const PDFJS_PINCH_START_EVENT = 'survey-pdfjs-pinch-start';
+
+// Even-odd point-in-polygon on a flat [x0, y0, x1, y1, ...] list (page units).
+const isPointInFlatPolygon = (x, y, coords) => {
+  if (!Array.isArray(coords) || coords.length < 6) return false;
+  let inside = false;
+  const n = coords.length / 2;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = coords[i * 2];
+    const yi = coords[i * 2 + 1];
+    const xj = coords[j * 2];
+    const yj = coords[j * 2 + 1];
+    if (((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / ((yj - yi) || 1e-9) + xi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+};
 const regionEditHistoryStore = new Map();
 
 // KAL-301 REDO: standard rotation-pill visibility timings, copied from the
@@ -163,6 +188,12 @@ const RegionSelectionTool = ({
   // moved (i.e. coords changed). Undo snapshot is pushed at drag-END only when
   // this is true — one checkpoint per completed drag, not per pixel.
   const dragHasMovedRef = useRef(false);
+  // Phone: where the current draw gesture started (client px) and how far the
+  // finger has travelled, so a tap on an area can select it instead of drawing.
+  const drawGestureRef = useRef(null);
+  // handleRegionPointerDown is declared below handleMouseDown; the phone
+  // hit-test in handleMouseDown reaches it through this ref.
+  const regionPointerDownRef = useRef(null);
   const historyKey = useMemo(
     () => getRegionEditHistoryKey(currentSpaceId, currentPageId),
     [currentSpaceId, currentPageId]
@@ -715,6 +746,23 @@ const RegionSelectionTool = ({
     return { minX, minY, maxX, maxY };
   }, []);
 
+  // Phone: the area under a finger (page units). A selected area answers for
+  // its whole box (the dashed box is what the user sees as "the selection");
+  // any other area answers inside its outline, topmost first.
+  const findRegionAtPagePoint = useCallback((x, y, selectedIds = null) => {
+    const list = regionsRef.current;
+    for (let i = list.length - 1; i >= 0; i -= 1) {
+      const region = list[i];
+      if (!selectedIds?.has(region.regionId)) continue;
+      const b = getRegionBounds(region);
+      if (b && x >= b.minX && x <= b.maxX && y >= b.minY && y <= b.maxY) return region;
+    }
+    for (let i = list.length - 1; i >= 0; i -= 1) {
+      if (isPointInFlatPolygon(x, y, list[i].coordinates)) return list[i];
+    }
+    return null;
+  }, [getRegionBounds]);
+
   const ensureBoundsMinSize = useCallback((bounds) => {
     if (!bounds) return null;
     const width = bounds.maxX - bounds.minX;
@@ -1243,7 +1291,18 @@ const RegionSelectionTool = ({
       const pointer = clientPointToPage(event.clientX, event.clientY, rect);
       if (!pointer) return;
       const { x, y } = pointer;
-      
+
+      // Phone: the layer lets touches through to the page (so two fingers
+      // still pinch and pan the PDF), so areas are hit-tested here instead of
+      // by their own SVG paths: touching an area selects it and drags it.
+      if (mobileMode) {
+        const hitRegion = findRegionAtPagePoint(x, y, selectedRegionIds);
+        if (hitRegion) {
+          regionPointerDownRef.current?.(hitRegion, event);
+          return;
+        }
+      }
+
       // Check if click is inside any selected region's bounds
       let clickedInsideBoundary = false;
       for (const regionId of selectedRegionIds) {
@@ -1270,6 +1329,7 @@ const RegionSelectionTool = ({
     const pointer = clientPointToPage(event.clientX, event.clientY, rect);
     if (!pointer) return;
     const { x, y } = pointer;
+    drawGestureRef.current = { startX: event.clientX, startY: event.clientY, page: { x, y }, travelled: 0 };
 
     if (effectiveToolType === 'rectangular') {
       setIsDrawing(true);
@@ -1279,7 +1339,7 @@ const RegionSelectionTool = ({
       setIsDrawing(true);
       setPolygonPoints([{ x, y }]);
     }
-  }, [active, targetElement, effectiveToolType, clientPointToPage, selectedRegionIds, regions, getRegionBounds, activeTool, isPointWithinTargetRect, captureInteractionPointer]);
+  }, [active, targetElement, effectiveToolType, clientPointToPage, selectedRegionIds, regions, getRegionBounds, activeTool, isPointWithinTargetRect, captureInteractionPointer, mobileMode, findRegionAtPagePoint]);
 
   const handleMouseMove = useCallback((event) => {
     if (!active || !targetElement) return;
@@ -1566,6 +1626,37 @@ const RegionSelectionTool = ({
             // Uniform scale preserves the shape — keep shapeType as-is.
             return { ...region, coordinates: scaled };
           }));
+        } else if (
+          mobileMode &&
+          initialBounds &&
+          Array.isArray(initialCoords) &&
+          regionsRef.current.find(r => r.regionId === regionId)?.shapeType === 'rectangular'
+        ) {
+          // Phone: a rectangle's corner resizes the rectangle (the opposite
+          // corner stays put). There is no Shift key on a phone, and moving
+          // one corner on its own turned a box into a skewed four-sided shape.
+          const vx0 = initialCoords[vertexIndex * 2];
+          const vy0 = initialCoords[vertexIndex * 2 + 1];
+          const draggingMinX = Math.abs(vx0 - initialBounds.minX) <= Math.abs(vx0 - initialBounds.maxX);
+          const draggingMinY = Math.abs(vy0 - initialBounds.minY) <= Math.abs(vy0 - initialBounds.maxY);
+          const bounds = { ...initialBounds };
+          if (draggingMinX) bounds.minX = Math.min(x, initialBounds.maxX - MIN_REGION_SIZE);
+          else bounds.maxX = Math.max(x, initialBounds.minX + MIN_REGION_SIZE);
+          if (draggingMinY) bounds.minY = Math.min(y, initialBounds.maxY - MIN_REGION_SIZE);
+          else bounds.maxY = Math.max(y, initialBounds.minY + MIN_REGION_SIZE);
+          setRegions(prev => prev.map(region => (
+            region.regionId !== regionId
+              ? region
+              : {
+                  ...region,
+                  coordinates: [
+                    bounds.minX, bounds.minY,
+                    bounds.maxX, bounds.minY,
+                    bounds.maxX, bounds.maxY,
+                    bounds.minX, bounds.maxY
+                  ]
+                }
+          )));
         } else {
           // Free vertex move. Built from the drag-start coords (not the
           // accumulated ones) so toggling Shift mid-drag is lossless.
@@ -1617,7 +1708,13 @@ const RegionSelectionTool = ({
 
     if (!isDrawing) return;
 
-    if (!isDrawing) return;
+    const gesture = drawGestureRef.current;
+    if (gesture) {
+      gesture.travelled = Math.max(
+        gesture.travelled,
+        Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY)
+      );
+    }
 
     if (effectiveToolType === 'rectangular' && startPoint) {
       setCurrentRect({
@@ -1629,7 +1726,7 @@ const RegionSelectionTool = ({
     } else if (effectiveToolType === 'freehand') {
       setPolygonPoints(prev => [...prev, { x, y }]);
     }
-  }, [active, targetElement, clientPointToPage, displayScaleX, displayScaleY, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions, activeTool]);
+  }, [active, targetElement, clientPointToPage, displayScaleX, displayScaleY, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions, activeTool, mobileMode]);
 
   const handleMouseUp = useCallback((event) => {
     if (!active) return;
@@ -1689,6 +1786,24 @@ const RegionSelectionTool = ({
     }
 
     if (!isDrawing) return;
+
+    // Phone: a tap (no drag) on an existing area while a draw tool is armed
+    // selects that area and switches to Select, so it can be moved or resized
+    // straight away. Before, the tap drew nothing and selected nothing.
+    const gesture = drawGestureRef.current;
+    drawGestureRef.current = null;
+    if (mobileMode && gesture && gesture.travelled <= TOUCH_TAP_SLOP_PX) {
+      const tapped = findRegionAtPagePoint(gesture.page.x, gesture.page.y);
+      setIsDrawing(false);
+      setStartPoint(null);
+      setCurrentRect(null);
+      setPolygonPoints([]);
+      if (tapped) {
+        setToolType('move');
+        setSelectedRegionIds(new Set([tapped.regionId]));
+      }
+      return;
+    }
 
     if (effectiveToolType === 'rectangular' && currentRect && currentRect.width > MIN_REGION_SIZE && currentRect.height > MIN_REGION_SIZE) {
       pushUndoSnapshot();
@@ -1778,7 +1893,7 @@ const RegionSelectionTool = ({
     setStartPoint(null);
     setCurrentRect(null);
     setPolygonPoints([]);
-  }, [active, interactionState, liveRotationAngle, isDrawing, effectiveToolType, currentRect, polygonPoints, currentPageId, effectiveSelectionMode, mergeRegionWithOverlapping, subtractRegionFromRegions, pushUndoSnapshot, persistHistoryStacks, userId, releaseInteractionPointer]);
+  }, [active, interactionState, liveRotationAngle, isDrawing, effectiveToolType, currentRect, polygonPoints, currentPageId, effectiveSelectionMode, mergeRegionWithOverlapping, subtractRegionFromRegions, pushUndoSnapshot, persistHistoryStacks, userId, releaseInteractionPointer, mobileMode, findRegionAtPagePoint]);
 
   const handleCanvasMouseLeave = useCallback(() => {
     setIsCursorOverCanvas(false);
@@ -1795,6 +1910,35 @@ const RegionSelectionTool = ({
     setInteractionState(null);
     setLiveRotationAngle(null);
   }, [releaseInteractionPointer]);
+
+  // Phone: a second finger means "zoom / pan the page", never "keep drawing".
+  // Drop the half-drawn shape, put a half-dragged area back where it was, and
+  // let the viewer take the pinch.
+  const interactionStateRef = useRef(null);
+  interactionStateRef.current = interactionState;
+  const abandonTouchInteraction = useCallback(() => {
+    const current = interactionStateRef.current;
+    if (current?.preSnapshot && dragHasMovedRef.current) {
+      setRegions(cloneRegionsForUndo(current.preSnapshot.regions));
+    }
+    documentDragFallbackRef.current = false;
+    drawGestureRef.current = null;
+    releaseInteractionPointer();
+    dragHasMovedRef.current = false;
+    setIsCursorOverCanvas(false);
+    setIsDrawing(false);
+    setStartPoint(null);
+    setCurrentRect(null);
+    setPolygonPoints([]);
+    setInteractionState(null);
+    setLiveRotationAngle(null);
+  }, [cloneRegionsForUndo, releaseInteractionPointer]);
+
+  useEffect(() => {
+    if (!active || !mobileMode) return undefined;
+    window.addEventListener(PDFJS_PINCH_START_EVENT, abandonTouchInteraction);
+    return () => window.removeEventListener(PDFJS_PINCH_START_EVENT, abandonTouchInteraction);
+  }, [active, mobileMode, abandonTouchInteraction]);
 
   const handleConfirm = useCallback(() => {
     if (!onRegionComplete) {
@@ -1971,6 +2115,7 @@ const RegionSelectionTool = ({
       }
     }
   }, [active, effectiveToolType, targetElement, regions, selectedRegionIds, toolType, createHistorySnapshot, captureInteractionPointer]);
+  regionPointerDownRef.current = handleRegionPointerDown;
 
   const handleVertexPointerDown = useCallback((region, vertexIndex, event) => {
     if (!active || effectiveToolType !== 'move' || !targetElement) return;
@@ -2554,23 +2699,56 @@ const RegionSelectionTool = ({
     };
   }, [active, targetElement, handleCancel]);
 
+  // Latest handlers for the document capture listeners below. The listeners
+  // are bound once per session: re-binding them on every render (the handlers
+  // change with each pointer move) used to reset the drag flag in the cleanup
+  // mid-gesture, which on the phone - where every page touch takes this path -
+  // dropped the rest of a drag.
+  const documentFallbackHandlersRef = useRef(null);
+  documentFallbackHandlersRef.current = {
+    down: handleMouseDown,
+    move: handleMouseMove,
+    up: handleMouseUp,
+    cancel: handlePointerCancel,
+    within: isPointWithinTargetRect,
+    abandon: abandonTouchInteraction,
+  };
+
   useEffect(() => {
     if (!active || !targetElement) return;
+    const handlers = () => documentFallbackHandlersRef.current;
+
+    // Only a press on the page itself (inside the PDF scroller) may start a
+    // region gesture. Without this, a tap on chrome that overlaps a zoomed
+    // page (the dock, the header, the space chip) started a draw too.
+    const pageScroller = targetElement.closest?.('.survey-pdfjs-viewer') || null;
 
     const handleDocumentPointerDownCapture = (event) => {
       if (activeTool === 'pan') return;
+      if (
+        mobileMode &&
+        activePointerIdRef.current !== null &&
+        Number.isFinite(event.pointerId) &&
+        event.pointerId !== activePointerIdRef.current
+      ) {
+        // Second finger: hand the gesture to the viewer's pinch / two-finger
+        // pan. Not stopped, so the viewer sees it.
+        handlers().abandon();
+        return;
+      }
       if (documentDragFallbackRef.current) return;
       if (containerRef.current && containerRef.current.contains(event.target)) return;
       if (event.target?.closest?.('[data-region-selection-ui="true"]')) return;
-      if (!isPointWithinTargetRect(event.clientX, event.clientY)) return;
+      if (pageScroller && !pageScroller.contains(event.target)) return;
+      if (!handlers().within(event.clientX, event.clientY)) return;
 
       documentDragFallbackRef.current = true;
-      handleMouseDown(event);
+      handlers().down(event);
     };
 
     const handleDocumentPointerMoveCapture = (event) => {
       if (!documentDragFallbackRef.current) return;
-      handleMouseMove(event);
+      handlers().move(event);
       event.preventDefault();
       event.stopPropagation();
     };
@@ -2578,7 +2756,7 @@ const RegionSelectionTool = ({
     const handleDocumentPointerUpCapture = (event) => {
       if (!documentDragFallbackRef.current) return;
       documentDragFallbackRef.current = false;
-      handleMouseUp(event);
+      handlers().up(event);
       event.preventDefault();
       event.stopPropagation();
     };
@@ -2586,7 +2764,7 @@ const RegionSelectionTool = ({
     const handleDocumentPointerCancelCapture = (event) => {
       if (!documentDragFallbackRef.current) return;
       documentDragFallbackRef.current = false;
-      handlePointerCancel(event);
+      handlers().cancel(event);
       event.preventDefault();
       event.stopPropagation();
     };
@@ -2603,7 +2781,7 @@ const RegionSelectionTool = ({
       document.removeEventListener('pointerup', handleDocumentPointerUpCapture, true);
       document.removeEventListener('pointercancel', handleDocumentPointerCancelCapture, true);
     };
-  }, [active, targetElement, activeTool, handleMouseDown, handleMouseMove, handleMouseUp, handlePointerCancel, isPointWithinTargetRect]);
+  }, [active, targetElement, activeTool, mobileMode]);
 
   // KAL-301 REDO: live rotation preview transform. While a rotate drag is in
   // flight the selected region AND its full selection chrome (boundary box,
@@ -2651,6 +2829,33 @@ const RegionSelectionTool = ({
       }
     };
   };
+
+  // Phone handle: a 44px see-through pad centred on the corner, carrying the
+  // usual small dot, so a fingertip that lands near the dot still grabs it.
+  const touchHandlePadStyle = (cx, cy) => ({
+    position: 'absolute',
+    left: `${cx}px`,
+    top: `${cy}px`,
+    width: `${TOUCH_HANDLE_HIT_PX}px`,
+    height: `${TOUCH_HANDLE_HIT_PX}px`,
+    transform: 'translate(-50%, -50%)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: 'transparent',
+    pointerEvents: 'auto',
+    touchAction: 'none',
+    zIndex: 100003
+  });
+  const touchHandleDotStyle = ({ width, height, borderRadius }) => ({
+    width: typeof width === 'number' ? `${width}px` : width,
+    height: typeof height === 'number' ? `${height}px` : height,
+    borderRadius,
+    background: REGION_HANDLE_FILL,
+    border: `1px solid ${REGION_HANDLE_STROKE}`,
+    boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+    pointerEvents: 'none'
+  });
 
   if (!active) return null;
 
@@ -2978,8 +3183,16 @@ const RegionSelectionTool = ({
               height: `${canvasRect.height}px`,
               zIndex: 100000,
               cursor: effectiveToolType === 'move' ? 'default' : (isCursorOverCanvas ? 'crosshair' : 'default'),
-              pointerEvents: activeTool === 'pan' ? 'none' : 'auto', // Allow events to pass through when pan is active
-              touchAction: 'none'
+              // Phone: the layer is see-through to touches. A finger on the page
+              // lands in the PDF viewer, so two fingers pinch and pan it as
+              // everywhere else in the app, and this tool picks the one-finger
+              // press up in its document listener (handleDocumentPointerDownCapture).
+              // Only the handles below take touches themselves.
+              pointerEvents: (activeTool === 'pan' || mobileMode) ? 'none' : 'auto', // Allow events to pass through when pan is active
+              touchAction: 'none',
+              WebkitTouchCallout: 'none',
+              WebkitUserSelect: 'none',
+              userSelect: 'none'
             }}
             {...(activeTool === 'pan' ? {} : {
               onPointerDown: handleMouseDown,
@@ -3113,7 +3326,7 @@ const RegionSelectionTool = ({
                     stroke="#F5A623"
                     strokeWidth={2.5}
                     style={{
-                      pointerEvents: effectiveToolType === 'move' ? 'visiblePainted' : 'none',
+                      pointerEvents: effectiveToolType === 'move' && !mobileMode ? 'visiblePainted' : 'none',
                       cursor: effectiveToolType === 'move' ? 'move' : 'default'
                     }}
                     onPointerDown={effectiveToolType === 'move' ? (event) => handleRegionPointerDown(region, event) : undefined}
@@ -3138,7 +3351,7 @@ const RegionSelectionTool = ({
                     stroke="transparent"
                     strokeWidth={10} // Wider stroke for easier selection
                     style={{
-                      pointerEvents: effectiveToolType === 'move' ? 'all' : 'none',
+                      pointerEvents: effectiveToolType === 'move' && !mobileMode ? 'all' : 'none',
                       cursor: effectiveToolType === 'move' ? 'move' : 'default'
                     }}
                     onPointerDown={effectiveToolType === 'move' ? (event) => handleRegionPointerDown(region, event) : undefined}
@@ -3201,6 +3414,18 @@ const RegionSelectionTool = ({
                       strokeWidth={1}
                       style={{ pointerEvents: 'none' }}
                     />
+                    {/* Phone: a 44px invisible hit circle around the small dot. */}
+                    {mobileMode && (
+                      <circle
+                        cx={mtX}
+                        cy={mtrY}
+                        r={TOUCH_HANDLE_HIT_PX / 2}
+                        fill="transparent"
+                        data-handle-hit-pad="true"
+                        style={{ pointerEvents: 'auto' }}
+                        onPointerDown={(event) => handleRotatePointerDown(selectedRegion, event)}
+                      />
+                    )}
                     {/* Rotation circle */}
                     <circle
                       cx={mtX}
@@ -3398,7 +3623,9 @@ const RegionSelectionTool = ({
                       background: 'transparent',
                       border: `2px dashed ${REGION_HANDLE_BLUE}`,
                       borderRadius: '0px',
-                      pointerEvents: 'auto',
+                      // Phone: the box is drawn only; a touch inside it reaches
+                      // the page and handleMouseDown drags the area from there.
+                      pointerEvents: mobileMode ? 'none' : 'auto',
                       zIndex: 100002,
                       boxSizing: 'border-box',
                       cursor: 'move'
@@ -3411,7 +3638,17 @@ const RegionSelectionTool = ({
                 const x = pageToScreenX(chromeCoords[i * 2]);
                 const y = pageToScreenY(chromeCoords[i * 2 + 1]);
 
-                handles.push(
+                handles.push(mobileMode ? (
+                  <div
+                    key={`v-${i}`}
+                    data-region-vertex-handle={i}
+                    data-handle-hit-pad="true"
+                    onPointerDown={(event) => handleVertexPointerDown(selectedRegion, i, event)}
+                    style={touchHandlePadStyle(x, y)}
+                  >
+                    <div style={touchHandleDotStyle({ width: HANDLE_RADIUS * 2, height: HANDLE_RADIUS * 2, borderRadius: '50%' })} />
+                  </div>
+                ) : (
                   <div
                     key={`v-${i}`}
                     data-region-vertex-handle={i}
@@ -3432,7 +3669,7 @@ const RegionSelectionTool = ({
                       zIndex: 100003
                     }}
                   />
-                );
+                ));
               }
               return wrapChrome(<>{boundaryBox}{handles}</>);
             } else {
@@ -3465,7 +3702,9 @@ const RegionSelectionTool = ({
                       background: 'transparent',
                       border: `2px dashed ${REGION_HANDLE_BLUE}`,
                       borderRadius: '0px',
-                      pointerEvents: 'auto',
+                      // Phone: the box is drawn only; a touch inside it reaches
+                      // the page and handleMouseDown drags the area from there.
+                      pointerEvents: mobileMode ? 'none' : 'auto',
                       zIndex: 100002,
                       boxSizing: 'border-box',
                       cursor: 'move'
@@ -3481,6 +3720,19 @@ const RegionSelectionTool = ({
                     const handleWidth = isHorizontalPill ? '28px' : (isVerticalPill ? '8px' : cornerSize);
                     const handleHeight = isHorizontalPill ? '8px' : (isVerticalPill ? '28px' : cornerSize);
                     const handleRadius = isHorizontalPill || isVerticalPill ? '4px' : '50%';
+                    if (mobileMode) {
+                      return (
+                        <div
+                          key={handle.key}
+                          data-region-resize-handle={handle.key}
+                          data-handle-hit-pad="true"
+                          onPointerDown={(event) => handleResizePointerDown(selectedRegion, handle.key, event)}
+                          style={touchHandlePadStyle(left + (handle.offsetX * width), top + (handle.offsetY * height))}
+                        >
+                          <div style={touchHandleDotStyle({ width: handleWidth, height: handleHeight, borderRadius: handleRadius })} />
+                        </div>
+                      );
+                    }
                     return (
                       <div
                         key={handle.key}
@@ -3558,7 +3810,7 @@ const RegionSelectionTool = ({
       })()}
 
       {/* Floating Plus Sign Indicator for Additive Mode */}
-      {effectiveSelectionMode === REGION_OPERATIONS.ADD && isCursorOverCanvas && (toolType === 'rectangular' || toolType === 'freehand') && (
+      {!mobileMode && effectiveSelectionMode === REGION_OPERATIONS.ADD && isCursorOverCanvas && (toolType === 'rectangular' || toolType === 'freehand') && (
         <div
           ref={addIndicatorRef}
           style={{
@@ -3574,7 +3826,7 @@ const RegionSelectionTool = ({
       )}
 
       {/* Floating Minus Sign Indicator for Subtractive Mode */}
-      {effectiveSelectionMode === REGION_OPERATIONS.SUBTRACT && isCursorOverCanvas && (toolType === 'rectangular' || toolType === 'freehand') && (
+      {!mobileMode && effectiveSelectionMode === REGION_OPERATIONS.SUBTRACT && isCursorOverCanvas && (toolType === 'rectangular' || toolType === 'freehand') && (
         <div
           ref={subtractIndicatorRef}
           style={{
