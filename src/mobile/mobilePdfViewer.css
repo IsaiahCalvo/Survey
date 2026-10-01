@@ -941,6 +941,51 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-radius: 8px;
 }
 
+/* Owner 2026-10-01: the desktop group-switch morph on the phone rail
+   (useRailGroupMotion.js). The group's tools live in a block - the short rule
+   plus the strip - that stays mounted: open, it lays out exactly as the rule
+   and strip did as two column items (same pitch gap between them); closed, it
+   is zero high and its negative top margin hands back the column gap it would
+   otherwise add, so every chip below sits where it did before. The strip's
+   padding moved onto the slot inside it, so the ghost layer (inset 0) lies
+   exactly over the slot and an outgoing tool's copy lands on its own spot.
+   The strip-in keyframe no longer runs here: the block glides open instead. */
+.mobile-pdf-tools__group-tools {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--rail-pitch-gap, var(--mobile-rail-gap));
+}
+
+.mobile-pdf-tools__group-tools:not(.is-open) {
+  height: 0;
+  margin-top: calc(-1 * var(--rail-pitch-gap, var(--mobile-rail-gap)));
+  overflow: hidden;
+}
+
+.mobile-pdf-tools__subtools.is-group {
+  animation: none;
+  position: relative;
+  padding: 0;
+}
+
+.mobile-pdf-tools__group-slot {
+  width: 100%;
+  padding: var(--rail-sub-pad, 3px) 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--rail-sub-gap, var(--mobile-rail-sub-gap));
+}
+
+.mobile-pdf-tools__group-ghosts {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
 .mobile-pdf-tools__subtools .mobile-pdf-tools__button {
   width: var(--mobile-rail-sub-chip);
   height: var(--mobile-rail-sub-chip);

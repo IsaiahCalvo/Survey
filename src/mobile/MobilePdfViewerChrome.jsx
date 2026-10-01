@@ -16,6 +16,7 @@ import { getMobileSyncPresentation, getMobileTextMarkupPresentation, normalizeMo
 import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectFamilyTransition, getSelectModeIconName } from '../utils/selectModes.js';
 import { tooltipForLabel } from '../utils/toolShortcuts.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
+import useRailGroupMotion from './useRailGroupMotion.js';
 import { useViewerTopOverlayRef } from '../utils/viewerTopOverlay.js';
 import './mobilePdfViewer.css';
 
@@ -56,6 +57,13 @@ const HISTORY_GLYPH = 14;
 // segmented toggles draw (boards 6 and 7).
 const STRIP_GLYPH = 12;
 const DOCK_GLYPH = 17;
+// Owner 2026-10-01 (iPhone): "The icons for pages, search, and bookmarks, I
+// would prefer them to be bigger. I don't want the actual row that they're in
+// to grow." The Pages / Search / Bookmarks glyph in the dock pill draws at 20
+// (it was DOCK_GLYPH, 17); the 30px pill, its label and its chevron are
+// unchanged, and the Spaces / Survey circles either side keep 17. Same 1.5
+// stroke on the 24 grid - the glyph simply draws larger.
+const DOCK_HUB_GLYPH = 20;
 
 /**
  * Keeps the live text editor focused while one of its formatting buttons is
@@ -2684,6 +2692,14 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
     }
   }, [activeGroup, activeTool]);
 
+  const [groupToolsEl, setGroupToolsEl] = useState(null);
+  const [groupBoxEl, setGroupBoxEl] = useState(null);
+  const [groupSlotEl, setGroupSlotEl] = useState(null);
+  const [groupGhostLayerEl, setGroupGhostLayerEl] = useState(null);
+  useRailGroupMotion({
+    wrap: groupToolsEl, box: groupBoxEl, slot: groupSlotEl, layer: groupGhostLayerEl, groupKey: openCategory, glyphPx: SUBTOOL_GLYPH,
+  });
+
   const selectTool = (toolId) => {
     bottomToolbarApi?.setActiveTool?.(toolId);
     bottomToolbarApi?.setActiveCategoryDropdown?.(null);
@@ -2778,11 +2794,18 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
               onClick={() => toggleCategory(groupId)}
             />
           ))}
-          {openCategory && (
-            <>
-              <div className="mobile-pdf-tools__divider is-short" />
-              <div className="mobile-pdf-tools__subtools">
-                {TOOL_GROUPS[openCategory].tools.map((tool) => (
+          {/* Owner 2026-10-01: the desktop group-switch morph on the phone
+              (useRailGroupMotion). The block stays mounted, closed at zero
+              height, so a switch can morph slot by slot and the block can
+              glide open and shut instead of popping in and out. */}
+          <div
+            ref={setGroupToolsEl}
+            className={`mobile-pdf-tools__group-tools${openCategory ? ' is-open' : ''}`}
+          >
+            <div className="mobile-pdf-tools__divider is-short" />
+            <div ref={setGroupBoxEl} className="mobile-pdf-tools__subtools is-group">
+              <div ref={setGroupSlotEl} className="mobile-pdf-tools__group-slot">
+                {(TOOL_GROUPS[openCategory]?.tools || []).map((tool) => (
                   <RailButton
                     key={tool.id}
                     active={activeTool === tool.id}
@@ -2790,12 +2813,14 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                     glyph={SUBTOOL_GLYPH}
                     label={tool.label}
                     disabled={tool.disabled}
+                    data-morph-icon={tool.icon}
                     onClick={() => { if (!tool.disabled) selectTool(tool.id); }}
                   />
                 ))}
               </div>
-            </>
-          )}
+              <div ref={setGroupGhostLayerEl} className="mobile-pdf-tools__group-ghosts" data-loadout-ghost-layer="true" aria-hidden="true" />
+            </div>
+          </div>
           {bottomToolbarApi?.regionEditing && bottomToolbarApi?.regionToolbarApi && (
             <>
               <div className="mobile-pdf-tools__divider is-short" />
@@ -3098,7 +3123,7 @@ export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hu
         {/* UX 2026-09-16: one size across all three dock controls; they ran
             21 / 18 / 22. DOCK_GLYPH is that size, 0.57 of the 30px dock
             chip the sizing pass settled on. */}
-        <Icon name={hubIcons[hubMode] || 'pages'} size={DOCK_GLYPH} color="currentColor" />
+        <Icon name={hubIcons[hubMode] || 'pages'} size={DOCK_HUB_GLYPH} color="currentColor" />
         <span>{hubLabels[hubMode] || 'Pages'}</span>
         <Icon name="chevronDown" size={12} color="currentColor" />
       </button>
