@@ -222,8 +222,14 @@ test('dock closes slide, dock switches hand over, and height changes glide', () 
   // The keyboard lift of a one-height sheet lands in layout at once (no CSS
   // transition on it); the glide carries it there on the keyboard's own clock.
   assert.doesNotMatch(mobileCss, /html\[data-keyboard-open='true'\] \[data-mobile-sheet\]:not\(\[data-sheet-keyboard='pad'\]\) \{[^}]*transition/);
-  assert.match(sheetMotion, /if \(keyboardMoved\) animatePad\(\);/);
-  assert.match(sheetMotion, /\? \{ ms: KEYBOARD_MOTION_MS, easing: KEYBOARD_MOTION_EASING \}/);
+  // 2026-10-01 (owner: "a smoother animation when things move up out of the
+  // way of the keyboard and come back down"): a browse panel's padding no
+  // longer eases with the keyboard (that was a layout per frame); anything
+  // that moves while the keyboard moves glides on the keyboard's ONE clock
+  // (keyboardViewport.js keyboardFollowFrames), landing with it.
+  assert.doesNotMatch(sheetMotion, /animatePad|paddingBottom: `\$\{fromPad\}px`/);
+  assert.match(sheetMotion, /const timing = keyboardMoved \|\| keyboardClockRunning\(view\.performance\.now\(\)\)\s*\n\s*\? \{ ms: KEYBOARD_MOTION_MS, easing: KEYBOARD_MOTION_EASING, keyboard: true \}/);
+  assert.match(sheetMotion, /keyboardFollowFrames\(y0, y1, view\.performance\.now\(\), \{ fromRest \}\)/);
   assert.match(mobileCss, /:root \[data-mobile-sheet\]\[data-sheet-at-rest\] \{\s*translate: none !important;/);
   // Reduced motion: no glide and no hand-over fade.
   assert.match(sheetMotion, /live\.enterPhase === 'parked' \|\| prefersReducedMotion\(\)/);

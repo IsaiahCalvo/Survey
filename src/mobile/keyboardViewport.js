@@ -90,10 +90,33 @@
  * the sheet moves on open or dismiss, so there is nothing to drift from the
  * real keyboard. The one-height sheets (colour, tool, text, Active users)
  * still stand on the keyboard.
+ *
+ * OWNER 2026-10-01 (iPhone, after that: "definitely better, but ... it needs
+ * a smoother animation when things move up out of the way of the keyboard
+ * and come back down"). What was still rough, and step 8:
+ *   - everything followed a 0.25s copy of a keyboard that really takes ~0.5s
+ *     (see THE KEYBOARD CLOCK below), so it all raced ahead of the keyboard;
+ *   - each mover had its own clock, restarted by whichever event reached it
+ *     (focus, the resize, a timer at 180 / 420ms), so a cold keyboard height
+ *     or a panel rising to Full meant a second, separate move;
+ *   - the list scroll ran on the main thread (stutters with the React render
+ *     at focus), and a browse panel's padding was eased per frame (a layout of
+ *     the whole panel per frame);
+ *   - on dismiss, a list or page scrolled into the keyboard's room snapped
+ *     back in one frame when the room vanished at the blur.
+ * Now: ONE clock from focus / blur; the reveal runs once, a frame after the
+ * focus, against the layout the focus produced; lists move by compositor
+ * FLIP; browse panels get scroll room instead of padding; and the dismiss
+ * gives back exactly what the reveal took, on the same clock.
  */
 
 export const KEYBOARD_INSET_VAR = '--keyboard-inset';
 export const KEYBOARD_OPEN_ATTR = 'data-keyboard-open';
+// The PDF page area's extra scroll range for the keyboard (step 8): set with
+// the inset, but held until the keyboard is down so the page can glide back
+// out of it first.
+export const KEYBOARD_SCROLL_ROOM_VAR = '--keyboard-scroll-room';
+export const KEYBOARD_SCROLL_ROOM_ATTR = 'data-keyboard-scroll-room';
 
 /**
  * A browser URL bar collapsing, or a rounding wobble in the reported viewport,
@@ -139,14 +162,44 @@ export const KEYBOARD_REVEAL_MARGIN_ATTR = 'data-keyboard-reveal-margin';
 export const KEYBOARD_REVEAL_DEFER_ATTR = 'data-keyboard-reveal-defer';
 
 /*
- * The iOS keyboard slides in and out in 0.25s on UIKit's keyboard curve
- * (animation curve 7), which this cubic approximates: off the mark fast, a long
- * soft landing. Everything that follows the keyboard - a sheet standing on it,
- * a list or page scrolling a field clear of it - uses exactly this, so it all
- * moves as one with the keyboard.
+ * THE KEYBOARD CLOCK (owner 2026-10-01, iPhone, after two rounds: "it needs a
+ * smoother animation when things move up out of the way of the keyboard and
+ * come back down").
+ *
+ * What the iOS keyboard actually does (researched 2026-10-01):
+ *  - UIKit reports duration 0.25s and animation curve 7 in keyboardWillShow /
+ *    WillHide, but curve 7 is not a plain curve: UIKit ignores the duration
+ *    and runs a spring that takes ~0.5s on screen. The CAMediaTimingFunction
+ *    people reverse-engineered for it, (0.38, 0.7, 0.125, 1), only matches the
+ *    real keyboard with the duration DOUBLED to 0.5s (Apple developer forums
+ *    thread 48088: "needed to double the CATransaction duration"; the spring
+ *    there is also given a 0.5s duration). Rounds 1-2 ran that curve over
+ *    0.25s, i.e. everything that followed the keyboard ran about twice as fast
+ *    as the keyboard and arrived long before it - one source of "not smooth".
+ *  - visualViewport: in a WKWebView with no Safari bars (our Expo / Capacitor
+ *    shell, and home-screen web apps) it is resized ONCE, at keyboardWillShow,
+ *    straight to the final height; in Safari with the bottom address bar it is
+ *    resized only when the keyboard has FINISHED (WebKit bug 265578, iOS 17);
+ *    some builds report steps. So the resize event cannot be the start signal.
+ *
+ * So everything that moves for the keyboard runs on ONE clock owned by this
+ * file: it starts the moment a field takes focus (show) or focus leaves the
+ * last field (hide) - not at the first resize event - and runs the keyboard's
+ * curve over KEYBOARD_MOTION_MS toward the PREDICTED keyboard height (the last
+ * real one, or 41% of the screen the first time). When the real height lands
+ * and differs, the clock is retargeted in place (same end time, continuous
+ * position) or, if it is nearly done, gets a short tail - never a jump and
+ * never a second, separate move. Consumers (useMobileSheetMotion, the reveal
+ * scroll below) ask keyboardFollowFrames() for keyframes that carry them from
+ * where they are now to where they are going on the remaining part of that
+ * clock, so a sheet, a list and the field all land together with the keyboard.
  */
-export const KEYBOARD_MOTION_MS = 250;
+export const KEYBOARD_MOTION_MS = 500;
 export const KEYBOARD_MOTION_EASING = 'cubic-bezier(0.38, 0.7, 0.125, 1)';
+// A height correction that arrives with less than this left on the clock (or
+// after it ran out - Safari's late resize) glides over this long instead.
+export const KEYBOARD_RETARGET_MS = 240;
+const FRAME_MS = 1000 / 60;
 // While a sheet moves (useMobileSheetMotion), this attribute pins it to its
 // resting box for a measurement: mobilePdfViewer.css drops the hook's
 // translate and its height hold for that instant.
@@ -170,7 +223,104 @@ function cubicBezier(x1, y1, x2, y2) {
     return yAt(t);
   };
 }
-const keyboardEase = cubicBezier(0.38, 0.7, 0.125, 1);
+export const keyboardEase = cubicBezier(0.38, 0.7, 0.125, 1);
+
+// ------------------------------------------------------------ the one clock
+// { phase: 'show' | 'hide' | null, start, ms, from, to } in performance.now()
+// time and keyboard-inset px. Module state: there is one keyboard.
+const keyboardClock = { phase: null, start: 0, ms: 0, from: 0, to: 0 };
+const nowOf = (win) => (win?.performance?.now ? win.performance.now() : Date.now());
+const clockProgress = (c, t) => (c.ms > 0 ? Math.min(1, Math.max(0, (t - c.start) / c.ms)) : 1);
+
+export function getKeyboardClock() {
+  return { ...keyboardClock };
+}
+
+/** True while the keyboard is (believed to be) moving. */
+export function keyboardClockRunning(now) {
+  const c = keyboardClock;
+  return Boolean(c.phase) && now >= c.start - 1 && now < c.start + c.ms - 1;
+}
+
+/** Where the keyboard is on its way (inset px), or null with no clock. */
+export function keyboardClockValue(now) {
+  const c = keyboardClock;
+  if (!c.phase) return null;
+  return c.from + (c.to - c.from) * keyboardEase(clockProgress(c, now));
+}
+
+export function startKeyboardClock(phase, from, to, now, ms = KEYBOARD_MOTION_MS) {
+  Object.assign(keyboardClock, { phase, start: now, ms, from, to });
+}
+
+/**
+ * The real keyboard height differs from the one the clock is heading to.
+ * Keep the clock's end and its current position and only change where it
+ * lands; late in the motion (or after it) glide the difference over
+ * KEYBOARD_RETARGET_MS instead, so it is never a jump.
+ */
+export function retargetKeyboardClock(to, now) {
+  const c = keyboardClock;
+  if (!c.phase || to === c.to) return;
+  const e = keyboardEase(clockProgress(c, now));
+  const value = c.from + (c.to - c.from) * e;
+  if (c.start + c.ms - now >= KEYBOARD_RETARGET_MS && e < 0.9) {
+    c.from = (value - to * e) / (1 - e);
+    c.to = to;
+    return;
+  }
+  startKeyboardClock(c.phase, value, to, now, KEYBOARD_RETARGET_MS);
+}
+
+export function resetKeyboardClock() {
+  keyboardClock.phase = null;
+}
+
+/*
+ * Keyframes ({ y, offset } points, plus ms and easing for the Web Animations
+ * API) that take something from `fromY` now to `toY` exactly when clock `c`
+ * ends, on the remaining part of the keyboard's curve. From the very start of
+ * the clock that is just the curve itself; part-way it is sampled per frame
+ * (linear between samples) so the motion keeps the keyboard's shape.
+ */
+function followFrames(c, fromY, toY, now, fromRest = false) {
+  const remaining = c.start + c.ms - now;
+  if (!(remaining >= 1) && !fromRest) return null;
+  const p0 = clockProgress(c, now);
+  // Something still at rest starts on the curve's own beginning, squeezed
+  // into what is left of the clock: joining the keyboard's curve part-way
+  // (after a busy frame or two at the blur) would make it leave at full speed
+  // - a visible kick. It still lands with the keyboard.
+  if (p0 <= 0.002 || fromRest) {
+    const ms = Math.max(remaining, fromRest ? KEYBOARD_RETARGET_MS : 1);
+    return { ms, easing: KEYBOARD_MOTION_EASING, points: [{ y: fromY, offset: 0 }, { y: toY, offset: 1 }] };
+  }
+  const e0 = keyboardEase(p0);
+  const span = 1 - e0;
+  if (span < 1e-4) return null;
+  const count = Math.max(2, Math.ceil(remaining / FRAME_MS));
+  const points = [];
+  for (let i = 0; i <= count; i += 1) {
+    const g = i === count ? 1 : (keyboardEase(clockProgress(c, now + (remaining * i) / count)) - e0) / span;
+    points.push({ y: Math.round((fromY + (toY - fromY) * g) * 100) / 100, offset: i / count });
+  }
+  return { ms: remaining, easing: 'linear', points };
+}
+
+/**
+ * Keyframes that carry a moving part from `fromY` to `toY` on the keyboard's
+ * clock, landing with the keyboard - or null when the keyboard is not moving.
+ */
+export function keyboardFollowFrames(fromY, toY, now, { fromRest = false } = {}) {
+  if (!keyboardClockRunning(now)) return null;
+  return followFrames(keyboardClock, fromY, toY, now, fromRest);
+}
+
+// The keyboard clock if it is running, else a fresh one of the same length
+// (a field-to-field reveal while the keyboard stays up).
+const motionClock = (now) => (keyboardClockRunning(now)
+  ? { ...keyboardClock }
+  : { start: now, ms: KEYBOARD_MOTION_MS });
 
 function prefersReducedMotion(win) {
   try {
@@ -201,8 +351,33 @@ export function withSheetsAtRest(doc, measure) {
   }
 }
 
-// Scroll containers gliding to a reveal target: el -> { to, frame, last }.
+/*
+ * MOVING A LIST FOR THE KEYBOARD. Two ways, both on the keyboard's clock:
+ *  - a list inside a bottom sheet (the Survey list, Search results,
+ *    Bookmarks, Spaces) and the PDF page area are scrolled to their target in
+ *    ONE step and their rows (the pdf.js content node) are carried from where
+ *    they were to where they now are with a `translate` Web Animation (a
+ *    FLIP): it runs on the compositor, so a React render at focus or blur
+ *    time cannot make it stutter, and it costs no layout per frame;
+ *  - any other scroller has its scrollTop moved per frame, sampled from the
+ *    same clock.
+ * A second reveal while either runs starts from where the rows are on screen,
+ * so it bends the motion instead of starting a new one.
+ */
+// JS glides: el -> { to, frame, last }.
 const scrollGlides = new WeakMap();
+// FLIP glides: el -> { anims, field }.
+const scrollFlips = new WeakMap();
+// Lists a reveal moved while the keyboard is up: el -> { from, to }, so the
+// dismiss can give back exactly what the reveal took (step 8 in the header).
+const revealedScrollers = new Map();
+export const KEYBOARD_ROOM_ATTR = 'data-keyboard-room';
+export const KEYBOARD_ROOM_VAR = '--keyboard-room';
+export const KEYBOARD_ROOM_HOLD_VAR = '--keyboard-room-hold';
+// Hides the native caret while its field slides (WebKit draws the iOS caret
+// from the field's last laid-out box, so it would not ride a compositor
+// animation); mobilePdfViewer.css.
+export const KEYBOARD_GLIDING_ATTR = 'data-keyboard-gliding';
 const scrollTargetOf = (el) => scrollGlides.get(el)?.to ?? el.scrollTop;
 
 function glideScrollTop(win, el, to) {
@@ -214,20 +389,105 @@ function glideScrollTop(win, el, to) {
     el.scrollTop = to;
     return;
   }
-  const clock = () => (win.performance?.now ? win.performance.now() : Date.now());
-  const start = clock();
+  const now = nowOf(win);
+  let c = motionClock(now);
+  // From rest, the curve's own beginning, squeezed into what is left of the
+  // clock (see followFrames); mid-glide, the rest of the clock's curve.
+  if (!previous) c = { start: now, ms: Math.max(c.start + c.ms - now, KEYBOARD_RETARGET_MS) };
+  const e0 = keyboardEase(clockProgress(c, now));
+  const span = Math.max(1e-4, 1 - e0);
   const glide = { to, frame: 0, last: from };
   const step = () => {
     // A finger (or anything else) moved the list meanwhile: it is theirs now.
     if (Math.abs(el.scrollTop - glide.last) > 1) { scrollGlides.delete(el); return; }
-    const p = Math.min(1, Math.max(0, (clock() - start) / KEYBOARD_MOTION_MS));
-    el.scrollTop = from + (to - from) * keyboardEase(p);
+    const p = clockProgress(c, nowOf(win));
+    const g = p >= 1 ? 1 : Math.max(0, (keyboardEase(p) - e0) / span);
+    el.scrollTop = from + (to - from) * g;
     glide.last = el.scrollTop;
     if (p < 1) glide.frame = win.requestAnimationFrame(step);
     else scrollGlides.delete(el);
   };
   scrollGlides.set(el, glide);
   glide.frame = win.requestAnimationFrame(step);
+}
+
+// How far below their resting place a FLIP is showing `el`'s rows right now.
+function flipOffsetOf(win, el) {
+  const record = scrollFlips.get(el);
+  const anim = record?.anims.find((a) => a.playState !== 'finished' && a.playState !== 'idle');
+  if (!anim) return 0;
+  const value = win.getComputedStyle(anim.effect.target).translate;
+  if (!value || value === 'none') return 0;
+  return parseFloat(String(value).split(' ')[1]) || 0;
+}
+
+function stopFlip(el) {
+  const record = scrollFlips.get(el);
+  if (!record) return;
+  scrollFlips.delete(el);
+  record.anims.forEach((a) => { a.onfinish = null; a.cancel(); });
+  record.field?.removeAttribute?.(KEYBOARD_GLIDING_ATTR);
+}
+
+// A sheet's list, or the PDF page area (its one child is the pdf.js content
+// node; `translate` composes with the live-zoom `transform` pdf.js sets on it).
+const canFlip = (win, el) => (
+  typeof el?.closest === 'function'
+  && (Boolean(el.closest('[data-mobile-sheet]')) || Boolean(el.querySelector?.(':scope > [data-pdfjs-content="true"]')))
+  && typeof el.firstElementChild?.animate === 'function'
+  && !prefersReducedMotion(win)
+);
+
+/*
+ * Scroll `el` to `to` at once and carry its rows there on the keyboard's
+ * clock (see above). Returns how far the scroll position moved.
+ */
+function flipScrollTop(win, el, to, fromTop) {
+  const offset = flipOffsetOf(win, el);
+  stopFlip(el);
+  // `fromTop`: where the rows were shown before the caller changed the list
+  // (taking its keyboard room away can clamp scrollTop before we get here).
+  const from = fromTop ?? el.scrollTop;
+  el.scrollTop = to;
+  const moved = el.scrollTop - from;
+  const startY = offset + moved;
+  if (Math.abs(startY) < 0.5) return moved;
+  const now = nowOf(win);
+  const follow = followFrames(motionClock(now), startY, 0, now, Math.abs(offset) < 0.5);
+  if (!follow) return moved;
+  const box = el.getBoundingClientRect();
+  const reach = Math.abs(startY) + 2;
+  const rows = [...el.children].filter((child) => {
+    const position = win.getComputedStyle(child).position;
+    if (position === 'sticky' || position === 'fixed') return false;
+    const r = child.getBoundingClientRect();
+    return (r.height || r.width) && r.bottom > box.top - reach && r.top < box.bottom + reach;
+  });
+  if (!rows.length) return moved;
+  const frames = follow.points.map(({ y, offset: at }) => ({ translate: `0 ${y}px`, offset: at }));
+  const anims = rows.map((row) => row.animate(frames, { duration: follow.ms, easing: follow.easing }));
+  const active = el.ownerDocument?.activeElement;
+  const field = isAppleTouchWebKit(win) && active && el.contains(active) && isKeyboardEditable(active) ? active : null;
+  field?.setAttribute(KEYBOARD_GLIDING_ATTR, '');
+  const record = { anims, field };
+  scrollFlips.set(el, record);
+  anims[anims.length - 1].onfinish = () => {
+    if (scrollFlips.get(el) !== record) return;
+    scrollFlips.delete(el);
+    field?.removeAttribute(KEYBOARD_GLIDING_ATTR);
+  };
+  return moved;
+}
+
+// Move a list for the keyboard, the way that suits it; remember a reveal.
+function moveScroller(win, el, to, { reveal = false, fromTop } = {}) {
+  const from = scrollTargetOf(el);
+  if (canFlip(win, el)) flipScrollTop(win, el, to, fromTop);
+  else glideScrollTop(win, el, to);
+  if (reveal) {
+    const previous = revealedScrollers.get(el);
+    revealedScrollers.set(el, { from: previous ? previous.from : from, to: scrollTargetOf(el) });
+  }
 }
 
 let rememberedInset = 0;
@@ -472,8 +732,9 @@ function revealNow(field, win, doc, inset, animate) {
       if (rect.height > bottom - top && field.isContentEditable) {
         rect = caretRectIn(win, field) || rect;
       }
-      // Where the field will be once this scroller's own glide lands.
-      const pending = animate ? scrollTargetOf(el) - el.scrollTop : 0;
+      // Where the field will be once this scroller's own glide lands (a JS
+      // glide still has scrolling to do; a FLIP still shows its rows lower).
+      const pending = animate ? (scrollTargetOf(el) - el.scrollTop) + flipOffsetOf(win, el) : 0;
       if (pending) rect = { top: rect.top - pending, bottom: rect.bottom - pending, height: rect.height };
       // Only ever scroll a covered field UP into view, and never so far that
       // its top leaves the visible strip. A field whose top is already hidden
@@ -487,7 +748,7 @@ function revealNow(field, win, doc, inset, animate) {
         const from = scrollTargetOf(el);
         const to = Math.min(from + delta, Math.max(0, el.scrollHeight - el.clientHeight));
         if (to - from >= 1) {
-          glideScrollTop(win, el, to);
+          moveScroller(win, el, to, { reveal: true });
           moved = true;
         }
       } else if (delta >= 1) {
@@ -554,11 +815,125 @@ export function createKeyboardViewportController(options = {}) {
     return isKeyboardEditable(active) ? active : null;
   };
 
+  /*
+   * SCROLL ROOM (step 8 in the header). A browse panel does not move for the
+   * keyboard and its lists keep their height - the keyboard simply covers
+   * their lower part - so each list in it gets extra room at its end, exactly
+   * as tall as the part the keyboard covers (an empty ::after, see
+   * mobilePdfViewer.css). Every row can then be scrolled above the keyboard,
+   * and nothing on screen changes when the room appears or goes. The PDF page
+   * area has the same room as padding (--keyboard-scroll-room), held until the
+   * keyboard is down so the page can glide back first.
+   */
+  const rooms = new Map();
+  let scrollRoom = 0;
+  let scrollRoomTimer = 0;
+  const holdScrollRoom = (px) => {
+    if (scrollRoomTimer) { clearTimer(scrollRoomTimer); scrollRoomTimer = 0; }
+    if (!(px > scrollRoom)) return;
+    scrollRoom = px;
+    root.style.setProperty(KEYBOARD_SCROLL_ROOM_VAR, `${px}px`);
+    root.setAttribute(KEYBOARD_SCROLL_ROOM_ATTR, '');
+  };
+  const dropScrollRoom = () => {
+    if (scrollRoomTimer) { clearTimer(scrollRoomTimer); scrollRoomTimer = 0; }
+    if (!scrollRoom) return;
+    scrollRoom = 0;
+    root.style.removeProperty(KEYBOARD_SCROLL_ROOM_VAR);
+    root.removeAttribute(KEYBOARD_SCROLL_ROOM_ATTR);
+  };
+  const applyRooms = (px) => {
+    const doc = win.document;
+    if (!doc?.querySelectorAll || !(px > 0)) return;
+    const keyboardTop = (Number(win.innerHeight) || 0) - px;
+    withSheetsAtRest(doc, () => {
+      doc.querySelectorAll('[data-mobile-sheet][data-sheet-keyboard="pad"]').forEach((sheet) => {
+        if (!sheet.getClientRects?.().length) return;
+        // The lists of a panel sit a few levels down; their rows are not
+        // walked.
+        const visit = (node, depth) => {
+          for (const el of node.children) {
+            const overflowY = win.getComputedStyle(el).overflowY;
+            if ((overflowY === 'auto' || overflowY === 'scroll') && el.clientHeight > 40) {
+              const box = el.getBoundingClientRect();
+              const need = Math.ceil(box.bottom - keyboardTop);
+              // A list showing a growing filler that does not overflow (the
+              // centred "No results" of Search / Bookmarks) has nothing to
+              // scroll to, and room would squeeze the filler - its message
+              // would jump. Looked at again when the list changes (onInput).
+              const filler = el.scrollHeight <= el.clientHeight + 1
+                && [...el.children].some((child) => parseFloat(win.getComputedStyle(child).flexGrow) > 0);
+              if (!filler && need > (rooms.get(el) || 0)) {
+                // A list sized by its content (the Survey list) would GROW
+                // by its room instead of scrolling into it: it is held at
+                // the height it has, so its box does not change at all.
+                if (!rooms.has(el)) {
+                  const style = win.getComputedStyle(el);
+                  const hold = style.boxSizing === 'content-box'
+                    ? el.clientHeight - (parseFloat(style.paddingTop) || 0) - (parseFloat(style.paddingBottom) || 0)
+                    : box.height;
+                  el.style.setProperty(KEYBOARD_ROOM_HOLD_VAR, `${hold}px`);
+                }
+                rooms.set(el, need);
+                el.style.setProperty(KEYBOARD_ROOM_VAR, `${need}px`);
+                el.setAttribute(KEYBOARD_ROOM_ATTR, '');
+              }
+            } else if (depth < 8) {
+              visit(el, depth + 1);
+            }
+          }
+        };
+        visit(sheet, 0);
+      });
+    });
+  };
+  const dropRoom = (el) => {
+    rooms.delete(el);
+    el.removeAttribute?.(KEYBOARD_ROOM_ATTR);
+    el.style?.removeProperty?.(KEYBOARD_ROOM_VAR);
+    el.style?.removeProperty?.(KEYBOARD_ROOM_HOLD_VAR);
+  };
+  const pdfScroller = () => {
+    let el = win.document?.querySelector?.('[data-mobile-pdf-surface="true"] [data-pdfjs-content="true"]')?.parentElement;
+    while (el && el !== win.document.body) {
+      if (isVerticalScroller(win, el)) return el;
+      el = el.parentElement;
+    }
+    return null;
+  };
+  /*
+   * The keyboard is going down: every list it moved goes back - on the same
+   * clock, the exact reverse of the reveal - unless you scrolled it yourself
+   * meanwhile; then it only comes back out of the room that is going away.
+   */
+  const returnScrollers = () => {
+    const scrollers = new Set([...rooms.keys(), ...revealedScrollers.keys()]);
+    const page = scrollRoom ? pdfScroller() : null;
+    if (page) scrollers.add(page);
+    scrollers.forEach((el) => {
+      const revealed = revealedScrollers.get(el);
+      const room = el === page ? scrollRoom : (rooms.get(el) || 0);
+      if (!el.isConnected || !el.getClientRects?.().length) {
+        if (rooms.has(el)) dropRoom(el);
+        return;
+      }
+      const at = scrollTargetOf(el);
+      const shownAt = el.scrollTop;
+      let to = revealed && Math.abs(at - revealed.to) < 2 ? revealed.from : at;
+      to = Math.max(0, Math.min(to, el.scrollHeight - room - el.clientHeight));
+      if (rooms.has(el)) dropRoom(el);
+      if (Math.abs(to - at) >= 1 || flipOffsetOf(win, el)) moveScroller(win, el, to, { fromTop: shownAt });
+    });
+    revealedScrollers.clear();
+  };
+
   const reveal = () => {
     revealFrame = 0;
     if (disposed) return;
     const field = activeEditable();
-    if (field) revealAboveKeyboard(field, { win, inset, animate: true });
+    if (!field || !(inset > 0)) return;
+    applyRooms(inset);
+    revealAboveKeyboard(field, { win, inset, animate: true });
   };
   const scheduleReveal = () => {
     if (revealFrame || disposed) return;
@@ -574,15 +949,46 @@ export function createKeyboardViewportController(options = {}) {
     revealTimers.add(id);
   };
 
+  // When focus left the last field (the hide's clock starts there, a frame
+  // before the controller is sure no other field took it).
+  let hideStartAt = null;
+  const moveClock = (next) => {
+    const now = nowOf(win);
+    const current = keyboardClockRunning(now) ? keyboardClockValue(now) : inset;
+    if (next > 0) {
+      // The real height correcting the guess (or a taller keyboard, emoji):
+      // the running rise bends to it. Anything else starts a rise.
+      if (keyboardClock.phase === 'show' && inset > 0) retargetKeyboardClock(next, now);
+      else startKeyboardClock('show', current, next, now);
+    } else {
+      startKeyboardClock('hide', current, 0, Math.min(now, hideStartAt ?? now));
+    }
+  };
+
   const writeInset = (next) => {
     if (next === inset) return inset;
+    moveClock(next);
+    // Going down: the lists the reveal moved go back first, measured while
+    // their room still exists.
+    if (next === 0) returnScrollers();
     inset = next;
     root.style.setProperty(KEYBOARD_INSET_VAR, `${next}px`);
     if (next > 0) root.setAttribute(KEYBOARD_OPEN_ATTR, 'true');
     else root.removeAttribute(KEYBOARD_OPEN_ATTR);
+    if (next > 0) {
+      holdScrollRoom(next);
+    } else if (scrollRoom && setTimer) {
+      // The page keeps its room until it has glided back out of it.
+      if (scrollRoomTimer) clearTimer(scrollRoomTimer);
+      const left = keyboardClock.start + keyboardClock.ms - nowOf(win);
+      scrollRoomTimer = setTimer(() => { scrollRoomTimer = 0; dropScrollRoom(); }, Math.max(0, left) + 40);
+    } else {
+      dropScrollRoom();
+    }
     onInsetChange?.(next);
     // Deferred one frame: the inset has to land in layout (sheet lift, PDF
-    // scroll range) before the field can be measured against it.
+    // scroll range) and React has to commit what the focus changed (a browse
+    // panel rising to Full) before the field can be measured against it.
     if (next > 0) scheduleReveal();
     return inset;
   };
@@ -646,7 +1052,8 @@ export function createKeyboardViewportController(options = {}) {
   };
 
   // Step 4 in the header: runs synchronously inside the focus dispatch, i.e.
-  // before WebKit measures the field to decide whether to pan the page.
+  // before WebKit measures the field to decide whether to pan the page. The
+  // keyboard clock starts here (writeInset), not at the first resize event.
   const onFocusIn = (event) => {
     const field = isKeyboardEditable(event?.target) ? event.target : null;
     if (field && !disposed) {
@@ -660,12 +1067,18 @@ export function createKeyboardViewportController(options = {}) {
           : 0;
         writeInset(predictedInset);
       }
-      if (!field.closest?.(`[${KEYBOARD_REVEAL_DEFER_ATTR}]`)) {
+      // The reveal itself waits for the next frame (scheduleReveal, also run
+      // by writeInset): it moves on the keyboard's clock from there, in one
+      // motion, against the layout the focus produced. Measuring now would
+      // see a browse panel still at Standard and need a second move later.
+      // On iOS WebKit's own pan is already off (step 6), so nothing is lost.
+      if (!raf && !field.closest?.(`[${KEYBOARD_REVEAL_DEFER_ATTR}]`)) {
         revealAboveKeyboard(field, { win, inset, animate: true });
       }
       scheduleReveal();
-      revealLater(180);
-      revealLater(420);
+      // Safety net once the keyboard has landed: only moves if something
+      // (an editor placing its box late) still leaves the field covered.
+      revealLater(KEYBOARD_MOTION_MS + 30);
     }
     schedule();
   };
@@ -673,10 +1086,11 @@ export function createKeyboardViewportController(options = {}) {
   const onFocusOut = () => {
     if (disposed) return;
     // Focus moving field to field keeps the keyboard up: decide a frame later.
-    // Left for good: the keyboard starts down now, so the sheet starts down
-    // with it (step 7) instead of a frame-or-more later when the viewport
-    // catches up.
+    // Left for good: the keyboard starts down now, so everything that follows
+    // it starts down with it - on a clock that started at the blur - instead
+    // of a frame-or-more later when the viewport catches up.
     if (inset > 0 && raf && !focusOutFrame) {
+      const blurAt = nowOf(win);
       focusOutFrame = raf(() => {
         focusOutFrame = 0;
         if (activeEditable()) return;
@@ -685,7 +1099,9 @@ export function createKeyboardViewportController(options = {}) {
           hiding = true;
           hideTimer = setTimer ? setTimer(() => { hideTimer = 0; hiding = false; update(); }, KEYBOARD_PREDICT_TIMEOUT_MS) : 0;
         }
+        hideStartAt = blurAt;
         update();
+        hideStartAt = null;
       });
     }
     schedule();
@@ -757,7 +1173,16 @@ export function createKeyboardViewportController(options = {}) {
 
   // Typing can grow the field (a callout wrapping onto a new line) down under
   // the keyboard: follow it.
-  const onInput = () => { if (inset > 0) scheduleReveal(); };
+  // ...and what you type can change a list (Search results arrive a moment
+  // later): look at the lists' room again once they have settled.
+  let roomTimer = 0;
+  const onInput = () => {
+    if (inset <= 0) return;
+    scheduleReveal();
+    if (!setTimer) return;
+    if (roomTimer) clearTimer(roomTimer);
+    roomTimer = setTimer(() => { roomTimer = 0; if (inset > 0 && !disposed) applyRooms(inset); }, 600);
+  };
   const onTransitionEnd = (event) => {
     if (inset <= 0) return;
     const field = activeEditable();
@@ -817,6 +1242,11 @@ export function createKeyboardViewportController(options = {}) {
     restoreFocusMethod = null;
     revealTimers.forEach((id) => clearTimer(id));
     revealTimers.clear();
+    if (roomTimer) clearTimer(roomTimer);
+    [...rooms.keys()].forEach(dropRoom);
+    revealedScrollers.clear();
+    dropScrollRoom();
+    resetKeyboardClock();
     vv?.removeEventListener?.('resize', schedule);
     vv?.removeEventListener?.('scroll', schedule);
     win.removeEventListener?.('resize', schedule);
