@@ -306,6 +306,7 @@ const PDFSidebar = React.forwardRef(({
   const browsePanel = mobileMode;
   const {
     motionStyle: sheetMotionStyle,
+    backdropStyle: sheetBackdropStyle,
     sheetProps,
     requestClose: requestSheetClose,
     expanded: sheetExpanded,
@@ -346,6 +347,7 @@ const PDFSidebar = React.forwardRef(({
         className="mobile-pdf-sheet-backdrop"
         aria-label="Close document panel"
         onClick={requestSheetClose}
+        style={sheetBackdropStyle}
       />
     )}
     <div

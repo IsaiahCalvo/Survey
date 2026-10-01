@@ -4379,14 +4379,24 @@ export default function App({ devPreviewReturnTab = null }) {
             })()}
           </div>
         </div>
-        {isMobileViewer && !mobileViewerPanelOpen && (
+        {/* Owner 2026-10-01 ("once it's collapsed, its collapsed version
+            refreshes"): the dock used to unmount the moment a phone panel
+            opened and mount again only after the panel had finished sliding
+            down, so it vanished under a rising sheet and popped back in, in one
+            frame, as the sheet landed. It stays mounted now, underneath the
+            sheets and their backdrop (z-index 5850 < 6400 < 6500): a closing
+            sheet uncovers the dock already in place, and an opening one slides
+            over it. While covered it is inert, and it keeps its resting look -
+            a highlight lit only while a panel is open would switch off on the
+            frame the sheet lands, the same pop in miniature. */}
+        {isMobileViewer && (
           <MobilePdfViewerDock
+            covered={mobileViewerPanelOpen}
             onOpenPanel={openMobileDocumentPanel}
             onToggleHub={toggleMobileDocumentHub}
             onOpenSurvey={openMobileSurveyPanel}
             hubMode={['pages', 'search', 'bookmarks'].includes(mobileDocumentPanelState.activePanel) ? mobileDocumentPanelState.activePanel : 'pages'}
-            hubOpen={mobileDocumentPanelState.isOpen && ['pages', 'search', 'bookmarks'].includes(mobileDocumentPanelState.activePanel)}
-            spacesActive={Boolean(leftRailApi?.activeSpaceId) || (mobileDocumentPanelState.isOpen && mobileDocumentPanelState.activePanel === 'spaces')}
+            spacesActive={Boolean(leftRailApi?.activeSpaceId)}
             surveyActive={Boolean(rightRailApi?.showSurveyPanel)}
           />
         )}

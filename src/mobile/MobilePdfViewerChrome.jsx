@@ -204,6 +204,7 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
   // sliders keep their own drags), and slides off on a tap outside or Done.
   const {
     motionStyle,
+    backdropStyle,
     sheetProps,
     requestClose,
   } = useMobileSheetMotion(onClose);
@@ -227,6 +228,7 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
         data-rich-text-toolbar
         aria-label={`Close ${title || 'color'} picker`}
         onClick={() => requestClose()}
+        style={backdropStyle}
       />
       {/* PASS 7 (boards 17 & 18): the picker is a bottom sheet in the shared
           sheet frame, not a floating panel in the middle of the screen. It
@@ -1266,6 +1268,7 @@ export function MobileToolProperties({ api }) {
   // AnnotationEditPanel.tsx:141-199 / inv-demo §17).
   const {
     motionStyle: textSheetMotionStyle,
+    backdropStyle: textSheetBackdropStyle,
     sheetProps: textSheetProps,
     requestClose: requestTextSheetClose,
   } = useMobileSheetMotion(() => setTextDefaultsOpen(false), { open: textDefaultsOpen });
@@ -1516,6 +1519,7 @@ export function MobileToolProperties({ api }) {
             aria-label="Close text formatting"
             onPointerDown={keepTextEditFocus}
             onClick={requestTextSheetClose}
+            style={textSheetBackdropStyle}
           />
           <section
             className="mobile-pdf-text-defaults is-text"
@@ -2207,6 +2211,7 @@ export function MobileToolProperties({ api }) {
           className="mobile-pdf-sheet-backdrop"
           aria-label="Close text formatting"
           onClick={requestTextSheetClose}
+          style={textSheetBackdropStyle}
         />
         <section
           className={`mobile-pdf-text-defaults is-${isEraser ? 'eraser' : sheetTab}${tool === 'callout' ? ' is-callout' : ''}`}
@@ -2584,6 +2589,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   // back + 170ms slide-down exit before unmount (inv-demo §17).
   const {
     motionStyle: usersSheetMotionStyle,
+    backdropStyle: usersBackdropStyle,
     sheetProps: usersSheetProps,
     requestClose: requestUsersSheetClose,
   } = useMobileSheetMotion(() => setPresenceOpen(false), { open: presenceOpen });
@@ -2987,6 +2993,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
             className="mobile-pdf-sheet-backdrop"
             aria-label="Close active users"
             onClick={requestUsersSheetClose}
+            style={usersBackdropStyle}
           />
           <section className="mobile-pdf-sheet mobile-pdf-users-sheet" aria-label="Active users" {...usersSheetProps} style={usersSheetMotionStyle}>
             <div className="mobile-pdf-sheet__handle" />
@@ -3018,11 +3025,19 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   );
 }
 
-export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hubMode = 'pages', hubOpen = false, spacesActive, surveyActive }) {
+export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hubMode = 'pages', hubOpen = false, spacesActive, surveyActive, covered = false }) {
   const hubLabels = { pages: 'Pages', search: 'Search', bookmarks: 'Bookmarks' };
   const hubIcons = { pages: 'document', search: 'search', bookmarks: 'bookmark' };
+  // `covered`: a phone panel is open over the dock. The dock stays mounted
+  // under it (so it is already in place when the panel slides away - see
+  // AppShell), but takes no focus, taps or screen-reader reads meanwhile.
   return (
-    <nav className="mobile-pdf-dock" aria-label="Document panels">
+    <nav
+      className="mobile-pdf-dock"
+      aria-label="Document panels"
+      aria-hidden={covered ? 'true' : undefined}
+      inert={covered ? '' : undefined}
+    >
       <div className="mobile-pdf-dock__surface" aria-hidden="true" />
       <button
         type="button"

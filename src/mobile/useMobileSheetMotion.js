@@ -233,6 +233,9 @@ export function useMobileSheetMotion(onClose, options = {}) {
     setSheetEl(el);
   }, []);
   const gestureRef = useRef({ mode: null });
+  // The sheet's height when a drag took hold, so the backdrop's dim can follow
+  // the finger as a fraction of the way off (see backdropStyle below).
+  const dragHeightRef = useRef(0);
   // { from, to } while a sheet is raised for typing (see onFocusIn below).
   const typingRestoreRef = useRef(null);
   const springTimerRef = useRef(0);
@@ -419,6 +422,7 @@ export function useMobileSheetMotion(onClose, options = {}) {
           g.mode = 'ignore';
           return;
         }
+        dragHeightRef.current = sheet.offsetHeight || 0;
         // A grab during the entrance takes over immediately.
         setEnterPhase(null);
         setSpringing(false);
@@ -430,6 +434,7 @@ export function useMobileSheetMotion(onClose, options = {}) {
         if (y > prevY && g.scrollers.every((el) => el.scrollTop <= 0)) {
           g.mode = 'drag';
           g.anchorY = y;
+          dragHeightRef.current = sheet.offsetHeight || 0;
           setEnterPhase(null);
           setSpringing(false);
         } else {
@@ -539,8 +544,39 @@ export function useMobileSheetMotion(onClose, options = {}) {
     };
   }
 
+  /*
+   * OWNER 2026-10-01 ("once it's collapsed, its collapsed version refreshes"):
+   * the dim behind a sheet stayed at full strength for the whole slide down and
+   * was then removed in one frame together with the sheet, so the entire screen
+   * brightened in a single step right as the sheet landed - read as the page
+   * and the dock "refreshing". The backdrop now goes with the sheet: it lightens
+   * as a drag pulls the sheet down, fades out on the sheet's own close curve
+   * (same duration and easing, so the dim always matches how far the sheet has
+   * left), and is already clear on the frame the real close unmounts it.
+   * Spread on the sheet's backdrop element's style. Opacity only - no layout.
+   */
+  let backdropStyle = null;
+  if (closing) {
+    backdropStyle = prefersReducedMotion()
+      ? null
+      : {
+        opacity: 0,
+        transition: closeMotion
+          ? `opacity ${closeMotion.ms}ms ${closeMotion.easing}`
+          : `opacity ${SHEET_CLOSE_MS}ms ${SHEET_CLOSE_EASING}`,
+      };
+  } else if (dragY > 0 && !springing && dragHeightRef.current > 0) {
+    backdropStyle = {
+      opacity: Math.max(0, 1 - (dragY / dragHeightRef.current)),
+      transition: 'none',
+    };
+  } else if (springing) {
+    backdropStyle = { opacity: 1, transition: `opacity ${SHEET_SPRING_MS}ms ease-out` };
+  }
+
   return {
     motionStyle: motionStyle || {},
+    backdropStyle: backdropStyle || undefined,
     // Spread on the sheet's root element.
     sheetProps: { ref: sheetRef, 'data-mobile-sheet': 'true' },
     requestClose,
