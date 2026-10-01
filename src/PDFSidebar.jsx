@@ -130,6 +130,7 @@ const PDFSidebar = React.forwardRef(({
   onSpaceAssignPages,
   onSpaceRenamePage,
   onSpaceRemovePage,
+  getSpaceRemovalImpact = null,
   onNavigateToSpacePage = null,
   onReorderSpaces,
   onExportSpaceCSV,
@@ -254,6 +255,29 @@ const PDFSidebar = React.forwardRef(({
     }
     openPanel(panelId, options);
   }, [activeTab, closePanel, isCollapsed, openPanel]);
+
+  // Spaces chunk A (phone): Edit areas draws on the page, so the Spaces sheet
+  // and its backdrop leave while the region tool is on (the backdrop swallowed
+  // the first touch and every drag), and the sheet comes back - with the space
+  // that was being edited still open - on Confirm / Cancel.
+  const regionEditHidSheetRef = React.useRef(false);
+  const [regionEditReturnSpaceId, setRegionEditReturnSpaceId] = useState(null);
+  React.useEffect(() => {
+    if (!mobileMode) return;
+    const spacesSheetOpen = !isCollapsed && activeTab === 'spaces';
+    if (isRegionSelectionActive) {
+      if (spacesSheetOpen) {
+        regionEditHidSheetRef.current = true;
+        setRegionEditReturnSpaceId(activeSpaceId || null);
+        closePanel();
+      }
+    } else if (regionEditHidSheetRef.current) {
+      regionEditHidSheetRef.current = false;
+      openPanel('spaces');
+    }
+    // Only the region tool turning on / off moves the sheet.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRegionSelectionActive, mobileMode]);
 
   useImperativeHandle(ref, () => ({
     openPanel,
@@ -660,6 +684,8 @@ const PDFSidebar = React.forwardRef(({
                 onSpaceAssignPages={onSpaceAssignPages}
                 onSpaceRenamePage={onSpaceRenamePage}
                 onSpaceRemovePage={onSpaceRemovePage}
+                getSpaceRemovalImpact={getSpaceRemovalImpact}
+                initiallyExpandedSpaceId={mobileMode ? regionEditReturnSpaceId : null}
                 onNavigateToPage={onNavigateToSpacePage}
                 onReorderSpaces={onReorderSpaces}
                 onExportSpaceCSV={onExportSpaceCSV}

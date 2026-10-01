@@ -10,6 +10,7 @@
  * SortableRearrangeList with optimistic ordering and frame-capture debug hooks.
  */
 import React, { useState, useCallback, useRef } from 'react';
+import { createPortal, flushSync } from 'react-dom';
 import Icon from '../Icons';
 import { parsePageRangeInput, sanitizePageRangeInput } from '../utils/pageRangeParser';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
@@ -22,6 +23,12 @@ import {
 import { showToast } from '../utils/toast';
 import { useTooltip } from '../components/Tooltip';
 import { watchLightPopover } from '../components/dismissRules.js';
+import { useConfirmDialog } from '../components/dialogPrompts';
+import {
+  buildDeleteSpaceConfirm,
+  buildRemovePageConfirm,
+  formatSpaceCountLabel,
+} from '../utils/spaceCascadeImpact.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const animateSpaceLayoutChanges = () => false;
@@ -109,8 +116,15 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   }, [editingRegionId]);
 
   const handleRegionEditClick = useCallback((pageId, currentLabel) => {
-    setEditingRegionId(pageId);
-    setEditingRegionValue(currentLabel);
+    // Spaces chunk A: render the field and focus it inside the tap itself -
+    // iOS only raises the keyboard for a focus() made in the user's gesture,
+    // and the rAF focus below came a frame too late for that.
+    flushSync(() => {
+      setEditingRegionId(pageId);
+      setEditingRegionValue(currentLabel);
+    });
+    editingRegionInputRef.current?.focus();
+    editingRegionInputRef.current?.select();
   }, []);
 
   const commitSpaceName = useCallback((input) => {
@@ -163,9 +177,21 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   const onToggleVisibility = isSurveyVisibilityContext
     ? onToggleSurveyAnnotations
     : onToggleCanvasAnnotations;
-  const regionCountLabel = `${regionCount} region${regionCount !== 1 ? 's' : ''}`;
-  const spaceSwitchLabel = isActive ? 'Turn off space' : 'Turn on space';
-  const toggleThisSpace = () => onToggleSpace?.(space.id, !isActive);
+  // Spaces chunk A: the row counts PAGES (it counted drawn areas, so a space
+  // listing two pages could read 0); areas are named in the label.
+  const regionCountLabel = formatSpaceCountLabel(pageCount, regionCount);
+  // A space with no pages would hide every page: it cannot be turned on until
+  // it has some (an active one can always be turned off).
+  const isSwitchBlocked = !isActive && pageCount === 0;
+  const spaceSwitchLabel = isActive ? 'Turn off space' : (isSwitchBlocked ? 'Add pages first' : 'Turn on space');
+  const toggleThisSpace = () => {
+    if (isSwitchBlocked) {
+      if (!isExpanded) onToggleExpand(space.id);
+      showToast(`Add pages to ${space.name || 'this space'} first.`, 'info');
+      return;
+    }
+    onToggleSpace?.(space.id, !isActive);
+  };
   const switchKeyDown = (handler) => (e) => {
     if (e.key === ' ' || e.key === 'Enter') {
       e.preventDefault();
@@ -257,13 +283,14 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             {...tip(regionCountLabel, 'below')}
             aria-label={regionCountLabel}
           >
-            {regionCount}
+            {pageCount}
           </span>
 
           <div
             role="switch"
             tabIndex={0}
             aria-checked={isActive}
+            aria-disabled={isSwitchBlocked || undefined}
             aria-label={spaceSwitchLabel}
             className="spaces-switch"
             {...tip(spaceSwitchLabel, 'below')}
@@ -403,7 +430,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                               onChange={(e) => setEditingRegionValue(e.target.value)}
                               onMouseDown={(e) => e.stopPropagation()}
                               onClick={(e) => e.stopPropagation()}
-                              onFocus={(e) => e.stopPropagation()}
+                              // No onFocus stopPropagation: the window focusin
+                              // listener in mobile/keyboardViewport.js is what
+                              // lifts the field above the phone keyboard.
                               onBlur={() => {
                                 if (isRegionSelectionActive) return;
                                 commitRegionRename(page.pageId);
@@ -563,9 +592,15 @@ const SpacesPanel = ({
   onMobilePanelMetricsChange = null,
   // Phone only: exits space mode and closes the sheet (PDFSidebar owns both).
   onExitSpacesAction = null,
+  // Spaces chunk A: counts what a page removal / space delete would delete
+  // (PDFViewer.getSpaceRemovalImpact), for the confirm.
+  getSpaceRemovalImpact = null,
+  // Phone: the space whose areas were just edited opens again with the sheet.
+  initiallyExpandedSpaceId = null,
 }) => {
   const tip = useTooltip();
-  const [expandedSpaces, setExpandedSpaces] = useState(() => new Set());
+  const [askConfirm, confirmDialogElement] = useConfirmDialog();
+  const [expandedSpaces, setExpandedSpaces] = useState(() => new Set(initiallyExpandedSpaceId ? [initiallyExpandedSpaceId] : []));
   const [selectedSpaceId, setSelectedSpaceId] = useState(null);
   const [isRearrangingSpaces, setIsRearrangingSpaces] = useState(false);
   const [optimisticSpaceIds, setOptimisticSpaceIds] = useState(() => spaces.map(space => space.id));
@@ -898,14 +933,20 @@ const SpacesPanel = ({
     return true;
   }, [onSpaceUpdate, requireSpaceManagement, spaces]);
 
+  // Spaces chunk A: deleting a space also deletes what was placed in it (the
+  // cascade), so the confirm says so, with counts. Undo restores it all.
   const handleDelete = useCallback((spaceId) => {
     if (!requireSpaceManagement()) return;
-    if (window.confirm('Delete this space? This will not delete the pages, only the space assignment.')) {
-      if (onSpaceDelete) {
-        onSpaceDelete(spaceId);
-      }
-    }
-  }, [onSpaceDelete, requireSpaceManagement]);
+    const space = (spaces || []).find((entry) => entry?.id === spaceId);
+    const impact = getSpaceRemovalImpact?.(spaceId, null) || null;
+    askConfirm(buildDeleteSpaceConfirm({
+      spaceName: space?.name,
+      pageCount: space?.assignedPages?.length || 0,
+      impact,
+    })).then((confirmed) => {
+      if (confirmed && onSpaceDelete) onSpaceDelete(spaceId);
+    });
+  }, [askConfirm, getSpaceRemovalImpact, onSpaceDelete, requireSpaceManagement, spaces]);
 
   const handleToggleExpand = useCallback((spaceId) => {
     setExpandedSpaces(prev => {
@@ -1017,6 +1058,16 @@ const SpacesPanel = ({
     setOptimisticSpaceIds(spaces.map(space => space.id));
   }, [spaces]);
 
+  // Spaces chunk A: an active space with no pages (the viewer's "No pages in
+  // ..." card sends the user here) opens on its Add pages field.
+  const activeSpaceIsEmpty = Boolean(activeSpaceId) && (spaces || []).some((space) => (
+    space?.id === activeSpaceId && (space.assignedPages?.length || 0) === 0
+  ));
+  React.useEffect(() => {
+    if (!activeSpaceIsEmpty) return;
+    setExpandedSpaces((prev) => (prev.has(activeSpaceId) ? prev : new Set(prev).add(activeSpaceId)));
+  }, [activeSpaceId, activeSpaceIsEmpty]);
+
   const orderedSpaces = React.useMemo(() => {
     const byId = new Map(spaces.map(space => [space.id, space]));
     const seen = new Set();
@@ -1038,11 +1089,26 @@ const SpacesPanel = ({
     return ordered;
   }, [optimisticSpaceIds, spaces]);
 
+  // Spaces chunk A: removing a page also deletes the marks placed in this
+  // space on it and its drawn areas - ask first when there is any, with the
+  // counts. A bare page assignment goes without a question (one Undo step).
   const handleRemovePage = useCallback((spaceId, pageId) => {
     if (!requireSpaceManagement()) return;
     if (!onSpaceRemovePage) return;
-    onSpaceRemovePage(spaceId, pageId);
-  }, [onSpaceRemovePage, requireSpaceManagement]);
+    const space = (spaces || []).find((entry) => entry?.id === spaceId);
+    const prompt = buildRemovePageConfirm({
+      spaceName: space?.name,
+      pageId,
+      impact: getSpaceRemovalImpact?.(spaceId, [pageId]) || null,
+    });
+    if (!prompt) {
+      onSpaceRemovePage(spaceId, pageId);
+      return;
+    }
+    askConfirm(prompt).then((confirmed) => {
+      if (confirmed) onSpaceRemovePage(spaceId, pageId);
+    });
+  }, [askConfirm, getSpaceRemovalImpact, onSpaceRemovePage, requireSpaceManagement, spaces]);
 
   const handleRenameRegion = useCallback((spaceId, pageId, label) => {
     if (!requireSpaceManagement()) return;
@@ -1294,6 +1360,12 @@ const SpacesPanel = ({
           </button>
         )}
       </div>
+      {/* Rendered on <body>, above the phone sheet (z 6500): inside the sheet a
+          fixed overlay is caught by the sheet's transform. */}
+      {typeof document !== 'undefined' && createPortal(
+        <div style={{ position: 'relative', zIndex: 7000 }}>{confirmDialogElement}</div>,
+        document.body
+      )}
     </div>
   );
 };
