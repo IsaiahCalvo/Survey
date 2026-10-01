@@ -109,6 +109,31 @@ const CategoryDisclosureGlyph = () => (
   <Icon name="chevronRight" size={18} style={{ display: 'block', flex: 'none' }} />
 );
 
+/* Owner 2026-10-01 ("the name's hit box is too long"): a name field is as
+   wide as its text. The wrapper's hidden twin (hub.css .hub-autowidth::after,
+   fed by data-value) sets the width, so this works in every engine without
+   `field-sizing`. Uncontrolled inputs push each keystroke into data-value. */
+const syncAutoWidth = (event) => {
+  const wrap = event?.currentTarget?.parentElement;
+  if (wrap?.classList?.contains('hub-autowidth')) wrap.dataset.value = event.currentTarget.value;
+};
+/* Focus the copy of a field the user can SEE (the desktop and phone trees are
+   both mounted; one is hidden by CSS) and select its text - the "Rename" menu
+   items land here. It runs synchronously inside the menu tap, which is what
+   lets iOS raise the keyboard. */
+const focusVisibleField = (selector) => {
+  if (typeof document === 'undefined') return false;
+  const el = [...document.querySelectorAll(selector)].find((node) => node.getClientRects().length > 0);
+  if (!el) return false;
+  el.focus();
+  el.select?.();
+  return true;
+};
+
+/* The phone tree is the one on screen (hub.css swaps the layouts at 720px). */
+const mobileLayoutActive = () => typeof document !== 'undefined'
+  && [...document.querySelectorAll('.templates-mobile-layout')].some((node) => node.getClientRects().length > 0);
+
 const CATEGORY_COLLAPSE_TRANSITION = 'grid-template-rows 0.18s ease, opacity 0.16s ease';
 const TEMPLATE_ORDER_STORAGE_KEY = 'surveyHub.templateOrder';
 const animateCategoryLayoutChanges = undefined;
@@ -301,7 +326,13 @@ function SortableModuleTab({
   onStartRename,
   onRename,
   onCancelRename,
+  onOpenMenu,
 }) {
+  /* How the last press on the label arrived. A touch screen has no
+     double-click, so on touch a tap on the tab that is ALREADY open opens its
+     menu (Rename / Delete) instead (owner 2026-10-01: module tabs could not be
+     renamed on a phone at all). */
+  const pointerTypeRef = useRef('mouse');
   const {
     attributes,
     listeners,
@@ -343,9 +374,18 @@ function SortableModuleTab({
         borderRadius: '5px 5px 0 0',
         background: isOn ? 'var(--hover)' : 'transparent',
         cursor: isRenaming ? 'text' : (isDragging ? 'grabbing' : 'grab'),
-        flex: '1 1 0',
-        minWidth: 32,
-        maxWidth: 140,
+        /* Owner 2026-10-01 ("module tab titles not centred"): every tab hugs
+           its own label - 12px each side, the count 6px after it - so the
+           label is centred in its tab by construction. The tabs used to
+           stretch to 140px with the name pushed left and the count right. */
+        flex: '0 0 auto',
+        gap: 6,
+        padding: '0 12px',
+        height: 32,
+        boxSizing: 'border-box',
+        justifyContent: 'center',
+        minWidth: 0,
+        maxWidth: 220,
         overflow: 'hidden',
         position: 'relative',
         zIndex: isDragging ? 4 : (isOn ? 1 : 0),
@@ -354,55 +394,68 @@ function SortableModuleTab({
       }}
     >
       {isRenaming ? (
-        <input
-          className="inline-edit"
-          defaultValue={mod.name}
-          autoFocus
-          onFocus={(e) => e.currentTarget.select()}
-          onBlur={(e) => onRename(mod.id, e.currentTarget.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') e.currentTarget.blur();
-            else if (e.key === 'Escape') onCancelRename();
-          }}
-          style={{
-            background: 'transparent',
-            border: 0,
-            padding: '3px 6px',
-            fontSize: 12,
-            fontWeight: isOn ? 500 : 400,
-            color: activeInk,
-            width: '100%',
-            borderBottom: '1px solid var(--accent)',
-            outline: 'none',
-          }}
-        />
+        <span className="hub-autowidth module-tab-name" data-value={mod.name} style={{ fontSize: 12, fontWeight: isOn ? 500 : 400 }}>
+          <input
+            size={1}
+            className="inline-edit"
+            defaultValue={mod.name}
+            autoFocus
+            onFocus={(e) => e.currentTarget.select()}
+            onInput={syncAutoWidth}
+            onBlur={(e) => onRename(mod.id, e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+              else if (e.key === 'Escape') onCancelRename();
+            }}
+            style={{
+              background: 'transparent',
+              border: 0,
+              padding: '3px 0',
+              color: activeInk,
+              borderBottom: '1px solid var(--accent)',
+              outline: 'none',
+            }}
+          />
+        </span>
       ) : (
         <button
-          onClick={() => onOpen(index)}
+          type="button"
+          onPointerDown={(e) => { pointerTypeRef.current = e.pointerType || 'mouse'; }}
+          onClick={(e) => {
+            if (isOn && pointerTypeRef.current === 'touch' && onOpenMenu) {
+              onOpenMenu(mod.id, (e.currentTarget.closest('[data-module-tab-id]') || e.currentTarget).getBoundingClientRect());
+              return;
+            }
+            onOpen(index);
+          }}
           onDoubleClick={() => onStartRename(mod.id)}
+          onContextMenu={onOpenMenu ? (e) => {
+            e.preventDefault();
+            onOpenMenu(mod.id, (e.currentTarget.closest('[data-module-tab-id]') || e.currentTarget).getBoundingClientRect());
+          } : undefined}
           title={`${mod.name} · drag to reorder · double-click to rename`}
           style={{
             background: 'transparent',
             border: 0,
-            padding: '3px 6px',
+            padding: 0,
             fontFamily: 'inherit',
             color: activeInk,
             fontSize: 12,
             fontWeight: isOn ? 500 : 400,
             cursor: isDragging ? 'grabbing' : 'grab',
-            flex: 1,
+            flex: '0 1 auto',
             minWidth: 0,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
-            textAlign: 'left',
+            textAlign: 'center',
           }}
         >
           {mod.name}
         </button>
       )}
       {showCount ? (
-        <span className="mono" style={{ fontSize: 9.5, color: 'var(--text-3)', padding: '0 6px 0 2px', flex: 'none' }}>
+        <span className="module-tab-count" style={{ fontSize: 11, color: 'var(--text-3)', fontVariantNumeric: 'tabular-nums', flex: 'none' }}>
           {catCount}
         </span>
       ) : null}
@@ -419,6 +472,7 @@ function SortableModuleTabs({
   onRenameModule,
   onCancelRename,
   onReorderModules,
+  onOpenMenu,
   showCounts = true,
   children,
 }) {
@@ -488,6 +542,7 @@ function SortableModuleTabs({
               onStartRename={onStartRename}
               onRename={onRenameModule}
               onCancelRename={onCancelRename}
+              onOpenMenu={onOpenMenu}
             />
           ))}
           {children}
@@ -756,6 +811,8 @@ export default function TemplatesEditor({
   const toggleTplSel = (id) => setSelTpls((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const [tplMenu, setTplMenu] = useState(null);       // { id, rect }
   const [entityMenu, setEntityMenu] = useState(null); // { id, rect }
+  const [catMenu, setCatMenu] = useState(null);       // { id, rect } category row "more" menu
+  const [modMenu, setModMenu] = useState(null);       // { id, rect } module tab menu (touch / right-click)
   const [entityEdit, setEntityEdit] = useState(false);
   const [selEntities, setSelEntities] = useState(() => new Set());
   const toggleEntitySel = (id) => setSelEntities((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -801,6 +858,16 @@ export default function TemplatesEditor({
       if (performance.now() - began < 420) requestAnimationFrame(step);
     };
     requestAnimationFrame(step);
+  };
+  /* A press that will become a click on another entity's dot or row (both
+     open that entity's panel) must not fold the open one first. A press on a
+     row's name, grip or More is an ordinary outside press. */
+  const isEntitySwitchPress = (event) => {
+    const target = event?.target;
+    if (!target?.closest) return false;
+    if (target.closest('button[title="Edit color"]')) return true;
+    return !!(target.closest('[data-entity-row]')
+      && !target.closest('input, button[title="More"], [data-drag-rearrange-handle]'));
   };
   const foldColor = (next, anchorEl) => {
     clearTimeout(foldTimerRef.current);
@@ -2036,21 +2103,20 @@ export default function TemplatesEditor({
             overflow: 'hidden', minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%',
             background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: 8,
           }}>
-            <div style={{ padding: '4px 6px 6px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <button
-                className="hub-btn hub-btn--primary"
-                onClick={createTemplate}
-                style={{ alignSelf: 'flex-start' }}
-              >
-                <Icon name="plus" size={11} />New template
-              </button>
-              <div className="hub-select-actions" style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'nowrap', height: 22, overflow: 'hidden' }}>
+            {/* Owner 2026-10-01: one header line - the page's one gold action
+                on the left, the quiet Select on the right. In select mode the
+                bulk actions take the gold button's place and Done stays exactly
+                where Select was, so nothing under the header moves. */}
+            <div className="hub-section-head hub-panel-head">
+              {!tplEdit ? (
                 <button
-                  onClick={() => { const next = !tplEdit; setTplEdit(next); if (!next) setSelTpls(new Set()); }}
-                  className="hub-btn hub-btn--tertiary"
+                  className="hub-btn hub-btn--primary"
+                  onClick={createTemplate}
                 >
-                  {tplEdit ? 'Done' : 'Select'}
+                  <Icon name="plus" size={11} />New template
                 </button>
+              ) : null}
+              <div className="hub-select-actions hub-section-actions">
                 {tplEdit && (
                   <>
                     {(() => {
@@ -2080,6 +2146,12 @@ export default function TemplatesEditor({
                     })()}
                   </>
                 )}
+                <button
+                  onClick={() => { const next = !tplEdit; setTplEdit(next); if (!next) setSelTpls(new Set()); }}
+                  className="hub-btn hub-btn--tertiary hub-section-btn"
+                >
+                  {tplEdit ? 'Done' : 'Select'}
+                </button>
               </div>
             </div>
             <div className="slim-scroll hub-side-list" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
@@ -2195,14 +2267,19 @@ export default function TemplatesEditor({
                 {/* Inline rename field. Typing raises Cancel / Save in the
                     header's subtitle row; Enter saves, Escape backs out. Blur
                     deliberately does NOT commit. */}
-                <input
-                  key={tpl.id}
-                  className="inline-edit cat-title"
-                  {...templateTitleField(tpl)}
-                  title="Click to rename"
-                  onDoubleClick={(e) => e.currentTarget.select()}
-                  style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.015em', lineHeight: 1.2, width: '100%' }}
-                />
+                {/* Text-width field (owner 2026-10-01): the rename target is
+                    the name itself, not the whole header line. */}
+                <span className="hub-autowidth hub-title-field" data-value={templateTitleField(tpl).value} style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.015em', lineHeight: 1.2 }}>
+                  <input
+                    size={1}
+                    key={tpl.id}
+                    className="inline-edit cat-title"
+                    data-template-title
+                    {...templateTitleField(tpl)}
+                    title="Click to rename"
+                    onDoubleClick={(e) => e.currentTarget.select()}
+                  />
+                </span>
               </div>
               <div className="micro" style={{ textAlign: 'right' }}>
                 <div>{orderedMods.length} {orderedMods.length === 1 ? 'module' : 'modules'}</div>
@@ -2213,14 +2290,18 @@ export default function TemplatesEditor({
 
               {/* Module tabs */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <p className="micro" style={{ margin: 0 }}>Module</p>
-                  <button
-                    onClick={() => { setModEdit(true); setSelMods(new Set()); }}
-                    className="hub-btn hub-btn--tertiary"
-                  >
-                    Select
-                  </button>
+                {/* LABEL count ...... [Select]. The "+" after the tabs is the
+                    one way to add a module (owner 2026-10-01). */}
+                <div className="hub-section-head">
+                  <p className="micro hub-section-label" style={{ margin: 0 }}>Modules<span className="hub-section-count">{orderedMods.length}</span></p>
+                  <div className="hub-section-actions">
+                    <button
+                      onClick={() => { setModEdit(true); setSelMods(new Set()); }}
+                      className="hub-btn hub-btn--tertiary hub-section-btn"
+                    >
+                      Select
+                    </button>
+                  </div>
                 </div>
                 <SortableModuleTabs
                   modules={orderedMods}
@@ -2231,27 +2312,23 @@ export default function TemplatesEditor({
                   onRenameModule={renameModule}
                   onCancelRename={() => setModRename(null)}
                   onReorderModules={reorderMods}
+                  onOpenMenu={(id, rect) => setModMenu({ id, rect })}
                 >
                   <button
+                    type="button"
                     onClick={addModule}
                     title="New module"
+                    aria-label="New module"
                     className="hub-icon-btn"
-                    style={{ marginLeft: 4, marginBottom: 2, alignSelf: 'center' }}
+                    style={{ marginLeft: 4, alignSelf: 'center' }}
                   ><Icon name="plus" size={12} /></button>
                 </SortableModuleTabs>
               </div>
 
               {/* Categories header */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, marginBottom: 8, gap: 8 }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flex: 1 }}>
-                  <p className="micro" style={{ margin: 0 }}>Categories</p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, height: 20, overflow: 'hidden', flexWrap: 'nowrap' }}>
-                  <button
-                    onClick={() => { const next = !catEdit; setCatEdit(next); if (!next) setSelCats(new Set()); }}
-                    className="hub-btn hub-btn--tertiary"
-                  >
-                      {catEdit ? 'Done' : 'Select'}
-                    </button>
+              <div className="hub-section-head" style={{ marginTop: 12, marginBottom: 8 }}>
+                <p className="micro hub-section-label" style={{ margin: 0 }}>Categories<span className="hub-section-count">{visibleCats.length}</span></p>
+                <div className="hub-section-actions">
                     {catEdit && (() => {
                       const c = selCats.size;
                       const allSel = c === visibleCats.length && visibleCats.length > 0;
@@ -2265,11 +2342,18 @@ export default function TemplatesEditor({
                         </>
                       );
                     })()}
-                  </div>
+                  <button
+                    onClick={() => { const next = !catEdit; setCatEdit(next); if (!next) setSelCats(new Set()); }}
+                    className="hub-btn hub-btn--tertiary hub-section-btn"
+                  >
+                    {catEdit ? 'Done' : 'Select'}
+                  </button>
+                  {!catEdit ? (
+                    <button onClick={addCategory} className="hub-btn hub-btn--tertiary hub-section-btn" aria-label="New category" title="New category">
+                      <Icon name="plus" size={12} />Category
+                    </button>
+                  ) : null}
                 </div>
-                <button onClick={addCategory} className="hub-btn hub-btn--primary">
-                  <Icon name="plus" size={11} />New category
-                </button>
               </div>
 
               {/* Expandable category list */}
@@ -2309,64 +2393,76 @@ export default function TemplatesEditor({
                         transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                       }}
                     >
-                      {/* Row header */}
+                      {/* Row header. Owner 2026-10-01: a click ANYWHERE on the
+                          row opens or closes it (the chevron is only the cue);
+                          the grip only drags; the name renames, and its hit
+                          box is just its text; ⋮ holds Rename / Delete. In
+                          Select mode a click anywhere ticks the row.
+                          [grip 24][chevron 22][name][...][count][⋮ 28] */}
                       <div
                         data-drag-rearrange-row
-                        onClick={() => { if (catEdit) toggleCatSel(c.id); }}
-                        style={{
-                          width: '100%', display: 'grid', gridTemplateColumns: catEdit ? '24px 20px 1fr auto 16px' : '24px 20px 1fr auto', gap: 8,
-                          alignItems: 'center', padding: '3px 10px',
-                          cursor: catEdit ? 'pointer' : 'default',
-                          // UX 2026-09-17 (owner ruling): a ticked row lifts a surface
-                          // step; it does not take a warm gold wash.
-                          background: catEdit && isSel ? 'var(--surface-3)' : 'transparent',
-                        }}
+                        className={`tpl-cat-row${open ? ' is-open' : ''}${catEdit ? ' is-selecting' : ''}${catEdit && isSel ? ' is-selected' : ''}`}
+                        aria-expanded={catEdit ? undefined : open}
+                        onClick={() => { if (catEdit) toggleCatSel(c.id); else setOpenCat(open ? -1 : i); }}
                       >
                         <DragRearrangeHandle
                           {...attributes}
                           {...listeners}
                           isDragging={isDragging}
-                          style={{ width: 24, height: 24 }}
+                          style={{ width: 24, height: 28 }}
                         />
                         <button
-                          onClick={(e) => { e.stopPropagation(); setOpenCat(open ? -1 : i); }}
+                          type="button"
+                          className="tpl-cat-chevron"
                           title={open ? 'Collapse' : 'Expand'}
-                          style={{
-                            background: 'transparent', border: 0, padding: 0, cursor: 'pointer',
-                            color: 'var(--ink-muted)', fontSize: 13, lineHeight: 1, fontFamily: 'inherit',
-                            transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s',
-                            width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          }}
+                          aria-label={`${open ? 'Collapse' : 'Expand'} ${c.name}`}
                         ><CategoryDisclosureGlyph /></button>
-                        <input
-                          className="inline-edit cat-title"
-                          defaultValue={c.name}
-                          key={c.id + ':' + c.name}
-                          title="Click to rename"
-                          onClick={(e) => e.stopPropagation()}
-                          onDoubleClick={(e) => e.currentTarget.select()}
-                          onBlur={(e) => {
-                            /* BL-23: empty titles snap back visibly to the old
-                               name (the model never accepted them), and an
-                               unchanged title is a no-op that must not dirty
-                               the editor (incl. the Escape-then-blur path). */
-                            const r = resolveTitleCommit(e.currentTarget.value, c.name);
-                            if (r.action === 'commit') renameCategory(i, r.name);
-                            e.currentTarget.value = r.name;
-                          }}
-                          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = c.name; e.currentTarget.blur(); } }}
-                          style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.2, width: 'max-content', maxWidth: '100%', minWidth: 40 }}
-                        />
-                        <span className="mono" style={{ fontSize: 9.5, color: 'var(--text-3)', lineHeight: 1.2, whiteSpace: 'nowrap' }}>
+                        <span className="hub-autowidth tpl-cat-name" data-value={c.name}>
+                          <input
+                            size={1}
+                            className="inline-edit cat-title"
+                            data-category-name-id={c.id}
+                            defaultValue={c.name}
+                            key={c.id + ':' + c.name}
+                            title="Rename"
+                            onClick={(e) => e.stopPropagation()}
+                            onDoubleClick={(e) => e.currentTarget.select()}
+                            onInput={syncAutoWidth}
+                            onBlur={(e) => {
+                              /* BL-23: empty titles snap back visibly to the old
+                                 name (the model never accepted them), and an
+                                 unchanged title is a no-op that must not dirty
+                                 the editor (incl. the Escape-then-blur path). */
+                              const r = resolveTitleCommit(e.currentTarget.value, c.name);
+                              if (r.action === 'commit') renameCategory(i, r.name);
+                              e.currentTarget.value = r.name;
+                              syncAutoWidth(e);
+                            }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = c.name; e.currentTarget.blur(); } }}
+                          />
+                        </span>
+                        <span className="tpl-cat-count" title={`${items.length} ${items.length === 1 ? 'item' : 'items'}${archivedItems.length > 0 ? `, ${archivedItems.length} archived` : ''}`}>
                           {items.length} {items.length === 1 ? 'item' : 'items'}{archivedItems.length > 0 ? ` (+${archivedItems.length} archived)` : ''}
                         </span>
-                        {catEdit && (
+                        {catEdit ? (
                           <span
+                            className="tpl-cat-check"
                             onClick={(e) => { e.stopPropagation(); toggleCatSel(c.id); }}
                             data-drag-keep-fill style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--rule-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           >
                             {isSel && <Icon name="check" size={10} color="var(--paper)" />}
                           </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="hub-icon-btn tpl-cat-more"
+                            title="More" aria-label="More"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setCatMenu((m) => (m && m.id === c.id ? null : { id: c.id, rect }));
+                            }}
+                          ><Icon name="more" size={14} /></button>
                         )}
                       </div>
 
@@ -2383,7 +2479,8 @@ export default function TemplatesEditor({
                         }}
                       >
                         <div style={{ overflow: 'hidden', minHeight: 0 }}>
-                          <div style={{ padding: '4px 14px 12px 50px', background: 'var(--paper-deep)' }}>
+                          {/* 26 + grip 24 + gap 6 = 56: item text starts under the category name. */}
+                          <div style={{ padding: '4px 14px 12px 26px', background: 'var(--paper-deep)' }}>
                           <div style={{ display: 'grid', gap: 1, marginTop: 6 }}>
                             {items.length === 0 && (
                               <div className="meta" style={{ fontSize: 11, padding: '3px 0' }}>No checklist items yet.</div>
@@ -2501,23 +2598,14 @@ export default function TemplatesEditor({
           {/* ---------- RIGHT: Entities rail ---------- */}
           <aside style={{ minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div className="card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-              <div style={{ padding: '8px 8px 8px 8px', borderBottom: '1px solid var(--rule)', flex: 'none', minHeight: 64, boxSizing: 'border-box', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
-                <div style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
-                  <p className="micro" style={{ margin: 0 }}>Entities <span className="mono" style={{ fontSize: 10, color: 'var(--text-3)', letterSpacing: 0, fontWeight: 500, marginLeft: 4 }}>{tpl ? tpl.roster.length : 0}</span></p>
-                </div>
-                <button onClick={addEntity} disabled={!tpl} className="hub-btn hub-btn--primary">
-                  <Icon name="plus" size={11} />New entity
-                </button>
-              </div>
-              {/* UX 2026-09-23: this Select sits on the same line as the Module
-                  column's Select beside it (owner: "should be in line"). */}
-              <div style={{ padding: '12px 8px 4px', display: 'flex', alignItems: 'center', gap: 2, height: 34, flexWrap: 'nowrap', flex: 'none' }}>
-              <button
-                onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
-                className="hub-btn hub-btn--tertiary"
-              >
-                  {entityEdit ? 'Done' : 'Select'}
-                </button>
+              {/* One header line (owner 2026-10-01): ENTITIES n ... [Select] [+ Entity].
+                  In select mode the bulk actions fill the line and Done keeps
+                  the right edge; the label steps aside so they fit the rail. */}
+              <div className="hub-section-head" style={{ padding: '8px 8px 8px 8px', borderBottom: '1px solid var(--rule)', flex: 'none', minHeight: 64, boxSizing: 'border-box' }}>
+                {!entityEdit ? (
+                  <p className="micro hub-section-label" style={{ margin: 0 }}>Entities<span className="hub-section-count">{tpl ? tpl.roster.length : 0}</span></p>
+                ) : null}
+                <div className="hub-section-actions">
                 {entityEdit && tpl && (() => {
                   const c = selEntities.size;
                   const allSel = c === tpl.roster.length && tpl.roster.length > 0;
@@ -2531,8 +2619,20 @@ export default function TemplatesEditor({
                     </>
                   );
                 })()}
+                <button
+                  onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
+                  className="hub-btn hub-btn--tertiary hub-section-btn"
+                >
+                  {entityEdit ? 'Done' : 'Select'}
+                </button>
+                {!entityEdit ? (
+                  <button onClick={addEntity} disabled={!tpl} className="hub-btn hub-btn--tertiary hub-section-btn" aria-label="New entity" title="New entity">
+                    <Icon name="plus" size={12} />Entity
+                  </button>
+                ) : null}
                 {/* Save / Cancel moved to the header's subtitle row (owner,
                     2026-09-22) - see `subtitle` above. */}
+                </div>
               </div>
 
               <div className="slim-scroll" style={{ padding: '8px 8px 12px', display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto', flex: 1, minHeight: 0 }}>
@@ -2560,30 +2660,34 @@ export default function TemplatesEditor({
                     >
                       {({ attributes, listeners, isDragging }) => (
                       <>
-                      <div data-drag-rearrange-row className="card-line" style={{
-                        display: 'grid', gridTemplateColumns: '24px 18px 1fr 16px', gap: 10,
-                        /* UX 2026-09-23 (vertical symmetry): no vertical pad.
-                           8px top + bottom left a 20px content box for 24px
-                           controls, so the grid overflowed downward and every
-                           child sat 2.3px below the row's centre. The fixed
-                           38px height already sets the row. */
-                        padding: '0 10px', alignItems: 'center',
-                        height: 38, boxSizing: 'border-box',
-                        transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
-                      }}>
+                      {/* Same row rules as a category (owner 2026-10-01):
+                          a click on the row opens / closes its colour panel,
+                          the name renames (text-width hit box), the grip
+                          drags; in Select mode a click ticks the row.
+                          [grip 24][dot 22][name][...][⋮ 28] */}
+                      <div
+                        data-drag-rearrange-row
+                        data-entity-row
+                        className={`card-line tpl-entity-row${isOpen ? ' is-open' : ''}${entityEdit ? ' is-selecting' : ''}${entityEdit && isSel ? ' is-selected' : ''}`}
+                        aria-expanded={entityEdit ? undefined : isOpen}
+                        onClick={(e) => { if (entityEdit) toggleEntitySel(r.id); else foldColor(isOpen ? null : r.id, e.currentTarget); }}
+                        style={{
+                          transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
+                        }}
+                      >
                         <DragRearrangeHandle
                           {...attributes}
                           {...listeners}
                           isDragging={isDragging}
-                          style={{ width: 24, height: 24 }}
+                          style={{ width: 24, height: 28 }}
                           collapseOpen={isOpen && foldingColor !== r.id}
                           onCollapse={() => foldColor(null)}
                         />
                         <button
-                          onClick={(e) => foldColor(isOpen ? null : r.id, e.currentTarget)}
+                          onClick={(e) => { if (entityEdit) return; e.stopPropagation(); foldColor(isOpen ? null : r.id, e.currentTarget); }}
                           title="Edit color" aria-label="Edit color"
                           style={{
-                            width: 18, height: 18, borderRadius: '50%',
+                            width: 18, height: 18, borderRadius: '50%', margin: '0 2px',
                             /* Solid full-strength chip (Drawboard-style) so entity
                                colours stay vibrant and easy to tell apart — the picked
                                opacity drives the PDF annotation, not this identifier. */
@@ -2594,19 +2698,26 @@ export default function TemplatesEditor({
                             cursor: 'pointer', padding: 0,
                           }}
                         ></button>
-                        <input
-                          className="inline-edit cat-title"
-                          defaultValue={r.role}
-                          key={r.id + ':' + r.role}
-                          placeholder="Entity name"
-                          onDoubleClick={(e) => e.currentTarget.select()}
-                          onBlur={(e) => commitRequiredRow(e.currentTarget, r.role, ENTITY_BLANK_HINT, (v) => renameEntity(r.id, v))}
-                          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = r.role; e.currentTarget.blur(); } }}
-                          style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.2 }}
-                        />
+                        <span className="hub-autowidth tpl-entity-name" data-value={r.role || 'Entity name'}>
+                          <input
+                            size={1}
+                            className="inline-edit cat-title"
+                            data-entity-name-id={r.id}
+                            defaultValue={r.role}
+                            key={r.id + ':' + r.role}
+                            placeholder="Entity name"
+                            title="Rename"
+                            onClick={(e) => e.stopPropagation()}
+                            onDoubleClick={(e) => e.currentTarget.select()}
+                            onInput={syncAutoWidth}
+                            onBlur={(e) => { commitRequiredRow(e.currentTarget, r.role, ENTITY_BLANK_HINT, (v) => renameEntity(r.id, v)); syncAutoWidth(e); }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = r.role; e.currentTarget.blur(); } }}
+                          />
+                        </span>
                         {!isOpen && (
                           entityEdit ? (
                             <span
+                              className="tpl-entity-check"
                               onClick={(e) => { e.stopPropagation(); toggleEntitySel(r.id); }}
                               data-drag-keep-fill style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--rule-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
                             >
@@ -2620,7 +2731,7 @@ export default function TemplatesEditor({
                                 const rect = e.currentTarget.getBoundingClientRect();
                                 setEntityMenu((m) => (m && m.id === r.id ? null : { id: r.id, rect }));
                               }}
-                              className="hub-icon-btn"
+                              className="hub-icon-btn tpl-entity-more"
                             ><Icon name="more" size={14} /></button>
                           )
                         )}
@@ -2668,7 +2779,7 @@ export default function TemplatesEditor({
                                     // A press on ANOTHER entity's colour dot is a switch, not a
                                     // close: its click follows ~100ms later and runs the switch.
                                     // Folding here first made the click restart the fold (a jump).
-                                    if (event?.target?.closest?.('button[title="Edit color"]')) return;
+                                    if (isEntitySwitchPress(event)) return;
                                     foldColor(null);
                                   }}
                                   dismissInsideSelector="[data-entity-color-panel], [data-sortable-rearrange-item]:has([data-entity-color-panel])"
@@ -2809,16 +2920,20 @@ export default function TemplatesEditor({
                   template name, Modules and Categories share ONE panel (the
                   phone list panel's fill, edge and radius), parted by
                   full-width hairlines, with no card nested inside it. Section
-                  actions are quiet gold words in each header row. */}
+                  actions are quiet words (no gold since 2026-10-01) in each header row. */}
               <div className="templates-mobile-detail-card">
               <div className="templates-mobile-template-card">
                 <div className="templates-mobile-title-stack">
-                  <input
-                    key={`mobile-template-title-${tpl.id}`}
-                    className="templates-mobile-title-input"
-                    {...templateTitleField(tpl)}
-                    title="Tap to rename"
-                  />
+                  <span className="hub-autowidth templates-mobile-title-field" data-value={templateTitleField(tpl).value}>
+                    <input
+                      size={1}
+                      key={`mobile-template-title-${tpl.id}`}
+                      className="templates-mobile-title-input"
+                      data-template-title
+                      {...templateTitleField(tpl)}
+                      title="Tap to rename"
+                    />
+                  </span>
                   <span>{orderedMods.length} {orderedMods.length === 1 ? 'module' : 'modules'} · {totalCategoryCount} {totalCategoryCount === 1 ? 'category' : 'categories'} · {tpl.roster.length} {tpl.roster.length === 1 ? 'entity' : 'entities'}</span>
                 </div>
                 <button
@@ -2837,14 +2952,13 @@ export default function TemplatesEditor({
 
               <section className="templates-mobile-section templates-mobile-modules-section">
                 <div className="templates-mobile-section-head">
-                  <span>Modules</span>
+                  <span>Modules<b className="hub-section-count">{orderedMods.length}</b></span>
                   <div className="templates-mobile-section-actions">
                     <button
                       type="button"
-                      className="templates-mobile-section-select hub-btn hub-btn--tertiary"
+                      className="templates-mobile-section-select hub-btn hub-btn--tertiary hub-section-btn"
                       onClick={() => { setModEdit(true); setSelMods(new Set()); }}
                     >Select</button>
-                    <button type="button" className="hub-btn hub-btn--tertiary" onClick={addModule}><Icon name="plus" size={11} />New module</button>
                   </div>
                 </div>
                 <div className="templates-mobile-module-tabs">
@@ -2860,11 +2974,12 @@ export default function TemplatesEditor({
                     onRenameModule={renameModule}
                     onCancelRename={() => setModRename(null)}
                     onReorderModules={reorderMods}
+                    onOpenMenu={(id, rect) => setModMenu({ id, rect })}
                     showCounts={false}
                   >
-                    {/* Owner 2026-09-23: keep the "+" at the end of the tabs,
-                        the same add-a-tab button desktop has, alongside the
-                        "New module" word in the header. */}
+                    {/* The "+" at the end of the tabs is the ONE way to add a
+                        module (owner 2026-10-01: the header's "New module"
+                        word was a duplicate and is gone). */}
                     <button
                       type="button"
                       onClick={addModule}
@@ -2882,7 +2997,7 @@ export default function TemplatesEditor({
                     actions in place, so the row keeps its height and nothing
                     under it moves when select mode starts or ends. */}
                 <div className="templates-mobile-section-head">
-                  <span>Categories</span>
+                  <span>Categories<b className="hub-section-count">{visibleCats.length}</b></span>
                   <div className={`templates-mobile-section-actions${catEdit ? ' templates-mobile-select-actions' : ''}`}>
                     {catEdit ? (() => {
                       const visibleSelectedIds = new Set(mobileVisibleCats.filter((cat) => selCats.has(cat.id)).map((cat) => cat.id));
@@ -2908,7 +3023,7 @@ export default function TemplatesEditor({
                           <button type="button" disabled={!c} onClick={() => deleteCategories(visibleSelectedIds)} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={11} /></button>
                           <button
                             type="button"
-                            className="templates-mobile-section-select hub-btn hub-btn--tertiary"
+                            className="templates-mobile-section-select hub-btn hub-btn--tertiary hub-section-btn"
                             onClick={() => { setCatEdit(false); setSelCats(new Set()); }}
                           >Done</button>
                         </>
@@ -2917,10 +3032,10 @@ export default function TemplatesEditor({
                       <>
                         <button
                           type="button"
-                          className="templates-mobile-section-select hub-btn hub-btn--tertiary"
+                          className="templates-mobile-section-select hub-btn hub-btn--tertiary hub-section-btn"
                           onClick={() => { setCatEdit(true); }}
                         >Select</button>
-                        <button type="button" className="hub-btn hub-btn--tertiary" data-search-dismiss-action onClick={addCategory}><Icon name="plus" size={11} />New category</button>
+                        <button type="button" className="hub-btn hub-btn--tertiary hub-section-btn" data-search-dismiss-action aria-label="New category" onClick={addCategory}><Icon name="plus" size={12} />Category</button>
                       </>
                     )}
                   </div>
@@ -2940,38 +3055,64 @@ export default function TemplatesEditor({
                         <SortableRearrangeRow key={`mobile-category-${c.id}`} id={c.id}>
                           {({ attributes, listeners, isDragging }) => (
                             <div className="templates-mobile-category-card">
+                              {/* Owner 2026-10-01: a tap anywhere on the row opens
+                                  or closes it; the grip only drags; the name
+                                  renames ONLY once the row is open (a quick tap
+                                  on a closed row never raises the keyboard - the
+                                  input ignores taps until then, see hub.css);
+                                  ⋮ holds Rename / Delete; in Select mode a tap
+                                  ticks the row.
+                                  [grip 32][chevron 26][name][...][count][⋮ 36] */}
                               <div
                                 data-drag-rearrange-row
-                                className={`templates-mobile-category-row${catEdit && isSel ? ' is-selected' : ''}`}
-                                onClick={() => { if (catEdit) toggleCatSel(c.id); }}
+                                className={`templates-mobile-category-row${open ? ' is-open' : ''}${catEdit ? ' is-selecting' : ''}${catEdit && isSel ? ' is-selected' : ''}`}
+                                aria-expanded={catEdit ? undefined : open}
+                                onClick={() => { if (catEdit) toggleCatSel(c.id); else setOpenCat(open ? -1 : ci); }}
                               >
                                 <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 24, height: 24 }} />
                                 <button
                                   type="button"
                                   className={`templates-mobile-category-toggle ${open ? 'open' : ''}`}
                                   aria-label={`${open ? 'Collapse' : 'Expand'} ${c.name}`}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setOpenCat(open ? -1 : ci);
-                                  }}
                                 ><CategoryDisclosureGlyph /></button>
-                                <input
-                                  className="templates-mobile-inline-input"
-                                  data-mobile-category-id={c.id}
-                                  defaultValue={c.name}
-                                  key={`mobile-cat-${c.id}:${c.name}`}
-                                  onClick={(e) => e.stopPropagation()}
-                                  onBlur={(e) => {
-                                    const r = resolveTitleCommit(e.currentTarget.value, c.name);
-                                    if (r.action === 'commit') renameCategory(ci, r.name);
-                                    e.currentTarget.value = r.name;
-                                  }}
-                                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = c.name; e.currentTarget.blur(); } }}
-                                />
-                                <span title={archivedItems.length ? `${items.length} active ${items.length === 1 ? 'item' : 'items'}, ${archivedItems.length} archived` : `${items.length} active ${items.length === 1 ? 'item' : 'items'}`}>{items.length}{archivedItems.length ? ` +${archivedItems.length}` : ''}</span>
+                                <span className="hub-autowidth templates-mobile-category-name" data-value={c.name}>
+                                  <input
+                                    size={1}
+                                    className="templates-mobile-inline-input"
+                                    data-mobile-category-id={c.id}
+                                    data-category-name-id={c.id}
+                                    defaultValue={c.name}
+                                    key={`mobile-cat-${c.id}:${c.name}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onInput={syncAutoWidth}
+                                    onBlur={(e) => {
+                                      const r = resolveTitleCommit(e.currentTarget.value, c.name);
+                                      if (r.action === 'commit') renameCategory(ci, r.name);
+                                      e.currentTarget.value = r.name;
+                                      syncAutoWidth(e);
+                                    }}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = c.name; e.currentTarget.blur(); } }}
+                                  />
+                                </span>
+                                <span className="templates-mobile-category-count" title={archivedItems.length ? `${items.length} active ${items.length === 1 ? 'item' : 'items'}, ${archivedItems.length} archived` : `${items.length} active ${items.length === 1 ? 'item' : 'items'}`}>{items.length} {items.length === 1 ? 'item' : 'items'}{archivedItems.length ? ` +${archivedItems.length}` : ''}</span>
                                 {catEdit ? (
                                   <i className={`templates-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? <Icon name="check" size={11} /> : null}</i>
-                                ) : null}
+                                ) : (
+                                  /* Wrapped so `.templates-mobile-category-row > button`
+                                     stays the one disclosure button. */
+                                  <span className="templates-mobile-category-more">
+                                    <button
+                                      type="button"
+                                      className="templates-mobile-more"
+                                      title="More" aria-label="More"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        setCatMenu((m) => (m && m.id === c.id ? null : { id: c.id, rect }));
+                                      }}
+                                    ><Icon name="more" size={14} /></button>
+                                  </span>
+                                )}
                               </div>
                               {open ? (
                                 <div className="templates-mobile-items">
@@ -3065,12 +3206,6 @@ export default function TemplatesEditor({
                     sheet's own title already says Entities, so the label goes;
                     Select sits left and New entity right on one row. */}
                 <div className="templates-mobile-select-inline templates-mobile-entity-toolbar">
-                  <button
-                    className="hub-btn hub-btn--tertiary"
-                    onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
-                  >
-                    {entityEdit ? 'Done' : 'Select'}
-                  </button>
                   {entityEdit && (() => {
                     const visibleSelectedIds = new Set(mobileVisibleEntities.filter((entity) => selEntities.has(entity.id)).map((entity) => entity.id));
                     const c = visibleSelectedIds.size;
@@ -3092,8 +3227,14 @@ export default function TemplatesEditor({
                       </span>
                     );
                   })()}
+                  <button
+                    className="hub-btn hub-btn--tertiary hub-section-btn"
+                    onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
+                  >
+                    {entityEdit ? 'Done' : 'Select'}
+                  </button>
                   {!entityEdit && (
-                    <button type="button" className="hub-btn templates-mobile-new-entity" onClick={addEntity}><Icon name="plus" size={11} />New entity</button>
+                    <button type="button" className="hub-btn hub-btn--tertiary hub-section-btn templates-mobile-new-entity" aria-label="New entity" onClick={addEntity}><Icon name="plus" size={12} />Entity</button>
                   )}
                 </div>
                 {mobileVisibleEntities.length === 0 ? (
@@ -3111,22 +3252,38 @@ export default function TemplatesEditor({
                         <SortableRearrangeRow key={`mobile-entity-${r.id}`} id={r.id}>
                           {({ attributes, listeners, isDragging }) => (
                             <>
-                              <div data-drag-rearrange-row className={`templates-mobile-entity-row${entityEdit && isSel ? ' is-selected' : ''}`}>
+                              {/* Same rules as a category row (owner 2026-10-01):
+                                  a tap on the row opens / closes its colour
+                                  panel; the name renames only while the panel
+                                  is open; Select mode ticks the row. */}
+                              <div
+                                data-drag-rearrange-row
+                                data-entity-row
+                                className={`templates-mobile-entity-row${isOpen ? ' is-open' : ''}${entityEdit ? ' is-selecting' : ''}${entityEdit && isSel ? ' is-selected' : ''}`}
+                                aria-expanded={entityEdit ? undefined : isOpen}
+                                onClick={(e) => { if (entityEdit) toggleEntitySel(r.id); else foldColor(isOpen ? null : r.id, e.currentTarget); }}
+                              >
                                 <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 24, height: 24 }} collapseOpen={isOpen && foldingColor !== r.id} onCollapse={() => foldColor(null)} />
                                 <button
                                   type="button"
                                   title="Edit color" aria-label="Edit color"
-                                  onClick={(e) => foldColor(isOpen ? null : r.id, e.currentTarget)}
+                                  onClick={(e) => { if (entityEdit) return; e.stopPropagation(); foldColor(isOpen ? null : r.id, e.currentTarget); }}
                                   style={{ '--entity-color': c, '--entity-border-color': rowBorderColor }}
                                 ><span aria-hidden="true" /></button>
-                                <input
-                                  className="templates-mobile-inline-input"
-                                  defaultValue={r.role}
-                                  key={`mobile-entity-${r.id}:${r.role}`}
-                                  placeholder="Entity name"
-                                  onBlur={(e) => commitRequiredRow(e.currentTarget, r.role, ENTITY_BLANK_HINT, (v) => renameEntity(r.id, v))}
-                                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = r.role; e.currentTarget.blur(); } }}
-                                />
+                                <span className="hub-autowidth templates-mobile-entity-name" data-value={r.role || 'Entity name'}>
+                                  <input
+                                    size={1}
+                                    className="templates-mobile-inline-input"
+                                    data-entity-name-id={r.id}
+                                    defaultValue={r.role}
+                                    key={`mobile-entity-${r.id}:${r.role}`}
+                                    placeholder="Entity name"
+                                    onClick={(e) => e.stopPropagation()}
+                                    onInput={syncAutoWidth}
+                                    onBlur={(e) => { commitRequiredRow(e.currentTarget, r.role, ENTITY_BLANK_HINT, (v) => renameEntity(r.id, v)); syncAutoWidth(e); }}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = r.role; e.currentTarget.blur(); } }}
+                                  />
+                                </span>
                                 {entityEdit ? (
                                   <i className={`templates-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? <Icon name="check" size={11} /> : null}</i>
                                 ) : (
@@ -3181,7 +3338,7 @@ export default function TemplatesEditor({
                                     // A press on ANOTHER entity's colour dot is a switch, not a
                                     // close: its click follows ~100ms later and runs the switch.
                                     // Folding here first made the click restart the fold (a jump).
-                                    if (event?.target?.closest?.('button[title="Edit color"]')) return;
+                                    if (isEntitySwitchPress(event)) return;
                                     foldColor(null);
                                   }}
                                       dismissInsideSelector="[data-entity-color-panel], [data-sortable-rearrange-item]:has([data-entity-color-panel])"
@@ -3238,7 +3395,17 @@ export default function TemplatesEditor({
           onClose={() => setTplMenu(null)}
           items={[
             { label: 'Copy', onClick: () => duplicateTemplates(new Set([t.id])) },
-            { label: 'Rename', onClick: () => { setSelected(t.id); setTplEdit(false); } },
+            { label: 'Rename', onClick: () => {
+              setTplEdit(false);
+              if (t.id === tpl?.id && (!mobileLayoutActive() || mobileTemplateOpen)) { focusVisibleField('input[data-template-title]'); return; }
+              flushSync(() => {
+                setSelected(t.id);
+                setOpenCat(-1);
+                setOpenMod(0);
+                if (mobileLayoutActive()) { captureMobileTemplateList(); setTemplateContentSearch(''); setMobileTemplateOpen(true); }
+              });
+              focusVisibleField('input[data-template-title]');
+            } },
             { label: 'Share', onClick: () => onShare && onShare(t) },
             { label: 'Delete', danger: true, onClick: () => deleteTemplates(new Set([t.id])) },
           ]}
@@ -3256,8 +3423,47 @@ export default function TemplatesEditor({
             { label: 'Duplicate', onClick: () => duplicateEntities(new Set([ent.id])) },
             { label: 'Move/Copy', onClick: () => setMoveModal({ count: 1, kind: 'entity' }) },
             { label: 'Share', onClick: () => { if (tpl) onShare && onShare(tpl); } },
-            { label: 'Rename', onClick: () => setOpenColor(null) },
+            { label: 'Rename', onClick: () => { focusVisibleField(`input[data-entity-name-id="${ent.id}"]`); } },
             { label: 'Delete', danger: true, onClick: () => deleteEntities(new Set([ent.id])) },
+          ]}
+        />
+      );
+    })()}
+
+    {catMenu && tpl && (() => {
+      const ci = visibleCats.findIndex((x) => x.id === catMenu.id);
+      if (ci < 0) return null;
+      const cat = visibleCats[ci];
+      return (
+        <MoreMenu
+          anchorRect={catMenu.rect}
+          onClose={() => setCatMenu(null)}
+          items={[
+            { label: 'Rename', onClick: () => {
+              // A closed phone row ignores taps on its name; opening it first
+              // makes the field live for the next tap too.
+              if (openCat !== ci && mobileLayoutActive()) flushSync(() => setOpenCat(ci));
+              focusVisibleField(`input[data-category-name-id="${cat.id}"]`);
+            } },
+            { label: 'Duplicate', onClick: () => duplicateCategories(new Set([cat.id])) },
+            { label: 'Move/Copy', onClick: () => setMoveModal({ count: 1, kind: 'category' }) },
+            { label: 'Delete', danger: true, onClick: () => deleteCategories(new Set([cat.id])) },
+          ]}
+        />
+      );
+    })()}
+    {modMenu && tpl && (() => {
+      const mod = orderedMods.find((x) => x.id === modMenu.id);
+      if (!mod) return null;
+      return (
+        <MoreMenu
+          anchorRect={modMenu.rect}
+          onClose={() => setModMenu(null)}
+          items={[
+            // flushSync: the rename field mounts and takes focus inside this
+            // tap, so a phone raises its keyboard.
+            { label: 'Rename', onClick: () => flushSync(() => setModRename(mod.id)) },
+            { label: 'Delete', danger: true, onClick: () => deleteModules(new Set([mod.id])) },
           ]}
         />
       );
