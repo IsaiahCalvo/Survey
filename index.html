@@ -12,6 +12,14 @@
       /* UX 2026-04-22: Respect iPad/iPhone safe area so the home bar doesn't
          clip the bottom of the sidebar (Sign In button was cut in half). */
       html, body, #root { height: 100%; }
+      /* Owner 2026-10-01 (desktop): a trackpad or wheel scroll over a part
+         that cannot scroll (the left rail, a short list) rubber-banded the
+         whole page. With a mouse or trackpad the page never bounces and a
+         scroll that reaches a list's end stops there. Touch screens keep
+         their pull-to-refresh, so this is limited to fine pointers. */
+      @media (hover: hover) and (pointer: fine) {
+        html, body { overscroll-behavior: none; }
+      }
       body {
         margin: 0;
         /* UX 2026-04-22: Match app's dark surface so iPad safe-area strips
