@@ -32,11 +32,13 @@
          checklist, then the notes slot, slide open under it;
        * notes: the note edited in place and the media strip, inside the
          open Survey Marker's notes slot (src/components/SurveyMarkerNotes.jsx).
-   - Gold means only "what a touch on the page will do now" (survey calm gold,
-     owner 2026-10-01): the armed category. A current item in a list or menu
-     (the template in the switcher, the entity in the detail menu) is bright
-     --text-1 ink with a --text-2 check; an open menu's trigger is neutral.
-     Never a gold box, ring or underline.
+   - No gold in the sheet (owner 2026-10-02, survey panel polish: "calm,
+     uniform, no gold accents"; it was gold ink on the armed category's
+     name): the armed category - what a touch on the page will do now - is
+     the app's selected row, a --surface-3 fill, as on desktop. A current
+     item in a list or menu (the template in the switcher, the entity in the
+     detail menu) is bright --text-1 ink with a --text-2 check; an open
+     menu's trigger is neutral. Never a gold box, ring or underline.
    - Glyph buttons have invisible hit areas: no hover or press plate; the
      glyph shrinks to 0.88 while pressed. A full-width ROW still takes the
      house --pressed fill while the finger is down, as the home rows do.
@@ -673,8 +675,8 @@
 
 /* A category is a line in the panel: a hairline above it (the first one
    parts the rows from the "Categories" head line), no edge, corner or fill
-   of its own. The active category shows as gold INK on its name (inline),
-   so its line stays the ordinary hairline - no gold edge. The hairline sits
+   of its own. The armed category takes the selected row's --surface-3 fill
+   (below), never gold ink or a gold edge. The hairline sits
    INSIDE the 44px line (owner 2026-10-02; it was 44 + 1), so the row below
    it is 43. */
 .mobile-survey-sheet .survey-marker-category-card,
@@ -720,6 +722,23 @@
 }
 
 .mobile-survey-sheet .survey-marker-category-main:active {
+  background: var(--pressed);
+}
+
+/* The WHOLE row presses (owner 2026-10-02: "pressing a category row darkens
+   only part of it"): while the finger is on the category's line, the row -
+   the strip behind "+ Place" included - takes the house --pressed fill; the
+   pill presses on its own. */
+.mobile-survey-sheet .survey-marker-category-card .survey-marker-category-row:has(.survey-marker-category-main:active) {
+  background: var(--pressed);
+}
+
+/* The armed category: the app's selected row (--surface-3), no gold. */
+.mobile-survey-sheet .survey-marker-category-card.is-armed .survey-marker-category-row {
+  background: var(--surface-3);
+}
+
+.mobile-survey-sheet .survey-marker-category-card.is-armed .survey-marker-category-row:has(.survey-marker-category-main:active) {
   background: var(--pressed);
 }
 
