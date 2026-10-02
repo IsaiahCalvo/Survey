@@ -140,6 +140,18 @@ test('viewer: fits measure the current page, Fit height is the viewer\'s own, an
 });
 
 test('rail glyph buttons: no hover plate, the glyph grows and brightens instead', () => {
-  assert.match(states, /#chrome-right-host button:not\(:disabled\):not\(\[aria-disabled='true'\]\):not\(\[data-glyph-only\]\):hover:not\(:active\) \{\n\s*background-color: var\(--hover\) !important;/);
-  assert.match(states, /#chrome-right-host button\[data-glyph-only\][^{]*:hover:not\(:active\) > \* \{\n\s*transform: scale\(1\.12\);/);
+  // The two number fields keep their hover plate (they are fields).
+  assert.match(states, /#chrome-right-host button:not\(:disabled\):not\(\[aria-disabled='true'\]\):not\(\[data-glyph-only\]\):not\(\.chrome-icon-btn\):hover:not\(:active\) \{\n\s*background-color: var\(--hover\) !important;/);
+  // DELIBERATE ASSERTION CHANGE (owner 2026-10-02, test plan U2: "the left
+  // rail and right rail: those are different. There's no consistency"): the
+  // rail's glyphs grew to 112% by a rule of their own, the tool bar not at
+  // all and the left rail painted a plate. Every chrome icon now takes ONE
+  // rule set, states.css section 5 - grow to 108%, brighten, no plate - and
+  // both rail regions (the collapsed stack and the footer row) are marked
+  // data-chrome-rail so it reaches them. Still no plate; still grows and
+  // brightens; only the number and the owner of the rule changed.
+  assert.doesNotMatch(states, /#chrome-right-host button\[data-glyph-only\]/);
+  assert.match(states, /:is\([^)]*\[data-chrome-rail\][^)]*\) :is\(\[data-glyph-only\], \.chrome-icon-btn\)[^{]*:hover > :not\(\[data-anchored-tooltip\]\) \{\s*scale: 1\.08;/);
+  assert.match(states, /:not\(\.btn-active, \.is-active, \[aria-pressed='true'\], \[aria-selected='true'\], \[data-active='true'\]\):hover \{\s*color: var\(--text-1\) !important;/);
+  assert.match(appShell, /data-rail-footer-row="true"[\s\S]{0,200}data-chrome-rail="true"/);
 });

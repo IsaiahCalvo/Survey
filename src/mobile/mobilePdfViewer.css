@@ -394,7 +394,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-header__icon:disabled { color: var(--text-disabled);
   cursor: not-allowed;
 }
-.mobile-pdf-header__icon:not(:disabled):active { background: var(--pressed); }
+/* Press: no plate. The glyph tightens - src/styles/states.css section 5,
+   CHROME ICON BUTTONS (owner 2026-10-02: one press for every icon). */
 
 /* UX 2026-09-21 (pass 7): every header control paints 28px and is HIT at 44px,
    the same painted-28/box-44 trick the strip and the dock use. The pad reaches
@@ -456,7 +457,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-header__page-nav:disabled { color: var(--text-disabled); }
-.mobile-pdf-header__page-nav:not(:disabled):active { background: var(--pressed); }
+/* Press: section 5 of src/styles/states.css (glyph tightens, no plate). */
 
 /* Demo pill geometry: 68 wide, radius 5, tabular-nums, gold active border.
    Its height comes from the shared header control token so the pill lines up
@@ -691,8 +692,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   cursor: not-allowed;
 }
 .mobile-pdf-header__zoom-steppers > button:not(:disabled):active { background: transparent; }
-.mobile-pdf-header__zoom-steppers > button > svg { transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1); }
-.mobile-pdf-header__zoom-steppers > button:not(:disabled):active > svg { transform: scale(0.88); }
+/* The glyph's press is section 5 of src/styles/states.css (one press for
+   every chrome icon); a second transform here would multiply with it. */
 
 .mobile-pdf-header__zoom-percent {
   min-width: 0;
@@ -4453,7 +4454,7 @@ html:has([data-mobile-tool-properties]) .mobile-pdf-header__space {
    ALREADY armed or selected keeps its own look — .is-active is matched more
    specifically above and below.
    ========================================================================== */
-.mobile-pdf-tools__button:not(:disabled):active,
+.mobile-pdf-tools__button:not([data-glyph-only]):not(:disabled):active,
 .mobile-pdf-header__page-input:active,
 .mobile-doc-card:active,
 .mobile-project-card:active,

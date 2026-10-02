@@ -149,10 +149,22 @@ test('Select mode: the modes sit in the tool bar with nothing picked, or for a m
   // (2026-10-01, Spaces toolbar: the Areas tools take the same rule.)
   assert.match(toolBar, /\(\(toolBarGroup && toolBarGroup !== 'select'\) \|\| selectModesInToolBar \|\| areasMode\) && \(\s*<div className="chrome-divider" \/>/);
   // They answer the pointer exactly as the group tools beside them do.
+  // DELIBERATE ASSERTION CHANGE (owner 2026-10-02, test plan U2: "the icons
+  // in the toolbar ... get a grey box around it ... There's no consistency"):
+  // the shared answer used to be a --hover plate (+ edge + shadow) and a
+  // --pressed fill, pinned here as three styles.css rules. Those rules are
+  // gone. The modes, the group tools and the group icons all sit inside
+  // #chrome-top-host, and ONE rule set answers for every icon there:
+  // src/styles/states.css section 5 - no plate, the glyph grows on hover and
+  // tightens on press. "Exactly as the group tools do" is still the point;
+  // only the look they share changed.
   const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
-  assert.match(css, /#chrome-subtools-host \.btn:hover:not\(:disabled\),\s*\[data-select-mode-toggle\] \.btn:hover:not\(:disabled\)/);
-  assert.match(css, /#chrome-subtools-host \.btn-active:hover:not\(:disabled\),\s*\[data-select-mode-toggle\] \.btn-active:hover:not\(:disabled\)/);
-  assert.match(css, /#chrome-subtools-host \.btn:active:not\(:disabled\),\s*\[data-select-mode-toggle\] \.btn:active:not\(:disabled\)/);
+  assert.doesNotMatch(css, /\[data-select-mode-toggle\] \.btn(-active)?:(hover|active):not\(:disabled\)/);
+  assert.doesNotMatch(css, /#chrome-subtools-host \.btn(-active)?:(hover|active):not\(:disabled\)/);
+  assert.doesNotMatch(css, /\.btn\[data-tool-group\]:(hover|active)/);
+  const states = readFileSync(new URL('../src/styles/states.css', import.meta.url), 'utf8');
+  assert.match(states, /:is\(#chrome-top-host, [^)]*\) :is\(\[data-glyph-only\], \.chrome-icon-btn\)[^{]*:hover > :not\(\[data-anchored-tooltip\]\) \{\s*scale: 1\.08;/);
+  assert.match(states, /:is\(#chrome-top-host, [^)]*\) :is\(\[data-glyph-only\], \.chrome-icon-btn\)[^{]*:active > :not\(\[data-anchored-tooltip\]\) \{\s*scale: 0\.92;/);
 });
 
 test('row 2 coming and going in Select mode moves neither the Survey row nor the storage banner', () => {

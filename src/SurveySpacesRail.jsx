@@ -1735,7 +1735,7 @@ const SurveySpacesRail = ({
                   Survey in its own persistent right-side home. */}
               {isSurveyPanelCollapsed && (
                 <>
-                  <div className={mobileMode ? 'mobile-survey-sheet-header' : undefined} style={{
+                  <div className={mobileMode ? 'mobile-survey-sheet-header' : undefined} data-chrome-rail={mobileMode ? undefined : 'true'} style={{
                     height: '35px',
                     padding: '0 8px',
                     borderBottom: '1px solid var(--border)',
@@ -1766,14 +1766,14 @@ const SurveySpacesRail = ({
                          icon is --text-2 on every rail and on the top bar — see
                          the note on the left rail's tabs in PDFSidebar.jsx.
                          The box radius is the house 6, not a rail-only 4. */
-                      style={{ background: 'transparent', border: 'none', color: 'var(--text-2)', cursor: 'pointer', ...(mobileMode ? { padding: '4px' } : { padding: 0, width: `${RAIL_CONTROL}px`, height: `${RAIL_CONTROL}px` }), borderRadius: 'var(--chrome-radius)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--hover)'; tip('Expand Survey panel', 'left').onMouseEnter(e); }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; tip('Expand Survey panel', 'left').onMouseLeave(e); }}
+                      style={{ background: 'transparent', border: 'none', color: 'var(--text-2)', cursor: 'pointer', ...(mobileMode ? { padding: '4px' } : { padding: 0, width: `${RAIL_CONTROL}px`, height: `${RAIL_CONTROL}px` }), borderRadius: 'var(--chrome-radius)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.12s ease-out' }}
+                      // Owner 2026-10-02: no hover plate - the chevron grows and
+                      // brightens like every chrome icon (states.css section 5).
                     >
-                      <Icon name="chevronLeft" size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="var(--text-2)" />
+                      <Icon name="chevronLeft" size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="currentColor" />
                     </button>
                   </div>
-                  <div style={{
+                  <div data-chrome-rail={mobileMode ? undefined : 'true'} style={{
                     display: 'flex',
                     flexDirection: 'column',
                     padding: '8px',
@@ -1820,15 +1820,8 @@ const SurveySpacesRail = ({
                           minHeight: '28px',
                           width: '100%'
                         }}
-                        onMouseEnter={(e) => {
-                          // UX: use the shared rail hint, including press dismissal.
-                          tip('Survey', 'left').onMouseEnter(e);
-                          e.currentTarget.style.background = 'var(--hover)';
-                        }}
-                        onMouseLeave={(e) => {
-                          tip('Survey', 'left').onMouseLeave(e);
-                          e.currentTarget.style.background = 'transparent';
-                        }}
+                        // Owner 2026-10-02: no hover plate (states.css section 5);
+                        // the shared rail hint comes from the tip() spread above.
                       >
                         <Icon
                           name="survey"
@@ -1847,6 +1840,7 @@ const SurveySpacesRail = ({
                   {/* Collapse row: mirrors the left rail's top strip. */}
                   <div
                     className={mobileMode ? 'mobile-pdf-sheet__handle mobile-pdf-sheet__handle--wide' : undefined}
+                    data-chrome-rail={mobileMode ? undefined : 'true'}
                     style={{
                       height: '35px',
                       padding: '0 8px',
@@ -1893,12 +1887,11 @@ const SurveySpacesRail = ({
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        transition: 'background 0.15s'
+                        transition: 'color 0.12s ease-out'
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                      // Owner 2026-10-02: no hover plate (states.css section 5).
                     >
-                      <Icon name={mobileMode ? 'chevronDown' : 'chevronRight'} size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="var(--text-2)" />
+                      <Icon name={mobileMode ? 'chevronDown' : 'chevronRight'} size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="currentColor" />
                     </button>
                   </div>
 

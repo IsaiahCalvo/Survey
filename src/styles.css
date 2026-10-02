@@ -3056,47 +3056,23 @@ textarea:focus-visible,
   cursor: crosshair;
 }
 
-/* UX: top tool groups use the sub-toolbar's neutral hover; gold remains
-   the active/focus cue rather than making an idle hover look selected. */
-/* UX: include Pan/Select icon buttons and active tools; every hover keeps
-   the same neutral chip and fixed baseline as the sub-toolbar. */
-/* w44 (rows flipped): a group's tools now sit in the tool bar beside the group
-   icons, so they answer the pointer exactly as those icons do — one hover look
-   across the whole bar.
-   w46 (owner 2026-09-26: select modes in top bar): Select's Box / Lasso / Text
-   modes are tools in that same spot, so they share every rule here, and so
-   do the Areas tools (owner 2026-10-01, Spaces toolbar). */
-.btn[data-tool-group]:hover:not(:disabled),
-#chrome-subtools-host .btn:hover:not(:disabled),
-[data-select-mode-toggle] .btn:hover:not(:disabled),
-[data-area-tools] .btn:hover:not(:disabled) {
-  background: var(--hover);
-  border-color: var(--border);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  transform: none;
-}
-
-/* UX (polish round 4): the ACTIVE tool inside a sub-toolbar (Pen, Rectangle,
-   Text…) hovers with the same neutral plate as its idle siblings and as the
-   top row, so every button in a row answers the pointer the same way. Gold
-   stays the active cue; the border stays 1px so the box never jiggles. */
-#chrome-sub-toolbar-host .btn-active:hover:not(:disabled),
-#chrome-subtools-host .btn-active:hover:not(:disabled),
-[data-select-mode-toggle] .btn-active:hover:not(:disabled),
-[data-area-tools] .btn-active:hover:not(:disabled) {
+/* Owner 2026-10-02 (test plan U2, "it gets a grey box around it"): the tool
+   bar's icons - Pan, Select, the group icons, every tool beside them, Select's
+   Box / Lasso / Text and the Areas tools - no longer paint a hover plate, a
+   hover edge, a drop shadow or a pressed fill. Each of them is an icon button,
+   and src/styles/states.css section 5 (CHROME ICON BUTTONS) is their whole
+   hover / press / chosen look: the glyph grows on hover, tightens on press, and
+   an armed tool is a gold glyph. The three rules that used to live here (a
+   neutral --hover plate with a border and shadow, the same on the armed tool,
+   and a --pressed fill) are gone rather than overridden.
+   The settings row under the bar keeps its own: its word toggles are not
+   icons, and an armed one still answers the pointer with the neutral plate. */
+#chrome-sub-toolbar-host .btn-active:hover:not(:disabled) {
   background: var(--hover);
   border-color: var(--border);
 }
 
-/* UX 2026-09-22: declared AFTER both tool-group hover rules, because the two
-   have identical specificity and the later one wins — with the press first,
-   measuring a real tool button in the app showed --hover under the finger, not
-   --pressed. Verified live at 1440x900 after the move. */
-.btn[data-tool-group]:active:not(:disabled),
-#chrome-sub-toolbar-host .btn-active:active:not(:disabled),
-#chrome-subtools-host .btn:active:not(:disabled),
-[data-select-mode-toggle] .btn:active:not(:disabled),
-[data-area-tools] .btn:active:not(:disabled) {
+#chrome-sub-toolbar-host .btn-active:active:not(:disabled) {
   background: var(--pressed);
   border-color: var(--border);
 }
