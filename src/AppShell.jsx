@@ -2427,7 +2427,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   if (bottomToolbarApi.activeCategoryDropdown === 'draw') return;
                   bottomToolbarApi.setActiveCategoryDropdown('draw');
                   if (!['pen', 'highlighter', 'text-highlight', 'eraser'].includes(bottomToolbarApi.activeTool)) {
-                    bottomToolbarApi.setActiveTool(bottomToolbarApi.lastDrawTool);
+                    bottomToolbarApi.setActiveTool(bottomToolbarApi.lastDrawTool, { source: 'category-tab' });
                   }
                 }}
                 {...chromeTip('Draw', 'below')}
@@ -2448,7 +2448,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   if (bottomToolbarApi.activeCategoryDropdown === 'shape') return;
                   bottomToolbarApi.setActiveCategoryDropdown('shape');
                   if (!['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'].includes(bottomToolbarApi.activeTool)) {
-                    bottomToolbarApi.setActiveTool(bottomToolbarApi.lastShapeTool);
+                    bottomToolbarApi.setActiveTool(bottomToolbarApi.lastShapeTool, { source: 'category-tab' });
                   }
                 }}
                 {...chromeTip('Shapes', 'below')}
@@ -2468,7 +2468,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   if (bottomToolbarApi.activeCategoryDropdown === 'review') return;
                   bottomToolbarApi.setActiveCategoryDropdown('review');
                   if (!REVIEW_TOOL_IDS.includes(bottomToolbarApi.activeTool)) {
-                    bottomToolbarApi.setActiveTool(bottomToolbarApi.lastReviewTool);
+                    bottomToolbarApi.setActiveTool(bottomToolbarApi.lastReviewTool, { source: 'category-tab' });
                   }
                 }}
                 {...chromeTip('Text', 'below')}

@@ -612,10 +612,13 @@ export default function TextEditOverlay({
       updated.objects[index] = merged;
     }
 
+    // Drawboard rule 10: the viewer keeps the box selected after an Escape
+    // commit, so it is told how the edit ended.
+    const commitMeta = { via: opts.via || null };
     if (opts.flush) {
-      flushSync(() => onEditCommit(updated));
+      flushSync(() => onEditCommit(updated, commitMeta));
     } else {
-      onEditCommit(updated);
+      onEditCommit(updated, commitMeta);
     }
   }, [annotations, annotationIndex, isNewText, isCallout, onEditCommit, onEditCancel, onRichTextEditorChange, pad, authorId,
     // KAL-88 scope-stamp inputs — keep the commit closure stamping from
@@ -822,7 +825,7 @@ export default function TextEditOverlay({
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
-        commitRef.current({ flush: true });
+        commitRef.current({ flush: true, via: 'escape' });
       }
     };
     const onDocPointerDown = (e) => {
@@ -866,7 +869,7 @@ export default function TextEditOverlay({
     close: () => commitRef.current(),
     contains: (target) => Boolean(target?.closest?.('[data-text-edit-overlay]')),
     typingField: () => (committedRef.current ? null : editableRef.current),
-    endTyping: () => commitRef.current(),
+    endTyping: (event) => commitRef.current(event?.key === 'Escape' ? { via: 'escape' } : undefined),
     passes: (target) => Boolean(target?.closest?.('[data-rich-text-toolbar], [data-mini-toolbar], [data-font-color-picker]')),
     escape: false,
   }), []);

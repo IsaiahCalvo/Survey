@@ -70,6 +70,10 @@ import { HANDLE_FILL, HANDLE_RING, HANDLE_RING_INVALID, HANDLE_RADIUS, HANDLE_RA
 import { getMarkHitStrokePx, resolveHandleHitPadPageSize } from '../utils/handleHitPad.js';
 import { clampResizeScale } from '../utils/resizeMinimum.js';
 import { shouldAutoSelectAfterCommit } from '../utils/autoSelectAfterCommit.js';
+import { isSelectFamilyTool, shouldHideSelectionChrome } from '../utils/selectModes.js';
+import { classifySelectionGrabTarget, isPageCalloutSelected, resolvePagePress } from '../utils/toolPressRouting.js';
+import { dropStashedSelection, peekStashedSelection, stashPageSelection } from '../utils/pageSelectionPresence.js';
+import { useSelectionGrabHandoff } from '../hooks/useSelectionGrabHandoff.js';
 import { DRAWN_CENTERED_STROKE_CONTRACT } from '../utils/shapeCommitGeometry.js';
 import { useSVGInteraction } from '../hooks/useSVGInteraction';
 // Plan 14-03 Task 3 (CREATE-01 callout half): factory for constructing a
@@ -462,6 +466,9 @@ const SVGAnnotationLayer = memo(({
   // instead of panning. Never put the latter on an annotation carrier: Drawboard
   // pans from an unselected annotation, so the drag has to reach the scroller.
   panEditEntryEnabled = false,
+  // Drawboard rule 12 (owner 2026-10-02): the viewer asks this layer to leave
+  // its pick behind when it unmounts and take it back when it mounts again.
+  keepSelectionAcrossRemount = false,
   lassoTouchOperation = 'replace',
   lassoTouchMode = 'window',
   editingAnnotationIndex, // number | null — index of annotation currently being edited in FabricEditCanvas (hidden in SVG)
@@ -837,9 +844,41 @@ const SVGAnnotationLayer = memo(({
   // this, the select-tool user sees a one-frame flash where the neighbor
   // shape (now occupying the deleted index) appears selected — the save and
   // the deselect arrive in separate renders otherwise.
+  // Drawboard rule 12 (owner 2026-10-02): a page change never drops the pick.
+  // This layer unmounts when its page leaves the mounted window, so it leaves
+  // its pick behind by id (utils/pageSelectionPresence) and takes it back on
+  // its next mount. The selection commands replayed on mount are not clears.
+  const mountPendingTickRef = useRef(pendingSelection?.tick);
+  const mountClearTokenRef = useRef(selectionClearToken);
+  const stashSourceRef = useRef(null);
+  stashSourceRef.current = { selectedIds, objects: annotations?.objects, markerIds: selectedSurveyMarkerIds };
+  useEffect(() => () => {
+    const source = stashSourceRef.current;
+    if (!source || !keepSelectionAcrossRemount) return;
+    const markIds = [...(source.selectedIds || [])]
+      .map((index) => getAnnotationRenderIdentity(source.objects?.[index]).annotationId)
+      .filter(Boolean);
+    stashPageSelection(pageNumber, { documentId, markIds, markerIds: [...(source.markerIds || [])] });
+  }, [pageNumber, documentId, keepSelectionAcrossRemount]);
+  useEffect(() => {
+    const stash = keepSelectionAcrossRemount ? peekStashedSelection(pageNumber, documentId) : null;
+    if (!stash) return;
+    const objects = annotations?.objects || [];
+    if (stash.markIds.size > 0 && objects.length === 0) return; // marks still loading
+    dropStashedSelection();
+    const indices = [];
+    objects.forEach((object, index) => {
+      if (stash.markIds.has(String(getAnnotationRenderIdentity(object).annotationId))) indices.push(index);
+    });
+    if (indices.length) selectAnnotations(indices);
+    if (stash.markerIds.size) setSelectedSurveyMarkerIds(new Set(stash.markerIds));
+  }, [annotations, pageNumber, documentId, selectAnnotations, keepSelectionAcrossRemount]);
+
   useLayoutEffect(() => {
     if (!pendingSelection) return;
     if (pendingSelection.clearAll === true) {
+      // Rule 12: a clear also drops a far page's kept pick (not the replay on mount).
+      if (pendingSelection.tick !== mountPendingTickRef.current) dropStashedSelection();
       deselectAll();
       setSelectedSurveyMarkerId(null);
       setSurveyMarkerPreviewBounds(null);
@@ -900,6 +939,7 @@ const SVGAnnotationLayer = memo(({
 
   useLayoutEffect(() => {
     if (!selectionClearToken) return;
+    if (selectionClearToken !== mountClearTokenRef.current) dropStashedSelection();
     deselectAll();
     setSelectedSurveyMarkerId(null);
     setSurveyMarkerPreviewBounds(null);
@@ -993,9 +1033,74 @@ const SVGAnnotationLayer = memo(({
   // clicks, shape drags, and click-to-dismiss all keep working.
   const isBboxEditMode = editingAnnotationIndex != null && editingAnnotationEditType === 'bbox';
   const isCalloutTextEditMode = !!editingCalloutId;
-  const isSelectTool = (activeTool === 'select' || activeTool === 'text-select')
+  // Drawboard rules 3 / 4 / 7 (owner 2026-10-02, utils/selectModes.js): under
+  // ANY tool the selected mark and its handles still move / resize it, and a
+  // double press on selected text edits it. While a press on this page's
+  // selection is in hand the layer is "armed" and behaves exactly as under
+  // Select (see hooks/useSelectionGrabHandoff.js); every other press stays
+  // the tool's own.
+  const pageHasSelection = (selectedIds?.size || 0) > 0 || selectedSurveyMarkerIds.size > 0
+    || isPageCalloutSelected(callouts, selectedCalloutIds, pageNumber);
+  const { armed: selectionGrabArmed, armedRef: selectionGrabArmedRef, notePick: noteSelectionPick } = useSelectionGrabHandoff({
+    svgRef,
+    enabled: pageHasSelection && !isSelectFamilyTool(activeTool)
+      && !isCalloutTextEditMode && (editingAnnotationIndex == null || isBboxEditMode),
+    isSelectionTarget: (el) => classifySelectionGrabTarget(el, svgRef.current, {
+      selectedIds,
+      selectedCalloutIds,
+      selectedMarkerIds: selectedSurveyMarkerIds,
+      objects: annotations?.objects,
+    }),
+    onDoublePress: (info, event) => {
+      const fake = {
+        target: info.el,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        pointerType: event.pointerType,
+        // Both presses were on the text while it was selected (or the first
+        // was a tap that picked it): rule 7 says edit, skip the pick check.
+        selectionDoublePress: true,
+        stopPropagation: () => {},
+        preventDefault: () => {},
+      };
+      handleAnnotationDoubleClick(fake, info.index);
+    },
+  });
+  // Rule-table answers a drawing tool's press needs (see resolvePagePress in
+  // the root onPointerDown): drop this page's pick, add to it (Shift), or —
+  // when a press turns out to be a click — pick what it landed on.
+  const clearPageSelection = () => {
+    deselectAll();
+    setSelectedSurveyMarkerId(null);
+    if (isPageCalloutSelected(callouts, selectedCalloutIds, pageNumber)) onSelectedCalloutIdsChange?.(new Set());
+  };
+  const applyPressFallback = (press) => {
+    if (!press) return;
+    if (press.click === 'deselect') { clearPageSelection(); return; }
+    if (press.click !== 'select' && press.click !== 'add') return;
+    const add = press.click === 'add';
+    noteSelectionPick(press.calloutId != null ? `c:${press.calloutId}` : `a:${press.index}`, press);
+    if (press.calloutId != null) {
+      if (!add) { deselectAll(); setSelectedSurveyMarkerId(null); }
+      const next = new Set(add && selectedCalloutIds ? selectedCalloutIds : []);
+      next.add(press.calloutId);
+      onSelectedCalloutIdsChange?.(next);
+      return;
+    }
+    if (!Number.isInteger(press.index)) return;
+    if (!add) {
+      setSelectedSurveyMarkerId(null);
+      if (isPageCalloutSelected(callouts, selectedCalloutIds, pageNumber)) onSelectedCalloutIdsChange?.(new Set());
+    }
+    selectAnnotation(press.index, add);
+  };
+  const applyPressFallbackRef = useRef(applyPressFallback);
+  applyPressFallbackRef.current = applyPressFallback;
+  const isSelectTool = (activeTool === 'select' || activeTool === 'text-select' || selectionGrabArmed)
     && !isCalloutTextEditMode
     && (editingAnnotationIndex == null || isBboxEditMode);
+  // Drawboard rule 10: Delete removes the selection under any tool.
+  const selectionKeysLive = !isCalloutTextEditMode && (editingAnnotationIndex == null || isBboxEditMode);
   // UX: creation tools get pointerEvents=auto so the crosshair class shows
   // through and creation drags can start on the SVG surface. Gated on
   // editingAnnotationIndex == null so the creation surface disables during
@@ -1892,7 +1997,11 @@ const SVGAnnotationLayer = memo(({
       // treated as cancels (no stray 0x0 callout committed).
       const dx = state.currentPointer.x - state.arrowTip.x;
       const dy = state.currentPointer.y - state.arrowTip.y;
-      if (dx * dx + dy * dy < 16) return;
+      if (dx * dx + dy * dy < 16) {
+        // Drawboard rule 2: a click picks the mark under it (or drops the pick).
+        applyPressFallbackRef.current?.(state.pressFallback);
+        return;
+      }
 
       const arrowTipNorm = { x: state.arrowTip.x / W, y: state.arrowTip.y / H };
       const textBoxNorm = { x: state.currentPointer.x / W, y: state.currentPointer.y / H };
@@ -2389,6 +2498,14 @@ const SVGAnnotationLayer = memo(({
         return;
       }
       const state = shapeCreationRef.current;
+      if (state && state.pressFallback && state.startClient
+        && Math.hypot(e.clientX - state.startClient.x, e.clientY - state.startClient.y) < CLICK_PLACE_MAX_TRAVEL_PX) {
+        // Drawboard rule 2: a click (not a drag) on a mark picks it; on empty
+        // page with something picked it only drops the pick. Nothing drawn.
+        cancelDraft();
+        applyPressFallbackRef.current?.(state.pressFallback);
+        return;
+      }
       if (state && CLICK_PLACE_SHAPE_TOOLS.includes(state.tool) && state.startClient
         && Math.hypot(e.clientX - state.startClient.x, e.clientY - state.startClient.y) < CLICK_PLACE_MAX_TRAVEL_PX) {
         // A click, not a drag: the start is set, the end now follows the
@@ -3716,7 +3833,7 @@ const SVGAnnotationLayer = memo(({
   // rule as a single marker delete) and lets the marks' own Delete handler
   // run for the rest of the selection.
   useEffect(() => {
-    if (!isSelectTool || selectedSurveyMarkerId || selectedSurveyMarkerIds.size === 0) return undefined;
+    if (!selectionKeysLive || selectedSurveyMarkerId || selectedSurveyMarkerIds.size === 0) return undefined;
     if (typeof onDeleteSurveyMarkers !== 'function') return undefined;
     // With marks selected too, the marks' Delete carries the markers (one
     // step, and nothing is deleted if its cross-author confirm is cancelled).
@@ -3732,10 +3849,10 @@ const SVGAnnotationLayer = memo(({
     };
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [isSelectTool, selectedSurveyMarkerId, selectedSurveyMarkerIds, onDeleteSurveyMarkers, selectedIds, calloutSelectionSize]);
+  }, [selectionKeysLive, selectedSurveyMarkerId, selectedSurveyMarkerIds, onDeleteSurveyMarkers, selectedIds, calloutSelectionSize]);
 
   useEffect(() => {
-    if (!isSelectTool || !selectedSurveyMarkerId) return;
+    if (!selectionKeysLive || !selectedSurveyMarkerId) return;
 
     const handleKeyDown = (e) => {
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
@@ -3757,7 +3874,7 @@ const SVGAnnotationLayer = memo(({
 
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [deleteSelectedSurveyMarker, isSelectTool, selectedSurveyMarkerId]);
+  }, [deleteSelectedSurveyMarker, selectionKeysLive, selectedSurveyMarkerId]);
 
   useLayoutEffect(() => {
     if (!pendingSurveyMarkerSelection) return;
@@ -6480,6 +6597,12 @@ const SVGAnnotationLayer = memo(({
     <svg
       ref={svgRef}
       data-svg-annotation-layer={pageNumber}
+      // A press on the selection under Pan belongs to the selection, not the
+      // pan scroller (its documented opt-out seam).
+      data-pan-interactive={selectionGrabArmed ? 'true' : undefined}
+      // Drawboard rule 11: handles hide while the selection is moved,
+      // resized or rotated (styles.css), and come back on release.
+      data-selection-gesture={shouldHideSelectionChrome(interactionState) ? 'true' : undefined}
       viewBox={`0 0 ${width} ${height}`}
       width="100%"
       height="100%"
@@ -6552,13 +6675,43 @@ const SVGAnnotationLayer = memo(({
             return;
           }
           e.stopPropagation(); // Prevent Pdfjs from seeing SVG events (SVGAnimatedString crash)
+          // Drawboard rules 2-4 / 8 (owner 2026-10-02, utils/selectModes.js
+          // resolveToolPress): a drawing tool's press that is NOT on the
+          // selection (a press on the selection is handed to its move /
+          // resize machinery while the layer is armed). Shift-click adds the
+          // mark; a press that turns out to be a click picks the mark it
+          // landed on (or only drops the pick on empty page); a drag is the
+          // tool's own, even when it starts on a mark.
+          const grabbingSelection = selectionGrabArmedRef.current;
+          let pressFallback = null;
+          if (isCreationTool && !grabbingSelection && e.button === 0 && !polyDraftRef.current) {
+            const press = resolvePagePress(e.nativeEvent, {
+              tool: activeTool,
+              pageNumber,
+              objects: annotations?.objects,
+              hasSelection: pageHasSelection,
+            });
+            if (press.click === 'add') {
+              applyPressFallback(press);
+              e.preventDefault();
+              return;
+            }
+            if (press.clearsSelection) clearPageSelection();
+            if (press.drag === 'none' && press.click === 'deselect') {
+              e.preventDefault();
+              return;
+            }
+            if (press.click === 'select' || press.click === 'deselect') {
+              pressFallback = { ...press, pointerType: e.pointerType, x: e.clientX, y: e.clientY };
+            }
+          }
           // UX: Phase 14 CREATE-01 (callout half) — when the callout tool
           // is active and the click lands on empty SVG space (NOT inside
           // an existing callout), start a transient creation drag. If the
           // click is inside an existing callout, fall through to
           // handleSvgPointerDown which dispatches the callout-part drag
           // via useSVGInteraction (Plan 14-03 Task 2).
-          if (activeTool === 'callout' && !e.target?.closest?.('[data-callout-id]')) {
+          if (activeTool === 'callout' && !grabbingSelection) {
             // UX: Phase 15 UAT-3 — clicking empty space with the callout
             // tool active also dismisses any currently-selected callout so
             // starting a new callout doesn't leave stale handles on the
@@ -6566,7 +6719,7 @@ const SVGAnnotationLayer = memo(({
             // empty space deselects.
             if (onSelectedCalloutIdsChange) onSelectedCalloutIdsChange(new Set());
             const pt = screenToSVG(svgRef.current, e.clientX, e.clientY);
-            setCalloutCreation({ arrowTip: pt, currentPointer: pt });
+            setCalloutCreation({ arrowTip: pt, currentPointer: pt, pressFallback });
             e.preventDefault();
             return;
           }
@@ -6574,7 +6727,7 @@ const SVGAnnotationLayer = memo(({
           // is always explicit — a checkmark control, Enter, or (polygon only)
           // a click back on the first point — so an accidental click never
           // ends the shape.
-          if (isPolyCreationTool && e.button === 0) {
+          if (isPolyCreationTool && e.button === 0 && !grabbingSelection) {
             const point = screenToSVG(svgRef.current, e.clientX, e.clientY);
             if (point) {
               const draft = polyDraftRef.current;
@@ -6614,7 +6767,7 @@ const SVGAnnotationLayer = memo(({
           // Unified renderer phase 2 — shape/freehand creation starts here,
           // on the same surface that renders the committed result. The
           // window-level effect above tracks the drag and commits.
-          if ((isShapeCreationTool || isFreehandCreationTool) && e.button === 0) {
+          if ((isShapeCreationTool || isFreehandCreationTool) && e.button === 0 && !grabbingSelection) {
             const point = screenToSVG(svgRef.current, e.clientX, e.clientY);
             if (point) {
               const tool = activeTool;
@@ -6663,6 +6816,9 @@ const SVGAnnotationLayer = memo(({
                   // click-to-place mode (see the window effect).
                   startClient: { x: e.clientX, y: e.clientY },
                   mode: 'drag',
+                  // A release within CLICK_PLACE_MAX_TRAVEL_PX picks the mark
+                  // pressed (or drops the pick) instead of drawing.
+                  pressFallback,
                 });
               }
               e.preventDefault();

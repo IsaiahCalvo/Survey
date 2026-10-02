@@ -146,8 +146,14 @@ import {
   buildPointsShapeResize,
   clampResizeScale,
 } from '../utils/resizeMinimum.js';
+import { resolveTextDoubleClick } from '../utils/selectModes.js';
+import { isTextLikeAnnotation } from '../utils/toolPressRouting.js';
 
 const cloneAnnotations = (annotations) => deepClone(annotations);
+
+// Drawboard rule 7: a mark picked less than this long before a double-click
+// was picked BY that double-click's first click (it was not selected before).
+const DOUBLE_CLICK_PICK_MS = 600;
 
 const diagLog = (...args) => {
   if (!isAnnotationPreviewDiagEnabled()) return;
@@ -445,6 +451,22 @@ export function useSVGInteraction({
   // if a drag just ended within a 400ms window. Mirrors the 300ms
   // `editModeCooldownRef` pattern in App.jsx:26690.
   const justDraggedAtRef = useRef(0);
+  // Drawboard rule 7: the last two presses on marks ({ key, wasSelected, at,
+  // pointerType }, newest first) and when each picked mark joined the
+  // selection (key -> ms) — read by the double-click handler to tell text
+  // that was selected BEFORE a double-click from text its first click picked.
+  const pressLogRef = useRef([]);
+  const pickedAtRef = useRef(new Map());
+  useEffect(() => {
+    const now = Date.now();
+    const previous = pickedAtRef.current;
+    const next = new Map();
+    for (const index of selectedIds || []) next.set(`a:${index}`, previous.get(`a:${index}`) ?? now);
+    const calloutIds = selectedCalloutIds instanceof Set ? selectedCalloutIds
+      : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds : []);
+    for (const id of calloutIds) next.set(`c:${id}`, previous.get(`c:${id}`) ?? now);
+    pickedAtRef.current = next;
+  }, [selectedIds, selectedCalloutIds]);
 
   // Keep interactionStateRef in sync
   useEffect(() => {
@@ -1063,6 +1085,43 @@ export function useSVGInteraction({
    * Click on an annotation to select it.
    * Shift-click toggles in/out of selection (for multi-select in Plan 03).
    */
+  // Drawboard rule 3 (owner 2026-10-02, utils/selectModes.js
+  // resolveToolPress): under Select a press on a mark (or callout) that was
+  // NOT selected picks it, and a drag from there is a box / lasso select — it
+  // never moves a mark that was not already selected. keepOnClick: a release
+  // without travel keeps the pick that press made.
+  const beginAreaSelectFromMark = useCallback((e) => {
+    const startPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
+    if (selectionMode === 'lasso') {
+      const intent = getLassoGestureIntent(e, lassoTouchOperation, lassoTouchMode);
+      applyLassoState({
+        points: [{
+          x: Math.max(0, Math.min(pageWidth, startPoint.x)),
+          y: Math.max(0, Math.min(pageHeight, startPoint.y)),
+        }],
+        ...intent,
+        mode: null,
+        pointerId: e.pointerId,
+        pointerType: e.pointerType || 'mouse',
+        keepOnClick: true,
+      });
+    } else {
+      applyMarqueeState({
+        startX: startPoint.x,
+        startY: startPoint.y,
+        endX: startPoint.x,
+        endY: startPoint.y,
+        shiftHeld: false,
+        altHeld: false,
+        active: false,
+        pointerId: e.pointerId,
+        keepOnClick: true,
+      });
+    }
+    try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+    e.preventDefault?.();
+  }, [svgRef, selectionMode, lassoTouchOperation, lassoTouchMode, applyLassoState, applyMarqueeState, pageWidth, pageHeight]);
+
   const handleAnnotationPointerDown = useCallback((e, index) => {
     e.stopPropagation();
     if (dragStateRef.current?.active && dragStateRef.current.annotationIndex === index) {
@@ -1204,6 +1263,13 @@ export function useSVGInteraction({
     }
 
     const wasAlreadySelected = selectedIds.has(index);
+    // Drawboard rule 7: remember whether each press found its mark already
+    // selected, so a double-click can tell "selected before" from "picked by
+    // the first click of this double-click".
+    pressLogRef.current = [
+      { key: `a:${index}`, wasSelected: wasAlreadySelected, at: Date.now(), pointerType: e.pointerType || 'mouse' },
+      pressLogRef.current[0],
+    ].filter(Boolean);
 
     // UX: 2026-04-20 — Group auto-expand-on-click (Stage 1 of the Group /
     // Ungroup design). When a plain (non-Shift) click lands on an
@@ -1256,6 +1322,15 @@ export function useSVGInteraction({
     }
     // w53: the same for Survey Markers in the selection.
     if (!wasAlreadySelected) clearSelectedMarkers();
+
+    // Drawboard rule 3 (owner 2026-10-02, utils/selectModes.js
+    // resolveToolPress): under Select a press on a mark that was NOT selected
+    // picks it, but a drag from there is a box / lasso select — it never moves
+    // a mark that was not already selected. Drag the selection to move it.
+    if (!wasAlreadySelected && activeTool === 'select' && svgRef.current) {
+      beginAreaSelectFromMark(e);
+      return;
+    }
 
     // Initiate drag-to-move
     const obj = annotations?.objects?.[index];
@@ -1395,7 +1470,7 @@ export function useSVGInteraction({
         ensureMoveStart(dragStateRef.current, annotations?.objects);
       }
     }
-  }, [selectedIds, selectAnnotation, annotations, svgRef, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, selectedMarkerCount]);
+  }, [selectedIds, selectAnnotation, annotations, svgRef, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, selectedMarkerCount, activeTool, beginAreaSelectFromMark]);
 
   /**
    * Hover enter: show blue outline preview.
@@ -1449,6 +1524,26 @@ export function useSVGInteraction({
       e.stopPropagation();
       return;
     }
+    // Drawboard rule 7 (utils/selectModes.js resolveTextDoubleClick): a mouse
+    // double-click on text that was NOT selected before it began only picks
+    // it (the first click did that); double-clicking selected text, or a
+    // double-tap, opens the editor. Only text boxes and callouts follow this.
+    {
+      const dblCalloutId = e.target?.closest?.('[data-callout-id]')?.getAttribute?.('data-callout-id');
+      const key = dblCalloutId != null ? `c:${dblCalloutId}` : `a:${index}`;
+      const isText = dblCalloutId != null || isTextLikeAnnotation(annotations?.objects?.[index]);
+      if (isText && !e.selectionDoublePress) {
+        const pickedAt = pickedAtRef.current.get(key);
+        const wasSelected = pickedAt != null && Date.now() - pickedAt > DOUBLE_CLICK_PICK_MS;
+        const latest = pressLogRef.current[0];
+        const pointerType = (latest && latest.key === key && Date.now() - latest.at < 1000 && latest.pointerType)
+          || (e.nativeEvent?.sourceCapabilities?.firesTouchEvents ? 'touch' : 'mouse');
+        if (resolveTextDoubleClick({ tool: activeTool, wasSelected, pointerType }) !== 'edit') {
+          e.stopPropagation();
+          return;
+        }
+      }
+    }
     // UX: Phase 14 CALL-10 — callout double-click enters edit mode via
     // FabricEditCanvas + calloutEditAdapter (see Plan 14-03 Task 3 in App.jsx).
     // Uses event-delegation via data-callout-id (same pattern as v2.2 EDIT-13
@@ -1489,7 +1584,7 @@ export function useSVGInteraction({
     if (onRequestEditMode && annotation) {
       onRequestEditMode(index, annotation.type, { caretAnchor: readCaretAnchor(e) });
     }
-  }, [onRequestEditMode, annotations, callouts, isCalloutSelectable]);
+  }, [onRequestEditMode, annotations, callouts, isCalloutSelectable, activeTool]);
 
   /**
    * Click on empty SVG background: deselect all.
@@ -1583,6 +1678,21 @@ export function useSVGInteraction({
       const _calAlreadyIn = (selectedCalloutIds instanceof Set)
         ? selectedCalloutIds.has(calloutId)
         : (Array.isArray(selectedCalloutIds) && selectedCalloutIds.indexOf(calloutId) >= 0);
+      // Drawboard rule 7 (see pressLogRef).
+      pressLogRef.current = [
+        { key: `c:${calloutId}`, wasSelected: _calAlreadyIn, at: Date.now(), pointerType: e.pointerType || 'mouse' },
+        pressLogRef.current[0],
+      ].filter(Boolean);
+      // Drawboard rule 3: the same for a callout that was not selected (a
+      // grouped callout still picks its whole group below).
+      if (!e.shiftKey && !_calAlreadyIn && activeTool === 'select' && !getCalloutGroupId(callout) && svgRef.current) {
+        onSelectedCalloutIdsChange?.(new Set([calloutId]));
+        deselectAll();
+        clearSelectedMarkers();
+        e.stopPropagation();
+        beginAreaSelectFromMark(e);
+        return;
+      }
       if (!e.shiftKey && _calAlreadyIn && (selectedIds.size + _calCount + selectedMarkerCount) > 1) {
         const ctmA = svgRef.current?.getScreenCTM();
         const ctmInverseA = ctmA ? ctmA.inverse() : null;
@@ -1907,7 +2017,7 @@ export function useSVGInteraction({
       deselectAll();
       clearSelectedMarkers();
     }
-  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, selectionMode, lassoTouchOperation, lassoTouchMode, applyMarqueeState, applyLassoState, cancelLasso, pageWidth, pageHeight, selectedIds, annotations, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, getSurveyMarkerMembers, selectedMarkerCount]);
+  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, selectionMode, lassoTouchOperation, lassoTouchMode, applyMarqueeState, applyLassoState, cancelLasso, pageWidth, pageHeight, selectedIds, annotations, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, getSurveyMarkerMembers, selectedMarkerCount, beginAreaSelectFromMark]);
 
   /**
    * Pointer move on root SVG: update visual transform during drag.
@@ -3688,7 +3798,8 @@ export function useSVGInteraction({
       cancelLasso(e.pointerId);
       if (!polygon) {
         if (validation.issue === 'self-intersection') return;
-        if (!lasso.shiftHeld) {
+        // keepOnClick: the lasso began on a mark it just picked (rule 3).
+        if (!lasso.shiftHeld && !lasso.keepOnClick) {
           deselectAll();
           onSelectedCalloutIdsChange?.(new Set());
           clearSelectedMarkers();
@@ -3761,7 +3872,8 @@ export function useSVGInteraction({
       try { svgRef.current?.releasePointerCapture?.(mq.pointerId ?? e.pointerId); } catch (_) { /* optional */ }
 
       if (!wasActive) {
-        if (!mq.shiftHeld) {
+        // keepOnClick: the marquee began on a mark it just picked (rule 3).
+        if (!mq.shiftHeld && !mq.keepOnClick) {
           deselectAll();
           if (onSelectedCalloutIdsChange) onSelectedCalloutIdsChange(new Set());
           clearSelectedMarkers();
