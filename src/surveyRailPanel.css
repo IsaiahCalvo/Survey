@@ -36,11 +36,21 @@
    ========================================================================== */
 
 .survey-rail {
+  /* One interface font for the whole rail (owner 2026-10-02): the module
+     tabs and the template menu inherited the Helvetica Neue body font while
+     every other line here was the system font. */
+  font-family: var(--font-ui);
   /* The rail reads the shared desktop row scale (src/styles/tokens.css). */
   --sv-edge: var(--row-pad-x);    /* 12: text / glyph inset from the panel edge */
   --sv-head-h: var(--row-h-page); /* 40: the Bookmarks + Spaces header height */
   --sv-row-h: var(--row-h);       /* 32: a template / category line */
   --sv-line-h: var(--row-h-sub);  /* 28: a Survey Marker line, a detail line */
+  /* A category line and a Survey Marker line carry a 1px hairline of their
+     own (the card's bottom edge, the marker's top edge). The hairline sits
+     INSIDE the row height (owner 2026-10-02, UI consistency audit), so the
+     painted part is 1px shorter: a category is 32 in all, a marker 28. */
+  --sv-row-inner: calc(var(--sv-row-h) - 1px);
+  --sv-line-inner: calc(var(--sv-line-h) - 1px);
   --sv-col: 32px;         /* right-hand glyph column (chevron / locate) */
   --sv-col-sm: 24px;      /* a smaller glyph column (notes, review) */
   --sv-grip-w: 28px;      /* category grip column */
@@ -303,6 +313,26 @@
    bottom (absolute, 37px). The Export line sits just above it. */
 .survey-rail:has([data-rail-footer-row]) .survey-rail__foot {
   margin-bottom: 37px;
+}
+
+/* The portalled zoom / page / fit row (owner 2026-10-02, UI consistency
+   audit). Its controls are styled inline in AppShell with the old 10px
+   readout and the Helvetica Neue stack, so the rail corrects them here:
+   - every word in it is the rail's one font;
+   - the zoom readout is 11px, the smallest text the app uses, like the page
+     numbers beside it;
+   - "Fit page" stays on one line (it wrapped to two in the 89px button). */
+.survey-rail [data-rail-footer-row] button,
+.survey-rail [data-rail-footer-row] input,
+.survey-rail [data-rail-footer-row] span {
+  font-family: var(--font-ui) !important;
+}
+.survey-rail [data-rail-footer-row] button[aria-label="Edit zoom percentage"],
+.survey-rail [data-rail-footer-row] input[aria-label="Zoom percentage"] {
+  font-size: var(--sv-small-type) !important;
+}
+.survey-rail [data-rail-footer-row] button[aria-label="Fit options"] {
+  white-space: nowrap;
 }
 
 .survey-rail .survey-rail__foot-export,
@@ -616,7 +646,7 @@
 }
 
 .survey-rail .survey-marker-category-row {
-  min-height: var(--sv-row-h);
+  min-height: var(--sv-row-inner);
   gap: 0;
   padding-right: 3px;
 }
@@ -625,7 +655,7 @@
 .survey-rail .survey-marker-category-row > .survey-marker-leading-control {
   flex: 0 0 var(--sv-grip-w);
   width: var(--sv-grip-w) !important;
-  height: var(--sv-row-h) !important;
+  height: var(--sv-row-inner) !important;
   align-self: stretch;
   margin: 0;
   padding-left: 4px;
@@ -640,7 +670,7 @@
 }
 
 .survey-rail .survey-marker-category-main {
-  min-height: var(--sv-row-h);
+  min-height: var(--sv-row-inner);
   padding: 0 4px 0 2px;
   gap: 8px;
   font-size: var(--sv-name-type);
@@ -687,7 +717,7 @@
 .survey-rail .survey-marker-category-arrow {
   flex: 0 0 var(--sv-col);
   width: var(--sv-col);
-  min-height: var(--sv-row-h);
+  min-height: var(--sv-row-inner);
   border-radius: 0;
 }
 
@@ -772,7 +802,7 @@
 }
 
 .survey-rail .survey-rail__marker-line {
-  min-height: 30px;
+  min-height: var(--sv-line-inner);
   display: flex;
   align-items: center;
   gap: 0;
@@ -784,7 +814,7 @@
 .survey-rail .survey-rail__marker-line > .survey-marker-leading-control {
   flex: 0 0 var(--sv-grip-w);
   width: var(--sv-grip-w) !important;
-  height: 30px !important;
+  height: var(--sv-line-inner) !important;
   align-self: stretch;
   margin: 0;
   padding-left: 4px;
