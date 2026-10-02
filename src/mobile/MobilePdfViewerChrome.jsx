@@ -1048,7 +1048,7 @@ const ZOOM_FIT_OPTIONS = ZOOM_MODE_OPTIONS.filter((option) => option.id !== 'man
 
 export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi, bottomToolbarApi, activeSpace = null, onOpenSpaces = null, onTurnOffSpace = null }) {
   // OWNER DECISION 2 (2026-07-12): the page pill has two tap zones — the
-  // fraction opens an inline page-jump input (type-to-jump), the zoom reading (owner 2026-10-02: it was a chevron) opens
+  // fraction opens an inline page-jump input (type-to-jump), the chevron opens
   // the zoom/fit dropdown ONLY. The old combined page+zoom single surface is
   // gone. (demo App.tsx:462-475 inline input; :1215-1239 pill; :410-428 menu.)
   const [pageEditing, setPageEditing] = useState(false);
@@ -1143,7 +1143,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
             </span>
           ) : (
             /* UX: the WHOLE "n / N" fraction is the page-jump tap zone (owner
-               decision 2) — flex-grows to fill the pill left of the zoom reading so
+               decision 2) — flex-grows to fill the pill left of the chevron so
                it's a comfortable target, not just the ordinal digit. */
             <button
               type="button"
@@ -1155,30 +1155,29 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
               <span className="mobile-pdf-header__page-total">/ {bottomToolbarApi?.activeSpaceHasNoPages ? 0 : (bottomToolbarApi?.numPages || 1)}</span>
             </button>
           )}
-          {/* Owner 2026-10-02 ("too loud and bulky ... can they almost fit within
-              the pill of the page navigation, as if it grew out of that"): the
-              live zoom reading is the pill's second segment - same 600 11px
-              face as the page numbers, calm grey, behind a hairline - and it is
-              the button that opens the zoom menu, which grows out of the pill's
-              bottom edge (see .mobile-pdf-header__zoom-menu). It replaced a bare
-              chevron, so the pill now SAYS the zoom instead of hiding it. */}
+          {/* Owner 2026-10-02 (second verdict: "Put the chevron back"): the
+              pill's second tap zone is the bare chevron again, as it was
+              before the zoom % was folded into the pill. The live zoom number
+              lives in the menu, between minus and plus. */}
           <button
             type="button"
-            className="mobile-pdf-header__zoom-readout"
-            aria-label={`Zoom ${zoomPercent}%, zoom and fit options`}
+            className="mobile-pdf-header__page-chevron"
+            aria-label="Zoom and fit options"
             aria-haspopup="true"
             aria-expanded={zoomOpen}
             onClick={toggleZoom}
           >
-            <span className="mobile-pdf-header__zoom-percent" aria-live="polite">{`${zoomPercent}%`}</span>
+            <Icon name="chevronDown" size={11} color="currentColor" />
           </button>
 
-          {/* The zoom menu hangs off the pill itself (it is the pill's child),
-              so it is exactly the pill's width, shares its surface and radius,
-              and opens downward from the pill's bottom edge. It stays mounted
-              so it can animate BOTH in and out via CSS; visibility flips off
-              only after the out-transition so it leaves the tab order when
-              closed. prefers-reduced-motion drops the motion. */}
+          {/* The zoom menu hangs off the pill itself (it is the pill's child):
+              it shares the pill's surface, border and radius and opens
+              downward from the pill's bottom edge, its width growing out of
+              the pill's own. It stays mounted so it can animate BOTH in and
+              out via CSS, the close being the open played backwards;
+              visibility flips off only once the close has finished, so it
+              leaves the tab order when closed. prefers-reduced-motion drops
+              the motion. */}
           {bottomToolbarApi && (
             <div
               className={`mobile-pdf-header__zoom-menu${zoomOpen ? ' is-open' : ''}`}
@@ -1187,9 +1186,11 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
               {/* UX 2026-09-16 (phone reach pass): minus and plus step by exactly
                   the desktop's 1.25x per tap and honour the same 1%-4000% limits
                   (they call the very same zoomOut/zoomIn the desktop toolbar
-                  uses). The live reading sits in the pill right above, so the
-                  pair is a plain [ - | + ] segment; the menu stays open so you
-                  can tap repeatedly. */}
+                  uses). Owner 2026-10-02: "put the numbers between the minus
+                  and plus" - the live reading sits centred between them, in
+                  the rows' quiet face with tabular digits so it never jiggles
+                  as it changes. The menu stays open so you can tap
+                  repeatedly. */}
               <div className="mobile-pdf-header__zoom-steppers" role="group" aria-label="Zoom level">
                 <button
                   type="button"
@@ -1199,6 +1200,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
                 >
                   <Icon name="minus" size={HEADER_GLYPH} color="currentColor" />
                 </button>
+                <span className="mobile-pdf-header__zoom-percent" aria-live="polite">{`${zoomPercent}%`}</span>
                 <button
                   type="button"
                   aria-label="Zoom in"

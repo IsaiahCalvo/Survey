@@ -156,12 +156,7 @@
   --mobile-page-digit-w: 7.286px;
   --mobile-page-input-w: calc((3 * var(--mobile-page-digit-w)) + 0.5px);
   --mobile-page-pill-text: calc(var(--mobile-page-input-w) + 2px + 3.531px + 2.875px + (3 * var(--mobile-page-digit-w)));
-  /* Owner 2026-10-02: the 24px chevron zone became the live zoom reading,
-     sized from "4000%" in the pill's face (4 tabular digits + "%" = ~38px,
-     4px a side, 1px hairline, rounded up to a whole 48). Chrome is now
-     6 + 2 + 48 + 6 + 2 = 64px, and the pill 120px. */
-  --mobile-page-zoom-w: 48px;
-  --mobile-page-pill-chrome: 64px;
+  --mobile-page-pill-chrome: 40px;
   --mobile-page-pill-slack: 3.378px;
   --mobile-page-pill-w: calc(var(--mobile-page-pill-text) + var(--mobile-page-pill-chrome) + var(--mobile-page-pill-slack));
 
@@ -415,7 +410,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-header__icon::after,
 .mobile-pdf-header__page-nav::after,
 .mobile-pdf-header__page-frac::after,
-.mobile-pdf-header__zoom-readout::after {
+.mobile-pdf-header__page-chevron::after {
   content: '';
   position: absolute;
   inset-block: -8px;
@@ -427,7 +422,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    the same 44px as every other header control (owner 2026-09-22: "keep 44px hit
    boxes"). Measured at 375 and 390: 44.0 for all six. */
 .mobile-pdf-header__page-frac::after,
-.mobile-pdf-header__zoom-readout::after {
+.mobile-pdf-header__page-chevron::after {
   inset-block: -9px;
 }
 
@@ -493,9 +488,10 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      10, so it reads as one of the app's pills rather than a boxier control
      sitting above them. 5px before. */
   border-radius: 10px;
-  /* The bottom corners round again only after the zoom menu has rolled back
-     up into the pill (see .is-zoom-open below). */
-  transition: border-radius 0s linear 140ms;
+  /* The bottom corners round again only after the zoom menu has rolled all
+     the way back up into the pill (see .is-zoom-open below): the 180ms delay
+     is the close's full length, the mirror of the open squaring them at 0. */
+  transition: border-radius 0s linear 180ms;
   /* RULED CHANGE 2026-09-22 (owner: "the page pill looks too large"). The
      strip's own face - 600 11px with the strip's tabular numerals and -0.01em -
      in place of the header's 800. Same box, quieter numbers. */
@@ -562,51 +558,61 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    down from the ordinal the strip uses between a label and its unit. */
 .mobile-pdf-header__page-total { color: var(--text-2); white-space: nowrap; }
 
-/* Tap zone 2 — the live zoom reading → the zoom menu.
-   Owner 2026-10-02 ("too loud and bulky ... can they almost fit within the
-   pill of the page navigation and then the dropdown, as if it grew out of
-   that"): the zoom is the pill's second segment, not a chevron that hid it.
-   It wears the pill's own face (600 11px, tabular numerals) in the calm grey
-   the page total uses, behind the same 1px hairline the chevron had. Its width
-   is fixed from "4000%" (--mobile-page-zoom-w) so the pill never changes size
-   while you zoom. */
-.mobile-pdf-header__zoom-readout {
+/* Tap zone 2 — chevron → zoom/fit dropdown only. Widened hit area (min 24px)
+   so it isn't a cramped edge target next to the fraction zone.
+   RULED CHANGE 2026-09-22 (owner: "the chevron is not centred in its section";
+   board 1-pen draws this button at min-width 24). 22 left the 11px caret's
+   centre half a pixel adrift of the section the eye sees, because the 1px
+   hairline on the left is part of the box. At 24 the 4px/5px padding puts the
+   caret's centre exactly on 12 - the section's own centre line.
+   Owner 2026-10-02 (second verdict on the zoom pill: "Put the chevron back"):
+   the zoom % that briefly replaced this chevron is gone from the pill again;
+   the number lives in the menu, between minus and plus. */
+.mobile-pdf-header__page-chevron {
   position: relative;
   height: 100%;
-  width: var(--mobile-page-zoom-w);
-  flex: 0 0 auto;
-  /* 3px left + the 1px hairline = 4 a side, so the reading centres on the
-     segment the eye sees, not on its content box. */
-  padding: 0 4px 0 3px;
+  min-width: 24px;
+  /* 4px left, 5px right: the 1px border-left is part of this box, so an even
+     5/5 padding centred the caret on the CONTENT box and left it 0.5px right
+     of the box the user sees. 4 + 1px border = 5 on both sides, and the caret
+     lands on the button's own centre line. */
+  padding: 0 5px 0 4px;
   display: grid;
   place-items: center;
-  color: var(--text-2);
+  color: inherit;
   background: transparent;
   border: 0;
   border-left: 1px solid var(--border);
-  font: inherit;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: inherit;
-  white-space: nowrap;
-}
-.mobile-pdf-header__zoom-readout[aria-expanded='true'] { color: var(--text-1); }
-
-.mobile-pdf-header__zoom-percent {
-  font: inherit;
-  letter-spacing: inherit;
 }
 
-/* The menu GROWS OUT OF THE PILL (owner 2026-10-02). It is the pill's child:
-   it starts right under the pill's bottom border, spans the pill edge to edge
-   (left/right -1px reach over the pill's own 1px border), and wears the pill's
-   surface, border and 10px radius - so the pill's bottom border becomes the
-   hairline between the reading and the menu, and the two read as one object.
-   It used to be a separate --surface-2 card floating 3px below, centred on the
-   whole cluster, with a 24px shadow. */
+/* UX 2026-09-17 (owner ruling): the divider inside the pill used to turn gold
+   in sympathy with the pill's gold outline. Both are gone; the hairline stays
+   --border whether the pill is open or shut. */
+
+/* The menu GROWS OUT OF THE PILL (owner 2026-10-02). It is the pill's child,
+   centred under it: its top border lies on the pill's bottom border (top:
+   100% of the pill's padding box), and it wears the pill's surface, border
+   and 10px radius, so the pill's bottom edge becomes the hairline between
+   the page reading and the menu. The menu is a little wider than the 96px
+   pill (its rows need ~120), so its top corners round too.
+
+   Motion. Open: the menu unrolls DOWN out of the pill and WIDENS from the
+   pill's own width to its full width (one clip that starts as exactly the
+   pill's footprint, zero tall), while its rows slide 6px down into place and
+   it fades in over the first 80ms - 180ms, ease-out.
+   Close (owner 2026-10-02: "in reverse it's not [okay]. It needs to be
+   smoother"): the exact mirror. The same properties animate back over the
+   same 180ms on the same curve reversed - cubic-bezier(0.2, 0, 0, 1)
+   reflected through its centre is (1, 0, 0.8, 1) - and the fade runs over
+   the LAST 80ms (100ms delay), so every frame t of the close is frame
+   180 - t of the open. The menu stays visible until the very end
+   (visibility flips at 180ms) and the pill's bottom corners round only then.
+   The clip reaches past the sides and bottom when open so the shadow is not
+   cut. prefers-reduced-motion: instant, both ways. */
 .mobile-pdf-header__zoom-menu {
   position: absolute;
-  top: calc(100% + 1px);
-  left: -1px;
+  top: 100%;
+  left: 50%;
   min-width: calc(100% + 2px);
   width: max-content;
   box-sizing: border-box;
@@ -617,23 +623,20 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   color: var(--text-2);
   background: var(--surface-1);
   border: 1px solid var(--border);
-  border-top: 0;
-  border-radius: 0 0 10px 10px;
+  border-radius: 10px;
   box-shadow: 0 10px 18px -8px rgba(0, 0, 0, 0.5);
+  transform: translateX(-50%);
   z-index: 7200;
-  /* Motion: the menu unrolls DOWN from the pill's edge (a clip that opens from
-     the top) while its rows slide 6px down into place, 180ms ease-out; it
-     rolls back up into the pill in 140ms. The clip reaches past the sides and
-     bottom so the shadow is not cut. visibility flips off only after the
-     out-transition so a closed menu leaves the tab order. */
-  clip-path: inset(0 -24px 100% -24px);
+  /* Closed: a zero-tall clip exactly the pill's width (the side insets leave
+     --mobile-page-pill-w visible, centred). */
+  clip-path: inset(0 calc(50% - (var(--mobile-page-pill-w) / 2)) 100% calc(50% - (var(--mobile-page-pill-w) / 2)));
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
   transition:
-    clip-path 140ms cubic-bezier(0.4, 0, 1, 1),
-    opacity 90ms linear 50ms,
-    visibility 0s linear 140ms;
+    clip-path 180ms cubic-bezier(1, 0, 0.8, 1),
+    opacity 80ms linear 100ms,
+    visibility 0s linear 180ms;
 }
 
 .mobile-pdf-header__zoom-menu.is-open {
@@ -649,7 +652,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-header__zoom-menu > * {
   transform: translateY(-6px);
-  transition: transform 140ms cubic-bezier(0.4, 0, 1, 1);
+  transition: transform 180ms cubic-bezier(1, 0, 0.8, 1);
 }
 .mobile-pdf-header__zoom-menu.is-open > * {
   transform: none;
@@ -658,15 +661,16 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 /* While the menu is out, the pill's bottom corners square off so pill and
    menu join edge to edge; they round again only after the menu has rolled
-   back up (the 140ms delay matches the close). */
+   back up (the pill's own 180ms delay above matches the close). */
 .mobile-pdf-header__page-pill.is-zoom-open {
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
   transition: border-radius 0s;
 }
 
-/* UX 2026-09-16: minus / plus, above the fit modes. The live reading is in
-   the pill right above them, so the row carries only the two steppers.
+/* UX 2026-09-16: minus / live percentage / plus, above the fit modes.
+   Owner 2026-10-02 ("put the numbers between the minus and plus"): the live
+   zoom sits centred between the two steppers, in the fit rows' quiet face.
 
    RULED CHANGE 2026-09-16 (r4 phone pass): the steppers are header controls, so
    they take the header control height — the same 15-in-28 every other control
@@ -676,11 +680,30 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-header__zoom-steppers {
   display: flex;
   align-items: center;
-  justify-content: space-evenly;
+  justify-content: space-between;
   gap: 0;
   margin-bottom: 2px;
-  padding: 4px 0;
+  padding: 4px 2px;
   border-bottom: 1px solid var(--border);
+}
+
+/* The live reading: the fit rows' own 14/400 (--sheet-row-text) in their calm
+   grey, never gold, with tabular digits so "53%" -> "66%" does not jiggle.
+   It sits centred in a fixed 54px slot between the two steppers, so neither
+   stepper nor the menu's width moves from 1% to 4000%: "4000%" measures
+   43.6px in Chromium and ~46 in the iPhone's SF digits, plus 4px a side. A
+   whole-pixel slot keeps the menu (2 + 8 + 4 + 28 + 54 + 28 = 124) on whole
+   pixels, so its border stays crisp when it is centred under the pill. */
+.mobile-pdf-header__zoom-percent {
+  flex: 0 0 auto;
+  width: 54px;
+  padding: 0 4px;
+  color: var(--text-2);
+  font: var(--sheet-row-text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .mobile-pdf-header__zoom-steppers > button {
@@ -702,8 +725,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-radius: 6px;
 }
 
-/* 28 painted + 4 a side = a 36px finger target; the two sit half a menu apart,
-   so the pads never meet, and 4px below stays inside the row's padding. */
+/* 28 painted + 4 a side = a 36px finger target; the live reading sits between
+   the two, so the pads never meet, and 4px below stays inside the row's
+   padding. */
 .mobile-pdf-header__zoom-steppers > button::after {
   content: '';
   position: absolute;
