@@ -34,8 +34,9 @@
          open Survey Marker's notes slot (src/components/SurveyMarkerNotes.jsx).
    - No gold in the sheet (owner 2026-10-02, survey panel polish: "calm,
      uniform, no gold accents"; it was gold ink on the armed category's
-     name): the armed category - what a touch on the page will do now - is
-     the app's selected row, a --surface-3 fill, as on desktop. A current
+     name). The armed category - what a touch on the page will do now - has
+     no look of its own at rest (owner, after bf3888e): arming plays its
+     row's press, disarming plays it backwards, as on desktop. A current
      item in a list or menu (the template in the switcher, the entity in the
      detail menu) is bright --text-1 ink with a --text-2 check; an open
      menu's trigger is neutral. Never a gold box, ring or underline.
@@ -60,12 +61,10 @@
   /* A category's Survey Markers, and an open Survey Marker's lines, start one
      12px step in from the sheet's 16px edge. */
   --survey-indent: calc(var(--sheet-pad-x) + 12px);
-  /* An open Survey Marker's lines (its checklist, its note) line up with its
-     name (owner 2026-10-02, UI consistency audit; they started at x 28, left
-     of the name): the name's field well starts at x 52 (the 16px edge + the
-     36px dot column) and its words 8px into the well, at x 60. */
-  --survey-marker-well-x: calc(var(--sheet-pad-x) + 36px);
-  --survey-marker-text-x: calc(var(--survey-marker-well-x) + 8px);
+  /* An open Survey Marker's lines (its checklist, its note) start where its
+     ENTITY dot starts, x 28 (the 16px edge + the lead's 12px pad), not under
+     its name (owner, after bf3888e - desktop's rule, x 29 there). */
+  --survey-marker-dot-x: calc(var(--sheet-pad-x) + 12px);
 }
 
 /* Flat on the sheet colour like Pages, Bookmarks, Spaces and Search (owner
@@ -675,8 +674,8 @@
 
 /* A category is a line in the panel: a hairline above it (the first one
    parts the rows from the "Categories" head line), no edge, corner or fill
-   of its own. The armed category takes the selected row's --surface-3 fill
-   (below), never gold ink or a gold edge. The hairline sits
+   of its own. The armed category looks like any other row at rest (its
+   press plays when it is armed, backwards when it is not). The hairline sits
    INSIDE the 44px line (owner 2026-10-02; it was 44 + 1), so the row below
    it is 43. */
 .mobile-survey-sheet .survey-marker-category-card,
@@ -733,14 +732,9 @@
   background: var(--pressed);
 }
 
-/* The armed category: the app's selected row (--surface-3), no gold. */
-.mobile-survey-sheet .survey-marker-category-card.is-armed .survey-marker-category-row {
-  background: var(--surface-3);
-}
-
-.mobile-survey-sheet .survey-marker-category-card.is-armed .survey-marker-category-row:has(.survey-marker-category-main:active) {
-  background: var(--pressed);
-}
+/* The armed category has no look of its own at rest (owner, after bf3888e):
+   arming plays the row's press, disarming plays it backwards
+   (SurveySpacesRail.jsx playCategoryArmPress), as on desktop. */
 
 .mobile-survey-sheet .survey-marker-category-arrow,
 .mobile-survey-sheet .survey-marker-category-arrow:hover,
@@ -1103,7 +1097,7 @@
 }
 
 .mobile-survey-sheet .mobile-survey-marker .mobile-survey-check-item {
-  padding-left: var(--survey-marker-text-x);
+  padding-left: var(--survey-marker-dot-x);
 }
 
 .mobile-survey-sheet .mobile-survey-marker .mobile-survey-detail-empty {
@@ -1115,13 +1109,13 @@
 
 /* The notes slot: SurveyMarkerNotes (src/components/surveyMarkerNotes.css)
    draws the rule above it. Its sides follow this sheet's lines: its well
-   starts where the name's well does (x 52), it ends on the 16px edge. */
+   starts under the entity dot (x 28), it ends on the 16px edge. */
 .mobile-survey-sheet .mobile-survey-open-notes {
   border-top: 0;
 }
 
 .mobile-survey-sheet .mobile-survey-open-notes .survey-marker-notes {
-  padding-left: var(--survey-marker-well-x);
+  padding-left: var(--survey-marker-dot-x);
   padding-right: var(--sheet-pad-x);
 }
 
