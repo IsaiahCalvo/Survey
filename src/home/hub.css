@@ -2572,30 +2572,11 @@
     white-space: nowrap;
   }
 
+  /* [Team] [Add files] icons (SectionIconButton, owner 2026-10-02). The
+     36px box steps 9px past the card inset so the Add glyph's right edge
+     lands where each row's content ends. */
   .survey-hub .projects-mobile-project-files-actions {
-    margin-left: auto;
-    /* The words' own 6px side pad steps past the card inset, so "Team" ends
-       on the same line as each row's "…". */
-    margin-right: -6px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  /* Quiet words, no box (TERTIARY): the same kind as the page's Select. */
-  .survey-hub .projects-mobile-project-files-actions > .hub-btn {
-    position: relative;
-    padding: 0 6px;
-    border-color: transparent;
-  }
-
-  /* A 44px finger target without a taller row: the tap area grows by pad. */
-  .survey-hub .projects-mobile-project-files-actions > .hub-btn::after {
-    content: '';
-    position: absolute;
-    inset-block: -8px;
-    inset-inline: 0;
-    background: transparent;
+    margin-right: -9px;
   }
 
   /* The file list sits flush in the card: the panel look moves off it. */
@@ -5052,34 +5033,12 @@ button[title="Edit color"]:active > span,
   box-sizing: border-box;
 }
 
-/* THE QUIET SECTION BUTTON: 28px tall, 13px/600 (14px on a phone with a
-   44px finger target), --text-2, --text-1 on hover, no box, no gold. */
-.survey-hub .hub-btn.hub-section-btn {
-  height: 28px;
-  padding: 0 8px;
-  gap: 4px;
-  font-size: 13px;
-  font-weight: 600;
-  border-color: transparent;
-}
-.survey-hub .hub-btn.hub-section-btn > svg {
-  width: 12px;
-  height: 12px;
-}
+/* THE SECTION ACTIONS are icons since 2026-10-02 (owner: "The icons looked
+   way better"): src/components/SectionIconButton.jsx, sized and styled in
+   its own stylesheet; the SECTION HEADER ICONS block at the end of this file
+   only keeps the older hub button rules off it. */
 
 @media (max-width: 860px) {
-  .survey-hub .hub-btn.hub-section-btn,
-  .survey-hub .mobile-header-select-button.hub-btn--tertiary {
-    font-size: 14px;
-    position: relative;
-  }
-  .survey-hub .hub-btn.hub-section-btn::after {
-    content: '';
-    position: absolute;
-    inset-block: -8px;
-    inset-inline: 0;
-    background: transparent;
-  }
 }
 
 /* ---------- PHONE: section headers ---------- */
@@ -5098,14 +5057,11 @@ button[title="Edit color"]:active > span,
     margin-right: -6px;
   }
 
-  /* Entities sheet toolbar: [Select] [+ Entity] at the right, like every
+  /* Entities sheet toolbar: [Select] [Add] icons at the right, like every
      other section header (the sheet's own title names the list). */
   .survey-hub .templates-mobile-entity-toolbar {
     justify-content: flex-end;
     gap: 2px !important;
-  }
-  .survey-hub .templates-mobile-entity-toolbar > .templates-mobile-new-entity {
-    margin-left: 0 !important;
   }
   .survey-hub .templates-mobile-entity-toolbar > .templates-mobile-select-actions {
     margin-right: auto;
@@ -5266,5 +5222,91 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
   .survey-hub .hub-section-actions:has(> .hub-btn--bare) { gap: 0; }
   .survey-hub .hub-section-actions > .hub-btn.hub-btn--bare { padding: 0 4px; }
   .survey-hub .hub-section-actions > .hub-btn.hub-btn--icon { width: 24px; }
-  .survey-hub .hub-section-actions:has(> .hub-btn--bare) > .hub-section-btn { padding: 0 6px; }
+}
+
+/* ==========================================================================
+   SECTION HEADER ICONS (owner ruling 2026-10-02, reversing 2026-10-01's quiet
+   words: "The icons looked way better.")
+   --------------------------------------------------------------------------
+     LABEL count ............................ [Select] [Add]
+   The bare icon is src/components/SectionIconButton.jsx (28px hit / 16px
+   glyph on desktop; 36px box + 44px pad / 18px glyph on a phone), with its
+   look in SectionIconButton.css and its hover / press in states.css. The
+   rules here only keep older hub rules off it: the phone section heads box
+   every header button (bordered, filled, 9px pad), and the page header's
+   Select carries a 44px min-width and a pad of its own. The doubled class
+   outranks those without !important.
+   ========================================================================== */
+.survey-hub .section-icon-btn.section-icon-btn {
+  width: 28px;
+  height: 28px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+}
+.survey-hub .section-icon-btn.section-icon-btn::after { content: none; }
+.survey-hub .section-icon-btn.section-icon-btn.is-phone {
+  width: 36px;
+  height: 36px;
+}
+.survey-hub .section-icon-btn.section-icon-btn.is-phone::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  z-index: 1;
+  background: transparent;
+}
+/* Phone section heads: the icons step 9px past the 12px inset so the Add
+   glyph's right edge sits on the content edge, where "+ Category" ended. */
+.survey-hub .templates-mobile-detail-card .templates-mobile-section-actions:not(.templates-mobile-select-actions) {
+  margin-right: -9px;
+}
+/* The page header's Select (Documents, Projects, Templates, Archive) is one
+   element on desktop and phone, so the phone size comes from the width the
+   phone header already switches at. */
+@media (max-width: 860px) {
+  .survey-hub .section-icon-btn.section-icon-btn.mobile-header-select-button {
+    width: 36px;
+    height: 36px;
+  }
+  .survey-hub .section-icon-btn.mobile-header-select-button > svg {
+    width: 18px;
+    height: 18px;
+  }
+  .survey-hub .section-icon-btn.section-icon-btn.mobile-header-select-button::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    z-index: 1;
+    background: transparent;
+  }
+}
+/* The loading header holds the Select icon's place with a glyph-sized block. */
+.survey-hub .hub-loading-metric-cell > .hub-skeleton-block.hub-loading-select-glyph {
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  transform: translate(-50%, -50%);
+}
+/* In the phone section heads the 36px box pulls back to the 28px line the
+   words used, so the header rows keep their height; the pad still gives a
+   44px finger target. */
+.survey-hub .templates-mobile-section-head .section-icon-btn.section-icon-btn.is-phone,
+.survey-hub .projects-mobile-project-files-head .section-icon-btn.section-icon-btn.is-phone {
+  margin-block: -4px;
+}
+/* Desktop: the page header's Select sits in the subtitle line ("6 files
+   [Select]"); its 28px box pulls back to that text line so the count does
+   not drop. A glyph has no text baseline, so the box would sit ON the text
+   baseline (its middle 4px above the words'); it steps down to centre on
+   them. */
+@media (min-width: 861px) {
+  .survey-hub .section-icon-btn.section-icon-btn.mobile-header-select-button {
+    margin-block: -10px -8px;
+    top: 4px;
+  }
 }

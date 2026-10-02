@@ -59,8 +59,8 @@ const LoadingSubtitle = ({ tab }) => {
         <span className="documents-file-count hub-loading-metric-cell"><b>0</b> files<Block style={{ width: 30, height: 9 }} /></span>
         <span className="documents-select-row mobile-header-select-row documents-mobile-select-sort-row">
           <span className="documents-mobile-select-main">
-            <button className="mobile-header-select-button hub-loading-metric-cell hub-loading-metric-button" type="button" disabled tabIndex={-1}>
-              Select<Block style={{ width: 34, height: 9 }} />
+            <button className="mobile-header-select-button section-icon-btn hub-loading-metric-cell hub-loading-metric-button" type="button" disabled tabIndex={-1}>
+              <Block className="hub-loading-select-glyph" />
             </button>
           </span>
         </span>
@@ -78,8 +78,8 @@ const LoadingSubtitle = ({ tab }) => {
       <span className={`${prefix}-mobile-summary`} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }} aria-hidden="true">
         <span className={`${prefix}-mobile-count hub-loading-metric-cell`}><b>0</b> {tab === 'projects' ? 'projects' : 'templates'}<Block style={{ width: 46, height: 9 }} /></span>
         <span className={`${prefix}-mobile-select-row mobile-header-select-row`}>
-          <button className="mobile-header-select-button hub-loading-metric-cell hub-loading-metric-button" type="button" disabled tabIndex={-1}>
-            Select<Block style={{ width: 32, height: 9 }} />
+          <button className="mobile-header-select-button section-icon-btn hub-loading-metric-cell hub-loading-metric-button" type="button" disabled tabIndex={-1}>
+            <Block className="hub-loading-select-glyph" />
           </button>
         </span>
       </span>

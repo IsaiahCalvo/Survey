@@ -1,0 +1,67 @@
+/*
+ * SectionIconButton.css — the bare icon used for section header actions
+ * (owner ruling 2026-10-02: "The icons looked way better").
+ *
+ *   LABEL count ............................ [Select] [Add]
+ *
+ * Desktop: a 28px square hit with a 16px glyph. Phone: an 18px glyph in a
+ * 36px box whose invisible ::after pad makes the finger target 44px.
+ * No plate, no border, no gold: --text-2 ink. Hover and press come
+ * from src/styles/states.css (the glyph grows on hover, tightens on press):
+ * section 5's icon model (glyph to 108% on hover, 92% on press). No gold
+ * anywhere (owner): a mode toggle that is on (Select while selecting, Edit
+ * while editing) swaps its glyph for a check in the same ink, named "Done".
+ */
+.section-icon-btn {
+  position: relative;
+  flex: none;
+  align-self: center;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  font: inherit;
+  line-height: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.section-icon-btn > svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.section-icon-btn.is-phone {
+  width: 36px;
+  height: 36px;
+}
+.section-icon-btn.is-phone > svg {
+  width: 18px;
+  height: 18px;
+}
+.section-icon-btn.is-phone::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+}
+.section-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* The row of header icons: right-aligned, [Select] then [Add]. */
+.section-icon-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  flex: none;
+}
+.section-icon-actions.is-phone {
+  gap: 8px;
+}

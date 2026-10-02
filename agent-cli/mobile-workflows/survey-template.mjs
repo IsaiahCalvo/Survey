@@ -305,14 +305,14 @@ async function createTemplateTree({ page, touch, artifacts }) {
   const title = page.locator('.templates-mobile-title-input');
   await fillAndCommit(title, templateName);
 
-  await tapLocator(touch, page.getByRole('button', { name: 'New module', exact: true }), 'New module');
+  await tapLocator(touch, page.getByRole('button', { name: 'Add module', exact: true }), 'New module');
   const moduleInput = page.locator('.templates-mobile-module-tabs [data-module-tab-id] input.inline-edit').last();
   await moduleInput.waitFor({ state: 'visible', timeout: 10_000 });
   const moduleId = invariant(await moduleInput.locator('xpath=..').getAttribute('data-module-tab-id'), 'Created module has no stable id');
   const moduleName = 'Mobile Walkthrough Module';
   await fillAndCommit(moduleInput, moduleName);
 
-  await tapLocator(touch, page.getByRole('button', { name: 'New category', exact: true }), 'New category');
+  await tapLocator(touch, page.getByRole('button', { name: 'Add category', exact: true }), 'New category');
   const categoryCard = page.locator('.templates-mobile-category-card').last();
   await categoryCard.waitFor({ state: 'visible', timeout: 10_000 });
   const categoryInput = categoryCard.locator('.templates-mobile-category-row input');
@@ -400,7 +400,7 @@ async function coverEntitiesAndReload({ page, touch, baseUrl, ids, artifacts }) 
   const modal = page.getByRole('dialog', { name: 'Entities', exact: true });
   await modal.waitFor({ state: 'visible', timeout: 10_000 });
 
-  const addEntity = modal.getByRole('button', { name: 'New entity', exact: true });
+  const addEntity = modal.getByRole('button', { name: 'Add entity', exact: true });
   await tapLocator(touch, addEntity, 'New Inspector entity');
   let rows = modal.locator('.templates-mobile-entity-row');
   let inspectorRow = rows.last();
@@ -624,7 +624,7 @@ async function coverDeletes({ page, touch, ids }) {
   await tapLocator(touch, disposableItem.getByRole('button', { name: 'Delete item', exact: true }), 'Delete checklist item');
 
   // Category delete through mobile Select mode.
-  await tapLocator(touch, page.getByRole('button', { name: 'New category', exact: true }), 'New disposable category');
+  await tapLocator(touch, page.getByRole('button', { name: 'Add category', exact: true }), 'New disposable category');
   const disposableCategory = page.locator('.templates-mobile-category-card').last();
   await fillAndCommit(disposableCategory.locator('.templates-mobile-category-row input'), 'Disposable mobile category');
   const disposableCategoryNamed = categoryCardByName(page, 'Disposable mobile category');
@@ -638,7 +638,7 @@ async function coverDeletes({ page, touch, ids }) {
   await tapLocator(touch, categoriesSection.getByRole('button', { name: 'Done', exact: true }), 'Finish category selection');
 
   // Module edit/delete through the real mobile edit modal.
-  await tapLocator(touch, page.getByRole('button', { name: 'New module', exact: true }), 'New disposable module');
+  await tapLocator(touch, page.getByRole('button', { name: 'Add module', exact: true }), 'New disposable module');
   const moduleInput = page.locator('.templates-mobile-module-tabs [data-module-tab-id] input.inline-edit').last();
   await moduleInput.waitFor({ state: 'visible' });
   await fillAndCommit(moduleInput, 'Disposable mobile module');

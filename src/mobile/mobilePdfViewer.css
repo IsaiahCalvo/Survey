@@ -3915,10 +3915,10 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   font-family: var(--sheet-font);
 }
 
-/* The header: "+ Add" left, "Edit" right, one hairline under it — the same
-   header as the desktop panel and the Spaces panel (shared spec 2026-09-23).
-   No title: the sheet's tab already says "Bookmarks" (owner, same day). The
-   16px edge gaps are measured to the visible glyph (button padding is 0). */
+/* The header: [Edit] [Add] icons at the right (owner 2026-10-02: section
+   header actions are icons, src/components/SectionIconButton.jsx), one
+   hairline under it — the same header as the desktop panel and the Spaces
+   panel. No title: the sheet's tab already says "Bookmarks". */
 .mobile-bookmark-toolbar {
   position: relative;
   flex: 0 0 auto;
@@ -3931,11 +3931,14 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   border-bottom: 1px solid var(--border);
 }
 
-/* Quiet glyph-and-word actions of equal weight. The 44px-tall button box is
-   the invisible tap pad: no fill, no border; only the glyph and word paint.
-   Pressing brightens the ink to text-1 — never a plate. */
-.mobile-bookmark-add,
-.mobile-bookmark-edit,
+/* The 36px icon boxes step 9px past the 16px inset, so the Add glyph's
+   right edge sits on the 16px edge gap. */
+.mobile-bookmark-actions {
+  margin-right: -9px;
+}
+
+/* The quiet "New folder" word: the 44px-tall button box is the invisible
+   tap pad; pressing brightens the ink to text-1 — never a plate. */
 .mobile-bookmark-newfolder {
   position: relative;
   flex: 0 0 auto;
@@ -3952,22 +3955,8 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   -webkit-tap-highlight-color: transparent;
 }
 
-.mobile-bookmark-add:active,
-.mobile-bookmark-edit:active,
-.mobile-bookmark-newfolder:active,
-.mobile-bookmark-add.is-active {
+.mobile-bookmark-newfolder:active {
   color: var(--text-1);
-}
-
-/* The plus glyph's ink starts 2.5px inside its 14px box: pull it out so the
-   visible "+" sits exactly on the 16px edge gap. */
-.mobile-bookmark-add {
-  margin-left: -2.5px;
-}
-
-/* Edit mode: the one gold on the header is the "Done" word + glyph. */
-.mobile-bookmark-edit.is-active {
-  color: var(--accent);
 }
 
 /* The quiet "New folder instead" / "New bookmark instead" switch under the
@@ -4372,8 +4361,9 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   padding: 0 10px;
 }
 
-/* Chunk B header: "Spaces" title, then + Add, the export glyph and Done -
-   the Survey sheet's head line (.mobile-survey-head). */
+/* Chunk B header: "Spaces" title, then the export and add icons
+   (SectionIconButton, owner 2026-10-02) and Done - the Survey sheet's head
+   line (.mobile-survey-head). */
 .mobile-spaces-panel .spaces-panel__head {
   justify-content: flex-start;
   align-items: center;
@@ -4393,24 +4383,12 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   white-space: nowrap;
 }
 
-.mobile-spaces-panel .spaces-panel__head-btn,
 .mobile-spaces-panel .spaces-panel__done {
   height: 32px;
 }
 
-.mobile-spaces-panel .spaces-panel__head-btn--add {
-  margin-left: 0;
-}
-
-.mobile-spaces-panel .spaces-panel__head-btn--export.is-glyph {
-  width: 32px;
-  padding: 0;
-  justify-content: center;
-}
-
-.mobile-spaces-panel .spaces-panel__head-btn--export.is-glyph svg {
-  width: 16px;
-  height: 16px;
+.mobile-spaces-panel .spaces-panel__head-icon {
+  margin-inline: 4px;
 }
 
 .mobile-spaces-panel .spaces-panel__done {
