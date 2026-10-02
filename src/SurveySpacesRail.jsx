@@ -82,6 +82,18 @@ const preserveElementViewportY = (element, mutateLayout) => {
   }
 };
 
+// The panel content that hands over when the template changes: everything
+// under the collapse row, not the collapse row or the portalled zoom / page
+// footer (both chrome rows that stay), and never a ghost of an earlier swap.
+const isRailSwapContent = (node) => Boolean(
+  node
+  && node.nodeType === 1
+  && !node.hasAttribute('data-chrome-rail')
+  && !node.hasAttribute('data-survey-rail-swap-ghost')
+  && !node.classList.contains('mobile-pdf-sheet__handle')
+  && !node.querySelector('[data-rail-footer-row]')
+);
+
 const SurveyMarkerLeadingSelect = ({
   selected,
   onClick,
@@ -865,11 +877,108 @@ const SurveySpacesRail = ({
     }
   }, []);
 
+  // Owner 2026-10-02 (survey panel polish): "when I pick a template the next
+  // page just snaps in". The panel's top rows stay put and its content hands
+  // over: just before the template changes, a still picture (a DOM clone) of
+  // everything under the collapse row is taken; after React has drawn the new
+  // template, the picture sits exactly where the old rows were and fades out
+  // while the new header text fades in and the new rows rise 6px into place.
+  // The header row and its hairline sit at the same place in both, so they
+  // read as one row that stays. 220ms ease-out; nothing moves under
+  // prefers-reduced-motion. The panel keeps its full height throughout (its
+  // lists are flex:1), so there is no height change to jump.
+  const templatePickerRef = useRef(null);
+  const railSwapRef = useRef(null);
+  const captureRailSwap = useCallback(() => {
+    railSwapRef.current = null;
+    if (typeof window === 'undefined') return;
+    try {
+      if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return;
+    } catch { /* no matchMedia: animate */ }
+    const anchor = templatePickerRef.current || templateTitleButtonRef.current;
+    const root = anchor?.closest?.('.survey-rail, .mobile-survey-sheet');
+    if (!root || typeof root.animate !== 'function') return;
+    const rootBox = root.getBoundingClientRect();
+    const ghosts = [];
+    Array.from(root.children).forEach((child) => {
+      if (!isRailSwapContent(child)) return;
+      const box = child.getBoundingClientRect();
+      if (!box.width || !box.height) return;
+      const ghost = child.cloneNode(true);
+      ghost.removeAttribute('id');
+      ghost.querySelectorAll('[id]').forEach((node) => node.removeAttribute('id'));
+      ghost.setAttribute('aria-hidden', 'true');
+      ghost.setAttribute('inert', '');
+      ghost.setAttribute('data-survey-rail-swap-ghost', '');
+      Object.assign(ghost.style, {
+        position: 'absolute',
+        left: `${box.left - rootBox.left - root.clientLeft}px`,
+        top: `${box.top - rootBox.top - root.clientTop}px`,
+        width: `${box.width}px`,
+        height: `${box.height}px`,
+        margin: '0',
+        // Over the new rows, under the portalled zoom / page footer (z 2).
+        zIndex: '1',
+        pointerEvents: 'none',
+        overflow: 'hidden',
+        flex: 'none',
+      });
+      // A clone forgets where its lists were scrolled to.
+      const scrolls = [];
+      const sources = [child, ...child.querySelectorAll('*')];
+      const copies = [ghost, ...ghost.querySelectorAll('*')];
+      sources.forEach((node, index) => {
+        if (node.scrollTop || node.scrollLeft) scrolls.push([copies[index], node.scrollTop, node.scrollLeft]);
+      });
+      ghosts.push({ ghost, scrolls });
+    });
+    if (ghosts.length) railSwapRef.current = { root, ghosts };
+  }, []);
+
+  useLayoutEffect(() => {
+    const swap = railSwapRef.current;
+    if (!swap) return;
+    railSwapRef.current = null;
+    const { root, ghosts } = swap;
+    if (!root.isConnected) return;
+    const ease = 'cubic-bezier(0.33, 1, 0.68, 1)';
+    const duration = 220;
+    // The new rows, before the ghosts join them.
+    Array.from(root.children).forEach((child) => {
+      if (!isRailSwapContent(child)) return;
+      if (child.matches('.survey-rail__head, .mobile-survey-head')) {
+        // The header row stays where it is; only its words change.
+        Array.from(child.children).forEach((part) => {
+          part.animate([{ opacity: 0 }, { opacity: 1 }], { duration, easing: ease, fill: 'backwards' });
+        });
+        return;
+      }
+      const rises = !child.matches('.survey-rail__foot, .mobile-survey-foot');
+      child.animate(
+        rises
+          ? [{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }]
+          : [{ opacity: 0 }, { opacity: 1 }],
+        { duration, easing: ease, fill: 'backwards' },
+      );
+    });
+    ghosts.forEach(({ ghost, scrolls }) => {
+      root.appendChild(ghost);
+      scrolls.forEach(([node, top, left]) => { node.scrollTop = top; node.scrollLeft = left; });
+      const fade = ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: duration - 20, easing: ease, fill: 'forwards' });
+      const drop = () => ghost.remove();
+      fade.onfinish = drop;
+      fade.oncancel = drop;
+      // Belt and braces: a ghost never outlives its moment.
+      setTimeout(drop, 5000);
+    });
+  }, [selectedTemplate?.id, showSurveyPanel]);
+
   // Switch to another template. The current one only closes the switcher.
   const switchSurveyTemplate = (template) => {
     if (template && template.id !== selectedTemplate?.id) {
       // Another template starts on its category list.
       if (mobileMode) collapseMobileAccordion();
+      captureRailSwap();
       onSelectSurveyTemplate?.(template);
     }
     closeTemplateSwitcher();
@@ -1896,6 +2005,37 @@ const SurveySpacesRail = ({
                     >
                       <Icon name={mobileMode ? 'chevronDown' : 'chevronRight'} size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="currentColor" />
                     </button>
+                    {/* Owner 2026-10-02 (survey panel polish): the Exit Survey X
+                        sits in THIS row, opposite the collapse arrow - the
+                        panel's one top row - in every state (choosing a
+                        template or in one). It used to take the header row
+                        below. Same box and glyph rules as the collapse arrow. */}
+                    {!mobileMode && (
+                      <button
+                        type="button"
+                        onClick={exitSurveyMode}
+                        className="survey-rail__exit"
+                        aria-label="Close Survey panel"
+                        {...tip('Exit Survey', 'below')}
+                        style={{
+                          marginLeft: 'auto',
+                          background: 'transparent',
+                          border: 'none',
+                          color: 'var(--text-2)',
+                          cursor: 'pointer',
+                          padding: 0,
+                          width: `${RAIL_CONTROL}px`,
+                          height: `${RAIL_CONTROL}px`,
+                          borderRadius: 'var(--chrome-radius)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'color 0.12s ease-out'
+                        }}
+                      >
+                        <Icon name="close" size={16} color="currentColor" />
+                      </button>
+                    )}
                   </div>
 
                   {selectedTemplate && showSurveyPanel ? (
@@ -2078,21 +2218,20 @@ const SurveySpacesRail = ({
                           Exit Survey
                         </button>
                       )}
-                      <button
-                        onClick={() => {
-                          if (mobileMode) {
+                      {/* Desktop's Exit X lives in the collapse row above
+                          (owner 2026-10-02). */}
+                      {mobileMode && (
+                        <button
+                          onClick={() => {
                             setIsSurveyPanelCollapsed(true);
                             requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
-                          } else {
-                            exitSurveyMode();
-                          }
-                        }}
-                        className={mobileMode ? 'mobile-survey-close' : 'survey-rail__head-btn survey-rail__head-btn--glyph'}
-                        aria-label="Close Survey panel"
-                        {...(mobileMode ? {} : tip('Exit Survey', 'below'))}
-                      >
-                        <Icon name="close" size={mobileMode ? 18 : 16} color="currentColor" />
-                      </button>
+                          }}
+                          className="mobile-survey-close"
+                          aria-label="Close Survey panel"
+                        >
+                          <Icon name="close" size={18} color="currentColor" />
+                        </button>
+                      )}
                     </div>
                   </div>
                   {/* Desktop: the Excel sync status is one quiet line under the
@@ -2377,7 +2516,7 @@ const SurveySpacesRail = ({
                                           setCategorySelectModeForCategory(null);
                                           setSelectedCategories({});
                                         }}
-                                        className="survey-rail__head-btn is-done"
+                                        className="survey-rail__head-btn survey-rail__word-btn is-done"
                                       >
                                         Done
                                       </button>
@@ -2391,7 +2530,7 @@ const SurveySpacesRail = ({
                                           setSelectedCategories(newSelection);
                                         }}
                                         disabled={categoriesForModule.length === 0}
-                                        className="survey-rail__head-btn"
+                                        className="survey-rail__head-btn survey-rail__word-btn"
                                       >
                                         All
                                       </button>
@@ -2406,7 +2545,7 @@ const SurveySpacesRail = ({
                                           showToast(`Move/Copy functionality for ${selectedCatIds.length} categories to be implemented.`, 'info');
                                         }}
                                         disabled={!hasSelectedCategories}
-                                        className="survey-rail__head-btn"
+                                        className="survey-rail__head-btn survey-rail__word-btn"
                                       >
                                         Move/Copy
                                       </button>
@@ -2422,26 +2561,34 @@ const SurveySpacesRail = ({
                                       </button>
                                     </span>
                                   ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setCategorySelectModeActive(true);
-                                        setSelectedCategories({});
-                                      }}
-                                      className="survey-rail__head-btn"
-                                    >
-                                      Select
-                                    </button>
+                                    /* Owner 2026-10-02: the Templates / Projects
+                                       editor's rule (editorDebate DECISION 1) -
+                                       quiet WORDS, right-aligned, [Select]
+                                       [+ Category], the editor's section-button
+                                       look. While selecting, the selection
+                                       actions take the place of both, as there. */
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setCategorySelectModeActive(true);
+                                          setSelectedCategories({});
+                                        }}
+                                        className="survey-rail__head-btn survey-rail__word-btn"
+                                      >
+                                        Select
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={openCreateCategoryModal}
+                                        className="survey-rail__head-btn survey-rail__word-btn"
+                                        aria-label="Create category"
+                                      >
+                                        <Icon name="plus" size={12} color="currentColor" />
+                                        Category
+                                      </button>
+                                    </>
                                   )}
-                                  <button
-                                    type="button"
-                                    onClick={openCreateCategoryModal}
-                                    className="survey-rail__head-btn survey-rail__head-btn--glyph"
-                                    {...tip('Create category', 'below')}
-                                    aria-label="Create category"
-                                  >
-                                    <Icon name="plus" size={14} color="currentColor" />
-                                  </button>
                                 </span>
                               </h3>
                             );
@@ -2804,15 +2951,17 @@ const SurveySpacesRail = ({
                                   carries its own "+ Place". */}
                               <span>Categories</span>
                               {!mobileMode && (
-                                <button
-                                  type="button"
-                                  onClick={openCreateCategoryModal}
-                                  className="survey-rail__head-btn survey-rail__head-btn--glyph"
-                                  {...tip('Create category', 'below')}
-                                  aria-label="Create category"
-                                >
-                                  <Icon name="plus" size={14} color="currentColor" />
-                                </button>
+                                <span className="survey-rail__cats-actions">
+                                  <button
+                                    type="button"
+                                    onClick={openCreateCategoryModal}
+                                    className="survey-rail__head-btn survey-rail__word-btn"
+                                    aria-label="Create category"
+                                  >
+                                    <Icon name="plus" size={12} color="currentColor" />
+                                    Category
+                                  </button>
+                                </span>
                               )}
                             </CategoriesHeadingTag>
                             )}
@@ -2840,16 +2989,17 @@ const SurveySpacesRail = ({
                                   const isCategorySelected = selectedCategories[category.id] === true;
                                   const isCategorySelectModeActive = categorySelectModeActive;
                                   const isCategoryActive = (isCategorySelectModeActive && isCategorySelected) || selectedCategoryId === category.id;
-                                  // Survey calm gold (owner 2026-10-01: "I hate all the yellow it
-                                  // has on desktop"): gold only means "what a touch on the page will
-                                  // do now" - the ARMED category. Desktop marks its row with a 2px
-                                  // gold edge (surveyRailPanel.css .is-armed); the phone keeps gold
-                                  // ink on its name. A chosen-but-not-armed or select-mode category
-                                  // is neutral ink.
+                                  // Owner 2026-10-02 (survey panel polish, "no gold accents"): the
+                                  // ARMED category - what a touch on the page will do now - is the
+                                  // app's selected row, a light grey fill (--surface-3, as a selected
+                                  // Bookmark), on desktop and phone (.is-armed in
+                                  // surveyRailPanel.css / mobileSurveyPanel.css). No gold edge, no
+                                  // gold name. A chosen-but-not-armed or select-mode category is
+                                  // a plain row.
                                   const isCategoryArmed = surveyPlacementArmed
                                     && !isCategorySelectModeActive
                                     && selectedCategoryId === category.id;
-                                  const buttonTextColor = mobileMode && isCategoryArmed ? 'var(--accent)' : 'var(--text-1)';
+                                  const buttonTextColor = 'var(--text-1)';
                                   const buttonSubTextColor = isCategoryActive ? 'var(--text-2)' : 'var(--text-3)';
 
                                   // Item-level selection state
@@ -3326,8 +3476,9 @@ const SurveySpacesRail = ({
                                                     [grip in the gutter] [entity dot = the entity menu]
                                                     [name] [media / progress] [Locate] [open chevron].
                                                     - The grip sits in the 28px gutter the category grips
-                                                      use, so the dot sits under the category's name: no
-                                                      wasted left space ("everything's pushed to the right").
+                                                      use and the dot follows it, so the name starts one
+                                                      12px step in from the category's name (2026-10-02,
+                                                      surveyRailPanel.css --sv-item-x).
                                                     - The separate "Entity [● Subcontractor]" line is gone:
                                                       the dot IS the entity menu (its full name in the menu,
                                                       the tooltip and the label).
@@ -4189,7 +4340,7 @@ const SurveySpacesRail = ({
                   )}
                   </>
                   ) : (
-                    <div style={{
+                    <div ref={templatePickerRef} style={{
                       flex: 1,
                       minHeight: 0,
                       display: 'flex',
@@ -4212,22 +4363,9 @@ const SurveySpacesRail = ({
                         {mobileMode ? (
                           <h2 className="mobile-survey-head-title">Choose a survey template</h2>
                         ) : (
-                          <h2 className="survey-rail__title">Choose a survey template</h2>
-                        )}
-                        {/* Owner 2026-10-01: desktop gets the same X as the
-                            template view's header (it had no button here). */}
-                        {!mobileMode && (
-                          <div className="survey-rail__head-actions">
-                            <button
-                              type="button"
-                              onClick={exitSurveyMode}
-                              className="survey-rail__head-btn survey-rail__head-btn--glyph"
-                              aria-label="Close Survey panel"
-                              {...tip('Exit Survey', 'below')}
-                            >
-                              <Icon name="close" size={16} color="currentColor" />
-                            </button>
-                          </div>
+                          /* Owner 2026-10-02: the prompt is centred; the
+                             Exit X moved up into the collapse row. */
+                          <h2 className="survey-rail__title survey-rail__title--centred">Choose a survey template</h2>
                         )}
                         {mobileMode && (
                           <div className="mobile-survey-head-actions">
@@ -4289,6 +4427,9 @@ const SurveySpacesRail = ({
                                      handlers are desktop-only. */
                                   className={mobileMode ? 'mobile-survey-template-row' : 'survey-rail__template-row'}
                                   onClick={() => {
+                                    // The picker's rows hand over to the
+                                    // template's rows (crossFadeRailContent).
+                                    captureRailSwap();
                                     onSelectSurveyTemplate?.(template);
                                   }}
                                 >

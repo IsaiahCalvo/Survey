@@ -16,16 +16,17 @@
      chevron) parted by hairlines that reach both edges. No card per row.
    - MODULE TABS: the phone's module tabs, 32px tall, active = bright ink
      with a 2px ink bar. No gold, no boxed prev / pill / next buttons.
-   - CATEGORIES: a "Categories" head line (Select and + as quiet controls on
-     its right), then each category is a 32px line; its Survey Markers are
-     indented lines under it, each parted by a full-width hairline; an open
-     Survey Marker's Entity and checklist are lines indented under its name.
-   - Gold means only "what a touch on the page will do now" (owner
-     2026-10-01: "I hate all the yellow it has on desktop"): the ARMED
-     category's top-bar disc and a 2px gold edge on its rail row, plus a
-     dialog's single primary button. Current menu items are bright ink with
-     a grey check; open chevrons, a note that exists, Done, Reuse are neutral.
-     Never a gold box, ring, wash or underline.
+   - CATEGORIES: a "Categories" head line ("Select" and "+ Category" as quiet
+     words on its right, the Templates / Projects editor's section buttons),
+     then each category is a 32px line, its name at the rows' text line
+     (--row-text-x, 40); its Survey Markers are 28px lines one 12px step in
+     (names at 52), each parted by a full-width hairline; an open Survey
+     Marker's checklist and note are lines under its name.
+   - No gold in the panel (owner 2026-10-02, "calm, uniform, no gold
+     accents"): the ARMED category is the app's selected row, a --surface-3
+     fill like a selected Bookmark. Current menu items are bright ink with a
+     grey check; open chevrons, a note that exists, Done, Reuse are neutral.
+     Never a gold box, ring, wash, edge or underline.
    - Glyph buttons have invisible pads: no plate on hover or press; hover
      brightens the ink, press shrinks the glyph. Full-width ROWS keep the
      house --hover fill under the pointer.
@@ -55,11 +56,17 @@
   --sv-col-sm: 24px;      /* a smaller glyph column (notes, review) */
   --sv-grip-w: 28px;      /* category grip column */
   --sv-marker-indent: 28px; /* where a Survey Marker line starts */
-  /* Owner 2026-10-01 (second pass, "everything's pushed to the right too
-     much"): a Survey Marker's grip sits in the same 28px gutter as its
-     category's, its entity dot under the category's name (x 30), and its
-     open lines - checklist, note - start under its name (x 60). */
-  --sv-detail-indent: 60px; /* where a Survey Marker's detail lines start */
+  /* Owner 2026-10-02 (survey panel polish, "items sit too far right with a
+     lot of empty space on the left"): ONE fixed small step per level. A
+     category's name starts on the rows' shared text line (--row-text-x, 40,
+     as in Bookmarks and Spaces); a Survey Marker's name one step in (52),
+     its grip in the same 28px gutter as its category's and its entity dot
+     straight after the grip; an open marker's checklist and note start
+     under its name. They were at 31 / 61 / 60. */
+  --sv-text-x: var(--row-text-x);                    /* 40: a category name */
+  --sv-step: 12px;                                   /* one nesting level */
+  --sv-item-x: calc(var(--sv-text-x) + var(--sv-step)); /* 52: a marker name */
+  --sv-detail-indent: var(--sv-item-x);              /* a marker's open lines */
   --sv-detail-right: 8px;   /* their right edge */
   --sv-name-type: 13px;
   --sv-label-type: 12px;
@@ -99,6 +106,10 @@
    the 13px title with a 10px --text-3 chevron, opening the template menu
    below. In category-select mode it shows the module's name, disabled and
    without the chevron. */
+.survey-rail .survey-rail__title--centred {
+  text-align: center;
+}
+
 .survey-rail .survey-rail__title-button {
   appearance: none;
   max-width: 100%;
@@ -291,6 +302,30 @@
 .survey-rail .survey-rail__head-btn:disabled {
   color: var(--text-disabled);
   cursor: not-allowed;
+}
+
+/* THE QUIET SECTION WORD (owner 2026-10-02): the Templates / Projects
+   editor's section button (hub.css .hub-section-btn, editorDebate DECISION
+   1) - "Select", "+ Category", and while selecting "Done", "All",
+   "Move/Copy": 28px tall, 13px/600, --text-2 ink, --text-1 under the pointer
+   and while pressed, no box, no gold, a 12px glyph 4px before its word. */
+.survey-rail .survey-rail__cats-actions .survey-rail__head-btn.survey-rail__word-btn {
+  height: 28px;
+  align-self: center;
+  padding: 0 8px;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.survey-rail .survey-rail__head-btn.survey-rail__word-btn > svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* A word answers with its ink, not a glyph squeeze. */
+.survey-rail .survey-rail__head-btn.survey-rail__word-btn:not(:disabled):active svg {
+  transform: none;
 }
 
 /* ---------- FOOTER: Export (owner 2026-10-01) ---------------------------
@@ -597,12 +632,13 @@
   flex-direction: column;
 }
 
-/* "Categories" head line: label left, quiet Select and + right. */
+/* "Categories" head line: label left, the quiet words right (their 8px pad
+   puts the last word's ink on the 12px edge line). */
 .survey-rail .survey-rail__cats-head {
   height: var(--sv-row-h);
   box-sizing: border-box;
   margin: 0;
-  padding: 0 calc(var(--sv-edge) - 6px) 0 var(--sv-edge);
+  padding: 0 calc(var(--sv-edge) - 8px) 0 var(--sv-edge);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -674,7 +710,8 @@
 
 .survey-rail .survey-marker-category-main {
   min-height: var(--sv-row-inner);
-  padding: 0 4px 0 2px;
+  /* The name starts on the shared text line (x 40). */
+  padding: 0 4px 0 calc(var(--sv-text-x) - var(--sv-grip-w));
   gap: 8px;
   font-size: var(--sv-name-type);
   border-radius: 0;
@@ -724,16 +761,23 @@
   border-radius: 0;
 }
 
-/* Survey calm gold (2026-10-01): the ARMED category's row is the one gold
-   cue in the panel - the app's selected-row look (a surface step plus a 2px
-   gold edge), the twin of its gold disc in the survey bar. Its name and count
-   stay neutral ink. */
+/* The ARMED category (owner 2026-10-02, "remove the gold bar"): the app's
+   selected row and nothing else - a --surface-3 fill edge to edge, as a
+   selected Bookmark. Its name and count stay neutral ink. */
 .survey-rail .survey-marker-category-card.is-armed .survey-marker-category-row {
   background: var(--surface-3);
-  box-shadow: inset 2px 0 0 var(--accent);
+  box-shadow: none;
 }
 
-/* The row takes the hover fill; the name and chevron inside it are pads. */
+/* ROW STATES (owner 2026-10-02: "pressing a category row darkens only part
+   of it"). The ROW is the thing under the pointer and the thing pressed, so
+   the row paints the house states edge to edge - --hover under the pointer
+   (below, desktop only), --pressed while its name or chevron is held - and
+   the name and chevron inside it are invisible pads that never paint a fill
+   of their own (their #chrome-right-host opt-out is at the end of this
+   file). A selected (armed) row presses too, like every selected row.
+   The grip only drags: picking a row up is the shared lift
+   (states.css [data-drag-lifted]), never a pressed fill. */
 .survey-rail .survey-marker-category-main:hover,
 .survey-rail .survey-marker-category-arrow:hover,
 .survey-rail .survey-marker-category-main:active,
@@ -745,7 +789,7 @@
   transform: scale(0.88);
 }
 
-.survey-rail .survey-marker-category-row:active {
+.survey-rail .survey-marker-category-card .survey-marker-category-row:has(.survey-marker-category-main:active, .survey-marker-category-arrow:active) {
   background: var(--pressed);
 }
 
@@ -830,8 +874,17 @@
   align-self: stretch;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 4px 0 2px;
+  /* The entity dot's 24px pad runs from the grip gutter (28) to the name's
+     line (52): no gap after it, no pad before it. */
+  gap: 0;
+  padding: 0 4px 0 0;
+}
+
+/* A Survey Marker line presses as a whole, like a category row, when the
+   line itself (its open / close space or chevron) is held. The name is a
+   field and the dot and Locate are glyphs: they answer on their own. */
+.survey-rail .survey-rail__marker-line:has(> .survey-rail__marker-main > .survey-marker-expand-spacer:active, > .survey-rail__marker-toggle:active) {
+  background: var(--pressed);
 }
 .survey-rail .survey-rail__marker-line.is-open .survey-marker-name-inline {
   font-weight: 600;
@@ -850,7 +903,7 @@
 }
 .survey-rail .survey-rail__entity-btn {
   appearance: none;
-  width: 24px;
+  width: calc(var(--sv-item-x) - var(--sv-grip-w));
   height: 22px;
   padding: 0 0 0 1px;
   display: inline-flex;
@@ -1196,20 +1249,24 @@
    repeated in the selector only to outrank that rule. */
 /* The same opt-out for the shared PRESS plate (states.css rule 1): a glyph
    or word presses by shrinking or brightening its ink. The category name and
-   chevron keep the press, because their line is the thing being pressed. */
+   chevron opt out too: their ROW paints the press, edge to edge (ROW STATES
+   above), so a press never darkens only part of the line. */
 #chrome-right-host .survey-rail .survey-rail__head button:not(:disabled):active,
 #chrome-right-host .survey-rail .survey-rail__foot > button:not(:disabled):active,
 #chrome-right-host .survey-rail .survey-rail__foot .survey-rail__foot-more:not(:disabled):active,
 #chrome-right-host .survey-rail .survey-rail__tabs button:not(:disabled):active,
-#chrome-right-host .survey-rail .survey-rail__list button:not(.survey-marker-category-main):not(.survey-marker-category-arrow):not(.survey-marker-entity-option):not(:disabled):active {
+#chrome-right-host .survey-rail .survey-rail__list button:not(.survey-marker-entity-option):not(:disabled):active {
   background-color: transparent !important;
 }
 
+/* The head / foot / tabs classes are doubled (2026-10-02): states.css 2c is
+   (1 id, 6 classes) and out-ranked the single-class lines, so a module tab
+   and the template title still showed a grey hover box. */
 @media (hover: hover) and (pointer: fine) {
-  #chrome-right-host .survey-rail .survey-rail__head button:not(:disabled):not([aria-disabled='true']):hover:not(:active),
-  #chrome-right-host .survey-rail .survey-rail__foot > button:not(:disabled):not([aria-disabled='true']):hover:not(:active),
-  #chrome-right-host .survey-rail .survey-rail__foot .survey-rail__foot-more:not(:disabled):not([aria-disabled='true']):hover:not(:active),
-  #chrome-right-host .survey-rail .survey-rail__tabs button:not(:disabled):not([aria-disabled='true']):hover:not(:active),
+  #chrome-right-host .survey-rail .survey-rail__head.survey-rail__head button:not(:disabled):not([aria-disabled='true']):hover:not(:active),
+  #chrome-right-host .survey-rail .survey-rail__foot.survey-rail__foot > button:not(:disabled):not([aria-disabled='true']):hover:not(:active),
+  #chrome-right-host .survey-rail .survey-rail__foot.survey-rail__foot .survey-rail__foot-more:not(:disabled):not([aria-disabled='true']):hover:not(:active),
+  #chrome-right-host .survey-rail .survey-rail__tabs.survey-rail__tabs button:not(:disabled):not([aria-disabled='true']):hover:not(:active),
   #chrome-right-host .survey-rail .survey-rail__list button:not(.survey-marker-entity-option):not(:disabled):not([aria-disabled='true']):hover:not(:active) {
     background-color: transparent !important;
   }
