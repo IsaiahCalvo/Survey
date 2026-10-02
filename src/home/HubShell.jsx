@@ -5,6 +5,7 @@ import { useState, useRef, useEffect, useLayoutEffect, useContext, createContext
 import { useAuth } from '../contexts/AuthContext';
 import AppIcon from '../Icons';
 import DismissBarrier from '../components/DismissBarrier';
+import { presenceInitials, PRESENCE_SELF_TINT, PRESENCE_INK } from '../components/presenceIdentity.js';
 
 const HUB_BUILD_STAMP = (
   typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STAMP__
@@ -49,8 +50,8 @@ export const Icon = ({ name, size = 14, color, contentType, style, className }) 
 );
 
 /* Round initials badge. */
-export const Avatar = ({ initials, color = 'var(--gold)', size = 22 }) => (
-  <div data-drag-keep-fill style={{ width: size, height: size, borderRadius: '50%', background: color, color: 'var(--accent-text)', display: 'grid', placeItems: 'center', fontSize: size * 0.42, fontWeight: 800, flex: 'none' }}>{initials}</div>
+export const Avatar = ({ initials, color = 'var(--gold)', ink = 'var(--accent-text)', size = 22 }) => (
+  <div data-drag-keep-fill style={{ width: size, height: size, borderRadius: '50%', background: color, color: ink, display: 'grid', placeItems: 'center', fontSize: size * 0.42, fontWeight: 800, flex: 'none' }}>{initials}</div>
 );
 
 /* Overlapping row of avatars — used to preview a team compactly.
@@ -162,9 +163,9 @@ export const EmptyState = ({ icon, line, description, actionLabel, actionIcon = 
   </div>
 );
 
-/* Word-initials, e.g. "Isaiah Calvo" -> "IC". */
-const initialsOf = (name) => (name || 'You')
-  .trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase() || 'YOU';
+/* Owner 2026-10-02: one initials rule app-wide (presenceIdentity.js), so the
+   account avatar reads the same as your face in the viewer's presence row. */
+const initialsOf = (name) => presenceInitials(name || 'You');
 
 const mobileNavModeFromUrl = () => {
   if (typeof window === 'undefined') return 'tabs';
@@ -234,7 +235,7 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
         title={email || name}
         style={{ display: 'flex', alignItems: 'center', gap: 7, width: '100%', background: open ? 'var(--ink-600)' : 'transparent', border: 0, borderRadius: 6, padding: '4px 6px', cursor: 'pointer', fontFamily: 'inherit', color: 'inherit', textAlign: 'left' }}
       >
-        <Avatar initials={initials} size={24} />
+        <Avatar initials={initials} color={PRESENCE_SELF_TINT} ink={PRESENCE_INK} size={24} />
         <div style={{ minWidth: 0 }}>
           <div className="name">{name}</div>
           <div className="who-meta">{resolvedMeta}</div>
@@ -254,7 +255,7 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
           />
           <div className="profile-menu-popup" role="menu" aria-label="Account menu" style={{ position: 'absolute', bottom: 'calc(100% + 6px)', left: 0, width: 270, background: 'var(--ink-700)', border: '1px solid var(--ink-500)', borderRadius: 10, boxShadow: '0 16px 40px rgba(0,0,0,0.5)', overflow: 'hidden', zIndex: 50 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12 }}>
-              <Avatar initials={initials} size={34} />
+              <Avatar initials={initials} color={PRESENCE_SELF_TINT} ink={PRESENCE_INK} size={34} />
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
                 {email ? <div style={{ fontSize: 11, color: 'var(--ink-200)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{email}</div> : null}
