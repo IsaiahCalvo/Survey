@@ -87,9 +87,10 @@ test('row count label counts pages, areas apart', () => {
   assert.equal(formatSpaceCountLabel(1, 0), '1 page');
   assert.equal(formatSpaceCountLabel(0, 0), '0 pages');
   const panel = read('src/sidebar/SpacesPanel.jsx');
-  // DELIBERATE CHANGE (Spaces chunk B, 2026-10-01): the row shows the whole
-  // "3 pages · 2 areas" label as its meta line instead of a bare page number.
-  assert.match(panel, /data-space-meta>\s*\{regionCountLabel\}\s*<\/span>/, 'the visible meta is the page / area label');
+  // DELIBERATE CHANGE (owner 2026-10-02, Spaces cards restored): the row
+  // shows the PAGE count as a plain muted figure again (the layout he had);
+  // the whole "3 pages · 2 areas" label is its accessible name and tooltip.
+  assert.match(panel, /data-space-meta\s+aria-label=\{regionCountLabel\}\s+\{\.\.\.tip\(regionCountLabel, 'below'\)\}\s*>\s*\{pageCount\}\s*<\/span>/, 'the visible count is the page count, named by the page / area label');
   assert.match(panel, /formatSpaceCountLabel\(pageCount, regionCount\)/);
 });
 

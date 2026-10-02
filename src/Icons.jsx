@@ -243,6 +243,20 @@ const ICON_RENDERERS = {
         <path d="M12 21l.75-3 6.1-6.1a1.6 1.6 0 0 1 2.25 2.25L15 20.25z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
+    // Owner 2026-10-02: a Spaces region card's "edit areas" button. Hugeicons
+    // Select 02 (MIT): a plus, a box drawn as edges, and three square corner
+    // handles. Replaces the Draw pencil on each region card. The handles keep
+    // Hugeicons' rx 1 (the owner asked for the exact glyph), so they carry
+    // data-icon-source="hugeicons" and the house 1/9 corner ratio skips them.
+    regionEdit: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M5 2V8M2 5H8" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M20 18L20 7M7 20H18M18 5H12M5 12V18" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="18" y="3" width="4" height="4" rx="1" stroke={color} strokeWidth="1.5" data-icon-source="hugeicons" />
+        <rect x="18" y="18" width="4" height="4" rx="1" stroke={color} strokeWidth="1.5" data-icon-source="hugeicons" />
+        <rect x="3" y="18" width="4" height="4" rx="1" stroke={color} strokeWidth="1.5" data-icon-source="hugeicons" />
+      </svg>
+    ),
     listChecks: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <path d="M3 7L5 9L9 5M3 17L5 19L9 15" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -450,8 +464,8 @@ const ICON_RENDERERS = {
     // Page view icons
     pages: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 19" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <rect x="3" y="3" width="9" height="13" rx="1" stroke={color} strokeWidth="1.5" />
-        <rect x="12" y="3" width="9" height="13" rx="1" stroke={color} strokeWidth="1.5" />
+        <rect x="3" y="3" width="9" height="13" rx="1" stroke={color} strokeWidth="1.5" data-icon-source="hugeicons" />
+        <rect x="12" y="3" width="9" height="13" rx="1" stroke={color} strokeWidth="1.5" data-icon-source="hugeicons" />
       </svg>
     ),
 
