@@ -42,8 +42,10 @@ test('double-click / double-tap in Pan and Text Select is recognised from pointe
   // window-capture pointerup (the pan quick-click effect uses the same handler
   // names earlier in the file). Widened from 6000 on integration: the merged
   // effect also bails on live form widgets and orders candidates by the hit
-  // layer's label, so the body is longer. Same claim, same handler.
-  assert.match(viewerSource, /const tracker = createDoubleTapTracker\(\);[\s\S]{0,9000}window\.addEventListener\('pointerup', onUp, true\)/);
+  // layer's label, so the body is longer. Same claim, same handler. Widened
+  // again 2026-10-02: it also notes, per press, whether the text was already
+  // selected (Drawboard rule 7: a double-click on unselected text only picks).
+  assert.match(viewerSource, /const tracker = createDoubleTapTracker\(\);[\s\S]{0,11000}window\.addEventListener\('pointerup', onUp, true\)/);
   assert.match(viewerSource, /window\.addEventListener\('pointercancel', onCancel, true\)/);
   // a gesture that moved is a pan / marquee / text drag and is discarded
   assert.match(viewerSource, /const slop = event\.pointerType === 'touch' \? 12 : 6;[\s\S]{0,200}tracker\.reset\(\); return;/);

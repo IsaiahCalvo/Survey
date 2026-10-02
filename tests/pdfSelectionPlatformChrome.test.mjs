@@ -28,7 +28,10 @@ test('text action bar owns a full-width scroll row with keyboard focus and narro
 // Desktop height, focus containment and glyph size are measured live in round-6-audit.spec.mjs.
 
 test('every selection mode can hit annotations while Text Select leaves blank page pixels to PDF text', () => {
-  assert.match(annotationLayerSource, /const isSelectTool = \(activeTool === 'select' \|\| activeTool === 'text-select'\)/);
+  // 2026-10-02 (Drawboard rule 3/4): the same gate also opens while a press
+  // on the selection is in hand under another tool (selectionGrabArmed), so
+  // the pin stops at the select-family half of the condition.
+  assert.match(annotationLayerSource, /const isSelectTool = \(activeTool === 'select' \|\| activeTool === 'text-select'/);
   assert.match(annotationLayerSource, /activeTool !== 'text-select' \|\| textSelectManipulationArmed \|\| interactionState !== 'idle'/);
   assert.match(viewerSource, /textSelectionLayerInteractive=\{activeTool === 'text-select' && textSelectManipulationPageNumber == null\}/);
   assert.match(viewerSource, /const svgInteractive = activeTool === 'select' \|\| activeTool === 'text-select'/);

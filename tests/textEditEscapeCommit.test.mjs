@@ -57,7 +57,9 @@ test('the Escape commit is synchronous so it beats the editor unmounting', () =>
   // first; it can null editingAnnotation in the same event. flushSync puts the
   // annotation into the page JSON before React tears the overlay down, which is
   // what makes the note survive a reload rather than only look committed.
-  assert.match(escapeHandlerBody(), /commitRef\.current\(\{\s*flush:\s*true\s*\}\)/);
+  // 2026-10-02: the commit also says it came from Escape, so the viewer keeps
+  // the box selected (Drawboard rule 10).
+  assert.match(escapeHandlerBody(), /commitRef\.current\(\{\s*flush:\s*true,\s*via:\s*'escape'\s*\}\)/);
 });
 
 test('an empty new box leaves nothing behind when Escape closes it', () => {

@@ -242,7 +242,10 @@ test('a pan click on a widget fills the field and selects nothing', () => {
   assert.ok(bail > 0, 'the pan quick-click must consult isLiveFormWidgetTarget');
   assert.ok(bail < hitTest,
     'the bail-out must precede the hit test, or an annotation merely overlapping the widget box switches tool mid-typing');
-  assert.ok(effect.includes('activateSelectFamilyMode'), 'sanity: this is the effect that switches tool');
+  // Owner 2026-10-02 (Drawboard rule 2): a Pan click picks the mark and Pan
+  // stays armed, so this effect no longer switches tool; it is still the one
+  // that picks.
+  assert.ok(effect.includes('setPendingSvgSelection'), 'sanity: this is the pan quick-pick effect');
 });
 
 test('the pan hover glow leaves a form control its own affordance', () => {

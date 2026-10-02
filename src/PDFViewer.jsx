@@ -320,7 +320,10 @@ import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/u
 import { usePageOperations } from './hooks/usePageOperations.js';
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
 import { getPageViewBase } from './utils/pageViewDocument.js';
-import { getSelectFamilyTransition, getToolSwitchSelectionClearReason, loadSelectMode, saveSelectMode, shouldBackdropPressDeselect, shouldEscapeDeselect } from './utils/selectModes.js';
+import { getSelectFamilyTransition, getToolSwitchSelectionClearReason, loadSelectMode, resolveEscape, resolveTextDoubleClick, resolveToolPress, saveSelectMode, shouldBackdropPressDeselect, shouldEscapeDeselect, shouldShowHoverHalo } from './utils/selectModes.js';
+import { classifyPagePress } from './utils/toolPressRouting.js';
+import { dropStashedSelection, getAllSelectedItemIds, hasAnyPageSelection, isItemSelected, pageHasSelection, setEraseSparedIds } from './utils/pageSelectionPresence.js';
+import { isSelectionGrabPress } from './hooks/useSelectionGrabHandoff.js';
 import { resolveToolBarGroup, TOOL_BAR_GROUPS } from './utils/toolbarRows.js';
 import { cycleLassoMode } from './utils/lassoSelection.js';
 import { pageNumberAfterOperation } from './utils/pageAnnotationReindex.js';
@@ -3288,7 +3291,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // viewer was still gated (input-while-gated) when the request arrived. The
   // matching RESPONSE is logged in the activeToolRef sync effect above; an
   // intent with no following tool-changed line means the switch was a no-op.
-  const setActiveToolLogged = useCallback((next) => {
+  // Drawboard rule 12 (utils/selectModes.js): HOW a switch was asked for
+  // decides whether the selection survives it. { tool, source } of the latest
+  // request; read once by the tool-switch effect below.
+  const toolSwitchRequestRef = useRef(null);
+  const setActiveToolLogged = useCallback((next, { source } = {}) => {
+    toolSwitchRequestRef.current = source && typeof next === 'string' ? { tool: next, source } : null;
     try {
       const requested = typeof next === 'function' ? '(updater-fn)' : String(next);
       const from = activeToolRef.current;
@@ -4007,6 +4015,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // changes, which matches our needs.
   const [pendingSvgHover, setPendingSvgHover] = useState(null);
   const clearAnnotationSelectionForContextChange = useCallback((reason = 'annotation-context-change') => {
+    dropStashedSelection(); // also a far page's kept pick (Drawboard rule 12)
     setAnnotationSelectionClearToken((token) => token + 1);
     setSelectedCalloutId(null);
     setSelectedCalloutIds((prev) => {
@@ -4033,11 +4042,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, []);
 
-  // UX: pan-mode quick-click → select annotation + auto-switch to Select tool.
+  // UX: pan-mode quick-click → select annotation; Pan stays armed (Drawboard rule 2, 2026-10-02).
   // Records pointer position on pointerdown; on pointerup, if the cursor moved
   // less than QUICK_CLICK_PX and we're in pan mode and an annotation (any
-  // type, callouts included) sits under the cursor, auto-switch to the Select
-  // tool and broadcast a selection command to the matching SVGAnnotationLayer.
+  // type, callouts included) sits under the cursor, broadcast a selection
+  // command to the matching SVGAnnotationLayer (the tool stays Pan).
   // Reference behavior (Drawboard): click on an annotation in pan mode
   // selects it; a drag pans.
   //
@@ -4098,28 +4107,41 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const dx = e.clientX - start.x;
       const dy = e.clientY - start.y;
       if (Math.hypot(dx, dy) > QUICK_CLICK_PX) return; // real pan, not a tap
+      // A press on the selection itself was handed to its move machinery
+      // (hooks/useSelectionGrabHandoff.js) — it is not a pick.
+      if (isSelectionGrabPress(e)) return;
       const hit = resolveAnnotationAt(e);
       if (!hit) return;
+      // Drawboard rules 2 / 8 / 12 (owner 2026-10-02, utils/selectModes.js):
+      // a click picks the mark and Pan STAYS armed (the selection still moves
+      // and resizes under Pan); Shift adds; a click on empty page only drops
+      // the pick.
       // UX: Phase 15 UAT-3 — pan-mode quick-click also picks up callouts,
-      // matching how every other annotation type behaves in pan mode. Same
-      // tool-switch to Select as the plain-annotation branch so followup
-      // drags / edits work naturally.
+      // matching how every other annotation type behaves in pan mode.
       if (hit.kind === 'callout' && hit.calloutId) {
         panQuickClickAutoSelectAtRef.current = Date.now();
-        activateSelectFamilyMode('rectangle');
         // w41: the callout REPLACES any mark still picked, or the two would
         // form a restyle group the user never made (review 2026-09-25).
-        setAnnotationSelectionClearToken((token) => token + 1);
-        setSelectedCalloutIds(new Set([hit.calloutId]));
+        if (!e.shiftKey) setAnnotationSelectionClearToken((token) => token + 1);
+        setSelectedCalloutIds((previous) => {
+          const next = new Set(e.shiftKey && previous ? previous : []);
+          next.add(hit.calloutId);
+          return next;
+        });
+        return;
+      }
+      if (hit.kind === 'page') {
+        if (!e.shiftKey && hasAnyPageSelection()) clearAnnotationSelectionForContextChange('pan-empty-click');
         return;
       }
       if (hit.kind !== 'annotation') return;
       if (typeof hit.annotationIndex !== 'number' || hit.pageNumber == null) return;
       panQuickClickAutoSelectAtRef.current = Date.now();
-      activateSelectFamilyMode('rectangle');
+      if (!e.shiftKey) setSelectedCalloutIds((previous) => (previous instanceof Set && previous.size === 0 ? previous : new Set()));
       setPendingSvgSelection({
         pageNumber: hit.pageNumber,
         annotationIndex: hit.annotationIndex,
+        addToSelection: e.shiftKey,
         tick: Date.now(),
       });
     };
@@ -4129,7 +4151,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       window.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('pointerup', onUp, true);
     };
-  }, [activeTool, activateSelectFamilyMode]);
+  }, [activeTool, clearAnnotationSelectionForContextChange]);
 
   // UX: Escape and grey-page backdrop clicks clear every selection mode alike.
   // UX 2026-10-02 (owner): which tools listen comes from the selection
@@ -4165,6 +4187,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const detail = { cancelled: false };
         window.dispatchEvent(new CustomEvent('survey-cancel-selection-gesture', { detail }));
         if (detail.cancelled) { event.preventDefault(); return; }
+        // Drawboard rule 10 (utils/selectModes.js resolveEscape): with
+        // nothing left to close, commit, cancel or deselect, Escape puts the
+        // tool down (Pan). A popover or a text edit consumed the key before
+        // this listener; a shape / polygon draft cancels itself on this same
+        // key (it marks it handled), so wait for the dispatch to finish.
+        const escapeAction = resolveEscape({
+          hasSelection: hasAnyPageSelection() || !!editingAnnotation,
+          tool: activeTool,
+        });
+        if (escapeAction === 'switch-to-pan') {
+          window.setTimeout(() => {
+            if (!event.defaultPrevented) setActiveToolLogged('pan', { source: 'escape' });
+          }, 0);
+          return;
+        }
       }
       if (event.key === 'Escape' && activeTool === 'text-select') {
         clearAnnotationSelectionForContextChange('text-select-escape');
@@ -4178,7 +4215,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (escapeDeselects) window.removeEventListener('keydown', clear, true);
       if (backdropDeselects) window.removeEventListener('pointerdown', clear, true);
     };
-  }, [activeTool, clearAnnotationSelectionForContextChange]);
+  }, [activeTool, clearAnnotationSelectionForContextChange, editingAnnotation, setActiveToolLogged]);
 
   const textSelectGestureActiveRef = useRef(false);
 
@@ -4283,11 +4320,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // getToolSwitchSelectionClearReason (utils/selectModes.js). Pan, Select and
   // Text Select keep it. Changing a property of the selected mark is not a
   // tool switch and never reaches this effect.
+  // Drawboard rule 12: a shortcut key or a category tab keeps it; a specific
+  // tool button (or any caller that does not say) drops it.
   const previousSelectionToolRef = useRef(activeTool);
   useEffect(() => {
     const previousTool = previousSelectionToolRef.current;
     previousSelectionToolRef.current = activeTool;
-    const reason = getToolSwitchSelectionClearReason(previousTool, activeTool);
+    const request = toolSwitchRequestRef.current;
+    toolSwitchRequestRef.current = null;
+    const source = request && request.tool === activeTool ? request.source : 'toolbar';
+    const reason = getToolSwitchSelectionClearReason(previousTool, activeTool, { source });
     if (reason) clearAnnotationSelectionForContextChange(reason);
   }, [activeTool, clearAnnotationSelectionForContextChange]);
 
@@ -4309,8 +4351,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Throttled via requestAnimationFrame so resolveAnnotationAt (composedPath
   // + elementsFromPoint + querySelectorAll fallback) runs at most once per
   // frame, not per mousemove event.
+  // Drawboard rule 2 (owner 2026-10-02, utils/selectModes.js): the shape tools
+  // (Rectangle, Ellipse, Line, Arrow, Callout) show the same blue halo over a
+  // mark a click would pick, with their own crosshair kept (no pointer hand).
+  const eraserWholeModeRef = useRef(false);
   useEffect(() => {
-    if (activeTool !== 'pan') {
+    const haloByPosition = activeTool === 'pan' || activeTool === 'eraser'
+      || (shouldShowHoverHalo(activeTool) && activeTool !== 'select' && activeTool !== 'text-select');
+    const pointerCursor = activeTool === 'pan';
+    if (!haloByPosition) {
       // Tool changed away from pan — clear any lingering hover state + cursor.
       setPendingSvgHover((prev) => (prev == null ? prev : null));
       if (document.body.style.cursor === 'pointer') {
@@ -4326,6 +4375,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const e = latestEvent;
       latestEvent = null;
       if (!e) return;
+      // A drawing tool mid-stroke shows no halo; the eraser previews only in
+      // Whole mode (Partial carves, it does not delete the mark).
+      if ((!pointerCursor && e.buttons !== 0) || (activeTool === 'eraser' && !eraserWholeModeRef.current)) {
+        if (lastKey !== '') {
+          lastKey = '';
+          setPendingSvgHover((prev) => (prev == null ? prev : null));
+        }
+        return;
+      }
       // UX 2026-09-15 — over a live form field the control owns the affordance:
       // its own caret / checkbox cursor, no annotation glow and no `pointer`
       // override, matching the click rule above (a widget click never selects).
@@ -4361,7 +4419,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // UX: pointer cursor over annotations in pan mode. document.body is
         // the lowest-priority target so Pdfjs-level pan cursor wins
         // everywhere else. Cleared on no-hit and on tool-change cleanup.
-        if (document.body.style.cursor !== 'pointer') {
+        if (pointerCursor && document.body.style.cursor !== 'pointer') {
           document.body.style.cursor = 'pointer';
         }
       } else {
@@ -5083,6 +5141,33 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return 'partial';
     }
   }); // 'partial' | 'entire'
+  // Drawboard rule 5 (owner 2026-10-02): in Whole mode the eraser previews
+  // what a press would delete with the hover halo (read by the hover effect).
+  eraserWholeModeRef.current = eraserMode === 'entire';
+  // Drawboard rule 5: an eraser press that is not on the selection drops the
+  // selection, and that stroke never erases what was selected (the press on
+  // the selection itself moves it — hooks/useSelectionGrabHandoff).
+  useEffect(() => {
+    if (activeTool !== 'eraser') {
+      setEraseSparedIds(null);
+      return undefined;
+    }
+    const onDown = (event) => {
+      if (!event.isTrusted || event.defaultPrevented) return;
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      if (!event.target?.closest?.('[data-page-number]')) return;
+      if (!hasAnyPageSelection()) {
+        setEraseSparedIds(null);
+        return;
+      }
+      setEraseSparedIds(getAllSelectedItemIds());
+      window.setTimeout(() => {
+        if (!isSelectionGrabPress(event)) clearAnnotationSelectionForContextChange('eraser-press');
+      }, 0);
+    };
+    window.addEventListener('pointerdown', onDown, true);
+    return () => window.removeEventListener('pointerdown', onDown, true);
+  }, [activeTool, clearAnnotationSelectionForContextChange]);
   const [eraserSize, setEraserSize] = useState(20); // Diameter in page pixels
   const [eraserCursorPos, setEraserCursorPos] = useState({ visible: false });
   const eraserCursorRef = useRef(null);
@@ -12900,8 +12985,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // landing while the second still rested started a fresh tap candidate —
     // two of those opened an editor in the middle of a pinch.
     const downPointers = createMultiTouchTapGate();
+    // Drawboard rule 7: was the mark under this press ALREADY selected? Read
+    // before the press itself can pick it.
+    const isHitSelected = (hit) => {
+      if (!hit || hit.pageNumber == null) return false;
+      if (hit.kind === 'callout') return isItemSelected(hit.pageNumber, hit.calloutId);
+      if (hit.kind !== 'annotation') return false;
+      const object = annotationsByPageRef.current?.[hit.pageNumber]?.objects?.[hit.annotationIndex];
+      return object ? isItemSelected(hit.pageNumber, getAnnotationRenderIdentity(object).annotationId) : false;
+    };
+    const pickedAtPress = new Map(); // pointerId -> was the mark under it already selected
     const onDown = (event) => {
       if (event.button != null && event.button !== 0) return;
+      let wasSelected = false;
+      if (pageHasSelection(Number(event.target?.closest?.('[data-page-number]')?.getAttribute?.('data-page-number')))) {
+        try { wasSelected = isHitSelected(resolveAnnotationAt(event)); } catch (_) { wasSelected = false; }
+      }
+      pickedAtPress.set(event.pointerId, wasSelected);
       downPointers.press(event.pointerId, { x: event.clientX, y: event.clientY });
       if (downPointers.size > 1) {
         // A second finger arrived: this gesture is a pinch (or a stray palm),
@@ -12941,6 +13041,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const slop = event.pointerType === 'touch' ? 12 : 6;
       if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > slop) { tracker.reset(); return; }
       const hit = resolveAnnotationAt(event);
+      hit.wasSelected = pickedAtPress.get(event.pointerId) === true;
+      pickedAtPress.delete(event.pointerId);
       const key = editEntryKeyForHit(hit);
       const { isDoubleTap, firstTapTool, target } = tracker.register({
         key,
@@ -12955,6 +13057,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       appDebug(`[EditEntryGesture] tool=${tool} pointer=${event.pointerType} page=${hit.pageNumber} kind=${hit.kind} editEntryKind=${hit.editEntryKind} key=${key} double=${isDoubleTap} firstTapTool=${firstTapTool} firstTapTarget=${editEntryKeyForHit(target)} firstTapEditEntryKind=${target?.editEntryKind ?? null}`);
       if (!isDoubleTap) return;
       if (!shouldHandleDoubleTapEntry({ firstTapTool, pointerType: event.pointerType })) return;
+      // Drawboard rule 7 (utils/selectModes.js resolveTextDoubleClick): a
+      // mouse double-click on text that was not selected before it began only
+      // picks it; selected text, or a double-tap, opens the editor.
+      if (target && (target.kind === 'callout' || target.editEntryKind === 'text')
+        && resolveTextDoubleClick({ tool: firstTapTool, wasSelected: target.wasSelected, pointerType: event.pointerType }) !== 'edit') return;
       // Where annotations OVERLAP, the two taps can resolve different things:
       // under Pan the hit test hand-walks SVG geometry (the layer is
       // pointer-events:none) while under Select it reads the real hit targets,
@@ -25818,6 +25925,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Drawboard rule 12 (utils/selectModes.js): a tool shortcut key keeps
+      // the selection, so every tool letter below switches through this.
+      const setActiveTool = (tool) => setActiveToolLogged(tool, { source: 'shortcut-key' });
       const activeElement = document.activeElement;
       const isFormField =
         activeElement &&
@@ -36259,6 +36369,8 @@ ${pageBlocks}
                                   // one only stamps data attributes inside the layer, so
                                   // Pan keeps owning every drag.
                                   panEditEntryEnabled={activeTool === 'pan'}
+                                  // Drawboard rule 12: the pick survives this page layer unmounting.
+                                  keepSelectionAcrossRemount
                                   selectionMode={selectionMode}
                                   lassoTouchOperation={lassoTouchOperation}
                                   lassoTouchMode={lassoTouchMode}
@@ -36440,6 +36552,32 @@ ${pageBlocks}
                                   }}
                                   onPointerDown={(e) => {
                                     if (Date.now() - editModeCooldownRef.current < 300) return;
+                                    // Drawboard rule 6 (owner 2026-10-02, utils/selectModes.js):
+                                    // with something selected this press makes no box — on text
+                                    // it edits that text, on another mark it picks it, on empty
+                                    // page it only drops the pick (the next press makes a box).
+                                    // A press on the selection itself never reaches here: it is
+                                    // handed to the selection (hooks/useSelectionGrabHandoff).
+                                    if (hasAnyPageSelection()) {
+                                      e.stopPropagation();
+                                      e.preventDefault();
+                                      const where = classifyPagePress(e.nativeEvent, { pageNumber, objects: pageAnnotations?.objects });
+                                      const press = resolveToolPress({ tool: 'text', target: where.target, hasSelection: true });
+                                      if (press.click === 'edit') {
+                                        requestAnnotationEditEntryRef.current?.(where.calloutId != null
+                                          ? { pageNumber, annotationIndex: where.calloutId, annotationType: 'callout' }
+                                          : { pageNumber, annotationIndex: where.index });
+                                      } else if (press.click === 'select' && where.calloutId != null) {
+                                        setAnnotationSelectionClearToken((token) => token + 1);
+                                        setSelectedCalloutIds(new Set([where.calloutId]));
+                                      } else if (press.click === 'select' && Number.isInteger(where.index)) {
+                                        setSelectedCalloutIds((previous) => (previous instanceof Set && previous.size === 0 ? previous : new Set()));
+                                        setPendingSvgSelection({ pageNumber, annotationIndex: where.index, tick: Date.now() });
+                                      } else {
+                                        clearAnnotationSelectionForContextChange('text-tool-empty-click');
+                                      }
+                                      return;
+                                    }
                                     e.stopPropagation();
                                     e.currentTarget.setPointerCapture(e.pointerId);
                                     const rect = e.currentTarget.getBoundingClientRect();
@@ -36479,28 +36617,10 @@ ${pageBlocks}
                                     const x = (Math.min(startX, e.clientX) - rect.left) / effectiveScale;
                                     const y = (Math.min(startY, e.clientY) - rect.top) / effectiveScale;
                                     const isDrag = dx > 10 || dy > 10;
-                                    // Click (not drag): check if an existing text annotation was hit
-                                    if (!isDrag && pageAnnotations?.objects) {
-                                      const hitIdx = pageAnnotations.objects.findIndex((obj) => {
-                                        const t = String(obj.type || '').toLowerCase();
-                                        if (t !== 'textbox' && t !== 'i-text' && t !== 'text') return false;
-                                        const l = obj.left || 0, tp = obj.top || 0;
-                                        const w = (obj.width || 0) * Math.abs(obj.scaleX ?? 1);
-                                        const h = (obj.height || 0) * Math.abs(obj.scaleY ?? 1);
-                                        return x >= l && x <= l + w && y >= tp && y <= tp + h;
-                                      });
-                                      if (hitIdx >= 0) {
-                                        const hitObj = pageAnnotations.objects[hitIdx];
-                                        setEditingAnnotation({
-                                          pageNumber,
-                                          index: hitIdx,
-                                          type: hitObj.type,
-                                          editType: 'text',
-                                          data: hitObj,
-                                        });
-                                        return;
-                                      }
-                                    }
+                                    // Drawboard rule 6: with nothing selected a click makes a NEW
+                                    // box in edit mode, even on top of existing text (editing
+                                    // that text is a double-click, or a click once something is
+                                    // selected — see onPointerDown).
                                     setEditingAnnotation({
                                       pageNumber,
                                       index: null,
@@ -36559,6 +36679,25 @@ ${pageBlocks}
                                     if (e.target?.closest?.('[data-counter-caret-popup]')) {
                                       appDebug('[CSeries popup] counter overlay #1 pointerdown bailed — target inside caret popup');
                                       return;
+                                    }
+                                    // Owner 2026-10-02 (Drawboard rules, utils/selectModes.js
+                                    // 'place' tools): a press on an existing mark picks it
+                                    // instead of dropping a pin on it; empty page drops a pin.
+                                    {
+                                      const where = classifyPagePress(e.nativeEvent, { pageNumber, objects: pageAnnotations?.objects });
+                                      const press = resolveToolPress({ tool: 'counter', target: where.target, hasSelection: hasAnyPageSelection() });
+                                      if (press.click === 'select') {
+                                        e.stopPropagation();
+                                        e.preventDefault();
+                                        if (where.calloutId != null) {
+                                          setAnnotationSelectionClearToken((token) => token + 1);
+                                          setSelectedCalloutIds(new Set([where.calloutId]));
+                                        } else if (Number.isInteger(where.index)) {
+                                          setSelectedCalloutIds((previous) => (previous instanceof Set && previous.size === 0 ? previous : new Set()));
+                                          setPendingSvgSelection({ pageNumber, annotationIndex: where.index, tick: Date.now() });
+                                        }
+                                        return;
+                                      }
                                     }
                                     // UX 2026-05-01 — runaway-pin guard. See ref decl
                                     // for full rationale. 200ms cooldown + immediate
@@ -36834,7 +36973,7 @@ ${pageBlocks}
                                     : setLiveTextEditBounds}
                                   onRichTextEditorChange={setRichTextEditor}
                                   onCalloutTextStyleChange={handleCalloutTextStyleChange}
-                                  onEditCommit={(updatedJSON) => {
+                                  onEditCommit={(updatedJSON, commitMeta) => {
                                     // UX: Phase 15 UAT-1 restructure — reactCalloutId
                                     // routes callout commit through fromFabricGroup.
                                     // updatedJSON.objects[0] is the edited textbox in
@@ -36934,6 +37073,8 @@ ${pageBlocks}
                                       editModeCooldownRef.current = Date.now();
                                       newlyCreatedCalloutIdsRef.current.delete(editingAnnotation.reactCalloutId);
                                       setEditingAnnotation(null);
+                                      // Drawboard rule 10: Escape commits and keeps it selected.
+                                      if (commitMeta?.via === 'escape') setSelectedCalloutIds(new Set([editingAnnotation.reactCalloutId]));
                                       return;
                                     }
                                     handleSaveAnnotations(pageNumber, updatedJSON, {
@@ -36943,6 +37084,17 @@ ${pageBlocks}
                                     });
                                     editModeCooldownRef.current = Date.now();
                                     setEditingAnnotation(null);
+                                    // Drawboard rule 10 (utils/selectModes.js): Escape commits
+                                    // the text and keeps the box selected (the tool stays);
+                                    // the next Escape deselects, the one after puts the tool down.
+                                    if (commitMeta?.via === 'escape') {
+                                      const committedIndex = editingAnnotation.isNewText
+                                        ? (updatedJSON?.objects?.length ?? 0) - 1
+                                        : editingAnnotation.index;
+                                      if (Number.isInteger(committedIndex) && committedIndex >= 0) {
+                                        setPendingSvgSelection({ pageNumber, annotationIndex: committedIndex, tick: Date.now() });
+                                      }
+                                    }
                                   }}
                                   onEditCancel={() => {
                                     // UX 2026-04-25 — Esc on a brand-new callout removes

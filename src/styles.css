@@ -2885,6 +2885,16 @@ textarea:focus-visible,
   cursor: crosshair;
 }
 
+/* Drawboard rule 11 (owner 2026-10-02, utils/selectModes.js): while the
+   selection is being moved, resized or rotated its frame and handles step out
+   of the way, and come back on release. Opacity (not display) so the grabber
+   being dragged keeps its pointer capture. */
+[data-selection-gesture="true"] .svg-selection-overlay,
+[data-selection-gesture="true"] [data-group-selection-bbox],
+[data-selection-gesture="true"] [data-callout-handle-overlay] {
+  opacity: 0;
+}
+
 /* Owner 2026-10-02 (test plan U2, "it gets a grey box around it"): the tool
    bar's icons - Pan, Select, the group icons, every tool beside them, Select's
    Box / Lasso / Text and the Areas tools - no longer paint a hover plate, a
