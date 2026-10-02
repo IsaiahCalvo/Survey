@@ -158,7 +158,20 @@
   --mobile-page-pill-text: calc(var(--mobile-page-input-w) + 2px + 3.531px + 2.875px + (3 * var(--mobile-page-digit-w)));
   --mobile-page-pill-chrome: 40px;
   --mobile-page-pill-slack: 3.378px;
-  --mobile-page-pill-w: calc(var(--mobile-page-pill-text) + var(--mobile-page-pill-chrome) + var(--mobile-page-pill-slack));
+  /* Owner 2026-10-02 (third verdict on the zoom menu: "the dropdown doesn't
+     look integrated with the page navigation and chevron. It's bigger than
+     it ... Put it back"): the zoom menu is EXACTLY the pill's width, edges
+     flush, so it reads as the pill growing down. The menu's widest row is
+     [-] 4000% [+]: two 28px header steppers + "4000%" in the rows' 14px face
+     (~46px in the iPhone's SF digits, 49.8 in Chromium's fallback) + 1px a
+     side + the menu's 3px padding a side + its 1px border a side
+     = 28 + 48 + 28 + 6 + 2 = 112px. At the fraction's own 96 the reading
+     would get 38px, too little for "4000%" at any calm spacing, so the PILL
+     takes the menu's width instead (the extra 16px goes to the fraction's tap
+     zone) and the two can never differ: the pill is the wider of what the
+     fraction needs and what the menu needs, and the menu is the pill. */
+  --mobile-page-menu-w: 112px;
+  --mobile-page-pill-w: max(calc(var(--mobile-page-pill-text) + var(--mobile-page-pill-chrome) + var(--mobile-page-pill-slack)), var(--mobile-page-menu-w));
 
   /* The centred page cluster: prev chevron, pill, next chevron, 2px apart.
      Everything that has to clear the cluster reads it from here, so growing
@@ -567,16 +580,22 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    caret's centre exactly on 12 - the section's own centre line.
    Owner 2026-10-02 (second verdict on the zoom pill: "Put the chevron back"):
    the zoom % that briefly replaced this chevron is gone from the pill again;
-   the number lives in the menu, between minus and plus. */
+   the number lives in the menu, between minus and plus.
+   Owner 2026-10-02 ("the chevron is not centred in its segment"): measured,
+   the caret's ink centre sat 2.0px LEFT of the segment the eye sees. The
+   segment runs from the hairline to the pill's own right border, but the
+   button stopped 3px short of that border (the pill's padding), and the old
+   4/5 padding centred the caret on the button only. The button now reaches
+   the pill's border (27px, -3px margin over the pill's padding), so its box
+   IS the visible segment, and an even 4/4 padding after the 1px hairline
+   puts the caret's centre on the segment's centre: 1 + 4 + (18 - 11) / 2 +
+   11 / 2 = 14 = 1 + 26 / 2. The hit area (::after) follows the box. */
 .mobile-pdf-header__page-chevron {
   position: relative;
   height: 100%;
-  min-width: 24px;
-  /* 4px left, 5px right: the 1px border-left is part of this box, so an even
-     5/5 padding centred the caret on the CONTENT box and left it 0.5px right
-     of the box the user sees. 4 + 1px border = 5 on both sides, and the caret
-     lands on the button's own centre line. */
-  padding: 0 5px 0 4px;
+  min-width: 27px;
+  margin-right: -3px;
+  padding: 0 4px;
   display: grid;
   place-items: center;
   color: inherit;
@@ -589,17 +608,20 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    in sympathy with the pill's gold outline. Both are gone; the hairline stays
    --border whether the pill is open or shut. */
 
-/* The menu GROWS OUT OF THE PILL (owner 2026-10-02). It is the pill's child,
-   centred under it: its top border lies on the pill's bottom border (top:
-   100% of the pill's padding box), and it wears the pill's surface, border
-   and 10px radius, so the pill's bottom edge becomes the hairline between
-   the page reading and the menu. The menu is a little wider than the 96px
-   pill (its rows need ~120), so its top corners round too.
+/* The menu GROWS OUT OF THE PILL (owner 2026-10-02). It is the pill's child
+   and EXACTLY the pill's width (owner, third verdict: "It's bigger than it.
+   You had it working before. Put it back"): it starts right under the pill's
+   bottom border, spans the pill edge to edge (left -1px and a width of
+   100% + 2px reach over the pill's own 1px border on each side), and wears
+   the pill's surface, border and 10px radius with its top edge square. The
+   pill's bottom border is the hairline between the page reading and the
+   menu, and the two read as one object - the pill grown downward. The pill
+   is sized so every row fits (--mobile-page-menu-w), so the menu never needs
+   to be wider than it.
 
-   Motion. Open: the menu unrolls DOWN out of the pill and WIDENS from the
-   pill's own width to its full width (one clip that starts as exactly the
-   pill's footprint, zero tall), while its rows slide 6px down into place and
-   it fades in over the first 80ms - 180ms, ease-out.
+   Motion. Open: the menu unrolls DOWN out of the pill (a clip that opens from
+   the top, the pill's own width all the way), while its rows slide 6px down
+   into place and it fades in over the first 80ms - 180ms, ease-out.
    Close (owner 2026-10-02: "in reverse it's not [okay]. It needs to be
    smoother"): the exact mirror. The same properties animate back over the
    same 180ms on the same curve reversed - cubic-bezier(0.2, 0, 0, 1)
@@ -611,25 +633,24 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    cut. prefers-reduced-motion: instant, both ways. */
 .mobile-pdf-header__zoom-menu {
   position: absolute;
-  top: 100%;
-  left: 50%;
-  min-width: calc(100% + 2px);
-  width: max-content;
+  top: calc(100% + 1px);
+  left: -1px;
+  width: calc(100% + 2px);
   box-sizing: border-box;
-  padding: 2px 4px 4px;
+  padding: 2px 3px 3px;
   display: flex;
   flex-direction: column;
   gap: 0;
   color: var(--text-2);
   background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-top: 0;
+  border-radius: 0 0 10px 10px;
   box-shadow: 0 10px 18px -8px rgba(0, 0, 0, 0.5);
-  transform: translateX(-50%);
   z-index: 7200;
-  /* Closed: a zero-tall clip exactly the pill's width (the side insets leave
-     --mobile-page-pill-w visible, centred). */
-  clip-path: inset(0 calc(50% - (var(--mobile-page-pill-w) / 2)) 100% calc(50% - (var(--mobile-page-pill-w) / 2)));
+  /* Closed: a zero-tall clip along the pill's bottom edge. The sides reach
+     past the box so the open shadow is never cut. */
+  clip-path: inset(0 -24px 100% -24px);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -683,21 +704,21 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   justify-content: space-between;
   gap: 0;
   margin-bottom: 2px;
-  padding: 4px 2px;
+  padding: 4px 0;
   border-bottom: 1px solid var(--border);
 }
 
 /* The live reading: the fit rows' own 14/400 (--sheet-row-text) in their calm
    grey, never gold, with tabular digits so "53%" -> "66%" does not jiggle.
-   It sits centred in a fixed 54px slot between the two steppers, so neither
-   stepper nor the menu's width moves from 1% to 4000%: "4000%" measures
-   43.6px in Chromium and ~46 in the iPhone's SF digits, plus 4px a side. A
-   whole-pixel slot keeps the menu (2 + 8 + 4 + 28 + 54 + 28 = 124) on whole
-   pixels, so its border stays crisp when it is centred under the pill. */
+   It fills the space between the two steppers (112 - 2 - 6 - 28 - 28 = 48px)
+   and is centred in it. The menu is the pill's fixed width, so that slot is
+   fixed too and nothing moves from 1% to 4000%. "4000%" is ~46px in the
+   iPhone's SF digits; the minus and plus ink sits 9px inside their 28px
+   buttons, so even at 4000% there is ~10px of air either side of the number. */
 .mobile-pdf-header__zoom-percent {
-  flex: 0 0 auto;
-  width: 54px;
-  padding: 0 4px;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 1px;
   color: var(--text-2);
   font: var(--sheet-row-text);
   font-variant-numeric: tabular-nums;
@@ -752,15 +773,19 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    read quiet - 14/400 (--sheet-row-text) in the calm grey, 10px side inset,
    the way the sheets' running rows read. They were 15/400 white, with the
    chosen one in gold. The chosen row is marked by its check and a step up to
-   --text-1, never by an accent colour. */
+   --text-1, never by an accent colour.
+   Owner 2026-10-02 (menu exactly the pill's width): 9px a side and an 8px
+   minimum gap, so "Fit height" + its 14px tick (~60 + 8 + 14 + 18 = 100 of
+   the 104px inside the 112px menu) sits calmly, and the words start and the
+   tick ends on the same lines as the minus and plus ink above them. */
 .mobile-pdf-header__zoom-fits > button {
   height: var(--sheet-menu-item-h);
   min-height: var(--sheet-menu-item-h);
-  padding: 0 8px 0 10px;
+  padding: 0 9px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   color: var(--text-2);
   background: transparent;
   border: 0;
