@@ -40,6 +40,17 @@ import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { extractPdfOutlineBookmarks } from '../utils/bookmarkOutline';
 import { resolvePinchCommitCursor, resolvePinchEndTransition } from '../utils/mobilePinchGesture';
 import { createPanMomentumRunner, createPanVelocityTracker } from '../utils/panMomentum';
+import {
+  ELASTIC_ZOOM_EASE_MS,
+  capBounceVelocity,
+  criticallyDampedSpring,
+  easeInOutSine,
+  inverseRubberBand,
+  prefersReducedMotion,
+  rubberBand,
+  rubberClamp,
+  rubberScale,
+} from '../utils/mobileElasticEdges.js';
 import { trackSurveyAnalyticsEvent } from '../utils/surveyAnalytics';
 import PdfjsTextLayer from './PdfjsTextLayer';
 import { getPageViewBase, getPageViewSizes, pageViewKey, pageViewUprightKey } from '../utils/pageViewDocument.js';
@@ -495,6 +506,10 @@ const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, l
   // Retire the tile: hide it and hand its backing store back. Used only where no
   // tile should be visible at all.
   const dropTile = useCallback(() => {
+    // Hide it in the same frame: an opaque (alpha:false) canvas whose backing
+    // store was just released paints as a BLACK box until React re-renders
+    // with display:none — seen right after a pinch commit on the phone.
+    if (canvasRef.current) canvasRef.current.style.display = 'none';
     releaseRasterCanvas(canvasRef.current);
     setTile(null);
   }, []);
@@ -1213,6 +1228,17 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const panCoastOriginRef = useRef({ left: 0, top: 0 });
   const mobileTouchRef = useRef(null);
   const suppressMobileTouchUntilRef = useRef(0);
+  // Phone edge rubber band (owner 2026-10-02, Drawboard parity; math and the
+  // measured numbers live in src/utils/mobileElasticEdges.js). elasticRef is a
+  // purely visual leftover transform drawn over the committed layout while
+  // fingers are off the glass: { ax, ay } (scroll-space pivot), z (scale),
+  // tx/ty (px), plus `anim` while it eases/springs back to identity.
+  // panExcessRef is the one-finger pan's finger travel past an edge.
+  const elasticRef = useRef(null);
+  const elasticRafRef = useRef(0);
+  const panExcessRef = useRef({ x: 0, y: 0 });
+  const touchPanElasticRef = useRef(false);
+  const coastElasticRef = useRef(null);
   const layoutMetrics = useMemo(() => resolveLayoutMetrics(isMobileSurface), [isMobileSurface]);
   const layoutMetricsRef = useRef(layoutMetrics);
   layoutMetricsRef.current = layoutMetrics;
@@ -1875,6 +1901,23 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
     el.scrollLeft = Math.min(Math.max(0, p.left), maxLeft);
     el.scrollTop = Math.min(Math.max(0, p.top), maxTop);
+    // Phone rubber band: whatever the browser's own clamp did differently from
+    // the planned scroll is folded into the visual leftover (release spring) or
+    // the live gesture's scroll origin (mid-pinch rebase), so it never shows as
+    // a jump.
+    const shiftX = el.scrollLeft - p.left;
+    const shiftY = el.scrollTop - p.top;
+    const elastic = p.elastic ? elasticRef.current : null;
+    if (elastic && !gestureRef.current) {
+      elastic.tx += shiftX;
+      elastic.ty += shiftY;
+      if (elastic.anim) { elastic.anim.tx0 += shiftX; elastic.anim.ty0 += shiftY; }
+    }
+    const liveGesture = p.elastic ? gestureRef.current : null;
+    if (liveGesture?.elastic) {
+      liveGesture.originScrollLeft = el.scrollLeft;
+      liveGesture.originScrollTop = el.scrollTop;
+    }
     if (nativeAnchorMarkerRef.current) {
       const error = Math.hypot(
         el.scrollLeft - Math.min(Math.max(0, p.left), maxLeft),
@@ -1940,6 +1983,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       containerWRef.current,
     );
     const targetScale = Math.min(maxScale, Math.max(minimumScale, requestedScale));
+    // Phone pinch (owner 2026-10-02, Drawboard parity): the caller already
+    // applied the zoom resistance, so the preview SHOWS the requested scale and
+    // the scroll past an edge with rubber band; the release commits the clamped
+    // targetScale/left/top and eases the difference away (elasticRef).
+    const elastic = Boolean(gesture.elastic);
+    const displayScale = elastic && Number.isFinite(requestedScale) && requestedScale > 0
+      ? requestedScale
+      : targetScale;
     const originContentX = Number(gesture.originContentX) || 0;
     const originContentY = Number(gesture.originContentY) || 0;
     const pageIndex = pageUnderContentY(originContentY, oldScale);
@@ -1954,38 +2005,75 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // release.
     const anchorX = leftAt(pageIndex, oldScale) + fracX * page.w * oldScale;
     const anchorY = topAt(pageIndex, oldScale) + fracY * page.h * oldScale;
-    const newX = leftAt(pageIndex, targetScale) + fracX * page.w * targetScale;
-    const newY = topAt(pageIndex, targetScale) + fracY * page.h * targetScale;
+    const pointXAt = (sc) => leftAt(pageIndex, sc) + fracX * page.w * sc;
+    const pointYAt = (sc) => topAt(pageIndex, sc) + fracY * page.h * sc;
+    const newX = pointXAt(targetScale);
+    const newY = pointYAt(targetScale);
     const requestedCursor = resolvePinchCommitCursor(gesture);
-    const maxLeft = getHorizontalScrollMax(targetScale);
-    const predictedHeight = (() => {
+    // The scroll height the layout memo will produce at sc: padTop + one gap
+    // above every page and one below the last (n + 1 gaps) + padBottom. The old
+    // (n - 1)-gap prediction was 2 * gap * scale short, so at the very bottom of
+    // a document the first pinch frame clamped the page DOWN by that much
+    // (24 px at 100%, 72 px at 300%) — the bottom-edge "snap" (owner
+    // 2026-10-02).
+    const predictedMaxTopAt = (sc) => {
       const metrics = layoutMetricsRef.current;
-      let height = metrics.padTop + metrics.padBottom;
-      dims.forEach((dim, index) => {
-        height += dim.h * targetScale;
-        if (index < dims.length - 1) height += metrics.gap * targetScale;
+      const gapPx = metrics.gap * sc;
+      let height = metrics.padTop + gapPx + metrics.padBottom;
+      dims.forEach((dim) => {
+        height += dim.h * sc + gapPx;
       });
       // With strip room the bottom centring pad is part of the content too
       // (resolveVerticalPlacement), so the predicted scroll range matches.
-      return height + padTopFor(targetScale)
-        + (topRoomRef.current > 0 ? centerPadFor(targetScale) : 0);
-    })();
-    const maxTop = Math.max(0, predictedHeight - containerHRef.current);
-    const left = Math.min(Math.max(0, newX - requestedCursor.x), maxLeft);
-    const top = Math.min(Math.max(0, newY - requestedCursor.y), maxTop);
-    const actualCursorX = newX - left;
-    const actualCursorY = newY - top;
+      const total = height + padTopFor(sc) + (topRoomRef.current > 0 ? centerPadFor(sc) : 0);
+      return Math.max(0, total - containerHRef.current);
+    };
+    // A finger resting beside a narrow page (fracX clamped to its edge) keeps
+    // that gutter point under the finger on the phone instead of pulling the
+    // page edge to it.
+    const gutterX = elastic ? (originContentX - anchorX) : 0;
+    const freeLeftAt = (sc) => pointXAt(sc) - requestedCursor.x + gutterX * (sc / oldScale);
+    const freeTopAt = (sc) => pointYAt(sc) - requestedCursor.y;
+    const maxLeft = getHorizontalScrollMax(targetScale);
+    const maxTop = predictedMaxTopAt(targetScale);
+    const left = Math.min(Math.max(0, freeLeftAt(targetScale)), maxLeft);
+    const top = Math.min(Math.max(0, freeTopAt(targetScale)), maxTop);
+    let shownX = newX - left;
+    let shownY = newY - top;
+    if (elastic) {
+      const shownLeft = rubberClamp(freeLeftAt(displayScale), 0,
+        getHorizontalScrollMax(displayScale), containerWRef.current);
+      const shownTop = rubberClamp(freeTopAt(displayScale), 0,
+        predictedMaxTopAt(displayScale), containerHRef.current);
+      shownX = pointXAt(displayScale) - shownLeft;
+      shownY = pointYAt(displayScale) - shownTop;
+    }
+    const originScrollLeft = Number.isFinite(gesture.originScrollLeft)
+      ? gesture.originScrollLeft
+      : originContentX - gesture.originCursorX;
+    const originScrollTop = Number.isFinite(gesture.originScrollTop)
+      ? gesture.originScrollTop
+      : originContentY - gesture.originCursorY;
     // The transform origin (anchorX/Y) sits at scroll-space anchor - start
-    // scroll = anchor - (originContent - originCursor) on screen; translate it
-    // to where the commit will put it.
+    // scroll on screen; translate it to where the preview shows it.
     return {
       targetScale,
+      displayScale,
       left,
       top,
       anchorX,
       anchorY,
-      translateX: actualCursorX - gesture.originCursorX - (anchorX - originContentX),
-      translateY: actualCursorY - gesture.originCursorY - (anchorY - originContentY),
+      translateX: shownX - (anchorX - originScrollLeft),
+      translateY: shownY - (anchorY - originScrollTop),
+      // Release leftover (elastic only): the anchor's committed scroll-space
+      // position, where it is shown on screen, and the content point under the
+      // fingers in the committed layout (a mid-gesture rebase keeps following it).
+      committedAnchorX: newX,
+      committedAnchorY: newY,
+      shownX,
+      shownY,
+      fingerContentX: newX + gutterX * (targetScale / oldScale),
+      fingerContentY: newY,
     };
   }, [getHorizontalScrollMax, isMobileSurface]);
 
@@ -2070,7 +2158,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   }, []);
 
   useLayoutEffect(() => {
-    const liveScale = scale * liveZoom;
+    // A phone zoom-limit overshoot easing home keeps showing its own scale, so
+    // the readout does not blink to the limit for one frame at the commit.
+    const easing = !gestureRef.current && elasticRef.current ? elasticRef.current.z : 1;
+    const liveScale = scale * liveZoom * easing;
     window.dispatchEvent(new CustomEvent(LIVE_ZOOM_EVENT, {
       detail: {
         viewerId,
@@ -2081,13 +2172,114 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     }));
   }, [liveZoom, scale, viewerId]);
 
+  // ---- phone rubber band: the visual leftover eases / springs home ----------
+  // Drawn by the render below as the content node's transform while no gesture
+  // is live, so annotations (inside the page divs) stay glued to the page.
+  const publishElasticZoom = useCallback((z) => {
+    const committed = scaleRef.current;
+    window.dispatchEvent(new CustomEvent(LIVE_ZOOM_EVENT, {
+      detail: {
+        viewerId,
+        scale: committed * z,
+        percentage: Math.round(committed * z * 100),
+        active: Math.abs(z - 1) > 1e-4,
+      },
+    }));
+  }, [viewerId]);
+
+  const stopElastic = useCallback((render = true) => {
+    if (elasticRafRef.current) cancelAnimationFrame(elasticRafRef.current);
+    elasticRafRef.current = 0;
+    const had = Boolean(elasticRef.current);
+    const zoomed = had && Math.abs((elasticRef.current.z || 1) - 1) > 1e-4;
+    elasticRef.current = null;
+    if (zoomed) publishElasticZoom(1);
+    if (had && render) setLiveGestureFrame((frame) => frame + 1);
+  }, [publishElasticZoom]);
+
+  const stepElastic = useCallback((now) => {
+    elasticRafRef.current = 0;
+    const e = elasticRef.current;
+    if (!e?.anim) return;
+    const a = e.anim;
+    if (!Number.isFinite(a.t0)) a.t0 = now;
+    let done;
+    if (a.kind === 'ease') {
+      // Zoom limit: Drawboard eases scale AND position home together in ~250 ms
+      // (ease-in-out), pivoting on the fingers' point so it stays put.
+      const u = (now - a.t0) / ELASTIC_ZOOM_EASE_MS;
+      const k = 1 - easeInOutSine(u);
+      e.z = Math.exp(Math.log(a.z0) * k);
+      e.tx = a.tx0 * k;
+      e.ty = a.ty0 * k;
+      done = u >= 1;
+    } else {
+      // Edge: critically damped spring (never passes the edge).
+      const t = Math.max(0, now - a.t0) / 1000;
+      const sx = criticallyDampedSpring(a.tx0, a.vx0, t);
+      const sy = criticallyDampedSpring(a.ty0, a.vy0, t);
+      e.z = 1;
+      e.tx = sx.x;
+      e.ty = sy.x;
+      done = Math.abs(sx.x) < 0.2 && Math.abs(sy.x) < 0.2 && Math.abs(sx.v) < 6 && Math.abs(sy.v) < 6;
+    }
+    if (a.kind === 'ease') publishElasticZoom(done ? 1 : e.z);
+    if (done) elasticRef.current = null;
+    else elasticRafRef.current = requestAnimationFrame(stepElastic);
+    setLiveGestureFrame((frame) => frame + 1);
+  }, [publishElasticZoom]);
+
+  // Start (or retarget) the return home from the CURRENT leftover.
+  const releaseElastic = useCallback(({ kind = 'spring', vx = 0, vy = 0 } = {}) => {
+    const e = elasticRef.current;
+    if (!e) return;
+    const zoomed = Math.abs(e.z - 1) > 1e-4;
+    if (!zoomed && Math.abs(e.tx) < 0.2 && Math.abs(e.ty) < 0.2 && !vx && !vy) {
+      stopElastic();
+      return;
+    }
+    e.anim = {
+      kind: zoomed ? 'ease' : kind,
+      t0: NaN,
+      z0: e.z,
+      tx0: e.tx,
+      ty0: e.ty,
+      vx0: vx,
+      vy0: vy,
+    };
+    if (!elasticRafRef.current) elasticRafRef.current = requestAnimationFrame(stepElastic);
+  }, [stepElastic, stopElastic]);
+
+  // A finger landing on a page that is still springing home catches it where
+  // it is. Returns the shown offset (px) so the new gesture can start from it;
+  // a mid-zoom return cannot be caught and finishes at once.
+  const catchElastic = useCallback(() => {
+    const e = elasticRef.current;
+    if (!e) return { x: 0, y: 0 };
+    if (elasticRafRef.current) cancelAnimationFrame(elasticRafRef.current);
+    elasticRafRef.current = 0;
+    if (Math.abs(e.z - 1) > 1e-4) {
+      stopElastic();
+      return { x: 0, y: 0 };
+    }
+    e.anim = null;
+    return { x: e.tx, y: e.ty };
+  }, [stopElastic]);
+
+  useEffect(() => () => {
+    if (elasticRafRef.current) cancelAnimationFrame(elasticRafRef.current);
+    elasticRafRef.current = 0;
+  }, []);
+
   const commitGesture = useCallback(() => {
     const g = gestureRef.current;
     const lz = liveZoomRef.current;
     gestureRef.current = null;
     liveZoomRef.current = 1;
     setZoomInteraction(false);
-    if (!g || Math.abs(lz - 1) < 1e-4) { setLiveZoom(1); return; }
+    // A phone pinch can end with only a two-finger pan or an overshoot, so it
+    // always commits; the wheel path keeps its old no-op shortcut.
+    if (!g || (!g.elastic && Math.abs(lz - 1) < 1e-4)) { setLiveZoom(1); return; }
     const oldScale = scaleRef.current;
     const preview = resolveGesturePreview(g, oldScale * lz);
     if (!preview) { setLiveZoom(1); return; }
@@ -2103,13 +2295,46 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       cursorX: Math.round(commitCursor.x),
       cursorY: Math.round(commitCursor.y),
     });
+    if (g.elastic) {
+      // What the fingers were shown minus what is committed, pivoting on the
+      // fingers' point: drawn as a transform and eased away (no jump).
+      elasticRef.current = {
+        ax: preview.committedAnchorX,
+        ay: preview.committedAnchorY,
+        z: preview.displayScale / newScale,
+        tx: preview.shownX - (preview.committedAnchorX - preview.left),
+        ty: preview.shownY - (preview.committedAnchorY - preview.top),
+        anim: null,
+      };
+      releaseElastic();
+    }
+    if (Math.abs(newScale - oldScale) < 1e-6) {
+      // Same scale (a two-finger pan, or pinching on at a limit): no layout
+      // commit will run the anchor effect, so place the scroll here.
+      const el = scrollerRef.current;
+      if (el) {
+        const planLeft = preview.left;
+        const planTop = preview.top;
+        el.scrollLeft = planLeft;
+        el.scrollTop = planTop;
+        const e = g.elastic ? elasticRef.current : null;
+        if (e) {
+          e.tx += el.scrollLeft - planLeft;
+          e.ty += el.scrollTop - planTop;
+          if (e.anim) { e.anim.tx0 = e.tx; e.anim.ty0 = e.ty; }
+        }
+      }
+      setLiveZoom(1);
+      setLiveGestureFrame((frame) => frame + 1);
+      return;
+    }
     // Use the same clamped target scroll that the live CSS preview showed.
     // Re-deriving from the already-transformed viewport caused the release snap.
-    pendingAnchorRef.current = { left: preview.left, top: preview.top };
+    pendingAnchorRef.current = { left: preview.left, top: preview.top, elastic: Boolean(g.elastic) };
     scaleRef.current = newScale;
     setScale(newScale);
     setLiveZoom(1);
-  }, [resolveGesturePreview, setZoomInteraction]);
+  }, [releaseElastic, resolveGesturePreview, setZoomInteraction]);
 
   const checkpointPinchGesture = useCallback((touchState, center, distance) => {
     const gesture = gestureRef.current;
@@ -2122,24 +2347,46 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // zoom interaction. The next touch frame starts from this smaller layout,
     // so WebKit never downscales one enormous compositor layer for the whole
     // 800%-to-fit gesture.
-    pendingAnchorRef.current = { left: preview.left, top: preview.top };
+    const elastic = Boolean(gesture.elastic);
+    pendingAnchorRef.current = { left: preview.left, top: preview.top, elastic };
     scaleRef.current = preview.targetScale;
     setScale(preview.targetScale);
-    liveZoomRef.current = 1;
-    setLiveZoom(1);
+    // Phone: keep showing the same (possibly past-the-limit) scale after the
+    // rebase, so the zoom resistance carries on without a step.
+    const shownZoom = elastic ? preview.displayScale / preview.targetScale : 1;
+    liveZoomRef.current = shownZoom;
+    setLiveZoom(shownZoom);
 
     touchState.startDistance = Math.max(1, distance);
+    touchState.rawBaseScale = elastic && Number.isFinite(touchState.rawScale)
+      ? touchState.rawScale
+      : preview.targetScale;
     touchState.lastCenterX = center.x;
     touchState.lastCenterY = center.y;
-    gestureRef.current = {
-      originScale: preview.targetScale,
-      originCursorX: center.x,
-      originCursorY: center.y,
-      currentCursorX: center.x,
-      currentCursorY: center.y,
-      originContentX: preview.left + center.x,
-      originContentY: preview.top + center.y,
-    };
+    gestureRef.current = elastic
+      ? {
+        // Keep following the SAME content point (even one pulled past an
+        // edge) so the rubber band carries straight on through the rebase.
+        elastic: true,
+        originScale: preview.targetScale,
+        originCursorX: center.x,
+        originCursorY: center.y,
+        currentCursorX: center.x,
+        currentCursorY: center.y,
+        originContentX: preview.fingerContentX,
+        originContentY: preview.fingerContentY,
+        originScrollLeft: preview.left,
+        originScrollTop: preview.top,
+      }
+      : {
+        originScale: preview.targetScale,
+        originCursorX: center.x,
+        originCursorY: center.y,
+        currentCursorX: center.x,
+        currentCursorY: center.y,
+        originContentX: preview.left + center.x,
+        originContentY: preview.top + center.y,
+      };
     postNativePdfDiagnostic('pinch-rebase', {
       fromPct: Math.round(fromScale * 100),
       toPct: Math.round(preview.targetScale * 100),
@@ -2229,6 +2476,40 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     el.style.userSelect = armed ? 'none' : '';
   }, []);
 
+  // Phone one-finger pan past an edge (owner 2026-10-02, Drawboard parity):
+  // the scroll stops at the edge and the rest of the finger travel moves the
+  // page with iOS rubber-band resistance, drawn as a transform (no layout).
+  const applyElasticPan = useCallback((dx, dy) => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const excess = panExcessRef.current;
+    const maxLeft = getHorizontalScrollMax(scaleRef.current);
+    const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+    // Start from the in-range scroll: only finger travel may build up excess,
+    // never a whole-pixel scrollLeft sitting a hair past a fractional max.
+    const freeLeft = Math.min(Math.max(0, el.scrollLeft), maxLeft) + excess.x - dx;
+    const freeTop = Math.min(Math.max(0, el.scrollTop), maxTop) + excess.y - dy;
+    const nextLeft = Math.min(Math.max(0, freeLeft), maxLeft);
+    const nextTop = Math.min(Math.max(0, freeTop), maxTop);
+    if (Math.abs(el.scrollLeft - nextLeft) > 0.01) el.scrollLeft = nextLeft;
+    if (Math.abs(el.scrollTop - nextTop) > 0.01) el.scrollTop = nextTop;
+    excess.x = freeLeft - nextLeft;
+    excess.y = freeTop - nextTop;
+    if (Math.abs(excess.x) < 0.01) excess.x = 0;
+    if (Math.abs(excess.y) < 0.01) excess.y = 0;
+    if (!excess.x && !excess.y && !elasticRef.current) return;
+    elasticRef.current = {
+      ax: 0,
+      ay: 0,
+      z: 1,
+      tx: -rubberBand(excess.x, containerWRef.current),
+      ty: -rubberBand(excess.y, containerHRef.current),
+      anim: null,
+    };
+    if (!excess.x && !excess.y) elasticRef.current = null;
+    setLiveGestureFrame((frame) => frame + 1);
+  }, [getHorizontalScrollMax]);
+
   const flushPan = useCallback(() => {
     if (panRafRef.current) {
       cancelAnimationFrame(panRafRef.current);
@@ -2238,10 +2519,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const delta = panDeltaRef.current;
     panDeltaRef.current = { x: 0, y: 0 };
     if (!el || (!delta.x && !delta.y)) return;
+    if (touchPanElasticRef.current) { applyElasticPan(delta.x, delta.y); return; }
     el.scrollLeft -= delta.x;
     el.scrollTop -= delta.y;
     clampHorizontalScroll();
-  }, [clampHorizontalScroll]);
+  }, [applyElasticPan, clampHorizontalScroll]);
 
   const schedulePan = useCallback((dx, dy) => {
     panDeltaRef.current.x += dx;
@@ -2253,11 +2535,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const delta = panDeltaRef.current;
       panDeltaRef.current = { x: 0, y: 0 };
       if (!el) return;
+      if (touchPanElasticRef.current) { applyElasticPan(delta.x, delta.y); return; }
       el.scrollLeft -= delta.x;
       el.scrollTop -= delta.y;
       clampHorizontalScroll();
     });
-  }, [clampHorizontalScroll]);
+  }, [applyElasticPan, clampHorizontalScroll]);
 
   const restorePanInteraction = useCallback(() => {
     setPanInteraction(spacePanRef.current || Boolean(panPointerRef.current));
@@ -2278,6 +2561,33 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   panMomentumHooksRef.current.clamp = clampHorizontalScroll;
   panMomentumHooksRef.current.restore = restorePanInteraction;
   panMomentumHooksRef.current.mark = markPanCoast;
+  // Phone only: a flick that runs into an edge hands its speed to the edge
+  // spring (the page travels a little past and settles back) instead of
+  // stopping dead. Desktop coasts never set coastElasticRef.
+  panMomentumHooksRef.current.bounce = (clipX, clipY) => {
+    const coast = coastElasticRef.current;
+    if (!coast) return;
+    let vx = 0;
+    let vy = 0;
+    if (!coast.kickedX && Math.abs(clipX) > 0.5 && coast.vx) {
+      coast.kickedX = true;
+      vx = capBounceVelocity(coast.vx * 1000, containerWRef.current);
+    }
+    if (!coast.kickedY && Math.abs(clipY) > 0.5 && coast.vy) {
+      coast.kickedY = true;
+      vy = capBounceVelocity(coast.vy * 1000, containerHRef.current);
+    }
+    if (!vx && !vy) return;
+    const current = elasticRef.current && Math.abs(elasticRef.current.z - 1) < 1e-4 ? elasticRef.current : null;
+    elasticRef.current = { ax: 0, ay: 0, z: 1, tx: current?.tx || 0, ty: current?.ty || 0, anim: null };
+    releaseElastic({ kind: 'spring', vx, vy });
+  };
+  panMomentumHooksRef.current.velocity = (vx, vy) => {
+    const coast = coastElasticRef.current;
+    if (!coast) return;
+    if (vx) coast.vx = vx;
+    if (vy) coast.vy = vy;
+  };
 
   const getPanMomentumRunner = useCallback(() => {
     if (panMomentumRef.current) return panMomentumRef.current;
@@ -2289,11 +2599,17 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       scrollBy: (dx, dy) => {
         const el = scrollerRef.current;
         if (!el) return;
+        const beforeLeft = el.scrollLeft;
+        const beforeTop = el.scrollTop;
         el.scrollLeft += dx;
         el.scrollTop += dy;
         panMomentumHooksRef.current.clamp?.();
+        panMomentumHooksRef.current.bounce?.(dx - (el.scrollLeft - beforeLeft), dy - (el.scrollTop - beforeTop));
       },
-      onFrame: ({ left, top }) => { panMomentumHooksRef.current.mark?.(left, top); },
+      onFrame: ({ left, top, vx, vy }) => {
+        panMomentumHooksRef.current.mark?.(left, top);
+        panMomentumHooksRef.current.velocity?.(vx, vy);
+      },
       onSettle: () => { panMomentumHooksRef.current.restore?.(); },
     });
     return panMomentumRef.current;
@@ -2322,7 +2638,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // Release a pan drag while still moving and the page keeps gliding, decaying
   // to rest on the same curve mobile has always used. Bounds are respected by
   // the runner: a coast into an edge stops instead of banking velocity.
-  const startPanInertia = useCallback((fingerVelocityX, fingerVelocityY) => {
+  const startPanInertia = useCallback((fingerVelocityX, fingerVelocityY, { elastic = false } = {}) => {
+    coastElasticRef.current = elastic
+      ? { vx: fingerVelocityX, vy: fingerVelocityY, kickedX: false, kickedY: false }
+      : null;
     const el = scrollerRef.current;
     panCoastOriginRef.current = { left: el?.scrollLeft || 0, top: el?.scrollTop || 0 };
     markPanCoast(panCoastOriginRef.current.left, panCoastOriginRef.current.top);
@@ -2504,22 +2823,42 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const rect = el.getBoundingClientRect();
       const center = getTouchCenter(touches, rect);
       const distance = Math.max(1, getTouchDistance(touches));
+      // Phone rubber band (owner 2026-10-02): edges and zoom limits give with
+      // resistance during the pinch. Reduced motion keeps the hard clamp.
+      const elastic = !prefersReducedMotion();
+      // A one-finger pull that becomes a pinch, or fingers landing on a page
+      // still springing home, start from what is shown: the content point
+      // under the fingers is taken past the edge by the inverse rubber band.
+      const caught = catchElastic();
+      const pulled = panExcessRef.current;
+      panExcessRef.current = { x: 0, y: 0 };
+      touchPanElasticRef.current = false;
+      const freeShiftX = elastic ? (pulled.x || inverseRubberBand(-caught.x, containerWRef.current)) : 0;
+      const freeShiftY = elastic ? (pulled.y || inverseRubberBand(-caught.y, containerHRef.current)) : 0;
+      if (!elastic && (caught.x || caught.y)) stopElastic();
       mobileTouchRef.current = {
         mode: 'pinch',
         startDistance: distance,
+        rawBaseScale: scaleRef.current,
+        rawScale: scaleRef.current,
         lastCenterX: center.x,
         lastCenterY: center.y,
         minPresentedLiveZoom: 1,
       };
       gestureRef.current = {
+        elastic,
         originScale: scaleRef.current,
         originCursorX: center.x,
         originCursorY: center.y,
         currentCursorX: center.x,
         currentCursorY: center.y,
-        originContentX: el.scrollLeft + center.x,
-        originContentY: el.scrollTop + center.y,
+        originContentX: el.scrollLeft + freeShiftX + center.x,
+        originContentY: el.scrollTop + freeShiftY + center.y,
+        originScrollLeft: el.scrollLeft,
+        originScrollTop: el.scrollTop,
       };
+      // The leftover is now part of the live preview.
+      if (elasticRef.current) { elasticRef.current = null; }
       liveZoomRef.current = 1;
       setLiveZoom(1);
       if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
@@ -2576,6 +2915,22 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // to an ordinary page pan (inertia and all). A finger that never travels
     // lifts with the native click intact and focuses/toggles the field.
     const WIDGET_TAP_TO_PAN_SLOP_PX = 8;
+
+    // Phone pan rubber band (owner 2026-10-02): a finger landing on a page
+    // still springing home catches it where it is, as the finger excess past
+    // the edge. Reduced motion keeps the hard edge.
+    const beginElasticPan = () => {
+      const elastic = !prefersReducedMotion();
+      const caught = catchElastic();
+      touchPanElasticRef.current = elastic;
+      panExcessRef.current = elastic
+        ? {
+          x: inverseRubberBand(-caught.x, containerWRef.current),
+          y: inverseRubberBand(-caught.y, containerHRef.current),
+        }
+        : { x: 0, y: 0 };
+      if (!elastic && (caught.x || caught.y)) stopElastic();
+    };
     let widgetTapCandidate = null;
     let widgetTapPromotedToPan = false;
 
@@ -2608,6 +2963,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         // mouse panning release with identical numbers.
         panVelocityRef.current.start(touch.clientX, touch.clientY, performance.now());
         mobileTouchRef.current = { mode: 'pan' };
+        beginElasticPan();
         setPanInteraction(true);
         setMobileTouchMode('pan');
         return;
@@ -2641,6 +2997,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         event.stopPropagation();
         panVelocityRef.current.start(startX, startY, performance.now());
         mobileTouchRef.current = { mode: 'pan' };
+        beginElasticPan();
         setPanInteraction(true);
         setMobileTouchMode('pan');
         const { dx, dy } = panVelocityRef.current.move(touch.clientX, touch.clientY, performance.now());
@@ -2660,17 +3017,22 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         const committedScale = scaleRef.current;
         const maxScale = isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE;
         const distance = Math.max(1, getTouchDistance(event.touches));
-        let nextLiveZoom = distance / touchState.startDistance;
         const minimumScale = getMinimumScaleForLayout(
           dimsPtRef.current,
           containerHRef.current,
           layoutMetricsRef.current,
           containerWRef.current,
         );
-        nextLiveZoom = Math.max(
-          minimumScale / committedScale,
-          Math.min(maxScale / committedScale, nextLiveZoom),
-        );
+        // The fingers' own zoom, carried across mid-gesture rebases. Past the
+        // min/max the phone shows it with growing resistance (Drawboard:
+        // max x1.8, min x0.43 ceilings); reduced motion clamps hard.
+        const rawBaseScale = Number.isFinite(touchState.rawBaseScale) ? touchState.rawBaseScale : committedScale;
+        const rawScale = rawBaseScale * (distance / touchState.startDistance);
+        touchState.rawScale = rawScale;
+        const shownScale = gestureRef.current?.elastic
+          ? rubberScale(rawScale, minimumScale, maxScale)
+          : Math.max(minimumScale, Math.min(maxScale, rawScale));
+        const nextLiveZoom = shownScale / committedScale;
 
         // Deep zoom keeps the tight 0.67 checkpoint that stopped WKWebView
         // dying at 800%; ordinary zoom levels only rebase past the hard floor,
@@ -2691,6 +3053,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
               'aria-label',
               `PDF live zoom floor ${touchState.minPresentedLiveZoom.toFixed(2)}`,
             );
+          }
+          if (gestureRef.current?.elastic) {
+            // Rebase on where the fingers are NOW, so the next frame (which
+            // starts from this centre) continues without a one-frame step.
+            gestureRef.current.currentCursorX = center.x;
+            gestureRef.current.currentCursorY = center.y;
           }
           checkpointPinchGesture(touchState, center, distance);
           return;
@@ -2774,7 +3142,18 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         // keeps its original, untapered release — the feel the desktop copy
         // was matched to.
         const { vx: velocityX, vy: velocityY } = panVelocityRef.current.release(performance.now(), { idleTaper: false });
-        startPanInertia(velocityX, velocityY);
+        // Let go while pulled past an edge: that axis springs home from rest
+        // (no glide); the other axis glides as usual.
+        const elasticPan = touchPanElasticRef.current;
+        const pulled = panExcessRef.current;
+        touchPanElasticRef.current = false;
+        panExcessRef.current = { x: 0, y: 0 };
+        if (elasticPan && elasticRef.current) releaseElastic({ kind: 'spring' });
+        startPanInertia(
+          elasticPan && pulled.x ? 0 : velocityX,
+          elasticPan && pulled.y ? 0 : velocityY,
+          { elastic: elasticPan },
+        );
       }
     };
 
@@ -2834,10 +3213,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         target.removeEventListener('pointercancel', stopPinchPointer, true);
       });
       mobileTouchRef.current = null;
+      touchPanElasticRef.current = false;
+      panExcessRef.current = { x: 0, y: 0 };
       setMobileTouchMode(null);
       cancelPanInertia();
     };
-  }, [applyWheelZoom, cancelPanInertia, checkpointPinchGesture, commitGesture, flushPan, isMobileSurface, schedulePan, setPanInteraction, setZoomInteraction, startPanInertia]);
+  }, [applyWheelZoom, cancelPanInertia, catchElastic, checkpointPinchGesture, commitGesture, flushPan, isMobileSurface, releaseElastic, schedulePan, setPanInteraction, setZoomInteraction, startPanInertia, stopElastic]);
 
   // Mobile long-press → context menu (Phase D parity). Isolated, additive,
   // and passive: this effect only OBSERVES touches (it never preventDefaults or
@@ -3323,10 +3704,19 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       : `${zoomGesture.originContentX}px ${zoomGesture.originContentY - layout.padTop}px`;
     if (preview) {
       livePreview = preview;
-      renderedLiveZoom = preview.targetScale / scale;
+      // displayScale is targetScale except on the phone past a zoom limit.
+      renderedLiveZoom = preview.displayScale / scale;
       liveTranslateX = preview.translateX;
       liveTranslateY = preview.translateY;
     }
+  } else if (elasticRef.current) {
+    // Phone rubber band: the page pulled past an edge or zoom limit, easing
+    // home over the committed layout (pivot in the content node's own box).
+    const elastic = elasticRef.current;
+    liveTransformOrigin = `${elastic.ax}px ${elastic.ay - layout.padTop}px`;
+    renderedLiveZoom = elastic.z;
+    liveTranslateX = elastic.tx;
+    liveTranslateY = elastic.ty;
   }
 
   // The page list does not depend on the live zoom (the content node's
