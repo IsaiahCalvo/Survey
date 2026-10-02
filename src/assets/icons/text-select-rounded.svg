@@ -1,14 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-labelledby="title desc">
   <title id="title">Text select</title>
   <desc id="desc">A text selection cursor with a rounded stroke cursor at the bottom right.</desc>
-
-  <g transform="translate(12 12.6) scale(1 1.0025) translate(-11.525 -12.65)">
-  <g transform="translate(.55 .2) scale(.75)" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!--
+    2026-10-02 optical balance (owner: Text Select "looks even smaller").
+    The part you read, the I-beam in its text field, was drawn at 75% scale:
+    16.5 x 13.5 units of ink against Box Select's 19.5 x 19.5. The glyph only
+    reached the 20-unit box through the small corner cursor. On top of that
+    Icons.jsx pushed it down a fixed 2 CSS px, which is 3 grid units at the
+    16px tool bar size and 4 at the 12px phone strip, so it also sat low.
+    Now the I-beam and field are 90% scale: 19.5 x 15.9 units, as wide as the
+    Box Select cursor. The corner cursor stays the same size (30%). The ink is
+    centred on the grid (2.25..22 x 2..22) and Icons.jsx no longer nudges it.
+    Strokes: 1.5 / 0.9 = 1.667 and 1.5 / 0.3 = 5, both the house 1.5.
+  -->
+  <g transform="translate(1.2 -.85) scale(.9)" fill="none" stroke="currentColor" stroke-width="1.667" stroke-linecap="round" stroke-linejoin="round">
     <path d="M9 6V18M9 6C9 4.89543 9.89543 4 11 4M9 6C9 4.89543 8.10457 4 7 4M9 18C9 19.1046 9.89543 20 11 20M9 18C9 19.1046 8.10457 20 7 20" />
     <path d="M12 8H18C19.8856 8 20.8284 8 21.4142 8.58579C22 9.17157 22 10.1144 22 12C22 13.8856 22 14.8284 21.4142 15.4142C20.8284 16 19.8856 16 18 16H12M6 16C4.11438 16 3.17157 16 2.58579 15.4142C2 14.8284 2 13.8856 2 12C2 10.1144 2 9.17157 2.58579 8.58579C3.17157 8 4.11438 8 6 8" />
   </g>
-
-  <g transform="translate(14.5 15.45) scale(.3)">
+  <g transform="translate(14.95 14.95) scale(.3)">
     <path
       d="M9.80282 4.62973L15.8364 6.99069C19.3164 8.35243 21.0564 9.03329 20.9987 10.1133C20.941 11.1934 19.1251 11.6886 15.4933 12.6791C14.412 12.974 13.8713 13.1215 13.4964 13.4963C13.1215 13.8712 12.9741 14.4119 12.6791 15.4933C11.6887 19.125 11.1934 20.9409 10.1134 20.9986C9.03335 21.0563 8.35249 19.3163 6.99075 15.8363L4.62979 9.80276C3.20411 6.15934 2.49127 4.33764 3.41448 3.41442C4.3377 2.49121 6.15941 3.20405 9.80282 4.62973Z"
       fill="none"
@@ -17,6 +26,5 @@
       stroke-linecap="round"
       stroke-linejoin="round"
     />
-  </g>
   </g>
 </svg>

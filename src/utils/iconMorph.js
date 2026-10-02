@@ -48,7 +48,8 @@ const POLYGON_NODES = [[14.71, 4.92], [5.91, 7.13], [4.77, 16.73], [13.59, 19.08
 /**
  * name → { source, transform?, offsetPx?, paths: [{ d, transform?, dash? }] }.
  * `source` names where the strings come from; `offsetPx` is a CSS-pixel
- * nudge the icon's own style adds (textSelect's translateY(2px)).
+ * nudge the icon's own style adds. None does today: textSelect's old
+ * translateY(2px) was folded into its asset in the 2026-10-02 optical pass.
  */
 export const MORPH_ICONS = Object.freeze({
   pen: {
@@ -127,20 +128,17 @@ export const MORPH_ICONS = Object.freeze({
   },
   lassoSelect: {
     source: 'src/assets/icons/lasso-select-rounded.svg',
-    transform: 'translate(12 12) scale(.9828 .9901) translate(-12.1 -12.225)',
     paths: [
-      { d: 'M8.75 19.08C5.18 18.65 2.51 17.51 2.5 15.46c-.01-1.7 1.75-2.81 2.45-4.68.45-1.2.38-2.29.58-3.12C6.28 4.52 8.78 2.7 12.3 2.7c4.48 0 7.77 3.64 8.72 9.12', dash: [1.5, 2.1] },
-      { d: CURSOR, transform: 'translate(8.1 8.15) scale(.65)' },
+      { d: 'M8.75 19.08C5.18 18.65 2.51 17.51 2.5 15.46c-.01-1.7 1.75-2.81 2.45-4.68.45-1.2.38-2.29.58-3.12C6.28 4.52 8.78 2.7 12.3 2.7c3.808 0 6.756 2.63 8.138 6.784', dash: [3, 2.1] },
+      { d: CURSOR, transform: 'translate(6.13 6.13) scale(.72)' },
     ],
   },
   textSelect: {
     source: 'src/assets/icons/text-select-rounded.svg',
-    offsetPx: [0, 2],
-    transform: 'translate(12 12.6) scale(1 1.0025) translate(-11.525 -12.65)',
     paths: [
-      { d: 'M9 6V18M9 6C9 4.89543 9.89543 4 11 4M9 6C9 4.89543 8.10457 4 7 4M9 18C9 19.1046 9.89543 20 11 20M9 18C9 19.1046 8.10457 20 7 20', transform: 'translate(.55 .2) scale(.75)' },
-      { d: 'M12 8H18C19.8856 8 20.8284 8 21.4142 8.58579C22 9.17157 22 10.1144 22 12C22 13.8856 22 14.8284 21.4142 15.4142C20.8284 16 19.8856 16 18 16H12M6 16C4.11438 16 3.17157 16 2.58579 15.4142C2 14.8284 2 13.8856 2 12C2 10.1144 2 9.17157 2.58579 8.58579C3.17157 8 4.11438 8 6 8', transform: 'translate(.55 .2) scale(.75)' },
-      { d: CURSOR, transform: 'translate(14.5 15.45) scale(.3)' },
+      { d: 'M9 6V18M9 6C9 4.89543 9.89543 4 11 4M9 6C9 4.89543 8.10457 4 7 4M9 18C9 19.1046 9.89543 20 11 20M9 18C9 19.1046 8.10457 20 7 20', transform: 'translate(1.2 -.85) scale(.9)' },
+      { d: 'M12 8H18C19.8856 8 20.8284 8 21.4142 8.58579C22 9.17157 22 10.1144 22 12C22 13.8856 22 14.8284 21.4142 15.4142C20.8284 16 19.8856 16 18 16H12M6 16C4.11438 16 3.17157 16 2.58579 15.4142C2 14.8284 2 13.8856 2 12C2 10.1144 2 9.17157 2.58579 8.58579C3.17157 8 4.11438 8 6 8', transform: 'translate(1.2 -.85) scale(.9)' },
+      { d: CURSOR, transform: 'translate(14.95 14.95) scale(.3)' },
     ],
   },
 });

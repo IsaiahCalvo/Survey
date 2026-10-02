@@ -73,15 +73,25 @@ test('Select family keeps distinct approved icons without changing its transitio
   // groups.
   for (const [fileName, expectedHash] of [
     ['selection-cursor-rounded.svg', '0a438b4cf39a44e85607b9cd78d813a7e10ea2c0a49fa111b14ec77b2b9853ae'],
-    ['lasso-select-rounded.svg', '9fe83afeef1c13c09aa557728badf71696341213210b5b2924e1becba8e50d22'],
-    ['text-select-rounded.svg', '7f75647ee4d328ec68eb867dfde598019fe1537db3861a7014273b812a80192e'],
+    ['lasso-select-rounded.svg', '4426e3be98a00ae3d9c69644ccfa970007fa3a7f69f5bddb093b7977be6f988e'],
+    ['text-select-rounded.svg', '206d7331013546f58733846df696525c106d42b574ed2cca4135caa58e3b5843'],
   ]) {
     const bytes = readFileSync(new URL(`../src/assets/icons/${fileName}`, import.meta.url));
     assert.equal(createHash('sha256').update(bytes).digest('hex'), expectedHash, fileName);
   }
 
+  // DELIBERATE ASSERTION CHANGE (2026-10-02, Select-trio optical balance; owner:
+  // "Lasso looks smaller than Rectangular, Text Select looks even smaller").
+  // The lasso and text-select hashes move because both assets were redrawn to
+  // read the same size as Box Select: the lasso's cursor 0.65 -> 0.72 scale
+  // with longer dashes, the text-select I-beam and field 0.75 -> 0.9 scale and
+  // centred on the grid (its old fixed 2px CSS drop is gone). Box Select is
+  // untouched. Still guarded: three distinct, locked assets. The old pin on
+  // text-select's outer translate(12 12.6) group is replaced by the placement
+  // that matters — its I-beam group drawn at 0.9, centred, with no outer group.
   const textSelectSource = readFileSync(new URL('../src/assets/icons/text-select-rounded.svg', import.meta.url), 'utf8');
-  assert.match(textSelectSource, /translate\(12 12\.6\)/);
+  assert.match(textSelectSource, /<g transform="translate\(1\.2 -\.85\) scale\(\.9\)"/);
+  assert.doesNotMatch(textSelectSource, /translate\(12 12\.6\)/);
 });
 
 test('the last Select-family mode survives reload and ignores invalid storage', () => {
