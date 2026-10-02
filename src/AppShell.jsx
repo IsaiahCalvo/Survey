@@ -106,6 +106,29 @@ function RailLiveZoomText({ fallback, viewerId }) {
   return <>{livePercentage ?? fallback}%</>;
 }
 
+// Owner 2026-10-02 (footer lock: "these numbers need to be able to add digits
+// and decrease digits without shifting anything around"): every number in the
+// rail footer sits in a box as wide as its widest real value, so a value
+// gaining or losing a digit never moves the buttons beside it. The widest
+// value is laid down invisibly in the same grid cell as the real one - the box
+// is then exactly that wide in whatever font the platform draws, with
+// tabular figures so every digit is the same width. The value is centred in
+// it. An edit field passed as `field` fills the same box, so opening it does
+// not move anything either.
+// Desktop zoom tops out at 4000% (PdfjsViewerContainer MAX_SCALE 40).
+const FOOTER_ZOOM_WIDEST = '4000%';
+function FooterSlot({ widest, field = null, children = null }) {
+  return (
+    <span data-footer-slot style={{ position: 'relative', display: 'inline-grid', flexShrink: 0, alignSelf: 'stretch', alignItems: 'center', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+      {[].concat(widest).map((text) => (
+        <span key={text} aria-hidden="true" style={{ gridArea: '1 / 1', visibility: 'hidden' }}>{text}</span>
+      ))}
+      {field || <span style={{ gridArea: '1 / 1', justifySelf: 'center' }}>{children}</span>}
+    </span>
+  );
+}
+const footerSlotFieldStyle = { position: 'absolute', inset: 0, width: '100%', boxSizing: 'border-box' };
+
 // Lazy boundary: the dashboard paints without pulling in the viewer (and its
 // fabric / annotation / Excel weight). The viewer chunk fetches the first time
 // a PDF tab is opened.
@@ -4182,12 +4205,30 @@ export default function App({ devPreviewReturnTab = null }) {
                 color: disabled ? 'var(--text-disabled)' : 'var(--text-2)',
                 cursor: disabled ? 'not-allowed' : 'pointer'
               });
+              // The expanded row lives inside the open panel (see below). The
+              // panel reports its collapse to this component one frame after
+              // it changes, so until an OPEN panel element exists the rail
+              // keeps drawing the vertical stack - never a row over nothing.
+              const railPanelEl = rightRailCollapsed
+                ? null
+                : document.querySelector('#chrome-right-host .survey-rail:not(.is-collapsed)');
+              // Footer lock (owner 2026-10-02): the zoom and page values and
+              // their edit fields share one box style, so opening a field puts
+              // it exactly where the value was. The zoom reads 11px in the
+              // open panel's row (the rail's smallest text) and 10px in the
+              // collapsed 48px stack. The page box is as wide as this
+              // document's page count ("120" -> 3 digits) for as long as the
+              // document is open, so paging 9 -> 10 -> 100 moves nothing.
+              const footerFieldBoxStyle = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxSizing: 'content-box', height: 'var(--chrome-field-h)', padding: '0 2px', borderRadius: 'var(--chrome-radius)', lineHeight: 1, fontSize: railPanelEl ? '11px' : '10px', fontVariantNumeric: 'tabular-nums' };
+              const pageSlotWidest = '0'.repeat(String(Math.max(1, Number(api.numPages) || 0)).length);
               // Editable zoom % — Walkthru-style: plain "100%" by default,
               // click swaps to an input (it only mounts while editing so the
               // resting layout stays a single centered value). The handlers
               // clamp to 1-4000, the PDF engine's actual zoom range.
               const zoomValue = isEditingRailZoom ? (
                 <>
+                <span style={{ ...footerFieldBoxStyle, fontFamily: FONT_FAMILY, fontWeight: '500' }}>
+                <FooterSlot widest={FOOTER_ZOOM_WIDEST} field={(
                 <input
                   ref={api.zoomInputRef}
                   type="text"
@@ -4223,8 +4264,10 @@ export default function App({ devPreviewReturnTab = null }) {
                   /* UX 2026-09-22: while you type, the box is the same height
                      and the same ink as the value it replaced, so the rail does
                      not twitch when it swaps in. */
-                  style={{ width: '36px', background: 'transparent', color: 'var(--text-2)', border: 'none', padding: 0, margin: 0, fontSize: '10px', fontFamily: FONT_FAMILY, fontWeight: '500', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', textAlign: 'center', outline: 'none', lineHeight: 1 }}
+                  style={{ ...footerSlotFieldStyle, background: 'transparent', color: 'var(--text-2)', border: 'none', padding: 0, margin: 0, fontSize: 'inherit', fontFamily: FONT_FAMILY, fontWeight: '500', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', textAlign: 'center', outline: 'none', lineHeight: 1 }}
                 />
+                )} />
+                </span>
                 <DismissBarrier active insideRefs={railFieldRefs} mode="typing" onDismiss={dismissRailFields} dismissOnEscape={false} />
                 </>
               ) : (
@@ -4239,18 +4282,22 @@ export default function App({ devPreviewReturnTab = null }) {
                      and the house radius (6). It measured 12px tall with a 3px
                      corner — a hit target half the size of every other field in
                      the app, in a column that also held a 13px one. */
-                  style={{ background: 'transparent', border: 'none', color: 'var(--text-2)', fontSize: '10px', fontFamily: FONT_FAMILY, fontWeight: '500', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', padding: '0 4px', borderRadius: 'var(--chrome-radius)', cursor: 'pointer', lineHeight: 1, textAlign: 'center' }}
+                  style={{ ...footerFieldBoxStyle, background: 'transparent', border: 'none', color: 'var(--text-2)', fontFamily: FONT_FAMILY, fontWeight: '500', cursor: 'pointer', textAlign: 'center' }}
                 >
-                  <RailLiveZoomText
-                    fallback={api.zoomInputValue || Math.round((api.manualZoomScale || 1) * 100)}
-                    viewerId={getLiveZoomViewerId(activeTabId)}
-                  />
+                  <FooterSlot widest={FOOTER_ZOOM_WIDEST}>
+                    <RailLiveZoomText
+                      fallback={api.zoomInputValue || Math.round((api.manualZoomScale || 1) * 100)}
+                      viewerId={getLiveZoomViewerId(activeTabId)}
+                    />
+                  </FooterSlot>
                 </button>
               );
               // Editable current page — plain accent-colored number by
               // default (Walkthru style), click or double-click to jump.
               const pageValue = isEditingRailPage ? (
                 <>
+                <span style={{ ...footerFieldBoxStyle, fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600' }}>
+                <FooterSlot widest={pageSlotWidest} field={(
                 <input
                   ref={api.pageInputRef}
                   type="text"
@@ -4275,8 +4322,10 @@ export default function App({ devPreviewReturnTab = null }) {
                   inputMode="numeric"
                   pattern="[0-9]*"
                   aria-label="Current page"
-                  style={{ width: '28px', padding: 0, background: 'transparent', color: 'var(--accent)', border: 'none', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', textAlign: 'center', outline: 'none', lineHeight: 1 }}
+                  style={{ ...footerSlotFieldStyle, padding: 0, background: 'transparent', color: 'var(--accent)', border: 'none', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', textAlign: 'center', outline: 'none', lineHeight: 1 }}
                 />
+                )} />
+                </span>
                 <DismissBarrier active insideRefs={railFieldRefs} mode="typing" onDismiss={dismissRailFields} dismissOnEscape={false} />
                 </>
               ) : (
@@ -4288,9 +4337,9 @@ export default function App({ devPreviewReturnTab = null }) {
                   {...chromeTip('Page — click to jump', 'left')}
                   /* UX 2026-09-22: the page number is the zoom field's twin —
                      same field height, same house radius. */
-                  style={{ background: 'transparent', border: 'none', color: 'var(--accent)', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', padding: '0 4px', borderRadius: 'var(--chrome-radius)', cursor: 'pointer', lineHeight: 1 }}
+                  style={{ ...footerFieldBoxStyle, background: 'transparent', border: 'none', color: 'var(--accent)', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', cursor: 'pointer' }}
                 >
-                  {api.activeSpaceHasNoPages ? 0 : api.pageNum}
+                  <FooterSlot widest={pageSlotWidest}>{api.activeSpaceHasNoPages ? 0 : api.pageNum}</FooterSlot>
                 </button>
               );
               // Fit-mode popup — one list for both variants; only the anchor
@@ -4324,13 +4373,6 @@ export default function App({ devPreviewReturnTab = null }) {
                 </div>
               );
 
-              // The expanded row lives inside the open panel (see below). The
-              // panel reports its collapse to this component one frame after
-              // it changes, so until an OPEN panel element exists the rail
-              // keeps drawing the vertical stack - never a row over nothing.
-              const railPanelEl = rightRailCollapsed
-                ? null
-                : document.querySelector('#chrome-right-host .survey-rail:not(.is-collapsed)');
               if (!railPanelEl) {
                 // Collapsed 48px rail — vertical stack. position:relative +
                 // zIndex 2 keeps it above (and clickable over) the collapsed
@@ -4459,19 +4501,32 @@ export default function App({ devPreviewReturnTab = null }) {
               // expand / collapse motion frame for frame (it used to be a
               // separate 320px box that jumped to full width at once while the
               // panel was still growing).
+              // Footer lock (owner 2026-10-02: "the minus or plus, the arrows
+              // of the page navigation, the icon of the page fit - all that
+              // stuff needs to be locked down"): every control and number box
+              // has a fixed width and never shrinks (a squeezed flex item was
+              // what slid the minus 22px left at 4000%), and the row spreads
+              // them edge to edge with space-between. Nothing in the row then
+              // depends on a value, so nothing moves while you zoom or page.
+              // space-between can only overflow to the RIGHT, so even an
+              // unexpectedly wide font never pushes the minus out past the
+              // panel's left edge. The 20px icon boxes and 3px minimum gap are
+              // what make a 4-digit page count fit the 320px panel.
+              const footerRowBtn = { width: '20px', flexShrink: 0 };
+              const fitLabelWidest = ZOOM_MODE_OPTIONS.map((option) => (option.id === ZOOM_MODES.MANUAL ? 'Manual' : option.label));
               const footerRow = (
                 <div
                   data-rail-footer-row="true"
                   // Owner 2026-10-02: a chrome region - its icons take the one
                   // hover / press / chosen look (states.css section 5).
                   data-chrome-rail="true"
-                  style={{ position: 'absolute', left: 0, right: 0, bottom: 0, boxSizing: 'border-box', zIndex: 2, background: 'var(--surface-1)', borderTop: '1px solid var(--border)', padding: '6px 8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  style={{ position: 'absolute', left: 0, right: 0, bottom: 0, boxSizing: 'border-box', zIndex: 2, background: 'var(--surface-1)', borderTop: '1px solid var(--border)', padding: '6px 6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '3px' }}
                 >
                   <button
                     onClick={api.zoomOut}
                     {...chromeTip('Zoom out', 'above')}
                     aria-label="Zoom out"
-                    style={footerBtn()}
+                    style={{ ...footerBtn(), ...footerRowBtn }}
                   >
                     <Icon name="minus" size={RAIL_CONTROL_GLYPH} />
                   </button>
@@ -4480,20 +4535,20 @@ export default function App({ devPreviewReturnTab = null }) {
                     onClick={api.zoomIn}
                     {...chromeTip('Zoom in', 'above')}
                     aria-label="Zoom in"
-                    style={footerBtn()}
+                    style={{ ...footerBtn(), ...footerRowBtn }}
                   >
                     <Icon name="plus" size={RAIL_CONTROL_GLYPH} />
                   </button>
 
-                  <div style={{ width: '1px', height: '20px', background: 'var(--surface-3)' }} />
+                  <div style={{ width: '1px', height: '20px', flexShrink: 0, background: 'var(--surface-3)' }} />
 
                   {/* Page nav — left/right chevrons because horizontal row. */}
-                  <span {...chromeTip('Previous page', 'above')} style={{ display: 'inline-flex' }}>
+                  <span {...chromeTip('Previous page', 'above')} style={{ display: 'inline-flex', flexShrink: 0 }}>
                     <button
                       onClick={api.goToPreviousPage}
                       disabled={atFirstPage}
                       aria-label="Previous page"
-                      style={{ ...footerBtn(atFirstPage), pointerEvents: atFirstPage ? 'none' : 'auto' }}
+                      style={{ ...footerBtn(atFirstPage), ...footerRowBtn, pointerEvents: atFirstPage ? 'none' : 'auto' }}
                     >
                       <Icon name="chevronLeft" size={RAIL_CONTROL_GLYPH} />
                     </button>
@@ -4501,28 +4556,38 @@ export default function App({ devPreviewReturnTab = null }) {
                   {/* UX 2026-09-23 (rail audit): the same drawn dot as the
                       vertical stack, and the total takes the page field's 4px
                       side padding, so the dot sits the same distance from both
-                      numbers (it was 7px from the page, 3px from the total). */}
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums' }}>
+                      numbers (it was 7px from the page, 3px from the total).
+                      Footer lock: both numbers sit in boxes as wide as the
+                      page count, so the total's box is always full. */}
+                  <span style={{ display: 'flex', flexShrink: 0, alignItems: 'center', gap: '3px', fontSize: '11px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums' }}>
                     {pageValue}
                     <span aria-hidden="true" data-rail-page-dot style={RAIL_PAGE_DOT_STYLE} />
-                    <span style={{ color: 'var(--text-3)', padding: '0 4px' }}>{api.activeSpaceHasNoPages ? 0 : api.numPages}</span>
+                    <span style={{ ...footerFieldBoxStyle, color: 'var(--text-3)' }}>
+                      <FooterSlot widest={pageSlotWidest}>{api.activeSpaceHasNoPages ? 0 : api.numPages}</FooterSlot>
+                    </span>
                   </span>
-                  <span {...chromeTip('Next page', 'above')} style={{ display: 'inline-flex' }}>
+                  <span {...chromeTip('Next page', 'above')} style={{ display: 'inline-flex', flexShrink: 0 }}>
                     <button
                       onClick={api.goToNextPage}
                       disabled={atLastPage}
                       aria-label="Next page"
-                      style={{ ...footerBtn(atLastPage), pointerEvents: atLastPage ? 'none' : 'auto' }}
+                      style={{ ...footerBtn(atLastPage), ...footerRowBtn, pointerEvents: atLastPage ? 'none' : 'auto' }}
                     >
                       <Icon name="chevronRight" size={RAIL_CONTROL_GLYPH} />
                     </button>
                   </span>
 
-                  <div style={{ width: '1px', height: '20px', background: 'var(--surface-3)' }} />
+                  <div style={{ width: '1px', height: '20px', flexShrink: 0, background: 'var(--surface-3)' }} />
 
                   {/* Page-fit trigger — icon + current-mode label + chevron
-                      pointing UP because the popup opens upward here. */}
-                  <div ref={api.zoomMenuRef} style={{ position: 'relative' }}>
+                      pointing UP because the popup opens upward here.
+                      Footer lock (owner 2026-10-02): the label sits in a box
+                      as wide as the longest mode word, and a manual zoom reads
+                      just "Manual" - "Manual 4000%" repeated the zoom number
+                      two controls to the left and, at 73px, could not fit the
+                      320px panel beside everything else. The tooltip still
+                      says "Page fit: Manual 4000%". */}
+                  <div ref={api.zoomMenuRef} style={{ position: 'relative', flexShrink: 0 }}>
                     <button
                       onClick={api.toggleZoomMenu}
                       aria-haspopup="listbox"
@@ -4533,10 +4598,10 @@ export default function App({ devPreviewReturnTab = null }) {
                       // (states.css section 5), with no hover plate.
                       className="chrome-icon-btn"
                       {...chromeTip(`Page fit: ${api.zoomDropdownLabel}`, 'above')}
-                      style={{ ...footerBtn(), width: 'auto', height: `${RAIL_CONTROL}px`, gap: '6px', padding: '0 8px', color: fitMode !== ZOOM_MODES.MANUAL ? 'var(--text-2)' : 'var(--text-3)', fontSize: '11px', fontFamily: FONT_FAMILY }}
+                      style={{ ...footerBtn(), width: 'auto', height: `${RAIL_CONTROL}px`, gap: '4px', padding: '0 4px', color: fitMode !== ZOOM_MODES.MANUAL ? 'var(--text-2)' : 'var(--text-3)', fontSize: '11px', fontFamily: FONT_FAMILY }}
                     >
                       {renderFitIcon(fitIconMode, RAIL_CONTROL_GLYPH)}
-                      <span>{api.zoomDropdownLabel}</span>
+                      <FooterSlot widest={fitLabelWidest}>{fitMode === ZOOM_MODES.MANUAL ? 'Manual' : api.zoomDropdownLabel}</FooterSlot>
                       {/* UX 2026-09-16 (desktop sweep): the shared <Icon>, not a
                           hand-written <svg>. This caret was drawn inline at stroke
                           1.8 in an 11px box — 3.6 units on the house 24 grid, 140%
