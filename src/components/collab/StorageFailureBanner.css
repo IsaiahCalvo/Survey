@@ -22,10 +22,15 @@
   /* w46 (owner 2026-09-26: select modes in top bar): --app-banner-top is the
      chrome's bottom with row 2's slot kept while Select is armed (AppShell),
      so picking or dropping a mark never moves the banner. */
+  /* Owner 2026-10-02 (UI consistency audit): the app's one calm alert
+     (tokens.css --alert-*), so it stands 8px clear of the chrome and the
+     page edges as a box with corners instead of a strip. The anchor lines
+     stay as they were; the margins step the box in from them. */
   position: fixed;
   top: var(--app-banner-top, var(--app-chrome-top, 96px));
   left: var(--app-sidebar-width, 48px);
   right: 0;
+  margin: 8px 8px 0;
   z-index: 100020;
   pointer-events: none;
 
@@ -35,15 +40,16 @@
   /* md vertical / lg horizontal padding per spec spacing scale (xs=4 sm=8 md=16 lg=24) */
   padding: 16px 24px;
 
-  background: var(--surface-1);
-  /* 4px solid red left border signals "something is broken" without screaming —
-     matches the destructive-warning convention used by Linear / Notion / Figma. */
-  border-left: 4px solid var(--accent-red);
-  border-bottom: 1px solid var(--border);
+  /* A soft red tint inside a thin red edge all the way round (it was a 4px
+     red bar down the left side). The tint lies over the opaque panel surface
+     so the page under the banner never shows through. */
+  background: linear-gradient(var(--alert-danger-bg), var(--alert-danger-bg)), var(--surface-1);
+  border: var(--alert-danger-border);
+  border-radius: var(--alert-radius);
   box-shadow: var(--shadow-md, 0 4px 16px rgba(0, 0, 0, 0.4));
 
-  /* Reuse the app font stack so banner type matches the rest of the surface. */
-  font-family: var(--font-primary, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif);
+  /* The one interface font, like the rest of the surface. */
+  font-family: var(--font-ui);
 }
 
 .storage-banner__icon {

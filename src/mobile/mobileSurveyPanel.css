@@ -58,6 +58,12 @@
   /* A category's Survey Markers, and an open Survey Marker's lines, start one
      12px step in from the sheet's 16px edge. */
   --survey-indent: calc(var(--sheet-pad-x) + 12px);
+  /* An open Survey Marker's lines (its checklist, its note) line up with its
+     name (owner 2026-10-02, UI consistency audit; they started at x 28, left
+     of the name): the name's field well starts at x 52 (the 16px edge + the
+     36px dot column) and its words 8px into the well, at x 60. */
+  --survey-marker-well-x: calc(var(--sheet-pad-x) + 36px);
+  --survey-marker-text-x: calc(var(--survey-marker-well-x) + 8px);
 }
 
 /* Flat on the sheet colour like Pages, Bookmarks, Spaces and Search (owner
@@ -123,10 +129,9 @@
   color: var(--text-1);
   background: transparent;
   border: 0;
-  font: inherit;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 20px;
+  /* The sheet title, 700 16px/20px, like every other sheet's title (it was
+     600 here only). */
+  font: var(--sheet-title);
   white-space: nowrap;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -669,7 +674,9 @@
 /* A category is a line in the panel: a hairline above it (the first one
    parts the rows from the "Categories" head line), no edge, corner or fill
    of its own. The active category shows as gold INK on its name (inline),
-   so its line stays the ordinary hairline - no gold edge. */
+   so its line stays the ordinary hairline - no gold edge. The hairline sits
+   INSIDE the 44px line (owner 2026-10-02; it was 44 + 1), so the row below
+   it is 43. */
 .mobile-survey-sheet .survey-marker-category-card,
 .mobile-survey-sheet .survey-marker-category-card.is-active {
   padding: 0;
@@ -680,7 +687,7 @@
 }
 
 .mobile-survey-sheet .survey-marker-category-row {
-  min-height: var(--sheet-row-h);
+  min-height: calc(var(--sheet-row-h) - 1px);
   gap: 0;
 }
 
@@ -689,7 +696,7 @@
 }
 
 .mobile-survey-sheet .survey-marker-category-main {
-  min-height: var(--sheet-row-h);
+  min-height: calc(var(--sheet-row-h) - 1px);
   padding: 0 12px 0 var(--sheet-pad-x);
   gap: 8px;
   font: var(--sheet-row-title);
@@ -720,7 +727,7 @@
 .mobile-survey-sheet .survey-marker-category-arrow:hover,
 .mobile-survey-sheet .survey-marker-category-arrow:active {
   width: 40px;
-  min-height: var(--sheet-row-h);
+  min-height: calc(var(--sheet-row-h) - 1px);
   flex: 0 0 40px;
   padding: 0;
   display: grid;
@@ -1077,7 +1084,7 @@
 }
 
 .mobile-survey-sheet .mobile-survey-marker .mobile-survey-check-item {
-  padding-left: var(--survey-indent);
+  padding-left: var(--survey-marker-text-x);
 }
 
 .mobile-survey-sheet .mobile-survey-marker .mobile-survey-detail-empty {
@@ -1088,14 +1095,14 @@
 }
 
 /* The notes slot: SurveyMarkerNotes (src/components/surveyMarkerNotes.css)
-   draws the rule above it. Its sides follow this sheet's lines: the open
-   block's 28px indent on the left, the 16px edge on the right. */
+   draws the rule above it. Its sides follow this sheet's lines: its well
+   starts where the name's well does (x 52), it ends on the 16px edge. */
 .mobile-survey-sheet .mobile-survey-open-notes {
   border-top: 0;
 }
 
 .mobile-survey-sheet .mobile-survey-open-notes .survey-marker-notes {
-  padding-left: var(--survey-indent);
+  padding-left: var(--survey-marker-well-x);
   padding-right: var(--sheet-pad-x);
 }
 

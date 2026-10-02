@@ -573,10 +573,10 @@ export default function ArchiveScreen({
               />
             ))}
             {entities.length > TEMPLATE_SWATCH_CAP && (
-              <span className="mono meta" style={{ fontSize: 9.5 }}>+{entities.length - TEMPLATE_SWATCH_CAP}</span>
+              <span className="mono meta" style={{ fontSize: 11 }}>+{entities.length - TEMPLATE_SWATCH_CAP}</span>
             )}
           </div>
-          <span className="mono meta" style={{ fontSize: 9.5 }}>{entities.length}</span>
+          <span className="mono meta" style={{ fontSize: 11 }}>{entities.length}</span>
         </>,
       );
     }
@@ -595,7 +595,7 @@ export default function ArchiveScreen({
             ]}
             size={SUBLINE_GLYPH}
           />
-          <span className="mono meta" style={{ fontSize: 9.5 }}>{(item.collaborators || []).length}</span>
+          <span className="mono meta" style={{ fontSize: 11 }}>{(item.collaborators || []).length}</span>
         </>,
       );
     }
@@ -655,10 +655,10 @@ export default function ArchiveScreen({
               : <span style={{ width: 12, flex: 'none' }} />}
             <Icon name="folder" size={13} color="var(--gold)" />
             <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{item.name}</span>
-            <span className="mono" style={{ fontSize: 9.5, color: 'var(--text-3)', flex: 'none' }}>{item.childCount}</span>
+            <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)', flex: 'none' }}>{item.childCount}</span>
           </div>
           {item.childCount === 0 && (
-            <div className="meta" style={{ fontSize: 11.5, padding: '6px 0 6px 20px' }}>This project has no documents.</div>
+            <div className="meta" style={{ fontSize: 12, padding: '6px 0 6px 20px' }}>This project has no documents.</div>
           )}
           {open && item.children.map((child) => (
             /* Indented leaf, carrying the same 30px page thumbnail the ledger
@@ -675,7 +675,7 @@ export default function ArchiveScreen({
               }}
             >
               {rowThumb(child.id, child.filePath)}
-              <span className="meta" style={{ fontSize: 11.5, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{child.name}</span>
+              <span className="meta" style={{ fontSize: 12, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{child.name}</span>
             </button>
           ))}
         </div>
@@ -695,7 +695,7 @@ export default function ArchiveScreen({
         <div className="section-label">Modules</div>
         <div className="slim-scroll" style={treeScroller}>
           {modules.length === 0 && (
-            <div className="meta" style={{ fontSize: 11.5, padding: '4px 0' }}>This template has no modules.</div>
+            <div className="meta" style={{ fontSize: 12, padding: '4px 0' }}>This template has no modules.</div>
           )}
           {modules.map((mod) => {
             /* Module ids are scoped by template id: a legacy template with no
@@ -711,7 +711,7 @@ export default function ArchiveScreen({
                     ? previewDisclosure(moduleKey, open, 'categories')
                     : <span style={{ width: 12, flex: 'none' }} />}
                   <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{mod.name}</span>
-                  <span className="mono" style={{ fontSize: 9.5, color: 'var(--text-3)', flex: 'none' }}>
+                  <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)', flex: 'none' }}>
                     {categories.length} {categories.length === 1 ? 'category' : 'categories'}
                   </span>
                 </div>
@@ -720,8 +720,8 @@ export default function ArchiveScreen({
                      counted, not listed. The preview answers "is this the
                      template I meant?" — a full checklist would bury that. */
                   <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0 3px 20px' }}>
-                    <span className="meta" style={{ fontSize: 11.5, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{cat.name}</span>
-                    <span className="mono" style={{ fontSize: 9.5, color: 'var(--text-3)', flex: 'none' }}>
+                    <span className="meta" style={{ fontSize: 12, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{cat.name}</span>
+                    <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)', flex: 'none' }}>
                       {cat.itemCount} {cat.itemCount === 1 ? 'item' : 'items'}
                     </span>
                   </div>
@@ -736,7 +736,7 @@ export default function ArchiveScreen({
         <div className="section-label" style={{ marginTop: 14, flex: 'none' }}>Entities</div>
         <div className="slim-scroll" style={{ ...treeScroller, flex: '0 1 auto' }}>
           {entities.length === 0 && (
-            <div className="meta" style={{ fontSize: 11.5, padding: '4px 0' }}>This template has no entities.</div>
+            <div className="meta" style={{ fontSize: 12, padding: '4px 0' }}>This template has no entities.</div>
           )}
           {entities.map((entity) => (
             <div key={entity.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0' }}>
@@ -744,7 +744,7 @@ export default function ArchiveScreen({
                 width: 14, height: 14, borderRadius: '50%', flex: 'none',
                 background: entity.color, border: `1.5px solid ${entity.borderColor}`,
               }} />
-              <span style={{ fontSize: 11.5, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{entity.name}</span>
+              <span style={{ fontSize: 12, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{entity.name}</span>
             </div>
           ))}
         </div>
@@ -822,7 +822,7 @@ export default function ArchiveScreen({
             {/* Name over its glyph strip — the hub's one "identify this row"
                 block, shared with the Projects tree and the Templates editor. */}
             <div style={{ minWidth: 0 }}>
-              <span style={{ display: 'block', fontWeight: 600, fontSize: 12.5, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{item.name}</span>
+              <span style={{ display: 'block', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{item.name}</span>
               {subline}
             </div>
             {item.childCount > 0 && (
@@ -831,7 +831,7 @@ export default function ArchiveScreen({
               </span>
             )}
           </div>
-          <span className="meta" style={{ fontSize: 11.5, padding: `${ROW_PAD_Y}px 0` }}>{archiveTypeLabel(item.type)}</span>
+          <span className="meta" style={{ fontSize: 12, padding: `${ROW_PAD_Y}px 0` }}>{archiveTypeLabel(item.type)}</span>
           <span className="mono" style={{ fontSize: 11, padding: `${ROW_PAD_Y}px 0` }}>{archivedDateLabel(item.archivedAt)}</span>
           {daysCell(item)}
         </div>
@@ -872,14 +872,14 @@ export default function ArchiveScreen({
                   project is destroyed. Indented rather than sitting in the
                   thumbnail column, so the nesting stays legible. */}
               {rowThumb(child.id, child.filePath)}
-              <span className="meta" style={{ fontSize: 11.5, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{child.name}</span>
+              <span className="meta" style={{ fontSize: 12, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{child.name}</span>
             </div>
             {/* A child row IS a document, so it fills the same three columns a
                 top-level document does, through the same formatters and the
                 same urgency colour. Three blank cells read as missing data —
                 and these rows are exactly the ones whose expiry the user needs,
                 because a project takes them all with it. */}
-            <span className="meta" style={{ fontSize: 11.5, padding: '8px 0' }}>{archiveTypeLabel(child.type)}</span>
+            <span className="meta" style={{ fontSize: 12, padding: '8px 0' }}>{archiveTypeLabel(child.type)}</span>
             <span className="mono" style={{ fontSize: 11, padding: '8px 0' }}>{archivedDateLabel(child.archivedAt)}</span>
             {daysCell(child, 8)}
           </div>
@@ -1075,7 +1075,7 @@ export default function ArchiveScreen({
                   </button>
                 </div>
                 <div style={{ marginTop: 10, fontSize: 15, fontWeight: 700, flex: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{previewItem.name}</div>
-                <div className="meta" style={{ marginTop: 4, fontSize: 11.5, flex: 'none' }}>
+                <div className="meta" style={{ marginTop: 4, fontSize: 12, flex: 'none' }}>
                   {[
                     archiveTypeLabel(previewItem.type),
                     previewItem.projectName || null,

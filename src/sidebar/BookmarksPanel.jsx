@@ -35,7 +35,8 @@ import {
 import { CALM_LIST_AUTO_SCROLL } from '../reorder/dragAutoScroll.js';
 import { useTooltip } from '../components/Tooltip';
 
-const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
+// The one interface font (tokens.css --font-ui, owner 2026-10-02).
+const FONT_FAMILY = 'var(--font-ui)';
 const BOOKMARK_TREE_CONTENT_WIDTH = 252;
 const GROUP_AUTO_EXPAND_DELAY_MS = 420;
 const GROUP_COLLAPSE_ANIMATION_MS = 240;
@@ -152,8 +153,12 @@ const bookmarkHeaderActionStyle = (color) => ({
   transition: 'color 0.12s ease',
 });
 
-// Desktop row height (the home lists' row family: a 38px line + 1px divider).
-const BOOKMARK_ROW_HEIGHT_PX = 38;
+// Desktop row height: the shared desktop row (tokens.css --row-h, 32), its 1px
+// divider INSIDE that height (owner 2026-10-02, UI consistency audit: "Bookmarks
+// have thicker rows than Spaces" - they were 38 + 1). The row's controls fill
+// the part above the divider.
+const BOOKMARK_ROW_HEIGHT_PX = 32;
+const BOOKMARK_ROW_INNER_PX = BOOKMARK_ROW_HEIGHT_PX - 1;
 
 // Helper to generate unique IDs
 const generateId = () => crypto.randomUUID();
@@ -332,11 +337,12 @@ const BookmarkTreeRow = ({
           display: 'flex',
           alignItems: 'center',
           gap: 6,
-          height: BOOKMARK_ROW_HEIGHT_PX + 1,
-          // 5px + the grip's own 7px ink inset puts the visible grip dots on
-          // the header's 12px edge gap (the same line as the "+" of Add);
-          // nested rows add their depth inset here.
-          padding: `0 12px 0 ${5 + (isClone ? 0 : rowInset)}px`,
+          height: BOOKMARK_ROW_HEIGHT_PX,
+          // The grip box starts at the row's edge (nested rows add their
+          // depth inset here); its glyph sits 8px in, which puts the visible
+          // dots on the header's 12px edge gap (the same line as the "+" of
+          // Add). The name starts at x 40 (--row-text-x), as in Spaces.
+          padding: `0 12px 0 ${isClone ? 0 : rowInset}px`,
           borderRadius: 0,
           // Quiet states only: the hover step or the SELECTED surface, never
           // a gold box. The lifted (dragging) row takes the shared lift.
@@ -366,11 +372,16 @@ const BookmarkTreeRow = ({
           {...mergeDragHandleProps(tip('Drag to reorder', 'below'), handleProps)}
           data-drag-handle=""
           style={{
-            width: 18,
-            height: BOOKMARK_ROW_HEIGHT_PX,
+            // 21px pad, glyph 8px in; the -6px cancels the row gap so the
+            // icon starts at 21 and the name at 40.
+            width: 21,
+            marginRight: -6,
+            paddingLeft: 8,
+            boxSizing: 'border-box',
+            height: BOOKMARK_ROW_INNER_PX,
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
+            justifyContent: 'flex-start',
             color: 'var(--text-3)',
             cursor: isDraggingAny ? 'grabbing' : 'grab',
             userSelect: 'none',
@@ -398,7 +409,7 @@ const BookmarkTreeRow = ({
             {...tip((isCollapsed || isVisuallyCollapsed) ? 'Expand group' : 'Collapse group', 'below')}
             style={{
               width: 12,
-              height: BOOKMARK_ROW_HEIGHT_PX,
+              height: BOOKMARK_ROW_INNER_PX,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -440,7 +451,9 @@ const BookmarkTreeRow = ({
               borderRadius: 5,
               height: 22,
               padding: '0 6px',
-              fontSize: 11,
+              // The name keeps its 13px while it is being renamed (it
+              // shrank to 11).
+              fontSize: 13,
               outline: 'none',
               fontFamily: FONT_FAMILY,
             }}
@@ -515,7 +528,7 @@ const BookmarkTreeRow = ({
             // bordered well; the invisible pad is the full row height.
             style={{
               width: 22,
-              height: BOOKMARK_ROW_HEIGHT_PX,
+              height: BOOKMARK_ROW_INNER_PX,
               background: 'transparent',
               border: 'none',
               color: 'var(--text-3)',
@@ -591,7 +604,7 @@ const BookmarkTreeRow = ({
             pointerEvents: 'none',
             left: landingSlot.depth * BOOKMARK_INDENTATION_WIDTH,
             right: 0,
-            height: BOOKMARK_ROW_HEIGHT_PX,
+            height: BOOKMARK_ROW_INNER_PX,
             boxSizing: 'border-box',
             background: 'var(--drag-slot-bg)',
             border: 'var(--drag-slot-border)',
@@ -2722,6 +2735,7 @@ const BookmarksPanel = ({
                             border: 'none',
                             borderRadius: '4px',
                             fontSize: '12px',
+                            fontFamily: FONT_FAMILY,
                             textAlign: 'left',
                             cursor: 'pointer',
                             color: 'var(--text-2)',
@@ -3123,6 +3137,7 @@ const BookmarksPanel = ({
                             border: 'none',
                             borderRadius: '4px',
                             fontSize: '12px',
+                            fontFamily: FONT_FAMILY,
                             textAlign: 'left',
                             cursor: 'pointer',
                             color: 'var(--text-2)',

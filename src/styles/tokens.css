@@ -333,6 +333,13 @@
   --alert-danger-bg: var(--danger-soft);
   --alert-danger-border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
   --alert-radius: var(--radius-md);
+  /* The same box for a caution, and for news that is neither (saved, done,
+     working): a plain surface inside the ordinary hairline - no gold. A box
+     that floats over the page (a toast, a banner) lays its tint over
+     --surface-2 so the page never shows through. */
+  --alert-warning-bg: var(--warning-soft);
+  --alert-warning-border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent);
+  --alert-neutral-border: 1px solid var(--border);
 
   /* --- PHONE SHEET SCALE (owner 2026-10-01) ---------------------------- */
   /* "Consistency across all bottom panels (text sizes and spacing)." Every

@@ -2152,7 +2152,7 @@ export default function TemplatesEditor({
         {/* KAL-72: unified error-banner pattern (docs/ui/colors.md) — red is
             the accent edge, not the text colour. */}
         {persistenceError ? (
-          <div role="alert" style={{ position: 'absolute', zIndex: 20, top: 6, left: '50%', transform: 'translateX(-50%)', maxWidth: 'calc(100% - 24px)', padding: '6px 10px', borderRadius: 'var(--alert-radius)', border: 'var(--alert-danger-border)', background: 'var(--alert-danger-bg)', color: 'var(--text-1)', fontSize: 11.5, lineHeight: 1.35, textAlign: 'center' }}>
+          <div role="alert" style={{ position: 'absolute', zIndex: 20, top: 6, left: '50%', transform: 'translateX(-50%)', maxWidth: 'calc(100% - 24px)', padding: '6px 10px', borderRadius: 'var(--alert-radius)', border: 'var(--alert-danger-border)', background: 'var(--alert-danger-bg)', color: 'var(--text-1)', fontSize: 12, lineHeight: 1.35, textAlign: 'center' }}>
             {persistenceError}
           </div>
         ) : null}
@@ -2218,7 +2218,7 @@ export default function TemplatesEditor({
             </div>
             <div className="slim-scroll hub-side-list" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
               {visibleTemplates.length === 0 && (
-                <div className="meta" style={{ padding: '20px 8px', fontSize: 11.5 }}>
+                <div className="meta" style={{ padding: '20px 8px', fontSize: 12 }}>
                   {rich.length === 0 ? 'No templates yet.' : 'No templates match your search.'}
                 </div>
               )}
@@ -2259,7 +2259,7 @@ export default function TemplatesEditor({
                         {/* lineHeight 1.2: the line box hugs the glyphs, so the
                             name + swatches stack is centred by its ink, not by
                             spare leading above the name. */}
-                        <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{t.name}</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{t.name}</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                             {/* Up to 10 entity swatches fit before the row gets crowded;
@@ -2271,10 +2271,10 @@ export default function TemplatesEditor({
                               );
                             })}
                             {t.roster.length > 10 && (
-                              <span className="mono meta" style={{ fontSize: 9.5 }}>+{t.roster.length - 10}</span>
+                              <span className="mono meta" style={{ fontSize: 11 }}>+{t.roster.length - 10}</span>
                             )}
                           </div>
-                          <span className="mono meta" style={{ fontSize: 9.5 }}>{t.roster.length}</span>
+                          <span className="mono meta" style={{ fontSize: 11 }}>{t.roster.length}</span>
                         </div>
                       </div>
                       {tplEdit ? (
@@ -2421,7 +2421,7 @@ export default function TemplatesEditor({
               {/* Expandable category list */}
               <div className="slim-scroll" style={{ overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 6, paddingRight: 4, flex: 1, minHeight: 0 }}>
                 {visibleCats.length === 0 && (
-                  <div className="meta" style={{ padding: '16px 4px', fontSize: 11.5 }}>This module has no categories yet.</div>
+                  <div className="meta" style={{ padding: '16px 4px', fontSize: 12 }}>This module has no categories yet.</div>
                 )}
                 <SortableRearrangeList
                   ids={visibleCats.map((c) => c.id)}
@@ -2592,7 +2592,7 @@ export default function TemplatesEditor({
                               style={{
                                 width: '100%', padding: '6px 10px', marginTop: 6,
                                 border: '1px dashed var(--rule-strong)', background: 'transparent',
-                                color: 'var(--ink-muted)', borderRadius: 2, fontSize: 11.5,
+                                color: 'var(--ink-muted)', borderRadius: 2, fontSize: 12,
                                 cursor: 'pointer', fontFamily: 'inherit',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                               }}
@@ -2699,7 +2699,7 @@ export default function TemplatesEditor({
 
               <div className="slim-scroll" style={{ padding: '8px 8px 12px', display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto', flex: 1, minHeight: 0 }}>
                 {(!tpl || tpl.roster.length === 0) && (
-                  <div className="meta" style={{ fontSize: 11.5, padding: '12px 2px' }}>No entities on this template yet.</div>
+                  <div className="meta" style={{ fontSize: 12, padding: '12px 2px' }}>No entities on this template yet.</div>
                 )}
                 {tpl && (
                 <SortableRearrangeList ids={tpl.roster.map((r) => r.id)} onReorder={reorderEntities} gap={4}>
@@ -3557,13 +3557,13 @@ export default function TemplatesEditor({
           <h3 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-1)' }}>
             Archive checklist item?
           </h3>
-          <p style={{ margin: '0 0 6px', fontSize: 12.5, lineHeight: 1.55, color: 'var(--text-2)' }}>
+          <p style={{ margin: '0 0 6px', fontSize: 13, lineHeight: 1.55, color: 'var(--text-2)' }}>
             <strong style={{ color: 'var(--text-1)' }}>{archiveConfirm.usage}</strong>
             {' '}
             {archiveConfirm.usage === 1 ? 'survey marker has' : 'survey markers have'}
             {' '}responses for <em style={{ color: 'var(--text-1)' }}>{archiveConfirm.label || 'this item'}</em>.
           </p>
-          <p style={{ margin: '0 0 16px', fontSize: 12.5, lineHeight: 1.55, color: 'var(--text-3)' }}>
+          <p style={{ margin: '0 0 16px', fontSize: 13, lineHeight: 1.55, color: 'var(--text-3)' }}>
             Archiving keeps those responses as historical data, but the item won't appear for new markers. You can permanently delete the archived item later from the Archived section.
           </p>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -3622,13 +3622,13 @@ export default function TemplatesEditor({
                   value={modSearch}
                   onChange={(e) => setModSearch(e.currentTarget.value)}
                   placeholder="Search modules..."
-                  style={{ background: 'transparent', border: 0, outline: 'none', color: 'var(--text-1)', fontFamily: 'inherit', fontSize: 11.5, flex: 1, width: '100%', padding: 0 }}
+                  style={{ background: 'transparent', border: 0, outline: 'none', color: 'var(--text-1)', fontFamily: 'inherit', fontSize: 12, flex: 1, width: '100%', padding: 0 }}
                 />
               </div>
             </div>
             <div className="slim-scroll" style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 420, overflowY: 'auto', flex: '0 1 auto', minHeight: 0 }}>
               {visibleMods.length === 0 && (
-                <div className="meta" style={{ padding: '14px 4px', fontSize: 11.5, color: 'var(--text-3)' }}>
+                <div className="meta" style={{ padding: '14px 4px', fontSize: 12, color: 'var(--text-3)' }}>
                   {mods.length === 0 ? 'No modules yet.' : 'No modules match your search.'}
                 </div>
               )}
@@ -3669,7 +3669,7 @@ export default function TemplatesEditor({
                           key={mod.id + ':' + mod.name}
                           onBlur={(e) => renameModule(mod.id, e.currentTarget.value)}
                           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = mod.name; e.currentTarget.blur(); } }}
-                          style={{ background: 'transparent', border: 0, borderBottom: '1px solid transparent', borderTop: '1px solid transparent' /* matches the underline so the name sits on the row's centre line, 2026-09-23 */, color: 'var(--text-1)', font: 'inherit', fontSize: 12.5, fontWeight: 500, padding: '4px 0', width: '100%', outline: 'none' }}
+                          style={{ background: 'transparent', border: 0, borderBottom: '1px solid transparent', borderTop: '1px solid transparent' /* matches the underline so the name sits on the row's centre line, 2026-09-23 */, color: 'var(--text-1)', font: 'inherit', fontSize: 13, fontWeight: 500, padding: '4px 0', width: '100%', outline: 'none' }}
                         />
                         <span style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>{(mod.categories || []).length}</span>
                       </div>
@@ -3680,7 +3680,7 @@ export default function TemplatesEditor({
               </SortableRearrangeList>
             </div>
             <div style={{ padding: '0 10px 8px', flex: 'none' }}>
-              <button onClick={addModule} style={{ width: '100%', padding: '6px 10px', border: '1px dashed var(--border-strong)', background: 'transparent', color: 'var(--text-3)', borderRadius: 2, fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <button onClick={addModule} style={{ width: '100%', padding: '6px 10px', border: '1px dashed var(--border-strong)', background: 'transparent', color: 'var(--text-3)', borderRadius: 2, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                 <Icon name="plus" size={13} /> New module
               </button>
             </div>

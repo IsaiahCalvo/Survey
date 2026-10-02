@@ -105,7 +105,7 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
           setFocused(false);
         }}
       />
-      <div ref={rootRef} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--ink-700)', border: '1px solid var(--border-strong)', borderRadius: 6, padding: '5px 9px', width, fontSize: 11.5, height: 28, boxSizing: 'border-box' }}>
+      <div ref={rootRef} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--ink-700)', border: '1px solid var(--border-strong)', borderRadius: 6, padding: '5px 9px', width, fontSize: 12, height: 28, boxSizing: 'border-box' }}>
         <Icon name="search" size={13} color="var(--ink-200)" />
         <input
           ref={inputRef}
@@ -150,7 +150,7 @@ export const EmptyState = ({ icon, line, description, actionLabel, actionIcon = 
         <div style={{ fontSize: 12, color: 'var(--ink-200)', lineHeight: 1.5 }}>{description}</div>
       </div>
     ) : (
-      <div style={{ fontSize: 12.5, color: 'var(--ink-200)' }}>{line}</div>
+      <div style={{ fontSize: 13, color: 'var(--ink-200)' }}>{line}</div>
     )}
     <button className="btn primary" type="button" onClick={() => onAction && onAction()}>
       <Icon name={actionIcon} size={12} />{actionLabel}

@@ -278,7 +278,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                   >
                     {ROLES.map((role) => <option key={role}>{role}</option>)}
                   </select>
-                  <div style={{ fontSize: 11.5, color: 'var(--text-2)', fontWeight: 600 }}>{m.status === 'active' ? 'Active' : (m.status || 'Active')}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-2)', fontWeight: 600 }}>{m.status === 'active' ? 'Active' : (m.status || 'Active')}</div>
                   <button
                     disabled={busy || isLastOwner}
                     onClick={() => handleRemove(m)}
@@ -302,7 +302,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                   <div style={{ fontFamily: MONO_FONT, fontSize: 11, color: C.muted }}>expires {new Date(inv.expires_at).toLocaleDateString()}</div>
                 </div>
                 <div style={{ fontSize: 12, color: C.inkSoft }}>{roleLabel(inv.intended_role)}</div>
-                <div style={{ fontSize: 11.5, color: C.gold, fontWeight: 600 }}>Pending</div>
+                <div style={{ fontSize: 12, color: C.gold, fontWeight: 600 }}>Pending</div>
                 <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                   <button disabled={busy} onClick={() => handleResend(inv)} className="hub-btn">Resend</button>
                   <button disabled={busy} onClick={() => handleRevoke(inv)} className="hub-btn is-danger">Revoke</button>
