@@ -976,14 +976,13 @@ const ICON_RENDERERS = {
     formatHighlight: (size, color, style, className) => renderMaskIcon(textHighlightUrl, size, color, style, className),
     highlighterTool: (size, color, style, className) => renderMaskIcon(highlighterToolUrl, size, color, style, className),
     selectCursor: (size, color, style, className) => renderMaskIcon(selectionCursorUrl, size, color, style, className),
+    // 2026-10-02 optical balance: Box / Lasso / Text Select are sized by their
+    // assets, not here. Text Select used to carry a fixed translateY(2px) — 3
+    // grid units at 16px and 4 at the 12px phone strip — which sat it low and
+    // made it read smaller. Its asset is now drawn centred on the grid instead,
+    // so the placement scales with the glyph. Do not add a nudge back here.
     lassoSelect: (size, color, style, className) => renderMaskIcon(lassoSelectUrl, size, color, style, className),
-    textSelect: (size, color, style, className) => renderMaskIcon(
-      textSelectUrl,
-      size,
-      color,
-      { ...style, transform: `${style?.transform || ''} translateY(2px)`.trim() },
-      className,
-    ),
+    textSelect: (size, color, style, className) => renderMaskIcon(textSelectUrl, size, color, style, className),
     formatSquiggle: (size, color, style, className) => renderMaskIcon(textSquiggleUrl, size, color, style, className),
     formatHyperlink: (size, color, style, className) => renderMaskIcon(textHyperlinkUrl, size, color, style, className),
     formatRedact: (size, color, style, className) => renderMaskIcon(textRedactUrl, size, color, style, className),
