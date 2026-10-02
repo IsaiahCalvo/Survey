@@ -9,7 +9,7 @@
  * to bottom:
  *
  *   Border / Fill tabs        (only when the caller passes `tabs`)
- *   presets row, edge to edge (12 discs on the phone, 8 on the desktop)
+ *   presets row, edge to edge (the same 8 discs on phone and desktop)
  *   EITHER the grid           (12 or 8 square columns x 6 rows)
  *   OR     the gradient       (saturation/brightness area + hue slider)
  *   Opacity label + slider    (the gradient stacks its slider under the hue one)
@@ -33,21 +33,18 @@ import DismissBarrier from './DismissBarrier';
 import { swatchCheckInk, swatchRingColour, needsSwatchHairline, normaliseQuickColour } from '../utils/quickStylePresets';
 
 /*
- * The presets row, edge to edge. Boards 19 (desktop, 8) and 17/18 (phone, 12).
- * The first three are the toolbar's own quick colours, spelled with the same
- * hex, so a quick disc and the cell that looks identical set the same value —
- * tests/quickStyleRow.test.mjs pins that.
+ * The presets row, edge to edge. Board 19's eight. The first three are the
+ * toolbar's own quick colours, spelled with the same hex, so a quick disc and
+ * the cell that looks identical set the same value — tests/quickStyleRow.test.mjs
+ * pins that.
+ * Owner 2026-10-02 (phone/desktop consistency): ONE preset list on both
+ * platforms. The phone's twelve (boards 17/18) are gone, and the phone tool
+ * sheet's colour row imports this same list (MobilePdfViewerChrome).
  */
-const PRESET_COLORS = [
+export const PRESET_COLORS = Object.freeze([
     '#FF0000', '#0000FF', '#000000', '#ffffff',
     '#f97316', '#22c55e', '#0ea5e9', '#a855f7',
-];
-
-const PHONE_PRESET_COLORS = [
-    '#FF0000', '#0000FF', '#000000', '#ffffff',
-    '#f97316', '#eab308', '#22c55e', '#0ea5e9',
-    '#a855f7', '#ec4899', '#8b5a2b', '#6b7280',
-];
+]);
 
 /*
  * The grid. Six rows of one lightness each, one column per hue plus a
@@ -231,7 +228,7 @@ const ALPHA_CHEQUER_DESKTOP = 'repeating-conic-gradient(#6b7280 0 25%, #d1d5db 0
  *  - showOpacity  when false, hides the opacity slider + % field — for pickers
  *                 of things that have no transparency (e.g. counter pins)
  *  - platform     'desktop' (276px panel, 8 presets, 8 grid columns) or 'phone'
- *                 (full-width panel, 12 presets, 12 grid columns, 190px area)
+ *                 (full-width panel, the same 8 presets, 12 grid columns, 190px area)
  *  - tabs         optional { items: [{ id, label }], active, onSelect } — draws
  *                 the Border / Fill tablist inside the panel, boards 17-19
  *  - attachedHeader when true, joins the picker to a tab/header directly above
@@ -312,7 +309,7 @@ const CompactColorPicker = ({
     // by exactly half the thumb: flush with the ends at 0% and 100%.
     const THUMB_INSET = isDesktop ? 6 : (dense ? 8 : 10);
     const columns = isPhone ? 12 : 8;
-    const presets = isPhone ? PHONE_PRESET_COLORS : PRESET_COLORS;
+    const presets = PRESET_COLORS;
     const grid = useMemo(() => buildGrid(columns), [columns]);
     // RULED 2026-09-22 (owner): switching grid <-> spectrum must not change the
     // sheet's height or move the Opacity row and the bottom row. The spectrum
@@ -928,10 +925,11 @@ const CompactColorPicker = ({
     const lockedStyle = locked ? { opacity: 0.4, pointerEvents: 'none' } : null;
 
     const presetsRow = (
-        <div style={(dense || isDesktop)
-            /* Dense and desktop: the presets sit on the grid's own eight
-               columns, one disc centred over each column, so the two blocks
-               line up. */
+        <div style={isDesktop
+            /* Desktop: the presets sit on the grid's own eight columns, one
+               disc centred over each column, so the two blocks line up. The
+               phone (dense or not) spreads the same eight edge to edge - its
+               grid has twelve columns, so they cannot sit on it. */
             ? { display: 'grid', gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: '4px', justifyItems: 'center', ...lockedStyle }
             : { display: 'flex', alignItems: 'center', justifyContent: 'space-between', ...lockedStyle }}>
             {presets.map((preset) => {
@@ -964,10 +962,8 @@ const CompactColorPicker = ({
                             borderRadius: '50%',
                             flex: '0 0 auto',
                             '--hero-swatch-ring': swatchRingColour(preset),
-                            // Owner 2026-09-23: keep the HeroUI proportions at
-                            // the small desktop size - ring ~7% of the swatch
-                            // (2px on a 28px swatch = 1.5px on 20px).
-                            ...(isDesktop ? { '--hero-swatch-bw': '1.5px' } : null),
+                            // Owner 2026-10-02: the chosen ring is 2px on both
+                            // platforms (was 1.5px on the desktop's 20px disc).
                         }}
                     >
                         <span
@@ -1029,15 +1025,12 @@ const CompactColorPicker = ({
                         data-selected={isSelected ? 'true' : 'false'}
                         style={{
                             aspectRatio: '1',
-                            borderRadius: '7px',
-                            ...(dense ? { borderRadius: '6px' } : null),
-                            // Desktop's 20px cell takes the one-scale CELL radius, 5.
-                            ...(isDesktop ? { borderRadius: '5px' } : null),
+                            // Owner 2026-10-02: one cell radius, 6, on both.
+                            borderRadius: '6px',
                             /* The Match fill cell stays live while locked: it is
                                the one control that unlinks the border. */
                             ...(isMatchSlot && matchIsToggle ? null : lockedStyle),
                             '--hero-swatch-ring': swatchRingColour(isTransparent ? '#ffffff' : swatch),
-                            ...(isDesktop ? { '--hero-swatch-bw': '1.5px' } : null),
                         }}
                     >
                         <span className="hero-swatch__fill" style={isFirstCell && lastMatchRef.current.toggle ? CHECKER_FILL : background}>
@@ -1311,10 +1304,9 @@ const CompactColorPicker = ({
             background: chrome ? panelBackground : 'transparent',
             border: chrome ? '1px solid var(--border)' : 0,
             borderTop: attachedHeader ? 'none' : undefined,
-            /* ONE RADIUS SCALE (2026-09-22): a popover is 9. Board 19 drew 12,
-               but every other popover in the chrome (the dropdown menus) is 9
-               and the owner ruled one scale over one board's number. */
-            borderRadius: attachedHeader ? '0 0 9px 9px' : '9px',
+            /* Owner 2026-10-02 (phone/desktop consistency): the picker
+               popover is radius 8 (was 9). */
+            borderRadius: attachedHeader ? '0 0 8px 8px' : '8px',
             boxShadow: chrome ? '0 14px 32px rgba(0,0,0,0.45)' : 'none',
             // RULED 2026-09-23 (desktop slim): 10px of padding, was 12.
             padding: chrome ? (isPhone ? '12px' : '10px') : 0,

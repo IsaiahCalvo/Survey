@@ -8,6 +8,8 @@ import {
   assignPresenceTints,
   presenceInitials,
   presenceLabel,
+  presenceRowForUser,
+  presenceSelfRow,
   presenceState,
 } from './presenceIdentity.js';
 
@@ -82,7 +84,7 @@ export default function PresenceAvatars({
     }
     let list = Array.from(byUser.values());
     if (list.length === 0 && currentUserId) {
-      list = [{ user_id: currentUserId, display_name: currentUserEmail || currentUserDisplayName || 'You' }];
+      list = [presenceSelfRow({ currentUserId, currentUserEmail, currentUserDisplayName })];
     }
     list.sort((a, b) => {
       if (a.user_id === currentUserId) return -1;
@@ -92,7 +94,7 @@ export default function PresenceAvatars({
     const tints = assignPresenceTints(list.map((u) => u.user_id), currentUserId);
     return list.map((u) => {
       const isCurrent = u.user_id === currentUserId;
-      const label = presenceLabel(u);
+      const label = presenceLabel(presenceRowForUser(u, { currentUserId, currentUserDisplayName }));
       return { id: u.user_id, row: u, isCurrent, label, initials: presenceInitials(label), tint: tints.get(u.user_id) };
     });
   }, [presence, currentUserId, currentUserEmail, currentUserDisplayName]);

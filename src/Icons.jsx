@@ -1201,17 +1201,15 @@ const ICON_ALIASES = {
   redact: 'formatRedact',
 };
 
-const DEFAULT_CONTENT_TYPE_BY_ICON = {
-  document: 'document',
-  template: 'template',
-};
-
+/* Owner 2026-10-02 (phone/desktop consistency): an icon given no colour draws
+   in currentColor - ALWAYS, whatever its name. The document and template
+   glyphs used to fall back to their content-type colours (#7ab7e6 / #c293e6)
+   on their own, so a document glyph on the gold "Go to documents" button drew
+   blue. A row that wants the content-type colour asks for it with
+   `contentType` (Archive rows, project file rows, the hub empty states). */
 const Icon = ({ name, size = 16, color, contentType, style, className }) => {
   const rendererName = ICON_ALIASES[name] || name;
-  const resolvedColor = color || getContentTypeIconColor(
-    contentType || DEFAULT_CONTENT_TYPE_BY_ICON[name],
-    'currentColor',
-  );
+  const resolvedColor = color || getContentTypeIconColor(contentType, 'currentColor');
   return ICON_RENDERERS[rendererName]?.(size, resolvedColor, style, className) ?? null;
 };
 

@@ -329,7 +329,10 @@ export const hasVisiblePdfjsSpinner = (host) => {
 // stays out of the first-paint bundle). Verbosity stays at the pdf.js default.
 
 // Consistent font stack for the entire application
-export const FONT_FAMILY = '"Helvetica Neue", Helvetica, Arial, sans-serif'; // design.md primary stack (DOM CSS only — never feed into Fabric)
+// Owner 2026-10-02: the chrome's one UI font, --font-ui (tokens.css). Every
+// user is a DOM style (fontFamily / font shorthand), never Fabric, canvas or
+// annotation text - those keep their single-name fonts (CLAUDE.md).
+export const FONT_FAMILY = 'var(--font-ui)'; // DOM CSS only — never feed into Fabric
 export const REGION_EDIT_TOOL = 'region-edit';
 
 // UX 2026-09-16 (desktop sizing pass): the glyph sizes for the document

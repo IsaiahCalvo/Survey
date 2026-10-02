@@ -433,7 +433,10 @@ test('every document in Archive renders at the one Documents-ledger thumbnail si
   assert.match(SCREEN, /width: ROW_ART_W, height: ROW_THUMB/);
   assert.match(SCREEN, /const TYPE_ICON_SIZE = 24;/);
   assert.match(SCREEN, /const MOBILE_TYPE_ICON_SIZE = 24;/);
-  assert.match(SCREEN, /<Icon name=\{typeIcon\[item\.type\] \|\| 'doc'\} size=\{iconSize\} \/>/);
+  // 2026-10-02: an Icon given no colour is currentColor now (Icons.jsx), so the
+  // row asks for its content-type colour explicitly - still the shared one, never
+  // a literal; a project's folder stays neutral as it always was.
+  assert.match(SCREEN, /<Icon name=\{typeIcon\[item\.type\] \|\| 'doc'\} size=\{iconSize\} contentType=\{item\.type === 'project' \? undefined : item\.type\} \/>/);
   assert.doesNotMatch(SCREEN, /<Icon name=\{typeIcon\[item\.type\] \|\| 'doc'\}[^>]*color=/,
     'shared document/project/template colors remain authoritative');
   assert.match(SCREEN, /\{rowTypeArt\(item\)\}/);

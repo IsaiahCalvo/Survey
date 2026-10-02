@@ -2188,7 +2188,9 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   place-items: center;
   flex: 0 0 auto;
   color: var(--text-2);
-  background: var(--surface-3);
+  /* Owner 2026-10-02: no plate at rest (as on the desktop bar); the pressed
+     one is the filled segment below. */
+  background: transparent;
   border: 0;
   border-radius: 5px;
   font-size: 11px;
@@ -2209,10 +2211,13 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   border-radius: 0 5px 5px 0;
 }
 
-/* B / I / U / S on the phone's live text strip: the letter turns gold, the chip
-   keeps its resting --surface-3. */
+/* B / I / U / S on the phone's live text strip. Owner 2026-10-02 (phone /
+   desktop consistency): a pressed toggle is the filled segment - a --surface-3
+   plate and --text-1 ink, exactly as on the desktop text bar - never gold:
+   these are settings, not the active tool. */
 .mobile-pdf-properties__format.is-active {
-  color: var(--accent);
+  color: var(--text-1);
+  background: var(--surface-3);
 }
 
 /* The ONE alignment button (2026-09-22). It draws the horizontal alignment in
@@ -4222,7 +4227,9 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
 }
 
 .mobile-bookmark-delete {
-  color: var(--danger-text);
+  /* A delete GLYPH is --danger on both platforms (owner 2026-10-02); the
+     --danger-text step is for the word "Delete". */
+  color: var(--danger);
 }
 
 /* Press feedback: glyphs shrink, text dims — never a plate. These beat the
