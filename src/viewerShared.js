@@ -466,7 +466,9 @@ const PDFJS_WHEEL_ZOOM_MAX_STEP_PERCENT = 24;
 export const PDFJS_WHEEL_ZOOM_BATCH_MS = 3;
 export const PDFJS_WHEEL_ZOOM_STALE_DROP_MS = 260;
 export const PDFJS_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX = 420;
-export const TOOLBAR_ZOOM_STEP_FACTOR = 1.25;
+// Zoom +/- buttons and Ctrl/Cmd +/-: x1.2 per step, Walkthu's button step
+// (owner 2026-10-02, "zoom speed like my app"; was 1.25).
+export const TOOLBAR_ZOOM_STEP_FACTOR = 1.2;
 export const PDFJS_INTERACTION_FORCE_PROXY_ALL_PAGES = true;
 export const ZOOM_ONLY_INTERACTION_REASONS = new Set([
   'wheel-zoom', 'pdfjs-wheel-zoom', 'pdfjs-zoom-change', 'overlay-wheel-zoom'

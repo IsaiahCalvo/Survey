@@ -124,9 +124,10 @@ test('the zoom menu has minus/plus steppers and a live percentage', () => {
   assert.match(css, /\.mobile-pdf-header__zoom-steppers > button::after \{[\s\S]{0,160}inset: -4px;/);
 });
 
-test('zoomIn and zoomOut still step by the shared 1.25x factor', () => {
+// 2026-10-02 (owner: "zoom speed like my app"): Walkthu's +/- step is x1.2.
+test('zoomIn and zoomOut still step by the shared 1.2x factor', () => {
   const shared = read('../src/viewerShared.js');
-  assert.match(shared, /export const TOOLBAR_ZOOM_STEP_FACTOR = 1\.25;/);
+  assert.match(shared, /export const TOOLBAR_ZOOM_STEP_FACTOR = 1\.2;/);
   const viewer = read('../src/PDFViewer.jsx');
   assert.match(viewer, /const zoomIn = useCallback\(\(\) => \{[\s\S]{0,900}basisScale \* TOOLBAR_ZOOM_STEP_FACTOR/);
   assert.match(viewer, /const zoomOut = useCallback\(\(\) => \{[\s\S]{0,900}basisScale \/ TOOLBAR_ZOOM_STEP_FACTOR/);

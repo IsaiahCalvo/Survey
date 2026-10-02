@@ -2454,7 +2454,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const g = gestureRef.current;
       const nextScale = getWheelZoomScale(g.elasticZoom ? g.rawScale : committed * liveZoomRef.current, {
         deltaY: e.deltaY,
-        regime: g.regime,
+        // Rate per EVENT, like Walkthu (owner 2026-10-02): a pixel delta under
+        // 50 is a pinch tick, a bigger one or a line/page delta is a notch, so
+        // a notch inside a pinch stream never takes the 4x faster pinch rate.
         maximumDelta: 1000,
         deltaMode: e.deltaMode,
         viewportHeight: el.clientHeight,
