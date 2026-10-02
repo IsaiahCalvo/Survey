@@ -58,7 +58,7 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
       onClick={() => setMode(val)}
       style={{
         flex: 1, height: 28, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit',
-        fontSize: 11.5, fontWeight: 600,
+        fontSize: 12, fontWeight: 600,
         background: mode === val ? C.gold : 'transparent',
         color: mode === val ? 'var(--accent-text)' : C.inkSoft,
         border: `1px solid ${mode === val ? C.gold : C.ruleStrong}`,
@@ -87,14 +87,14 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
             {mode === 'move' ? 'Moves the documents into the chosen project.' : 'Copies the documents into the chosen project; originals stay where they are.'}
           </div>
           {submitError && (
-            <div role="alert" style={{ fontSize: 11.5, color: C.dangerText, lineHeight: 1.4 }}>
+            <div role="alert" style={{ fontSize: 12, color: C.dangerText, lineHeight: 1.4 }}>
               {submitError} Try again.
             </div>
           )}
           <div>
             <div style={{ fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600, marginBottom: 8 }}>Destination project</div>
             <div style={{ maxHeight: 200, overflowY: 'auto', border: `1px solid ${C.rule}`, borderRadius: 6 }}>
-              {projects.length === 0 && <div style={{ padding: '12px', fontSize: 11.5, color: C.muted }}>No projects to move into.</div>}
+              {projects.length === 0 && <div style={{ padding: '12px', fontSize: 12, color: C.muted }}>No projects to move into.</div>}
               {projects.map((p) => (
                 <button
                   type="button"
@@ -102,7 +102,7 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
                   onClick={() => setDestId(p.id)}
                   aria-pressed={destId === p.id}
                   style={{
-                    display: 'block', width: '100%', padding: '9px 12px', fontSize: 12.5,
+                    display: 'block', width: '100%', padding: '9px 12px', fontSize: 13,
                     cursor: 'pointer', color: C.ink, textAlign: 'left', fontFamily: 'inherit',
                     // UX 2026-09-17 (owner ruling: no warm fill on a selected thing).
                     // A destination is a ROW, so it takes the approved row cue — a

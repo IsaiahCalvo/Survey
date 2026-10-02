@@ -191,11 +191,20 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Owner 2026-10-02 (UI consistency audit): a one-line result is 44 in all,
+   its hairline included (it was 45), and the hairline starts where the text
+   does (x 16) instead of 8px further out. The chosen row's fill still
+   reaches 8px past the text on each side, drawn as a shadow so it takes no
+   room. */
 .mobile-search-panel .search-text-result {
   min-height: var(--sheet-row-h);
   box-sizing: border-box;
-  padding: 13px 8px;
-  margin: 0 -8px;
+  padding: 12px 0 13px;
+  margin: 0;
   font: var(--sheet-row-text);
   contain-intrinsic-size: auto 44px;
+}
+
+.mobile-search-panel .search-text-result.is-active {
+  box-shadow: -8px 0 0 var(--surface-3), 8px 0 0 var(--surface-3);
 }

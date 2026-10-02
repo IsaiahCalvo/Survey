@@ -89,7 +89,7 @@ const ProjectTeamSummary = ({ memberIds, lookupMember }) => (
       members={memberIds.slice(0, 3).map((id) => initialsOf(lookupMember(id)?.name))}
       size={14}
     />
-    <span className="mono meta" style={{ fontSize: 9.5 }}>{memberIds.length}</span>
+    <span className="mono meta" style={{ fontSize: 11 }}>{memberIds.length}</span>
   </div>
 );
 
@@ -987,7 +987,7 @@ export default function ProjectsFolderTree({
           </div>
           <div className="slim-scroll hub-side-list" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
             {filtered.length === 0 && (
-              <div className="meta" style={{ fontSize: 11.5, padding: '14px 8px' }}>
+              <div className="meta" style={{ fontSize: 12, padding: '14px 8px' }}>
                 {localProjects.length === 0 ? 'No projects yet.' : 'No projects match your search.'}
               </div>
             )}
@@ -1039,7 +1039,7 @@ export default function ProjectsFolderTree({
                     )}
                     <div style={{ minWidth: 0 }}>
                       {/* lineHeight 1.2 so the stack centres on its ink (2026-09-23). */}
-                      <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{p.name}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{p.name}</div>
                       {/* Owner-avatar stack (first 3 team members) + member
                           count. Every project shows at least the owner glyph —
                           ids are resolved to real initials, never shown raw. */}
@@ -1185,7 +1185,7 @@ export default function ProjectsFolderTree({
                     <span></span><span>Name</span><span>Last edited by</span><span>Edited</span><span></span>
                   </div>
                   {openFiles.length === 0 ? (
-                    <div className="meta" style={{ fontSize: 11.5, padding: '12px 10px' }}>No files in this project yet.</div>
+                    <div className="meta" style={{ fontSize: 12, padding: '12px 10px' }}>No files in this project yet.</div>
                   ) : (
                     <SortableRearrangeList ids={openFiles.map((f) => f.id)} onReorder={reorderFiles}>
                     <div style={{ display: 'grid', gap: 1 }}>
@@ -1285,7 +1285,7 @@ export default function ProjectsFolderTree({
                     const team = projectTeam(open);
                     if (team.length === 0) {
                       return (
-                        <div className="meta" style={{ fontSize: 10.5, lineHeight: 1.5 }}>
+                        <div className="meta" style={{ fontSize: 11, lineHeight: 1.5 }}>
                           Sign in to see this project's owner.
                         </div>
                       );
@@ -1299,7 +1299,7 @@ export default function ProjectsFolderTree({
                             <div key={m} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <Avatar initials={mem ? initialsOf(mem.name) : '—'} size={22} color={mem?.color} />
                               <div style={{ minWidth: 0, flex: 1 }}>
-                                <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{memName}</div>
+                                <div style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{memName}</div>
                                 <div className="meta" style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                   <span style={{ width: 5, height: 5, borderRadius: '50%', background: mem?.online ? 'var(--success)' : 'var(--text-disabled)', flex: 'none' }}></span>
                                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{mem?.role || 'Member'}</span>
@@ -1879,7 +1879,7 @@ export default function ProjectsFolderTree({
                     }}
                   >
                     <div style={{ minWidth: 0 }}>
-                      <div className="mobile-card-title" style={{ fontSize: 12.5 }}>{f.name}</div>
+                      <div className="mobile-card-title" style={{ fontSize: 13 }}>{f.name}</div>
                       <div className="mobile-card-meta">
                         {[owner?.name?.split(' ')[0], shortWhen(f)].filter(Boolean).join(' · ')}
                       </div>
@@ -1918,7 +1918,7 @@ export default function ProjectsFolderTree({
                     <Avatar initials={mem ? initialsOf(mem.name) : '—'} size={22} color={mem?.color} />
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 12, fontWeight: 600 }}>{memName}</div>
-                      <div className="meta" style={{ fontSize: 10.5 }}>{mem?.role || 'Member'}</div>
+                      <div className="meta" style={{ fontSize: 11 }}>{mem?.role || 'Member'}</div>
                     </div>
                   </div>
                 );

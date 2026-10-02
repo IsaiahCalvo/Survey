@@ -343,15 +343,19 @@ export default function SaveLogBanner() {
   const isResult = state === 'success' || state === 'error';
   const isError = state === 'error';
 
+  // The box is the app's one calm alert (tokens.css --alert-*, owner
+  // 2026-10-02 UI consistency audit): a soft tint inside a thin edge all the
+  // way round - it was a 3px coloured bar down the left side. Only the error
+  // carries a colour (the red tint, over the opaque panel so the page never
+  // shows through); "saved" and "working" are the plain surface and hairline.
   const colors = isResult
     ? (isError
-      ? { bg: 'rgba(46, 22, 22, 0.96)', border: 'var(--danger)', accent: 'var(--danger)', text: 'var(--text-1)' }
+      ? { bg: 'linear-gradient(var(--alert-danger-bg), var(--alert-danger-bg)), var(--surface-2)', border: 'var(--alert-danger-border)', accent: 'var(--danger)', text: 'var(--text-1)' }
       /* UX 2026-09-17 (revision-2 palette): the "saved" banner was green and the
-         "working" banner was blue, neither of which is a colour in this app.
-         Gold carries the good news; the neutral surface carries the in-progress
-         one, so red stays the only colour that means trouble. */
-      : { bg: 'var(--surface-2)', border: 'var(--accent)', accent: 'var(--accent)', text: 'var(--text-1)' })
-    : { bg: 'var(--surface-2)', border: 'var(--border)', accent: 'var(--text-3)', text: 'var(--text-1)' };
+         "working" banner was blue, neither of which is a colour in this app,
+         so red stays the only colour that means trouble. */
+      : { bg: 'var(--surface-2)', border: 'var(--alert-neutral-border)', accent: 'var(--accent)', text: 'var(--text-1)' })
+    : { bg: 'var(--surface-2)', border: 'var(--alert-neutral-border)', accent: 'var(--text-3)', text: 'var(--text-1)' };
 
   // UX: slide from the LEFT — user specifically asked to flip the direction
   // so the new submit banner is visually distinct from the old right-side
@@ -366,8 +370,8 @@ export default function SaveLogBanner() {
     background: colors.bg,
     color: colors.text,
     padding: state === 'entry' ? '14px 14px 14px 14px' : '12px 14px 12px 14px',
-    borderRadius: 12,
-    borderLeft: `3px solid ${colors.border}`,
+    borderRadius: 'var(--alert-radius)',
+    border: colors.border,
     boxShadow: '0 12px 30px rgba(0,0,0,0.35), 0 2px 6px rgba(0,0,0,0.15)',
     backdropFilter: 'blur(6px)',
     WebkitBackdropFilter: 'blur(6px)',

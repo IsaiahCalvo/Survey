@@ -517,9 +517,9 @@ export default function DocumentsLedger({
                       />
                     </div>
                     <div style={stickyCell(docSelectMode ? isChecked : isSel)}>
-                      <span style={{ fontWeight: 600, fontSize: 12.5, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{d.name}</span>
+                      <span style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{d.name}</span>
                     </div>
-                    <span className="meta" style={{ fontSize: 11.5, padding: '12px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.project === 'Sandbox' ? <span className="mono" style={{ color: 'var(--text-3)' }}>N/A</span> : d.project}</span>
+                    <span className="meta" style={{ fontSize: 12, padding: '12px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.project === 'Sandbox' ? <span className="mono" style={{ color: 'var(--text-3)' }}>N/A</span> : d.project}</span>
                     <div className="mono" style={{ fontSize: 11, padding: '10px 0', lineHeight: 1.35 }}>
                       <div style={{ fontWeight: 600 }}>{d.touchedTime}</div>
                       <div style={{ color: 'var(--text-3)' }}>{d.touchedAbs}</div>
@@ -542,7 +542,7 @@ export default function DocumentsLedger({
                 <button onClick={() => setPreviewOpen(false)} title="Close preview" aria-label="Close preview" className="hub-icon-btn"><Icon name="close" size={13} /></button>
               </div>
               <div style={{ marginTop: 10, fontSize: 15, fontWeight: 700, flex: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sel.name}</div>
-              <div className="meta" style={{ marginTop: 4, fontSize: 11.5, flex: 'none' }}>
+              <div className="meta" style={{ marginTop: 4, fontSize: 12, flex: 'none' }}>
                 {[sel.project === 'Sandbox' ? null : sel.project, sel.size, sel.pages != null ? `${sel.pages} pages` : null, sel.rev || null].filter(Boolean).join(' · ')}
               </div>
               {/* Preview viewport — a set custom size; the page is contained

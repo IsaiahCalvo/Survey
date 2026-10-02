@@ -278,7 +278,7 @@ html.survey-viewer-open #root {
   color: var(--text-1);
   background: var(--surface-1);
   border-bottom: 1px solid var(--border);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
   position: relative;
   z-index: 5900;
 }
@@ -490,7 +490,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   /* RULED CHANGE 2026-09-22 (owner: "the page pill looks too large"). The
      strip's own face - 600 11px with the strip's tabular numerals and -0.01em -
      in place of the header's 800. Same box, quieter numbers. */
-  font: 600 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  font: 600 11px/1 var(--font-ui);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }
@@ -539,7 +539,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border: 0;
   /* The same 600 face the pill wears, so typing a page number does not make the
      numerals jump a weight (2026-09-22 ruling). */
-  font: 600 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  font: 600 11px/1 var(--font-ui);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
   text-align: center;
@@ -590,8 +590,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   /* UX 2026-09-22 (owner: "too loud, bulky, big"): this is a dropdown like the
      width / line-style menus, so it wears the styled-select skin — hug the
      content (min 108px so the steppers have room), --surface-2, 9px radius,
-     the same quiet shadow, 26px rows at the 11px/600 chrome label size. It
-     was a 138px card with 34px rows, 800-weight numbers and a 28px shadow. */
+     the same quiet shadow. It was a 138px card with 34px rows, 800-weight
+     numbers and a 28px shadow. Owner 2026-10-02: its fit rows are phone menu
+     items, 44 at 15/400 (they were 26 at 11/600). */
   width: max-content;
   min-width: 108px;
   padding: 5px;
@@ -714,10 +715,13 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   gap: 0;
 }
 
+/* Owner 2026-10-02 (UI consistency audit): every phone menu item is 44 tall
+   at 15/400 (--sheet-menu-item-h, like .hub-menu__item); these fit rows were
+   26 at 11/600, too small to tap. */
 .mobile-pdf-header__zoom-fits > button {
-  height: 26px;
-  min-height: 26px;
-  padding: 0 8px;
+  height: var(--sheet-menu-item-h);
+  min-height: var(--sheet-menu-item-h);
+  padding: 0 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -725,13 +729,13 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   color: var(--text-1);
   background: transparent;
   border: 0;
-  border-radius: 6px;
-  font: 600 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
-  letter-spacing: -0.01em;
+  border-radius: var(--radius-xs);
+  font: 400 15px/20px var(--font-ui);
+  letter-spacing: 0;
   text-align: left;
   white-space: nowrap;
 }
-.mobile-pdf-header__zoom-fits > button > svg { width: 12px; height: 12px; flex: 0 0 auto; }
+.mobile-pdf-header__zoom-fits > button > svg { width: var(--sheet-icon); height: var(--sheet-icon); flex: 0 0 auto; }
 
 .mobile-pdf-header__zoom-fits > button.is-active {
   color: var(--accent);
@@ -1234,6 +1238,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-tools__popover {
   position: fixed;
+  /* The one interface font: this popover inherited the Helvetica Neue
+     body stack (Arial off Apple). */
+  font-family: var(--font-ui);
   left: calc(var(--mobile-rail-w) + 3px);
   width: min(245px, calc(100vw - var(--mobile-rail-w) - 14px));
   padding: 6px;
@@ -1248,19 +1255,20 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-tools__popover.is-more { bottom: calc(var(--mobile-viewer-dock-height) + 80px); }
 .mobile-pdf-tools__popover.is-presence { bottom: calc(var(--mobile-viewer-dock-height) + 8px); }
 
+/* A phone menu item (owner 2026-10-02, UI consistency audit): 44 tall at
+   15/400, like the home "..." menus (.hub-menu__item). It was 36 at 12/650. */
 .mobile-pdf-tools__popover button {
   width: 100%;
-  min-height: 36px;
-  padding: 0 9px;
+  min-height: var(--sheet-menu-item-h);
+  padding: 0 12px;
   display: flex;
   align-items: center;
-  gap: 9px;
-  color: var(--text-2);
+  gap: 12px;
+  color: var(--text-1);
   background: transparent;
   border: 0;
-  border-radius: 5px;
-  font-size: 12px;
-  font-weight: 650;
+  border-radius: var(--radius-xs);
+  font: 400 15px/20px var(--font-ui);
   text-align: left;
 }
 
@@ -1416,7 +1424,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   background: transparent;
   border: 0;
   border-radius: 8px;
-  font: 600 var(--mobile-strip-type)/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  font: 600 var(--mobile-strip-type)/1 var(--font-ui);
   white-space: nowrap;
 }
 
@@ -1722,7 +1730,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   color: var(--text-2);
   background: transparent;
   border: 0;
-  font: 600 var(--mobile-strip-type)/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  font: 600 var(--mobile-strip-type)/1 var(--font-ui);
   letter-spacing: -0.01em;
   white-space: nowrap;
 }
@@ -1925,7 +1933,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   background: transparent;
   border: 0;
   border-radius: 6px;
-  font: 800 12px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  font: 800 12px/1 var(--font-ui);
   letter-spacing: -0.02em;
 }
 
@@ -1979,7 +1987,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   background: var(--surface-3);
   border: 0;
   border-radius: 10px;
-  font: 600 var(--mobile-strip-type)/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  font: 600 var(--mobile-strip-type)/1 var(--font-ui);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }
@@ -2046,7 +2054,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   border-radius: 6px;
   /* ONE TYPE SCALE (2026-09-22): a menu row reads at the chrome label size,
      11px/600, the same as the desktop dropdown. Was 11.5px/500. */
-  font: 600 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  font: 600 11px/1 var(--font-ui);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
   text-align: left;
@@ -4044,14 +4052,18 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
    row as --mobile-bookmark-depth-inset), so the hairline still runs from edge
    to edge while nested rows step in. 44px band, content centred. */
 .mobile-bookmark-row {
-  min-height: 44px;
+  /* 44 in all, its hairline INSIDE that height (owner 2026-10-02, UI
+     consistency audit: it was 44 + 1, so Bookmarks sat 1px taller per row
+     than Spaces, Survey and Search). Its controls fill the 43 above it. */
+  min-height: var(--sheet-row-h);
   display: flex;
   align-items: center;
   gap: 4px;
-  /* 6.5px + the grip's 9.5px ink inset (5px centring + the dots' own 4.4px)
-     puts the visible grip dots on the header's 16px edge gap, the same line
-     as the "+" of Add; the right 16px is the page tag's edge gap (the edit /
-     delete group pulls itself outward so ITS glyph ink lands on 16px too). */
+  /* 6.5px + the grip glyph's 5px start + the dots' own 4.4px puts the
+     visible grip dots on the header's 16px edge gap, the same line as the
+     "+" of Add; the name starts at x 48 (--sheet-row-text-x), as in Spaces.
+     The right 16px is the page tag's edge gap (the edit / delete group pulls
+     itself outward so ITS glyph ink lands on 16px too). */
   padding: 0 16px 0 calc(6.5px + var(--mobile-bookmark-depth-inset, 0px));
   box-sizing: border-box;
   background: var(--surface-2);
@@ -4071,10 +4083,16 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
    row. */
 .mobile-bookmark-grip {
   position: relative;
-  flex: 0 0 24px;
-  height: 44px;
+  /* 17.5px of layout with the 14px glyph 5px in (it overhangs by 1.5px), so
+     the bookmark icon starts at x 28 and the name at 48. The ::before pad
+     below keeps the 44x44 touch target. */
+  flex: 0 0 17.5px;
+  min-width: 0;
+  height: calc(var(--sheet-row-h) - 1px);
   display: grid;
-  place-items: center;
+  place-items: center start;
+  padding-left: 5px;
+  box-sizing: border-box;
   color: var(--text-3);
   cursor: grab;
   user-select: none;
@@ -4102,7 +4120,7 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
 .mobile-bookmark-open {
   flex: 1;
   min-width: 0;
-  min-height: 44px;
+  min-height: calc(var(--sheet-row-h) - 1px);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -4263,12 +4281,14 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   --sp-head-btn-pad: 8px;
   --sp-pad-r: 2px;
   --sp-grip-w: 44px;       /* 12px glyph centred at 22 -> starts at the 16px edge */
-  --sp-indent: 48px;
+  --sp-indent: var(--sheet-row-text-x); /* 48 */
   --sp-col-w: 44px;
   --sp-switch-w: 44px;
   --sp-end-w: 44px;
   --sp-row-h: var(--sheet-row-h);
-  --sp-line-h: var(--sheet-row-h-sub);
+  /* A page line is tapped on its own, so it is 44 like every phone row
+     (owner 2026-10-02; it was 40). */
+  --sp-line-h: var(--sheet-row-h);
   --sp-field-h: 32px;
   --sp-glyph: var(--sheet-icon);
   --sp-track-w: 36px;
@@ -4277,7 +4297,7 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   --sp-badge: 20px;
   --sp-badge-type: 11px;
   --sp-title-type: 16px;
-  --sp-status-type: 10.5px;
+  --sp-status-type: 11px;
   --sp-head-type: 13px;
   /* Chunk B: the name is text at rest, at the sheet row title's 14px; the
      rename field is 16px below, so iOS never zooms on focus. */
@@ -4430,7 +4450,7 @@ html:has([data-mobile-tool-properties]) .mobile-pdf-header__space {
   background: var(--surface-3);
   border: 0;
   border-radius: 10px;
-  font: 600 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  font: 600 11px/1 var(--font-ui);
 }
 
 /* ==========================================================================

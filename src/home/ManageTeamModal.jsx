@@ -148,10 +148,10 @@ const ActivityModal = ({ member, onClose }) => {
             <div style={{ padding: "24px 10px", textAlign: "center", color: INK_200, fontSize: 12 }}>No recent activity.</div>
           ) : items.map((ev, i) => (
             <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 130px", gap: 14, alignItems: "center", padding: "8px 10px", borderRadius: 6, height: 42, boxSizing: "border-box" }}>
-              <div style={{ fontSize: 12.5, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ev.file}</div>
+              <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ev.file}</div>
               <div className="mono" style={{ fontFamily: MONO_FONT, display: "flex", flexDirection: "column", gap: 1, lineHeight: 1.25 }}>
-                <span style={{ fontSize: 11.5, color: BONE_200, fontWeight: 600 }}>{ev.time}</span>
-                <span style={{ fontSize: 10.5, color: INK_200 }}>{ev.date}</span>
+                <span style={{ fontSize: 12, color: BONE_200, fontWeight: 600 }}>{ev.time}</span>
+                <span style={{ fontSize: 11, color: INK_200 }}>{ev.date}</span>
               </div>
             </div>
           ))}
@@ -267,8 +267,8 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
           <div>
             <div style={{ fontSize: 11, letterSpacing: 0, color: INK_200, fontWeight: 600, marginBottom: 8 }}>Share link</div>
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 96px 82px", gap: 6 }}>
-              <div className="mono" style={{ fontFamily: MONO_FONT, flex: 1, minWidth: 0, background: INK_800, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "0 11px", height: 30, display: "flex", alignItems: "center", fontSize: 11.5, color: BONE_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{url}</div>
-              <select value={linkRole} onChange={(e) => setLinkRole(e.target.value)} style={{ height: 30, background: INK_700, color: BONE_100, border: `1px solid ${INK_500_FIELD}`, borderRadius: 6, padding: "0 8px", fontSize: 11.5, fontFamily: "inherit" }}>
+              <div className="mono" style={{ fontFamily: MONO_FONT, flex: 1, minWidth: 0, background: INK_800, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "0 11px", height: 30, display: "flex", alignItems: "center", fontSize: 12, color: BONE_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{url}</div>
+              <select value={linkRole} onChange={(e) => setLinkRole(e.target.value)} style={{ height: 30, background: INK_700, color: BONE_100, border: `1px solid ${INK_500_FIELD}`, borderRadius: 6, padding: "0 8px", fontSize: 12, fontFamily: "inherit" }}>
                 {ROLES.slice().reverse().map((r) => <option key={r}>{r}</option>)}
               </select>
               <button onClick={copyLink} disabled={busy || !!blockedReason} className="hub-btn">{copied ? "Copied" : "Copy link"}</button>
@@ -278,20 +278,20 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
           <div>
             <div style={{ fontSize: 11, letterSpacing: 0, color: INK_200, fontWeight: 600, marginBottom: 8 }}>Invite by email</div>
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 96px", gap: 6 }}>
-              <textarea value={emails} onChange={(e) => setEmails(e.target.value)} placeholder="name@example.com, name@example.com" rows={3} style={{ width: "100%", background: INK_800, border: `1px solid ${INK_500_FIELD}`, borderRadius: 6, padding: "9px 11px", fontSize: 12.5, fontFamily: "inherit", color: BONE_100, resize: "vertical", outline: "none", minHeight: 72, lineHeight: 1.45, boxSizing: "border-box" }}/>
-              <select value={emailRole} onChange={(e) => setEmailRole(e.target.value)} style={{ height: 30, alignSelf: "start", background: INK_700, color: BONE_100, border: `1px solid ${INK_500_FIELD}`, borderRadius: 6, padding: "0 8px", fontSize: 11.5, fontFamily: "inherit" }}>
+              <textarea value={emails} onChange={(e) => setEmails(e.target.value)} placeholder="name@example.com, name@example.com" rows={3} style={{ width: "100%", background: INK_800, border: `1px solid ${INK_500_FIELD}`, borderRadius: 6, padding: "9px 11px", fontSize: 13, fontFamily: "inherit", color: BONE_100, resize: "vertical", outline: "none", minHeight: 72, lineHeight: 1.45, boxSizing: "border-box" }}/>
+              <select value={emailRole} onChange={(e) => setEmailRole(e.target.value)} style={{ height: 30, alignSelf: "start", background: INK_700, color: BONE_100, border: `1px solid ${INK_500_FIELD}`, borderRadius: 6, padding: "0 8px", fontSize: 12, fontFamily: "inherit" }}>
                 {ROLES.slice().reverse().map((r) => <option key={r}>{r}</option>)}
               </select>
             </div>
             <div style={{ fontSize: 11, color: INK_200, marginTop: 8, lineHeight: 1.4 }}>Separate addresses with commas. Each invitee gets an email with a link to join as {emailRole}.</div>
           </div>
           {(blockedReason || error) && (
-            <div style={{ background: "var(--alert-danger-bg)", border: "var(--alert-danger-border)", borderRadius: "var(--alert-radius)", padding: "8px 10px", color: BONE_100, fontSize: 11.5 }}>
+            <div style={{ background: "var(--alert-danger-bg)", border: "var(--alert-danger-border)", borderRadius: "var(--alert-radius)", padding: "8px 10px", color: BONE_100, fontSize: 12 }}>
               {blockedReason || error}
             </div>
           )}
           {success && !error && (
-            <div style={{ background: "var(--accent-soft)", border: `1px solid ${GOLD}`, borderRadius: 6, padding: "8px 10px", color: GOLD, fontSize: 11.5 }}>
+            <div style={{ background: "var(--accent-soft)", border: `1px solid ${GOLD}`, borderRadius: 6, padding: "8px 10px", color: GOLD, fontSize: 12 }}>
               {success}
             </div>
           )}
@@ -714,9 +714,9 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                         )}
                       </div>
                     ) : (
-                      <div style={{ fontSize: 11.5, color: BONE_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 14 }}>{m.role}</div>
+                      <div style={{ fontSize: 12, color: BONE_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 14 }}>{m.role}</div>
                     )}
-                    <div className="mono" style={{ fontFamily: MONO_FONT, fontSize: 11.5, color: INK_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.added}</div>
+                    <div className="mono" style={{ fontFamily: MONO_FONT, fontSize: 12, color: INK_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.added}</div>
                     {editMode ? (
                       m.isCreator ? <span /> : (
                         <span onClick={(e) => { e.stopPropagation(); toggleSel(m.id); }}
@@ -764,8 +764,8 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                       <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
                       <div className="mono" style={{ fontFamily: MONO_FONT, fontSize: 11, color: INK_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{isLink ? buildInviteUrl(inv) : `expires ${fmtDate(inv.expires_at)}`}</div>
                     </div>
-                    <div style={{ fontSize: 11.5, color: BONE_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 14 }}>{roleLabel(inv.intended_role)}</div>
-                    <div style={{ fontSize: 11.5, color: GOLD, fontWeight: 600 }}>Pending</div>
+                    <div style={{ fontSize: 12, color: BONE_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 14 }}>{roleLabel(inv.intended_role)}</div>
+                    <div style={{ fontSize: 12, color: GOLD, fontWeight: 600 }}>Pending</div>
                     <button onClick={(e) => { e.stopPropagation(); setOpenMenu(null); setOpenInviteMenu(openInviteMenu === inv.id ? null : inv.id); }}
                       title="More" aria-label="More"
                       className="hub-icon-btn"><Icon name="more" size={14} /></button>

@@ -529,6 +529,9 @@ const SurveySpacesRail = ({
   // add and remove Survey media and move legacy inline media to storage.
   canEditSurveyMarkers = true,
 }) => {
+  // The plain "Categories" head line's tag: h2 on the phone sheet (its first
+  // heading), h3 under the desktop rail's h2 title.
+  const CategoriesHeadingTag = mobileMode ? 'h2' : 'h3';
   // KAL-65: rail controls use the app's instant shared tooltip, never a native
   // title= (the OS tooltip takes ~1.5s and is styled by the OS, so mixing the
   // two showed users two different tooltips on the same control).
@@ -2791,8 +2794,11 @@ const SurveySpacesRail = ({
                             {/* Phone: its own "Categories" head line. Desktop: the head line
                                 is rendered above (with Select and +); only copy mode, which
                                 swaps that line for its own actions, shows this plain one. */}
+                            {/* Phone: an h2 (owner 2026-10-02, UI consistency audit) - the
+                                sheet's first heading under the page's h1, which skipped
+                                from h1 to h3 for screen readers. Its look is the class's. */}
                             {(mobileMode || copyModeActive) && (
-                            <h3 className={mobileMode ? 'mobile-survey-categories-heading' : 'survey-rail__cats-head'}>
+                            <CategoriesHeadingTag className={mobileMode ? 'mobile-survey-categories-heading' : 'survey-rail__cats-head'}>
                               {/* Owner 2026-10-01: no "Tap category to place" hint on the
                                   phone any more - a tap opens the category, and each row
                                   carries its own "+ Place". */}
@@ -2808,7 +2814,7 @@ const SurveySpacesRail = ({
                                   <Icon name="plus" size={14} color="currentColor" />
                                 </button>
                               )}
-                            </h3>
+                            </CategoriesHeadingTag>
                             )}
 
                             {module.categories && module.categories.length > 0 ? (

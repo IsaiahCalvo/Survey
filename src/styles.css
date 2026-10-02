@@ -15,8 +15,8 @@
    the owner approved the revision-2 palette — one file decides every colour on
    every platform, and nothing below may re-declare one. */
 :root {
-  --font-primary: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
-    "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif;
+  /* The one interface font (tokens.css --font-ui, owner 2026-10-02). */
+  --font-primary: var(--font-ui);
 
   /* UX 2026-09-16 (desktop sizing pass): ONE size scale for the desktop
      document chrome, so every control in the top bar, the tool sub-row and
@@ -976,27 +976,34 @@ input[type="text"].survey-marker-name-inline:focus {
    src/mobile/mobilePdfViewer.css (.mobile-spaces-panel), nothing else.
    ========================================================================== */
 .spaces-panel {
+  /* Desktop sizes read the shared desktop row scale (src/styles/tokens.css,
+     owner 2026-10-02 UI consistency audit), so Spaces, Bookmarks and the
+     Survey rail are one family: 32px rows, 28px page lines, a 40px head,
+     text at x 40. */
   --sp-bg: var(--surface-1);
-  --sp-edge: 12px;          /* header + text inset from the panel edge */
-  --sp-head-h: 40px;
+  --sp-edge: var(--row-pad-x);   /* 12: header + text inset from the panel edge */
+  --sp-head-h: var(--row-h-page); /* 40 */
   --sp-head-btn-pad: 6px;   /* a word button's own side pad (part of its hit area) */
   --sp-pad-r: 3px;          /* right inset of every line's last column */
   --sp-grip-w: 36px;        /* grip column; its glyph lands on --sp-edge */
-  --sp-indent: 40px;        /* where the name, add field and page badges start */
+  --sp-indent: var(--row-text-x); /* 40: where the name, add field and page badges start */
   --sp-col-w: 28px;         /* chunk B: 28px hit boxes */
   --sp-switch-w: 36px;
   --sp-end-w: 28px;         /* `more` / "Add" column */
-  --sp-row-h: 28px;         /* a space row, the add row (chunk B: 28px) */
-  --sp-line-h: 28px;        /* a page line */
+  /* A space row is 32 like a bookmark row (it was 28: "Bookmarks have
+     thicker rows than Spaces"). Its hairline (.spaces-item's bottom edge)
+     sits INSIDE that 32 - see .spaces-item__row. */
+  --sp-row-h: var(--row-h);      /* 32: a space row, the add row */
+  --sp-line-h: var(--row-h-sub); /* 28: a page line */
   --sp-field-h: 24px;
-  --sp-glyph: 14px;
+  --sp-glyph: var(--row-icon);  /* 14 */
   --sp-track-w: 28px;
   --sp-track-h: 16px;
   --sp-knob: 12px;
   --sp-badge: 16px;
-  --sp-badge-type: 10px;
+  --sp-badge-type: 11px;    /* "p.1": 11, the smallest text the app uses (was 10) */
   --sp-title-type: 13px;
-  --sp-status-type: 10px;
+  --sp-status-type: 11px;
   --sp-head-type: 13px;     /* matches the Bookmarks header words */
   --sp-name-type: 13px;
   --sp-label-type: 12px;
@@ -1145,7 +1152,9 @@ input[type="text"].survey-marker-name-inline:focus {
 .spaces-item__row {
   display: flex;
   align-items: center;
-  min-height: var(--sp-row-h);
+  /* The space's hairline (.spaces-item border-bottom) is inside the row
+     height: a closed space is --sp-row-h from hairline to hairline. */
+  min-height: calc(var(--sp-row-h) - 1px);
   padding-right: var(--sp-pad-r);
   box-sizing: border-box;
   cursor: pointer;
@@ -1362,7 +1371,8 @@ input[type="text"].spaces-item__name:focus-visible {
 .spaces-item__add {
   display: flex;
   align-items: center;
-  min-height: var(--sp-row-h);
+  /* A line in the open space, like the page lines above it. */
+  min-height: var(--sp-line-h);
 }
 
 /* The "+" sits where the page chips start, so the add line reads as the
@@ -1486,7 +1496,10 @@ input[type="text"].spaces-item__add-input:focus-visible {
   background: transparent;
   border: 0;
   cursor: pointer;
-  font-family: inherit;
+  /* All of the font, not just the family: a <button> otherwise keeps the
+     browser's 13.33px size on its line box. Sized like its "p.1" badge. */
+  font: inherit;
+  font-size: var(--sp-badge-type);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -1679,7 +1692,7 @@ input[type="text"].spaces-item__add-input:focus-visible {
   border: 1px solid var(--border-strong);
   border-radius: 8px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
 }
 
 .spaces-menu__item {
@@ -1887,7 +1900,7 @@ input[type="text"].spaces-item__add-input:focus-visible {
   background: var(--surface-1);
   border-radius: 14px 14px 0 0;
   box-shadow: 0 -15px 38px rgba(0, 0, 0, 0.5);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
 }
 
 .spaces-export-sheet .spaces-export__head {
@@ -1972,7 +1985,7 @@ input[type="text"].spaces-item__add-input:focus-visible {
   border: 1px solid var(--border);
   border-radius: 999px;
   color: var(--text-1);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
   font-size: 11px;
   font-weight: 600;
   line-height: 1;
