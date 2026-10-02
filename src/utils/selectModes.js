@@ -82,3 +82,49 @@ export function getSelectFamilyLabel(activeTool, selectionMode = 'rectangle') {
 export function isSelectModeActive(option, selectionMode = 'rectangle') {
   return selectionMode === option.mode;
 }
+
+// ---------------------------------------------------------------------------
+// SELECTION DISMISS RULES (owner 2026-10-02) — the one table that decides when
+// an annotation selection (shapes, ink, text boxes, callouts, Survey Markers)
+// is dropped. PDFViewer reads these three answers and nothing else; tune here.
+//   - tool switch      -> getToolSwitchSelectionClearReason
+//   - Escape key       -> shouldEscapeDeselect
+//   - plain press on the grey area around the page -> shouldBackdropPressDeselect
+// Things that never deselect (no rule needed): changing a property of the
+// picked mark in the properties bar, scroll / zoom, opening the right-click
+// menu, undo of a property change.
+// ---------------------------------------------------------------------------
+
+/**
+ * The tools that themselves pick marks. Moving between them keeps the
+ * selection; switching to any other tool drops it.
+ */
+export const SELECTION_KEEPING_TOOLS = Object.freeze(['pan', 'select', 'text-select']);
+
+/** Escape deselects under every tool (Drawboard: Esc = "Deselect All"). */
+export function shouldEscapeDeselect(_activeTool) {
+  return true;
+}
+
+/**
+ * A plain press on the grey backdrop deselects only under the Select family;
+ * under a drawing tool a press is the start of a stroke.
+ */
+export function shouldBackdropPressDeselect(activeTool) {
+  return isSelectFamilyTool(activeTool);
+}
+
+/**
+ * The one tool-switch rule for annotation selection (Drawboard PDF / common
+ * PDF-editor convention): switching to a drawing, shape, text, eraser, survey
+ * or any other non-picking tool clears the selection. Pan <-> Select (box or
+ * lasso) <-> Text Select keeps it, except that leaving Text Select still clears
+ * (its native text range and annotation pick end together, as before).
+ * Returns the clear reason, or null to keep the selection.
+ */
+export function getToolSwitchSelectionClearReason(previousTool, nextTool) {
+  if (previousTool === nextTool) return null;
+  if (previousTool === 'text-select') return 'text-select-tool-change';
+  if (SELECTION_KEEPING_TOOLS.includes(nextTool)) return null;
+  return 'tool-change';
+}

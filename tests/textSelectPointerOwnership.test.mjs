@@ -17,7 +17,9 @@ test('Text Select installs existing-mark hit handling while preserving native dr
   assert.match(source, /event\.pointerType === 'touch'[\s\S]{0,180}350/);
   assert.match(source, /if \(!hit \|\| !\['annotation', 'callout'\]\.includes\(hit\.kind\)\) \{[\s\S]{0,180}clearAnnotationSelectionForContextChange\('text-select-empty-click'\)/);
   assert.match(source, /event\.key === 'Escape'[\s\S]{0,180}clearAnnotationSelectionForContextChange\('text-select-escape'\)/);
-  assert.match(source, /previousTool === 'text-select' && activeTool !== 'text-select'[\s\S]{0,180}clearAnnotationSelectionForContextChange\('text-select-tool-change'\)/);
+  // 2026-10-02: leaving Text Select still clears — now through the one
+  // tool-switch rule (selectModes.getToolSwitchSelectionClearReason).
+  assert.match(source, /getToolSwitchSelectionClearReason\(previousTool, activeTool\);[\s\S]{0,80}clearAnnotationSelectionForContextChange\(reason\)/);
 });
 
 test('Text Select enables SVG selection state but leaves the root inert so native text still receives drags', () => {
