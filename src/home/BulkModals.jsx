@@ -21,8 +21,8 @@ const overlay = {
   fontFamily: 'var(--font-ui)',
 };
 
-export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfirm }) {
-  const [mode, setMode] = useState('move'); // 'move' | 'copy'
+export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfirm, initialMode = 'move' }) {
+  const [mode, setMode] = useState(initialMode); // 'move' | 'copy'
   const [destId, setDestId] = useState(null);
   const cardRef = useRef(null);
   const [submitting, setSubmitting] = useState(false);
@@ -47,9 +47,11 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
   // and focus returns to whatever opened it.
   useFocusTrap(cardRef, open, { onEscape: submitting ? undefined : onClose });
 
+  // The select row has separate Move and Copy buttons (owner 2026-10-02);
+  // each opens this picker already set to its own mode.
   useEffect(() => {
-    if (open) setSubmitError('');
-  }, [open]);
+    if (open) { setSubmitError(''); setMode(initialMode === 'copy' ? 'copy' : 'move'); }
+  }, [open, initialMode]);
 
   if (!open) return null;
 

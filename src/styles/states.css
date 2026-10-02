@@ -63,7 +63,7 @@
    (dnd-kit marks it aria-roledescription="sortable") is held for the whole
    drag, so it is left out: it shows its own lift, not a pressed fill (owner
    2026-10-01, module and document tabs). */
-:where(button, [role='button'], [role='tab'], [role='option']):active:not(:disabled):not([aria-disabled='true']):not([data-quick-colour-preset]):not([data-quick-colour-custom]):not([data-quick-paint-swatch]):not([data-ink-swatch]):not([data-color-picker-hue]):not([data-color-picker-opacity]):not([data-color-picker-spectrum]):not([data-text-markup-link]):not([data-drag-rearrange-handle]):not([aria-roledescription='sortable']):not([aria-roledescription='sortable'] *):not([title='Edit color']):not([aria-label='Edit color']):not([title='More']):not(.hub-icon-btn):not(.hub-btn--icon):not(.hero-swatch):not(:has(> svg:only-child)):not([data-glyph-only]):not(.mobile-pdf-header__icon):not(.mobile-pdf-tools__button):not(.mobile-pdf-tools__sync):not(.hub-title-switch):not(.mobile-pdf-dock__side):not(.mobile-pdf-dock__center):not(.mobile-pdf-header__page-chevron):not(.chrome-history):not(.chrome-control):not(.primary):not(.btn-primary):not(.btn-danger):not(.hub-btn--primary):not(.hub-btn--tertiary):not(.tertiary):not(.ghost):not(.btn-ink):not(.auth-submit-btn):not(.account-btn-primary):not(.account-btn-purple):not(.re-signin-modal__cta):not(.space-add-pages-icon-button):not(.mobile-pdf-properties__primary):not(.mobile-survey-notes-save) {
+:where(button, [role='button'], [role='tab'], [role='option']):active:not(:disabled):not([aria-disabled='true']):not([data-quick-colour-preset]):not([data-quick-colour-custom]):not([data-quick-paint-swatch]):not([data-ink-swatch]):not([data-color-picker-hue]):not([data-color-picker-opacity]):not([data-color-picker-spectrum]):not([data-text-markup-link]):not([data-drag-rearrange-handle]):not([aria-roledescription='sortable']):not([aria-roledescription='sortable'] *):not([title='Edit color']):not([aria-label='Edit color']):not([title='More']):not(.hub-icon-btn):not(.hub-btn--icon):not(.hero-swatch):not(:has(> svg:only-child)):not([data-glyph-only]):not(.section-icon-btn):not(.mobile-pdf-header__icon):not(.mobile-pdf-tools__button):not(.mobile-pdf-tools__sync):not(.hub-title-switch):not(.mobile-pdf-dock__side):not(.mobile-pdf-dock__center):not(.mobile-pdf-header__page-chevron):not(.chrome-history):not(.chrome-control):not(.primary):not(.btn-primary):not(.btn-danger):not(.hub-btn--primary):not(.hub-btn--tertiary):not(.tertiary):not(.ghost):not(.btn-ink):not(.auth-submit-btn):not(.account-btn-primary):not(.account-btn-purple):not(.re-signin-modal__cta):not(.space-add-pages-icon-button):not(.mobile-pdf-properties__primary):not(.mobile-survey-notes-save) {
   background-color: var(--pressed) !important;
 }
 /* A GOLD-FILLED control is excluded above by class. Its press is the darker
@@ -96,7 +96,7 @@
      carries no `.primary` class of its own, so without this exclusion the
      neutral hover would paint the one gold button on the screen grey — the
      fault the gold ladder below exists to prevent. */
-  .survey-hub button:not(:disabled):not([aria-disabled='true']):not([aria-pressed='true']):not(.hub-title-switch):not([title='Edit color']):not([aria-label='Edit color']):not(.hero-swatch):not([title='More']):not([aria-selected='true']):not([aria-current]):not(.active):not(.is-active):not(.is-selected):not(.primary):not(.btn-primary):not(.btn-danger):not(.hub-btn--primary):not(.hub-icon-btn):not(.hub-btn--icon):not([data-glyph-only]):not(:has(> svg:only-child)):hover:not(:active),
+  .survey-hub button:not(:disabled):not([aria-disabled='true']):not([aria-pressed='true']):not(.hub-title-switch):not([title='Edit color']):not([aria-label='Edit color']):not(.hero-swatch):not([title='More']):not([aria-selected='true']):not([aria-current]):not(.active):not(.is-active):not(.is-selected):not(.primary):not(.btn-primary):not(.btn-danger):not(.hub-btn--primary):not(.hub-icon-btn):not(.hub-btn--icon):not([data-glyph-only]):not(.section-icon-btn):not(:has(> svg:only-child)):hover:not(:active),
   .survey-hub [role='button']:not([aria-disabled='true']):not([aria-pressed='true']):not([aria-selected='true']):not([aria-current]):not(.active):not(.is-active):not(.is-selected):not([data-drag-rearrange-handle]):not([data-glyph-only]):hover:not(:active) {
     background-color: var(--hover) !important;
   }
@@ -398,8 +398,24 @@
   scale: 0.92;
   transition-duration: 80ms;
 }
+/* The one word in a select-mode row ("All" / "None") takes the same
+   numbers on its text. No plate either: the word is not glyph-only, so the
+   two plate rules above skip .section-icon-btn by class. */
+.section-icon-btn > .section-icon-btn__word {
+  transition: scale 120ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+@media (hover: hover) and (pointer: fine) {
+  .section-icon-btn:not(:disabled):hover > .section-icon-btn__word {
+    scale: 1.08;
+  }
+}
+.section-icon-btn:not(:disabled):active > .section-icon-btn__word {
+  scale: 0.92;
+  transition-duration: 80ms;
+}
 @media (prefers-reduced-motion: reduce) {
-  .section-icon-btn > svg {
+  .section-icon-btn > svg,
+  .section-icon-btn > .section-icon-btn__word {
     scale: none !important;
     transition: none !important;
   }

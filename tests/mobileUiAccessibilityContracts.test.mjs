@@ -191,7 +191,9 @@ test('nested Entities actions and picker use explicit top-layer ownership', () =
   const focusTrap = read('../src/home/useModalFocusTrap.js');
   assert.match(share, /useModalFocusTrap\(\{[\s\S]{0,180}initialFocusRef: closeRef/);
   assert.match(share, /role="dialog"[\s\S]{0,100}data-modal-focus-layer="true"/);
-  assert.match(templates, /aria-label="Move or copy items"[\s\S]{0,100}data-modal-focus-layer="true"/);
+  // Move and Copy are separate actions (owner 2026-10-02); the one dialog is
+  // named for the mode it opened in.
+  assert.match(templates, /aria-label=\{moveModal\.mode === 'copy' \? 'Copy items' : 'Move items'\}[\s\S]{0,100}data-modal-focus-layer="true"/);
   assert.match(picker, /data-modal-focus-layer="true"/);
   assert.match(focusTrap, /hasActiveNestedLayer\(\)/);
 });

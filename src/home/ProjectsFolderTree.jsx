@@ -25,7 +25,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { mergeProjectDocumentOrder, orderDocumentsByProject } from './projectDocumentOrder.js';
 import { HubShell, Icon, Avatar, AvatarStack, Search, EmptyState } from './HubShell';
-import SectionIconButton, { SectionIconActions } from '../components/SectionIconButton.jsx';
+import SectionIconButton, { SectionIconActions, SelectModeButtons } from '../components/SectionIconButton.jsx';
 import ManageTeamModal from './ManageTeamModal';
 import { listProjectCollaboratorsForProjects } from '../services/projectInviteService';
 import { MoveCopyModal } from './BulkModals';
@@ -215,11 +215,19 @@ export default function ProjectsFolderTree({
   // Paste clones it into the open project.
   const [clipboard, setClipboard] = useState(null);
 
-  // Move/Copy picker — opened by the file select-mode "Move/Copy" button.
-  // Holds the document ids of the files to move or copy. Ids (never indices)
-  // so the picks survive a list reorder/rebuild while the modal is open.
+  // Move / Copy picker — opened by the file select-mode Move or Copy button,
+  // already set to that mode. Holds the document ids of the files to move or
+  // copy. Ids (never indices) so the picks survive a list reorder/rebuild
+  // while the modal is open.
   const [moveOpen, setMoveOpen] = useState(false);
+  const [moveMode, setMoveMode] = useState('move');
   const [moveIds, setMoveIds] = useState([]);
+  const openMoveCopy = (files, mode) => {
+    if (!files.length) return;
+    setMoveIds(files.map((f) => f.id));
+    setMoveMode(mode);
+    setMoveOpen(true);
+  };
 
   // Open-menu state: each holds { id, rect } so the portalled PopupMenu knows
   // what to anchor to. `null` when closed.
@@ -771,28 +779,16 @@ export default function ProjectsFolderTree({
         const allSel = selCount === filtered.length && filtered.length > 0;
         return (
           <span className="documents-select-actions projects-mobile-select-actions mobile-header-select-actions">
-            <button
-              onClick={() => setSelProj(allSel ? new Set() : new Set(filtered.map((p) => p.id)))}
-              className="hub-btn hub-btn--bare"
-            >{allSel ? 'None' : 'All'}</button>
-            <button
-              disabled={!selCount}
-              onClick={() => { duplicateProjects([...selProj]); setSelProj(new Set()); }}
-              className="hub-btn hub-btn--bare"
-            >Duplicate</button>
-            <button
-              disabled={!selCount}
-              onClick={() => { const first = filtered.find((p) => selProj.has(p.id)); if (first) onShare && onShare(first); }}
-              className="hub-btn hub-btn--icon"
-              title="Share" aria-label="Share"
-            ><Icon name="share" size={12} /></button>
-            <button
-              data-testid="delete-selected-projects"
-              disabled={!selCount}
-              onClick={() => { void deleteProjects([...selProj]); }}
-              className="hub-btn hub-btn--icon is-danger"
-              title="Delete" aria-label="Delete"
-            ><Icon name="trash" size={12} /></button>
+            <SelectModeButtons
+              phone
+              count={selCount}
+              allSelected={allSel}
+              onToggleAll={() => setSelProj(allSel ? new Set() : new Set(filtered.map((p) => p.id)))}
+              onDuplicate={() => { duplicateProjects([...selProj]); setSelProj(new Set()); }}
+              onShare={() => { const first = filtered.find((p) => selProj.has(p.id)); if (first) onShare && onShare(first); }}
+              onDelete={() => { void deleteProjects([...selProj]); }}
+              deleteProps={{ 'data-testid': 'delete-selected-projects' }}
+            />
           </span>
         );
       })()}
@@ -813,36 +809,17 @@ export default function ProjectsFolderTree({
         const allSel = c === mobileDrillFiles.length && mobileDrillFiles.length > 0;
         return (
           <span className="documents-select-actions projects-mobile-select-actions mobile-header-select-actions">
-            <button
-              onClick={() => setSelFiles(allSel ? new Set() : new Set(mobileDrillFiles.map((f) => f.id)))}
-              className="hub-btn hub-btn--bare"
-            >{allSel ? 'None' : 'All'}</button>
-            <button
-              disabled={!c}
-              onClick={() => { duplicateFiles(selectedFiles.map((f) => f.id)); setSelFiles(new Set()); }}
-              className="hub-btn hub-btn--bare"
-            >Duplicate</button>
-            <button
-              disabled={!c}
-              onClick={() => {
-                if (!c) return;
-                setMoveIds(selectedFiles.map((f) => f.id));
-                setMoveOpen(true);
-              }}
-              className="hub-btn hub-btn--bare"
-            >Move/Copy</button>
-            <button
-              disabled={!c}
-              onClick={() => onShare && onShare(mobileDrillProject)}
-              className="hub-btn hub-btn--icon"
-              title="Share" aria-label="Share"
-            ><Icon name="share" size={12} /></button>
-            <button
-              disabled={!c}
-              onClick={() => deleteFiles(selectedFiles.map((f) => f.id))}
-              className="hub-btn hub-btn--icon is-danger"
-              title="Delete" aria-label="Delete"
-            ><Icon name="trash" size={12} /></button>
+            <SelectModeButtons
+              phone
+              count={c}
+              allSelected={allSel}
+              onToggleAll={() => setSelFiles(allSel ? new Set() : new Set(mobileDrillFiles.map((f) => f.id)))}
+              onDuplicate={() => { duplicateFiles(selectedFiles.map((f) => f.id)); setSelFiles(new Set()); }}
+              onMove={() => openMoveCopy(selectedFiles, 'move')}
+              onCopy={() => openMoveCopy(selectedFiles, 'copy')}
+              onShare={() => onShare && onShare(mobileDrillProject)}
+              onDelete={() => deleteFiles(selectedFiles.map((f) => f.id))}
+            />
           </span>
         );
       })()}
@@ -945,39 +922,20 @@ export default function ProjectsFolderTree({
               </button>
             ) : null}
             <div className="hub-select-actions hub-section-actions">
+              {/* Duplicate clones each selected project into the local list;
+                  Share opens the share flow for the first selected project;
+                  Delete removes each selected project and lets the host
+                  persist it when wired. */}
               {jobsEdit && (
-                <>
-                  {(() => {
-                    const allSel = selCount === filtered.length && filtered.length > 0;
-                    return (
-                      <button
-                        onClick={() => setSelProj(allSel ? new Set() : new Set(filtered.map((p) => p.id)))}
-                        className="hub-btn hub-btn--bare"
-                      >{allSel ? 'None' : 'All'}</button>
-                    );
-                  })()}
-                  {/* Duplicate — clones each selected project into the local list. */}
-                  <button
-                    disabled={!selCount}
-                    onClick={() => { duplicateProjects([...selProj]); setSelProj(new Set()); }}
-                    className="hub-btn hub-btn--bare"
-                  >Duplicate</button>
-                  {/* Share — opens the share flow for the first selected project. */}
-                  <button
-                    disabled={!selCount}
-                    onClick={() => { const first = filtered.find((p) => selProj.has(p.id)); if (first) onShare && onShare(first); }}
-                    className="hub-btn hub-btn--icon"
-                    title="Share" aria-label="Share"
-                  ><Icon name="share" size={11} /></button>
-                  {/* Delete — removes each selected project and lets the host persist it when wired. */}
-                  <button
-                    data-testid="delete-selected-projects"
-                    disabled={!selCount}
-                    onClick={() => { void deleteProjects([...selProj]); }}
-                    className="hub-btn hub-btn--icon is-danger"
-                    title="Delete" aria-label="Delete"
-                  ><Icon name="trash" size={11} /></button>
-                </>
+                <SelectModeButtons
+                  count={selCount}
+                  allSelected={selCount === filtered.length && filtered.length > 0}
+                  onToggleAll={() => setSelProj(selCount === filtered.length && filtered.length > 0 ? new Set() : new Set(filtered.map((p) => p.id)))}
+                  onDuplicate={() => { duplicateProjects([...selProj]); setSelProj(new Set()); }}
+                  onShare={() => { const first = filtered.find((p) => selProj.has(p.id)); if (first) onShare && onShare(first); }}
+                  onDelete={() => { void deleteProjects([...selProj]); }}
+                  deleteProps={{ 'data-testid': 'delete-selected-projects' }}
+                />
               )}
               <SectionIconButton
                 data-testid="project-select-toggle"
@@ -1135,45 +1093,22 @@ export default function ProjectsFolderTree({
                         const selectedFiles = openFiles.filter((f) => selFiles.has(f.id));
                         const c = selectedFiles.length;
                         const allSel = c === openFiles.length && openFiles.length > 0;
+                        /* Duplicate clones each selected file in place;
+                           Move / Copy open the picker already set to that
+                           mode, so the user only chooses the destination
+                           project; Share opens this project's share flow;
+                           Delete removes each selected file locally. */
                         return (
-                          <>
-                            <button
-                              onClick={() => setSelFiles(allSel ? new Set() : new Set(openFiles.map((f) => f.id)))}
-                              className="hub-btn hub-btn--bare"
-                            >{allSel ? 'None' : 'All'}</button>
-                            {/* Duplicate — clones each selected file in place. */}
-                            <button
-                              disabled={!c}
-                              onClick={() => { duplicateFiles(selectedFiles.map((f) => f.id)); setSelFiles(new Set()); }}
-                              className="hub-btn hub-btn--bare"
-                            >Duplicate</button>
-                            {/* Move/Copy — opens the Move/Copy picker so the
-                                user chooses a destination project and moves or
-                                copies the selected files there. */}
-                            <button
-                              disabled={!c}
-                              onClick={() => {
-                                if (!c) return;
-                                setMoveIds(selectedFiles.map((f) => f.id));
-                                setMoveOpen(true);
-                              }}
-                              className="hub-btn hub-btn--bare"
-                            >Move/Copy</button>
-                            {/* Share — opens the share flow for this project. */}
-                            <button
-                              disabled={!c}
-                              onClick={() => onShare && onShare(open)}
-                              className="hub-btn hub-btn--icon"
-                              title="Share"
-                            ><Icon name="share" size={11} /></button>
-                            {/* Delete — removes each selected file locally. */}
-                            <button
-                              disabled={!c}
-                              onClick={() => deleteFiles(selectedFiles.map((f) => f.id))}
-                              className="hub-btn hub-btn--icon is-danger"
-                              title="Delete"
-                            ><Icon name="trash" size={11} /></button>
-                          </>
+                          <SelectModeButtons
+                            count={c}
+                            allSelected={allSel}
+                            onToggleAll={() => setSelFiles(allSel ? new Set() : new Set(openFiles.map((f) => f.id)))}
+                            onDuplicate={() => { duplicateFiles(selectedFiles.map((f) => f.id)); setSelFiles(new Set()); }}
+                            onMove={() => openMoveCopy(selectedFiles, 'move')}
+                            onCopy={() => openMoveCopy(selectedFiles, 'copy')}
+                            onShare={() => onShare && onShare(open)}
+                            onDelete={() => deleteFiles(selectedFiles.map((f) => f.id))}
+                          />
                         );
                       })()}
                       <SectionIconButton
@@ -2063,11 +1998,13 @@ export default function ProjectsFolderTree({
         onChange={(e) => { handleFilesPicked(e.target.files); e.target.value = ''; }}
       />
 
-      {/* Move/Copy picker — opened by the file select-mode "Move/Copy" button.
-          On confirm it moves or copies the chosen files into the destination
-          project, mutating local document state. */}
+      {/* Move / Copy picker — opened by the file select-mode Move or Copy
+          button, already set to that mode. On confirm it moves or copies the
+          chosen files into the destination project, mutating local document
+          state. */}
       <MoveCopyModal
         open={moveOpen}
+        initialMode={moveMode}
         onClose={() => setMoveOpen(false)}
         projects={localProjects}
         count={pickByIds(openFiles, moveIds).length}

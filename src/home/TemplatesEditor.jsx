@@ -61,7 +61,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { HubShell, Icon, Search, EmptyState } from './HubShell';
-import SectionIconButton, { SectionIconActions } from '../components/SectionIconButton.jsx';
+import SectionIconButton, { SectionIconActions, SelectModeButtons } from '../components/SectionIconButton.jsx';
+import SwipeToDeleteRow from '../components/SwipeToDeleteRow.jsx';
 import {
   resolveTemplatesReload,
   createStableIdMint,
@@ -934,7 +935,7 @@ export default function TemplatesEditor({
   const [selCats, setSelCats] = useState(() => new Set());
   const pendingCategoryFocusRef = useRef(null);
   const toggleCatSel = (id) => setSelCats((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const [moveModal, setMoveModal] = useState(null);  // { count, kind: 'category'|'module'|'entity' }
+  const [moveModal, setMoveModal] = useState(null);  // { count, kind: 'category'|'module'|'entity', mode: 'move'|'copy' }
   const moveModalRef = useRef(null);
   const moveModalCloseRef = useRef(null);
   /* Move/Copy modal destination picks — destTpl is always meaningful;
@@ -2028,8 +2029,11 @@ export default function TemplatesEditor({
         const allSel = visibleSelCount === visibleTemplates.length && visibleTemplates.length > 0;
         return (
           <span className="documents-select-actions templates-mobile-select-actions mobile-header-select-actions">
-            <button
-              onClick={() => {
+            <SelectModeButtons
+              phone
+              count={visibleSelCount}
+              allSelected={allSel}
+              onToggleAll={() => {
                 setSelTpls((prev) => {
                   const next = new Set(prev);
                   visibleTemplates.forEach((template) => {
@@ -2039,11 +2043,10 @@ export default function TemplatesEditor({
                   return next;
                 });
               }}
-              className="hub-btn hub-btn--bare"
-            >{allSel ? 'None' : 'All'}</button>
-            <button onClick={() => { if (visibleSelCount) { duplicateTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} className="hub-btn hub-btn--bare">Duplicate</button>
-            <button disabled={!visibleSelCount} onClick={() => { const first = visibleTemplates.find((t) => visibleSelectedIds.has(t.id)); if (first) onShare && onShare(first); }} className="hub-btn hub-btn--icon" title="Share" aria-label="Share"><Icon name="share" size={12} /></button>
-            <button onClick={() => { if (visibleSelCount) { deleteTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={12} /></button>
+              onDuplicate={() => { duplicateTemplates(visibleSelectedIds); setSelTpls(new Set()); }}
+              onShare={() => { const first = visibleTemplates.find((t) => visibleSelectedIds.has(t.id)); if (first) onShare && onShare(first); }}
+              onDelete={() => { deleteTemplates(visibleSelectedIds); setSelTpls(new Set()); }}
+            />
           </span>
         );
       })()}
@@ -2188,24 +2191,23 @@ export default function TemplatesEditor({
                       const visibleSelCount = visibleSelectedIds.size;
                       const allSel = visibleSelCount === visibleTemplates.length && visibleTemplates.length > 0;
                       return (
-                        <>
-                          <button
-                            onClick={() => {
-                              setSelTpls((prev) => {
-                                const next = new Set(prev);
-                                visibleTemplates.forEach((template) => {
-                                  if (allSel) next.delete(template.id);
-                                  else next.add(template.id);
-                                });
-                                return next;
+                        <SelectModeButtons
+                          count={visibleSelCount}
+                          allSelected={allSel}
+                          onToggleAll={() => {
+                            setSelTpls((prev) => {
+                              const next = new Set(prev);
+                              visibleTemplates.forEach((template) => {
+                                if (allSel) next.delete(template.id);
+                                else next.add(template.id);
                               });
-                            }}
-                            className="hub-btn hub-btn--bare"
-                          >{allSel ? 'None' : 'All'}</button>
-                          <button onClick={() => { if (visibleSelCount) { duplicateTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} className="hub-btn hub-btn--bare">Duplicate</button>
-                          <button disabled={!visibleSelCount} onClick={() => { const first = visibleTemplates.find((t) => visibleSelectedIds.has(t.id)); if (first) onShare && onShare(first); }} className="hub-btn hub-btn--icon" title="Share" aria-label="Share"><Icon name="share" size={11} /></button>
-                          <button onClick={() => { if (visibleSelCount) { deleteTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={11} /></button>
-                        </>
+                              return next;
+                            });
+                          }}
+                          onDuplicate={() => { duplicateTemplates(visibleSelectedIds); setSelTpls(new Set()); }}
+                          onShare={() => { const first = visibleTemplates.find((t) => visibleSelectedIds.has(t.id)); if (first) onShare && onShare(first); }}
+                          onDelete={() => { deleteTemplates(visibleSelectedIds); setSelTpls(new Set()); }}
+                        />
                       );
                     })()}
                   </>
@@ -2390,13 +2392,16 @@ export default function TemplatesEditor({
                       const c = selCats.size;
                       const allSel = c === visibleCats.length && visibleCats.length > 0;
                       return (
-                        <>
-                          <button onClick={() => setSelCats(allSel ? new Set() : new Set(visibleCats.map((cat) => cat.id)))} className="hub-btn hub-btn--bare">{allSel ? 'None' : 'All'}</button>
-                          <button disabled={!c} onClick={() => duplicateCategories(selCats)} className="hub-btn hub-btn--bare">Duplicate</button>
-                          <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'category' })} className="hub-btn hub-btn--bare">Move/Copy</button>
-                          <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} className="hub-btn hub-btn--icon" title="Share" aria-label="Share"><Icon name="share" size={11} /></button>
-                          <button disabled={!c} onClick={() => deleteCategories(selCats)} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={11} /></button>
-                        </>
+                        <SelectModeButtons
+                          count={c}
+                          allSelected={allSel}
+                          onToggleAll={() => setSelCats(allSel ? new Set() : new Set(visibleCats.map((cat) => cat.id)))}
+                          onDuplicate={() => duplicateCategories(selCats)}
+                          onMove={() => setMoveModal({ count: c, kind: 'category', mode: 'move' })}
+                          onCopy={() => setMoveModal({ count: c, kind: 'category', mode: 'copy' })}
+                          onShare={() => { if (tpl) onShare && onShare(tpl); }}
+                          onDelete={() => deleteCategories(selCats)}
+                        />
                       );
                     })()}
                   <SectionIconButton
@@ -2665,13 +2670,16 @@ export default function TemplatesEditor({
                   const c = selEntities.size;
                   const allSel = c === tpl.roster.length && tpl.roster.length > 0;
                   return (
-                    <>
-                      <button onClick={() => setSelEntities(allSel ? new Set() : new Set(tpl.roster.map((r) => r.id)))} className="hub-btn hub-btn--bare">{allSel ? 'None' : 'All'}</button>
-                      <button disabled={!c} onClick={() => duplicateEntities(selEntities)} className="hub-btn hub-btn--bare">Duplicate</button>
-                      <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'entity' })} className="hub-btn hub-btn--bare">Move/Copy</button>
-                      <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} className="hub-btn hub-btn--icon" title="Share" aria-label="Share"><Icon name="share" size={10} /></button>
-                      <button disabled={!c} onClick={() => deleteEntities(selEntities)} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={10} /></button>
-                    </>
+                    <SelectModeButtons
+                      count={c}
+                      allSelected={allSel}
+                      onToggleAll={() => setSelEntities(allSel ? new Set() : new Set(tpl.roster.map((r) => r.id)))}
+                      onDuplicate={() => duplicateEntities(selEntities)}
+                      onMove={() => setMoveModal({ count: c, kind: 'entity', mode: 'move' })}
+                      onCopy={() => setMoveModal({ count: c, kind: 'entity', mode: 'copy' })}
+                      onShare={() => { if (tpl) onShare && onShare(tpl); }}
+                      onDelete={() => deleteEntities(selEntities)}
+                    />
                   );
                 })()}
                 <SectionIconButton
@@ -3053,9 +3061,11 @@ export default function TemplatesEditor({
                       const allSel = c === mobileVisibleCats.length && mobileVisibleCats.length > 0;
                       return (
                         <>
-                          <button
-                            type="button"
-                            onClick={() => setSelCats((prev) => {
+                          <SelectModeButtons
+                            phone
+                            count={c}
+                            allSelected={allSel}
+                            onToggleAll={() => setSelCats((prev) => {
                               const next = new Set(prev);
                               mobileVisibleCats.forEach((cat) => {
                                 if (allSel) next.delete(cat.id);
@@ -3063,12 +3073,12 @@ export default function TemplatesEditor({
                               });
                               return next;
                             })}
-                            className="hub-btn hub-btn--bare"
-                          >{allSel ? 'None' : 'All'}</button>
-                          <button type="button" disabled={!c} onClick={() => duplicateCategories(visibleSelectedIds)} className="hub-btn hub-btn--bare">Duplicate</button>
-                          <button type="button" disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'category' })} className="hub-btn hub-btn--bare">Move/Copy</button>
-                          <button type="button" disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} className="hub-btn hub-btn--icon" title="Share" aria-label="Share"><Icon name="share" size={11} /></button>
-                          <button type="button" disabled={!c} onClick={() => deleteCategories(visibleSelectedIds)} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={11} /></button>
+                            onDuplicate={() => duplicateCategories(visibleSelectedIds)}
+                            onMove={() => setMoveModal({ count: c, kind: 'category', mode: 'move' })}
+                            onCopy={() => setMoveModal({ count: c, kind: 'category', mode: 'copy' })}
+                            onShare={() => { if (tpl) onShare && onShare(tpl); }}
+                            onDelete={() => deleteCategories(visibleSelectedIds)}
+                          />
                           <SectionIconButton
                             phone
                             action="select"
@@ -3115,7 +3125,15 @@ export default function TemplatesEditor({
                                   input ignores taps until then, see hub.css);
                                   ⋮ holds Rename / Delete; in Select mode a tap
                                   ticks the row.
-                                  [grip 32][chevron 26][name][...][count][⋮ 36] */}
+                                  [grip 32][chevron 26][name][...][count][⋮ 36]
+                                  Owner 2026-10-02: swipe the row left for a
+                                  trash behind it - the ⋮ menu's Delete (off
+                                  in Select mode, where a tap ticks). */}
+                              <SwipeToDeleteRow
+                                label={`Delete ${c.name}`}
+                                disabled={catEdit}
+                                onDelete={() => deleteCategories(new Set([c.id]))}
+                              >
                               <div
                                 data-drag-rearrange-row
                                 className={`templates-mobile-category-row${open ? ' is-open' : ''}${catEdit ? ' is-selecting' : ''}${catEdit && isSel ? ' is-selected' : ''}`}
@@ -3167,6 +3185,7 @@ export default function TemplatesEditor({
                                   </span>
                                 )}
                               </div>
+                              </SwipeToDeleteRow>
                               {open ? (
                                 <div className="templates-mobile-items">
                                   {items.length === 0 ? <div className="templates-mobile-empty">No checklist items yet.</div> : null}
@@ -3174,6 +3193,9 @@ export default function TemplatesEditor({
                                     {items.map((it) => (
                                       <SortableRearrangeRow key={`mobile-item-${it.id}`} id={it.id}>
                                         {({ attributes, listeners, isDragging }) => (
+                                          /* Owner 2026-10-02: swipe left for a trash
+                                             behind the row - the same delete as its x. */
+                                          <SwipeToDeleteRow label="Delete item" onDelete={() => deleteItem(ci, it.id)}>
                                           <div data-drag-rearrange-row className="templates-mobile-item-row">
                                             <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 20, height: 20 }} />
                                             <input
@@ -3187,6 +3209,7 @@ export default function TemplatesEditor({
                                             />
                                             <button type="button" title="Delete item" aria-label="Delete item" onClick={(e) => { e.stopPropagation(); deleteItem(ci, it.id); }}><Icon name="close" size={11} /></button>
                                           </div>
+                                          </SwipeToDeleteRow>
                                         )}
                                       </SortableRearrangeRow>
                                     ))}
@@ -3265,18 +3288,24 @@ export default function TemplatesEditor({
                     const allSel = c === mobileVisibleEntities.length && mobileVisibleEntities.length > 0;
                     return (
                       <span className="templates-mobile-select-actions">
-                        <button onClick={() => setSelEntities((prev) => {
-                          const next = new Set(prev);
-                          mobileVisibleEntities.forEach((entity) => {
-                            if (allSel) next.delete(entity.id);
-                            else next.add(entity.id);
-                          });
-                          return next;
-                        })} className="hub-btn hub-btn--bare">{allSel ? 'None' : 'All'}</button>
-                        <button disabled={!c} onClick={() => duplicateEntities(visibleSelectedIds)} className="hub-btn hub-btn--bare">Duplicate</button>
-                        <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'entity' })} className="hub-btn hub-btn--bare">Move/Copy</button>
-                        <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} className="hub-btn hub-btn--icon" title="Share" aria-label="Share"><Icon name="share" size={11} /></button>
-                        <button disabled={!c} onClick={() => deleteEntities(visibleSelectedIds)} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={11} /></button>
+                        <SelectModeButtons
+                          phone
+                          count={c}
+                          allSelected={allSel}
+                          onToggleAll={() => setSelEntities((prev) => {
+                            const next = new Set(prev);
+                            mobileVisibleEntities.forEach((entity) => {
+                              if (allSel) next.delete(entity.id);
+                              else next.add(entity.id);
+                            });
+                            return next;
+                          })}
+                          onDuplicate={() => duplicateEntities(visibleSelectedIds)}
+                          onMove={() => setMoveModal({ count: c, kind: 'entity', mode: 'move' })}
+                          onCopy={() => setMoveModal({ count: c, kind: 'entity', mode: 'copy' })}
+                          onShare={() => { if (tpl) onShare && onShare(tpl); }}
+                          onDelete={() => deleteEntities(visibleSelectedIds)}
+                        />
                       </span>
                     );
                   })()}
@@ -3478,7 +3507,8 @@ export default function TemplatesEditor({
           onClose={() => setEntityMenu(null)}
           items={[
             { label: 'Duplicate', onClick: () => duplicateEntities(new Set([ent.id])) },
-            { label: 'Move/Copy', onClick: () => setMoveModal({ count: 1, kind: 'entity' }) },
+            { label: 'Move', onClick: () => setMoveModal({ count: 1, kind: 'entity', mode: 'move' }) },
+            { label: 'Copy', onClick: () => setMoveModal({ count: 1, kind: 'entity', mode: 'copy' }) },
             { label: 'Share', onClick: () => { if (tpl) onShare && onShare(tpl); } },
             { label: 'Rename', onClick: () => { focusVisibleField(`input[data-entity-name-id="${ent.id}"]`); } },
             { label: 'Delete', danger: true, onClick: () => deleteEntities(new Set([ent.id])) },
@@ -3503,7 +3533,8 @@ export default function TemplatesEditor({
               focusVisibleField(`input[data-category-name-id="${cat.id}"]`);
             } },
             { label: 'Duplicate', onClick: () => duplicateCategories(new Set([cat.id])) },
-            { label: 'Move/Copy', onClick: () => setMoveModal({ count: 1, kind: 'category' }) },
+            { label: 'Move', onClick: () => setMoveModal({ count: 1, kind: 'category', mode: 'move' }) },
+            { label: 'Copy', onClick: () => setMoveModal({ count: 1, kind: 'category', mode: 'copy' }) },
             { label: 'Delete', danger: true, onClick: () => deleteCategories(new Set([cat.id])) },
           ]}
         />
@@ -3677,11 +3708,18 @@ export default function TemplatesEditor({
               </button>
             </div>
             <div className="templates-module-edit-actions" style={{ padding: '10px 12px', borderTop: '1px solid var(--border)', background: 'var(--surface-1)', display: 'flex', gap: 6, alignItems: 'center', flex: 'none' }}>
-              <button onClick={() => { const allSel = selectedMods.length === mods.length; setSelMods(allSel ? new Set() : new Set(mods.map((m) => m.id))); }} className="hub-btn hub-btn--bare">{selectedMods.length === mods.length && mods.length > 0 ? 'None' : 'All'}</button>
-              <button onClick={() => duplicateModules(selMods)} disabled={!selCount} className="hub-btn hub-btn--bare">Duplicate</button>
-              <button onClick={() => { if (selCount) setMoveModal({ count: selCount, kind: 'module' }); }} disabled={!selCount} className="hub-btn hub-btn--bare">Move/Copy</button>
-              <button disabled={!selCount} onClick={() => { if (selCount && tpl) onShare && onShare(tpl); }} className="hub-btn hub-btn--icon" title="Share" aria-label="Share"><Icon name="share" size={12} /></button>
-              <button onClick={() => deleteModules(selMods)} disabled={!selCount} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={12} /></button>
+              <SelectModeButtons
+                phone={mobileLayoutActive()}
+                tooltipPlacement="above"
+                count={selCount}
+                allSelected={selectedMods.length === mods.length && mods.length > 0}
+                onToggleAll={() => { const allSel = selectedMods.length === mods.length; setSelMods(allSel ? new Set() : new Set(mods.map((m) => m.id))); }}
+                onDuplicate={() => duplicateModules(selMods)}
+                onMove={() => setMoveModal({ count: selCount, kind: 'module', mode: 'move' })}
+                onCopy={() => setMoveModal({ count: selCount, kind: 'module', mode: 'copy' })}
+                onShare={() => { if (tpl) onShare && onShare(tpl); }}
+                onDelete={() => deleteModules(selMods)}
+              />
               <span style={{ flex: 1 }} />
               <button onClick={() => setModEdit(false)} className="hub-btn hub-btn--primary">Done</button>
             </div>
@@ -3690,7 +3728,8 @@ export default function TemplatesEditor({
       );
     })()}
 
-    {/* Move/Copy modal */}
+    {/* Move or Copy modal - opened already set to the button that opened it
+        (owner 2026-10-02 split the one Move/Copy action into Move and Copy). */}
     {moveModal && tpl && (
       <div
         onClick={closeMoveModal}
@@ -3700,7 +3739,7 @@ export default function TemplatesEditor({
           ref={moveModalRef}
           role="dialog"
           aria-modal="true"
-          aria-label="Move or copy items"
+          aria-label={moveModal.mode === 'copy' ? 'Copy items' : 'Move items'}
           data-modal-focus-layer="true"
           tabIndex={-1}
           onClick={(e) => e.stopPropagation()}
@@ -3708,7 +3747,7 @@ export default function TemplatesEditor({
         >
           <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <p style={{ margin: 0, fontSize: 11, letterSpacing: 0, color: 'var(--text-3)', fontWeight: 600, fontFamily: 'var(--font-ui)' }}>Move/Copy</p>
+              <p style={{ margin: 0, fontSize: 11, letterSpacing: 0, color: 'var(--text-3)', fontWeight: 600, fontFamily: 'var(--font-ui)' }}>{moveModal.mode === 'copy' ? 'Copy' : 'Move'}</p>
               <h3 style={{ fontSize: 14, fontWeight: 700, margin: '2px 0 0', color: 'var(--text-1)', letterSpacing: '-0.025em', fontFamily: 'var(--font-ui)' }}>{moveModal.count} item{moveModal.count === 1 ? '' : 's'}</h3>
             </div>
             <button ref={moveModalCloseRef} onClick={closeMoveModal} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={13} /></button>
@@ -3749,8 +3788,7 @@ export default function TemplatesEditor({
           </div>
           <div style={{ padding: '12px 14px', borderTop: '1px solid var(--border)', background: 'var(--surface-1)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button onClick={closeMoveModal} className="hub-btn">Cancel</button>
-            <button onClick={closeMoveModal} className="hub-btn">Copy</button>
-            <button onClick={closeMoveModal} className="hub-btn hub-btn--primary">Move</button>
+            <button onClick={closeMoveModal} className="hub-btn hub-btn--primary">{moveModal.mode === 'copy' ? 'Copy' : 'Move'}</button>
           </div>
         </div>
       </div>
