@@ -231,19 +231,19 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
 
   return (
     <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: C.scrim, backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1300, fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' }}>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: C.scrim, backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1300, fontFamily: 'var(--font-ui)' }}>
         <div onClick={(e) => e.stopPropagation()} style={{ width: 620, maxWidth: '94vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 10, boxShadow: '0 24px 60px rgba(0,0,0,0.55)', color: C.ink, overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '88vh' }}>
           <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${C.rule}`, display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ width: 3, height: 30, background: C.gold, borderRadius: 2, flex: 'none', marginRight: 10 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>{labelForKind(kind)}</div>
+              <div style={{ fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600 }}>{labelForKind(kind)}</div>
               <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{documentName}</div>
             </div>
             <button onClick={() => setInviteOpen(true)} data-kal31-invite-btn="true" className="hub-btn hub-btn--primary">Invite</button>
             <button onClick={onClose} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={13} /></button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 18px 6px', borderBottom: `1px solid ${C.rule}`, fontSize: 10.5, letterSpacing: 0.14, textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 18px 6px', borderBottom: `1px solid ${C.rule}`, fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600 }}>
             <span />
             <span>Users</span>
             <span>Role</span>
@@ -315,7 +315,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
               <div style={{ marginTop: 6, padding: '6px 4px', borderTop: `1px dashed ${C.rule}` }}>
                 <button
                   onClick={() => setLinksOpen((o) => !o)}
-                  style={{ background: 'transparent', border: 0, color: C.muted, fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'pointer', padding: '8px 14px', display: 'block', width: '100%', textAlign: 'left', fontFamily: 'inherit' }}
+                  style={{ background: 'transparent', border: 0, color: C.muted, fontSize: 11, fontWeight: 600, letterSpacing: 0, cursor: 'pointer', padding: '8px 14px', display: 'block', width: '100%', textAlign: 'left', fontFamily: 'inherit' }}
                 >
                   {linksOpen ? '▾' : '▸'} Active share links ({activeLinks.length})
                 </button>
@@ -350,7 +350,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
           )}
 
           <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 10.5, color: C.muted, letterSpacing: 0.06, textTransform: 'uppercase', fontWeight: 700 }}>
+            <span style={{ fontSize: 11, color: C.muted, letterSpacing: 0, fontWeight: 600 }}>
               {members.length} member{members.length === 1 ? '' : 's'} · {emailPending.length} pending · {activeLinks.length} link{activeLinks.length === 1 ? '' : 's'}
             </span>
             <button onClick={onClose} className="hub-btn hub-btn--primary">Done</button>

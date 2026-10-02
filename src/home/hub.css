@@ -44,7 +44,7 @@
      --green and --rose are gone. A tag that carried them takes --slate, the
      neutral. The two that stay are dimmed below the gold on purpose —
      --blue 5.95 and --lilac 5.30 on the panel, both still comfortably past
-     4.5 for their 10.5px uppercase label, and both now quieter than the
+     4.5 for their 11px label, and both now quieter than the
      accent rather than louder. These are still NOT chrome: they are the set of
      distinguishable hues a tag or an avatar is given. */
   --blue:    #5f9dcc;
@@ -60,7 +60,8 @@
   min-height: 0;
   background: var(--ink-900);
   color: var(--bone-100);
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  /* The one interface font (tokens.css --font-ui, owner 2026-10-02). */
+  font-family: var(--font-ui);
   font-size: 13px;
   line-height: 1.4;
   position: relative;
@@ -78,7 +79,7 @@
   display: flex;
   flex-direction: column;
 }
-.survey-hub .brand { font-weight: 800; font-size: 15px; letter-spacing: -0.04em; color: var(--bone-100); }
+.survey-hub .brand { font-weight: 700; font-size: 15px; letter-spacing: -0.04em; color: var(--bone-100); }
 .survey-hub .brand .brand-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--gold); margin-right: 6px; vertical-align: middle; }
 .survey-hub .nav { margin-top: 18px; display: grid; gap: 2px; }
 .survey-hub .nav button { background: transparent; border: 0; text-align: left; padding: 6px 8px; border-radius: 6px; color: var(--ink-200); cursor: pointer; font: inherit; display: flex; align-items: center; gap: 8px; font-size: 12px; }
@@ -91,8 +92,8 @@
 .survey-hub .nav-bottom { margin-top: auto; }
 .survey-hub .nav-bottom + .who { margin-top: 10px; }
 .survey-hub .who { margin-top: auto; display: flex; align-items: center; gap: 7px; padding-top: 10px; border-top: 1px solid var(--ink-500); }
-.survey-hub .who .name { font-size: 11.5px; font-weight: 600; line-height: 1.15; }
-.survey-hub .who .who-meta { font-size: 10px; color: var(--ink-200); }
+.survey-hub .who .name { font-size: 12px; font-weight: 600; line-height: 1.15; }
+.survey-hub .who .who-meta { font-size: 11px; color: var(--ink-200); }
 .survey-hub .profile-signin {
   width: 100%;
   min-height: 32px;
@@ -111,7 +112,7 @@
 .survey-hub .main { overflow: hidden; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
 .survey-hub .header { display: flex; align-items: baseline; gap: 14px; padding: 12px 18px 8px; }
 .survey-hub h1.title { font-size: 20px; line-height: 1; letter-spacing: -0.03em; margin: 0; font-weight: 700; }
-.survey-hub .crumb { color: var(--ink-200); font-size: 11.5px; }
+.survey-hub .crumb { color: var(--ink-200); font-size: 12px; }
 .survey-hub .crumb b { color: var(--bone-100); font-weight: 600; }
 .survey-hub .projects-mobile-summary,
 .survey-hub .templates-mobile-summary,
@@ -324,7 +325,7 @@
 .survey-hub .btn.tertiary:disabled,
 .hub-icon-btn:disabled { border-color: transparent; }
 
-.survey-hub .pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 8px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
+.survey-hub .pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
 .survey-hub .pill.gold { background: var(--accent-soft); color: var(--gold); }
 .survey-hub .pill.blue { background: color-mix(in srgb, var(--blue) 15%, transparent); color: var(--blue); }
 /* The green and the rose tags map to the neutral one — see the :root note. */
@@ -333,8 +334,8 @@
 .survey-hub .pill.lilac { background: color-mix(in srgb, var(--lilac) 15%, transparent); color: var(--lilac); }
 .survey-hub .pill.slate { background: rgba(154,163,178,0.14); color: var(--slate); }
 
-.survey-hub .meta { color: var(--ink-200); font-size: 11.5px; }
-.survey-hub .kbd { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 10.5px; background: var(--ink-700); border: 1px solid var(--ink-500); padding: 1px 5px; border-radius: 4px; color: var(--bone-300); }
+.survey-hub .meta { color: var(--ink-200); font-size: 12px; }
+.survey-hub .kbd { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 11px; background: var(--ink-700); border: 1px solid var(--ink-500); padding: 1px 5px; border-radius: 4px; color: var(--bone-300); }
 
 /* PDF page placeholder thumbnail */
 .survey-hub .pdf-thumb {
@@ -397,7 +398,7 @@
   border-radius: 2px;
   background: transparent;
   font: inherit;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
   line-height: normal;
   white-space: nowrap;
@@ -417,7 +418,7 @@
   border: 1px solid transparent;
   border-radius: 6px;
   box-sizing: border-box;
-  font-size: 11.5px;
+  font-size: 12px;
 }
 .survey-hub .hub-loading-search-metric > svg,
 .survey-hub .hub-loading-search-metric > input,
@@ -651,12 +652,15 @@
 .survey-hub .slim-scroll { overflow-x: hidden; }
 .survey-hub .slim-scroll * { min-width: 0; }
 
-.survey-hub .section-label { font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-200); font-weight: 700; }
+/* Section and column labels (owner 2026-10-02, UI consistency audit): 11/600
+   in normal case with no letter-spacing - the viewer's label style - instead
+   of 10.5px tracked capitals. */
+.survey-hub .section-label { font-size: 11px; letter-spacing: 0; color: var(--ink-200); font-weight: 600; }
 
 .survey-hub .profile-menu-actions {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 0;
 }
 
 /* Keep the first outside press on a real hit target until its click finishes.
@@ -683,12 +687,85 @@
   border-top: 1px solid var(--ink-500);
   padding: 7px 12px;
   color: var(--text-3);
-  font-size: 10px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
-.survey-hub .profile-menu-actions > button {
-  min-height: 34px;
+/* ONE HOME MENU (owner 2026-10-02, UI consistency audit). The row "..." menus
+   on Documents, Projects and Templates and the account menu were four
+   copy-pasted menus at 28 / 28 / 28 / 34px. They share this item now:
+   28px at 12px on desktop, 44px at 15px on the phone (the 44px tap minimum,
+   the phone sheet menus' size). The row menus are portalled to <body>, so
+   these rules are not scoped to .survey-hub. */
+.hub-menu {
+  position: fixed;
+  z-index: 4000;
+  box-sizing: border-box;
+  padding: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+  font-family: var(--font-ui);
+}
+
+.hub-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--menu-item-h);
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 10px;
+  color: var(--text-1);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-xs);
+  font: 400 12px/16px var(--font-ui);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.hub-menu__item > svg {
+  flex: none;
+  width: var(--row-icon);
+  height: var(--row-icon);
+}
+
+.hub-menu__item.is-danger {
+  color: var(--danger-text);
+}
+
+.hub-menu__item:disabled,
+.hub-menu__item[aria-disabled='true'] {
+  color: var(--text-3);
+  cursor: not-allowed;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .hub-menu__item:not(:disabled):not([aria-disabled='true']):hover {
+    background: var(--hover);
+  }
+}
+
+.hub-menu__item:not(:disabled):not([aria-disabled='true']):active {
+  background: var(--pressed);
+}
+
+@media screen and (max-width: 720px) {
+  .hub-menu__item {
+    min-height: var(--sheet-menu-item-h);
+    gap: 12px;
+    padding: 0 12px;
+    font-size: 15px;
+    line-height: 20px;
+  }
+  .hub-menu__item > svg {
+    width: var(--sheet-icon);
+    height: var(--sheet-icon);
+  }
 }
 
 .survey-hub .profile-menu-signout:hover {
@@ -709,7 +786,7 @@
 .survey-hub .profile-signout-copy {
   color: var(--bone-100);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .survey-hub .profile-signout-buttons {
@@ -725,8 +802,8 @@
   background: var(--ink-600);
   color: var(--bone-100);
   font: inherit;
-  font-size: 11.5px;
-  font-weight: 650;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -802,15 +879,14 @@
   font-weight: 700;
 }
 
-/* Group headings inside the menu — the same micro-label treatment the hub uses
-   for a section caption (.section-label): uppercase, tracked, muted. */
+/* Group headings inside the menu — the same label the hub uses for a section
+   caption (.section-label): 11/600, normal case, no tracking, muted. */
 .survey-hub .archive-sort-menu-label {
   padding: 7px 9px 3px;
-  font-size: 9.5px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0;
   color: var(--text-3);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .survey-hub .archive-sort-menu-label:not(:first-child) {
@@ -1181,7 +1257,7 @@
     background: transparent;
     border: 0;
     border-radius: 6px;
-    font: 600 12px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+    font: 600 12px/1 var(--font-ui);
     letter-spacing: -0.01em;
     text-align: left;
     white-space: nowrap;
@@ -1669,10 +1745,9 @@
   .survey-hub .documents-mobile-detail-head span,
   .survey-hub .documents-mobile-detail-facts > div > span {
     color: var(--ink-200);
-    font-size: 10px;
-    font-weight: 750;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0;
   }
 
   .survey-hub .documents-mobile-detail-head strong {
@@ -1719,7 +1794,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 11.5px;
+    font-size: 12px;
   }
 
   .survey-hub .documents-mobile-detail-owner {
@@ -1853,7 +1928,7 @@
     justify-content: center;
     gap: 3px;
     font: inherit;
-    font-size: 10.5px;
+    font-size: 11px;
     cursor: pointer;
   }
 
@@ -2083,8 +2158,8 @@
     background: transparent;
     color: var(--ink-200);
     font: inherit;
-    font-size: 10.5px;
-    font-weight: 650;
+    font-size: 11px;
+    font-weight: 600;
     cursor: pointer;
   }
 
@@ -2120,10 +2195,9 @@
 
   .survey-hub .projects-mobile-browser-label {
     color: var(--ink-200);
-    font-size: 10.5px;
-    font-weight: 750;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0;
     padding: 2px 2px 0;
   }
 
@@ -2199,7 +2273,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-weight: 750;
+    font-weight: 700;
   }
 
   .survey-hub .projects-mobile-folder-copy small,
@@ -2220,7 +2294,7 @@
 
   .survey-hub .projects-mobile-disclosure,
   .survey-hub .projects-mobile-chevron {
-    font-weight: 750;
+    font-weight: 700;
   }
 
   .survey-hub .projects-mobile-chevron {
@@ -2279,7 +2353,7 @@
     color: var(--bone-100);
     font: inherit;
     font-size: 13px;
-    font-weight: 800;
+    font-weight: 700;
     outline: none;
     padding: 0 0 1px;
   }
@@ -2306,8 +2380,8 @@
     gap: 6px;
     padding: 0 10px;
     font: inherit;
-    font-size: 11.5px;
-    font-weight: 750;
+    font-size: 12px;
+    font-weight: 700;
     white-space: nowrap;
   }
 
@@ -2329,7 +2403,7 @@
     min-width: 0;
     color: var(--bone-100);
     font-size: 13px;
-    font-weight: 800;
+    font-weight: 700;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -2372,7 +2446,7 @@
     padding: 0 11px;
     font: inherit;
     font-size: 11px;
-    font-weight: 750;
+    font-weight: 700;
   }
 
   .survey-hub .projects-mobile-file-row {
@@ -2458,7 +2532,7 @@
 
   .survey-hub .projects-mobile-project-card .projects-mobile-title-input {
     font-size: 17px;
-    font-weight: 750;
+    font-weight: 700;
     /* 20px + the rename field's 1px top and bottom edges = the old 22px. */
     line-height: 20px;
     letter-spacing: -0.01em;
@@ -2471,7 +2545,7 @@
 
   .survey-hub .projects-mobile-project-head > span {
     color: var(--ink-200);
-    font-size: 11.5px;
+    font-size: 12px;
     line-height: 14px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2491,11 +2565,10 @@
 
   .survey-hub .projects-mobile-project-files-head > span:first-child {
     color: var(--ink-200);
-    font-size: 10.5px;
-    font-weight: 750;
+    font-size: 11px;
+    font-weight: 600;
     line-height: 1;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
+    letter-spacing: 0;
     white-space: nowrap;
   }
 
@@ -2587,7 +2660,7 @@
     place-items: center;
     color: var(--accent-text);
     font-size: 11px;
-    font-weight: 900;
+    font-weight: 700;
   }
 
   .survey-hub .projects-mobile-check.checked {
@@ -2666,12 +2739,12 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 12px;
-    font-weight: 750;
+    font-weight: 700;
   }
 
   .survey-hub .projects-mobile-rail-list small {
     color: var(--ink-200);
-    font-size: 10.5px;
+    font-size: 11px;
   }
 
   .survey-hub .projects-mobile-rail-list i {
@@ -2713,10 +2786,9 @@
     justify-content: space-between;
     gap: 10px;
     color: var(--ink-200);
-    font-size: 10.5px;
-    font-weight: 750;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0;
     padding: 2px;
   }
 
@@ -2736,7 +2808,7 @@
     padding: 0 9px;
     font: inherit;
     font-size: 11px;
-    font-weight: 650;
+    font-weight: 600;
   }
 
   .survey-hub .projects-mobile-path-card {
@@ -2852,10 +2924,9 @@
 
   .survey-hub .projects-mobile-focus-kicker {
     color: var(--ink-200);
-    font-size: 10.5px;
-    font-weight: 750;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0;
   }
 
   .survey-hub .projects-mobile-focus-card input {
@@ -2868,7 +2939,7 @@
     color: var(--bone-100);
     font: inherit;
     font-size: 20px;
-    font-weight: 750;
+    font-weight: 700;
     outline: none;
     padding: 0 0 6px;
   }
@@ -2885,7 +2956,7 @@
     background: var(--ink-800);
     color: var(--ink-200);
     font-size: 11px;
-    font-weight: 650;
+    font-weight: 600;
     padding: 8px;
     text-align: center;
     overflow: hidden;
@@ -2970,7 +3041,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-weight: 750;
+    font-weight: 700;
   }
 
   .survey-hub .projects-mobile-team-board button > span:last-child {
@@ -3011,10 +3082,9 @@
 
   .survey-hub .templates-mobile-label {
     color: var(--ink-200);
-    font-size: 10.5px;
-    font-weight: 750;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0;
     padding: 2px 2px 0;
   }
 
@@ -3051,7 +3121,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-weight: 750;
+    font-weight: 700;
   }
 
   .survey-hub .templates-mobile-copy small,
@@ -3086,7 +3156,7 @@
   .survey-hub .templates-mobile-swatches em {
     color: var(--ink-200);
     font-style: normal;
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .survey-hub .templates-mobile-check {
@@ -3102,7 +3172,7 @@
     color: var(--accent-text);
     font-size: 11px;
     font-style: normal;
-    font-weight: 900;
+    font-weight: 700;
   }
 
   .survey-hub .templates-mobile-check.checked {
@@ -3142,8 +3212,8 @@
     gap: 6px;
     padding: 0 10px;
     font: inherit;
-    font-size: 11.5px;
-    font-weight: 750;
+    font-size: 12px;
+    font-weight: 700;
     white-space: nowrap;
   }
 
@@ -3167,13 +3237,13 @@
 
   .survey-hub .templates-mobile-title-input {
     font-size: 14px;
-    font-weight: 800;
+    font-weight: 700;
     padding: 0 0 2px;
   }
 
   .survey-hub .templates-mobile-inline-input {
-    font-size: 12.5px;
-    font-weight: 650;
+    font-size: 13px;
+    font-weight: 500;
     padding: 1px 0;
     /* UX 2026-09-23 (vertical symmetry): a transparent top edge to match the
        1px underline, so the name sits on the row's centre line, not 0.5px
@@ -3245,10 +3315,9 @@
 
   .survey-hub .templates-mobile-section-head > span {
     color: var(--ink-200);
-    font-size: 10.5px;
-    font-weight: 750;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0;
   }
 
   .survey-hub .templates-mobile-section-head button,
@@ -3331,7 +3400,8 @@
     flex: 0 0 auto !important;
     min-width: 44px !important;
     max-width: 200px !important;
-    min-height: 32px;
+    /* 40, the phone sheets' module tabs (owner 2026-10-02). */
+    min-height: 40px;
   }
 
   .survey-hub .templates-mobile-module-tabs [data-module-tab-id] button,
@@ -3373,10 +3443,9 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--ink-200);
-    font-size: 10.5px;
-    font-weight: 750;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0;
   }
 
   .survey-hub .templates-mobile-module-group-head button {
@@ -3391,7 +3460,7 @@
     gap: 5px;
     padding: 0 8px;
     font: inherit;
-    font-size: 10.5px;
+    font-size: 11px;
     font-weight: 700;
     white-space: nowrap;
   }
@@ -3484,16 +3553,19 @@
     padding: 0 10px 10px 42px;
   }
 
+  /* 44 in all with its hairline (owner 2026-10-02, UI consistency audit):
+     every one-line row in the phone editor is the sheet's 44. */
   .survey-hub .templates-mobile-item-row {
     grid-template-columns: 44px minmax(0, 1fr) 44px;
-    min-height: 36px;
+    box-sizing: border-box;
+    min-height: var(--sheet-row-h);
     padding: 0;
     border-top: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
   }
 
   .survey-hub .templates-mobile-item-row > button {
     width: 44px;
-    height: 44px;
+    height: calc(var(--sheet-row-h) - 1px);
     border: 0;
     background: transparent;
     color: var(--ink-200);
@@ -3502,11 +3574,25 @@
     font-size: 16px;
   }
 
+  /* "+ Add checklist item" is the phone sheets' action word (13/600,
+     --sheet-action) on a 44px line of its own, its text under the item
+     names (44px grip + 8px gap), instead of a small dashed 11/700 box. */
   .survey-hub .templates-mobile-add-line {
-    justify-self: start;
+    justify-self: stretch;
+    justify-content: flex-start;
+    height: var(--sheet-row-h);
+    padding: 0 0 0 52px;
     background: transparent;
-    border-style: dashed;
-    color: var(--ink-200);
+    border: 0;
+    border-radius: 0;
+    color: var(--text-2);
+    font: var(--sheet-action);
+    text-align: left;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .survey-hub .templates-mobile-add-line:active {
+    opacity: 0.6;
   }
 
   .survey-hub .templates-mobile-archived {
@@ -3520,10 +3606,9 @@
   .survey-hub .templates-mobile-archived > div:first-child {
     margin-bottom: 4px;
     color: var(--text-3);
-    font-size: 10px;
-    font-weight: 750;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0;
   }
 
   .survey-hub .templates-mobile-archived > div:not(:first-child) {
@@ -3541,7 +3626,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--ink-200);
-    font-size: 11.5px;
+    font-size: 12px;
     font-style: italic;
     text-decoration: line-through;
   }
@@ -3667,7 +3752,7 @@
   .survey-hub .templates-mobile-entity-modal-head strong {
     color: var(--bone-100);
     font-size: 13px;
-    font-weight: 800;
+    font-weight: 700;
   }
 
   .survey-hub .templates-mobile-entity-modal-head span {
@@ -3688,8 +3773,8 @@
     color: var(--gold);
     padding: 0 11px;
     font: inherit;
-    font-size: 11.5px;
-    font-weight: 750;
+    font-size: 12px;
+    font-weight: 700;
   }
 
   .survey-hub .templates-mobile-entity-panel {
@@ -3795,7 +3880,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-weight: 650;
+    font-weight: 600;
   }
 
   .survey-hub .projects-mobile-member-row {
@@ -3825,10 +3910,9 @@
 
   .survey-hub .mobile-section-title {
     color: var(--ink-200);
-    font-size: 10.5px;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0;
   }
 
   .survey-hub .templates-editor-grid {
@@ -3940,7 +4024,7 @@
 
   .survey-hub .archive-mobile-child-name {
     color: var(--ink-200);
-    font-size: 11.5px;
+    font-size: 12px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -5029,19 +5113,20 @@ button[title="Edit color"]:active > span,
 }
 
 /* ---------- PHONE: category rows ----------
-   [grip 32][chevron 26][name][........][count "2 items"][⋮ 36], 48px tall.
-   The grip, chevron and ⋮ paint inside their columns; the grip and ⋮ keep a
-   44px finger target through a pad. */
+   [grip 32][chevron 26][name][........][count "2 items"][⋮ 36], 44px tall
+   with the hairline above it (owner 2026-10-02: every one-line phone row is
+   44 in all; it was 48 + 1). The grip, chevron and ⋮ paint inside their
+   columns; the grip and ⋮ keep a finger target through a pad. */
 .survey-hub .templates-mobile-category-row {
   grid-template-columns: 32px 26px minmax(0, 1fr) auto 36px !important;
   gap: 0 !important;
-  min-height: 48px !important;
+  min-height: calc(var(--sheet-row-h) - 1px) !important;
   padding: 0 4px 0 6px !important;
   cursor: pointer;
 }
 .survey-hub .templates-mobile-category-row > [data-drag-rearrange-handle] {
   width: 32px !important;
-  height: 44px !important;
+  height: calc(var(--sheet-row-h) - 1px) !important;
   opacity: 0.45;
 }
 .survey-hub .templates-mobile-category-row > [data-drag-rearrange-handle]::after {
@@ -5052,7 +5137,7 @@ button[title="Edit color"]:active > span,
 }
 .survey-hub .templates-mobile-category-row > .templates-mobile-category-toggle {
   width: 26px;
-  height: 44px;
+  height: calc(var(--sheet-row-h) - 1px);
   color: var(--text-3);
 }
 /* The whole row is the toggle's target now; the chevron needs no pad. */
@@ -5061,12 +5146,15 @@ button[title="Edit color"]:active > span,
   width: 16px;
   height: 16px;
 }
-/* 15px asks for 15, but index.html lifts every phone field to 16px (iOS
-   zoom guard); 700 keeps the name a step heavier than its checklist items. */
+/* Every name here is a field, and index.html lifts every phone field to
+   16px so iOS never zooms on focus. At 16px a bold name was the loudest
+   text in the app (owner 2026-10-02, UI consistency audit), so category,
+   checklist and entity names are all 500, the sheet row title's weight;
+   the indent, not the weight, says which is which. */
 .survey-hub .templates-mobile-category-row > .templates-mobile-category-name {
   justify-self: start;
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 500;
 }
 .survey-hub .templates-mobile-category-row > .templates-mobile-category-name > input {
   color: var(--text-1);
@@ -5095,7 +5183,7 @@ button[title="Edit color"]:active > span,
 }
 .survey-hub .templates-mobile-category-row .templates-mobile-more {
   width: 36px !important;
-  height: 44px !important;
+  height: calc(var(--sheet-row-h) - 1px) !important;
 }
 .survey-hub .templates-mobile-category-row .templates-mobile-more::after {
   inset: 0 -4px 0 0 !important;
@@ -5107,10 +5195,17 @@ button[title="Edit color"]:active > span,
    item row's 44px grip and 8px gap leave 12px of indent. */
 .survey-hub .templates-mobile-items {
   padding-left: 12px !important;
+  /* The rows, and the "+ Add checklist item" line under them, sit flush:
+     a 44px beat with no extra gaps. */
+  gap: 0;
+  padding-bottom: 0;
 }
 
-/* ---------- PHONE: entity rows (dot instead of chevron) ---------- */
+/* ---------- PHONE: entity rows (dot instead of chevron) ----------
+   44 in all with the hairline above it, like the category rows (was 36 + 1);
+   the dot, grip and More stay centred in it. */
 .survey-hub .templates-mobile-entity-row {
+  min-height: calc(var(--sheet-row-h) - 1px);
   cursor: pointer;
 }
 .survey-hub .templates-mobile-entity-row > .templates-mobile-entity-name {
@@ -5127,21 +5222,21 @@ button[title="Edit color"]:active > span,
   justify-self: start;
   color: inherit;
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 700;
 }
 .survey-hub .projects-mobile-project-head > .projects-mobile-title-field {
   justify-self: start;
   max-width: 100%;
   color: inherit;
   font-size: 17px;
-  font-weight: 750;
+  font-weight: 700;
   line-height: 22px;
   letter-spacing: -0.01em;
   overflow: visible;
 }
 .survey-hub .templates-mobile-entity-row > .templates-mobile-entity-name {
-  font-size: 12.5px;
-  font-weight: 650;
+  font-size: 13px;
+  font-weight: 500;
 }
 /* index.html lifts every phone input to at least 16px (iOS zooms below it);
    the hidden twin that sizes a text-wide field follows the same rule, or the

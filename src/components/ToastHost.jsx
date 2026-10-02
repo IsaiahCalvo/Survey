@@ -114,7 +114,7 @@ export default function ToastHost() {
               padding: '9px 14px',
               borderRadius: 8,
               boxShadow: '0 12px 30px rgba(0,0,0,0.5)',
-              fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+              fontFamily: 'var(--font-ui)',
               fontSize: 12.5,
               fontWeight: 500,
               lineHeight: 1.45,

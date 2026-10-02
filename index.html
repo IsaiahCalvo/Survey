@@ -29,8 +29,11 @@
         color-scheme: dark;
         /* UX 2026-05-15: Default body font so content rendered outside the
            app's scoped containers (e.g. popups/menus portaled to <body>)
-           never falls back to the browser serif (Times New Roman). */
-        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+           never falls back to the browser serif (Times New Roman).
+           2026-10-02: the one interface font, the same stack as --font-ui
+           in src/styles/tokens.css (written out because this block runs
+           before that sheet loads). */
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       }
       #root {
         /* UX 2026-04-22: Apply iPad/iPhone safe-area ONLY on the root

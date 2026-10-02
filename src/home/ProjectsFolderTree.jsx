@@ -113,16 +113,22 @@ function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160
 
   if (!anchorRect) return null;
 
-  // Hang below the trigger; flip up if it would run off the bottom.
-  const estHeight = items.length * 34 + 8;
+  // Hang below the trigger; flip up if it would run off the bottom. The items
+  // are the shared home menu's (hub.css .hub-menu__item, owner 2026-10-02):
+  // 28px on desktop, 44px at 15px on the phone, where the menu is a little
+  // wider so the bigger words fit. The word "Delete" is --danger-text (the
+  // label red); it used to be --danger, the fill red.
+  const phone = typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 720px)').matches;
+  const menuWidth = phone ? Math.max(minWidth, 200) : minWidth;
+  const estHeight = items.length * (phone ? 44 : 28) + 10;
   let top = anchorRect.bottom + 4;
   if (top + estHeight > window.innerHeight - 8) {
     top = Math.max(8, anchorRect.top - estHeight - 4);
   }
   let left = align === 'right'
-    ? anchorRect.right - minWidth
+    ? anchorRect.right - menuWidth
     : anchorRect.left;
-  left = Math.max(8, Math.min(left, window.innerWidth - minWidth - 8));
+  left = Math.max(8, Math.min(left, window.innerWidth - menuWidth - 8));
 
   return createPortal(
     <>
@@ -130,27 +136,17 @@ function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160
       <div
         ref={ref}
         role="menu"
-        style={{
-          position: 'fixed', top, left, zIndex: 4000,
-          background: HEX.card, border: `1px solid ${HEX.rule}`, borderRadius: 8,
-          padding: 4, minWidth, boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
-        }}
+        className="hub-menu"
+        style={{ top, left, minWidth: menuWidth }}
       >
         {items.map((it) => (
           <button
             key={it.label}
+            type="button"
             role="menuitem"
+            className={`hub-menu__item${it.danger ? ' is-danger' : ''}`}
             disabled={it.disabled}
             onClick={() => { if (it.disabled) return; onClose(); it.onClick && it.onClick(); }}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left',
-              background: 'transparent', border: 0,
-              color: it.disabled ? HEX.muted : (it.danger ? HEX.danger : HEX.ink),
-              padding: '7px 10px', fontSize: 12, borderRadius: 4,
-              cursor: it.disabled ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-            }}
-            onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = HEX.rule; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
           >
             {it.iconNode
               ? it.iconNode
@@ -1127,7 +1123,7 @@ export default function ProjectsFolderTree({
                 {/* Files */}
                 <div className="slim-scroll" style={{ padding: '10px 14px', overflow: 'auto', position: 'relative' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, height: 28, marginBottom: 4, overflow: 'hidden', flexWrap: 'nowrap', justifyContent: 'space-between' }}>
-                    <span className="hub-section-label" style={{ fontSize: 10.5, letterSpacing: 0.06, textTransform: 'uppercase', color: 'var(--ink-200)', fontWeight: 700 }}>Files<span className="hub-section-count">{openFiles.length}</span></span>
+                    <span className="hub-section-label" style={{ fontSize: 11, letterSpacing: 0, color: 'var(--ink-200)', fontWeight: 600 }}>Files<span className="hub-section-count">{openFiles.length}</span></span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 'none' }}>
                       {fileSelect && (() => {
                         // Effective selection is DERIVED from the current rows
@@ -1185,7 +1181,7 @@ export default function ProjectsFolderTree({
                       </button>
                     </div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 90px 90px 28px', gap: 12, padding: '0 10px 6px', fontSize: 10, color: 'var(--ink-200)', letterSpacing: 0.06, textTransform: 'uppercase' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 90px 90px 28px', gap: 12, padding: '0 10px 6px', fontSize: 11, color: 'var(--ink-200)', letterSpacing: 0 }}>
                     <span></span><span>Name</span><span>Last edited by</span><span>Edited</span><span></span>
                   </div>
                   {openFiles.length === 0 ? (

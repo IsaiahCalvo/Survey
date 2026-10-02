@@ -18,7 +18,7 @@ const overlay = {
   position: 'fixed', inset: 0, background: C.scrim,
   backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
   display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1300,
-  fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+  fontFamily: 'var(--font-ui)',
 };
 
 export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfirm }) {
@@ -73,7 +73,7 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
       <div ref={cardRef} role="dialog" aria-modal="true" aria-label="Move or copy documents" onClick={(e) => e.stopPropagation()} style={{ width: 420, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 10, boxShadow: '0 24px 60px rgba(0,0,0,0.55)', color: C.ink, overflow: 'hidden' }}>
         <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${C.rule}`, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
           <div>
-            <div style={{ fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>Move or copy</div>
+            <div style={{ fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600 }}>Move or copy</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.015em', marginTop: 4 }}>{count} {count === 1 ? 'document' : 'documents'}</div>
           </div>
           <button disabled={submitting} onClick={onClose} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={13} /></button>
@@ -92,7 +92,7 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
             </div>
           )}
           <div>
-            <div style={{ fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, fontWeight: 700, marginBottom: 8 }}>Destination project</div>
+            <div style={{ fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600, marginBottom: 8 }}>Destination project</div>
             <div style={{ maxHeight: 200, overflowY: 'auto', border: `1px solid ${C.rule}`, borderRadius: 6 }}>
               {projects.length === 0 && <div style={{ padding: '12px', fontSize: 11.5, color: C.muted }}>No projects to move into.</div>}
               {projects.map((p) => (

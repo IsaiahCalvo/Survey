@@ -118,6 +118,10 @@ export default function PresenceAvatars({
     return palettes[hash % palettes.length];
   };
 
+  // The initials' ink. Light text on the blue "you" face measured 2.3:1
+  // (UI consistency audit, 2026-10-02); the darkest surface on it reads ~6:1.
+  const inkOf = (userId) => (userId === currentUserId ? 'var(--surface-0)' : 'var(--text-1)');
+
   const emailOf = (row) => row?.display_name || '';
 
   return (
@@ -136,6 +140,7 @@ export default function PresenceAvatars({
             key={row.user_id}
             initials={initialsOf(row)}
             background={colorOf(row.user_id)}
+            ink={inkOf(row.user_id)}
             email={emailOf(row)}
             offset={idx > 0 ? `${overlap}px` : '0'}
             size={avatarSize}
@@ -233,7 +238,7 @@ export default function PresenceAvatars({
                         display: 'inline-flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        color: 'var(--text-1)',
+                        color: inkOf(row.user_id),
                         fontSize: '8px',
                         fontWeight: 600,
                         flexShrink: 0
@@ -313,7 +318,7 @@ function CompactViewerCount({ total }) {
 // existing Pages / Search / Bookmarks tab tooltips that slide out to the
 // right) and 'bottom' for the expanded layout where the row has more
 // horizontal space and a downward tooltip is more comfortable.
-function Avatar({ initials, background, email, offset = '0', size = 22, fontSize = 9, tooltipDirection = 'bottom' }) {
+function Avatar({ initials, background, ink = 'var(--text-1)', email, offset = '0', size = 22, fontSize = 9, tooltipDirection = 'bottom' }) {
   const [hover, setHover] = useState(false);
   const tooltipPosition = tooltipDirection === 'right'
     ? { left: 'calc(100% + 8px)', top: '50%', transform: 'translateY(-50%)' }
@@ -334,7 +339,7 @@ function Avatar({ initials, background, email, offset = '0', size = 22, fontSize
           height: `${size}px`,
           borderRadius: '50%',
           background,
-          color: 'var(--text-1)',
+          color: ink,
           fontSize: `${fontSize}px`,
           fontWeight: 600,
           border: '2px solid var(--surface-0)',

@@ -134,7 +134,7 @@ export const TYPOGRAPHY = {
   // Font families (DOM CSS only — NEVER feed a fallback stack into Fabric.js;
   // Fabric requires single-name fonts, see CLAUDE.md)
   fontFamily: {
-    default: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+    default: 'var(--font-ui)',
     mono: '"JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace',
   },
 

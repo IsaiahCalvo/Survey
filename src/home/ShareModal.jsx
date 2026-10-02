@@ -164,7 +164,7 @@ export default function ShareModal({
     }
   };
 
-  const fieldLabel = { fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, fontWeight: 700, marginBottom: 8 };
+  const fieldLabel = { fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600, marginBottom: 8 };
 
   return (
     <div
@@ -173,7 +173,7 @@ export default function ShareModal({
         position: 'fixed', inset: 0, background: C.scrim,
         backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1300,
-        fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+        fontFamily: 'var(--font-ui)',
       }}
     >
       <div
@@ -190,7 +190,7 @@ export default function ShareModal({
         <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${C.rule}`, display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ width: 3, height: 30, background: C.gold, borderRadius: 2, flex: 'none' }}></span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>Share {noun}</div>
+            <div style={{ fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600 }}>Share {noun}</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.015em', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name || 'Untitled'}</div>
           </div>
           <button ref={closeRef} onClick={onClose} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={13} /></button>
@@ -232,12 +232,12 @@ export default function ShareModal({
           </div>
 
           {blockedReason && (
-            <div style={{ background: 'var(--danger-soft)', borderLeft: `3px solid ${C.danger}`, borderRadius: 8, padding: '8px 10px', color: C.ink, fontSize: 11.5 }}>
+            <div style={{ background: 'var(--alert-danger-bg)', border: 'var(--alert-danger-border)', borderRadius: 'var(--alert-radius)', padding: '8px 10px', color: C.ink, fontSize: 11.5 }}>
               {blockedReason}
             </div>
           )}
           {error && !blockedReason && (
-            <div style={{ background: 'var(--danger-soft)', borderLeft: `3px solid ${C.danger}`, borderRadius: 8, padding: '8px 10px', color: C.ink, fontSize: 11.5 }}>
+            <div style={{ background: 'var(--alert-danger-bg)', border: 'var(--alert-danger-border)', borderRadius: 'var(--alert-radius)', padding: '8px 10px', color: C.ink, fontSize: 11.5 }}>
               {error}
             </div>
           )}

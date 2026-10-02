@@ -145,7 +145,7 @@ export default function ResetPasswordPage() {
       data-reset-password-page="true"
       style={{
         position: 'fixed', inset: 0, background: C.bg, color: C.ink,
-        fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+        fontFamily: 'var(--font-ui)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '24px',
       }}
@@ -170,7 +170,7 @@ export default function ResetPasswordPage() {
           <div style={{ color: C.inkSoft, fontSize: 13, lineHeight: 1.5 }}>{description}</div>
 
           {error && (
-            <div style={{ background: 'var(--danger-soft)', borderLeft: `3px solid ${C.danger}`, borderRadius: 8, padding: '8px 10px', color: C.ink, fontSize: 12 }}>
+            <div style={{ background: 'var(--alert-danger-bg)', border: 'var(--alert-danger-border)', borderRadius: 'var(--alert-radius)', padding: '8px 10px', color: C.ink, fontSize: 12 }}>
               {error}
             </div>
           )}

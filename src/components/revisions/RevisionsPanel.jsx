@@ -101,7 +101,7 @@ function ensureHistoryPanelStyle() {
   const style = document.createElement('style');
   style.id = HISTORY_PANEL_STYLE_ID;
   style.textContent = `
-    .dh-panel { --dh-edge: 12px; --dh-row-pad: 9px; --dh-type: 13px; --dh-meta: 11.5px; --dh-glyph: 18px;
+    .dh-panel { --dh-edge: 12px; --dh-row-pad: 9px; --dh-type: 13px; --dh-meta: 12px; --dh-glyph: 18px;
       /* Status colors (RULED 2026-09-29 owner): added blue, edited green,
          deleted red, restored a light teal (lighter than the blue, so the two
          read apart). Dots only; the verb gets a light tint. */
@@ -112,7 +112,7 @@ function ensureHistoryPanelStyle() {
     .dh-head { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 8px var(--dh-edge) 10px; border-bottom: 1px solid var(--border); }
     .dh-headrow { display: flex; align-items: center; gap: 8px; min-height: 28px; }
     .dh-count { flex: 1; display: flex; align-items: baseline; gap: 8px; color: var(--text-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .dh-title { color: var(--text-1); font-size: 13px; font-weight: 650; }
+    .dh-title { color: var(--text-1); font-size: 13px; font-weight: 600; }
     .dh-ib { width: 28px; height: 28px; display: grid; place-items: center; flex: none; padding: 0; border: 0; background: none; color: var(--text-3); cursor: pointer; }
     .dh-ib:hover { color: var(--text-1); }
     .dh-ib > * { transition: transform .08s; }
@@ -140,8 +140,8 @@ function ensureHistoryPanelStyle() {
     .dh-markchip button { width: 22px; height: 22px; flex: none; display: grid; place-items: center; padding: 0; border: 0; background: none; color: var(--text-3); cursor: pointer; }
     .dh-markchip button:hover { color: var(--text-1); }
     .dh-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; outline: none; }
-    .dh-day { position: sticky; top: 0; z-index: 2; padding: 12px var(--dh-edge) 6px; font-size: 11px; font-weight: 650; letter-spacing: .05em;
-      text-transform: uppercase; color: var(--text-3); background: inherit; border-bottom: 1px solid var(--border); }
+    .dh-day { position: sticky; top: 0; z-index: 2; padding: 12px var(--dh-edge) 6px; font-size: 11px; font-weight: 600; letter-spacing: 0;
+      color: var(--text-3); background: inherit; border-bottom: 1px solid var(--border); }
     .dh-panel .dh-day { background: var(--surface-1); }
     .dh-panel--phone .dh-day { background: var(--surface-2); }
     .dh-row { position: relative; display: grid; grid-template-columns: 7px var(--dh-glyph) minmax(0, 1fr); column-gap: 9px; align-items: start;
@@ -171,22 +171,22 @@ function ensureHistoryPanelStyle() {
     .dh-detail { margin-top: 6px; }
     .dh-act { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
     .dh-restore { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: none; color: var(--text-1);
-      font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+      font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
     .dh-restore:hover { color: #4a90e2; }
     .dh-restore:disabled { color: var(--text-3); cursor: wait; }
     .dh-restore > span:first-child { display: inline-grid; transition: transform .08s; }
     .dh-restore:active > span:first-child { transform: scale(.86); }
     .dh-peek { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border-radius: 7px; background: var(--surface-0); }
     .dh-peek > span { padding: 0 6px 0 4px; color: var(--text-3); font-size: 11px; }
-    .dh-peek button { border: 0; background: none; color: var(--text-3); font: inherit; font-size: 11.5px; padding: 3px 8px; border-radius: 5px; cursor: pointer; }
+    .dh-peek button { border: 0; background: none; color: var(--text-3); font: inherit; font-size: 12px; padding: 3px 8px; border-radius: 5px; cursor: pointer; }
     .dh-peek button.on { background: var(--surface-3); color: var(--text-1); }
-    .dh-empty { padding: 24px var(--dh-edge); color: var(--text-3); font-size: 12.5px; line-height: 1.5; }
+    .dh-empty { padding: 24px var(--dh-edge); color: var(--text-3); font-size: 13px; line-height: 1.5; }
     .dh-more { display: block; margin: 6px auto 10px; padding: 6px 10px; border: 0; background: none; color: var(--text-3);
       font: inherit; font-size: 12px; cursor: pointer; }
     .dh-more:hover { color: var(--text-1); }
     .dh-more:disabled { cursor: wait; }
-    .dh-foot { flex: none; padding: 9px var(--dh-edge); border-top: 1px solid var(--border); color: var(--text-3); font-size: 11.5px; }
-    .dh-link { padding: 0; border: 0; background: none; color: var(--text-2); font: inherit; font-size: 11.5px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+    .dh-foot { flex: none; padding: 9px var(--dh-edge); border-top: 1px solid var(--border); color: var(--text-3); font-size: 12px; }
+    .dh-link { padding: 0; border: 0; background: none; color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
     .dh-link:hover { color: var(--text-1); }
     /* Phone: the shared PHONE SHEET SCALE (src/styles/tokens.css, owner
        2026-10-01 "consistency across all bottom panels") - a 16/700 title,
