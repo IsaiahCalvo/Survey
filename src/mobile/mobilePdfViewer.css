@@ -156,7 +156,12 @@
   --mobile-page-digit-w: 7.286px;
   --mobile-page-input-w: calc((3 * var(--mobile-page-digit-w)) + 0.5px);
   --mobile-page-pill-text: calc(var(--mobile-page-input-w) + 2px + 3.531px + 2.875px + (3 * var(--mobile-page-digit-w)));
-  --mobile-page-pill-chrome: 40px;
+  /* Owner 2026-10-02: the 24px chevron zone became the live zoom reading,
+     sized from "4000%" in the pill's face (4 tabular digits + "%" = ~38px,
+     4px a side, 1px hairline, rounded up to a whole 48). Chrome is now
+     6 + 2 + 48 + 6 + 2 = 64px, and the pill 120px. */
+  --mobile-page-zoom-w: 48px;
+  --mobile-page-pill-chrome: 64px;
   --mobile-page-pill-slack: 3.378px;
   --mobile-page-pill-w: calc(var(--mobile-page-pill-text) + var(--mobile-page-pill-chrome) + var(--mobile-page-pill-slack));
 
@@ -410,7 +415,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-header__icon::after,
 .mobile-pdf-header__page-nav::after,
 .mobile-pdf-header__page-frac::after,
-.mobile-pdf-header__page-chevron::after {
+.mobile-pdf-header__zoom-readout::after {
   content: '';
   position: absolute;
   inset-block: -8px;
@@ -422,7 +427,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    the same 44px as every other header control (owner 2026-09-22: "keep 44px hit
    boxes"). Measured at 375 and 390: 44.0 for all six. */
 .mobile-pdf-header__page-frac::after,
-.mobile-pdf-header__page-chevron::after {
+.mobile-pdf-header__zoom-readout::after {
   inset-block: -9px;
 }
 
@@ -466,6 +471,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   /* Sized from "999 / 999" - see --mobile-page-pill-w. min-width as well as
      width so a future flex parent cannot squeeze the fraction back into a
      wrap. */
+  position: relative;
   width: var(--mobile-page-pill-w);
   min-width: var(--mobile-page-pill-w);
   /* RULED CHANGE 2026-09-22 (owner, second pass): the pill is shorter than
@@ -487,6 +493,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      10, so it reads as one of the app's pills rather than a boxier control
      sitting above them. 5px before. */
   border-radius: 10px;
+  /* The bottom corners round again only after the zoom menu has rolled back
+     up into the pill (see .is-zoom-open below). */
+  transition: border-radius 0s linear 140ms;
   /* RULED CHANGE 2026-09-22 (owner: "the page pill looks too large"). The
      strip's own face - 600 11px with the strip's tabular numerals and -0.01em -
      in place of the header's 800. Same box, quieter numbers. */
@@ -504,7 +513,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 /* Tap zone 1 — the whole "n / N" fraction → inline page-jump input.
-   flex:1 makes it fill the pill left of the chevron so the tap target is
+   flex:1 makes it fill the pill left of the zoom reading so the tap target is
    comfortable (owner decision 2), not just the ordinal digit. */
 .mobile-pdf-header__page-frac {
   position: relative;
@@ -553,108 +562,124 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    down from the ordinal the strip uses between a label and its unit. */
 .mobile-pdf-header__page-total { color: var(--text-2); white-space: nowrap; }
 
-/* Tap zone 2 — chevron → zoom/fit dropdown only. Widened hit area (min 24px)
-   so it isn't a cramped edge target next to the fraction zone.
-   RULED CHANGE 2026-09-22 (owner: "the chevron is not centred in its section";
-   board 1-pen draws this button at min-width 24). 22 left the 11px caret's
-   centre half a pixel adrift of the section the eye sees, because the 1px
-   hairline on the left is part of the box. At 24 the 4px/5px padding puts the
-   caret's centre exactly on 12 - the section's own centre line. */
-.mobile-pdf-header__page-chevron {
+/* Tap zone 2 — the live zoom reading → the zoom menu.
+   Owner 2026-10-02 ("too loud and bulky ... can they almost fit within the
+   pill of the page navigation and then the dropdown, as if it grew out of
+   that"): the zoom is the pill's second segment, not a chevron that hid it.
+   It wears the pill's own face (600 11px, tabular numerals) in the calm grey
+   the page total uses, behind the same 1px hairline the chevron had. Its width
+   is fixed from "4000%" (--mobile-page-zoom-w) so the pill never changes size
+   while you zoom. */
+.mobile-pdf-header__zoom-readout {
   position: relative;
   height: 100%;
-  min-width: 24px;
-  /* 4px left, 5px right: the 1px border-left is part of this box, so an even
-     5/5 padding centred the caret on the CONTENT box and left it 0.5px right
-     of the box the user sees. 4 + 1px border = 5 on both sides, and the caret
-     lands on the button's own centre line. */
-  padding: 0 5px 0 4px;
+  width: var(--mobile-page-zoom-w);
+  flex: 0 0 auto;
+  /* 3px left + the 1px hairline = 4 a side, so the reading centres on the
+     segment the eye sees, not on its content box. */
+  padding: 0 4px 0 3px;
   display: grid;
   place-items: center;
-  color: inherit;
+  color: var(--text-2);
   background: transparent;
   border: 0;
   border-left: 1px solid var(--border);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: inherit;
+  white-space: nowrap;
+}
+.mobile-pdf-header__zoom-readout[aria-expanded='true'] { color: var(--text-1); }
+
+.mobile-pdf-header__zoom-percent {
+  font: inherit;
+  letter-spacing: inherit;
 }
 
-/* UX 2026-09-17 (owner ruling): the divider inside the pill used to turn gold
-   in sympathy with the pill's gold outline. Both are gone; the hairline stays
-   --border whether the pill is open or shut. */
-
+/* The menu GROWS OUT OF THE PILL (owner 2026-10-02). It is the pill's child:
+   it starts right under the pill's bottom border, spans the pill edge to edge
+   (left/right -1px reach over the pill's own 1px border), and wears the pill's
+   surface, border and 10px radius - so the pill's bottom border becomes the
+   hairline between the reading and the menu, and the two read as one object.
+   It used to be a separate --surface-2 card floating 3px below, centred on the
+   whole cluster, with a 24px shadow. */
 .mobile-pdf-header__zoom-menu {
   position: absolute;
-  /* Derived, not a literal: 3px below whatever the shared header control height
-     is, so growing the pill can never leave the menu overlapping it. */
-  top: calc(var(--mobile-control-h) + 3px);
-  left: 50%;
-  /* UX 2026-09-22 (owner: "too loud, bulky, big"): this is a dropdown like the
-     width / line-style menus, so it wears the styled-select skin — hug the
-     content (min 108px so the steppers have room), --surface-2, 9px radius,
-     the same quiet shadow. It was a 138px card with 34px rows, 800-weight
-     numbers and a 28px shadow. Owner 2026-10-02: its fit rows are phone menu
-     items, 44 at 15/400 (they were 26 at 11/600). */
+  top: calc(100% + 1px);
+  left: -1px;
+  min-width: calc(100% + 2px);
   width: max-content;
-  min-width: 108px;
-  padding: 5px;
-  transform: translateX(-50%);
+  box-sizing: border-box;
+  padding: 2px 4px 4px;
   display: flex;
   flex-direction: column;
   gap: 0;
-  color: var(--text-1);
-  background: var(--surface-2);
+  color: var(--text-2);
+  background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: 9px;
-  box-shadow: 0 10px 24px -4px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35);
+  border-top: 0;
+  border-radius: 0 0 10px 10px;
+  box-shadow: 0 10px 18px -8px rgba(0, 0, 0, 0.5);
   z-index: 7200;
-  /* Phase F (demo App.tsx:410-428): closed state — the menu fades/scales/slides
-     UP-and-out over 130ms (in-cubic-out); visibility flips off only after that
-     so the hidden menu leaves the tab order. transform keeps the -50% centring. */
+  /* Motion: the menu unrolls DOWN from the pill's edge (a clip that opens from
+     the top) while its rows slide 6px down into place, 180ms ease-out; it
+     rolls back up into the pill in 140ms. The clip reaches past the sides and
+     bottom so the shadow is not cut. visibility flips off only after the
+     out-transition so a closed menu leaves the tab order. */
+  clip-path: inset(0 -24px 100% -24px);
   opacity: 0;
-  transform: translateX(-50%) translateY(-4px) scale(0.97);
-  transform-origin: top center;
   visibility: hidden;
   pointer-events: none;
   transition:
-    opacity 130ms cubic-bezier(0.33, 0, 0.67, 1),
-    transform 130ms cubic-bezier(0.33, 0, 0.67, 1),
-    visibility 0s linear 130ms;
+    clip-path 140ms cubic-bezier(0.4, 0, 1, 1),
+    opacity 90ms linear 50ms,
+    visibility 0s linear 140ms;
 }
 
 .mobile-pdf-header__zoom-menu.is-open {
-  /* open state — 150ms out-cubic settle in. */
+  clip-path: inset(0 -24px -32px -24px);
   opacity: 1;
-  transform: translateX(-50%) translateY(0) scale(1);
   visibility: visible;
   pointer-events: auto;
   transition:
-    opacity 150ms cubic-bezier(0.33, 1, 0.68, 1),
-    transform 150ms cubic-bezier(0.33, 1, 0.68, 1),
+    clip-path 180ms cubic-bezier(0.2, 0, 0, 1),
+    opacity 80ms linear,
     visibility 0s;
 }
 
-/* UX 2026-09-16: minus / live percentage / plus, above the fit modes. The
-   reading between them is the live scale, so you always know where you are.
+.mobile-pdf-header__zoom-menu > * {
+  transform: translateY(-6px);
+  transition: transform 140ms cubic-bezier(0.4, 0, 1, 1);
+}
+.mobile-pdf-header__zoom-menu.is-open > * {
+  transform: none;
+  transition: transform 180ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* While the menu is out, the pill's bottom corners square off so pill and
+   menu join edge to edge; they round again only after the menu has rolled
+   back up (the 140ms delay matches the close). */
+.mobile-pdf-header__page-pill.is-zoom-open {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  transition: border-radius 0s;
+}
+
+/* UX 2026-09-16: minus / plus, above the fit modes. The live reading is in
+   the pill right above them, so the row carries only the two steppers.
 
    RULED CHANGE 2026-09-16 (r4 phone pass): the steppers are header controls, so
-   they take the header control height — 26px with the 15px HEADER_GLYPH, the
-   same 15-in-26 every other control in the top row uses. They were built to the
-   fit rows' 34px menu-row square instead, which is not one of the five phone
-   size tokens and left a 15px glyph floating in a 34px box: 0.441 of its
-   control where every other phone tier runs 0.55-0.60, so the pair read
-   noticeably lighter than the rail and dock chips above them. The fit rows keep
-   their 34px — they are context-menu rows with labels, not icon buttons, and
-   34px rows are the demo's menu chrome. Pinned by
-   tests/mobilePhoneGlyphRatioComplete.test.mjs.
-
+   they take the header control height — the same 15-in-28 every other control
+   in the top row uses. Pinned by tests/mobilePhoneGlyphRatioComplete.test.mjs.
    The finger target does not shrink with the paint: the transparent ::after
-   below holds it at the 34x34 the buttons offered before. */
+   below adds 4px a side. */
 .mobile-pdf-header__zoom-steppers {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: space-evenly;
   gap: 0;
-  margin-bottom: 4px;
-  padding-bottom: 4px;
+  margin-bottom: 2px;
+  padding: 4px 0;
   border-bottom: 1px solid var(--border);
 }
 
@@ -677,12 +702,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-radius: 6px;
 }
 
-/* The chip you see is 26px; the area a finger hits is the 34px square these
-   buttons had before the ratio fix, so nothing got harder to tap. There is no
-   border here, so the pad counts straight off the 26px box: 26 + 4 + 4 = 34.
-   The live percentage flexes between the two buttons, so the pads never meet,
-   and 4px below stays inside the row's 3px margin + 3px padding + 1px rule -
-   it cannot reach the first fit row. */
+/* 28 painted + 4 a side = a 36px finger target; the two sit half a menu apart,
+   so the pads never meet, and 4px below stays inside the row's padding. */
 .mobile-pdf-header__zoom-steppers > button::after {
   content: '';
   position: absolute;
@@ -696,49 +717,39 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 /* The glyph's press is section 5 of src/styles/states.css (one press for
    every chrome icon); a second transform here would multiply with it. */
 
-.mobile-pdf-header__zoom-percent {
-  min-width: 0;
-  flex: 1 1 auto;
-  color: var(--text-1);
-  /* ONE TYPE SCALE: the live percentage reads at the chrome label size. */
-  font-size: 11px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
-  text-align: center;
-  padding: 0 6px;
-}
-
 .mobile-pdf-header__zoom-fits {
   display: flex;
   flex-direction: column;
   gap: 0;
 }
 
-/* Owner 2026-10-02 (UI consistency audit): every phone menu item is 44 tall
-   at 15/400 (--sheet-menu-item-h, like .hub-menu__item); these fit rows were
-   26 at 11/600, too small to tap. */
+/* Owner 2026-10-02 (second pass on this menu: "the text is so big"): the fit
+   rows keep the phone menu item's 44px tap height (--sheet-menu-item-h) but
+   read quiet - 14/400 (--sheet-row-text) in the calm grey, 10px side inset,
+   the way the sheets' running rows read. They were 15/400 white, with the
+   chosen one in gold. The chosen row is marked by its check and a step up to
+   --text-1, never by an accent colour. */
 .mobile-pdf-header__zoom-fits > button {
   height: var(--sheet-menu-item-h);
   min-height: var(--sheet-menu-item-h);
-  padding: 0 12px;
+  padding: 0 8px 0 10px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  color: var(--text-1);
+  gap: 10px;
+  color: var(--text-2);
   background: transparent;
   border: 0;
-  border-radius: var(--radius-xs);
-  font: 400 15px/20px var(--font-ui);
+  border-radius: 6px;
+  font: var(--sheet-row-text);
   letter-spacing: 0;
   text-align: left;
   white-space: nowrap;
 }
-.mobile-pdf-header__zoom-fits > button > svg { width: var(--sheet-icon); height: var(--sheet-icon); flex: 0 0 auto; }
+.mobile-pdf-header__zoom-fits > button > svg { width: var(--sheet-icon-sm); height: var(--sheet-icon-sm); flex: 0 0 auto; }
 
 .mobile-pdf-header__zoom-fits > button.is-active {
-  color: var(--accent);
+  color: var(--text-1);
 }
 
 /* UX 2026-09-16 (sizing pass + rail-defect pass, merged): the rail is
@@ -3791,7 +3802,9 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
    keeps direct-manipulation finger-follow drag while removing every easing. */
 @media (prefers-reduced-motion: reduce) {
   .mobile-pdf-header__zoom-menu,
-  .mobile-pdf-header__zoom-menu.is-open {
+  .mobile-pdf-header__zoom-menu.is-open,
+  .mobile-pdf-header__zoom-menu > *,
+  .mobile-pdf-header__page-pill {
     transition: visibility 0s !important;
   }
   .mobile-pdf-tools__subtools {

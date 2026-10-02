@@ -4148,6 +4148,10 @@ export default function App({ devPreviewReturnTab = null }) {
               const fitMode = api.zoomMode;
               // Fall back to fit-page icon when mode is MANUAL or unknown.
               const fitIconMode = (fitMode === ZOOM_MODES.FIT_WIDTH || fitMode === ZOOM_MODES.FIT_HEIGHT) ? fitMode : ZOOM_MODES.FIT_PAGE;
+              // Owner 2026-10-02: inside the expanded footer's page + zoom pill
+              // the page number is plain --text-1 (no gold in that pill); the
+              // collapsed 48px stack keeps its gold current page.
+              const pageInk = rightRailCollapsed ? 'var(--accent)' : 'var(--text-1)';
               // Shared icon-button chassis.
               // UX 2026-09-16 (desktop sweep): the BOX is part of the chassis now,
               // at the shared rail size (--rail-control / RAIL_CONTROL). Variants
@@ -4272,7 +4276,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   inputMode="numeric"
                   pattern="[0-9]*"
                   aria-label="Current page"
-                  style={{ width: '28px', padding: 0, background: 'transparent', color: 'var(--accent)', border: 'none', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', textAlign: 'center', outline: 'none', lineHeight: 1 }}
+                  style={{ width: '28px', padding: 0, background: 'transparent', color: pageInk, border: 'none', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', textAlign: 'center', outline: 'none', lineHeight: 1 }}
                 />
                 <DismissBarrier active insideRefs={railFieldRefs} mode="typing" onDismiss={dismissRailFields} dismissOnEscape={false} />
                 </>
@@ -4285,7 +4289,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   {...chromeTip('Page — click to jump', 'left')}
                   /* UX 2026-09-22: the page number is the zoom field's twin —
                      same field height, same house radius. */
-                  style={{ background: 'transparent', border: 'none', color: 'var(--accent)', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', padding: '0 4px', borderRadius: 'var(--chrome-radius)', cursor: 'pointer', lineHeight: 1 }}
+                  style={{ background: 'transparent', border: 'none', color: pageInk, fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', padding: '0 4px', borderRadius: 'var(--chrome-radius)', cursor: 'pointer', lineHeight: 1 }}
                 >
                   {api.activeSpaceHasNoPages ? 0 : api.pageNum}
                 </button>
@@ -4447,8 +4451,18 @@ export default function App({ devPreviewReturnTab = null }) {
                 );
               }
 
-              // Expanded 320px survey panel — horizontal row pinned to the
-              // panel bottom: [ − % + ] | [ ‹ n · N › ] | [ Fit ▴ ].
+              // Expanded 320px survey panel — ONE pill pinned to the panel
+              // bottom: [ ‹ n / N › | 101% ], and the zoom segment opens a
+              // menu that grows UP out of the pill ( − 101% + · fit modes ).
+              // Owner 2026-10-02 ("too loud and bulky ... can they almost fit
+              // within the pill of the page navigation and then the dropdown,
+              // as if it grew out of that, because it looks like two separate
+              // things"): this row used to be three groups -
+              // [ − % + ] | [ ‹ n · N › ] | [ Fit ▴ ] - with a separate
+              // floating Fit card. Same build as the phone header pill; styles
+              // in styles.css (DESKTOP PAGE + ZOOM PILL). Every action is the
+              // same bottomToolbarApi call it was (zoomIn / zoomOut / the typed
+              // field / handleZoomModeSelect), so the zoom pipeline is untouched.
               // 2026-09-30 (owner: "it stretches, and it's missing its left
               // border when stretched"): the row is portalled INTO the panel
               // element and spans its content box, so the panel's own left
@@ -4456,6 +4470,7 @@ export default function App({ devPreviewReturnTab = null }) {
               // expand / collapse motion frame for frame (it used to be a
               // separate 320px box that jumped to full width at once while the
               // panel was still growing).
+              const zoomMenuOpen = Boolean(api.isZoomMenuOpen);
               const footerRow = (
                 <div
                   data-rail-footer-row="true"
@@ -4464,90 +4479,97 @@ export default function App({ devPreviewReturnTab = null }) {
                   data-chrome-rail="true"
                   style={{ position: 'absolute', left: 0, right: 0, bottom: 0, boxSizing: 'border-box', zIndex: 2, background: 'var(--surface-1)', borderTop: '1px solid var(--border)', padding: '6px 8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
                 >
-                  <button
-                    onClick={api.zoomOut}
-                    {...chromeTip('Zoom out', 'above')}
-                    aria-label="Zoom out"
-                    style={footerBtn()}
-                  >
-                    <Icon name="minus" size={RAIL_CONTROL_GLYPH} />
-                  </button>
-                  {zoomValue}
-                  <button
-                    onClick={api.zoomIn}
-                    {...chromeTip('Zoom in', 'above')}
-                    aria-label="Zoom in"
-                    style={footerBtn()}
-                  >
-                    <Icon name="plus" size={RAIL_CONTROL_GLYPH} />
-                  </button>
-
-                  <div style={{ width: '1px', height: '20px', background: 'var(--surface-3)' }} />
-
-                  {/* Page nav — left/right chevrons because horizontal row. */}
-                  <span {...chromeTip('Previous page', 'above')} style={{ display: 'inline-flex' }}>
+                  {/* zoomMenuRef wraps the whole pill: PDFViewer's outside-press
+                      close treats the pill and its menu as one surface. */}
+                  <div ref={api.zoomMenuRef} data-zoom-pill="true" className={`rail-zoom-pill${zoomMenuOpen ? ' is-open' : ''}`}>
+                    <span {...chromeTip('Previous page', 'above')} style={{ display: 'inline-flex' }}>
+                      <button
+                        type="button"
+                        className="rail-zoom-pill__step"
+                        data-glyph-only="true"
+                        onClick={api.goToPreviousPage}
+                        disabled={atFirstPage}
+                        aria-label="Previous page"
+                      >
+                        <Icon name="chevronLeft" size={RAIL_CONTROL_GLYPH} />
+                      </button>
+                    </span>
+                    <span className="rail-zoom-pill__pages">
+                      {pageValue}
+                      <span className="rail-zoom-pill__total">/ {api.activeSpaceHasNoPages ? 0 : api.numPages}</span>
+                    </span>
+                    <span {...chromeTip('Next page', 'above')} style={{ display: 'inline-flex' }}>
+                      <button
+                        type="button"
+                        className="rail-zoom-pill__step"
+                        data-glyph-only="true"
+                        onClick={api.goToNextPage}
+                        disabled={atLastPage}
+                        aria-label="Next page"
+                      >
+                        <Icon name="chevronRight" size={RAIL_CONTROL_GLYPH} />
+                      </button>
+                    </span>
                     <button
-                      onClick={api.goToPreviousPage}
-                      disabled={atFirstPage}
-                      aria-label="Previous page"
-                      style={{ ...footerBtn(atFirstPage), pointerEvents: atFirstPage ? 'none' : 'auto' }}
-                    >
-                      <Icon name="chevronLeft" size={RAIL_CONTROL_GLYPH} />
-                    </button>
-                  </span>
-                  {/* UX 2026-09-23 (rail audit): the same drawn dot as the
-                      vertical stack, and the total takes the page field's 4px
-                      side padding, so the dot sits the same distance from both
-                      numbers (it was 7px from the page, 3px from the total). */}
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums' }}>
-                    {pageValue}
-                    <span aria-hidden="true" data-rail-page-dot style={RAIL_PAGE_DOT_STYLE} />
-                    <span style={{ color: 'var(--text-3)', padding: '0 4px' }}>{api.activeSpaceHasNoPages ? 0 : api.numPages}</span>
-                  </span>
-                  <span {...chromeTip('Next page', 'above')} style={{ display: 'inline-flex' }}>
-                    <button
-                      onClick={api.goToNextPage}
-                      disabled={atLastPage}
-                      aria-label="Next page"
-                      style={{ ...footerBtn(atLastPage), pointerEvents: atLastPage ? 'none' : 'auto' }}
-                    >
-                      <Icon name="chevronRight" size={RAIL_CONTROL_GLYPH} />
-                    </button>
-                  </span>
-
-                  <div style={{ width: '1px', height: '20px', background: 'var(--surface-3)' }} />
-
-                  {/* Page-fit trigger — icon + current-mode label + chevron
-                      pointing UP because the popup opens upward here. */}
-                  <div ref={api.zoomMenuRef} style={{ position: 'relative' }}>
-                    <button
+                      type="button"
+                      className="rail-zoom-pill__zoom"
                       onClick={api.toggleZoomMenu}
-                      aria-haspopup="listbox"
-                      aria-expanded={api.isZoomMenuOpen}
-                      aria-label="Fit options"
-                      data-active={fitMode !== ZOOM_MODES.MANUAL}
-                      // Icon + short word: it presses like every chrome icon
-                      // (states.css section 5), with no hover plate.
-                      className="chrome-icon-btn"
-                      {...chromeTip(`Page fit: ${api.zoomDropdownLabel}`, 'above')}
-                      style={{ ...footerBtn(), width: 'auto', height: `${RAIL_CONTROL}px`, gap: '6px', padding: '0 8px', color: fitMode !== ZOOM_MODES.MANUAL ? 'var(--text-2)' : 'var(--text-3)', fontSize: '11px', fontFamily: FONT_FAMILY }}
+                      aria-haspopup="true"
+                      aria-expanded={zoomMenuOpen}
+                      aria-label="Zoom and fit options"
+                      {...chromeTip(`Zoom: ${api.zoomDropdownLabel}`, 'above')}
                     >
-                      {renderFitIcon(fitIconMode, RAIL_CONTROL_GLYPH)}
-                      <span>{api.zoomDropdownLabel}</span>
-                      {/* UX 2026-09-16 (desktop sweep): the shared <Icon>, not a
-                          hand-written <svg>. This caret was drawn inline at stroke
-                          1.8 in an 11px box — 3.6 units on the house 24 grid, 140%
-                          over the house 1.5 — so it read heavier than every glyph
-                          beside it in the same footer. It keeps flipping with the
-                          menu: the popup opens upward here, so the resting state
-                          points up and the open state points down. */}
-                      <Icon
-                        name={api.isZoomMenuOpen ? 'chevronDown' : 'chevronUp'}
-                        size={RAIL_CARET}
-                        color="currentColor"
+                      <RailLiveZoomText
+                        fallback={api.zoomInputValue || Math.round((api.manualZoomScale || 1) * 100)}
+                        viewerId={getLiveZoomViewerId(activeTabId)}
                       />
                     </button>
-                    {api.isZoomMenuOpen && fitMenu({ right: 0, bottom: '100%', marginBottom: '6px' })}
+                    {/* Stays mounted so it can roll back INTO the pill; hidden
+                        (visibility) once closed, so it leaves the tab order. */}
+                    <div data-zoom-menu="true" className={`rail-zoom-menu${zoomMenuOpen ? ' is-open' : ''}`} aria-hidden={!zoomMenuOpen}>
+                      <DismissBarrier active={zoomMenuOpen} insideRefs={railFitMenuRefs} onDismiss={dismissRailFitMenu} />
+                      <div className="rail-zoom-menu__steppers" role="group" aria-label="Zoom level">
+                        <button
+                          type="button"
+                          className="rail-zoom-pill__step"
+                          data-glyph-only="true"
+                          onClick={api.zoomOut}
+                          aria-label="Zoom out"
+                        >
+                          <Icon name="minus" size={RAIL_CONTROL_GLYPH} />
+                        </button>
+                        {zoomValue}
+                        <button
+                          type="button"
+                          className="rail-zoom-pill__step"
+                          data-glyph-only="true"
+                          onClick={api.zoomIn}
+                          aria-label="Zoom in"
+                        >
+                          <Icon name="plus" size={RAIL_CONTROL_GLYPH} />
+                        </button>
+                      </div>
+                      <div role="listbox" aria-label="Fit mode">
+                        {ZOOM_MODE_OPTIONS.map((option) => {
+                          if (option.id === ZOOM_MODES.MANUAL) return null;
+                          const isActive = option.id === api.zoomMode;
+                          return (
+                            <button
+                              type="button"
+                              key={option.id}
+                              role="option"
+                              aria-selected={isActive}
+                              className="rail-zoom-menu__row"
+                              onClick={() => api.handleZoomModeSelect(option.id)}
+                            >
+                              {renderFitIcon(option.id, RAIL_CONTROL_GLYPH)}
+                              <span>{option.label}</span>
+                              {isActive && <Icon name="check" size={RAIL_CONTROL_GLYPH} color="currentColor" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 </div>
               );

@@ -90,10 +90,24 @@ test('the page pill is sized from "999 / 999", not from the document in front of
    * 40px, which is why the centred page cluster does not move. The sum is spelt
    * out with the new parts rather than the old ones.
    */
+  /*
+   * DELIBERATE ASSERTION CHANGE (2026-10-02, owner: "can they almost fit within
+   * the pill of the page navigation ... as if it grew out of that"). The 24px
+   * chevron zone became the live zoom reading, a fixed 48px segment
+   * (--mobile-page-zoom-w) sized from "4000%" so the pill never changes width
+   * while you zoom. The rule this test guards is unchanged - the pill is sized
+   * from its widest content, never from the document in front of it - only the
+   * segment's part of the sum moved (24 -> 48), so the pill is 120, not 96.
+   */
   // Chrome around the text: the fraction's 6px of padding, the pill's 2px flex
-  // gap, the 24px chevron zone, the pill's 6px padding and 2px of border.
+  // gap, the 48px zoom segment, the pill's 6px padding and 2px of border.
+  const zoomSegment = token(root, '--mobile-page-zoom-w');
+  assert.equal(zoomSegment, 48);
+  // "4000%": four tabular digits and a percent sign (~9px in the pill's face),
+  // 4px a side, and the 1px hairline.
+  assert.ok(zoomSegment >= (4 * digit) + 9 + 8 + 1, '"4000%" fits the zoom segment');
   const chrome = token(root, '--mobile-page-pill-chrome');
-  assert.equal(chrome, 6 + 2 + 24 + 6 + 2);
+  assert.equal(chrome, 6 + 2 + zoomSegment + 6 + 2);
 
   const slack = token(root, '--mobile-page-pill-slack');
   const pill = +(editState + chrome + slack).toFixed(6);
@@ -166,7 +180,7 @@ test('every icon button in the header and the rich-text strip centres its glyph 
   for (const selector of [
     '.mobile-pdf-header__icon',
     '.mobile-pdf-header__page-nav',
-    '.mobile-pdf-header__page-chevron',
+    '.mobile-pdf-header__zoom-readout',
     '.mobile-pdf-properties__format',
     /* RULED 2026-09-23 (owner: restore the per-tool panels): the settings
        panel's own B / I / U / S are back, so their rule is centred again. */
@@ -177,21 +191,24 @@ test('every icon button in the header and the rich-text strip centres its glyph 
     assert.match(rule, /place-items: center/, `${selector} must centre geometrically`);
   }
 
-  // The chevron carries a 1px border-left, which is part of its box: an even
-  // 5/5 padding centres the caret on the CONTENT box and leaves it 0.5px right
-  // of the button the user sees. With the 4/5 split and the board's 24px
-  // section, the 11px caret's centre lands on 12 - the section's own centre.
-  const chevron = block(css, '.mobile-pdf-header__page-chevron');
-  assert.match(chevron, /border-left: 1px solid/);
-  assert.match(chevron, /padding: 0 5px 0 4px/);
-  const chevronWidth = Number(/min-width:\s*(\d+(?:\.\d+)?)px/.exec(chevron)?.[1]);
-  assert.equal(chevronWidth, 24, 'board 1-pen draws the zoom section 24px wide');
-  const CARET = 11;
-  const caretCentre = 1 + 4 + ((chevronWidth - 1 - 4 - 5) - CARET) / 2 + CARET / 2;
+  // DELIBERATE ASSERTION CHANGE (2026-10-02): the zoom section is no longer a
+  // 24px chevron but the 48px live zoom reading (owner: the zoom lives inside
+  // the page pill). The centring rule it guarded carries over unchanged: the
+  // segment carries a 1px border-left, which is part of its box, so an even
+  // padding would centre the reading on the CONTENT box, 0.5px right of the
+  // segment the user sees. With 3px left + the 1px hairline against 4px right,
+  // the content box's centre lands on the segment's own centre line.
+  const zoomRoot = block(css, ':root');
+  const readout = block(css, '.mobile-pdf-header__zoom-readout');
+  assert.match(readout, /border-left: 1px solid/);
+  assert.match(readout, /padding: 0 4px 0 3px/);
+  assert.match(readout, /width: var\(--mobile-page-zoom-w\)/);
+  const segmentWidth = token(zoomRoot, '--mobile-page-zoom-w');
+  const contentCentre = 1 + 3 + (segmentWidth - 1 - 3 - 4) / 2;
   assert.equal(
-    caretCentre,
-    chevronWidth / 2,
-    `the caret's centre sits at ${caretCentre}px in a ${chevronWidth}px section, not on its centre line`,
+    contentCentre,
+    segmentWidth / 2,
+    `the reading's centre sits at ${contentCentre}px in a ${segmentWidth}px segment, not on its centre line`,
   );
 
   // One box and one radius across the four format buttons - they share a single
