@@ -338,7 +338,8 @@ test('mobile PDF pinch previews translation, progressively sharpens, and commits
 
 // Owner 2026-10-02 (Drawboard PDF iPhone parity): the phone viewer lets the
 // page go past a document edge or a zoom limit with resistance and eases it
-// back; nothing may jump. Desktop (wheel / trackpad) stays a hard clamp.
+// back; nothing may jump. Desktop (wheel / trackpad) got the same feel the
+// same day; see the desktop test below.
 test('mobile pinch and pan rubber-band past edges and zoom limits, then ease home', () => {
   // The bottom-edge snap: the predicted scroll range must count a gap above
   // every page and one below the last, exactly like the layout memo.
@@ -355,10 +356,32 @@ test('mobile pinch and pan rubber-band past edges and zoom limits, then ease hom
   // One-finger pan past an edge, and a flick into an edge, use the same spring.
   assert.match(PDFJS_VIEWER_SOURCE, /if \(touchPanElasticRef\.current\) \{ applyElasticPan\(delta\.x, delta\.y\); return; \}/);
   assert.match(PDFJS_VIEWER_SOURCE, /panMomentumHooksRef\.current\.bounce\?\.\(/);
-  // The wheel path never sets `elastic`, so desktop keeps today's clamp.
-  assert.doesNotMatch(PDFJS_VIEWER_SOURCE, /regime: e\.deltaMode === 0[^}]*elastic/);
+  // The wheel path never sets the touch `elastic` flag (rubber-banded scroll
+  // placement); desktop pinch has its own zoom-only elasticZoom flag.
+  assert.doesNotMatch(PDFJS_VIEWER_SOURCE, /regime,\s*\n[^}]*\belastic:/);
   // A retired detail tile is hidden in the same frame (no black box).
   assert.match(PDFJS_VIEWER_SOURCE, /canvasRef\.current\.style\.display = 'none';\s*releaseRasterCanvas\(canvasRef\.current\);/);
+});
+
+// Owner 2026-10-02 (desktop): "I wish the desktop version had the same
+// slingshot/spring back effect when scrolling to extents." Wheel/trackpad
+// scrolling inside the document stays native; only a delta that runs past an
+// edge goes to the shared controller and is drawn through the same content
+// transform as the phone. A trackpad pinch past a zoom limit overshoots and
+// eases back; mouse notches and reduced motion keep the hard clamp. The zoom
+// lifecycle (gesture-start -> zoomGeneration, one commit, settle) is unchanged.
+test('desktop wheel and trackpad rubber-band at document edges and zoom limits', () => {
+  assert.match(PDFJS_VIEWER_SOURCE, /from '\.\.\/utils\/elasticEdges\.js'/);
+  assert.match(PDFJS_VIEWER_SOURCE, /const overscroll = createWheelOverscroll\(\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(!el \|\| isMobileSurface\) return undefined;\s*const overscroll/);
+  assert.match(PDFJS_VIEWER_SOURCE, /elasticRef\.current = \{ ax: 0, ay: 0, z: 1, tx: -shown\.x, ty: -shown\.y, anim: null, wheel: true \};/);
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(prefersReducedMotion\(\)\) return;/);
+  assert.match(PDFJS_VIEWER_SOURCE, /elasticZoom: regime === 'trackpad' && !isMobileSurface && !prefersReducedMotion\(\),/);
+  assert.match(PDFJS_VIEWER_SOURCE, /const previewScale = g\.elasticZoom \? rubberScale\(nextScale, minimumScale, maxScale\) : nextScale;/);
+  // Pushing on at a limit commits nothing, so no extra settle phase.
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(!overshootOnly\) cb\.current\.onZoomPhase\?\.\('settle'/);
+  // The viewer's own bounce replaces Safari's native one on mouse/trackpad.
+  assert.match(PDFJS_VIEWER_SOURCE, /overscrollBehavior: finePointer && !isMobileSurface \? 'none' : 'contain'/);
 });
 
 test('mobile deep zoom-out rebases before WebKit composites an unsafe downscale', () => {
