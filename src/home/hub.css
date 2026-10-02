@@ -3245,8 +3245,8 @@
   }
 
   .survey-hub .templates-mobile-inline-input {
-    font-size: 12.5px;
-    font-weight: 650;
+    font-size: 13px;
+    font-weight: 500;
     padding: 1px 0;
     /* UX 2026-09-23 (vertical symmetry): a transparent top edge to match the
        1px underline, so the name sits on the row's centre line, not 0.5px
@@ -3404,7 +3404,8 @@
     flex: 0 0 auto !important;
     min-width: 44px !important;
     max-width: 200px !important;
-    min-height: 32px;
+    /* 40, the phone sheets' module tabs (owner 2026-10-02). */
+    min-height: 40px;
   }
 
   .survey-hub .templates-mobile-module-tabs [data-module-tab-id] button,
@@ -3557,16 +3558,19 @@
     padding: 0 10px 10px 42px;
   }
 
+  /* 44 in all with its hairline (owner 2026-10-02, UI consistency audit):
+     every one-line row in the phone editor is the sheet's 44. */
   .survey-hub .templates-mobile-item-row {
     grid-template-columns: 44px minmax(0, 1fr) 44px;
-    min-height: 36px;
+    box-sizing: border-box;
+    min-height: var(--sheet-row-h);
     padding: 0;
     border-top: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
   }
 
   .survey-hub .templates-mobile-item-row > button {
     width: 44px;
-    height: 44px;
+    height: calc(var(--sheet-row-h) - 1px);
     border: 0;
     background: transparent;
     color: var(--ink-200);
@@ -3575,11 +3579,25 @@
     font-size: 16px;
   }
 
+  /* "+ Add checklist item" is the phone sheets' action word (13/600,
+     --sheet-action) on a 44px line of its own, its text under the item
+     names (44px grip + 8px gap), instead of a small dashed 11/700 box. */
   .survey-hub .templates-mobile-add-line {
-    justify-self: start;
+    justify-self: stretch;
+    justify-content: flex-start;
+    height: var(--sheet-row-h);
+    padding: 0 0 0 52px;
     background: transparent;
-    border-style: dashed;
-    color: var(--ink-200);
+    border: 0;
+    border-radius: 0;
+    color: var(--text-2);
+    font: var(--sheet-action);
+    text-align: left;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .survey-hub .templates-mobile-add-line:active {
+    opacity: 0.6;
   }
 
   .survey-hub .templates-mobile-archived {
@@ -5102,19 +5120,20 @@ button[title="Edit color"]:active > span,
 }
 
 /* ---------- PHONE: category rows ----------
-   [grip 32][chevron 26][name][........][count "2 items"][⋮ 36], 48px tall.
-   The grip, chevron and ⋮ paint inside their columns; the grip and ⋮ keep a
-   44px finger target through a pad. */
+   [grip 32][chevron 26][name][........][count "2 items"][⋮ 36], 44px tall
+   with the hairline above it (owner 2026-10-02: every one-line phone row is
+   44 in all; it was 48 + 1). The grip, chevron and ⋮ paint inside their
+   columns; the grip and ⋮ keep a finger target through a pad. */
 .survey-hub .templates-mobile-category-row {
   grid-template-columns: 32px 26px minmax(0, 1fr) auto 36px !important;
   gap: 0 !important;
-  min-height: 48px !important;
+  min-height: calc(var(--sheet-row-h) - 1px) !important;
   padding: 0 4px 0 6px !important;
   cursor: pointer;
 }
 .survey-hub .templates-mobile-category-row > [data-drag-rearrange-handle] {
   width: 32px !important;
-  height: 44px !important;
+  height: calc(var(--sheet-row-h) - 1px) !important;
   opacity: 0.45;
 }
 .survey-hub .templates-mobile-category-row > [data-drag-rearrange-handle]::after {
@@ -5125,7 +5144,7 @@ button[title="Edit color"]:active > span,
 }
 .survey-hub .templates-mobile-category-row > .templates-mobile-category-toggle {
   width: 26px;
-  height: 44px;
+  height: calc(var(--sheet-row-h) - 1px);
   color: var(--text-3);
 }
 /* The whole row is the toggle's target now; the chevron needs no pad. */
@@ -5134,12 +5153,15 @@ button[title="Edit color"]:active > span,
   width: 16px;
   height: 16px;
 }
-/* 15px asks for 15, but index.html lifts every phone field to 16px (iOS
-   zoom guard); 700 keeps the name a step heavier than its checklist items. */
+/* Every name here is a field, and index.html lifts every phone field to
+   16px so iOS never zooms on focus. At 16px a bold name was the loudest
+   text in the app (owner 2026-10-02, UI consistency audit), so category,
+   checklist and entity names are all 500, the sheet row title's weight;
+   the indent, not the weight, says which is which. */
 .survey-hub .templates-mobile-category-row > .templates-mobile-category-name {
   justify-self: start;
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 500;
 }
 .survey-hub .templates-mobile-category-row > .templates-mobile-category-name > input {
   color: var(--text-1);
@@ -5168,7 +5190,7 @@ button[title="Edit color"]:active > span,
 }
 .survey-hub .templates-mobile-category-row .templates-mobile-more {
   width: 36px !important;
-  height: 44px !important;
+  height: calc(var(--sheet-row-h) - 1px) !important;
 }
 .survey-hub .templates-mobile-category-row .templates-mobile-more::after {
   inset: 0 -4px 0 0 !important;
@@ -5180,10 +5202,17 @@ button[title="Edit color"]:active > span,
    item row's 44px grip and 8px gap leave 12px of indent. */
 .survey-hub .templates-mobile-items {
   padding-left: 12px !important;
+  /* The rows, and the "+ Add checklist item" line under them, sit flush:
+     a 44px beat with no extra gaps. */
+  gap: 0;
+  padding-bottom: 0;
 }
 
-/* ---------- PHONE: entity rows (dot instead of chevron) ---------- */
+/* ---------- PHONE: entity rows (dot instead of chevron) ----------
+   44 in all with the hairline above it, like the category rows (was 36 + 1);
+   the dot, grip and More stay centred in it. */
 .survey-hub .templates-mobile-entity-row {
+  min-height: calc(var(--sheet-row-h) - 1px);
   cursor: pointer;
 }
 .survey-hub .templates-mobile-entity-row > .templates-mobile-entity-name {
@@ -5213,8 +5242,8 @@ button[title="Edit color"]:active > span,
   overflow: visible;
 }
 .survey-hub .templates-mobile-entity-row > .templates-mobile-entity-name {
-  font-size: 12.5px;
-  font-weight: 650;
+  font-size: 13px;
+  font-weight: 500;
 }
 /* index.html lifts every phone input to at least 16px (iOS zooms below it);
    the hidden twin that sizes a text-wide field follows the same rule, or the
