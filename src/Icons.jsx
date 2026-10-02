@@ -234,6 +234,15 @@ const ICON_RENDERERS = {
     // Select mode for a list (owner 2026-10-02: section header actions are
     // icons, the pair is Select = list-checks and Add = plus). Lucide
     // list-checks on the house grid and stroke.
+    // Owner 2026-10-02 (debate pick, E5 redrawn): "edit this list" — rows
+    // with a pencil writing on the last one. Used wherever a list header
+    // toggles an edit mode (Bookmarks today). Not the Draw group's pencil.
+    editList: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M3 6h18M3 12h9M3 18h5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M12 21l.75-3 6.1-6.1a1.6 1.6 0 0 1 2.25 2.25L15 20.25z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
     listChecks: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <path d="M3 7L5 9L9 5M3 17L5 19L9 15" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />

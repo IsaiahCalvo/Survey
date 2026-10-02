@@ -1944,7 +1944,7 @@ const BookmarksPanel = ({
             <SectionIconButton
               phone
               action="edit"
-              icon="edit"
+              icon="editList"
               label={isEditMode ? 'Done editing bookmarks' : 'Edit bookmarks'}
               tooltip={isEditMode ? 'Done' : 'Edit'}
               active={isEditMode}
@@ -2135,7 +2135,7 @@ const BookmarksPanel = ({
       }}>
         <SectionIconButton
           action="edit"
-          icon="edit"
+          icon="editList"
           label={isEditMode ? 'Done editing bookmarks' : 'Edit bookmarks'}
           tooltip={isEditMode ? 'Done' : 'Edit'}
           active={isEditMode}

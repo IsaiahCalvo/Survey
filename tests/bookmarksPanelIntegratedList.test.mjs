@@ -49,7 +49,7 @@ test('desktop header is [Edit] [Add] icons at the right, no title, no gold foote
   const header = source.slice(source.indexOf('UX 2026-09-23 (owner, desktop Bookmarks header)'), source.indexOf('{/* Bookmarks List with Drag-and-Drop */}'));
   assert.ok(header.length > 0);
   assert.match(header, /justifyContent: 'flex-end'/);
-  assert.match(header, /<SectionIconButton\s+action="edit"\s+icon="edit"[\s\S]*?tooltip=\{isEditMode \? 'Done' : 'Edit'\}[\s\S]*?<SectionIconButton\s+action="add"\s+label="Add bookmark"/);
+  assert.match(header, /<SectionIconButton\s+action="edit"\s+icon="editList"[\s\S]*?tooltip=\{isEditMode \? 'Done' : 'Edit'\}[\s\S]*?<SectionIconButton\s+action="add"\s+label="Add bookmark"/);
   assert.doesNotMatch(header, /<h3/);
   assert.doesNotMatch(header, /\{isEditMode \? 'Done' : 'Edit'\}\s*<\/button>/);
   assert.doesNotMatch(desktopPanel, /Add Button at Bottom/);

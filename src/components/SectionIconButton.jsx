@@ -32,6 +32,8 @@ import './SectionIconButton.css';
 export const SECTION_ACTION_ICONS = Object.freeze({
   select: 'listChecks',
   add: 'plus',
+  // A list header's edit-mode toggle (owner 2026-10-02: not the Draw pencil).
+  edit: 'editList',
   // The select-mode action row (SelectModeButtons below).
   duplicate: 'duplicate',
   move: 'moveTo',
