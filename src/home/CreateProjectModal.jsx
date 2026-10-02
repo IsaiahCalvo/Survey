@@ -51,7 +51,7 @@ export default function CreateProjectModal({
         aria-modal="true"
         aria-label="Create project"
         onClick={(event) => event.stopPropagation()}
-        style={{ width: 440, maxWidth: '100%', maxHeight: 'calc(100vh - 32px)', overflow: 'auto', borderRadius: 12, border: `1px solid ${COLORS.rule}`, background: COLORS.card, color: COLORS.ink, boxShadow: '0 24px 64px rgba(0,0,0,0.58)', fontFamily: 'Helvetica' }}
+        style={{ width: 440, maxWidth: '100%', maxHeight: 'calc(100vh - 32px)', overflow: 'auto', borderRadius: 12, border: `1px solid ${COLORS.rule}`, background: COLORS.card, color: COLORS.ink, boxShadow: '0 24px 64px rgba(0,0,0,0.58)', fontFamily: 'var(--font-ui)' }}
       >
         <header style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, padding: '18px 18px 14px', borderBottom: `1px solid ${COLORS.rule}` }}>
           <div>
@@ -63,7 +63,7 @@ export default function CreateProjectModal({
 
         <div style={{ display: 'grid', gap: 16, padding: 18 }}>
           <label>
-            <span style={{ display: 'block', marginBottom: 7, color: COLORS.muted, fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Project name</span>
+            <span style={{ display: 'block', marginBottom: 7, color: COLORS.muted, fontSize: 11, fontWeight: 600, letterSpacing: 0 }}>Project name</span>
             <input
               ref={inputRef}
               aria-label="Project name"
@@ -81,7 +81,7 @@ export default function CreateProjectModal({
           </label>
 
           <label style={{ display: 'grid', gap: 7 }}>
-            <span style={{ color: COLORS.muted, fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>PDF files (optional)</span>
+            <span style={{ color: COLORS.muted, fontSize: 11, fontWeight: 600, letterSpacing: 0 }}>PDF files (optional)</span>
             <input
               data-testid="create-project-files"
               type="file"

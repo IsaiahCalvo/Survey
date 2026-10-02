@@ -191,7 +191,7 @@ export default function InviteAcceptPage() {
       data-kal31-invite-page="true"
       style={{
         position: 'fixed', inset: 0, background: C.bg, color: C.ink,
-        fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+        fontFamily: 'var(--font-ui)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '24px',
       }}
@@ -207,7 +207,7 @@ export default function InviteAcceptPage() {
         <div style={{ padding: '20px 22px 14px', borderBottom: `1px solid ${C.rule}`, display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ width: 4, height: 32, background: accent, borderRadius: 2, flex: 'none' }} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>Survey · Invite</div>
+            <div style={{ fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600 }}>Survey · Invite</div>
             <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.015em', marginTop: 4 }}>{heading}</div>
           </div>
         </div>
@@ -222,7 +222,7 @@ export default function InviteAcceptPage() {
           )}
 
           {error && (
-            <div style={{ background: 'var(--danger-soft)', borderLeft: `3px solid ${C.danger}`, borderRadius: 8, padding: '8px 10px', color: C.ink, fontSize: 12 }}>
+            <div style={{ background: 'var(--alert-danger-bg)', border: 'var(--alert-danger-border)', borderRadius: 'var(--alert-radius)', padding: '8px 10px', color: C.ink, fontSize: 12 }}>
               {error}
             </div>
           )}

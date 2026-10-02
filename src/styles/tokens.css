@@ -326,6 +326,14 @@
   --radius-lg: 16px;
   --radius-pill: 999px;
 
+  /* --- ONE CALM ALERT (owner 2026-10-02) ------------------------------- */
+  /* An error box is a soft red tint inside a thin red edge all the way
+     round, with --text-1 words. It used to be a 3px red bar down the left
+     side only, which read loud next to everything else. */
+  --alert-danger-bg: var(--danger-soft);
+  --alert-danger-border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  --alert-radius: var(--radius-md);
+
   /* --- PHONE SHEET SCALE (owner 2026-10-01) ---------------------------- */
   /* "Consistency across all bottom panels (text sizes and spacing)." Every
      phone bottom sheet - Pages / Search / Bookmarks, Spaces, Survey, History,
@@ -343,7 +351,7 @@
      above instead. Owner 2026-10-02: every phone row a finger taps is 44,
      including nested rows and menu items; --sheet-row-h-sub (40) is left for
      a line that is not tapped on its own. */
-  --sheet-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --sheet-font: var(--font-ui);
   --sheet-bg: var(--surface-2);
   --sheet-head-h: 44px;
   --sheet-title: 700 16px/20px var(--sheet-font);
@@ -370,4 +378,12 @@
   --sheet-icon: 16px;
   --sheet-icon-sm: 14px;
   --sheet-divider: 1px solid var(--border);
+}
+
+/* A button with no font of its own takes its parent's (the one interface
+   font) instead of the browser's default, which is Arial on Windows and
+   Linux (owner 2026-10-02, UI consistency audit). Any rule that names a
+   font outranks this one. */
+button {
+  font-family: inherit;
 }

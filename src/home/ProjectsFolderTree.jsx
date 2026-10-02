@@ -1123,7 +1123,7 @@ export default function ProjectsFolderTree({
                 {/* Files */}
                 <div className="slim-scroll" style={{ padding: '10px 14px', overflow: 'auto', position: 'relative' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, height: 28, marginBottom: 4, overflow: 'hidden', flexWrap: 'nowrap', justifyContent: 'space-between' }}>
-                    <span className="hub-section-label" style={{ fontSize: 10.5, letterSpacing: 0.06, textTransform: 'uppercase', color: 'var(--ink-200)', fontWeight: 700 }}>Files<span className="hub-section-count">{openFiles.length}</span></span>
+                    <span className="hub-section-label" style={{ fontSize: 11, letterSpacing: 0, color: 'var(--ink-200)', fontWeight: 600 }}>Files<span className="hub-section-count">{openFiles.length}</span></span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 'none' }}>
                       {fileSelect && (() => {
                         // Effective selection is DERIVED from the current rows
@@ -1181,7 +1181,7 @@ export default function ProjectsFolderTree({
                       </button>
                     </div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 90px 90px 28px', gap: 12, padding: '0 10px 6px', fontSize: 10, color: 'var(--ink-200)', letterSpacing: 0.06, textTransform: 'uppercase' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 90px 90px 28px', gap: 12, padding: '0 10px 6px', fontSize: 11, color: 'var(--ink-200)', letterSpacing: 0 }}>
                     <span></span><span>Name</span><span>Last edited by</span><span>Edited</span><span></span>
                   </div>
                   {openFiles.length === 0 ? (

@@ -926,7 +926,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           fontSize: 13,
           color: 'var(--text-1)',
           letterSpacing: 0,
-          fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+          fontFamily: 'var(--font-ui)',
         } : {
           // Design.md menu spec: dark card, ink border, small radius,
           // deep soft shadow — matches the home page's portalled menus.
@@ -943,7 +943,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           fontSize: 12.5,
           color: 'var(--text-2)',
           letterSpacing: 0,
-          fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+          fontFamily: 'var(--font-ui)',
         }}
       >
         {/* UX: mobile menus lead with a muted title row + divider, matching the

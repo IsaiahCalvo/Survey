@@ -6,7 +6,7 @@
      text      --text-1 (primary) / --text-3 (muted) / --text-disabled (quiet)
      accent    --accent (gold); --accent-text is the dark ink ON gold
      danger    --danger
-   Fonts: "Helvetica Neue", Helvetica, Arial; mono "JetBrains Mono". */
+   Fonts: the one interface font (--font-ui); mono "JetBrains Mono". */
 
 .account-settings-overlay {
   position: fixed;
@@ -26,7 +26,7 @@
   z-index: 10000;
   animation: fadeIn 0.2s ease-out;
   padding: 20px;
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: var(--font-ui);
 }
 
 .account-settings-modal {
@@ -86,7 +86,7 @@
   font-weight: 700;
   letter-spacing: -0.03em;
   color: var(--text-1);
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: var(--font-ui);
 }
 
 .account-settings-close {
@@ -225,14 +225,14 @@
   line-height: 1.5;
 }
 
-/* UX (KAL-72): the app's one error-banner treatment — 10%-opacity destructive
-   fill, a 3px destructive left border as the accent, 8px radius, and bone-cream
-   body text. Red is the accent, not the text colour. Same shape as .auth-error. */
+/* UX (KAL-72, revised 2026-10-02): the app's one calm alert (tokens.css
+   --alert-*) — a soft destructive tint inside a thin red edge all the way
+   round, 8px radius, --text-1 words. Same shape as .auth-error. */
 .account-error {
-  background: var(--danger-soft);
-  border-left: 3px solid var(--danger);
+  background: var(--alert-danger-bg);
+  border: var(--alert-danger-border);
   color: var(--text-1);
-  border-radius: 8px;
+  border-radius: var(--alert-radius);
   padding: 9px 12px;
   font-size: 12.5px;
   margin-bottom: 14px;

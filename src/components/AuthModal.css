@@ -46,7 +46,7 @@
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
   animation: slideUp 0.3s ease-out;
   border: 1px solid var(--border);
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: var(--font-ui);
   color: var(--text-1);
   letter-spacing: 0;
 }
@@ -127,16 +127,17 @@
 }
 
 /* Inline error — low-opacity danger background + danger border/text. */
-/* UX (KAL-72): the app's one error-banner treatment — 10%-opacity destructive
-   fill, a 3px destructive left border as the accent, 8px radius, and bone-cream
-   body text. Red is the accent, not the text colour, so the message stays
-   readable rather than shouting. Same shape as .account-error. */
+/* UX (KAL-72, revised 2026-10-02): the app's one calm alert (tokens.css
+   --alert-*) — a soft destructive tint inside a thin red edge all the way
+   round, 8px radius, --text-1 words. Red is the edge, not the text colour, so
+   the message stays readable rather than shouting. It used to be a 3px red bar
+   down the left side only. Same shape as .account-error. */
 .auth-error {
-  background: var(--danger-soft);
-  border-left: 3px solid var(--danger);
+  background: var(--alert-danger-bg);
+  border: var(--alert-danger-border);
   color: var(--text-1);
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: var(--alert-radius);
   margin-bottom: 16px;
   font-size: 12.5px;
   font-weight: 400;

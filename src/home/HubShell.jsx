@@ -252,8 +252,8 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12 }}>
               <Avatar initials={initials} size={34} />
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
-                {email ? <div style={{ fontSize: 10.5, color: 'var(--ink-200)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{email}</div> : null}
+                <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
+                {email ? <div style={{ fontSize: 11, color: 'var(--ink-200)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{email}</div> : null}
               </div>
             </div>
             <div style={{ height: 1, background: 'var(--ink-500)' }} />

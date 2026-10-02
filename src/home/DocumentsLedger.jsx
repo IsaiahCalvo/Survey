@@ -23,8 +23,10 @@ const ledgerHeader = {
   background: 'var(--ink-700)',
   borderBottom: '1px solid var(--ink-500)',
   borderTop: 0,
-  fontSize: 10.5, letterSpacing: '0.1em', textTransform: 'uppercase',
-  color: 'var(--ink-200)', fontWeight: 700,
+  /* Column labels: 11/600 in normal case with no tracking, the viewer's
+     label style (owner 2026-10-02, UI consistency audit). */
+  fontSize: 11, letterSpacing: 0,
+  color: 'var(--ink-200)', fontWeight: 600,
   padding: '8px 0',
 };
 

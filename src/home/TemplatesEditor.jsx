@@ -629,7 +629,7 @@ function MoreMenu({ anchorRect, items, onClose }) {
    Palette / font are hard hex/literal because the popup renders
    outside the .ed-scope CSS-variable root:
      card #181c24 · deep #12151c · rule #2a3140 · ink #f4f1ea
-     muted var(--text-3) · gold var(--accent) · font Helvetica Neue stack
+     muted var(--text-3) · gold var(--accent) · font var(--font-ui)
    ============================================================ */
 function CustomSelect({ value, options, onChange, placeholder = 'Select…', disabled = false }) {
   const [open, setOpen] = useState(false);
@@ -678,7 +678,7 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
           color: disabled ? 'var(--text-disabled)' : (selected ? 'var(--text-1)' : 'var(--text-3)'),
           font: 'inherit', fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer',
           background: disabled ? 'var(--disabled-fill)' : 'var(--surface-1)',
-          fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif', textAlign: 'left',
+          fontFamily: 'var(--font-ui)', textAlign: 'left',
           outline: 'none',
         }}
       >
@@ -696,7 +696,7 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
             background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8,
             padding: 4, boxShadow: '0 12px 30px rgba(0,0,0,0.55)',
             maxHeight: 240, overflowY: 'auto',
-            fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+            fontFamily: 'var(--font-ui)',
           }}
         >
           {options.length === 0 && (
@@ -2152,7 +2152,7 @@ export default function TemplatesEditor({
         {/* KAL-72: unified error-banner pattern (docs/ui/colors.md) — red is
             the accent edge, not the text colour. */}
         {persistenceError ? (
-          <div role="alert" style={{ position: 'absolute', zIndex: 20, top: 6, left: '50%', transform: 'translateX(-50%)', maxWidth: 'calc(100% - 24px)', padding: '6px 10px', borderRadius: 8, borderLeft: '3px solid var(--accent-red)', background: 'var(--danger-soft)', color: 'var(--text-1)', fontSize: 11.5, lineHeight: 1.35, textAlign: 'center' }}>
+          <div role="alert" style={{ position: 'absolute', zIndex: 20, top: 6, left: '50%', transform: 'translateX(-50%)', maxWidth: 'calc(100% - 24px)', padding: '6px 10px', borderRadius: 'var(--alert-radius)', border: 'var(--alert-danger-border)', background: 'var(--alert-danger-bg)', color: 'var(--text-1)', fontSize: 11.5, lineHeight: 1.35, textAlign: 'center' }}>
             {persistenceError}
           </div>
         ) : null}
@@ -2611,7 +2611,7 @@ export default function TemplatesEditor({
                                 data-testid={`archived-items-${c.id}`}
                                 style={{ marginTop: 14, paddingTop: 10, borderTop: '1px dashed var(--rule)' }}
                               >
-                                <div className="meta" style={{ fontSize: 10.5, marginBottom: 6, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--text-3)' }}>
+                                <div className="meta" style={{ fontSize: 11, marginBottom: 6, letterSpacing: 0, color: 'var(--text-3)' }}>
                                   Archived ({archivedItems.length})
                                 </div>
                                 {archivedItems.map((it, j) => (
@@ -3551,7 +3551,7 @@ export default function TemplatesEditor({
             width: 440, maxWidth: 'calc(100vw - 32px)',
             background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10,
             padding: '18px 20px 14px', boxShadow: '0 18px 60px rgba(0,0,0,0.55)',
-            fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif', color: 'var(--text-1)',
+            fontFamily: 'var(--font-ui)', color: 'var(--text-1)',
           }}
         >
           <h3 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-1)' }}>
@@ -3615,7 +3615,7 @@ export default function TemplatesEditor({
             style={{ width: 400, maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100dvh - 32px)', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10 }}
           >
             <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-              <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, letterSpacing: '-0.025em', flex: 'none', color: 'var(--text-1)', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' }}>Edit modules</h3>
+              <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, letterSpacing: '-0.025em', flex: 'none', color: 'var(--text-1)', fontFamily: 'var(--font-ui)' }}>Edit modules</h3>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface-0)', border: '1px solid var(--border-strong)', borderRadius: 6, padding: '4px 8px', height: 26, boxSizing: 'border-box', flex: 1, maxWidth: 220 }}>
                 <Icon name="search" size={12} color="var(--text-3)" />
                 <input
@@ -3716,8 +3716,8 @@ export default function TemplatesEditor({
         >
           <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <p style={{ margin: 0, fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-3)', fontWeight: 700, fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>Move/Copy</p>
-              <h3 style={{ fontSize: 14, fontWeight: 700, margin: '2px 0 0', color: 'var(--text-1)', letterSpacing: '-0.025em', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' }}>{moveModal.count} item{moveModal.count === 1 ? '' : 's'}</h3>
+              <p style={{ margin: 0, fontSize: 11, letterSpacing: 0, color: 'var(--text-3)', fontWeight: 600, fontFamily: 'var(--font-ui)' }}>Move/Copy</p>
+              <h3 style={{ fontSize: 14, fontWeight: 700, margin: '2px 0 0', color: 'var(--text-1)', letterSpacing: '-0.025em', fontFamily: 'var(--font-ui)' }}>{moveModal.count} item{moveModal.count === 1 ? '' : 's'}</h3>
             </div>
             <button ref={moveModalCloseRef} onClick={closeMoveModal} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={13} /></button>
           </div>

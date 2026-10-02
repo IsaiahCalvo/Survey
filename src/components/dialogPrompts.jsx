@@ -41,7 +41,7 @@ const overlay = {
   position: 'fixed', inset: 0, background: C.scrim,
   backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
   display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1300,
-  fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+  fontFamily: 'var(--font-ui)',
 };
 
 const cancelButtonStyle = {
