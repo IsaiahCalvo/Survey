@@ -1,0 +1,74 @@
+/*
+ * SwipeToDeleteRow.css — the phone swipe-left-to-delete row (owner
+ * 2026-10-02). See SwipeToDeleteRow.jsx for the gesture.
+ *
+ *   [ row content ........................ ] <- finger drags it left
+ *   [ row content .............. ][  trash ]    96px zone
+ *
+ * The trash sits BEHIND the row on the app's danger fill (--danger-fill with
+ * --on-danger, the pair made for a white glyph on red; never gold). It is
+ * only painted while the row is moved, so a resting row shows nothing new,
+ * and the row's own background is only made opaque then too (at rest the
+ * row keeps its transparent look, which the drag-lift and select fills
+ * rely on).
+ */
+.swipe-row {
+  position: relative;
+  overflow: hidden;
+  /* The WebView keeps vertical scrolling; the sideways move is ours. */
+  touch-action: pan-y;
+}
+.swipe-row__action {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  /* Set from the gesture: exactly the strip the row uncovers (96px open). */
+  width: 0;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--danger-fill);
+  color: var(--on-danger);
+  cursor: pointer;
+  visibility: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+.swipe-row[data-swipe-revealed] > .swipe-row__action {
+  visibility: visible;
+}
+.swipe-row__action:active {
+  background: var(--danger-press);
+}
+.swipe-row__content {
+  position: relative;
+  transition: transform 240ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.swipe-row__action {
+  transition: width 240ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.swipe-row.is-dragging > .swipe-row__action {
+  transition: none;
+}
+.swipe-row[data-swipe-revealed] > .swipe-row__content {
+  background: var(--swipe-row-bg, var(--surface-2));
+}
+.swipe-row.is-dragging > .swipe-row__content {
+  transition: none;
+}
+/* Tap the trash: the row folds shut, then the delete runs. */
+.swipe-row.is-collapsing {
+  transition: height 220ms cubic-bezier(0.4, 0, 0.2, 1), opacity 220ms ease-out;
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .swipe-row__content,
+  .swipe-row__action,
+  .swipe-row.is-collapsing {
+    transition: none !important;
+  }
+}

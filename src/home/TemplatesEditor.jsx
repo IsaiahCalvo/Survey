@@ -62,6 +62,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { HubShell, Icon, Search, EmptyState } from './HubShell';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from '../components/SectionIconButton.jsx';
+import SwipeToDeleteRow from '../components/SwipeToDeleteRow.jsx';
 import {
   resolveTemplatesReload,
   createStableIdMint,
@@ -3124,7 +3125,15 @@ export default function TemplatesEditor({
                                   input ignores taps until then, see hub.css);
                                   ⋮ holds Rename / Delete; in Select mode a tap
                                   ticks the row.
-                                  [grip 32][chevron 26][name][...][count][⋮ 36] */}
+                                  [grip 32][chevron 26][name][...][count][⋮ 36]
+                                  Owner 2026-10-02: swipe the row left for a
+                                  trash behind it - the ⋮ menu's Delete (off
+                                  in Select mode, where a tap ticks). */}
+                              <SwipeToDeleteRow
+                                label={`Delete ${c.name}`}
+                                disabled={catEdit}
+                                onDelete={() => deleteCategories(new Set([c.id]))}
+                              >
                               <div
                                 data-drag-rearrange-row
                                 className={`templates-mobile-category-row${open ? ' is-open' : ''}${catEdit ? ' is-selecting' : ''}${catEdit && isSel ? ' is-selected' : ''}`}
@@ -3176,6 +3185,7 @@ export default function TemplatesEditor({
                                   </span>
                                 )}
                               </div>
+                              </SwipeToDeleteRow>
                               {open ? (
                                 <div className="templates-mobile-items">
                                   {items.length === 0 ? <div className="templates-mobile-empty">No checklist items yet.</div> : null}
@@ -3183,6 +3193,9 @@ export default function TemplatesEditor({
                                     {items.map((it) => (
                                       <SortableRearrangeRow key={`mobile-item-${it.id}`} id={it.id}>
                                         {({ attributes, listeners, isDragging }) => (
+                                          /* Owner 2026-10-02: swipe left for a trash
+                                             behind the row - the same delete as its x. */
+                                          <SwipeToDeleteRow label="Delete item" onDelete={() => deleteItem(ci, it.id)}>
                                           <div data-drag-rearrange-row className="templates-mobile-item-row">
                                             <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 20, height: 20 }} />
                                             <input
@@ -3196,6 +3209,7 @@ export default function TemplatesEditor({
                                             />
                                             <button type="button" title="Delete item" aria-label="Delete item" onClick={(e) => { e.stopPropagation(); deleteItem(ci, it.id); }}><Icon name="close" size={11} /></button>
                                           </div>
+                                          </SwipeToDeleteRow>
                                         )}
                                       </SortableRearrangeRow>
                                     ))}
