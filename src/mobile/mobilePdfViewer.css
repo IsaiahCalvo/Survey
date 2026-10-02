@@ -1263,37 +1263,71 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   background: transparent;
 }
 
+/* Owner 2026-10-02: the people faces match the desktop sidebar footer
+   (components/presenceIdentity.js, after the Astryx Avatar docs): initials in
+   --text-1 on a calm tint (yours grey, set inline), no gold - gold means
+   "selected" - and a status dot on the edge at 4:30. */
 .mobile-pdf-tools__avatar {
+  --presence-ring: var(--surface-1);
+  position: relative;
   width: var(--mobile-rail-disc);
   height: var(--mobile-rail-disc);
   display: grid;
   place-items: center;
-  color: var(--text-2);
-  background: var(--accent-soft);
-  border: 1px solid var(--accent);
+  color: var(--text-1);
+  background: var(--surface-3);
+  border: 0;
   border-radius: 50%;
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 600;
+}
+
+/* The status dot (Astryx AvatarStatusDot): a third of the face plus a 2px
+   ring in the surface it sits on, centred on the circle's edge at 4:30.
+   Here now = filled calm green (--success: status dots only); idle = a hollow
+   grey ring, so shape as well as colour tells them apart. */
+.mobile-presence-dot {
+  --presence-dot: 8px;
+  position: absolute;
+  /* centre at r + r/sqrt2 = 0.8536 of the face, minus half the ringed dot */
+  left: calc(85.36% - (var(--presence-dot) / 2) - 2px);
+  top: calc(85.36% - (var(--presence-dot) / 2) - 2px);
+  width: var(--presence-dot);
+  height: var(--presence-dot);
+  box-sizing: content-box;
+  border: 2px solid var(--presence-ring, var(--surface-1));
+  border-radius: 50%;
+  background: var(--success);
+}
+
+.mobile-presence-dot[data-presence-dot="idle"] {
+  background: var(--presence-ring, var(--surface-1));
+  box-shadow: inset 0 0 0 1.5px var(--text-3);
 }
 
 .mobile-pdf-tools__user-count {
   position: absolute;
-  right: -2px;
-  top: -2px;
-  min-width: 18px;
-  height: 18px;
+  /* Smaller and further out than the old gold badge so the face's initials
+     stay readable under it even at "+11". */
+  right: -4px;
+  top: -6px;
+  min-width: 16px;
+  height: 16px;
   padding: 0 3px;
   box-sizing: border-box;
   display: grid;
   place-items: center;
-  color: var(--accent-text);
-  background: var(--accent);
-  /* Another cutout edge: a dark ring so the gold badge reads against whatever
-     it overlaps. It was a #20242c literal, a surface colour, not a hairline. */
-  border: 1px solid var(--surface-2);
-  border-radius: 9px;
+  /* The "+N" of other people: the desktop footer's neutral overflow chip
+     (raised grey, muted count), not a gold badge. The dark ring is a cutout
+     edge so it reads against the face it overlaps. */
+  color: var(--text-1);
+  background: var(--surface-3);
+  border: 1px solid var(--surface-1);
+  border-radius: 8px;
   font-size: 9px;
-  font-weight: 900;
+  font-weight: 700;
+  line-height: 1;
+  z-index: 3;
 }
 
 .mobile-pdf-tools__popover {
@@ -3519,22 +3553,25 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
 }
 
 .mobile-pdf-users-sheet__avatar {
+  --presence-ring: var(--surface-1);
+  position: relative;
   width: 28px;
   height: 28px;
   display: grid;
   place-items: center;
   color: var(--text-1);
-  background: var(--accent-soft);
-  border: 1px solid var(--accent);
+  background: var(--surface-3);
+  border: 0;
   border-radius: 50%;
-  font-size: 10px;
-  font-weight: 900;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .mobile-pdf-users-sheet__row p { min-width: 0; margin: 0; display: grid; gap: 2px; }
 .mobile-pdf-users-sheet__row p strong { overflow: hidden; font: var(--sheet-row-title); text-overflow: ellipsis; white-space: nowrap; }
 .mobile-pdf-users-sheet__row p span { color: var(--text-3); font: var(--sheet-row-meta); }
-.mobile-pdf-users-sheet__row em { color: var(--accent); font: var(--sheet-row-meta); font-style: normal; font-weight: 600; }
+.mobile-pdf-users-sheet__row em { color: var(--text-2); font: var(--sheet-row-meta); font-style: normal; font-weight: 600; }
+.mobile-pdf-users-sheet__row em[data-presence-state="idle"] { color: var(--text-3); font-weight: 500; }
 
 /* The phone Survey panel's own rules (header, one-card body, module tabs,
    category and Survey Marker lines, marker detail, notes) moved to

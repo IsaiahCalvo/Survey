@@ -1,361 +1,319 @@
-import { useState } from 'react';
-// KAL-65: the active users hover hints render from the ONE shared tooltip
-// surface so they match the sync status hint and the toolbar/rail tooltips.
-import { AnchoredTooltip } from './Tooltip';
+import { useEffect, useMemo, useRef, useState } from 'react';
+// KAL-65: hover layers paint from the ONE shared tooltip surface so the people
+// list matches the sync status hint and the rail tooltips beside it.
+import { TOOLTIP_SURFACE } from './Tooltip';
+import {
+  PRESENCE_INK,
+  PRESENCE_STATE_LABEL,
+  assignPresenceTints,
+  presenceInitials,
+  presenceLabel,
+  presenceState,
+} from './presenceIdentity.js';
 
 /**
- * Live presence row — Microsoft Excel / Google Docs pattern.
+ * Who is on this document — the people token in the desktop sidebar footer.
  *
- * Renders up to three overlapping circles for users currently viewing the
- * document. A fourth slot is reserved for a "+N" pill when more than three
- * are present. A small "N viewing" count sits beneath the pile.
+ * Owner 2026-10-02: designed against the Astryx Avatar / AvatarGroup /
+ * AvatarGroupOverflow / AvatarStatusDot docs (measured specs are in
+ * presenceIdentity.js). In this footer:
+ *   - a face is 24px (Astryx "sm") with a 2px ring in the footer's own surface
+ *     colour, so the ring reads as a cut-out and the face sits in the 28px
+ *     desktop row; neighbours overlap by a quarter (6px), each face over the
+ *     one before it, with every status dot on top of all of them;
+ *   - the "+N" is the same 24px circle (a pill once N has two digits) on a
+ *     neutral raised fill with muted text;
+ *   - the status dot is 8px + the same 2px ring, centred on the face's edge at
+ *     4:30: calm green = here now, hollow grey ring = idle (shape, not only
+ *     colour, tells them apart);
+ *   - you are always first, in calm grey; other people get muted tints.
  *
- * Hover behavior:
- *   - Hovering a single avatar shows that user's email below the circle.
- *   - Hovering the "+N" pill opens a dropdown listing every viewer with
- *     their name and email.
+ * Fit (the footer never wraps or overflows):
+ *   expanded rail (`row`)   — three slots in a row: up to three faces, or two
+ *                             faces + "+N". The sync status stays in the true
+ *                             middle and its side columns are ~71px wide; three
+ *                             slots measure 24 + 22 + 22 = 68px ("+10": 70px).
+ *   collapsed rail (`compact`) — two slots stacked in the 36px column: up to
+ *                             two faces, or you + "+N".
+ * Hovering, focusing or tapping the group opens the full list (name + status),
+ * upward in the expanded row, out to the right from the collapsed rail.
  *
  * Inputs:
- *   - presence: array of rows from `document_presence`. Each row has
- *     `user_id` and `display_name` (we put email there at write time).
- *   - currentUserId / currentUserEmail / currentUserDisplayName: identifies
- *     the local user so we can pin them to the leftmost slot and label
- *     them "(you)" in the dropdown.
- *   - enabled: hide the row entirely when cloud sync isn't on.
+ *   - presence: rows from `document_presence` (user_id, display_name — the
+ *     email is stored there — and last_seen).
+ *   - currentUserId / currentUserEmail / currentUserDisplayName: the local user,
+ *     pinned first and shown even before their own row has synced.
+ *   - enabled: hide entirely when cloud sync is off.
  */
+const FACE = 24;
+const RING = 2;
+// Astryx overlaps ring-to-ring by a quarter of the face (sm: 6px of the 28px
+// ringed circle). Our rings are drawn outside the 24px box, so in layout terms
+// the faces overlap by 6 - 2 x 2 = 2px: a 22px step, and 20px of each face
+// stays clear of the next, enough for two initials.
+const OVERLAP = 6;
+const STEP_OVERLAP = OVERLAP - RING * 2;
+const DOT = 8;
+const LIST_FACE = 20;
+
 export default function PresenceAvatars({
   presence = [],
   currentUserId = null,
   currentUserEmail = null,
   currentUserDisplayName = null,
   enabled = true,
+  // `row` (the expanded footer) is the default layout; only `compact` changes it.
   compact = false,
-  // Owner 2026-09-23: in the expanded desktop sidebar the footer is ONE row
-  // (faces left, history middle, sync status right). `row` drops the caption
-  // under the faces (the count still reads from the faces and the +N disc,
-  // and the stack's tooltip says "just you" / "N viewing") and opens every
-  // hover layer UPWARD, since the row sits on the bottom edge of the window.
-  row = false
 }) {
-  const [popoverOpen, setPopoverOpen] = useState(false);
-  if (!enabled) return null;
+  const [hoverOpen, setHoverOpen] = useState(false);
+  const [pinnedOpen, setPinnedOpen] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const rootRef = useRef(null);
 
-  // Deduplicate by user_id — a user can have multiple client_type rows
-  // (web, desktop). Keep the most recently seen row per user.
-  const uniqueByUser = new Map();
-  for (const row of (presence || [])) {
-    const id = row?.user_id;
-    if (!id) continue;
-    const prior = uniqueByUser.get(id);
-    if (!prior || (row.last_seen && row.last_seen > (prior.last_seen || ''))) {
-      uniqueByUser.set(id, row);
+  const users = useMemo(() => {
+    // One entry per person: a user can have several client rows (web,
+    // desktop). Keep the most recently seen.
+    const byUser = new Map();
+    for (const entry of presence || []) {
+      const id = entry?.user_id;
+      if (!id) continue;
+      const prior = byUser.get(id);
+      if (!prior || (entry.last_seen && entry.last_seen > (prior.last_seen || ''))) byUser.set(id, entry);
     }
-  }
-  let users = Array.from(uniqueByUser.values());
-  if (users.length === 0) {
-    // Fallback: at least show the local user so the row is never blank
-    // when the local presence row hasn't synced yet.
-    if (currentUserId) {
-      users = [{
-        user_id: currentUserId,
-        display_name: currentUserEmail || currentUserDisplayName || 'You'
-      }];
-    } else {
-      return null;
+    let list = Array.from(byUser.values());
+    if (list.length === 0 && currentUserId) {
+      list = [{ user_id: currentUserId, display_name: currentUserEmail || currentUserDisplayName || 'You' }];
     }
-  }
+    list.sort((a, b) => {
+      if (a.user_id === currentUserId) return -1;
+      if (b.user_id === currentUserId) return 1;
+      return (b.last_seen || '').localeCompare(a.last_seen || '');
+    });
+    const tints = assignPresenceTints(list.map((u) => u.user_id), currentUserId);
+    return list.map((u) => {
+      const isCurrent = u.user_id === currentUserId;
+      const label = presenceLabel(u);
+      return { id: u.user_id, row: u, isCurrent, label, initials: presenceInitials(label), tint: tints.get(u.user_id) };
+    });
+  }, [presence, currentUserId, currentUserEmail, currentUserDisplayName]);
 
-  // Sort: local user first, then most recently seen.
-  users.sort((a, b) => {
-    if (a.user_id === currentUserId) return -1;
-    if (b.user_id === currentUserId) return 1;
-    return (b.last_seen || '').localeCompare(a.last_seen || '');
-  });
+  const hasPeers = users.some((u) => !u.isCurrent);
+  // "Idle" is a time threshold, so re-read the clock now and then while other
+  // people are listed. Local only — no network.
+  useEffect(() => {
+    if (!enabled || !hasPeers) return undefined;
+    const id = setInterval(() => setNow(Date.now()), 15000);
+    return () => clearInterval(id);
+  }, [enabled, hasPeers]);
 
-  const total = users.length;
-  const visibleCap = 3; // user requirement: max three faces, fourth slot = pill
-  const hasOverflow = total > visibleCap;
-  const visibleUsers = hasOverflow ? users.slice(0, visibleCap) : users;
-  const overflowUsers = hasOverflow ? users.slice(visibleCap) : [];
+  // A tapped-open list closes on a press anywhere else, or on Escape.
+  useEffect(() => {
+    if (!pinnedOpen) return undefined;
+    const onDown = (e) => { if (!rootRef.current?.contains(e.target)) setPinnedOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') { setPinnedOpen(false); setHoverOpen(false); } };
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [pinnedOpen]);
 
-  // Compact mode (collapsed sidebar rail) shrinks the avatars and hides
-  // the "N viewing" caption so the row fits inside the 48px-wide rail.
-  const avatarSize = compact ? 18 : 22;
-  const overlap = compact ? -8 : -10;
-  const initialsFontSize = compact ? 8 : 9;
+  if (!enabled || users.length === 0) return null;
 
-  const initialsOf = (row) => {
-    const name = row?.display_name || row?.user_id || '?';
-    // Email-style: take first letter before "@"; otherwise first two
-    // letters of the display name (handles "First Last" → "FL").
-    const at = name.indexOf('@');
-    if (at > 0) {
-      const prefix = name.slice(0, at);
-      const parts = prefix.split(/[._-]/).filter(Boolean);
-      if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-      return prefix.slice(0, 2).toUpperCase();
-    }
-    const parts = name.trim().split(/\s+/);
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-    return name.slice(0, 2).toUpperCase();
-  };
+  const people = users.map((u) => ({ ...u, state: presenceState(u.row, { now, isCurrent: u.isCurrent }) }));
+  const total = people.length;
+  const slots = compact ? 2 : 3;
+  const hasOverflow = total > slots;
+  const visible = hasOverflow ? people.slice(0, slots - 1) : people;
+  const hiddenCount = total - visible.length;
+  const vertical = compact;
+  const listOpen = hoverOpen || pinnedOpen;
+  const hereCount = people.filter((p) => p.state === 'here').length;
+  const summary = total === 1
+    ? 'Just you on this document'
+    : `${total} people on this document${hereCount < total ? `, ${total - hereCount} idle` : ''}`;
 
-  // Stable color per user_id — same person always gets the same color.
-  const colorOf = (userId) => {
-    if (userId === currentUserId) return 'linear-gradient(135deg, #6c8aff, #4f8cff)'; // You = blue
-    let hash = 0;
-    for (let i = 0; i < (userId || '').length; i++) {
-      hash = (hash * 31 + userId.charCodeAt(i)) >>> 0;
-    }
-    const palettes = [
-      'linear-gradient(135deg, #2bbd7e, #1f9c66)', // green
-      'linear-gradient(135deg, #f5a524, #e08600)', // orange
-      'linear-gradient(135deg, #ef4444, #c63333)', // red
-      'linear-gradient(135deg, #b86cff, #8a4fff)', // purple
-      'linear-gradient(135deg, #ff6cb3, #ff4f9c)', // pink
-      'linear-gradient(135deg, #6cd0ff, #4fb5ff)'  // cyan
-    ];
-    return palettes[hash % palettes.length];
-  };
-
-  // The initials' ink. Light text on the blue "you" face measured 2.3:1
-  // (UI consistency audit, 2026-10-02); the darkest surface on it reads ~6:1.
-  const inkOf = (userId) => (userId === currentUserId ? 'var(--surface-0)' : 'var(--text-1)');
-
-  const emailOf = (row) => row?.display_name || '';
+  const listPosition = compact
+    // Out to the right of the collapsed rail, bottom-aligned so a long list
+    // grows upward instead of off the bottom of the window.
+    ? { left: '100%', bottom: 0, paddingLeft: '12px' }
+    // Upward from the expanded footer row, aligned to the faces' left edge.
+    : { left: 0, bottom: '100%', paddingBottom: '8px' };
 
   return (
     <div
-      style={{
-        display: 'inline-flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: '2px',
-        position: 'relative'
-      }}
+      ref={rootRef}
+      style={{ position: 'relative', display: 'inline-flex' }}
+      onMouseEnter={() => setHoverOpen(true)}
+      onMouseLeave={() => setHoverOpen(false)}
     >
-      <div style={{ display: 'flex', alignItems: 'center' }}>
-        {visibleUsers.map((row, idx) => (
-          <Avatar
-            key={row.user_id}
-            initials={initialsOf(row)}
-            background={colorOf(row.user_id)}
-            ink={inkOf(row.user_id)}
-            email={emailOf(row)}
-            offset={idx > 0 ? `${overlap}px` : '0'}
-            size={avatarSize}
-            fontSize={initialsFontSize}
-            tooltipDirection={compact ? 'right' : row ? 'top' : 'bottom'}
+      <button
+        type="button"
+        data-presence-group=""
+        aria-label={summary}
+        aria-expanded={listOpen}
+        onClick={() => setPinnedOpen((open) => !open)}
+        onFocus={(e) => { if (e.currentTarget.matches?.(':focus-visible')) setHoverOpen(true); }}
+        onBlur={() => setHoverOpen(false)}
+        style={{
+          display: 'flex',
+          flexDirection: vertical ? 'column' : 'row',
+          alignItems: 'center',
+          // The 2px rings are drawn outside each 24px face, so leave room for
+          // them inside the button (and inside the 28px row).
+          padding: `${RING}px`,
+          margin: `-${RING}px`,
+          border: 0,
+          background: 'transparent',
+          borderRadius: '14px',
+          cursor: 'default',
+          font: 'inherit',
+          color: 'inherit',
+        }}
+      >
+        {visible.map((person, idx) => (
+          <Face
+            key={person.id}
+            person={person}
+            offset={idx > 0 ? -STEP_OVERLAP : 0}
+            vertical={vertical}
           />
         ))}
         {hasOverflow && (
-          <div
-            style={{ position: 'relative', marginLeft: `${overlap}px` }}
-            onMouseEnter={() => setPopoverOpen(true)}
-            onMouseLeave={() => setPopoverOpen(false)}
+          <span
+            data-presence-overflow=""
+            aria-hidden="true"
+            style={{
+              position: 'relative',
+              zIndex: 1,
+              [vertical ? 'marginTop' : 'marginLeft']: `-${STEP_OVERLAP}px`,
+              minWidth: `${FACE}px`,
+              height: `${FACE}px`,
+              boxSizing: 'border-box',
+              // A pill once N has two digits, like Astryx's overflow.
+              padding: '0 4px',
+              borderRadius: `${FACE / 2}px`,
+              background: 'var(--surface-3)',
+              color: 'var(--text-2)',
+              boxShadow: `0 0 0 ${RING}px var(--surface-1)`,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '10px',
+              fontWeight: 600,
+              lineHeight: 1,
+              letterSpacing: 0,
+              flexShrink: 0,
+            }}
           >
-            <div
-              style={{
-                width: `${avatarSize}px`,
-                height: `${avatarSize}px`,
-                borderRadius: '50%',
-                /* UX: the "+N" bubble is a raised neutral disc sitting among
-                   the per-person identity colours, so it takes the raised
-                   surface token instead of a white wash whose meaning would
-                   change with whatever is behind the rail. */
-                background: 'var(--surface-3)',
-                color: 'var(--text-1)',
-                border: '2px solid var(--surface-0)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: `${initialsFontSize}px`,
-                fontWeight: 600,
-                cursor: 'default'
-              }}
-            >
-              +{overflowUsers.length}
+            +{hiddenCount}
+          </span>
+        )}
+      </button>
+      {listOpen && (
+        <div
+          data-presence-list=""
+          style={{ position: 'absolute', zIndex: 3000, ...listPosition }}
+        >
+          <div
+            role="dialog"
+            aria-label="People on this document"
+            style={{
+              ...TOOLTIP_SURFACE,
+              whiteSpace: 'normal',
+              pointerEvents: 'auto',
+              padding: '4px 0',
+              width: '248px',
+              maxHeight: '320px',
+              overflowY: 'auto',
+              boxSizing: 'border-box',
+            }}
+          >
+            <div style={{ padding: '4px 12px 6px', fontSize: '11px', color: 'var(--text-3)' }}>
+              {total === 1 ? 'Just you on this document' : `${total} on this document`}
             </div>
-            {popoverOpen && (
+            {people.map((person) => (
               <div
+                key={person.id}
+                data-presence-row={person.state}
                 style={{
-                  position: 'absolute',
-                  // 2026-04-25 — In the collapsed sidebar rail the popover
-                  // slides out to the right (matching the rail's tab
-                  // tooltips) so it doesn't get clipped by the rail edge.
-                  // In the expanded toolbar layout we keep it below,
-                  // anchored to the right of the pile.
-                  ...(compact
-                    ? { left: 'calc(100% + 8px)', top: '50%', transform: 'translateY(-50%)' }
-                    : row
-                      ? { bottom: 'calc(100% + 6px)', left: 0 }
-                      : { top: 'calc(100% + 6px)', right: 0 }),
-                  background: '#11131a',
-                  /* UX: the popover already reads as a separate layer from its
-                     own dark fill and drop shadow, so its edge is decorative —
-                     the subtle hairline, not a white wash. */
-                  border: '1px solid var(--border)',
-                  borderRadius: '8px',
-                  padding: '8px 0',
-                  minWidth: '240px',
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-                  zIndex: 1000
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  height: 'var(--menu-item-h, 28px)',
+                  padding: '0 12px',
+                  fontSize: '12px',
+                  color: 'var(--text-1)',
                 }}
               >
-                <div
-                  style={{
-                    padding: '4px 12px 8px',
-                    fontSize: '10px',
-                    color: '#9aa0a8',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.06em',
-                    /* UX: a separator under the "N viewing" caption — purely a
-                       divider, so the subtle border token. */
-                    borderBottom: '1px solid var(--border)',
-                    marginBottom: '4px'
-                  }}
-                >
-                  {total} viewing
-                </div>
-                {users.map((row) => (
-                  <div
-                    key={row.user_id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      padding: '6px 12px',
-                      fontSize: '12px',
-                      color: '#e6e8eb'
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: '20px',
-                        height: '20px',
-                        borderRadius: '50%',
-                        background: colorOf(row.user_id),
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: inkOf(row.user_id),
-                        fontSize: '8px',
-                        fontWeight: 600,
-                        flexShrink: 0
-                      }}
-                    >
-                      {initialsOf(row)}
-                    </span>
-                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {row.user_id === currentUserId ? `${emailOf(row) || 'You'} (you)` : emailOf(row) || row.user_id}
-                    </span>
-                  </div>
-                ))}
+                <Face person={person} size={LIST_FACE} dot={6} ringColor="var(--surface-2)" />
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {person.label}{person.isCurrent ? ' (you)' : ''}
+                </span>
+                <span style={{ flexShrink: 0, fontSize: '11px', color: person.state === 'here' ? 'var(--text-2)' : 'var(--text-3)' }}>
+                  {PRESENCE_STATE_LABEL[person.state]}
+                </span>
               </div>
-            )}
+            ))}
           </div>
-        )}
-      </div>
-      {/* Caption — active-users count.
-          UX (2026-07-17, E2E finding): with the rail collapsed the full
-          "N viewing" text doesn't fit the 48px rail ("12 viewing" ≈ 48px at
-          10px type), but hiding it entirely left collapsed users with no
-          at-a-glance signal that other people are viewing the document.
-          Intended behavior: expanded rail keeps the full "just you" /
-          "N viewing" caption (unchanged); the collapsed rail shows a compact
-          count — just the number, same 10px muted caption style — under the
-          dot pile whenever someone else is present, with a right-slide hover
-          tooltip reading "N viewing" that matches the collapsed rail's
-          existing tab / sync-status tooltips (reference behavior). When the
-          user is alone, compact mode stays caption-less so the collapsed
-          rail keeps its minimal look. */}
-      {!compact && !row && (
-        <div style={{ fontSize: '10px', color: '#9aa0a8', lineHeight: 1 }}>
-          {total === 1 ? 'just you' : `${total} viewing`}
         </div>
       )}
-      {compact && total > 1 && <CompactViewerCount total={total} />}
     </div>
   );
 }
 
-// Compact active-users count for the collapsed sidebar rail: the bare
-// number in the same muted caption style, with a right-slide hover tooltip
-// spelling out "N viewing" — identical tooltip style/geometry to the rail's
-// tab tooltips and the compact sync status indicator. The tooltip lives on
-// the count (not the dot pile) so it never fights the per-user email
-// tooltips on the dots or the "+N" viewer-list popover.
-function CompactViewerCount({ total }) {
-  const [hover, setHover] = useState(false);
+// One face: initials on the person's tint, a ring in the surface colour, and
+// the status dot on the edge at 4:30. In a group each face paints over the one
+// before it (Astryx order) but every status dot paints above all the faces,
+// its surface ring cutting a clean notch into the next face.
+function Face({ person, offset = 0, vertical = false, size = FACE, dot = DOT, ringColor = 'var(--surface-1)' }) {
+  const inGroup = size === FACE;
+  // Centre of the dot on the circle at 45 degrees: r / sqrt(2) from the centre.
+  const dotOuter = dot + RING * 2;
+  const centre = size / 2 + (size / 2) / Math.SQRT2;
   return (
-    <div
-      role="status"
-      aria-label={`${total} viewing`}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+    <span
+      data-presence-face={person.id}
+      aria-hidden="true"
       style={{
         position: 'relative',
-        fontSize: '10px',
-        color: '#9aa0a8',
+        [vertical ? 'marginTop' : 'marginLeft']: offset ? `${offset}px` : undefined,
+        width: `${size}px`,
+        height: `${size}px`,
+        flexShrink: 0,
+        borderRadius: '50%',
+        background: person.tint,
+        color: PRESENCE_INK,
+        boxShadow: inGroup ? `0 0 0 ${RING}px ${ringColor}` : undefined,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: size >= FACE ? '10px' : '8px',
+        fontWeight: 600,
         lineHeight: 1,
-        // Widen the hover target a touch — a bare 10px digit is a tiny mark.
-        padding: '2px 6px',
-        cursor: 'default'
+        letterSpacing: 0,
       }}
     >
-      {total}
-      {hover && (
-        <AnchoredTooltip side="right">
-          {total} viewing
-        </AnchoredTooltip>
-      )}
-    </div>
-  );
-}
-
-// Single avatar with a hover-tooltip showing the user's email.
-// `tooltipDirection` is 'right' for the collapsed sidebar rail (matches the
-// existing Pages / Search / Bookmarks tab tooltips that slide out to the
-// right) and 'bottom' for the expanded layout where the row has more
-// horizontal space and a downward tooltip is more comfortable.
-function Avatar({ initials, background, ink = 'var(--text-1)', email, offset = '0', size = 22, fontSize = 9, tooltipDirection = 'bottom' }) {
-  const [hover, setHover] = useState(false);
-  const tooltipPosition = tooltipDirection === 'right'
-    ? { left: 'calc(100% + 8px)', top: '50%', transform: 'translateY(-50%)' }
-    : tooltipDirection === 'top'
-      // Anchored to the face's left edge so it never runs off the sidebar's
-      // left side from the first face in the row.
-      ? { bottom: 'calc(100% + 6px)', left: 0 }
-      : { top: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)' };
-  return (
-    <div
-      style={{ position: 'relative', marginLeft: offset }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-    >
+      {person.initials}
       <span
+        data-presence-dot={person.state}
         style={{
-          width: `${size}px`,
-          height: `${size}px`,
+          position: 'absolute',
+          zIndex: 2,
+          left: `${centre - dotOuter / 2}px`,
+          top: `${centre - dotOuter / 2}px`,
+          width: `${dot}px`,
+          height: `${dot}px`,
           borderRadius: '50%',
-          background,
-          color: ink,
-          fontSize: `${fontSize}px`,
-          fontWeight: 600,
-          border: '2px solid var(--surface-0)',
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          cursor: 'default'
+          border: `${RING}px solid ${ringColor}`,
+          // Here: a filled calm green (--success: status dots only). Idle: a
+          // hollow grey ring, the Astryx "neutral" shape.
+          background: person.state === 'here' ? 'var(--success)' : ringColor,
+          boxShadow: person.state === 'here' ? undefined : 'inset 0 0 0 1.5px var(--text-3)',
+          boxSizing: 'content-box',
         }}
-      >
-        {initials}
-      </span>
-      {hover && email && (
-        <AnchoredTooltip position={tooltipPosition}>
-          {email}
-        </AnchoredTooltip>
-      )}
-    </div>
+      />
+    </span>
   );
 }

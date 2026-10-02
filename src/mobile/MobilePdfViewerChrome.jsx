@@ -13,6 +13,7 @@ import ActiveSpaceChip from '../sidebar/ActiveSpaceChip';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS, ensureRgbaOpacity, getCategoryGlyphLabel } from '../viewerShared';
 import { getMobileSyncPresentation, getMobileTextMarkupPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
+import { withDevFakePresence } from '../components/presenceIdentity.js';
 import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectFamilyTransition, getSelectModeIconName } from '../utils/selectModes.js';
 import { tooltipForLabel } from '../utils/toolShortcuts.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
@@ -2621,12 +2622,13 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   const syncButtonRef = useRef(null);
   const syncDetailsRef = useRef(null);
   const popoverInsideRefs = useMemo(() => [popoverRef, syncDetailsRef], []);
-  const presenceUsers = useMemo(() => normalizeMobilePresence({
+  // withDevFakePresence: dev-only `?fakePeers=N`, as on the desktop footer.
+  const presenceUsers = useMemo(() => normalizeMobilePresence(withDevFakePresence({
     presence: leftRailApi?.presence,
     currentUserId: leftRailApi?.currentUserId,
     currentUserEmail: leftRailApi?.currentUserEmail,
     currentUserDisplayName: leftRailApi?.currentUserDisplayName,
-  }), [
+  })), [
     leftRailApi?.presence,
     leftRailApi?.currentUserId,
     leftRailApi?.currentUserEmail,
@@ -2969,7 +2971,10 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
               active={presenceOpen}
               onClick={() => { setPresenceOpen((open) => !open); setMoreOpen(false); }}
             >
-              <span className="mobile-pdf-tools__avatar">{userInitial}</span>
+              <span className="mobile-pdf-tools__avatar" style={{ background: presenceUsers[0]?.tint }}>
+                {userInitial}
+                <span className="mobile-presence-dot" data-presence-dot="here" />
+              </span>
               {presenceCount > 1 && <span className="mobile-pdf-tools__user-count">+{presenceCount - 1}</span>}
             </RailButton>
           </div>
@@ -3103,12 +3108,15 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
             <div className="mobile-pdf-users-sheet__list">
               {(presenceUsers.length ? presenceUsers : [{ id: 'current', label: 'You', initials: 'U', isCurrent: true }]).map((person) => (
                 <div key={person.id} className="mobile-pdf-users-sheet__row">
-                  <span className="mobile-pdf-users-sheet__avatar">{person.initials}</span>
+                  <span className="mobile-pdf-users-sheet__avatar" style={{ background: person.tint }}>
+                    {person.initials}
+                    <span className="mobile-presence-dot" data-presence-dot={person.state || 'here'} />
+                  </span>
                   <p>
                     <strong>{person.label}{person.isCurrent ? ' (you)' : ''}</strong>
                     <span>{person.role || (person.isCurrent ? 'Document owner' : 'Collaborator')}</span>
                   </p>
-                  <em>{person.status || (person.isCurrent ? 'Viewing document' : 'Online')}</em>
+                  <em data-presence-state={person.state || 'here'}>{person.status || person.stateLabel || 'Here now'}</em>
                 </div>
               ))}
             </div>
