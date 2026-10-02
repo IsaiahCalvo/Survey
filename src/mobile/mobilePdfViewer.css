@@ -4276,8 +4276,8 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
    SPACES PANEL — PHONE SIZES (owner 2026-09-23: "phone Spaces panel polished")
    --------------------------------------------------------------------------
    The design itself — one divided list, indented page lines, shared columns,
-   invisible hit pads — lives in styles.css ("SPACES PANEL — ONE LIST,
-   DIVIDED"), shared with desktop. The phone only resizes it: 44px rows,
+   invisible hit pads — lives in styles.css ("SPACES PANEL — ROWS IN THE
+   PANEL"), shared with desktop. The phone only resizes it: 44px rows,
    40px page lines and a 44x44 tap pad on every control, a 36x22 switch, 16px
    glyphs, and a 16px edge so the grip, the title and the `more` glyphs sit
    on the sheet's gutter. Nothing here paints a fill or a border.
@@ -4291,29 +4291,31 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
    title every other sheet uses (15/600 was as loud as the heading).
    ========================================================================== */
 /* Two classes so these win over styles.css whatever the load order.
-   Owner 2026-10-02: the cards are back (styles.css "SPACES PANEL — CARDS");
-   the phone sizes them for a finger: 44px rows and region cards, 44px glyph
-   columns, a 36x22 switch, 16px glyphs and a 16px field font (iOS never
-   zooms on focus). The colours are the desktop's (styles.css .spaces-panel:
-   --panel-bg, a --panel-well card, a --panel-bg region card). */
+   Owner 2026-10-02: spaces are lines in the sheet, like the Survey sheet's
+   categories (styles.css "SPACES PANEL — ROWS IN THE PANEL"); the phone
+   sizes them for a finger: 44px lines (a region line is tapped on its own,
+   so 44 too), the Survey sheet's 32px grip gutter, one 12px step in for the
+   nested lines (44), 40px glyph columns, a 36x22 switch, 16px glyphs and a
+   16px field font (iOS never zooms on focus). The colours are the
+   desktop's (--panel-bg, the add-pages field the one --panel-well). */
 .spaces-panel.mobile-spaces-panel {
   --sp-edge: var(--sheet-pad-x);
   --sp-head-h: var(--sheet-head-h);
   --sp-head-btn-pad: 8px;
-  --sp-list-pad: 12px var(--sheet-pad-x);
-  --sp-body-pad: 10px;
-  --sp-body-gap: 10px;
-  --sp-region-gap: 8px;
-  --sp-pad-r: 0px;
-  --sp-grip-w: 32px;
-  --sp-num-w: 16px;
-  --sp-chev-w: 32px;
-  --sp-page-w: 34px;
+  --sp-pad-r: 4px;
+  --sp-grip-w: 32px;        /* the Survey sheet's grip gutter */
+  --sp-grip-pad: 12px;      /* the Survey sheet grip inset: its glyph on the 16px gutter */
+  --sp-step: 12px;
+  --sp-field-r: 12px;
+  --sp-num-w: 18px;
+  --sp-chev-w: 28px;
+  --sp-page-w: 26px;
   --sp-col-w: 40px;
   --sp-switch-w: 48px;
   --sp-sm-switch-w: 44px;
   --sp-row-h: var(--sheet-row-h);   /* 44 */
-  --sp-line-h: var(--sheet-row-h);  /* 44: a region card is tapped on its own */
+  --sp-line-h: var(--sheet-row-h);  /* 44: a region line is tapped on its own */
+  --sp-add-h: 52px;                 /* the 40px field with 6px either side */
   --sp-field-h: 40px;
   --sp-field-pad: 12px;
   --sp-glyph: var(--sheet-icon);    /* 16 */
@@ -4431,10 +4433,8 @@ html:has([data-mobile-tool-properties]) .mobile-pdf-header__space {
   border-top: 1px solid var(--border);
 }
 
-/* Phone press: a glyph tightens (data-glyph-only); a row card darkens. */
-.mobile-spaces-panel .space-card__head:active {
-  background: var(--pressed);
-}
+/* Phone press: a glyph tightens (data-glyph-only); a line darkens - the
+   shared line press in styles.css (SPACES PANEL line states). */
 /* ===== end SPACES PANEL — PHONE SIZES ===== */
 
 /* "..." sheet action row (Resize and rotate): the same 20px pill face as the

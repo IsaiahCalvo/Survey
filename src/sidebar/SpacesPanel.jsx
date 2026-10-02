@@ -3,14 +3,15 @@
  * regions and per-page annotation visibility).
  *
  * Default-exports the SpacesPanel component; internal SpaceSortableCard renders
- * each space as a card (owner 2026-10-02: the layout he had before the
- * 2026-09-23 one-list rewrite, cleaned up): grip, page count, fold arrow,
- * click-to-rename name, switch and delete; open, an "Add pages" field
- * (parsePageRangeInput) with a quiet [+], then one card per page ("region")
- * with page number, outline switch, name, edit areas, marks bulb and remove.
+ * each space as a flat line in the panel, like a Survey category (owner
+ * 2026-10-02, "integrated within the panel as separate rows"): grip, page
+ * count, fold arrow, click-to-rename name, switch and delete; open, an
+ * "Add pages" line (parsePageRangeInput) with a quiet [+], then one nested
+ * line per page ("region") with page number, outline switch, name, edit
+ * areas, marks bulb and remove.
  * SpacesExportPanel is the "Export <space>" menu (desktop) / sheet (phone).
- * Cards reorder via dnd-kit SortableRearrangeList with optimistic ordering and
- * frame-capture debug hooks.
+ * Spaces reorder via dnd-kit SortableRearrangeList with optimistic ordering
+ * and frame-capture debug hooks.
  */
 import React, { useState, useCallback, useRef } from 'react';
 import { createPortal, flushSync } from 'react-dom';
@@ -162,16 +163,19 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
 
   /*
    * Owner 2026-10-02 ("I want it back to the way I had it, except slightly
-   * cleaner"): the card layout from before the 2026-09-23 one-list rewrite
-   * (1e9ce63) and the 2026-10-01 more-menu row (35aaa23), with every later
-   * behaviour fix kept (empty-space guard, honest delete confirms, rename only
-   * on a real change, refused rename restores, iOS keyboard focus, drag).
-   *   - a space is a CARD: grip · page count · fold arrow · name (click to
-   *     rename) · switch · delete;
-   *   - open, it shows "Add pages (e.g. 3, 6-9, 12)" with a quiet [+] joined
-   *     to the field, then one small card per page ("region"): page number
-   *     (goes to the page) · outline switch · name (click to rename) · edit
-   *     areas · light bulb (survey icon in survey mode) · remove;
+   * cleaner"), then the same day: "it's like boxes within boxes ... I want
+   * it integrated within the panel as separate rows, just like we updated
+   * the survey panel." Every control of the card layout (d6b8563) is kept,
+   * with every later behaviour fix (empty-space guard, honest delete
+   * confirms, rename only on a real change, refused rename restores, iOS
+   * keyboard focus, drag); only the cards are gone.
+   *   - a space is a LINE in the panel, a hairline under it: grip · page
+   *     count · fold arrow · name (click to rename) · switch · delete;
+   *   - open, one step in: "Add pages (e.g. 3, 6-9, 12)" in the panel's one
+   *     recessed well with a quiet [+] joined to it, then one line per page
+   *     ("region"), hairlines between: page number (goes to the page) ·
+   *     outline switch · name (click to rename) · edit areas · light bulb
+   *     (survey icon in survey mode) · remove;
    *   - cleaner than before: numbers are plain small muted figures (no
    *     circles), switches turn ON in the app's calm neutral ink (the Survey
    *     "Reuse" switch), never gold; the [+] is grey, never a gold square.
@@ -330,37 +334,39 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
 
         {isExpanded && (
           <div className="space-card__body">
-            <div className="space-card__add">
-              <input
-                type="text"
-                className="space-card__add-input"
-                value={pageInputValue}
-                placeholder="Add pages (e.g. 3, 6-9, 12)"
-                aria-label="Add pages (e.g. 3, 6-9, 12)"
-                onChange={(e) => onPageInputChange(space.id, sanitizePageRangeInput(e.target.value))}
-                inputMode="numeric"
-                pattern="[0-9,-]*"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
+            <div className="space-card__add-line">
+              <div className="space-card__add">
+                <input
+                  type="text"
+                  className="space-card__add-input"
+                  value={pageInputValue}
+                  placeholder="Add pages (e.g. 3, 6-9, 12)"
+                  aria-label="Add pages (e.g. 3, 6-9, 12)"
+                  onChange={(e) => onPageInputChange(space.id, sanitizePageRangeInput(e.target.value))}
+                  inputMode="numeric"
+                  pattern="[0-9,-]*"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      onAssignPages(space.id);
+                    }
+                  }}
+                />
+                {/* Quiet grey, joined to the field - never a gold square. */}
+                <button
+                  type="button"
+                  className="space-card__add-go"
+                  data-glyph-only=""
+                  aria-label="Add pages"
+                  {...tip('Add pages', 'below')}
+                  onClick={(e) => {
+                    e.stopPropagation();
                     onAssignPages(space.id);
-                  }
-                }}
-              />
-              {/* Quiet grey, joined to the field - never a gold square. */}
-              <button
-                type="button"
-                className="space-card__add-go"
-                data-glyph-only=""
-                aria-label="Add pages"
-                {...tip('Add pages', 'below')}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAssignPages(space.id);
-                }}
-              >
-                <Icon name="plus" size={14} color="currentColor" />
-              </button>
+                  }}
+                >
+                  <Icon name="plus" size={14} color="currentColor" />
+                </button>
+              </div>
             </div>
             {pageError && (
               <div className="space-card__error" role="alert">
@@ -1403,7 +1409,8 @@ const SpacesPanel = ({
         )}
       </div>
 
-      {/* Spaces List — one card per space (owner 2026-10-02). */}
+      {/* Spaces List — one line per space, no gaps: each line carries its
+          own hairline, like the Survey categories (owner 2026-10-02). */}
       <div ref={mobileSpacesListRef} className="spaces-list">
         {spaces.length === 0 ? (
           <div className="spaces-list__empty">
@@ -1419,7 +1426,7 @@ const SpacesPanel = ({
             onDragEnd={restoreCollapsedSpaceAfterDrag}
             onDragCancel={restoreCollapsedSpaceAfterDrag}
             variableHeight
-            gap={mobileMode ? 8 : 6}
+            gap={0}
           >
             {orderedSpaces.map((space) => {
               const isActive = activeSpaceId === space.id;

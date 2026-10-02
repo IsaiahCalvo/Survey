@@ -137,7 +137,7 @@
          Spaces / Bookmarks / Search / Pages panels, the phone header, dock
          and every phone sheet)                       --panel-bg  (--surface-2)
        a recessed field or well inside a panel (search field, notes box,
-         Y/N/N/A track, Spaces card, add-pages field)  --panel-well (--surface-1)
+         Y/N/N/A track, Spaces add-pages field)       --panel-well (--surface-1)
        floating (menus, popovers, dropdowns, tooltips), a selected row,
          the drag lift                                --surface-3 + --shadow-popover
      Point a panel or a well at these two tokens, never at a raw surface, so a
