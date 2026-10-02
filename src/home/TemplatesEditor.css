@@ -75,13 +75,15 @@
   width: 100%; outline: none;
 }
 .ed-scope .inline-edit:hover { border-bottom-color: var(--rule); }
-.ed-scope .inline-edit:focus { border-bottom-color: var(--accent); }
+/* Owner 2026-10-02: renaming shows a plain grey line, never gold (same as
+   the phone's rename fields). */
+.ed-scope .inline-edit:focus { border-bottom-color: var(--text-3); }
 /* UX (KAL-69): placeholders are greyed italic so an empty required row reads as
    "type here", visibly different from a row that genuinely holds short text. */
 .ed-scope .inline-edit::placeholder { color: var(--text-disabled); font-style: italic; }
 .ed-scope .cat-title { cursor: text; border-bottom: 1px dashed transparent; }
 .ed-scope .cat-title:hover { border-bottom-color: var(--rule-strong); }
-.ed-scope .cat-title:focus { border-bottom: 1px solid var(--accent); }
+.ed-scope .cat-title:focus { border-bottom: 1px solid var(--text-3); }
 
 /* Prevent horizontal scrolling anywhere inside the editor */
 .ed-scope .slim-scroll { overflow-x: hidden; }

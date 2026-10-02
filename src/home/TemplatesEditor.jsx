@@ -412,7 +412,7 @@ function SortableModuleTab({
               border: 0,
               padding: '3px 0',
               color: activeInk,
-              borderBottom: '1px solid var(--accent)',
+              borderBottom: '1px solid var(--text-3)',
               outline: 'none',
             }}
           />
