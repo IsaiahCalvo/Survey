@@ -216,7 +216,6 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
   const name = user?.name || user?.email?.split('@')[0] || userName;
   const email = user?.email || '';
   const initials = initialsOf(name);
-  const itemStyle = { display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', background: 'transparent', border: 0, color: 'var(--bone-100)', padding: '8px 10px', fontSize: 12.5, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' };
   return (
     <div className="who" ref={ref} style={{ position: 'relative' }}>
       <button
@@ -261,14 +260,15 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
             <div className="profile-menu-actions" style={{ padding: 4 }}>
               {showArchive && (
                 <button
-                  className={tab === 'archive' ? 'active' : ''}
-                  style={{ ...itemStyle, color: tab === 'archive' ? 'var(--gold)' : itemStyle.color }}
+                  type="button"
+                  className={`hub-menu__item${tab === 'archive' ? ' active' : ''}`}
+                  style={tab === 'archive' ? { color: 'var(--gold)' } : undefined}
                   onClick={() => { setOpen(false); setConfirmSignOut(false); onNav && onNav('archive'); }}
                 >
                   <Icon name="clock" size={15} color={tab === 'archive' ? 'var(--gold)' : 'var(--ink-200)'} />Archive
                 </button>
               )}
-              <button style={itemStyle} onClick={() => { setOpen(false); setConfirmSignOut(false); onSettings && onSettings(); }}>
+              <button type="button" className="hub-menu__item" onClick={() => { setOpen(false); setConfirmSignOut(false); onSettings && onSettings(); }}>
                 <Icon name="settings" size={15} color="var(--ink-200)" />Settings
               </button>
               {confirmSignOut ? (
@@ -280,7 +280,7 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
                   </div>
                 </div>
               ) : (
-                <button className="profile-menu-signout" style={{ ...itemStyle, color: 'var(--danger-text)' }} onClick={() => setConfirmSignOut(true)}>
+                <button type="button" className="hub-menu__item is-danger profile-menu-signout" onClick={() => setConfirmSignOut(true)}>
                   <Icon name="signout" size={15} color="var(--danger)" />Sign out
                 </button>
               )}

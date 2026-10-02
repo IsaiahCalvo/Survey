@@ -111,22 +111,16 @@
 }
 
 /* "More" popup — rendered into a document.body portal at fixed coords so
-   the panels' overflow:hidden can never clip it. Literal hex colours
-   because the portal renders outside the .ed-scope CSS-variable root. */
+   the panels' overflow:hidden can never clip it. The box matches hub.css
+   .hub-menu and its rows are the shared .hub-menu__item (owner 2026-10-02):
+   28px on desktop, 44px at 15px on the phone. */
 .ed-tpl-menu {
   position: fixed; z-index: 4000;
-  background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
-  padding: 4px; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  box-sizing: border-box;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-md);
+  padding: 4px; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+  font-family: var(--font-ui);
 }
-.ed-tpl-menu button {
-  display: block; width: 100%; text-align: left;
-  background: transparent; border: 0; color: var(--text-1);
-  padding: 7px 10px; font-size: 12px; border-radius: 4px;
-  cursor: pointer; font-family: inherit;
-}
-.ed-tpl-menu button:hover { background: var(--hover); }
-.ed-tpl-menu button.danger { color: var(--danger-text); }
 
 /* The editor's two button shapes had no hover and no press (UX 2026-09-22).
    A FILLED gold button lightens to the gold hover tint and darkens to the gold

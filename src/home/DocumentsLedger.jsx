@@ -30,23 +30,23 @@ const ledgerHeader = {
 
 // Survey calm gold (2026-10-01): no ribbon colour equals the accent gold.
 const RIBBON = ['#f0883e', '#7ab7e6', '#a6e07a', '#c293e6', '#e69a7a', '#9aa3b2'];
-const MENU_HEX = {
-  card: 'var(--surface-2)',
-  rule: 'var(--border)',
-  ink: 'var(--text-1)',
-  muted: 'var(--text-3)',
-  danger: 'var(--danger-text)', // the WORD Delete: --danger is a fill and measures 4.05:1 on the menu
-};
+/* The row menu wears the shared home menu (hub.css .hub-menu / .hub-menu__item,
+   owner 2026-10-02): 28px items at 12px on desktop, 44px at 15px on the phone. */
+const isPhoneWidth = () => typeof window !== 'undefined'
+  && typeof window.matchMedia === 'function'
+  && window.matchMedia('(max-width: 720px)').matches;
 
 function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168 }) {
   const ref = useRef(null);
 
   if (!anchorRect) return null;
 
-  const estHeight = items.length * 34 + 8;
+  const phone = isPhoneWidth();
+  const menuWidth = phone ? Math.max(minWidth, 200) : minWidth;
+  const estHeight = items.length * (phone ? 44 : 28) + 10;
   let top = anchorRect.bottom + 4;
   if (top + estHeight > window.innerHeight - 8) top = Math.max(8, anchorRect.top - estHeight - 4);
-  const left = Math.max(8, Math.min(anchorRect.right - minWidth, window.innerWidth - minWidth - 8));
+  const left = Math.max(8, Math.min(anchorRect.right - menuWidth, window.innerWidth - menuWidth - 8));
 
   return createPortal(
     <>
@@ -54,40 +54,17 @@ function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168 }) {
       <div
         ref={ref}
         role="menu"
-        style={{
-          position: 'fixed',
-          top,
-          left,
-          zIndex: 4000,
-          background: MENU_HEX.card,
-          border: `1px solid ${MENU_HEX.rule}`,
-          borderRadius: 8,
-          padding: 4,
-          minWidth,
-          boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
-        }}
+        className="hub-menu"
+        style={{ top, left, minWidth: menuWidth }}
       >
         {items.map((it) => (
           <button
             key={it.label}
+            type="button"
             role="menuitem"
+            className={`hub-menu__item${it.danger ? ' is-danger' : ''}`}
             disabled={it.disabled}
             onClick={() => { if (it.disabled) return; onClose(); it.onClick && it.onClick(); }}
-            style={{
-              display: 'block',
-              width: '100%',
-              textAlign: 'left',
-              background: 'transparent',
-              border: 0,
-              color: it.disabled ? MENU_HEX.muted : (it.danger ? MENU_HEX.danger : MENU_HEX.ink),
-              padding: '7px 10px',
-              fontSize: 12,
-              borderRadius: 4,
-              cursor: it.disabled ? 'not-allowed' : 'pointer',
-              fontFamily: 'inherit',
-            }}
-            onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = MENU_HEX.rule; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
           >
             {it.label}
           </button>

@@ -604,8 +604,9 @@ function MoreMenu({ anchorRect, items, onClose }) {
         {items.map(({ label, danger, onClick }) => (
           <button
             key={label}
+            type="button"
             role="menuitem"
-            className={danger ? 'danger' : undefined}
+            className={`hub-menu__item${danger ? ' is-danger' : ''}`}
             onClick={() => { onClick(); onClose(); }}
           >
             {label}

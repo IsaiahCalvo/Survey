@@ -656,7 +656,7 @@
 .survey-hub .profile-menu-actions {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 0;
 }
 
 /* Keep the first outside press on a real hit target until its click finishes.
@@ -687,8 +687,81 @@
   white-space: nowrap;
 }
 
-.survey-hub .profile-menu-actions > button {
-  min-height: 34px;
+/* ONE HOME MENU (owner 2026-10-02, UI consistency audit). The row "..." menus
+   on Documents, Projects and Templates and the account menu were four
+   copy-pasted menus at 28 / 28 / 28 / 34px. They share this item now:
+   28px at 12px on desktop, 44px at 15px on the phone (the 44px tap minimum,
+   the phone sheet menus' size). The row menus are portalled to <body>, so
+   these rules are not scoped to .survey-hub. */
+.hub-menu {
+  position: fixed;
+  z-index: 4000;
+  box-sizing: border-box;
+  padding: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+  font-family: var(--font-ui);
+}
+
+.hub-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--menu-item-h);
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 10px;
+  color: var(--text-1);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-xs);
+  font: 400 12px/16px var(--font-ui);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.hub-menu__item > svg {
+  flex: none;
+  width: var(--row-icon);
+  height: var(--row-icon);
+}
+
+.hub-menu__item.is-danger {
+  color: var(--danger-text);
+}
+
+.hub-menu__item:disabled,
+.hub-menu__item[aria-disabled='true'] {
+  color: var(--text-3);
+  cursor: not-allowed;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .hub-menu__item:not(:disabled):not([aria-disabled='true']):hover {
+    background: var(--hover);
+  }
+}
+
+.hub-menu__item:not(:disabled):not([aria-disabled='true']):active {
+  background: var(--pressed);
+}
+
+@media screen and (max-width: 720px) {
+  .hub-menu__item {
+    min-height: var(--sheet-menu-item-h);
+    gap: 12px;
+    padding: 0 12px;
+    font-size: 15px;
+    line-height: 20px;
+  }
+  .hub-menu__item > svg {
+    width: var(--sheet-icon);
+    height: var(--sheet-icon);
+  }
 }
 
 .survey-hub .profile-menu-signout:hover {
