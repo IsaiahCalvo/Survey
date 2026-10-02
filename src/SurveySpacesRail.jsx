@@ -39,7 +39,7 @@ import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
 import { resolveAutoCompleteEntity } from './utils/surveyAutoEntity.js';
 import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt.js';
 import { captureMorph, playMorph, prefersReducedMotion } from './surveyRailMorph.js';
-import { ListChecksGlyph, SURVEY_HEAD_ICON } from './surveyHeadIcons.jsx';
+import { SURVEY_HEAD_ICON } from './surveyHeadIcons.jsx';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -2560,9 +2560,8 @@ const SurveySpacesRail = ({
                                        looked way better" - two bare icon buttons,
                                        right-aligned, [Select] [Add category], the
                                        app's section header pair (list-checks and
-                                       plus, 16px in a 28px hit - see
-                                       surveyHeadIcons.jsx for the TODO to switch to
-                                       SectionIconButton) with the shared chrome icon
+                                       plus from Icons.jsx, 16px in a 28px hit, the
+                                       same glyphs SectionIconButton uses) with the shared chrome icon
                                        states (states.css section 5 via
                                        data-chrome-rail on the group: hover grows,
                                        press shrinks, no plate). While selecting, the
@@ -2579,7 +2578,7 @@ const SurveySpacesRail = ({
                                         aria-label="Select"
                                         {...tip('Select', 'below')}
                                       >
-                                        <ListChecksGlyph />
+                                        <Icon name="listChecks" size={SURVEY_HEAD_ICON} color="currentColor" />
                                       </button>
                                       <button
                                         type="button"

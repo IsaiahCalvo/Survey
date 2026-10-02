@@ -100,12 +100,12 @@ test('Categories head line: two bare icons, Select then Add category, in the sha
   assert.doesNotMatch(head.slice(select - 600, add + 400), />\s*(Select|Category)\s*</, 'no words in the resting pair');
   assert.match(desk, /\.survey-rail__head-btn\.survey-rail__cats-icon \{[^}]*width: 28px;[^}]*height: 28px;/);
   // the app's section header pair: list-checks + plus, 16px in a 28px hit
-  assert.match(head, /<ListChecksGlyph \/>/);
+  assert.match(head, /<Icon name="listChecks" size=\{SURVEY_HEAD_ICON\}/);
   assert.match(head, /<Icon name="plus" size=\{SURVEY_HEAD_ICON\}/);
   const icons = read('src/surveyHeadIcons.jsx');
   assert.match(icons, /export const SURVEY_HEAD_ICON = 16;/);
-  assert.match(icons, /M3 7L5 9L9 5M3 17L5 19L9 15/);
-  assert.match(icons, /TODO\(section-icons merge\)/);
+  // Same glyphs as the shared SectionIconButton pair.
+  assert.match(read('src/components/SectionIconButton.jsx'), /select: 'listChecks',\s*add: 'plus',/);
 });
 
 test('an open Survey Marker\'s lines start under its entity dot, desktop and phone', () => {
