@@ -1037,6 +1037,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const pendingRendererRestoreRef = useRef(null);
   const [pdfjsPageContainers, setPdfjsPageContainers] = useState({});
   const [pdfjsMountedPages, setPdfjsMountedPages] = useState(new Set());
+  // Read by the annotation-overlay watchdog (an interval, so it needs the
+  // live window, not a stale closure).
+  const pdfjsMountedPagesRef = useRef(pdfjsMountedPages);
+  pdfjsMountedPagesRef.current = pdfjsMountedPages;
   const pageInputRef = useRef(null);
   const zoomInputRef = useRef(null);
   const pageRenderCacheRef = useRef(new PageRenderCache(100)); // Cache up to 100 pages
@@ -11388,11 +11392,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const pages = annotationsByPageRef.current || {};
       const currentPageNumber = Number(pageNumRef.current) || Number(pageNum) || 1;
       const currentPageObjects = pages[currentPageNumber]?.objects || [];
+      // Only a page inside the engine's mounted window is supposed to have a
+      // live layer. Checking a marked page that was scrolled out of that
+      // window always found "no layer", called the overlay broken, and
+      // remounted EVERY page's layer every 5 s — wiping a shape mid-draw
+      // (owner 2026-10-02: hold the mouse still and the shape vanishes).
+      const mountedPages = pdfjsMountedPagesRef.current;
+      const isLivePage = (n) => !(mountedPages?.size > 0) || mountedPages.has(n) || n === currentPageNumber;
       let pageNumber = currentPageObjects.length > 0 ? currentPageNumber : null;
       if (!pageNumber) {
         pageNumber = Number(Object.keys(pages).find((key) => {
           const objects = pages[key]?.objects;
-          return Array.isArray(objects) && objects.length > 0;
+          return Array.isArray(objects) && objects.length > 0 && isLivePage(Number(key));
         })) || null;
       }
       if (!pageNumber) {
@@ -11424,6 +11435,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         annotationOverlayWatchdogRef.current.consecutiveMismatch = 0;
         return;
       }
+
+      // A recovery remounts every layer, so never run it under a mark that is
+      // being drawn; wait until it is committed or cancelled.
+      if (document.querySelector('.shape-creation-preview, .poly-creation-preview, .freehand-creation-preview')) return;
 
       const state = annotationOverlayWatchdogRef.current;
       state.consecutiveMismatch += 1;

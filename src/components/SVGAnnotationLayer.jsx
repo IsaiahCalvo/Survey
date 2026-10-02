@@ -84,7 +84,6 @@ import {
   buildFreehandCommitJSON,
   buildLineCommitJSON,
   buildPolyShapeCommitJSON,
-  composeAnnotationColor,
 } from '../utils/annotationCreationCommit.js';
 import {
   POLY_DRAFT_TOOLS,
@@ -103,7 +102,6 @@ import {
   getAnnotationRenderIdentity,
   stampAnnotationCreationIdentity,
 } from '../utils/annotationStorageIdentity.js';
-import { computeDrawnBoundaryShapePreviewGeometry } from '../utils/shapeCommitGeometry.js';
 import {
   isBlockedFromAreaSelection,
 } from '../utils/annotationSelectionEligibility.js';
@@ -328,6 +326,14 @@ const FREEHAND_CREATION_TOOLS = ['pen', 'highlighter'];
 // box, so they get their own draft state and their own finish rules
 // (src/utils/polyDraft.js) rather than riding the drag-out gesture above.
 const POLY_CREATION_TOOLS = POLY_DRAFT_TOOLS;
+// UX 2026-10-02 (owner): Line and Arrow take BOTH gestures — press-drag-release
+// draws one in a go, and a click (a press that travels less than this many
+// SCREEN pixels before release) sets the start, the end follows the pointer
+// with the button up, and a second click sets the end. Escape or a tool
+// switch abandons the draft. Rect/ellipse stay drag-only: a plain click with
+// them is how people click away from the mark they just drew.
+const CLICK_PLACE_SHAPE_TOOLS = ['line', 'arrow'];
+const CLICK_PLACE_MAX_TRAVEL_PX = 4;
 // UX 2026-09-16: every selection grabber carries an invisible hit pad — the
 // drawn dot keeps its size, a transparent disc behind it catches the press.
 // On a mouse: the grabber + 4 px, min 20 (w63); 44 pt on a finger. The
@@ -1896,6 +1902,14 @@ const SVGAnnotationLayer = memo(({
       freehandPointsRef.current = [];
       endLiveStroke(false);
       setShapeCreation(null);
+    } else if (shapeCreationRef.current
+      && !FREEHAND_CREATION_TOOLS.includes(shapeCreationRef.current.tool)
+      && shapeCreationRef.current.tool !== activeTool) {
+      // Line -> Arrow (or any shape -> another shape) mid-draft: a click-placed
+      // line waits with the button up, so the switch must drop it rather than
+      // let the next click finish it as the old tool.
+      shapeCreationRef.current = null;
+      setShapeCreation(null);
     }
     // UX: leaving the Polygon/Polyline tool abandons an unfinished draft. A
     // half-placed run has no meaning under another tool, and leaving the
@@ -2244,9 +2258,36 @@ const SVGAnnotationLayer = memo(({
     // dispatches window pointer events that must never splice into, commit,
     // or cancel the in-flight gesture.
     const isGesturePointer = (e) => e.pointerId === shapeCreation.pointerId;
+    // Click-to-place line/arrow (CLICK_PLACE_SHAPE_TOOLS): between the two
+    // clicks the button is UP, so the preview follows plain hover moves of the
+    // same kind of pointer; once the second press lands, only that press's
+    // pointer counts. Read from the ref — it is updated synchronously on
+    // every mode change, so a fast click cannot slip past a stale closure.
+    const clickPlace = () => {
+      const state = shapeCreationRef.current;
+      return state && state.mode === 'click' ? state : null;
+    };
+    const tracksPointer = (e) => {
+      const placing = clickPlace();
+      if (!placing) return isGesturePointer(e);
+      return placing.endPointerId != null
+        ? e.pointerId === placing.endPointerId
+        : e.pointerType === placing.pointerType;
+    };
+    const replaceDraft = (next) => {
+      shapeCreationRef.current = next;
+      setShapeCreation(next);
+    };
+    const cancelDraft = () => {
+      shapeCreationRef.current = null;
+      freehandPointsRef.current = [];
+      endLiveStroke(false);
+      markAnnotationPointerRelease(shapeCreation.gestureId, { action });
+      setShapeCreation(null);
+    };
     const onMove = (e) => {
-      if (!svgRef.current || !isGesturePointer(e)) return;
-      if (e.buttons === 0) {
+      if (!svgRef.current || !tracksPointer(e)) return;
+      if (e.buttons === 0 && !clickPlace()) {
         // Button released outside our listeners (e.g. over browser chrome) —
         // treat as release so no zombie preview survives.
         if (isFreehand) commitShapeCreationRef.current(null);
@@ -2264,34 +2305,90 @@ const SVGAnnotationLayer = memo(({
       }
     };
     const onUp = (e) => {
+      const placing = clickPlace();
+      if (placing) {
+        // The second click's release sets the end.
+        if (placing.endPointerId == null || e.pointerId !== placing.endPointerId) return;
+        commitShapeCreationRef.current({ x: e.clientX, y: e.clientY });
+        return;
+      }
       if (!isGesturePointer(e)) return;
       if (isFreehand) {
         appendCoalescedPagePoints(e);
         commitShapeCreationRef.current(null);
-      } else {
-        commitShapeCreationRef.current({ x: e.clientX, y: e.clientY });
+        return;
       }
+      const state = shapeCreationRef.current;
+      if (state && CLICK_PLACE_SHAPE_TOOLS.includes(state.tool) && state.startClient
+        && Math.hypot(e.clientX - state.startClient.x, e.clientY - state.startClient.y) < CLICK_PLACE_MAX_TRAVEL_PX) {
+        // A click, not a drag: the start is set, the end now follows the
+        // pointer until the next click.
+        replaceDraft({ ...state, mode: 'click', current: state.start, endPointerId: null });
+        return;
+      }
+      commitShapeCreationRef.current({ x: e.clientX, y: e.clientY });
+    };
+    // Click mode only: the second press. Window capture, so it is claimed
+    // before this layer's own pointerdown would start a NEW line under it.
+    const onDownCapture = (e) => {
+      const placing = clickPlace();
+      if (!placing || placing.endPointerId != null) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      const svg = svgRef.current;
+      if (!svg) return;
+      const ownPage = svg.closest?.('[data-page-number]') || svg;
+      const target = e.target;
+      if (!target || !ownPage.contains(target)) {
+        // A press on another page abandons this draft; a press on the
+        // toolbar (colour, width) keeps it, and the preview shows the change.
+        if (target?.closest?.('[data-page-number]')) cancelDraft();
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      const point = screenToSVG(svg, e.clientX, e.clientY);
+      replaceDraft({ ...placing, endPointerId: e.pointerId, ...(point ? { current: point } : {}) });
     };
     const onCancel = (e) => {
       // OS-level cancel (drawing touch converted to scroll/pinch, palm
       // rejection): never commit partial work. Foreign pointers' cancels
       // must not discard the gesture, hence the same pointerId filter.
-      if (!isGesturePointer(e)) return;
-      shapeCreationRef.current = null;
-      freehandPointsRef.current = [];
-      endLiveStroke(false);
-      markAnnotationPointerRelease(shapeCreation.gestureId, { action });
-      setShapeCreation(null);
+      const placing = clickPlace();
+      if (placing ? e.pointerId !== placing.endPointerId : !isGesturePointer(e)) return;
+      cancelDraft();
     };
+    window.addEventListener('pointerdown', onDownCapture, true);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onCancel);
     return () => {
+      window.removeEventListener('pointerdown', onDownCapture, true);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
     };
   }, [shapeCreation, appendCoalescedPagePoints, endLiveStroke]);
+
+  // Escape abandons a drag-out / click-placed shape draft (freehand ink has
+  // its own rules). Capture phase + stopPropagation, like the polygon draft's
+  // keys, so the viewer's "clear selection" handler does not see it too.
+  const shapeDraftActive = !!shapeCreation && !FREEHAND_CREATION_TOOLS.includes(shapeCreation.tool);
+  useEffect(() => {
+    if (!shapeDraftActive) return undefined;
+    const onKeyDown = (e) => {
+      if (e.key !== 'Escape' || !draftOwnsKeyboard(e.target)) return;
+      const state = shapeCreationRef.current;
+      if (!state) return;
+      e.preventDefault();
+      e.stopPropagation();
+      releaseFocusForDraftTool(e.target);
+      shapeCreationRef.current = null;
+      markAnnotationPointerRelease(state.gestureId, { action: `${state.tool}-draw` });
+      setShapeCreation(null);
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [shapeDraftActive]);
 
   // zoomGeneration contract (CLAUDE.md invariant): a zoom gesture starting
   // mid-stroke commits the in-flight freehand work before the page re-lays
@@ -6571,7 +6668,19 @@ const SVGAnnotationLayer = memo(({
                 });
                 setShapeCreation({ tool, gestureId, pointerId: e.pointerId, tick: 0, liveId });
               } else {
-                setShapeCreation({ tool, gestureId, start: point, current: point, pointerId: e.pointerId });
+                setShapeCreation({
+                  tool,
+                  gestureId,
+                  start: point,
+                  current: point,
+                  pointerId: e.pointerId,
+                  pointerType: e.pointerType,
+                  // screen point of the press: a release within
+                  // CLICK_PLACE_MAX_TRAVEL_PX of it turns a line/arrow into
+                  // click-to-place mode (see the window effect).
+                  startClient: { x: e.clientX, y: e.clientY },
+                  mode: 'drag',
+                });
               }
               e.preventDefault();
             }
@@ -6804,71 +6913,89 @@ const SVGAnnotationLayer = memo(({
         // because the crowns bulge past the box anyway and the studio places
         // corner crowns on the raw pointer positions. Same rule as the commit
         // builder, so the preview frame and the committed frame coincide.
-        const previewIsCloud = lineBorderStyle === 'cloud';
-        const geometry = computeDrawnBoundaryShapePreviewGeometry({
+        // UX 2026-10-02 (owner): built by the commit builder itself, so the
+        // dash style (dashed / dotted) shows while dragging too — before, the
+        // preview hand-copied the geometry and fill but not the dash.
+        const previewObj = buildBoundaryShapeCommitJSON({
           tool: shapeCreation.tool,
-          startX: shapeCreation.start.x,
-          startY: shapeCreation.start.y,
-          pointerX: shapeCreation.current.x,
-          pointerY: shapeCreation.current.y,
-          strokeWidth: previewIsCloud ? 0 : (Number(strokeWidth) || 3),
-        });
-        const previewObj = {
-          type: shapeCreation.tool === 'ellipse' ? 'ellipse' : 'rect',
-          ...geometry.fabricProps,
-          ...(shapeCreation.tool === 'ellipse'
-            ? { width: (geometry.fabricProps.rx || 0) * 2, height: (geometry.fabricProps.ry || 0) * 2 }
-            : {}),
-          scaleX: 1,
-          scaleY: 1,
-          angle: 0,
-          fill: composeAnnotationColor(fillColor, fillOpacity),
-          stroke: composeAnnotationColor(strokeColor, strokeOpacity),
+          id: `creation-preview-p${pageNumber}`,
+          start: shapeCreation.start,
+          end: shapeCreation.current,
+          strokeColor,
+          strokeOpacity,
+          fillColor,
+          fillOpacity,
           strokeWidth: Number(strokeWidth) || 3,
-          strokeUniform: true,
-          opacity: 1,
-          data: {
-            strokeRenderContract: 'drawn-centered-stroke',
-            ...(previewIsCloud ? { pdfCloudIntensity: Math.max(1, Number(cloudIntensity) || 2) } : {}),
-          },
-        };
+          lineBorderStyle,
+          cloudIntensity,
+        });
         return (
           <g className="shape-creation-preview" style={{ pointerEvents: 'none' }}>
-            {shapeCreation.tool === 'ellipse'
+            {!previewObj ? null : shapeCreation.tool === 'ellipse'
               ? renderEllipse(previewObj, 'creation-preview')
               : renderRect(previewObj, 'creation-preview')}
           </g>
         );
       })()}
-      {shapeCreation && (shapeCreation.tool === 'line' || shapeCreation.tool === 'arrow') && (
-        <line
-          className="shape-creation-preview"
-          x1={shapeCreation.start.x}
-          y1={shapeCreation.start.y}
-          x2={shapeCreation.current.x}
-          y2={shapeCreation.current.y}
-          stroke={composeAnnotationColor(strokeColor, strokeOpacity)}
-          strokeWidth={Number(strokeWidth) || 3}
-          strokeLinecap="round"
-          strokeDasharray="5,5"
-          opacity={0.6}
-          style={{ pointerEvents: 'none' }}
-        />
-      )}
+      {shapeCreation && (shapeCreation.tool === 'line' || shapeCreation.tool === 'arrow') && (() => {
+        // UX 2026-10-02 (owner): the preview IS the mark — built by the same
+        // commit builder and painted by the same renderer, so its colour,
+        // width, dash style and arrowheads are what lands on release. The
+        // group is always mounted (even before the line has length) so the
+        // draft is visible to the overlay watchdog in PDFViewer.
+        const previewJson = buildLineCommitJSON({
+          tool: shapeCreation.tool,
+          id: `creation-preview-p${pageNumber}`,
+          start: shapeCreation.start,
+          end: shapeCreation.current,
+          strokeColor,
+          strokeOpacity,
+          strokeWidth: Number(strokeWidth) || 3,
+          arrowheadStyle,
+          arrowStartStyle,
+          lineBorderStyle,
+          cloudIntensity,
+        });
+        return (
+          <g
+            className="shape-creation-preview"
+            data-shape-draft-mode={shapeCreation.mode || 'drag'}
+            style={{ pointerEvents: 'none' }}
+          >
+            {previewJson ? renderLine(previewJson, 'creation-preview') : null}
+          </g>
+        );
+      })()}
       {/* Polygon / polyline click-to-place preview.
-          UX: the committed edges render at full strength in the live stroke
-          colour and width (what you see IS what commits), while the edge that
-          chases the cursor is dashed and half-opaque so the user can always
-          tell which segment is not placed yet. The finish checkmarks — latest
+          UX 2026-10-02 (owner): the whole run — placed corners PLUS the edge
+          to the cursor — is the real mark, built by the commit builder and
+          painted by the committed renderer: stroke colour, width, dash style
+          and (polygon, from 3 points) the fill and closing edge, exactly what
+          finishing here would commit. No dashed placeholder edge. The
+          vertex dots still mark which corners are placed. The finish checkmarks — latest
           vertex (finish here) always, plus first vertex (close) on a POLYGON
           draft only — are the only interactive parts; everything else is
           pointer-transparent so a click in the middle of the run still drops a
           vertex. */}
       {polyDraft && polyDraft.points.length > 0 && (() => {
-        const previewStroke = composeAnnotationColor(strokeColor, strokeOpacity);
-        const previewWidth = Number(strokeWidth) || 3;
-        const placed = polyDraft.points.map((p) => `${p.x},${p.y}`).join(' ');
-        const last = polyDraft.points[polyDraft.points.length - 1];
+        const runPoints = polyDraft.preview
+          ? [...polyDraft.points, polyDraft.preview]
+          : polyDraft.points;
+        // A polygon is only a polygon from 3 corners; before that the run is
+        // drawn as the open line it currently is, in the polygon's stroke.
+        const runTool = polyDraft.tool === 'polygon' && runPoints.length >= 3 ? 'polygon' : 'polyline';
+        const runJson = buildPolyShapeCommitJSON({
+          tool: runTool,
+          id: `creation-preview-p${pageNumber}`,
+          points: runPoints,
+          strokeColor,
+          strokeOpacity,
+          fillColor,
+          fillOpacity,
+          strokeWidth: Number(strokeWidth) || 3,
+          lineBorderStyle,
+          cloudIntensity,
+        });
         const controls = polyDraftFinishControlPoints(polyDraft);
         const canClose = canClosePolyDraft(polyDraft);
         const canFinish = canFinishPolyDraft(polyDraft);
@@ -6917,30 +7044,12 @@ const SVGAnnotationLayer = memo(({
         );
         return (
           <g className="poly-creation-preview">
-            {polyDraft.points.length > 1 && (
-              <polyline
-                points={placed}
-                fill="none"
-                stroke={previewStroke}
-                strokeWidth={previewWidth}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{ pointerEvents: 'none' }}
-              />
-            )}
-            {polyDraft.preview && (
-              <line
-                x1={last.x}
-                y1={last.y}
-                x2={polyDraft.preview.x}
-                y2={polyDraft.preview.y}
-                stroke={previewStroke}
-                strokeWidth={previewWidth}
-                strokeLinecap="round"
-                strokeDasharray="5,5"
-                opacity={0.6}
-                style={{ pointerEvents: 'none' }}
-              />
+            {runJson && (
+              <g style={{ pointerEvents: 'none' }}>
+                {runTool === 'polygon'
+                  ? renderPolygon(runJson, 'creation-preview')
+                  : renderPolyline(runJson, 'creation-preview')}
+              </g>
             )}
             {polyDraft.points.map((p, i) => (
               <circle
