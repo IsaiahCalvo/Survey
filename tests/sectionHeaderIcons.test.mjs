@@ -75,7 +75,7 @@ test('every list header with Select / Add uses the shared icon, never a word', (
   };
   for (const [file, labels] of Object.entries(files)) {
     const source = read(file);
-    assert.match(source, /import SectionIconButton(, \{ SectionIconActions \})? from '\.\.\/components\/SectionIconButton\.jsx';/, file);
+    assert.match(source, /import SectionIconButton(, \{ [A-Za-z, ]+ \})? from '\.\.\/components\/SectionIconButton\.jsx';/, file);
     assert.doesNotMatch(source, /\? 'Done' : 'Select'\}\s*<\/button>/, `${file}: no Select word button`);
     assert.doesNotMatch(source, />Select<\/button>/, `${file}: no Select word`);
     for (const label of labels) assert.ok(source.includes(label), `${file}: ${label}`);
@@ -83,4 +83,27 @@ test('every list header with Select / Add uses the shared icon, never a word', (
   // The New template / New project primaries stay the page's one gold button.
   assert.match(read('src/home/TemplatesEditor.jsx'), /<Icon name="plus" size=\{11\} \/>New template/);
   assert.match(read('src/home/ProjectsFolderTree.jsx'), /<Icon name="plus" size=\{11\} \/>New project/);
+});
+
+test('select-mode action row: All, Duplicate, Move, Copy, Share, Delete - one component (owner 2026-10-02)', () => {
+  // Order and icons live in SectionIconButton.jsx only.
+  assert.match(component, /duplicate: 'duplicate',\s*move: 'moveTo',\s*copy: 'copy',\s*share: 'share',\s*delete: 'trash',/);
+  const order = [...component.matchAll(/\{ key: '(\w+)', label: '(\w+)', handler: '(\w+)' \}/g)].map((m) => m[2]);
+  assert.deepEqual(order, ['Duplicate', 'Move', 'Copy', 'Share', 'Delete']);
+  // "All" is the one word, on the same button: 13px / 500, same 28px box.
+  assert.match(component, /word=\{allSelected \? 'None' : 'All'\}/);
+  assert.match(css, /\.section-icon-btn__word \{[^}]*font-size: 13px;[^}]*font-weight: 500;/);
+  // The provisional Move glyph is defined once, in Icons.jsx.
+  assert.equal((icons.match(/moveTo: \(size, color, style, className\) =>/g) || []).length, 1);
+  assert.match(icons, /strokeDasharray="1\.5 3"/);
+  // Disabled = calm: the hover / press only run on :not(:disabled).
+  assert.match(states, /\.section-icon-btn:not\(:disabled\):hover > \.section-icon-btn__word \{\s*scale: 1\.08;/);
+  // Every select row uses it; no "Move/Copy" word button or old bare/icon kinds left.
+  for (const file of ['src/home/TemplatesEditor.jsx', 'src/home/ProjectsFolderTree.jsx', 'src/home/DocumentsLedger.jsx']) {
+    const source = read(file);
+    assert.match(source, /<SelectModeButtons/, file);
+    assert.doesNotMatch(source, />Move\/Copy<\/button>/, file);
+    assert.doesNotMatch(source, /className="hub-btn hub-btn--bare">Duplicate<\/button>/, file);
+    assert.doesNotMatch(source, /className="hub-btn hub-btn--icon is-danger"/, file);
+  }
 });

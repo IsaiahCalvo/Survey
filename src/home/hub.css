@@ -1559,14 +1559,14 @@
     margin-left: 12px !important;
   }
 
-  .survey-hub .mobile-header-select-actions button {
+  .survey-hub .mobile-header-select-actions button:not(.section-icon-btn) {
     height: 28px !important;
     min-width: 36px;
     padding: 0 10px !important;
     border-radius: 5px !important;
   }
 
-  .survey-hub .mobile-header-select-actions button[title] {
+  .survey-hub .mobile-header-select-actions button[title]:not(.section-icon-btn) {
     width: 28px !important;
     min-width: 28px;
     padding: 0 !important;
@@ -5249,6 +5249,20 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
   color: var(--text-2);
 }
 .survey-hub .section-icon-btn.section-icon-btn::after { content: none; }
+/* The select-mode row's word ("All") and Delete (owner 2026-10-02): same box
+   height, own width; Delete keeps the danger ink. */
+.survey-hub .section-icon-btn.section-icon-btn.is-word {
+  width: auto;
+  min-width: 28px;
+  padding: 0 4px;
+}
+.survey-hub .section-icon-btn.section-icon-btn.is-word.is-phone {
+  min-width: 36px;
+  padding: 0 6px;
+}
+.survey-hub .section-icon-btn.section-icon-btn.is-danger {
+  color: var(--danger);
+}
 .survey-hub .section-icon-btn.section-icon-btn.is-phone {
   width: 36px;
   height: 36px;

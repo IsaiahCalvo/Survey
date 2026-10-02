@@ -11,7 +11,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { HubShell, Icon, Avatar, PdfThumb, Search, EmptyState } from './HubShell';
-import SectionIconButton from '../components/SectionIconButton.jsx';
+import SectionIconButton, { SelectModeButtons } from '../components/SectionIconButton.jsx';
 import { MoveCopyModal, RenameModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
 import { useThumbnailBackfill } from '../hooks/useThumbnailBackfill';
@@ -121,6 +121,7 @@ export default function DocumentsLedger({
   const [selDocs, setSelDocs] = useState(() => new Set());
   const [search, setSearch] = useState('');
   const [moveOpen, setMoveOpen] = useState(false);
+  const [moveMode, setMoveMode] = useState('move');
   const [renameTarget, setRenameTarget] = useState(null);
   const [docMenu, setDocMenu] = useState(null);
   const [clipboardDoc, setClipboardDoc] = useState(null);
@@ -267,11 +268,17 @@ export default function DocumentsLedger({
             const allSel = docSelCount === docs.length && docs.length > 0;
             return (
               <span className="documents-select-actions mobile-header-select-actions" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 8 }}>
-                <button onClick={() => setSelDocs(allSel ? new Set() : new Set(docs.map((d) => d.id)))} className="hub-btn hub-btn--bare">{allSel ? 'None' : 'All'}</button>
-                <button disabled={!docSelCount} onClick={() => { onDuplicate && onDuplicate(selectedRaw()); clearSel(); }} className="hub-btn hub-btn--bare">Duplicate</button>
-                <button disabled={!docSelCount} onClick={() => setMoveOpen(true)} className="hub-btn hub-btn--bare">Move/Copy</button>
-                <button disabled={!docSelCount} title="Share" onClick={() => onShare && onShare(selectedRaw())} className="hub-btn hub-btn--icon"><Icon name="share" size={12} /></button>
-                <button disabled={!docSelCount} title="Delete" aria-label="Delete" onClick={async () => { if (!onDelete) return; const ran = await onDelete(selectedRaw()); if (ran !== false) clearSel(); }} className="hub-btn hub-btn--icon is-danger"><Icon name="trash" size={12} /></button>
+                <SelectModeButtons
+                  phone
+                  count={docSelCount}
+                  allSelected={allSel}
+                  onToggleAll={() => setSelDocs(allSel ? new Set() : new Set(docs.map((d) => d.id)))}
+                  onDuplicate={() => { onDuplicate && onDuplicate(selectedRaw()); clearSel(); }}
+                  onMove={() => { setMoveMode('move'); setMoveOpen(true); }}
+                  onCopy={() => { setMoveMode('copy'); setMoveOpen(true); }}
+                  onShare={() => onShare && onShare(selectedRaw())}
+                  onDelete={async () => { if (!onDelete) return; const ran = await onDelete(selectedRaw()); if (ran !== false) clearSel(); }}
+                />
               </span>
             );
           })()}
@@ -674,6 +681,7 @@ export default function DocumentsLedger({
     </HubShell>
     <MoveCopyModal
       open={moveOpen}
+      initialMode={moveMode}
       onClose={() => setMoveOpen(false)}
       projects={projects}
       count={selDocs.size}

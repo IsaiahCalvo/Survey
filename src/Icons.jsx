@@ -843,6 +843,20 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    // Move to — PROVISIONAL (owner 2026-10-02 is still choosing the final
+    // glyph). Copy's two sheets with the back sheet dashed (it leaves) and an
+    // arrow into the front one. Every Move button reads this one renderer, so
+    // swapping the artwork is an edit to these three paths only.
+    moveTo: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <g stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" strokeDasharray="1.5 3" />
+          <rect width="14" height="14" x="8" y="8" rx="1.56" ry="1.56" />
+          <path d="M11.5 15h6.5M15.5 12l3 3-3 3" />
+        </g>
+      </svg>
+    ),
+
     // Paste — Lucide "clipboard".
     paste: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
