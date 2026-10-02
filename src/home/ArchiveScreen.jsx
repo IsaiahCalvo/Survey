@@ -16,6 +16,7 @@
 */
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { HubShell, Icon, EmptyState, PdfThumb, AvatarStack, Search } from './HubShell';
+import SectionIconButton from '../components/SectionIconButton.jsx';
 /* The app-wide icon set. Aliased because HubShell exports its own `Icon` for
    the hub's type glyphs; this one carries the shared chevrons. */
 import AppIcon from '../Icons';
@@ -267,14 +268,17 @@ export default function ArchiveScreen({
     <span className="archive-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
       <span className="archive-mobile-count"><b>{rows.length}</b> {rows.length === 1 ? 'item' : 'items'}</span>
       <span className="archive-mobile-select-row mobile-header-select-row" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-        <button
+        <SectionIconButton
+          action="select"
+          label={selectMode ? 'Done' : 'Select'}
+          active={selectMode}
+          className="mobile-header-select-button"
           onClick={() => {
             const next = !selectMode;
             setSelectMode(next);
             if (!next) setSelectedIds(new Set());
           }}
-          className="mobile-header-select-button hub-btn hub-btn--tertiary"
-        >{selectMode ? 'Done' : 'Select'}</button>
+        />
         {selectMode && (
           <span className="mobile-header-select-actions" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 8 }}>
             <button

@@ -25,6 +25,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { mergeProjectDocumentOrder, orderDocumentsByProject } from './projectDocumentOrder.js';
 import { HubShell, Icon, Avatar, AvatarStack, Search, EmptyState } from './HubShell';
+import SectionIconButton, { SectionIconActions } from '../components/SectionIconButton.jsx';
 import ManageTeamModal from './ManageTeamModal';
 import { listProjectCollaboratorsForProjects } from '../services/projectInviteService';
 import { MoveCopyModal } from './BulkModals';
@@ -758,13 +759,14 @@ export default function ProjectsFolderTree({
   );
   const mobileProjectActions = (
     <div className="projects-mobile-select-row mobile-header-select-row">
-      <button
+      <SectionIconButton
         data-testid="project-select-toggle"
-        className="mobile-header-select-button hub-btn hub-btn--tertiary"
+        action="select"
+        label={jobsEdit ? 'Done' : 'Select'}
+        active={jobsEdit}
+        className="mobile-header-select-button"
         onClick={() => { const next = !jobsEdit; setJobsEdit(next); if (!next) setSelProj(new Set()); }}
-      >
-        {jobsEdit ? 'Done' : 'Select'}
-      </button>
+      />
       {jobsEdit && (() => {
         const allSel = selCount === filtered.length && filtered.length > 0;
         return (
@@ -798,12 +800,13 @@ export default function ProjectsFolderTree({
   );
   const mobileFileSelectRow = mobileDrillProject ? (
     <div className="projects-mobile-select-row mobile-header-select-row">
-      <button
-        className="mobile-header-select-button hub-btn hub-btn--tertiary"
+      <SectionIconButton
+        action="select"
+        label={fileSelect ? 'Done' : 'Select'}
+        active={fileSelect}
+        className="mobile-header-select-button"
         onClick={() => { const next = !fileSelect; setFileSelect(next); if (!next) setSelFiles(new Set()); }}
-      >
-        {fileSelect ? 'Done' : 'Select'}
-      </button>
+      />
       {fileSelect && (() => {
         const selectedFiles = mobileDrillFiles.filter((f) => selFiles.has(f.id));
         const c = selectedFiles.length;
@@ -976,13 +979,13 @@ export default function ProjectsFolderTree({
                   ><Icon name="trash" size={11} /></button>
                 </>
               )}
-              <button
+              <SectionIconButton
                 data-testid="project-select-toggle"
+                action="select"
+                label={jobsEdit ? 'Done' : 'Select'}
+                active={jobsEdit}
                 onClick={() => { const next = !jobsEdit; setJobsEdit(next); if (!next) setSelProj(new Set()); }}
-                className="hub-btn hub-btn--tertiary hub-section-btn"
-              >
-                {jobsEdit ? 'Done' : 'Select'}
-              </button>
+              />
             </div>
           </div>
           <div className="slim-scroll hub-side-list" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
@@ -1173,12 +1176,12 @@ export default function ProjectsFolderTree({
                           </>
                         );
                       })()}
-                      <button
+                      <SectionIconButton
+                        action="select"
+                        label={fileSelect ? 'Done' : 'Select'}
+                        active={fileSelect}
                         onClick={() => { const next = !fileSelect; setFileSelect(next); if (!next) setSelFiles(new Set()); }}
-                        className="hub-btn hub-btn--tertiary hub-section-btn"
-                      >
-                        {fileSelect ? 'Done' : 'Select'}
-                      </button>
+                      />
                     </div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 90px 90px 28px', gap: 12, padding: '0 10px 6px', fontSize: 11, color: 'var(--ink-200)', letterSpacing: 0 }}>
@@ -1367,10 +1370,12 @@ export default function ProjectsFolderTree({
                   </div>
                   <div className="projects-mobile-project-files-head">
                     <span>Files<b className="hub-section-count">{mobileDrillFiles.length}</b></span>
-                    <span className="projects-mobile-project-files-actions">
-                      <button type="button" className="hub-btn hub-btn--tertiary hub-section-btn" onClick={() => addFiles(mobileDrillProject)}><Icon name="upload" size={12} />Add files</button>
-                      <button type="button" className="hub-btn hub-btn--tertiary hub-section-btn" aria-label="Manage team" onClick={() => setTeamModalProject(mobileDrillProject)}><Icon name="users" size={12} />Team</button>
-                    </span>
+                    {/* Icons (owner 2026-10-02), Add last like every header:
+                        [Team] [Add files]. */}
+                    <SectionIconActions phone className="projects-mobile-project-files-actions">
+                      <SectionIconButton phone action="team" icon="users" label="Manage team" onClick={() => setTeamModalProject(mobileDrillProject)} />
+                      <SectionIconButton phone action="add" label="Add files" onClick={() => addFiles(mobileDrillProject)} />
+                    </SectionIconActions>
                   </div>
                   <div className="projects-mobile-file-list">
                     {mobileDrillFiles.length === 0 ? (

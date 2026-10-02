@@ -954,8 +954,9 @@ input[type="text"].survey-marker-name-inline:focus {
    panel" — on desktop AND phone, the same design sized for each.
 
    Structure (src/sidebar/SpacesPanel.jsx), Spaces chunk B (2026-10-01):
-     .spaces-panel__head  [+ Add] ........ [Exit space x] [Export]
-                          phone: Spaces  [+ Add] [export] Done
+     .spaces-panel__head  ........ [Exit space x] [export] [+]
+                          phone: Spaces  [export] [+] Done
+                          (icons since 2026-10-02: SectionIconButton)
      .spaces-item         grip > Space 2 ...... 3 pages · 2 areas (switch) ...
        .spaces-region             p.3  Page 3 ............ Draw area   ...
        .spaces-item__add          +  [ Add pages ]                     Add
@@ -983,7 +984,7 @@ input[type="text"].survey-marker-name-inline:focus {
   --sp-bg: var(--surface-1);
   --sp-edge: var(--row-pad-x);   /* 12: header + text inset from the panel edge */
   --sp-head-h: var(--row-h-page); /* 40 */
-  --sp-head-btn-pad: 6px;   /* a word button's own side pad (part of its hit area) */
+  --sp-head-btn-pad: 6px;   /* a header icon's own side inset: 28px box, 16px glyph */
   --sp-pad-r: 3px;          /* right inset of every line's last column */
   --sp-grip-w: 36px;        /* grip column; its glyph lands on --sp-edge */
   --sp-indent: var(--row-text-x); /* 40: where the name, add field and page badges start */
@@ -1010,7 +1011,7 @@ input[type="text"].survey-marker-name-inline:focus {
   --sp-small-type: 11px;
 }
 
-/* ---- header: [+ Add] ... [Exit space] [Export]; phone: title first ------ */
+/* ---- header: ... [Exit space] [export] [+]; phone: title first --------- */
 .spaces-panel__head {
   position: relative;
   flex: 0 0 var(--sp-head-h);
@@ -1018,8 +1019,8 @@ input[type="text"].survey-marker-name-inline:focus {
   display: flex;
   align-items: stretch;
   justify-content: space-between;
-  /* The visible glyph/word lands exactly --sp-edge from each edge: the
-     button's own side pad is part of that gap, not added to it. */
+  /* The visible glyph lands exactly --sp-edge from the edge: the icon box's
+     own side inset is part of that gap, not added to it. */
   padding: 0 calc(var(--sp-edge) - var(--sp-head-btn-pad));
   box-sizing: border-box;
   background: var(--sp-bg);
@@ -1064,55 +1065,10 @@ input[type="text"].survey-marker-name-inline:focus {
   align-items: stretch;
 }
 
-.spaces-panel__head-btn {
-  appearance: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 var(--sp-head-btn-pad);
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  color: var(--text-2);
-  font: inherit;
-  font-size: var(--sp-head-type);
-  font-weight: 600;
-  line-height: 1;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  transition: color 90ms ease-out;
-}
-
-/* Header glyphs are 14px on both platforms, the Bookmarks header's size. */
-.spaces-panel__head-btn svg {
-  width: 14px;
-  height: 14px;
-  flex: 0 0 auto;
-  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
-}
-
-/* The plus ink (round caps included) starts 2.5px inside its 14px box; pulling the button left by
-   that much puts the visible "+" exactly on the edge line (Bookmarks does the
-   same), where the grip dots below also start. */
-.spaces-panel__head-btn--add {
-  margin-left: -2.5px;
-}
-
-.spaces-panel__head-btn:not(:disabled):active {
+/* The header actions are SectionIconButton icons (owner 2026-10-02); an open
+   export menu keeps its icon lit. */
+.spaces-panel__head-icon[aria-expanded='true'] {
   color: var(--text-1);
-}
-
-.spaces-panel__head-btn:not(:disabled):active svg {
-  transform: scale(0.88);
-}
-
-.spaces-panel__head-btn[aria-expanded='true'] {
-  color: var(--text-1);
-}
-
-.spaces-panel__head-btn:disabled {
-  color: var(--text-disabled);
-  cursor: not-allowed;
 }
 
 .spaces-panel .spaces-header-export-menu {
@@ -2069,7 +2025,6 @@ input[type="text"].spaces-item__add-input:focus-visible {
   .spaces-item__row:hover {
     background: var(--hover);
   }
-  .spaces-panel__head-btn:not(:disabled):hover,
   .spaces-item__icon:not(:disabled):hover,
   .spaces-region__label:hover,
   .spaces-region__areas:not(.is-editing):hover,
@@ -2087,8 +2042,7 @@ input[type="text"].spaces-item__add-input:focus-visible {
   .spaces-item__add-go.has-value:hover {
     color: var(--accent-light);
   }
-  .spaces-item__icon:not(:disabled):hover > svg,
-  .spaces-panel__head-btn:not(:disabled):hover svg {
+  .spaces-item__icon:not(:disabled):hover > svg {
     transform: scale(1.1);
   }
   .spaces-item__icon > svg {

@@ -24,6 +24,7 @@ import {
 } from '../utils/annotationVisibilityRules';
 import { showToast } from '../utils/toast';
 import { useTooltip } from '../components/Tooltip';
+import SectionIconButton from '../components/SectionIconButton.jsx';
 import { watchLightPopover } from '../components/dismissRules.js';
 import AnchoredPopover from '../components/AnchoredPopover';
 import { useConfirmDialog } from '../components/dialogPrompts';
@@ -1374,19 +1375,13 @@ const SpacesPanel = ({
           title, then Add, the export glyph and a neutral "Done" (it leaves
           Spaces mode and closes the sheet, as the red "Exit Spaces / Regions"
           link at the foot of the list did). The desktop header gains an
-          "Exit space" chip while a space is on. */}
+          "Exit space" chip while a space is on.
+          Owner 2026-10-02: section header actions are ICONS ("The icons
+          looked way better"), right-aligned, Add last - the [Select] [Add]
+          order of every list header: [Export] [Add] (desktop: after the
+          Exit space chip; phone: before Done). */}
       <div className="spaces-panel__head">
         {mobileMode && <h2 className="spaces-panel__heading">Spaces</h2>}
-        <button
-          type="button"
-          className="spaces-panel__head-btn spaces-panel__head-btn--add tertiary"
-          onClick={handleCreateSpace}
-          {...tip(createSpaceLabel, 'below')}
-          aria-label={createSpaceLabel}
-        >
-          <Icon name="plus" size={14} color="currentColor" />
-          <span>Add</span>
-        </button>
 
         {!mobileMode && <span className="spaces-panel__head-fill" aria-hidden="true" />}
 
@@ -1408,11 +1403,12 @@ const SpacesPanel = ({
           className="spaces-panel__export-anchor"
           onClick={(e) => e.stopPropagation()}
         >
-          <button
-            type="button"
-            className={`spaces-panel__head-btn spaces-panel__head-btn--export tertiary${mobileMode ? ' is-glyph' : ''}`}
-            {...tip(exportSpaceLabel, 'below')}
-            aria-label={exportSpaceLabel}
+          <SectionIconButton
+            phone={mobileMode}
+            action="export"
+            icon="upload"
+            className="spaces-panel__head-icon spaces-panel__head-icon--export"
+            label={exportSpaceLabel}
             aria-haspopup={mobileMode ? 'dialog' : 'menu'}
             aria-expanded={isSpacesExportMenuOpen}
             disabled={!spacesExportTarget}
@@ -1424,10 +1420,7 @@ const SpacesPanel = ({
               }
               openSpacesExport(spacesExportTarget.id);
             }}
-          >
-            <Icon name="upload" size={mobileMode ? 16 : 14} color="currentColor" />
-            {!mobileMode && <span>Export</span>}
-          </button>
+          />
           {!mobileMode && exportPanel && (
             <AnchoredPopover getAnchor={() => spacesExportAnchorRef.current} gap={2} zIndex={7000}>
               <div ref={spacesExportMenuRef} className="spaces-export spaces-export--menu" role="menu" aria-label={`Export ${orderedSpaces.find((space) => space.id === exportSpaceId)?.name || 'space'}`}>
@@ -1436,6 +1429,14 @@ const SpacesPanel = ({
             </AnchoredPopover>
           )}
         </div>
+
+        <SectionIconButton
+          phone={mobileMode}
+          action="add"
+          className="spaces-panel__head-icon spaces-panel__head-icon--add"
+          label={createSpaceLabel}
+          onClick={handleCreateSpace}
+        />
 
         {typeof onExitSpacesAction === 'function' && (
           <button

@@ -111,10 +111,10 @@
     background-color: transparent !important;
     color: var(--text-1);
   }
-  .survey-hub [data-glyph-only]:not(.hero-swatch):not([title='Edit color']):not([aria-label='Edit color']):not(:disabled):not([aria-disabled='true']):hover:not(:active) > * {
+  .survey-hub [data-glyph-only]:not(.hero-swatch):not(.section-icon-btn):not([title='Edit color']):not([aria-label='Edit color']):not(:disabled):not([aria-disabled='true']):hover:not(:active) > * {
     transform: scale(1.12);
   }
-  .survey-hub [data-glyph-only]:not(.hero-swatch) > * {
+  .survey-hub [data-glyph-only]:not(.hero-swatch):not(.section-icon-btn) > * {
     transition: transform 120ms ease-out;
   }
 
@@ -244,10 +244,10 @@
    specificity): its icons follow section 5 below, and a second, transform-based
    press here would compound with section 5's `scale`. */
 :where(button, [role='button']):has(> svg:only-child) { -webkit-tap-highlight-color: transparent; }
-:where(button, [role='button']):where(:not(#chrome-top-host *, #chrome-sub-toolbar-host *, .tab-bar *, [data-chrome-rail] *, .survey-rail__head *, .mobile-pdf-header *, .mobile-pdf-tools *, .mobile-pdf-dock *)):has(> svg:only-child) > svg {
+:where(button, [role='button']):where(:not(#chrome-top-host *, #chrome-sub-toolbar-host *, .tab-bar *, [data-chrome-rail] *, .survey-rail__head *, .mobile-pdf-header *, .mobile-pdf-tools *, .mobile-pdf-dock *, .section-icon-btn)):has(> svg:only-child) > svg {
   transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
 }
-:where(button, [role='button']):where(:not(#chrome-top-host *, #chrome-sub-toolbar-host *, .tab-bar *, [data-chrome-rail] *, .survey-rail__head *, .mobile-pdf-header *, .mobile-pdf-tools *, .mobile-pdf-dock *)):not(:disabled):has(> svg:only-child):active > svg {
+:where(button, [role='button']):where(:not(#chrome-top-host *, #chrome-sub-toolbar-host *, .tab-bar *, [data-chrome-rail] *, .survey-rail__head *, .mobile-pdf-header *, .mobile-pdf-tools *, .mobile-pdf-dock *, .section-icon-btn)):not(:disabled):has(> svg:only-child):active > svg {
   transform: scale(0.88);
 }
 
@@ -262,8 +262,8 @@
   -webkit-tap-highlight-color: transparent;
 }
 [data-glyph-only] { -webkit-tap-highlight-color: transparent; }
-[data-glyph-only]:where(:not(#chrome-top-host *, #chrome-sub-toolbar-host *, .tab-bar *, [data-chrome-rail] *, .survey-rail__head *, .mobile-pdf-header *, .mobile-pdf-tools *, .mobile-pdf-dock *)) > * { transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1); }
-[data-glyph-only]:where(:not(#chrome-top-host *, #chrome-sub-toolbar-host *, .tab-bar *, [data-chrome-rail] *, .survey-rail__head *, .mobile-pdf-header *, .mobile-pdf-tools *, .mobile-pdf-dock *)):not(:disabled):active > * { transform: scale(0.88); }
+[data-glyph-only]:where(:not(#chrome-top-host *, #chrome-sub-toolbar-host *, .tab-bar *, [data-chrome-rail] *, .survey-rail__head *, .mobile-pdf-header *, .mobile-pdf-tools *, .mobile-pdf-dock *, .section-icon-btn)) > * { transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1); }
+[data-glyph-only]:where(:not(#chrome-top-host *, #chrome-sub-toolbar-host *, .tab-bar *, [data-chrome-rail] *, .survey-rail__head *, .mobile-pdf-header *, .mobile-pdf-tools *, .mobile-pdf-dock *, .section-icon-btn)):not(:disabled):active > * { transform: scale(0.88); }
 
 /* --------------------------------------------------------------------------
    5. CHROME ICON BUTTONS — ONE interaction model, desktop and phone
@@ -365,6 +365,41 @@
 }
 @media (prefers-reduced-motion: reduce) {
   :is(#chrome-top-host, #chrome-sub-toolbar-host, .tab-bar, [data-chrome-rail], .survey-rail__head, .mobile-pdf-header, .mobile-pdf-tools, .mobile-pdf-dock) :is([data-glyph-only], .chrome-icon-btn) > * {
+    scale: none !important;
+    transition: none !important;
+  }
+}
+
+/* SECTION HEADER ICONS (src/components/SectionIconButton.jsx, owner
+   2026-10-02: [Select] [Add] are icons) take THE MODEL above wherever they
+   sit - the home hub, the viewer's side panels, the phone sheets: hover
+   (mouse only) inks --text-1 and grows the glyph to 108%, press tightens it
+   to 92%, 120ms out / 80ms in, no plate, nothing under reduced motion. They
+   are kept out of the older transform-based glyph rules (section 2's hub
+   grow, section 4's press) so the two never multiply. */
+.section-icon-btn > svg {
+  transition:
+    scale 120ms cubic-bezier(0.33, 1, 0.68, 1),
+    transform 120ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+@media (hover: hover) and (pointer: fine) {
+  .section-icon-btn:not(:disabled):hover {
+    background-color: transparent !important;
+    color: var(--text-1);
+  }
+  .section-icon-btn:not(:disabled):hover > svg {
+    scale: 1.08;
+  }
+}
+.section-icon-btn:not(:disabled):active {
+  background-color: transparent !important;
+}
+.section-icon-btn:not(:disabled):active > svg {
+  scale: 0.92;
+  transition-duration: 80ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .section-icon-btn > svg {
     scale: none !important;
     transition: none !important;
   }

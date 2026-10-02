@@ -231,6 +231,16 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    // Select mode for a list (owner 2026-10-02: section header actions are
+    // icons, the pair is Select = list-checks and Add = plus). Lucide
+    // list-checks on the house grid and stroke.
+    listChecks: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M3 7L5 9L9 5M3 17L5 19L9 15" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M13 6H21M13 12H21M13 18H21" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+
     // Arrow icons
     chevronLeft: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>

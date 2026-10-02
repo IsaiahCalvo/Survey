@@ -34,6 +34,7 @@ import {
 } from './bookmarkReorderUtils.js';
 import { CALM_LIST_AUTO_SCROLL } from '../reorder/dragAutoScroll.js';
 import { useTooltip } from '../components/Tooltip';
+import SectionIconButton, { SectionIconActions } from '../components/SectionIconButton.jsx';
 
 // The one interface font (tokens.css --font-ui, owner 2026-10-02).
 const FONT_FAMILY = 'var(--font-ui)';
@@ -129,29 +130,6 @@ const MOBILE_BOOKMARK_INDENT_PX = 14;
  * starting a drag (which folded and re-opened the folder: a flicker).
  */
 export const BOOKMARK_DRAG_ACTIVATION = { distance: 6 };
-
-/*
- * UX 2026-09-23 (owner: bookmarks look like the home lists, header reads
- * "+ Add … Edit", no title) — the desktop header's two quiet actions. The
- * button box is the full-height, invisible tap pad; only the glyph and word
- * paint. No fill, no border, no hover plate: hover brightens the ink.
- */
-const bookmarkHeaderActionStyle = (color) => ({
-  height: '100%',
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: '4px',
-  padding: 0,
-  background: 'transparent',
-  border: 'none',
-  color,
-  fontSize: '13px',
-  fontWeight: 600,
-  fontFamily: FONT_FAMILY,
-  lineHeight: 1,
-  cursor: 'pointer',
-  transition: 'color 0.12s ease',
-});
 
 // Desktop row height: the shared desktop row (tokens.css --row-h, 32), its 1px
 // divider INSIDE that height (owner 2026-10-02, UI consistency audit: "Bookmarks
@@ -1957,35 +1935,38 @@ const BookmarksPanel = ({
             editing. Edit mode is what shows each row's rename and delete
             glyphs, exactly as desktop hides them until Edit — so a resting row
             is just its grip, glyph, name and page. */}
+        {/* Owner 2026-10-02: header actions are icons, right-aligned,
+            [Edit] then [Add] (the [Select] [Add] order of every list
+            header). Edit's glyph is gold while editing; Add turns into a
+            close glyph while its line is open. */}
         <div className="mobile-bookmark-toolbar">
-          <button
-            type="button"
-            className={`mobile-bookmark-add tertiary${isAddOpen ? ' is-active' : ''}`}
-            aria-label={isAddOpen ? 'Cancel new bookmark' : 'Add bookmark'}
-            aria-expanded={isAddOpen}
-            onClick={() => {
-              const next = !isAddOpen;
-              setShowCreateMenu(next);
-              setShowMobileFolderEditor(false);
-              setNewFolderName('');
-            }}
-          >
-            <Icon name={isAddOpen ? 'close' : 'plus'} size={14} color="currentColor" />
-            {isAddOpen ? 'Cancel' : 'Add'}
-          </button>
-          <button
-            type="button"
-            className={`mobile-bookmark-edit tertiary${isEditMode ? ' is-active' : ''}`}
-            aria-label={isEditMode ? 'Done editing bookmarks' : 'Edit bookmarks'}
-            aria-pressed={isEditMode}
-            onClick={() => {
-              setIsEditMode((editing) => !editing);
-              setMobileEditingBookmarkId(null);
-            }}
-          >
-            <Icon name="edit" size={14} color="currentColor" />
-            {isEditMode ? 'Done' : 'Edit'}
-          </button>
+          <SectionIconActions phone className="mobile-bookmark-actions">
+            <SectionIconButton
+              phone
+              action="edit"
+              icon="edit"
+              label={isEditMode ? 'Done editing bookmarks' : 'Edit bookmarks'}
+              tooltip={isEditMode ? 'Done' : 'Edit'}
+              active={isEditMode}
+              onClick={() => {
+                setIsEditMode((editing) => !editing);
+                setMobileEditingBookmarkId(null);
+              }}
+            />
+            <SectionIconButton
+              phone
+              action="add"
+              icon={isAddOpen ? 'close' : 'plus'}
+              label={isAddOpen ? 'Cancel new bookmark' : 'Add bookmark'}
+              aria-expanded={isAddOpen}
+              onClick={() => {
+                const next = !isAddOpen;
+                setShowCreateMenu(next);
+                setShowMobileFolderEditor(false);
+                setNewFolderName('');
+              }}
+            />
+          </SectionIconActions>
         </div>
         {/* Add opens ONE inline line: the bookmark fields, or — via the quiet
             "New folder" switch under them (UX 2026-09-22 owner ruling: the
@@ -2134,40 +2115,44 @@ const BookmarksPanel = ({
         states.css's press plate off). The 12px edge gaps are measured to the
         visible glyph/word. Gold appears only as the minimal "Done" accent
         while editing.
+        Owner 2026-10-02: section header actions are ICONS ("The icons looked
+        way better"), right-aligned in the [Select] [Add] order every list
+        header uses: [Edit] [Add]. Edit's glyph turns gold while editing. The
+        6px side pad puts each 28px box's glyph on the 12px edge.
       */}
       <div style={{
         position: 'relative',
         height: '40px',
         boxSizing: 'border-box',
-        padding: '0 12px',
+        padding: '0 6px',
         background: 'var(--surface-1)',
         borderBottom: '1px solid var(--border)',
         display: 'flex',
-        justifyContent: 'space-between',
+        justifyContent: 'flex-end',
         alignItems: 'center',
+        gap: '2px',
         flexShrink: 0
       }}>
+        <SectionIconButton
+          action="edit"
+          icon="edit"
+          label={isEditMode ? 'Done editing bookmarks' : 'Edit bookmarks'}
+          tooltip={isEditMode ? 'Done' : 'Edit'}
+          active={isEditMode}
+          onClick={() => setIsEditMode(!isEditMode)}
+        />
         <div ref={menuRef} style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
           <DismissBarrier
             active={showCreateMenu}
             insideRefs={createMenuInsideRefs}
             onDismiss={() => setShowCreateMenu(false)}
           />
-          <button
-            type="button"
-            className="tertiary"
-            onClick={() => setShowCreateMenu(!showCreateMenu)}
-            aria-label="Add bookmark"
+          <SectionIconButton
+            action="add"
+            label="Add bookmark"
             aria-expanded={showCreateMenu}
-            // -2.5px: the plus glyph's ink starts 2.5px inside its 14px box,
-            // so this lands the visible "+" on the 12px edge gap.
-            style={{ ...bookmarkHeaderActionStyle(showCreateMenu ? 'var(--text-1)' : 'var(--text-2)'), marginLeft: '-2.5px' }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-1)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = showCreateMenu ? 'var(--text-1)' : 'var(--text-2)'; }}
-          >
-            <Icon name="plus" size={14} color="currentColor" />
-            Add
-          </button>
+            onClick={() => setShowCreateMenu(!showCreateMenu)}
+          />
               {showCreateMenu && (
                 <div style={{
                   position: 'absolute',
@@ -2306,18 +2291,6 @@ const BookmarksPanel = ({
                 </div>
               )}
         </div>
-        <button
-          type="button"
-          className="tertiary"
-          onClick={() => setIsEditMode(!isEditMode)}
-          aria-pressed={isEditMode}
-          style={bookmarkHeaderActionStyle(isEditMode ? 'var(--accent)' : 'var(--text-2)')}
-          onMouseEnter={(e) => { e.currentTarget.style.color = isEditMode ? 'var(--accent-light)' : 'var(--text-1)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = isEditMode ? 'var(--accent)' : 'var(--text-2)'; }}
-        >
-          <Icon name="edit" size={14} color="currentColor" />
-          {isEditMode ? 'Done' : 'Edit'}
-        </button>
       </div>
 
       {/* Bookmarks List with Drag-and-Drop */}

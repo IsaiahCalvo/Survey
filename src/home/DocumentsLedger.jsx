@@ -11,6 +11,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { HubShell, Icon, Avatar, PdfThumb, Search, EmptyState } from './HubShell';
+import SectionIconButton from '../components/SectionIconButton.jsx';
 import { MoveCopyModal, RenameModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
 import { useThumbnailBackfill } from '../hooks/useThumbnailBackfill';
@@ -254,12 +255,13 @@ export default function DocumentsLedger({
       <span className="documents-file-count"><b>{docs.length}</b> files</span>
       <span className="documents-select-row mobile-header-select-row documents-mobile-select-sort-row">
         <span className="documents-mobile-select-main">
-          <button
-            className="mobile-header-select-button hub-btn hub-btn--tertiary"
+          <SectionIconButton
+            action="select"
+            label={docSelectMode ? 'Done' : 'Select'}
+            active={docSelectMode}
+            className="mobile-header-select-button"
             onClick={() => { const next = !docSelectMode; setDocSelectMode(next); if (!next) setSelDocs(new Set()); }}
-          >
-            {docSelectMode ? 'Done' : 'Select'}
-          </button>
+          />
           {docSelectMode && (() => {
             const docSelCount = selDocs.size;
             const allSel = docSelCount === docs.length && docs.length > 0;

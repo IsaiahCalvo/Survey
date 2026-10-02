@@ -61,6 +61,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { HubShell, Icon, Search, EmptyState } from './HubShell';
+import SectionIconButton, { SectionIconActions } from '../components/SectionIconButton.jsx';
 import {
   resolveTemplatesReload,
   createStableIdMint,
@@ -2014,12 +2015,13 @@ export default function TemplatesEditor({
 
   const mobileTemplateSelectRow = (
     <div className="templates-mobile-select-row mobile-header-select-row">
-      <button
-        className="mobile-header-select-button hub-btn hub-btn--tertiary"
+      <SectionIconButton
+        action="select"
+        label={tplEdit ? 'Done' : 'Select'}
+        active={tplEdit}
+        className="mobile-header-select-button"
         onClick={() => { const next = !tplEdit; setTplEdit(next); if (!next) setSelTpls(new Set()); }}
-      >
-        {tplEdit ? 'Done' : 'Select'}
-      </button>
+      />
       {tplEdit && (() => {
         const visibleSelectedIds = new Set(visibleTemplates.filter((t) => selTpls.has(t.id)).map((t) => t.id));
         const visibleSelCount = visibleSelectedIds.size;
@@ -2208,12 +2210,12 @@ export default function TemplatesEditor({
                     })()}
                   </>
                 )}
-                <button
+                <SectionIconButton
+                  action="select"
+                  label={tplEdit ? 'Done' : 'Select'}
+                  active={tplEdit}
                   onClick={() => { const next = !tplEdit; setTplEdit(next); if (!next) setSelTpls(new Set()); }}
-                  className="hub-btn hub-btn--tertiary hub-section-btn"
-                >
-                  {tplEdit ? 'Done' : 'Select'}
-                </button>
+                />
               </div>
             </div>
             <div className="slim-scroll hub-side-list" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
@@ -2352,18 +2354,20 @@ export default function TemplatesEditor({
 
               {/* Module tabs */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                {/* LABEL count ...... [Select]. The "+" after the tabs is the
-                    one way to add a module (owner 2026-10-01). */}
+                {/* LABEL count ...... [Select] [Add] (owner 2026-10-02:
+                    icons). The header's Add is the one way to add a module;
+                    the old "+" after the tabs is gone so there is no
+                    duplicate. */}
                 <div className="hub-section-head">
                   <p className="micro hub-section-label" style={{ margin: 0 }}>Modules<span className="hub-section-count">{orderedMods.length}</span></p>
-                  <div className="hub-section-actions">
-                    <button
+                  <SectionIconActions className="hub-section-actions">
+                    <SectionIconButton
+                      action="select"
+                      label="Select"
                       onClick={() => { setModEdit(true); setSelMods(new Set()); }}
-                      className="hub-btn hub-btn--tertiary hub-section-btn"
-                    >
-                      Select
-                    </button>
-                  </div>
+                    />
+                    <SectionIconButton action="add" label="Add module" onClick={addModule} />
+                  </SectionIconActions>
                 </div>
                 <SortableModuleTabs
                   modules={orderedMods}
@@ -2375,16 +2379,7 @@ export default function TemplatesEditor({
                   onCancelRename={() => setModRename(null)}
                   onReorderModules={reorderMods}
                   onOpenMenu={(id, rect) => setModMenu({ id, rect })}
-                >
-                  <button
-                    type="button"
-                    onClick={addModule}
-                    title="New module"
-                    aria-label="New module"
-                    className="hub-icon-btn"
-                    style={{ marginLeft: 4, alignSelf: 'center' }}
-                  ><Icon name="plus" size={12} /></button>
-                </SortableModuleTabs>
+                />
               </div>
 
               {/* Categories header */}
@@ -2404,16 +2399,14 @@ export default function TemplatesEditor({
                         </>
                       );
                     })()}
-                  <button
+                  <SectionIconButton
+                    action="select"
+                    label={catEdit ? 'Done' : 'Select'}
+                    active={catEdit}
                     onClick={() => { const next = !catEdit; setCatEdit(next); if (!next) setSelCats(new Set()); }}
-                    className="hub-btn hub-btn--tertiary hub-section-btn"
-                  >
-                    {catEdit ? 'Done' : 'Select'}
-                  </button>
+                  />
                   {!catEdit ? (
-                    <button onClick={addCategory} className="hub-btn hub-btn--tertiary hub-section-btn" aria-label="New category" title="New category">
-                      <Icon name="plus" size={12} />Category
-                    </button>
+                    <SectionIconButton action="add" label="Add category" onClick={addCategory} />
                   ) : null}
                 </div>
               </div>
@@ -2681,16 +2674,14 @@ export default function TemplatesEditor({
                     </>
                   );
                 })()}
-                <button
+                <SectionIconButton
+                  action="select"
+                  label={entityEdit ? 'Done' : 'Select'}
+                  active={entityEdit}
                   onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
-                  className="hub-btn hub-btn--tertiary hub-section-btn"
-                >
-                  {entityEdit ? 'Done' : 'Select'}
-                </button>
+                />
                 {!entityEdit ? (
-                  <button onClick={addEntity} disabled={!tpl} className="hub-btn hub-btn--tertiary hub-section-btn" aria-label="New entity" title="New entity">
-                    <Icon name="plus" size={12} />Entity
-                  </button>
+                  <SectionIconButton action="add" label="Add entity" onClick={addEntity} disabled={!tpl} />
                 ) : null}
                 {/* Save / Cancel moved to the header's subtitle row (owner,
                     2026-09-22) - see `subtitle` above. */}
@@ -3018,11 +3009,16 @@ export default function TemplatesEditor({
                 <div className="templates-mobile-section-head">
                   <span>Modules<b className="hub-section-count">{orderedMods.length}</b></span>
                   <div className="templates-mobile-section-actions">
-                    <button
-                      type="button"
-                      className="templates-mobile-section-select hub-btn hub-btn--tertiary hub-section-btn"
-                      onClick={() => { setModEdit(true); setSelMods(new Set()); }}
-                    >Select</button>
+                    <SectionIconActions phone>
+                      <SectionIconButton
+                        phone
+                        action="select"
+                        label="Select"
+                        className="templates-mobile-section-select"
+                        onClick={() => { setModEdit(true); setSelMods(new Set()); }}
+                      />
+                      <SectionIconButton phone action="add" label="Add module" data-search-dismiss-action onClick={addModule} />
+                    </SectionIconActions>
                   </div>
                 </div>
                 <div className="templates-mobile-module-tabs">
@@ -3040,19 +3036,7 @@ export default function TemplatesEditor({
                     onReorderModules={reorderMods}
                     onOpenMenu={(id, rect) => setModMenu({ id, rect })}
                     showCounts={false}
-                  >
-                    {/* The "+" at the end of the tabs is the ONE way to add a
-                        module (owner 2026-10-01: the header's "New module"
-                        word was a duplicate and is gone). */}
-                    <button
-                      type="button"
-                      onClick={addModule}
-                      title="New module"
-                      aria-label="New module"
-                      className="hub-icon-btn templates-mobile-add-tab"
-                      style={{ marginLeft: 4, alignSelf: 'center' }}
-                    ><Icon name="plus" size={12} /></button>
-                  </SortableModuleTabs>
+                  />
                 </div>
               </section>
 
@@ -3085,22 +3069,27 @@ export default function TemplatesEditor({
                           <button type="button" disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'category' })} className="hub-btn hub-btn--bare">Move/Copy</button>
                           <button type="button" disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} className="hub-btn hub-btn--icon" title="Share" aria-label="Share"><Icon name="share" size={11} /></button>
                           <button type="button" disabled={!c} onClick={() => deleteCategories(visibleSelectedIds)} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={11} /></button>
-                          <button
-                            type="button"
-                            className="templates-mobile-section-select hub-btn hub-btn--tertiary hub-section-btn"
+                          <SectionIconButton
+                            phone
+                            action="select"
+                            label="Done"
+                            active
+                            className="templates-mobile-section-select"
                             onClick={() => { setCatEdit(false); setSelCats(new Set()); }}
-                          >Done</button>
+                          />
                         </>
                       );
                     })() : (
-                      <>
-                        <button
-                          type="button"
-                          className="templates-mobile-section-select hub-btn hub-btn--tertiary hub-section-btn"
+                      <SectionIconActions phone>
+                        <SectionIconButton
+                          phone
+                          action="select"
+                          label="Select"
+                          className="templates-mobile-section-select"
                           onClick={() => { setCatEdit(true); }}
-                        >Select</button>
-                        <button type="button" className="hub-btn hub-btn--tertiary hub-section-btn" data-search-dismiss-action aria-label="New category" onClick={addCategory}><Icon name="plus" size={12} />Category</button>
-                      </>
+                        />
+                        <SectionIconButton phone action="add" label="Add category" data-search-dismiss-action onClick={addCategory} />
+                      </SectionIconActions>
                     )}
                   </div>
                 </div>
@@ -3291,15 +3280,18 @@ export default function TemplatesEditor({
                       </span>
                     );
                   })()}
-                  <button
-                    className="hub-btn hub-btn--tertiary hub-section-btn"
-                    onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
-                  >
-                    {entityEdit ? 'Done' : 'Select'}
-                  </button>
-                  {!entityEdit && (
-                    <button type="button" className="hub-btn hub-btn--tertiary hub-section-btn templates-mobile-new-entity" aria-label="New entity" onClick={addEntity}><Icon name="plus" size={12} />Entity</button>
-                  )}
+                  <SectionIconActions phone>
+                    <SectionIconButton
+                      phone
+                      action="select"
+                      label={entityEdit ? 'Done' : 'Select'}
+                      active={entityEdit}
+                      onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
+                    />
+                    {!entityEdit && (
+                      <SectionIconButton phone action="add" label="Add entity" className="templates-mobile-new-entity" onClick={addEntity} />
+                    )}
+                  </SectionIconActions>
                 </div>
                 {mobileVisibleEntities.length === 0 ? (
                   <div className="templates-mobile-empty">No entities match this view.</div>

@@ -5,12 +5,15 @@
  * titles not centred; Select / "+ add" buttons looked off).
  *
  * Pins the rules that are easy to undo by accident:
- *   - section actions are quiet words, gold stays for the page's one primary;
+ *   - section actions are ICONS (owner 2026-10-02, reversing the 2026-10-01
+ *     quiet words: "The icons looked way better"), [Select] [Add] at the
+ *     right of the label row; gold stays for the page's one primary;
  *   - a category row toggles on a click anywhere, the grip alone drags, and the
  *     name is a text-width field;
  *   - on a phone a closed row's name ignores taps (no surprise keyboard);
  *   - module tabs hug their label and have a touch way to rename;
- *   - the phone's duplicate "New module" header word is gone.
+ *   - ONE way to add a module: the Modules header's Add icon (the "+" after
+ *     the tabs went when the header got its [Select] [Add] pair).
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -22,16 +25,29 @@ const projects = read('src/home/ProjectsFolderTree.jsx');
 const hub = read('src/home/hub.css');
 const editorCss = read('src/home/TemplatesEditor.css');
 
-test('tertiary section words are quiet, not gold', () => {
+// Changed 2026-10-02: this pinned the quiet WORD buttons (hub-section-btn,
+// "Select" / "+ Category"). The owner reversed that ruling - section header
+// actions are icons - so it now pins the icon pair instead.
+test('section header actions are the shared icons, never words or gold', () => {
   const block = hub.slice(hub.indexOf('/* TERTIARY'), hub.indexOf('/* A destructive member'));
   assert.match(block, /\.hub-btn\.hub-btn--tertiary,[\s\S]*?color: var\(--text-2\);/);
   assert.doesNotMatch(block, /var\(--accent(-light|-press)?\)/);
-  // The section headers carry the one quiet size.
-  assert.match(hub, /\.survey-hub \.hub-btn\.hub-section-btn \{[^}]*font-size: 13px;/);
-  // "+ Category" / "+ Entity" are quiet words now, not gold fills.
-  assert.doesNotMatch(editor, /hub-btn--primary">\s*<Icon name="plus" size=\{11\} \/>New (category|entity)/);
-  assert.match(editor, /aria-label="New category"/);
-  assert.match(editor, /aria-label="New entity"/);
+  // No word-button section actions are left on either page.
+  for (const source of [editor, projects]) {
+    assert.doesNotMatch(source, /hub-section-btn/);
+    assert.doesNotMatch(source, /\{(tplEdit|catEdit|entityEdit|jobsEdit|fileSelect) \? 'Done' : 'Select'\}\s*<\/button>/);
+    assert.doesNotMatch(source, /<Icon name="plus" size=\{12\} \/>(Category|Entity)<\/button>/);
+  }
+  // [Select] then [Add] on each editor header, desktop and phone.
+  for (const thing of ['category', 'entity', 'module']) {
+    const add = `label="Add ${thing}"`;
+    assert.ok(editor.split(add).length - 1 >= 2, `desktop + phone Add ${thing}`);
+    const before = editor.slice(0, editor.indexOf(add));
+    assert.match(before.slice(-700), /action="select"/, `Select sits just before Add ${thing}`);
+  }
+  // The gold primary stays the page's one gold button.
+  assert.match(editor, /className="hub-btn hub-btn--primary"\s+onClick=\{createTemplate\}/);
+  assert.match(projects, /className="btn primary"\s+onClick=\{handleNewProject\}/);
 });
 
 test('a category row toggles on a click anywhere; the grip alone drags', () => {
@@ -62,8 +78,10 @@ test('module tabs hug their label and can be renamed by touch', () => {
   assert.doesNotMatch(tab, /maxWidth: 140/);
   assert.match(tab, /isOn && pointerTypeRef\.current === 'touch' && onOpenMenu/);
   assert.match(editor, /\{ label: 'Rename', onClick: \(\) => flushSync\(\(\) => setModRename\(mod\.id\)\) \}/);
-  // One way to add a module on the phone: the "+" after the tabs.
+  // One way to add a module: the header's Add icon (2026-10-02). The "+"
+  // after the tabs and the old "New module" word are both gone.
   assert.doesNotMatch(editor, /<Icon name="plus" size=\{11\} \/>New module<\/button>/);
+  assert.doesNotMatch(editor, /templates-mobile-add-tab|title="New module"/);
 });
 
 test('titles are text-width fields on both pages', () => {
