@@ -2880,18 +2880,18 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                   <>
                     <RailButton
                       active={regionDrawing && regionApi.toolType === 'rectangular'}
-                      icon="rect"
+                      icon="areaRect"
                       glyph={SUBTOOL_GLYPH}
                       label="Rectangle area"
-                      data-morph-icon="rect"
+                      data-morph-icon="areaRect"
                       onClick={() => regionApi.setToolType?.('rectangular')}
                     />
                     <RailButton
                       active={regionDrawing && regionApi.toolType === 'freehand'}
-                      icon="pen"
+                      icon="areaFreehand"
                       glyph={SUBTOOL_GLYPH}
                       label="Freehand area"
-                      data-morph-icon="pen"
+                      data-morph-icon="areaFreehand"
                       onClick={() => regionApi.setToolType?.('freehand')}
                     />
                     <div className="mobile-pdf-tools__divider is-short" />

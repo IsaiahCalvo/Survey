@@ -28,6 +28,8 @@
  * here; anything else (the counter, a line) grows in / shrinks out instead.
  */
 
+import { AREA_TOOL_GLYPHS } from './areaToolGlyphs.js';
+
 export const MORPH_SAMPLES = 40;
 
 // ---------------------------------------------------------------------------
@@ -42,6 +44,16 @@ const rectPath = (x, y, w, h, r) => (
 const circlePath = (cx, cy, r) => `M${cx - r} ${cy}A${r} ${r} 0 1 0 ${cx + r} ${cy}A${r} ${r} 0 1 0 ${cx - r} ${cy}Z`;
 
 const CURSOR = 'M9.80282 4.62973L15.8364 6.99069C19.3164 8.35243 21.0564 9.03329 20.9987 10.1133C20.941 11.1934 19.1251 11.6886 15.4933 12.6791C14.412 12.974 13.8713 13.1215 13.4964 13.4963C13.1215 13.8712 12.9741 14.4119 12.6791 15.4933C11.6887 19.125 11.1934 20.9409 10.1134 20.9986C9.03335 21.0563 8.35249 19.3163 6.99075 15.8363L4.62979 9.80276C3.20411 6.15934 2.49127 4.33764 3.41448 3.41442C4.3377 2.49121 6.15941 3.20405 9.80282 4.62973Z';
+
+// The Spaces Areas tools read their glyphs from the one place they are drawn
+// (utils/areaToolGlyphs.js), so swapping a glyph there updates the morph too.
+const areaToolMorph = (name) => ({
+  source: 'src/utils/areaToolGlyphs.js',
+  transform: AREA_TOOL_GLYPHS[name].transform,
+  paths: AREA_TOOL_GLYPHS[name].paths.map((path) => (
+    path.dasharray ? { d: path.d, dash: path.dasharray.split(' ').map(Number) } : { d: path.d }
+  )),
+});
 
 const POLYGON_NODES = [[14.71, 4.92], [5.91, 7.13], [4.77, 16.73], [13.59, 19.08], [19.23, 12.83]];
 
@@ -122,6 +134,8 @@ export const MORPH_ICONS = Object.freeze({
       { d: 'M7.95 20.89 2.95 21.05 2.79 16.05' },
     ],
   },
+  areaRect: areaToolMorph('areaRect'),
+  areaFreehand: areaToolMorph('areaFreehand'),
   selectCursor: {
     source: 'src/assets/icons/selection-cursor-rounded.svg',
     paths: [{ d: CURSOR }],

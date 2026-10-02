@@ -1,5 +1,6 @@
 // Minimalist SVG Icons Component
 import { getContentTypeIconColor } from './utils/contentTypeColors.js';
+import { AREA_TOOL_GLYPHS, AREA_TOOL_STROKE_WIDTH } from './utils/areaToolGlyphs.js';
 import textBoldUrl from './assets/icons/text-bold.svg';
 import textItalicUrl from './assets/icons/text-italic.svg';
 import textUnderlineUrl from './assets/icons/text-underline.svg';
@@ -93,6 +94,19 @@ const POLYLINE_ICON_NODES = [
   [14.18, 11.82],
   [19.25, 5.66],
 ];
+
+const renderAreaToolGlyph = (name, size, color, style, className) => {
+  const glyph = AREA_TOOL_GLYPHS[name];
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+      <g transform={glyph.transform} stroke={color} strokeWidth={AREA_TOOL_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
+        {glyph.paths.map((path) => (
+          <path key={path.d} d={path.d} strokeDasharray={path.dasharray} />
+        ))}
+      </g>
+    </svg>
+  );
+};
 
 const renderMaskIcon = (url, size, color, style, className, width = size) => (
   <span
@@ -243,6 +257,11 @@ const ICON_RENDERERS = {
         <path d="M12 21l.75-3 6.1-6.1a1.6 1.6 0 0 1 2.25 2.25L15 20.25z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
+    // Spaces Areas tools (owner 2026-10-02, provisional): Rectangle area and
+    // Freehand area. The glyphs live in ONE place, utils/areaToolGlyphs.js
+    // (also read by the tool-group morph), so a pick swaps them there.
+    areaRect: (size, color, style, className) => renderAreaToolGlyph('areaRect', size, color, style, className),
+    areaFreehand: (size, color, style, className) => renderAreaToolGlyph('areaFreehand', size, color, style, className),
     // Owner 2026-10-02: a Spaces region card's "edit areas" button. Hugeicons
     // Select 02 (MIT): a plus, a box drawn as edges, and three square corner
     // handles. Replaces the Draw pencil on each region card. The handles keep
