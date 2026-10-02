@@ -946,10 +946,16 @@ input[type="text"].survey-marker-name-inline:focus {
 }
 
 /* ==========================================================================
-   SPACES PANEL — CARDS (owner 2026-10-02, desktop + phone)
+   SPACES PANEL — ROWS IN THE PANEL (owner 2026-10-02, desktop + phone)
    --------------------------------------------------------------------------
-   Owner: "I want it back to the way I had it, except slightly cleaner" - the
-   card layout from before the 2026-09-23 one-list rewrite, cleaned up.
+   Owner, after the cards came back (d6b8563): "I definitely like the way
+   spaces look ... but it's like boxes within boxes ... I want it integrated
+   within the panel as separate rows, just like we updated the survey panel."
+   Every control of the cards stays; only the CONTAINERS went. A space is a
+   flat line in the panel like a Survey category (src/surveyRailPanel.css):
+   32px with a hairline under it, edge to edge. Open, its add-pages line and
+   its page lines ("regions") follow, each one fixed step in, each parted by
+   a full-width hairline like the Survey Markers.
 
    Structure (src/sidebar/SpacesPanel.jsx):
      .spaces-panel__head  ........ [Exit space x] [export] [+]
@@ -958,45 +964,45 @@ input[type="text"].survey-marker-name-inline:focus {
        .space-card__add          [ Add pages (e.g. 3, 6-9, 12)     | + ]
        .space-region-card        2 (switch) Region 2 ..... edit bulb trash
 
-   Cleaner than the old cards: numbers are plain small muted figures (no
-   circles); switches turn on in the calm neutral ink of the Survey "Reuse"
-   switch, never gold; the [+] is grey and joined to its field, never a gold
-   square; a lit glyph (marks shown, areas being edited) is bright ink.
+   Columns: the grip sits in the Survey grip gutter (28; phone 32), the page
+   count starts right after it, and everything nested starts one step (12)
+   further in: --sp-nest-x = 40 on desktop (the rows' text line, --row-text-x),
+   44 on the phone. The add-pages field is the one recessed well
+   (--panel-well, the Survey notes box's well); nothing else paints a fill.
 
-   Hit areas: every glyph owns a whole column and the row's full height - an
-   invisible pad, never a plate. Glyph buttons carry data-glyph-only and
-   press by tightening the glyph (states.css). Hover (desktop pointer only)
-   brightens ink; the space row takes the one --hover fill.
+   States are the Survey rows' (states.css tokens): hover (desktop pointer
+   only) paints the LINE --hover edge to edge; a press on the line itself
+   (not on a control in it) paints it --pressed; glyphs never paint a plate
+   (data-glyph-only: hover brightens, press tightens). A space picked up
+   for reordering wears the shared lift (states.css [data-drag-lifted]).
 
    Sizes live in the custom properties below (desktop row scale, tokens.css);
    the phone overrides them in src/mobile/mobilePdfViewer.css
    (.mobile-spaces-panel), nothing else.
    ========================================================================== */
 .spaces-panel {
-  /* One surface rule, phone = desktop (owner 2026-10-02): the panel, a
-     recessed card, and a region card back on the panel's own colour. */
   --sp-bg: var(--panel-bg);
-  --sp-card-bg: var(--panel-well);
-  --sp-region-bg: var(--panel-bg);
   --sp-edge: var(--row-pad-x);    /* 12: header inset from the panel edge */
   --sp-head-h: var(--row-h-page); /* 40 */
   --sp-head-btn-pad: 6px;   /* a header icon's own side inset: 28px box, 16px glyph */
-  --sp-list-pad: 8px;       /* the list's inset around the cards */
-  --sp-body-pad: 8px;       /* an open card's inset around its field and regions */
-  --sp-body-gap: 8px;
-  --sp-region-gap: 6px;
   --sp-pad-r: 2px;          /* right inset of every row's last column */
-  --sp-grip-w: 20px;
+  --sp-grip-w: 28px;        /* the Survey grip gutter */
+  --sp-grip-pad: 4px;       /* the grip glyph's inset in it (Survey: 4) */
+  --sp-step: 12px;          /* one nesting level (Survey --sv-step) */
+  --sp-nest-x: calc(var(--sp-grip-w) + var(--sp-step)); /* 40 = --row-text-x */
+  --sp-field-r: 8px;        /* the add-pages field's right inset */
   --sp-num-w: 14px;         /* the space's page count */
-  --sp-chev-w: 20px;
+  --sp-chev-w: 16px;
   --sp-page-w: 22px;        /* a region's page number */
   --sp-col-w: 24px;         /* a glyph button's column */
   --sp-switch-w: 36px;
   --sp-sm-switch-w: 32px;
-  /* A space row is a desktop row: 32 (its card edges sit inside it). */
+  /* A space line is a desktop row (32), a nested line a sub row (28); each
+     carries its 1px hairline inside that height, as the Survey rows do. */
   --sp-row-h: var(--row-h);       /* 32 */
-  --sp-line-h: var(--row-h);      /* 32: a region card */
-  --sp-field-h: 26px;
+  --sp-line-h: var(--row-h-sub);  /* 28: a region line */
+  --sp-add-h: var(--row-h);       /* 32: the add-pages line */
+  --sp-field-h: 24px;
   --sp-field-pad: 8px;
   --sp-glyph: var(--row-icon);    /* 14 */
   --sp-track-w: 28px;
@@ -1078,12 +1084,12 @@ input[type="text"].survey-marker-name-inline:focus {
   top: calc(100% + 2px);
 }
 
-/* ---- the list: one card per space -------------------------------------- */
+/* ---- the list: one line per space, edge to edge ----------------------- */
 .spaces-list {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--sp-list-pad);
+  padding: 0;
   box-sizing: border-box;
   background: var(--sp-bg);
 }
@@ -1096,36 +1102,44 @@ input[type="text"].survey-marker-name-inline:focus {
   text-align: center;
 }
 
+/* A space: no card. Its line (and, open, its nested lines) sit straight on
+   the panel, closed by one full-width hairline - the Survey category's. */
+.space-card {
+  border-bottom: 1px solid var(--border);
+}
+
 .space-card__block {
-  background: var(--sp-card-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  background: transparent;
 }
 
 /* The one space a pointer is carrying lifts off the list with the app's one
    picked-up look: SortableRearrangeRow marks its wrapper data-drag-lifted
-   (states.css), so nothing here paints a second surface. */
+   (states.css), which also hides this hairline, so nothing here paints a
+   second surface. */
 
 /* ---- the space row: grip · count · arrow · name ...... switch · trash ---- */
 .space-card__head {
   display: flex;
   align-items: center;
-  min-height: calc(var(--sp-row-h) - 2px); /* the card's 1px edges are inside the 32 / 44 */
+  min-height: calc(var(--sp-row-h) - 1px); /* the hairline is inside the 32 / 44 */
   padding-right: var(--sp-pad-r);
   box-sizing: border-box;
-  border-radius: calc(var(--radius-md) - 1px);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 
+/* The grip in the Survey grip gutter, its glyph at the same inset. */
 .space-card__grip {
   flex: 0 0 var(--sp-grip-w);
-  width: var(--sp-grip-w);
+  width: var(--sp-grip-w) !important;
   align-self: stretch;
   height: auto !important;
+  padding-left: var(--sp-grip-pad) !important;
+  box-sizing: border-box;
 }
 
-/* The page count: a plain small muted figure, no circle. */
+/* The page count: a plain small muted figure, no circle, right after the
+   grip gutter (a region's page number sits one step further in). */
 .space-card__count {
   flex: 0 0 auto;
   min-width: var(--sp-num-w);
@@ -1134,7 +1148,7 @@ input[type="text"].survey-marker-name-inline:focus {
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   line-height: 1;
-  text-align: center;
+  text-align: left;
 }
 
 .space-card__chevron {
@@ -1334,28 +1348,42 @@ input[type="text"].space-card__name:focus-visible {
   color: var(--danger);
 }
 
-/* ---- an open space: Add pages, then one card per page ------------------- */
+/* ---- an open space: the Add pages line, then one line per page ---------
+   Nested lines start one step in (--sp-nest-x); each carries a full-width
+   hairline on top, inside its own height (the Survey Marker lines). */
 .space-card__body {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-body-gap);
-  padding: var(--sp-body-pad);
+}
+
+.space-card__add-line {
+  display: flex;
+  align-items: center;
+  min-height: calc(var(--sp-add-h) - 1px);
+  padding: 0 var(--sp-field-r) 0 var(--sp-nest-x);
   border-top: 1px solid var(--border);
 }
 
 /* The field and its [+] are one joined control: same height, same fill,
-   one rounded outline. The [+] is quiet grey (never a gold square). */
+   one rounded shape. It is the panel's one recessed well (--panel-well,
+   the Survey notes box's): no edge at rest, the strong edge while typing.
+   The [+] is quiet grey (never a gold square). */
 .space-card__add {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   align-items: stretch;
   height: var(--sp-field-h);
   box-sizing: border-box;
   border-radius: var(--radius-sm);
-  /* A recessed well (owner 2026-10-02). It sits on the --panel-well card,
-     so the field's identifying edge is what draws it. */
   background: var(--panel-well);
-  border: 1px solid var(--border-strong);
+  border: 1px solid transparent;
   overflow: hidden;
+  transition: border-color 120ms ease-out;
+}
+
+.space-card__add:focus-within {
+  border-color: var(--border-strong);
 }
 
 input[type="text"].space-card__add-input {
@@ -1406,7 +1434,10 @@ input[type="text"].space-card__add-input {
   background: var(--pressed);
 }
 
+/* Under the field, no hairline of its own: it belongs to the add line. */
 .space-card__error {
+  margin-top: -2px;
+  padding: 0 var(--sp-field-r) 6px var(--sp-nest-x);
   color: var(--danger-text);
   font-size: var(--sp-small-type);
   font-weight: 600;
@@ -1414,7 +1445,11 @@ input[type="text"].space-card__add-input {
 }
 
 .space-card__empty {
-  padding: 2px 2px 0;
+  display: flex;
+  align-items: center;
+  min-height: calc(var(--sp-line-h) - 1px);
+  padding: 0 var(--sp-field-r) 0 var(--sp-nest-x);
+  border-top: 1px solid var(--border);
   color: var(--text-3);
   font-size: var(--sp-label-type);
 }
@@ -1425,32 +1460,31 @@ input[type="text"].space-card__add-input {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--sp-region-gap);
 }
 
-/* A page in the space ("region"): its own small card. */
+/* A page in the space ("region"): a nested line, no card. */
 .space-region-card {
   display: flex;
   align-items: center;
-  min-height: var(--sp-line-h);
+  min-height: var(--sp-line-h); /* its hairline is inside (border-box) */
   padding-right: var(--sp-pad-r);
   box-sizing: border-box;
-  background: var(--sp-region-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-top: 1px solid var(--border);
 }
 
-/* The page number: a plain small muted figure (no circle). It goes to the
-   page; its pad is the card's full height. */
+/* The page number: a plain small muted figure (no circle) on the nested
+   line (--sp-nest-x). It goes to the page; its pad runs from the panel
+   edge and is the line's full height. */
 .spaces-region__page {
   appearance: none;
   flex: 0 0 auto;
-  min-width: var(--sp-page-w);
+  min-width: calc(var(--sp-nest-x) + var(--sp-page-w));
   align-self: stretch;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  padding: 0 2px;
+  justify-content: flex-start;
+  padding: 0 2px 0 var(--sp-nest-x);
+  box-sizing: border-box;
   background: transparent;
   border: 0;
   color: var(--text-3);
@@ -1882,9 +1916,26 @@ input[type="text"].spaces-region__name-input:focus-visible {
   line-height: 1.2;
 }
 
-/* ---- hover: desktop pointer only, ink brightens, never a box ----------- */
+/* ---- line states: the Survey rows' (surveyRailPanel.css ROW STATES) ----
+   A LINE is what the pointer is over and what is pressed, so the line paints
+   the states edge to edge: --pressed while the line itself is held (a space
+   line's empty part, count or fold arrow; a region line's page number or
+   name), never while one of its controls is (switch, name field, glyphs,
+   grip - they answer on their own). A region name or page number button
+   also takes the shared press plate (states.css rule 1), the same
+   --pressed, so the press reads as one line, never part of it. Picking a
+   space up is the shared lift (states.css [data-drag-lifted]). */
+.space-card__head:active:not(:has(input:active, [role='switch']:active, .space-card__icon:active, [data-drag-rearrange-handle]:active)) {
+  background: var(--pressed);
+}
+.space-region-card:has(> .spaces-region__page:active, .spaces-region__label:active) {
+  background: var(--pressed);
+}
+
+/* ---- hover: desktop pointer only; a line takes --hover, ink brightens --- */
 @media (hover: hover) and (pointer: fine) {
-  .space-card__head:hover {
+  .space-card__head:hover,
+  .space-region-card:hover {
     background: var(--hover);
   }
   .space-card__chevron:hover,
