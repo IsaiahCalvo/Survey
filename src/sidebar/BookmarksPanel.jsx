@@ -423,7 +423,7 @@ const BookmarkTreeRow = ({
             style={{
               flex: 1,
               minWidth: 0,
-              background: 'var(--surface-0)',
+              background: 'var(--panel-well)',
               border: '1px solid var(--border-strong)',
               color: 'var(--text-2)',
               borderRadius: 5,
@@ -472,7 +472,7 @@ const BookmarkTreeRow = ({
               pattern="[0-9]*"
               style={{
                 width: 34,
-                background: 'var(--surface-0)',
+                background: 'var(--panel-well)',
                 border: '1px solid var(--border-strong)',
                 color: 'var(--text-2)',
                 borderRadius: 5,
@@ -2098,7 +2098,7 @@ const BookmarksPanel = ({
       flexDirection: 'column',
       height: '100%',
       fontFamily: FONT_FAMILY,
-      background: 'var(--surface-1)'
+      background: 'var(--panel-bg)'
     }}>
       {/*
         UX 2026-09-23 (owner, desktop Bookmarks header): "Add with a + sign on
@@ -2125,7 +2125,7 @@ const BookmarksPanel = ({
         height: '40px',
         boxSizing: 'border-box',
         padding: '0 6px',
-        background: 'var(--surface-1)',
+        background: 'var(--panel-bg)',
         borderBottom: '1px solid var(--border)',
         display: 'flex',
         justifyContent: 'flex-end',
@@ -2167,7 +2167,7 @@ const BookmarksPanel = ({
                   borderRadius: '8px',
                   padding: '4px',
                   zIndex: 1000,
-                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
+                  boxShadow: 'var(--shadow-popover)'
                 }}>
                   <button
                     onClick={handleCreateFolder}
@@ -2189,7 +2189,7 @@ const BookmarksPanel = ({
                     onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                   >
                     <Icon name="folder" size={14} color="var(--text-3)" />
-                    New bookmark group
+                    New folder
                   </button>
                   <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border)' }}>
                     <input
@@ -2268,24 +2268,24 @@ const BookmarksPanel = ({
                     </button>
                     <button
                       onClick={handleCreateBookmark}
+                      // Owner 2026-10-02 (phone = desktop): the phone's gold
+                      // word, not a filled gold bar.
                       style={{
                         width: '100%',
                         padding: '6px 12px',
-                        background: 'var(--accent)',
-                        /* UX: the label ON a gold fill is --accent-text. --text-1 on
-                           --accent-light measures 1.5:1; --accent-text is 8.6:1. */
-                        color: 'var(--accent-text)',
+                        background: 'transparent',
+                        color: 'var(--accent)',
                         border: 'none',
                         borderRadius: '4px',
-                        fontSize: '12px',
-                        fontWeight: '500',
+                        fontSize: '13px',
+                        fontWeight: '600',
                         cursor: 'pointer',
                         fontFamily: FONT_FAMILY
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-light)'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent)'}
+                      onMouseEnter={(e) => e.currentTarget.style.color = 'var(--accent-light)'}
+                      onMouseLeave={(e) => e.currentTarget.style.color = 'var(--accent)'}
                     >
-                      Create bookmark
+                      Create
                     </button>
                   </div>
                 </div>

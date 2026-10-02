@@ -289,7 +289,8 @@ html.survey-viewer-open #root {
   display: block;
   flex: 0 0 auto;
   color: var(--text-1);
-  background: var(--surface-1);
+  /* Docked chrome: --panel-bg, as the desktop toolbar (owner 2026-10-02). */
+  background: var(--panel-bg);
   border-bottom: 1px solid var(--border);
   font-family: var(--font-ui);
   position: relative;
@@ -495,7 +496,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   justify-content: center;
   gap: 2px;
   color: var(--text-1);
-  background: var(--surface-1);
+  background: var(--panel-bg);
   border: 1px solid var(--border);
   /* RULED CHANGE 2026-09-22 (owner): the pill takes the STRIP pill's radius,
      10, so it reads as one of the app's pills rather than a boxier control
@@ -1092,11 +1093,13 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   height: var(--mobile-rail-disc);
   padding: 0;
   color: var(--text-1);
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
+  /* The desktop's chip (styles.css .survey-subrow__glyph): an outline ring in
+     the chip's own ink, nothing filled (owner 2026-10-02). */
+  background: transparent;
+  border: 1.5px solid currentColor;
   border-radius: 50%;
   font-size: 9px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 /* The active category's LETTER turns gold; the disc it sits on does not fill.
@@ -1437,7 +1440,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   color: var(--text-1);
   /* The bar's fill and its bottom rule are one gradient rather than a
      background plus a border, because the box is 8px taller than the bar. */
-  background: linear-gradient(to bottom, var(--surface-1) 0 35px, var(--surface-0) 35px 36px, transparent 36px);
+  background: linear-gradient(to bottom, var(--panel-bg) 0 35px, var(--surface-0) 35px 36px, transparent 36px);
   border: 0;
   border-radius: 0;
   box-shadow: none;
@@ -1502,7 +1505,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   box-sizing: border-box;
   display: flex;
   flex: 0 0 auto;
-  background: var(--surface-2);
+  background: var(--panel-well);
   border-radius: 10px;
 }
 
@@ -1598,7 +1601,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   padding: 0 9px;
   flex: 0 0 auto;
   color: var(--text-1);
-  background: var(--surface-2);
+  background: transparent;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   font-size: 12px;
@@ -2095,10 +2098,11 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   max-height: 244px;
   overflow-y: auto;
   color: var(--text-1);
-  background: var(--surface-2);
+  /* Floating: --surface-3 + the one popover shadow (owner 2026-10-02). */
+  background: var(--surface-3);
   border: 1px solid var(--border);
   border-radius: 9px;
-  box-shadow: 0 10px 24px -4px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-popover);
   z-index: 7400;
   scrollbar-width: none;
 }
@@ -2269,10 +2273,10 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   flex-direction: column;
   gap: 2px;
   color: var(--text-2);
-  background: var(--surface-2);
+  background: var(--surface-3);
   border: 1px solid var(--border-strong);
   border-radius: 7px;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
+  box-shadow: var(--shadow-popover);
   z-index: 7300;
 }
 
@@ -2347,10 +2351,10 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   display: flex;
   flex-direction: column;
   color: var(--text-1);
-  background: var(--surface-1);
+  background: var(--sheet-bg);
   border-top: 1px solid var(--border-strong);
   border-radius: 16px 16px 0 0;
-  box-shadow: 0 -15px 38px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-sheet);
   /* Entrance comes from useMobileSheetMotion (see .mobile-pdf-sheet above) —
      one transform timeline for open, drag and close. */
 }
@@ -2629,7 +2633,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 }
 
 .mobile-tool-sheet__slider:focus-visible .mobile-tool-sheet__track {
-  box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--focus-ring, var(--text-2));
+  box-shadow: 0 0 0 2px var(--sheet-bg), 0 0 0 4px var(--focus-ring, var(--text-2));
 }
 
 .mobile-tool-sheet__track {
@@ -2756,7 +2760,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   grid-auto-flow: column;
   grid-auto-columns: minmax(0, 1fr);
   gap: 2px;
-  background: var(--surface-2);
+  background: var(--panel-well);
   border-radius: var(--radius-md);
 }
 
@@ -2856,7 +2860,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   height: var(--tool-sheet-control-h);
   min-height: var(--tool-sheet-control-h);
   color: var(--text-1);
-  background: var(--surface-2);
+  background: var(--panel-well);
   border: 0;
   border-radius: var(--radius-md);
   font: 600 13px/1 var(--sheet-font);
@@ -2875,7 +2879,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   height: var(--tool-sheet-control-h);
   padding: 0 12px;
   color: var(--text-1);
-  background: var(--surface-2);
+  background: var(--panel-well);
   border: 0;
   border-radius: var(--radius-md);
   font: var(--sheet-action);
@@ -2925,10 +2929,10 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   display: flex;
   flex-direction: column;
   color: var(--text-1);
-  background: var(--surface-1);
+  background: var(--sheet-bg);
   border-top: 1px solid var(--border-strong);
   border-radius: 16px 16px 0 0;
-  box-shadow: 0 -15px 38px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-sheet);
   z-index: 6700;
 }
 
@@ -3023,7 +3027,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   right: 0;
   bottom: 0;
   height: calc(36px + var(--mobile-bottom-inset));
-  background: var(--surface-1);
+  background: var(--panel-bg);
   border-top: 1px solid var(--border);
   pointer-events: none;
 }
@@ -3033,7 +3037,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   position: relative;
   z-index: 1;
   color: var(--text-1);
-  background: var(--surface-1);
+  background: var(--panel-bg);
   border: 1px solid var(--border);
   box-shadow: none;
 }
@@ -3087,7 +3091,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 }
 
 /* The bottom dock. Same as the rail and the desktop bar: the glyph goes gold,
-   the button keeps its resting --surface-1 plate and --border hairline. */
+   the button keeps its resting --panel-bg plate and --border hairline. */
 .mobile-pdf-dock__side.is-active,
 .mobile-pdf-dock__center.is-active {
   color: var(--accent);
@@ -3105,7 +3109,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   border-color: var(--border-strong);
   border-radius: calc(var(--mobile-dock-control-h) / 2);
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 600;
 }
 
 /* UX 2026-09-16 (phone reach pass): the sheet backdrop actually dims now. It
@@ -3175,12 +3179,14 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   height: calc(var(--mobile-sheet-height, var(--mobile-panel-standard)) - var(--mobile-bottom-inset)) !important;
   max-height: calc(100dvh - var(--app-chrome-top, 34px) - 18px - var(--mobile-dock-bar-height)) !important;
   box-sizing: border-box;
-  background: var(--surface-1) !important;
+  /* ONE sheet colour (owner 2026-10-02): every phone sheet is --sheet-bg
+     (= --panel-bg, the desktop panels' colour), so no sheet overrides it. */
+  background: var(--sheet-bg) !important;
   border: 0 !important;
   border-top: 1px solid var(--border-strong) !important;
   border-bottom: 0 !important;
   border-radius: 16px 16px 0 0;
-  box-shadow: 0 -15px 38px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-sheet);
   overflow: hidden;
   /* UX 2026-07-12 (S3, demo parity) baked the home-indicator clearance into
      every sheet (12px + --mobile-bottom-inset). Since 2026-10-01 a sheet stands
@@ -3284,8 +3290,8 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   max-height: calc(100dvh - max(var(--keyboard-inset, 0px), var(--mobile-dock-bar-height)) - var(--app-chrome-top, 34px) - 8px) !important;
   padding-bottom: 12px !important;
   box-shadow:
-    0 -15px 38px rgba(0, 0, 0, 0.5),
-    0 var(--keyboard-inset, 0px) 0 var(--keyboard-inset, 0px) var(--surface-1);
+    var(--shadow-sheet),
+    0 var(--keyboard-inset, 0px) 0 var(--keyboard-inset, 0px) var(--sheet-bg);
 }
 
 /* HEIGHT HOLD (useMobileSheetMotion, owner 2026-10-01: the swipe "needs to be
@@ -3318,8 +3324,8 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
    second shadow, so the page never flashes between it and the keyboard. */
 :root [data-mobile-sheet][data-sheet-fill] {
   box-shadow:
-    0 -15px 38px rgba(0, 0, 0, 0.5),
-    0 360px 0 360px var(--surface-1);
+    var(--shadow-sheet),
+    0 360px 0 360px var(--sheet-bg);
 }
 
 /* A measurement of where a sheet is going (keyboardViewport.js
@@ -3414,7 +3420,7 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   align-items: center;
   gap: 9px;
   color: var(--text-1);
-  background: var(--surface-1);
+  background: var(--sheet-bg);
   border-bottom: 1px solid var(--border);
   font: 700 16px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
@@ -3423,12 +3429,8 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
    PHONE SHEET SCALE (src/styles/tokens.css) - the sheet colour, a 44px head
    with the 16/700 title and a 12px --text-3 subtitle, and full-width 44px
    rows parted by hairlines (they were 50px bordered cards with 12/700 names
-   and 10px meta, the one sheet built that way). Two classes, so the colour
-   wins over the base sheet's !important --surface-1. */
-.mobile-pdf-sheet.mobile-pdf-users-sheet {
-  background: var(--sheet-bg) !important;
-}
-
+   and 10px meta, the one sheet built that way). The colour is the base
+   sheet's --sheet-bg. */
 .mobile-pdf-users-sheet {
   /* Standard, like every other phone panel (pass 7). Was 276px + inset. */
   --mobile-sheet-height: var(--mobile-panel-standard);
@@ -3534,7 +3536,7 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   gap: 14px;
   position: relative;
   overflow: visible !important;
-  background: var(--surface-2) !important;
+  background: var(--sheet-bg) !important;
   border-color: var(--border) !important;
 }
 
@@ -3557,42 +3559,33 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
 
 .mobile-pdf-hub-tabs .mobile-pdf-hub-tab > span { display: none !important; }
 
+/* Owner 2026-10-02: the sheet, the panel inside it and the bottom safe-inset
+   band are all --sheet-bg now, so the old "darker stripe" patches (two :has()
+   rules and the Search panel's own colour) are gone. Pages keeps this one
+   line only while PagesPanel.jsx still paints an inline --surface-1. */
 .mobile-pages-panel {
-  background: var(--sheet-bg) !important;
-}
-/* The sheet paints its bottom safe-inset padding in its own --surface-1, so
-   under a --surface-2 panel that band read as a darker stripe along the bottom
-   (owner 2026-09-22: "make it the same color as the rest"). When one of those
-   panels is showing, the sheet takes the panel colour; the handle and tab row
-   above keep their own inline --surface-1. */
-.mobile-pdf-sheet:has(.mobile-pages-panel),
-.mobile-pdf-sheet:has(.mobile-search-panel) {
-  background: var(--sheet-bg) !important;
-}
-
-.mobile-search-panel {
   background: var(--sheet-bg) !important;
 }
 
 .mobile-search-panel__bar {
   padding: 8px 16px 4px !important;
-  background: var(--surface-2) !important;
   border-bottom: 0 !important;
 }
 
+/* The desktop's field (SearchTextPanel.jsx): a --panel-well, the strong edge,
+   radius 6. The phone keeps its taller box for a finger. */
 .mobile-search-panel__bar input[type="text"] {
   height: 42px !important;
   padding-left: 38px !important;
   color: var(--text-1) !important;
-  background: var(--surface-1) !important;
-  border-color: var(--border) !important;
-  border-radius: 7px !important;
+  background: var(--panel-well) !important;
+  border-color: var(--border-strong) !important;
+  border-radius: 6px !important;
   font-size: 14px !important;
 }
 
 .mobile-search-panel__results {
   padding: 0 16px 8px !important;
-  background: var(--surface-2);
   /* A flex column so the empty state can grow to fill the shared hub-tray
      height (see .mobile-search-empty). Percentage min-height against a flex
      item is shaky in WebKit, and this viewer also ships as an iOS webview. */
@@ -3622,18 +3615,12 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   text-align: center;
 }
 
-.mobile-search-empty strong {
-  color: var(--text-1);
-  /* Sheet scale (tokens.css): the empty state's lead line is a row title at
-     700 - it was 14/800, the one 800 on any sheet. */
-  font: var(--sheet-row-title);
-  font-weight: 700;
-}
-
+/* Owner 2026-10-02 (phone = desktop): one quiet line, the desktop's copy
+   and look ("Type a word to search", --text-3, 400), at the phone's 14px. */
 .mobile-search-empty span {
   max-width: 280px;
   color: var(--text-3);
-  font: var(--sheet-empty);
+  font: 400 14px/18px var(--sheet-font);
 }
 
 .mobile-pages-counter {
@@ -3998,15 +3985,16 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   box-sizing: border-box;
   padding: 0 10px;
   color: var(--text-1);
-  background: var(--surface-3);
-  border: 1px solid transparent;
+  /* A field in a panel: the well and the strong edge, as on desktop. */
+  background: var(--panel-well);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   outline: none;
   font: 400 16px/1 var(--sheet-font);
 }
 
 .mobile-bookmark-editor input:focus {
-  border-color: var(--border-strong);
+  border-color: var(--text-3);
 }
 
 .mobile-bookmark-editor button {
@@ -4086,7 +4074,7 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
      itself outward so ITS glyph ink lands on 16px too). */
   padding: 0 16px 0 calc(6.5px + var(--mobile-bookmark-depth-inset, 0px));
   box-sizing: border-box;
-  background: var(--surface-2);
+  background: var(--sheet-bg);
   border-bottom: 1px solid var(--border);
   transition: padding-left 180ms cubic-bezier(0.25, 0.5, 0.25, 1);
 }
@@ -4222,7 +4210,8 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
 }
 
 .mobile-bookmark-delete {
-  color: var(--danger-text);
+  /* A glyph takes --danger, a word --danger-text (hub.css rule; desktop). */
+  color: var(--danger);
 }
 
 /* Press feedback: glyphs shrink, text dims — never a plate. These beat the
@@ -4297,12 +4286,9 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
    Owner 2026-10-02: the cards are back (styles.css "SPACES PANEL — CARDS");
    the phone sizes them for a finger: 44px rows and region cards, 44px glyph
    columns, a 36x22 switch, 16px glyphs and a 16px field font (iOS never
-   zooms on focus). The sheet is --surface-2, so a card is a step DOWN
-   (--surface-1) and a region card is the sheet's own surface again. */
+   zooms on focus). The colours are the desktop's (styles.css .spaces-panel:
+   --panel-bg, a --panel-well card, a --panel-bg region card). */
 .spaces-panel.mobile-spaces-panel {
-  --sp-bg: var(--sheet-bg);
-  --sp-card-bg: var(--surface-1);
-  --sp-region-bg: var(--surface-2);
   --sp-edge: var(--sheet-pad-x);
   --sp-head-h: var(--sheet-head-h);
   --sp-head-btn-pad: 8px;
@@ -4330,10 +4316,11 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   --sp-sm-track-h: 20px;
   --sp-sm-knob: 16px;
   /* A space's name is always a rename field, and every phone field renders
-     at 16px so iOS never zooms on focus (index.html), so the name is 16/500
-     and its sizer (::after) measures the same. */
+     at 16px so iOS never zooms on focus (index.html), so the name is 16px
+     and its sizer (::after) measures the same. Weight 600, as on desktop
+     (owner 2026-10-02). */
   --sp-name-type: 16px;
-  --sp-name-weight: 500;
+  --sp-name-weight: 600;
   --sp-label-type: 14px;
   --sp-field-type: 16px;
   --sp-small-type: 12px;

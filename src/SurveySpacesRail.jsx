@@ -1411,7 +1411,7 @@ const SurveySpacesRail = ({
   // Locate is the original control restored (owner 2026-10-01: "its look
   // changed without being asked"): the magnifier, blue when the marker is on
   // the page (tap = go to it), orange when it is not (tap = place it).
-  const renderMobileSurveyMarker = (surveyMarker, category, markerName, fallbackName, { isOpen, dotColor, onOpen, onClose }) => {
+  const renderMobileSurveyMarker = (surveyMarker, category, markerName, fallbackName, { isOpen, dotColor, onOpen, onClose, grip = null }) => {
     const annotationId = surveyMarker.id;
     const markerModuleId = surveyMarker.moduleId || selectedModuleId;
     const isPlaced = Boolean(surveyMarker.bounds && surveyMarker.pageNumber);
@@ -1526,6 +1526,8 @@ const SurveySpacesRail = ({
         data-testid={isOpen ? 'mobile-survey-open-marker' : undefined}
       >
         <div className="mobile-survey-marker-line mobile-survey-detail-dropdown-wrap">
+          {/* The reorder grip in the gutter, as on desktop (owner 2026-10-02). */}
+          {grip}
           {/* Closed: the whole line is the open button (behind the controls). */}
           {!isOpen && (
             <button
@@ -1798,7 +1800,7 @@ const SurveySpacesRail = ({
                 left: mobileMode ? 0 : 'auto',
                 height: mobileMode ? 'var(--mobile-sheet-height, var(--mobile-panel-standard))' : '100%',
                 width: mobileMode ? '100%' : (isSurveyPanelCollapsed ? '48px' : '320px'),
-                background: 'var(--surface-1)',
+                background: 'var(--panel-bg)',
                 borderLeft: mobileMode ? 'none' : '1px solid var(--border)',
                 zIndex: mobileMode ? 6500 : 1,
                 display: 'flex',
@@ -1846,7 +1848,7 @@ const SurveySpacesRail = ({
                     // zoom, the page steppers and Fit below it. Left-aligning
                     // it to the rail's padding edge left it 3px off-axis.
                     justifyContent: mobileMode ? 'flex-start' : 'center',
-                    background: 'var(--surface-1)',
+                    background: 'var(--panel-bg)',
                     flexShrink: 0
                   }}>
                     <button
@@ -1878,7 +1880,7 @@ const SurveySpacesRail = ({
                     flexDirection: 'column',
                     padding: '8px',
                     gap: '4px',
-                    background: 'var(--surface-1)',
+                    background: 'var(--panel-bg)',
                     position: 'relative',
                     flex: 1
                   }}>
@@ -1949,7 +1951,7 @@ const SurveySpacesRail = ({
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'flex-start',
-                      background: 'var(--surface-1)',
+                      background: 'var(--panel-bg)',
                       flexShrink: 0
                     }}
                   >
@@ -2000,29 +2002,30 @@ const SurveySpacesRail = ({
                         template or in one). It used to take the header row
                         below. Same box and glyph rules as the collapse arrow. */}
                     {!mobileMode && (
+                      // Owner 2026-10-02 (phone = desktop): the red word the
+                      // phone shows, in the same spot the X held - 13/600
+                      // --danger-text, like .mobile-survey-exit.
                       <button
                         type="button"
                         onClick={exitSurveyMode}
                         className="survey-rail__exit"
-                        aria-label="Close Survey panel"
-                        {...tip('Exit Survey', 'below')}
                         style={{
                           marginLeft: 'auto',
                           background: 'transparent',
                           border: 'none',
-                          color: 'var(--text-2)',
+                          color: 'var(--danger-text)',
                           cursor: 'pointer',
-                          padding: 0,
-                          width: `${RAIL_CONTROL}px`,
+                          padding: '0 4px',
                           height: `${RAIL_CONTROL}px`,
                           borderRadius: 'var(--chrome-radius)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          transition: 'color 0.12s ease-out'
+                          font: '600 13px/1 var(--font-ui)',
+                          whiteSpace: 'nowrap'
                         }}
                       >
-                        <Icon name="close" size={16} color="currentColor" />
+                        Exit Survey
                       </button>
                     )}
                   </div>
@@ -3059,11 +3062,10 @@ const SurveySpacesRail = ({
                                         data-drag-rearrange-row
                                         className="survey-marker-category-row"
                                       >
-                                        {/* UX (mobile demo parity): no drag-reorder handle or
-                                            select circle on mobile — demo category rows lead
-                                            straight with the name (styles.ts:3113-3126); reorder
-                                            stays a desktop affordance. */}
-                                        {mobileMode ? null : isCategorySelectable ? (
+                                        {/* Owner 2026-10-02 (phone = desktop): the grip shows on
+                                            both platforms wherever a row can be reordered. The
+                                            select circle stays a desktop affordance. */}
+                                        {!mobileMode && isCategorySelectable ? (
                                           <SurveyMarkerLeadingSelect
                                             selected={isCategorySelectionSelected}
                                             category
@@ -3466,6 +3468,15 @@ const SurveySpacesRail = ({
                                                   return renderMobileSurveyMarker(surveyMarker, category, surveyMarkerName, fallbackName, {
                                                     isOpen: isOpenOnPhone,
                                                     dotColor,
+                                                    grip: (
+                                                      <DragRearrangeHandle
+                                                        {...attributes}
+                                                        {...listeners}
+                                                        isDragging={isDragging}
+                                                        title="Drag to rearrange"
+                                                        style={{ width: undefined, height: undefined, marginLeft: 0, color: 'var(--text-3)' }}
+                                                      />
+                                                    ),
                                                     onOpen: () => {
                                                       setMobileDetailDropdown(null);
                                                       // One open Survey Marker at a time.
@@ -4351,10 +4362,9 @@ const SurveySpacesRail = ({
                       minHeight: 0,
                       display: 'flex',
                       flexDirection: 'column',
-                      // Owner 2026-10-01 ("one panel colour"): on the phone the
-                      // picker is flat on the sheet's --sheet-bg like the
-                      // template view; it painted a darker --surface-1 over it.
-                      background: mobileMode ? 'transparent' : 'var(--surface-1)',
+                      // Owner 2026-10-01 ("one panel colour"): flat on the
+                      // panel colour, the same on both platforms.
+                      background: 'transparent',
                       fontFamily: FONT_FAMILY
                     }}>
                       {/* UX 2026-09-23 (owner: phone Survey panel integrated): the
@@ -4365,8 +4375,9 @@ const SurveySpacesRail = ({
                           massive cards should not be so big. Polish it like bookmarks
                           and spaces"): desktop is the same one-line 40px header as
                           Bookmarks and Spaces, a 13px title where it was 18px. */}
-                      <div className={mobileMode ? 'mobile-survey-head' : 'survey-rail__head'}>
+                      <div className={mobileMode ? 'mobile-survey-head mobile-survey-head--picker' : 'survey-rail__head'}>
                         {mobileMode ? (
+                          /* Owner 2026-10-02 (phone = desktop): centred, 600. */
                           <h2 className="mobile-survey-head-title">Choose a survey template</h2>
                         ) : (
                           /* Owner 2026-10-02: the prompt is centred; the

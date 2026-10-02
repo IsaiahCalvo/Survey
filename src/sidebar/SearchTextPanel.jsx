@@ -1815,13 +1815,13 @@ const SearchTextPanel = ({
       flexDirection: 'column',
       height: '100%',
       fontFamily: FONT_FAMILY,
-      background: 'var(--surface-1)'
+      background: 'var(--panel-bg)'
     }}>
       {/* Search Bar */}
       <div className={`search-text-panel__bar${mobileMode ? ' mobile-search-panel__bar' : ''}`} style={{
         padding: '12px 12px 0',
         boxSizing: 'border-box',
-        background: 'var(--surface-1)',
+        background: 'var(--panel-bg)',
         borderBottom: '1px solid var(--border)',
         flexShrink: 0
       }}>
@@ -1857,7 +1857,8 @@ const SearchTextPanel = ({
               height: '25px',
               boxSizing: 'border-box',
               padding: '0 30px 0 36px',
-              background: 'var(--surface-2)',
+              // A recessed well in the panel, the same token on the phone.
+              background: 'var(--panel-well)',
               border: '1px solid var(--border-strong)',
               borderRadius: '6px',
               fontSize: '13px',
@@ -1931,10 +1932,10 @@ const SearchTextPanel = ({
       >
         {!searchPending && !queryTooShort && typedQuery && !hasResults && (
           mobileMode ? (
+            // Owner 2026-10-02 (phone = desktop): the desktop's one quiet
+            // line, centred in the phone tray.
             <div className="mobile-search-empty">
-              <Icon name="search" size={44} color="var(--text-3)" />
-              <strong>No text matches</strong>
-              <span>Try another word from the PDF.</span>
+              <span>No matches for “{typedQuery}”</span>
             </div>
           ) : (
             <div className="search-text-panel__empty">
@@ -1946,13 +1947,11 @@ const SearchTextPanel = ({
         {!typedQuery && (
           mobileMode ? (
             <div className="mobile-search-empty">
-              <Icon name="search" size={54} color="var(--text-3)" />
-              <strong>Looking for a specific word?</strong>
-              <span>Search visible PDF text and jump to the matching page.</span>
+              <span>Type a word to search</span>
             </div>
           ) : (
             <div className="search-text-panel__empty">
-              Type a word to find it in the PDF
+              Type a word to search
             </div>
           )
         )}

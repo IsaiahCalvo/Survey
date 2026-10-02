@@ -91,7 +91,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--surface-1);
+  background: var(--panel-bg);
   border-bottom: 1px solid var(--border);
 }
 
@@ -164,7 +164,7 @@
   outline-offset: -2px;
 }
 
-/* The template menu: the rail's popover (--surface-2, the strong edge,
+/* The template menu: the rail's popover (--surface-3, the strong edge,
    radius 9, 5px pad) with 28px rows. Like the survey bar's module pill menu
    (.mobile-styled-select__menu), it is only as wide as its LONGEST template
    (max-content), capped at the rail's width; a name too long for that
@@ -185,10 +185,12 @@
   display: flex;
   flex-direction: column;
   gap: 1px;
-  background: var(--surface-2);
+  /* Floating over the --panel-bg rail: --surface-3 + the one popover shadow
+     (owner 2026-10-02, one surface rule). */
+  background: var(--surface-3);
   border: 1px solid var(--border-strong);
   border-radius: 9px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.48);
+  box-shadow: var(--shadow-popover);
 }
 
 .survey-rail .survey-rail__template-menu .survey-rail__template-option {
@@ -370,7 +372,7 @@
   display: flex;
   align-items: stretch;
   justify-content: space-between;
-  background: var(--surface-1);
+  background: var(--panel-bg);
   border-top: 1px solid var(--border);
 }
 
@@ -460,16 +462,16 @@
 }
 
 /* ---------- MENUS (Excel actions, Entity) -------------------------------- */
-/* The app's one popover: --surface-2, the strong edge, radius 9, 5px pad,
+/* The app's one popover: --surface-3, the strong edge, radius 9, 5px pad,
    26px rows (src/components/AnnotationDropdown.css). */
 
 .survey-rail .survey-marker-export-compact-menu,
 .survey-rail .survey-marker-entity-options {
   padding: 5px;
-  background: var(--surface-2);
+  background: var(--surface-3);
   border: 1px solid var(--border-strong);
   border-radius: 9px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.48);
+  box-shadow: var(--shadow-popover);
   box-sizing: border-box;
 }
 
@@ -552,7 +554,7 @@
   flex: 0 0 auto;
   color: var(--text-3);
   font-size: var(--sv-small-type);
-  font-weight: 600;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
@@ -758,7 +760,7 @@
 .survey-rail .survey-marker-category-main-count {
   margin: 0;
   font-size: var(--sv-small-type);
-  font-weight: 600;
+  font-weight: 500;
   opacity: 1;
   font-variant-numeric: tabular-nums;
 }
@@ -1091,6 +1093,7 @@
   padding: 0 2px 0 4px;
   color: var(--text-3);
   font-size: var(--sv-small-type);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1216,7 +1219,8 @@
   padding: 0 1px;
   display: flex;
   align-items: center;
-  background: var(--surface-3);
+  /* A recessed well in the panel, the same token as the phone's track. */
+  background: var(--panel-well);
   border-radius: 6px;
 }
 
@@ -1249,7 +1253,7 @@
 .survey-rail .survey-rail__answer.is-active {
   height: 18px;
   border-radius: 4px;
-  font-weight: 700;
+  font-weight: 600;
 }
 .survey-rail .survey-rail__answer.is-yes { color: var(--on-success-plate); background: var(--success-plate); }
 .survey-rail .survey-rail__answer.is-no { color: var(--on-danger-plate); background: var(--danger-plate); }

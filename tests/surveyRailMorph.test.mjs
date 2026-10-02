@@ -111,7 +111,10 @@ test('Categories head line: two bare icons, Select then Add category, in the sha
 test('an open Survey Marker\'s lines start under its entity dot, desktop and phone', () => {
   assert.match(desk, /--sv-entity-x: calc\(var\(--sv-grip-w\) \+ 1px\);/);
   assert.match(desk, /--sv-detail-indent: var\(--sv-entity-x\);/);
-  assert.match(phone, /--survey-marker-dot-x: calc\(var\(--sheet-pad-x\) \+ 12px\);/);
+  // Owner 2026-10-02: the phone line has the desktop's reorder grip in a
+  // 32px gutter, so the dot (and the lines under it) start after it.
+  assert.match(phone, /--survey-grip-w: 32px;/);
+  assert.match(phone, /--survey-marker-dot-x: calc\(var\(--survey-grip-w\) \+ 4px\);/);
   assert.match(phone, /\.mobile-survey-marker \.mobile-survey-check-item \{\s*padding-left: var\(--survey-marker-dot-x\);/);
   assert.match(phone, /\.mobile-survey-open-notes \.survey-marker-notes \{\s*padding-left: var\(--survey-marker-dot-x\);/);
 });

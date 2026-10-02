@@ -62,20 +62,17 @@
      12px step in from the sheet's 16px edge. */
   --survey-indent: calc(var(--sheet-pad-x) + 12px);
   /* An open Survey Marker's lines (its checklist, its note) start where its
-     ENTITY dot starts, x 28 (the 16px edge + the lead's 12px pad), not under
-     its name (owner, after bf3888e - desktop's rule, x 29 there). */
-  --survey-marker-dot-x: calc(var(--sheet-pad-x) + 12px);
+     ENTITY dot starts, not under its name (owner, after bf3888e - desktop's
+     rule). The dot sits after the reorder grip's 32px gutter (owner
+     2026-10-02: grips on both platforms): x 36. */
+  --survey-grip-w: 32px;
+  --survey-marker-dot-x: calc(var(--survey-grip-w) + 4px);
 }
 
 /* Flat on the sheet colour like Pages, Bookmarks, Spaces and Search (owner
    2026-10-01: "Go ahead and remove the box"). The sheet and its handle row
-   carry an inline --surface-1 shared with the desktop rail, hence the
-   !important; two classes so this also wins over the base sheet's own
-   !important --surface-1. */
-.mobile-pdf-sheet.mobile-survey-sheet,
-.mobile-pdf-sheet.mobile-survey-sheet > .mobile-pdf-sheet__handle {
-  background: var(--sheet-bg) !important;
-}
+   take --panel-bg inline, the desktop rail's colour, which is --sheet-bg, so
+   no override is needed here any more (owner 2026-10-02). */
 
 /* ---------- HEADER ------------------------------------------------------- */
 
@@ -111,6 +108,25 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The template picker's prompt is centred on the sheet at 600, like the
+   desktop rail's (owner 2026-10-02). Three columns keep it on the sheet's
+   true centre line with Exit Survey on the right. */
+.mobile-survey-sheet .mobile-survey-head--picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
+}
+
+.mobile-survey-sheet .mobile-survey-head--picker > h2.mobile-survey-head-title {
+  grid-column: 2;
+  text-align: center;
+  font-weight: 600;
+}
+
+.mobile-survey-sheet .mobile-survey-head--picker > .mobile-survey-head-actions {
+  grid-column: 3;
+  justify-self: end;
 }
 
 /* Full screen: "< Categories" stands ALONE on the line (owner 2026-10-01:
@@ -280,7 +296,7 @@
   background: var(--surface-3);
   border: 1px solid var(--border-strong);
   border-radius: 8px;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow-popover);
 }
 
 .mobile-survey-sheet .mobile-survey-sheet-export-menu > button {
@@ -332,7 +348,8 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: var(--text-1);
+  /* --text-2, the desktop rail's Export (owner 2026-10-02). */
+  color: var(--text-2);
   background: transparent;
   border: 0;
   font: var(--sheet-action);
@@ -444,6 +461,7 @@
   min-width: 0;
   color: var(--text-1);
   font: var(--sheet-row-title);
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -520,9 +538,9 @@
   box-sizing: border-box;
   padding: 0 12px 0 32px;
   color: var(--text-1);
-  /* A field is a --surface-1 well on the --surface-2 sheet (the Search
+  /* A field is a --panel-well on the --panel-bg sheet (the Search
      sheet's field). */
-  background: var(--surface-1);
+  background: var(--panel-well);
   border: 1px solid var(--border);
   border-radius: 10px;
   font: inherit;
@@ -696,9 +714,23 @@
   border-radius: 0;
 }
 
+/* The reorder grip, as on desktop (owner 2026-10-02): a 32px gutter at the
+   sheet's edge, the name on the sheet's text line (x 48). */
+.mobile-survey-sheet .survey-marker-category-row > [data-drag-rearrange-handle] {
+  flex: 0 0 var(--survey-grip-w);
+  width: var(--survey-grip-w) !important;
+  height: auto !important;
+  align-self: stretch;
+  margin: 0;
+  padding-left: 12px;
+  box-sizing: border-box;
+  justify-content: flex-start;
+  color: var(--text-3);
+}
+
 .mobile-survey-sheet .survey-marker-category-main {
   min-height: calc(var(--sheet-row-h) - 1px);
-  padding: 0 12px 0 var(--sheet-pad-x);
+  padding: 0 12px 0 calc(var(--sheet-row-text-x) - var(--survey-grip-w));
   gap: 8px;
   font: var(--sheet-row-title);
   -webkit-tap-highlight-color: transparent;
@@ -706,7 +738,8 @@
 
 .mobile-survey-sheet .survey-marker-category-main-label {
   flex: 1;
-  font-weight: 500;
+  /* 600, the desktop rail's category name (owner 2026-10-02). */
+  font-weight: 600;
 }
 
 .mobile-survey-sheet .survey-marker-category-main-count {
@@ -783,7 +816,7 @@
   align-items: center;
   gap: 4px;
   color: var(--text-1);
-  background: var(--surface-1);
+  background: var(--panel-well);
   border: 0;
   border-radius: 14px;
   font: var(--sheet-chip);
@@ -865,9 +898,12 @@
   position: relative;
   box-sizing: border-box;
   height: var(--sheet-row-h);
-  padding: 0 4px 0 var(--sheet-pad-x);
+  padding: 0 4px 0 0;
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) 36px auto 36px;
+  /* [grip] [dot] [name] [Locate] [count] [chevron]: the grip takes the
+     category grips' gutter and the name starts one 12px step in from the
+     category's (x 60). */
+  grid-template-columns: var(--survey-grip-w) 28px minmax(0, 1fr) 36px auto 36px;
   align-items: center;
   column-gap: 0;
   /* Its hairline is the list row's own (the sortable wrapper draws it). */
@@ -910,13 +946,23 @@
 
 /* The lead: the entity dot (x 28), then the entity menu's chevron. Open, it
    is the entity button, its hit area reaching back to the sheet's edge. */
+.mobile-survey-sheet .mobile-survey-marker-line > [data-drag-rearrange-handle] {
+  width: var(--survey-grip-w) !important;
+  height: 44px !important;
+  margin: 0;
+  padding-left: 12px;
+  box-sizing: border-box;
+  justify-content: flex-start;
+  color: var(--text-3);
+}
+
 .mobile-survey-sheet .mobile-survey-marker-lead,
 .mobile-survey-sheet .mobile-survey-marker-lead:active {
-  width: 36px;
+  width: 28px;
   height: 44px;
   box-sizing: border-box;
   margin: 0;
-  padding: 0 0 0 12px;
+  padding: 0 0 0 4px;
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -980,7 +1026,7 @@
 }
 
 .mobile-survey-sheet .mobile-survey-marker.is-open .mobile-survey-marker-field {
-  background: var(--surface-1);
+  background: var(--panel-well);
 }
 
 /* The name field, the same element closed (read-only) and open. Every phone
@@ -1147,7 +1193,7 @@
   background: var(--surface-3);
   border: 1px solid var(--border-strong);
   border-radius: 8px;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow-popover);
 }
 
 .mobile-survey-sheet .mobile-survey-detail-entity-menu {
@@ -1235,18 +1281,18 @@
   align-items: center;
   gap: 8px;
   background: transparent;
+  /* No hairlines between checklist rows, as on desktop (owner 2026-10-02). */
   border: 0;
-  border-top: 1px solid var(--border);
   border-radius: 0;
 }
 
 .mobile-survey-sheet .mobile-survey-check-text {
   flex: 1;
   min-width: 0;
-  color: var(--text-1);
-  /* The sheet scale's row title: 500 14px/18px. */
+  /* The desktop's checklist line (400, --text-2) at the phone's 14px. */
+  color: var(--text-2);
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 400;
   line-height: 18px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1262,7 +1308,8 @@
   display: flex;
   align-items: center;
   gap: 0;
-  background: var(--surface-1);
+  /* The recessed well, the same token as the desktop's track. */
+  background: var(--panel-well);
   border-radius: 6px;
 }
 
@@ -1295,7 +1342,7 @@
    the desktop rail (surveyRailPanel.css) and the archived-answer badge. */
 .mobile-survey-sheet .mobile-survey-check-btn.is-active {
   height: 26px;
-  border-radius: 5px;
+  border-radius: 4px;
 }
 .mobile-survey-sheet .mobile-survey-check-btn.is-yes { color: var(--on-success-plate); background: var(--success-plate); }
 .mobile-survey-sheet .mobile-survey-check-btn.is-no { color: var(--on-danger-plate); background: var(--danger-plate); }

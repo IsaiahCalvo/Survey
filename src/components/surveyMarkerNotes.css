@@ -34,8 +34,9 @@
   min-width: 0;
   display: flex;
   align-items: flex-start;
-  /* The well the name field uses: one step below the panel. */
-  background: var(--surface-1);
+  /* The well the name field uses: one step below the panel (--panel-well,
+     the same on both platforms). */
+  background: var(--panel-well);
   border: 1px solid transparent;
   border-radius: 8px;
   transition: border-color 120ms ease-out;
@@ -69,7 +70,7 @@
   display: grid;
   place-items: center;
   color: var(--success-text);
-  background: var(--surface-1);
+  background: var(--panel-well);
   border-radius: 0 8px 8px 0;
   pointer-events: none;
   opacity: 0;
@@ -148,7 +149,7 @@
 }
 
 .survey-notes--desktop .survey-notes__saved {
-  background: var(--surface-2);
+  background: var(--panel-well);
   border-radius: 0 6px 6px 0;
 }
 
@@ -253,7 +254,7 @@
   place-items: center;
   overflow: hidden;
   color: var(--text-2);
-  background: var(--surface-1);
+  background: var(--panel-well);
   border: 0;
   border-radius: 8px;
   cursor: pointer;
@@ -373,7 +374,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--surface-1);
+  background: var(--panel-well);
   border-radius: 8px;
 }
 
@@ -463,7 +464,7 @@
 .survey-media-sheet__group {
   overflow: hidden;
   display: grid;
-  background: var(--surface-2);
+  background: var(--sheet-bg);
   border-radius: 14px;
 }
 
@@ -505,7 +506,7 @@
 .survey-media-sheet__cancel {
   justify-content: center;
   font-weight: 600;
-  background: var(--surface-2);
+  background: var(--sheet-bg);
   border-radius: 14px;
 }
 
@@ -520,7 +521,7 @@
   background: var(--surface-3);
   border: 1px solid var(--border-strong);
   border-radius: 8px;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow-popover);
 }
 
 .survey-media-menu > button {
@@ -691,13 +692,9 @@
   z-index: 9200;
 }
 
-/* Desktop: the rail is the --surface-1 panel, so its wells step up one
-   (the Entity field's grey). */
-.survey-marker-notes--desktop .survey-notes__box:not(.is-readonly),
-.survey-marker-notes--desktop .survey-media-tile,
-.survey-marker-notes--desktop .survey-media-recorder {
-  background: var(--surface-2);
-}
+/* Desktop wells used to step UP from a --surface-1 rail here. Both
+   platforms share --panel-bg / --panel-well now (owner 2026-10-02), so the
+   rule above serves the desktop too. */
 
 /* Thumbnails under the note, only once there is media: 56px on the phone,
    48px in the 320px desktop rail (5 to a line), wrapping. */

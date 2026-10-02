@@ -1317,7 +1317,7 @@ const SpacesPanel = ({
         flex: mobileMode ? 1 : undefined,
         minHeight: 0,
         fontFamily: FONT_FAMILY,
-        background: mobileMode ? 'var(--surface-2)' : 'var(--surface-1)'
+        background: 'var(--panel-bg)'
       }}
     >
       {/* UX 2026-09-23 (owner): the Bookmarks header pattern - [+ Add] on the

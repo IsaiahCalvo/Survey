@@ -117,7 +117,7 @@ test('the fitted tool strip paints 20px controls and hits them at 44px', () => {
   // (the hairline under it) instead of #202126 and #090a0d, which were this one
   // stylesheet's own greys. The GEOMETRY this assertion exists for — paint to
   // 35px, a 1px rule to 36px, transparent after — is byte-for-byte unchanged.
-  assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,3000}background: linear-gradient\(to bottom, var\(--surface-1\) 0 35px, var\(--surface-0\) 35px 36px, transparent 36px\);/);
+  assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,3000}background: linear-gradient\(to bottom, var\(--panel-bg\) 0 35px, var\(--surface-0\) 35px 36px, transparent 36px\);/);
   // The 8px below the painted bar belongs to the page: the bar clips itself to
   // its painted band, which removes that strip from hit testing as well as from
   // painting, while leaving the bar a scroll container.
