@@ -67,6 +67,8 @@ import {
   createOccurrenceKeyer,
   seedColorMaps,
   resolveTitleCommit,
+  fingerprintTemplates,
+  workingCopyDiffers,
 } from './templatesEditorReload';
 import CompactColorPicker from '../components/CompactColorPicker';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
@@ -397,7 +399,7 @@ function SortableModuleTab({
         <span className="hub-autowidth module-tab-name" data-value={mod.name} style={{ fontSize: 12, fontWeight: isOn ? 500 : 400 }}>
           <input
             size={1}
-            className="inline-edit"
+            className="inline-edit hub-rename"
             defaultValue={mod.name}
             autoFocus
             onFocus={(e) => e.currentTarget.select()}
@@ -407,13 +409,11 @@ function SortableModuleTab({
               if (e.key === 'Enter') e.currentTarget.blur();
               else if (e.key === 'Escape') onCancelRename();
             }}
+            /* The dotted rename line is .hub-rename (hub.css), shared with
+               every other rename field. */
             style={{
-              background: 'transparent',
-              border: 0,
               padding: '3px 0',
               color: activeInk,
-              borderBottom: '1px solid var(--text-3)',
-              outline: 'none',
             }}
           />
         </span>
@@ -730,6 +730,14 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
   );
 }
 
+/* A colour pick that lands on the colour the layer already has is not an
+   edit (owner 2026-10-02: only a real change asks to be saved). */
+const sameEntityColour = (current, color, opacity) => (
+  !!current
+  && String(current.color || '').toLowerCase() === String(color || '').toLowerCase()
+  && Math.abs((current.opacity ?? 0) - (opacity ?? 0)) < 0.0005
+);
+
 const PALETTE = [
   '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e', '#10b981', '#14b8a6',
   '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#ec4899', '#f43f5e', '#64748b',
@@ -768,9 +776,15 @@ export default function TemplatesEditor({
   const [rich, setRich] = useState(() => buildRich(applyTemplateOrderPreference(templates, user), mintId));
   const [search, setSearch] = useState('');
   const [modSearch, setModSearch] = useState('');
-  /* True once the user edits anything; drives the Save / Cancel bar. Reset
-     whenever the editor reloads from props, or on Save / Cancel. */
-  const [dirty, setDirty] = useState(false);
+  /* `editFlag` turns on once any edit action runs and is reset whenever the
+     editor reloads from props, or on Save / Cancel (all the BL-23 rules below
+     still govern it). It is NOT the Save bar on its own any more: `dirty`
+     (declared after the colour maps) is editFlag AND a real difference from
+     `baseline` — the last loaded / saved copy, one fingerprint per template.
+     Owner 2026-10-02: double-clicking a module and clicking off, or dragging
+     a row away and back, must not ask to save; only a real change does. */
+  const [editFlag, setDirty] = useState(false);
+  const [baseline, setBaseline] = useState(() => fingerprintTemplates(rich));
   /* BL-23 — monotonically increasing edit revision. Save/Delete capture it at
      dispatch and clear (or restore) dirty only if no newer edit happened while
      the request was in flight; otherwise an older promise settling would clear
@@ -929,6 +943,20 @@ export default function TemplatesEditor({
   const [layerTab, setLayerTab] = useState({});       // { entityId: 'fill' | 'border' }
   const [borderColors, setBorderColors] = useState({});
   const [matchFill, setMatchFill] = useState({});     // { entityId: bool }
+  /* Ids of the blank placeholder checklist rows THIS session added and the
+     user has not typed into yet (rules at addItemToModule / discardFreshItem).
+     Declared here because the real-change check below leaves them out. */
+  const freshBlankItemsRef = useRef(new Set());
+  /* The Save / Cancel bar, the reload guard and Cancel all read `dirty`: an
+     edit happened AND the working copy (with its colour maps) differs from
+     the baseline. Change-then-change-back is clean again. */
+  const workingFingerprint = useMemo(
+    () => fingerprintTemplates(rich, { roleColors, borderColors, matchFill }, freshBlankItemsRef.current),
+    [rich, roleColors, borderColors, matchFill],
+  );
+  const dirty = editFlag && workingCopyDiffers(workingFingerprint, baseline);
+  /* The baseline a save makes once it lands: exactly the copy it sent. */
+  const fingerprintOf = (list) => fingerprintTemplates(list, { roleColors, borderColors, matchFill }, freshBlankItemsRef.current);
 
   const closeMobileTemplate = useCallback(() => {
     setMobileTemplateOpen(false);
@@ -988,6 +1016,7 @@ export default function TemplatesEditor({
     setSelMods(new Set());
     setModRename(null);
     setDirty(false);
+    setBaseline(fingerprintTemplates(next, seeded, freshBlankItemsRef.current));
     setPersistenceError('');
   }, [user?.id, user?.email, mintId]);
   const reloadFromProps = useCallback(() => {
@@ -1019,6 +1048,9 @@ export default function TemplatesEditor({
       return add.length ? [...prev, ...add] : prev;
     });
     const seeded = seedColorMaps(res.appended);
+    /* A template the host added is part of what is saved, not a local edit. */
+    const appendedBaseline = fingerprintTemplates(res.appended, seeded);
+    setBaseline((prev) => ({ ...appendedBaseline, ...prev }));
     setRoleColors((prev) => ({ ...seeded.roleColors, ...prev }));
     setBorderColors((prev) => ({ ...seeded.borderColors, ...prev }));
     setMatchFill((prev) => ({ ...seeded.matchFill, ...prev }));
@@ -1249,11 +1281,14 @@ export default function TemplatesEditor({
     markEdited();
     setRich(next);
     seedClonedEntityStyles(clonedEntities);
+    const savedBaseline = fingerprintOf(next);
     if (onSaveTemplates) {
       const rev = editRevisionRef.current;
       const req = ++saveReqSeqRef.current;
       dispatchTemplatesSave(next.map(richToTemplate))
         .then(() => {
+          // What landed is the new baseline, even if newer edits followed.
+          if (saveReqSeqRef.current === req) setBaseline(savedBaseline);
           if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
             setDirty(false);
             setPersistenceError('');
@@ -1268,6 +1303,7 @@ export default function TemplatesEditor({
         });
     } else {
       setDirty(false);
+      setBaseline(savedBaseline);
     }
   };
   /* The five entities every new template starts with. Same set the hub used to
@@ -1339,6 +1375,13 @@ export default function TemplatesEditor({
       const done = Array.isArray(archived) ? new Set(archived) : ids;
       if (done.size === 0) return;
       setRich((prev) => prev.filter((t) => !done.has(t.id)));
+      /* Archived by the hub, so gone from the saved set too — the list
+         shrinking must not read as an unsaved change. */
+      setBaseline((prev) => {
+        const nextBaseline = { ...prev };
+        done.forEach((id) => { delete nextBaseline[id]; });
+        return nextBaseline;
+      });
       return;
     }
     /* Signed-out / local-only fallback keeps the original bundle-save delete.
@@ -1352,11 +1395,13 @@ export default function TemplatesEditor({
     const next = rich.filter((t) => !ids.has(t.id));
     markEdited();
     setRich(next);
+    const savedBaseline = fingerprintOf(next);
     if (onSaveTemplates) {
       const rev = editRevisionRef.current;
       const req = ++saveReqSeqRef.current;
       dispatchTemplatesSave(next.map(richToTemplate))
         .then(() => {
+          if (saveReqSeqRef.current === req) setBaseline(savedBaseline);
           if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
             setDirty(false);
             setPersistenceError('');
@@ -1371,6 +1416,7 @@ export default function TemplatesEditor({
         });
     } else {
       setDirty(false);
+      setBaseline(savedBaseline);
     }
   };
 
@@ -1394,6 +1440,8 @@ export default function TemplatesEditor({
   const renameModule = (id, name) => {
     const v = name.trim();
     if (!v || !tpl) { setModRename(null); return; }
+    // Same name (a double-click and click away): nothing to save.
+    if (!tpl.modules.some((m) => m.id === id && m.name !== v)) { setModRename(null); return; }
     mutateTpl(tpl.id, (t) => {
       const modules = t.modules.map((m) => (
         m.id === id && m.name !== v ? { ...m, name: v } : m
@@ -1498,6 +1546,7 @@ export default function TemplatesEditor({
   const renameCategoryInModule = (moduleIndex, ci, name) => {
     const v = name.trim();
     if (!v) return;
+    if (tpl?.modules?.[moduleIndex]?.categories?.[ci]?.name === v) return;
     mutateModuleAt(moduleIndex, (m) => {
       const categories = m.categories.slice();
       if (categories[ci] && categories[ci].name !== v) categories[ci] = { ...categories[ci], name: v };
@@ -1533,6 +1582,7 @@ export default function TemplatesEditor({
     const categories = orderedMods[moduleIndex]?.categories || [];
     const from = categories.findIndex((category) => category.id === activeId);
     const to = categories.findIndex((category) => category.id === overId);
+    if (moveItemById(categories, activeId, overId) === categories) return;   // dropped where it was
 
     mutateModuleAt(moduleIndex, (module) => {
       const nextCategories = moveItemById(module.categories || [], activeId, overId);
@@ -1562,7 +1612,7 @@ export default function TemplatesEditor({
      from such a row deletes it silently, and neither adding nor deleting it
      raises the Save bar. A blank row that arrived from the backend is not in the
      set, so it keeps the old behaviour and its removal is a real edit. */
-  const freshBlankItemsRef = useRef(new Set());
+  /* (freshBlankItemsRef is declared with the colour maps, above.) */
   const isFreshBlankItem = (itemId) => freshBlankItemsRef.current.has(itemId);
   /* Put the caret in a checklist row by id. The fresh blank row MUST be focused
      the moment it appears: the only thing that dismisses it is losing focus
@@ -1596,6 +1646,8 @@ export default function TemplatesEditor({
   };
   const addItem = (ci) => addItemToModule(openMod, ci);
   const renameItemInModule = (moduleIndex, ci, itemId, text) => {
+    const current = tpl?.modules?.[moduleIndex]?.categories?.[ci]?.items?.find((it) => it.id === itemId);
+    if (current && current.text === text) return;   // unchanged: nothing to save
     // Real text: the row has graduated from placeholder to content, so it loses
     // the silent-discard exemption and this edit does raise the Save bar.
     freshBlankItemsRef.current.delete(itemId);
@@ -1664,6 +1716,8 @@ export default function TemplatesEditor({
   };
   const reorderItemsInModule = (moduleIndex, ci, activeId, overId) => {
     if (!activeId || !overId || activeId === overId) return;
+    const currentItems = (tpl?.modules?.[moduleIndex]?.categories?.[ci]?.items || []).filter(isActiveChecklistItem);
+    if (moveItemById(currentItems, activeId, overId) === currentItems) return;   // dropped where it was
     mutateCategoryInModule(moduleIndex, ci, (c) => {
       const activeItems = (c.items || []).filter(isActiveChecklistItem);
       const archivedItems = (c.items || []).filter(isArchivedChecklistItem);
@@ -1753,12 +1807,14 @@ export default function TemplatesEditor({
   const renameEntity = (eid, role) => {
     const v = role.trim();
     if (!v || !tpl) return;
+    if (tpl.roster.some((r) => r.id === eid && r.role === v)) return;   // unchanged
     mutateTpl(tpl.id, (t) => ({
       ...t, roster: t.roster.map((r) => (r.id === eid ? (r.role === v ? r : { ...r, role: v }) : r)),
     }));
   };
   const setEntityColor = (eid, color) => {
     if (!tpl) return;
+    if (tpl.roster.some((r) => r.id === eid && r.color === color)) return;   // unchanged
     mutateTpl(tpl.id, (t) => ({
       ...t, roster: t.roster.map((r) => (r.id === eid ? { ...r, color } : r)),
     }));
@@ -1794,6 +1850,7 @@ export default function TemplatesEditor({
   };
   const reorderEntities = (activeId, overId) => {
     if (!activeId || !overId || activeId === overId || !tpl) return;
+    if (moveItemById(tpl.roster || [], activeId, overId) === tpl.roster) return;   // dropped where it was
     mutateTpl(tpl.id, (t) => {
       const nextRoster = moveItemById(t.roster || [], activeId, overId);
       return nextRoster === t.roster ? t : { ...t, roster: nextRoster };
@@ -1888,11 +1945,15 @@ export default function TemplatesEditor({
        unsaved edits (then-branch) or re-dirty an editor whose newer save
        already succeeded (catch-branch). On failure the edits and the Save bar
        survive, so the user can retry. */
-    if (!onSaveTemplates) { setDirty(false); return; }
+    /* The saved copy becomes the baseline once it lands, so a newer edit that
+       puts a field back the way it was before this save still counts. */
+    const savedBaseline = fingerprintOf(payload);
+    if (!onSaveTemplates) { setDirty(false); setBaseline(savedBaseline); return; }
     const rev = editRevisionRef.current;
     const req = ++saveReqSeqRef.current;
     dispatchTemplatesSave(payload.map(richToTemplate))
       .then(() => {
+        if (saveReqSeqRef.current === req) setBaseline(savedBaseline);
         if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
           setDirty(false);
           setPersistenceError('');
@@ -2273,7 +2334,7 @@ export default function TemplatesEditor({
                   <input
                     size={1}
                     key={tpl.id}
-                    className="inline-edit cat-title"
+                    className="inline-edit cat-title hub-rename"
                     data-template-title
                     {...templateTitleField(tpl)}
                     title="Click to rename"
@@ -2420,7 +2481,7 @@ export default function TemplatesEditor({
                         <span className="hub-autowidth tpl-cat-name" data-value={c.name}>
                           <input
                             size={1}
-                            className="inline-edit cat-title"
+                            className="inline-edit cat-title hub-rename"
                             data-category-name-id={c.id}
                             defaultValue={c.name}
                             key={c.id + ':' + c.name}
@@ -2507,7 +2568,7 @@ export default function TemplatesEditor({
                                   style={{ width: 18, height: 18 }}
                                 />
                                 <input
-                                  className="inline-edit"
+                                  className="inline-edit hub-rename"
                                   data-checklist-item-id={it.id}
                                   defaultValue={it.text}
                                   placeholder="Add checklist item"
@@ -2701,7 +2762,7 @@ export default function TemplatesEditor({
                         <span className="hub-autowidth tpl-entity-name" data-value={r.role || 'Entity name'}>
                           <input
                             size={1}
-                            className="inline-edit cat-title"
+                            className="inline-edit cat-title hub-rename"
                             data-entity-name-id={r.id}
                             defaultValue={r.role}
                             key={r.id + ':' + r.role}
@@ -2752,6 +2813,8 @@ export default function TemplatesEditor({
                            updates live. No-op while a border is matched to the fill. */
                         const applyColor = (color, opacity) => {
                           if (isBorderMatched) return;
+                          // The colour it already is (a click on the current swatch): no edit.
+                          if (sameEntityColour(activeData, color, opacity)) return;
                           if (layer === 'border') {
                             setBorderColors({ ...borderColors, [r.id]: { color, opacity } });
                           } else {
@@ -2928,7 +2991,7 @@ export default function TemplatesEditor({
                     <input
                       size={1}
                       key={`mobile-template-title-${tpl.id}`}
-                      className="templates-mobile-title-input"
+                      className="templates-mobile-title-input hub-rename"
                       data-template-title
                       {...templateTitleField(tpl)}
                       title="Tap to rename"
@@ -3078,7 +3141,7 @@ export default function TemplatesEditor({
                                 <span className="hub-autowidth templates-mobile-category-name" data-value={c.name}>
                                   <input
                                     size={1}
-                                    className="templates-mobile-inline-input"
+                                    className="templates-mobile-inline-input hub-rename"
                                     data-mobile-category-id={c.id}
                                     data-category-name-id={c.id}
                                     defaultValue={c.name}
@@ -3124,7 +3187,7 @@ export default function TemplatesEditor({
                                           <div data-drag-rearrange-row className="templates-mobile-item-row">
                                             <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 20, height: 20 }} />
                                             <input
-                                              className="templates-mobile-inline-input"
+                                              className="templates-mobile-inline-input hub-rename"
                                               data-checklist-item-id={it.id}
                                               defaultValue={it.text}
                                               placeholder="Add checklist item"
@@ -3273,7 +3336,7 @@ export default function TemplatesEditor({
                                 <span className="hub-autowidth templates-mobile-entity-name" data-value={r.role || 'Entity name'}>
                                   <input
                                     size={1}
-                                    className="templates-mobile-inline-input"
+                                    className="templates-mobile-inline-input hub-rename"
                                     data-entity-name-id={r.id}
                                     defaultValue={r.role}
                                     key={`mobile-entity-${r.id}:${r.role}`}
@@ -3313,6 +3376,7 @@ export default function TemplatesEditor({
                                 const activeData = isBorderMatched ? fillData : (layer === 'border' ? borderData : fillData);
                                 const applyColor = (color, opacity) => {
                                   if (isBorderMatched) return;
+                                  if (sameEntityColour(activeData, color, opacity)) return;
                                   if (layer === 'border') setBorderColors({ ...borderColors, [r.id]: { color, opacity } });
                                   else {
                                     setRoleColors({ ...roleColors, [r.id]: { color, opacity } });

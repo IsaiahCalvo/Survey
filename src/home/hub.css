@@ -2284,9 +2284,6 @@
     padding: 0 0 1px;
   }
 
-  .survey-hub .projects-mobile-title-input:focus {
-    border-bottom-color: var(--text-3);
-  }
 
   .survey-hub .projects-mobile-drag-slot {
     width: 24px;
@@ -2462,20 +2459,15 @@
   .survey-hub .projects-mobile-project-card .projects-mobile-title-input {
     font-size: 17px;
     font-weight: 750;
-    line-height: 22px;
+    /* 20px + the rename field's 1px top and bottom edges = the old 22px. */
+    line-height: 20px;
     letter-spacing: -0.01em;
     padding: 0;
-    border-bottom: 0;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-
-  /* Owner ruling: a field shows focus by its caret only — no underline, no
-     ring, no gold. */
-  .survey-hub .projects-mobile-project-card .projects-mobile-title-input:focus {
-    border-bottom: 0;
-    outline: none;
-  }
+  /* Owner 2026-10-02 replaces the earlier "caret only" ruling: renaming a
+     project shows the same dotted line as every other rename (.hub-rename). */
 
   .survey-hub .projects-mobile-project-head > span {
     color: var(--ink-200);
@@ -3189,10 +3181,7 @@
     border-top: 1px solid transparent;
   }
 
-  .survey-hub .templates-mobile-title-input:focus,
-  .survey-hub .templates-mobile-inline-input:focus {
-    border-bottom-color: var(--text-3);
-  }
+  /* Underline at rest / typing: the shared .hub-rename look. */
 
   /* UX (KAL-69): greyed italic placeholder, matching the desktop editor, so an
      empty required row reads as "type here" rather than as short real text. */
@@ -4914,6 +4903,32 @@ button[title="Edit color"]:active > span,
 }
 /* A title keeps a little air after its last letter, then stops. */
 .hub-title-field { --aw-pad: 2px; max-width: 100%; }
+
+/* ONE rename look for every name you can rename in place (owner 2026-10-02:
+   "I just want a straight line underneath, like renaming modules is. I like
+   the dotted line versus the solid line."): template title, module tab,
+   category, entity, checklist item, project title - desktop and phone.
+   No box, no hover plate, square ends (a radius bent the underline up at
+   the corners), a straight 1px DOTTED line: grey while you type, fainter on
+   a mouse hover, nothing at rest. Never gold. The transparent top edge
+   matches the bottom one so the text stays on the row's centre line and
+   nothing shifts between rest, hover and typing. */
+.survey-hub input.hub-rename {
+  background: transparent;
+  border: 0;
+  border-top: 1px dotted transparent;
+  border-bottom: 1px dotted transparent;
+  border-radius: 0;
+  box-shadow: none;
+  outline: none;
+}
+@media (hover: hover) {
+  .survey-hub input.hub-rename:hover { border-bottom-color: var(--border-strong); }
+}
+.survey-hub input.hub-rename:focus {
+  background: transparent;
+  border-bottom-color: var(--text-3);
+}
 
 /* Section header row. */
 .survey-hub .hub-section-head {
