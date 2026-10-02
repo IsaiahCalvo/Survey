@@ -293,6 +293,39 @@
   --drag-slot-bg: rgba(255, 255, 255, 0.02);
   --drag-slot-border: 1px dashed var(--border-strong);
 
+  /* --- ONE UI FONT (owner 2026-10-02, UI consistency audit) -------------- */
+  /* Every piece of interface text - desktop, web and phone - uses the
+     system font: San Francisco on Apple, Segoe UI on Windows, Roboto on
+     Android. The home screens used to ask for Helvetica Neue, which Windows
+     does not have (it fell back to Arial), while the viewer used the system
+     font, so the same app showed two typefaces.
+     NOT for annotations: Fabric / SVG text keeps its single-name fonts
+     (CLAUDE.md, "fontFamily MUST be a single font name"). */
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  /* --- DESKTOP ROW SCALE (owner 2026-10-02, UI consistency audit) -------- */
+  /* Ten different one-line heights were in use on desktop (26 to 42). One
+     scale now; the phone has its own (--sheet-*, below), sized for a finger.
+     Divider lines sit INSIDE these heights, never on top of them. */
+  --row-h: 32px;          /* a normal one-line row in a side panel */
+  --row-h-sub: 28px;      /* a nested row: a Survey Marker, a page, a detail line */
+  --row-h-page: 40px;     /* a panel header, a one-line row in the main area */
+  --row-h-2line: 50px;    /* a row with a title and a meta line */
+  --row-pad-x: 12px;      /* text inset from the panel edge */
+  --row-gap: 8px;
+  --row-icon: 14px;
+  --row-text-x: 40px;     /* where the text starts on a row with a grip and an icon */
+  --menu-item-h: 28px;    /* one item in a popup menu */
+
+  /* --- CORNERS (owner 2026-10-02) --------------------------------------- */
+  /* Five radii. A control's corner is 6; a small chip or a menu item 4; a
+     card or a popup 8; a phone sheet 16; a pill 999. */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
   /* --- PHONE SHEET SCALE (owner 2026-10-01) ---------------------------- */
   /* "Consistency across all bottom panels (text sizes and spacing)." Every
      phone bottom sheet - Pages / Search / Bookmarks, Spaces, Survey, History,
@@ -306,7 +339,10 @@
      a token: meta, section labels and empty states are --text-3.
      Phone FIELDS are not on this scale: they render at 16px so iOS never
      zooms on focus (index.html); a field that must look smaller is drawn at
-     a scale, see .mobile-survey-detail-name. Desktop does not use these. */
+     a scale, see .mobile-survey-detail-name. Desktop uses the --row-* scale
+     above instead. Owner 2026-10-02: every phone row a finger taps is 44,
+     including nested rows and menu items; --sheet-row-h-sub (40) is left for
+     a line that is not tapped on its own. */
   --sheet-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --sheet-bg: var(--surface-2);
   --sheet-head-h: 44px;
@@ -315,7 +351,12 @@
   --sheet-section: 600 12px/16px var(--sheet-font);    /* --text-3, no caps, no tracking */
   --sheet-label: 600 11px/1 var(--sheet-font);         /* a field label in a settings card */
   --sheet-row-h: 44px;
-  --sheet-row-h-sub: 40px;                            /* a nested line: a page, a Survey Marker, a check */
+  --sheet-row-h-sub: 40px;                            /* a line that is not tapped on its own. The
+                                                         Spaces page line and a Survey check still
+                                                         read it; the phone-sheet pass moves them to 44 */
+  --sheet-menu-item-h: 44px;                          /* one item in a phone popup menu, 15px text */
+  --mobile-row-2line-h: 64px;                         /* a home list row with a title and a meta line */
+  --sheet-row-text-x: 48px;                           /* where the text starts on a row with a grip and an icon */
   --sheet-row-title: 500 14px/18px var(--sheet-font);
   --sheet-row-title-strong: 600 14px/18px var(--sheet-font); /* the open / current row */
   --sheet-row-text: 400 14px/18px var(--sheet-font);   /* running text in a row: a search hit, a nested name */

@@ -36,10 +36,11 @@
    ========================================================================== */
 
 .survey-rail {
-  --sv-edge: 12px;        /* text / glyph inset from the panel edge */
-  --sv-head-h: 40px;      /* Bookmarks + Spaces header height */
-  --sv-row-h: 32px;       /* a template / category line (Spaces row) */
-  --sv-line-h: 28px;      /* a Survey Marker line, a detail line */
+  /* The rail reads the shared desktop row scale (src/styles/tokens.css). */
+  --sv-edge: var(--row-pad-x);    /* 12: text / glyph inset from the panel edge */
+  --sv-head-h: var(--row-h-page); /* 40: the Bookmarks + Spaces header height */
+  --sv-row-h: var(--row-h);       /* 32: a template / category line */
+  --sv-line-h: var(--row-h-sub);  /* 28: a Survey Marker line, a detail line */
   --sv-col: 32px;         /* right-hand glyph column (chevron / locate) */
   --sv-col-sm: 24px;      /* a smaller glyph column (notes, review) */
   --sv-grip-w: 28px;      /* category grip column */
