@@ -162,7 +162,6 @@ const SVGSelectionOverlay = memo(({
     if (id === 'mr') return { x: pos.x + out.x, y: pos.y };
     return pos;
   };
-  const rotationArmAnchor = edgeHandlePos('mt');
 
   // One ELEMENT TYPE for an edge grabber, whatever shape it is wearing. A dot
   // is a <rect> with rx = half its side, which renders as a circle — so when a
@@ -455,16 +454,8 @@ const SVGSelectionOverlay = memo(({
             {/* Invisible hit pad — same grab area rule as the resize
                 grabbers, drawn under the visible circle. */}
             {renderHitPad('mtr', handles.mtr, rotationHitPad, 'crosshair')}
-            {/* Connector line from top-center of bbox to rotation handle */}
-            <line
-              x1={rotationArmAnchor.x}
-              y1={rotationArmAnchor.y}
-              x2={handles.mtr.x}
-              y2={handles.mtr.y}
-              stroke="#d1d1d1"
-              strokeWidth={1 * is}
-              style={{ pointerEvents: 'none' }}
-            />
+            {/* UX 2026-10-02 (owner): no connector line to the box — the
+                grabber floats on its own; position and hit pad unchanged. */}
             {/* Rotation circle */}
             <circle
               cx={handles.mtr.x}

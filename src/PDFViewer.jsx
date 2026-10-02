@@ -320,7 +320,7 @@ import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/u
 import { usePageOperations } from './hooks/usePageOperations.js';
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
 import { getPageViewBase } from './utils/pageViewDocument.js';
-import { getSelectFamilyTransition, loadSelectMode, saveSelectMode } from './utils/selectModes.js';
+import { getSelectFamilyTransition, getToolSwitchSelectionClearReason, loadSelectMode, saveSelectMode, shouldBackdropPressDeselect, shouldEscapeDeselect } from './utils/selectModes.js';
 import { resolveToolBarGroup, TOOL_BAR_GROUPS } from './utils/toolbarRows.js';
 import { cycleLassoMode } from './utils/lassoSelection.js';
 import { pageNumberAfterOperation } from './utils/pageAnnotationReindex.js';
@@ -4123,8 +4123,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [activeTool, activateSelectFamilyMode]);
 
   // UX: Escape and grey-page backdrop clicks clear every selection mode alike.
+  // UX 2026-10-02 (owner): which tools listen comes from the selection
+  // dismiss rules in utils/selectModes.js (Escape: every tool; backdrop
+  // press: Select family only).
   useEffect(() => {
-    if (!['select', 'text-select'].includes(activeTool)) return undefined;
+    const escapeDeselects = shouldEscapeDeselect(activeTool);
+    const backdropDeselects = shouldBackdropPressDeselect(activeTool);
+    if (!escapeDeselects && !backdropDeselects) return undefined;
     const clear = (event) => {
       // UX 2026-09-16 — the text editor owns Escape while it is open.
       //
@@ -4158,11 +4163,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         clearAnnotationSelectionForContextChange('select-family-dismiss');
       }
     };
-    window.addEventListener('keydown', clear, true);
-    window.addEventListener('pointerdown', clear, true);
+    if (escapeDeselects) window.addEventListener('keydown', clear, true);
+    if (backdropDeselects) window.addEventListener('pointerdown', clear, true);
     return () => {
-      window.removeEventListener('keydown', clear, true);
-      window.removeEventListener('pointerdown', clear, true);
+      if (escapeDeselects) window.removeEventListener('keydown', clear, true);
+      if (backdropDeselects) window.removeEventListener('pointerdown', clear, true);
     };
   }, [activeTool, clearAnnotationSelectionForContextChange]);
 
@@ -4263,13 +4268,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
   }, [activeTool, clearAnnotationSelectionForContextChange, resolveAnnotationAt]);
 
+  // UX 2026-10-02 (owner): switching tool drops the selection — the ONE place
+  // that rule lives, so every way of switching (toolbar, phone bar, keyboard
+  // shortcut, programmatic) behaves the same. Rule + reasons:
+  // getToolSwitchSelectionClearReason (utils/selectModes.js). Pan, Select and
+  // Text Select keep it. Changing a property of the selected mark is not a
+  // tool switch and never reaches this effect.
   const previousSelectionToolRef = useRef(activeTool);
   useEffect(() => {
     const previousTool = previousSelectionToolRef.current;
     previousSelectionToolRef.current = activeTool;
-    if (previousTool === 'text-select' && activeTool !== 'text-select') {
-      clearAnnotationSelectionForContextChange('text-select-tool-change');
-    }
+    const reason = getToolSwitchSelectionClearReason(previousTool, activeTool);
+    if (reason) clearAnnotationSelectionForContextChange(reason);
   }, [activeTool, clearAnnotationSelectionForContextChange]);
 
   // UX: pan-mode hover — when the cursor is over an annotation in pan mode,

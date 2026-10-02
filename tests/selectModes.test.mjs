@@ -15,6 +15,10 @@ import {
   saveSelectMode,
   SELECT_MODE_OPTIONS,
   SELECT_MODE_SHORT_LABELS,
+  SELECTION_KEEPING_TOOLS,
+  getToolSwitchSelectionClearReason,
+  shouldBackdropPressDeselect,
+  shouldEscapeDeselect,
 } from '../src/utils/selectModes.js';
 
 const PDF_VIEWER_SOURCE = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
@@ -260,4 +264,60 @@ test('V and Shift+V use the same truthful Select-family transition as reload', (
   const keyboardHandler = PDF_VIEWER_SOURCE.slice(keyboardStart, keyboardStart + 10_000);
   assert.match(keyboardHandler, /activateSelectFamilyMode\('rectangle'\)/);
   assert.match(keyboardHandler, /activateSelectFamilyMode\('text'\)/);
+});
+
+test('switching to a non-picking tool drops the selection; Pan / Select / Text Select keep it (owner 2026-10-02)', () => {
+  assert.deepEqual([...SELECTION_KEEPING_TOOLS], ['pan', 'select', 'text-select']);
+  // Drawing, shape, text, eraser and survey tools all clear.
+  for (const next of ['pen', 'highlighter', 'eraser', 'rect', 'ellipse', 'line', 'arrow', 'polygon', 'text', 'callout', 'counter', 'survey-marker', 'region-edit']) {
+    assert.equal(getToolSwitchSelectionClearReason('select', next), 'tool-change', next);
+    assert.equal(getToolSwitchSelectionClearReason('pan', next), 'tool-change', next);
+  }
+  // A just-drawn shape loses its handles when another drawing tool is picked.
+  assert.equal(getToolSwitchSelectionClearReason('rect', 'pen'), 'tool-change');
+  // Among the picking tools the selection stays.
+  assert.equal(getToolSwitchSelectionClearReason('pan', 'select'), null);
+  assert.equal(getToolSwitchSelectionClearReason('select', 'pan'), null);
+  assert.equal(getToolSwitchSelectionClearReason('select', 'text-select'), null);
+  assert.equal(getToolSwitchSelectionClearReason('rect', 'select'), null);
+  assert.equal(getToolSwitchSelectionClearReason('callout', 'select'), null);
+  // No change, no clear.
+  assert.equal(getToolSwitchSelectionClearReason('select', 'select'), null);
+  // Leaving Text Select keeps its older, stricter rule.
+  assert.equal(getToolSwitchSelectionClearReason('text-select', 'select'), 'text-select-tool-change');
+  assert.equal(getToolSwitchSelectionClearReason('text-select', 'pen'), 'text-select-tool-change');
+});
+
+test('the tool-switch rule runs in one effect on activeTool, and Escape listens under every tool', () => {
+  assert.match(
+    PDF_VIEWER_SOURCE,
+    /const reason = getToolSwitchSelectionClearReason\(previousTool, activeTool\);\s*if \(reason\) clearAnnotationSelectionForContextChange\(reason\);\s*\}, \[activeTool, clearAnnotationSelectionForContextChange\]\);/,
+  );
+  const escStart = PDF_VIEWER_SOURCE.indexOf('// UX: Escape and grey-page backdrop clicks clear every selection mode alike.');
+  const escEffect = PDF_VIEWER_SOURCE.slice(escStart, PDF_VIEWER_SOURCE.indexOf('const textSelectGestureActiveRef', escStart));
+  assert.doesNotMatch(escEffect, /if \(!\['select', 'text-select'\]\.includes\(activeTool\)\) return undefined;/);
+  assert.match(escEffect, /const escapeDeselects = shouldEscapeDeselect\(activeTool\);/);
+  assert.match(escEffect, /const backdropDeselects = shouldBackdropPressDeselect\(activeTool\);/);
+  assert.match(escEffect, /if \(escapeDeselects\) window\.addEventListener\('keydown', clear, true\);\s*if \(backdropDeselects\) window\.addEventListener\('pointerdown', clear, true\);/);
+  for (const tool of ['pan', 'select', 'text-select', 'pen', 'rect', 'text', 'eraser', 'survey-marker']) {
+    assert.equal(shouldEscapeDeselect(tool), true, tool);
+  }
+  assert.equal(shouldBackdropPressDeselect('select'), true);
+  assert.equal(shouldBackdropPressDeselect('text-select'), true);
+  assert.equal(shouldBackdropPressDeselect('pen'), false);
+  assert.equal(shouldBackdropPressDeselect('pan'), false);
+});
+
+test('the rotation grabber has no connector line to the box (owner 2026-10-02)', () => {
+  const overlay = readFileSync(new URL('../src/components/SVGSelectionOverlay.jsx', import.meta.url), 'utf8');
+  const region = readFileSync(new URL('../src/RegionSelectionTool.jsx', import.meta.url), 'utf8');
+  const fabricCustom = readFileSync(new URL('../src/utils/fabricCustomization.js', import.meta.url), 'utf8');
+  for (const [name, src] of [['SVGSelectionOverlay', overlay], ['RegionSelectionTool', region]]) {
+    const start = src.search(/\n\s+data-rotation-handle="mtr"|<g className="rotation-handle" data-rotation-handle="mtr"/);
+    assert.notEqual(start, -1, name);
+    const group = src.slice(start, src.indexOf('</g>', start));
+    assert.doesNotMatch(group, /<line\b/, `${name} rotation group draws no <line>`);
+    assert.match(group, /<circle/, `${name} keeps the grabber circle`);
+  }
+  assert.match(fabricCustom, /standardControls\.mtr\.withConnection = false;/);
 });

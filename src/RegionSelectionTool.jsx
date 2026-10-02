@@ -3266,8 +3266,8 @@ const RegionSelectionTool = ({
             })}
 
             {/* KAL-301 REDO: rotation handle (mtr) — a faithful copy of the
-                day-one chrome in SVGSelectionOverlay.jsx: solid #d1d1d1
-                connector line from the bbox top-center, white-fill/blue-ring
+                day-one chrome in SVGSelectionOverlay.jsx (no connector line
+                since 2026-10-02): white-fill/blue-ring
                 circle (r = rotationR), rotate icon at 70% of the circle
                 diameter, crosshair cursor, drop shadow. data-rotation-handle
                 ="mtr" is what RotationInputField anchors to. The whole group
@@ -3298,7 +3298,6 @@ const RegionSelectionTool = ({
               });
 
               const mtX = left + width / 2;
-              const mtY = top;
               const mtrY = top - spec.rotationOffset;
 
               return (
@@ -3309,16 +3308,8 @@ const RegionSelectionTool = ({
                     onPointerEnter={handleRotHandleHoverEnter}
                     onPointerLeave={handleRotHandleHoverLeave}
                   >
-                    {/* Connector line from top-center of bbox to rotation handle */}
-                    <line
-                      x1={mtX}
-                      y1={mtY}
-                      x2={mtX}
-                      y2={mtrY}
-                      stroke="#d1d1d1"
-                      strokeWidth={1}
-                      style={{ pointerEvents: 'none' }}
-                    />
+                    {/* UX 2026-10-02 (owner): no connector line to the box
+                        (same as annotations); position and hit area unchanged. */}
                     {/* Phone: a 44px invisible hit circle around the small dot. */}
                     {mobileMode && (
                       <circle
