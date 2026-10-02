@@ -20,6 +20,8 @@ import {
   appendQuadraticCurve,
   concatTransformationMatrix,
   closePath as closePathOperator,
+  clipEvenOdd as clipEvenOddOperator,
+  endPath as endPathOperator,
   fill as fillOperator,
   degrees,
   drawObject,
@@ -28,6 +30,7 @@ import {
   moveTo,
   popGraphicsState,
   pushGraphicsState,
+  rectangle as rectangleOperator,
   rgb,
   scale as scaleOperator,
   setFillingRgbColor,
@@ -123,6 +126,12 @@ import {
 } from './pdfAnnotationAppearance.js';
 // UX 2026-09-09: printed clouds come from the same resolver the screen uses.
 import { cloudOutlineBounds, cloudStrokeBandRings, resolveCloudAnnotationGeometry } from './cloudAnnotationGeometry.js';
+import {
+  insetRectForFill,
+  sampleEllipsePoints,
+  shouldKnockOutShapeFill,
+  strokeBandCapsuleRings,
+} from './shapeFillKnockout.js';
 import {
   calloutBoxCloudStandIn,
   calloutCloudIntensity,
@@ -3051,25 +3060,53 @@ const createEllipseAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
       const kx = k * rx;
       const ky = k * ry;
       const n = pdfNumberText;
-      const content = ['q'];
-      if (alpha < 0.99999) content.push('/GS0 gs');
-      content.push(`${n(color.red)} ${n(color.green)} ${n(color.blue)} RG`);
-      if (fillColor) content.push(`${n(fillColor.red)} ${n(fillColor.green)} ${n(fillColor.blue)} rg`);
-      content.push(`${n(strokeWidth)} w`);
-      content.push(
+      // Owner Test 15 (2026-10-02): the fill keeps ITS OWN alpha (it used to
+      // take the border's, so a 40 % border also made the fill 40 %), and
+      // under a see-through border the fill stops at the stroke's inner edge
+      // - clipped off the stroke band, as the screen masks it.
+      const fillAlpha = fillColor ? paintAlpha(fabricObj.fill, fabricObj.opacity) : alpha;
+      const knockout = Boolean(fillColor) && shouldKnockOutShapeFill({
+        fill: fabricObj.fill,
+        stroke: strokePaint,
+        strokeWidth,
+        opacity: fabricObj.opacity,
+      });
+      const ellipsePath = [
         `${n(2 * rx)} ${n(ry)} m`,
         `${n(2 * rx)} ${n(ry + ky)} ${n(rx + kx)} ${n(2 * ry)} ${n(rx)} ${n(2 * ry)} c`,
         `${n(rx - kx)} ${n(2 * ry)} 0 ${n(ry + ky)} 0 ${n(ry)} c`,
         `0 ${n(ry - ky)} ${n(rx - kx)} 0 ${n(rx)} 0 c`,
         `${n(rx + kx)} 0 ${n(2 * rx)} ${n(ry - ky)} ${n(2 * rx)} ${n(ry)} c`,
         'h',
-        fillColor ? 'B' : 'S',
-        'Q',
-      );
+      ];
+      const content = ['q'];
+      if (alpha < 0.99999 || fillAlpha < 0.99999) content.push('/GS0 gs');
+      content.push(`${n(color.red)} ${n(color.green)} ${n(color.blue)} RG`);
+      if (fillColor) content.push(`${n(fillColor.red)} ${n(fillColor.green)} ${n(fillColor.blue)} rg`);
+      content.push(`${n(strokeWidth)} w`);
+      if (knockout) {
+        // Form space is y-up with the ellipse in [0, 2rx] x [0, 2ry]; the
+        // band is symmetric, so the y-down outline maps over unchanged.
+        const rings = strokeBandCapsuleRings(
+          sampleEllipsePoints({ cx: rx, cy: ry, rx, ry }),
+          { closed: true, halfWidth: strokeWidth / 2 },
+        );
+        const pad = strokeWidth + 2;
+        const box = `${n(-pad)} ${n(-pad)} ${n(2 * rx + 2 * pad)} ${n(2 * ry + 2 * pad)} re`;
+        content.push('q');
+        for (const ring of rings) {
+          content.push(box);
+          ring.forEach((point, index) => content.push(`${n(point.x)} ${n(point.y)} ${index === 0 ? 'm' : 'l'}`));
+          content.push('h', 'W*', 'n');
+        }
+        content.push(...ellipsePath, 'f', 'Q', ...ellipsePath, 'S', 'Q');
+      } else {
+        content.push(...ellipsePath, fillColor ? 'B' : 'S', 'Q');
+      }
 
       const resources = {};
-      if (alpha < 0.99999) {
-        resources.ExtGState = { GS0: { Type: 'ExtGState', ca: alpha, CA: alpha } };
+      if (alpha < 0.99999 || fillAlpha < 0.99999) {
+        resources.ExtGState = { GS0: { Type: 'ExtGState', ca: fillAlpha, CA: alpha } };
       }
       const appearance = pdfDoc.context.flateStream(`${content.join('\n')}\n`, {
         Type: 'XObject',
@@ -5633,18 +5670,42 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
       borderWidth,
       borderOpacity: borderWidth > 0 ? (border?.opacity ?? 1) * objectOpacity : undefined,
     };
-    if (angle) {
-      const points = [
-        { x: left, y: top }, { x: left + width, y: top },
-        { x: left + width, y: top + height }, { x: left, y: top + height },
-      ].map((point) => rotateAppPoint(point, center, angle));
-      drawSvgPathLinear(page, `${points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')} Z`, {
-        x: 0, y: pageHeight, ...common,
+    const drawBox = (box, paint) => {
+      if (angle) {
+        const points = [
+          { x: box.x, y: box.y }, { x: box.x + box.width, y: box.y },
+          { x: box.x + box.width, y: box.y + box.height }, { x: box.x, y: box.y + box.height },
+        ].map((point) => rotateAppPoint(point, center, angle));
+        drawSvgPathLinear(page, `${points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')} Z`, {
+          x: 0, y: pageHeight, ...paint,
+        });
+      } else {
+        page.drawRectangle({
+          x: box.x, y: getPdfY(pageHeight, box.y + box.height), width: box.width, height: box.height, ...paint,
+        });
+      }
+    };
+    const outer = { x: left, y: top, width, height };
+    // Owner Test 15 (2026-10-02, renderText twin): under a see-through border
+    // the background stops at the border's inner edge.
+    if (background?.color && borderWidth > 0 && shouldKnockOutShapeFill({
+      fill: obj?.backgroundColor,
+      stroke: obj?.stroke,
+      strokeWidth: borderWidth,
+      opacity: objectOpacity,
+    })) {
+      const inner = insetRectForFill(outer, borderWidth);
+      if (inner.width > 0 && inner.height > 0) {
+        drawBox(inner, { color: common.color, opacity: common.opacity, borderWidth: 0 });
+      }
+      drawBox(outer, {
+        color: undefined,
+        borderColor: common.borderColor,
+        borderWidth,
+        borderOpacity: common.borderOpacity,
       });
     } else {
-      page.drawRectangle({
-        x: left, y: getPdfY(pageHeight, top + height), width, height, ...common,
-      });
+      drawBox(outer, common);
     }
   }
 
@@ -6133,6 +6194,49 @@ const drawFlattenedCloud = (page, obj, pageHeight) => {
   return true;
 };
 
+// Owner Test 15 (2026-10-02), the PDF twin of the screen's fill knockout
+// (shapeFillKnockout.js): clip what is drawn next to everything EXCEPT the
+// stroke band of `outline` (app-space, y-down points). One even-odd clip per
+// round-capped segment capsule - clip paths intersect (PDF 32000-1 8.5.4), so
+// clipping to each capsule's complement in turn is the complement of their
+// union, with no polygon boolean (the cloud writer's 'pieces' mode). The
+// caller fences it with q/Q so the stroke painted after is not clipped.
+const pushStrokeBandKnockoutClip = (page, outline, { closed = true, halfWidth, pageHeight }) => {
+  const rings = strokeBandCapsuleRings(outline, { closed, halfWidth });
+  if (rings.length === 0) return false;
+  let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+  for (const ring of rings) {
+    for (const point of ring) {
+      minX = Math.min(minX, point.x); maxX = Math.max(maxX, point.x);
+      minY = Math.min(minY, point.y); maxY = Math.max(maxY, point.y);
+    }
+  }
+  if (![minX, minY, maxX, maxY].every(Number.isFinite)) return false;
+  minX -= 1; minY -= 1; maxX += 1; maxY += 1;
+  const operators = [];
+  for (const ring of rings) {
+    operators.push(rectangleOperator(minX, pageHeight - maxY, maxX - minX, maxY - minY));
+    ring.forEach((point, index) => {
+      operators.push(index === 0
+        ? moveTo(point.x, pageHeight - point.y)
+        : lineTo(point.x, pageHeight - point.y));
+    });
+    operators.push(closePathOperator(), clipEvenOddOperator(), endPathOperator());
+  }
+  pushPdfOperators(page, operators);
+  return true;
+};
+
+// Paint `drawFill` through the knockout clip of `outline`, fenced in q/Q.
+// Returns false (nothing drawn) when no clip could be built.
+const drawFillOutsideStrokeBand = (page, outline, options, drawFill) => {
+  page.pushOperators(pushGraphicsState());
+  const clipped = pushStrokeBandKnockoutClip(page, outline, options);
+  if (clipped) drawFill();
+  page.pushOperators(popGraphicsState());
+  return clipped;
+};
+
 const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
   if (drawFlattenedCloud(page, obj, pageHeight)) return true;
   const rawPoints = fabricPolygonWorldPoints(obj);
@@ -6157,6 +6261,30 @@ const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
   const stroke = resolvedPdfPaint(obj?.stroke, '#000000');
   const fill = closePath ? resolvedPdfPaint(obj?.fill, 'transparent') : null;
   const strokeWidth = stroke ? Math.max(0, Number(obj?.strokeWidth) || 1) : 0;
+  const blendMode = obj?.globalCompositeOperation === 'multiply' ? BlendMode.Multiply : undefined;
+  // Owner Test 15: a see-through border never shows the fill under it - the
+  // fill is clipped off the stroke band (round joins, like the screen).
+  if (fill?.color && stroke && strokeWidth > 0 && shouldKnockOutShapeFill({
+    fill: obj?.fill,
+    stroke: obj?.stroke,
+    strokeWidth,
+    opacity: obj?.opacity,
+  }) && drawFillOutsideStrokeBand(page, points, { closed: true, halfWidth: strokeWidth / 2, pageHeight }, () => {
+    drawSvgPathLinear(page, d, {
+      x: 0, y: pageHeight, color: fill.color, opacity: fill.opacity ?? 1, borderWidth: 0, blendMode,
+    });
+  })) {
+    drawSvgPathLinear(page, d, {
+      x: 0,
+      y: pageHeight,
+      color: undefined,
+      borderColor: stroke.color,
+      borderWidth: strokeWidth,
+      borderOpacity: stroke.opacity,
+      blendMode,
+    });
+    return true;
+  }
   drawSvgPathLinear(page, d, {
     x: 0,
     y: pageHeight,
@@ -6165,7 +6293,7 @@ const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
     color: fill?.color,
     opacity: fill?.opacity ?? 1,
     borderOpacity: stroke?.opacity,
-    blendMode: obj?.globalCompositeOperation === 'multiply' ? BlendMode.Multiply : undefined,
+    blendMode,
   });
   return true;
 };
@@ -6419,7 +6547,53 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     // case falls through to the plain rectangle branches below).
     if (drawFlattenedCloud(page, shifted, pageHeight)) {
       return 1;
-    } else if (angle) {
+    }
+    // Owner Test 15 (2026-10-02): a see-through border never shows the fill
+    // under its inner half - the fill is the box pulled in by half the
+    // stroke width (shapeFillKnockout.js), painted first; the border is then
+    // stroked alone, exactly where it always was.
+    if (hasBorder && fill?.color && shouldKnockOutShapeFill({
+      fill: shifted?.fill,
+      stroke: rawStroke,
+      strokeWidth,
+      opacity: objectOpacity,
+    })) {
+      const inner = insetRectForFill({ x: left, y: top, width, height }, strokeWidth);
+      const fillOnly = { color: common.color, opacity: common.opacity, borderWidth: 0, blendMode: common.blendMode };
+      const strokeOnly = {
+        color: undefined,
+        borderColor: common.borderColor,
+        borderWidth: common.borderWidth,
+        borderOpacity: common.borderOpacity,
+        blendMode: common.blendMode,
+      };
+      if (angle) {
+        const center = { x: left + width / 2, y: top + height / 2 };
+        const pathOf = (box) => {
+          const points = [
+            { x: box.x, y: box.y }, { x: box.x + box.width, y: box.y },
+            { x: box.x + box.width, y: box.y + box.height }, { x: box.x, y: box.y + box.height },
+          ].map((point) => rotateAppPoint(point, center, angle));
+          return `${points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')} Z`;
+        };
+        if (inner.width > 0 && inner.height > 0) {
+          drawSvgPathLinear(page, pathOf(inner), { x: 0, y: pageHeight, ...fillOnly });
+        }
+        drawSvgPathLinear(page, pathOf({ x: left, y: top, width, height }), { x: 0, y: pageHeight, ...strokeOnly });
+      } else {
+        if (inner.width > 0 && inner.height > 0) {
+          page.drawRectangle({
+            x: inner.x, y: getPdfY(pageHeight, inner.y + inner.height), width: inner.width, height: inner.height, ...fillOnly,
+          });
+        }
+        page.drawRectangle({
+          x: left, y: getPdfY(pageHeight, top + height), width, height, ...strokeOnly,
+          ...(rectDash ? { borderDashArray: rectDash, borderDashPhase: 0 } : {}),
+        });
+      }
+      return 1;
+    }
+    if (angle) {
       const center = { x: left + width / 2, y: top + height / 2 };
       const points = [
         { x: left, y: top }, { x: left + width, y: top },
@@ -6446,6 +6620,44 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     // scalloped edge, exactly like a cloud rect - same shared resolver, same
     // outline and scalloped fill the screen shows.
     if (drawFlattenedCloud(page, shifted, pageHeight)) return 1;
+    // Owner Test 15 (2026-10-02): a see-through border never shows the fill
+    // under its inner half - the fill is clipped off the stroke band, then
+    // the border is stroked alone, where it always was.
+    if (fill?.color && stroke && strokeWidth > 0 && shouldKnockOutShapeFill({
+      fill: shifted?.fill,
+      stroke: shifted?.stroke,
+      strokeWidth,
+      opacity: shifted?.opacity,
+    })) {
+      // A tilted ellipse is stroked as the 48-gon below, so its band is
+      // that 48-gon's; an upright one is a true ellipse, finely sampled.
+      const outline = sampleEllipsePoints({ cx, cy, rx: xRadius, ry: yRadius }, angle ? 48 : 0)
+        .map((point) => rotateAppPoint(point, { x: cx, y: cy }, angle));
+      const fillOnly = { color: common.color, opacity: common.opacity, borderWidth: 0, blendMode: common.blendMode };
+      const strokeOnly = {
+        color: undefined,
+        borderColor: common.borderColor,
+        borderWidth: common.borderWidth,
+        borderOpacity: common.borderOpacity,
+        blendMode: common.blendMode,
+      };
+      const drawEllipseWith = (paint) => {
+        if (angle) {
+          const points = Array.from({ length: 48 }, (_, index) => {
+            const theta = index * Math.PI * 2 / 48;
+            return rotateAppPoint({ x: cx + Math.cos(theta) * xRadius, y: cy + Math.sin(theta) * yRadius }, { x: cx, y: cy }, angle);
+          });
+          const d = `${points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')} Z`;
+          drawSvgPathLinear(page, d, { x: 0, y: pageHeight, ...paint });
+        } else {
+          page.drawEllipse({ x: cx, y: getPdfY(pageHeight, cy), xScale: xRadius, yScale: yRadius, ...paint });
+        }
+      };
+      if (drawFillOutsideStrokeBand(page, outline, { closed: true, halfWidth: strokeWidth / 2, pageHeight }, () => drawEllipseWith(fillOnly))) {
+        drawEllipseWith(strokeOnly);
+        return 1;
+      }
+    }
     if (angle) {
       const points = Array.from({ length: 48 }, (_, index) => {
         const theta = index * Math.PI * 2 / 48;

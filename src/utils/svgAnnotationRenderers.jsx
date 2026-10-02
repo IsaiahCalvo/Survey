@@ -56,6 +56,7 @@ import {
   captureShape as __captureShape,
 } from './shapeBleedDiagnostics';
 import { DRAWN_CENTERED_STROKE_CONTRACT } from './shapeCommitGeometry.js';
+import { insetRectForFill, shouldKnockOutShapeFill } from './shapeFillKnockout.js';
 // UX 2026-04-21 (import-normalization Chunk 2): pure attr derivation for
 // path-type Fabric objects lives in svgPathAttrs.js so node-test suites
 // can import it without the JSX loader. The renderer uses it too to
@@ -158,6 +159,76 @@ const CloudOutline = ({
           <path key={index} d={d} data-run={index} />
         ))}
       </g>
+    </g>
+  );
+};
+
+// Owner Test 15 (2026-10-02): a see-through border must not show the fill
+// under its inner half (shapeFillKnockout.js). These two paint a shape whose
+// fill stops at the stroke's inner edge; they are used ONLY when
+// shouldKnockOutShapeFill says so, so every opaque border renders as before.
+//
+// Rect / text box: the fill is the stroke rect pulled in by half the stroke
+// width - exact for any join, so no mask is needed.
+const KnockoutRect = ({
+  x, y, width, height, transform, fill, stroke, strokeWidth, strokeDasharray,
+  opacity, style, shapeId, shapeKind, onClick,
+}) => {
+  const inner = insetRectForFill({ x, y, width, height }, strokeWidth);
+  return (
+    <g
+      transform={transform}
+      opacity={opacity}
+      style={style}
+      data-shape-id={shapeId}
+      data-shape-kind={shapeKind}
+      data-fill-knockout="inset"
+      onClick={onClick}
+    >
+      <rect x={inner.x} y={inner.y} width={inner.width} height={inner.height} fill={fill} stroke="none" data-knockout-fill="true" />
+      <rect x={x} y={y} width={width} height={height} fill="none" stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={strokeDasharray} />
+    </g>
+  );
+};
+
+// Ellipse / polygon: the fill carries a mask = the shape filled white with its
+// outline stroked black at the ink width (the cloud's knockout), so the fill
+// ends exactly on the stroke's inner edge for any curve or join.
+const KnockoutMaskedShape = ({
+  tag: Tag, geometry, bounds, transform, fill, stroke, strokeWidth, strokeDasharray,
+  strokeLinejoin, opacity, style, shapeId, shapeKind, onClick,
+}) => {
+  const maskId = `shape-fill-knockout-${String(React.useId()).replace(/[^a-zA-Z0-9_-]/g, '') || 'x'}`;
+  const pad = strokeWidth + 2;
+  return (
+    <g
+      transform={transform}
+      opacity={opacity}
+      style={style}
+      data-shape-id={shapeId}
+      data-shape-kind={shapeKind}
+      data-fill-knockout="mask"
+      onClick={onClick}
+    >
+      <mask
+        id={maskId}
+        maskUnits="userSpaceOnUse"
+        x={bounds.minX - pad}
+        y={bounds.minY - pad}
+        width={bounds.maxX - bounds.minX + pad * 2}
+        height={bounds.maxY - bounds.minY + pad * 2}
+      >
+        <Tag {...geometry} fill="#fff" stroke="#000" strokeWidth={strokeWidth} strokeLinejoin={strokeLinejoin} />
+      </mask>
+      <Tag {...geometry} fill={fill} stroke="none" mask={`url(#${maskId})`} data-knockout-fill="true" />
+      <Tag
+        {...geometry}
+        fill="none"
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+        strokeDasharray={strokeDasharray}
+        strokeLinejoin={strokeLinejoin}
+      />
     </g>
   );
 };
@@ -534,6 +605,34 @@ export const renderRect = (obj, index) => {
   const dashArrayAttr = Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length > 0
     ? obj.strokeDashArray.join(' ')
     : undefined;
+
+  // Owner Test 15 (2026-10-02): a see-through border over a fill - the fill
+  // stops at the stroke's inner edge (shapeFillKnockout.js). The stroke keeps
+  // the exact rect it has below (inset contract or centred), so its outer
+  // edge does not move.
+  if (shouldKnockOutShapeFill({ fill: obj.fill, stroke: obj.stroke, strokeWidth: obj.strokeWidth })) {
+    const knockSw = Math.max(0, Number(obj.strokeWidth) || 0);
+    const off = inset ? knockSw / 2 : 0;
+    return (
+      <KnockoutRect
+        key={key}
+        x={off}
+        y={off}
+        width={Math.max(0, effectiveWidth - 2 * off)}
+        height={Math.max(0, effectiveHeight - 2 * off)}
+        transform={positionTransform}
+        fill={obj.fill}
+        stroke={obj.stroke}
+        strokeWidth={knockSw}
+        strokeDasharray={dashArrayAttr}
+        opacity={obj.opacity ?? 1}
+        style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
+        shapeId={shapeId}
+        shapeKind="rect"
+        onClick={__shapeClick}
+      />
+    );
+  }
 
   const rectEl = (
     <rect
@@ -1066,6 +1165,31 @@ export const renderPolygon = (obj, index) => {
     ? obj.strokeDashArray.join(' ')
     : undefined;
 
+  // Owner Test 15 (2026-10-02): a see-through border over a fill - the fill
+  // is masked off under the stroke band (shapeFillKnockout.js), round joins
+  // like the stroke.
+  if (shouldKnockOutShapeFill({ fill: obj.fill, stroke: obj.stroke, strokeWidth: obj.strokeWidth || 1 })) {
+    return (
+      <KnockoutMaskedShape
+        key={key}
+        tag="polygon"
+        geometry={{ points: pointsStr }}
+        bounds={{ minX, minY, maxX, maxY }}
+        transform={transform}
+        fill={obj.fill}
+        stroke={obj.stroke}
+        strokeWidth={Number(obj.strokeWidth) || 1}
+        strokeDasharray={polyDashArrayAttr}
+        strokeLinejoin="round"
+        opacity={obj.opacity ?? 1}
+        style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
+        shapeId={shapeId}
+        shapeKind="polygon"
+        onClick={__shapeClick}
+      />
+    );
+  }
+
   return (
     <polygon
       key={key}
@@ -1288,6 +1412,34 @@ export const renderEllipse = (obj, index) => {
   const rotateTransform = obj.angle ? `rotate(${obj.angle}, ${cx}, ${cy})` : undefined;
   const inset = !isHighlight && shouldInsetStroke(obj);
   const clipId = inset ? `clip-${shapeId}` : undefined;
+
+  // Owner Test 15 (2026-10-02): a see-through border over a fill - the fill
+  // is masked off under the stroke band (shapeFillKnockout.js); the stroke
+  // keeps the exact radii it has below, so its outer edge does not move.
+  if (shouldKnockOutShapeFill({ fill: obj.fill, stroke: obj.stroke, strokeWidth: obj.strokeWidth })) {
+    const knockSw = Math.max(0, Number(obj.strokeWidth) || 0);
+    const off = inset ? knockSw / 2 : 0;
+    const krx = Math.max(0, rx - off);
+    const kry = Math.max(0, ry - off);
+    return (
+      <KnockoutMaskedShape
+        key={key}
+        tag="ellipse"
+        geometry={{ cx, cy, rx: krx, ry: kry }}
+        bounds={{ minX: cx - krx, minY: cy - kry, maxX: cx + krx, maxY: cy + kry }}
+        transform={rotateTransform}
+        fill={obj.fill}
+        stroke={obj.stroke}
+        strokeWidth={knockSw}
+        strokeDasharray={Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length ? obj.strokeDashArray.join(' ') : undefined}
+        opacity={obj.opacity ?? 1}
+        style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
+        shapeId={shapeId}
+        shapeKind="ellipse"
+        onClick={__shapeClick}
+      />
+    );
+  }
 
   const ellEl = (
     <ellipse
@@ -1548,11 +1700,14 @@ export const renderText = (obj, index, liveBounds = null, hideText = false) => {
         />
       ) : null}
       {!cloudBorderGeometry && obj.backgroundColor && obj.backgroundColor !== 'transparent' ? (
+        // Owner Test 15 (2026-10-02): under a see-through border the
+        // background stops at the border's inner edge (shapeFillKnockout.js).
         <rect
-          x={0}
-          y={0}
-          width={effectiveWidth}
-          height={effectiveHeight}
+          {...(obj.strokeWidth > 0 && obj.stroke && shouldKnockOutShapeFill({
+            fill: obj.backgroundColor, stroke: obj.stroke, strokeWidth: obj.strokeWidth,
+          })
+            ? { ...insetRectForFill({ x: 0, y: 0, width: effectiveWidth, height: effectiveHeight }, obj.strokeWidth), 'data-knockout-fill': 'true' }
+            : { x: 0, y: 0, width: effectiveWidth, height: effectiveHeight })}
           fill={obj.backgroundColor}
         />
       ) : null}

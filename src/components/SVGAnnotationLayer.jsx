@@ -70,6 +70,7 @@ import { HANDLE_FILL, HANDLE_RING, HANDLE_RING_INVALID, HANDLE_RADIUS, HANDLE_RA
 import { getMarkHitStrokePx, resolveHandleHitPadPageSize } from '../utils/handleHitPad.js';
 import { clampResizeScale } from '../utils/resizeMinimum.js';
 import { shouldAutoSelectAfterCommit } from '../utils/autoSelectAfterCommit.js';
+import { DRAWN_CENTERED_STROKE_CONTRACT } from '../utils/shapeCommitGeometry.js';
 import { useSVGInteraction } from '../hooks/useSVGInteraction';
 // Plan 14-03 Task 3 (CREATE-01 callout half): factory for constructing a
 // new callout from the click-drag creation gesture. types.js is the
@@ -118,7 +119,7 @@ import { getTextMarkupRangeHandlePositions, getTextMarkupSelectionChrome } from 
 import RotationInputField from './RotationInputField';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, isImportedPath, isAbsoluteCoordPath, getLineEndpoints, computeLineBboxCenter } from '../utils/svgBoundingBox';
 import { resolveMidpointHandlePosition } from '../utils/lineDragMath.js';
-import { buildArrowheadRenderSpec } from '../utils/lineRenderHelpers.js';
+import { buildArrowheadRenderSpec, resolveLineEndingStyles } from '../utils/lineRenderHelpers.js';
 import { getCurvedPath, distanceToLineSegment, getCurveEndAngle } from '../utils/lineGeometry.js';
 import { ARROWHEAD_STYLES } from './Callout/types';
 import { renderPathToSvgAttrs, renderPathToSvgD, isFilledInkOutlineAttrs, getFilledInkHitTargetProps } from '../utils/svgPathAttrs.js';
@@ -334,6 +335,63 @@ const POLY_CREATION_TOOLS = POLY_DRAFT_TOOLS;
 // them is how people click away from the mark they just drew.
 const CLICK_PLACE_SHAPE_TOOLS = ['line', 'arrow'];
 const CLICK_PLACE_MAX_TRAVEL_PX = 4;
+// Owner 2026-10-02: the translucency of every hover / selection halo. A halo
+// with more than one part (a line and its heads, a callout's box, leaders and
+// head) paints its parts OPAQUE inside one group carrying this opacity, so
+// overlapping parts never double up into darker seams.
+const HOVER_HALO_OPACITY = 0.4;
+// The halo of one arrowhead spec (buildArrowheadRenderSpec), as an opaque
+// outline that inherits the halo group's stroke colour. null for no head.
+const renderArrowheadHalo = (spec, strokeWidth) => {
+  if (!spec) return null;
+  switch (spec.kind) {
+    case 'solidTriangle':
+    case 'openTriangle':
+    case 'diamond':
+    case 'square':
+      return (
+        <polygon
+          points={spec.polygon.points}
+          transform={spec.polygon.transform}
+          fill="none"
+          strokeWidth={strokeWidth}
+          strokeLinejoin="round"
+        />
+      );
+    case 'openCircle':
+      return <circle cx={spec.circle.cx} cy={spec.circle.cy} r={spec.circle.r} fill="none" strokeWidth={strokeWidth} />;
+    case 'vShape':
+      return (
+        <polyline
+          points={spec.polyline.points}
+          fill="none"
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      );
+    case 'slash':
+    case 'horizontalLine':
+      return (
+        <line
+          x1={spec.line.x1} y1={spec.line.y1}
+          x2={spec.line.x2} y2={spec.line.y2}
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+        />
+      );
+    default:
+      return null;
+  }
+};
+// Owner Test 15 (2026-10-02): half the border width when renderRect /
+// renderEllipse pull an inset-contract border in (their shouldInsetStroke), so
+// the hover glow is centred on the border's own line; 0 for a centred border.
+const hoverGlowStrokeInset = (obj) => {
+  const sw = Number(obj?.strokeWidth);
+  if (!(sw > 0) || obj?.globalCompositeOperation === 'multiply') return 0;
+  return obj?.data?.strokeRenderContract === DRAWN_CENTERED_STROKE_CONTRACT ? 0 : sw / 2;
+};
 // UX 2026-09-16: every selection grabber carries an invisible hit pad — the
 // drawn dot keeps its size, a transparent disc behind it catches the press.
 // On a mouse: the grabber + 4 px, min 20 (w63); 44 pt on a finger. The
@@ -1920,6 +1978,16 @@ const SVGAnnotationLayer = memo(({
     }
   }, [activeTool]);
 
+  // UX 2026-10-02 (owner Test 15): the mark just drawn and auto-selected (see
+  // dispatchCommit) and the tool that drew it. Published with the selection
+  // as `justDrawn`, so the colour picker restyles THIS mark while its tool is
+  // still armed; a pick left behind under a drawing tool still never takes the
+  // tool's changes. Forgotten the moment the tool changes.
+  const justDrawnRef = useRef(null);
+  useEffect(() => {
+    if (justDrawnRef.current && justDrawnRef.current.tool !== activeTool) justDrawnRef.current = null;
+  }, [activeTool]);
+
   // ---------------------------------------------------------------------------
   // Unified renderer phase 2 — SVG-native creation commit + gesture effects.
   // ---------------------------------------------------------------------------
@@ -1969,6 +2037,7 @@ const SVGAnnotationLayer = memo(({
       // The selection is set in the same React batch as the save, so the layer
       // paints the committed shape and its handles in one frame.
       if (shouldAutoSelectAfterCommit(tool)) {
+        justDrawnRef.current = { id: getAnnotationRenderIdentity(json).annotationId, tool: activeTool };
         selectAnnotation((current?.objects?.length || 0));
       }
       // setShapeCreation(null) above + this save land in ONE batched React
@@ -2047,7 +2116,7 @@ const SVGAnnotationLayer = memo(({
       : buildBoundaryShapeCommitJSON({ ...shared, tool, fillColor, fillOpacity });
     if (json) dispatchCommit(json);
   }, [
-    activeRegionId, arrowheadStyle, arrowStartStyle, cloudIntensity, fillColor, fillOpacity,
+    activeRegionId, activeTool, arrowheadStyle, arrowStartStyle, cloudIntensity, fillColor, fillOpacity,
     isRegionOverlayEnabled, lineBorderStyle, onSaveAnnotations,
     onSurveyMarkerCreated, pageNumber, selectAnnotation, selectedModuleId, selectedSpaceId,
     spaces, strokeColor, strokeOpacity, strokeWidth, viewerId,
@@ -2110,6 +2179,7 @@ const SVGAnnotationLayer = memo(({
     // Same Drawboard contract as the drag-out shapes above: the finished
     // polygon / polyline is selected the instant it lands, tool still armed.
     if (shouldAutoSelectAfterCommit(tool)) {
+      justDrawnRef.current = { id: getAnnotationRenderIdentity(json).annotationId, tool: activeTool };
       selectAnnotation((current?.objects?.length || 0));
     }
     onSaveAnnotations(
@@ -2124,7 +2194,7 @@ const SVGAnnotationLayer = memo(({
     });
     return true;
   }, [
-    activeRegionId, cloudIntensity, fillColor, fillOpacity, isRegionOverlayEnabled,
+    activeRegionId, activeTool, cloudIntensity, fillColor, fillOpacity, isRegionOverlayEnabled,
     lineBorderStyle, onSaveAnnotations, pageNumber, selectAnnotation, selectedModuleId,
     selectedSpaceId, spaces, strokeColor, strokeOpacity, strokeWidth, viewerId,
   ]);
@@ -2615,14 +2685,17 @@ const SVGAnnotationLayer = memo(({
       return;
     }
     const annotation = annotations?.objects?.[selectedAnnotationIndex] || null;
+    const annotationIds = idsFor([selectedAnnotationIndex]);
+    const drawn = justDrawnRef.current;
     onSelectionChange({
       pageNumber,
       annotationIndex: selectedAnnotationIndex,
       annotation,
       annotationIndices: [selectedAnnotationIndex],
-      annotationIds: idsFor([selectedAnnotationIndex]),
+      annotationIds,
+      justDrawn: Boolean(drawn && drawn.id && drawn.id === annotationIds[0] && drawn.tool === activeTool),
     });
-  }, [selectedAnnotationIndex, selectedIndicesKey, annotations, pageNumber, onSelectionChange]);
+  }, [selectedAnnotationIndex, selectedIndicesKey, annotations, pageNumber, onSelectionChange, activeTool]);
   // w64 (owner 2026-09-29): tell the History panel what is picked on THIS
   // page (marks, callouts, counters, Survey Markers) so, while it is open, it
   // can jump to those marks' lines. One window event per change of the pick
@@ -4410,139 +4483,77 @@ const SVGAnnotationLayer = memo(({
             existing muscle memory. Corner circles carry
             data-callout-part='textBox-tl' / 'tr' / 'bl' / 'br' so the
             interaction hook can route them to a resize drag mode. */}
-        {showGlow && (
-          <>
-            {/* UX: Phase 19 follow-up — callout hover / multi-select
-                glow. Same blue outline treatment annotations use, but
-                covering the whole callout: textbox border, line1 +
-                line2 connector segments, and a glow ring around the
-                arrow tip. pointer-events none so the glow never
-                intercepts drag / click.
-                2026-04-20: extend glow height by the same descender
-                buffer the renderer uses so the bottom of the glow sits
-                flush with the visible text-box border instead of
-                floating a few pixels above it. */}
-            {(() => {
-              const calloutFs = Number(callout?.style?.fontSize || 12);
-              const descenderBuffer = calloutFs * 0.35;
-              const glowH = tbH + descenderBuffer;
-              return (
-                <rect
-                  x={tbX - 2}
-                  y={tbY - 2}
-                  width={tbW + 4}
-                  height={glowH + 4}
-                  fill="none"
-                  stroke="#4a90e2"
-                  strokeOpacity={0.45}
-                  strokeWidth={3}
-                  style={{ pointerEvents: 'none' }}
-                />
-              );
-            })()}
-            {!conn.shouldHideLine1 && (
-              <line
-                x1={conn.line1Start.x}
-                y1={conn.line1Start.y}
-                x2={conn.effectiveKnee.x}
-                y2={conn.effectiveKnee.y}
-                stroke="#4a90e2"
-                strokeOpacity={0.45}
-                strokeWidth={5}
-                strokeLinecap="round"
-                style={{ pointerEvents: 'none' }}
-              />
-            )}
-            <line
-              x1={conn.line2Start.x}
-              y1={conn.line2Start.y}
-              x2={atX}
-              y2={atY}
+        {showGlow && (() => {
+          // UX: Phase 19 follow-up — callout hover / multi-select glow over
+          // the whole callout: text box border, both leader segments and the
+          // arrowhead. pointer-events none so it never takes a press.
+          //
+          // Owner 2026-10-02: ONE seamless halo. Every part is painted opaque
+          // inside a single group and the group carries the translucency, so
+          // where the leader, the head and the box overlap nothing doubles up
+          // into a darker seam. And it traces the INK: the same connection
+          // renderCallout draws (its box is taller by the descender buffer,
+          // and the leader's box end and auto-routed knee are computed from
+          // that taller box - the halo used the shorter one, so the leader's
+          // halo sat off the real line), the same line / head thickness, the
+          // box glow centred on the box's own border line.
+          const calloutFs = Number(callout?.style?.fontSize || 12);
+          const glowBoxH = tbH + calloutFs * 0.35;
+          const glowConn = calculateCalloutConnection(
+            tbX, tbY, tbW, glowBoxH,
+            { x: kX, y: kY },
+            { x: atX, y: atY },
+            0
+          );
+          const lineThickness = Math.max(1, callout.style?.lineThickness || 2);
+          const boxStroke = Math.max(1, lineThickness * 0.7);
+          const lineGlowSw = Math.max(5, lineThickness + 4);
+          const headStyle = callout.style?.arrowheadStyle ?? ARROWHEAD_STYLES.SOLID_TRIANGLE;
+          const angleDeg = (
+            Math.atan2(atY - glowConn.line2Start.y, atX - glowConn.line2Start.x)
+            * 180 / Math.PI
+          );
+          const spec = headStyle === ARROWHEAD_STYLES.NONE
+            ? null
+            : buildArrowheadRenderSpec(headStyle, atX, atY, angleDeg, '#4a90e2', lineThickness);
+          return (
+            <g
+              data-hover-halo="callout"
+              opacity={HOVER_HALO_OPACITY}
               stroke="#4a90e2"
-              strokeOpacity={0.45}
-              strokeWidth={5}
-              strokeLinecap="round"
+              fill="none"
               style={{ pointerEvents: 'none' }}
-            />
-            {/* UX: Phase 19 follow-up — arrow-shaped glow that follows
-                the actual triangle/V/circle/etc of the callout's
-                arrowhead style. Reuses buildArrowheadRenderSpec so the
-                glow geometry is exactly the same form-factor as the
-                visible arrowhead. lineThickness comes from the
-                callout's style when available, else the render default
-                used by renderCallout. */}
-            {(() => {
-              const style = callout.style?.arrowheadStyle ?? ARROWHEAD_STYLES.SOLID_TRIANGLE;
-              if (style === ARROWHEAD_STYLES.NONE) return null;
-              const lineThickness = callout.style?.lineThickness ?? 2;
-              const angleDeg = (
-                Math.atan2(atY - conn.line2Start.y, atX - conn.line2Start.x)
-                * 180 / Math.PI
-              );
-              const spec = buildArrowheadRenderSpec(style, atX, atY, angleDeg, '#4a90e2', lineThickness);
-              const glowSw = Math.max(3, lineThickness + 2);
-              switch (spec.kind) {
-                case 'solidTriangle':
-                case 'openTriangle':
-                case 'diamond':
-                case 'square':
-                  return (
-                    <polygon
-                      points={spec.polygon.points}
-                      transform={spec.polygon.transform}
-                      fill="none"
-                      stroke="#4a90e2"
-                      strokeOpacity={0.45}
-                      strokeWidth={glowSw}
-                      strokeLinejoin="round"
-                      style={{ pointerEvents: 'none' }}
-                    />
-                  );
-                case 'openCircle':
-                  return (
-                    <circle
-                      cx={spec.circle.cx}
-                      cy={spec.circle.cy}
-                      r={spec.circle.r}
-                      fill="none"
-                      stroke="#4a90e2"
-                      strokeOpacity={0.45}
-                      strokeWidth={glowSw}
-                      style={{ pointerEvents: 'none' }}
-                    />
-                  );
-                case 'vShape':
-                  return (
-                    <polyline
-                      points={spec.polyline.points}
-                      fill="none"
-                      stroke="#4a90e2"
-                      strokeOpacity={0.45}
-                      strokeWidth={glowSw}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      style={{ pointerEvents: 'none' }}
-                    />
-                  );
-                case 'slash':
-                case 'horizontalLine':
-                  return (
-                    <line
-                      x1={spec.line.x1} y1={spec.line.y1}
-                      x2={spec.line.x2} y2={spec.line.y2}
-                      stroke="#4a90e2"
-                      strokeOpacity={0.45}
-                      strokeWidth={glowSw}
-                      strokeLinecap="round"
-                      style={{ pointerEvents: 'none' }}
-                    />
-                  );
-                default:
-                  return null;
-              }
-            })()}
-          </>
-        )}
+            >
+              <rect
+                x={tbX}
+                y={tbY}
+                width={tbW}
+                height={glowBoxH}
+                strokeWidth={boxStroke + 4}
+                strokeLinejoin="miter"
+              />
+              {!glowConn.shouldHideLine1 && (
+                <line
+                  x1={glowConn.line1Start.x}
+                  y1={glowConn.line1Start.y}
+                  x2={glowConn.effectiveKnee.x}
+                  y2={glowConn.effectiveKnee.y}
+                  strokeWidth={lineGlowSw}
+                  strokeLinecap="round"
+                />
+              )}
+              <line
+                x1={glowConn.line2Start.x}
+                y1={glowConn.line2Start.y}
+                x2={atX}
+                y2={atY}
+                strokeWidth={lineGlowSw}
+                strokeLinecap="round"
+              />
+              {renderArrowheadHalo(spec, Math.max(3, lineThickness + 2))}
+            </g>
+          );
+        })()}
         {/* Owner ruling 2026-09-28: a selected user-locked callout shows no
             grabbers (it cannot be resized or re-routed) and a small lock
             on its text box's top-right corner. */}
@@ -5521,7 +5532,6 @@ const SVGAnnotationLayer = memo(({
           if (objTypeLower === 'line') {
             const ep = getLineEndpoints(renderObj);
             const isArrow = renderObj.tool === 'arrow';
-            const arrowStyle = renderObj.data?.arrowheadStyle ?? (isArrow ? ARROWHEAD_STYLES.SOLID_TRIANGLE : ARROWHEAD_STYLES.NONE);
             // UX 2026-04-20: the hover-glow arrowhead must point along the
             // same direction as the SVG arrowhead. For curved lines/arrows
             // the SVG arrowhead rotates to the bezier's tangent at t=1 (via
@@ -5565,90 +5575,46 @@ const SVGAnnotationLayer = memo(({
               : null;
             return (
               <g transform={lineRotate}>
-                {/* Hover surveyMarker along the line */}
-                {annotationIsHovered && (
-                  lineIsCurved ? (
-                    <path
-                      d={lineCurveD}
+                {/* Hover halo along the line and round its arrowheads.
+                    Owner 2026-10-02: ONE seamless shape - every part opaque
+                    inside one group that carries the translucency, so the
+                    shaft's halo and the head's halo never stack into a
+                    darker seam where they overlap. Both ends' heads, the
+                    same endings renderLine draws (resolveLineEndingStyles). */}
+                {annotationIsHovered && (() => {
+                  const lineSw = renderObj.strokeWidth || 2;
+                  const endings = resolveLineEndingStyles(renderObj);
+                  const headGlowSw = Math.max(3, lineSw + 2);
+                  const startAngleDeg = __isCurved
+                    ? getCurveEndAngle({ x: ep.x2, y: ep.y2 }, { x: ep.x1, y: ep.y1 }, __mp)
+                    : (Math.atan2(ep.y1 - ep.y2, ep.x1 - ep.x2) * 180 / Math.PI);
+                  const endSpec = endings.endStyle && endings.endStyle !== ARROWHEAD_STYLES.NONE
+                    ? buildArrowheadRenderSpec(endings.endStyle, ep.x2, ep.y2, arrowAngleDeg, '#4a90e2', lineSw)
+                    : null;
+                  const startSpec = endings.startStyle && endings.startStyle !== ARROWHEAD_STYLES.NONE
+                    ? buildArrowheadRenderSpec(endings.startStyle, ep.x1, ep.y1, startAngleDeg, '#4a90e2', lineSw)
+                    : null;
+                  return (
+                    <g
+                      data-hover-halo={isArrow ? 'arrow' : 'line'}
+                      opacity={HOVER_HALO_OPACITY}
                       stroke="#4a90e2"
-                      strokeOpacity={0.4}
-                      strokeWidth={Math.max(6, (renderObj.strokeWidth || 2) + 4)}
-                      strokeLinecap="round"
                       fill="none"
                       style={{ pointerEvents: 'none' }}
-                    />
-                  ) : (
-                    <line
-                      x1={ep.x1} y1={ep.y1} x2={ep.x2} y2={ep.y2}
-                      stroke="#4a90e2"
-                      strokeOpacity={0.4}
-                      strokeWidth={Math.max(6, (renderObj.strokeWidth || 2) + 4)}
-                      strokeLinecap="round"
-                      style={{ pointerEvents: 'none' }}
-                    />
-                  )
-                )}
-                {/* UX: Phase 19 follow-up — arrow tool gets a glow that
-                    follows the arrowhead's actual shape (triangle / V /
-                    open circle / etc) so the affordance matches the
-                    visible form-factor, not just a thick bar behind it. */}
-                {annotationIsHovered && isArrow && arrowStyle !== ARROWHEAD_STYLES.NONE && (() => {
-                  const spec = buildArrowheadRenderSpec(
-                    arrowStyle, ep.x2, ep.y2, arrowAngleDeg, '#4a90e2',
-                    renderObj.strokeWidth || 2,
-                  );
-                  const glowSw = Math.max(3, (renderObj.strokeWidth || 2) + 2);
-                  switch (spec.kind) {
-                    case 'solidTriangle':
-                    case 'openTriangle':
-                    case 'diamond':
-                    case 'square':
-                      return (
-                        <polygon
-                          points={spec.polygon.points}
-                          transform={spec.polygon.transform}
-                          fill="none"
-                          stroke="#4a90e2"
-                          strokeOpacity={0.45}
-                          strokeWidth={glowSw}
-                          strokeLinejoin="round"
-                          style={{ pointerEvents: 'none' }}
-                        />
-                      );
-                    case 'openCircle':
-                      return (
-                        <circle
-                          cx={spec.circle.cx} cy={spec.circle.cy} r={spec.circle.r}
-                          fill="none" stroke="#4a90e2" strokeOpacity={0.45}
-                          strokeWidth={glowSw}
-                          style={{ pointerEvents: 'none' }}
-                        />
-                      );
-                    case 'vShape':
-                      return (
-                        <polyline
-                          points={spec.polyline.points}
-                          fill="none" stroke="#4a90e2" strokeOpacity={0.45}
-                          strokeWidth={glowSw}
-                          strokeLinecap="round" strokeLinejoin="round"
-                          style={{ pointerEvents: 'none' }}
-                        />
-                      );
-                    case 'slash':
-                    case 'horizontalLine':
-                      return (
+                    >
+                      {lineIsCurved ? (
+                        <path d={lineCurveD} strokeWidth={Math.max(6, lineSw + 4)} strokeLinecap="round" />
+                      ) : (
                         <line
-                          x1={spec.line.x1} y1={spec.line.y1}
-                          x2={spec.line.x2} y2={spec.line.y2}
-                          stroke="#4a90e2" strokeOpacity={0.45}
-                          strokeWidth={glowSw}
+                          x1={ep.x1} y1={ep.y1} x2={ep.x2} y2={ep.y2}
+                          strokeWidth={Math.max(6, lineSw + 4)}
                           strokeLinecap="round"
-                          style={{ pointerEvents: 'none' }}
                         />
-                      );
-                    default:
-                      return null;
-                  }
+                      )}
+                      {renderArrowheadHalo(endSpec, headGlowSw)}
+                      {renderArrowheadHalo(startSpec, headGlowSw)}
+                    </g>
+                  );
                 })()}
                 {/* Invisible thick hit area — path when curved so clicks
                     along the bend register, line otherwise. */}
@@ -5780,31 +5746,31 @@ const SVGAnnotationLayer = memo(({
               return (
                 <g>
                   {annotationIsHovered && (
-                    <>
+                    // Owner 2026-10-02: one seamless halo (HOVER_HALO_OPACITY).
+                    <g
+                      data-hover-halo="arrow"
+                      opacity={HOVER_HALO_OPACITY}
+                      stroke="#4a90e2"
+                      fill="none"
+                      style={{ pointerEvents: 'none' }}
+                    >
                       <line
                         x1={x1}
                         y1={y1}
                         x2={lineEndX}
                         y2={lineEndY}
-                        stroke="#4a90e2"
-                        strokeOpacity={0.4}
                         strokeWidth={Math.max(6, (renderObj.strokeWidth || 2) + 4)}
                         strokeLinecap="round"
-                        style={{ pointerEvents: 'none' }}
                       />
                       {arrowHead && (
                         <polygon
                           points={`${-headSize / 3},${-headSize / 2} ${headSize * 2 / 3},0 ${-headSize / 3},${headSize / 2}`}
-                          fill="none"
-                          stroke="#4a90e2"
-                          strokeOpacity={0.45}
                           strokeWidth={Math.max(3, (renderObj.strokeWidth || 2) + 2)}
                           strokeLinejoin="round"
                           transform={`translate(${x2},${y2}) rotate(${angleDeg})`}
-                          style={{ pointerEvents: 'none' }}
                         />
                       )}
-                    </>
+                    </g>
                   )}
                   <line
                     x1={x1}
@@ -5955,6 +5921,7 @@ const SVGAnnotationLayer = memo(({
                     <polygon
                       points={pointsStr}
                       transform={shapeTransform}
+                      data-hover-glow="polygon"
                       fill="none"
                       stroke="#4a90e2"
                       strokeOpacity={0.4}
@@ -5967,6 +5934,7 @@ const SVGAnnotationLayer = memo(({
                     <polyline
                       points={pointsStr}
                       transform={shapeTransform}
+                      data-hover-glow="polyline"
                       fill="none"
                       stroke="#4a90e2"
                       strokeOpacity={0.4}
@@ -6037,20 +6005,28 @@ const SVGAnnotationLayer = memo(({
               minStrokeWidth: markHitStrokeWidth,
               isInteractive: annotationHitTargetsInteractive && isObjectInteractive,
             });
+            // Owner Test 15 (2026-10-02): the glow traces the border itself -
+            // centred on the stroke's own line (renderRect pulls an inset-
+            // contract border in by half its width) with the stroke's sharp
+            // miter corners. It had round joins, so its corners were rounded
+            // while the rectangle's are square and it did not hug the outline.
+            const rectGlowInset = hoverGlowStrokeInset(renderObj);
             return (
               <g>
                 {annotationIsHovered && (
                   <rect
-                    x={rectL}
-                    y={rectT}
-                    width={rectW}
-                    height={rectH}
+                    x={rectL + rectGlowInset}
+                    y={rectT + rectGlowInset}
+                    width={Math.max(0, rectW - 2 * rectGlowInset)}
+                    height={Math.max(0, rectH - 2 * rectGlowInset)}
                     transform={rectRotate}
                     fill="none"
                     stroke="#4a90e2"
                     strokeOpacity={0.4}
                     strokeWidth={Math.max(6, sw + 4)}
-                    strokeLinejoin="round"
+                    strokeLinejoin="miter"
+                    strokeMiterlimit={4}
+                    data-hover-glow="rect"
                     style={{ pointerEvents: 'none' }}
                   />
                 )}
@@ -6100,15 +6076,18 @@ const SVGAnnotationLayer = memo(({
               minStrokeWidth: markHitStrokeWidth,
               isInteractive: annotationHitTargetsInteractive && isObjectInteractive,
             });
+            // Owner Test 15: centred on the border's own line, like the rect.
+            const ellipseGlowInset = hoverGlowStrokeInset(renderObj);
             return (
               <g>
                 {annotationIsHovered && (
                   <ellipse
                     cx={cx}
                     cy={cy}
-                    rx={rx}
-                    ry={ry}
+                    rx={Math.max(0, rx - ellipseGlowInset)}
+                    ry={Math.max(0, ry - ellipseGlowInset)}
                     transform={ellipseRotate}
+                    data-hover-glow="ellipse"
                     fill="none"
                     stroke="#4a90e2"
                     strokeOpacity={0.4}
@@ -6170,21 +6149,25 @@ const SVGAnnotationLayer = memo(({
             return (
               <g>
                 {annotationIsHovered && (
-                  <path
-                    d={pathD}
-                    transform={pathTransform}
-                    stroke="#4a90e2"
-                    strokeOpacity={0.4}
-                    strokeWidth={hoverStrokeWidth}
-                    fill={isFilledPdfInkOutline ? '#4a90e2' : 'none'}
-                    fillOpacity={isFilledPdfInkOutline ? 0.12 : undefined}
-                    // Eraser-carved ink is evenodd — forward the rule so
-                    // carved holes don't glow filled.
-                    fillRule={isFilledPdfInkOutline ? pathAttrs.fillRule : undefined}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    style={{ pointerEvents: 'none' }}
-                  />
+                  // Owner 2026-10-02: one seamless halo - the rim is opaque
+                  // inside a group carrying the translucency, so its inner
+                  // half never doubles over the light body (0.4 x 0.3 = the
+                  // same 0.12 body tint as before).
+                  <g opacity={HOVER_HALO_OPACITY} data-hover-halo="path" style={{ pointerEvents: 'none' }}>
+                    <path
+                      d={pathD}
+                      transform={pathTransform}
+                      stroke="#4a90e2"
+                      strokeWidth={hoverStrokeWidth}
+                      fill={isFilledPdfInkOutline ? '#4a90e2' : 'none'}
+                      fillOpacity={isFilledPdfInkOutline ? 0.3 : undefined}
+                      // Eraser-carved ink is evenodd — forward the rule so
+                      // carved holes don't glow filled.
+                      fillRule={isFilledPdfInkOutline ? pathAttrs.fillRule : undefined}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </g>
                 )}
                 <path
                   d={pathD}
