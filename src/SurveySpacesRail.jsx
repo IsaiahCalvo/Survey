@@ -38,6 +38,8 @@ import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH } from './viewerShared';
 import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
 import { resolveAutoCompleteEntity } from './utils/surveyAutoEntity.js';
 import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt.js';
+import { captureMorph, playMorph, prefersReducedMotion } from './surveyRailMorph.js';
+import { ListChecksGlyph, SURVEY_HEAD_ICON } from './surveyHeadIcons.jsx';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -82,17 +84,29 @@ const preserveElementViewportY = (element, mutateLayout) => {
   }
 };
 
-// The panel content that hands over when the template changes: everything
-// under the collapse row, not the collapse row or the portalled zoom / page
-// footer (both chrome rows that stay), and never a ghost of an earlier swap.
-const isRailSwapContent = (node) => Boolean(
-  node
-  && node.nodeType === 1
-  && !node.hasAttribute('data-chrome-rail')
-  && !node.hasAttribute('data-survey-rail-swap-ghost')
-  && !node.classList.contains('mobile-pdf-sheet__handle')
-  && !node.querySelector('[data-rail-footer-row]')
-);
+// A category row's press, played on its own (owner, after bf3888e): the row
+// darkens to the house --pressed fill and lets go, as when a finger presses
+// it. Arming plays it forwards; disarming plays the very same press
+// backwards. 280ms; nothing under prefers-reduced-motion.
+const CATEGORY_PRESS_MS = 280;
+const CATEGORY_PRESS_EASE = 'cubic-bezier(0.33, 1, 0.68, 1)';
+function playCategoryArmPress(root, categoryId, direction = 'normal') {
+  if (!root || prefersReducedMotion()) return null;
+  const card = Array.from(root.querySelectorAll('[data-survey-category-id]')).find((node) => (
+    node.getAttribute('data-survey-category-id') === String(categoryId)
+    && !node.closest('[data-survey-morph-overlay]')
+  ));
+  const row = card?.querySelector('.survey-marker-category-row');
+  if (!row || typeof row.animate !== 'function') return null;
+  const pressed = getComputedStyle(row).getPropertyValue('--pressed').trim() || 'rgba(0, 0, 0, 0.25)';
+  const rest = 'rgba(0, 0, 0, 0)';
+  return row.animate([
+    { offset: 0, backgroundColor: rest, easing: CATEGORY_PRESS_EASE },
+    { offset: 0.3, backgroundColor: pressed },
+    { offset: 0.45, backgroundColor: pressed, easing: CATEGORY_PRESS_EASE },
+    { offset: 1, backgroundColor: rest },
+  ], { duration: CATEGORY_PRESS_MS, direction });
+}
 
 const SurveyMarkerLeadingSelect = ({
   selected,
@@ -877,108 +891,82 @@ const SurveySpacesRail = ({
     }
   }, []);
 
-  // Owner 2026-10-02 (survey panel polish): "when I pick a template the next
-  // page just snaps in". The panel's top rows stay put and its content hands
-  // over: just before the template changes, a still picture (a DOM clone) of
-  // everything under the collapse row is taken; after React has drawn the new
-  // template, the picture sits exactly where the old rows were and fades out
-  // while the new header text fades in and the new rows rise 6px into place.
-  // The header row and its hairline sit at the same place in both, so they
-  // read as one row that stays. 220ms ease-out; nothing moves under
-  // prefers-reduced-motion. The panel keeps its full height throughout (its
-  // lists are flex:1), so there is no height change to jump.
+  // Owner 2026-10-02 (after bf3888e: "a MORPH, not a fade"): when the
+  // panel's page changes - a template picked, another one picked from the
+  // menu or the phone's list, the phone's template list opened or closed -
+  // each old row turns into its counterpart in the new page (position,
+  // size, corners), extra rows grow out of the last one, surplus rows fold
+  // into the row above, and words cross-dissolve only inside a row's box.
+  // 300ms ease-in-out, transforms only, instant under reduced motion
+  // (src/surveyRailMorph.js). captureRailMorph() runs just before the state
+  // change; the layout effect below plays it once React has drawn the page.
   const templatePickerRef = useRef(null);
-  const railSwapRef = useRef(null);
-  const captureRailSwap = useCallback(() => {
-    railSwapRef.current = null;
-    if (typeof window === 'undefined') return;
-    try {
-      if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return;
-    } catch { /* no matchMedia: animate */ }
-    const anchor = templatePickerRef.current || templateTitleButtonRef.current;
+  const railMorphAnchorRef = useRef(null);
+  const pendingRailMorphRef = useRef(null);
+  // Which page the panel shows: the picker, a template's categories, or (on
+  // the phone) the template list in their place.
+  const railPageKey = `${selectedTemplate && showSurveyPanel ? `template:${selectedTemplate.id}` : 'picker'}${isMobileTemplateSwitching ? ':switching' : ''}`;
+  const railPageKeyRef = useRef(railPageKey);
+  railPageKeyRef.current = railPageKey;
+  const captureRailMorph = useCallback(() => {
+    const anchor = railMorphAnchorRef.current || templatePickerRef.current || templateTitleButtonRef.current;
     const root = anchor?.closest?.('.survey-rail, .mobile-survey-sheet');
-    if (!root || typeof root.animate !== 'function') return;
-    const rootBox = root.getBoundingClientRect();
-    const ghosts = [];
-    Array.from(root.children).forEach((child) => {
-      if (!isRailSwapContent(child)) return;
-      const box = child.getBoundingClientRect();
-      if (!box.width || !box.height) return;
-      const ghost = child.cloneNode(true);
-      ghost.removeAttribute('id');
-      ghost.querySelectorAll('[id]').forEach((node) => node.removeAttribute('id'));
-      ghost.setAttribute('aria-hidden', 'true');
-      ghost.setAttribute('inert', '');
-      ghost.setAttribute('data-survey-rail-swap-ghost', '');
-      Object.assign(ghost.style, {
-        position: 'absolute',
-        left: `${box.left - rootBox.left - root.clientLeft}px`,
-        top: `${box.top - rootBox.top - root.clientTop}px`,
-        width: `${box.width}px`,
-        height: `${box.height}px`,
-        margin: '0',
-        // Over the new rows, under the portalled zoom / page footer (z 2).
-        zIndex: '1',
-        pointerEvents: 'none',
-        overflow: 'hidden',
-        flex: 'none',
-      });
-      // A clone forgets where its lists were scrolled to.
-      const scrolls = [];
-      const sources = [child, ...child.querySelectorAll('*')];
-      const copies = [ghost, ...ghost.querySelectorAll('*')];
-      sources.forEach((node, index) => {
-        if (node.scrollTop || node.scrollLeft) scrolls.push([copies[index], node.scrollTop, node.scrollLeft]);
-      });
-      ghosts.push({ ghost, scrolls });
-    });
-    if (ghosts.length) railSwapRef.current = { root, ghosts };
+    const before = captureMorph(root);
+    pendingRailMorphRef.current = before ? { before, pageKey: railPageKeyRef.current } : null;
   }, []);
 
+  // The morph plays on the commit that actually draws the new page (the
+  // template arrives from PDFViewer, possibly a render or two later). One
+  // that never comes - the same template picked again - is dropped.
   useLayoutEffect(() => {
-    const swap = railSwapRef.current;
-    if (!swap) return;
-    railSwapRef.current = null;
-    const { root, ghosts } = swap;
-    if (!root.isConnected) return;
-    const ease = 'cubic-bezier(0.33, 1, 0.68, 1)';
-    const duration = 220;
-    // The new rows, before the ghosts join them.
-    Array.from(root.children).forEach((child) => {
-      if (!isRailSwapContent(child)) return;
-      if (child.matches('.survey-rail__head, .mobile-survey-head')) {
-        // The header row stays where it is; only its words change.
-        Array.from(child.children).forEach((part) => {
-          part.animate([{ opacity: 0 }, { opacity: 1 }], { duration, easing: ease, fill: 'backwards' });
-        });
-        return;
-      }
-      const rises = !child.matches('.survey-rail__foot, .mobile-survey-foot');
-      child.animate(
-        rises
-          ? [{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }]
-          : [{ opacity: 0 }, { opacity: 1 }],
-        { duration, easing: ease, fill: 'backwards' },
-      );
-    });
-    ghosts.forEach(({ ghost, scrolls }) => {
-      root.appendChild(ghost);
-      scrolls.forEach(([node, top, left]) => { node.scrollTop = top; node.scrollLeft = left; });
-      const fade = ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: duration - 20, easing: ease, fill: 'forwards' });
-      const drop = () => ghost.remove();
-      fade.onfinish = drop;
-      fade.oncancel = drop;
-      // Belt and braces: a ghost never outlives its moment.
-      setTimeout(drop, 5000);
-    });
-  }, [selectedTemplate?.id, showSurveyPanel]);
+    const pending = pendingRailMorphRef.current;
+    if (!pending) return;
+    const age = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - pending.before.at;
+    if (pending.pageKey === railPageKey && age < 1500) return;
+    pendingRailMorphRef.current = null;
+    if (pending.pageKey !== railPageKey) playMorph(pending.before);
+  });
+
+  // The armed category (owner, after bf3888e): "When I click down on
+  // something, that invokes it... and has an animation. When I hit Escape
+  // that's essentially doing the exact opposite, so the animation should
+  // just go in reverse, and that's it." Arming plays the row's press;
+  // disarming - Escape, another category, another tool - plays the same
+  // press backwards. At rest the row looks like any other.
+  const armedCategoryId = surveyPlacementArmed && !categorySelectModeActive ? (selectedCategoryId || null) : null;
+  const shownArmedCategoryRef = useRef(armedCategoryId);
+  useLayoutEffect(() => {
+    const previous = shownArmedCategoryRef.current;
+    shownArmedCategoryRef.current = armedCategoryId;
+    if (previous === armedCategoryId) return;
+    const root = railMorphAnchorRef.current?.closest?.('.survey-rail, .mobile-survey-sheet');
+    if (!root) return;
+    if (previous) playCategoryArmPress(root, previous, 'reverse');
+    if (armedCategoryId) playCategoryArmPress(root, armedCategoryId, 'normal');
+  }, [armedCategoryId]);
+
+  // Escape is the way back out of placing (the owner's "exact opposite" of
+  // arming): it puts the Survey Marker tool down. Anything that owns Escape
+  // first - a text field, a dialog, a menu, an open popover (which consumes
+  // it, src/components/dismissRules.js R5) - keeps it.
+  useEffect(() => {
+    if (!armedCategoryId || typeof window === 'undefined') return undefined;
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="dialog"], [role="menu"], [role="listbox"]')) return;
+      setActiveTool('select');
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [armedCategoryId, setActiveTool]);
 
   // Switch to another template. The current one only closes the switcher.
   const switchSurveyTemplate = (template) => {
     if (template && template.id !== selectedTemplate?.id) {
       // Another template starts on its category list.
       if (mobileMode) collapseMobileAccordion();
-      captureRailSwap();
+      captureRailMorph();
       onSelectSurveyTemplate?.(template);
     }
     closeTemplateSwitcher();
@@ -1951,6 +1939,7 @@ const SurveySpacesRail = ({
                 <>
                   {/* Collapse row: mirrors the left rail's top strip. */}
                   <div
+                    ref={railMorphAnchorRef}
                     className={mobileMode ? 'mobile-pdf-sheet__handle mobile-pdf-sheet__handle--wide' : undefined}
                     data-chrome-rail={mobileMode ? undefined : 'true'}
                     style={{
@@ -2096,6 +2085,9 @@ const SurveySpacesRail = ({
                             aria-expanded={isMobileTemplateSwitching}
                             aria-controls="survey-template-list"
                             onClick={() => {
+                              // The category rows turn into the template rows
+                              // and back (captureRailMorph).
+                              captureRailMorph();
                               if (isMobileTemplateSwitching) closeTemplateSwitcher();
                               else setIsTemplateSelectorOpen(true);
                             }}
@@ -2208,7 +2200,10 @@ const SurveySpacesRail = ({
                         <button
                           type="button"
                           className="mobile-survey-cancel"
-                          onClick={() => closeTemplateSwitcher()}
+                          onClick={() => {
+                            captureRailMorph();
+                            closeTemplateSwitcher();
+                          }}
                         >
                           Cancel
                         </button>
@@ -2506,7 +2501,7 @@ const SurveySpacesRail = ({
                             return (
                               <h3 className="survey-rail__cats-head">
                                 <span>Categories</span>
-                                <span className="survey-rail__cats-actions">
+                                <span className="survey-rail__cats-actions" data-chrome-rail="true">
                                   {categorySelectModeActive ? (
                                     <span className="survey-rail__cats-actions" role="toolbar" aria-label="Category selection actions">
                                       <button
@@ -2561,12 +2556,17 @@ const SurveySpacesRail = ({
                                       </button>
                                     </span>
                                   ) : (
-                                    /* Owner 2026-10-02: the Templates / Projects
-                                       editor's rule (editorDebate DECISION 1) -
-                                       quiet WORDS, right-aligned, [Select]
-                                       [+ Category], the editor's section-button
-                                       look. While selecting, the selection
-                                       actions take the place of both, as there. */
+                                    /* Owner 2026-10-02 (after bf3888e): "The icons
+                                       looked way better" - two bare icon buttons,
+                                       right-aligned, [Select] [Add category], the
+                                       app's section header pair (list-checks and
+                                       plus, 16px in a 28px hit - see
+                                       surveyHeadIcons.jsx for the TODO to switch to
+                                       SectionIconButton) with the shared chrome icon
+                                       states (states.css section 5 via
+                                       data-chrome-rail on the group: hover grows,
+                                       press shrinks, no plate). While selecting, the
+                                       selection actions take the place of both. */
                                     <>
                                       <button
                                         type="button"
@@ -2574,18 +2574,22 @@ const SurveySpacesRail = ({
                                           setCategorySelectModeActive(true);
                                           setSelectedCategories({});
                                         }}
-                                        className="survey-rail__head-btn survey-rail__word-btn"
+                                        className="section-icon-btn survey-rail__head-btn survey-rail__head-btn--glyph survey-rail__cats-icon"
+                                        data-glyph-only=""
+                                        aria-label="Select"
+                                        {...tip('Select', 'below')}
                                       >
-                                        Select
+                                        <ListChecksGlyph />
                                       </button>
                                       <button
                                         type="button"
                                         onClick={openCreateCategoryModal}
-                                        className="survey-rail__head-btn survey-rail__word-btn"
-                                        aria-label="Create category"
+                                        className="section-icon-btn survey-rail__head-btn survey-rail__head-btn--glyph survey-rail__cats-icon"
+                                        data-glyph-only=""
+                                        aria-label="Add category"
+                                        {...tip('Add category', 'below')}
                                       >
-                                        <Icon name="plus" size={12} color="currentColor" />
-                                        Category
+                                        <Icon name="plus" size={SURVEY_HEAD_ICON} color="currentColor" />
                                       </button>
                                     </>
                                   )}
@@ -2951,15 +2955,16 @@ const SurveySpacesRail = ({
                                   carries its own "+ Place". */}
                               <span>Categories</span>
                               {!mobileMode && (
-                                <span className="survey-rail__cats-actions">
+                                <span className="survey-rail__cats-actions" data-chrome-rail="true">
                                   <button
                                     type="button"
                                     onClick={openCreateCategoryModal}
-                                    className="survey-rail__head-btn survey-rail__word-btn"
-                                    aria-label="Create category"
+                                    className="section-icon-btn survey-rail__head-btn survey-rail__head-btn--glyph survey-rail__cats-icon"
+                                    data-glyph-only=""
+                                    aria-label="Add category"
+                                    {...tip('Add category', 'below')}
                                   >
-                                    <Icon name="plus" size={12} color="currentColor" />
-                                    Category
+                                    <Icon name="plus" size={SURVEY_HEAD_ICON} color="currentColor" />
                                   </button>
                                 </span>
                               )}
@@ -2989,18 +2994,15 @@ const SurveySpacesRail = ({
                                   const isCategorySelected = selectedCategories[category.id] === true;
                                   const isCategorySelectModeActive = categorySelectModeActive;
                                   const isCategoryActive = (isCategorySelectModeActive && isCategorySelected) || selectedCategoryId === category.id;
-                                  // Owner 2026-10-02 (survey panel polish, "no gold accents"): the
-                                  // ARMED category - what a touch on the page will do now - is the
-                                  // app's selected row, a light grey fill (--surface-3, as a selected
-                                  // Bookmark), on desktop and phone (.is-armed in
-                                  // surveyRailPanel.css / mobileSurveyPanel.css). No gold edge, no
-                                  // gold name. A chosen-but-not-armed or select-mode category is
-                                  // a plain row.
-                                  const isCategoryArmed = surveyPlacementArmed
-                                    && !isCategorySelectModeActive
-                                    && selectedCategoryId === category.id;
+                                  // The ARMED category - what a touch on the page will do now - has
+                                  // no look of its own at rest (owner, after bf3888e: no fill, bar
+                                  // or ring): arming plays its row's press and disarming plays it
+                                  // backwards (playCategoryArmPress). .is-armed stays as a hook;
+                                  // the survey bar's chip is what says which category is armed.
+                                  // Only a category ticked in select mode brightens its count.
+                                  const isCategoryArmed = armedCategoryId === category.id;
                                   const buttonTextColor = 'var(--text-1)';
-                                  const buttonSubTextColor = isCategoryActive ? 'var(--text-2)' : 'var(--text-3)';
+                                  const buttonSubTextColor = isCategorySelectModeActive && isCategorySelected ? 'var(--text-2)' : 'var(--text-3)';
 
                                   // Item-level selection state
                                   const isItemSelectModeActiveForCategory = itemSelectModeActive[category.id] === true;
@@ -3049,6 +3051,7 @@ const SurveySpacesRail = ({
                                         return (
                                     <div
                                       className={`survey-marker-category-card${isCategoryActive ? ' is-active' : ''}${isCategoryArmed ? ' is-armed' : ''}`}
+                                      data-survey-category-id={category.id}
                                       style={{
                                         transition: isDragging ? 'none' : undefined
                                       }}
@@ -4427,9 +4430,9 @@ const SurveySpacesRail = ({
                                      handlers are desktop-only. */
                                   className={mobileMode ? 'mobile-survey-template-row' : 'survey-rail__template-row'}
                                   onClick={() => {
-                                    // The picker's rows hand over to the
-                                    // template's rows (crossFadeRailContent).
-                                    captureRailSwap();
+                                    // The picker's rows turn into the
+                                    // template's rows (captureRailMorph).
+                                    captureRailMorph();
                                     onSelectSurveyTemplate?.(template);
                                   }}
                                 >

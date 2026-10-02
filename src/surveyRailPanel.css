@@ -16,17 +16,19 @@
      chevron) parted by hairlines that reach both edges. No card per row.
    - MODULE TABS: the phone's module tabs, 32px tall, active = bright ink
      with a 2px ink bar. No gold, no boxed prev / pill / next buttons.
-   - CATEGORIES: a "Categories" head line ("Select" and "+ Category" as quiet
-     words on its right, the Templates / Projects editor's section buttons),
-     then each category is a 32px line, its name at the rows' text line
-     (--row-text-x, 40); its Survey Markers are 28px lines one 12px step in
-     (names at 52), each parted by a full-width hairline; an open Survey
-     Marker's checklist and note are lines under its name.
+   - CATEGORIES: a "Categories" head line (two bare icons on its right,
+     Select and Add category, the shared chrome icon states), then each
+     category is a 32px line, its name at the rows' text line (--row-text-x,
+     40); its Survey Markers are 28px lines one 12px step in (names at 52),
+     each parted by a full-width hairline; an open Survey Marker's checklist
+     and note start under its entity dot (x 29).
    - No gold in the panel (owner 2026-10-02, "calm, uniform, no gold
-     accents"): the ARMED category is the app's selected row, a --surface-3
-     fill like a selected Bookmark. Current menu items are bright ink with a
-     grey check; open chevrons, a note that exists, Done, Reuse are neutral.
-     Never a gold box, ring, wash, edge or underline.
+     accents"). The ARMED category has no look of its own at rest - no
+     fill, bar or ring (owner, after bf3888e): arming plays the row's press,
+     disarming plays it backwards (SurveySpacesRail.jsx playCategoryArmPress).
+     The survey bar's chip says which category is armed. Current menu items
+     are bright ink with a grey check; open chevrons, a note that exists,
+     Done, Reuse are neutral. Never a gold box, ring, wash, edge or underline.
    - Glyph buttons have invisible pads: no plate on hover or press; hover
      brightens the ink, press shrinks the glyph. Full-width ROWS keep the
      house --hover fill under the pointer.
@@ -61,12 +63,17 @@
      category's name starts on the rows' shared text line (--row-text-x, 40,
      as in Bookmarks and Spaces); a Survey Marker's name one step in (52),
      its grip in the same 28px gutter as its category's and its entity dot
-     straight after the grip; an open marker's checklist and note start
-     under its name. They were at 31 / 61 / 60. */
+     straight after the grip. They were at 31 / 61 / 60.
+     Owner, after bf3888e: an open marker's checklist and note start where
+     its ENTITY dot starts (x 29, its 1px pad after the 28px grip gutter),
+     not under its name. (Should they move further, to the grab handle, the
+     grip glyph's left edge is x 10.5 - the grip gutter's 4px pad + the
+     16px grip glyph's own inset.) */
   --sv-text-x: var(--row-text-x);                    /* 40: a category name */
   --sv-step: 12px;                                   /* one nesting level */
   --sv-item-x: calc(var(--sv-text-x) + var(--sv-step)); /* 52: a marker name */
-  --sv-detail-indent: var(--sv-item-x);              /* a marker's open lines */
+  --sv-entity-x: calc(var(--sv-grip-w) + 1px);       /* 29: a marker's entity dot */
+  --sv-detail-indent: var(--sv-entity-x);            /* a marker's open lines */
   --sv-detail-right: 8px;   /* their right edge */
   --sv-name-type: 13px;
   --sv-label-type: 12px;
@@ -321,6 +328,26 @@
 .survey-rail .survey-rail__head-btn.survey-rail__word-btn > svg {
   width: 12px;
   height: 12px;
+}
+
+/* THE HEAD LINE'S ICONS (owner 2026-10-02, after bf3888e: "The icons looked
+   way better"): Select (list-checks) and Add category (plus) are bare 16px
+   glyphs in 28px pads, right-aligned, no plate - the app's section header
+   pair (src/surveyHeadIcons.jsx). Their group carries data-chrome-rail, so hover
+   (grow to 108%, brighter ink) and press (92%) are the shared chrome icon
+   states of src/styles/states.css section 5, the same as every rail icon. */
+.survey-rail .survey-rail__cats-actions .survey-rail__head-btn.survey-rail__cats-icon {
+  width: 28px;
+  height: 28px;
+  align-self: center;
+  padding: 0;
+  justify-content: center;
+  color: var(--text-2);
+}
+
+.survey-rail .survey-rail__cats-actions .survey-rail__head-btn.survey-rail__cats-icon > svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* A word answers with its ink, not a glyph squeeze. */
@@ -761,13 +788,12 @@
   border-radius: 0;
 }
 
-/* The ARMED category (owner 2026-10-02, "remove the gold bar"): the app's
-   selected row and nothing else - a --surface-3 fill edge to edge, as a
-   selected Bookmark. Its name and count stay neutral ink. */
-.survey-rail .survey-marker-category-card.is-armed .survey-marker-category-row {
-  background: var(--surface-3);
-  box-shadow: none;
-}
+/* The ARMED category (owner, after bf3888e: "When I click down on something,
+   that invokes it... and has an animation. When I hit Escape that's
+   essentially doing the exact opposite, so the animation should just go in
+   reverse"): no fill, bar or ring at rest - it is a row like the others.
+   Arming plays the row's press (--pressed in, then out) and disarming plays
+   the same press backwards (SurveySpacesRail.jsx playCategoryArmPress). */
 
 /* ROW STATES (owner 2026-10-02: "pressing a category row darkens only part
    of it"). The ROW is the thing under the pointer and the thing pressed, so
