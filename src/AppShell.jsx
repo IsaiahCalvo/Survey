@@ -793,6 +793,15 @@ export default function App({ devPreviewReturnTab = null }) {
   // carries (PDFSidebar.jsx). Applied here, at the one place all three Fit call
   // sites share, so the menu rows and the right-edge strip cannot pick it up
   // later either.
+  // A pressed B / I / U / S or alignment toggle (see the text format row): the
+  // phone's filled segment, a --surface-3 plate under --text-1 ink. The plate
+  // is a background IMAGE because states.css section 5 wipes every chrome
+  // glyph button's background-COLOR on hover and press (!important), which
+  // would flash the plate away under the pointer.
+  const textToggleStyle = (on) => (on
+    ? { color: 'var(--text-1)', backgroundImage: 'linear-gradient(var(--surface-3), var(--surface-3))' }
+    : { color: 'var(--text-2)' });
+
   const renderFitIcon = (m, size = 15) => {
     const squared = { width: `${size}px`, height: `${size}px`, minWidth: `${size}px`, flexShrink: 0 };
     if (m === ZOOM_MODES.FIT_WIDTH) {
@@ -2884,12 +2893,13 @@ export default function App({ devPreviewReturnTab = null }) {
                           }}
                           onClick={() => textFormatSource?.api?.[apiKey]?.()}
                           className="chrome-text-toggle"
-                          // PASS 7 (board 12, owner ruling): 22x20 with a 13px
-                          // glyph, on no fill at all. A pressed toggle turns its
-                          // GLYPH gold and changes nothing else — the resting
-                          // chip fill these carried made four filled boxes in a
-                          // row that already had two filled pills in it.
-                          style={{ color: isOn ? 'var(--accent)' : 'var(--text-2)' }}
+                          // PASS 7 (board 12): 22x20 with a 13px glyph, on no
+                          // fill at rest. Owner 2026-10-02 (phone/desktop
+                          // consistency): a pressed toggle is the phone's
+                          // filled segment - a --surface-3 plate and --text-1
+                          // ink - not a gold glyph; these are settings, not
+                          // the active tool.
+                          style={textToggleStyle(isOn)}
                           {...chromeTip(title, 'below')}
                           aria-label={title}
                           aria-pressed={isOn}
@@ -2920,7 +2930,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           className="chrome-text-toggle"
                           onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
                           onClick={() => textFormatSource?.api?.setTextAlign?.(value)}
-                          style={{ color: on ? 'var(--accent)' : 'var(--text-2)' }}
+                          style={textToggleStyle(on)}
                           {...chromeTip(title, 'below')}
                           aria-label={title}
                           aria-pressed={on}
@@ -2945,7 +2955,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           className="chrome-text-toggle"
                           onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
                           onClick={() => textFormatSource?.api?.setVerticalAlign?.(value)}
-                          style={{ color: on ? 'var(--accent)' : 'var(--text-2)' }}
+                          style={textToggleStyle(on)}
                           {...chromeTip(title, 'below')}
                           aria-label={title}
                           aria-pressed={on}
@@ -4322,7 +4332,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   inputMode="numeric"
                   pattern="[0-9]*"
                   aria-label="Current page"
-                  style={{ ...footerSlotFieldStyle, padding: 0, background: 'transparent', color: 'var(--accent)', border: 'none', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', textAlign: 'center', outline: 'none', lineHeight: 1 }}
+                  style={{ ...footerSlotFieldStyle, padding: 0, background: 'transparent', color: 'var(--text-1)', border: 'none', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', textAlign: 'center', outline: 'none', lineHeight: 1 }}
                 />
                 )} />
                 </span>
@@ -4336,8 +4346,10 @@ export default function App({ devPreviewReturnTab = null }) {
                   aria-label="Edit page number"
                   {...chromeTip('Page — click to jump', 'left')}
                   /* UX 2026-09-22: the page number is the zoom field's twin —
-                     same field height, same house radius. */
-                  style={{ ...footerFieldBoxStyle, background: 'transparent', border: 'none', color: 'var(--accent)', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', cursor: 'pointer' }}
+                     same field height, same house radius.
+                     Owner 2026-10-02: --text-1, as on the phone's page pill -
+                     gold is for the active tool and the primary button only. */
+                  style={{ ...footerFieldBoxStyle, background: 'transparent', border: 'none', color: 'var(--text-1)', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', cursor: 'pointer' }}
                 >
                   <FooterSlot widest={pageSlotWidest}>{api.activeSpaceHasNoPages ? 0 : api.pageNum}</FooterSlot>
                 </button>
@@ -4363,10 +4375,14 @@ export default function App({ devPreviewReturnTab = null }) {
                         key={option.id}
                         onClick={() => api.handleZoomModeSelect(option.id)}
                         data-active={isActive}
-                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '6px', minHeight: 'var(--chrome-menu-row-h)', padding: '4px 9px', background: 'transparent', border: 'none', borderRadius: '4px', textAlign: 'left', cursor: 'pointer', color: isActive ? 'var(--text-2)' : 'var(--text-3)', fontSize: '11px', fontFamily: FONT_FAMILY }}
+                        /* Owner 2026-10-02 (phone/desktop consistency): the
+                           phone's menu - a label, and a check on the chosen
+                           row (which steps up to --text-1). No fit glyphs on
+                           either platform; 28px rows here. */
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', minHeight: '28px', padding: '4px 9px', background: 'transparent', border: 'none', borderRadius: '4px', textAlign: 'left', cursor: 'pointer', color: isActive ? 'var(--text-1)' : 'var(--text-2)', fontSize: '11px', fontFamily: FONT_FAMILY }}
                       >
-                        {renderFitIcon(option.id, RAIL_CONTROL_GLYPH)}
                         <span>{option.label}</span>
+                        {isActive && <Icon name="check" size={RAIL_CONTROL_GLYPH} color="currentColor" />}
                       </button>
                     );
                   })}

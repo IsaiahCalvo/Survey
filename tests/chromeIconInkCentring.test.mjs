@@ -62,8 +62,12 @@ test('the Fit glyph cannot be squeezed by the label beside it', () => {
 test('the Fit menu is the same kind of menu as its two siblings', () => {
   const menu = /const fitMenu = \(anchorStyle\) => \([\s\S]*?\n              \);/.exec(appShell);
   assert.notEqual(menu, null, 'fitMenu not found in AppShell.jsx');
-  assert.match(menu[0], /minHeight: 'var\(--chrome-menu-row-h\)'/, 'its rows take the shared row height');
-  assert.match(menu[0], /renderFitIcon\(option\.id, RAIL_CONTROL_GLYPH\)/, 'its glyph is the token, not a literal');
+  // CHANGED 2026-10-02 (owner, phone/desktop consistency): the Fit menu is the
+  // phone's - a label and a check on the chosen row, 28px rows, no fit glyphs
+  // on either platform. The check glyph still takes the token size.
+  assert.match(menu[0], /minHeight: '28px'/, 'its rows are 28px');
+  assert.doesNotMatch(menu[0], /renderFitIcon/, 'no fit glyph in the menu rows (the phone has none)');
+  assert.match(menu[0], /isActive && <Icon name="check" size=\{RAIL_CONTROL_GLYPH\}/, 'the chosen row carries the check, at the token size');
   assert.match(menu[0], /borderRadius: 'var\(--chrome-radius\)'/, 'its container takes the shared radius');
   assert.doesNotMatch(menu[0], /padding: '6px 8px'/, 'its row inset matches the other menus (4px 9px)');
 });

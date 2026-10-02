@@ -1669,7 +1669,7 @@ const BookmarksPanel = ({
 
   const handleSaveBookmarkGroup = useCallback(() => {
     if (!groupName.trim()) {
-      showToast('Please enter a name for the bookmark group', 'warn');
+      showToast('Please enter a name for the folder', 'warn');
       return;
     }
 
@@ -2189,7 +2189,8 @@ const BookmarksPanel = ({
                     onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                   >
                     <Icon name="folder" size={14} color="var(--text-3)" />
-                    New bookmark group
+                    {/* The phone's words (owner 2026-10-02). */}
+                    New folder
                   </button>
                   <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border)' }}>
                     <input
@@ -2266,26 +2267,27 @@ const BookmarksPanel = ({
                     >
                       Current page
                     </button>
+                    {/* Owner 2026-10-02 (phone/desktop consistency): a quiet
+                        "Create" - the phone editor's gold word, no gold fill. */}
                     <button
                       onClick={handleCreateBookmark}
                       style={{
-                        width: '100%',
-                        padding: '6px 12px',
-                        background: 'var(--accent)',
-                        /* UX: the label ON a gold fill is --accent-text. --text-1 on
-                           --accent-light measures 1.5:1; --accent-text is 8.6:1. */
-                        color: 'var(--accent-text)',
+                        display: 'block',
+                        marginLeft: 'auto',
+                        padding: '6px 8px',
+                        background: 'transparent',
+                        color: 'var(--accent)',
                         border: 'none',
                         borderRadius: '4px',
                         fontSize: '12px',
-                        fontWeight: '500',
+                        fontWeight: '600',
                         cursor: 'pointer',
                         fontFamily: FONT_FAMILY
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-light)'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent)'}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                     >
-                      Create bookmark
+                      Create
                     </button>
                   </div>
                 </div>
@@ -2429,7 +2431,7 @@ const BookmarksPanel = ({
                 fontWeight: '600',
                 color: 'var(--text-2)'
               }}>
-                Create bookmark group
+                New folder
               </h3>
               <button
                 onClick={() => {
@@ -2475,7 +2477,7 @@ const BookmarksPanel = ({
                 type="text"
                 value={groupName}
                 onChange={(e) => setGroupName(e.target.value)}
-                placeholder="Enter bookmark group name"
+                placeholder="Folder name"
                 style={{
                   width: '100%',
                   padding: '10px 12px',
@@ -2776,7 +2778,7 @@ const BookmarksPanel = ({
                 onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-light)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent)'}
               >
-                Create group
+                Create
               </button>
             </div>
           </div>

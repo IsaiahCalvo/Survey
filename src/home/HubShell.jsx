@@ -37,11 +37,12 @@ const HUB_ICON_ALIASES = {
   "arrow-r": "arrowRight",
 };
 
-export const Icon = ({ name, size = 14, color, style, className }) => (
+export const Icon = ({ name, size = 14, color, contentType, style, className }) => (
   <AppIcon
     name={HUB_ICON_ALIASES[name] || name}
     size={size}
     color={color}
+    contentType={contentType}
     style={style}
     className={className}
   />
@@ -139,10 +140,13 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
    "Nothing in Archive" needs no coaching, and Archive's layout was signed off
    as-is, so it must keep rendering identically. Any change here has to leave
    the no-description path byte-for-byte the same. */
+const EMPTY_STATE_CONTENT_TYPE = { doc: 'document', template: 'template' };
 export const EmptyState = ({ icon, line, description, actionLabel, actionIcon = 'plus', onAction }) => (
   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '40px 16px', textAlign: 'center', letterSpacing: 0 }}>
     <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--ink-600)', border: '1px solid var(--ink-500)', display: 'grid', placeItems: 'center' }}>
-      <Icon name={icon} size={20} />
+      {/* The tile keeps the content-type colour (blue document, purple
+          template); the button's glyph below draws in its own ink. */}
+      <Icon name={icon} size={20} contentType={EMPTY_STATE_CONTENT_TYPE[icon]} />
     </div>
     {description ? (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 320 }}>

@@ -3,19 +3,19 @@ import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import { ANNOTATION_SIZE_PRESETS } from '../components/AnnotationSizeControl';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from '../utils/annotationSize';
-import { withQuickColoursFirst } from '../utils/quickStylePresets';
-import CompactColorPicker from '../components/CompactColorPicker';
+import CompactColorPicker, { PRESET_COLORS } from '../components/CompactColorPicker';
 import { composeTextColor, splitTextColor } from '../utils/textColorOpacity';
 import { resolveFontSizeDraft } from '../utils/selectedTextFormatting.js';
 import { QuickColourDots, QuickPaintSwatch } from '../components/QuickStyleControls';
 import { SheetOpacitySlider, SheetPreview, SheetRow, SheetScaleSlider, SheetSection, SheetSegmented, SheetSizeField, SheetSwatchRow } from './MobileToolSheetControls';
 import DismissBarrier from '../components/DismissBarrier';
+import Spinner from '../components/Spinner';
 import ActiveSpaceChip from '../sidebar/ActiveSpaceChip';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS, ensureRgbaOpacity, getCategoryGlyphLabel } from '../viewerShared';
 import { getMobileSyncPresentation, getMobileTextMarkupPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
 import { withDevFakePresence } from '../components/presenceIdentity.js';
-import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectFamilyTransition, getSelectModeIconName } from '../utils/selectModes.js';
+import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectFamilyTransition, getSelectModeIconName, SELECT_MODE_OPTIONS } from '../utils/selectModes.js';
 import { tooltipForLabel } from '../utils/toolShortcuts.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
 import useRailGroupMotion from './useRailGroupMotion.js';
@@ -169,12 +169,12 @@ const BORDER_STYLE_TOOLS = new Set(['rect', 'ellipse', 'polygon', 'polyline', 'l
 // cell the slate #1e293b left the row: it sat beside black and read as black
 // on the dark sheet. It is still the text box's default colour; when it (or
 // any colour not in the row) is in force, the custom cell shows it, ringed.
-const MOBILE_ANNOTATION_COLORS = withQuickColoursFirst([
-  '#F4D35E',
-  '#ffffff',
-  '#C7A7FF',
-  '#FF8A3D',
-]);
+// Owner 2026-10-02 (phone/desktop consistency): ONE preset row everywhere -
+// the desktop picker's eight (CompactColorPicker PRESET_COLORS, which opens
+// with the three quick colours), then the custom cell. The phone's own tail
+// (#F4D35E #ffffff #C7A7FF #FF8A3D) is gone; any of those is still one tap away
+// in the custom cell's picker.
+const MOBILE_ANNOTATION_COLORS = PRESET_COLORS;
 
 // Mirrors zoomController's clampScale bounds (MIN_SCALE 0.01, MAX_SCALE 40) so
 // the phone steppers grey out at exactly the limits the desktop toolbar hits.
@@ -640,44 +640,17 @@ const strokeSample = (width, length) => (
 /* Board 15's four line-style samples, at the two lengths the board uses. Cloud
    is the Drawboard-style scallop: three bumps plus the two half-bumps that make
    the run read as a continuous edge. */
-const lineStyleSample = (style, length) => {
-  const w = length;
-  if (style === 'dashed') {
-    return (
-      <svg width={w} height="12" viewBox="0 0 24 12" fill="none" aria-hidden="true">
-        <path d="M1 6H6M9.5 6H14.5M18 6H23" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  if (style === 'dotted') {
-    return (
-      <svg width={w} height="12" viewBox="0 0 24 12" fill="none" aria-hidden="true">
-        {/* The house 1.5 weight, not the board's 1.8: every chrome glyph in this
-            app strokes 1.5 on the 24 grid (tests/chromeInlineIconWholeTree) and a
-            dotted rule reads fine at it. */}
-        <path d="M1 6H23" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeDasharray="1 4" />
-      </svg>
-    );
-  }
-  if (style === 'cloud') {
-    return (
-      <svg width={w} height="14" viewBox="0 0 24 14" fill="none" aria-hidden="true">
-        <path
-          d="M1 11a2.75 2.75 0 0 1 5.5 0 2.75 2.75 0 0 1 5.5 0 2.75 2.75 0 0 1 5.5 0 2.75 2.75 0 0 1 5.5 0"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    );
-  }
-  return (
-    <svg width={w} height="12" viewBox="0 0 24 12" fill="none" aria-hidden="true">
-      <path d="M1 6H23" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
+const LINE_STYLE_SAMPLE_ICONS = {
+  solid: 'lineSampleSolid',
+  dashed: 'lineSampleDashed',
+  dotted: 'lineSampleDotted',
+  cloud: 'lineSampleCloud',
 };
+// Owner 2026-10-02 (phone/desktop consistency): the samples are the desktop's
+// own Icons.jsx drawings (the phone's cloud used to be a redrawn scallop).
+const lineStyleSample = (style, length) => (
+  <Icon name={LINE_STYLE_SAMPLE_ICONS[style] || 'lineSampleSolid'} size={length} color="currentColor" />
+);
 
 /* Board 15's arrowhead drawings — the head itself, on a shaft, so the menu reads
    as "what the end of my arrow will look like" rather than as a list of words.
@@ -810,10 +783,15 @@ const mobileFontSizeOptions = (current) => {
   return sizes.map((value) => ({ value: String(value), label: `${value} pt` }));
 };
 
-/* The app's own horizontal alignment glyphs (src/Icons.jsx, drawn for board
-   12). The live text strip's alignment button draws the one in force; the two
-   alignment rows themselves are the settings panel's big icons
-   (MobileTextAlignmentGlyph below). */
+/* The app's own alignment glyphs (src/Icons.jsx, drawn for board 12) - the
+   same six the desktop text bar draws. The live text strip's alignment button
+   draws the one in force; the settings panel's two alignment rows draw all six
+   (owner 2026-10-02: one glyph per action on both platforms - the panel's own
+   256-unit drawings are gone). */
+const ALIGNMENT_ICONS = {
+  left: 'alignLeft', center: 'alignCenter', right: 'alignRight',
+  top: 'alignTop', middle: 'alignMiddle', bottom: 'alignBottom',
+};
 const HORIZONTAL_ALIGNMENTS = [
   { value: 'left', icon: 'alignLeft', label: 'Align left' },
   // US spelling, app-wide ruling (owner 2026-09-22): "center", never "centre".
@@ -850,77 +828,6 @@ const RailButton = ({ active = false, disabled = false, icon, label, glyph = RAI
     {children || <Icon name={icon} size={glyph} color="currentColor" />}
   </button>
 );
-
-/* The settings panel's big alignment icons (demo AnnotationEditPanel), drawn on a
-   256-unit grid at 48x34 for the two rows of alignment buttons in the Text card.
-   RESTORED 2026-09-23 with the panel they belong to (owner: "We already had panel
-   layouts with icons and all that"). One adaptation, for the selected-state
-   ruling ("selected = gold glyph only"): the bars used to be painted gold on
-   EVERY button, chosen or not, so all six read as selected. They take the
-   button's own colour now - grey at rest, gold when chosen - and the middle bar
-   is the same colour at 55% so the glyph keeps its two-tone look. */
-function MobileTextAlignmentGlyph({ axis, value }) {
-  const common = {
-    stroke: 'currentColor',
-    strokeWidth: 6,
-    strokeLinecap: 'round',
-  };
-  const bar = { fill: 'currentColor' };
-  const softBar = { fill: 'currentColor', fillOpacity: 0.55 };
-
-  if (axis === 'horizontal') {
-    const leftContent = (
-      <>
-        <line x1="48" y1="44" x2="48" y2="212" {...common} />
-        <rect x="70" y="62" width="150" height="34" rx="8" {...bar} />
-        <rect x="70" y="111" width="76" height="34" rx="8" {...softBar} />
-        <rect x="70" y="160" width="116" height="34" rx="8" {...bar} />
-      </>
-    );
-    return (
-      <svg width="48" height="34" viewBox="0 0 256 256" aria-hidden="true">
-        {value === 0 && leftContent}
-        {value === 1 && (
-          <>
-            <line x1="128" y1="44" x2="128" y2="212" {...common} />
-            <rect x="53" y="62" width="150" height="34" rx="8" {...bar} />
-            <rect x="91" y="111" width="74" height="34" rx="8" {...softBar} />
-            <rect x="72" y="160" width="112" height="34" rx="8" {...bar} />
-          </>
-        )}
-        {value === 2 && <g transform="translate(256 0) scale(-1 1)">{leftContent}</g>}
-      </svg>
-    );
-  }
-
-  return (
-    <svg width="48" height="34" viewBox="0 0 256 256" aria-hidden="true">
-      {value === 0 && (
-        <>
-          <rect x="53" y="66" width="150" height="34" rx="8" {...bar} />
-          <line x1="128" y1="130" x2="128" y2="202" {...common} />
-          <path d="M128 130 L105 153 M128 130 L151 153" fill="none" {...common} strokeLinejoin="round" />
-        </>
-      )}
-      {value === 1 && (
-        <>
-          <rect x="53" y="111" width="150" height="34" rx="8" {...bar} />
-          <line x1="128" y1="40" x2="128" y2="82" {...common} />
-          <path d="M128 82 L105 59 M128 82 L151 59" fill="none" {...common} strokeLinejoin="round" />
-          <line x1="128" y1="174" x2="128" y2="216" {...common} />
-          <path d="M128 174 L105 197 M128 174 L151 197" fill="none" {...common} strokeLinejoin="round" />
-        </>
-      )}
-      {value === 2 && (
-        <>
-          <line x1="128" y1="48" x2="128" y2="120" {...common} />
-          <path d="M128 120 L105 97 M128 120 L151 97" fill="none" {...common} strokeLinejoin="round" />
-          <rect x="53" y="156" width="150" height="34" rx="8" {...bar} />
-        </>
-      )}
-    </svg>
-  );
-}
 
 /* The Text card's "Text size" field. Review 2026-09-23: it used to save on
    every keystroke, so typing 24 on a picked text box saved 2 and then 24 (two
@@ -1001,7 +908,7 @@ function MobileTextAlignmentCard({ textAlign = 'left', verticalAlign = 'top', on
               onPointerDown={keepFocus}
               onClick={() => onTextAlign?.(alignment)}
             >
-              <MobileTextAlignmentGlyph axis="horizontal" value={['left', 'center', 'right'].indexOf(alignment)} />
+              <Icon name={ALIGNMENT_ICONS[alignment]} size={18} color="currentColor" />
             </button>
           ))}
         </div>
@@ -1021,7 +928,7 @@ function MobileTextAlignmentCard({ textAlign = 'left', verticalAlign = 'top', on
               onPointerDown={keepFocus}
               onClick={() => onVerticalAlign?.(alignment)}
             >
-              <MobileTextAlignmentGlyph axis="vertical" value={['top', 'middle', 'bottom'].indexOf(alignment)} />
+              <Icon name={ALIGNMENT_ICONS[alignment]} size={18} color="currentColor" />
             </button>
           ))}
         </div>
@@ -1630,6 +1537,8 @@ export function MobileToolProperties({ api }) {
     const selectMode = api.activeTool === 'text-select' ? 'text' : (api.selectionMode || 'rectangle');
     return (
       <div className="mobile-pdf-properties" data-mobile-tool-properties="true" role="toolbar" aria-label="Select settings" ref={topOverlayRef}>
+        {/* The full names are the desktop's (SELECT_MODE_OPTIONS):
+            "Rectangle Select / Lasso Select / Text Select" on both. */}
         <MobileStripSegmented
           ariaLabel="Selection mode"
           width={150}
@@ -1640,9 +1549,9 @@ export function MobileToolProperties({ api }) {
             api.setActiveTool?.(next.activeTool);
           }}
           options={[
-            { value: 'rectangle', label: 'Box', ariaLabel: 'Box select', icon: getSelectModeIconName('rectangle') },
-            { value: 'lasso', label: 'Lasso', ariaLabel: 'Lasso select', icon: getSelectModeIconName('lasso') },
-            { value: 'text', label: 'Text', ariaLabel: 'Text select', icon: getSelectModeIconName('text') },
+            { value: 'rectangle', label: 'Box', ariaLabel: SELECT_MODE_OPTIONS[0].label, icon: getSelectModeIconName('rectangle') },
+            { value: 'lasso', label: 'Lasso', ariaLabel: SELECT_MODE_OPTIONS[1].label, icon: getSelectModeIconName('lasso') },
+            { value: 'text', label: 'Text', ariaLabel: SELECT_MODE_OPTIONS[2].label, icon: getSelectModeIconName('text') },
           ]}
         />
       </div>
@@ -3000,11 +2909,16 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
               aria-label={sync.state === 'synced' ? `${sync.label}. Tap to sync now.` : `${sync.label}. ${sync.compactMessage}`}
               aria-expanded={sync.state !== 'synced' && syncDetailsOpen}
               aria-controls="mobile-sync-status-details"
-              title={sync.state === 'synced' ? `${sync.label}. Tap to sync now.` : `${sync.label}. Tap for details.`}
+              // The desktop chip's hover hint is the bare label; so is this.
+              title={sync.label}
               disabled={leftRailApi?.cloudSyncEnabled === false}
               onClick={activateSyncStatus}
             >
-              <span style={{ background: sync.color }} />
+              {/* Same look as the desktop chip (SyncStatusChip): a dot, and a
+                  small spinner in its place while syncing. */}
+              {sync.state === 'syncing'
+                ? <Spinner size={14} color={sync.color} style={{ boxShadow: 'none' }} />
+                : <span style={{ background: sync.color }} />}
             </button>
             <RailButton
               icon="history"
@@ -3124,7 +3038,9 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
               type="button"
               aria-label="Retry now"
               title="Retry now"
-              style={{ color: sync.color }}
+              // A button glyph is chrome, not a status dot: --text-2, as on
+              // the desktop chip's Retry.
+              style={{ color: 'var(--text-2)' }}
               onClick={() => {
                 setSyncDetailsOpen(false);
                 void leftRailApi.cloudSyncOnRetry();
@@ -3180,7 +3096,8 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
 
 export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hubMode = 'pages', hubOpen = false, spacesActive, surveyActive, covered = false }) {
   const hubLabels = { pages: 'Pages', search: 'Search', bookmarks: 'Bookmarks' };
-  const hubIcons = { pages: 'document', search: 'search', bookmarks: 'bookmark' };
+  // Pages draws the desktop rail's Pages glyph (PDFSidebar), not the document.
+  const hubIcons = { pages: 'pages', search: 'search', bookmarks: 'bookmark' };
   // `covered`: a phone panel is open over the dock. The dock stays mounted
   // under it (so it is already in place when the panel slides away - see
   // AppShell), but takes no focus, taps or screen-reader reads meanwhile.

@@ -43,10 +43,30 @@ export function presenceInitials(value) {
   return (parts[0] || source).slice(0, 2).toUpperCase() || '?';
 }
 
-/** A readable name for the list: the stored display name (we store the email
- *  there at write time). */
+/** THE label rule, desktop and phone alike (owner 2026-10-02): the person's
+ *  name, falling back to their email. A `document_presence` row carries only
+ *  `display_name`, which the viewer writes as the email, so a peer reads as
+ *  their email; you read as your account name once presenceRowForUser has put
+ *  it on your row. */
 export function presenceLabel(row) {
-  return row?.display_name || row?.displayName || row?.name || row?.email || row?.user_id || 'Someone';
+  return row?.name || row?.full_name || row?.display_name || row?.displayName || row?.email || row?.user_id || 'Someone';
+}
+
+/** Your own row carries your account name (both rosters call this, so the
+ *  footer and the phone sheet say the same thing about you). */
+export function presenceRowForUser(row, { currentUserId = null, currentUserDisplayName = null } = {}) {
+  if (!row || !currentUserDisplayName || !currentUserId || row.user_id !== currentUserId) return row;
+  return { ...row, name: currentUserDisplayName };
+}
+
+/** The row that stands in for you before your own presence row has synced:
+ *  your name, else your email, else "You". */
+export function presenceSelfRow({ currentUserId = null, currentUserEmail = null, currentUserDisplayName = null } = {}) {
+  return {
+    user_id: currentUserId,
+    name: currentUserDisplayName || null,
+    display_name: currentUserEmail || 'You',
+  };
 }
 
 /*

@@ -865,7 +865,7 @@ export default function ProjectsFolderTree({
         onClick={() => { if (fileSelect) { toggleFileSel(f.id); return; } onOpenDocument && onOpenDocument(f); }}
       >
         {dragHandle}
-        <span className="projects-mobile-file-icon"><Icon name="doc" size={15} /></span>
+        <span className="projects-mobile-file-icon"><Icon name="doc" size={15} contentType="document" /></span>
         <div className="projects-mobile-file-copy">
           <div>{f.name}</div>
           <span>{[projectNameForFile(f), owner?.name?.split(' ')[0], shortWhen(f)].filter(Boolean).join(' · ')}</span>
@@ -1315,7 +1315,7 @@ export default function ProjectsFolderTree({
                   <div className="projects-mobile-file-list">
                     {mobileDrillFiles.length === 0 ? (
                       <div className="projects-mobile-empty-card">
-                        <Icon name="doc" size={18} />
+                        <Icon name="doc" size={18} contentType="document" />
                         <span>{mobileDrillAllFiles.length === 0 ? 'No files in this project yet.' : 'No files match your search.'}</span>
                         {mobileDrillAllFiles.length === 0 ? (
                           <button type="button" onClick={() => addFiles(mobileDrillProject)}>Add files</button>
@@ -1609,7 +1609,7 @@ export default function ProjectsFolderTree({
                 <div className="projects-mobile-tile-grid files">
                   {openFiles.map((f) => (
                     <button key={`grid-file-${f.id}`} type="button" onClick={() => onOpenDocument && onOpenDocument(f)}>
-                      <span className="projects-mobile-file-thumb"><Icon name="doc" size={20} /></span>
+                      <span className="projects-mobile-file-thumb"><Icon name="doc" size={20} contentType="document" /></span>
                       <strong>{f.name}</strong>
                       <small>{shortWhen(f)}</small>
                     </button>

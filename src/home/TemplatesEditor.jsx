@@ -2077,7 +2077,9 @@ export default function TemplatesEditor({
             className="templates-mobile-back-button"
             onClick={closeMobileTemplate}
           >
-            <span className="templates-mobile-back-icon"><Icon name="arrow-r" size={13} /></span>Templates
+            {/* Owner 2026-10-02: back is chevronLeft, as everywhere else (it
+                was a right arrow turned round by .templates-mobile-back-icon). */}
+            <span style={{ display: 'inline-flex' }}><Icon name="chevronLeft" size={13} /></span>Templates
           </button>
         ) : null}
         <Search

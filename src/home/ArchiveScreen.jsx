@@ -620,7 +620,7 @@ export default function ArchiveScreen({
         width: ROW_ART_W, height: ROW_THUMB, flex: 'none',
         display: 'grid', placeItems: 'center',
       }}>
-        <Icon name={typeIcon[item.type] || 'doc'} size={iconSize} />
+        <Icon name={typeIcon[item.type] || 'doc'} size={iconSize} contentType={item.type === 'project' ? undefined : item.type} />
       </div>
     );
   };

@@ -537,7 +537,7 @@
   background: var(--surface-3);
   border: 0;
   border-radius: var(--chrome-field-radius);
-  font: 600 11px/1 Helvetica, Arial, sans-serif;
+  font: 600 11px/1 var(--font-ui);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
   cursor: pointer;
@@ -668,7 +668,7 @@
   border: 0;
   /* ONE RADIUS SCALE (2026-09-22): a button is 6. Was 8. */
   border-radius: 6px;
-  font: 600 11px/1 Helvetica, Arial, sans-serif;
+  font: 600 11px/1 var(--font-ui);
   white-space: nowrap;
   cursor: pointer;
 }
@@ -738,7 +738,7 @@
   justify-content: center;
   border: 1.5px solid currentColor;
   border-radius: 999px;
-  font: 700 9px/1 Helvetica, Arial, sans-serif;
+  font: 700 9px/1 var(--font-ui);
   letter-spacing: 0;
 }
 
@@ -749,7 +749,7 @@
 .survey-subrow__empty {
   padding: 0 6px;
   color: var(--text-3);
-  font: 600 11px/1 Helvetica, Arial, sans-serif;
+  font: 600 11px/1 var(--font-ui);
 }
 
 /* "Keep active": the app's switch (the Spaces one) at the chrome's 20px pill
@@ -765,7 +765,7 @@
   background: transparent;
   border: 0;
   border-radius: var(--chrome-radius);
-  font: 600 11px/1 Helvetica, Arial, sans-serif;
+  font: 600 11px/1 var(--font-ui);
   letter-spacing: -0.01em;
   white-space: nowrap;
   cursor: pointer;

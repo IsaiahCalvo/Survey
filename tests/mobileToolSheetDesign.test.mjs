@@ -22,10 +22,12 @@ test('the sheet is titled with the tool and says nothing it does not mean', () =
   assert.doesNotMatch(chrome, /large-swatch/);
 });
 
-test('the colour row is eight circles that fit the gutter, the last one custom', () => {
-  const palette = /const MOBILE_ANNOTATION_COLORS = withQuickColoursFirst\(\[([\s\S]*?)\]\);/.exec(chrome)?.[1] || '';
-  // 3 quick colours + this tail = 7 presets, + the custom cell = 8.
-  assert.equal((palette.match(/'#[0-9a-fA-F]{6}'/g) || []).length, 4);
+test('the colour row is the shared presets that fit the gutter, the last one custom', () => {
+  // CHANGED 2026-10-02 (owner, phone/desktop consistency): ONE preset list on
+  // both platforms - the desktop picker's eight (which open with the three
+  // quick colours), then the custom cell: nine circles.
+  assert.match(chrome, /const MOBILE_ANNOTATION_COLORS = PRESET_COLORS;/);
+  assert.match(chrome, /import CompactColorPicker, \{ PRESET_COLORS \} from '\.\.\/components\/CompactColorPicker';/);
   assert.match(controls, /mobile-tool-sheet__custom/);
   assert.match(css, /\.mobile-tool-sheet__swatches \{[\s\S]{0,120}justify-content: space-between/);
   assert.match(css, /\.mobile-tool-sheet__swatch \{\s*width: 32px;\s*height: 32px;/);

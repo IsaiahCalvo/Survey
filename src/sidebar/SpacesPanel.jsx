@@ -1357,7 +1357,10 @@ const SpacesPanel = ({
           <SectionIconButton
             phone={mobileMode}
             action="export"
-            icon="upload"
+            /* Owner 2026-10-02: every export that hands you a file draws
+               `download` (arrow into the tray); `upload` means putting files
+               INTO the app. */
+            icon="download"
             className="spaces-panel__head-icon spaces-panel__head-icon--export"
             label={exportSpaceLabel}
             aria-haspopup={mobileMode ? 'dialog' : 'menu'}

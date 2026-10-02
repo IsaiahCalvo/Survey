@@ -2,7 +2,7 @@
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
-  font-family: Helvetica, Arial, sans-serif;
+  font-family: var(--font-ui);
 }
 
 /* PASS 7 (boards 8-15): every trigger this component renders IS a setting pill
@@ -43,7 +43,7 @@
   /* Board 15: 9px on the menu card, against the 10px pill it opens from. */
   border-radius: 9px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.48);
-  font-family: Helvetica, Arial, sans-serif;
+  font-family: var(--font-ui);
   z-index: 6500;
   /* UX 2026-09-16: 140ms fade + 5px slide, the app-wide popover motion
      (styles.css surveySurfaceIn). Reference = Drawboard's 100ms fade-and-grow
@@ -81,7 +81,7 @@
   box-sizing: border-box;
   /* ONE TYPE SCALE (2026-09-22): a chrome label is 11px/600. This row was
      11.5px/500, a size and a weight that exist nowhere else in the app. */
-  font: 600 11px/1 Helvetica, Arial, sans-serif;
+  font: 600 11px/1 var(--font-ui);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
   white-space: nowrap;
@@ -155,7 +155,7 @@
 
 .toolbar-overflow-menu__label {
   color: var(--text-3);
-  font: 600 11px/1 Helvetica, Arial, sans-serif;
+  font: 600 11px/1 var(--font-ui);
   letter-spacing: -0.01em;
   white-space: nowrap;
 }

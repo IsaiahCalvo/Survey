@@ -91,3 +91,34 @@ test('the fake-people flag is dev only and builds N rows with you first', () => 
   assert.equal(rows[0].user_id, 'dev-fake-you');
   assert.equal(new Set(rows.map((r) => r.user_id)).size, 12);
 });
+
+// Owner 2026-10-02 (consistency audit bug): the same user read "DU" on the
+// desktop and "DT" on the phone - two initials rules (first + last word vs
+// first + second) and two label rules (email first vs name first). Both now
+// use presenceLabel / presenceInitials: the person's name, else their email.
+test('phone and desktop give one person the same label and initials', async () => {
+  const { presenceLabel, presenceRowForUser, presenceSelfRow } = await import('../../src/components/presenceIdentity.js');
+  const { normalizeMobilePresence } = await import('../../src/mobile/mobilePdfViewerModel.js');
+  const me = { currentUserId: 'me', currentUserEmail: 'dev.user@example.com', currentUserDisplayName: 'Dev Test User' };
+  // Before your own row syncs: your name, initials first + last.
+  const desktopSelf = presenceLabel(presenceSelfRow(me));
+  const [phoneSelf] = normalizeMobilePresence(me);
+  assert.equal(desktopSelf, 'Dev Test User');
+  assert.equal(phoneSelf.label, desktopSelf);
+  assert.equal(phoneSelf.initials, presenceInitials(desktopSelf));
+  assert.equal(phoneSelf.initials, 'DU');
+  // Once it has synced (display_name holds the email): still your name.
+  const row = { user_id: 'me', display_name: 'dev.user@example.com', last_seen: '2026-10-02T12:00:00Z' };
+  assert.equal(presenceLabel(presenceRowForUser(row, me)), 'Dev Test User');
+  assert.equal(normalizeMobilePresence({ ...me, presence: [row] })[0].label, 'Dev Test User');
+  // No name known: the email, on both.
+  const noName = { ...me, currentUserDisplayName: null };
+  assert.equal(presenceLabel(presenceSelfRow(noName)), 'dev.user@example.com');
+  assert.equal(normalizeMobilePresence(noName)[0].initials, 'DU');
+  // A peer's row carries only the email: the email, on both.
+  const peer = { user_id: 'p', display_name: 'maria.lopez@example.com', last_seen: '2026-10-02T12:00:00Z' };
+  assert.equal(presenceLabel(presenceRowForUser(peer, me)), 'maria.lopez@example.com');
+  const phonePeer = normalizeMobilePresence({ ...me, presence: [row, peer] }).find((u) => u.id === 'p');
+  assert.equal(phonePeer.label, 'maria.lopez@example.com');
+  assert.equal(phonePeer.initials, 'ML');
+});

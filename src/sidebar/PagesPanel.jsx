@@ -1367,7 +1367,8 @@ const PagesPanel = ({
               });
             }}
           >
-            <Icon name="check" size={16} color="currentColor" />
+            {/* listChecks: the desktop's Select glyph (owner 2026-10-02). */}
+            <Icon name="listChecks" size={16} color="currentColor" />
             <span>{mobileSelectMode ? 'Done' : 'Select'}</span>
           </button>
         </div>
