@@ -270,7 +270,10 @@
   color: var(--text-1);
 }
 
-.survey-rail .survey-rail__head-btn:not(:disabled):active svg {
+/* A glyph-only head button (the panel's close X, the Export caret) is a
+   chrome icon: its hover and press are src/styles/states.css section 5, so it
+   presses exactly like the tool bar and both rails (owner 2026-10-02). */
+.survey-rail .survey-rail__head-btn:not([data-glyph-only]):not(:disabled):active svg {
   transform: scale(0.88);
 }
 
@@ -1198,7 +1201,7 @@
   .survey-rail .survey-rail__entity-btn:hover .survey-rail__entity-caret {
     opacity: 1;
   }
-  .survey-rail .survey-rail__head-btn:not(:disabled):hover svg,
+  .survey-rail .survey-rail__head-btn:not([data-glyph-only]):not(:disabled):hover svg,
   .survey-rail .survey-rail__marker-action:hover svg,
   .survey-rail .survey-marker-category-arrow:hover svg {
     transform: scale(1.1);

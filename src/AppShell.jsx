@@ -4335,7 +4335,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 // height with zIndex 1; transparent background lets the
                 // host/panel color (#12151c) show through.
                 return (
-                  <div style={{ position: 'relative', zIndex: 2, width: '100%', borderTop: '1px solid var(--border)', padding: '8px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: 'transparent' }}>
+                  <div data-chrome-rail="true" style={{ position: 'relative', zIndex: 2, width: '100%', borderTop: '1px solid var(--border)', padding: '8px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: 'transparent' }}>
                     <button
                       onClick={api.zoomIn}
                       {...chromeTip('Zoom in', 'left')}
@@ -4459,6 +4459,9 @@ export default function App({ devPreviewReturnTab = null }) {
               const footerRow = (
                 <div
                   data-rail-footer-row="true"
+                  // Owner 2026-10-02: a chrome region - its icons take the one
+                  // hover / press / chosen look (states.css section 5).
+                  data-chrome-rail="true"
                   style={{ position: 'absolute', left: 0, right: 0, bottom: 0, boxSizing: 'border-box', zIndex: 2, background: 'var(--surface-1)', borderTop: '1px solid var(--border)', padding: '6px 8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
                 >
                   <button
@@ -4523,6 +4526,9 @@ export default function App({ devPreviewReturnTab = null }) {
                       aria-expanded={api.isZoomMenuOpen}
                       aria-label="Fit options"
                       data-active={fitMode !== ZOOM_MODES.MANUAL}
+                      // Icon + short word: it presses like every chrome icon
+                      // (states.css section 5), with no hover plate.
+                      className="chrome-icon-btn"
                       {...chromeTip(`Page fit: ${api.zoomDropdownLabel}`, 'above')}
                       style={{ ...footerBtn(), width: 'auto', height: `${RAIL_CONTROL}px`, gap: '6px', padding: '0 8px', color: fitMode !== ZOOM_MODES.MANUAL ? 'var(--text-2)' : 'var(--text-3)', fontSize: '11px', fontFamily: FONT_FAMILY }}
                     >

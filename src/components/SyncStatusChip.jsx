@@ -213,6 +213,11 @@ function CompactSyncStatusChip({ state, label, accessibleLabel, dotColor, detail
   return (
     <div
       role="button"
+      // Owner 2026-10-02: a chrome icon - it hovers and presses like every
+      // rail icon (src/styles/states.css section 5), never with a plate. The
+      // class (not data-glyph-only) marks it, because the hover hint below is
+      // drawn inside the chip and its words would un-mark it mid-hover.
+      className="chrome-icon-btn"
       aria-live="polite"
       aria-label={accessibleLabel}
       aria-expanded={detailsOpen}

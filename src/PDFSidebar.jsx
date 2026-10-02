@@ -430,6 +430,9 @@ const PDFSidebar = React.forwardRef(({
       {/* Collapse/Expand Button */}
       <div
         className={mobileMode ? 'mobile-pdf-sheet__handle' : undefined}
+        // Owner 2026-10-02: the rail is chrome - its icons take the one hover /
+        // press / chosen look (src/styles/states.css section 5).
+        data-chrome-rail={mobileMode ? undefined : 'true'}
         style={{
         height: '35px',
         padding: '0 8px',
@@ -466,12 +469,12 @@ const PDFSidebar = React.forwardRef(({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            transition: 'background 0.15s ease'
+            transition: 'color 0.12s ease-out'
           }}
-          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
-          onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+          // Owner 2026-10-02: no hover plate - the chevron grows and brightens
+          // (states.css section 5), so it inks in currentColor.
         >
-          <Icon name={mobileMode ? 'chevronDown' : (isCollapsed ? 'chevronRight' : 'chevronLeft')} size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="var(--text-2)" />
+          <Icon name={mobileMode ? 'chevronDown' : (isCollapsed ? 'chevronRight' : 'chevronLeft')} size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="currentColor" />
         </button>
       </div>
 
@@ -482,7 +485,7 @@ const PDFSidebar = React.forwardRef(({
               tap on the page still picks a mark (w64). */}
           {/* Tab Navigation */}
           {mobileStandalonePanel ? null : (
-          <div className={mobileMode ? 'mobile-pdf-hub-tabs' : undefined} style={{
+          <div className={mobileMode ? 'mobile-pdf-hub-tabs' : undefined} data-chrome-rail={mobileMode ? undefined : 'true'} style={{
             display: 'flex',
             borderBottom: '1px solid var(--border)',
             background: 'var(--surface-1)',
@@ -502,7 +505,10 @@ const PDFSidebar = React.forwardRef(({
               return (
                 <button
                   key={tab.id}
-                  className={mobileMode ? `mobile-pdf-hub-tab${isActive ? ' is-active' : ''}` : undefined}
+                  // Desktop: an icon + short word in the chrome, so it hovers and
+                  // presses like every rail icon (states.css section 5), and the
+                  // open panel's tab is marked like an armed tool - gold glyph.
+                  className={mobileMode ? `mobile-pdf-hub-tab${isActive ? ' is-active' : ''}` : `chrome-icon-btn${isActive ? ' is-active' : ''}`}
                   {...tip(tab.label, 'below')}
                   onClick={() => {
                     if (tab.id === '__savelog') {
@@ -536,7 +542,11 @@ const PDFSidebar = React.forwardRef(({
                     // strip keeps the height it has and the panel's content
                     // starts exactly where it did.
                     padding: mobileMode ? '10px 2px' : '9px 2px',
-                    background: isActive ? 'var(--surface-2)' : 'transparent',
+                    /* Owner 2026-10-02 ("no grey box"): the open tab drops its
+                       --surface-2 plate. It is marked by its gold glyph - the
+                       same chosen look as an armed tool - plus the 2px gold
+                       underline that ties the tab to the panel below it. */
+                    background: (isActive && mobileMode) ? 'var(--surface-2)' : 'transparent',
                     border: 'none',
                     borderBottom: isActive ? '2px solid var(--accent)' : '2px solid transparent',
                     boxSizing: 'border-box',
@@ -553,16 +563,6 @@ const PDFSidebar = React.forwardRef(({
                     fontFamily: FONT_FAMILY,
                     transition: 'all 0.15s ease',
                     whiteSpace: 'nowrap'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isActive) {
-                      e.currentTarget.style.background = 'var(--hover)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isActive) {
-                      e.currentTarget.style.background = 'transparent';
-                    }
                   }}
                 >
                   {/* UX 2026-09-16: every tab icon draws in the same box with
@@ -594,7 +594,7 @@ const PDFSidebar = React.forwardRef(({
                   <Icon
                     name={tab.icon}
                     size={mobileMode ? 22 : RAIL_GLYPH}
-                    color={isActive ? 'var(--accent)' : 'var(--text-2)'}
+                    color={isActive ? 'var(--accent)' : (mobileMode ? 'var(--text-2)' : 'currentColor')}
                   />
                   <span style={{
                     maxWidth: '100%',
@@ -769,7 +769,7 @@ const PDFSidebar = React.forwardRef(({
 
       {/* Collapsed State - Show Icons Only */}
       {isCollapsed && (
-        <div style={{
+        <div data-chrome-rail="true" style={{
           display: 'flex',
           flexDirection: 'column',
           padding: '8px',
@@ -822,6 +822,7 @@ const PDFSidebar = React.forwardRef(({
                 style={{
                   background: 'transparent',
                   border: 'none',
+                  color: 'var(--text-2)',
                   borderRadius: 'var(--chrome-radius, 6px)',
                   // UX 2026-09-16 (desktop sizing pass): the rail tab keeps its
                   // 40px height — nothing moves — but the glyph drops to the
@@ -839,14 +840,8 @@ const PDFSidebar = React.forwardRef(({
                   minHeight: '28px',
                   width: '100%'
                 }}
-                onMouseEnter={(e) => {
-                  tabTip.onMouseEnter(e);
-                  e.currentTarget.style.background = 'var(--hover)';
-                }}
-                onMouseLeave={(e) => {
-                  tabTip.onMouseLeave(e);
-                  e.currentTarget.style.background = 'transparent';
-                }}
+                // Owner 2026-10-02: no hover plate. The rail icon grows and
+                // brightens like every chrome icon (states.css section 5).
               >
                 {/* UX 2026-09-22 (desktop critic round): ONE grey for a
                     resting chrome icon, and it is --text-2. Intended UX: the
@@ -860,7 +855,7 @@ const PDFSidebar = React.forwardRef(({
                 <Icon
                   name={tab.icon}
                   size={RAIL_GLYPH}
-                  color="var(--text-2)"
+                  color="currentColor"
                   style={{ width: `${RAIL_GLYPH}px`, height: `${RAIL_GLYPH}px`, flexShrink: 0 }}
                 />
               </button>
@@ -876,7 +871,7 @@ const PDFSidebar = React.forwardRef(({
           scrolled off with the PDF area on page change.
           Hidden entirely when cloud sync is disabled (free tier or no PDF). */}
       {cloudSyncEnabled && !mobileMode && (
-        <div style={isCollapsed ? {
+        <div data-chrome-rail="true" style={isCollapsed ? {
           borderTop: '1px solid var(--border)',
           padding: '10px 6px',
           display: 'flex',

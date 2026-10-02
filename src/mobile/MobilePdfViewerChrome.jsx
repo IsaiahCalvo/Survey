@@ -3137,7 +3137,9 @@ export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hu
       </button>
       <button
         type="button"
-        className={`mobile-pdf-dock__center${hubOpen ? ' is-active' : ''}`}
+        // chrome-icon-btn: an icon + short word, so it presses like every
+        // chrome icon (src/styles/states.css section 5, owner 2026-10-02).
+        className={`mobile-pdf-dock__center chrome-icon-btn${hubOpen ? ' is-active' : ''}`}
         aria-label="Open pages, search, and bookmarks"
         onClick={onToggleHub}
       >

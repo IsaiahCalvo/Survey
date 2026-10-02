@@ -273,6 +273,9 @@ export function AnchoredTooltip({ visible = true, side = 'right', position = nul
   return (
     <div
       aria-hidden="true"
+      // Lets states.css section 5 leave the hint out when the chrome icon it
+      // sits inside grows or tightens (owner 2026-10-02).
+      data-anchored-tooltip=""
       style={{
         position: 'absolute',
         ...(position || ANCHORED_POSITION[side] || ANCHORED_POSITION.right),

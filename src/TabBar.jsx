@@ -258,6 +258,11 @@ function TabItem({
         <button
           onClick={handleTabCloseClick}
           onPointerDown={(e) => e.stopPropagation()}
+          // Pressing the X must not also paint the whole tab's pressed fill
+          // (the tab's own onMouseDown) - that read as a grey box behind the X
+          // (owner 2026-10-02, test plan U2). It never started a drag anyway:
+          // the pointerdown above already stops the sortable.
+          onMouseDown={(e) => e.stopPropagation()}
           style={{
             marginLeft: '7px',
             padding: '3px',
@@ -272,12 +277,13 @@ function TabItem({
             transition: 'all 0.15s ease',
             flexShrink: 0
           }}
+          // Owner 2026-10-02 (test plan U2, "an X ... a grey box shows behind
+          // it"): the close X paints no hover plate. Its glyph brightens and
+          // grows, and presses, like every chrome icon (states.css section 5).
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = TAB_HOVER_BG;
             e.currentTarget.style.color = TAB_TEXT_ACTIVE;
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'transparent';
             e.currentTarget.style.color = TAB_TEXT;
           }}
         >
