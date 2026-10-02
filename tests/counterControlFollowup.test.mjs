@@ -58,5 +58,11 @@ test('desktop and mobile annotation sizes use one Radix-backed whole-number cont
   assert.match(sizeControlSource, /aria-label=\{label\}/);
   assert.match(sizeControlSource, /data-annotation-size-popover/);
   assert.match(appShellSource, /<AnnotationSizeControl/);
-  assert.match(mobileChromeSource, /<AnnotationSizeControl/);
+  // RULED CHANGE 2026-10-02 (owner, Test 19): the phone settings sheet no
+  // longer uses this control - its chevron opened the presets as a tall list
+  // floating outside the sheet. The sheet shows the SAME preset lists
+  // (ANNOTATION_SIZE_PRESETS) as a slider, beside a typed field with this
+  // control's draft / clamp-on-blur / "Mixed" contract (SheetSizeField).
+  assert.match(mobileChromeSource, /ANNOTATION_SIZE_PRESETS\.counter/);
+  assert.match(mobileChromeSource, /<SheetSizeField/);
 });
