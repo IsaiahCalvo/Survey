@@ -321,7 +321,10 @@ test('mobile PDF rendering stays inside the WKWebView memory budget', () => {
 
 test('mobile PDF pinch previews translation, progressively sharpens, and commits the same anchor', () => {
   assert.match(PDFJS_VIEWER_SOURCE, /resolveGesturePreview\(g, oldScale \* lz\)/);
-  assert.match(PDFJS_VIEWER_SOURCE, /pendingAnchorRef\.current = \{ left: preview\.left, top: preview\.top \}/);
+  // 2026-10-02: the commit also says whether it came from an elastic (phone)
+  // pinch, so the anchor effect can fold any browser clamp into the release
+  // spring instead of showing it as a jump.
+  assert.match(PDFJS_VIEWER_SOURCE, /pendingAnchorRef\.current = \{ left: preview\.left, top: preview\.top, elastic: Boolean\(g\.elastic\) \}/);
   assert.match(PDFJS_VIEWER_SOURCE, /translate\(\$\{liveTranslateX\}px, \$\{liveTranslateY\}px\) scale/);
   assert.match(PDFJS_VIEWER_SOURCE, /lastSharpAtRef/);
   assert.match(PDFJS_VIEWER_SOURCE, /240/);
@@ -331,6 +334,31 @@ test('mobile PDF pinch previews translation, progressively sharpens, and commits
   // desktop-only: on the phone the tile signal is just pinch-live / idle.
   assert.match(PDFJS_VIEWER_SOURCE, /\$\{preview\.anchorX\}px \$\{preview\.anchorY - layout\.padTop\}px/);
   assert.match(PDFJS_VIEWER_SOURCE, /const tileLiveZoomSignal = isMobileSurface \? \(liveZoom === 1 \? 1 : 0\) : liveZoom;/);
+});
+
+// Owner 2026-10-02 (Drawboard PDF iPhone parity): the phone viewer lets the
+// page go past a document edge or a zoom limit with resistance and eases it
+// back; nothing may jump. Desktop (wheel / trackpad) stays a hard clamp.
+test('mobile pinch and pan rubber-band past edges and zoom limits, then ease home', () => {
+  // The bottom-edge snap: the predicted scroll range must count a gap above
+  // every page and one below the last, exactly like the layout memo.
+  assert.match(PDFJS_VIEWER_SOURCE, /let height = metrics\.padTop \+ gapPx \+ metrics\.padBottom;\s*dims\.forEach\(\(dim\) => \{\s*height \+= dim\.h \* sc \+ gapPx;/);
+  // Zoom past the limits shows with resistance; reduced motion clamps hard.
+  assert.match(PDFJS_VIEWER_SOURCE, /\? rubberScale\(rawScale, minimumScale, maxScale\)\s*: Math\.max\(minimumScale, Math\.min\(maxScale, rawScale\)\)/);
+  assert.match(PDFJS_VIEWER_SOURCE, /const elastic = !prefersReducedMotion\(\);/);
+  // The preview shows the requested scale and rubber-banded scroll, the commit
+  // keeps the clamped target, and the leftover eases away pivoting on the fingers.
+  assert.match(PDFJS_VIEWER_SOURCE, /renderedLiveZoom = preview\.displayScale \/ scale;/);
+  assert.match(PDFJS_VIEWER_SOURCE, /rubberClamp\(freeTopAt\(displayScale\), 0,/);
+  assert.match(PDFJS_VIEWER_SOURCE, /z: preview\.displayScale \/ newScale,/);
+  assert.match(PDFJS_VIEWER_SOURCE, /releaseElastic\(\);/);
+  // One-finger pan past an edge, and a flick into an edge, use the same spring.
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(touchPanElasticRef\.current\) \{ applyElasticPan\(delta\.x, delta\.y\); return; \}/);
+  assert.match(PDFJS_VIEWER_SOURCE, /panMomentumHooksRef\.current\.bounce\?\.\(/);
+  // The wheel path never sets `elastic`, so desktop keeps today's clamp.
+  assert.doesNotMatch(PDFJS_VIEWER_SOURCE, /regime: e\.deltaMode === 0[^}]*elastic/);
+  // A retired detail tile is hidden in the same frame (no black box).
+  assert.match(PDFJS_VIEWER_SOURCE, /canvasRef\.current\.style\.display = 'none';\s*releaseRasterCanvas\(canvasRef\.current\);/);
 });
 
 test('mobile deep zoom-out rebases before WebKit composites an unsafe downscale', () => {
@@ -360,7 +388,9 @@ test('mobile deep zoom-out rebases before WebKit composites an unsafe downscale'
 test('mobile pan keeps two-axis velocity and coasts after release', () => {
   assert.match(PDFJS_VIEWER_SOURCE, /velocityX/);
   assert.match(PDFJS_VIEWER_SOURCE, /velocityY/);
-  assert.match(PDFJS_VIEWER_SOURCE, /startPanInertia\(velocityX, velocityY\)/);
+  // 2026-10-02: an axis let go while pulled past an edge springs home
+  // instead of gliding; the other axis still coasts with its own velocity.
+  assert.match(PDFJS_VIEWER_SOURCE, /startPanInertia\(\s*elasticPan && pulled\.x \? 0 : velocityX,\s*elasticPan && pulled\.y \? 0 : velocityY,\s*\{ elastic: elasticPan \},\s*\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /panVelocityRef\.current\.release\(performance\.now\(\)\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /PDF pan coast distance/);
   assert.match(PAN_MOMENTUM_SOURCE, /state\.samples\.push/);
