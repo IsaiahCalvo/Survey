@@ -11,7 +11,9 @@
 // (scratchpad/edgeBounce, 2026-10-02):
 //   - edge pull release: page edge returns like a critically damped spring
 //     from rest, omega ~11-14 rad/s (312pt -> 37% at 200ms, 7% at 400ms,
-//     1% at 600ms, no bounce-past). We use omega 13.
+//     1% at 600ms, no bounce-past). We use omega 11, which lands on
+//     exactly that: (1 + 11t)e^(-11t) = 35.5% / 6.6% / 1.0% (owner 2026-10-02;
+//     it was 13, which left only 27% / 3.4% / 0.4% - firmer than Drawboard).
 //   - zoom past max: readout 3005% climbed to 5325% (x1.77) ever slower and
 //     flattened there — two separate pinches both levelled off at ~5300%, so
 //     the ceiling is real and is approached quickly (x1.49 within 100 ms,
@@ -30,7 +32,7 @@ export const ELASTIC_RUBBER_COEFFICIENT = 0.55;
 // Zoom overshoot ceilings, in log-scale units (asymptotes of the rubber curve).
 export const ELASTIC_ZOOM_OVER_MAX = Math.log(1.8);
 export const ELASTIC_ZOOM_UNDER_MIN = Math.log(1 / 0.43);
-export const ELASTIC_SPRING_OMEGA = 13;
+export const ELASTIC_SPRING_OMEGA = 11;
 export const ELASTIC_ZOOM_EASE_MS = 250;
 // Momentum into an edge: cap the bounce so a hard flick never throws the page
 // more than this share of the viewport past the edge.

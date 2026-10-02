@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  ELASTIC_SPRING_OMEGA,
   ELASTIC_ZOOM_OVER_MAX,
   ELASTIC_ZOOM_UNDER_MIN,
   WHEEL_OVERSCROLL_IDLE_MS,
@@ -56,10 +57,12 @@ test('edge spring is critically damped: no pass of the edge, home in ~0.6 s', ()
   let minX = Infinity;
   for (let t = 0; t <= 1; t += 1 / 120) minX = Math.min(minX, criticallyDampedSpring(100, 0, t).x);
   assert.ok(minX >= 0, 'never crosses the edge');
-  // measured on Drawboard: ~35% left at 200 ms, ~7% at 400 ms, ~1% at 600 ms
-  assert.ok(Math.abs(criticallyDampedSpring(100, 0, 0.2).x - 27) < 10);
-  assert.ok(criticallyDampedSpring(100, 0, 0.4).x < 8);
-  assert.ok(criticallyDampedSpring(100, 0, 0.6).x < 1.5);
+  // measured on Drawboard: ~37% left at 200 ms, ~7% at 400 ms, ~1% at 600 ms
+  // (owner 2026-10-02: the old omega 13 left 27% / 3.4% / 0.4%, too firm).
+  assert.equal(ELASTIC_SPRING_OMEGA, 11);
+  assert.ok(Math.abs(criticallyDampedSpring(100, 0, 0.2).x - 37) < 2);
+  assert.ok(Math.abs(criticallyDampedSpring(100, 0, 0.4).x - 7) < 1);
+  assert.ok(Math.abs(criticallyDampedSpring(100, 0, 0.6).x - 1) < 0.3);
   // a flick into the edge travels out and comes back, capped by the viewport
   const v = capBounceVelocity(1e6, 800);
   let peak = 0;
