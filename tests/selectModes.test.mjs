@@ -71,9 +71,14 @@ test('Select family keeps distinct approved icons without changing its transitio
   // three distinct, locked assets — is untouched. The lasso and text-select
   // hashes are unchanged: both already resolve to ~1.5 through their scaled
   // groups.
+  // DELIBERATE ASSERTION CHANGE (2026-10-02, owner pick): Box Select is now
+  // Hugeicons "Cursor Rectangle Selection 02" (a dashed box corner and a
+  // cursor), and Lasso draws that same cursor at the same size and place, so
+  // both hashes move. Text Select is unchanged. Still guarded: three distinct,
+  // locked assets.
   for (const [fileName, expectedHash] of [
-    ['selection-cursor-rounded.svg', '0a438b4cf39a44e85607b9cd78d813a7e10ea2c0a49fa111b14ec77b2b9853ae'],
-    ['lasso-select-rounded.svg', '4426e3be98a00ae3d9c69644ccfa970007fa3a7f69f5bddb093b7977be6f988e'],
+    ['selection-cursor-rounded.svg', '56075a0c4ed32b07418ba9cea0123ebed769304d0972330bfd16110d65052186'],
+    ['lasso-select-rounded.svg', '2a93eac6d83b701cfbe45454eae5a69fa081e999e7367bf491dab226419fb71a'],
     ['text-select-rounded.svg', '206d7331013546f58733846df696525c106d42b574ed2cca4135caa58e3b5843'],
   ]) {
     const bytes = readFileSync(new URL(`../src/assets/icons/${fileName}`, import.meta.url));

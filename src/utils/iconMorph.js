@@ -55,6 +55,10 @@ const areaToolMorph = (name) => ({
   )),
 });
 
+const BOX_SELECT_TRANSFORM = 'translate(12 12) scale(0.93) translate(-12 -12)';
+const BOX_SELECT_CURSOR = 'M14.5352 11.0865L18.5575 12.6605C20.8775 13.5683 22.0375 14.0222 21.9991 14.7422C21.9606 15.4622 20.75 15.7924 18.3288 16.4527C17.6079 16.6493 17.2475 16.7476 16.9976 16.9976C16.7476 17.2475 16.6493 17.6079 16.4527 18.3288C15.7924 20.75 15.4622 21.9606 14.7422 21.9991C14.0222 22.0375 13.5683 20.8775 12.6605 18.5575L11.0865 14.5352C10.136 12.1062 9.6608 10.8918 10.2763 10.2763C10.8918 9.6608 12.1062 10.136 14.5352 11.0865Z';
+const BOX_SELECT_CORNERS = 'M2 8.5V11.5M11.5 2H8.5M8.5 18H9M18 9V8.5M4.5 18C3.11929 18 2 16.8807 2 15.5M2 4.5C2 3.11929 3.11929 2 4.5 2M18 4.5C18 3.11929 16.8807 2 15.5 2';
+
 const POLYGON_NODES = [[14.71, 4.92], [5.91, 7.13], [4.77, 16.73], [13.59, 19.08], [19.23, 12.83]];
 
 /**
@@ -136,15 +140,19 @@ export const MORPH_ICONS = Object.freeze({
   },
   areaRect: areaToolMorph('areaRect'),
   areaFreehand: areaToolMorph('areaFreehand'),
+  // 2026-10-02: Box Select is Hugeicons Cursor Rectangle Selection 02 (a
+  // dashed box corner and a smaller cursor), and the lasso draws the same
+  // cursor in the same place.
   selectCursor: {
     source: 'src/assets/icons/selection-cursor-rounded.svg',
-    paths: [{ d: CURSOR }],
+    transform: BOX_SELECT_TRANSFORM,
+    paths: [{ d: BOX_SELECT_CURSOR }, { d: BOX_SELECT_CORNERS }],
   },
   lassoSelect: {
     source: 'src/assets/icons/lasso-select-rounded.svg',
     paths: [
       { d: 'M8.75 19.08C5.18 18.65 2.51 17.51 2.5 15.46c-.01-1.7 1.75-2.81 2.45-4.68.45-1.2.38-2.29.58-3.12C6.28 4.52 8.78 2.7 12.3 2.7c3.808 0 6.756 2.63 8.138 6.784', dash: [3, 2.1] },
-      { d: CURSOR, transform: 'translate(6.13 6.13) scale(.72)' },
+      { d: BOX_SELECT_CURSOR, transform: BOX_SELECT_TRANSFORM },
     ],
   },
   textSelect: {
