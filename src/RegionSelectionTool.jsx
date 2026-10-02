@@ -10,8 +10,8 @@
  */
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { createPortal, flushSync } from 'react-dom';
-import Icon from './Icons';
 import { diff, union, intersection } from './vendor/martinezPolygonClipping.js';
+import { areaDrawCursor } from './utils/areaDrawCursor';
 import { REGION_OPERATIONS, polygonToRegionCoords, regionToPolygon, simplifyPolygon, subtractRegionFromRegion, rotateCoordsAroundPoint, getRegionRotation, normalizeRegionRotation, deriveRegionChromeGeometry } from './utils/regionMath';
 import { buildRegionOutlinePathD, buildSmoothVertexLookup, getRegionSmoothFlags, thinBooleanResultRing, thinFreehandStroke, withRegionOutlineCoordinates } from './utils/regionOutline';
 import { isUndoKeyEvent, isRedoKeyEvent } from './utils/undoRedoHotkeys';
@@ -169,9 +169,6 @@ const RegionSelectionTool = ({
   const [targetElement, setTargetElement] = useState(null);
   const [isCursorOverCanvas, setIsCursorOverCanvas] = useState(false);
   const [canvasRect, setCanvasRect] = useState(null);
-  const cursorPositionRef = useRef({ x: 0, y: 0 });
-  const addIndicatorRef = useRef(null);
-  const subtractIndicatorRef = useRef(null);
   const [isShiftPressed, setIsShiftPressed] = useState(false);
   const [isOptionAltPressed, setIsOptionAltPressed] = useState(false);
   const [isCmdCtrlPressed, setIsCmdCtrlPressed] = useState(false);
@@ -1428,18 +1425,9 @@ const RegionSelectionTool = ({
 
     setIsCursorOverCanvas(isWithinCanvas);
 
-    // Update cursor position for subtractive mode indicator
-    if (isWithinCanvas && (effectiveToolType === 'rectangular' || effectiveToolType === 'freehand')) {
-      cursorPositionRef.current = { x: event.clientX, y: event.clientY };
-      if (addIndicatorRef.current) {
-        addIndicatorRef.current.style.left = (event.clientX + 8) + 'px';
-        addIndicatorRef.current.style.top = (event.clientY - 20) + 'px';
-      }
-      if (subtractIndicatorRef.current) {
-        subtractIndicatorRef.current.style.left = (event.clientX + 8) + 'px';
-        subtractIndicatorRef.current.style.top = (event.clientY - 20) + 'px';
-      }
-    }
+    // Owner 2026-10-02: the Add / Subtract sign is part of the cursor image
+    // now (areaDrawCursor), drawn by the system with the pointer - nothing to
+    // move here, so it can never trail a fast sweep.
 
     if (!isWithinCanvas && !isDrawing && !interactionState) {
       return;
@@ -3080,7 +3068,13 @@ const RegionSelectionTool = ({
               width: '100%',
               height: '100%',
               zIndex: 100000,
-              cursor: effectiveToolType === 'move' ? 'default' : (isCursorOverCanvas ? 'crosshair' : 'default'),
+              // Desktop drawing: the crosshair with its Add / Subtract badge as
+              // one cursor image (owner 2026-10-02; utils/areaDrawCursor.js).
+              cursor: effectiveToolType === 'move' || !isCursorOverCanvas
+                ? 'default'
+                : ((!mobileMode && (effectiveToolType === 'rectangular' || effectiveToolType === 'freehand'))
+                  ? areaDrawCursor(effectiveSelectionMode === REGION_OPERATIONS.SUBTRACT ? 'subtract' : 'add')
+                  : 'crosshair'),
               // Phone: the layer is see-through to touches. A finger on the page
               // lands in the PDF viewer, so two fingers pinch and pan it as
               // everywhere else in the app, and this tool picks the one-finger
@@ -3708,37 +3702,6 @@ const RegionSelectionTool = ({
         );
       })()}
 
-      {/* Floating Plus Sign Indicator for Additive Mode */}
-      {!mobileMode && effectiveSelectionMode === REGION_OPERATIONS.ADD && isCursorOverCanvas && (toolType === 'rectangular' || toolType === 'freehand') && (
-        <div
-          ref={addIndicatorRef}
-          style={{
-            position: 'fixed',
-            left: `${cursorPositionRef.current.x + 8}px`,
-            top: `${cursorPositionRef.current.y - 20}px`,
-            pointerEvents: 'none',
-            zIndex: 100002
-          }}
-        >
-          <Icon name="plus" size={16} color="#000" style={{ filter: 'drop-shadow(0 0 3px rgba(255, 255, 255, 0.8))' }} />
-        </div>
-      )}
-
-      {/* Floating Minus Sign Indicator for Subtractive Mode */}
-      {!mobileMode && effectiveSelectionMode === REGION_OPERATIONS.SUBTRACT && isCursorOverCanvas && (toolType === 'rectangular' || toolType === 'freehand') && (
-        <div
-          ref={subtractIndicatorRef}
-          style={{
-            position: 'fixed',
-            left: `${cursorPositionRef.current.x + 8}px`,
-            top: `${cursorPositionRef.current.y - 20}px`,
-            pointerEvents: 'none',
-            zIndex: 100002
-          }}
-        >
-          <Icon name="minus" size={16} color="#000" style={{ filter: 'drop-shadow(0 0 3px rgba(255, 255, 255, 0.8))' }} />
-        </div>
-      )}
     </>
   );
 };
