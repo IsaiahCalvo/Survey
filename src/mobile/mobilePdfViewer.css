@@ -1921,36 +1921,6 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   font-weight: 600;
 }
 
-/* UX 2026-09-09: Bump inside the settings panel shares the Stroke style row
-   (dropdown + "Bump" input side by side) so the card keeps its height.
-   RESTORED 2026-09-23 with the panel: this is the cloud bump's home on the
-   phone for every cloud shape. */
-.mobile-pdf-text-card__style-row {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.mobile-pdf-text-card__style-row > .mobile-styled-select { flex: 1 1 auto; min-width: 0; }
-.mobile-pdf-text-card__style-row > .mobile-styled-select .mobile-styled-select__trigger { padding-inline: 8px; }
-.mobile-pdf-text-card__bump {
-  flex: 0 0 auto;
-  gap: 4px;
-  color: var(--text-1);
-  /* ONE TYPE SCALE (2026-09-22): field label inside a sheet, 11/600. */
-  font-size: 11px;
-  font-weight: 600;
-}
-.mobile-pdf-text-card__bump input {
-  width: 36px;
-  height: 32px;
-  font-size: 13px;
-  color: var(--text-1);
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-}
-
 .mobile-pdf-properties__width {
   height: var(--mobile-strip-control-h);
   padding-left: 6px;
@@ -2139,11 +2109,6 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 }
 
 .mobile-styled-select__menu > button.is-active { color: var(--accent); }
-
-/* Inside a bottom sheet the pill is the 96px aligned-field variant. */
-.mobile-pdf-text-card .mobile-styled-select__trigger {
-  width: 100%;
-}
 
 /* RULED CHANGE 2026-09-22: the bare 44px numeric font-size <input> is GONE. It
    could not carry its unit (the boards: "every numeric field carries its unit"),
@@ -2433,110 +2398,55 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   inset: -15.5px 0;
 }
 
-.mobile-pdf-text-defaults > header {
+/* ==========================================================================
+   THE "<Tool>" SETTINGS SHEET (owner 2026-10-02, Test 19: "it doesn't look like
+   a designer built this ... have it be intentional, all the elements look like
+   they belong"). Markup: MobileToolProperties + src/mobile/MobileToolSheetControls.
+
+   One surface (the sheet), no cards. Sections are split by ONE hairline and
+   12px above and below it. Everything sits on the sheet's 16px gutter. Rows
+   are 44px (a finger) with a 72px label column, so every control in the sheet
+   starts on one line and every value ends on one line. Type: title 16/700,
+   labels 13/600 --text-2, values 13/500 --text-3. Chosen = the raised field
+   surface (--surface-3), never gold.
+   ========================================================================== */
+.mobile-tool-sheet {
+  --tool-sheet-label-w: 72px;
+  --tool-sheet-value-w: 60px;
+  --tool-sheet-control-h: 32px;
+  padding-bottom: 12px;
+}
+
+.mobile-tool-sheet > .mobile-pdf-sheet__handle {
+  display: flex;
+  align-items: center;
+}
+
+.mobile-tool-sheet__header {
   height: var(--sheet-head-h);
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-}
-
-.mobile-pdf-text-defaults > .mobile-pdf-sheet__handle {
-  display: flex;
-  align-items: center;
-}
-
-.mobile-pdf-text-defaults > header > div {
-  min-width: 0;
-  display: grid;
-  gap: 3px;
-  transform: translateY(-4px);
-}
-
-/* ONE TYPE SCALE (2026-09-22): a phone sheet's title is 16/700 and a field
-   label under it is 11/600. */
-.mobile-pdf-text-defaults > header span {
-  color: var(--text-3);
-  font: var(--sheet-label);
-  order: 2;
-}
-
-.mobile-pdf-text-defaults > header strong {
+  color: var(--text-1);
   font: var(--sheet-title);
 }
 
-.mobile-pdf-text-defaults > header > button {
-  width: 18px;
-  height: 30px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  color: var(--text-1);
-  background: transparent;
-  border: 0;
-  border-radius: 6px;
-  transform: translateY(-3px);
-}
-
-.mobile-pdf-text-defaults__tabs {
-  width: 224px;
-  height: 34px;
-  flex: 0 0 auto;
-  margin: 5px auto 0;
-  display: grid;
-  grid-template-columns: 1fr 1px 1fr;
-  align-items: center;
+.mobile-tool-sheet__header > strong {
+  font: var(--sheet-title);
+  font-weight: 700;
+  min-width: 0;
   overflow: hidden;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  /* ONE RADIUS SCALE (2026-09-22): a tab well is 9, the same as the colour
-     picker's Border / Fill well. */
-  border-radius: 9px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.mobile-pdf-text-defaults__tabs > button {
-  width: 100%;
-  height: 100%;
-  padding: 0;
-  color: var(--text-3);
-  background: transparent;
-  border: 0;
-  /* ONE TYPE SCALE (2026-09-22): a tab word is 12/600. */
-  font-size: 12px;
-  font-weight: 600;
-}
-
-/* Selected = the word turns gold, nothing else (owner 2026-09-17). */
-.mobile-pdf-text-defaults__tabs > button.is-active {
-  color: var(--accent);
-}
-
-/* ADAPTED 2026-09-23: this was a 1px GOLD outline on plain :focus, so a tap on a
-   tab left a gold box round it - the "no gold boxes or rings" ruling. The tab
-   takes no focus box on a tap; a keyboard still gets the app's focus ring
-   through :focus-visible (src/styles/states.css). */
-.mobile-pdf-text-defaults__tabs > button:focus:not(:focus-visible) {
-  outline: none;
-}
-
-.mobile-pdf-text-defaults__tabs > span {
-  width: 1px;
-  height: 20px;
-  background: var(--surface-3);
-}
-
-/* The body is what is left of the sheet once its chrome is out: an 18px handle
-   row, a 40px header, the tab row when there is one, and the 12px top margin
-   below. Derived rather than named. */
+/* The body scrolls inside the sheet's shared height cap when it must. */
 .mobile-pdf-text-defaults__scroll {
   flex: 1 1 auto;
   min-height: 0;
-  margin-top: 12px;
-  padding-bottom: 16px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 10px;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: none;
@@ -2544,381 +2454,403 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 
 .mobile-pdf-text-defaults__scroll::-webkit-scrollbar { display: none; }
 
-.mobile-pdf-text-card {
+/* What the tool will draw, on a strip of paper. Muted rather than white so a
+   bright strip does not shout out of a dark sheet; dark and light inks both
+   read on it. */
+.mobile-tool-sheet__preview {
   flex: 0 0 auto;
-  padding: 9px;
-  box-sizing: border-box;
+  height: 48px;
+  margin-bottom: 4px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #e4e6ea;
+  border-radius: var(--radius-md);
+}
+
+.mobile-tool-sheet__preview > svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.mobile-tool-sheet__preview > span {
+  max-width: calc(100% - 32px);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+.mobile-tool-sheet__section {
+  flex: 0 0 auto;
+  padding: 8px 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  /* ONE RADIUS SCALE (2026-09-22): a card on a sheet is a surface, 9. */
-  border-radius: 9px;
 }
 
-.mobile-pdf-text-card--text-color {
-  height: 89px;
-  padding: 9px;
-  gap: 8px;
+.mobile-tool-sheet__section + .mobile-tool-sheet__section {
+  border-top: var(--sheet-divider);
 }
 
-.mobile-pdf-text-card--shape-color {
-  height: 150px;
-  padding: 11px;
-  gap: 10px;
-}
-
-/* 2026-07-12 (Phase E): strokes-only tools (pen/highlighter/line/arrow) drop
-   the Fill/Stroke sub-tabs, so the colour card is shorter. */
-.mobile-pdf-text-card--shape-color.mobile-pdf-text-card--stroke-only {
-  height: 112px;
-}
-
-/* ONE TYPE SCALE (2026-09-22): a row label on a sheet is 13/600. */
-.mobile-pdf-text-card strong {
-  color: var(--text-1);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.mobile-pdf-text-card__header {
-  min-height: 30px;
+/* A section's label line: the label left, an optional control (Fill / Border)
+   right, on a 32px line so a compact tab pair fits it without moving the row. */
+.mobile-tool-sheet__head {
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
-.mobile-pdf-text-card__header > div {
+.mobile-tool-sheet__head > strong,
+.mobile-tool-sheet__row > strong {
+  color: var(--text-2);
+  font: 600 13px/16px var(--sheet-font);
+}
+
+.mobile-tool-sheet__row {
+  min-height: var(--sheet-row-h);
   display: grid;
-  gap: 3px;
+  grid-template-columns: var(--tool-sheet-label-w) minmax(0, 1fr) auto;
+  align-items: center;
 }
 
-.mobile-pdf-text-card__header > div > span {
-  color: var(--text-3);
-  /* ONE TYPE SCALE (2026-09-22): field label, 11/600. */
-  font-size: 11px;
-  font-weight: 600;
+/* A row whose control fills the rest (segments, a menu, a button). */
+.mobile-tool-sheet__row > :nth-child(2):last-child {
+  grid-column: 2 / 4;
 }
 
-/* The big swatch: it opens the NEW shared colour picker sheet. */
-.mobile-pdf-text-card__large-swatch {
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  flex: 0 0 auto;
-  position: relative;
-  overflow: hidden;
-  background: var(--mobile-text-color);
-  border: 2px solid var(--border-strong);
-  border-radius: 50%;
-  cursor: pointer;
+/* Two lines of segments (the six fonts). */
+.mobile-tool-sheet__row.is-tall {
+  padding: 6px 0;
+  align-items: start;
 }
 
-.mobile-pdf-text-card--shape-color .mobile-pdf-text-card__large-swatch {
-  width: 42px;
-  height: 42px;
-  border-radius: 21px;
+.mobile-tool-sheet__row.is-tall > strong {
+  line-height: var(--tool-sheet-control-h);
 }
 
-.mobile-pdf-text-card__colors {
+/* ---- colour ---------------------------------------------------------------- */
+
+/* Eight circles across the gutter, the first and last ON it, equal gaps
+   between: every circle 32px, every one a 44px+ target, and the row can never
+   run off the sheet. */
+.mobile-tool-sheet__swatches {
+  height: var(--sheet-row-h);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0;
 }
 
-/* ADAPTED 2026-09-23 (owner 2026-09-23, the HeroUI swatch): each circle is the
-   shared .hero-swatch (src/styles/swatches.css) - a 30px item whose 2px border
-   is clear at rest, with the colour filling it. The chosen one's border turns
-   the swatch's OWN colour, the colour shrinks to open a gap, and a white (or
-   dark, on a light colour) check pops in. Never a gold ring. The size is the
-   old circle button's 30px, so the card keeps its height. */
-.mobile-pdf-text-card__colors > .hero-swatch {
-  width: 30px;
-  height: 30px;
+.mobile-tool-sheet__swatch {
+  width: 32px;
+  height: 32px;
   flex: 0 0 auto;
 }
 
-.mobile-pdf-text-card--split {
-  height: 81px;
-  min-height: 81px;
-  padding: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
-  gap: 0;
-}
-
-.mobile-pdf-text-defaults.is-shape .mobile-pdf-text-card--split,
-.mobile-pdf-text-defaults.is-eraser .mobile-pdf-text-card--split {
-  height: 85px;
-  min-height: 85px;
-}
-
-/* 2026-07-12 (Phase E): tools with no border-style select (pen/highlighter/
-   counter) show a single full-width stroke-width pane. */
-.mobile-pdf-text-card--split.mobile-pdf-text-card--width-only {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.mobile-pdf-text-defaults.is-shape .mobile-pdf-text-card__pane,
-.mobile-pdf-text-defaults.is-eraser .mobile-pdf-text-card__pane {
-  padding: 11px;
-}
-
-.mobile-pdf-text-card__pane {
-  min-width: 0;
-  padding: 9px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-}
-
-.mobile-pdf-text-card__divider {
-  width: 1px;
-  height: 100%;
-  background: var(--surface-3);
-}
-
-.mobile-pdf-text-defaults__format {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-}
-
-/* Same baseline fault, same fix as the live strip's format buttons above: a
-   block button centres its icon on a font baseline, not on its box. */
-.mobile-pdf-text-defaults__format > button {
-  width: 31px;
-  height: 31px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  color: var(--text-1);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  /* ONE SCALE (2026-09-22): a button is radius 6 and its letter is 12/600. */
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.mobile-pdf-text-defaults__format > button.italic { font-style: italic; }
-.mobile-pdf-text-defaults__format > button.underline { text-decoration: underline; }
-.mobile-pdf-text-defaults__format > button.strike { text-decoration: line-through; }
-
-.mobile-pdf-text-defaults__format > button.is-active {
-  color: var(--accent);
-}
-
-.mobile-pdf-text-card__size > input {
-  width: 52px;
-  height: 32px;
-  padding: 0 6px;
-  box-sizing: border-box;
-  color: var(--text-1);
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  /* ONE TYPE SCALE (2026-09-22): a field's own value is 13/600. */
-  font-size: 13px;
-  font-weight: 600;
-  text-align: center;
-}
-
-/* In-sheet app-styled dropdowns (stroke style / arrowhead / font / series) fill
-   their card pane and match the card control aesthetic instead of the compact
-   strip trigger. */
-.mobile-pdf-text-card__pane > .mobile-styled-select,
-.mobile-pdf-text-card--arrowhead > .mobile-styled-select,
-.mobile-pdf-text-card--inline > .mobile-styled-select { width: 100%; }
-
-/* NOTE the min-height: a bare `height: 32px` here never took effect, because the
-   shared .mobile-styled-select__trigger rule sets a min-height and a min-height
-   always beats a height. */
-.mobile-pdf-text-card__pane > .mobile-styled-select .mobile-styled-select__trigger,
-.mobile-pdf-text-card__style-row > .mobile-styled-select .mobile-styled-select__trigger,
-.mobile-pdf-text-card--arrowhead > .mobile-styled-select .mobile-styled-select__trigger,
-.mobile-pdf-text-card--inline > .mobile-styled-select .mobile-styled-select__trigger {
-  position: relative;
-  width: 100%;
-  height: 32px;
-  min-height: 32px;
-  color: var(--text-1);
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-/* UX 2026-09-16 (phone sweep, owner: "make them the same size, keep the sheet
-   compact"). In the split card the Stroke style dropdown and the Width field sit
-   side by side and are ONE control size - each fills its own pane, both 32px
-   tall, both wearing the card's chrome. */
-.mobile-pdf-text-card__pane > .mobile-styled-select,
-.mobile-pdf-text-card__style-row > .mobile-styled-select,
-.mobile-pdf-text-card--arrowhead > .mobile-styled-select,
-.mobile-pdf-text-card--inline > .mobile-styled-select {
-  min-height: 32px;
-}
-
-/* Nothing here loses a finger target: both controls keep a transparent 44px pad
-   over their 32px paint - the dropdown through an ::after, the value field by
-   being a transparent 44px input inside the wrapper that paints the pill. */
-.mobile-pdf-text-card__pane > .mobile-styled-select .mobile-styled-select__trigger::after,
-.mobile-pdf-text-card__style-row > .mobile-styled-select .mobile-styled-select__trigger::after,
-.mobile-pdf-text-card--arrowhead > .mobile-styled-select .mobile-styled-select__trigger::after,
-.mobile-pdf-text-card--inline > .mobile-styled-select .mobile-styled-select__trigger::after {
+/* The finger target is the circle plus half of each gap (46 x 44 at 390),
+   not the 32px circle. */
+.mobile-tool-sheet__swatch::after {
   content: '';
   position: absolute;
-  inset-block: -7px;
-  inset-inline: 0;
+  inset: -6px -7px;
 }
 
-.mobile-pdf-text-card__size .annotation-size-control {
-  width: 100%;
-  height: 32px;
-  overflow: visible;
-  color: var(--text-1);
-  background: var(--surface-2);
-  border-color: var(--border-strong);
-  border-radius: 6px;
+/* The custom colour at rest: the strip's rainbow ring with a plus - "any
+   colour", not a colour. Holding a colour that is not in the row it shows
+   that colour instead, ringed and checked like a preset. */
+.mobile-tool-sheet__rainbow {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 90deg, #f43f5e, #f59e0b, #22c55e, #06b6d4, #3b82f6, #a855f7, #f43f5e);
+  -webkit-mask: radial-gradient(circle, transparent 10px, #000 10.5px);
+  mask: radial-gradient(circle, transparent 10px, #000 10.5px);
+  pointer-events: none;
 }
 
-/* ADAPTED 2026-09-23 ("no gold boxes, rings or underlines on fields"): the
-   shared size control turns its border GOLD while it has focus, and the app's
-   focus ring paints a gold outline round a typed field. In this panel a field in
-   use takes the brighter neutral edge instead. */
-.mobile-pdf-text-card__size .annotation-size-control:focus-within,
-.mobile-pdf-text-card__size > input:focus,
-.mobile-pdf-text-card__bump input:focus {
-  border-color: var(--text-3);
+.mobile-tool-sheet__plus {
+  position: relative;
+  display: grid;
+  place-items: center;
+  line-height: 0;
+  color: var(--text-2);
+  pointer-events: none;
 }
 
-.mobile-pdf-text-defaults input:focus-visible {
+/* ---- sliders --------------------------------------------------------------- */
+
+/* The slider's box is the row's full 44px height, so a thumb is easy to catch;
+   the track is painted in the middle. */
+.mobile-tool-sheet__slider {
+  height: var(--sheet-row-h);
+  margin-right: 12px;
+  display: flex;
+  align-items: center;
+  touch-action: none;
+  cursor: ew-resize;
   outline: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.mobile-pdf-text-card__size .annotation-size-control > input {
-  width: auto;
-  min-width: 0;
-  flex: 1 1 auto;
-  height: 44px;
-  margin-block: -6px;
-  align-self: center;
-  /* ONE TYPE SCALE (2026-09-22): 13/600 like every other sheet field. */
-  font: 600 13px/44px Helvetica, Arial, sans-serif;
+.mobile-tool-sheet__slider:focus-visible .mobile-tool-sheet__track {
+  box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--focus-ring, var(--text-2));
 }
 
-.mobile-pdf-text-card__size .annotation-size-control__trigger {
+.mobile-tool-sheet__track {
   position: relative;
-  height: 30px;
+  width: 100%;
+  height: 14px;
+  border-radius: var(--radius-pill);
+  pointer-events: none;
 }
 
-.mobile-pdf-text-card__size .annotation-size-control__trigger::after {
-  content: '';
+/* Opacity: the shared picker's track - a chequer under a ramp to the colour. */
+.mobile-tool-sheet__track--alpha {
+  background:
+    linear-gradient(to right, transparent, var(--sheet-slider-ink)),
+    repeating-conic-gradient(#6b7280 0 25%, #d1d5db 0 50%) 0 0 / 10px 10px;
+}
+
+/* A size: a wedge that grows left to right, filled up to the thumb. */
+.mobile-tool-sheet__track--wedge > svg {
   position: absolute;
-  inset-block: -7px;
-  inset-inline: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
-.mobile-pdf-text-card--alignment {
-  height: 145px;
-  padding: 11px;
-  gap: 10px;
+.mobile-tool-sheet__wedge { fill: var(--surface-3); }
+
+.mobile-tool-sheet__wedge-fill {
+  fill: var(--border-strong);
+  clip-path: inset(0 calc(100% - var(--sheet-slider-at, 0%)) 0 0);
 }
 
-.mobile-pdf-text-defaults__alignments {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 5px;
+/* The thumb: the picker's - 18px, a thin white edge, a soft shadow; on the
+   opacity track it is filled with the live colour. */
+.mobile-tool-sheet__thumb {
+  position: absolute;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: var(--text-1);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
 }
 
-.mobile-pdf-text-defaults__alignments > button {
-  height: 43px;
-  padding: 0;
-  display: grid;
-  place-items: center;
+/* A row's value, in the one right-hand column. */
+.mobile-tool-sheet__value {
+  width: var(--tool-sheet-value-w);
   color: var(--text-3);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  /* ONE RADIUS SCALE (2026-09-22): a button is 6. */
-  border-radius: 6px;
+  font: 500 13px/16px var(--sheet-font);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
-/* Selected = the glyph turns gold, nothing else (owner 2026-09-17). */
-.mobile-pdf-text-defaults__alignments > button.is-active {
-  color: var(--accent);
-}
-
-.mobile-pdf-text-card__color-tabs {
-  height: 34px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  overflow: hidden;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  /* ONE RADIUS SCALE (2026-09-22): a tab well is 9. */
-  border-radius: 9px;
-}
-
-.mobile-pdf-text-card__color-tabs > button {
-  min-width: 0;
-  padding: 0;
+/* A typed value: the same column, on the field surface, with its unit. The
+   digits render at 16px on a phone (index.html keeps iOS from zooming). */
+.mobile-tool-sheet__field {
+  position: relative;
+  width: var(--tool-sheet-value-w);
+  height: var(--tool-sheet-control-h);
+  padding: 0 8px;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: 2px;
+  background: var(--surface-3);
+  border-radius: var(--radius-sm);
+  cursor: text;
+}
+
+.mobile-tool-sheet__field::after {
+  content: '';
+  position: absolute;
+  inset: -6px 0;
+}
+
+/* A phone field renders at 16px (index.html: iOS zooms on a smaller focused
+   field), so the digits are drawn at 13/16 scale to sit at the sheet's 13px
+   beside the 13px labels and values. */
+.mobile-tool-sheet__field > input {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  transform: scale(0.8125);
+  transform-origin: right center;
+  color: var(--text-1);
+  background: transparent;
+  border: 0;
+  outline: none;
+  font: 600 16px/1 var(--sheet-font);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.mobile-tool-sheet__field > input::placeholder { color: var(--text-3); }
+
+.mobile-tool-sheet__field > span {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  font: 500 12px/1 var(--sheet-font);
+}
+
+.mobile-tool-sheet__field:focus-within {
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+/* ---- segments -------------------------------------------------------------- */
+
+/* A choice of a few, all on show. The well is the card surface; the chosen
+   segment is raised on the field surface with --text-1, the rest --text-3. */
+.mobile-tool-sheet__seg {
+  height: var(--tool-sheet-control-h);
+  padding: 2px;
+  box-sizing: border-box;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 2px;
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+}
+
+.mobile-tool-sheet__seg > button {
+  position: relative;
+  min-width: 0;
+  height: 100%;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   color: var(--text-3);
   background: transparent;
   border: 0;
-  /* ONE TYPE SCALE (2026-09-22): a tab word is 12/600. */
-  font-size: 12px;
-  font-weight: 600;
+  border-radius: var(--radius-sm);
+  font: 600 12px/1 var(--sheet-font);
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.mobile-pdf-text-card__color-tabs > button + button { border-left: 1px solid var(--border); }
-.mobile-pdf-text-card__color-tabs > button.is-active { color: var(--accent); }
-
-.mobile-pdf-text-card__color-tabs i {
-  width: 11px;
-  height: 11px;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  border-radius: 50%;
+.mobile-tool-sheet__seg > button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* The arrowhead card. RULED 2026-09-23: it holds board 16's Arrow ends under the
-   Arrowhead now (the arrow's one panel), so it is a two-column grid of label and
-   field that takes its content's height - 85px with one row, as it always was,
-   and one row taller on the arrow. */
-.mobile-pdf-text-card--arrowhead {
-  min-height: 85px;
-  padding: 11px;
+/* Each segment is hit at 44px tall over its 28px paint. */
+.mobile-tool-sheet__seg > button::after {
+  content: '';
+  position: absolute;
+  inset: -8px 0;
+}
+
+.mobile-tool-sheet__seg > button.is-active,
+.mobile-tool-sheet__seg > button[aria-pressed='true'] {
+  color: var(--text-1);
+  background: var(--surface-3);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.mobile-tool-sheet__seg > button:focus:not(:focus-visible) { outline: none; }
+
+/* Shape / Text, under the title. */
+.mobile-tool-sheet__tabs {
+  flex: 0 0 auto;
+  margin-bottom: 12px;
+}
+
+/* Fill / Border on the Color label line. */
+.mobile-tool-sheet__seg.is-compact {
+  width: 148px;
+  height: 28px;
+}
+
+/* The six fonts: two lines of three. */
+.mobile-tool-sheet__seg.is-grid-3 {
+  height: auto;
+  grid-auto-flow: row;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: 28px;
+}
+
+.mobile-tool-sheet__seg.is-grid-3 > button {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.mobile-tool-sheet__seg.is-grid-3 > button::after { inset: -2px 0; }
+
+/* B / I / U / S are toggles, each in its own segment. */
+.mobile-pdf-text-defaults__format > button {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-content: center;
-  align-items: center;
-  gap: 12px;
+  place-items: center;
 }
 
-/* One label and one field on a single row: the font card, the counter series
-   card and the Handles card (Resize and rotate). */
-.mobile-pdf-text-card--inline {
-  padding: 11px;
+/* The alignment drawings, at segment size. */
+.mobile-pdf-text-defaults__alignments > button {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
+  place-items: center;
 }
 
-.mobile-pdf-text-card--inline > .mobile-pdf-tool-sheet__action {
+.mobile-pdf-text-defaults__alignments svg {
+  width: 30px;
+  height: 22px;
+}
+
+/* A row whose control is a menu (counter series) or an action. */
+.mobile-tool-sheet__row > .mobile-styled-select {
+  width: 100%;
+  min-height: var(--tool-sheet-control-h);
+}
+
+.mobile-tool-sheet__row > .mobile-styled-select .mobile-styled-select__trigger {
+  position: relative;
+  width: 100%;
+  height: var(--tool-sheet-control-h);
+  min-height: var(--tool-sheet-control-h);
+  color: var(--text-1);
+  background: var(--surface-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  font: 600 13px/1 var(--sheet-font);
+}
+
+.mobile-tool-sheet__row > .mobile-styled-select .mobile-styled-select__trigger::after {
+  content: '';
+  position: absolute;
+  inset-block: -6px;
+  inset-inline: 0;
+}
+
+.mobile-tool-sheet__action {
+  position: relative;
   justify-self: end;
-  height: 32px;
+  height: var(--tool-sheet-control-h);
+  padding: 0 12px;
+  color: var(--text-1);
+  background: var(--surface-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  font: var(--sheet-action);
+}
+
+.mobile-tool-sheet__action::after {
+  content: '';
+  position: absolute;
+  inset: -6px 0;
 }
 
 /* 2026-07-12 (Phase E, demo parity): host for the app's ONE shared

@@ -476,6 +476,14 @@ export default function TextEditOverlay({
       requestAnimationFrame(() => { broadcastLiveBounds(); publishBridge(); });
       // preventScroll: a bold/italic/size click must not scroll the page away
       // from the box being styled.
+      // Owner 2026-10-02 (phone, Test 21): NOT from a phone panel. The colour
+      // sheet (and the alignment sheet) pass { refocus: false }: on a touch
+      // screen focusing the text raises the keyboard, so every swatch tap,
+      // gradient drag and opacity drag brought the keyboard back up over the
+      // sheet - and its rise lifted the sheet under the finger mid-drag. The
+      // box stays in edit mode either way (only a commit ends the edit); the
+      // keyboard simply stays down while the panel is in use.
+      if (meta?.refocus === false) return;
       editableRef.current?.focus({ preventScroll: true });
     };
     const api = {
@@ -484,8 +492,8 @@ export default function TextEditOverlay({
       toggleUnderline: () => applyStyle('underline', !styleRef.current.underline),
       toggleStrike: () => applyStyle('linethrough', !styleRef.current.linethrough),
       setFontSize: (n) => applyStyle('fontSize', Math.max(6, Math.min(200, Math.round(Number(n) || 16)))),
-      setTextAlign: (a) => applyStyle('textAlign', ['left', 'center', 'right', 'justify'].includes(a) ? a : 'left'),
-      setVerticalAlign: (v) => applyStyle('verticalAlign', ['top', 'middle', 'bottom'].includes(v) ? v : 'top'),
+      setTextAlign: (a, meta) => applyStyle('textAlign', ['left', 'center', 'right', 'justify'].includes(a) ? a : 'left', meta),
+      setVerticalAlign: (v, meta) => applyStyle('verticalAlign', ['top', 'middle', 'bottom'].includes(v) ? v : 'top', meta),
       // Single-name fonts only (fabric/CSS measurement contract, CLAUDE.md).
       setFontFamily: (f) => applyStyle('fontFamily', typeof f === 'string' && f.length > 0 && !f.includes(',') ? f : 'Arial'),
       // #rrggbb, or rgba() when the text colour carries an opacity

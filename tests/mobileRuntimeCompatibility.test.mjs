@@ -582,7 +582,10 @@ test('mobile annotation settings retain the preserved app geometry and controls'
    */
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /MOBILE_ANNOTATION_COLORS/);
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /Shape settings/);
-  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /<strong>Font<\/strong>/, 'the panel keeps the font picker the row sheet added');
+  // RULED CHANGE 2026-10-02 (owner, Test 19 sheet redesign): every label in the
+  // sheet comes from one row component, so the font row is <SheetRow
+  // label="Font"> and its six fonts are all on show (no list leaving the sheet).
+  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /<SheetRow label="Font"/, 'the panel keeps the font picker the row sheet added');
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /MOBILE_FONT_FAMILY_OPTIONS/, 'on the desktop bar\'s own list');
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /Text alignment/);
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /Vertical text alignment/);
@@ -604,12 +607,15 @@ test('mobile annotation settings retain the preserved app geometry and controls'
   assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-text-defaults \{[^}]{0,1600}max-height: calc\(100dvh/);
   assert.doesNotMatch(MOBILE_VIEWER_CSS_SOURCE, /is-shape:not\(\.is-callout\) \{\s*height:/);
   assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-text-defaults__scroll \{[\s\S]{0,120}flex: 1 1 auto/);
-  assert.match(MOBILE_VIEWER_CSS_SOURCE, /mobile-pdf-text-card--shape-color[\s\S]{0,120}height: 150px/);
-  /* RULED 2026-09-23 (owner: restore the per-tool panels; fold board 16 into the
-     arrowhead card): the arrowhead card holds the arrow's Arrow ends under the
-     Arrowhead now, so its 85px is a floor (one row) rather than a fixed height -
-     a fixed 85px would clip the second row. Was: height: 85px. */
-  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-text-card--arrowhead \{[\s\S]{0,80}min-height: 85px/);
+  /* RULED CHANGE 2026-10-02 (owner, Test 19: "it doesn't look like a designer
+     built this"): the panel's cards are gone - the 150px colour card and the
+     85px arrowhead card this pinned. The sheet is sections split by one
+     hairline, made of 44px rows, and the colour row is eight equal circles
+     across the gutter. Those are what is pinned now. */
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-tool-sheet__row \{[\s\S]{0,80}min-height: var\(--sheet-row-h\)/);
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-tool-sheet__section \+ \.mobile-tool-sheet__section \{\s*border-top: var\(--sheet-divider\)/);
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-tool-sheet__swatches \{[\s\S]{0,120}justify-content: space-between/);
+  assert.doesNotMatch(MOBILE_VIEWER_CSS_SOURCE, /mobile-pdf-text-card/);
 });
 
 test('native mobile home remains viewport-contained with a solid full-width tab bar', () => {

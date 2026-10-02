@@ -294,7 +294,12 @@ test('text size is clamped to the editor range and the phone field saves once', 
   assert.match(field, /onChange=\{\(event\) => setDraft\(/);
   assert.match(field, /onBlur=\{commit\}/);
   assert.match(field, /const fontSize = resolveFontSizeDraft\(pending, value\);/);
-  assert.match(mobile, /<MobileFontSizeField\s+value=\{textDefaults\.fontSize \?\? 16\}\s+onCommit=/);
+  // RULED CHANGE 2026-10-02 (owner, Test 19 sheet redesign): the field sits in
+  // the sheet's Size row beside a preset slider (MobileTextSizeRow), which hands
+  // it the text's size - or the slider's value while a drag is in flight, so
+  // the field reads what the thumb is on. The field itself is unchanged.
+  assert.match(mobile, /<MobileTextSizeRow\s+value=\{textDefaults\.fontSize \?\? 16\}\s+onCommit=/);
+  assert.match(mobile, /<MobileFontSizeField value=\{shown\} onCommit=\{onCommit\} \/>/);
 });
 
 test('vertical alignment is hidden whenever callout text is what the bar edits', () => {
