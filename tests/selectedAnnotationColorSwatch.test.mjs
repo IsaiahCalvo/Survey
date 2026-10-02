@@ -123,7 +123,16 @@ test('counter draw color edits patch only the active series and never a stale se
     assert.match(block, /counterSeriesList\.some\(\(series\) => series\.seriesId === activeSeriesId && series\.count > 0\)/);
     assert.match(block, new RegExp(`handleCounterGroupUpdateRef\\.current\\?\\.\\(activeSeriesId, \\{ ${patchKey}:`));
     assert.match(block, /if \(activeTool === 'counter'\) return;/);
-    assert.match(block, /if \(activeTool !== 'select'\) return;/);
+    // DELIBERATE ASSERTION CHANGE (owner Test 15, 2026-10-02). Was
+    // /if \(activeTool !== 'select'\) return;/. With a drawing tool armed the
+    // bar is still the tool's defaults, and a pick left behind still never
+    // takes them - but the mark JUST DRAWN (auto-selected, tool still armed)
+    // now takes the change too; before, the first colour / opacity / fill
+    // edit on it did nothing. Every other armed-tool case still returns.
+    assert.match(
+      block,
+      /if \(activeTool !== 'select'\) \{\s*if \(isJustDrawnMarkSelected\(\) && is(Editable|Fillable)ShapeSelected\(\)\) patchSelected(Stroke|Fill)\(next(NumberColor|FillColor)\);\s*return;\s*\}/,
+    );
     assert.ok(
       block.indexOf("if (activeTool === 'counter') return;") < block.indexOf('isCalloutSelected()'),
       `${startName} exits counter draw mode before selected-object edits`,

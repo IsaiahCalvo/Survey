@@ -3372,13 +3372,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         if (prev && indices.length > 0) return null;
         return prev;
       }
+      // justDrawn (owner Test 15, 2026-10-02): the mark just drawn and
+      // auto-selected while its tool stays armed - the paint handlers restyle
+      // it (see isJustDrawnMarkSelected).
+      const justDrawn = payload.justDrawn === true;
       if (prev
         && prev.pageNumber === pageNumber
         && prev.annotationIndex === annotationIndex
-        && prev.annotation === annotation) {
+        && prev.annotation === annotation
+        && Boolean(prev.justDrawn) === justDrawn) {
         return prev;
       }
-      return { pageNumber, annotationIndex, annotation };
+      return { pageNumber, annotationIndex, annotation, justDrawn };
     });
   }, []);
   const selectedToolbarAnnotationRef = useRef(selectedToolbarAnnotation);
@@ -8345,6 +8350,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return isCounter;
   };
   const isCalloutSelected = () => !!selectedToolbarCalloutRef.current;
+  // Owner Test 15 (2026-10-02): a shape comes up selected the moment it is
+  // drawn, with its tool still armed. The paint handlers below only restyled
+  // a selection under Select, so the first colour / opacity / fill change on
+  // the new shape went to the tool alone and the shape stayed as drawn until
+  // it was clicked away and picked again. That mark (and only that mark - a
+  // pick left behind under a drawing tool still never takes the tool's
+  // changes) now takes the change too, along with the tool for the next one.
+  const isJustDrawnMarkSelected = () => selectedToolbarAnnotationRef.current?.justDrawn === true;
   const patchSelectedFill = (rgba) => {
     const { type, isCounter, annotation } = getSelectedShapeMeta();
     if (isCounter && annotation?.data?.seriesId) {
@@ -8518,7 +8531,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     if (pdfId && activeTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(paintPreferenceKey(activeTool), { strokeColor: color });
     if (activeTool === 'counter') return;
-    if (activeTool !== 'select') return;
+    if (activeTool !== 'select') {
+      if (isJustDrawnMarkSelected() && isEditableShapeSelected()) patchSelectedStroke(nextNumberColor);
+      return;
+    }
     if (writeGroupPaint('strokeColor', color, previousStrokeColor)) return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ borderColor: color });
@@ -8580,7 +8596,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     if (pdfId && activeTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(paintPreferenceKey(activeTool), { strokeOpacity: opacity });
     if (activeTool === 'counter') return;
-    if (activeTool !== 'select') return;
+    if (activeTool !== 'select') {
+      if (isJustDrawnMarkSelected() && isEditableShapeSelected()) patchSelectedStroke(nextNumberColor);
+      return;
+    }
     if (writeGroupPaint('strokeOpacity', opacity, previousStrokeOpacity)) return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ borderOpacity: Math.max(0, Math.min(1, (Number(opacity) || 0) / 100)) });
@@ -8616,7 +8635,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     if (pdfId && activeTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(activeTool, { fillColor: color });
     if (activeTool === 'counter') return;
-    if (activeTool !== 'select') return;
+    if (activeTool !== 'select') {
+      if (isJustDrawnMarkSelected() && isFillableShapeSelected()) patchSelectedFill(nextFillColor);
+      return;
+    }
     if (writeGroupPaint('fillColor', color, previousFillColor)) return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ fillColor: color });
@@ -8643,7 +8665,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     if (pdfId && activeTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(activeTool, { fillOpacity: opacity });
     if (activeTool === 'counter') return;
-    if (activeTool !== 'select') return;
+    if (activeTool !== 'select') {
+      if (isJustDrawnMarkSelected() && isFillableShapeSelected()) patchSelectedFill(nextFillColor);
+      return;
+    }
     if (writeGroupPaint('fillOpacity', opacity, previousFillOpacity)) return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ fillOpacity: Math.max(0, Math.min(1, (Number(opacity) || 0) / 100)) });
@@ -32001,6 +32026,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   useEffect(() => {
     if (activeTool !== 'text-select') {
+      // Owner 2026-10-02: a just-drawn callout opens its text editor and the
+      // tool flips back to Select in the same pass, so this ran right after
+      // the editor took focus and wiped its caret - the box looked dead until
+      // clicked. A caret inside an open editor is not a PDF text selection;
+      // leave it alone.
+      if (typeof document !== 'undefined' && document.activeElement?.isContentEditable) {
+        liveTextSelectionRef.current = null;
+        setLiveTextSelection(null);
+        return undefined;
+      }
       clearLiveTextSelection();
       return undefined;
     }
