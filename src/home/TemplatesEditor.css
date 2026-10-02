@@ -74,16 +74,12 @@
   color: var(--ink); font: inherit; font-size: 13px; padding: 4px 0;
   width: 100%; outline: none;
 }
-.ed-scope .inline-edit:hover { border-bottom-color: var(--rule); }
-/* Owner 2026-10-02: renaming shows a plain grey line, never gold (same as
-   the phone's rename fields). */
-.ed-scope .inline-edit:focus { border-bottom-color: var(--text-3); }
+/* The underline itself (rest / hover / typing) is the shared rename look,
+   hub.css .hub-rename, which every rename field in the editor carries. */
 /* UX (KAL-69): placeholders are greyed italic so an empty required row reads as
    "type here", visibly different from a row that genuinely holds short text. */
 .ed-scope .inline-edit::placeholder { color: var(--text-disabled); font-style: italic; }
-.ed-scope .cat-title { cursor: text; border-bottom: 1px dashed transparent; }
-.ed-scope .cat-title:hover { border-bottom-color: var(--rule-strong); }
-.ed-scope .cat-title:focus { border-bottom: 1px solid var(--text-3); }
+.ed-scope .cat-title { cursor: text; }
 
 /* Prevent horizontal scrolling anywhere inside the editor */
 .ed-scope .slim-scroll { overflow-x: hidden; }
@@ -198,16 +194,13 @@
   font-weight: 500;
   line-height: 1.2;
 }
+/* No radius and no hover plate (owner 2026-10-02): the rounded corners bent
+   the underline up at both ends. The line is hub.css .hub-rename. */
 .ed-scope .tpl-cat-name > input,
 .ed-scope .tpl-entity-name > input {
   padding-block: 3px;
-  border-radius: 4px;
   cursor: text;
 }
-.ed-scope .tpl-cat-name > input:hover,
-.ed-scope .tpl-entity-name > input:hover { background: var(--hover); }
-.ed-scope .tpl-cat-name > input:focus,
-.ed-scope .tpl-entity-name > input:focus { background: transparent; }
 /* In Select mode the name is part of the row: a click ticks, never renames. */
 .ed-scope .is-selecting > .tpl-cat-name > input,
 .ed-scope .is-selecting > .tpl-entity-name > input { pointer-events: none; }

@@ -1103,15 +1103,13 @@ export default function ProjectsFolderTree({
                     {...projectNameField(open)}
                     title="Click to rename"
                     onDoubleClick={(e) => e.currentTarget.select()}
+                    /* Same dotted rename line as the Templates editor
+                       (.hub-rename); it used to turn gold while typing. */
+                    className="hub-rename"
                     style={{
-                      background: 'transparent', color: 'var(--bone-100)',
-                      border: 0, borderBottom: '1px dashed transparent',
-                      padding: '2px 0', outline: 'none', cursor: 'text',
+                      color: 'var(--bone-100)',
+                      padding: '2px 0', cursor: 'text',
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.borderBottomColor = 'var(--ink-500)'; }}
-                    onMouseLeave={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.style.borderBottomColor = 'transparent'; }}
-                    onFocus={(e) => { e.currentTarget.style.borderBottom = '1px solid var(--gold)'; }}
-                    onBlur={(e) => { e.currentTarget.style.borderBottom = '1px dashed transparent'; }}
                   />
                   </span>
                 </div>
@@ -1364,7 +1362,7 @@ export default function ProjectsFolderTree({
                       <input
                         size={1}
                         key={`mobile-project-name-${mobileDrillProject.id}`}
-                        className="projects-mobile-title-input"
+                        className="projects-mobile-title-input hub-rename"
                         {...projectNameField(mobileDrillProject)}
                         title="Tap to rename"
                       />

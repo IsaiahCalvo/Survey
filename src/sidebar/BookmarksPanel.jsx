@@ -1642,7 +1642,12 @@ const BookmarksPanel = ({
       showToast(result.error, 'warn');
       return;
     }
-    onBookmarkUpdate?.(item.id, result.updates);
+    // Save with nothing changed just closes the form - no write, no undo step
+    // (owner 2026-10-02: only a real change is saved).
+    const unchanged = result.updates.name === item.name
+      && Array.isArray(item.pageIds) && item.pageIds.length === 1
+      && item.pageIds[0] === result.updates.pageIds[0];
+    if (!unchanged) onBookmarkUpdate?.(item.id, result.updates);
     setMobileEditingBookmarkId(null);
   }, [bookmarks, mobileEditName, mobileEditPage, numPages, onBookmarkUpdate]);
 

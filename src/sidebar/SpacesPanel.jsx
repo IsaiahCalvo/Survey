@@ -161,6 +161,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   const tip = useTooltip();
   const [editingRegionId, setEditingRegionId] = useState(null);
   const [editingRegionValue, setEditingRegionValue] = useState('');
+  // The name the field opened with: committing it unchanged is not a rename
+  // (owner 2026-10-02: only a real change is saved).
+  const editingRegionStartRef = useRef('');
   const editingRegionInputRef = useRef(null);
   // Spaces chunk B: the name is plain text at rest (a tap on it opens the
   // space, like the rest of the row); Rename in `⋯` (or a double-click on the
@@ -187,7 +190,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
     }
     const labelToSave = editingRegionValue.trim();
 
-    onRenameRegion?.(space.id, pageId, labelToSave);
+    if (labelToSave !== editingRegionStartRef.current.trim()) {
+      onRenameRegion?.(space.id, pageId, labelToSave);
+    }
     setEditingRegionId(null);
     setEditingRegionValue('');
   }, [editingRegionId, editingRegionValue, onRenameRegion, space.id]);
@@ -210,6 +215,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
     // Spaces chunk A: render the field and focus it inside the tap itself -
     // iOS only raises the keyboard for a focus() made in the user's gesture,
     // and the rAF focus below came a frame too late for that.
+    editingRegionStartRef.current = currentLabel || '';
     flushSync(() => {
       setEditingRegionId(pageId);
       setEditingRegionValue(currentLabel);

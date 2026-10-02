@@ -222,9 +222,11 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
 
   if (!open) return null;
   const trimmed = name.trim();
+  // Owner 2026-10-02: only a real change is saved. The same name just closes.
+  const unchanged = trimmed === (initialName || '').trim();
   const submit = () => {
     if (!trimmed) return;
-    onConfirm?.(trimmed);
+    if (!unchanged) onConfirm?.(trimmed);
     onClose?.();
   };
 
@@ -262,7 +264,7 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onClose} className="hub-btn" style={{ minHeight: 44 }}>Cancel</button>
           <button
-            disabled={!trimmed}
+            disabled={!trimmed || unchanged}
             onClick={submit}
             className="hub-btn hub-btn--primary"
             style={{ minHeight: 44 }}

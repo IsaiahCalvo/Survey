@@ -194,6 +194,13 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
   if (!isOpen || !user) return null;
 
+  /* Owner 2026-10-02: only a real change asks to be saved. A missing name in
+     the profile and an empty field are the same thing, and stray spaces are
+     not a change, so Save stays off until something actually differs. */
+  const nameDiffers = (firstName || '').trim() !== (user?.user_metadata?.first_name || '').trim()
+    || (lastName || '').trim() !== (user?.user_metadata?.last_name || '').trim();
+  const hasProfileChanges = nameDiffers || !!(newPassword || confirmPassword || currentPassword);
+
   const handleSaveChanges = async (e) => {
     e.preventDefault();
     setError('');
@@ -204,9 +211,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
     try {
       // Check if name changed
-      const nameChanged =
-        firstName !== user?.user_metadata?.first_name ||
-        lastName !== user?.user_metadata?.last_name;
+      const nameChanged = nameDiffers;
 
       // Check if password fields are filled
       const passwordChanging = newPassword || confirmPassword || currentPassword;
@@ -614,7 +619,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                             over 500ms, so it takes the shared button loading
                             treatment — 14px ring left of a present-participle
                             label, disabled until the save resolves. */}
-                        <button type="submit" className="account-btn-primary" disabled={loading}>
+                        <button type="submit" className="account-btn-primary" disabled={loading || !hasProfileChanges}>
                           {loading && <Spinner size={14} color="var(--accent-text)" trackColor="rgba(21,17,10,0.25)" />}
                           {loading ? 'Saving…' : 'Save changes'}
                         </button>
