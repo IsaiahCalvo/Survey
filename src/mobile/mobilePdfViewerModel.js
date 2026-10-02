@@ -1,4 +1,5 @@
 import { getCompactSyncStatusMessage, getSyncStatusViewModel } from '../utils/syncStatusViewModel.js';
+import { PRESENCE_STATE_LABEL, assignPresenceTints, presenceState } from '../components/presenceIdentity.js';
 
 // UX 2026-09-17 (revision-2 palette, owner amendment b): the sync status dot
 // keeps green / yellow / red. Everything else green in the chrome went gold,
@@ -33,6 +34,7 @@ export const normalizeMobilePresence = ({
   currentUserId = null,
   currentUserEmail = null,
   currentUserDisplayName = null,
+  now = Date.now(),
 } = {}) => {
   const unique = new Map();
   for (const row of Array.isArray(presence) ? presence : []) {
@@ -73,7 +75,15 @@ export const normalizeMobilePresence = ({
     if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
     return String(b.lastSeen).localeCompare(String(a.lastSeen));
   });
-  return users;
+  // Same face as the desktop footer (components/presenceIdentity.js): your
+  // calm grey, a muted tint per other person, and here-now / idle from
+  // last_seen — no gold, which means "selected".
+  const selfId = users.find((user) => user.isCurrent)?.id || currentUserId;
+  const tints = assignPresenceTints(users.map((user) => user.id), selfId);
+  return users.map((user) => {
+    const state = presenceState({ last_seen: user.lastSeen }, { now, isCurrent: user.isCurrent });
+    return { ...user, tint: tints.get(user.id), state, stateLabel: PRESENCE_STATE_LABEL[state] };
+  });
 };
 
 const colorAlpha = (value) => {

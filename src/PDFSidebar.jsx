@@ -17,6 +17,7 @@ import BookmarksPanel from './sidebar/BookmarksPanel';
 import SpacesPanel from './sidebar/SpacesPanel';
 import SyncStatusChip from './components/SyncStatusChip';
 import PresenceAvatars from './components/PresenceAvatars';
+import { withDevFakePresence } from './components/presenceIdentity.js';
 import RevisionsPanel from './components/revisions/RevisionsPanel';
 import { useMobileSheetMotion } from './mobile/useMobileSheetMotion';
 import { useTooltip } from './components/Tooltip';
@@ -193,6 +194,7 @@ const PDFSidebar = React.forwardRef(({
     document.documentElement.style.setProperty('--app-sidebar-width', mobileMode ? '44px' : (isCollapsed ? '48px' : '272px'));
   }, [isCollapsed, mobileMode]);
   const [activeTab, setActiveTab] = useState('pages'); // 'pages' | 'search' | 'bookmarks' | 'spaces' | 'history'
+  const footerPresence = withDevFakePresence({ presence, currentUserId, currentUserEmail, currentUserDisplayName });
   const tip = useTooltip();
   // RULED 2026-09-23 (coordinator: auto refits keep the view; fits use the
   // band between panels): the open desktop panel covers the left ~224px of the
@@ -870,8 +872,11 @@ const PDFSidebar = React.forwardRef(({
           on screen for every page — the previous top-toolbar location
           scrolled off with the PDF area on page change.
           Hidden entirely when cloud sync is disabled (free tier or no PDF). */}
-      {cloudSyncEnabled && !mobileMode && (
-        <div data-chrome-rail="true" style={isCollapsed ? {
+      {/* Dev only: `?fakePeers=N` fills the presence row with N fake people
+          (presenceIdentity.js) and shows the footer without cloud sync, so
+          the row can be checked with 1, 2, 3, 5 or 12 people. */}
+      {(cloudSyncEnabled || footerPresence.fake) && !mobileMode && (
+        <div data-chrome-rail="true" data-presence-footer={isCollapsed ? 'collapsed' : 'expanded'} style={isCollapsed ? {
           borderTop: '1px solid var(--border)',
           padding: '10px 6px',
           display: 'flex',
@@ -891,7 +896,11 @@ const PDFSidebar = React.forwardRef(({
           borderTop: '1px solid var(--border)',
           padding: '8px 12px',
           display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1fr)',
+          /* The side columns never go narrower than what they hold (the
+             faces need up to 70px), so the faces can never run under the
+             status pill; the pill's column gives way instead and its label
+             trims. At normal widths all three still sit as before. */
+          gridTemplateColumns: 'minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr)',
           alignItems: 'center',
           columnGap: '8px',
           background: 'var(--surface-1)'
@@ -907,10 +916,10 @@ const PDFSidebar = React.forwardRef(({
               />
               {documentId && <HistoryButton isActive={activeTab === 'history'} onClick={openHistoryPanel} />}
               <PresenceAvatars
-                presence={presence}
-                currentUserId={currentUserId}
-                currentUserEmail={currentUserEmail}
-                currentUserDisplayName={currentUserDisplayName}
+                presence={footerPresence.presence}
+                currentUserId={footerPresence.currentUserId}
+                currentUserEmail={footerPresence.currentUserEmail}
+                currentUserDisplayName={footerPresence.currentUserDisplayName}
                 enabled
                 compact
               />
@@ -919,10 +928,10 @@ const PDFSidebar = React.forwardRef(({
             <>
               <div style={{ justifySelf: 'start', minWidth: 0, display: 'flex', alignItems: 'center' }}>
                 <PresenceAvatars
-                  presence={presence}
-                  currentUserId={currentUserId}
-                  currentUserEmail={currentUserEmail}
-                  currentUserDisplayName={currentUserDisplayName}
+                  presence={footerPresence.presence}
+                  currentUserId={footerPresence.currentUserId}
+                  currentUserEmail={footerPresence.currentUserEmail}
+                  currentUserDisplayName={footerPresence.currentUserDisplayName}
                   enabled
                   row
                 />
