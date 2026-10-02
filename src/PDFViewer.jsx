@@ -59,6 +59,7 @@ import { openExternalDestination } from './utils/accountPlatform.js';
 // below — see `await import('exceljs')` — so it stays out of the main viewer chunk.
 import ExcelLockedModal from './components/ExcelLockedModal';
 import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
+import SpaceSelectionDialog from './components/SpaceSelectionDialog';
 import TextEditOverlay from './components/TextEditOverlay';
 import FabricEraserCanvas from './components/FabricEraserCanvas';
 import FormFieldPropertiesPanel from './components/FormFieldPropertiesPanel';
@@ -38251,69 +38252,9 @@ ${pageBlocks}
             without surfacing actionable info. */}
 
         {/* Space Selection Modal */}
-        {showSpaceSelection && (
-          <>
-            <div
-              onClick={() => setShowSpaceSelection(false)}
-              style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                background: COLORS.modal.overlay,
-                backdropFilter: 'blur(8px)',
-                WebkitBackdropFilter: 'blur(8px)',
-                zIndex: 10000,
-                animation: 'fadeIn 0.2s ease-out',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              <div
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  background: COLORS.modal.surface,
-                  border: `1px solid ${COLORS.modal.border}`,
-                  borderRadius: '8px',
-                  padding: '24px',
-                  width: '500px',
-                  maxWidth: '90vw',
-                  maxHeight: '80vh',
-                  overflow: 'auto',
-                  boxShadow: SHADOWS.xl,
-                  animation: 'fadeIn 0.2s ease-out'
-                }}
-              >
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: '20px'
-                }}>
-                  <h2 style={{
-                    margin: 0,
-                    fontSize: '18px',
-                    fontWeight: '600',
-                    color: COLORS.modal.textPrimary,
-                    fontFamily: FONT_FAMILY
-                  }}>
-                    Select space
-                  </h2>
-                  <button
-                    onClick={() => setShowSpaceSelection(false)}
-                    className="btn btn-icon btn-icon-sm"
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--text-3)'
-                    }}
-                  >
-                    <Icon name="close" size={18} />
-                  </button>
-                </div>
-
+        {/* Portalled to document.body by SpaceSelectionDialog so it sits above
+            both rails and the toolbars instead of under them. */}
+        {showSpaceSelection && (<SpaceSelectionDialog open onClose={() => setShowSpaceSelection(false)}>
                 {appTemplates.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '40px', color: COLORS.modal.textMuted }}>
                     <p>No templates available. Please create a template first.</p>
@@ -38900,10 +38841,7 @@ ${pageBlocks}
                     </div>
                   );
                 })()}
-              </div>
-            </div>
-          </>
-        )}
+        </SpaceSelectionDialog>)}
 
         {/* Category Selection Modal (after highlighting) */}
         {
