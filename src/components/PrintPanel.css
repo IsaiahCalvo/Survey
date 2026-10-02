@@ -258,7 +258,7 @@
 .pp-thumb-cell > .pp-thumb { display: block; }
 .pp-thumb-cell:hover { transform: translateY(-1px); }
 .pp-thumb-cell:focus-visible { outline: none; }
-.pp-thumb-cell:focus-visible .pp-thumb { border-color: var(--pp-accent); }
+.pp-thumb-cell:focus-visible .pp-thumb { border-color: var(--text-2); }
 
 /* UX 2026-04-24: every thumb occupies the same vertical footprint so
    the page number labels below them stay on a single horizontal line.
@@ -486,7 +486,7 @@
 }
 .pp-pager-dot:hover { background: var(--pp-hover); color: var(--text-1); transform: translateY(-1px); }
 .pp-pager-dot:active { background: var(--pp-pressed); }
-.pp-pager-dot:focus-visible { outline: none; border-color: var(--pp-accent); }
+.pp-pager-dot:focus-visible { outline: none; border-color: var(--text-2); }
 .pp-pager-dot.is-landscape { min-width: 26px; }
 /* The page you are on: the number turns gold on the pager's own plate. The
    1px border is already transparent at rest, so nothing moves. */

@@ -63,7 +63,7 @@
   to   { transform: scale(1); }
 }
 .hero-swatch:focus-visible {
-  box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--focus-ring, var(--accent));
+  box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--focus-ring, var(--text-2));
 }
 @media (prefers-reduced-motion: reduce) {
   .hero-swatch, .hero-swatch__fill { transition: none; }

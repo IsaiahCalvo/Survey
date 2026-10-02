@@ -2996,8 +2996,11 @@ input[type="text"].spaces-item__add-input:focus-visible {
    INSET twin — the box-shadow halo used where an outline would be clipped by
    an ancestor's overflow (THEME SHADOWS.focus, modal.hoverGlow, the print
    panel's --pp-accent-glow, the phone sheets). */
+/* Owner 2026-10-02 (Test 13: "when it collapsed, it put a gold ring around
+   the dropdown. I don't want that gold ring"): the ring is calm light grey,
+   not gold. --text-2 is opaque and reads past 3:1 on every surface. */
 :focus-visible {
-  outline: 2px solid var(--accent) !important;
+  outline: 2px solid var(--text-2) !important;
   outline-offset: 2px;
 }
 

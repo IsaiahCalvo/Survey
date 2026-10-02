@@ -266,7 +266,9 @@
      3.26 — past 3:1 on every layer, where 35% measured 2.09 and was painted by
      exactly one rule. Always 2px on :focus-visible, never on :focus, so a
      mouse click never draws it. */
-  --focus: rgba(216, 168, 78, 0.62);
+  /* Owner 2026-10-02: no gold ring. Calm light grey (--text-2 #b7bec9 at
+     70%), still past 3:1 on every surface. */
+  --focus: rgba(183, 190, 201, 0.7);
 
   /* --- Kept from the previous token block ------------------------------ */
   /* --accent-red is the one destructive red (KAL-72, docs/ui/colors.md); it
