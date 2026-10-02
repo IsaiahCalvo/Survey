@@ -61,12 +61,13 @@
   /* A category's Survey Markers, and an open Survey Marker's lines, start one
      12px step in from the sheet's 16px edge. */
   --survey-indent: calc(var(--sheet-pad-x) + 12px);
-  /* An open Survey Marker's lines (its checklist, its note) start where its
-     ENTITY dot starts, not under its name (owner, after bf3888e - desktop's
-     rule). The dot sits after the reorder grip's 32px gutter (owner
-     2026-10-02: grips on both platforms): x 36. */
+  /* The reorder grip's gutter (owner 2026-10-02: grips on both platforms);
+     a Survey Marker's entity dot sits after it. */
   --survey-grip-w: 32px;
-  --survey-marker-dot-x: calc(var(--survey-grip-w) + 4px);
+  /* An open Survey Marker's content (checklist, Y/N/N/A, note, media) starts
+     on the sheet's text gutter, not under the entity dot (owner 2026-10-02,
+     "all the way to the left"; desktop's rule). */
+  --survey-detail-x: var(--sheet-pad-x);
 }
 
 /* Flat on the sheet colour like Pages, Bookmarks, Spaces and Search (owner
@@ -268,6 +269,15 @@
   flex: 0 0 auto;
 }
 
+.mobile-survey-sheet .mobile-survey-foot > .mobile-survey-sheet-export-wrap {
+  position: absolute;
+  top: 0;
+  right: 6px;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+}
+
 .mobile-survey-sheet .mobile-survey-close {
   width: 32px;
   height: 32px;
@@ -325,14 +335,18 @@
    steps aside while you type (a field in the sheet has focus), so the
    keyboard never has to make room for it. */
 .mobile-survey-sheet .mobile-survey-foot {
+  position: relative;
   flex: 0 0 auto;
   min-height: 48px;
   box-sizing: border-box;
   margin-top: auto;
-  padding: 0 6px 0 calc(var(--sheet-pad-x) - 8px);
+  padding: 0 calc(var(--sheet-pad-x) - 8px);
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /* Owner 2026-10-02: "Export to Excel" - glyph and word together - is
+     centred in the line, as on desktop; the linked workbook's "..." keeps
+     the right end without pushing it aside. */
+  justify-content: center;
   border-top: var(--sheet-divider);
 }
 
@@ -1142,8 +1156,13 @@
   }
 }
 
+/* Owner 2026-10-02 ("all the way to the left ... I don't need it aligned
+   with the entity swatch"): an open marker's checklist and Y/N/N/A rows, its
+   note and its media start on the sheet's 16px text gutter - the line the
+   sheet's titles and the category grip use - not under the entity dot. The
+   marker line itself (grip, dot, name, badges) is unchanged. */
 .mobile-survey-sheet .mobile-survey-marker .mobile-survey-check-item {
-  padding-left: var(--survey-marker-dot-x);
+  padding-left: var(--survey-detail-x);
 }
 
 .mobile-survey-sheet .mobile-survey-marker .mobile-survey-detail-empty {
@@ -1155,13 +1174,13 @@
 
 /* The notes slot: SurveyMarkerNotes (src/components/surveyMarkerNotes.css)
    draws the rule above it. Its sides follow this sheet's lines: its well
-   starts under the entity dot (x 28), it ends on the 16px edge. */
+   starts and ends on the 16px edges. */
 .mobile-survey-sheet .mobile-survey-open-notes {
   border-top: 0;
 }
 
 .mobile-survey-sheet .mobile-survey-open-notes .survey-marker-notes {
-  padding-left: var(--survey-marker-dot-x);
+  padding-left: var(--survey-detail-x);
   padding-right: var(--sheet-pad-x);
 }
 
