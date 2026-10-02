@@ -28,6 +28,8 @@
  * here; anything else (the counter, a line) grows in / shrinks out instead.
  */
 
+import { AREA_TOOL_GLYPHS } from './areaToolGlyphs.js';
+
 export const MORPH_SAMPLES = 40;
 
 // ---------------------------------------------------------------------------
@@ -42,6 +44,20 @@ const rectPath = (x, y, w, h, r) => (
 const circlePath = (cx, cy, r) => `M${cx - r} ${cy}A${r} ${r} 0 1 0 ${cx + r} ${cy}A${r} ${r} 0 1 0 ${cx - r} ${cy}Z`;
 
 const CURSOR = 'M9.80282 4.62973L15.8364 6.99069C19.3164 8.35243 21.0564 9.03329 20.9987 10.1133C20.941 11.1934 19.1251 11.6886 15.4933 12.6791C14.412 12.974 13.8713 13.1215 13.4964 13.4963C13.1215 13.8712 12.9741 14.4119 12.6791 15.4933C11.6887 19.125 11.1934 20.9409 10.1134 20.9986C9.03335 21.0563 8.35249 19.3163 6.99075 15.8363L4.62979 9.80276C3.20411 6.15934 2.49127 4.33764 3.41448 3.41442C4.3377 2.49121 6.15941 3.20405 9.80282 4.62973Z';
+
+// The Spaces Areas tools read their glyphs from the one place they are drawn
+// (utils/areaToolGlyphs.js), so swapping a glyph there updates the morph too.
+const areaToolMorph = (name) => ({
+  source: 'src/utils/areaToolGlyphs.js',
+  transform: AREA_TOOL_GLYPHS[name].transform,
+  paths: AREA_TOOL_GLYPHS[name].paths.map((path) => (
+    path.dasharray ? { d: path.d, dash: path.dasharray.split(' ').map(Number) } : { d: path.d }
+  )),
+});
+
+const BOX_SELECT_TRANSFORM = 'translate(12 12) scale(0.93) translate(-12 -12)';
+const BOX_SELECT_CURSOR = 'M14.5352 11.0865L18.5575 12.6605C20.8775 13.5683 22.0375 14.0222 21.9991 14.7422C21.9606 15.4622 20.75 15.7924 18.3288 16.4527C17.6079 16.6493 17.2475 16.7476 16.9976 16.9976C16.7476 17.2475 16.6493 17.6079 16.4527 18.3288C15.7924 20.75 15.4622 21.9606 14.7422 21.9991C14.0222 22.0375 13.5683 20.8775 12.6605 18.5575L11.0865 14.5352C10.136 12.1062 9.6608 10.8918 10.2763 10.2763C10.8918 9.6608 12.1062 10.136 14.5352 11.0865Z';
+const BOX_SELECT_CORNERS = 'M2 8.5V11.5M11.5 2H8.5M8.5 18H9M18 9V8.5M4.5 18C3.11929 18 2 16.8807 2 15.5M2 4.5C2 3.11929 3.11929 2 4.5 2M18 4.5C18 3.11929 16.8807 2 15.5 2';
 
 const POLYGON_NODES = [[14.71, 4.92], [5.91, 7.13], [4.77, 16.73], [13.59, 19.08], [19.23, 12.83]];
 
@@ -122,15 +138,21 @@ export const MORPH_ICONS = Object.freeze({
       { d: 'M7.95 20.89 2.95 21.05 2.79 16.05' },
     ],
   },
+  areaRect: areaToolMorph('areaRect'),
+  areaFreehand: areaToolMorph('areaFreehand'),
+  // 2026-10-02: Box Select is Hugeicons Cursor Rectangle Selection 02 (a
+  // dashed box corner and a smaller cursor), and the lasso draws the same
+  // cursor in the same place.
   selectCursor: {
     source: 'src/assets/icons/selection-cursor-rounded.svg',
-    paths: [{ d: CURSOR }],
+    transform: BOX_SELECT_TRANSFORM,
+    paths: [{ d: BOX_SELECT_CURSOR }, { d: BOX_SELECT_CORNERS }],
   },
   lassoSelect: {
     source: 'src/assets/icons/lasso-select-rounded.svg',
     paths: [
       { d: 'M8.75 19.08C5.18 18.65 2.51 17.51 2.5 15.46c-.01-1.7 1.75-2.81 2.45-4.68.45-1.2.38-2.29.58-3.12C6.28 4.52 8.78 2.7 12.3 2.7c3.808 0 6.756 2.63 8.138 6.784', dash: [3, 2.1] },
-      { d: CURSOR, transform: 'translate(6.13 6.13) scale(.72)' },
+      { d: BOX_SELECT_CURSOR, transform: BOX_SELECT_TRANSFORM },
     ],
   },
   textSelect: {

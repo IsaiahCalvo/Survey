@@ -1989,8 +1989,8 @@ export default function App({ devPreviewReturnTab = null }) {
         aria-label="Area tools"
         style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-tool-gap)' }}
       >
-        {tool('rectangle', 'Rectangle area', 'rect', drawing && regionApi.toolType === 'rectangular', () => regionApi.setToolType?.('rectangular'))}
-        {tool('freehand', 'Freehand area', 'pen', drawing && regionApi.toolType === 'freehand', () => regionApi.setToolType?.('freehand'))}
+        {tool('rectangle', 'Rectangle area', 'areaRect', drawing && regionApi.toolType === 'rectangular', () => regionApi.setToolType?.('rectangular'))}
+        {tool('freehand', 'Freehand area', 'areaFreehand', drawing && regionApi.toolType === 'freehand', () => regionApi.setToolType?.('freehand'))}
         <div className="chrome-divider" />
         {tool('add', 'Add to area', 'plus', regionApi.selectionMode === 'add', () => regionApi.setSelectionMode?.('add'))}
         {tool('subtract', 'Subtract from area', 'minus', regionApi.selectionMode === 'subtract', () => regionApi.setSelectionMode?.('subtract'))}

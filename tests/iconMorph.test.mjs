@@ -56,7 +56,14 @@ test('the morph data is the icon set\'s own geometry, verbatim — redraw an ico
       } else {
         assert.ok(source.includes(squash(path.d)), `${name}: path ${path.d.slice(0, 40)}… is in ${icon.source}`);
       }
-      if (path.dash) assert.ok(source.includes(`stroke-dasharray="${path.dash.join(' ')}"`), `${name}: dash`);
+      // An SVG asset spells its dash as an attribute; the Areas tool glyphs
+      // (utils/areaToolGlyphs.js, owner 2026-10-02) keep theirs as data.
+      if (path.dash) {
+        assert.ok(
+          source.includes(`stroke-dasharray="${path.dash.join(' ')}"`) || source.includes(`dasharray: '${path.dash.join(' ')}'`),
+          `${name}: dash`,
+        );
+      }
     }
   }
   // The transforms the morph bakes in that come from elsewhere.

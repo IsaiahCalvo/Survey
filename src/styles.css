@@ -946,69 +946,70 @@ input[type="text"].survey-marker-name-inline:focus {
 }
 
 /* ==========================================================================
-   SPACES PANEL — ONE LIST, DIVIDED (owner 2026-09-23, desktop + phone)
+   SPACES PANEL — CARDS (owner 2026-10-02, desktop + phone)
    --------------------------------------------------------------------------
-   Owner: "everything is so bulky ... some shit that doesn't even align ...
-   the hitbox should be invisible", then "not individual cards; like
-   documents, projects and templates; dividers but integrated within the
-   panel" — on desktop AND phone, the same design sized for each.
+   Owner: "I want it back to the way I had it, except slightly cleaner" - the
+   card layout from before the 2026-09-23 one-list rewrite, cleaned up.
 
-   Structure (src/sidebar/SpacesPanel.jsx), Spaces chunk B (2026-10-01):
+   Structure (src/sidebar/SpacesPanel.jsx):
      .spaces-panel__head  ........ [Exit space x] [export] [+]
                           phone: Spaces  [export] [+] Done
-                          (icons since 2026-10-02: SectionIconButton)
-     .spaces-item         grip > Space 2 ...... 3 pages · 2 areas (switch) ...
-       .spaces-region             p.3  Page 3 ............ Draw area   ...
-       .spaces-item__add          +  [ Add pages ]                     Add
-   A space is a row parted from the next by a hairline that reaches both
-   edges; its pages are indented lines under it (a to-do list nested under
-   its parent) — no card per space, none per region. Every line ends in the
-   same `more` column, and the name, the page chips and the add field all
-   start on the same indent. The lightbulb, overlay switch, pencil and trash
-   cans of the old rows live in the `more` menus (.spaces-menu).
+     .space-card          grip 2 > Space 1 .................. (switch) trash
+       .space-card__add          [ Add pages (e.g. 3, 6-9, 12)     | + ]
+       .space-region-card        2 (switch) Region 2 ..... edit bulb trash
 
-   Hit areas: every glyph owns a whole column and the row's full height —
-   an invisible pad, never a plate. Glyph buttons press by tightening the
-   glyph (states.css data-glyph-only); word buttons carry .tertiary (which
-   states.css exempts from the grey press plate) and press by darkening their
-   ink. Hover (desktop pointer only) brightens ink, never paints a box.
+   Cleaner than the old cards: numbers are plain small muted figures (no
+   circles); switches turn on in the calm neutral ink of the Survey "Reuse"
+   switch, never gold; the [+] is grey and joined to its field, never a gold
+   square; a lit glyph (marks shown, areas being edited) is bright ink.
 
-   Sizes live in the custom properties below; the phone overrides them in
-   src/mobile/mobilePdfViewer.css (.mobile-spaces-panel), nothing else.
+   Hit areas: every glyph owns a whole column and the row's full height - an
+   invisible pad, never a plate. Glyph buttons carry data-glyph-only and
+   press by tightening the glyph (states.css). Hover (desktop pointer only)
+   brightens ink; the space row takes the one --hover fill.
+
+   Sizes live in the custom properties below (desktop row scale, tokens.css);
+   the phone overrides them in src/mobile/mobilePdfViewer.css
+   (.mobile-spaces-panel), nothing else.
    ========================================================================== */
 .spaces-panel {
-  /* Desktop sizes read the shared desktop row scale (src/styles/tokens.css,
-     owner 2026-10-02 UI consistency audit), so Spaces, Bookmarks and the
-     Survey rail are one family: 32px rows, 28px page lines, a 40px head,
-     text at x 40. */
   --sp-bg: var(--surface-1);
-  --sp-edge: var(--row-pad-x);   /* 12: header + text inset from the panel edge */
+  --sp-card-bg: var(--surface-2);
+  --sp-region-bg: var(--surface-1);
+  --sp-edge: var(--row-pad-x);    /* 12: header inset from the panel edge */
   --sp-head-h: var(--row-h-page); /* 40 */
   --sp-head-btn-pad: 6px;   /* a header icon's own side inset: 28px box, 16px glyph */
-  --sp-pad-r: 3px;          /* right inset of every line's last column */
-  --sp-grip-w: 36px;        /* grip column; its glyph lands on --sp-edge */
-  --sp-indent: var(--row-text-x); /* 40: where the name, add field and page badges start */
-  --sp-col-w: 28px;         /* chunk B: 28px hit boxes */
+  --sp-list-pad: 8px;       /* the list's inset around the cards */
+  --sp-body-pad: 8px;       /* an open card's inset around its field and regions */
+  --sp-body-gap: 8px;
+  --sp-region-gap: 6px;
+  --sp-pad-r: 2px;          /* right inset of every row's last column */
+  --sp-grip-w: 20px;
+  --sp-num-w: 14px;         /* the space's page count */
+  --sp-chev-w: 20px;
+  --sp-page-w: 22px;        /* a region's page number */
+  --sp-col-w: 24px;         /* a glyph button's column */
   --sp-switch-w: 36px;
-  --sp-end-w: 28px;         /* `more` / "Add" column */
-  /* A space row is 32 like a bookmark row (it was 28: "Bookmarks have
-     thicker rows than Spaces"). Its hairline (.spaces-item's bottom edge)
-     sits INSIDE that 32 - see .spaces-item__row. */
-  --sp-row-h: var(--row-h);      /* 32: a space row, the add row */
-  --sp-line-h: var(--row-h-sub); /* 28: a page line */
-  --sp-field-h: 24px;
-  --sp-glyph: var(--row-icon);  /* 14 */
+  --sp-sm-switch-w: 32px;
+  /* A space row is a desktop row: 32 (its card edges sit inside it). */
+  --sp-row-h: var(--row-h);       /* 32 */
+  --sp-line-h: var(--row-h);      /* 32: a region card */
+  --sp-field-h: 26px;
+  --sp-field-pad: 8px;
+  --sp-glyph: var(--row-icon);    /* 14 */
   --sp-track-w: 28px;
   --sp-track-h: 16px;
   --sp-knob: 12px;
-  --sp-badge: 16px;
-  --sp-badge-type: 11px;    /* "p.1": 11, the smallest text the app uses (was 10) */
+  --sp-sm-track-w: 24px;
+  --sp-sm-track-h: 14px;
+  --sp-sm-knob: 10px;
+  --sp-name-type: 13px;
+  --sp-name-weight: 600;
+  --sp-label-type: 12px;
+  --sp-field-type: 12px;
+  --sp-small-type: 11px;
   --sp-title-type: 13px;
   --sp-status-type: 11px;
-  --sp-head-type: 13px;     /* matches the Bookmarks header words */
-  --sp-name-type: 13px;
-  --sp-label-type: 12px;
-  --sp-small-type: 11px;
 }
 
 /* ---- header: ... [Exit space] [export] [+]; phone: title first --------- */
@@ -1075,12 +1076,13 @@ input[type="text"].survey-marker-name-inline:focus {
   top: calc(100% + 2px);
 }
 
-/* ---- the list ----------------------------------------------------------- */
+/* ---- the list: one card per space -------------------------------------- */
 .spaces-list {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0;
+  padding: var(--sp-list-pad);
+  box-sizing: border-box;
   background: var(--sp-bg);
 }
 
@@ -1092,53 +1094,50 @@ input[type="text"].survey-marker-name-inline:focus {
   text-align: center;
 }
 
-/* Each space ends in a hairline that spans the panel edge to edge. */
-.spaces-item {
-  border-bottom: 1px solid var(--border);
-}
-
-.spaces-item__block {
-  background: var(--sp-bg);
+.space-card__block {
+  background: var(--sp-card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
 }
 
 /* The one space a pointer is carrying lifts off the list with the app's one
    picked-up look: SortableRearrangeRow marks its wrapper data-drag-lifted
    (states.css), so nothing here paints a second surface. */
 
-.spaces-item__row {
+/* ---- the space row: grip · count · arrow · name ...... switch · trash ---- */
+.space-card__head {
   display: flex;
   align-items: center;
-  /* The space's hairline (.spaces-item border-bottom) is inside the row
-     height: a closed space is --sp-row-h from hairline to hairline. */
-  min-height: calc(var(--sp-row-h) - 1px);
+  min-height: calc(var(--sp-row-h) - 2px); /* the card's 1px edges are inside the 32 / 44 */
   padding-right: var(--sp-pad-r);
   box-sizing: border-box;
+  border-radius: calc(var(--radius-md) - 1px);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 
-.spaces-item__grip {
-  flex: 0 0 calc(var(--sp-grip-w) - var(--sp-chev-w, 16px));
-  width: calc(var(--sp-grip-w) - var(--sp-chev-w, 16px));
+.space-card__grip {
+  flex: 0 0 var(--sp-grip-w);
+  width: var(--sp-grip-w);
   align-self: stretch;
   height: auto !important;
 }
 
-/* The grip's dots start 3.75px inside its 12px glyph. Nudging the glyph left
-   by that much lands the dots on the edge line, under the header's "+" (the
-   box is narrower by the fold arrow's width now, so half of that is added
-   back to keep the dots on the same line). */
-.spaces-item__grip > svg {
-  /* The glyph is centred, so a margin moves it by half: +the arrow's full
-     width puts it back where it was before the box narrowed. */
-  margin-left: calc(-7.5px + var(--sp-chev-w, 16px));
+/* The page count: a plain small muted figure, no circle. */
+.space-card__count {
+  flex: 0 0 auto;
+  min-width: var(--sp-num-w);
+  color: var(--text-3);
+  font-size: var(--sp-small-type);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-align: center;
 }
 
-/* Fold arrow (owner 2026-09-23): lives in the gap between grip and name. A
-   glyph, not a box: no plate on hover or press; it turns down when open. */
-.spaces-item__chevron {
-  flex: 0 0 var(--sp-chev-w, 16px);
-  width: var(--sp-chev-w, 16px);
+.space-card__chevron {
+  flex: 0 0 var(--sp-chev-w);
+  width: var(--sp-chev-w);
   align-self: stretch;
   display: grid;
   place-items: center;
@@ -1149,83 +1148,85 @@ input[type="text"].survey-marker-name-inline:focus {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.spaces-item__chevron > svg {
+.space-card__chevron > svg {
   transition: transform 180ms cubic-bezier(0.33, 1, 0.68, 1);
 }
-.spaces-item.is-expanded .spaces-item__chevron > svg {
+.space-card.is-expanded .space-card__chevron > svg {
   transform: rotate(90deg);
 }
-@media (hover: hover) {
-  .spaces-item__chevron:hover { color: var(--text-1); }
-}
 @media (prefers-reduced-motion: reduce) {
-  .spaces-item__chevron > svg { transition: none; }
+  .space-card__chevron > svg { transition: none; }
 }
 
-/* Chunk B: the name is text at rest (a tap on it opens the space like the
-   rest of the row); Rename in `more` swaps in a field. */
-.spaces-item__name {
+/* Click-to-rename name. The grid trick sizes the field to its text, so a
+   click on the row beside a short name still folds / opens the space. The
+   rename look is the app's one rename line (.hub-rename): nothing at rest,
+   a faint dotted line on hover, a grey one while typing. Never gold. */
+.space-card__name-fit {
+  display: inline-grid;
+  align-items: center;
   flex: 0 1 auto;
   min-width: 1ch;
-  margin-left: calc(var(--sp-indent) - var(--sp-grip-w));
-  padding: 0;
-  color: var(--text-1);
+  max-width: 100%;
+  margin-left: 2px;
+}
+
+.space-card__name-fit::after,
+.space-card__name {
+  grid-area: 1 / 1;
+  padding: 2px 0;
+  border-top: 1px dotted transparent;
+  border-bottom: 1px dotted transparent;
   font-family: inherit;
   font-size: var(--sp-name-type);
-  font-weight: 600;
+  font-weight: var(--sp-name-weight);
   letter-spacing: 0;
-  line-height: 1.2;
+  line-height: 1.25;
+}
+
+.space-card__name-fit::after {
+  content: attr(data-value);
+  visibility: hidden;
+  white-space: pre;
+  min-width: 1ch;
+}
+
+input[type="text"].space-card__name {
+  width: 100%;
+  min-width: 1ch;
+  max-width: 100%;
+  height: auto;
+  margin: 0;
+  background: transparent;
+  border-left: 0;
+  border-right: 0;
+  border-radius: 0;
+  box-shadow: none;
+  outline: none;
+  color: var(--text-1);
+  cursor: text;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.spaces-item__name-input {
-  flex: 1 1 auto;
-  height: var(--sp-field-h);
-  margin-right: 6px;
-  padding: 0 6px;
-  box-sizing: border-box;
-  background: var(--surface-3);
-  border: 0;
-  border-radius: 6px;
+input[type="text"].space-card__name:focus,
+input[type="text"].space-card__name:focus-visible {
+  background: transparent;
+  border-bottom-color: var(--text-3);
   box-shadow: none;
   outline: none;
-  cursor: text;
 }
 
-/* Owner ruling: a field shows focus by its caret only — no underline, no
-   ring, no gold. */
-input[type="text"].spaces-item__name:focus,
-input[type="text"].spaces-item__name:focus-visible {
-  outline: none;
-  border: 0;
-  box-shadow: none;
-}
-
-.spaces-item__fill {
+.space-card__fill {
   flex: 1 1 0;
   min-width: 8px;
   align-self: stretch;
 }
 
-/* "3 pages · 2 areas": quiet ink before the switch. It gives way (ellipsis)
-   before the name does. */
-.spaces-item__meta {
-  flex: 0 1 auto;
-  min-width: 0;
-  padding-right: 4px;
-  color: var(--text-3);
-  font-size: var(--sp-small-type);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.2;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* ---- switch: the column is the hit area, the track is drawn inside ------ */
+/* ---- switches: the column is the hit area, the track is drawn inside ----
+   ON is the app's calm neutral "on" (the Survey "Reuse" switch, --text-2
+   track), never gold (owner 2026-10-02). */
 .spaces-switch {
   position: relative;
   flex: 0 0 var(--sp-switch-w);
@@ -1252,7 +1253,7 @@ input[type="text"].spaces-item__name:focus-visible {
 }
 
 .spaces-switch[aria-checked='true']::before {
-  background: var(--accent);
+  background: var(--text-2);
   box-shadow: none;
 }
 
@@ -1284,8 +1285,16 @@ input[type="text"].spaces-item__name:focus-visible {
   opacity: 0.45;
 }
 
+/* A region's outline switch: the smaller track the region cards had. */
+.spaces-switch--sm {
+  --sp-switch-w: var(--sp-sm-switch-w);
+  --sp-track-w: var(--sp-sm-track-w);
+  --sp-track-h: var(--sp-sm-track-h);
+  --sp-knob: var(--sp-sm-knob);
+}
+
 /* ---- glyph buttons: the whole column is the pad, only the glyph shows --- */
-.spaces-item__icon {
+.space-card__icon {
   appearance: none;
   flex: 0 0 var(--sp-col-w);
   width: var(--sp-col-w);
@@ -1297,199 +1306,158 @@ input[type="text"].spaces-item__name:focus-visible {
   background: transparent;
   border: 0;
   border-radius: 0;
-  color: var(--text-2);
+  color: var(--text-3);
   cursor: pointer;
   font-family: inherit;
   -webkit-tap-highlight-color: transparent;
   transition: color 0.15s ease;
 }
 
-.spaces-item__icon svg {
+.space-card__icon svg {
   width: var(--sp-glyph);
   height: var(--sp-glyph);
 }
 
-.spaces-item__more {
-  flex-basis: var(--sp-end-w);
-  width: var(--sp-end-w);
-  color: var(--text-3);
+.space-card__icon[aria-disabled='true'] {
+  color: var(--text-disabled);
+  cursor: not-allowed;
 }
 
-.spaces-item__more.is-open {
+/* A lit state (marks shown, areas being edited) is bright ink, not gold. */
+.space-card__icon.is-on:not([aria-disabled='true']) {
   color: var(--text-1);
 }
 
-/* ---- expanded space: the page lines, then "+ Add pages" ---------------- */
-.spaces-item__body {
-  padding: 0 var(--sp-pad-r) 4px var(--sp-indent);
+.space-card__delete {
+  color: var(--danger);
 }
 
-.spaces-item__add {
+/* ---- an open space: Add pages, then one card per page ------------------- */
+.space-card__body {
   display: flex;
-  align-items: center;
-  /* A line in the open space, like the page lines above it. */
-  min-height: var(--sp-line-h);
+  flex-direction: column;
+  gap: var(--sp-body-gap);
+  padding: var(--sp-body-pad);
+  border-top: 1px solid var(--border);
 }
 
-/* The "+" sits where the page chips start, so the add line reads as the
-   next item of the list. */
-.spaces-item__add-glyph {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  padding-right: 8px;
-  color: var(--text-3);
+/* The field and its [+] are one joined control: same height, same fill,
+   one rounded outline. The [+] is quiet grey (never a gold square). */
+.space-card__add {
+  display: flex;
+  align-items: stretch;
+  height: var(--sp-field-h);
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  overflow: hidden;
 }
 
-.spaces-item__add-input {
+input[type="text"].space-card__add-input {
   flex: 1 1 auto;
   min-width: 0;
-  height: var(--sp-field-h);
-  /* The field ends where the switch TRACK ends, so its edge lines up with
-     the switches in every row above and below. */
-  margin: 0 calc((var(--sp-switch-w) - var(--sp-track-w)) / 2) 0 0;
-  padding: 0 8px;
+  height: 100%;
+  margin: 0;
+  padding: 0 var(--sp-field-pad);
   box-sizing: border-box;
-  background: var(--surface-3);
+  background: transparent;
   border: 0;
-  border-radius: 6px;
+  border-radius: 0;
   box-shadow: none;
   outline: none;
   color: var(--text-1);
   font-family: inherit;
-  font-size: var(--sp-label-type);
+  font-size: var(--sp-field-type);
 }
 
-.spaces-item__add-input::placeholder {
+.space-card__add-input::placeholder {
   color: var(--text-3);
 }
 
-input[type="text"].spaces-item__add-input:focus,
-input[type="text"].spaces-item__add-input:focus-visible {
-  outline: none;
-  border: 0;
-  box-shadow: none;
-}
-
-.spaces-item__add-go {
+.space-card__add-go {
   appearance: none;
-  /* Same width as the trash column, so the field's end stays on the switch
-     track's edge. The word is right-aligned by flex, so if it is ever wider
-     than its box it spills left into the gap, never past the gutter. */
-  flex: 0 0 var(--sp-end-w);
-  width: var(--sp-end-w);
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  align-self: stretch;
-  /* The word's right edge lands where the trash glyphs end, so it lines up
-     with the column under it and with "Export" in the header. */
-  padding: 0 calc((var(--sp-end-w) - var(--sp-glyph)) / 2) 0 0;
+  position: relative;
+  flex: 0 0 var(--sp-field-h);
+  width: var(--sp-field-h);
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
   background: transparent;
   border: 0;
-  color: var(--text-3);
-  font-family: inherit;
-  font-size: var(--sp-label-type);
-  font-weight: 700;
-  text-align: right;
-  white-space: nowrap;
+  border-left: 1px solid var(--border);
+  border-radius: 0;
+  color: var(--text-2);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  transition: color 90ms ease-out;
+  transition: color 90ms ease-out, background 90ms ease-out;
 }
 
-/* Gold only once there is something to add — the panel's one gold word. */
-.spaces-item__add-go.has-value {
-  color: var(--accent);
+.space-card__add-go > svg {
+  width: var(--sp-glyph);
+  height: var(--sp-glyph);
 }
 
-.spaces-item__add-go:active {
-  color: var(--text-2);
+.space-card__add-go:active {
+  background: var(--pressed);
 }
 
-.spaces-item__add-go.has-value:active {
-  color: var(--accent-press);
-}
-
-.spaces-item__error {
-  padding: 0 0 4px;
+.space-card__error {
   color: var(--danger-text);
   font-size: var(--sp-small-type);
   font-weight: 600;
   line-height: 1.3;
 }
 
-.spaces-item__empty {
-  display: flex;
-  align-items: center;
-  min-height: var(--sp-line-h);
+.space-card__empty {
+  padding: 2px 2px 0;
   color: var(--text-3);
   font-size: var(--sp-label-type);
 }
 
-.spaces-item__regions {
+.space-card__regions {
   list-style: none;
   margin: 0;
   padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-region-gap);
 }
 
-.spaces-region {
+/* A page in the space ("region"): its own small card. */
+.space-region-card {
   display: flex;
   align-items: center;
   min-height: var(--sp-line-h);
+  padding-right: var(--sp-pad-r);
+  box-sizing: border-box;
+  background: var(--sp-region-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
 }
 
-/* The "p.3" chip: small quiet ink on a pill. Its tap pad is the line's full
-   height. */
+/* The page number: a plain small muted figure (no circle). It goes to the
+   page; its pad is the card's full height. */
 .spaces-region__page {
-  position: relative;
   appearance: none;
   flex: 0 0 auto;
+  min-width: var(--sp-page-w);
   align-self: stretch;
   display: inline-flex;
   align-items: center;
-  padding: 0 8px 0 0;
+  justify-content: center;
+  padding: 0 2px;
   background: transparent;
   border: 0;
+  color: var(--text-3);
   cursor: pointer;
-  /* All of the font, not just the family: a <button> otherwise keeps the
-     browser's 13.33px size on its line box. Sized like its "p.1" badge. */
   font: inherit;
-  font-size: var(--sp-badge-type);
+  font-size: var(--sp-small-type);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
   -webkit-tap-highlight-color: transparent;
 }
 
-/* The disc is small, so its invisible pad reaches back into the empty grip
-   column beside it: a full --sp-col-w wide target without moving the label. */
-.spaces-region__page::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  right: 0;
-  width: max(100%, var(--sp-col-w));
-}
-
-.spaces-region__page > span {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: var(--sp-badge);
-  height: var(--sp-badge);
-  padding: 0 5px;
-  box-sizing: border-box;
-  border-radius: 999px;
-  background: var(--surface-3);
-  color: var(--text-3);
-  font-size: var(--sp-badge-type);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1), color 90ms ease-out;
-}
-
-.spaces-region__page:active > span {
-  transform: scale(0.88);
+.spaces-region__page:active {
   color: var(--text-1);
 }
 
@@ -1499,106 +1467,50 @@ input[type="text"].spaces-item__add-input:focus-visible {
   align-self: stretch;
   display: flex;
   align-items: center;
+  padding-left: 4px;
+}
+
+.spaces-region__label,
+input[type="text"].spaces-region__name-input {
+  max-width: 100%;
+  min-width: 0;
+  padding: 2px 0;
+  background: transparent;
+  border: 0;
+  border-top: 1px dotted transparent;
+  border-bottom: 1px dotted transparent;
+  border-radius: 0;
+  box-shadow: none;
+  outline: none;
+  color: var(--text-1);
+  font-family: inherit;
+  font-size: var(--sp-label-type);
+  font-weight: 500;
+  line-height: 1.25;
 }
 
 .spaces-region__label {
   appearance: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 100%;
-  height: 100%;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  color: var(--text-2);
-  font-family: inherit;
-  font-size: var(--sp-label-type);
-  font-weight: 500;
-  line-height: 1.2;
+  overflow: hidden;
   text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
   text-overflow: ellipsis;
-  cursor: pointer;
+  white-space: nowrap;
+  cursor: text;
   -webkit-tap-highlight-color: transparent;
 }
 
-.spaces-region__label > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.spaces-region__label:active {
-  color: var(--text-1);
-}
-
-/* "marks hidden": the state the old lightbulb showed at rest. */
-.spaces-region__hint {
-  flex: 0 0 auto;
-  color: var(--text-3);
-  font-size: var(--sp-small-type);
-  font-weight: 500;
-}
-
-/* "Draw area" (an action, so it reads as one) or "2 areas" (quiet ink; it
-   still opens the area tool). While the tool is on: "Drawing..." in gold ink. */
-.spaces-region__areas {
-  appearance: none;
-  flex: 0 0 auto;
-  align-self: stretch;
-  display: inline-flex;
-  align-items: center;
-  padding: 0 4px 0 8px;
-  background: transparent;
-  border: 0;
-  color: var(--text-3);
-  font-family: inherit;
-  font-size: var(--sp-small-type);
-  font-weight: 500;
-  white-space: nowrap;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  transition: color 90ms ease-out;
-}
-
-.spaces-region__areas.is-empty {
-  color: var(--text-2);
-  font-weight: 600;
-}
-
-.spaces-region__areas.is-editing {
-  color: var(--accent);
-  font-weight: 600;
-}
-
-.spaces-region__areas:active {
-  color: var(--text-1);
-}
-
-.spaces-region__name-input {
+input[type="text"].spaces-region__name-input {
   width: 100%;
-  min-width: 0;
-  height: var(--sp-field-h);
-  margin-right: 6px;
-  padding: 0 6px;
-  box-sizing: border-box;
-  background: var(--surface-3);
-  border: 0;
-  border-radius: 6px;
-  box-shadow: none;
-  outline: none;
-  color: var(--text-1);
-  font-family: inherit;
-  font-size: var(--sp-label-type);
+  height: auto;
+  margin: 0 4px 0 0;
 }
 
-.spaces-region__name-input:focus,
-.spaces-region__name-input:focus-visible {
-  outline: none;
-  border: 0;
+input[type="text"].spaces-region__name-input:focus,
+input[type="text"].spaces-region__name-input:focus-visible {
+  background: transparent;
+  border-bottom-color: var(--text-3);
   box-shadow: none;
+  outline: none;
 }
 
 .spaces-panel__head-fill {
@@ -1632,8 +1544,7 @@ input[type="text"].spaces-item__add-input:focus-visible {
   color: var(--text-3);
 }
 
-/* ---- the `more` menus (portalled; AnchoredPopover hangs them under it) -- */
-.spaces-menu,
+/* ---- the Export menu (portalled; AnchoredPopover hangs it under Export) -- */
 .spaces-export--menu {
   position: absolute;
   top: 100%;
@@ -1649,61 +1560,6 @@ input[type="text"].spaces-item__add-input:focus-visible {
   border-radius: 8px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
   font-family: var(--font-ui);
-}
-
-.spaces-menu__item {
-  appearance: none;
-  min-height: 28px;
-  padding: 4px 8px;
-  display: grid;
-  align-content: center;
-  gap: 1px;
-  text-align: left;
-  background: transparent;
-  border: 0;
-  border-radius: 5px;
-  color: var(--text-1);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.spaces-menu__item > small {
-  color: var(--text-3);
-  font-size: 10.5px;
-  font-weight: 400;
-}
-
-.spaces-menu__item.is-danger {
-  color: var(--danger-text);
-}
-
-.spaces-menu__item[aria-disabled='true'] {
-  color: var(--text-disabled);
-  cursor: default;
-}
-
-.spaces-menu__item:not([aria-disabled='true']):active {
-  background: var(--pressed);
-}
-
-.spaces-menu--phone {
-  min-width: 212px;
-  padding: 5px;
-  border-radius: 12px;
-}
-
-.spaces-menu--phone .spaces-menu__item {
-  min-height: 44px;
-  padding: 6px 12px;
-  border-radius: 8px;
-  font-size: 15px;
-}
-
-.spaces-menu--phone .spaces-menu__item > small {
-  font-size: 12px;
 }
 
 /* ---- "Export <space>": desktop menu under Export, phone sheet ----------- */
@@ -2022,16 +1878,22 @@ input[type="text"].spaces-item__add-input:focus-visible {
 
 /* ---- hover: desktop pointer only, ink brightens, never a box ----------- */
 @media (hover: hover) and (pointer: fine) {
-  .spaces-item__row:hover {
+  .space-card__head:hover {
     background: var(--hover);
   }
-  .spaces-item__icon:not(:disabled):hover,
-  .spaces-region__label:hover,
-  .spaces-region__areas:not(.is-editing):hover,
-  .spaces-item__add-go:not(.has-value):hover {
+  .space-card__chevron:hover,
+  .space-card__icon:not([aria-disabled='true']):hover,
+  .spaces-region__page:hover,
+  .space-card__add-go:hover {
     color: var(--text-1);
   }
-  .spaces-menu__item:not([aria-disabled='true']):hover,
+  .space-card__delete:hover {
+    color: var(--danger-text);
+  }
+  input[type="text"].space-card__name:hover:not(:focus),
+  .spaces-region__label:hover {
+    border-bottom-color: var(--border-strong);
+  }
   .spaces-export__space:hover,
   .spaces-export__action:not(:disabled):hover {
     background: var(--hover);
@@ -2039,17 +1901,14 @@ input[type="text"].spaces-item__add-input:focus-visible {
   .spaces-panel__exit-chip:hover > svg {
     color: var(--text-1);
   }
-  .spaces-item__add-go.has-value:hover {
-    color: var(--accent-light);
-  }
-  .spaces-item__icon:not(:disabled):hover > svg {
+  .space-card__icon:not([aria-disabled='true']):hover > svg {
     transform: scale(1.1);
   }
-  .spaces-item__icon > svg {
+  .space-card__icon > svg {
     transition: transform 120ms ease-out;
   }
 }
-/* ===== end SPACES PANEL — ONE LIST, DIVIDED ===== */
+/* ===== end SPACES PANEL — CARDS ===== */
 
 .survey-marker-expand-spacer {
   flex: 1 1 auto;

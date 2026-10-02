@@ -4293,66 +4293,55 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
    title went 15/600 -> 16/700 and a space's name 15/600 -> 14/500, the row
    title every other sheet uses (15/600 was as loud as the heading).
    ========================================================================== */
-/* Two classes so these win over styles.css whatever the load order. */
+/* Two classes so these win over styles.css whatever the load order.
+   Owner 2026-10-02: the cards are back (styles.css "SPACES PANEL — CARDS");
+   the phone sizes them for a finger: 44px rows and region cards, 44px glyph
+   columns, a 36x22 switch, 16px glyphs and a 16px field font (iOS never
+   zooms on focus). The sheet is --surface-2, so a card is a step DOWN
+   (--surface-1) and a region card is the sheet's own surface again. */
 .spaces-panel.mobile-spaces-panel {
   --sp-bg: var(--sheet-bg);
+  --sp-card-bg: var(--surface-1);
+  --sp-region-bg: var(--surface-2);
   --sp-edge: var(--sheet-pad-x);
   --sp-head-h: var(--sheet-head-h);
   --sp-head-btn-pad: 8px;
-  --sp-pad-r: 2px;
-  --sp-grip-w: 44px;       /* 12px glyph centred at 22 -> starts at the 16px edge */
-  --sp-indent: var(--sheet-row-text-x); /* 48 */
-  --sp-col-w: 44px;
-  --sp-switch-w: 44px;
-  --sp-end-w: 44px;
-  --sp-row-h: var(--sheet-row-h);
-  /* A page line is tapped on its own, so it is 44 like every phone row
-     (owner 2026-10-02; it was 40). */
-  --sp-line-h: var(--sheet-row-h);
-  --sp-field-h: 32px;
-  --sp-glyph: var(--sheet-icon);
+  --sp-list-pad: 12px var(--sheet-pad-x);
+  --sp-body-pad: 10px;
+  --sp-body-gap: 10px;
+  --sp-region-gap: 8px;
+  --sp-pad-r: 0px;
+  --sp-grip-w: 32px;
+  --sp-num-w: 16px;
+  --sp-chev-w: 32px;
+  --sp-page-w: 34px;
+  --sp-col-w: 40px;
+  --sp-switch-w: 48px;
+  --sp-sm-switch-w: 44px;
+  --sp-row-h: var(--sheet-row-h);   /* 44 */
+  --sp-line-h: var(--sheet-row-h);  /* 44: a region card is tapped on its own */
+  --sp-field-h: 40px;
+  --sp-field-pad: 12px;
+  --sp-glyph: var(--sheet-icon);    /* 16 */
   --sp-track-w: 36px;
   --sp-track-h: 22px;
   --sp-knob: 18px;
-  --sp-badge: 20px;
-  --sp-badge-type: 11px;
-  --sp-title-type: 16px;
-  --sp-status-type: 11px;
-  --sp-head-type: 13px;
-  /* Chunk B: the name is text at rest, at the sheet row title's 14px; the
-     rename field is 16px below, so iOS never zooms on focus. */
-  --sp-name-type: 14px;
+  --sp-sm-track-w: 32px;
+  --sp-sm-track-h: 20px;
+  --sp-sm-knob: 16px;
+  /* A space's name is always a rename field, and every phone field renders
+     at 16px so iOS never zooms on focus (index.html), so the name is 16/500
+     and its sizer (::after) measures the same. */
+  --sp-name-type: 16px;
+  --sp-name-weight: 500;
   --sp-label-type: 14px;
+  --sp-field-type: 16px;
   --sp-small-type: 12px;
   font-family: var(--sheet-font);
 }
 
-/* The space's name at the sheet row title, 500 14px/18px. styles.css sets
-   600 for desktop, so the weight is overridden here, phone only. */
-.mobile-spaces-panel .spaces-item__name {
-  font: var(--sheet-row-title);
-}
-
-.mobile-spaces-panel .spaces-item__meta {
-  font: var(--sheet-row-meta);
-  font-variant-numeric: tabular-nums;
-}
-
 .mobile-spaces-panel .spaces-list__empty {
   font: var(--sheet-empty);
-}
-
-/* The "Add" word at the end of "+ Add pages": the sheet's action word. */
-.mobile-spaces-panel .spaces-item__add-go {
-  font: var(--sheet-action);
-}
-
-.mobile-spaces-panel .spaces-item__add-input,
-.mobile-spaces-panel .spaces-item__name-input,
-.mobile-spaces-panel .spaces-region__name-input {
-  font-size: 16px;
-  border-radius: 8px;
-  padding: 0 10px;
 }
 
 /* Chunk B header: "Spaces" title, then the export and add icons
@@ -4445,6 +4434,11 @@ html:has([data-mobile-tool-properties]) .mobile-pdf-header__space {
 /* The list starts under a hairline, as the Survey sheet's panel does. */
 .mobile-spaces-panel .spaces-list {
   border-top: 1px solid var(--border);
+}
+
+/* Phone press: a glyph tightens (data-glyph-only); a row card darkens. */
+.mobile-spaces-panel .space-card__head:active {
+  background: var(--pressed);
 }
 /* ===== end SPACES PANEL — PHONE SIZES ===== */
 

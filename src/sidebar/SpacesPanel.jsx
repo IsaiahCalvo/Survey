@@ -3,13 +3,14 @@
  * regions and per-page annotation visibility).
  *
  * Default-exports the SpacesPanel component; internal SpaceSortableCard renders
- * each space as one divided list row (2026-09-23: no cards, desktop and phone)
- * with expand, toggle, page-range add (parsePageRangeInput) and a `⋯` menu
- * (SpacesRowMenu: rename, export, delete; on page rows rename, edit areas,
- * canvas/survey annotation visibility, region outline, remove - Spaces chunk
- * B, 2026-10-01). SpacesExportPanel is the "Export <space>" menu (desktop) /
- * sheet (phone). Cards reorder via dnd-kit
- * SortableRearrangeList with optimistic ordering and frame-capture debug hooks.
+ * each space as a card (owner 2026-10-02: the layout he had before the
+ * 2026-09-23 one-list rewrite, cleaned up): grip, page count, fold arrow,
+ * click-to-rename name, switch and delete; open, an "Add pages" field
+ * (parsePageRangeInput) with a quiet [+], then one card per page ("region")
+ * with page number, outline switch, name, edit areas, marks bulb and remove.
+ * SpacesExportPanel is the "Export <space>" menu (desktop) / sheet (phone).
+ * Cards reorder via dnd-kit SortableRearrangeList with optimistic ordering and
+ * frame-capture debug hooks.
  */
 import React, { useState, useCallback, useRef } from 'react';
 import { createPortal, flushSync } from 'react-dom';
@@ -37,86 +38,6 @@ import {
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const animateSpaceLayoutChanges = () => false;
 
-// Spaces chunk B: a stored page label still at its old default ("Region 3")
-// reads as "Page 3" - the row already says it is a page in a space. Nothing is
-// rewritten in the data; a rename stores whatever the user types.
-const pageRowLabel = (page) => {
-  const stored = typeof page?.label === 'string' ? page.label.trim() : '';
-  if (!stored || stored === `Region ${page?.pageId}`) return `Page ${page?.pageId}`;
-  return stored;
-};
-
-/*
- * Spaces chunk B: the `⋯` menu every space and page row ends in. The trigger is
- * a glyph in the row's last column (invisible pad, no plate); the menu is a
- * light popover (dismissRules R1/R5) portalled above the phone sheet, so the
- * list's scroller and the sheet's transform never clip it. Disabled entries
- * say why underneath instead of vanishing.
- */
-function SpacesRowMenu({ label, items, mobileMode = false }) {
-  const [open, setOpen] = useState(false);
-  const buttonRef = useRef(null);
-  const menuRef = useRef(null);
-  React.useEffect(() => {
-    if (!open) return undefined;
-    return watchLightPopover({
-      contains: (target) => Boolean(buttonRef.current?.contains(target) || menuRef.current?.contains(target)),
-      close: () => setOpen(false),
-    });
-  }, [open]);
-  const getAnchor = useCallback(() => buttonRef.current, []);
-  return (
-    <>
-      <button
-        ref={buttonRef}
-        type="button"
-        className={`spaces-item__icon spaces-item__more${open ? ' is-open' : ''}`}
-        aria-label={label}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setOpen((value) => !value);
-        }}
-      >
-        <Icon name="moreHorizontal" size={16} color="currentColor" />
-      </button>
-      {open && (
-        <AnchoredPopover getAnchor={getAnchor} gap={2} zIndex={7000}>
-          <div
-            ref={menuRef}
-            role="menu"
-            aria-label={label}
-            className={`spaces-menu${mobileMode ? ' spaces-menu--phone' : ''}`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {items.filter(Boolean).map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                role="menuitem"
-                data-spaces-menu-item={item.id}
-                className={`spaces-menu__item${item.danger ? ' is-danger' : ''}`}
-                aria-disabled={item.disabled || undefined}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (item.disabled) return;
-                  setOpen(false);
-                  item.onSelect?.(e);
-                }}
-              >
-                <span>{item.label}</span>
-                {item.hint ? <small>{item.hint}</small> : null}
-              </button>
-            ))}
-          </div>
-        </AnchoredPopover>
-      )}
-    </>
-  );
-}
-
 const SpaceSortableCard = React.memo(function SpaceSortableCard({
   space,
   dragHandleProps,
@@ -132,7 +53,6 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   onToggleExpand,
   onRenameSpace,
   onDelete,
-  onExport = null,
   onPageInputChange,
   onAssignPages,
   onRenameRegion,
@@ -166,10 +86,6 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   // (owner 2026-10-02: only a real change is saved).
   const editingRegionStartRef = useRef('');
   const editingRegionInputRef = useRef(null);
-  // Spaces chunk B: the name is plain text at rest (a tap on it opens the
-  // space, like the rest of the row); Rename in `⋯` (or a double-click on the
-  // desktop) swaps in the field.
-  const [isRenamingSpace, setIsRenamingSpace] = useState(false);
   const spaceNameInputRef = useRef(null);
   React.useEffect(() => {
     if (!isExpanded) {
@@ -180,7 +96,6 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   React.useEffect(() => {
     setEditingRegionId(null);
     setEditingRegionValue('');
-    setIsRenamingSpace(false);
   }, [space.id]);
 
   const commitRegionRename = useCallback((pageId) => {
@@ -229,36 +144,39 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
     if (!input) return;
     const fallbackName = space.name?.trim() || 'Space';
     const nextName = (input.value || '').trim() || fallbackName;
-    // A refused rename (duplicate name, no permission) simply keeps the old
-    // name: the field closes and the row shows space.name again.
-    if (nextName !== space.name) onRenameSpace?.(space.id, nextName);
-    setIsRenamingSpace(false);
+    input.value = nextName;
+    if (input.parentElement) {
+      input.parentElement.dataset.value = nextName || ' ';
+    }
+    // Only a real change is a rename (owner 2026-10-02). A refused rename
+    // (duplicate name, no permission) leaves space.name, and so this
+    // uncontrolled input's key, unchanged: put the real name back instead of
+    // leaving the refused text showing as a second "Space 2".
+    if (nextName !== space.name && onRenameSpace?.(space.id, nextName) !== true) {
+      input.value = space.name || '';
+      if (input.parentElement) {
+        input.parentElement.dataset.value = space.name || ' ';
+      }
+    }
   }, [onRenameSpace, space.id, space.name]);
 
-  const startSpaceRename = useCallback(() => {
-    // Same rule as the region rename: the field exists and takes focus inside
-    // the tap, so iOS raises the keyboard.
-    flushSync(() => setIsRenamingSpace(true));
-    spaceNameInputRef.current?.focus();
-    spaceNameInputRef.current?.select();
-  }, []);
-
-
   /*
-   * UX 2026-09-23 (owner: "everything is so bulky ... the hitbox should be
-   * invisible"; "not individual cards ... dividers but integrated within the
-   * panel", desktop AND phone), revised by Spaces chunk B (2026-10-01 audit):
-   *   - a space is a ROW: grip · fold arrow · name · "3 pages · 2 areas" ·
-   *     switch · `⋯` (Rename, Export, Delete). No standing red trash can;
-   *   - its pages are indented LINES: "p.3" · name ("Page 3") · "Draw area" or
-   *     "2 areas" · `⋯` (Rename, Edit areas, Show marks, Show outline,
-   *     Remove). The lightbulb, the overlay switch, the pencil and the trash
-   *     can moved into that menu; every capability is still one tap away;
-   *   - "+ Add pages" is the last line of an open space;
-   *   - every control is a glyph or a word with an invisible pad (44px on the
-   *     phone, 28px on the desktop). Nothing paints a plate on hover or press.
-   * Sizes: the .spaces-list block in styles.css (desktop) and
-   * mobilePdfViewer.css (phone).
+   * Owner 2026-10-02 ("I want it back to the way I had it, except slightly
+   * cleaner"): the card layout from before the 2026-09-23 one-list rewrite
+   * (1e9ce63) and the 2026-10-01 more-menu row (35aaa23), with every later
+   * behaviour fix kept (empty-space guard, honest delete confirms, rename only
+   * on a real change, refused rename restores, iOS keyboard focus, drag).
+   *   - a space is a CARD: grip · page count · fold arrow · name (click to
+   *     rename) · switch · delete;
+   *   - open, it shows "Add pages (e.g. 3, 6-9, 12)" with a quiet [+] joined
+   *     to the field, then one small card per page ("region"): page number
+   *     (goes to the page) · outline switch · name (click to rename) · edit
+   *     areas · light bulb (survey icon in survey mode) · remove;
+   *   - cleaner than before: numbers are plain small muted figures (no
+   *     circles), switches turn ON in the app's calm neutral ink (the Survey
+   *     "Reuse" switch), never gold; the [+] is grey, never a gold square.
+   * Sizes: the .spaces-panel custom properties in styles.css (desktop rows
+   * 32) and mobilePdfViewer.css (phone rows 44).
    */
   const visibilityControlMode = getPageVisibilityControlMode({ showSurveyPanel, selectedModuleId });
   const isSurveyVisibilityContext =
@@ -270,7 +188,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
     ? onToggleSurveyAnnotations
     : onToggleCanvasAnnotations;
   // Spaces chunk A: the row counts PAGES (it counted drawn areas, so a space
-  // listing two pages could read 0). Chunk B: the label is on the row itself.
+  // listing two pages could read 0); the full "3 pages · 2 areas" is its name.
   const regionCountLabel = formatSpaceCountLabel(pageCount, regionCount);
   // A space with no pages would hide every page: it cannot be turned on until
   // it has some (an active one can always be turned off).
@@ -296,32 +214,38 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   return (
     <div
       data-space-sortable-row-id={space.id}
-      className={`spaces-item${isExpanded ? ' is-expanded' : ''}${isDragging ? ' is-dragging' : ''}${isActive ? ' is-active' : ''}`}
+      className={`space-card${isExpanded ? ' is-expanded' : ''}${isDragging ? ' is-dragging' : ''}${isActive ? ' is-active' : ''}`}
     >
-      <div data-drag-rearrange-row className="spaces-item__block">
+      <div data-drag-rearrange-row className="space-card__block">
         <div
-          className="spaces-item__row"
+          className="space-card__head"
           aria-expanded={isExpanded}
-          onClick={() => {
-            if (isRenamingSpace) return;
-            onToggleExpand(space.id);
-          }}
+          onClick={() => onToggleExpand(space.id)}
         >
           <DragRearrangeHandle
             {...dragHandleProps}
-            className="spaces-item__grip"
+            className="space-card__grip"
             data-space-drag-handle
             isDragging={isDragging}
             title="Drag to rearrange"
-            onClick={() => onToggleExpand(space.id)}
+            onClick={(e) => e.stopPropagation()}
             style={{ width: undefined, height: undefined, color: 'var(--text-3)' }}
           />
 
-          {/* Owner 2026-09-23: the fold arrow sits between the grip and the
-              name. Right when folded, down when open. */}
+          {/* The page count, a plain muted figure (no circle). Its name and
+              tooltip say "3 pages · 2 areas". */}
+          <span
+            className="space-card__count"
+            data-space-meta
+            aria-label={regionCountLabel}
+            {...tip(regionCountLabel, 'below')}
+          >
+            {pageCount}
+          </span>
+
           <button
             type="button"
-            className="spaces-item__chevron"
+            className="space-card__chevron"
             aria-label={isExpanded ? `Fold ${spaceName}` : `Open ${spaceName}`}
             aria-expanded={isExpanded}
             onClick={(e) => {
@@ -332,15 +256,26 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             <Icon name="chevronRight" size={12} color="currentColor" />
           </button>
 
-          {isRenamingSpace ? (
+          {/* Click to rename (the layout the owner had). Enter or a click
+              away saves; Escape puts the name back; an unchanged or refused
+              name is not saved. */}
+          <span className="space-card__name-fit" data-value={space.name || ' '}>
             <input
               ref={spaceNameInputRef}
               type="text"
-              className="spaces-item__name spaces-item__name-input"
+              size={1}
+              className="space-card__name"
               defaultValue={space.name}
+              key={`${space.id}:${space.name}`}
               aria-label={`Rename ${spaceName}`}
+              {...tip('Click to rename', 'below')}
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
+              onInput={(e) => {
+                if (e.currentTarget.parentElement) {
+                  e.currentTarget.parentElement.dataset.value = e.currentTarget.value || ' ';
+                }
+              }}
               onBlur={(e) => commitSpaceName(e.currentTarget)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
@@ -350,30 +285,16 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                   e.preventDefault();
                   e.stopPropagation();
                   e.currentTarget.value = space.name || '';
+                  if (e.currentTarget.parentElement) {
+                    e.currentTarget.parentElement.dataset.value = space.name || ' ';
+                  }
                   e.currentTarget.blur();
                 }
               }}
             />
-          ) : (
-            <span
-              className="spaces-item__name"
-              onDoubleClick={(e) => {
-                if (mobileMode) return;
-                e.stopPropagation();
-                startSpaceRename();
-              }}
-            >
-              {spaceName}
-            </span>
-          )}
+          </span>
 
-          <span className="spaces-item__fill" aria-hidden="true" />
-
-          {!isRenamingSpace && (
-            <span className="spaces-item__meta" data-space-meta>
-              {regionCountLabel}
-            </span>
-          )}
+          <span className="space-card__fill" aria-hidden="true" />
 
           <div
             role="switch"
@@ -392,38 +313,89 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             <span className="spaces-switch__knob" />
           </div>
 
-          <SpacesRowMenu
-            label={`${spaceName} options`}
-            mobileMode={mobileMode}
-            items={[
-              { id: 'rename', label: 'Rename', onSelect: startSpaceRename },
-              onExport ? { id: 'export', label: 'Export…', onSelect: () => onExport(space.id) } : null,
-              { id: 'delete', label: 'Delete space', danger: true, onSelect: () => onDelete(space.id) },
-            ]}
-          />
+          <button
+            type="button"
+            className="space-card__icon space-card__delete"
+            data-glyph-only=""
+            aria-label={`Delete ${spaceName}`}
+            {...tip('Delete space', 'below')}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(space.id);
+            }}
+          >
+            <Icon name="trash" size={14} color="currentColor" />
+          </button>
         </div>
 
         {isExpanded && (
-          <div className="spaces-item__body">
-            {pageCount > 0 && (
-              <ul className="spaces-item__regions">
+          <div className="space-card__body">
+            <div className="space-card__add">
+              <input
+                type="text"
+                className="space-card__add-input"
+                value={pageInputValue}
+                placeholder="Add pages (e.g. 3, 6-9, 12)"
+                aria-label="Add pages (e.g. 3, 6-9, 12)"
+                onChange={(e) => onPageInputChange(space.id, sanitizePageRangeInput(e.target.value))}
+                inputMode="numeric"
+                pattern="[0-9,-]*"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    onAssignPages(space.id);
+                  }
+                }}
+              />
+              {/* Quiet grey, joined to the field - never a gold square. */}
+              <button
+                type="button"
+                className="space-card__add-go"
+                data-glyph-only=""
+                aria-label="Add pages"
+                {...tip('Add pages', 'below')}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAssignPages(space.id);
+                }}
+              >
+                <Icon name="plus" size={14} color="currentColor" />
+              </button>
+            </div>
+            {pageError && (
+              <div className="space-card__error" role="alert">
+                {pageError}
+              </div>
+            )}
+
+            {pageCount === 0 ? (
+              <div className="space-card__empty">No pages added yet.</div>
+            ) : (
+              <ul className="space-card__regions">
                 {space.assignedPages
                   ?.slice()
                   .sort((a, b) => (a.pageId || 0) - (b.pageId || 0))
                   .map((page) => {
-                    const regionLabel = pageRowLabel(page);
+                    const regionLabel = typeof page.label === 'string' && page.label.trim().length > 0
+                      ? page.label.trim()
+                      : `Region ${page.pageId}`;
                     const isEditingRegion = editingRegionId === page.pageId;
-                    const areaCount = Array.isArray(page.regions) ? page.regions.length : 0;
 
                     // Region outline (the hatching outside the drawn areas).
                     const hasOverlayProps = onToggleRegionOverlay && getRegionOverlayEnabled && isRegionOverlayToggleEnabled;
                     const isOverlayEnabled = hasOverlayProps ? getRegionOverlayEnabled(space.id, page.pageId, page) : false;
                     const isOverlayToggleEnabled = hasOverlayProps ? isRegionOverlayToggleEnabled(space.id, page.pageId, page) : false;
-                    const overlayHint = !hasOverlayProps
-                      ? 'Not available here'
+                    const overlayLabel = !hasOverlayProps
+                      ? 'Outline not available here'
                       : !isActive
-                        ? 'Turn the space on first'
-                        : (!isOverlayToggleEnabled ? 'Draw an area first' : null);
+                        ? 'Turn the space on to show its outline'
+                        : !isOverlayToggleEnabled
+                          ? 'Draw an area first to show its outline'
+                          : (isOverlayEnabled ? 'Hide the outline' : 'Show the outline');
+                    const toggleOverlay = () => {
+                      if (!isOverlayToggleEnabled) return;
+                      onToggleRegionOverlay?.(space.id, page.pageId);
+                    };
 
                     // KAL-313 / history F1 (2026-06-11): the region-edit entry
                     // point. Without it the Region Selection Tool — and the
@@ -432,33 +404,26 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                       isRegionSelectionActive &&
                       regionSelectionPage === page.pageId &&
                       activeSpaceId === space.id;
-                    const toggleRegionEdit = () => {
-                      if (isActiveRegionEdit) {
-                        onCancelRegionEdit?.(space.id, page.pageId);
-                      } else {
-                        onRequestRegionEdit?.(space.id, page.pageId);
-                      }
-                    };
+                    const areaCount = Array.isArray(page.regions) ? page.regions.length : 0;
+                    const regionEditLabel = isActiveRegionEdit
+                      ? 'Stop editing areas'
+                      : (areaCount > 0 ? `Edit the areas on page ${page.pageId}` : `Draw an area on page ${page.pageId}`);
 
-                    // One menu entry, separate canvas/survey features in code.
+                    // One visible control, separate canvas/survey features in code.
                     const hasVisibility = Boolean(getVisibilityState && onToggleVisibility);
                     const visibilityState = hasVisibility ? getVisibilityState(space.id, page.pageId) : true;
                     const isVisibilityDisabled = !isActive || activeSpaceId === null;
-                    const marksNoun = isSurveyVisibilityContext ? 'survey markers' : 'marks';
-                    const visibilityLabel = `${visibilityState ? 'Hide' : 'Show'} ${marksNoun}`;
-
-                    const areaAction = isActiveRegionEdit
-                      ? 'Drawing…'
-                      : (areaCount > 0 ? `${areaCount} ${areaCount === 1 ? 'area' : 'areas'}` : 'Draw area');
-                    const areaActionLabel = isActiveRegionEdit
-                      ? 'Stop drawing areas'
-                      : (areaCount > 0 ? `Edit ${areaCount === 1 ? 'the area' : `the ${areaCount} areas`} on page ${page.pageId}` : `Draw an area on page ${page.pageId}`);
+                    const visibilityLabel = isVisibilityDisabled
+                      ? 'Turn the space on to show or hide marks'
+                      : isSurveyVisibilityContext
+                        ? (visibilityState ? 'Hide survey markers' : 'Show survey markers')
+                        : (visibilityState ? 'Hide marks' : 'Show marks');
 
                     return (
-                      <li key={page.pageId} className={`spaces-region${isActiveRegionEdit ? ' is-editing' : ''}`}>
+                      <li key={page.pageId} className={`space-region-card${isActiveRegionEdit ? ' is-editing' : ''}`}>
                         <button
                           type="button"
-                          className="spaces-region__page tertiary"
+                          className="spaces-region__page"
                           {...tip(`Go to page ${page.pageId}`, 'below')}
                           aria-label={`Go to page ${page.pageId}`}
                           onClick={(e) => {
@@ -467,8 +432,25 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                             onNavigateToPage?.(page.pageId);
                           }}
                         >
-                          <span>p.{page.pageId}</span>
+                          {page.pageId}
                         </button>
+
+                        <div
+                          role="switch"
+                          tabIndex={isOverlayToggleEnabled ? 0 : -1}
+                          aria-checked={Boolean(isOverlayToggleEnabled && isOverlayEnabled)}
+                          aria-disabled={!isOverlayToggleEnabled || undefined}
+                          aria-label={overlayLabel}
+                          className="spaces-switch spaces-switch--sm"
+                          {...tip(overlayLabel, 'below')}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleOverlay();
+                          }}
+                          onKeyDown={switchKeyDown(toggleOverlay)}
+                        >
+                          <span className="spaces-switch__knob" />
+                        </div>
 
                         <div className="spaces-region__name">
                           {isEditingRegion ? (
@@ -500,115 +482,84 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                               className="spaces-region__name-input"
                             />
                           ) : (
-                            // Chunk B: the name goes to its page (Rename is in
-                            // `⋯`; a double-click renames on the desktop).
                             <button
                               type="button"
-                              className="spaces-region__label tertiary"
+                              className="spaces-region__label"
+                              {...tip('Click to rename', 'below')}
+                              aria-label={`Rename ${regionLabel}`}
                               onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                onNavigateToPage?.(page.pageId);
-                              }}
-                              onDoubleClick={(e) => {
-                                if (mobileMode) return;
                                 e.preventDefault();
                                 e.stopPropagation();
                                 handleRegionEditClick(page.pageId, regionLabel);
                               }}
                             >
-                              <span>{regionLabel}</span>
-                              {hasVisibility && !visibilityState && (
-                                <small className="spaces-region__hint">{marksNoun} hidden</small>
-                              )}
+                              {regionLabel}
                             </button>
                           )}
                         </div>
 
-                        {!isEditingRegion && (
+                        <button
+                          type="button"
+                          className={`space-card__icon spaces-region__edit${isActiveRegionEdit ? ' is-on' : ''}`}
+                          data-glyph-only=""
+                          aria-pressed={isActiveRegionEdit}
+                          aria-label={regionEditLabel}
+                          {...tip(regionEditLabel, 'below')}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (isActiveRegionEdit) {
+                              onCancelRegionEdit?.(space.id, page.pageId);
+                            } else {
+                              onRequestRegionEdit?.(space.id, page.pageId);
+                            }
+                          }}
+                        >
+                          <Icon name="regionEdit" size={14} color="currentColor" />
+                        </button>
+
+                        {hasVisibility && (
                           <button
                             type="button"
-                            className={`spaces-region__areas tertiary${areaCount === 0 && !isActiveRegionEdit ? ' is-empty' : ''}${isActiveRegionEdit ? ' is-editing' : ''}`}
-                            {...tip(areaActionLabel, 'below')}
-                            aria-label={areaActionLabel}
+                            className={`space-card__icon spaces-region__marks${visibilityState ? ' is-on' : ''}`}
+                            data-glyph-only=""
+                            aria-pressed={Boolean(visibilityState)}
+                            aria-disabled={isVisibilityDisabled || undefined}
+                            aria-label={visibilityLabel}
+                            {...tip(visibilityLabel, 'below')}
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              toggleRegionEdit();
+                              if (isVisibilityDisabled) return;
+                              onToggleVisibility(space.id, page.pageId, !visibilityState);
                             }}
                           >
-                            {areaAction}
+                            {isSurveyVisibilityContext ? (
+                              <Icon name="survey" size={14} color="currentColor" />
+                            ) : (
+                              <Icon name={visibilityState ? 'lightbulbOn' : 'lightbulbOff'} size={14} color="currentColor" />
+                            )}
                           </button>
                         )}
 
-                        <SpacesRowMenu
-                          label={`${regionLabel} options`}
-                          mobileMode={mobileMode}
-                          items={[
-                            { id: 'rename', label: 'Rename', onSelect: () => handleRegionEditClick(page.pageId, regionLabel) },
-                            { id: 'edit-areas', label: isActiveRegionEdit ? 'Stop editing areas' : (areaCount > 0 ? 'Edit areas' : 'Draw area'), onSelect: toggleRegionEdit },
-                            hasVisibility ? {
-                              id: 'marks',
-                              label: visibilityLabel,
-                              disabled: isVisibilityDisabled,
-                              hint: isVisibilityDisabled ? 'Turn the space on first' : null,
-                              onSelect: () => onToggleVisibility(space.id, page.pageId, !visibilityState),
-                            } : null,
-                            {
-                              id: 'outline',
-                              label: isOverlayEnabled ? 'Hide outline' : 'Show outline',
-                              disabled: !isOverlayToggleEnabled,
-                              hint: overlayHint,
-                              onSelect: () => onToggleRegionOverlay?.(space.id, page.pageId),
-                            },
-                            { id: 'remove', label: 'Remove from space', danger: true, onSelect: () => onRemovePage(space.id, page.pageId) },
-                          ]}
-                        />
+                        <button
+                          type="button"
+                          className="space-card__icon space-card__delete"
+                          data-glyph-only=""
+                          aria-label={`Remove page ${page.pageId} from ${spaceName}`}
+                          {...tip('Remove from space', 'below')}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onRemovePage(space.id, page.pageId);
+                          }}
+                        >
+                          <Icon name="trash" size={14} color="currentColor" />
+                        </button>
                       </li>
                     );
                   })}
               </ul>
-            )}
-
-            {/* Chunk B: "+ Add pages" is the last line of an open space. */}
-            <div className="spaces-item__add">
-              <span className="spaces-item__add-glyph" aria-hidden="true">
-                <Icon name="plus" size={14} color="currentColor" />
-              </span>
-              <input
-                type="text"
-                className="spaces-item__add-input"
-                value={pageInputValue}
-                placeholder={pageCount === 0 ? 'Add pages, e.g. 3, 6-9' : 'Add pages'}
-                aria-label="Add pages (e.g. 3, 6-9, 12)"
-                onChange={(e) => onPageInputChange(space.id, sanitizePageRangeInput(e.target.value))}
-                inputMode="numeric"
-                pattern="[0-9,-]*"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    onAssignPages(space.id);
-                  }
-                }}
-              />
-              {/* A word, not a gold square. It turns gold only once there is
-                  something to add; empty, it rests in quiet ink. */}
-              <button
-                type="button"
-                className={`spaces-item__add-go tertiary${pageInputValue ? ' has-value' : ''}`}
-                aria-label="Add pages"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAssignPages(space.id);
-                }}
-              >
-                Add
-              </button>
-            </div>
-            {pageError && (
-              <div className="spaces-item__error" role="alert">
-                {pageError}
-              </div>
             )}
           </div>
         )}
@@ -862,8 +813,8 @@ const SpacesPanel = ({
       const wrapper = node.closest('[data-sortable-rearrange-item]');
       const card = node.querySelector('[data-drag-rearrange-row]');
       const header = card?.firstElementChild || null;
-      // 2026-09-23: the row itself carries aria-expanded (no separate expand button).
-      const expandButton = node.querySelector('.spaces-item__row[aria-expanded]');
+      // The space row itself carries aria-expanded.
+      const expandButton = node.querySelector('.space-card__head[aria-expanded]');
 
       return {
         id: node.getAttribute('data-space-sortable-row-id'),
@@ -992,8 +943,8 @@ const SpacesPanel = ({
       const item = node.querySelector('[data-sortable-rearrange-item]') || node;
       const rect = item.getBoundingClientRect();
       const outerRect = node.getBoundingClientRect();
-      // 2026-09-23: the row itself carries aria-expanded.
-      const expandButton = node.querySelector('.spaces-item__row[aria-expanded]');
+      // The space row itself carries aria-expanded.
+      const expandButton = node.querySelector('.space-card__head[aria-expanded]');
       const style = window.getComputedStyle(node);
 
       return {
@@ -1449,7 +1400,7 @@ const SpacesPanel = ({
         )}
       </div>
 
-      {/* Spaces List — one divided list, no cards. */}
+      {/* Spaces List — one card per space (owner 2026-10-02). */}
       <div ref={mobileSpacesListRef} className="spaces-list">
         {spaces.length === 0 ? (
           <div className="spaces-list__empty">
@@ -1465,7 +1416,7 @@ const SpacesPanel = ({
             onDragEnd={restoreCollapsedSpaceAfterDrag}
             onDragCancel={restoreCollapsedSpaceAfterDrag}
             variableHeight
-            gap={0}
+            gap={mobileMode ? 8 : 6}
           >
             {orderedSpaces.map((space) => {
               const isActive = activeSpaceId === space.id;
@@ -1498,7 +1449,6 @@ const SpacesPanel = ({
                       onToggleExpand={handleToggleExpand}
                       onRenameSpace={handleRenameSpace}
                       onDelete={handleDelete}
-                      onExport={(onExportSpaceCSV || onExportSpacePDF) ? openSpacesExport : null}
                       onExitSpace={handleExitSpace}
                       onToggleSpace={handleToggleSpace}
                       onPageInputChange={handlePageInputChange}
