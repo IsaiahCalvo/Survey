@@ -643,7 +643,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   flex-direction: column;
   gap: 0;
   color: var(--text-2);
-  background: var(--surface-1);
+  /* The menu grows out of the pill (owner), so it wears the pill's own
+     surface - --panel-bg since the 2026-10-02 surface rule. */
+  background: var(--panel-bg);
   border: 1px solid var(--border);
   border-top: 0;
   border-radius: 0 0 10px 10px;

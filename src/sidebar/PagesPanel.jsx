@@ -1085,7 +1085,7 @@ const PagesPanel = ({
       flexDirection: 'column',
       height: '100%',
       fontFamily: FONT_FAMILY,
-      background: 'var(--surface-1)'
+      background: 'var(--panel-bg)'
     }}>
       {mobileMode && (
         <div className="mobile-pages-counter">

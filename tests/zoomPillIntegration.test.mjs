@@ -46,7 +46,7 @@ test('phone: the pill is the page reading and the chevron; the menu hangs off th
   assert.match(menu, /width: calc\(100% \+ 2px\);/, 'exactly the pill\'s border-box width');
   assert.doesNotMatch(menu, /max-content|min-width|translateX|left: 50%/, 'never wider than, or centred under, the pill');
   assert.match(menu, /border-top: 0;/, 'the pill\'s bottom border is the hairline');
-  assert.match(menu, /background: var\(--surface-1\)/, 'same surface as the pill');
+  assert.match(menu, /background: var\(--panel-bg\)/, 'same surface as the pill');
   assert.match(menu, /border-radius: 0 0 10px 10px/, 'the pill\'s radius, on the bottom corners only');
 
   // The pill is the wider of what the fraction needs and what the menu's rows

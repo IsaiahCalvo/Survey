@@ -3995,7 +3995,7 @@ const SurveySpacesRail = ({
                       >
                         {isExporting
                           ? <Spinner size={mobileMode ? 16 : 14} color="var(--text-1)" trackColor="var(--surface-3)" />
-                          : <Icon name="upload" size={mobileMode ? 16 : 14} color="currentColor" />}
+                          : <Icon name="download" size={mobileMode ? 16 : 14} color="currentColor" />}
                         <span>{isExporting ? 'Exporting\u2026' : 'Export to Excel'}</span>
                       </button>
                       {mobileMode ? (
