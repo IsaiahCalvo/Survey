@@ -14,8 +14,14 @@ import {
 // invariants they guard — chunk independence, reverse symmetry, which regime an
 // event lands in, the per-event cap — keep testing exactly what they did.
 const NOTCH_RATE = Math.log(WHEEL_NOTCH_STEP_FACTOR) / 100;
+// 2026-10-02 (owner: "zoom speed like my app"): both rates now come from
+// Walkthu (apps/web/src/components/viewer/viewer-transform.ts):
+// WHEEL_ZOOM_SENSITIVITY_PINCH 0.0125 per px for a pinch tick (was the
+// Drawboard-measured PINCH_RATE) and WHEEL_ZOOM_SENSITIVITY_MOUSE 0.00145 per px
+// for a notch (x1.156 per 100px, was x1.3). The invariants are unchanged.
+const PINCH_RATE = 0.0125;
 
-test('small trackpad ticks match Drawboard and reverse symmetrically', () => {
+test('small trackpad ticks match Walkthu and reverse symmetrically', () => {
   const zoomedIn = getWheelZoomScale(0.74, {
     deltaY: -8,
     deltaMode: 0,
@@ -29,7 +35,7 @@ test('small trackpad ticks match Drawboard and reverse symmetrically', () => {
     minimumScale: 0.01,
   });
 
-  assert.ok(zoomedIn > 0.756 && zoomedIn < 0.759, "expected Drawboard's measured small-tick speed");
+  assert.ok(Math.abs(zoomedIn - 0.74 * Math.exp(8 * PINCH_RATE)) < 1e-12, "expected Walkthu's small-tick speed");
   assert.ok(Math.abs(zoomedBackOut - 0.74) < 1e-9, `expected a reversible step, got ${zoomedBackOut}`);
 });
 
@@ -46,12 +52,12 @@ test('one full mouse-wheel notch moves a Drawboard-sized step', () => {
   );
 });
 
-test('a single notch takes 100% to 130% and back, and is never clipped', () => {
+test('a single notch takes 100% to ~116% (Walkthu) and back, and is never clipped', () => {
   // The live viewer passes maximumDelta: 1000, so one notch is never capped —
   // whether the browser reports the notch as 100px (spec) or 120px (Chrome).
   const inOneNotch = getWheelZoomScale(1, { deltaY: -100, maximumDelta: 1000 });
   assert.ok(Math.abs(inOneNotch - WHEEL_NOTCH_STEP_FACTOR) < 1e-12, `got ${inOneNotch}`);
-  assert.ok(Math.abs(inOneNotch - 1.3) < 1e-12, 'one notch must land on 130%');
+  assert.ok(Math.abs(inOneNotch - Math.exp(0.145)) < 1e-12, 'one notch must land on Walkthu\'s exp(100 * 0.00145)');
 
   const backOut = getWheelZoomScale(inOneNotch, { deltaY: 100, maximumDelta: 1000 });
   assert.ok(Math.abs(backOut - 1) < 1e-12, `expected a reversible notch, got ${backOut}`);
@@ -63,21 +69,20 @@ test('a single notch takes 100% to 130% and back, and is never clipped', () => {
   );
 });
 
-test('a trackpad pinch stream keeps its own gentle rate, unchanged by the notch rate', () => {
+test('a trackpad pinch stream keeps its own rate, separate from the notch rate', () => {
   // Small pixel deltas (< 50px, pixel mode) are a pinch, not a wheel detent:
-  // they must still move at the measured Drawboard trackpad rate of 0.0029/px.
+  // they move at Walkthu's pinch rate of 0.0125/px.
   for (const delta of [4, 8, 16, 32, 49]) {
     const pinched = getWheelZoomScale(1, { deltaY: -delta, deltaMode: 0 });
     assert.ok(
-      Math.abs(pinched - Math.exp(delta * 0.0029)) < 1e-12,
+      Math.abs(pinched - Math.exp(delta * PINCH_RATE)) < 1e-12,
       `a ${delta}px pinch tick must keep the trackpad rate, got ${pinched}`,
     );
-    assert.ok(pinched < 1.16, 'a pinch tick must stay far below a wheel notch');
   }
-  // Twelve 8px ticks are Drawboard's measured 74% -> 97% pinch travel.
-  let scale = 0.74;
-  for (let i = 0; i < 12; i += 1) scale = getWheelZoomScale(scale, { deltaY: -8, deltaMode: 0 });
-  assert.ok(scale > 0.96 && scale < 0.98, `expected Drawboard's pinch travel, got ${scale}`);
+  // Thirty 4px ticks: Walkthu goes 100% -> 448%.
+  let scale = 1;
+  for (let i = 0; i < 30; i += 1) scale = getWheelZoomScale(scale, { deltaY: -4, deltaMode: 0 });
+  assert.ok(Math.abs(scale - Math.exp(120 * 0.0125)) < 1e-9, `expected Walkthu's pinch travel, got ${scale}`);
 });
 
 test('one event cannot collapse zoom even when a device reports an enormous delta', () => {
@@ -175,7 +180,7 @@ test('trackpad travel is chunk-independent within the pixel-mode regime', () => 
     for (let travel = 0; travel < 192; travel += chunk) {
       scale = getWheelZoomScale(scale, { deltaY: -chunk, regime: 'trackpad', maximumDelta: 1000 });
     }
-    assert.ok(Math.abs(scale - 0.74 * Math.exp(0.0029 * 192)) < 1e-12);
+    assert.ok(Math.abs(scale - 0.74 * Math.exp(PINCH_RATE * 192)) < 1e-12);
     for (let travel = 0; travel < 192; travel += chunk) {
       scale = getWheelZoomScale(scale, { deltaY: chunk, regime: 'trackpad', maximumDelta: 1000 });
     }
@@ -186,7 +191,7 @@ test('trackpad travel is chunk-independent within the pixel-mode regime', () => 
 test('each event selects its rate by normalized delta and mode before capping', () => {
   for (const direction of [-1, 1]) {
     for (const [deltaY, deltaMode, viewportHeight, exponent] of [
-      [49, 0, 800, 49 * 0.0029],
+      [49, 0, 800, 49 * PINCH_RATE],
       [50, 0, 800, 0.5 * Math.log(WHEEL_NOTCH_STEP_FACTOR)],
       [0.5, 1, 800, 0.08 * Math.log(WHEEL_NOTCH_STEP_FACTOR)],
       [0.01, 2, 800, 0.08 * Math.log(WHEEL_NOTCH_STEP_FACTOR)],
@@ -215,7 +220,7 @@ test('browser mouse events keep a constant notch rate, reverse symmetry and 1000
 
 test('explicit gesture regime overrides event size and mode in both directions', () => {
   for (const regime of ['trackpad', 'notch']) {
-    const rate = regime === 'trackpad' ? 0.0029 : NOTCH_RATE;
+    const rate = regime === 'trackpad' ? PINCH_RATE : NOTCH_RATE;
     for (const delta of [8, 48, 49, 50, 51, 100, 192, 200]) {
       for (const direction of [-1, 1]) {
         for (const deltaMode of [0, 1, 2]) {
