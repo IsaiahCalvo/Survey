@@ -124,9 +124,28 @@
 :root {
   /* --- Surfaces: an even 5% brightness step per layer -------------------- */
   --surface-0: #0d0f14;   /* the page behind everything  · B 8%  */
-  --surface-1: #171a21;   /* a panel, a bar, a header    · B 13% */
-  --surface-2: #21252e;   /* a card or a well on a panel · B 18% */
+  --surface-1: #171a21;   /* a recessed well (--panel-well) · B 13% */
+  --surface-2: #21252e;   /* a panel, a bar, a sheet (--panel-bg) · B 18% */
   --surface-3: #2b303b;   /* raised: a SELECTED row, a field, a menu · B 23% */
+
+  /* --- ONE SURFACE RULE, PHONE = DESKTOP (owner 2026-10-02) --------------
+     The two platforms used to paint the same panel two colours: desktop
+     rails on --surface-1, phone sheets on --surface-2, so every well inside
+     a panel stepped UP on desktop and DOWN on the phone. One rule now:
+       app background, the area round the PDF page   --surface-0
+       docked chrome and panels (toolbar, context bar, rails, the Survey /
+         Spaces / Bookmarks / Search / Pages panels, the phone header, dock
+         and every phone sheet)                       --panel-bg  (--surface-2)
+       a recessed field or well inside a panel (search field, notes box,
+         Y/N/N/A track, Spaces card, add-pages field)  --panel-well (--surface-1)
+       floating (menus, popovers, dropdowns, tooltips), a selected row,
+         the drag lift                                --surface-3 + --shadow-popover
+     Point a panel or a well at these two tokens, never at a raw surface, so a
+     well can never flip direction again. */
+  --panel-bg: var(--surface-2);
+  --panel-well: var(--surface-1);
+  --shadow-popover: 0 12px 28px rgba(0, 0, 0, 0.45);
+  --shadow-sheet: 0 -15px 38px rgba(0, 0, 0, 0.5);
 
   /* --- Borders: TWO JOBS, two values (revision 4) --------------------------
      Revision 3 pushed every border to 4.09-4.50:1 to satisfy WCAG 1.4.11. The
@@ -361,7 +380,7 @@
      including nested rows and menu items; --sheet-row-h-sub (40) is left for
      a line that is not tapped on its own. */
   --sheet-font: var(--font-ui);
-  --sheet-bg: var(--surface-2);
+  --sheet-bg: var(--panel-bg);
   --sheet-head-h: 44px;
   --sheet-title: 700 16px/20px var(--sheet-font);
   --sheet-subtitle: 500 12px/16px var(--sheet-font);   /* --text-3 */

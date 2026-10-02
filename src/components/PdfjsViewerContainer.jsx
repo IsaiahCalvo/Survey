@@ -3848,7 +3848,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         position: 'absolute',
         inset: 0,
         overflow: 'auto',
-        background: isMobileSurface ? 'var(--surface-0)' : 'var(--surface-1)',
+        // The area round the page is --surface-0 on every platform (owner
+        // 2026-10-02, one surface rule; desktop was --surface-1).
+        background: 'var(--surface-0)',
         contain: 'strict',
         overscrollBehavior: 'contain',
         WebkitOverflowScrolling: 'touch',

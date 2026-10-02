@@ -973,9 +973,11 @@ input[type="text"].survey-marker-name-inline:focus {
    (.mobile-spaces-panel), nothing else.
    ========================================================================== */
 .spaces-panel {
-  --sp-bg: var(--surface-1);
-  --sp-card-bg: var(--surface-2);
-  --sp-region-bg: var(--surface-1);
+  /* One surface rule, phone = desktop (owner 2026-10-02): the panel, a
+     recessed card, and a region card back on the panel's own colour. */
+  --sp-bg: var(--panel-bg);
+  --sp-card-bg: var(--panel-well);
+  --sp-region-bg: var(--panel-bg);
   --sp-edge: var(--row-pad-x);    /* 12: header inset from the panel edge */
   --sp-head-h: var(--row-h-page); /* 40 */
   --sp-head-btn-pad: 6px;   /* a header icon's own side inset: 28px box, 16px glyph */
@@ -1347,8 +1349,12 @@ input[type="text"].space-card__name:focus-visible {
   display: flex;
   align-items: stretch;
   height: var(--sp-field-h);
+  box-sizing: border-box;
   border-radius: var(--radius-sm);
-  background: var(--surface-3);
+  /* A recessed well (owner 2026-10-02). It sits on the --panel-well card,
+     so the field's identifying edge is what draws it. */
+  background: var(--panel-well);
+  border: 1px solid var(--border-strong);
   overflow: hidden;
 }
 
@@ -1555,10 +1561,10 @@ input[type="text"].spaces-region__name-input:focus-visible {
   padding: 4px;
   box-sizing: border-box;
   display: grid;
-  background: var(--surface-2);
+  background: var(--surface-3);
   border: 1px solid var(--border-strong);
   border-radius: 8px;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow-popover);
   font-family: var(--font-ui);
 }
 
@@ -1709,9 +1715,9 @@ input[type="text"].spaces-region__name-input:focus-visible {
   overflow-y: auto;
   padding: 6px 12px 12px;
   box-sizing: border-box;
-  background: var(--surface-1);
+  background: var(--sheet-bg);
   border-radius: 14px 14px 0 0;
-  box-shadow: 0 -15px 38px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-sheet);
   font-family: var(--font-ui);
 }
 
@@ -1739,7 +1745,7 @@ input[type="text"].spaces-region__name-input:focus-visible {
 
 .spaces-export-sheet .spaces-export__spaces {
   max-height: 220px;
-  background: var(--surface-2);
+  background: var(--panel-well);
   border: 1px solid var(--border);
   border-radius: 10px;
 }
@@ -1762,7 +1768,7 @@ input[type="text"].spaces-region__name-input:focus-visible {
 .spaces-export-sheet .spaces-export__actions {
   margin-top: 12px;
   padding-top: 0;
-  background: var(--surface-2);
+  background: var(--panel-well);
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
@@ -2119,9 +2125,9 @@ input[type="text"].spaces-region__name-input:focus-visible {
      panel, so the edge is decoration (tokens.css revision 4). */
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: var(--surface-1);
+  background: var(--surface-3);
   color: var(--text-2);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
+  box-shadow: var(--shadow-popover);
   font-size: 11px;
   line-height: 1.35;
   opacity: 0;
@@ -2143,7 +2149,7 @@ input[type="text"].spaces-region__name-input:focus-visible {
   top: 100%;
   width: 8px;
   height: 8px;
-  background: var(--surface-1);
+  background: var(--surface-3);
   /* Matches the tooltip edge above; an arrow must never be a second grey. */
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
@@ -2413,10 +2419,10 @@ input[type="text"].spaces-region__name-input:focus-visible {
   flex-direction: column;
   width: max-content;
   overflow: hidden;
-  background: var(--surface-1);
+  background: var(--surface-3);
   border: 1px solid var(--border);
   border-radius: 6px;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-popover);
 }
 
 .spaces-header-export-menu-button {
@@ -2650,7 +2656,7 @@ input[type="text"].spaces-region__name-input:focus-visible {
   /* A menu: its own surface plus a drop shadow separate it — subtle edge. */
   border: 1px solid var(--border);
   border-radius: 5px;
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.38);
+  box-shadow: var(--shadow-popover);
   isolation: isolate;
 }
 

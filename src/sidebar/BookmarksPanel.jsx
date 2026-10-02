@@ -423,7 +423,7 @@ const BookmarkTreeRow = ({
             style={{
               flex: 1,
               minWidth: 0,
-              background: 'var(--surface-0)',
+              background: 'var(--panel-well)',
               border: '1px solid var(--border-strong)',
               color: 'var(--text-2)',
               borderRadius: 5,
@@ -472,7 +472,7 @@ const BookmarkTreeRow = ({
               pattern="[0-9]*"
               style={{
                 width: 34,
-                background: 'var(--surface-0)',
+                background: 'var(--panel-well)',
                 border: '1px solid var(--border-strong)',
                 color: 'var(--text-2)',
                 borderRadius: 5,
@@ -2098,7 +2098,7 @@ const BookmarksPanel = ({
       flexDirection: 'column',
       height: '100%',
       fontFamily: FONT_FAMILY,
-      background: 'var(--surface-1)'
+      background: 'var(--panel-bg)'
     }}>
       {/*
         UX 2026-09-23 (owner, desktop Bookmarks header): "Add with a + sign on
@@ -2125,7 +2125,7 @@ const BookmarksPanel = ({
         height: '40px',
         boxSizing: 'border-box',
         padding: '0 6px',
-        background: 'var(--surface-1)',
+        background: 'var(--panel-bg)',
         borderBottom: '1px solid var(--border)',
         display: 'flex',
         justifyContent: 'flex-end',
@@ -2167,7 +2167,7 @@ const BookmarksPanel = ({
                   borderRadius: '8px',
                   padding: '4px',
                   zIndex: 1000,
-                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
+                  boxShadow: 'var(--shadow-popover)'
                 }}>
                   <button
                     onClick={handleCreateFolder}

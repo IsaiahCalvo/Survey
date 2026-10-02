@@ -417,7 +417,7 @@ const PDFSidebar = React.forwardRef(({
         : undefined,
       width: mobileMode ? (isCollapsed ? '0px' : '100%') : (isCollapsed ? '48px' : '272px'),
       height: '100%',
-      background: 'var(--surface-1)',
+      background: 'var(--panel-bg)',
       borderRight: mobileMode ? 'none' : '1px solid var(--border)',
       display: 'flex',
       flexDirection: 'column',
@@ -447,7 +447,7 @@ const PDFSidebar = React.forwardRef(({
         // there left it 3.5px off-axis from Pages / Search / Bookmarks /
         // Spaces. Expanded, it keeps its right-edge home.
         justifyContent: (!mobileMode && isCollapsed) ? 'center' : 'flex-end',
-        background: 'var(--surface-1)'
+        background: 'var(--panel-bg)'
       }}>
         <button
           onClick={toggleCollapse}
@@ -490,7 +490,7 @@ const PDFSidebar = React.forwardRef(({
           <div className={mobileMode ? 'mobile-pdf-hub-tabs' : undefined} data-chrome-rail={mobileMode ? undefined : 'true'} style={{
             display: 'flex',
             borderBottom: '1px solid var(--border)',
-            background: 'var(--surface-1)',
+            background: 'var(--panel-bg)',
             overflow: 'hidden',
             scrollbarWidth: 'none',
             msOverflowStyle: 'none',
@@ -625,7 +625,7 @@ const PDFSidebar = React.forwardRef(({
             overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
-            background: 'var(--surface-1)'
+            background: 'var(--panel-bg)'
           }}>
             {/* Persistence: Keep all panels mounted but hide inactive ones using display: none */}
 
@@ -776,7 +776,7 @@ const PDFSidebar = React.forwardRef(({
           flexDirection: 'column',
           padding: '8px',
           gap: '4px',
-          background: 'var(--surface-1)',
+          background: 'var(--panel-bg)',
           position: 'relative',
           // 2026-04-25 — flex:1 lets the collaboration footer at the bottom
           // sit at the actual bottom of the rail instead of stacking right
@@ -883,7 +883,7 @@ const PDFSidebar = React.forwardRef(({
           flexDirection: 'column',
           alignItems: 'center',
           gap: '10px',
-          background: 'var(--surface-1)'
+          background: 'var(--panel-bg)'
         } : {
           /* Owner 2026-09-23: the expanded footer is ONE row - active users
              on the left, sync status in the middle, version history on the
@@ -903,7 +903,7 @@ const PDFSidebar = React.forwardRef(({
           gridTemplateColumns: 'minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr)',
           alignItems: 'center',
           columnGap: '8px',
-          background: 'var(--surface-1)'
+          background: 'var(--panel-bg)'
         }}>
           {isCollapsed ? (
             <>
