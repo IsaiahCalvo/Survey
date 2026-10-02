@@ -769,14 +769,16 @@
   appearance: none;
   flex: 0 0 auto;
   align-self: stretch;
-  padding: 0 8px;
+  /* Owner 2026-10-02: an icon (the shared Select glyph), 28px hit. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  padding: 0;
   color: var(--text-2);
   background: transparent;
   border: 0;
   border-radius: 0;
-  font: inherit;
-  font-size: var(--sv-small-type);
-  font-weight: 600;
   cursor: pointer;
   transition: color 90ms ease-out;
 }

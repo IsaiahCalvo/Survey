@@ -3170,9 +3170,13 @@ const SurveySpacesRail = ({
                                                     [category.id]: {}
                                                   }));
                                                 }}
+                                                data-glyph-only=""
                                                 aria-label={`Select Survey Markers in ${category.name || 'category'}`}
+                                                {...tip('Select', 'below')}
                                               >
-                                                Select
+                                                {/* Owner 2026-10-02: header actions are icons, not
+                                                    words - the shared Select glyph. */}
+                                                <Icon name="listChecks" size={SURVEY_HEAD_ICON} color="currentColor" />
                                               </button>
                                             )}
                                             {!mobileMode && surveyMarkerCount > 0 && (
