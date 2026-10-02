@@ -64,16 +64,17 @@
      as in Bookmarks and Spaces); a Survey Marker's name one step in (52),
      its grip in the same 28px gutter as its category's and its entity dot
      straight after the grip. They were at 31 / 61 / 60.
-     Owner, after bf3888e: an open marker's checklist and note start where
-     its ENTITY dot starts (x 29, its 1px pad after the 28px grip gutter),
-     not under its name. (Should they move further, to the grab handle, the
-     grip glyph's left edge is x 10.5 - the grip gutter's 4px pad + the
-     16px grip glyph's own inset.) */
+     Owner 2026-10-02 ("I want the content of an expanded category item to
+     just be all the way to the left. I don't need it aligned with the
+     entity swatch"): an open marker's checklist, Y/N/N/A rows, note and
+     media start on the panel's text gutter (--sv-edge, 12 - the line the
+     "Categories" label and the category grip sit on), not under the entity
+     dot (x 29) any more. The marker line itself is unchanged. */
   --sv-text-x: var(--row-text-x);                    /* 40: a category name */
   --sv-step: 12px;                                   /* one nesting level */
   --sv-item-x: calc(var(--sv-text-x) + var(--sv-step)); /* 52: a marker name */
   --sv-entity-x: calc(var(--sv-grip-w) + 1px);       /* 29: a marker's entity dot */
-  --sv-detail-indent: var(--sv-entity-x);            /* a marker's open lines */
+  --sv-detail-indent: var(--sv-edge);                /* 12: a marker's open lines */
   --sv-detail-right: 8px;   /* their right edge */
   --sv-name-type: 13px;
   --sv-label-type: 12px;
@@ -250,113 +251,6 @@
   align-items: stretch;
 }
 
-/* A quiet word (or glyph) action: text-2 ink, no fill, no border; the
-   button box is an invisible full-height pad. Same look as the Bookmarks
-   and Spaces header words. */
-.survey-rail .survey-rail__head-btn {
-  appearance: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 6px;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  color: var(--text-2);
-  font: inherit;
-  font-size: var(--sv-name-type);
-  font-weight: 600;
-  line-height: 1;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: color 90ms ease-out;
-}
-
-.survey-rail .survey-rail__head-btn svg {
-  flex: 0 0 auto;
-  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
-}
-
-.survey-rail .survey-rail__head-btn--glyph {
-  width: 28px;
-  padding: 0;
-  justify-content: center;
-}
-
-/* The caret beside Export hugs the word: a narrow pad of its own. */
-.survey-rail .survey-rail__head-btn--caret {
-  width: 18px;
-  padding: 0;
-  margin-left: -4px;
-  justify-content: center;
-  color: var(--text-3);
-}
-
-.survey-rail .survey-rail__head-btn[aria-expanded='true'] {
-  color: var(--text-1);
-}
-
-.survey-rail .survey-rail__head-btn:not(:disabled):active {
-  background: transparent;
-  color: var(--text-1);
-}
-
-/* A glyph-only head button (the panel's close X, the Export caret) is a
-   chrome icon: its hover and press are src/styles/states.css section 5, so it
-   presses exactly like the tool bar and both rails (owner 2026-10-02). */
-.survey-rail .survey-rail__head-btn:not([data-glyph-only]):not(:disabled):active svg {
-  transform: scale(0.88);
-}
-
-.survey-rail .survey-rail__head-btn:disabled {
-  color: var(--text-disabled);
-  cursor: not-allowed;
-}
-
-/* THE QUIET SECTION WORD (owner 2026-10-02): the Templates / Projects
-   editor's section button (hub.css .hub-section-btn, editorDebate DECISION
-   1) - "Select", "+ Category", and while selecting "Done", "All",
-   "Move/Copy": 28px tall, 13px/600, --text-2 ink, --text-1 under the pointer
-   and while pressed, no box, no gold, a 12px glyph 4px before its word. */
-.survey-rail .survey-rail__cats-actions .survey-rail__head-btn.survey-rail__word-btn {
-  height: 28px;
-  align-self: center;
-  padding: 0 8px;
-  gap: 4px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.survey-rail .survey-rail__head-btn.survey-rail__word-btn > svg {
-  width: 12px;
-  height: 12px;
-}
-
-/* THE HEAD LINE'S ICONS (owner 2026-10-02, after bf3888e: "The icons looked
-   way better"): Select (list-checks) and Add category (plus) are bare 16px
-   glyphs in 28px pads, right-aligned, no plate - the app's section header
-   pair (src/surveyHeadIcons.jsx). Their group carries data-chrome-rail, so hover
-   (grow to 108%, brighter ink) and press (92%) are the shared chrome icon
-   states of src/styles/states.css section 5, the same as every rail icon. */
-.survey-rail .survey-rail__cats-actions .survey-rail__head-btn.survey-rail__cats-icon {
-  width: 28px;
-  height: 28px;
-  align-self: center;
-  padding: 0;
-  justify-content: center;
-  color: var(--text-2);
-}
-
-.survey-rail .survey-rail__cats-actions .survey-rail__head-btn.survey-rail__cats-icon > svg {
-  width: 16px;
-  height: 16px;
-}
-
-/* A word answers with its ink, not a glyph squeeze. */
-.survey-rail .survey-rail__head-btn.survey-rail__word-btn:not(:disabled):active svg {
-  transform: none;
-}
-
 /* ---------- FOOTER: Export (owner 2026-10-01) ---------------------------
    "The export button being so close to the X close button for survey is just
    weird": Export left the header for the panel's foot, one 40px line with a
@@ -364,6 +258,7 @@
    quiet glyph-and-word; a linked workbook's actions sit behind a "..." at the
    right. Its menu opens upwards. */
 .survey-rail .survey-rail__foot {
+  position: relative;
   flex: 0 0 auto;
   height: 40px;
   box-sizing: border-box;
@@ -371,7 +266,10 @@
   padding: 0 calc(var(--sv-edge) - 6px) 0 calc(var(--sv-edge) - 6px);
   display: flex;
   align-items: stretch;
-  justify-content: space-between;
+  /* Owner 2026-10-02: "Export to Excel" - glyph and word together - is
+     centred in the line, as on the phone. A linked workbook's "..." keeps
+     the right end (absolute, below), so it never pushes the export aside. */
+  justify-content: center;
   background: var(--panel-bg);
   border-top: 1px solid var(--border);
 }
@@ -446,7 +344,10 @@
 }
 
 .survey-rail .survey-rail__export {
-  position: relative;
+  position: absolute;
+  top: 0;
+  right: calc(var(--sv-edge) - 6px);
+  bottom: 0;
   display: flex;
   align-items: stretch;
 }
@@ -679,28 +580,12 @@
   border-bottom: 1px solid var(--border);
 }
 
+/* Its right side: the shared section icons (SectionIconButton.jsx) -
+   [Select] [Add category], or while selecting All, Move, Copy, Delete and
+   Done - 28px hits, 16px glyphs, the Templates editor's hover and press.
+   The head's 4px right pad puts the last glyph's ink on the 10px line. */
 .survey-rail .survey-rail__cats-actions {
-  align-self: stretch;
-  display: flex;
-  align-items: stretch;
   min-width: 0;
-}
-
-/* Head-line words are a size down from the header's. */
-.survey-rail .survey-rail__cats-actions .survey-rail__head-btn {
-  font-size: var(--sv-small-type);
-}
-
-.survey-rail .survey-rail__cats-actions .survey-rail__head-btn--glyph {
-  width: 26px;
-}
-
-.survey-rail .survey-rail__head-btn.is-done {
-  color: var(--text-1);
-}
-
-.survey-rail .survey-rail__head-btn.is-danger {
-  color: var(--danger-text);
 }
 
 /* ---- category line ---- */
@@ -765,24 +650,11 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* An open category's "Select" (owner 2026-10-01: it was a line of its own,
-   indented to nothing): a small quiet word in the row, before the count. */
+/* An open category's Select (owner 2026-10-02): the shared section icon
+   (SectionIconButton.jsx, 28px hit / 16px glyph) in the row, before the
+   chevron. */
 .survey-rail .survey-marker-category-select {
-  appearance: none;
   flex: 0 0 auto;
-  align-self: stretch;
-  /* Owner 2026-10-02: an icon (the shared Select glyph), 28px hit. */
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  padding: 0;
-  color: var(--text-2);
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  cursor: pointer;
-  transition: color 90ms ease-out;
 }
 
 .survey-rail .survey-marker-category-arrow {
@@ -823,54 +695,26 @@
   background: var(--pressed);
 }
 
-/* ---- per-category Select line (inside an open category) ---- */
+/* ---- per-category Select line (inside an open category) ----
+   Owner 2026-10-02 (works like the Templates editor): the shared select-mode
+   row - All, Copy, Delete - then Done, right-aligned so Done sits straight
+   under the Select icon it replaced (the chevron column is to its right). */
 .survey-rail .survey-marker-inline-select-row {
-  height: 28px;
+  height: 32px;
   margin: 0;
-  /* The words start under the Survey Markers' dots (6px is their own pad). */
-  padding: 0 var(--sv-edge) 0 calc(var(--sv-grip-w) - 4px);
-  gap: 2px;
+  /* The chevron column, plus the 3px the category row stops short of the
+     list's right edge: Done lands on the Select icon's x. */
+  padding: 0 calc(var(--sv-col) + 3px) 0 var(--sv-edge);
+  justify-content: flex-end;
   border-top: 1px solid var(--border);
   overflow: visible;
 }
 
-/* While categories are being selected the line keeps its height (empty), so
-   nothing under it jumps. */
-.survey-rail .survey-marker-inline-select-row.is-placeholder {
-  visibility: hidden;
-}
-
 .survey-rail .survey-marker-select-toolbar {
-  height: 100%;
+  height: auto;
   margin: 0;
   gap: 2px;
-}
-
-.survey-rail .survey-marker-select-mode-toggle,
-.survey-rail .survey-marker-select-action {
-  height: 100%;
-  padding: 0 6px;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  color: var(--text-2);
-  font-size: var(--sv-small-type);
-  font-weight: 600;
-}
-
-.survey-rail .survey-marker-select-toolbar .survey-marker-select-mode-toggle {
-  color: var(--text-1);
-}
-
-/* Hover and press plates are taken off by the #chrome-right-host opt-out at
-   the end of this file; the words answer the pointer with brighter ink. */
-
-.survey-rail .survey-marker-select-action:disabled {
-  color: var(--text-disabled);
-}
-
-.survey-rail .survey-marker-select-action-danger:not(:disabled) {
-  color: var(--danger-text);
+  overflow: visible;
 }
 
 /* ---- a Survey Marker: an indented line under its category ---- */
@@ -1310,18 +1154,14 @@
   .survey-rail .survey-rail__marker-line:hover {
     background: var(--hover);
   }
-  .survey-rail .survey-rail__head-btn:not(:disabled):hover,
   .survey-rail .survey-rail__foot-export:not(:disabled):hover,
   .survey-rail .survey-rail__foot-more:not(:disabled):hover,
-  .survey-rail .survey-marker-category-select:hover,
-  .survey-rail .survey-rail__marker-toggle:hover,
-  .survey-rail .survey-marker-select-action:not(:disabled):not(.survey-marker-select-action-danger):hover {
+  .survey-rail .survey-rail__marker-toggle:hover {
     color: var(--text-1);
   }
   .survey-rail .survey-rail__entity-btn:hover .survey-rail__entity-caret {
     opacity: 1;
   }
-  .survey-rail .survey-rail__head-btn:not([data-glyph-only]):not(:disabled):hover svg,
   .survey-rail .survey-rail__marker-action:hover svg,
   .survey-rail .survey-marker-category-arrow:hover svg {
     transform: scale(1.1);

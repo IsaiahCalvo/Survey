@@ -1,8 +1,9 @@
 // Survey panel polish after bf3888e (owner 2026-10-02):
 //   1. picking / switching a template is a MORPH (each old row turns into a
 //      new one), not a fade - src/surveyRailMorph.js;
-//   2. the Categories head line's buttons are two bare ICONS, Select and Add;
-//   3. an open Survey Marker's lines start under its entity dot;
+//   2. the Categories head line's buttons are the shared section icons,
+//      Select and Add, and select mode is the Templates editor's row;
+//   3. an open Survey Marker's content starts on the panel text gutter;
 //   4. the armed category has no fill / bar / ring at rest - its press plays
 //      when armed and plays backwards when disarmed.
 import { test } from 'node:test';
@@ -89,34 +90,43 @@ test('the morph is transforms only, honours reduced motion, and the bf3888e fade
   assert.match(rail, /import \{ captureMorph, playMorph, prefersReducedMotion \} from '\.\/surveyRailMorph\.js';/);
 });
 
-test('Categories head line: two bare icons, Select then Add category, in the shared chrome icon states', () => {
+test('Categories head line: the shared section icons, Select then Add; select mode is the Templates editor row', () => {
   const head = rail.slice(rail.indexOf('<h3 className="survey-rail__cats-head">'), rail.indexOf('</h3>', rail.indexOf('<h3 className="survey-rail__cats-head">')));
-  assert.match(head, /className="survey-rail__cats-actions" data-chrome-rail="true"/);
-  const select = head.indexOf('aria-label="Select"');
-  const add = head.indexOf('aria-label="Add category"');
+  assert.match(rail, /import SectionIconButton, \{ SectionIconActions, SelectModeButtons \} from '\.\/components\/SectionIconButton\.jsx';/);
+  assert.match(head, /<SectionIconActions className="survey-rail__cats-actions">/);
+  const select = head.indexOf('label="Select"');
+  const add = head.indexOf('label="Add category"');
   assert.ok(select > 0 && add > select, 'Select comes before Add');
-  assert.match(head, /\{\.\.\.tip\('Select', 'below'\)\}/);
-  assert.match(head, /\{\.\.\.tip\('Add category', 'below'\)\}/);
-  assert.doesNotMatch(head.slice(select - 600, add + 400), />\s*(Select|Category)\s*</, 'no words in the resting pair');
-  assert.match(desk, /\.survey-rail__head-btn\.survey-rail__cats-icon \{[^}]*width: 28px;[^}]*height: 28px;/);
-  // the app's section header pair: list-checks + plus, 16px in a 28px hit
-  assert.match(head, /<Icon name="listChecks" size=\{SURVEY_HEAD_ICON\}/);
-  assert.match(head, /<Icon name="plus" size=\{SURVEY_HEAD_ICON\}/);
-  const icons = read('src/surveyHeadIcons.jsx');
-  assert.match(icons, /export const SURVEY_HEAD_ICON = 16;/);
+  // Owner 2026-10-02: select mode is All, Move, Copy, Delete then Done (Add's
+  // spot) - the shared row, Move and Copy two separate actions.
+  const on = head.slice(0, head.indexOf('label="Select"'));
+  assert.match(on, /<SelectModeButtons[\s\S]*onToggleAll=[\s\S]*onMove=[\s\S]*onCopy=\{\(\) => setShowSpaceSelection\(true\)\}[\s\S]*onDelete=\{deleteSelectedCategories\}[\s\S]*\/>\s*<SectionIconButton action="select" label="Done" active/);
+  assert.doesNotMatch(rail, />\s*Move\/Copy\s*</);
+  assert.doesNotMatch(desk, /survey-rail__word-btn|survey-rail__cats-icon/);
+  // An open category's item select mode uses the same row (no Move: items have no move flow).
+  const items = rail.slice(rail.indexOf('aria-label="Item selection actions"'), rail.indexOf('onClick={exitItemSelect}'));
+  assert.match(items, /<SelectModeButtons[\s\S]*onCopy=[\s\S]*onDelete=/);
+  assert.doesNotMatch(items, /onMove=/);
+  assert.match(rail, /<SectionIconButton\s+action="select"\s+className="survey-marker-category-select"/);
   // Same glyphs as the shared SectionIconButton pair.
   assert.match(read('src/components/SectionIconButton.jsx'), /select: 'listChecks',\s*add: 'plus',/);
 });
 
-test('an open Survey Marker\'s lines start under its entity dot, desktop and phone', () => {
-  assert.match(desk, /--sv-entity-x: calc\(var\(--sv-grip-w\) \+ 1px\);/);
-  assert.match(desk, /--sv-detail-indent: var\(--sv-entity-x\);/);
-  // Owner 2026-10-02: the phone line has the desktop's reorder grip in a
-  // 32px gutter, so the dot (and the lines under it) start after it.
+test('an open Survey Marker\'s content starts on the panel text gutter, desktop and phone', () => {
+  // Owner 2026-10-02: "all the way to the left ... I don't need it aligned
+  // with the entity swatch" - the panel's own edge padding, not the dot.
+  assert.match(desk, /--sv-detail-indent: var\(--sv-edge\);/);
   assert.match(phone, /--survey-grip-w: 32px;/);
-  assert.match(phone, /--survey-marker-dot-x: calc\(var\(--survey-grip-w\) \+ 4px\);/);
-  assert.match(phone, /\.mobile-survey-marker \.mobile-survey-check-item \{\s*padding-left: var\(--survey-marker-dot-x\);/);
-  assert.match(phone, /\.mobile-survey-open-notes \.survey-marker-notes \{\s*padding-left: var\(--survey-marker-dot-x\);/);
+  assert.match(phone, /--survey-detail-x: var\(--sheet-pad-x\);/);
+  assert.match(phone, /\.mobile-survey-marker \.mobile-survey-check-item \{\s*padding-left: var\(--survey-detail-x\);/);
+  assert.match(phone, /\.mobile-survey-open-notes \.survey-marker-notes \{\s*padding-left: var\(--survey-detail-x\);/);
+});
+
+test('Export to Excel is centred in the panel foot, desktop and phone', () => {
+  assert.match(desk, /\.survey-rail \.survey-rail__foot \{[^}]*justify-content: center;/);
+  assert.match(desk, /\.survey-rail \.survey-rail__export \{\s*position: absolute;/);
+  assert.match(phone, /\.mobile-survey-sheet \.mobile-survey-foot \{[^}]*justify-content: center;/);
+  assert.match(phone, /\.mobile-survey-foot > \.mobile-survey-sheet-export-wrap \{\s*position: absolute;/);
 });
 
 test('the armed category has no resting look; arming presses its row, disarming plays the press backwards', () => {

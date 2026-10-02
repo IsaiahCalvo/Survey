@@ -38322,7 +38322,7 @@ ${pageBlocks}
                   // Aggregate all spaces from all templates
                   const allSpaces = [];
                   appTemplates.forEach(template => {
-                    (template.spaces || []).forEach(space => {
+                    (template.modules || template.spaces || []).forEach(space => {
                       allSpaces.push({ ...space, templateId: template.id, templateName: template.name });
                     });
                   });

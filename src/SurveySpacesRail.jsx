@@ -39,7 +39,7 @@ import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
 import { resolveAutoCompleteEntity } from './utils/surveyAutoEntity.js';
 import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt.js';
 import { captureMorph, playMorph, prefersReducedMotion } from './surveyRailMorph.js';
-import { SURVEY_HEAD_ICON } from './surveyHeadIcons.jsx';
+import SectionIconButton, { SectionIconActions, SelectModeButtons } from './components/SectionIconButton.jsx';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -2493,109 +2493,67 @@ const SurveySpacesRail = ({
                               setSelectedCategories({});
                             };
 
-                            /* UX 2026-09-23 (owner: desktop survey polish, "cards within
-                               cards, it seems like a lot"): the boxed Select button and the
-                               gold EXPORT box are gone from above the list. This is now the
-                               ONE "Categories" head line: the label on the left, then quiet
-                               words on the right - "Select" (or, while selecting, "Done" in
-                               gold, "All", "Move/Copy" and a red trash glyph) and the create
-                               "+" as a bare glyph. Export moved up into the panel header. Same
-                               handlers as before. */
+                            /* The ONE "Categories" head line (owner 2026-10-02: works like
+                               the Templates editor). Label left; on the right the shared
+                               section icons (src/components/SectionIconButton.jsx):
+                               [Select] [Add category]. Select turns the right side into the
+                               shared select-mode row - All, Move, Copy, Delete - and Add
+                               turns into the Done check in the same spot. Same 28px hit /
+                               16px glyph, hover and press as the Templates editor; no gold.
+                               Move and Copy are two actions (owner: never one "Move/Copy"). */
+                            const allCategoriesSelected = categoriesForModule.length > 0
+                              && selectedCategoryCount === categoriesForModule.length;
+                            const exitCategorySelect = () => {
+                              setCategorySelectModeActive(false);
+                              setCategorySelectModeForCategory(null);
+                              setSelectedCategories({});
+                            };
                             return (
                               <h3 className="survey-rail__cats-head">
                                 <span>Categories</span>
-                                <span className="survey-rail__cats-actions" data-chrome-rail="true">
+                                <SectionIconActions className="survey-rail__cats-actions">
                                   {categorySelectModeActive ? (
-                                    <span className="survey-rail__cats-actions" role="toolbar" aria-label="Category selection actions">
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setCategorySelectModeActive(false);
-                                          setCategorySelectModeForCategory(null);
-                                          setSelectedCategories({});
-                                        }}
-                                        className="survey-rail__head-btn survey-rail__word-btn is-done"
-                                      >
-                                        Done
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
+                                    <>
+                                      <SelectModeButtons
+                                        count={selectedCategoryCount}
+                                        allSelected={allCategoriesSelected}
+                                        onToggleAll={() => {
+                                          if (allCategoriesSelected) {
+                                            setSelectedCategories({});
+                                            return;
+                                          }
                                           const newSelection = {};
                                           categoriesForModule.forEach(category => {
                                             newSelection[category.id] = true;
                                           });
                                           setSelectedCategories(newSelection);
                                         }}
-                                        disabled={categoriesForModule.length === 0}
-                                        className="survey-rail__head-btn survey-rail__word-btn"
-                                      >
-                                        All
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const selectedCatIds = Object.keys(selectedCategories).filter(id => selectedCategories[id]);
-                                          if (selectedCatIds.length === 0) {
-                                            showToast('Please select at least one category to move or copy.', 'warn');
-                                            return;
-                                          }
-                                          showToast(`Move/Copy functionality for ${selectedCatIds.length} categories to be implemented.`, 'info');
+                                        // There is no move flow for categories yet: Move keeps
+                                        // the old combined button's notice, now for moving only.
+                                        onMove={() => {
+                                          showToast(`Moving ${selectedCategoryCount} categor${selectedCategoryCount === 1 ? 'y' : 'ies'} to another module is not available yet.`, 'info');
                                         }}
-                                        disabled={!hasSelectedCategories}
-                                        className="survey-rail__head-btn survey-rail__word-btn"
-                                      >
-                                        Move/Copy
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={deleteSelectedCategories}
-                                        disabled={!hasSelectedCategories}
-                                        className="survey-rail__head-btn survey-rail__head-btn--glyph is-danger"
-                                        {...tip('Delete', 'below')}
-                                        aria-label="Delete selected categories"
-                                      >
-                                        <Icon name="trash" size={13} color="currentColor" />
-                                      </button>
-                                    </span>
+                                        // The survey's copy flow: the "Select space" picker,
+                                        // which copies the selected categories' Survey Markers.
+                                        onCopy={() => setShowSpaceSelection(true)}
+                                        onDelete={deleteSelectedCategories}
+                                      />
+                                      <SectionIconButton action="select" label="Done" active onClick={exitCategorySelect} />
+                                    </>
                                   ) : (
-                                    /* Owner 2026-10-02 (after bf3888e): "The icons
-                                       looked way better" - two bare icon buttons,
-                                       right-aligned, [Select] [Add category], the
-                                       app's section header pair (list-checks and
-                                       plus from Icons.jsx, 16px in a 28px hit, the
-                                       same glyphs SectionIconButton uses) with the shared chrome icon
-                                       states (states.css section 5 via
-                                       data-chrome-rail on the group: hover grows,
-                                       press shrinks, no plate). While selecting, the
-                                       selection actions take the place of both. */
                                     <>
-                                      <button
-                                        type="button"
+                                      <SectionIconButton
+                                        action="select"
+                                        label="Select"
                                         onClick={() => {
                                           setCategorySelectModeActive(true);
                                           setSelectedCategories({});
                                         }}
-                                        className="section-icon-btn survey-rail__head-btn survey-rail__head-btn--glyph survey-rail__cats-icon"
-                                        data-glyph-only=""
-                                        aria-label="Select"
-                                        {...tip('Select', 'below')}
-                                      >
-                                        <Icon name="listChecks" size={SURVEY_HEAD_ICON} color="currentColor" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={openCreateCategoryModal}
-                                        className="section-icon-btn survey-rail__head-btn survey-rail__head-btn--glyph survey-rail__cats-icon"
-                                        data-glyph-only=""
-                                        aria-label="Add category"
-                                        {...tip('Add category', 'below')}
-                                      >
-                                        <Icon name="plus" size={SURVEY_HEAD_ICON} color="currentColor" />
-                                      </button>
+                                      />
+                                      <SectionIconButton action="add" label="Add category" onClick={openCreateCategoryModal} />
                                     </>
                                   )}
-                                </span>
+                                </SectionIconActions>
                               </h3>
                             );
                           })() : copyModeActive ? (
@@ -2957,18 +2915,9 @@ const SurveySpacesRail = ({
                                   carries its own "+ Place". */}
                               <span>Categories</span>
                               {!mobileMode && (
-                                <span className="survey-rail__cats-actions" data-chrome-rail="true">
-                                  <button
-                                    type="button"
-                                    onClick={openCreateCategoryModal}
-                                    className="section-icon-btn survey-rail__head-btn survey-rail__head-btn--glyph survey-rail__cats-icon"
-                                    data-glyph-only=""
-                                    aria-label="Add category"
-                                    {...tip('Add category', 'below')}
-                                  >
-                                    <Icon name="plus" size={SURVEY_HEAD_ICON} color="currentColor" />
-                                  </button>
-                                </span>
+                                <SectionIconActions className="survey-rail__cats-actions">
+                                  <SectionIconButton action="add" label="Add category" onClick={openCreateCategoryModal} />
+                                </SectionIconActions>
                               )}
                             </CategoriesHeadingTag>
                             )}
@@ -3158,8 +3107,8 @@ const SurveySpacesRail = ({
                                                 word in its own row, not a line of its own under it.
                                                 While selecting, the toolbar line takes its place. */}
                                             {!mobileMode && isExpanded && surveyMarkerCount > 0 && !copyModeActive && !categorySelectModeActive && !isItemSelectModeActiveForCategory && (
-                                              <button
-                                                type="button"
+                                              <SectionIconButton
+                                                action="select"
                                                 className="survey-marker-category-select"
                                                 onClick={(e) => {
                                                   e.stopPropagation();
@@ -3172,14 +3121,9 @@ const SurveySpacesRail = ({
                                                     [category.id]: {}
                                                   }));
                                                 }}
-                                                data-glyph-only=""
-                                                aria-label={`Select Survey Markers in ${category.name || 'category'}`}
-                                                {...tip('Select', 'below')}
-                                              >
-                                                {/* Owner 2026-10-02: header actions are icons, not
-                                                    words - the shared Select glyph. */}
-                                                <Icon name="listChecks" size={SURVEY_HEAD_ICON} color="currentColor" />
-                                              </button>
+                                                label={`Select Survey Markers in ${category.name || 'category'}`}
+                                                tooltip="Select"
+                                              />
                                             )}
                                             {!mobileMode && surveyMarkerCount > 0 && (
                                               <button
@@ -3229,125 +3173,110 @@ const SurveySpacesRail = ({
                                           {/* UX (mobile demo parity): the inline item Select /
                                               All / Copy / Delete toolbar is desktop-only admin
                                               chrome — not part of the demo's mobile sheet. */}
-                                          {!copyModeActive && !mobileMode && !categorySelectModeActive && isItemSelectModeActiveForCategory && (
+                                          {/* An open category's Select (owner 2026-10-02: the same select
+                                              mode as the Categories head and the Templates editor): the
+                                              line under the category holds the shared select-mode row -
+                                              All, Copy, Delete - and Done, right-aligned so Done sits
+                                              under the Select icon it replaced. Items have no move flow,
+                                              so there is no Move here. */}
+                                          {!copyModeActive && !mobileMode && !categorySelectModeActive && isItemSelectModeActiveForCategory && (() => {
+                                            const exitItemSelect = () => {
+                                              setItemSelectModeActive(prev => {
+                                                const updated = { ...prev };
+                                                delete updated[category.id];
+                                                return updated;
+                                              });
+                                              setSelectedItemsInCategory(prev => {
+                                                const updated = { ...prev };
+                                                delete updated[category.id];
+                                                return updated;
+                                              });
+                                            };
+                                            const allItemsSelected = categorySurveyMarkers.length > 0
+                                              && categorySurveyMarkers.every(h => selectedItemsForCategory[h.id] === true);
+                                            return (
                                             <div className="survey-marker-inline-select-row">
-                                              {(
-                                                <div className="survey-marker-select-toolbar" role="toolbar" aria-label="Item selection actions">
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  setItemSelectModeActive(prev => {
-                                                    const updated = { ...prev };
-                                                    delete updated[category.id];
-                                                    return updated;
-                                                  });
-                                                  setSelectedItemsInCategory(prev => {
-                                                    const updated = { ...prev };
-                                                    delete updated[category.id];
-                                                    return updated;
-                                                  });
-                                                }}
-                                                className="survey-marker-select-mode-toggle"
-                                              >
-                                                Done
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  const newSelection = {};
-                                                  categorySurveyMarkers.forEach(h => {
-                                                    newSelection[h.id] = true;
-                                                  });
-                                                  setSelectedItemsInCategory(prev => ({
-                                                    ...prev,
-                                                    [category.id]: newSelection
-                                                  }));
-                                                }}
-                                                className="survey-marker-select-action"
-                                              >
-                                                All
-                                              </button>
-
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  const selectedItemIds = Object.keys(selectedItemsForCategory).filter(id => selectedItemsForCategory[id]);
-                                                  if (selectedItemIds.length === 0) {
-                                                    showToast('Please select at least one item to copy.', 'warn');
-                                                    return;
-                                                  }
-                                                  // Store selected items for copy operation
-                                                  setCopiedItemSelection(prev => {
-                                                    const newSelection = { ...prev };
-                                                    selectedItemIds.forEach(id => {
-                                                      newSelection[id] = true;
+                                              <SectionIconActions className="survey-marker-select-toolbar" role="toolbar" aria-label="Item selection actions">
+                                                <SelectModeButtons
+                                                  count={itemSelectedCount}
+                                                  allSelected={allItemsSelected}
+                                                  onToggleAll={() => {
+                                                    const newSelection = {};
+                                                    if (!allItemsSelected) {
+                                                      categorySurveyMarkers.forEach(h => {
+                                                        newSelection[h.id] = true;
+                                                      });
+                                                    }
+                                                    setSelectedItemsInCategory(prev => ({
+                                                      ...prev,
+                                                      [category.id]: newSelection
+                                                    }));
+                                                  }}
+                                                  onCopy={() => {
+                                                    const selectedItemIds = Object.keys(selectedItemsForCategory).filter(id => selectedItemsForCategory[id]);
+                                                    if (selectedItemIds.length === 0) {
+                                                      showToast('Please select at least one item to copy.', 'warn');
+                                                      return;
+                                                    }
+                                                    // Store selected items for copy operation
+                                                    setCopiedItemSelection(prev => {
+                                                      const newSelection = { ...prev };
+                                                      selectedItemIds.forEach(id => {
+                                                        newSelection[id] = true;
+                                                      });
+                                                      return newSelection;
                                                     });
-                                                    return newSelection;
-                                                  });
-                                                  setShowSpaceSelection(true);
-                                                }}
-                                                disabled={itemSelectedCount === 0}
-                                                className="survey-marker-select-action"
-                                              >
-                                                Copy
-                                              </button>
-
-                                              <button
-                                                type="button"
-                                                onClick={async () => {
-                                                  const selectedItemIds = Object.keys(selectedItemsForCategory).filter(id => selectedItemsForCategory[id]);
-                                                  if (selectedItemIds.length === 0) {
-                                                    showToast('Please select at least one item to delete.', 'warn');
-                                                    return;
-                                                  }
-                                                  const confirmed = await askConfirm({
-                                                    title: `Delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}?`,
-                                                    message: `Are you sure you want to delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}?`,
-                                                    confirmLabel: `Delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}`,
-                                                    danger: true,
-                                                  });
-                                                  if (!confirmed) {
-                                                    return;
-                                                  }
-
-                                                  // Delete selected items
-                                                  selectedItemIds.forEach(annotationId => {
-                                                    handleDeleteSurveyMarkerItem(annotationId);
-                                                  });
-
-                                                  // Clear selection and exit item select mode if no items left
-                                                  const selectedSet = new Set(selectedItemIds);
-                                                  const remainingItems = categorySurveyMarkers.filter(h => !selectedSet.has(h.id));
-                                                  if (remainingItems.length === 0) {
-                                                    setItemSelectModeActive(prev => {
-                                                      const updated = { ...prev };
-                                                      delete updated[category.id];
-                                                      return updated;
+                                                    setShowSpaceSelection(true);
+                                                  }}
+                                                  onDelete={async () => {
+                                                    const selectedItemIds = Object.keys(selectedItemsForCategory).filter(id => selectedItemsForCategory[id]);
+                                                    if (selectedItemIds.length === 0) {
+                                                      showToast('Please select at least one item to delete.', 'warn');
+                                                      return;
+                                                    }
+                                                    const confirmed = await askConfirm({
+                                                      title: `Delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}?`,
+                                                      message: `Are you sure you want to delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}?`,
+                                                      confirmLabel: `Delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}`,
+                                                      danger: true,
                                                     });
-                                                    setSelectedItemsInCategory(prev => {
-                                                      const updated = { ...prev };
-                                                      delete updated[category.id];
-                                                      return updated;
+                                                    if (!confirmed) {
+                                                      return;
+                                                    }
+
+                                                    // Delete selected items
+                                                    selectedItemIds.forEach(annotationId => {
+                                                      handleDeleteSurveyMarkerItem(annotationId);
                                                     });
-                                                  } else {
-                                                    setSelectedItemsInCategory(prev => {
-                                                      const updated = { ...prev };
-                                                      updated[category.id] = {};
-                                                      return updated;
-                                                    });
-                                                  }
-                                                }}
-                                                disabled={itemSelectedCount === 0}
-                                                className="survey-marker-select-action survey-marker-select-action-icon survey-marker-select-action-danger"
-                                                {...tip('Delete', 'below')}
-                                                aria-label="Delete selected items"
-                                              >
-                                                <Icon name="trash" size={12} />
-                                              </button>
-                                                </div>
-                                              )}
+
+                                                    // Clear selection and exit item select mode if no items left
+                                                    const selectedSet = new Set(selectedItemIds);
+                                                    const remainingItems = categorySurveyMarkers.filter(h => !selectedSet.has(h.id));
+                                                    if (remainingItems.length === 0) {
+                                                      setItemSelectModeActive(prev => {
+                                                        const updated = { ...prev };
+                                                        delete updated[category.id];
+                                                        return updated;
+                                                      });
+                                                      setSelectedItemsInCategory(prev => {
+                                                        const updated = { ...prev };
+                                                        delete updated[category.id];
+                                                        return updated;
+                                                      });
+                                                    } else {
+                                                      setSelectedItemsInCategory(prev => {
+                                                        const updated = { ...prev };
+                                                        updated[category.id] = {};
+                                                        return updated;
+                                                      });
+                                                    }
+                                                  }}
+                                                />
+                                                <SectionIconButton action="select" label="Done" active onClick={exitItemSelect} />
+                                              </SectionIconActions>
                                             </div>
-                                          )}
+                                            );
+                                          })()}
 
                                           <SortableRearrangeList
                                             ids={categorySurveyMarkers.map((surveyMarker) => surveyMarker.id)}

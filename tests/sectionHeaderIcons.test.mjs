@@ -99,7 +99,7 @@ test('select-mode action row: All, Duplicate, Move, Copy, Share, Delete - one co
   // Disabled = calm: the hover / press only run on :not(:disabled).
   assert.match(states, /\.section-icon-btn:not\(:disabled\):hover > \.section-icon-btn__word \{\s*scale: 1\.08;/);
   // Every select row uses it; no "Move/Copy" word button or old bare/icon kinds left.
-  for (const file of ['src/home/TemplatesEditor.jsx', 'src/home/ProjectsFolderTree.jsx', 'src/home/DocumentsLedger.jsx']) {
+  for (const file of ['src/home/TemplatesEditor.jsx', 'src/home/ProjectsFolderTree.jsx', 'src/home/DocumentsLedger.jsx', 'src/SurveySpacesRail.jsx']) {
     const source = read(file);
     assert.match(source, /<SelectModeButtons/, file);
     assert.doesNotMatch(source, />Move\/Copy<\/button>/, file);
