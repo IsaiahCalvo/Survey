@@ -906,7 +906,10 @@ export default function App({ devPreviewReturnTab = null }) {
   // pin's colour IS its fill), every other tool takes the border. Only that
   // switch resets it: a user who reaches for the Fill tab on a rectangle keeps
   // Fill while they stay on shapes.
-  const quickPaintTab = annotationPaint?.quick?.tab;
+  // Owner 2026-10-02 (Test 16): the picker always OPENS on its left tab —
+  // Fill for a shape — because people read left to right. The quick dots
+  // still act on quick.tab (the border); only the opening tab changed.
+  const quickPaintTab = annotationPaint?.isShape ? 'fill' : annotationPaint?.quick?.tab;
   useEffect(() => {
     if (quickPaintTab) setColorPickerTab(quickPaintTab);
   }, [quickPaintTab]);
@@ -3003,7 +3006,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     customActive={bottomToolbarApi.selectionMixed?.strokeColor ? false : undefined}
                     onPick={(hex) => annotationPaint.quick.apply(hex, annotationPaint.quick.opacity)}
                     onOpenPicker={() => {
-                      setColorPickerTab(annotationPaint.quick.tab);
+                      setColorPickerTab(annotationPaint.isShape ? 'fill' : annotationPaint.quick.tab);
                       bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);
                     }}
                   />
@@ -3035,7 +3038,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         ring={isCounter ? pinColour : borderColour}
                         center={isCounter ? numberColour : fillColour}
                         onOpen={() => {
-                          setColorPickerTab(annotationPaint.quick.tab);
+                          setColorPickerTab(annotationPaint.isShape ? 'fill' : annotationPaint.quick.tab);
                           bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);
                         }}
                       />
