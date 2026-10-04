@@ -4839,8 +4839,10 @@ button[title="Edit color"]:active > span,
     color: var(--danger);
   }
 
-  .survey-hub .templates-mobile-detail-card .templates-mobile-section-head .hub-btn:disabled {
-    opacity: 0.38;
+  /* Off: the one --text-disabled ink (tokens.css), never a fade. */
+  .survey-hub .templates-mobile-detail-card .templates-mobile-section-head .hub-btn:disabled,
+  .survey-hub .templates-mobile-detail-card .templates-mobile-section-head .hub-btn.hub-btn--icon.is-danger:disabled {
+    color: var(--text-disabled);
   }
 
   /* MODULE TABS sit straight on the hairline under them: the tab list drops

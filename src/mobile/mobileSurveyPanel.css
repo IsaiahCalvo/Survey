@@ -324,7 +324,10 @@
 }
 
 .mobile-survey-sheet .mobile-survey-sheet-export-menu > button:active { background: var(--pressed); }
-.mobile-survey-sheet .mobile-survey-sheet-export-menu > button:disabled { opacity: 0.38; cursor: not-allowed; }
+/* Off: the one --text-disabled ink (tokens.css), on the words and the meta
+   line alike, never a fade. */
+.mobile-survey-sheet .mobile-survey-sheet-export-menu > button:disabled,
+.mobile-survey-sheet .mobile-survey-sheet-export-menu > button:disabled > span { color: var(--text-disabled); cursor: not-allowed; }
 .mobile-survey-sheet .mobile-survey-sheet-export-menu > button > strong { font-size: 13px; font-weight: 600; }
 .mobile-survey-sheet .mobile-survey-sheet-export-menu > button > span { color: var(--text-3); font-size: 11px; font-weight: 400; }
 
