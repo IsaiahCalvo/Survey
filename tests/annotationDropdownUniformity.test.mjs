@@ -38,7 +38,11 @@ test('annotation dropdowns share the Width preset surface and Radix behavior', (
   // pinning the token rather than a hex is what makes them unable to drift.
   assert.match(css, /background: var\(--surface-2\)/);
   assert.match(css, /border: 1px solid var\(--border-strong\)/);
-  assert.match(css, /box-shadow: 0 10px 30px rgba\(0, 0, 0, 0\.48\)/);
+  // DELIBERATE ASSERTION CHANGE (2026-10-04, polish pass): the shadow and the
+  // corner are the shared --shadow-popover / --radius-md tokens now (owner
+  // 2026-10-02 corner scale: "a card or a popup 8"), the same values every
+  // other popup menu uses, instead of this card's own 0 10px 30px .48 and 9px.
+  assert.match(css, /box-shadow: var\(--shadow-popover\)/);
   // DELIBERATE ASSERTION CHANGE (2026-09-21, pass 7 — owner-approved artboards
   // 8-15). Two numbers on this surface moved, and the boards are where they moved
   // to: a menu card is 9px round against the 10px pill it opens from (it was
@@ -46,7 +50,7 @@ test('annotation dropdowns share the Width preset surface and Radix behavior', (
   // unchanged: the two dropdowns share ONE popover surface, edge, radius, shadow
   // and row height, and the row height is still spelled twice on purpose so the
   // literal here and the shared token cannot drift.
-  assert.match(css, /border-radius: 9px/);
+  assert.match(css, /border-radius: var\(--radius-md\)/);
   assert.match(css, /min-height: 26px/);
 });
 

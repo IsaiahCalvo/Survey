@@ -166,7 +166,7 @@
 }
 
 /* The template menu: the rail's popover (--surface-3, the strong edge,
-   radius 9, 5px pad) with 28px rows. Like the survey bar's module pill menu
+   radius 8, 5px pad) with 28px rows. Like the survey bar's module pill menu
    (.mobile-styled-select__menu), it is only as wide as its LONGEST template
    (max-content), capped at the rail's width; a name too long for that
    ellipsises. Every row keeps the 12px check column, so the width does not
@@ -190,7 +190,7 @@
      (owner 2026-10-02, one surface rule). */
   background: var(--surface-3);
   border: 1px solid var(--border-strong);
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-popover);
 }
 
@@ -363,7 +363,7 @@
 }
 
 /* ---------- MENUS (Excel actions, Entity) -------------------------------- */
-/* The app's one popover: --surface-3, the strong edge, radius 9, 5px pad,
+/* The app's one popover: --surface-3, the strong edge, radius 8, 5px pad,
    26px rows (src/components/AnnotationDropdown.css). */
 
 .survey-rail .survey-marker-export-compact-menu,
@@ -371,7 +371,7 @@
   padding: 5px;
   background: var(--surface-3);
   border: 1px solid var(--border-strong);
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-popover);
   box-sizing: border-box;
 }

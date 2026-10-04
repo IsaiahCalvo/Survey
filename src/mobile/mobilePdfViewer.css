@@ -1237,10 +1237,10 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   gap: 8px;
   transform: translateY(-50%);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--surface-2);
   color: var(--text-2);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow-popover);
   text-align: left;
   z-index: 3100;
 }
@@ -1346,8 +1346,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   color: var(--text-2);
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
-  border-radius: 7px;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
   z-index: 7200;
 }
 
@@ -2103,7 +2103,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   /* Floating: --surface-3 + the one popover shadow (owner 2026-10-02). */
   background: var(--surface-3);
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-popover);
   z-index: 7400;
   scrollbar-width: none;
@@ -2282,7 +2282,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   color: var(--text-2);
   background: var(--surface-3);
   border: 1px solid var(--border-strong);
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-popover);
   z-index: 7300;
 }

@@ -100,9 +100,9 @@
      so it separates from whatever is behind it. */
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
-  /* Board 15: 9px on the menu card, against the 10px pill it opens from. */
-  border-radius: 9px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.48);
+  /* The one popup corner and shadow (tokens.css --radius-md / --shadow-popover). */
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
   font-family: var(--font-ui);
   z-index: 6500;
   /* UX 2026-09-16: 140ms fade + 5px slide, the app-wide popover motion
