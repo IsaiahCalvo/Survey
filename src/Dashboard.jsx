@@ -38,31 +38,11 @@ import { archiveItems } from './services/archiveService';
 import { notifyLibraryChanged } from './hooks/libraryChangeBus';
 import { useConfirmDialog, usePromptDialog } from './components/dialogPrompts';
 import { readBlobAsArrayBuffer } from './utils/blobArrayBuffer.js';
+import { FONT_FAMILY, hexToRgba, hasNameConflict } from './viewerShared.js';
 
-// --- helpers (shared small utilities; FONT_FAMILY/hexToRgba/normalizeName/
-//     hasNameConflict also live in App.jsx for the viewer) ---
-
-// Consistent font stack for the entire application
-const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
-
-// Convert hex color to rgba with default opacity (default 0.2, but surveyMarkers use 1.0)
-const hexToRgba = (hex, opacity = 0.2) => {
-  // Survey audit (2026-10-01): unreadable values (the old default 'Removed'
-  // entity's 'var(--text-3)') fall back to a plain grey, never rgba(NaN...).
-  // Same reader as viewerShared.js parseColorRgb.
-  const trimmed = typeof hex === 'string' ? hex.trim() : '';
-  const rgbMatch = trimmed.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*[\d.]+\s*)?\)$/i);
-  const hexMatch = trimmed.match(/^#?([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
-  let rgb = [149, 158, 174]; // #959eae
-  if (rgbMatch) {
-    rgb = rgbMatch.slice(1, 4).map(Number);
-  } else if (hexMatch) {
-    let digits = hexMatch[1];
-    if (digits.length === 3) digits = digits.split('').map((d) => d + d).join('');
-    rgb = [0, 2, 4].map((i) => parseInt(digits.substring(i, i + 2), 16));
-  }
-  return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${opacity})`;
-};
+// --- helpers --------------------------------------------------------------
+// FONT_FAMILY (the one UI font), hexToRgba and hasNameConflict come from
+// viewerShared.js; this file used to keep its own copies of all three.
 
 const serializeError = (error) => {
   if (!error) return null;
@@ -75,37 +55,6 @@ const serializeError = (error) => {
     hint: error.hint || null,
   };
 };
-
-const normalizeName = (value) => {
-  if (typeof value !== 'string') return '';
-  return value.trim().toLowerCase();
-};
-
-const hasNameConflict = (
-  items,
-  candidateName,
-  {
-    getName = (item) => item?.name,
-    getId = (item) => item?.id,
-    ignoreId,
-    predicate
-  } = {}
-) => {
-  if (!Array.isArray(items)) return false;
-  const normalizedCandidate = normalizeName(candidateName);
-  if (!normalizedCandidate) return false;
-
-  const shouldIgnore = typeof ignoreId !== 'undefined';
-
-  return items.some((item) => {
-    if (!item) return false;
-    if (predicate && !predicate(item)) return false;
-    if (shouldIgnore && getId(item) === ignoreId) return false;
-    const existingName = normalizeName(getName(item));
-    return existingName && existingName === normalizedCandidate;
-  });
-};
-
 
 const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, documents, setDocuments, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal, entities, setEntities }, ref) {
   const fileInputRef = useRef();
