@@ -1,0 +1,14 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+
+const read = (rel) => readFile(new URL(`../src/${rel}`, import.meta.url), 'utf8');
+
+// Polish round 2 (2026-10-04): small hub fixes, pinned so they do not drift back.
+
+test('desktop template rows show no second line when a template has no entities', async () => {
+  const source = await read('home/TemplatesEditor.jsx');
+  // The swatches + count line only renders when there is at least one entity,
+  // so an empty template no longer shows a lone "0".
+  assert.match(source, /\{t\.roster\.length > 0 && \(\s*<div style=\{\{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 \}\}>/);
+});

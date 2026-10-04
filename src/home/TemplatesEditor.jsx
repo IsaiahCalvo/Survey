@@ -2267,6 +2267,11 @@ export default function TemplatesEditor({
                             name + swatches stack is centred by its ink, not by
                             spare leading above the name. */}
                         <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{t.name}</div>
+                        {/* Polish round 2 (2026-10-04): a template with no
+                            entities shows no second line at all (it used to
+                            show a lone "0"); the name then sits centred in
+                            the row, the same as the phone list. */}
+                        {t.roster.length > 0 && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                             {/* Up to 10 entity swatches fit before the row gets crowded;
@@ -2283,6 +2288,7 @@ export default function TemplatesEditor({
                           </div>
                           <span className="mono meta" style={{ fontSize: 11 }}>{t.roster.length}</span>
                         </div>
+                        )}
                       </div>
                       {tplEdit ? (
                         <span
