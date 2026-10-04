@@ -998,3 +998,31 @@
 .pp-tog:active {
   background: var(--pp-pressed);
 }
+
+/* Reduced motion: the panel, its backdrop and the big preview appear without
+   the fade/pop, flips and zooms of the preview sheet snap instead of turning,
+   the 1px hover lifts no longer glide and the press shrink is dropped. Colour
+   changes stay - they are not motion. */
+@media (prefers-reduced-motion: reduce) {
+  .pp-backdrop,
+  .pp-root,
+  .pp-bigprev {
+    animation: none;
+  }
+  .pp-preview-sheet {
+    transition: filter 180ms;
+  }
+  .pp-bigprev-sheet {
+    transition: none;
+  }
+  .pp-thumb-cell {
+    transition: none;
+  }
+  .pp-pager-dot,
+  .pp-rbtn {
+    transition: background 120ms, border-color 120ms, color 120ms;
+  }
+  .pp-rbtn:active {
+    transform: none;
+  }
+}

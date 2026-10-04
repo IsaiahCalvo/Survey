@@ -2760,44 +2760,6 @@ input[type="text"].spaces-region__name-input:focus-visible {
   border: 1px solid transparent;
 }
 
-/* Action Card Buttons */
-.btn-card {
-  padding: 16px 24px;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  font-family: inherit;
-}
-
-.btn-card:hover {
-  background: var(--hover);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  border-color: var(--accent);
-}
-
-.btn-card:active {
-  transform: translateY(0);
-}
-
-.btn-card .icon {
-  font-size: 24px;
-  line-height: 1;
-}
-
-.btn-card .label {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-1);
-}
-
 /* Remove spin buttons from number inputs */
 .no-spin-buttons::-webkit-outer-spin-button,
 .no-spin-buttons::-webkit-inner-spin-button {
