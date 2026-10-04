@@ -335,6 +335,30 @@
 .hub-icon-btn:not(:disabled):active { background: transparent; }
 .hub-icon-btn:not(:disabled):active > svg { transform: scale(0.88); }
 .hub-icon-btn > svg { transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1); }
+/* Polish round 5 (2026-10-04): a dialog's × — Share, Rename, Move / Copy, New
+   project, Manage access, the phone Document details — keeps its 24px look
+   but is 44px to a finger on a touch screen (it measured 24). */
+@media (pointer: coarse) {
+  .hub-icon-btn:is([aria-label="Close"], [title="Close"], [aria-label="Close details"]) {
+    position: relative;
+  }
+  .hub-icon-btn:is([aria-label="Close"], [title="Close"], [aria-label="Close details"])::after {
+    content: '';
+    position: absolute;
+    inset: -10px;
+  }
+  /* The Share dialog's Copy link, Cancel and Send: 28px painted, 44px to a
+     finger (9px each way from inside the 1px border: 9 + 26 + 9). The footer's
+     12px padding and the row gaps hold the pads; nothing else is in them. */
+  .hub-btn.share-dialog-touch-pad {
+    position: relative;
+  }
+  .hub-btn.share-dialog-touch-pad::after {
+    content: '';
+    position: absolute;
+    inset: -9px 0;
+  }
+}
 
 /* ONE disabled look for all four kinds, from tokens — no opacity, which dims
    a gold fill into a paler gold instead of switching it off. */
@@ -1285,16 +1309,34 @@
 
   /* Row 2's controls take their 44px out of the header's own bottom padding
      rather than upward into row 1, where the Select word's pad already hangs
-     8px below its box. 4px up + 28px painted + 12px down = 44px, and nothing
-     reaches past the divider into the first card. */
+     8px below its box. These buttons have a 1px border and the pad is placed
+     from the padding edge inside it, so 5px up + 26px + 13px down = 44px
+     (it was -4/-12, which measured 42). Measured at 390 and 375: the pad runs
+     from y 50 (where Select's pad ends) to y 94, short of the divider at 96. */
   .survey-hub .hub-mobile-primary-action::after,
   .survey-hub .projects-mobile-search-actions .projects-mobile-back-button::after,
   .survey-hub .templates-mobile-search-actions .templates-mobile-back-button::after {
-    inset-block: -4px -12px;
+    inset-block: -5px -13px;
   }
 
   .survey-hub .documents-mobile-filter::after {
     inset-block: -8px;
+  }
+
+  /* The search box in row 2 gets the same 44px band as its neighbours (5px
+     up, 13px down from inside its 1px border). The pad sits BEHIND the box
+     (z-index -1), so inside the box a tap still lands on the field and can
+     place the caret; above and below it the tap reaches the box, which
+     focuses the field (HubShell Search). */
+  .survey-hub .hub-mobile-search-actions > .hub-search {
+    position: relative;
+  }
+
+  .survey-hub .hub-mobile-search-actions > .hub-search::after {
+    content: '';
+    position: absolute;
+    inset: -5px 0 -13px;
+    z-index: -1;
   }
 
   .survey-hub .projects-mobile-search-actions .projects-mobile-create-button,
@@ -1338,6 +1380,10 @@
     height: 44px;
     margin-block: -8px;
     padding-block: 8px;
+    /* Room for Select's pad, which reaches 8px to the left (see the ::after
+       below): this row scrolls sideways, so it clips anything outside its
+       padding box. The auto margin gives the 8px back, so nothing moves. */
+    padding-left: 8px;
     box-sizing: border-box;
     display: flex;
     align-items: center;
@@ -1431,6 +1477,9 @@
     height: 44px;
     margin-block: -8px;
     padding-block: 8px;
+    /* Same room for Select's pad as the row above; the margin keeps it in place. */
+    padding-left: 8px;
+    margin-left: -8px;
     box-sizing: border-box;
     display: flex;
     align-items: center;
@@ -1556,6 +1605,15 @@
     -webkit-backdrop-filter: blur(8px);
     overscroll-behavior: contain;
     touch-action: none;
+  }
+
+  /* Polish round 5 (2026-10-04): the sheet must cover the header and the tab
+     bar. Since the phone page became a fixed frame (2026-10-01) the list body
+     is a flex item, and its z-index: 1 made it a stacking context that kept
+     the sheet's z-index under both bars — on an iPhone the tab bar hid Open
+     file and Share. While the sheet is open the body gives up that z-index. */
+  .survey-hub .documents-ledger-body:has(.documents-mobile-detail-scrim) {
+    z-index: auto;
   }
 
   .survey-hub .documents-mobile-detail-modal {
@@ -2253,12 +2311,6 @@
     font-size: 12px;
     font-weight: 700;
     white-space: nowrap;
-  }
-
-  .survey-hub .projects-mobile-back-icon,
-  .survey-hub .templates-mobile-back-icon {
-    display: inline-flex;
-    transform: rotate(180deg);
   }
 
   .survey-hub .projects-mobile-drill-header > div,
@@ -5159,10 +5211,14 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
     width: 18px;
     height: 18px;
   }
+  /* Polish round 5: the pad was -4px all round, but the row's scroll box
+     clipped it to the painted 36px width, and the avatar's pad already owns
+     the 8px gap on the right. So it takes 8px on the left and none on the
+     right: 44 x 44, meeting the avatar's pad without overlapping it. */
   .survey-hub .section-icon-btn.section-icon-btn.mobile-header-select-button::after {
     content: '';
     position: absolute;
-    inset: -4px;
+    inset: -4px 0 -4px -8px;
     z-index: 1;
     background: transparent;
   }

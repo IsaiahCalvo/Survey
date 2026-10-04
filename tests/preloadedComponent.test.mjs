@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createElement } from 'react';
+import { act, createElement, createRef, forwardRef, useImperativeHandle } from 'react';
+import { createRoot } from 'react-dom/client';
+import { JSDOM } from 'jsdom';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { preloadedComponent } from '../src/utils/preloadedComponent.js';
@@ -36,4 +38,30 @@ test('a failed fetch can be retried', async () => {
 test('pick selects a named export', async () => {
   const chunk = preloadedComponent(async () => ({ Named: Real }), (m) => m.Named);
   assert.equal(await chunk.load(), Real);
+});
+
+test('passes a ref through to the loaded component (the rails expose their panel API by ref)', async () => {
+  // Round 5: without this the phone dock's Pages button, Ctrl+F and the
+  // Spaces chip found no panel API (React 18 drops a ref on a plain function).
+  const Rail = forwardRef((props, ref) => {
+    useImperativeHandle(ref, () => ({ togglePanel: (id) => `toggled ${id}` }));
+    return createElement('i', null, 'rail');
+  });
+  const chunk = preloadedComponent(async () => ({ default: Rail }));
+  await chunk.load();
+  const dom = new JSDOM('<!doctype html><div id="root"></div>');
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  try {
+    const ref = createRef();
+    const root = createRoot(dom.window.document.getElementById('root'));
+    await act(async () => root.render(createElement(chunk.Component, { ref })));
+    assert.equal(ref.current?.togglePanel('pages'), 'toggled pages');
+    await act(async () => root.unmount());
+  } finally {
+    delete globalThis.window;
+    delete globalThis.document;
+    delete globalThis.IS_REACT_ACT_ENVIRONMENT;
+  }
 });

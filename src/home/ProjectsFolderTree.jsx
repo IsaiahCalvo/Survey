@@ -744,7 +744,9 @@ export default function ProjectsFolderTree({
             className="projects-mobile-back-button"
             onClick={closeMobileProject}
           >
-            <span className="projects-mobile-back-icon"><Icon name="arrow-r" size={13} /></span>Projects
+            {/* Owner 2026-10-02: back is chevronLeft, as everywhere else. This
+                one was still a right arrow turned round by CSS. */}
+            <span style={{ display: 'inline-flex' }}><Icon name="chevronLeft" size={13} /></span>Projects
           </button>
         ) : null}
         <Search

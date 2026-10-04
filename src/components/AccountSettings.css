@@ -747,12 +747,46 @@
 
 /* Mobile */
 @media (max-width: 768px) {
+  /* Polish round 5: the page below is full-screen, but the overlay's 20px
+     padding left it floating as a square-cornered card with a sliver of the
+     hub showing round it. On a phone the overlay has no padding; the page
+     clears the notch and the home indicator itself (Expo pads its WebView
+     top natively, so only the bottom inset is added there). */
+  .account-settings-overlay {
+    padding: 0;
+  }
+
   .account-settings-modal {
     width: 100%;
     height: 100%;
     max-width: none;
     max-height: none;
     border-radius: 0;
+    border: 0;
+    box-shadow: none;
+  }
+
+  .account-settings-header {
+    padding-top: calc(14px + env(safe-area-inset-top, 0px));
+  }
+
+  html[data-native-shell="expo"] .account-settings-header {
+    padding-top: 14px;
+  }
+
+  .account-settings-content {
+    padding-bottom: calc(18px + var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+  }
+
+  /* The 32px close keeps its look; a transparent pad makes it 44px to a finger. */
+  .account-settings-close {
+    position: relative;
+  }
+
+  .account-settings-close::after {
+    content: '';
+    position: absolute;
+    inset: -7px;
   }
 
   .account-settings-body {

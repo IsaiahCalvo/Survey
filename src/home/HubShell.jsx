@@ -107,7 +107,16 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
           setFocused(false);
         }}
       />
-      <div ref={rootRef} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--ink-700)', border: '1px solid var(--border-strong)', borderRadius: 6, padding: '5px 9px', width, fontSize: 12, height: 28, boxSizing: 'border-box' }}>
+      {/* Polish round 5: a tap anywhere on the box (the glyph, the padding, or
+          on a phone the 44px pad round it, see hub.css .hub-search) puts the
+          caret in the field; only the 22px input itself used to. A placeholder
+          that does not fit ends in an ellipsis instead of being cut mid-word. */}
+      <div
+        ref={rootRef}
+        className="hub-search"
+        onClick={(event) => { if (event.target !== inputRef.current) inputRef.current?.focus(); }}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--ink-700)', border: '1px solid var(--border-strong)', borderRadius: 6, padding: '5px 9px', width, fontSize: 12, height: 28, boxSizing: 'border-box', cursor: 'text' }}
+      >
         <Icon name="search" size={13} color="var(--ink-200)" />
         <input
           ref={inputRef}
@@ -116,7 +125,7 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           placeholder={placeholder}
-          style={{ background: 'transparent', border: 0, outline: 'none', color: 'var(--bone-100)', font: 'inherit', flex: 1, minWidth: 0 }}
+          style={{ background: 'transparent', border: 0, outline: 'none', color: 'var(--bone-100)', font: 'inherit', flex: 1, minWidth: 0, textOverflow: 'ellipsis' }}
         />
         <span className="kbd">⌘K</span>
       </div>
