@@ -11,6 +11,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { HubShell, Icon, Avatar, PdfThumb, Search, EmptyState } from './HubShell';
+import { presenceInitials, PRESENCE_SELF_TINT, PRESENCE_INK } from '../components/presenceIdentity.js';
 import SectionIconButton, { SelectModeButtons } from '../components/SectionIconButton.jsx';
 import { MoveCopyModal, RenameModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
@@ -78,9 +79,10 @@ function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168 }) {
   );
 }
 
-/* Two-letter initials from a display name — for the Team avatar glyph. */
-const initialsOf = (name) => (name || '')
-  .trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase() || '—';
+/* The Team avatar is YOUR face: the one initials rule and the calm own-face
+   grey the account avatar and the viewer's presence row use (owner
+   2026-10-02), not a gold disc with its own initials rule. */
+const initialsOf = (name) => presenceInitials(name || 'You');
 
 const longDate = (value) => {
   const ms = Date.parse(value || 0) || 0;
@@ -585,7 +587,7 @@ export default function DocumentsLedger({
               <div style={{ marginTop: 14, flex: 'none' }}>
                 <div className="section-label">Team</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                  <Avatar initials={initialsOf(user?.name || user?.email || 'You')} size={22} color="var(--accent)" />
+                  <Avatar initials={initialsOf(user?.name || user?.email || 'You')} size={22} color={PRESENCE_SELF_TINT} ink={PRESENCE_INK} />
                   <span style={{ fontSize: 12, fontWeight: 600 }}>{user?.name || user?.email?.split('@')[0] || 'You'}</span>
                 </div>
               </div>
@@ -663,7 +665,7 @@ export default function DocumentsLedger({
                 <div>
                   <span>Team</span>
                   <div className="documents-mobile-detail-owner">
-                    <Avatar initials={initialsOf(user?.name || user?.email || 'You')} size={22} color="var(--accent)" />
+                    <Avatar initials={initialsOf(user?.name || user?.email || 'You')} size={22} color={PRESENCE_SELF_TINT} ink={PRESENCE_INK} />
                     <strong>{user?.name || user?.email?.split('@')[0] || 'You'}</strong>
                   </div>
                 </div>
