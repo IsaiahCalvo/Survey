@@ -18,7 +18,9 @@ test('delete confirmation uses the shared app modal shell', () => {
   assert.match(source, /data-autofocus/);
 
   assert.match(styles, /z-index:\s*1300/);
-  assert.match(styles, /background:\s*rgba\(13,\s*15,\s*20,\s*0\.55\)/);
+  // 2026-10-04: the scrim names the one modal-scrim token (same value,
+  // rgba(13, 15, 20, 0.55)) instead of re-typing it.
+  assert.match(styles, /background:\s*var\(--overlay-scrim\)/);
   assert.match(styles, /backdrop-filter:\s*blur\(8px\)/);
 
   assert.match(styles, /width:\s*380px/);
