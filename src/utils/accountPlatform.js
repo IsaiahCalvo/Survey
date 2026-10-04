@@ -146,6 +146,12 @@ export const requestAccountDeletion = async (functionsClient) => {
   return data;
 };
 
+// What Settings > Subscription says when the plan cannot be loaded (no
+// network, no backend, a timeout). Plain words; the technical reason only goes
+// to the console. Polish round 6: it used to print the raw JS error, e.g.
+// "Cannot read properties of null (reading 'from')".
+export const SUBSCRIPTION_LOAD_FAILED_TEXT = "Your plan couldn't be loaded right now. Check your connection, then try again.";
+
 export const resolveSubscriptionQuery = async (query, timeoutMs = 10_000) => {
   const { data, error } = await withTimeout(
     query,

@@ -25,6 +25,7 @@ import {
   canUnlinkProvider,
   openDeferredExternalDestination,
   resolveSubscriptionQuery,
+  SUBSCRIPTION_LOAD_FAILED_TEXT,
 } from '../utils/accountPlatform';
 
 const SURVEY_SUPPORT_EMAIL = 'isaiahcalvo123@gmail.com';
@@ -134,8 +135,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
       setSubscription(data);
     } catch (err) {
       if (requestId !== subscriptionRequestRef.current) return;
-      console.error('Error:', err);
-      setSubscriptionError(err?.message || 'Could not load subscription status.');
+      console.error('Could not load subscription:', err);
+      setSubscriptionError(SUBSCRIPTION_LOAD_FAILED_TEXT);
     } finally {
       if (requestId === subscriptionRequestRef.current) setLoadingSubscription(false);
     }
