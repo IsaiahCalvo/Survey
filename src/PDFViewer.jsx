@@ -61,7 +61,7 @@ import ExcelLockedModal from './components/ExcelLockedModal';
 import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
 import SpaceSelectionDialog from './components/SpaceSelectionDialog';
 import TextEditOverlay from './components/TextEditOverlay';
-import { resolvePickBarTool, resolveToolbarCallout } from './utils/toolbarCalloutTarget.js';
+import { resolveNewMarkStyle, resolvePickBarTool, resolveToolbarCallout } from './utils/toolbarCalloutTarget.js';
 import FabricEraserCanvas from './components/FabricEraserCanvas';
 import FormFieldPropertiesPanel from './components/FormFieldPropertiesPanel';
 import AnnotationDropdown from './components/AnnotationDropdown';
@@ -8479,6 +8479,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setArrowBothEnds(saved.arrowBothEnds);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTool, pickBarTool]);
+  // Review round 9: while that pick is held the bar holds the PICKED mark's
+  // values; a drag that draws a new mark meanwhile still draws it with the
+  // tool's own settings (it used to take the picked mark's width and colours).
+  const newMarkStyle = resolveNewMarkStyle({
+    activeTool,
+    pickBarTool,
+    savedToolSettings: toolSettingsBeforePickRef.current,
+    live: {
+      strokeColor, strokeOpacity, fillColor, fillOpacity, strokeWidth,
+      lineBorderStyle, cloudIntensity, arrowheadStyle, arrowBothEnds,
+    },
+  });
 
   // Sync strokeWidthInputValue when strokeWidth changes (but not while focused)
   useEffect(() => {
@@ -12734,20 +12746,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         : {}),
       style: {
         ...rawCallout.style,
-        borderColor: strokeColor,
-        borderOpacity: (strokeOpacity ?? 100) / 100,
-        fillColor,
-        fillOpacity: (fillOpacity ?? 100) / 100,
-        lineThickness: Math.max(1, Number(strokeWidth) || 2),
+        // Review round 9: the tool's own settings even while a picked text
+        // box's values fill the bar (resolveNewMarkStyle).
+        borderColor: newMarkStyle.strokeColor,
+        borderOpacity: (newMarkStyle.strokeOpacity ?? 100) / 100,
+        fillColor: newMarkStyle.fillColor,
+        fillOpacity: (newMarkStyle.fillOpacity ?? 100) / 100,
+        lineThickness: Math.max(1, Number(newMarkStyle.strokeWidth) || 2),
         // UX (2026-07-17, callout line style): new callouts honor the Style
         // picker's current choice, exactly like new shapes do (applyBorderStyle
         // at shape creation). w43 (2026-09-26): 'cloud' clouds the new
         // callout's TEXT BOX at the bar's bump size; its leader stays straight.
-        lineStyle: (lineBorderStyle === 'dashed' || lineBorderStyle === 'dotted' || lineBorderStyle === 'cloud')
-          ? lineBorderStyle
+        lineStyle: (newMarkStyle.lineBorderStyle === 'dashed' || newMarkStyle.lineBorderStyle === 'dotted' || newMarkStyle.lineBorderStyle === 'cloud')
+          ? newMarkStyle.lineBorderStyle
           : 'solid',
-        ...(lineBorderStyle === 'cloud'
-          ? { cloudIntensity: Math.max(1, Number(cloudIntensity) || 2) }
+        ...(newMarkStyle.lineBorderStyle === 'cloud'
+          ? { cloudIntensity: Math.max(1, Number(newMarkStyle.cloudIntensity) || 2) }
           : {}),
         ...(mobileMode ? {
           fontColor: textStyleDefaults.fontColor,
@@ -12782,7 +12796,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       source: 'callout:create',
       action: 'callout-create',
     });
-  }, [commitCalloutMutation, strokeColor, strokeOpacity, fillColor, fillOpacity, mobileMode, strokeWidth, lineBorderStyle, cloudIntensity, textStyleDefaults, user?.id]);
+  }, [commitCalloutMutation, newMarkStyle.strokeColor, newMarkStyle.strokeOpacity, newMarkStyle.fillColor, newMarkStyle.fillOpacity, mobileMode, newMarkStyle.strokeWidth, newMarkStyle.lineBorderStyle, newMarkStyle.cloudIntensity, textStyleDefaults, user?.id]);
 
   // UX: Phase 14 CALL-10 (drag MVP) — pointerup commit for a callout drag.
   // Called from useSVGInteraction's 'callout-part' drag mode on pointerup
@@ -36572,16 +36586,18 @@ ${pageBlocks}
                                   // survey-marker) — FabricDrawingCanvas is retired, so
                                   // the in-progress drawing and the committed shape are
                                   // the same renderer in the same coordinate space.
-                                  strokeColor={strokeColor}
-                                  strokeOpacity={strokeOpacity}
-                                  fillColor={fillColor}
-                                  fillOpacity={fillOpacity}
+                                  // Review round 9: the tool's settings, not a held
+                                  // own-group pick's (resolveNewMarkStyle).
+                                  strokeColor={newMarkStyle.strokeColor}
+                                  strokeOpacity={newMarkStyle.strokeOpacity}
+                                  fillColor={newMarkStyle.fillColor}
+                                  fillOpacity={newMarkStyle.fillOpacity}
                                   highlightColor="rgba(255, 193, 7, 0.3)"
-                                  strokeWidth={strokeWidth}
-                                  arrowheadStyle={arrowheadStyle}
-                                arrowStartStyle={arrowBothEnds ? arrowheadStyle : null}
-                                  lineBorderStyle={lineBorderStyle}
-                                  cloudIntensity={cloudIntensity}
+                                  strokeWidth={newMarkStyle.strokeWidth}
+                                  arrowheadStyle={newMarkStyle.arrowheadStyle}
+                                arrowStartStyle={newMarkStyle.arrowBothEnds ? newMarkStyle.arrowheadStyle : null}
+                                  lineBorderStyle={newMarkStyle.lineBorderStyle}
+                                  cloudIntensity={newMarkStyle.cloudIntensity}
                                   zoomGeneration={zoomGeneration}
                                   onSurveyMarkerCreated={getSvgLayerPageHandlers(pageNumber).onSurveyMarkerCreated}
                                 />
