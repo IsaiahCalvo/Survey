@@ -821,9 +821,12 @@
 }
 
 /* "+ Place": a small quiet pill at the end of the category line (the rail's
-   discs still place too). Its own 40px-tall hit area. */
+   discs still place too). The pill is 28px; a transparent pad below makes the
+   finger target the line's full 44px (it measured 28 - a tap 9px above or
+   below the pill fell on the category line and opened it instead). */
 .mobile-survey-sheet .mobile-survey-place,
 .mobile-survey-sheet .mobile-survey-place:active {
+  position: relative;
   flex: 0 0 auto;
   align-self: center;
   height: var(--sheet-chip-h);
@@ -845,6 +848,13 @@
 .mobile-survey-sheet .mobile-survey-place:active {
   transform: scale(0.94);
   background: var(--pressed);
+}
+
+.mobile-survey-sheet .mobile-survey-place::after {
+  content: '';
+  position: absolute;
+  inset-block: calc((var(--sheet-chip-h) - var(--sheet-row-h)) / 2);
+  inset-inline: -2px;
 }
 
 .mobile-survey-sheet .mobile-survey-item-empty {
@@ -1355,6 +1365,25 @@
 
 .mobile-survey-sheet .mobile-survey-check-btn:active {
   transform: scale(0.88);
+}
+
+/* The answers are 32px words (26px once chosen) in a 44px checklist line: a
+   transparent pad gives each the line's full 44px height, so a thumb that lands
+   just above or below the well still answers (it measured 32). Sideways the
+   three words already tile the well, so the pad stays inside each one. */
+.mobile-survey-sheet .mobile-survey-check-btn {
+  position: relative;
+}
+
+.mobile-survey-sheet .mobile-survey-check-btn::after {
+  content: '';
+  position: absolute;
+  inset-block: calc((32px - var(--sheet-row-h)) / 2);
+  inset-inline: 0;
+}
+
+.mobile-survey-sheet .mobile-survey-check-btn.is-active::after {
+  inset-block: calc((26px - var(--sheet-row-h)) / 2);
 }
 
 /* The chosen answer (owner 2026-10-01): a small solid chip - Y green, N red,
