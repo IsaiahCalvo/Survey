@@ -22,7 +22,7 @@ const ArchiveScreenContainer = lazy(() => import('./ArchiveScreenContainer'));
 import ShareModal from './ShareModal';
 import AccessManagementModal from './AccessManagementModal';
 import { HubChromeContext, HubShell } from './HubShell';
-import HubLoadingSkeletons from './HubLoadingSkeletons';
+import HubLoading from './HubLoading';
 import { installOverlayScrollbars } from '../utils/overlayScrollbars';
 const AccountSettings = lazy(() => import('../components/AccountSettings').then(m => ({ default: m.AccountSettings })));
 import './hub.css';
@@ -159,7 +159,7 @@ export default function SurveyHub({
     <HubChromeContext.Provider value={{ user, onSettings: openSettings, onSignOut, onSignIn }}>
       {tab === 'documents' && (
         documentsInitialLoading ? (
-          <HubLoadingSkeletons {...common} tab="documents" />
+          <HubLoading {...common} tab="documents" />
         ) : documentsLoadError && documents.length === 0 ? (
           <HubLoadError tabName="documents" error={documentsLoadError} onRetry={onRetryDocuments} />
         ) : (
@@ -181,7 +181,7 @@ export default function SurveyHub({
       )}
       {tab === 'projects' && (
         projectsInitialLoading ? (
-          <HubLoadingSkeletons {...common} tab="projects" />
+          <HubLoading {...common} tab="projects" />
         ) : projectsLoadError && projects.length === 0 ? (
           <HubLoadError tabName="projects" error={projectsLoadError} onRetry={onRetryProjects} />
         ) : (
@@ -211,7 +211,7 @@ export default function SurveyHub({
       )}
       {tab === 'templates' && (
         templatesInitialLoading ? (
-          <HubLoadingSkeletons {...common} tab="templates" />
+          <HubLoading {...common} tab="templates" />
         ) : templatesLoadError && templates.length === 0 ? (
           <HubLoadError tabName="templates" error={templatesLoadError} onRetry={onRetryTemplates} />
         ) : (
@@ -233,7 +233,7 @@ export default function SurveyHub({
           directly rather than filtering the hub's live lists, because those
           lists deliberately exclude archived rows. */}
       {tab === 'archive' && (
-        <Suspense fallback={<HubLoadingSkeletons {...common} tab="documents" />}>
+        <Suspense fallback={<HubLoading {...common} tab="documents" />}>
           <ArchiveScreenContainer {...common} />
         </Suspense>
       )}

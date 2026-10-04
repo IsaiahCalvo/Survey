@@ -367,8 +367,9 @@ test('the screen mirrors the Documents ledger structure and states', () => {
   assert.match(SCREEN, /padding: '0 14px 0 0',\s*\n\s*alignSelf: 'stretch'/);
   assert.match(SCREEN, /padding: `\$\{ROW_PAD_Y\}px 0`/);
   assert.match(SCREEN, /sortKey === key \? 'var\(--bone-100\)' : 'inherit'/);
-  assert.match(SCREEN, /hub-skeleton-block/);
-  assert.match(SCREEN, /hub-loading-document-row/);
+  // Owner 2026-10-04: loading is the app's one quiet line, not placeholder rows.
+  assert.match(SCREEN, /<QuietLoading label="Loading archive…" \/>/);
+  assert.doesNotMatch(SCREEN, /hub-skeleton-block|hub-loading-document-row/);
   assert.match(SCREEN, /<EmptyState[\s\S]*?icon="clock"[\s\S]*?line="Nothing in Archive"/);
   assert.match(SCREEN, /allSelected \? 'None' : 'All'/);
   // Children are descriptive: no checkbox, no per-child action.

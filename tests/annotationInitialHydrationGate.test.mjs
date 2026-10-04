@@ -48,71 +48,25 @@ test('cloud PDFs stay concealed and non-editable until authoritative annotations
   );
 });
 
-test('hydration cover renders the approved generic synchronized-cool page treatment', () => {
-  assert.match(
-    COVER_SOURCE,
-    /data-annotation-hydration-skeleton="true"/,
-    'the cover must expose the PDF skeleton marker',
-  );
-  assert.match(
-    COVER_SOURCE,
-    /aria-hidden="true"/,
-    'skeleton visuals must stay hidden from assistive technology',
-  );
+// Owner 2026-10-04 ("it looked like we had two different loading screens"):
+// the grey page with three pulsing dots is gone. The cover paints nothing —
+// the PDF page shows as soon as it is drawn, the marks fade in when hydration
+// is ready, and the cover only keeps input off the page until then.
+test('hydration cover is see-through: the page shows, input waits, marks fade in', () => {
   assert.match(COVER_SOURCE, /aria-busy="true"/);
   assert.match(
     COVER_SOURCE,
     /role="status"[\s\S]*?aria-live="polite"[\s\S]*?>\s*Opening document\s*<\/span>/,
-    'the loading announcement must live outside the busy region so it is spoken',
+    'screen readers still hear that the document is opening',
   );
-  assert.equal(
-    (COVER_SOURCE.match(/data-annotation-hydration-dot="true"/g) || []).length,
-    3,
-    'the generic treatment must contain exactly three loading dots',
-  );
-  assert.match(COVER_SOURCE, /background:\s*'#e7edf1'/);
-  assert.match(COVER_SOURCE, /background:\s*#cbd4dc/);
-  assert.match(COVER_SOURCE, /background:\s*#63717d/);
-  assert.match(COVER_SOURCE, /width:\s*5px;[\s\S]*?height:\s*5px;/);
+  assert.match(COVER_SOURCE, /background:\s*'transparent'/);
+  assert.doesNotMatch(COVER_SOURCE, /data-annotation-hydration-skeleton|data-annotation-hydration-dot/,
+    'no skeleton page and no loading dots');
+  assert.doesNotMatch(COVER_SOURCE, /@keyframes|animation:/, 'nothing pulses');
+  assert.doesNotMatch(COVER_SOURCE, /#e7edf1|#cbd4dc|#63717d/, 'no grey page paint');
   assert.match(
-    COVER_SOURCE,
-    /animation:\s*annotationHydrationPagePulse 2s ease-in-out 850ms infinite/,
-    'the page pulse must use the approved shared timing',
-  );
-  assert.match(
-    COVER_SOURCE,
-    /animation:\s*annotationHydrationDotPulse 2s ease-in-out 850ms infinite/,
-    'the dots must use the same duration, easing, and delay as the page pulse',
-  );
-  assert.doesNotMatch(
-    COVER_SOURCE,
-    /Loading annotations/,
-    'the old visible loading copy must not remain',
-  );
-  assert.doesNotMatch(
-    COVER_SOURCE,
-    /annotation-hydration-(?:rule|line|table|cell|title-block)/,
-    'fake document content must not return to the generic page treatment',
-  );
-  assert.equal(
-    (COVER_SOURCE.match(/<div\b/g) || []).length,
-    3,
-    'the treatment must remain limited to the cover, paper, and dot wrapper',
-  );
-  assert.equal(
-    (COVER_SOURCE.match(/<span\b/g) || []).length,
-    4,
-    'the treatment must contain only the accessible status and three dots',
-  );
-  assert.doesNotMatch(
-    COVER_SOURCE,
-    /<(?:table|thead|tbody|tr|th|td|p|hr|svg|canvas)\b/i,
-    'document-like elements must not be added to the generic loading treatment',
-  );
-  assert.doesNotMatch(COVER_SOURCE, /annotationHydrationSpin/);
-  assert.match(
-    COVER_SOURCE,
-    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.annotation-hydration-paper::after,[\s\S]*?\.annotation-hydration-dot[\s\S]*?animation:\s*none/,
-    'reduced-motion users must receive static page and dot cues',
+    VIEWER_SOURCE,
+    /opacity:\s*annotationHydrationGated \? 0 : undefined,\s*\n\s*transition:\s*'opacity 180ms ease-out'/,
+    'the marks fade in when the gate lifts',
   );
 });

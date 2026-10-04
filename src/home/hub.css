@@ -397,21 +397,27 @@
 .survey-hub .card { background: var(--ink-700); border: 1px solid var(--ink-500); border-radius: 10px; }
 .survey-hub .card.ghost { background: transparent; }
 
-/* Cold-load placeholders mirror the final home layouts. They use only the
-   hub's neutral slate surfaces; gold remains reserved for real actions and
-   selection. Existing data is never replaced by these during a refetch. */
+/* First load (owner 2026-10-04: one calm loading state everywhere): the list
+   area holds the app's one quiet line (QuietLoading) — no grey placeholder
+   rows. The header keeps the real controls' room with invisible spacers
+   (.hub-loading-space), so nothing moves when the data lands. Existing data
+   is never replaced by this during a refetch. */
 .survey-hub .hub-loading-region {
+  position: relative;
   display: flex;
   flex: 1;
   min-height: 0;
   overflow: hidden;
 }
-.survey-hub .hub-loading-region > .hub-loading-body { width: 100%; }
 .survey-hub .hub-loading-metric-cell {
   position: relative;
   color: transparent !important;
 }
-.survey-hub .hub-loading-metric-cell > .hub-skeleton-block {
+/* The count's words only hold its width while loading; none of it shows. */
+.survey-hub .hub-loading-metric-cell * {
+  color: transparent !important;
+}
+.survey-hub .hub-loading-metric-cell > .hub-loading-space {
   position: absolute;
   top: 50%;
   left: 0;
@@ -468,202 +474,12 @@
   visibility: visible;
 }
 .survey-hub .hub-loading-search-label { position: absolute; }
-.survey-hub .hub-skeleton-block {
+.survey-hub .hub-loading-space {
   display: block;
   flex: none;
   min-width: 4px;
   min-height: 4px;
-  border-radius: 4px;
-  background: var(--ink-500);
-  animation: hubSkeletonPulse 1.8s ease-in-out infinite;
-}
-.survey-hub .hub-loading-ledger-header {
-  align-items: center;
-  min-height: 32px;
-  padding: 8px 0;
-  background: var(--ink-700);
-  border-bottom: 1px solid var(--ink-500);
-}
-.survey-hub .hub-loading-document-row {
-  align-items: center;
-  height: 50px;
-  /* UX 2026-09-22: a divider is a boundary, so it takes --border (3.60:1 on
-     this --surface-2 card). --ink-600 is --surface-3, the SELECTED colour, and
-     measured 1.16:1 — an invisible rule. The header row above already used
-     --ink-500 (--border), so the skeleton disagreed with itself. */
-  border-bottom: 1px solid var(--border);
-  /* Transparent on purpose: it reserves the 2px the gold selected edge fills,
-     so a row does not shift sideways when it becomes selected. */
-  border-left: 2px solid transparent;
-}
-.survey-hub .hub-loading-date-pair,
-.survey-hub .hub-loading-copy {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
-.survey-hub .hub-loading-document-preview {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  padding: 18px;
-  overflow: hidden;
-}
-.survey-hub .hub-loading-preview-page {
-  width: 100%;
-  height: 360px;
-  min-height: 120px;
-  margin-top: 14px;
-  border-radius: 6px;
-  flex: 0 1 auto;
-}
-.survey-hub .hub-loading-person {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-}
-.survey-hub .hub-loading-sidebar,
-.survey-hub .hub-loading-template-panel {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-width: 0;
-  padding: 8px;
-  overflow: hidden;
-  background: var(--ink-700);
-  border: 1px solid var(--ink-500);
-  border-radius: 10px;
-}
-.survey-hub .hub-loading-sidebar-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 4px 6px 6px;
-}
-.survey-hub .hub-loading-sidebar-list {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 2px;
-  min-height: 0;
-  padding-right: 4px;
-}
-.survey-hub .hub-loading-sidebar-row {
-  display: grid;
-  grid-template-columns: 28px 1fr auto;
-  gap: 8px;
-  align-items: center;
-  height: 50px;
-  padding: 8px;
-  border-left: 2px solid transparent;
-}
-.survey-hub .hub-loading-project-detail {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-.survey-hub .hub-loading-project-header {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-height: 65px;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--ink-500);
-  box-sizing: border-box;
-}
-.survey-hub .hub-loading-button-pair,
-.survey-hub .hub-loading-section-heading,
-.survey-hub .hub-loading-category-heading,
-.survey-hub .hub-loading-entities-header,
-.survey-hub .hub-loading-team-row {
-  display: flex;
-  align-items: center;
-}
-.survey-hub .hub-loading-button-pair { gap: 8px; margin-left: auto; }
-.survey-hub .hub-loading-project-columns {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 148px;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-.survey-hub .hub-loading-project-files { padding: 10px 14px; overflow: hidden; }
-.survey-hub .hub-loading-section-heading { height: 22px; margin-bottom: 4px; justify-content: space-between; }
-.survey-hub .hub-loading-file-header,
-.survey-hub .hub-loading-project-file-row {
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) 90px 90px 28px;
-  gap: 12px;
-  align-items: center;
-}
-.survey-hub .hub-loading-file-header { height: 24px; padding: 4px 10px; box-sizing: border-box; }
-.survey-hub .hub-loading-project-file-row { height: 42px; padding: 8px 10px; box-sizing: border-box; }
-.survey-hub .hub-loading-project-file-row:nth-child(even) { background: var(--ink-700); border-radius: 6px; }
-.survey-hub .hub-loading-project-file-row .hub-loading-person { margin-top: 0; gap: 6px; }
-.survey-hub .hub-loading-project-team {
-  padding: 12px;
-  overflow: hidden;
-  border-left: 1px solid var(--ink-500);
-  background: var(--ink-800);
-}
-.survey-hub .hub-loading-project-team > .hub-skeleton-block { margin-bottom: 10px; }
-.survey-hub .hub-loading-team-row { gap: 8px; margin-bottom: 8px; }
-.survey-hub .hub-loading-mobile-label {
-  display: flex;
-  align-items: center;
-  min-height: 16.6875px;
-}
-.survey-hub .hub-loading-template-editor,
-.survey-hub .hub-loading-entities-rail { padding: 0; }
-.survey-hub .hub-loading-template-header {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-height: 65px;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--ink-500);
-  box-sizing: border-box;
-}
-.survey-hub .hub-loading-template-content {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-  gap: 8px;
-  padding: 6px 18px 14px;
-}
-.survey-hub .hub-loading-module-tabs { display: flex; align-items: center; gap: 6px; min-height: 24px; }
-.survey-hub .hub-loading-category-heading { justify-content: space-between; min-height: 50px; margin-top: 4px; }
-.survey-hub .hub-loading-category-card { width: 100%; border-radius: 6px; background: var(--ink-600); }
-.survey-hub .hub-loading-entities-header {
-  justify-content: space-between;
-  min-height: 64px;
-  padding: 8px;
-  border-bottom: 1px solid var(--ink-500);
-  box-sizing: border-box;
-}
-.survey-hub .hub-loading-entities-controls { height: 28px; padding: 6px 8px 4px; box-sizing: border-box; }
-.survey-hub .hub-loading-entities-list { display: flex; flex-direction: column; gap: 4px; padding: 8px 8px 12px; }
-.survey-hub .hub-loading-entity-row {
-  display: grid;
-  grid-template-columns: 24px 18px minmax(0, 1fr) 16px;
-  gap: 10px;
-  align-items: center;
-  height: 38px;
-  padding: 8px 10px;
-  box-sizing: border-box;
-}
-
-@keyframes hubSkeletonPulse {
-  0%, 100% { opacity: 0.58; }
-  50% { opacity: 0.9; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .survey-hub .hub-skeleton-block { animation: none; opacity: 0.75; }
+  background: transparent;
 }
 
 .survey-hub::-webkit-scrollbar { display: none; }
@@ -2413,7 +2229,6 @@
     padding: 0 0 1px;
   }
 
-
   .survey-hub .projects-mobile-drag-slot {
     width: 24px;
     height: 24px;
@@ -4137,12 +3952,11 @@
      ========================================================================== */
 
   /* THE PANEL. Two shapes reach it: a list container that is already its own
-     element (Documents, Archive, the loading skeletons), and the flex box
+     element (Documents, Archive), and the flex box
      SortableRearrangeList renders, which is the row group for every reorderable
      list. Both are the card. */
   .survey-hub .documents-mobile-list,
   .survey-hub .archive-mobile-list,
-  .survey-hub .hub-loading-mobile-panel,
   .survey-hub .projects-mobile-drill-view > [data-sortable-rearrange-list],
   .survey-hub .projects-mobile-file-list > [data-sortable-rearrange-list],
   .survey-hub .templates-mobile-browser > [data-sortable-rearrange-list] {
@@ -4170,17 +3984,13 @@
      leaves the empty states and the dashed "no files" card at their own size. */
   .survey-hub .projects-mobile-drill-view:has(> [data-sortable-rearrange-list]),
   .survey-hub .projects-mobile-drill-view:has(> .projects-mobile-file-list),
-  .survey-hub .projects-mobile-drill-view:has(> .hub-loading-mobile-panel),
-  .survey-hub .templates-mobile-browser:has(> [data-sortable-rearrange-list]),
-  .survey-hub .templates-mobile-browser:has(> .hub-loading-mobile-panel) {
+  .survey-hub .templates-mobile-browser:has(> [data-sortable-rearrange-list]) {
     flex: 1 0 auto;
     min-height: 0;
   }
 
   .survey-hub .projects-mobile-drill-view:has(> [data-sortable-rearrange-list]),
-  .survey-hub .projects-mobile-drill-view:has(> .hub-loading-mobile-panel),
-  .survey-hub .templates-mobile-browser:has(> [data-sortable-rearrange-list]),
-  .survey-hub .templates-mobile-browser:has(> .hub-loading-mobile-panel) {
+  .survey-hub .templates-mobile-browser:has(> [data-sortable-rearrange-list]) {
     grid-template-rows: 1fr;
   }
 
@@ -4216,8 +4026,7 @@
      desktop ledger closes it, and it can never collide with the panel's own
      bottom edge, which is far below. */
   .survey-hub .documents-mobile-list > .mobile-doc-card,
-  .survey-hub .archive-mobile-list > .archive-mobile-card,
-  .survey-hub .hub-loading-mobile-panel > .hub-loading-mobile-row {
+  .survey-hub .archive-mobile-list > .archive-mobile-card {
     border-bottom: 1px solid var(--border);
   }
 
@@ -4227,14 +4036,12 @@
      the last row drops its line so it does not double the panel's edge; the
      phone's safe inset moves outside the panel. */
   .survey-hub .documents-mobile-list,
-  .survey-hub .archive-mobile-list,
-  .survey-hub .hub-loading-mobile-panel {
+  .survey-hub .archive-mobile-list {
     padding-bottom: 0 !important;
     margin-bottom: var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px));
   }
   .survey-hub .documents-mobile-list > .mobile-doc-card:last-child,
-  .survey-hub .archive-mobile-list > .archive-mobile-card:last-child,
-  .survey-hub .hub-loading-mobile-panel > .hub-loading-mobile-row:last-child {
+  .survey-hub .archive-mobile-list > .archive-mobile-card:last-child {
     border-bottom: 0;
   }
 
@@ -4286,7 +4093,6 @@
      rules above), so the last row's 1px closing shadow shows when there is
      room below and is cut off when the rows fill the panel. */
   .survey-hub .projects-mobile-layout:has(> .projects-mobile-drill-view > [data-sortable-rearrange-list]),
-  .survey-hub .projects-mobile-layout:has(> .projects-mobile-drill-view > .hub-loading-mobile-panel),
   .survey-hub .projects-mobile-layout:not(:has(> .projects-mobile-browser)),
   .survey-hub .templates-mobile-layout:has(> .templates-mobile-browser) {
     background: var(--ink-700);
@@ -4305,9 +4111,7 @@
      would now stop the box scrolling.) */
 
   .survey-hub .projects-mobile-layout > .projects-mobile-drill-view > [data-sortable-rearrange-list],
-  .survey-hub .projects-mobile-layout > .projects-mobile-drill-view > .hub-loading-mobile-panel,
-  .survey-hub .templates-mobile-layout > .templates-mobile-browser > [data-sortable-rearrange-list],
-  .survey-hub .templates-mobile-layout > .templates-mobile-browser > .hub-loading-mobile-panel {
+  .survey-hub .templates-mobile-layout > .templates-mobile-browser > [data-sortable-rearrange-list] {
     background: transparent;
     border: 0;
     border-radius: 0;
@@ -5363,8 +5167,8 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
     background: transparent;
   }
 }
-/* The loading header holds the Select icon's place with a glyph-sized block. */
-.survey-hub .hub-loading-metric-cell > .hub-skeleton-block.hub-loading-select-glyph {
+/* The loading header holds the Select icon's place with a glyph-sized space. */
+.survey-hub .hub-loading-metric-cell > .hub-loading-space.hub-loading-select-glyph {
   left: 50%;
   width: 16px;
   height: 16px;
