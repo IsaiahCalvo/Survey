@@ -1312,6 +1312,22 @@
     inset-block: -8px;
   }
 
+  /* The search box in row 2 gets the same 44px band as its neighbours (5px
+     up, 13px down from inside its 1px border). The pad sits BEHIND the box
+     (z-index -1), so inside the box a tap still lands on the field and can
+     place the caret; above and below it the tap reaches the box, which
+     focuses the field (HubShell Search). */
+  .survey-hub .hub-mobile-search-actions > .hub-search {
+    position: relative;
+  }
+
+  .survey-hub .hub-mobile-search-actions > .hub-search::after {
+    content: '';
+    position: absolute;
+    inset: -5px 0 -13px;
+    z-index: -1;
+  }
+
   .survey-hub .projects-mobile-search-actions .projects-mobile-create-button,
   .survey-hub .templates-mobile-search-actions .templates-mobile-create-button {
     height: var(--mobile-header-row-h);
