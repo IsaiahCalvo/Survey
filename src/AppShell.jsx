@@ -61,7 +61,8 @@ import { getSelectFamilyLabel, getSelectModeIconName, isSelectFamilyTool, isSele
 import { computeTextMarkupPickerPosition } from './utils/pdfTextMarkup.js';
 import { getLiveZoomViewerId, isLiveZoomEventForViewer, LIVE_ZOOM_EVENT } from './utils/liveZoomEvents.js';
 import { useAuth } from './contexts/AuthContext';
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import useStableHandler from './hooks/useStableHandler.js';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { useOptionalAuth } from './components/OptionalAuthPrompt';
 import { useStorage, useTemplates } from './hooks/useDatabase';
@@ -141,7 +142,18 @@ const footerSlotFieldStyle = { position: 'absolute', inset: 0, width: '100%', bo
 const PDFSidebarChunk = preloadedComponent(() => import('./PDFSidebar'));
 const PDFSidebar = PDFSidebarChunk.Component;
 const SurveySpacesRailChunk = preloadedComponent(() => import('./SurveySpacesRail'));
-const SurveySpacesRail = SurveySpacesRailChunk.Component;
+// Memoised: its props come from the published rightRailApi plus a few stable
+// values, so a page change while scrolling no longer re-renders the Survey rail.
+const SurveySpacesRail = memo(SurveySpacesRailChunk.Component);
+// The hidden home screen and the desktop tab strip skip re-rendering when App
+// re-renders for viewer reasons (page number, zoom, tool state): their props
+// are kept stable below with useStableHandler. Before this, every page change
+// while scrolling re-rendered the whole (hidden) home screen.
+const MemoDashboard = memo(Dashboard);
+const MemoTabBar = memo(TabBar);
+// No props: these only change from their own state and window events.
+const MemoSaveLogBanner = memo(SaveLogBanner);
+const MemoToastHost = memo(ToastHost);
 const loadPDFViewerModule = () => Promise.all([
   import('./PDFViewer'),
   PDFSidebarChunk.load(),
@@ -1597,6 +1609,21 @@ export default function App({ devPreviewReturnTab = null }) {
     }
   };
 
+  // Stable identities for the memoised home screen and tab strip.
+  const stableDocumentSelect = useStableHandler(handleDocumentSelect);
+  const stableBack = useStableHandler(handleBack);
+  const stableShowAuthModal = useCallback(() => setShowAuthModal(true), [setShowAuthModal]);
+  const stableTabClick = useStableHandler(handleTabClick);
+  const stableTabClose = useStableHandler(handleTabClose);
+  const stableTabReorder = useStableHandler(handleTabReorder);
+  const stablePageDrop = useStableHandler(handlePageDrop);
+  const handleRightRailCollapseChange = useStableHandler((collapsed) => {
+    setMobileSurveyPanelOpen(!collapsed);
+    // Rail footer flips vertical/horizontal off this.
+    setRightRailCollapsed(collapsed);
+    rightRailApi?.onCollapseChange?.(collapsed);
+  });
+
   // Determine what to render based on active tab. Keep this before any
   // conditional return because hooks below depend on it.
   const activeTab = tabs.find(t => t.id === activeTabId);
@@ -2078,17 +2105,17 @@ export default function App({ devPreviewReturnTab = null }) {
           it's visible on the dashboard / templates / auth / any view, not
           only inside the PDF viewer. Listens for a window event the Save
           Log handler dispatches. */}
-      <SaveLogBanner />
-      <ToastHost />
+      <MemoSaveLogBanner />
+      <MemoToastHost />
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
         {tabs.length > 0 && !isNarrowShell && ( // Desktop-only: mobile navigation lives inside the home/viewer chrome.
-          <TabBar
+          <MemoTabBar
             tabs={tabs}
             activeTabId={activeTabId}
-            onTabClick={handleTabClick}
-            onTabClose={handleTabClose}
-            onTabReorder={handleTabReorder}
-            onPageDrop={handlePageDrop}
+            onTabClick={stableTabClick}
+            onTabClose={stableTabClose}
+            onTabReorder={stableTabReorder}
+            onPageDrop={stablePageDrop}
           />
         )}
         {/* UX 2026-05-14: App-level top toolbar consolidating Undo/Redo plus
@@ -4031,15 +4058,15 @@ export default function App({ devPreviewReturnTab = null }) {
                 no clicks, not read out. display: contents, so the wrapper adds
                 no box and the layout is untouched. */}
             <div inert={isViewerVisible ? '' : undefined} style={{ display: 'contents' }}>
-            <Dashboard
+            <MemoDashboard
               ref={dashboardRef}
-              onDocumentSelect={handleDocumentSelect}
-              onBack={handleBack}
+              onDocumentSelect={stableDocumentSelect}
+              onBack={stableBack}
               documents={documents}
               setDocuments={setDocuments}
               templates={appTemplates}
               onTemplatesChange={handleTemplatesChange}
-              onShowAuthModal={() => setShowAuthModal(true)}
+              onShowAuthModal={stableShowAuthModal}
               entities={entities}
               setEntities={setEntities}
             />
@@ -4155,12 +4182,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 mobileMode={isMobileViewer}
                 expandRequestKey={(rightRailApi.expandRequestKey || 0) + mobileSurveyRequestKey}
                 collapseRequestKey={mobileSurveyCollapseRequestKey}
-                onCollapseChange={(collapsed) => {
-                  setMobileSurveyPanelOpen(!collapsed);
-                  // Rail footer (below) flips vertical/horizontal off this.
-                  setRightRailCollapsed(collapsed);
-                  rightRailApi.onCollapseChange?.(collapsed);
-                }}
+                onCollapseChange={handleRightRailCollapseChange}
               />
             )}
             {/* Spacer pushes the bottom slot to the bottom of the rail. */}
