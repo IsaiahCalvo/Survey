@@ -3575,7 +3575,7 @@ export default function TemplatesEditor({
           onClick={(e) => e.stopPropagation()}
           style={{
             width: 440, maxWidth: 'calc(100vw - 32px)',
-            background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10,
+            background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-dialog)',
             padding: '18px 20px 14px', boxShadow: '0 18px 60px rgba(0,0,0,0.55)',
             fontFamily: 'var(--font-ui)', color: 'var(--text-1)',
           }}
@@ -3638,7 +3638,7 @@ export default function TemplatesEditor({
           <div
             className="templates-module-edit-modal"
             onClick={(e) => e.stopPropagation()}
-            style={{ width: 400, maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100dvh - 32px)', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10 }}
+            style={{ width: 400, maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100dvh - 32px)', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-dialog)' }}
           >
             <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
               <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, letterSpacing: '-0.025em', flex: 'none', color: 'var(--text-1)', fontFamily: 'var(--font-ui)' }}>Edit modules</h3>
@@ -3746,7 +3746,7 @@ export default function TemplatesEditor({
           data-modal-focus-layer="true"
           tabIndex={-1}
           onClick={(e) => e.stopPropagation()}
-          style={{ width: 420, overflow: 'hidden', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10 }}
+          style={{ width: 420, overflow: 'hidden', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-dialog)' }}
         >
           <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>

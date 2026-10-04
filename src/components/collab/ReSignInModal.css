@@ -40,11 +40,10 @@
   background: var(--surface-1);
 
   /* UX: 1px border in the design token's primary border color — quietly
-   * separates the modal from the document underneath. Border-radius 8px
-   * matches the banner pattern (smaller than AuthModal's 12px so it reads
-   * as inline + lightweight, not a fullscreen system overlay). */
+   * separates the modal from the document underneath. The corner is the
+   * one dialog corner (--radius-dialog), the same as every other dialog. */
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-dialog);
 
   /* UX: shadow-lg drop shadow — heavier than the banner's shadow-md so the
    * modal floats over the document with clear depth, signaling "this is an

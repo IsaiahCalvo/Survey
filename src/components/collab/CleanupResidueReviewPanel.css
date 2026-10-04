@@ -50,7 +50,7 @@
      existing modal family. */
   background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-dialog);
   box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.5));
 
   width: 100%;

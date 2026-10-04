@@ -116,7 +116,7 @@ const KeyboardShortcutsOverlay = () => {
         ref={modalContentRef}
         style={{
           background: COLORS.background.secondary,
-          borderRadius: BORDERS.radius.xl,
+          borderRadius: BORDERS.radius.dialog,
           padding: '32px',
           maxWidth: '700px',
           width: '420px',

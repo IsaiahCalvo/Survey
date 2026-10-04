@@ -174,6 +174,9 @@ export const BORDERS = {
     md: '6px',
     lg: '8px',
     xl: '10px',
+    // The one centred-dialog corner (tokens.css --radius-dialog). A dialog
+    // card uses this, not xl, so every dialog follows the token.
+    dialog: 'var(--radius-dialog)',
     full: '9999px',
   },
 

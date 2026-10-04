@@ -595,7 +595,7 @@ export default function SaveLogBanner() {
               background: 'var(--surface-2)',
               color: 'var(--text-1)',
               padding: '20px 22px',
-              borderRadius: 12,
+              borderRadius: 'var(--radius-dialog)',
               boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
               width: 380,
               maxWidth: '90vw'

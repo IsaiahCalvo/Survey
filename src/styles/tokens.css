@@ -346,6 +346,11 @@
   --radius-md: 8px;
   --radius-lg: 16px;
   --radius-pill: 999px;
+  /* One corner for every centred dialog card (polish round 2, 2026-10-04).
+     Dialogs used 8, 10 and 12; 10 was the most common (Confirm delete,
+     Sign in, Share, Redact, the prompt dialogs, theme.js BORDERS.radius.xl),
+     so it is the one value now. Phone sheets keep --radius-lg. */
+  --radius-dialog: 10px;
 
   /* --- ONE CALM ALERT (owner 2026-10-02) ------------------------------- */
   /* An error box is a soft red tint inside a thin red edge all the way

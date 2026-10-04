@@ -30,7 +30,9 @@ test('delete confirmation uses the shared app modal shell', () => {
   // makes the two places this test compares unable to drift apart; a literal
   // here would pass while the rest of the app moved.
   assert.match(styles, /background:\s*var\(--surface-2\)/);
-  assert.match(styles, /border-radius:\s*10px/);
+  // 2026-10-04 (polish round 2): the card corner names the one dialog corner
+  // token (--radius-dialog, 10px) so every dialog shares it.
+  assert.match(styles, /border-radius:\s*var\(--radius-dialog\)/);
   assert.match(styles, /box-shadow:\s*0 24px 60px rgba\(0,\s*0,\s*0,\s*0\.55\)/);
   assert.match(styles, /overflow:\s*hidden/);
 

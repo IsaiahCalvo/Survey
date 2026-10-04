@@ -56,7 +56,7 @@ export default function SpaceSelectionDialog({ open, onClose, title = 'Select sp
           style={{
             background: COLORS.modal.surface,
             border: `1px solid ${COLORS.modal.border}`,
-            borderRadius: '8px',
+            borderRadius: 'var(--radius-dialog)',
             padding: '24px',
             width: '500px',
             maxWidth: '90vw',

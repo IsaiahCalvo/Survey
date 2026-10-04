@@ -171,7 +171,7 @@ const CreateCategoryModal = ({
       <div
         style={{
           background: COLORS.modal.surface,
-          borderRadius: BORDERS.radius.xl,
+          borderRadius: BORDERS.radius.dialog,
           padding: '24px',
           maxWidth: '500px',
           width: '90%',

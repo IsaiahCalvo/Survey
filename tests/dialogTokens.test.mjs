@@ -27,3 +27,40 @@ test('modal backdrops use the --overlay-scrim token, not a typed colour', () => 
     .map(({ path }) => path.slice(SRC.length));
   assert.deepEqual(offenders, []);
 });
+
+// 2026-10-04 (polish round 2): one corner for every centred dialog card.
+// Dialogs used 8, 10 and 12; the token is 10 (the most common value).
+test('the dialog corner token exists and the dialog cards use it', () => {
+  const tokens = files.find(({ path }) => path.endsWith(join('styles', 'tokens.css'))).text;
+  assert.match(tokens, /--radius-dialog:\s*10px;/);
+  const users = [
+    'components/AccountSettings.css',
+    'components/ApplyRedactionsModal.css',
+    'components/AuthModal.css',
+    'components/PrintPanel.css',
+    'components/collab/CleanupResidueReviewPanel.css',
+    'components/collab/ConfirmDeleteModal.css',
+    'components/collab/ReSignInModal.css',
+    'components/dialogPrompts.jsx',
+    'components/SaveLogBanner.jsx',
+    'components/SpaceSelectionDialog.jsx',
+    'components/revisions/RevisionsPanel.jsx',
+    'home/BulkModals.jsx',
+    'home/CreateProjectModal.jsx',
+    'home/ManageTeamModal.jsx',
+    'home/ShareModal.jsx',
+    'home/TemplatesEditor.jsx',
+    'sidebar/BookmarksPanel.jsx',
+    'theme.js',
+  ];
+  for (const rel of users) {
+    const file = files.find(({ path }) => path.endsWith(join(...rel.split('/'))));
+    assert.ok(file, rel);
+    assert.match(file.text, /var\(--radius-dialog\)/, rel);
+  }
+  for (const rel of ['NewColumnsModal', 'ExcelLockedModal', 'DuplicateUploadModal', 'CreateCategoryModal',
+    'TemplateOverwriteWarningModal', 'ExcelSyncConfirmModal', 'OneDriveFileSaveModal', 'KeyboardShortcutsOverlay']) {
+    const file = files.find(({ path }) => path.endsWith(`${rel}.jsx`));
+    assert.match(file.text, /borderRadius: BORDERS\.radius\.dialog/, rel);
+  }
+});

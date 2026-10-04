@@ -31,7 +31,7 @@
 
 .account-settings-modal {
   background: var(--surface-1);
-  border-radius: 12px;
+  border-radius: var(--radius-dialog);
   width: 95%;
   max-width: 900px;
   /* UX (owner request 2026-08-20): the modal must NOT resize as the user moves

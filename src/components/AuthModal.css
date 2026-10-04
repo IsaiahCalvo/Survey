@@ -36,7 +36,7 @@
 
 .auth-modal {
   background: var(--surface-2);
-  border-radius: 10px;
+  border-radius: var(--radius-dialog);
   padding: 28px;
   max-width: 440px;
   width: 92%;

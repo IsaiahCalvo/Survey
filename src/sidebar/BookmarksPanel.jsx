@@ -2410,7 +2410,7 @@ const BookmarksPanel = ({
         }} onClick={() => setShowBookmarkGroupModal(false)}>
           <div style={{
             background: 'var(--surface-1)',
-            borderRadius: '12px',
+            borderRadius: 'var(--radius-dialog)',
             padding: '24px',
             width: '90%',
             maxWidth: '600px',
@@ -2810,7 +2810,7 @@ const BookmarksPanel = ({
         }}>
           <div style={{
             background: 'var(--surface-1)',
-            borderRadius: '12px',
+            borderRadius: 'var(--radius-dialog)',
             padding: '24px',
             width: '90%',
             maxWidth: '600px',
