@@ -325,7 +325,9 @@
 .survey-media-tile__progress > span {
   display: block;
   height: 100%;
-  background: var(--accent);
+  /* Neutral ink on the dark track: the notes and media are part of the Survey
+     panel, where gold marks only the armed category (owner 2026-10-02). */
+  background: var(--text-2);
   border-radius: 2px;
   transition: width 200ms ease-out;
 }
