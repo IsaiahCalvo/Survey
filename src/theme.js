@@ -200,13 +200,6 @@ export const SHADOWS = {
   focus: '0 0 0 2px var(--focus)',
 };
 
-export const TRANSITIONS = {
-  fast: '0.15s ease',
-  base: '0.18s ease',
-  slow: '0.2s ease',
-  spring: 'cubic-bezier(0.2, 0, 0.2, 1)',
-};
-
 export const Z_INDEX = {
   dropdown: 10,
   sticky: 100,

@@ -231,13 +231,6 @@ export function loadoutUnits(slot) {
 
 const unitSignature = (unit) => `${isControl(unit) ? token(unit) : unit.tagName}>${loadoutSignature(unit)}`;
 
-/** How many controls at the front of the row are unchanged. */
-export function sharedPrefix(before, after) {
-  let k = 0;
-  while (k < before.length && k < after.length && unitSignature(before[k]) === unitSignature(after[k])) k += 1;
-  return k;
-}
-
 /**
  * Turn a copy of the slot into a lifeless ghost: no ids, data hooks, roles or
  * labels (so no selector — the app's own or a test's — finds it instead of
