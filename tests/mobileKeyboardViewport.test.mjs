@@ -368,7 +368,7 @@ test('Capacitor is told not to resize or scroll the web view for the keyboard', 
 test('the text editor uses the shared reveal, a frame after the inset lands', () => {
   assert.match(TEXT_EDIT_OVERLAY_SOURCE, /data-keyboard-reveal-target=""/);
   assert.match(TEXT_EDIT_OVERLAY_SOURCE, /data-keyboard-reveal-defer=""/);
-  assert.match(TEXT_EDIT_OVERLAY_SOURCE, /data-keyboard-reveal-margin=\{ACTION_BOX_GAP \+ ACTION_TOUCH_TARGET \+ ACTION_EDGE_MARGIN\}/);
+  assert.match(TEXT_EDIT_OVERLAY_SOURCE, /data-keyboard-reveal-margin=\{ACTION_BOX_GAP \+ ACTION_TOUCH_TARGET \+ ACTION_EDGE_MARGIN \+ /);
   assert.doesNotMatch(TEXT_EDIT_OVERLAY_SOURCE, /findScrollableAncestor/);
   const source = readFileSync(new URL('../src/mobile/keyboardViewport.js', import.meta.url), 'utf8');
   // The inset-change reveal is scheduled, not run inside the resize tick.
