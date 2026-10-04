@@ -24,6 +24,7 @@ import ToastHost from './components/ToastHost';
 import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from './components/AnnotationSizeControl';
 import AnnotationDropdown from './components/AnnotationDropdown';
 import { QuickColourDots, QuickPaintSwatch } from './components/QuickStyleControls';
+import { isPaintSelectionMixed } from './utils/selectionRestyle.js';
 import BodyPortal from './components/BodyPortal.js';
 import AnchoredPopover from './components/AnchoredPopover';
 import ToolbarOverflowMenu from './components/ToolbarOverflowMenu';
@@ -3046,6 +3047,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         variant={isCounter ? 'counter' : 'shape'}
                         ring={isCounter ? pinColour : borderColour}
                         center={isCounter ? numberColour : fillColour}
+                        mixed={isPaintSelectionMixed(bottomToolbarApi.selectionMixed)}
                         onOpen={() => {
                           setColorPickerTab(annotationPaint.isShape ? 'fill' : annotationPaint.quick.tab);
                           bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);

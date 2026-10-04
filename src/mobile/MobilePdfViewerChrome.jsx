@@ -7,6 +7,7 @@ import CompactColorPicker, { PRESET_COLORS } from '../components/CompactColorPic
 import { composeTextColor, splitTextColor } from '../utils/textColorOpacity';
 import { resolveFontSizeDraft } from '../utils/selectedTextFormatting.js';
 import { QuickColourDots, QuickPaintSwatch } from '../components/QuickStyleControls';
+import { isPaintSelectionMixed } from '../utils/selectionRestyle.js';
 import { SheetOpacitySlider, SheetPreview, SheetRow, SheetScaleSlider, SheetSection, SheetSegmented, SheetSizeField, SheetSwatchRow } from './MobileToolSheetControls';
 import DismissBarrier from '../components/DismissBarrier';
 import Spinner from '../components/Spinner';
@@ -2086,6 +2087,7 @@ export function MobileToolProperties({ api }) {
              the Border / Fill tabs for the other one. It used to open the old
              "<Tool> settings" sheet instead, which is not a colour picker. */
           onOpen={() => setColorPicker(tool === 'counter' ? 'fill' : 'stroke')}
+          mixed={isPaintSelectionMixed(api.selectionMixed)}
         />
       )}
       <MobileStripDivider />
