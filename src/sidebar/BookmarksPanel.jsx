@@ -2400,7 +2400,7 @@ const BookmarksPanel = ({
           // UX (KAL-62): the app's one modal scrim — warm-dark dim plus an 8px
           // blur, identical to every other dialog, so this one no longer reads
           // as heavier and colder than the rest.
-          background: 'rgba(13, 15, 20, 0.55)',
+          background: 'var(--overlay-scrim)',
           backdropFilter: 'blur(8px)',
           WebkitBackdropFilter: 'blur(8px)',
           display: 'flex',
@@ -2796,7 +2796,7 @@ const BookmarksPanel = ({
           // UX (KAL-62): the app's one modal scrim — warm-dark dim plus an 8px
           // blur, identical to every other dialog, so this one no longer reads
           // as heavier and colder than the rest.
-          background: 'rgba(13, 15, 20, 0.55)',
+          background: 'var(--overlay-scrim)',
           backdropFilter: 'blur(8px)',
           WebkitBackdropFilter: 'blur(8px)',
           display: 'flex',
