@@ -1340,6 +1340,10 @@
     height: 44px;
     margin-block: -8px;
     padding-block: 8px;
+    /* Room for Select's pad, which reaches 8px to the left (see the ::after
+       below): this row scrolls sideways, so it clips anything outside its
+       padding box. The auto margin gives the 8px back, so nothing moves. */
+    padding-left: 8px;
     box-sizing: border-box;
     display: flex;
     align-items: center;
@@ -1433,6 +1437,9 @@
     height: 44px;
     margin-block: -8px;
     padding-block: 8px;
+    /* Same room for Select's pad as the row above; the margin keeps it in place. */
+    padding-left: 8px;
+    margin-left: -8px;
     box-sizing: border-box;
     display: flex;
     align-items: center;
@@ -5164,10 +5171,14 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
     width: 18px;
     height: 18px;
   }
+  /* Polish round 5: the pad was -4px all round, but the row's scroll box
+     clipped it to the painted 36px width, and the avatar's pad already owns
+     the 8px gap on the right. So it takes 8px on the left and none on the
+     right: 44 x 44, meeting the avatar's pad without overlapping it. */
   .survey-hub .section-icon-btn.section-icon-btn.mobile-header-select-button::after {
     content: '';
     position: absolute;
-    inset: -4px;
+    inset: -4px 0 -4px -8px;
     z-index: 1;
     background: transparent;
   }
