@@ -7,7 +7,10 @@ import { schedulePdfViewerPrefetch } from '../src/utils/pdfViewerPrefetch.js';
 const appShellSource = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
 
 test('AppShell shares one viewer loader between React lazy and idle prefetch', () => {
-  assert.match(appShellSource, /const loadPDFViewerModule = \(\) => import\('\.\/PDFViewer'\)/);
+  // The viewer loader also brings the two document rails (PDFSidebar,
+  // SurveySpacesRail), which only appear once the viewer is up, so the home
+  // screen no longer downloads them.
+  assert.match(appShellSource, /const loadPDFViewerModule = \(\) => Promise\.all\(\[\s*import\('\.\/PDFViewer'\),\s*PDFSidebarChunk\.load\(\),\s*SurveySpacesRailChunk\.load\(\),\s*\]\)/);
   assert.match(appShellSource, /lazy\(\(\) => loadPDFViewerModule\(\)/);
   assert.match(appShellSource, /schedulePdfViewerPrefetch\(loadPDFViewerModule\)/);
 });

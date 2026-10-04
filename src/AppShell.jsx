@@ -17,7 +17,6 @@ import Dashboard from './Dashboard';
 import DocumentLockBanner from './components/DocumentLockBanner.jsx';
 import Icon from './Icons';
 import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
-import PDFSidebar from './PDFSidebar';
 import SaveLogBanner from './components/SaveLogBanner';
 import QuietLoading, { openingLabel } from './components/QuietLoading';
 import ToastHost from './components/ToastHost';
@@ -32,7 +31,10 @@ import useLoadoutTransition, { useDropInRow, useLeavingRow, useRowCrossfade } fr
 import { placeUnderOpenerAvoiding, slotDefinition, TEXT_ROW_CAPTION_ROOM, TIGHT_SPACING } from './utils/responsiveToolbar.js';
 import { recentPressedControl, registerLightPopover } from './components/dismissRules.js';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from './utils/annotationSize';
-import SurveySpacesRail from './SurveySpacesRail';
+// The two document rails (PDFSidebar, SurveySpacesRail) load with the viewer,
+// not with the home screen - see loadPDFViewerModule below. Their stylesheets
+// stay here, in the same place in the cascade they always had.
+import './surveyRailStyles.js';
 import ActiveSpaceChip from './sidebar/ActiveSpaceChip';
 import TabBar from './TabBar';
 import {
@@ -53,6 +55,7 @@ import { showToast } from './utils/toast';
 import { randomUUID } from './utils/randomUUIDPolyfill';
 import { getDocumentOpenKey, isSameDocumentTab } from './utils/documentTabIdentity.js';
 import { schedulePdfViewerPrefetch } from './utils/pdfViewerPrefetch';
+import { preloadedComponent } from './utils/preloadedComponent.js';
 import { shouldWarnBeforeUnloadForTab } from './utils/beforeUnloadGuard.js';
 import { getSelectFamilyLabel, getSelectModeIconName, isSelectFamilyTool, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
 import { computeTextMarkupPickerPosition } from './utils/pdfTextMarkup.js';
@@ -131,8 +134,19 @@ const footerSlotFieldStyle = { position: 'absolute', inset: 0, width: '100%', bo
 
 // Lazy boundary: the dashboard paints without pulling in the viewer (and its
 // fabric / annotation / Excel weight). The viewer chunk fetches the first time
-// a PDF tab is opened.
-const loadPDFViewerModule = () => import('./PDFViewer');
+// a PDF tab is opened (or earlier, from the idle prefetch).
+// The left and right document rails only appear once the viewer has published
+// their APIs, so they travel with it: the viewer resolves only after both rail
+// chunks are in memory, and the rails then render without an empty frame.
+const PDFSidebarChunk = preloadedComponent(() => import('./PDFSidebar'));
+const PDFSidebar = PDFSidebarChunk.Component;
+const SurveySpacesRailChunk = preloadedComponent(() => import('./SurveySpacesRail'));
+const SurveySpacesRail = SurveySpacesRailChunk.Component;
+const loadPDFViewerModule = () => Promise.all([
+  import('./PDFViewer'),
+  PDFSidebarChunk.load(),
+  SurveySpacesRailChunk.load(),
+]).then(([viewerModule]) => viewerModule);
 const PDFViewer = lazy(() => loadPDFViewerModule().then((m) => ({ default: m.PDFViewer })));
 // Lazy boundary: the compact color picker only renders deep inside the bottom
 // toolbar when a rich-text or annotation color picker is explicitly opened.
