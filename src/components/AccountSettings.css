@@ -846,4 +846,24 @@
   .account-form-row {
     grid-template-columns: 1fr;
   }
+
+  /* The surface rule (tokens.css, owner 2026-10-02), as Sign in already does:
+     the full-screen page is a sheet (--panel-bg) and what sits in it — fields,
+     the connected-service rows, the plan cards — are wells (--panel-well).
+     It was backwards here: a darker page under lighter fields, and a still
+     darker tab strip. The Change password box stays the page's own colour
+     (its edge marks it) so its fields read as wells too. Desktop unchanged. */
+  .account-settings-modal,
+  .account-settings-sidebar,
+  .account-settings-content,
+  .account-subsection {
+    background: var(--panel-bg);
+  }
+
+  .account-form-group input,
+  .account-field-display,
+  .account-connected-account,
+  .account-subscription-card {
+    background: var(--panel-well);
+  }
 }
