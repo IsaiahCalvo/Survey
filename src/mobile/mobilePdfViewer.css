@@ -936,6 +936,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   color: var(--accent);
 }
 
+/* Polish 3 (2026-10-04): More and the people button open a menu or a sheet;
+   they are not tools, so while open they light to --text-1, never gold. */
+.mobile-pdf-tools__button[aria-expanded='true'] {
+  color: var(--text-1);
+}
+
 .mobile-pdf-tools__button:disabled { color: var(--text-disabled);
   cursor: not-allowed;
 }

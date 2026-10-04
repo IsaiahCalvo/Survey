@@ -2895,10 +2895,15 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
         </div>
 
         <div className="mobile-pdf-tools__footer" ref={popoverRef}>
+          {/* Polish 3 (2026-10-04): an open menu is not a picked tool, so it
+              never turns gold (gold = the active tool, owner 2026-10-02). The
+              trigger says it is open (aria-expanded) and its glyph lights to
+              --text-1, as the Spaces export icon does (styles.css). */}
           <RailButton
             icon="more"
             label="More document options"
-            active={moreOpen}
+            aria-haspopup="menu"
+            aria-expanded={moreOpen}
             onClick={() => { setMoreOpen((open) => !open); setPresenceOpen(false); }}
           />
           <div className="mobile-pdf-tools__footer-stack">
@@ -2932,7 +2937,8 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
             />
             <RailButton
               label={`${presenceCount} active user${presenceCount === 1 ? '' : 's'}`}
-              active={presenceOpen}
+              aria-haspopup="dialog"
+              aria-expanded={presenceOpen}
               onClick={() => { setPresenceOpen((open) => !open); setMoreOpen(false); }}
             >
               <span className="mobile-pdf-tools__avatar" style={{ background: presenceUsers[0]?.tint }}>
