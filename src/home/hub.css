@@ -3138,6 +3138,13 @@
     min-height: 15px;
   }
 
+  /* A template with no entities has no dots: drop the empty strip so the
+     name and its count line sit centred in the row, like every other list
+     row, instead of riding high over a blank 15px line. */
+  .survey-hub .templates-mobile-swatches:empty {
+    display: none;
+  }
+
   .survey-hub .templates-mobile-swatches i {
     width: 14px;
     height: 14px;
