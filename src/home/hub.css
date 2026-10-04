@@ -2264,12 +2264,6 @@
     white-space: nowrap;
   }
 
-  .survey-hub .projects-mobile-back-icon,
-  .survey-hub .templates-mobile-back-icon {
-    display: inline-flex;
-    transform: rotate(180deg);
-  }
-
   .survey-hub .projects-mobile-drill-header > div,
   .survey-hub .projects-mobile-rail-toolbar > div {
     min-width: 0;
