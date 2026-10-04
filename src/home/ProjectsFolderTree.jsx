@@ -25,6 +25,8 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { mergeProjectDocumentOrder, orderDocumentsByProject } from './projectDocumentOrder.js';
 import { HubShell, Icon, Avatar, AvatarStack, Search, EmptyState } from './HubShell';
+import { presenceInitials } from '../components/presenceIdentity.js';
+import { countLabel } from './countLabel.js';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from '../components/SectionIconButton.jsx';
 import ManageTeamModal from './ManageTeamModal';
 import { listProjectCollaboratorsForProjects } from '../services/projectInviteService';
@@ -74,9 +76,10 @@ const shortWhen = (d) => {
 };
 
 /* Two-letter initials from a display name — "Isaiah Calvo" -> "IC". Avatar
-   glyphs render this so the circle shows real initials, never a raw user id. */
-const initialsOf = (name) => (name || '')
-  .trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase() || '—';
+   glyphs render this so the circle shows real initials, never a raw user id.
+   The one app-wide rule (presenceIdentity.js, owner 2026-10-02); "—" when
+   there is no name at all. */
+const initialsOf = (name) => (String(name || '').trim() ? presenceInitials(name) : '—');
 
 /* Project rows use the same team summary on desktop and mobile. Keeping this
    shared prevents mobile from substituting file or activity metadata. */
@@ -1429,7 +1432,7 @@ export default function ProjectsFolderTree({
               </button>
               <div>
                 <strong>{open.name}</strong>
-                <span>{openFiles.length} files · {projectLastEditedLabel(open.id)}</span>
+                <span>{countLabel(openFiles.length, 'file')} · {projectLastEditedLabel(open.id)}</span>
               </div>
             </div>
             {mobileFileActions}
@@ -1568,7 +1571,7 @@ export default function ProjectsFolderTree({
                 <span className="projects-mobile-folder-glyph"><Icon name="folder" size={17} /></span>
                 <span className="projects-mobile-folder-copy">
                   <strong>{p.name}</strong>
-                  <small>{projectFileCount(p.id)} files · {projectTeam(p).length} members</small>
+                  <small>{countLabel(projectFileCount(p.id), 'file')} · {countLabel(projectTeam(p).length, 'member')}</small>
                 </span>
                 <span className="projects-mobile-chevron">›</span>
               </button>
@@ -1723,8 +1726,8 @@ export default function ProjectsFolderTree({
               }}
             />
             <div className="projects-mobile-focus-stats">
-              <span>{openFiles.length} files</span>
-              <span>{projectTeam(open).length} members</span>
+              <span>{countLabel(openFiles.length, 'file')}</span>
+              <span>{countLabel(projectTeam(open).length, 'member')}</span>
               <span>{projectLastEditedLabel(open.id)}</span>
             </div>
             {mobileFileActions}
@@ -1760,7 +1763,7 @@ export default function ProjectsFolderTree({
                 >
                   <span className="projects-mobile-team-name">{p.name}</span>
                   <AvatarStack members={team.slice(0, 4).map((id) => initialsOf(lookupMember(id)?.name))} size={16} />
-                  <span>{team.length} members · {projectFileCount(p.id)} files</span>
+                  <span>{countLabel(team.length, 'member')} · {countLabel(projectFileCount(p.id), 'file')}</span>
                 </button>
               );
             })}

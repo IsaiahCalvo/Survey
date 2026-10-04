@@ -11,6 +11,8 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { HubShell, Icon, Avatar, PdfThumb, Search, EmptyState } from './HubShell';
+import { countLabel } from './countLabel.js';
+import { presenceInitials, PRESENCE_SELF_TINT, PRESENCE_INK } from '../components/presenceIdentity.js';
 import SectionIconButton, { SelectModeButtons } from '../components/SectionIconButton.jsx';
 import { MoveCopyModal, RenameModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
@@ -78,9 +80,10 @@ function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168 }) {
   );
 }
 
-/* Two-letter initials from a display name — for the Team avatar glyph. */
-const initialsOf = (name) => (name || '')
-  .trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase() || '—';
+/* The Team avatar is YOUR face: the one initials rule and the calm own-face
+   grey the account avatar and the viewer's presence row use (owner
+   2026-10-02), not a gold disc with its own initials rule. */
+const initialsOf = (name) => presenceInitials(name || 'You');
 
 const longDate = (value) => {
   const ms = Date.parse(value || 0) || 0;
@@ -552,7 +555,7 @@ export default function DocumentsLedger({
               </div>
               <div style={{ marginTop: 10, fontSize: 15, fontWeight: 700, flex: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sel.name}</div>
               <div className="meta" style={{ marginTop: 4, fontSize: 12, flex: 'none' }}>
-                {[sel.project === 'Sandbox' ? null : sel.project, sel.size, sel.pages != null ? `${sel.pages} pages` : null, sel.rev || null].filter(Boolean).join(' · ')}
+                {[sel.project === 'Sandbox' ? null : sel.project, sel.size, sel.pages != null ? countLabel(sel.pages, 'page') : null, sel.rev || null].filter(Boolean).join(' · ')}
               </div>
               {/* Preview viewport — a set custom size; the page is contained
                   inside at its true aspect ratio, letterboxed against a dark
@@ -585,7 +588,7 @@ export default function DocumentsLedger({
               <div style={{ marginTop: 14, flex: 'none' }}>
                 <div className="section-label">Team</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                  <Avatar initials={initialsOf(user?.name || user?.email || 'You')} size={22} color="var(--accent)" />
+                  <Avatar initials={initialsOf(user?.name || user?.email || 'You')} size={22} color={PRESENCE_SELF_TINT} ink={PRESENCE_INK} />
                   <span style={{ fontSize: 12, fontWeight: 600 }}>{user?.name || user?.email?.split('@')[0] || 'You'}</span>
                 </div>
               </div>
@@ -606,7 +609,7 @@ export default function DocumentsLedger({
               <div style={{ flex: 1, minHeight: 0 }} />
               <div style={{ display: 'flex', gap: 8, marginTop: 14, flex: 'none' }}>
                 <button className="btn primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => onOpenDocument && onOpenDocument(sel.raw)}>Open file</button>
-                <button className="btn" title="Share" aria-label="Share" onClick={() => onShare && onShare([sel.raw])}><Icon name="share" size={12} /></button>
+                <button className="btn documents-preview-share" title="Share" aria-label="Share" onClick={() => onShare && onShare([sel.raw])}><Icon name="share" size={16} /></button>
               </div>
             </aside>
           )}
@@ -647,7 +650,7 @@ export default function DocumentsLedger({
                 <button ref={mobileDetailCloseRef} type="button" title="Close details" aria-label="Close details" onClick={closeMobileDetail} className="hub-icon-btn"><Icon name="close" size={13} /></button>
               </div>
               <div className="documents-mobile-detail-meta">
-                {[mobileDetailDoc.project === 'Sandbox' ? null : mobileDetailDoc.project, mobileDetailDoc.size, mobileDetailDoc.pages != null ? `${mobileDetailDoc.pages} pages` : null].filter(Boolean).join(' · ')}
+                {[mobileDetailDoc.project === 'Sandbox' ? null : mobileDetailDoc.project, mobileDetailDoc.size, mobileDetailDoc.pages != null ? countLabel(mobileDetailDoc.pages, 'page') : null].filter(Boolean).join(' · ')}
               </div>
               <div className="documents-mobile-detail-preview">
                 <PdfPageThumb
@@ -663,16 +666,19 @@ export default function DocumentsLedger({
                 <div>
                   <span>Team</span>
                   <div className="documents-mobile-detail-owner">
-                    <Avatar initials={initialsOf(user?.name || user?.email || 'You')} size={22} color="var(--accent)" />
+                    <Avatar initials={initialsOf(user?.name || user?.email || 'You')} size={22} color={PRESENCE_SELF_TINT} ink={PRESENCE_INK} />
                     <strong>{user?.name || user?.email?.split('@')[0] || 'You'}</strong>
                   </div>
                 </div>
                 <div><span>Last edited</span><strong>{mobileDetailDoc.lastEditedAbs}</strong></div>
                 <div><span>Uploaded</span><strong>{mobileDetailDoc.uploadedAbs}</strong></div>
               </div>
+              {/* Same pair as the desktop preview panel: a wide Open file,
+                  then Share as an icon at the right (owner: icons over words
+                  for actions; phone and desktop match). */}
               <div className="documents-mobile-detail-actions">
-                <button type="button" className="btn" onClick={() => { setMobileDetailId(null); onShare && onShare([mobileDetailDoc.raw]); }}><Icon name="share" size={12} />Share</button>
                 <button type="button" className="btn primary" onClick={() => { setMobileDetailId(null); onOpenDocument && onOpenDocument(mobileDetailDoc.raw); }}>Open file</button>
+                <button type="button" className="btn documents-preview-share" title="Share" aria-label="Share" onClick={() => { setMobileDetailId(null); onShare && onShare([mobileDetailDoc.raw]); }}><Icon name="share" size={18} /></button>
               </div>
             </section>
           </div>

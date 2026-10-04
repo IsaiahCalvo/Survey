@@ -49,8 +49,11 @@
   position: absolute;
   inset: -4px;
 }
-.section-icon-btn:disabled {
-  opacity: 0.4;
+/* Off looks the same everywhere (tokens.css): --text-disabled ink, never an
+   opacity. Delete gives up its red too, so an unavailable Delete reads off. */
+.section-icon-btn:disabled,
+.section-icon-btn.is-danger:disabled {
+  color: var(--text-disabled);
   cursor: default;
 }
 

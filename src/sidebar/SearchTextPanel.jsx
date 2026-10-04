@@ -1902,7 +1902,7 @@ const SearchTextPanel = ({
               aria-label="Previous match (Shift+Enter)"
               {...tip('Previous match (Shift+Enter)', 'below')}
             >
-              <Icon name="chevronUp" size={14} color="var(--text-2)" />
+              <Icon name="chevronUp" size={14} color="currentColor" />
             </button>
             <button
               type="button"
@@ -1912,7 +1912,7 @@ const SearchTextPanel = ({
               aria-label="Next match (Enter)"
               {...tip('Next match (Enter)', 'below')}
             >
-              <Icon name="chevronDown" size={14} color="var(--text-2)" />
+              <Icon name="chevronDown" size={14} color="currentColor" />
             </button>
           </span>
         </div>

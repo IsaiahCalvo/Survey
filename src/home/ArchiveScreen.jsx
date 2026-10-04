@@ -16,6 +16,7 @@
 */
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { HubShell, Icon, EmptyState, PdfThumb, AvatarStack, Search } from './HubShell';
+import { countLabel } from './countLabel.js';
 import SectionIconButton from '../components/SectionIconButton.jsx';
 /* The app-wide icon set. Aliased because HubShell exports its own `Icon` for
    the hub's type glyphs; this one carries the shared chevrons. */
@@ -1084,7 +1085,7 @@ export default function ArchiveScreen({
                     archiveTypeLabel(previewItem.type),
                     previewItem.projectName || null,
                     previewItem.type === 'document' ? fileSizeLabel(previewItem.fileSize) : null,
-                    previewItem.type === 'document' && previewItem.pageCount != null ? `${previewItem.pageCount} pages` : null,
+                    previewItem.type === 'document' && previewItem.pageCount != null ? countLabel(previewItem.pageCount, 'page') : null,
                     previewItem.type === 'project' && previewItem.childCount
                       ? `${previewItem.childCount} ${previewItem.childCount === 1 ? 'document' : 'documents'}`
                       : null,

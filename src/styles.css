@@ -563,7 +563,7 @@
 }
 
 .chrome-pill:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -623,7 +623,7 @@
 }
 
 .chrome-text-toggle:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -2315,7 +2315,7 @@ input[type="text"].spaces-region__name-input:focus-visible {
 }
 
 .survey-marker-leading-check:focus-visible {
-  outline: 1px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 

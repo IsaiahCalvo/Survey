@@ -28,6 +28,7 @@
 }
 
 .search-text-panel__icon-button {
+  color: var(--text-2);
   width: 28px;
   height: 28px;
   padding: 0;
@@ -50,9 +51,12 @@
   transform: scale(0.88);
 }
 
+/* Off: the one --text-disabled ink (tokens.css), not a 35% fade. The glyphs
+   draw in currentColor so this reaches them. */
 .search-text-panel__icon-button:disabled {
   cursor: default;
-  opacity: 0.35;
+  opacity: 1;
+  color: var(--text-disabled);
 }
 
 .search-text-panel__clear {

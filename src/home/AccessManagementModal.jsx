@@ -32,6 +32,7 @@ import {
   sendAccessRemovedEmail,
 } from '../services/shareEmailService';
 import { copyTextToClipboard } from '../utils/clipboard';
+import { presenceInitials } from '../components/presenceIdentity.js';
 import { Icon } from './HubShell';
 import { C } from '../uiPalette';
 
@@ -58,8 +59,10 @@ function roleLabel(role) {
   return r.charAt(0).toUpperCase() + r.slice(1);
 }
 
+/* The one app-wide initials rule (presenceIdentity.js): an email gives its
+   first and last name part ("dana.smith@…" -> "DS"), not just "D". */
 function initialsOf(name) {
-  return (name || '').trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase() || '-';
+  return String(name || '').trim() ? presenceInitials(name) : '-';
 }
 
 function labelForKind(kind) {
