@@ -25,6 +25,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { mergeProjectDocumentOrder, orderDocumentsByProject } from './projectDocumentOrder.js';
 import { HubShell, Icon, Avatar, AvatarStack, Search, EmptyState } from './HubShell';
+import { presenceInitials } from '../components/presenceIdentity.js';
 import { countLabel } from './countLabel.js';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from '../components/SectionIconButton.jsx';
 import ManageTeamModal from './ManageTeamModal';
@@ -75,9 +76,10 @@ const shortWhen = (d) => {
 };
 
 /* Two-letter initials from a display name — "Isaiah Calvo" -> "IC". Avatar
-   glyphs render this so the circle shows real initials, never a raw user id. */
-const initialsOf = (name) => (name || '')
-  .trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase() || '—';
+   glyphs render this so the circle shows real initials, never a raw user id.
+   The one app-wide rule (presenceIdentity.js, owner 2026-10-02); "—" when
+   there is no name at all. */
+const initialsOf = (name) => (String(name || '').trim() ? presenceInitials(name) : '—');
 
 /* Project rows use the same team summary on desktop and mobile. Keeping this
    shared prevents mobile from substituting file or activity metadata. */

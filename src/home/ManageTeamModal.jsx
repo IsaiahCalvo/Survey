@@ -18,6 +18,7 @@
      --bone-100 #f4f1ea --bone-200 #e8e2d4 --gold #d8a84e
 */
 import React from 'react';
+import { presenceInitials } from '../components/presenceIdentity.js';
 import { Icon } from './HubShell';
 import { AuthContext } from '../contexts/AuthContext';
 import Spinner from '../components/Spinner';
@@ -75,9 +76,9 @@ const colorFor = (seed) => {
 };
 
 /* Two-letter initials from a display name — used for the avatar glyph so the
-   circle shows real initials, never a raw user id. */
-const initialsOf = (name) => (name || '')
-  .trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase() || '—';
+   circle shows real initials, never a raw user id. The one app-wide rule
+   (presenceIdentity.js); "—" when there is no name at all. */
+const initialsOf = (name) => (String(name || '').trim() ? presenceInitials(name) : '—');
 
 const roleLabel = (role) => {
   const r = String(role || 'viewer').toLowerCase();

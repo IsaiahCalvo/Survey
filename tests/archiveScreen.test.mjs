@@ -768,8 +768,12 @@ test('avatar slots fill owners first, then editors, then viewers', () => {
 
 test('avatar initials come from the name, falling back to the invited email', () => {
   assert.equal(collaboratorInitials({ name: 'Isaiah Calvo' }), 'IC');
-  assert.equal(collaboratorInitials({ name: 'cher' }), 'C');
-  assert.equal(collaboratorInitials({ email: 'dana.smith@example.com' }), 'D');
+  // 2026-10-04: the one app-wide initials rule (presenceIdentity.js, owner
+  // 2026-10-02). A one-word name keeps its first two letters and an email
+  // gives the first and last name part, as the account avatar and the
+  // viewer's presence row already did.
+  assert.equal(collaboratorInitials({ name: 'cher' }), 'CH');
+  assert.equal(collaboratorInitials({ email: 'dana.smith@example.com' }), 'DS');
   assert.equal(collaboratorInitials({}), '—');
   assert.equal(collaboratorInitials(null), '—');
 });
