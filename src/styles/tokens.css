@@ -198,6 +198,11 @@
   --text-3: #959eae;          /* subtext, captions, inactive icons · 4.90 on
                                  surface-3, where #8d96a6 measured 4.44 */
   --text-disabled: #5c6370;   /* fails contrast on purpose */
+  /* An underlined text link ("Create an account", "Forgot password?"): calm
+     grey at rest, the heading white under the pointer. The underline is what
+     says "link"; the colour stays quiet. Never gold (owner 2026-10-04). */
+  --link: var(--text-2);
+  --link-hover: var(--text-1);
 
   /* --- Gold: the one accent -------------------------------------------- */
   --accent-light: #edc26d;    /* hover on a gold control */

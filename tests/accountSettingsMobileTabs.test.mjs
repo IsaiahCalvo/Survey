@@ -31,6 +31,27 @@ test('mobile account settings uses a compact full-width three-column tab row', (
   assert.match(button, /max-width:\s*none/);
 });
 
+// Polish round 6: the phone page follows the surface rule (tokens.css) the way
+// Sign in does — page/sheet --panel-bg, fields and cards --panel-well. It was
+// backwards (a --surface-1 page under --surface-2 fields, a --surface-0 tab
+// strip). Desktop keeps its own rules outside the media block.
+test('phone settings: page is --panel-bg, fields and cards are --panel-well', () => {
+  const mobile = css.slice(css.indexOf('@media (max-width: 768px)'));
+  const group = (token) => {
+    const at = mobile.indexOf(`background: var(${token});`);
+    assert.notEqual(at, -1, `a ${token} rule exists in the phone block`);
+    return mobile.slice(mobile.lastIndexOf('}', at), at);
+  };
+  const sheet = group('--panel-bg');
+  for (const sel of ['.account-settings-modal', '.account-settings-sidebar', '.account-settings-content']) {
+    assert.ok(sheet.includes(sel), `${sel} is --panel-bg on the phone`);
+  }
+  const well = group('--panel-well');
+  for (const sel of ['.account-form-group input', '.account-field-display', '.account-connected-account', '.account-subscription-card']) {
+    assert.ok(well.includes(sel), `${sel} is --panel-well on the phone`);
+  }
+});
+
 test('account settings nav exposes tab semantics', () => {
   assert.match(jsx, /className="account-settings-sidebar"[\s\S]{0,120}role="tablist"/);
   assert.equal((jsx.match(/role="tab"/g) || []).length, 3);

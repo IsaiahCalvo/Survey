@@ -61,3 +61,18 @@ test('success/error effect clears the in-flight guard immediately', () => {
     'the success/error effect must clear pushInFlightRef so a fast follow-up Save Log does not wait for the auto-dismiss'
   );
 });
+
+// Polish round 6: App and PDFViewer each mount a banner, so with a document
+// open one Save Log showed two banners and ran two pushes. Only the oldest
+// live instance answers; and the banner portals into <body> so the phone
+// shell's `#root > div { height: 100% !important }` cannot stretch it.
+test('only the oldest live banner answers Save Log events', () => {
+  assert.match(BANNER_SOURCE, /const liveBanners = \[\];/);
+  assert.match(BANNER_SOURCE, /const handleStart = \(event\) => \{\s*if \(!isSaveLogBannerOwner\(instanceRef\.current\)\) return;/);
+  assert.match(BANNER_SOURCE, /const handleToast = \(event\) => \{\s*if \(!isSaveLogBannerOwner\(instanceRef\.current\)\) return;/);
+  assert.match(BANNER_SOURCE, /export const isSaveLogBannerOwner = \(token\) => liveBanners\[0\] === token;/);
+});
+
+test('the banner renders into document.body, not inside #root', () => {
+  assert.match(BANNER_SOURCE, /return createPortal\(\s*<>[\s\S]*<\/>,\s*document\.body,\s*\);\s*\}\s*$/);
+});

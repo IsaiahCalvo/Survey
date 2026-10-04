@@ -155,6 +155,24 @@ skips.
 Set `ERASER_PERMISSION_E2E_ENV_ROOT=/absolute/repo/path` only when Git cannot
 discover the main repository.
 
+### Click-every-control walkthrough (run before merging UI work)
+
+```
+PLAYWRIGHT_BASE_URL=http://127.0.0.1:5199 npx playwright test \
+  --config debug/playwright.config.mjs debug/scenarios/click-every-control.spec.mjs
+```
+
+It starts its own Vite on that port, uses only local fake data (no account,
+no database), and on a 1440x900 desktop and a 390x844 touch phone presses
+every toolbar / rail / dock / tab button, every tool's sub-tools and style
+controls, the tool letters, Ctrl/Cmd+F, Ctrl/Cmd+Z, zoom keys, `?`, Escape,
+every Home tab, the row menus, Share, the account menu and Settings. Each
+control must visibly do something and throw no page error. It prints one
+`ok` / `FAIL` line per control and saves a screenshot of each failure under
+`test-results/`. About 5 minutes. It needs a browser, so it is not in the CI
+shards. No Playwright Chromium installed? Add
+`PW_CHROMIUM_PATH=/path/to/chrome`.
+
 ## License
 
 Proprietary — all rights reserved.

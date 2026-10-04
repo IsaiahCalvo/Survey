@@ -307,7 +307,7 @@
 .auth-sso-link {
   background: none;
   border: none;
-  color: var(--accent);
+  color: var(--link);
   font-size: 12.5px;
   cursor: pointer;
   padding: 8px;
@@ -320,7 +320,7 @@
 }
 
 .auth-sso-link:hover:not(:disabled) {
-  color: var(--accent-light);
+  color: var(--link-hover);
 }
 
 .auth-footer {
@@ -342,7 +342,7 @@
 .auth-link-btn {
   background: none;
   border: none;
-  color: var(--accent);
+  color: var(--link);
   cursor: pointer;
   font-size: 12.5px;
   text-decoration: underline;
@@ -354,7 +354,7 @@
 }
 
 .auth-link-btn:hover {
-  color: var(--accent-light);
+  color: var(--link-hover);
 }
 
 .auth-dismiss {

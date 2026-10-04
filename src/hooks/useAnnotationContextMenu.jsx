@@ -27,6 +27,7 @@ import { watchLightPopover } from '../components/dismissRules.js';
 import {
   clampFloatingMenuPosition,
   DESKTOP_RIGHT_RAIL_WIDTH,
+  fitMenuInBand,
   getPageViewportBounds,
 } from '../utils/floatingUiGeometry.js';
 // RULED 2026-09-28 owner: open editing + lock. Cut / Delete take ANY mark
@@ -875,6 +876,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           // be found, use that viewport alone. An 8px margin keeps the menu
           // off each bound.
           if (!el) return;
+          if (isMobileMenu) el.style.maxHeight = 'none';
           const rect = el.getBoundingClientRect();
 
           // Find the PDF page wrapper for ctx.pageNumber, then cut its rect
@@ -909,6 +911,22 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
 
           el.style.left = `${position.left}px`;
           el.style.top = `${position.top}px`;
+          if (isMobileMenu) {
+            // Polish round 6: on the phone the menu stays between the header
+            // and the dock (it ran 25px under the dock on a 375x667), and
+            // scrolls inside when it is taller than that band.
+            const vv = window.visualViewport;
+            let bandTop = 0;
+            let bandBottom = vv ? Math.min(window.innerHeight, vv.offsetTop + vv.height) : window.innerHeight;
+            const header = document.querySelector('[data-mobile-pdf-header]')?.getBoundingClientRect();
+            if (header && header.height > 0) bandTop = Math.max(bandTop, header.bottom);
+            const dock = document.querySelector('.mobile-pdf-dock')?.getBoundingClientRect();
+            if (dock && dock.height > 0 && dock.top < bandBottom) bandBottom = dock.top;
+            const fit = fitMenuInBand({ top: position.top, height: rect.height, band: { top: bandTop, bottom: bandBottom } });
+            el.style.top = `${fit.top}px`;
+            el.style.maxHeight = fit.maxHeight == null ? '' : `${fit.maxHeight}px`;
+            el.style.overflowY = fit.maxHeight == null ? '' : 'auto';
+          }
         }}
         role="menu"
         aria-label={`${mobileTitle} actions`}

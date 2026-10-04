@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { buildLogPreamble } from '../utils/logPreamble';
 import { sanitizeConsoleLogText } from '../utils/consoleLogFilter';
 import Spinner from './Spinner';
@@ -26,6 +27,16 @@ import Icon from '../Icons';
 //   → backwards-compatible success/error pill for callers that already
 //   pushed themselves (e.g. the diagnostic callout-dump path).
 
+// Polish round 6 (found by the click-every-control walkthrough): the banner is
+// mounted twice while a document is open — once by App (so Save Log works on
+// every screen) and once inside PDFViewer. Both listened, so one Save Log
+// showed two banners and ran two pushes (two GitHub logs on desktop). Only
+// the OLDEST live instance answers now. And it renders into <body>: as a
+// direct child of #root on the phone, the shell's `#root > div { height:
+// 100% !important }` stretched it into a full-height slab over the screen.
+const liveBanners = [];
+export const isSaveLogBannerOwner = (token) => liveBanners[0] === token;
+
 const COUNTDOWN_MS = 5000; // UX: 5 seconds is enough to react, short enough to feel snappy
 const AUTO_DISMISS_RESULT_MS = 2800; // UX: success/error pill linger time, matches old toast
 
@@ -51,6 +62,16 @@ export default function SaveLogBanner() {
   // Cleared in `dismiss` and on a fresh `save-log-banner-start` event so a
   // legitimate next Save Log can still run.
   const pushInFlightRef = useRef(false);
+  const instanceRef = useRef(null);
+  if (!instanceRef.current) instanceRef.current = {};
+  useEffect(() => {
+    const token = instanceRef.current;
+    liveBanners.push(token);
+    return () => {
+      const at = liveBanners.indexOf(token);
+      if (at !== -1) liveBanners.splice(at, 1);
+    };
+  }, []);
 
   const clearTimers = useCallback(() => {
     if (rafRef.current) {
@@ -242,6 +263,7 @@ export default function SaveLogBanner() {
   // shortcut twice.
   useEffect(() => {
     const handleStart = (event) => {
+      if (!isSaveLogBannerOwner(instanceRef.current)) return;
       // KAL-27 — if a push is mid-flight, ignore the new start event so
       // the in-flight upload finishes cleanly. Without this, a rapid
       // second trigger (shortcut + menu firing together, or repeated
@@ -269,6 +291,7 @@ export default function SaveLogBanner() {
       requestAnimationFrame(() => setVisible(true));
     };
     const handleToast = (event) => {
+      if (!isSaveLogBannerOwner(instanceRef.current)) return;
       const detail = event?.detail || {};
       const type = detail.type === 'error' ? 'error' : 'success';
       clearTimers();
@@ -387,7 +410,8 @@ export default function SaveLogBanner() {
     letterSpacing: 0.1
   };
 
-  return (
+  if (typeof document === 'undefined') return null;
+  return createPortal(
     <>
       <div role="status" aria-live="polite" style={bannerStyle}>
         {state === 'countdown' && (
@@ -646,6 +670,7 @@ export default function SaveLogBanner() {
         </div>
       )}
 
-    </>
+    </>,
+    document.body,
   );
 }

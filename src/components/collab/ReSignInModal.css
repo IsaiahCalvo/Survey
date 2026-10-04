@@ -264,12 +264,12 @@
 }
 
 .re-signin-modal__link-primary {
-  /* UX: Forgot password? — accent color + underline. Interactivity signal
-   * matches the banner action link convention. */
+  /* UX: Forgot password? — the calm link colour + underline (no gold text
+   * links, owner 2026-10-04). Matches the banner action link convention. */
   font-size: 13px;
   font-weight: 400;
   line-height: 1.5;
-  color: var(--accent);
+  color: var(--link);
   text-decoration: underline;
   font-family: inherit;
 }
