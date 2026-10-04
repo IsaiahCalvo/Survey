@@ -80,18 +80,17 @@
   font-size: 13px;
   font-weight: 400;
   line-height: 1.4;
-  color: var(--accent);
+  /* 2026-10-04 (owner: no gold anywhere): the calm link colour every other
+     text link uses (tokens.css --link). */
+  color: var(--link);
   text-decoration: underline;
   font-family: inherit;
 }
 
 .undo-toast__action:hover {
-  /* UX: subtle text-color lift on hover. Matches the link convention used
-     elsewhere — no background change so the toast doesn't feel like a card
-     with a button on it. UX 2026-09-17: the link is gold, so its hover is the
-     palette's lighter gold. It used to fall back to a #6FA8E8 blue, because the
-     --accent-primary-hover it asked for was never defined. */
-  color: var(--accent-light);
+  /* UX: subtle text-color lift on hover, no background change, so the toast
+     doesn't feel like a card with a button on it. The shared link hover. */
+  color: var(--link-hover);
 }
 
 .undo-toast__action:focus {

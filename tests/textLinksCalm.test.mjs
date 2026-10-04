@@ -44,3 +44,11 @@ test('Settings reset link is the calm link, not an inline gold colour', () => {
   assert.doesNotMatch(button, /--accent/);
   assert.match(rule(read('src/components/AccountSettings.css'), '.account-text-link'), /color:\s*var\(--link\);/);
 });
+
+test('Undo toast and storage banner links are the calm link too', () => {
+  const undo = read('src/components/collab/UndoToast.css');
+  assert.match(rule(undo, '.undo-toast__action'), /color:\s*var\(--link\);/);
+  assert.match(rule(undo, '.undo-toast__action:hover'), /color:\s*var\(--link-hover\);/);
+  const banner = read('src/components/collab/StorageFailureBanner.css');
+  assert.match(rule(banner, '.storage-banner__action'), /color:\s*var\(--link\);/);
+});
