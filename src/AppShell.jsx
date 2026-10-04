@@ -3226,8 +3226,8 @@ export default function App({ devPreviewReturnTab = null }) {
                               padding: '3px',
                               background: 'var(--surface-1)',
                               border: '1px solid var(--border)',
-                              borderRadius: '6px',
-                              boxShadow: '0 8px 18px rgba(0,0,0,0.42)',
+                              borderRadius: 'var(--radius-md)',
+                              boxShadow: 'var(--shadow-popover)',
                               zIndex: 5700,
                             }}
                           >
@@ -4368,8 +4368,11 @@ export default function App({ devPreviewReturnTab = null }) {
               // (pad 6px 8px) against their 34, a literal 16px glyph against
               // --rail-control-glyph 14, and a 2px radius against
               // --chrome-radius 6 — it met neither token.
+              // Polish 3 (2026-10-04): corner and shadow are now the shared
+              // popup tokens (--radius-md / --shadow-popover) that
+              // AnnotationDropdown's popover uses.
               const fitMenu = (anchorStyle) => (
-                <div style={{ position: 'absolute', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--chrome-radius)', boxShadow: '0 10px 24px rgba(0,0,0,0.45)', minWidth: '140px', zIndex: 6000, padding: '2px', ...anchorStyle }}>
+                <div style={{ position: 'absolute', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-popover)', minWidth: '140px', zIndex: 6000, padding: '2px', ...anchorStyle }}>
                   <DismissBarrier active insideRefs={railFitMenuRefs} onDismiss={dismissRailFitMenu} />
                   {ZOOM_MODE_OPTIONS.map((option) => {
                     if (option.id === ZOOM_MODES.MANUAL) return null;
