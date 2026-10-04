@@ -61,9 +61,11 @@
  *        inside, same behaviour. Colours are never moved.
  *
  *   TEXT BAR (planTextRow). Row 3 is centred the same way (w48); its "Text"
- *   caption hangs off to the left of it.
+ *   caption hangs off to the left of it. In a narrow row it gives ground in
+ *   its own steps (planTextRowStep, owner Test 41).
  *
- * Below the phone breakpoint (720px) the phone layout takes over, as before.
+ * Below the phone breakpoint (PHONE_LAYOUT_MAX_WIDTH, 720px) the phone layout
+ * takes over, as before.
  * The hook that measures the DOM and applies both plans is useResponsiveToolbar.
  */
 
@@ -339,7 +341,10 @@ export function planFormatRow({
  * 2/3 centred, animated (w48) — centred like row 2, keeping room left of them
  * for the "Text" caption. A bar that would run past the row's inset slides
  * left just enough; one too wide for the span keeps its start (caption room)
- * and runs off the right, as before.
+ * and runs off the right. (Owner Test 41: the bar now steps down first —
+ * planTextRowStep — so that only happens beside a side panel too wide to
+ * leave room for even its last step.) `caption: false` once the caption has
+ * gone (the no-caption step).
  *
  * @param {object} input
  * @param {number} input.usableLeft  row coordinates, as planFormatRow
@@ -348,10 +353,150 @@ export function planFormatRow({
  * @param {number} input.width       the controls' drawn width
  * @returns {number} the controls' left edge (row coordinates)
  */
-export function planTextRow({ usableLeft, usableRight, centre, width }) {
+export function planTextRow({ usableLeft, usableRight, centre, width, caption = true }) {
   return centredRowLeft({
-    usableLeft, usableRight, centre, width, minLeft: usableLeft + ROW_INSET + TEXT_ROW_CAPTION_ROOM,
+    usableLeft, usableRight, centre, width, minLeft: usableLeft + ROW_INSET + (caption ? TEXT_ROW_CAPTION_ROOM : 0),
   });
+}
+
+/**
+ * Narrow text bar (owner Test 41, 2026-10-04). Owner: "around the 780-pixel
+ * mark, the more I shrink it, it doesn't really do anything. I can keep
+ * bringing the right rail closer in until it covers ... the alignment tool for
+ * text." Row 3 used to keep its full width and run under the right rail (or an
+ * open side panel). It now gives ground in steps, each one only once the step
+ * before it no longer fits the room it has (the row between the rails, less
+ * any open side panel, less its insets and the "Text" caption room):
+ *
+ *   0 full          as drawn at normal widths (602px with both alignments);
+ *   1 tight         gutters 6 -> 4px and the rules' inset 8 -> 4px, the same
+ *                   tightening row 2 does first;
+ *   2 fold-vertical top / middle / bottom become one pill showing the current
+ *                   one (the rarest setting goes first);
+ *   3 fold-align    left / center / right become one pill the same way;
+ *   4 short-font    the font-name pill goes 104 -> 76px (a long name ends in
+ *                   "..."; its list keeps the full width);
+ *   5 fold-style    B / I / U / S become one pill whose card holds the four
+ *                   toggles;
+ *   6 one-colour    the three colour discs and the custom disc become one
+ *                   disc in the current colour, which opens the same picker
+ *                   (its presets include the three);
+ *   7 no-caption    last resort: the "Text" caption goes, so its room does.
+ *
+ * Steps 2-7 are only reached beside an open side panel: with none open the
+ * row fits at "tight" all the way down to the phone switch (721px).
+ *
+ * Every number is a fixed CSS width (the colour discs, the pills, the 22px
+ * toggles), so the row's width at each step is known without measuring, and
+ * the step depends only on the room, never on the row's own width: it cannot
+ * flip back and forth.
+ */
+export const TEXT_ROW_STEPS = ['full', 'tight', 'fold-vertical', 'fold-align', 'short-font', 'fold-style', 'one-colour', 'no-caption'];
+
+/** The text bar's fixed widths (styles.css tokens), px. */
+export const TEXT_ROW_PARTS = Object.freeze({
+  colours: 100, // three discs + the custom disc: 4 * 22 + 3 * 4
+  oneColour: 22, // one disc
+  font: 104, // --chrome-field-w-font
+  shortFont: 76,
+  size: 62, // --chrome-field-w-fontsize
+  toggle: 22, // --chrome-text-toggle-w
+  // A folded group: a compact pill — 8px inset, 14px glyph, 6px gutter, 9px
+  // chevron, 6px inset.
+  fold: 43,
+});
+
+const stepIndex = (step) => (typeof step === 'number' ? step : Math.max(0, TEXT_ROW_STEPS.indexOf(step)));
+
+/**
+ * What the text bar draws at `step`: { tight, foldVertical, foldAlign,
+ * shortFont, foldStyle, oneColour, caption }.
+ */
+export function textRowLook(step) {
+  const at = stepIndex(step);
+  return {
+    step: TEXT_ROW_STEPS[at],
+    tight: at >= 1,
+    foldVertical: at >= 2,
+    foldAlign: at >= 3,
+    shortFont: at >= 4,
+    foldStyle: at >= 5,
+    oneColour: at >= 6,
+    caption: at < 7,
+  };
+}
+
+/**
+ * The text bar's controls' width at `step` (the caption hangs outside them).
+ * `verticalAlign: false` for a callout, which has no top / middle / bottom.
+ */
+export function textRowWidth(step, { verticalAlign = true } = {}) {
+  const look = textRowLook(step);
+  const P = TEXT_ROW_PARTS;
+  const toggles = (n) => Array.from({ length: n }, () => ({ kind: 'item', width: P.toggle }));
+  const fold = { kind: 'item', width: P.fold };
+  const divider = { kind: 'divider' };
+  const items = [
+    { kind: 'item', width: look.oneColour ? P.oneColour : P.colours }, divider,
+    { kind: 'item', width: look.shortFont ? P.shortFont : P.font }, { kind: 'item', width: P.size }, divider,
+    ...(look.foldStyle ? [fold] : toggles(4)), divider,
+    ...(look.foldAlign ? [fold] : toggles(3)),
+  ];
+  if (verticalAlign) items.push(divider, ...(look.foldVertical ? [fold] : toggles(3)));
+  return rowWidth(items, look.tight ? TIGHT_SPACING : LOOSE_SPACING);
+}
+
+/**
+ * Pick the text bar's step for a row whose uncovered span is `span` px wide
+ * (row coordinates: usableRight - usableLeft). The first step whose controls,
+ * the row's two insets and (while it shows) the caption room fit; the last
+ * step when none does.
+ * @returns {{ step: string, index: number, width: number, fits: boolean }}
+ */
+export function planTextRowStep(span, { verticalAlign = true } = {}) {
+  const room = (index) => span - 2 * ROW_INSET - (textRowLook(index).caption ? TEXT_ROW_CAPTION_ROOM : 0);
+  for (let index = 0; index < TEXT_ROW_STEPS.length; index += 1) {
+    const width = textRowWidth(index, { verticalAlign });
+    if (width <= room(index)) return { step: TEXT_ROW_STEPS[index], index, width, fits: true };
+  }
+  const last = TEXT_ROW_STEPS.length - 1;
+  return { step: TEXT_ROW_STEPS[last], index: last, width: textRowWidth(last, { verticalAlign }), fits: false };
+}
+
+/** The desktop rails either side of rows 2 and 3 (48px each). */
+export const DESKTOP_RAIL_WIDTH = 48;
+
+/**
+ * The phone layout takes over at or below this window width (AppShell's
+ * isNarrowShell and the viewer's own mobile surface, PdfjsViewerContainer).
+ * Owner Test 41 (2026-10-04): the desktop rows must never be covered above it.
+ * With every step above, the narrowest desktop window whose rows still fit
+ * (no side panel open) is minDesktopWindowWidth() = 554px (the tool bar sets it), well under this,
+ * so there is no width at which the rails cover a control. The switch itself
+ * stays at 720: below it the viewer switches to its touch surface (page gaps,
+ * pinch, no trackpad overscroll), which is phone behaviour, not chrome.
+ */
+export const PHONE_LAYOUT_MAX_WIDTH = 720;
+
+/**
+ * The narrowest window (no side panel open) at which every desktop row fits in
+ * its most compact look while keeping the "Text" caption: the tool bar (Undo /
+ * Redo, Pan / Select, the group icons, the widest loadout, Export) and the
+ * text bar (rows 2 and 3 run between the rails). Row 2 always fits: its
+ * settings move into More.
+ */
+export function minDesktopWindowWidth({
+  undoRedoRight = 72,
+  leftBlockWidth = 79,
+  clusterWidth = 96,
+  exportWidth = 28,
+  exportInset = 10,
+} = {}) {
+  const topBar = undoRedoRight + START_GAP + leftBlockWidth + clusterWidth
+    + WIDEST_SUBTOOLS_WIDTH + EDGE_CLEARANCE + exportWidth + exportInset;
+  const keepsCaption = TEXT_ROW_STEPS.indexOf('no-caption') - 1;
+  const textRow = textRowWidth(keepsCaption) + 2 * ROW_INSET + TEXT_ROW_CAPTION_ROOM + 2 * DESKTOP_RAIL_WIDTH;
+  return Math.max(topBar, textRow);
 }
 
 /**

@@ -4,7 +4,9 @@ import {
   TOOLBAR_SLOTS,
   planFormatRow,
   planTextRow,
+  planTextRowStep,
   planTopBar,
+  textRowWidth,
   slotDefinition,
 } from '../utils/responsiveToolbar.js';
 import { getViewerSideOccluders, subscribeViewerSideOccluders } from '../utils/viewerSideOverlay.js';
@@ -67,6 +69,9 @@ export const DEFAULT_TOOLBAR_PLAN = Object.freeze({
   formatLeft: null,
   formatUsableLeft: 0,
   textRowLeft: null,
+  // Owner Test 41 (2026-10-04): how far the text bar (row 3) has given ground
+  // in a narrow row — see TEXT_ROW_STEPS in utils/responsiveToolbar.js.
+  textRowStep: 'full',
   tight: false,
   compact: [],
   overflow: [],
@@ -81,6 +86,7 @@ const samePlan = (a, b) => (
   && near(a.formatLeft, b.formatLeft)
   && near(a.formatUsableLeft ?? 0, b.formatUsableLeft ?? 0)
   && near(a.textRowLeft, b.textRowLeft)
+  && a.textRowStep === b.textRowStep
   && a.tight === b.tight
   && a.compact.join('|') === b.compact.join('|')
   && a.overflow.join('|') === b.overflow.join('|')
@@ -247,6 +253,7 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
       formatLeft: current.formatLeft,
       formatUsableLeft: current.formatUsableLeft,
       textRowLeft: current.textRowLeft,
+      textRowStep: current.textRowStep,
       tight: current.tight,
       compact: current.compact,
       overflow: current.overflow,
@@ -279,6 +286,7 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
         formatLeft,
         formatUsableLeft: Math.round(span.left),
         textRowLeft: current.textRowLeft,
+        textRowStep: current.textRowStep,
         tight: next.tight,
         compact: next.compact,
         overflow: next.overflow,
@@ -300,12 +308,24 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
         .filter((box) => box.width > 0);
       if (boxes.length) {
         const span = usableRowSpan(textBarRect);
+        // Owner Test 41 (2026-10-04): the bar gives ground step by step in a
+        // narrow row (or beside an open side panel) instead of running under
+        // the rail. The step depends only on the room, never on the bar's own
+        // width, so it cannot flip back and forth.
+        const verticalAlign = textBar.getAttribute('data-text-row-valign') !== 'false';
+        const textRowStep = planTextRowStep(span.right - span.left, { verticalAlign }).step;
+        // Centred on the width drawn now while the step is unchanged (exact);
+        // on a step change, on the new step's known width — the next pass,
+        // after it is drawn, measures it.
+        const drawnWidth = Math.max(...boxes.map((b) => b.right)) - Math.min(...boxes.map((b) => b.left));
         const textRowLeft = planTextRow({
           usableLeft: span.left,
           usableRight: span.right,
           centre: hostRect.left + top.clusterLeft + clusterRect.width / 2 - textBarRect.left,
-          width: Math.max(...boxes.map((b) => b.right)) - Math.min(...boxes.map((b) => b.left)),
+          width: textRowStep === current.textRowStep ? drawnWidth : textRowWidth(textRowStep, { verticalAlign }),
+          caption: textRowStep !== 'no-caption',
         });
+        format.textRowStep = textRowStep;
         format.textRowLeft = Number.isFinite(current.textRowLeft) && Math.abs(textRowLeft - current.textRowLeft) <= 1
           ? current.textRowLeft
           : textRowLeft;
