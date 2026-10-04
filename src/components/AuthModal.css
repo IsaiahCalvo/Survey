@@ -92,13 +92,13 @@
   color: var(--text-1);
 }
 
-/* UX: keyboard focus gets a crisp gold ring so a Tab-only user can always see
+/* UX: keyboard focus gets the one grey ring (--focus) so a Tab-only user can always see
    where they are inside the trapped dialog. :focus-visible (not :focus) so a
    mouse click never draws it. Inputs are excluded — they already signal focus
-   with the gold border + glow below. */
+   with the grey border below (owner 2026-10-02: no gold ring). */
 .auth-modal button:focus-visible,
 .auth-modal a:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 

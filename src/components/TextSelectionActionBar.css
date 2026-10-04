@@ -43,7 +43,9 @@
 }
 
 .text-selection-action-bar__mark[data-focused='true'] {
-  border-color: rgba(229, 173, 24, 0.26);
+  /* The mark whose colour is being picked: the neutral identifying edge,
+     not a yellow one (owner: no gold on chrome edges). */
+  border-color: var(--border-strong);
 }
 
 .text-selection-action-bar__button {
@@ -62,7 +64,7 @@
 
 .text-selection-action-bar__button:focus-visible,
 .text-selection-action-bar__link-form button:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: -2px;
 }
 
