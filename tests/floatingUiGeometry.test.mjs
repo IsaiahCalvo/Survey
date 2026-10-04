@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   clampFloatingMenuPosition,
+  fitMenuInBand,
   getPageViewportBounds,
   placeAnchoredMenu,
   viewportClampDelta,
@@ -96,4 +97,21 @@ test('a right-click menu opens at the pointer and flips at the window edges', ()
   const bounds = { left: 0, top: 0, right: 1400, bottom: 900 };
   assert.deepEqual(placeAnchoredMenu({ anchor: { left: 200, top: 300 }, width: 180, height: 307, bounds }), { left: 200, top: 300, maxHeight: null });
   assert.deepEqual(placeAnchoredMenu({ anchor: { left: 1350, top: 880 }, width: 180, height: 307, bounds }), { left: 1170, top: 573, maxHeight: null });
+});
+
+// Polish round 6: measured on a 375x667 phone — the ten-row mark menu (496px)
+// opened at top 134 and ran to 630, 25px over the dock (top 605).
+test('phone mark menu is pushed above the dock, and scrolls when taller than the band', () => {
+  const band = { top: 34, bottom: 605 };
+  const fit = fitMenuInBand({ top: 134, height: 496, band });
+  assert.equal(fit.maxHeight, null);
+  assert.ok(fit.top + 496 <= band.bottom - 8, `bottom ${fit.top + 496} clears the dock`);
+  assert.ok(fit.top >= band.top + 8);
+
+  const tall = fitMenuInBand({ top: 200, height: 700, band });
+  assert.equal(tall.top, band.top + 8);
+  assert.equal(tall.maxHeight, band.bottom - band.top - 16);
+
+  const roomy = fitMenuInBand({ top: 120, height: 200, band });
+  assert.deepEqual(roomy, { top: 120, maxHeight: null });
 });

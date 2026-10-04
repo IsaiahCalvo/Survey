@@ -76,6 +76,22 @@ export function clampFloatingMenuPosition({
   return { left, top };
 }
 
+/**
+ * Polish round 6: the phone's long-press mark menu must stay in the band
+ * between the header and the dock. On a 375x667 phone its ten rows ran 25px
+ * over the dock. Given the top the usual placement chose, push it inside
+ * `band` ({ top, bottom }); a menu taller than the band gets `maxHeight`
+ * (it then scrolls inside). maxHeight is null when the whole menu fits.
+ */
+export function fitMenuInBand({ top, height, band, margin = FLOATING_UI_MARGIN }) {
+  const room = Math.max(0, band.bottom - band.top - margin * 2);
+  const h = Math.min(height, room);
+  const maxHeight = height > room ? room : null;
+  const minTop = band.top + margin;
+  const maxTop = band.bottom - margin - h;
+  return { top: Math.max(minTop, Math.min(top, maxTop)), maxHeight };
+}
+
 const overlapArea = (a, b) => (
   Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left))
   * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top))
