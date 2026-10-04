@@ -33,7 +33,7 @@
  * Reference behavior matched: the Draw/Shapes/Text category buttons, which had
  * the instant chip from the start.
  */
-import { createContext, useContext, useLayoutEffect, useMemo, useRef } from 'react';
+import { createContext, useContext, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { FONT_FAMILY } from '../viewerShared.js';
 import { viewportClampDelta } from '../utils/floatingUiGeometry.js';
@@ -237,11 +237,6 @@ export function makeTooltipBinding(setTooltip) {
  * AppShell publishes its setter here.
  */
 export const TooltipContext = createContext(null);
-
-export function TooltipProvider({ setTooltip, children }) {
-  const binding = useMemo(() => makeTooltipBinding(setTooltip), [setTooltip]);
-  return <TooltipContext.Provider value={binding}>{children}</TooltipContext.Provider>;
-}
 
 /**
  * Returns the `tip(text, placement)` binder. Safe to call outside a provider —
