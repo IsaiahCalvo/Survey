@@ -61,6 +61,7 @@ import ExcelLockedModal from './components/ExcelLockedModal';
 import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
 import SpaceSelectionDialog from './components/SpaceSelectionDialog';
 import TextEditOverlay from './components/TextEditOverlay';
+import { resolveToolbarCallout } from './utils/toolbarCalloutTarget.js';
 import FabricEraserCanvas from './components/FabricEraserCanvas';
 import FormFieldPropertiesPanel from './components/FormFieldPropertiesPanel';
 import AnnotationDropdown from './components/AnnotationDropdown';
@@ -4517,13 +4518,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     lightweightCalloutCountByPageRef.current = lightweightCalloutCountByPage || {};
   }, [lightweightCalloutCountByPage]);
 
-  const selectedToolbarCallout = useMemo(() => {
-    if (!(selectedCalloutIds instanceof Set) || selectedCalloutIds.size !== 1) return null;
-    const id = Array.from(selectedCalloutIds)[0];
-    const callout = (callouts || []).find((c) => c && c.id === id);
-    if (!callout) return null;
-    return { id, pageNumber: callout.pageNumber, callout };
-  }, [selectedCalloutIds, callouts]);
+  // Owner 2026-10-04: with nothing else picked, a callout open for typing is
+  // the callout row 2 shows and edits (utils/toolbarCalloutTarget.js).
+  const editingCalloutIdForToolbar = editingAnnotation?.reactCalloutId || null;
+  const selectedToolbarCallout = useMemo(() => resolveToolbarCallout({
+    selectedCalloutIds,
+    callouts,
+    editingCalloutId: editingCalloutIdForToolbar,
+  }), [selectedCalloutIds, callouts, editingCalloutIdForToolbar]);
   const selectedToolbarCalloutRef = useRef(selectedToolbarCallout);
   useEffect(() => { selectedToolbarCalloutRef.current = selectedToolbarCallout; }, [selectedToolbarCallout]);
 

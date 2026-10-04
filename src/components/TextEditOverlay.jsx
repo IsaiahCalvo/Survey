@@ -31,7 +31,7 @@
  * and scale the SVG foreignObject uses — pixel-identical wrap and line step.
  */
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { createPortal, flushSync } from 'react-dom';
+import { flushSync } from 'react-dom';
 import { isTextColorValue } from '../utils/textColorOpacity';
 import {
   buildPlainTextContentStyle,
@@ -48,6 +48,14 @@ import { resolveCaretAnchorPoint } from '../utils/doubleTapEditEntry.js';
 import Icon from '../Icons';
 import { registerLightPopover } from './dismissRules.js';
 import { mergeEditOntoCurrent } from '../utils/dragCommitMerge.js';
+import {
+  PAGE_CONTROL_GAP_PX,
+  PAGE_CONTROL_EDGE_MARGIN_PX,
+  TEXT_DESCENDER_RATIO,
+  placeBesideMark,
+  textEditMarkRect,
+  visibleAreaInHost,
+} from '../utils/pageAnchoredControls.js';
 
 const DEFAULT_FONT_FAMILY = 'Helvetica';
 
@@ -79,22 +87,34 @@ const ACTION_PAIR_WIDTH = ACTION_TOUCH_TARGET * 2 + ACTION_PAIR_GAP;
 // the one weight every other glyph in the app uses, at ONE box size, so the pair
 // reads as part of the set. Never inline these two again.
 const ACTION_GLYPH_SIZE = 10;
-// Gap between the bottom of the text box and the top of the tap targets. The
-// visible circle is centred in its 44px pad, so the ink-to-ink gap reads as
-// ACTION_BOX_GAP + 10, close to Drawboard's ~18px.
-const ACTION_BOX_GAP = 4;
-const ACTION_EDGE_MARGIN = 6;
+// Gap between the bottom of the text box's INK (its descender strip and border
+// included - owner 2026-10-04: "colliding with the text box") and the top of
+// the tap targets. The visible circle is centred in its 44px pad, so the
+// ink-to-ink gap reads as ACTION_BOX_GAP + 12. Shared with every page-anchored
+// control (utils/pageAnchoredControls.js).
+const ACTION_BOX_GAP = PAGE_CONTROL_GAP_PX;
+const ACTION_EDGE_MARGIN = PAGE_CONTROL_EDGE_MARGIN_PX;
 // UX 2026-09-23 (owner: "that should never happen"): the tick/cross pair is
 // part of the page, so it paints above the page and the text box and BELOW
-// every bar, sheet, menu and modal. It used to sit at 2147483000, so with the
-// phone's Font color sheet open the two discs showed on top of the sheet. The
-// pair lives in a body portal (it has to escape the page's clipping), and the
-// viewer tab wrapper that holds the page and the editor is a stacking context
-// at z 5000 on desktop and phone alike (AppShell). Every chrome host starts at
-// 5400 on desktop (Tooltip.jsx) and 5600 on the phone (rail 5600/5750, dock
-// 5850, header 5900, sheets and backdrops 6400-7400 in mobilePdfViewer.css),
-// so 5100 is one step above the page and under all of them.
-const ACTION_PAIR_Z_INDEX = 5100;
+// every bar, sheet, menu and modal. It used to sit at 2147483000 in a body
+// portal, so with the phone's Font color sheet open the two discs showed on top
+// of the sheet; then at 5100 in that portal. Since 2026-10-04 (owner: "they lag
+// behind a little bit" when panning) the pair lives INSIDE the page, in this
+// overlay's own wrapper, so the browser moves it with the page in the same
+// frame. Inside the page it is under every chrome layer by construction (the
+// viewer tab wrapper is a stacking context at z 5000, every bar and sheet sits
+// above it); this local level only lifts it over the editor box beside it.
+const ACTION_PAIR_Z_INDEX = 2;
+
+// A callout's own settings while it is open for typing: the desktop row 2
+// (Width, Style, Arrowhead, colour swatch) and the menus it opens. A press
+// there edits the callout and does not end the typing.
+const CALLOUT_SETTINGS_SELECTOR = [
+  '[data-chrome-settings-holder]',
+  '[data-annotation-dropdown-popover]',
+  '[data-annotation-size-popover]',
+  '[data-annotation-color-picker]',
+].join(', ');
 
 const deepClone = (value) => JSON.parse(JSON.stringify(value));
 
@@ -647,74 +667,149 @@ export default function TextEditOverlay({
   useEffect(() => { cancelRef.current = cancelAndClose; }, [cancelAndClose]);
 
   // ---------------------------------------------------------------------
-  // Tick / cross placement (screen space).
+  // Tick / cross placement (page space — see utils/pageAnchoredControls.js).
   //
-  // The pair is portaled to <body> and positioned with fixed coordinates read
-  // off the live box, rather than being laid out inside the page-space div:
-  // a `transform` on any ancestor makes `position: fixed` resolve against that
-  // ancestor instead of the viewport, and the page-space div is scaled. Fixed
-  // coordinates also keep the buttons a constant 24/44px at every zoom.
+  // Owner 2026-10-04: "When I pan around and scroll, that X and check mark
+  // don't move perfectly with the page ... they lag behind a little bit."
+  // The pair used to be a position:fixed body portal moved to the box's new
+  // screen spot from a scroll listener / per-frame loop -> React state, so the
+  // page was always drawn in its new place a frame (or more) before the pair
+  // caught up — measured 15px behind on every wheel step on desktop. It now
+  // sits in this overlay's own wrapper (the page's CSS pixels, outside the
+  // scaled page-space div so it stays a constant 20/44px at every zoom), and
+  // the browser moves it with the page in the same frame.
   //
-  // visualViewport is the source of truth for "what the user can actually
-  // see". On a phone the on-screen keyboard shrinks the visual viewport
-  // without changing window.innerHeight, so plain viewport maths would park
-  // the tick and cross underneath the keyboard. Clamped here: the pair prefers
-  // to sit under the box, flips above it when the keyboard has taken that
-  // space, and as a last resort pins to the bottom of the visible area.
+  // JavaScript only picks the SIDE: under the box's visible ink (descender
+  // strip and border included — it used to sit on a callout's bottom edge at
+  // high zoom), flipping above it near the bottom of the page or of what the
+  // user can see (visualViewport: on a phone the keyboard shrinks it), then to
+  // its sides, and never across a callout's leader. A side change landing a
+  // frame late is invisible; that is the only thing scroll still triggers.
   // ---------------------------------------------------------------------
-  useLayoutEffect(() => {
-    let frame = 0;
-    const measure = () => {
-      frame = 0;
-      const box = boxRef.current;
-      if (!box || committedRef.current) return;
-      const rect = box.getBoundingClientRect();
-      const vv = typeof window !== 'undefined' ? window.visualViewport : null;
-      const vLeft = vv?.offsetLeft ?? 0;
-      const vTop = vv?.offsetTop ?? 0;
-      const vWidth = vv?.width ?? window.innerWidth;
-      const vHeight = vv?.height ?? window.innerHeight;
-
-      let left = rect.left + (rect.width / 2) - (ACTION_PAIR_WIDTH / 2);
-      left = Math.max(
-        vLeft + ACTION_EDGE_MARGIN,
-        Math.min(vLeft + vWidth - ACTION_PAIR_WIDTH - ACTION_EDGE_MARGIN, left),
-      );
-
-      const below = rect.bottom + ACTION_BOX_GAP;
-      const highestAllowed = vTop + ACTION_EDGE_MARGIN;
-      const lowestAllowed = vTop + vHeight - ACTION_TOUCH_TARGET - ACTION_EDGE_MARGIN;
-      let top = below;
-      if (below > lowestAllowed) {
-        // No room under the box. Try directly above it — but only if THAT
-        // lands inside the visible strip too. On a phone with the keyboard up,
-        // a box sitting low on the page has no room above it either (both
-        // sides are behind the keyboard), and the pair must still be tappable,
-        // so it pins to the last row of visible screen.
-        const above = rect.top - ACTION_BOX_GAP - ACTION_TOUCH_TARGET;
-        top = (above >= highestAllowed && above <= lowestAllowed) ? above : lowestAllowed;
-      }
-      top = Math.max(highestAllowed, Math.min(lowestAllowed, top));
-
-      setActionAnchor((prev) => (
-        prev && prev.left === left && prev.top === top ? prev : { left, top }
-      ));
+  // The pair's presses stop AT the pair, natively: it now sits inside the page,
+  // whose own native listeners (annotation hit-testing, long-press menu) run
+  // before React's root-delegated handlers could stop anything.
+  // preventDefault on mousedown keeps the caret and selection exactly where
+  // they were — the button must not pull focus out of the editable before it
+  // acts. pointerdown is deliberately NOT cancelled: cancelling it suppresses
+  // the click these buttons run on.
+  const actionPairRef = useRef(null);
+  const hasActionPair = Boolean(actionAnchor);
+  useEffect(() => {
+    const el = actionPairRef.current;
+    if (!el) return undefined;
+    const stop = (e) => { e.stopPropagation(); };
+    const keepCaret = (e) => { e.preventDefault(); e.stopPropagation(); };
+    el.addEventListener('pointerdown', stop);
+    el.addEventListener('touchstart', stop, { passive: true });
+    el.addEventListener('mousedown', keepCaret);
+    return () => {
+      el.removeEventListener('pointerdown', stop);
+      el.removeEventListener('touchstart', stop);
+      el.removeEventListener('mousedown', keepCaret);
     };
+  }, [hasActionPair]);
+
+  const actionSideRef = useRef(null);
+  actionSideRef.current = actionAnchor?.side || null;
+  const placeActionsRef = useRef(() => {});
+  placeActionsRef.current = () => {
+    const host = wrapperRef.current;
+    if (!host || committedRef.current) return;
+    const sx = effScale.x;
+    const sy = effScale.y;
+    const st = styleRef.current;
+    const geom = geomRef.current;
+    const cloudIntensity = isNewText
+      ? newTextCloudIntensityRef.current
+      : Number(originalRef.current?.data?.pdfCloudIntensity) || null;
+    // Border ink outside the stored box: half the stroke (a callout's box
+    // border is lineThickness, its textbox child carries 0.7 of it), plus the
+    // crowns of a revision-cloud border.
+    const strokeW = Number(st.strokeWidth) || (isCallout ? 1.4 : 1);
+    const inkPad = (isCallout ? strokeW / 0.7 : strokeW) / 2
+      + (cloudIntensity ? Math.min(24, 6 * cloudIntensity) : 0);
+    const mark = textEditMarkRect({
+      left: geom.left,
+      top: geom.top,
+      width: geom.outerW,
+      // renderCallout never draws a box under 18 units tall.
+      height: Math.max(isCallout ? 18 : 0, liveOuterHRef.current),
+      angle: geom.angle,
+      fontSize: st.fontSize,
+      inkPad,
+      scaleX: sx,
+      scaleY: sy,
+    });
+    // A callout's leader (lines + arrowhead) as the SVG layer draws it, in
+    // page units -> host px. The pair must not sit on it either.
+    const avoid = [];
+    if (isCallout && reactCalloutId != null) {
+      const page = host.closest('.survey-pdfjs-page-div') || host.parentElement;
+      const id = String(reactCalloutId).replace(/["\\]/g, '\\$&');
+      const group = page?.querySelector?.(`[data-callout-id="${id}"]`);
+      group?.querySelectorAll?.('line, polygon, polyline').forEach((el) => {
+        if (el.closest('[data-callout-part="textBox"]')) return;
+        let pts;
+        if (el.tagName.toLowerCase() === 'line') {
+          pts = [
+            { x: Number(el.getAttribute('x1')), y: Number(el.getAttribute('y1')) },
+            { x: Number(el.getAttribute('x2')), y: Number(el.getAttribute('y2')) },
+          ];
+        } else {
+          const nums = String(el.getAttribute('points') || '').trim().split(/[\s,]+/).map(Number);
+          pts = [];
+          for (let i = 0; i + 1 < nums.length; i += 2) pts.push({ x: nums[i], y: nums[i + 1] });
+        }
+        const scaled = pts
+          .filter((pt) => Number.isFinite(pt.x) && Number.isFinite(pt.y))
+          .map((pt) => ({ x: pt.x * sx, y: pt.y * sy }));
+        for (let i = 1; i < scaled.length; i += 1) avoid.push({ a: scaled[i - 1], b: scaled[i] });
+        if (scaled.length > 2) avoid.push({ a: scaled[scaled.length - 1], b: scaled[0] });
+      });
+    }
+    const next = placeBesideMark({
+      mark,
+      width: ACTION_PAIR_WIDTH,
+      height: ACTION_TOUCH_TARGET,
+      gap: ACTION_BOX_GAP,
+      area: visibleAreaInHost(host, ACTION_EDGE_MARGIN),
+      avoid,
+      keepSide: actionSideRef.current,
+    });
+    // A slid spot is stored as its lane (the mark's width): CSS sticky slides
+    // the pair along it, so a sideways scroll changes no state at all.
+    const round = (v) => Math.round(v * 100) / 100;
+    const left = round(next.span ? next.span.left : next.left);
+    const top = round(next.top);
+    const laneWidth = next.span ? round(next.span.width) : ACTION_PAIR_WIDTH;
+    setActionAnchor((prev) => (
+      prev && prev.left === left && prev.top === top && prev.side === next.side && prev.laneWidth === laneWidth
+        ? prev
+        : { left, top, side: next.side, laneWidth, sticky: Boolean(next.span) }
+    ));
+  };
+  // When the box changes (typing grows it, a size change, the zoom settles):
+  // place before paint, then once more after the SVG layer has redrawn the
+  // callout leader from the new live bounds. Deliberately NOT on every render:
+  // an every-render layout effect that sets state hit React's update-depth
+  // limit mid-zoom.
+  useLayoutEffect(() => {
+    placeActionsRef.current();
+    const frame = requestAnimationFrame(() => placeActionsRef.current());
+    return () => cancelAnimationFrame(frame);
+  }, [liveOuterH, effScale.x, effScale.y, styleRef.current.fontSize, styleRef.current.strokeWidth]);
+  useEffect(() => {
+    let frame = 0;
     const schedule = () => {
       if (frame) return;
-      frame = requestAnimationFrame(measure);
+      frame = requestAnimationFrame(() => { frame = 0; placeActionsRef.current(); });
     };
-    measure();
-    // The page can move under the box without any scroll/resize event (a zoom
-    // settle, a fit change, the viewer re-laying out), which left the pair
-    // parked ON the box (owner 2026-09-23). A light per-frame check keeps it
-    // under the box; measure() only sets state when the spot really changes.
-    let follow = 0;
-    const followLoop = () => { measure(); follow = requestAnimationFrame(followLoop); };
-    follow = requestAnimationFrame(followLoop);
-    const box = boxRef.current;
-    const ro = box ? new ResizeObserver(schedule) : null;
-    if (ro && box) ro.observe(box);
+    const host = wrapperRef.current;
+    const ro = host && typeof ResizeObserver === 'function' ? new ResizeObserver(schedule) : null;
+    if (ro && host) ro.observe(host);
+    // These only re-pick the SIDE (near an edge of what is visible); the
+    // position itself rides the page with no JavaScript at all.
     window.addEventListener('scroll', schedule, true);
     window.addEventListener('resize', schedule);
     window.addEventListener('orientationchange', schedule);
@@ -722,7 +817,6 @@ export default function TextEditOverlay({
     window.visualViewport?.addEventListener?.('scroll', schedule);
     return () => {
       if (frame) cancelAnimationFrame(frame);
-      cancelAnimationFrame(follow);
       ro?.disconnect();
       window.removeEventListener('scroll', schedule, true);
       window.removeEventListener('resize', schedule);
@@ -730,7 +824,7 @@ export default function TextEditOverlay({
       window.visualViewport?.removeEventListener?.('resize', schedule);
       window.visualViewport?.removeEventListener?.('scroll', schedule);
     };
-  }, [liveOuterH, effScale.x, effScale.y]);
+  }, []);
 
   // On-screen keyboard reveal.
   //
@@ -843,6 +937,11 @@ export default function TextEditOverlay({
       // Formatting sub-row + mini toolbar buttons must not commit-and-close
       // (same opt-out attribute contract as FabricEditCanvas).
       if (t.closest('[data-rich-text-toolbar]') || t.closest('[data-mini-toolbar]') || t.closest('[data-font-color-picker]')) return;
+      // A callout's own settings (row 2 and its menus) edit THIS callout.
+      if (isCallout && t.closest(CALLOUT_SETTINGS_SELECTOR)) {
+        settingsPressRef.current = true;
+        return;
+      }
       commitRef.current();
     };
     document.addEventListener('keydown', onKeyDown, true);
@@ -878,9 +977,40 @@ export default function TextEditOverlay({
     contains: (target) => Boolean(target?.closest?.('[data-text-edit-overlay]')),
     typingField: () => (committedRef.current ? null : editableRef.current),
     endTyping: (event) => commitRef.current(event?.key === 'Escape' ? { via: 'escape' } : undefined),
-    passes: (target) => Boolean(target?.closest?.('[data-rich-text-toolbar], [data-mini-toolbar], [data-font-color-picker]')),
+    passes: (target) => Boolean(target?.closest?.('[data-rich-text-toolbar], [data-mini-toolbar], [data-font-color-picker]'))
+      || (isCallout && Boolean(target?.closest?.(CALLOUT_SETTINGS_SELECTOR))),
     escape: false,
   }), []);
+
+  // Owner 2026-10-04: while a callout is open for typing, row 2 keeps the
+  // Callout tool's settings (Width, Style, Arrowhead, colour) and they change
+  // THIS callout (PDFViewer: the callout being typed in stands in for the
+  // pick). A press there passes (above); once its menu closes, focus that
+  // landed back on a row-2 control returns to the text so typing carries on.
+  const settingsPressRef = useRef(false);
+  useEffect(() => {
+    if (!isCallout) return undefined;
+    const onFocusIn = (e) => {
+      if (!settingsPressRef.current || committedRef.current) return;
+      const t = e.target;
+      if (!(t instanceof Element) || !t.closest('[data-chrome-settings-holder]')) return;
+      // A menu still open owns the focus (keyboard choice in it); only a
+      // trigger left holding focus after its menu closed hands it back.
+      if (document.querySelector('[data-annotation-dropdown-popover], [data-annotation-size-popover]')) return;
+      requestAnimationFrame(() => {
+        if (committedRef.current) return;
+        if (document.querySelector('[data-annotation-dropdown-popover], [data-annotation-size-popover]')) return;
+        editableRef.current?.focus({ preventScroll: true });
+      });
+    };
+    const onKeyDown = (e) => { if (e.key === 'Tab') settingsPressRef.current = false; };
+    document.addEventListener('focusin', onFocusIn, true);
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      document.removeEventListener('focusin', onFocusIn, true);
+      document.removeEventListener('keydown', onKeyDown, true);
+    };
+  }, [isCallout]);
 
   // ---------------------------------------------------------------------
   // Render
@@ -968,7 +1098,8 @@ export default function TextEditOverlay({
           ref={boxRef}
           data-keyboard-reveal-target=""
           data-keyboard-reveal-defer=""
-          data-keyboard-reveal-margin={ACTION_BOX_GAP + ACTION_TOUCH_TARGET + ACTION_EDGE_MARGIN}
+          // The pair sits under the box's descender strip, which grows with zoom.
+          data-keyboard-reveal-margin={ACTION_BOX_GAP + ACTION_TOUCH_TARGET + ACTION_EDGE_MARGIN + Math.ceil(s.fontSize * TEXT_DESCENDER_RATIO * effScale.y)}
           onMouseDown={(e) => {
             // Clicks in the gutter/padding keep focus in the editor.
             if (e.target !== editableRef.current) {
@@ -1037,20 +1168,59 @@ export default function TextEditOverlay({
           The rings and the cross therefore keep their literals (#cbd5e1 ring and
           #475569 cross on white, #1d4ed8 ring on the #2563eb tick). Guarded by
           tests/textEditActionDiscPalette.test.mjs. */}
-      {actionAnchor && typeof document !== 'undefined' && createPortal(
-        (
+      {actionAnchor && (
+        // A page-sized clip box: the pair can never stick out past the page
+        // and grow the PDF scroller's scroll area (which would move what is
+        // visible, which would move the pair...). Placement keeps it on the
+        // page anyway; this makes that a guarantee.
+        <div
+          data-page-anchored-controls-clip
+          style={{
+            position: 'absolute',
+            inset: 0,
+            overflow: 'clip',
+            contain: 'paint',
+            pointerEvents: 'none',
+            zIndex: ACTION_PAIR_Z_INDEX,
+          }}
+        >
+          {/* The lane: where the pair sits on the page. Usually exactly the
+              pair; under a box wider than the screen it spans the box and the
+              pair slides along it with CSS sticky (no JavaScript per scroll). */}
           <div
-            // data-text-edit-overlay: the outside-click commit handler treats
-            // anything inside the overlay as "still editing". The pair lives in
-            // a body portal, so it has to carry the marker itself or tapping
-            // the cross would commit on the way down and then find nothing to
-            // cancel.
-            data-text-edit-overlay
-            data-text-edit-actions
+            data-text-edit-actions-lane
             style={{
-              position: 'fixed',
+              position: 'absolute',
               left: actionAnchor.left,
               top: actionAnchor.top,
+              width: actionAnchor.laneWidth,
+              height: ACTION_TOUCH_TARGET,
+              pointerEvents: 'none',
+            }}
+          >
+          <div
+            ref={actionPairRef}
+            // data-text-edit-overlay: the outside-click commit handler treats
+            // anything inside the overlay as "still editing" (the pair sits in
+            // the wrapper that carries it, and keeps its own copy so that never
+            // depends on where it is mounted).
+            data-text-edit-overlay
+            data-text-edit-actions
+            data-page-anchored-control="text-edit-actions"
+            data-action-side={actionAnchor.side}
+            // In the page, the PDF scroller's own press handling sees these
+            // taps first: this is its documented "a control, not the page"
+            // seam, so a tap is never turned into a pan (whose touchstart
+            // preventDefault would swallow the click on an iPhone).
+            data-pan-interactive="true"
+            style={{
+              // Page CSS px inside this overlay's wrapper (not the scaled
+              // page-space div), so the browser carries it with the page and it
+              // stays a constant 20/44px at every zoom.
+              position: actionAnchor.sticky ? 'sticky' : 'relative',
+              left: actionAnchor.sticky ? ACTION_EDGE_MARGIN : 0,
+              right: actionAnchor.sticky ? ACTION_EDGE_MARGIN : undefined,
+              margin: actionAnchor.sticky ? '0 auto' : 0,
               width: ACTION_PAIR_WIDTH,
               height: ACTION_TOUCH_TARGET,
               display: 'flex',
@@ -1060,12 +1230,9 @@ export default function TextEditOverlay({
               pointerEvents: 'auto',
               zIndex: ACTION_PAIR_Z_INDEX,
             }}
-            onPointerDown={(e) => { e.stopPropagation(); }}
-            // preventDefault on mousedown keeps the caret and selection exactly
-            // where they were — the button must not pull focus out of the
-            // editable before it acts. pointerdown is deliberately NOT
-            // cancelled: cancelling it suppresses the click these buttons run on.
-            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            // Press handling is native (see the actionPairRef effect): inside
+            // the page, the page's own native listeners would otherwise see
+            // the press before React's root handlers could stop it.
           >
             <button
               type="button"
@@ -1098,8 +1265,8 @@ export default function TextEditOverlay({
               </span>
             </button>
           </div>
-        ),
-        document.body,
+          </div>
+        </div>
       )}
     </div>
   );

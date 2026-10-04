@@ -32,28 +32,44 @@ const pairZ = () => {
   return Number(match[1]);
 };
 
-test('the tick/cross pair uses its named layer, not a top-of-everything z-index', () => {
-  const portal = OVERLAY.slice(OVERLAY.indexOf('data-text-edit-actions'));
-  assert.match(portal.slice(0, 1200), /zIndex: ACTION_PAIR_Z_INDEX,/);
-  assert.doesNotMatch(OVERLAY, /zIndex:\s*2147483\d{3}/);
-});
-
-test('the pair paints above the viewer tab layer that holds the page and the text box', () => {
+// 2026-10-04 (owner: the pair "lags behind a little bit" when panning): the
+// pair moved out of its body portal INTO the page, inside the overlay's own
+// wrapper. That puts it inside the viewer tab layer by construction, so it is
+// under every bar, sheet and menu without a document-wide level of its own;
+// these tests now pin that it stays in the page and that the page layer itself
+// is under every chrome layer.
+const viewerLayer = () => {
   const match = APP_SHELL.match(/zIndex: isVisible \? (\d+) : \d+/);
   assert.ok(match, 'AppShell still sets the viewer tab wrapper level');
-  assert.ok(pairZ() > Number(match[1]), `pair ${pairZ()} must be above the page layer ${match[1]}`);
+  return Number(match[1]);
+};
+
+test('the tick/cross pair uses its named layer, not a top-of-everything z-index', () => {
+  const portal = OVERLAY.slice(OVERLAY.indexOf('data-page-anchored-controls-clip'));
+  assert.match(portal.slice(0, 400), /zIndex: ACTION_PAIR_Z_INDEX,/);
+  assert.doesNotMatch(OVERLAY, /zIndex:\s*2147483\d{3}/);
+  // A local level inside the page overlay, not a document-wide one.
+  assert.ok(pairZ() < 100, `pair ${pairZ()} is a local level inside the page`);
 });
 
-test('the pair stays under every desktop chrome host', () => {
+test('the pair lives in the page (the viewer tab layer), not in a body portal', () => {
+  assert.doesNotMatch(OVERLAY, /createPortal/);
+  assert.doesNotMatch(OVERLAY, /document\.body/);
+  // Rendered inside the overlay wrapper (the page's CSS px), after the editor.
+  const wrapper = OVERLAY.indexOf('ref={wrapperRef}');
+  const pair = OVERLAY.indexOf('data-text-edit-actions\n');
+  assert.ok(wrapper > -1 && pair > wrapper, 'the pair renders inside the wrapper');
+  assert.ok(viewerLayer() >= 1000, 'the viewer tab layer is a stacking context');
+});
+
+test('the page layer that holds the pair stays under every desktop chrome host', () => {
   const hostLevels = [...APP_SHELL.matchAll(/id="chrome-(?:top|left|right|sub-toolbar)-host"[\s\S]{0,900}?zIndex: (\d+)/g)]
     .map(([, z]) => Number(z));
   assert.ok(hostLevels.length >= 2, 'found the desktop chrome host levels');
-  for (const z of hostLevels) assert.ok(pairZ() < z, `pair ${pairZ()} must be under chrome host ${z}`);
-  // chrome-sub-toolbar-host (the text formatting bar) is the lowest host, 5400.
-  assert.ok(pairZ() < 5400);
+  for (const z of hostLevels) assert.ok(viewerLayer() < z, `page layer ${viewerLayer()} must be under chrome host ${z}`);
 });
 
-test('the pair stays under every phone bar, sheet and backdrop', () => {
+test('the page layer that holds the pair stays under every phone bar, sheet and backdrop', () => {
   const selectors = [
     '.mobile-pdf-header', '.mobile-pdf-tools', '.mobile-pdf-dock',
     '.mobile-pdf-colorpicker-surface', '.mobile-pdf-colorpicker-backdrop',
@@ -65,7 +81,7 @@ test('the pair stays under every phone bar, sheet and backdrop', () => {
       .map(([, z]) => Number(z))
       .filter((z) => z >= 1000);
     assert.ok(levels.length > 0, `found the top-level z-index of ${selector}`);
-    for (const z of levels) assert.ok(pairZ() < z, `pair ${pairZ()} must be under ${selector} (${z})`);
+    for (const z of levels) assert.ok(viewerLayer() < z, `page layer ${viewerLayer()} must be under ${selector} (${z})`);
   }
 });
 
