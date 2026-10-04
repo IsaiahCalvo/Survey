@@ -2807,6 +2807,10 @@ const SVGAnnotationLayer = memo(({
       getAnnotationRenderIdentity(annotations?.objects?.[index]).annotationId || ''
     ));
     if (selectedAnnotationIndex == null) {
+      // Review round 9: once the pick is dropped the mark is no longer "just
+      // drawn" - picking it again later is an ordinary pick, whose bar edits
+      // must not rewrite the tool's saved settings.
+      if (annotationIndices.length === 0) justDrawnRef.current = null;
       onSelectionChange({
         pageNumber,
         annotationIndex: null,
