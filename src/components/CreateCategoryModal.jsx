@@ -314,8 +314,10 @@ const CreateCategoryModal = ({
               <div style={{
                 marginTop: '10px',
                 padding: '10px',
-                background: 'rgba(245, 158, 11, 0.1)',
-                border: '1px solid rgba(245, 158, 11, 0.3)',
+                // The app's warning box (tokens.css --alert-warning-*), not a
+                // hand-typed amber that read as the gold accent.
+                background: 'var(--alert-warning-bg)',
+                border: 'var(--alert-warning-border)',
                 borderRadius: BORDERS.radius.sm,
               }}>
                 <div style={{

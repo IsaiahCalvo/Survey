@@ -308,10 +308,13 @@ test('Areas mode: the area tools take the loadout, the actions take row 2, no dr
   assert.match(row2, /\{areasMode && renderAreaActions\(\)\}/);
   // One Select: in Areas mode the app's Select button arms the area Select.
   assert.match(appShell, /if \(isSelect && areasMode\) \{\s*\/\/[^\n]*\n\s*regionApi\.setToolType\?\.\('move'\);/);
-  // Done is the one gold button of the action row.
+  // Done stands out without gold (owner 2026-10-04: no gold outside a
+  // dialog's primary button): a neutral plate with bright ink, and so does the
+  // inline full-page answer. Nothing on the row is gold.
   const actions = appShell.slice(appShell.indexOf('const renderAreaActions'), appShell.indexOf('const toolbarOverflowItems'));
-  assert.equal((actions.match(/btn-primary/g) || []).length, 2, 'Done, and the inline full-page answer');
-  assert.match(actions, /className="btn btn-sm btn-primary" onClick=\{regionApi\.confirm\}/);
+  assert.equal((actions.match(/btn-primary/g) || []).length, 0, 'no gold button on the Areas row');
+  assert.equal((actions.match(/btn-secondary" style=\{AREA_CONFIRM_STYLE\}/g) || []).length, 2, 'Done, and the inline full-page answer');
+  assert.match(actions, /className="btn btn-sm btn-secondary" style=\{AREA_CONFIRM_STYLE\} onClick=\{regionApi\.confirm\}/);
 });
 
 test('owner 2026-10-01: opening or closing a side panel never moves the tool bar', () => {

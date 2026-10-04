@@ -1112,10 +1112,15 @@ const DEFAULT_TOOL_PREFERENCES = {
   line: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100 },
   arrow: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100 },
   callout: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 90, strokeOpacity: 100 },
-  // Counter (Shottr-style numbered badge) — strokeColor is the circle fill;
-  // strokeWidth is repurposed as the badge radius (px in page-space) so it shares
-  // the bottom toolbar Size input wiring with all other shape tools.
-  counter: { strokeColor: '#ef4444', strokeWidth: 14, strokeOpacity: 100 },
+  // Counter (Shottr-style numbered badge) — the pin takes the FILL (fillColor);
+  // strokeWidth is repurposed as the badge radius (px in page-space) so it shares the bottom toolbar Size input wiring
+  // with all other shape tools. The fill must be set here: without it the pin
+  // kept the fill left behind by Rectangle (white, the Shapes group's first
+  // tool), so a fresh Shapes > Counter dropped white pins with white numbers -
+  // invisible on a white page.
+  // No fillOpacity on purpose: the pin ignores it, and Polygon (no defaults of
+  // its own) inherits it - Rectangle's 0 keeps a Counter -> Polygon switch unfilled.
+  counter: { strokeColor: '#ef4444', strokeWidth: 14, strokeOpacity: 100, fillColor: '#ef4444' },
   text: { strokeColor: '#000000', strokeOpacity: 100 },
   note: { strokeColor: '#ffff00', fillColor: '#ffff00', strokeOpacity: 100, fillOpacity: 100 },
   underline: { strokeColor: '#ff0000', strokeOpacity: 100 },

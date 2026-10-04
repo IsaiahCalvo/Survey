@@ -1772,10 +1772,13 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   font-weight: 900;
 }
 
+/* Done / Confirm on the Areas strip: a quiet neutral plate, bright ink - not
+   gold (owner: no gold outside a dialog's primary button; this was the one
+   gold button on any phone tool strip). Same plate as the strip's pills. */
 .mobile-pdf-properties--actions > .mobile-pdf-properties__primary {
-  color: var(--accent-text);
-  background: var(--accent);
-  border-color: var(--accent);
+  color: var(--text-1);
+  background: var(--surface-3);
+  border-color: var(--border-strong);
 }
 
 /* SURVEY STRIP (owner 2026-09-30: "Keep Active looks bad - a box around a
@@ -4369,8 +4372,10 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   white-space: nowrap;
 }
 
+/* 44px tall, the finger target every other sheet header word has (the Survey
+   sheet's Exit Survey); it was 32. The word itself does not move. */
 .mobile-spaces-panel .spaces-panel__done {
-  height: 32px;
+  height: 44px;
 }
 
 .mobile-spaces-panel .spaces-panel__head-icon {

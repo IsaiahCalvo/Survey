@@ -621,6 +621,26 @@
   background: var(--pressed);
 }
 
+/* The phone Templates module strip's edge fade (see .templates-mobile-module-tabs). */
+@property --hub-tabs-fade-start {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --hub-tabs-fade-end {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
+@keyframes hub-tabs-fade {
+  0% { --hub-tabs-fade-start: 0px; --hub-tabs-fade-end: 36px; }
+  8% { --hub-tabs-fade-start: 36px; }
+  92% { --hub-tabs-fade-end: 36px; }
+  100% { --hub-tabs-fade-start: 36px; --hub-tabs-fade-end: 0px; }
+}
+
 @media screen and (max-width: 720px) {
   .hub-menu__item {
     min-height: var(--sheet-menu-item-h);
@@ -3018,8 +3038,7 @@
     gap: 2px;
   }
 
-  .survey-hub .templates-mobile-copy strong,
-  .survey-hub .templates-mobile-module-strip span {
+  .survey-hub .templates-mobile-copy strong {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -3028,8 +3047,7 @@
   }
 
   .survey-hub .templates-mobile-copy small,
-  .survey-hub .templates-mobile-template-card span,
-  .survey-hub .templates-mobile-module-strip small {
+  .survey-hub .templates-mobile-template-card span {
     color: var(--ink-200);
     font-size: 11px;
   }
@@ -3255,43 +3273,26 @@
     padding: 0 5px;
   }
 
-  .survey-hub .templates-mobile-module-strip {
-    display: flex;
-    gap: 7px;
-    overflow-x: auto;
-    padding-bottom: 2px;
-    scrollbar-width: none;
-  }
-
-  .survey-hub .templates-mobile-module-strip::-webkit-scrollbar {
-    display: none;
-  }
-
-  .survey-hub .templates-mobile-module-strip button {
-    flex: 0 0 128px;
-    min-width: 0;
-    min-height: 50px;
-    border: 1px solid var(--ink-500);
-    border-radius: 8px;
-    background: var(--ink-800);
-    color: var(--bone-100);
-    display: grid;
-    gap: 2px;
-    align-content: center;
-    padding: 8px 10px;
-    font: inherit;
-    text-align: left;
-  }
-
-  .survey-hub .templates-mobile-module-strip button.active {
-    border-color: var(--gold);
-    box-shadow: inset 0 2px var(--gold);
-  }
-
+  /* A strip with more modules than fit scrolls sideways. Its edges FADE instead
+     of cutting a name mid-letter ("Demo and Remov" at 390): a fixed fade on
+     the right, and where the browser can tie an animation to the scroll
+     (Safari 26, Chromium) each edge fades only while there is more to scroll
+     that way - the desktop Survey rail's tab strip (surveyRailPanel.css). */
   .survey-hub .templates-mobile-module-tabs {
     overflow-x: auto;
     scrollbar-width: none;
     padding-bottom: 2px;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent 100%);
+    mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent 100%);
+  }
+
+  @supports (animation-timeline: scroll()) {
+    .survey-hub .templates-mobile-module-tabs {
+      -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--hub-tabs-fade-start), #000 calc(100% - var(--hub-tabs-fade-end)), transparent 100%);
+      mask-image: linear-gradient(to right, transparent 0, #000 var(--hub-tabs-fade-start), #000 calc(100% - var(--hub-tabs-fade-end)), transparent 100%);
+      animation: hub-tabs-fade linear both;
+      animation-timeline: scroll(self inline);
+    }
   }
 
   .survey-hub .templates-mobile-module-tabs::-webkit-scrollbar {

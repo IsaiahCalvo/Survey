@@ -2359,6 +2359,7 @@ export default function TemplatesEditor({
                     data-template-title
                     {...templateTitleField(tpl)}
                     title="Click to rename"
+                    aria-label="Template name"
                     onDoubleClick={(e) => e.currentTarget.select()}
                   />
                 </span>
@@ -2501,6 +2502,7 @@ export default function TemplatesEditor({
                             defaultValue={c.name}
                             key={c.id + ':' + c.name}
                             title="Rename"
+                            aria-label={`Category name, ${c.name}`}
                             onClick={(e) => e.stopPropagation()}
                             onDoubleClick={(e) => e.currentTarget.select()}
                             onInput={syncAutoWidth}
@@ -3016,6 +3018,7 @@ export default function TemplatesEditor({
                       data-template-title
                       {...templateTitleField(tpl)}
                       title="Tap to rename"
+                      aria-label="Template name"
                     />
                   </span>
                   <span>{orderedMods.length} {orderedMods.length === 1 ? 'module' : 'modules'} · {totalCategoryCount} {totalCategoryCount === 1 ? 'category' : 'categories'} · {tpl.roster.length} {tpl.roster.length === 1 ? 'entity' : 'entities'}</span>
@@ -3175,6 +3178,7 @@ export default function TemplatesEditor({
                                     data-category-name-id={c.id}
                                     defaultValue={c.name}
                                     key={`mobile-cat-${c.id}:${c.name}`}
+                                    aria-label={`Category name, ${c.name}`}
                                     onClick={(e) => e.stopPropagation()}
                                     onInput={syncAutoWidth}
                                     onBlur={(e) => {
