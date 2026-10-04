@@ -32,3 +32,7 @@ test('the dev test route does not mount a second shortcuts sheet', () => {
   const route = readFileSync(path.join(root, 'src/DevTestRoute.jsx'), 'utf8');
   assert.doesNotMatch(route, /<KeyboardShortcutsOverlay/);
 });
+
+test('the sheet close button has a name (it was an unlabeled X)', () => {
+  assert.match(overlay, /aria-label="Close keyboard shortcuts"/);
+});

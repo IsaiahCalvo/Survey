@@ -159,6 +159,8 @@ const KeyboardShortcutsOverlay = () => {
             Keyboard shortcuts
           </h2>
           <button
+            type="button"
+            aria-label="Close keyboard shortcuts"
             onClick={() => setIsOpen(false)}
             style={{
               background: 'transparent',
