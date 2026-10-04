@@ -49,6 +49,53 @@ const IDLE_PREFILL_SPAN = 16;
 // (up to 7400), below modals (10000+), the tooltip and toasts.
 const PAGE_MENU_Z = 9000;
 
+/* One row of the page menu (polish 3, 2026-10-04). The menu used to spell out
+   the same 15-line style on each of its eleven buttons, and they had drifted:
+   Move up / down had no font size (13.3px), Paste was dimmed twice (grey AND
+   50% opacity) and Move up / down by opacity alone. Now:
+     - off is --text-disabled, never an opacity (tokens.css);
+     - the phone row is the phone menu row every other phone menu uses
+       (--sheet-menu-item-h, 15px/400, --text-1, 16px glyph: the More menu);
+     - the desktop row is unchanged (13px, 8px 12px, --text-2, 14px glyph).
+   The hover fill is passed through unchanged (menu shades: owner decision
+   pending). */
+const PageMenuItem = ({ mobile = false, icon, label, disabled = false, danger = false, hoverBg = 'var(--hover)', onClick }) => (
+  <button
+    type="button"
+    role="menuitem"
+    disabled={disabled}
+    onClick={onClick}
+    style={{
+      width: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      textAlign: 'left',
+      background: 'transparent',
+      border: 'none',
+      ...(mobile
+        ? { minHeight: 'var(--sheet-menu-item-h)', padding: '0 12px', gap: '12px', borderRadius: 'var(--radius-xs)', font: '400 15px/20px var(--font-ui)' }
+        : { padding: '8px 12px', gap: '8px', borderRadius: '4px', fontSize: '13px' }),
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      color: disabled ? 'var(--text-disabled)' : danger ? 'var(--danger-text)' : (mobile ? 'var(--text-1)' : 'var(--text-2)'),
+    }}
+    onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = hoverBg; }}
+    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+  >
+    <Icon
+      name={icon}
+      size={mobile ? 16 : 14}
+      color={disabled ? 'var(--text-disabled)' : danger ? 'var(--danger)' : (mobile ? 'currentColor' : 'var(--text-3)')}
+    />
+    {label}
+  </button>
+);
+
+/* A hairline between groups. --border, the divider token: the old
+   --surface-3 line vanished on the desktop menu, whose fill IS --surface-3. */
+const PageMenuDivider = () => (
+  <div role="separator" style={{ height: '1px', margin: '4px 0', background: 'var(--border)' }} />
+);
+
 
 // Thumbnails drawn for `previousDoc`, re-addressed to the pages of `nextDoc`
 // (a page view over the same document). null when the documents differ.
@@ -1389,15 +1436,20 @@ const PagesPanel = ({
           )}
         <div
           ref={contextMenuRef}
+          role="menu"
+          aria-label={`Page ${contextMenu.pageNumber} actions`}
+          // Polish 3 (2026-10-04): the one popup corner and shadow
+          // (--radius-md / --shadow-popover, as AnnotationDropdown and the
+          // phone More menu). The fills are unchanged (menu shades: owner
+          // decision pending).
           style={mobileMode ? {
-            // UX: demo page context-menu chrome (188px, radius 9, #181B20 /
-            // #3C424D, 6px pad, no shadow) — styles.ts:861-871, App.tsx:817.
             position: 'fixed',
             left: contextMenu.x,
             top: contextMenu.y,
             background: 'var(--surface-1)',
             border: '1px solid var(--border)',
-            borderRadius: '9px',
+            borderRadius: 'var(--radius-md)',
+            boxShadow: 'var(--shadow-popover)',
             padding: '6px',
             zIndex: PAGE_MENU_Z,
             width: '188px',
@@ -1409,258 +1461,50 @@ const PagesPanel = ({
             top: contextMenu.y,
             background: 'var(--surface-3)',
             border: '1px solid var(--border)',
-            borderRadius: '6px',
+            borderRadius: 'var(--radius-md)',
             padding: '4px',
             zIndex: PAGE_MENU_Z,
             minWidth: '180px',
             overflowY: 'auto',
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+            boxShadow: 'var(--shadow-popover)',
             fontFamily: FONT_FAMILY
           }}
         >
           {mobileMode && (
             <>
               {/* UX: demo menus lead with a muted title row + divider
-                  (FloatingContextMenu, styles.ts:872-889). */}
-              <div style={{ color: 'var(--text-3)', fontSize: 11, fontWeight: 800, padding: '4px 6px' }}>{`Page ${contextMenu.pageNumber}`}</div>
-              <div style={{ height: 1, margin: '3px 0', background: 'var(--surface-3)' }} />
-              <button
-                type="button"
+                  (FloatingContextMenu, styles.ts:872-889). Polish 3: the
+                  phone's section label type (--sheet-section), not 11/800. */}
+              <div style={{ color: 'var(--text-3)', font: 'var(--sheet-section)', padding: '4px 6px' }}>{`Page ${contextMenu.pageNumber}`}</div>
+              <PageMenuDivider />
+              <PageMenuItem
+                mobile
+                icon="chevronUp"
+                label="Move up"
                 disabled={allowedPages.indexOf(contextMenu.pageNumber) <= 0}
                 onClick={() => movePageByOffset(contextMenu.pageNumber, -1)}
-                style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: 0, borderRadius: 4, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', opacity: allowedPages.indexOf(contextMenu.pageNumber) <= 0 ? 0.4 : 1 }}
-              >
-                <Icon name="chevronUp" size={14} color="currentColor" />
-                Move up
-              </button>
-              <button
-                type="button"
+              />
+              <PageMenuItem
+                mobile
+                icon="chevronDown"
+                label="Move down"
                 disabled={allowedPages.indexOf(contextMenu.pageNumber) >= allowedPages.length - 1}
                 onClick={() => movePageByOffset(contextMenu.pageNumber, 1)}
-                style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: 0, borderRadius: 4, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', opacity: allowedPages.indexOf(contextMenu.pageNumber) >= allowedPages.length - 1 ? 0.4 : 1 }}
-              >
-                <Icon name="chevronDown" size={14} color="currentColor" />
-                Move down
-              </button>
-              <div style={{ height: 1, margin: '3px 5px', background: 'var(--surface-3)' }} />
+              />
+              <PageMenuDivider />
             </>
           )}
-          <button
-            onClick={() => handleCut(contextMenu.pageNumber)}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              background: 'transparent',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '13px',
-              textAlign: 'left',
-              cursor: 'pointer',
-              color: 'var(--text-2)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <Icon name="scissors" size={14} color="var(--text-3)" />
-            Cut
-          </button>
-          <button
-            onClick={() => handleCopy(contextMenu.pageNumber)}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              background: 'transparent',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '13px',
-              textAlign: 'left',
-              cursor: 'pointer',
-              color: 'var(--text-2)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <Icon name="copy" size={14} color="var(--text-3)" />
-            Copy
-          </button>
-          <button
-            onClick={() => handlePaste(contextMenu.pageNumber)}
-            disabled={!clipboardPage}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              background: 'transparent',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '13px',
-              textAlign: 'left',
-              cursor: clipboardPage ? 'pointer' : 'not-allowed',
-              color: clipboardPage ? 'var(--text-2)' : 'var(--text-disabled)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              opacity: clipboardPage ? 1 : 0.5
-            }}
-            onMouseEnter={(e) => {
-              if (clipboardPage) {
-                e.currentTarget.style.background = 'var(--hover)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
-            }}
-          >
-            <Icon name="paste" size={14} color={clipboardPage ? "var(--text-3)" : "var(--text-disabled)"} />
-            Paste
-          </button>
-          <button
-            onClick={() => handleDuplicate(contextMenu.pageNumber)}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              background: 'transparent',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '13px',
-              textAlign: 'left',
-              cursor: 'pointer',
-              color: 'var(--text-2)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <Icon name="duplicate" size={14} color="var(--text-3)" />
-            Duplicate
-          </button>
-          <div style={{
-            height: '1px',
-            background: 'var(--surface-3)',
-            margin: '4px 0'
-          }} />
-          <button
-            onClick={() => handleRotate(contextMenu.pageNumber)}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              background: 'transparent',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '13px',
-              textAlign: 'left',
-              cursor: 'pointer',
-              color: 'var(--text-2)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <Icon name="rotate" size={14} color="var(--text-3)" />
-            Rotate
-          </button>
-          <button
-            onClick={() => handleMirrorHorizontal(contextMenu.pageNumber)}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              background: 'transparent',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '13px',
-              textAlign: 'left',
-              cursor: 'pointer',
-              color: 'var(--text-2)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <Icon name="flipHorizontal" size={14} color="var(--text-3)" />
-            Mirror horizontally
-          </button>
-          <button
-            onClick={() => handleMirrorVertical(contextMenu.pageNumber)}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              background: 'transparent',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '13px',
-              textAlign: 'left',
-              cursor: 'pointer',
-              color: 'var(--text-2)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <Icon name="flipVertical" size={14} color="var(--text-3)" />
-            Mirror vertically
-          </button>
-          <button
-            onClick={() => handleReset(contextMenu.pageNumber)}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              background: 'transparent',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '13px',
-              textAlign: 'left',
-              cursor: 'pointer',
-              color: 'var(--text-2)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <Icon name="reset" size={14} color="var(--text-3)" />
-            Reset
-          </button>
-          <div style={{
-            height: '1px',
-            background: 'var(--surface-3)',
-            margin: '4px 0'
-          }} />
-          <button
-            onClick={() => handleDelete(contextMenu.pageNumber)}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              background: 'transparent',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '13px',
-              textAlign: 'left',
-              cursor: 'pointer',
-              color: mobileMode ? 'var(--danger-text)' : 'var(--danger-text)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = mobileMode ? 'var(--surface-2)' : 'var(--surface-3)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <Icon name="trash" size={14} color={mobileMode ? 'var(--danger)' : 'var(--danger)'} />
-            Delete
-          </button>
+          <PageMenuItem mobile={mobileMode} icon="scissors" label="Cut" onClick={() => handleCut(contextMenu.pageNumber)} />
+          <PageMenuItem mobile={mobileMode} icon="copy" label="Copy" onClick={() => handleCopy(contextMenu.pageNumber)} />
+          <PageMenuItem mobile={mobileMode} icon="paste" label="Paste" disabled={!clipboardPage} onClick={() => handlePaste(contextMenu.pageNumber)} />
+          <PageMenuItem mobile={mobileMode} icon="duplicate" label="Duplicate" onClick={() => handleDuplicate(contextMenu.pageNumber)} />
+          <PageMenuDivider />
+          <PageMenuItem mobile={mobileMode} icon="rotate" label="Rotate" onClick={() => handleRotate(contextMenu.pageNumber)} />
+          <PageMenuItem mobile={mobileMode} icon="flipHorizontal" label="Mirror horizontally" onClick={() => handleMirrorHorizontal(contextMenu.pageNumber)} />
+          <PageMenuItem mobile={mobileMode} icon="flipVertical" label="Mirror vertically" onClick={() => handleMirrorVertical(contextMenu.pageNumber)} />
+          <PageMenuItem mobile={mobileMode} icon="reset" label="Reset" onClick={() => handleReset(contextMenu.pageNumber)} />
+          <PageMenuDivider />
+          <PageMenuItem mobile={mobileMode} icon="trash" label="Delete" danger hoverBg={mobileMode ? 'var(--surface-2)' : 'var(--surface-3)'} onClick={() => handleDelete(contextMenu.pageNumber)} />
         </div>
         </>,
         document.body,
