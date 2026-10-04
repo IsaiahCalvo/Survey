@@ -58,7 +58,7 @@ export default function CreateProjectModal({
             <h2 style={{ margin: 0, fontSize: 18 }}>Create project</h2>
             <p style={{ margin: '6px 0 0', color: COLORS.muted, fontSize: 12 }}>Add PDFs now or start with an empty project.</p>
           </div>
-          <button type="button" title="Close" disabled={busy} onClick={onCancel} className="hub-icon-btn"><Icon name="close" size={16} /></button>
+          <button type="button" title="Close" aria-label="Close" disabled={busy} onClick={onCancel} className="hub-icon-btn"><Icon name="close" size={16} /></button>
         </header>
 
         <div style={{ display: 'grid', gap: 16, padding: 18 }}>
@@ -84,6 +84,7 @@ export default function CreateProjectModal({
             <span style={{ color: COLORS.muted, fontSize: 11, fontWeight: 600, letterSpacing: 0 }}>PDF files (optional)</span>
             <input
               data-testid="create-project-files"
+              className="create-project-file-input"
               type="file"
               accept="application/pdf"
               multiple
@@ -92,7 +93,7 @@ export default function CreateProjectModal({
                 onFilesChange?.(Array.from(event.target.files || []));
                 event.target.value = '';
               }}
-              style={{ width: '100%', minHeight: 44, boxSizing: 'border-box', padding: 9, borderRadius: 7, border: `1px solid ${COLORS.rule}`, background: COLORS.deep, color: COLORS.muted, font: 'inherit', fontSize: 12 }}
+              style={{ width: '100%', minHeight: 44, boxSizing: 'border-box', padding: '7px 9px', borderRadius: 7, border: `1px solid ${COLORS.rule}`, background: COLORS.deep, color: COLORS.muted, font: 'inherit', fontSize: 12 }}
             />
           </label>
 

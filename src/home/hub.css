@@ -202,6 +202,28 @@
 .hub-btn:not(:disabled):active,
 .survey-hub .btn:not(:disabled):active { background: var(--pressed); transform: none; box-shadow: none; }
 
+/* Polish round 2 (2026-10-04): the New project dialog's file picker drew the
+   browser's own light-grey "Choose Files" button, the one bright native
+   control in the dark hub. It now wears the outlined .hub-btn look. */
+.create-project-file-input::file-selector-button {
+  box-sizing: border-box;
+  height: 28px;
+  margin-right: 10px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 100ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.create-project-file-input:not(:disabled)::file-selector-button:hover { background: var(--hover); }
+.create-project-file-input:not(:disabled)::file-selector-button:active { background: var(--pressed); }
+.create-project-file-input:disabled::file-selector-button { color: var(--text-disabled); cursor: default; }
+
 /* PRIMARY — the single gold action. A gold control's own states are
    --accent-light (hover) and --accent-press (pressed); it must never take the
    neutral press, which turned the home screen's one gold button dark grey

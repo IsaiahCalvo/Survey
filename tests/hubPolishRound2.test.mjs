@@ -30,6 +30,14 @@ test('desktop Documents: a file in no project shows an empty Project cell, not "
   assert.match(docs, /\{d\.project === 'Sandbox' \? null : d\.project\}/);
 });
 
+test('New project dialog: the file picker button wears the outlined hub button look', async () => {
+  const modal = await read('home/CreateProjectModal.jsx');
+  assert.match(modal, /className="create-project-file-input"/);
+  assert.match(modal, /title="Close" aria-label="Close"/);
+  const css = await read('home/hub.css');
+  assert.match(css, /\.create-project-file-input::file-selector-button \{[^}]*border: 1px solid var\(--border-strong\);[^}]*background: transparent;/);
+});
+
 test('icon-only buttons carry a name: sidebar toggle, tab close X, project More', async () => {
   const sidebar = await read('PDFSidebar.jsx');
   assert.match(sidebar, /aria-label=\{isCollapsed \? 'Expand sidebar' : 'Collapse sidebar'\}/);
