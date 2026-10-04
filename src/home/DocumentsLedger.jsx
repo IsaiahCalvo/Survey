@@ -608,7 +608,7 @@ export default function DocumentsLedger({
               <div style={{ flex: 1, minHeight: 0 }} />
               <div style={{ display: 'flex', gap: 8, marginTop: 14, flex: 'none' }}>
                 <button className="btn primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => onOpenDocument && onOpenDocument(sel.raw)}>Open file</button>
-                <button className="btn" title="Share" aria-label="Share" onClick={() => onShare && onShare([sel.raw])}><Icon name="share" size={12} /></button>
+                <button className="btn documents-preview-share" title="Share" aria-label="Share" onClick={() => onShare && onShare([sel.raw])}><Icon name="share" size={16} /></button>
               </div>
             </aside>
           )}
@@ -672,9 +672,12 @@ export default function DocumentsLedger({
                 <div><span>Last edited</span><strong>{mobileDetailDoc.lastEditedAbs}</strong></div>
                 <div><span>Uploaded</span><strong>{mobileDetailDoc.uploadedAbs}</strong></div>
               </div>
+              {/* Same pair as the desktop preview panel: a wide Open file,
+                  then Share as an icon at the right (owner: icons over words
+                  for actions; phone and desktop match). */}
               <div className="documents-mobile-detail-actions">
-                <button type="button" className="btn" onClick={() => { setMobileDetailId(null); onShare && onShare([mobileDetailDoc.raw]); }}><Icon name="share" size={12} />Share</button>
                 <button type="button" className="btn primary" onClick={() => { setMobileDetailId(null); onOpenDocument && onOpenDocument(mobileDetailDoc.raw); }}>Open file</button>
+                <button type="button" className="btn documents-preview-share" title="Share" aria-label="Share" onClick={() => { setMobileDetailId(null); onShare && onShare([mobileDetailDoc.raw]); }}><Icon name="share" size={18} /></button>
               </div>
             </section>
           </div>

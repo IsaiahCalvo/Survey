@@ -192,6 +192,11 @@
   height: 11px;
   flex: none;
 }
+/* The document preview's icon-only Share (desktop panel and phone details
+   sheet) carries no word, so its glyph is the shared icon-button size:
+   16 on desktop, 18 on the phone (SectionIconButton). */
+.survey-hub .btn.documents-preview-share > svg { width: 16px; height: 16px; }
+.survey-hub .btn.documents-preview-share { padding: 0; aspect-ratio: 1 / 1; justify-content: center; }
 .hub-btn:not(:disabled):hover,
 .survey-hub .btn:not(:disabled):hover { background: var(--hover); transform: none; box-shadow: none; }
 .hub-btn:not(:disabled):active,
@@ -1805,7 +1810,7 @@
 
   .survey-hub .documents-mobile-detail-actions {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr auto;
     gap: 8px;
     margin-top: 14px;
   }
@@ -1814,6 +1819,12 @@
     width: 100%;
     justify-content: center;
   }
+
+  /* Share is a square icon button beside the wide Open file, as on desktop. */
+  .survey-hub .documents-mobile-detail-actions .documents-preview-share {
+    width: auto;
+  }
+  .survey-hub .btn.documents-preview-share > svg { width: 18px; height: 18px; }
 
   .survey-hub .kbd {
     display: none;
