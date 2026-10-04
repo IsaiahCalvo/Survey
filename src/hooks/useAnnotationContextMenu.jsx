@@ -910,16 +910,23 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           el.style.left = `${position.left}px`;
           el.style.top = `${position.top}px`;
         }}
+        role="menu"
+        aria-label={`${mobileTitle} actions`}
+        // Polish 3 (2026-10-04): both menus take the one popup corner and
+        // shadow (--radius-md / --shadow-popover), and the phone rows are the
+        // phone menu row (below). The fills and hover colours are unchanged:
+        // the menu shades are an owner decision still pending.
         style={isMobileMenu ? {
           // UX: demo touch context-menu chrome (mobile-expo-go/src/styles.ts:861-871).
-          // Fixed panel, per-type width, radius 9, #181B20 fill / #3C424D border,
-          // 6px padding, no shadow (demo uses borders + fills only).
+          // Fixed panel, per-type width, --surface-1 fill / --border edge,
+          // 6px padding.
           position: 'fixed',
           left: ctx.x,
           top: ctx.y,
           background: 'var(--surface-1)',
           border: '1px solid var(--border)',
-          borderRadius: 9,
+          borderRadius: 'var(--radius-md)',
+          boxShadow: 'var(--shadow-popover)',
           zIndex: 10000,
           width: mobileWidth,
           padding: 6,
@@ -935,8 +942,8 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           top: ctx.y,
           background: 'var(--surface-2)',
           border: '1px solid var(--border)',
-          borderRadius: 8,
-          boxShadow: '0 12px 30px rgba(0,0,0,0.5)',
+          borderRadius: 'var(--radius-md)',
+          boxShadow: 'var(--shadow-popover)',
           zIndex: 10000,
           minWidth: 160,
           padding: 4,
@@ -950,33 +957,37 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
             demo FloatingContextMenu (styles.ts:872-889). Desktop stays title-less. */}
         {isMobileMenu && (
           <>
-            <div style={{ color: 'var(--text-3)', fontSize: 11, fontWeight: 800, padding: '4px 6px' }}>{mobileTitle}</div>
-            <div style={{ height: 1, background: 'var(--surface-3)' }} />
+            <div style={{ color: 'var(--text-3)', font: 'var(--sheet-section)', padding: '4px 6px' }}>{mobileTitle}</div>
+            <div role="separator" style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
           </>
         )}
         {items.map((it) => (
           it.separator
-            ? <div key={it.key} style={{ height: 1, background: isMobileMenu ? 'var(--surface-3)' : 'var(--surface-3)', margin: '4px 0' }} />
+            ? <div key={it.key} role="separator" style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
             : (
               <div
                 key={it.key}
+                role="menuitem"
+                aria-disabled={it.disabled ? 'true' : undefined}
                 onClick={it.disabled ? undefined : it.onClick}
                 // UX: disabled items (e.g. Paste when the clipboard is
                 // empty) render in muted gray with a default cursor and no
                 // hover surveyMarker — the user can see the option exists but
                 // that it's not currently actionable. Matches standard
-                // desktop-app menu behavior. Danger items (Delete) use the
-                // demo destructive color #F08A8A on mobile, design.md danger on desktop.
+                // desktop-app menu behavior. Danger items (Delete) use
+                // --danger-text on both.
+                // Polish 3: the phone row is the phone menu row every other
+                // phone menu uses (--sheet-menu-item-h, 15px regular, as the
+                // More menu and the page menu); it was 34px at 13px/800.
                 style={isMobileMenu ? {
-                  height: 34,
+                  minHeight: 'var(--sheet-menu-item-h)',
                   display: 'flex',
                   alignItems: 'center',
                   padding: '0 8px',
-                  borderRadius: 6,
+                  borderRadius: 'var(--radius-xs)',
                   cursor: it.disabled ? 'default' : 'pointer',
                   userSelect: 'none',
-                  fontSize: 13,
-                  fontWeight: 800,
+                  font: '400 15px/20px var(--font-ui)',
                   color: it.disabled ? 'var(--text-disabled)' : (it.key === 'delete' ? 'var(--danger-text)' : 'var(--text-1)'),
                 } : {
                   padding: '7px 12px',
