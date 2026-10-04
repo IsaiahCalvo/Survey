@@ -2072,15 +2072,18 @@ export default function App({ devPreviewReturnTab = null }) {
     );
   };
   // Row 2 in Areas mode: what can be done to the areas, then how to leave -
-  // Cancel neutral, Done the one gold button. Full page asks first (inline,
-  // in this row) when it would replace areas already drawn.
+  // Cancel a ghost, Done a quiet neutral plate (owner: no gold outside a
+  // dialog's primary button - this was the one gold button on any tool row).
+  // Full page asks first (inline, in this row) when it would replace areas
+  // already drawn.
+  const AREA_CONFIRM_STYLE = { color: 'var(--text-1)', fontWeight: 600 };
   const renderAreaActions = () => {
     if (regionApi.fullPageConfirmPending) {
       return (
         <div data-area-actions="confirm-full-page" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-gap)' }}>
           <span style={{ color: 'var(--text-2)', fontSize: '12px' }}>Replace these areas with the full page?</span>
           <button type="button" className="btn btn-sm btn-default" onClick={regionApi.cancelFullPage}>Keep areas</button>
-          <button type="button" className="btn btn-sm btn-primary" onClick={regionApi.confirmFullPage}>Use full page</button>
+          <button type="button" className="btn btn-sm btn-secondary" style={AREA_CONFIRM_STYLE} onClick={regionApi.confirmFullPage}>Use full page</button>
         </div>
       );
     }
@@ -2110,7 +2113,7 @@ export default function App({ devPreviewReturnTab = null }) {
         <button type="button" className="btn btn-sm btn-default" onClick={regionApi.cancel} {...chromeTip('Leave without saving', 'below')}>
           Cancel
         </button>
-        <button type="button" className="btn btn-sm btn-primary" onClick={regionApi.confirm} {...chromeTip('Save the areas (Enter)', 'below')}>
+        <button type="button" className="btn btn-sm btn-secondary" style={AREA_CONFIRM_STYLE} onClick={regionApi.confirm} {...chromeTip('Save the areas (Enter)', 'below')}>
           Done
         </button>
       </div>
