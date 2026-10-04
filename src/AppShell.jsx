@@ -4033,6 +4033,14 @@ export default function App({ devPreviewReturnTab = null }) {
               <div ref={setTextFormatRowEl} data-chrome-text-format-row="true" />
             </div>
             <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative' }}>
+            {/* Polish 3 (2026-10-04): the home screen stays mounted under an
+                open document (the viewer layer covers it), but it was still in
+                the Tab order - a keyboard user tabbed from the tool bar into
+                Documents, Projects, Upload and the account menu they could not
+                see. While a document is on screen the home is inert: no focus,
+                no clicks, not read out. display: contents, so the wrapper adds
+                no box and the layout is untouched. */}
+            <div inert={isViewerVisible ? '' : undefined} style={{ display: 'contents' }}>
             <Dashboard
               ref={dashboardRef}
               onDocumentSelect={handleDocumentSelect}
@@ -4045,6 +4053,7 @@ export default function App({ devPreviewReturnTab = null }) {
               entities={entities}
               setEntities={setEntities}
             />
+            </div>
             {tabs.map(tab => {
               if (tab.isHome) return null;
 
