@@ -213,8 +213,11 @@ export default function ShareModal({
           <div>
             <div style={fieldLabel}>Invite link</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 82px', gap: 6 }}>
-              <div style={{ flex: 1, minWidth: 0, background: C.deep, border: `1px solid ${C.rule}`, borderRadius: 6, padding: '0 11px', height: 30, display: 'flex', alignItems: 'center', fontSize: 12, color: C.inkSoft, fontFamily: 'ui-monospace, Menlo, monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{linkText}</div>
-              <button onClick={copyLink} disabled={busy || !!blockedReason} className="hub-btn">{copied ? 'Copied' : 'Copy link'}</button>
+              {/* A block with a 28px line, not a flex box: text-overflow only
+                  works on a block's own line, so the hint used to be cut
+                  mid-letter on a phone instead of ending in an ellipsis. */}
+              <div style={{ minWidth: 0, boxSizing: 'border-box', background: C.deep, border: `1px solid ${C.rule}`, borderRadius: 6, padding: '0 11px', height: 30, lineHeight: '28px', fontSize: 12, color: C.inkSoft, fontFamily: 'ui-monospace, Menlo, monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{linkText}</div>
+              <button onClick={copyLink} disabled={busy || !!blockedReason} className="hub-btn share-dialog-touch-pad">{copied ? 'Copied' : 'Copy link'}</button>
             </div>
             <div style={{ fontSize: 11, color: C.muted, marginTop: 8, lineHeight: 1.4 }}>{explicitLinkText}{freeNote}</div>
           </div>
@@ -250,11 +253,11 @@ export default function ShareModal({
 
         {/* Footer */}
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
-          <button onClick={onClose} className="hub-btn">Cancel</button>
+          <button onClick={onClose} className="hub-btn share-dialog-touch-pad">Cancel</button>
           <button
             disabled={busy || !emails.trim() || !!blockedReason}
             onClick={sendInvite}
-            className="hub-btn hub-btn--primary"
+            className="hub-btn hub-btn--primary share-dialog-touch-pad"
           >
             {/* UX (KAL-73): sending an invite is a network round-trip well over
                 500ms, so it takes the shared button loading treatment — 14px ring
