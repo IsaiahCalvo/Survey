@@ -531,7 +531,10 @@ export default function DocumentsLedger({
                     <div style={stickyCell(docSelectMode ? isChecked : isSel)}>
                       <span style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{d.name}</span>
                     </div>
-                    <span className="meta" style={{ fontSize: 12, padding: '12px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.project === 'Sandbox' ? <span className="mono" style={{ color: 'var(--text-3)' }}>N/A</span> : d.project}</span>
+                    <span className="meta" style={{ fontSize: 12, padding: '12px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{/* Polish round 2 (2026-10-04): a file in no project leaves the cell
+                        empty, as the phone row, the preview and the phone details
+                        already do; it used to print a mono "N/A". */}
+                      {d.project === 'Sandbox' ? null : d.project}</span>
                     <div className="mono" style={{ fontSize: 11, padding: '10px 0', lineHeight: 1.35 }}>
                       <div style={{ fontWeight: 600 }}>{d.touchedTime}</div>
                       <div style={{ color: 'var(--text-3)' }}>{d.touchedAbs}</div>

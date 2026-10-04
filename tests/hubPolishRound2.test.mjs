@@ -24,6 +24,12 @@ test('hub header counts: plain count, singular for one, no stale Projects tail',
   assert.match(docs, /<b>\{docs\.length\}<\/b> \{docs\.length === 1 \? 'file' : 'files'\}/);
 });
 
+test('desktop Documents: a file in no project shows an empty Project cell, not "N/A"', async () => {
+  const docs = await read('home/DocumentsLedger.jsx');
+  assert.doesNotMatch(docs, />N\/A</);
+  assert.match(docs, /\{d\.project === 'Sandbox' \? null : d\.project\}/);
+});
+
 test('icon-only buttons carry a name: sidebar toggle, tab close X, project More', async () => {
   const sidebar = await read('PDFSidebar.jsx');
   assert.match(sidebar, /aria-label=\{isCollapsed \? 'Expand sidebar' : 'Collapse sidebar'\}/);
