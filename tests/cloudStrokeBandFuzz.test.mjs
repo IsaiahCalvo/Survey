@@ -269,7 +269,10 @@ test('per-capsule clips paint the same pixels as the unioned clip', {
     return context.getImageData(0, 0, canvas.width, canvas.height).data;
   };
 
-  const unioned = cloudStrokeBandRings(geometry);
+  // An explicit roomy budget: under the default 250ms one a busy machine can
+  // push this into the 'pieces' fallback, and then the comparison below would
+  // compare pieces with pieces. (2026-10-04, test-reliability pass.)
+  const unioned = cloudStrokeBandRings(geometry, { budgetMs: 60_000 });
   assert.equal(unioned.mode, 'union');
   const pieces = cloudStrokeBandRings(geometry, { budgetMs: -1 });
   assert.equal(pieces.mode, 'pieces');

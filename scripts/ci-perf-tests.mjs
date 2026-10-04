@@ -44,8 +44,9 @@
  *
  * Membership rule: the file asserts on elapsed time or CPU time. Files that are
  * merely SLOW are not perf files and stay in the blocking path --
- * tests/partialEraserSequentialStress and tests/partialEraserPropertyStress are
- * the two heaviest files in the whole suite but assert only geometry, and
+ * the sequential eraser stress sweep (tests/partialEraserSequentialStressPart1-6,
+ * one sweep split six ways) and tests/partialEraserPropertyStress are the
+ * heaviest work in the whole suite but assert only geometry, and
  * tests/annotationDocConcurrency is 40s of CRDT convergence with no timing
  * budget at all. Those are correctness gates and must keep their teeth.
  *
@@ -65,7 +66,7 @@ export const CI_PERF_TEST_FILES = Object.freeze([
   // Wall-clock budgets on round-stroke outline generation and partial erase.
   'tests/roundStrokeOutlinePerformance.test.mjs',
   // 750ms single-sample "first erase" interaction-release budget.
-  'tests/partialEraseCurveLocality.test.mjs',
+  'tests/partialEraseCurveLocalityBudget.test.mjs',
   // 2026-09-15 — the last two elapsed-time assertions that were still sitting
   // in BLOCKING test shards, split out of their parent suites so the parents'
   // correctness assertions could stay blocking. See each file's header.
