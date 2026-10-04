@@ -78,6 +78,8 @@ import {
   subscribeViewerTopOverlays,
 } from '../utils/viewerTopOverlay.js';
 import { computeFitScale, pickCurrentPage, resolveFitPageLanding } from '../utils/pageNavigationMath.js';
+import { createPageRasterQueue } from '../utils/pageRasterQueue.js';
+import QuietLoading from './QuietLoading.jsx';
 import {
   compensateScrollLeftForColumnWidth,
   resolveCentredPageLeft,
@@ -340,7 +342,7 @@ function buildGetDocumentParams(source, password) {
 // --- one mounted page: double-buffered, DPR-correct, cancellable raster -------
 // memo: the viewer re-renders every live-zoom frame; a page whose raster inputs
 // did not change must not re-render with it (owner 2026-09-30: smooth pinch).
-const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, onRaster, isMobileSurface }) {
+const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, onRaster, isMobileSurface, rasterQueue }) {
   const canvasRef = useRef(null);
   const taskRef = useRef(null);
   const genRef = useRef(0);
@@ -392,6 +394,11 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
       turnCtx.restore();
     }
 
+    // Owner 2026-10-04: pages draw one at a time, the page on screen first
+    // (utils/pageRasterQueue.js). Every mounted page used to start at once,
+    // so the page in view shared the CPU with its neighbours and a lighter
+    // page 2 often finished before page 1.
+    let turn = null;
     (async () => {
       let target = null;
       let targetRetained = false;
@@ -403,31 +410,53 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
         const rasterScale = want * factor;
         const viewport = page.getViewport({ scale: rasterScale, rotation: page.rotate + rotation });
 
-        // Keep the previous bitmap visible until the replacement is complete.
-        // Mobile uses a lower raster ceiling and releases this staging canvas
-        // immediately after the atomic copy, avoiding both blank frames and
-        // unbounded WKWebView memory spikes during rapid pinch gestures.
-        target = document.createElement('canvas');
-        if (!target) return;
-        target.width = Math.max(1, Math.floor(viewport.width));
-        target.height = Math.max(1, Math.floor(viewport.height));
-        const ctx = target.getContext('2d', { alpha: false });
+        let t0 = 0;
+        for (;;) {
+          turn = rasterQueue
+            ? rasterQueue.request(pageIndex, {
+              // A page on screen asked for the turn: stop this off-screen draw;
+              // the loop below asks again and starts over later.
+              onPreempt: () => { try { taskRef.current?.cancel(); } catch { /* noop */ } },
+            })
+            : null;
+          if (turn) await turn.ready;
+          if (cancelled || myGen !== genRef.current) return;
 
-        if (taskRef.current) { try { taskRef.current.cancel(); } catch { /* noop */ } }
-        const t0 = performance.now();
-        // Draw the PAGE ONLY — do not bake annotation appearance into the raster.
-        // The app reconstructs imported markups as its own editable SVG objects
-        // (matching the Pdfjs path, which hides the engine's native markup
-        // layer); baking here would double them and make erase leave baked pixels.
-        const task = page.render({ canvasContext: ctx, viewport, annotationMode: pdfjsLib.AnnotationMode.DISABLE });
-        task.onContinue = (resume) => requestAnimationFrame(resume);
-        taskRef.current = task;
-        try {
-          await task.promise;
-        } catch (e) {
-          if (e?.name === 'RenderingCancelledException') return;
-          throw e;
+          // Keep the previous bitmap visible until the replacement is complete.
+          // Mobile uses a lower raster ceiling and releases this staging canvas
+          // immediately after the atomic copy, avoiding both blank frames and
+          // unbounded WKWebView memory spikes during rapid pinch gestures.
+          target = document.createElement('canvas');
+          if (!target) return;
+          target.width = Math.max(1, Math.floor(viewport.width));
+          target.height = Math.max(1, Math.floor(viewport.height));
+          const ctx = target.getContext('2d', { alpha: false });
+
+          if (taskRef.current) { try { taskRef.current.cancel(); } catch { /* noop */ } }
+          t0 = performance.now();
+          // Draw the PAGE ONLY — do not bake annotation appearance into the raster.
+          // The app reconstructs imported markups as its own editable SVG objects
+          // (matching the Pdfjs path, which hides the engine's native markup
+          // layer); baking here would double them and make erase leave baked pixels.
+          const task = page.render({ canvasContext: ctx, viewport, annotationMode: pdfjsLib.AnnotationMode.DISABLE });
+          task.onContinue = (resume) => requestAnimationFrame(resume);
+          taskRef.current = task;
+          try {
+            await task.promise;
+          } catch (e) {
+            if (e?.name === 'RenderingCancelledException') {
+              const preempted = Boolean(turn?.preempted);
+              turn?.release();
+              releaseRasterCanvas(target);
+              target = null;
+              if (preempted && !cancelled && myGen === genRef.current) continue;
+              return;
+            }
+            throw e;
+          }
+          break;
         }
+        turn?.release();
         if (cancelled || myGen !== genRef.current) return;
 
         const c = canvasRef.current;
@@ -450,14 +479,16 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
         });
         /* a page may unmount mid-render; never throw out of the engine */
       } finally {
+        turn?.release();
         if (target && !targetRetained) releaseRasterCanvas(target);
       }
     })();
     return () => {
       cancelled = true;
       if (taskRef.current) { try { taskRef.current.cancel(); } catch { /* noop */ } }
+      turn?.release();
     };
-  }, [pdf, pageIndex, pageW, pageH, baseScale, rotation, tiled, onRaster, isMobileSurface]);
+  }, [pdf, pageIndex, pageW, pageH, baseScale, rotation, tiled, onRaster, isMobileSurface, rasterQueue]);
 
   useEffect(() => () => releaseRasterCanvas(canvasRef.current), []);
 
@@ -1215,6 +1246,19 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const appliedSideRoomRef = useRef(NO_SIDE_INSETS);
   const sideScrollSnapshotRef = useRef(null);
   const sideInsetRef = useRef(NO_SIDE_INSETS);
+  // Pages on screen, [first, last] (0-based; -1 until measured), and the one
+  // drawing queue they share (utils/pageRasterQueue.js).
+  const visiblePageRangeRef = useRef([-1, -1]);
+  const rasterQueueRef = useRef(null);
+  if (!rasterQueueRef.current) {
+    rasterQueueRef.current = createPageRasterQueue({
+      isVisible: (index) => {
+        const [first, last] = visiblePageRangeRef.current;
+        return first < 0 || (index >= first && index <= last);
+      },
+      focusIndex: () => Math.max(0, (currentPageRef.current || 1) - 1),
+    });
+  }
   // The last fit: { mode, viewW, viewH, pageW, pageH, pageIndex } (see
   // shouldAutoRefit). Cleared when a new document loads.
   const lastFitRef = useRef(null);
@@ -1426,8 +1470,31 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
 
         const el = scrollerRef.current;
         const cw = el ? el.clientWidth : 800;
-        const fitWidth = getFitWidthForContainer(cw, layoutMetricsRef.current);
-        const fit = Math.max(0.2, Math.min(2, fitWidth / (sizes[0]?.w || 612)));
+        // A fresh open lands on Fit page (PDFViewer asks for it right after
+        // onDocumentLoaded). Start at that same scale, measured the way
+        // zoomToScale('fit') measures it, so page 1 is drawn once at its final
+        // size instead of first at fit-width and again a moment later (owner
+        // 2026-10-04: one draw, nothing jumps).
+        const metrics = layoutMetricsRef.current;
+        const side = sideInsetRef.current;
+        const fitPageScale = el ? computeFitScale({
+          mode: 'fitPage',
+          pageW: firstSize.w,
+          pageH: firstSize.h,
+          viewportW: Math.max(1, cw - side.left - side.right),
+          viewportH: Math.max(1, el.clientHeight - topInsetRef.current),
+          padX: metrics.padX,
+          gap: metrics.gap,
+          padTop: metrics.padTop,
+          padBottom: metrics.padBottom,
+          maxPageWidth: metrics.maxPageWidth,
+        }) : NaN;
+        const fit = Number.isFinite(fitPageScale) && fitPageScale > 0
+          ? Math.min(isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE, Math.max(
+            getMinimumScaleForLayout(sizes, el.clientHeight, metrics, cw),
+            fitPageScale,
+          ))
+          : Math.max(0.2, Math.min(2, getFitWidthForContainer(cw, metrics) / (sizes[0]?.w || 612)));
         setScale(fit); scaleRef.current = fit; prevScaleRef.current = fit;
         setLiveZoom(1); liveZoomRef.current = 1;
         currentPageRef.current = 1;
@@ -1640,6 +1707,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     }
     setRange((prev) => (prev[0] === first && prev[1] === last ? prev : [first, last]));
     detectCurrentPage();
+    visiblePageRangeRef.current = [visibleFirst, visibleLast];
+    rasterQueueRef.current?.pump();
   }, [layout, scale, detectCurrentPage, isMobileSurface]);
 
   useLayoutEffect(() => {
@@ -3944,6 +4013,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
               rotation={rotation}
               onRaster={onRaster}
               isMobileSurface={isMobileSurface}
+              rasterQueue={rasterQueueRef.current}
             />
             <DetailTile
               pdf={pdfRef.current}
@@ -4129,9 +4199,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         }
       `}</style>
       {loading ? (
-        <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'var(--text-2)' }}>
-          Loading…
-        </div>
+        // Owner 2026-10-04: the same quiet state as the rest of the open; it
+        // keeps the words already on screen (or shows nothing on a fast open).
+        <QuietLoading />
       ) : (
         <div
           ref={contentRef}

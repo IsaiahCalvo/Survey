@@ -24,6 +24,7 @@ import AppIcon from '../Icons';
 import { ConfirmModal } from './BulkModals';
 import DismissBarrier from '../components/DismissBarrier';
 import PdfPageThumb from './PdfPageThumb';
+import QuietLoading from '../components/QuietLoading';
 import { useStorage } from '../hooks/useDatabase';
 import { showToast } from '../utils/toast';
 import { DELETE_FOREVER_COPY } from '../services/archiveContract';
@@ -974,26 +975,11 @@ export default function ArchiveScreen({
     );
   };
 
-  /* Loading: a few placeholder rows in the real row geometry, so the ledger
-     does not jump when the data lands. */
-  const skeletonRows = (
-    <div role="status" aria-busy="true" aria-label="Loading archive">
-      {[0, 1, 2, 3].map((i) => (
-        <div
-          key={i}
-          className="hub-loading-document-row"
-          style={{ display: 'grid', gridTemplateColumns: grid, alignItems: 'center' }}
-        >
-          <span />
-          {/* The thumbnail column reserves its real 23x30 footprint, or the
-              rows shuffle sideways the moment the data lands. */}
-          <span className="hub-skeleton-block" style={{ height: 30, width: 23, margin: '0 auto' }} />
-          <span className="hub-skeleton-block" style={{ height: 12, width: '58%', marginLeft: 14 }} />
-          <span className="hub-skeleton-block" style={{ height: 10, width: 62 }} />
-          <span className="hub-skeleton-block" style={{ height: 10, width: 84 }} />
-          <span className="hub-skeleton-block" style={{ height: 10, width: 54 }} />
-        </div>
-      ))}
+  /* Loading (owner 2026-10-04): the one quiet loading line the whole app
+     uses, after a short wait, instead of pulsing placeholder rows. */
+  const loadingRows = (
+    <div aria-busy="true" style={{ position: 'relative', minHeight: 200 }}>
+      <QuietLoading label="Loading archive…" />
     </div>
   );
 
@@ -1057,7 +1043,7 @@ export default function ArchiveScreen({
                   {headerCell('days', 'Days remaining')}
                 </div>
                 {error ? errorLine : null}
-                {!error && loading ? skeletonRows : null}
+                {!error && loading ? loadingRows : null}
                 {!error && !loading && rows.length === 0 && (
                   items.length === 0
                     ? <div style={{ paddingTop: 96 }}>{emptyState}</div>
@@ -1141,7 +1127,7 @@ export default function ArchiveScreen({
           </div>
           <div className="archive-mobile-list slim-scroll">
             {error ? errorLine : null}
-            {!error && loading ? skeletonRows : null}
+            {!error && loading ? loadingRows : null}
             {!error && !loading && rows.length === 0 && (items.length === 0 ? emptyState : noMatchLine)}
             {!error && !loading && rows.map(renderMobileCard)}
           </div>

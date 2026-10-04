@@ -20,72 +20,25 @@ const box = async (locator) => locator.evaluate((element) => {
   return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
 });
 
-test('cold-load skeletons keep desktop Home geometry stable', async ({ page }) => {
+// Owner 2026-10-04: one calm loading state. The list area shows the quiet
+// "Loading <tab>…" line (no placeholder rows); the header must not move when
+// the data lands.
+test('first load keeps the desktop Home header still and shows one quiet line', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-
-  await openHub(page, 'documents');
-  const documentsReal = await box(page.locator('.documents-desktop-card'));
-  await openHub(page, 'documents', true);
-  const documentsSkeleton = await box(page.locator('.documents-desktop-card'));
-  closeTo(documentsSkeleton.width, documentsReal.width);
-  closeTo(documentsSkeleton.height, documentsReal.height);
-
-  await openHub(page, 'projects');
-  await page.locator('.projects-desktop-layout [data-drag-rearrange-row]').first().waitFor();
-  const projectsReal = await page.evaluate(() => {
-    const layout = document.querySelector('.projects-desktop-layout');
-    const detail = layout.children[1];
-    return {
-      grid: getComputedStyle(layout).gridTemplateColumns,
-      header: detail.firstElementChild.getBoundingClientRect().height,
-      columns: getComputedStyle(detail.children[1]).gridTemplateColumns,
-      fileRow: document.querySelector('[data-drag-rearrange-row][style*="height: 42px"]')?.getBoundingClientRect().height,
-    };
-  });
-  await openHub(page, 'projects', true);
-  const projectsSkeleton = await page.evaluate(() => ({
-    grid: getComputedStyle(document.querySelector('.projects-desktop-layout')).gridTemplateColumns,
-    header: document.querySelector('.hub-loading-project-header').getBoundingClientRect().height,
-    columns: getComputedStyle(document.querySelector('.hub-loading-project-columns')).gridTemplateColumns,
-    fileRow: document.querySelector('.hub-loading-project-file-row').getBoundingClientRect().height,
-  }));
-  expect(projectsSkeleton.grid).toBe(projectsReal.grid);
-  expect(projectsSkeleton.columns).toBe(projectsReal.columns);
-  closeTo(projectsSkeleton.header, projectsReal.header);
-  closeTo(projectsSkeleton.fileRow, projectsReal.fileRow);
-
-  await openHub(page, 'templates');
-  await page.locator('.templates-editor-grid input').first().waitFor();
-  const templatesReal = await page.evaluate(() => {
-    const grid = document.querySelector('.templates-editor-grid');
-    const entitiesCard = grid.querySelector('aside:last-child .card');
-    return {
-      grid: getComputedStyle(grid).gridTemplateColumns,
-      height: grid.getBoundingClientRect().height,
-      editorHeader: grid.querySelector('section').firstElementChild.getBoundingClientRect().height,
-      entitiesHeader: entitiesCard.firstElementChild.getBoundingClientRect().height,
-      entityRow: entitiesCard.querySelector('[data-drag-rearrange-row]').getBoundingClientRect().height,
-    };
-  });
-  await openHub(page, 'templates', true);
-  const templatesSkeleton = await page.evaluate(() => {
-    const grid = document.querySelector('.templates-editor-grid');
-    return {
-      grid: getComputedStyle(grid).gridTemplateColumns,
-      height: grid.getBoundingClientRect().height,
-      editorHeader: document.querySelector('.hub-loading-template-header').getBoundingClientRect().height,
-      entitiesHeader: document.querySelector('.hub-loading-entities-header').getBoundingClientRect().height,
-      entityRow: document.querySelector('.hub-loading-entity-row').getBoundingClientRect().height,
-    };
-  });
-  expect(templatesSkeleton.grid).toBe(templatesReal.grid);
-  closeTo(templatesSkeleton.height, templatesReal.height);
-  closeTo(templatesSkeleton.editorHeader, templatesReal.editorHeader);
-  closeTo(templatesSkeleton.entitiesHeader, templatesReal.entitiesHeader);
-  closeTo(templatesSkeleton.entityRow, templatesReal.entityRow);
+  for (const tab of ['documents', 'projects', 'templates']) {
+    await openHub(page, tab);
+    const real = await box(page.locator('.actions'));
+    await openHub(page, tab, true);
+    await page.locator('.hub-loading-region [data-quiet-loading]').waitFor();
+    const loading = await box(page.locator('.actions'));
+    for (const dimension of ['x', 'y', 'width', 'height']) {
+      closeTo(loading[dimension], real[dimension], 0.75, `${tab}.actions.${dimension}`);
+    }
+    await expect(page.locator('.hub-loading-region .quiet-loading-text')).toHaveText(new RegExp(`^Loading ${tab}…$`));
+  }
 });
 
-test('cold-load skeletons keep mobile Home geometry stable', async ({ page }) => {
+test('first load keeps the mobile Home header still', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
 
   const selectors = {
@@ -96,11 +49,10 @@ test('cold-load skeletons keep mobile Home geometry stable', async ({ page }) =>
 
   for (const [tab, selector] of Object.entries(selectors)) {
     await openHub(page, tab, false, true);
-    await page.locator(`${selector.row}:not(.hub-loading-mobile-row)`).first().waitFor();
+    await page.locator(selector.row).first().waitFor();
     const real = {
       actions: await box(page.locator('.actions')),
       select: await box(page.locator('.mobile-header-select-row')),
-      row: await box(page.locator(selector.row).first()),
     };
 
     await openHub(page, tab, true, true);
@@ -108,7 +60,6 @@ test('cold-load skeletons keep mobile Home geometry stable', async ({ page }) =>
     const skeleton = {
       actions: await box(page.locator('.actions')),
       select: await box(page.locator('.mobile-header-select-row')),
-      row: await box(page.locator(selector.row).first()),
     };
 
     for (const area of Object.keys(real)) {

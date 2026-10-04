@@ -19,7 +19,7 @@ import Icon from './Icons';
 import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
 import PDFSidebar from './PDFSidebar';
 import SaveLogBanner from './components/SaveLogBanner';
-import Spinner from './components/Spinner';
+import QuietLoading, { openingLabel } from './components/QuietLoading';
 import ToastHost from './components/ToastHost';
 import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from './components/AnnotationSizeControl';
 import AnnotationDropdown from './components/AnnotationDropdown';
@@ -640,7 +640,6 @@ export default function App({ devPreviewReturnTab = null }) {
 
   const [currentView, setCurrentView] = useState('dashboard');
   const [selectedPDF, setSelectedPDF] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [documents, setDocuments] = useState(() => {
     if (
       import.meta.env.DEV
@@ -1296,13 +1295,11 @@ export default function App({ devPreviewReturnTab = null }) {
     setActiveTabId(newTab.id);
     setSelectedPDF(file);
     setCurrentView('viewer');
-    setIsLoading(true);
 
     // Clear the opening flag after a short delay to allow the tab to be created
     // This ensures that if the same PDF is clicked again, it will find the existing tab
     setTimeout(() => {
       openingPdfsRef.current.delete(pdfKey);
-      setIsLoading(false);
     }, 100);
   };
 
@@ -1887,27 +1884,6 @@ export default function App({ devPreviewReturnTab = null }) {
     isMobileViewer,
   ]);
 
-  if (isLoading) {
-    // Full-screen document loading state — warm-dark surface + the ONE shared
-    // spinner per docs/design/design.md (master plan decision 3).
-    return (
-      <div style={{
-        height: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--surface-0)', // --ink-900 page background
-        fontFamily: FONT_FAMILY
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ marginBottom: '12px', display: 'flex', justifyContent: 'center' }}>
-            <Spinner size={22} thickness={2} />
-          </div>
-          <div style={{ fontSize: '13px', color: 'var(--text-3)', letterSpacing: 0 }}>Loading document...</div>
-        </div>
-      </div>
-    );
-  }
 
   // Find the tab associated with the selected PDF to pass the correct tabId
   // This ensures that even if we are on Home tab, the PDFViewer still gets the correct tabId prop
@@ -4079,7 +4055,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         ));
                       }}
                     />
-                    <Suspense fallback={null}>
+                    <Suspense fallback={<QuietLoading label={openingLabel(tab.file?.name)} background="var(--surface-0)" />}>
                     <PDFViewer
                       pdfFile={tab.file}
                       pdfFilePath={tab.filePath}

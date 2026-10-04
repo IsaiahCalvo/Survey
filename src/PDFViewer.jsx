@@ -78,6 +78,7 @@ import RegionSelectionTool from './RegionSelectionTool';
 import SVGAnnotationLayer from './components/SVGAnnotationLayer';
 import SaveLogBanner from './components/SaveLogBanner';
 import Spinner from './components/Spinner';
+import QuietLoading, { openingLabel } from './components/QuietLoading';
 import SearchHighlightLayer from './components/SearchHighlightLayer';
 import {
   SEARCH_READABLE_TEXT_PX,
@@ -1202,6 +1203,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     byteSizeBucket: 'unknown',
     reported: true,
   });
+  // Page 1 of the open document has been drawn (work that can wait starts then).
+  const firstPageDrawnRef = useRef({ drawn: false, resolve: null });
   // KAL-46 / sleep-wake: bounds how many times the load watchdog will silently
   // auto-retry a hung download (dead socket after display sleep/wake) before it
   // gives up and surfaces the retryable error screen. Reset whenever a fresh
@@ -8083,6 +8086,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handlePdfjsPageRenderComplete = useCallback((payload) => {
     reconcilePdfjsScaleFromRenderedPage('page-render-complete');
     scheduleTextSearchHighlightRefresh('page-render-complete', 80);
+    if (payload?.pageNumber === 1 && !firstPageDrawnRef.current.drawn) {
+      firstPageDrawnRef.current.drawn = true;
+      firstPageDrawnRef.current.resolve?.();
+    }
     const paintState = firstPagePaintAnalyticsRef.current;
     if (payload?.pageNumber !== 1 || paintState.reported || !paintState.startedAt) return;
     paintState.reported = true;
@@ -22897,15 +22904,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [pdfFile, pdfId, annotationsByPage, callouts, entities, scale, pageNum, uploadDataFile, updateSupabaseDocument]);
 
   // Load survey data from Supabase Storage
-  const loadSurveyDataFromSupabase = useCallback(async (doc) => {
+  const loadSurveyDataFromSupabase = useCallback(async (doc, prefetchedDataBlob) => {
     if (!doc || !doc.projectId) return;
 
     try {
       const filePath = `${doc.projectId}/${doc.id}_data.json`;
 
       // Check if file exists by trying to get URL (or just try download and catch error)
-      // We'll just try to download
-      const dataBlob = await downloadFromStorage(filePath);
+      // We'll just try to download. Open speed (2026-10-04): the PDF load starts
+      // this same download alongside the PDF's own and hands its promise in,
+      // so it no longer adds a round trip before the first page.
+      const dataBlob = prefetchedDataBlob !== undefined
+        ? await prefetchedDataBlob
+        : await downloadFromStorage(filePath);
       if (!dataBlob) return;
 
       const text = await dataBlob.text();
@@ -23518,6 +23529,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const loadPDF = async () => {
       const docName = pdfFile.name || 'unknown';
       const analyticsLoadStartedAt = performance.now();
+      firstPageDrawnRef.current = { drawn: false, resolve: null };
       firstPagePaintAnalyticsRef.current = {
         startedAt: analyticsLoadStartedAt,
         byteSizeBucket: 'unknown',
@@ -23535,6 +23547,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // PDF.js will use default verbosity level
 
         setIsLoadingPDF(true);
+
+        // Open speed (2026-10-04): the project sidecar read below used to start
+        // only after the PDF was downloaded and parsed, holding the first page
+        // back by one more round trip. Start it now, alongside the PDF download
+        // (the same one read, just earlier); it is still applied at the same
+        // point as before.
+        const surveyDataBlobPromise = pdfFile.projectId
+          ? Promise.resolve()
+            .then(() => downloadFromStorage(`${pdfFile.projectId}/${pdfFile.id}_data.json`))
+            .catch(() => null)
+          : undefined;
 
         // UX: the unsupported-annotations toast is once-per-document-open —
         // clear both pieces on every load so a document without unsupported
@@ -23673,7 +23696,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
         // Load project data from Supabase if available
         if (pdfFile.projectId) {
-          await loadSurveyDataFromSupabase(pdfFile);
+          await loadSurveyDataFromSupabase(pdfFile, surveyDataBlobPromise);
         }
         if (isCancelled) return;
 
@@ -23781,8 +23804,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             // in the file and exports. Unlike the skipped diagnostics pass
             // above, this is a cheap subtype-count scan (getAnnotations only —
             // no pdf-lib raw-bytes parse, no conversion) and it is fire-and-
-            // forget so it never delays first paint.
-            countUnsupportedAnnotations(pdf).then((counts) => {
+            // forget so it never delays first paint. Open speed (2026-10-04):
+            // it reads every page's annotations on the one pdf.js worker, which
+            // held back page 1's own drawing on a large set, so it now starts
+            // once page 1 is drawn (4 s at the latest).
+            new Promise((resolve) => {
+              if (firstPageDrawnRef.current.drawn) { resolve(); return; }
+              firstPageDrawnRef.current.resolve = resolve;
+              setTimeout(resolve, 4000);
+            }).then(() => (isCancelled ? null : countUnsupportedAnnotations(pdf))).then((counts) => {
               if (isCancelled) return;
               if (counts && Object.keys(counts).length > 0) {
                 setUnsupportedAnnotationCounts(counts);
@@ -34985,38 +35015,15 @@ ${pageBlocks}
   if (!pdfDoc || isLoadingPDF) {
     return (
       <>
+      {/* Owner 2026-10-04: the one quiet loading state (QuietLoading), on the
+          viewer's own surround, so the pages simply appear on it. */}
       <div style={{
+        position: 'relative',
         height: '100vh',
-        display: 'flex',
-        flexDirection: 'row',
-        background: 'var(--surface-2)',
-        color: 'var(--text-2)',
+        background: 'var(--surface-0)',
         fontFamily: FONT_FAMILY
       }}>
-        {/* Loading content */}
-        <div style={{
-          flex: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: 'var(--text-3)',
-          fontSize: '15px',
-          letterSpacing: '-0.2px'
-        }}>
-          {isLoadingPDF ? (
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'center' }}>
-                <Icon name="document" size={48} />
-              </div>
-              <div style={{ fontSize: '18px', color: 'var(--text-3)' }}>Loading PDF...</div>
-              <div style={{ fontSize: '14px', color: 'var(--text-3)', marginTop: '10px' }}>
-                {pdfFile?.name || 'document.pdf'}
-              </div>
-            </div>
-          ) : (
-            'Loading PDF...'
-          )}
-        </div>
+        <QuietLoading label={openingLabel(pdfFile?.name)} />
       </div>
       {browserPrintDocument}
       </>
@@ -36168,6 +36175,11 @@ ${pageBlocks}
                                   height: '100%',
                                   pointerEvents: 'none',
                                   visibility: pdfjsZoomPreviewActive ? 'hidden' : undefined,
+                                  // Owner 2026-10-04: the page shows as soon as it is drawn
+                                  // and its marks fade in quietly when hydration is ready
+                                  // (no grey cover). Only the gate flip changes opacity.
+                                  opacity: annotationHydrationGated ? 0 : undefined,
+                                  transition: 'opacity 180ms ease-out',
                                 }}
                               >
                               {!annotationHydrationGated && (
