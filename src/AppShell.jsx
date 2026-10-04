@@ -3915,7 +3915,7 @@ export default function App({ devPreviewReturnTab = null }) {
               flexShrink: 0,
               minWidth: isMobileViewer ? 'var(--mobile-rail-w)' : '48px',
               alignSelf: 'stretch',
-              background: isMobileViewer ? 'var(--surface-2)' : 'var(--surface-1)',
+              background: 'var(--panel-bg)',
               color: 'var(--text-2)',
               fontFamily: FONT_FAMILY,
               overflow: 'visible',
@@ -4123,7 +4123,11 @@ export default function App({ devPreviewReturnTab = null }) {
           </div>
           {/* UX 2026-05-14/29: chrome-right-host — slim always-visible right rail.
               Pinned to the viewport's right edge. Survey owns this rail; page
-              and zoom controls now live in the top-right toolbar pill. */}
+              and zoom controls now live in the top-right toolbar pill.
+              Polish 3 (2026-10-04): both rail hosts paint --panel-bg, the one
+              docked-chrome colour (tokens.css, ONE SURFACE RULE). This one was
+              --surface-1, which showed under the zoom / page stack as a darker
+              band at the bottom of the rail. */}
           <div
             id="chrome-right-host"
             style={{
@@ -4135,7 +4139,7 @@ export default function App({ devPreviewReturnTab = null }) {
               minWidth: isMobileViewer ? '0px' : '48px',
               overflow: 'visible',
               alignSelf: 'stretch',
-              background: isMobileViewer ? 'transparent' : 'var(--surface-1)',
+              background: isMobileViewer ? 'transparent' : 'var(--panel-bg)',
               color: 'var(--text-2)',
               fontFamily: FONT_FAMILY,
               flexDirection: 'column',
@@ -4394,7 +4398,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 // zIndex 2 keeps it above (and clickable over) the collapsed
                 // survey overlay, which is absolute at the rail's full
                 // height with zIndex 1; transparent background lets the
-                // host/panel color (#12151c) show through.
+                // host/panel color (--panel-bg) show through.
                 return (
                   <div data-chrome-rail="true" style={{ position: 'relative', zIndex: 2, width: '100%', borderTop: '1px solid var(--border)', padding: '8px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: 'transparent' }}>
                     <button
@@ -4472,10 +4476,14 @@ export default function App({ devPreviewReturnTab = null }) {
                         {...chromeTip(`Page fit: ${api.zoomDropdownLabel}`, 'left')}
                         /* UX 2026-09-22 (desktop critic round): Fit keeps the
                            shared footer corner (6) — its own 2px was the third
-                           radius in this column. An engaged fit mode is GOLD,
-                           the app's one active colour, because both greys it
-                           used to switch between are now the same --text-2. */
-                        style={{ ...footerBtn(), position: 'relative', width: `${RAIL_SPLIT_CONTROL_W}px`, color: fitMode !== ZOOM_MODES.MANUAL ? 'var(--accent)' : 'var(--text-2)' }}
+                           radius in this column.
+                           Polish 3 (2026-10-04): no gold. Gold is for the active
+                           tool and the primary button only (owner 2026-10-02),
+                           and a fit mode is on almost all the time, so the rail
+                           always carried a gold mark. Same inks as the open
+                           panel's Fit button: --text-2 when a fit mode is on,
+                           --text-3 on a manual zoom. */
+                        style={{ ...footerBtn(), position: 'relative', width: `${RAIL_SPLIT_CONTROL_W}px`, color: fitMode !== ZOOM_MODES.MANUAL ? 'var(--text-2)' : 'var(--text-3)' }}
                       >
                         {/* UX 2026-09-16 (desktop sweep): the shared <Icon>, not a
                             hand-written <svg>. This caret was drawn inline at
@@ -4536,7 +4544,9 @@ export default function App({ devPreviewReturnTab = null }) {
                   // Owner 2026-10-02: a chrome region - its icons take the one
                   // hover / press / chosen look (states.css section 5).
                   data-chrome-rail="true"
-                  style={{ position: 'absolute', left: 0, right: 0, bottom: 0, boxSizing: 'border-box', zIndex: 2, background: 'var(--surface-1)', borderTop: '1px solid var(--border)', padding: '6px 6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '3px' }}
+                  // Polish 3: the panel's own --panel-bg, not a darker band;
+                  // the top hairline already marks where the footer starts.
+                  style={{ position: 'absolute', left: 0, right: 0, bottom: 0, boxSizing: 'border-box', zIndex: 2, background: 'var(--panel-bg)', borderTop: '1px solid var(--border)', padding: '6px 6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '3px' }}
                 >
                   <button
                     onClick={api.zoomOut}
