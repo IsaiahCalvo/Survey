@@ -4372,8 +4372,10 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   white-space: nowrap;
 }
 
+/* 44px tall, the finger target every other sheet header word has (the Survey
+   sheet's Exit Survey); it was 32. The word itself does not move. */
 .mobile-spaces-panel .spaces-panel__done {
-  height: 32px;
+  height: 44px;
 }
 
 .mobile-spaces-panel .spaces-panel__head-icon {
