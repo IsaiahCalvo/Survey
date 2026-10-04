@@ -44,9 +44,11 @@ import {
   ELASTIC_ZOOM_EASE_MS,
   WHEEL_OVERSCROLL_IDLE_MS,
   capBounceVelocity,
+  composeElasticTransform,
   createWheelOverscroll,
   criticallyDampedSpring,
   easeInOutSine,
+  foldElasticLeftover,
   inverseRubberBand,
   prefersReducedMotion,
   rubberBand,
@@ -1242,6 +1244,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // panExcessRef is the one-finger pan's finger travel past an edge.
   const elasticRef = useRef(null);
   const elasticRafRef = useRef(0);
+  // Desktop wheel/trackpad edge overscroll (screen px), owned by the wheel
+  // controller alone and drawn on top of any other live transform.
+  const wheelShiftRef = useRef({ x: 0, y: 0 });
   const panExcessRef = useRef({ x: 0, y: 0 });
   const touchPanElasticRef = useRef(false);
   const coastElasticRef = useRef(null);
@@ -2168,7 +2173,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   useLayoutEffect(() => {
     // A phone zoom-limit overshoot easing home keeps showing its own scale, so
     // the readout does not blink to the limit for one frame at the commit.
-    const easing = !gestureRef.current && elasticRef.current ? elasticRef.current.z : 1;
+    const easing = elasticRef.current ? elasticRef.current.z : 1;
     const liveScale = scale * liveZoom * easing;
     window.dispatchEvent(new CustomEvent(LIVE_ZOOM_EVENT, {
       detail: {
@@ -2184,13 +2189,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // Drawn by the render below as the content node's transform while no gesture
   // is live, so annotations (inside the page divs) stay glued to the page.
   const publishElasticZoom = useCallback((z) => {
-    const committed = scaleRef.current;
+    // Under a live gesture the readout is the gesture's zoom times the ease.
+    const shown = scaleRef.current * (gestureRef.current ? liveZoomRef.current : 1) * z;
     window.dispatchEvent(new CustomEvent(LIVE_ZOOM_EVENT, {
       detail: {
         viewerId,
-        scale: committed * z,
-        percentage: Math.round(committed * z * 100),
-        active: Math.abs(z - 1) > 1e-4,
+        scale: shown,
+        percentage: Math.round(shown * 100),
+        active: zoomInteractionRef.current || Math.abs(z - 1) > 1e-4,
       },
     }));
   }, [viewerId]);
@@ -2261,18 +2267,21 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // A finger landing on a page that is still springing home catches it where
   // it is. Returns the shown offset (px) so the new gesture can start from it;
   // a mid-zoom return cannot be caught and finishes at once.
+  // A zoom-limit ease is not caught (owner 2026-10-04: catching it used to
+  // snap it home in one frame): it keeps easing on top of the new gesture, and
+  // `easing: true` tells the caller to leave elasticRef alone.
   const catchElastic = useCallback(() => {
     const e = elasticRef.current;
     if (!e) return { x: 0, y: 0 };
+    if (Math.abs(e.z - 1) > 1e-4) {
+      if (!e.anim) releaseElastic();
+      return { x: 0, y: 0, easing: true };
+    }
     if (elasticRafRef.current) cancelAnimationFrame(elasticRafRef.current);
     elasticRafRef.current = 0;
-    if (Math.abs(e.z - 1) > 1e-4) {
-      stopElastic();
-      return { x: 0, y: 0 };
-    }
     e.anim = null;
     return { x: e.tx, y: e.ty };
-  }, [stopElastic]);
+  }, [releaseElastic]);
 
   useEffect(() => () => {
     if (elasticRafRef.current) cancelAnimationFrame(elasticRafRef.current);
@@ -2307,17 +2316,20 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       cursorX: Math.round(commitCursor.x),
       cursorY: Math.round(commitCursor.y),
     });
-    if (g.elastic || (g.elasticZoom && Math.abs(preview.displayScale / newScale - 1) > 1e-4)) {
+    // A zoom-limit ease from the previous gesture that was still running on
+    // top of this one (owner 2026-10-04) is carried into the new leftover.
+    const easingUnder = elasticRef.current;
+    if (g.elastic || easingUnder || (g.elasticZoom && Math.abs(preview.displayScale / newScale - 1) > 1e-4)) {
       // What the fingers were shown minus what is committed, pivoting on the
       // fingers' point: drawn as a transform and eased away (no jump).
-      elasticRef.current = {
+      elasticRef.current = foldElasticLeftover({
         ax: preview.committedAnchorX,
         ay: preview.committedAnchorY,
         z: preview.displayScale / newScale,
         tx: preview.shownX - (preview.committedAnchorX - preview.left),
         ty: preview.shownY - (preview.committedAnchorY - preview.top),
         anim: null,
-      };
+      }, easingUnder);
       releaseElastic();
     }
     if (Math.abs(newScale - oldScale) < 1e-6) {
@@ -2329,7 +2341,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         const planTop = preview.top;
         el.scrollLeft = planLeft;
         el.scrollTop = planTop;
-        const e = (g.elastic || g.elasticZoom) ? elasticRef.current : null;
+        const e = (g.elastic || g.elasticZoom || easingUnder) ? elasticRef.current : null;
         if (e) {
           e.tx += el.scrollLeft - planLeft;
           e.ty += el.scrollTop - planTop;
@@ -2342,7 +2354,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     }
     // Use the same clamped target scroll that the live CSS preview showed.
     // Re-deriving from the already-transformed viewport caused the release snap.
-    pendingAnchorRef.current = { left: preview.left, top: preview.top, elastic: Boolean(g.elastic) };
+    pendingAnchorRef.current = { left: preview.left, top: preview.top, elastic: Boolean(g.elastic || easingUnder) };
     scaleRef.current = newScale;
     setScale(newScale);
     setLiveZoom(1);
@@ -2420,8 +2432,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       if (!gestureRef.current) {
         const normalizedDelta = normalizeWheelDelta(e.deltaY, e.deltaMode, el.clientHeight);
         const regime = e.deltaMode === 0 && Math.abs(normalizedDelta) < 50 ? 'trackpad' : 'notch';
-        // A zoom-limit ease from the previous pinch is still running: finish it.
-        if (elasticRef.current) stopElastic();
+        // A zoom-limit ease from the previous pinch is still running: it keeps
+        // easing on top of this gesture (composed in the render, folded into
+        // the next leftover at the commit), so nothing snaps.
         gestureRef.current = {
           regime,
           // Desktop trackpad pinch (owner 2026-10-02): past min/max zoom it
@@ -2479,45 +2492,50 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
       setZoomInteraction(false);
     };
-  }, [applyWheelZoom, commitGesture, isMobileSurface, setZoomInteraction, stopElastic]);
+  }, [applyWheelZoom, commitGesture, isMobileSurface, setZoomInteraction]);
 
   // Desktop edge bounce (owner 2026-10-02: "I wish the desktop version had the
   // same slingshot/spring back effect when scrolling to extents"). Scrolling
   // inside the document stays the browser's own (this listener only reads
   // positions); a wheel/trackpad delta that runs past an edge is handed to the
-  // shared controller and drawn through elasticRef — the same content-node
-  // transform the phone uses, so annotations move with the pages and nothing
-  // re-lays out. html/body keep overscroll-behavior: none (index.html), so only
-  // the document inside the viewer ever bounces. Reduced motion: hard clamp.
+  // shared controller, the ONE owner of the overscroll offset, and drawn as
+  // wheelShiftRef on top of the content node's transform, so annotations move
+  // with the pages and nothing re-lays out. html/body keep
+  // overscroll-behavior: none (index.html), so only the document inside the
+  // viewer ever bounces. Reduced motion: hard clamp.
+  // Owner 2026-10-04 ("it gets stuck sometimes"): every stretch now has a way
+  // home - the idle timer, the controller's own watchdog, and window blur / tab
+  // hide / a press on the viewer / a zoom starting all release it into the
+  // spring (never an instant snap), and unmount clears it.
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el || isMobileSurface) return undefined;
     const overscroll = createWheelOverscroll();
     let raf = 0;
     let idleTimer = 0;
-    const owned = () => Boolean(elasticRef.current?.wheel);
+    const show = (x, y) => {
+      const prev = wheelShiftRef.current;
+      if (prev.x === x && prev.y === y) return false;
+      wheelShiftRef.current = { x, y };
+      return true;
+    };
     const paint = (now) => {
       raf = 0;
       const shown = overscroll.frame(now);
-      if (shown.active) {
-        elasticRef.current = { ax: 0, ay: 0, z: 1, tx: -shown.x, ty: -shown.y, anim: null, wheel: true };
-        raf = requestAnimationFrame(paint);
-      } else if (owned()) {
-        elasticRef.current = null;
-      }
-      setLiveGestureFrame((frame) => frame + 1);
+      const changed = show(shown.active ? -shown.x : 0, shown.active ? -shown.y : 0);
+      if (shown.active) raf = requestAnimationFrame(paint);
+      if (changed) setLiveGestureFrame((frame) => frame + 1);
     };
     const schedule = () => { if (!raf) raf = requestAnimationFrame(paint); };
-    const drop = () => {
-      overscroll.reset();
-      if (raf) cancelAnimationFrame(raf);
-      raf = 0;
-      if (owned()) { elasticRef.current = null; setLiveGestureFrame((frame) => frame + 1); }
+    const release = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = 0;
+      overscroll.release(performance.now());
+      if (overscroll.active()) schedule();
     };
     const onWheel = (e) => {
-      // Zoom (ctrl/cmd+wheel) and a phone-style zoom ease own the transform.
-      if (e.ctrlKey || e.metaKey || gestureRef.current) { if (overscroll.active()) drop(); return; }
-      if (elasticRef.current && !owned()) return;
+      // Zoom (ctrl/cmd+wheel) owns the gesture: a stretch springs home under it.
+      if (e.ctrlKey || e.metaKey || gestureRef.current) { if (overscroll.active()) release(); return; }
       if (prefersReducedMotion()) return;
       let dx = normalizeWheelDelta(e.deltaX, e.deltaMode, el.clientWidth);
       let dy = normalizeWheelDelta(e.deltaY, e.deltaMode, el.clientHeight);
@@ -2558,11 +2576,21 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         if (overscroll.active()) schedule();
       }, WHEEL_OVERSCROLL_IDLE_MS);
     };
+    const onVisibility = () => { if (document.hidden) release(); };
+    const onPress = () => { if (overscroll.active()) release(); };
     el.addEventListener('wheel', onWheel, { passive: false });
+    el.addEventListener('pointerdown', onPress, { capture: true, passive: true });
+    window.addEventListener('blur', release);
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
       el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('pointerdown', onPress, true);
+      window.removeEventListener('blur', release);
+      document.removeEventListener('visibilitychange', onVisibility);
       if (idleTimer) clearTimeout(idleTimer);
-      drop();
+      if (raf) cancelAnimationFrame(raf);
+      overscroll.reset();
+      if (show(0, 0)) setLiveGestureFrame((frame) => frame + 1);
     };
   }, [getHorizontalScrollMax, isMobileSurface]);
 
@@ -2610,6 +2638,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (Math.abs(excess.x) < 0.01) excess.x = 0;
     if (Math.abs(excess.y) < 0.01) excess.y = 0;
     if (!excess.x && !excess.y && !elasticRef.current) return;
+    // A zoom-limit ease still running under this pan finishes on its own.
+    if (!excess.x && !excess.y && elasticRef.current?.anim) return;
     elasticRef.current = {
       ax: 0,
       ay: 0,
@@ -2969,8 +2999,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         originScrollLeft: el.scrollLeft,
         originScrollTop: el.scrollTop,
       };
-      // The leftover is now part of the live preview.
-      if (elasticRef.current) { elasticRef.current = null; }
+      // The leftover is now part of the live preview (a zoom-limit ease is
+      // not: it keeps easing on top of the pinch).
+      if (elasticRef.current && !caught.easing) { elasticRef.current = null; }
       liveZoomRef.current = 1;
       setLiveZoom(1);
       if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
@@ -3082,6 +3113,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       }
 
       if (event.touches.length === 1) {
+        // A pull left held past an edge with no gesture driving it (its touch
+        // end was lost) springs home now instead of staying there.
+        if (elasticRef.current && !elasticRef.current.anim && !gestureRef.current) releaseElastic();
         mobileTouchRef.current = { mode: 'tool' };
         setMobileTouchMode('tool');
       }
@@ -3289,6 +3323,19 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       event.stopImmediatePropagation();
     };
 
+    // Owner 2026-10-04 ("it gets stuck sometimes"): when the system takes the
+    // touch away without a touchend/touchcancel (app switch, notification
+    // shade, focus loss), end the gesture like a cancel, so a pull past an
+    // edge or a pinch past a limit springs home instead of hanging there.
+    const abortTouch = () => {
+      if (!mobileTouchRef.current) return;
+      onTouchEnd({ touches: [], target: el, preventDefault() {}, stopPropagation() {} });
+    };
+    const onVisibilityAbort = () => { if (document.hidden) abortTouch(); };
+    window.addEventListener('blur', abortTouch);
+    window.addEventListener('pagehide', abortTouch);
+    document.addEventListener('visibilitychange', onVisibilityAbort);
+
     const eventTargets = [el, nativePinchSurfaceRef.current].filter(Boolean);
     eventTargets.forEach((target) => {
       target.addEventListener('touchstart', onTouchStart, { capture: true, passive: false });
@@ -3308,6 +3355,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     });
 
     return () => {
+      window.removeEventListener('blur', abortTouch);
+      window.removeEventListener('pagehide', abortTouch);
+      document.removeEventListener('visibilitychange', onVisibilityAbort);
       eventTargets.forEach((target) => {
         target.removeEventListener('touchstart', onTouchStart, true);
         target.removeEventListener('touchmove', onTouchMove, true);
@@ -3829,6 +3879,26 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     renderedLiveZoom = elastic.z;
     liveTranslateX = elastic.tx;
     liveTranslateY = elastic.ty;
+  }
+  // A zoom-limit ease still running when a new pinch / ctrl+wheel starts keeps
+  // easing ON TOP of the new gesture (owner 2026-10-04: it used to be cut off,
+  // a one-frame snap of up to x1.8). One composed transform, same origin.
+  const easeUnderGesture = zoomGesture && livePreview ? elasticRef.current : null;
+  if (easeUnderGesture) {
+    const composed = composeElasticTransform(
+      { ox: livePreview.anchorX, oy: livePreview.anchorY, s: renderedLiveZoom, tx: liveTranslateX, ty: liveTranslateY },
+      { ox: easeUnderGesture.ax, oy: easeUnderGesture.ay, s: easeUnderGesture.z, tx: easeUnderGesture.tx, ty: easeUnderGesture.ty },
+    );
+    renderedLiveZoom = composed.s;
+    liveTranslateX = composed.tx;
+    liveTranslateY = composed.ty;
+  }
+  // Desktop wheel/trackpad edge overscroll: its own offset (one owner, the
+  // wheel controller), added on top of whatever else is showing.
+  const wheelShift = wheelShiftRef.current;
+  if (wheelShift.x || wheelShift.y) {
+    liveTranslateX += wheelShift.x;
+    liveTranslateY += wheelShift.y;
   }
 
   // The page list does not depend on the live zoom (the content node's

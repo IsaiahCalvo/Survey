@@ -8,9 +8,11 @@ import {
   ELASTIC_ZOOM_UNDER_MIN,
   WHEEL_OVERSCROLL_IDLE_MS,
   capBounceVelocity,
+  composeElasticTransform,
   createWheelOverscroll,
   criticallyDampedSpring,
   easeInOutSine,
+  foldElasticLeftover,
   inverseRubberBand,
   rubberBand,
   rubberClamp,
@@ -142,4 +144,119 @@ test('desktop: a mouse notch is a small bounce that never steps more than 3 px a
   assert.ok(peak > 8 && peak < 20, `peak ${peak}`);
   assert.ok(maxStep <= 3, `step ${maxStep}`);
   assert.equal(c.frame(2000).active, false);
+});
+
+// ---- owner 2026-10-04: "it gets stuck sometimes" ---------------------------
+// Each test below is a case that stuck, fought or jumped before the fix
+// (frame logs: scratchpad/springFix). Times are a 60 Hz event stream.
+const tailOf = (start, k, n, jitter = 0.1) => Array.from({ length: n }, (_, i) => {
+  const v = start * k ** i;
+  return Math.max(0.2, v * (1 + jitter * ((((i * 37) % 7) - 3) / 3)));
+});
+const offsets = (c, from, to, step = 1000 / 60) => {
+  const out = [];
+  for (let t = from; t <= to; t += step) out.push(c.frame(t).y);
+  return out;
+};
+
+test('desktop: a jittery macOS momentum tail at an edge releases early and is ignored (was held out for the whole tail)', () => {
+  const c = createWheelOverscroll();
+  let t = push(c, Array.from({ length: 25 }, (_, i) => 6 + (i % 3)));
+  const tailStart = t;
+  t = push(c, tailOf(9, 0.95, 70), { t0: t });
+  // Home well before the tail (~1.2 s) ends: the old detector needed five
+  // strictly shrinking deltas in a row and rode the jittery tail to its end.
+  const during = offsets(c, tailStart, t);
+  const peakAt = during.indexOf(Math.max(...during));
+  assert.ok(peakAt * (1000 / 60) < 300, `released ${Math.round(peakAt * 16.7)} ms into the tail`);
+  for (let i = peakAt + 1; i < during.length; i += 1) assert.ok(during[i] <= during[i - 1] + 1e-6, 'never stretches again during the tail');
+  assert.ok(c.frame(tailStart + 900).y < 1, 'home while the tail is still arriving');
+});
+
+test('desktop: a momentum tail that starts after the idle release does not stretch the page again', () => {
+  const c = createWheelOverscroll();
+  let t = push(c, Array(25).fill(6));
+  t += WHEEL_OVERSCROLL_IDLE_MS;
+  c.idle(t);
+  const released = c.frame(t).y;
+  t += 50;
+  const tailStart = t;
+  t = push(c, tailOf(8, 0.94, 60, 0.05), { t0: t });
+  const during = offsets(c, tailStart, t);
+  assert.ok(Math.max(...during) <= released + 1e-6);
+  for (let i = 1; i < during.length; i += 1) assert.ok(during[i] <= during[i - 1] + 1e-6, 'spring never fights the tail');
+});
+
+test('desktop: pushing again while it springs home catches the page where it is (no jump, no restart from 0)', () => {
+  const c = createWheelOverscroll();
+  let t = push(c, Array(30).fill(5));
+  t += WHEEL_OVERSCROLL_IDLE_MS;
+  c.idle(t);
+  t += 120;
+  const live = c.frame(t).y;
+  assert.ok(live > 5);
+  let prev = live;
+  let maxStep = 0;
+  for (let i = 0; i < 20; i += 1) {
+    c.wheel('y', { delta: 4 + (i % 3), room: 0, dimension: D, now: t });
+    const y = c.frame(t).y;
+    maxStep = Math.max(maxStep, Math.abs(y - prev));
+    prev = y;
+    t += 16;
+  }
+  assert.ok(maxStep < 8, `max step ${maxStep}`);
+  assert.ok(prev > live * 0.5, 'stretching again from the live offset');
+});
+
+test('desktop: a stretch always finds its way home even if the idle timer is lost', () => {
+  const c = createWheelOverscroll();
+  const t = push(c, Array(30).fill(5));
+  // no idle() call: the frame loop's watchdog releases it
+  assert.ok(c.frame(t + 100).y > 10);
+  offsets(c, t + 100, t + 2500);
+  assert.equal(c.frame(t + 2500).active, false);
+  // blur / tab hidden / a press / a zoom start release it at once into the spring
+  const d = createWheelOverscroll();
+  const u = push(d, Array(30).fill(5));
+  const held = d.frame(u).y;
+  d.release(u);
+  assert.ok(Math.abs(d.frame(u + 200).y - criticallyDampedSpring(held, 0, 0.2).x) < 1e-6);
+  assert.equal(d.frame(u + 1600).active, false);
+});
+
+test('a zoom-limit ease composed under a new gesture shows exactly both transforms in turn', () => {
+  const apply = (m, p) => ({ x: m.ox + m.tx + m.s * (p.x - m.ox), y: m.oy + m.ty + m.s * (p.y - m.oy) });
+  const inner = { ox: 300, oy: 900, s: 1.3, tx: -12, ty: 40 };
+  const outer = { ox: 120, oy: 2000, s: 1.6, tx: 7, ty: -3 };
+  const c = composeElasticTransform(inner, outer);
+  for (const p of [{ x: 0, y: 0 }, { x: 512, y: 1400 }, { x: -80, y: 3000 }]) {
+    const want = apply(outer, apply(inner, p));
+    const got = apply({ ox: inner.ox, oy: inner.oy, ...c }, p);
+    assert.ok(Math.abs(want.x - got.x) < 1e-9 && Math.abs(want.y - got.y) < 1e-9);
+  }
+  // an identity ease changes nothing
+  const same = composeElasticTransform(inner, { ox: 5, oy: 6, s: 1, tx: 0, ty: 0 });
+  assert.deepEqual(same, { s: 1.3, tx: -12, ty: 40 });
+  // the next leftover starts from what is shown: zoom multiplies, offsets add
+  const folded = foldElasticLeftover({ ax: 1, ay: 2, z: 1.2, tx: 3, ty: 4, anim: null }, { z: 1.5, tx: -1, ty: 10 });
+  assert.ok(Math.abs(folded.z - 1.8) < 1e-12);
+  assert.deepEqual({ ...folded, z: 1.8 }, { ax: 1, ay: 2, z: 1.8, tx: 2, ty: 14, anim: null });
+  assert.equal(foldElasticLeftover(folded, null), folded);
+});
+
+test('desktop: a hiccup in the event stream mid-tail does not restart the stretch', () => {
+  const c = createWheelOverscroll();
+  let t = push(c, Array(25).fill(7));
+  t = push(c, tailOf(7, 0.93, 25, 0.05), { t0: t });
+  t += WHEEL_OVERSCROLL_IDLE_MS;
+  c.idle(t);
+  t += 60; // events held up by a busy main thread, then the tail goes on
+  const resumed = t;
+  t = push(c, tailOf(1.6, 0.97, 30, 0.3), { t0: t });
+  const during = offsets(c, resumed, t);
+  for (let i = 1; i < during.length; i += 1) assert.ok(during[i] <= during[i - 1] + 1e-6, 'no re-stretch');
+  // a clear new push after it still stretches
+  t += 200;
+  push(c, Array(12).fill(9), { t0: t });
+  assert.ok(c.frame(t + 12 * 16).y > 5);
 });
