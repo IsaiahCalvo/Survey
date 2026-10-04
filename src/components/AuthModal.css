@@ -378,3 +378,40 @@
 .auth-dismiss-btn:hover {
   color: var(--text-2);
 }
+
+/* Polish round 5 (2026-10-04): 44px finger targets without changing the look.
+   The close keeps its 24px box; a transparent pad makes it 44 to the touch.
+   On a touch screen the text links, the SSO link and "Continue without an
+   account" each get a 44px-tall row (they were 14-30px, and "Create an
+   account" sat 8px above "Forgot password?"). Desktop spacing is unchanged. */
+.auth-modal-close::after {
+  content: '';
+  position: absolute;
+  inset: -11px; /* from the padding edge inside the 1px border: 11 + 22 + 11 = 44 */
+}
+
+@media (pointer: coarse) {
+  /* The 44px rows carry their own air, so the footer's rule moves closer. */
+  .auth-footer {
+    margin-top: 12px;
+    padding-top: 4px;
+  }
+
+  .auth-footer p {
+    margin: 0;
+  }
+
+  .auth-link-btn,
+  .auth-sso-link,
+  .auth-dismiss-btn {
+    min-height: 44px;
+  }
+
+  .auth-sso-link {
+    margin-top: 0;
+  }
+
+  .auth-dismiss {
+    margin-top: 0;
+  }
+}
