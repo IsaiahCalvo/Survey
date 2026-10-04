@@ -292,12 +292,14 @@ if (options.shard) {
 }
 
 if (options.list) {
-  for (const file of [
+  const listing = [
     ...selectedMainFiles, ...selectedIsolatedFiles, ...selectedPerfFiles,
-  ]) {
-    console.log(file);
-  }
-  process.exit(0);
+  ].map((file) => `${file}\n`).join('');
+  // Exit only once the listing has been flushed. A bare process.exit() right
+  // after console.log can cut a piped listing short when the reader is slow
+  // (seen as the wall-clock guard tests' probe file "missing" from its shard).
+  process.stdout.write(listing, () => process.exit(0));
+  await new Promise(() => {});
 }
 
 if (
