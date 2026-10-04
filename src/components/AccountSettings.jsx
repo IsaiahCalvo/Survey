@@ -599,7 +599,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                           type="button"
                           onClick={handleSendResetLink}
                           disabled={loading}
-                          style={{ display: 'inline-block', background: 'none', border: 'none', color: 'var(--accent)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', padding: '2px 0', textDecoration: 'underline' }}
+                          className="account-text-link"
+                          style={{ display: 'inline-block', background: 'none', border: 'none', fontSize: '12px', fontWeight: 600, cursor: 'pointer', padding: '2px 0', textDecoration: 'underline' }}
                         >
                           Forgot your current password? Email me a reset link
                         </button>

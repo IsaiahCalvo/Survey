@@ -326,6 +326,17 @@
   font-style: italic;
 }
 
+/* "Forgot your current password? Email me a reset link": a calm underlined
+   text link (--link), never gold (owner 2026-10-04). */
+.account-text-link {
+  color: var(--link);
+  transition: color 0.15s ease;
+}
+
+.account-text-link:hover:not(:disabled) {
+  color: var(--link-hover);
+}
+
 .account-field-hint {
   font-size: 11px;
   color: var(--text-3);
