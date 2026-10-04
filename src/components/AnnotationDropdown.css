@@ -177,3 +177,9 @@
 .chrome-pill.chrome-pill--compact .annotation-dropdown__trigger-content {
   display: none;
 }
+
+/* Owner Test 41 (2026-10-04): the text bar's font pill, shortened in a narrow
+   row — a name that no longer fits ends in "..." rather than being cut. */
+.text-row-font--short .chrome-pill__label {
+  text-overflow: ellipsis;
+}

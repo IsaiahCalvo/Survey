@@ -30,7 +30,7 @@ import AnchoredPopover from './components/AnchoredPopover';
 import ToolbarOverflowMenu from './components/ToolbarOverflowMenu';
 import useResponsiveToolbar from './hooks/useResponsiveToolbar.js';
 import useLoadoutTransition, { useDropInRow, useLeavingRow, useRowCrossfade } from './hooks/useLoadoutTransition.js';
-import { placeUnderOpenerAvoiding, slotDefinition, TEXT_ROW_CAPTION_ROOM, TIGHT_SPACING } from './utils/responsiveToolbar.js';
+import { PHONE_LAYOUT_MAX_WIDTH, placeUnderOpenerAvoiding, slotDefinition, TEXT_ROW_CAPTION_ROOM, TEXT_ROW_PARTS, textRowLook, TIGHT_SPACING } from './utils/responsiveToolbar.js';
 import { recentPressedControl, registerLightPopover } from './components/dismissRules.js';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from './utils/annotationSize';
 import SurveySpacesRail from './SurveySpacesRail';
@@ -297,6 +297,10 @@ const resolveTextFormatting = (api) => {
  * shows. The drawing is the same glyph in the pill and in the menu row, at two
  * sizes, so what the row promises is what the pill reports back.
  */
+/* Owner Test 41 (2026-10-04): a folded alignment pill shows its group's
+   current choice, so the bar still says how the text is aligned. */
+const TEXT_ALIGN_GLYPH = Object.freeze({ left: 'alignLeft', center: 'alignCenter', right: 'alignRight' });
+const TEXT_VALIGN_GLYPH = Object.freeze({ top: 'alignTop', middle: 'alignMiddle', bottom: 'alignBottom' });
 const LINE_STYLE_OPTIONS = Object.freeze([
   Object.freeze({ value: 'solid', label: 'Solid' }),
   Object.freeze({ value: 'dashed', label: 'Dashed' }),
@@ -701,12 +705,17 @@ export default function App({ devPreviewReturnTab = null }) {
   // ("Adapting Other Surfaces").
   const [isNarrowShell, setIsNarrowShell] = useState(() => (
     typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? window.matchMedia('(max-width: 720px)').matches
+      ? window.matchMedia(`(max-width: ${PHONE_LAYOUT_MAX_WIDTH}px)`).matches
       : false
   ));
+  // Owner Test 41 (2026-10-04): the desktop rows now give ground step by step
+  // and fit every width above this switch (down to 554px with no side panel),
+  // so there is no width where the rails cover a control. The switch stays at
+  // 720px with the viewer's own touch surface (PdfjsViewerContainer) and the
+  // stylesheets' 720px phone rules; see PHONE_LAYOUT_MAX_WIDTH.
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
-    const mq = window.matchMedia('(max-width: 720px)');
+    const mq = window.matchMedia(`(max-width: ${PHONE_LAYOUT_MAX_WIDTH}px)`);
     const onChange = () => setIsNarrowShell(mq.matches);
     if (mq.addEventListener) mq.addEventListener('change', onChange);
     else mq.addListener(onChange);
@@ -1677,6 +1686,43 @@ export default function App({ devPreviewReturnTab = null }) {
   // moving anything; it no longer glides sideways (useDropInRow).
   const textFormatRowLeft = toolbarPlan.textRowLeft
     ?? ((toolbarPlan.formatUsableLeft ?? 0) + 10 + TEXT_ROW_CAPTION_ROOM);
+  // Owner Test 41 (2026-10-04): how far row 3 has given ground in a narrow row
+  // (tighter gutters, folded alignment / style groups, a shorter font pill).
+  const textRowLookNow = textRowLook(toolbarPlan.textRowStep || 'full');
+  // A row-3 toggle group, or — folded — one compact pill showing `glyph`
+  // whose card holds the very same toggle buttons (same look, same
+  // keep-the-caret mousedown). A pick in a one-of-three group (alignment)
+  // closes the card; B / I / U / S stay open so several can be set at once.
+  // `buttons` false (no vertical alignment for callout text) draws nothing.
+  const renderTextRowFold = (folded, menuKey, label, glyph, glyphSize, closeOnPick, buttons) => {
+    if (!buttons) return null;
+    if (!folded) return buttons;
+    return (
+      <AnnotationDropdown
+        open={openAnnotationDropdown === menuKey}
+        onOpenChange={(next) => setDropdownOpen(menuKey, next)}
+        label={label}
+        preview={<Icon name={glyph} size={glyphSize} color="currentColor" />}
+        compact
+        contentWidth="0px"
+        dataMarker="data-text-row-fold"
+        preserveFocus
+        // A toggle hands focus back to the text being edited; that must not
+        // count as leaving the card (a press anywhere else still closes it —
+        // the formatting popovers' shared mousedown handler).
+        outsideBoundarySelector="[contenteditable], [data-rich-text-toolbar]"
+      >
+        <div
+          role="toolbar"
+          aria-label={label}
+          style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+          onClick={closeOnPick ? () => setDropdownOpen(menuKey, false) : undefined}
+        >
+          {buttons}
+        </div>
+      </AnnotationDropdown>
+    );
+  };
   useDropInRow(textBarEl, textFormatRowEl, chromeMotion);
   const selectArmed = !!bottomToolbarApi && isSelectFamilyTool(bottomToolbarApi.activeTool);
   const selectModesInToolBar = selectArmed && toolBarGroup === 'select';
@@ -2685,7 +2731,21 @@ export default function App({ devPreviewReturnTab = null }) {
                      live editor or the tool's own defaults. Armed, it sits UNDER
                      the Text category row, which is board 12's third bar; in
                      edit mode that category row is closed, so there are two. */
-                  <div data-rich-text-toolbar ref={setTextBarEl} style={{ width: '100%', height: 'var(--chrome-bar-h)', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', borderTop: 'none', cursor: 'default', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', paddingLeft: `${textFormatRowLeft}px`, gap: 'var(--chrome-gap)', zIndex: 10, boxSizing: 'border-box' }}>
+                  /* Owner Test 41 (2026-10-04): in a narrow row the bar gives
+                     ground in steps (textRowLook, planned by
+                     useResponsiveToolbar); the first one tightens its gutters
+                     and rules the way row 2 does. */
+                  <div data-rich-text-toolbar ref={setTextBarEl}
+                    data-text-row-step={textRowLookNow.step}
+                    data-text-row-valign={bottomToolbarApi?.textVerticalAlignSupported !== false ? 'true' : 'false'}
+                    style={{
+                      width: '100%', height: 'var(--chrome-bar-h)', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', borderTop: 'none', cursor: 'default', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', paddingLeft: `${textFormatRowLeft}px`, gap: 'var(--chrome-row-gap)', zIndex: 10, boxSizing: 'border-box',
+                      ...(textRowLookNow.tight ? {
+                        '--chrome-row-gap': `${TIGHT_SPACING.gap}px`,
+                        '--chrome-divider-inset': `${TIGHT_SPACING.inset}px`,
+                      } : {}),
+                    }}
+                  >
                     {/* PASS 7 (board 12): the order is colour, then font and
                         size, then B / I / U / S, then the two alignments —
                         appearance, then shape, then position, each pair behind
@@ -2716,7 +2776,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         centres the CONTROLS, which is what the eye reads and
                         what bars 1 and 2 centre. */}
                     <div ref={fontColorGroupRef} data-font-color-picker style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-                      <span
+                      {textRowLookNow.caption && <span
                         data-text-colour-label
                         style={{
                           position: 'absolute',
@@ -2732,12 +2792,25 @@ export default function App({ devPreviewReturnTab = null }) {
                         }}
                       >
                         Text
-                      </span>
-                      <QuickColourDots
-                        value={textColorParts.hex}
-                        onPick={(hex) => textFormatSource?.api?.setFontColor?.(composeTextColor(hex, textColorParts.opacity))}
-                        onOpenPicker={() => setShowFontColorPicker((v) => !v)}
-                      />
+                      </span>}
+                      {/* Owner Test 41 (2026-10-04): beside a side panel in a
+                          narrow window the four discs become ONE disc in the
+                          current colour, opening the same picker (whose
+                          presets hold the three). */}
+                      {textRowLookNow.oneColour ? (
+                        <QuickPaintSwatch
+                          ring={textColorParts.hex}
+                          center={textColorParts.hex}
+                          label="Text color"
+                          onOpen={() => setShowFontColorPicker((v) => !v)}
+                        />
+                      ) : (
+                        <QuickColourDots
+                          value={textColorParts.hex}
+                          onPick={(hex) => textFormatSource?.api?.setFontColor?.(composeTextColor(hex, textColorParts.opacity))}
+                          onOpenPicker={() => setShowFontColorPicker((v) => !v)}
+                        />
+                      )}
                       {showFontColorPicker && (
                         /* UX 2026-09-16: same 140ms fade-and-slide as every
                            other popover (Drawboard's 100ms fade+grow in).
@@ -2810,8 +2883,11 @@ export default function App({ devPreviewReturnTab = null }) {
                           onSelect={(family) => textFormatSource?.api?.setFontFamily?.(family)}
                           /* Board 12: 104px — the widest font name the list
                              offers ("Times New Roman") has to fit without the
-                             pill resizing as the user changes font. */
-                          width="var(--chrome-field-w-font)"
+                             pill resizing as the user changes font. Owner
+                             Test 41: a narrow row shortens it (a long name
+                             ends in "..."); the list keeps its full width. */
+                          width={textRowLookNow.shortFont ? `${TEXT_ROW_PARTS.shortFont}px` : 'var(--chrome-field-w-font)'}
+                          className={textRowLookNow.shortFont ? 'text-row-font--short' : ''}
                           contentWidth="var(--chrome-field-w-font)"
                           dataMarker="data-font-family-menu"
                           preserveFocus
@@ -2849,8 +2925,12 @@ export default function App({ devPreviewReturnTab = null }) {
                     {/* Board 12: the rule between the font pair and the four
                         style toggles. */}
                     <div className="chrome-divider" />
-                    {/* Bold / Italic / Underline / Strikethrough toggles. */}
-                    {[
+                    {/* Bold / Italic / Underline / Strikethrough toggles. Owner
+                        Test 41 (2026-10-04): in a narrow row each group below
+                        can fold into ONE pill whose card holds the very same
+                        toggles (renderTextRowFold; the order they fold in is
+                        TEXT_ROW_STEPS). */}
+                    {renderTextRowFold(textRowLookNow.foldStyle, 'text-style', 'Text style', 'formatBold', 13, false, [
                       ['formatBold', 'bold', 'toggleBold', 'Bold'],
                       ['formatItalic', 'italic', 'toggleItalic', 'Italic'],
                       ['formatUnderline', 'underline', 'toggleUnderline', 'Underline'],
@@ -2884,7 +2964,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           <Icon name={iconName} size={13} />
                         </button>
                       );
-                    })}
+                    }))}
                     {/* PASS 7 (board 12, owner ruling): alignment is SIX
                         buttons in two groups — left / centre / right, then top /
                         middle / bottom — behind their own rules. It used to be
@@ -2893,7 +2973,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         axis meant re-picking the other. Both axes are now
                         visible and independent. */}
                     <div className="chrome-divider" />
-                    {[
+                    {renderTextRowFold(textRowLookNow.foldAlign, 'text-align', 'Text alignment', TEXT_ALIGN_GLYPH[textFormatSource?.state?.textAlign] || 'alignLeft', 14, true, [
                       ['alignLeft', 'left', 'Align left'],
                       /* US spelling, app-wide ruling (owner 2026-09-22): the UI
                          says "Color" and "center", never the British form. */
@@ -2915,12 +2995,12 @@ export default function App({ devPreviewReturnTab = null }) {
                           <Icon name={iconName} size={14} color="currentColor" />
                         </button>
                       );
-                    })}
+                    }))}
                     {/* Review 2026-09-23: hidden for callout text, which is
                         always vertically centred (PDFViewer
                         textVerticalAlignSupported). */}
                     {bottomToolbarApi?.textVerticalAlignSupported !== false && <div className="chrome-divider" />}
-                    {bottomToolbarApi?.textVerticalAlignSupported !== false && [
+                    {renderTextRowFold(textRowLookNow.foldVertical, 'text-valign', 'Vertical alignment', TEXT_VALIGN_GLYPH[textFormatSource?.state?.verticalAlign] || 'alignTop', 14, true, bottomToolbarApi?.textVerticalAlignSupported !== false && [
                       ['alignTop', 'top', 'Align to the top'],
                       ['alignMiddle', 'middle', 'Align to the middle'],
                       ['alignBottom', 'bottom', 'Align to the bottom'],
@@ -2940,7 +3020,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           <Icon name={iconName} size={14} color="currentColor" />
                         </button>
                       );
-                    })}
+                    }))}
                   </div>,
                   textFormatRowEl
                 )}
