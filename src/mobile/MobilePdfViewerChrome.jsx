@@ -1646,7 +1646,9 @@ export function MobileToolProperties({ api }) {
   }
 
   // Pan has nothing to set, so it has no strip and the page keeps the 36px.
-  if (api.activeTool === 'pan') return null;
+  // Owner 2026-10-04: a Pan pick shows the picked mark's strip, as a Select
+  // pick does (contextTool is then the mark's tool).
+  if (api.activeTool === 'pan' && (!api.contextTool || api.contextTool === 'pan')) return null;
 
   const isEraser = tool === 'eraser';
   // w41: the picked mark(s) decide what can change - a partly erased or

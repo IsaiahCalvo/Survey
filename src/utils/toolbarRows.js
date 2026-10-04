@@ -60,9 +60,9 @@ export { TOOL_GROUP_BY_TOOL };
  *   'select' — Select's Box / Lasso / Text modes (Select armed, and nothing
  *              picked or a picked mark no drawing group makes, such as a
  *              text highlight);
- *   null      — nothing (Pan, Survey Marker placement).
- * `contextTool` is the picked mark's own tool while Select is armed (see
- * PDFViewer's toolbar publish), else the armed tool.
+ *   null      — nothing (Pan with nothing picked, Survey Marker placement).
+ * `contextTool` is the picked mark's own tool while Select or Pan holds a
+ * pick (see PDFViewer's toolbar publish), else the armed tool.
  */
 export function resolveToolBarGroup({ activeTool, activeCategoryDropdown, contextTool, regionEditing } = {}) {
   // Editing a Space's areas: the tool bar shows the Areas tools instead
@@ -70,6 +70,9 @@ export function resolveToolBarGroup({ activeTool, activeCategoryDropdown, contex
   if (regionEditing || activeTool === 'region-edit') return null;
   if (TOOL_BAR_GROUPS.includes(activeCategoryDropdown)) return activeCategoryDropdown;
   if (isSelectFamilyTool(activeTool)) return TOOL_GROUP_BY_TOOL[contextTool] || 'select';
+  // Owner 2026-10-04: a Pan pick brings up the picked mark's group as a
+  // Select pick does (contextTool is then the mark's tool); Pan alone has none.
+  if (activeTool === 'pan') return TOOL_GROUP_BY_TOOL[contextTool] || null;
   return TOOL_GROUP_BY_TOOL[activeTool] || null;
 }
 
@@ -90,7 +93,9 @@ export const FORMAT_ROW_TOOLS = Object.freeze([
  * picked has nothing for row 2 and it is hidden; picking a mark brings it
  * back. The row lies over the page (utils/viewerTopOverlay.js), so the page
  * does not move when it comes and goes.
- * Pan and Survey Marker placement have no settings: no row.
+ * Pan (with nothing picked) and Survey Marker placement have no settings: no
+ * row. A Pan pick shows the picked mark's row, as under Select (owner
+ * 2026-10-04: contextTool is then the mark's tool).
  * w47 (2026-09-26): an ARMED drawing tool always has settings, even for the
  * one render where the viewer has published the new tool but not yet its
  * settings context (Eraser → Pen reported contextTool 'eraser' with

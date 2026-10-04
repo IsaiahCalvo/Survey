@@ -5,7 +5,7 @@
  * SVG layer and the Text / Counter overlays ask one question the same way.
  */
 import { resolveAnnotationAt } from './annotationHitTest.js';
-import { resolveToolPress } from './selectModes.js';
+import { canToolPickAnyGroup, canToolPickMark, PICK_ANY_TOOLS, resolveToolPress } from './selectModes.js';
 import { CALLOUT_MARK_GROUP, getMarkGroup } from './markToolGroup.js';
 
 /** Text boxes (and callouts, handled by id) open an editor on rule 6 / 7. */
@@ -29,15 +29,33 @@ export function isPageCalloutSelected(callouts, selectedCalloutIds, pageNumber) 
 }
 
 /**
+ * The hit test's mark filter for a tool that picks only its own group's marks
+ * (owner 2026-10-04): another group's mark is not there for it, so a press or
+ * hover over one lying on top of an own-group mark reaches the mark beneath
+ * (annotationHitTest acceptMark). Null for the tools that pick any mark
+ * (Select, Text Select, Pan) and for the Draw group, which never picks.
+ * `getObjects(pageNumber)` returns that page's objects.
+ */
+export function ownGroupMarkFilter(tool, getObjects) {
+  if (!tool || PICK_ANY_TOOLS.includes(tool) || !canToolPickAnyGroup(tool)) return null;
+  return ({ pageNumber, annotationIndex, calloutId }) => canToolPickMark(tool, calloutId != null
+    ? CALLOUT_MARK_GROUP
+    : getMarkGroup((getObjects?.(pageNumber) || [])[annotationIndex]));
+}
+
+/**
  * What a press on a page landed on, by geometry (the same hit test Pan and the
  * right-click menu use, so it works while the marks are pointer-inert).
  * Returns { target: 'text' | 'mark' | 'empty', index, calloutId, markGroup } —
  * markGroup is the pressed mark's tool group (utils/markToolGroup.js), which
- * decides whether the armed tool may pick it (owner 2026-10-04).
+ * decides whether the armed tool may pick it (owner 2026-10-04). With `tool`
+ * given, a mark that tool may not pick is passed over for the one beneath it
+ * (ownGroupMarkFilter).
  */
-export function classifyPagePress(nativeEvent, { pageNumber, objects } = {}) {
+export function classifyPagePress(nativeEvent, { pageNumber, objects, tool = null } = {}) {
   let hit = null;
-  try { hit = resolveAnnotationAt(nativeEvent); } catch (_) { hit = null; }
+  const acceptMark = ownGroupMarkFilter(tool, (page) => (pageNumber == null || page === pageNumber ? objects : null));
+  try { hit = resolveAnnotationAt(nativeEvent, { acceptMark }); } catch (_) { hit = null; }
   const onPage = hit && (pageNumber == null || hit.pageNumber === pageNumber);
   if (onPage && hit.kind === 'callout' && hit.calloutId != null) {
     return { target: 'text', index: null, calloutId: hit.calloutId, pageNumber: hit.pageNumber, markGroup: CALLOUT_MARK_GROUP };
@@ -57,7 +75,7 @@ export function classifyPagePress(nativeEvent, { pageNumber, objects } = {}) {
 
 /** classifyPagePress + the rule table in one call. */
 export function resolvePagePress(nativeEvent, { tool, pageNumber, objects, hasSelection }) {
-  const where = classifyPagePress(nativeEvent, { pageNumber, objects });
+  const where = classifyPagePress(nativeEvent, { pageNumber, objects, tool });
   const press = resolveToolPress({
     tool, target: where.target, markGroup: where.markGroup, hasSelection, shiftKey: !!nativeEvent?.shiftKey,
   });

@@ -61,7 +61,7 @@ import ExcelLockedModal from './components/ExcelLockedModal';
 import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
 import SpaceSelectionDialog from './components/SpaceSelectionDialog';
 import TextEditOverlay from './components/TextEditOverlay';
-import { resolveToolbarCallout } from './utils/toolbarCalloutTarget.js';
+import { resolvePickBarTool, resolveToolbarCallout } from './utils/toolbarCalloutTarget.js';
 import FabricEraserCanvas from './components/FabricEraserCanvas';
 import FormFieldPropertiesPanel from './components/FormFieldPropertiesPanel';
 import AnnotationDropdown from './components/AnnotationDropdown';
@@ -324,7 +324,7 @@ import { usePageOperations } from './hooks/usePageOperations.js';
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
 import { getPageViewBase } from './utils/pageViewDocument.js';
 import { getSelectFamilyTransition, getToolSwitchSelectionClearReason, isSelectFamilyTool, loadSelectMode, resolveEscape, resolveTextDoubleClick, resolveToolPress, saveSelectMode, shouldBackdropPressDeselect, shouldEscapeDeselect, shouldShowHoverHalo } from './utils/selectModes.js';
-import { classifyPagePress } from './utils/toolPressRouting.js';
+import { classifyPagePress, ownGroupMarkFilter } from './utils/toolPressRouting.js';
 import { CALLOUT_MARK_GROUP, getMarkGroup } from './utils/markToolGroup.js';
 import { dropStashedSelection, hasAnyPageSelection, isItemSelected, pageHasSelection } from './utils/pageSelectionPresence.js';
 import { isSelectionGrabPress, noteOverlayTapPick } from './hooks/useSelectionGrabHandoff.js';
@@ -4416,7 +4416,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         if (document.body.style.cursor === 'pointer') document.body.style.cursor = '';
         return;
       }
-      const hit = resolveAnnotationAt(e);
+      // Owner 2026-10-04: a Shapes / Text tool looks past another group's mark
+      // to its own group's mark beneath (the same rule as its press).
+      const hit = resolveAnnotationAt(e, {
+        acceptMark: ownGroupMarkFilter(activeTool, (page) => annotationsByPageRef.current?.[page]?.objects),
+      });
       // Owner 2026-10-04 (own tool group only): a tool's halo shows only over
       // a mark it may pick — any mark under Pan, its own group's under the
       // Shapes / Text tools, none while a polygon is under way. The eraser's
@@ -4528,6 +4532,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }), [selectedCalloutIds, callouts, editingCalloutIdForToolbar]);
   const selectedToolbarCalloutRef = useRef(selectedToolbarCallout);
   useEffect(() => { selectedToolbarCalloutRef.current = selectedToolbarCallout; }, [selectedToolbarCallout]);
+  // Owner 2026-10-04: the tool the bar works for. 'select' while it shows and
+  // edits the PICKED mark(s) - under Select, under Pan, and under a Shapes /
+  // Text tool holding a pick of its own group - else the armed tool, whose
+  // settings are for the next mark (utils/toolbarCalloutTarget.js).
+  const pickBarTool = useMemo(() => {
+    const groups = [];
+    if (selectedToolbarIndices?.indices?.length) {
+      const objects = annotationsByPage?.[selectedToolbarIndices.pageNumber]?.objects || [];
+      selectedToolbarIndices.indices.forEach((index) => groups.push(getMarkGroup(objects[index])));
+    } else if (selectedToolbarAnnotation?.annotation) {
+      groups.push(getMarkGroup(selectedToolbarAnnotation.annotation));
+    }
+    if (selectedToolbarCallout || (selectedCalloutIds instanceof Set && selectedCalloutIds.size > 0)) {
+      groups.push(CALLOUT_MARK_GROUP);
+    }
+    return resolvePickBarTool({
+      activeTool,
+      pickedGroups: groups,
+      justDrawn: selectedToolbarAnnotation?.justDrawn === true,
+    });
+  }, [activeTool, selectedToolbarIndices, selectedToolbarAnnotation, selectedToolbarCallout, selectedCalloutIds, annotationsByPage]);
+  const pickBarToolRef = useRef(pickBarTool);
+  pickBarToolRef.current = pickBarTool;
 
   // w41 (owner 2026-09-25: "I should be able to select things and then change
   // their color, their width, their line type"): two or more marks picked -
@@ -4538,10 +4565,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Drawboard / Bluebeam / Acrobat multi-selection formatting.
   const restyleGroupCacheRef = useRef(null);
   const restyleGroup = useMemo(() => {
-    // Only under Select. With a drawing tool armed, the bar is that tool's
-    // defaults for the next mark, and a pick left behind must never load its
-    // values into them nor take the tool's changes (review 2026-09-25).
-    if (activeTool !== 'select') return null;
+    // Only while the bar edits the pick (pickBarTool: Select, Pan, a Shapes /
+    // Text tool's own-group pick). With a drawing tool armed otherwise, the
+    // bar is that tool's defaults for the next mark, and a pick left behind
+    // must never load its values into them nor take the tool's changes
+    // (review 2026-09-25).
+    if (pickBarTool !== 'select') return null;
     const annotationMembers = [];
     let annotationSelection = null;
     if (selectedToolbarIndices && selectedToolbarIndices.indices.length > 0) {
@@ -4594,7 +4623,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       result,
     };
     return result;
-  }, [activeTool, selectedToolbarIndices, annotationsByPage, selectedCalloutIds, callouts]);
+  }, [pickBarTool, selectedToolbarIndices, annotationsByPage, selectedCalloutIds, callouts]);
   const restyleGroupRef = useRef(restyleGroup);
   restyleGroupRef.current = restyleGroup;
 
@@ -8369,7 +8398,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Sync tool properties when activeTool or pdfId changes (load per-tool preferences)
   useEffect(() => {
     if (!pdfId) return;
-    if (activeTool === 'select') return;
+    if (pickBarTool === 'select') return;
     const toolPrefs = getToolPreference(activeTool);
     if (activeTool === 'text-select') {
       const paint = textMarkupPaintByType[focusedTextMarkupPaint]
@@ -8403,7 +8432,53 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setStrokeWidthInputValue(nextValue);
       }
     }
-  }, [activeTool, focusedTextMarkupPaint, lineBorderStyle, pdfId, textMarkupPaintByType, toolPreferences]);
+  }, [activeTool, pickBarTool, focusedTextMarkupPaint, lineBorderStyle, pdfId, textMarkupPaintByType, toolPreferences]);
+
+  // Owner 2026-10-04: a Shapes / Text tool that picks a mark of its own group
+  // shows that mark's values in the bar; when the pick goes (empty click,
+  // Escape) the bar is the tool's own settings again, as they were before the
+  // pick. A tool switch is not a pick ending here: the switch loads the new
+  // tool's settings (above).
+  const toolSettingsBeforePickRef = useRef(null);
+  const toolSettingsPickToolRef = useRef(activeTool);
+  useEffect(() => {
+    const toolChanged = toolSettingsPickToolRef.current !== activeTool;
+    toolSettingsPickToolRef.current = activeTool;
+    if (toolChanged) {
+      toolSettingsBeforePickRef.current = null;
+      return;
+    }
+    if (pickBarTool === 'select') {
+      if (activeTool !== 'select' && activeTool !== 'pan' && !toolSettingsBeforePickRef.current) {
+        toolSettingsBeforePickRef.current = {
+          strokeColor, strokeOpacity, fillColor, fillOpacity, strokeWidth,
+          lineBorderStyle, cloudIntensity, arrowheadStyle, arrowBothEnds,
+        };
+      }
+      return;
+    }
+    const saved = toolSettingsBeforePickRef.current;
+    toolSettingsBeforePickRef.current = null;
+    if (!saved) return;
+    strokeColorStateRef.current = saved.strokeColor;
+    strokeOpacityStateRef.current = saved.strokeOpacity;
+    fillColorStateRef.current = saved.fillColor;
+    fillOpacityStateRef.current = saved.fillOpacity;
+    setStrokeColor(saved.strokeColor);
+    setStrokeOpacity(saved.strokeOpacity);
+    setFillColor(saved.fillColor);
+    setFillOpacity(saved.fillOpacity);
+    setStrokeWidth(saved.strokeWidth);
+    if (!isStrokeWidthFocusedRef.current) {
+      strokeWidthInputValueRef.current = String(saved.strokeWidth);
+      setStrokeWidthInputValue(String(saved.strokeWidth));
+    }
+    setLineBorderStyle(saved.lineBorderStyle);
+    setCloudIntensity(saved.cloudIntensity);
+    setArrowheadStyle(saved.arrowheadStyle);
+    setArrowBothEnds(saved.arrowBothEnds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTool, pickBarTool]);
 
   // Sync strokeWidthInputValue when strokeWidth changes (but not while focused)
   useEffect(() => {
@@ -8433,13 +8508,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => { fillColorStateRef.current = fillColor; }, [fillColor]);
   useEffect(() => { fillOpacityStateRef.current = fillOpacity; }, [fillOpacity]);
   useEffect(() => {
-    if (activeTool !== 'select' || selectedToolbarAnnotation?.annotation?.data?.type !== 'text-markup') return;
+    if (pickBarTool !== 'select' || selectedToolbarAnnotation?.annotation?.data?.type !== 'text-markup') return;
     const paint = resolveTextMarkupEditPaint(selectedToolbarAnnotation.annotation, strokeColorStateRef.current);
     strokeColorStateRef.current = paint.color;
     strokeOpacityStateRef.current = paint.opacity;
     setStrokeColor(paint.color);
     setStrokeOpacity(paint.opacity);
-  }, [activeTool, selectedToolbarAnnotation]);
+  }, [pickBarTool, selectedToolbarAnnotation]);
   const getSelectedShapeMeta = () => {
     const sel = selectedToolbarAnnotationRef.current;
     const annotation = sel?.annotation;
@@ -8589,10 +8664,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const normalized = mode === 'uniform' ? 'uniform' : 'layered';
     setTextMarkupOverlapMode(normalized);
     const annotation = selectedToolbarAnnotationRef.current?.annotation;
-    if (activeTool === 'select' && annotation?.data?.type === 'text-markup') {
+    if (pickBarTool === 'select' && annotation?.data?.type === 'text-markup') {
       handlePatchSelectedAnnotation({ data: { overlapMode: normalized } });
     }
-  }, [activeTool, handlePatchSelectedAnnotation]);
+  }, [pickBarTool, handlePatchSelectedAnnotation]);
 
   const handleSelectedCounterSeriesStartChange = useCallback((value) => {
     const sel = selectedToolbarAnnotationRef.current;
@@ -8628,7 +8703,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     strokeColorStateRef.current = color;
     setStrokeColor(color);
     const nextNumberColor = composeColorForPatch(color, strokeOpacityStateRef.current);
-    if (activeTool === 'counter') {
+    if (pickBarTool === 'counter') {
       activeCounterSeriesNumberColorRef.current = nextNumberColor;
       const activeSeriesId = activeCounterSeriesIdRef.current;
       const activeSeriesHasPins = activeSeriesId
@@ -8641,9 +8716,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setCounterUITick((tick) => tick + 1);
       }
     }
-    if (pdfId && activeTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(paintPreferenceKey(activeTool), { strokeColor: color });
-    if (activeTool === 'counter') return;
-    if (activeTool !== 'select') {
+    if (pdfId && pickBarTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(paintPreferenceKey(pickBarTool), { strokeColor: color });
+    if (pickBarTool === 'counter') return;
+    if (pickBarTool !== 'select') {
       if (isJustDrawnMarkSelected() && isEditableShapeSelected()) patchSelectedStroke(nextNumberColor);
       return;
     }
@@ -8655,7 +8730,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } else if (isEditableShapeSelected()) {
       patchSelectedStroke(nextNumberColor);
     }
-  }, [activeTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
+  }, [pickBarTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleTextMarkupPaintChange = useCallback((color, opacity) => {
     const normalizedOpacity = Math.max(5, Math.min(100, Number(opacity)
@@ -8678,8 +8753,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         ? { ...current, [focusedTextMarkupPaint]: { color, opacity: normalizedOpacity } }
         : current
     ));
-    if (pdfId && activeTool !== 'select' && paintPhaseRef.current !== 'preview') {
-      updateToolPreference(activeTool, { strokeColor: color, strokeOpacity: normalizedOpacity });
+    if (pdfId && pickBarTool !== 'select' && paintPhaseRef.current !== 'preview') {
+      updateToolPreference(pickBarTool, { strokeColor: color, strokeOpacity: normalizedOpacity });
     }
     if (selectedToolbarAnnotationRef.current?.annotation?.data?.type === 'text-markup') {
       handlePatchSelectedAnnotation({
@@ -8688,14 +8763,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         opacity: normalizedOpacity / 100,
       });
     }
-  }, [activeTool, focusedTextMarkupPaint, handlePatchSelectedAnnotation, pdfId, updateToolPreference]);
+  }, [pickBarTool, focusedTextMarkupPaint, handlePatchSelectedAnnotation, pdfId, updateToolPreference]);
 
   const handleStrokeOpacityChange = useCallback((opacity) => {
     const previousStrokeOpacity = strokeOpacityStateRef.current;
     strokeOpacityStateRef.current = opacity;
     setStrokeOpacity(opacity);
     const nextNumberColor = composeColorForPatch(strokeColorStateRef.current, opacity);
-    if (activeTool === 'counter') {
+    if (pickBarTool === 'counter') {
       activeCounterSeriesNumberColorRef.current = nextNumberColor;
       const activeSeriesId = activeCounterSeriesIdRef.current;
       const activeSeriesHasPins = activeSeriesId
@@ -8706,9 +8781,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setCounterUITick((tick) => tick + 1);
       }
     }
-    if (pdfId && activeTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(paintPreferenceKey(activeTool), { strokeOpacity: opacity });
-    if (activeTool === 'counter') return;
-    if (activeTool !== 'select') {
+    if (pdfId && pickBarTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(paintPreferenceKey(pickBarTool), { strokeOpacity: opacity });
+    if (pickBarTool === 'counter') return;
+    if (pickBarTool !== 'select') {
       if (isJustDrawnMarkSelected() && isEditableShapeSelected()) patchSelectedStroke(nextNumberColor);
       return;
     }
@@ -8727,14 +8802,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } else if (isEditableShapeSelected()) {
       patchSelectedStroke(nextNumberColor);
     }
-  }, [activeTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
+  }, [pickBarTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleFillColorChange = useCallback((color) => {
     const previousFillColor = fillColorStateRef.current;
     fillColorStateRef.current = color;
     setFillColor(color);
     const nextFillColor = composeColorForPatch(color, fillOpacityStateRef.current);
-    if (activeTool === 'counter') {
+    if (pickBarTool === 'counter') {
       activeCounterSeriesColorRef.current = nextFillColor;
       const activeSeriesId = activeCounterSeriesIdRef.current;
       const activeSeriesHasPins = activeSeriesId
@@ -8745,9 +8820,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setCounterUITick((tick) => tick + 1);
       }
     }
-    if (pdfId && activeTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(activeTool, { fillColor: color });
-    if (activeTool === 'counter') return;
-    if (activeTool !== 'select') {
+    if (pdfId && pickBarTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(pickBarTool, { fillColor: color });
+    if (pickBarTool === 'counter') return;
+    if (pickBarTool !== 'select') {
       if (isJustDrawnMarkSelected() && isFillableShapeSelected()) patchSelectedFill(nextFillColor);
       return;
     }
@@ -8757,14 +8832,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } else if (isFillableShapeSelected()) {
       patchSelectedFill(nextFillColor);
     }
-  }, [activeTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
+  }, [pickBarTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleFillOpacityChange = useCallback((opacity) => {
     const previousFillOpacity = fillOpacityStateRef.current;
     fillOpacityStateRef.current = opacity;
     setFillOpacity(opacity);
     const nextFillColor = composeColorForPatch(fillColorStateRef.current, opacity);
-    if (activeTool === 'counter') {
+    if (pickBarTool === 'counter') {
       activeCounterSeriesColorRef.current = nextFillColor;
       const activeSeriesId = activeCounterSeriesIdRef.current;
       const activeSeriesHasPins = activeSeriesId
@@ -8775,9 +8850,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setCounterUITick((tick) => tick + 1);
       }
     }
-    if (pdfId && activeTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(activeTool, { fillOpacity: opacity });
-    if (activeTool === 'counter') return;
-    if (activeTool !== 'select') {
+    if (pdfId && pickBarTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(pickBarTool, { fillOpacity: opacity });
+    if (pickBarTool === 'counter') return;
+    if (pickBarTool !== 'select') {
       if (isJustDrawnMarkSelected() && isFillableShapeSelected()) patchSelectedFill(nextFillColor);
       return;
     }
@@ -8787,7 +8862,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } else if (isFillableShapeSelected()) {
       patchSelectedFill(nextFillColor);
     }
-  }, [activeTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
+  }, [pickBarTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   // The paint handlers as the toolbars see them: the same writes, plus the
   // colour picker's optional drag phase (see paintPhaseRef). The phase is set
@@ -8924,7 +8999,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         changed,
         phase: options?.phase,
         target,
-        activeTool,
+        activeTool: pickBarTool,
         dragRecord: textStyleDragTargetKeyRef.current,
       });
       textStyleDragTargetKeyRef.current = write.dragRecord;
@@ -8947,12 +9022,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           : null);
       }
     });
-  }, [activeTool, handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
+  }, [pickBarTool, handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
 
   const handleStrokeWidthChange = useCallback((width) => {
     setStrokeWidth(width);
-    if (pdfId && activeTool !== 'select') updateToolPreference(paintPreferenceKey(activeTool), { strokeWidth: width });
-    if (activeTool === 'select' && applyRestyleToGroup({ kind: 'width', width })) return;
+    if (pdfId && pickBarTool !== 'select') updateToolPreference(paintPreferenceKey(pickBarTool), { strokeWidth: width });
+    if (pickBarTool === 'select' && applyRestyleToGroup({ kind: 'width', width })) return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ lineThickness: Math.max(1, Number(width) || 2) });
       return;
@@ -8988,7 +9063,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } else {
       handlePatchSelectedAnnotation({ strokeWidth: width });
     }
-  }, [activeTool, pdfId, updateToolPreference, handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
+  }, [pickBarTool, pdfId, updateToolPreference, handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
 
   const handleLineBorderStyleChange = useCallback((next) => {
     setLineBorderStyle(next);
@@ -8996,7 +9071,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // picker too — patch style.lineStyle through the undoable callout patch
     // path (same route as the arrowhead picker). 'cloud' is never offered for
     // the callout context (rect-only option), but guard anyway.
-    if (activeToolRef.current === 'select' && applyRestyleToGroup({
+    if (pickBarToolRef.current === 'select' && applyRestyleToGroup({
       kind: 'lineStyle',
       style: next,
       cloudIntensity: Math.max(1, Number(cloudIntensity) || 2),
@@ -9028,7 +9103,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleCloudIntensityChange = useCallback((next) => {
     setCloudIntensity(next);
-    if (activeToolRef.current === 'select' && applyRestyleToGroup({
+    if (pickBarToolRef.current === 'select' && applyRestyleToGroup({
       kind: 'cloudIntensity',
       cloudIntensity: Math.max(1, Number(next) || 2),
     })) return;
@@ -9046,7 +9121,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleArrowheadStyleChange = useCallback((next) => {
     setArrowheadStyle(next);
-    if (activeToolRef.current === 'select' && applyRestyleToGroup({
+    if (pickBarToolRef.current === 'select' && applyRestyleToGroup({
       kind: 'arrowhead',
       style: next,
       // Each picked arrow keeps its own ends (the bar's both-ends state may
@@ -9071,7 +9146,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [handlePatchSelectedAnnotation, handlePatchSelectedCallout, arrowBothEnds]);
 
   const handleGroupArrowEndsChange = useCallback((ends) => {
-    if (activeToolRef.current !== 'select') return;
+    if (pickBarToolRef.current !== 'select') return;
     applyRestyleToGroup({ kind: 'arrowEnds', ends });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -9079,7 +9154,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const on = Boolean(next);
     setArrowBothEnds(on);
     try { localStorage.setItem('arrowBothEnds', on ? '1' : '0'); } catch {}
-    if (activeToolRef.current === 'select' && applyRestyleToGroup({ kind: 'arrowBothEnds', on })) return;
+    if (pickBarToolRef.current === 'select' && applyRestyleToGroup({ kind: 'arrowBothEnds', on })) return;
     const sel = selectedToolbarAnnotationRef.current;
     const type = String(sel?.annotation?.type || '').toLowerCase();
     const isArrow = type === 'line' && (sel?.annotation?.tool === 'arrow'
@@ -9096,7 +9171,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // UX 2026-09-09: line widths keep one decimal place (the Cloud style's
     // approved 2.5-unit default must type, read back and draw as 2.5);
     // counter sizes stay whole numbers. A trailing "2." is a legal draft.
-    const isCounterSize = activeTool === 'counter' || getSelectedShapeMeta().isCounter;
+    const isCounterSize = pickBarTool === 'counter' || getSelectedShapeMeta().isCounter;
     const widthDecimals = isCounterSize ? 0 : ANNOTATION_WIDTH_DECIMALS;
     // Allow empty string or valid numbers
     if (sanitizeAnnotationSizeDraft(value, widthDecimals) !== null) {
@@ -9113,20 +9188,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
       publishToolbarDraft('strokeWidthInputValue', value);
     }
-  }, [activeTool, publishToolbarDraft]);
+  }, [pickBarTool, publishToolbarDraft]);
 
   // Commit width value on blur (clamp to valid range)
   const handleStrokeWidthInputBlur = useCallback((event) => {
     handleStrokeWidthFocusChange(false);
     // AppShell receives this handler through an effect-published API. Read the
     // blur-time DOM value so a fast edit cannot recommit a stale closure value.
-    const isCounterSize = activeTool === 'counter' || getSelectedShapeMeta().isCounter;
+    const isCounterSize = pickBarTool === 'counter' || getSelectedShapeMeta().isCounter;
     const minWidth = isCounterSize ? COUNTER_SIZE_MIN : 1;
     const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : 50;
     const rawValue = String(event?.currentTarget?.value ?? strokeWidthInputValueRef.current ?? '').trim();
     // w41: an empty Width over picked marks of different widths means "leave
     // them" - never "set all of them to the minimum".
-    if (rawValue === '' && activeTool === 'select' && restyleGroupRef.current?.summary?.mixed?.width) return;
+    if (rawValue === '' && pickBarTool === 'select' && restyleGroupRef.current?.summary?.mixed?.width) return;
     const parsed = rawValue === ''
       ? NaN
       : normalizeAnnotationSize(rawValue, -Infinity, Infinity, isCounterSize ? 0 : ANNOTATION_WIDTH_DECIMALS);
@@ -9145,7 +9220,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       publishToolbarDraft('strokeWidthInputValue', clamped);
       handleStrokeWidthChange(clamped);
     }
-  }, [activeTool, handleStrokeWidthChange, handleStrokeWidthFocusChange, publishToolbarDraft]);
+  }, [pickBarTool, handleStrokeWidthChange, handleStrokeWidthFocusChange, publishToolbarDraft]);
 
   // Handle eraser size input changes (allows empty string while typing)
   const handleEraserSizeInputChange = useCallback((e) => {
@@ -25497,12 +25572,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     ) {
       selectionMappedTool = 'arrow';
     }
+    // Owner 2026-10-04: pickBarTool is 'select' while the bar shows and edits
+    // the pick - under Select, Pan, or a Shapes / Text tool's own-group pick
+    // (utils/toolbarCalloutTarget.js) - so all three read the pick alike.
     // w41: two or more marks picked -> the bar shows the group's layout
     // (utils/selectionRestyle summarizeSelectionRestyle), not the Select
     // mode toggle, so the picked marks can be restyled together.
-    const groupSummary = activeTool === 'select' ? (restyleGroup?.summary || null) : null;
+    const groupSummary = pickBarTool === 'select' ? (restyleGroup?.summary || null) : null;
     if (groupSummary) selectionMappedTool = groupSummary.contextTool;
-    const contextTool = (activeTool === 'select' && selectionMappedTool)
+    const contextTool = (pickBarTool === 'select' && selectionMappedTool)
       ? selectionMappedTool
       : activeTool;
     // w44 (rows flipped): the tool bar shows the picked mark's group's tools.
@@ -25515,7 +25593,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // member has. Null while nothing is picked (the tool's own controls).
     const selectionCapabilities = groupSummary
       ? groupSummary.capabilities
-      : (activeTool === 'select' && !selectedToolbarCallout && isFilledInkPath(selectedAnnot)
+      : (pickBarTool === 'select' && !selectedToolbarCallout && isFilledInkPath(selectedAnnot)
         ? restyleCapabilities(selectedAnnot)
         : null);
     const textMarkupSelectionRect = (() => {
@@ -25558,7 +25636,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return composeColorForPatch(hex, effectiveAlpha * 100);
     };
     const selectedPreviewColors = (() => {
-      if (activeTool === 'counter') {
+      if (pickBarTool === 'counter') {
         return {
           fill: effectivePreviewColor(activeCounterSeriesPaint.fill),
           stroke: effectivePreviewColor(activeCounterSeriesPaint.numberColor),
@@ -25567,7 +25645,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // A selection can remain cached after the user arms a drawing tool. In
       // that state the toolbar must preview the drawing tool defaults, not the
       // stale selected object's paint.
-      if (activeTool !== 'select') return { fill: null, stroke: null };
+      if (pickBarTool !== 'select') return { fill: null, stroke: null };
       // w41: a group previews the values the bar loaded for it (the states).
       if (groupSummary) return { fill: null, stroke: null };
       if (selectedToolbarCallout?.callout) {
@@ -25626,19 +25704,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         stroke: effectivePreviewColor(currentSelectedAnnot.stroke || 'transparent', objectOpacity),
       };
     })();
-    const counterToolStrokeColor = activeTool === 'counter'
+    const counterToolStrokeColor = pickBarTool === 'counter'
       ? (getHexFromColor(activeCounterSeriesPaint.numberColor) || strokeColor)
       : strokeColor;
-    const counterToolStrokeOpacity = activeTool === 'counter'
+    const counterToolStrokeOpacity = pickBarTool === 'counter'
       ? getOpacityFromEntityColor(activeCounterSeriesPaint.numberColor)
       : strokeOpacity;
-    const counterToolFillColor = activeTool === 'counter'
+    const counterToolFillColor = pickBarTool === 'counter'
       ? (getHexFromColor(activeCounterSeriesPaint.fill) || fillColor)
       : fillColor;
-    const counterToolFillOpacity = activeTool === 'counter'
+    const counterToolFillOpacity = pickBarTool === 'counter'
       ? getOpacityFromEntityColor(activeCounterSeriesPaint.fill)
       : fillOpacity;
-    const selectedTextMarkupPaint = activeTool === 'select' && selectedAnnot?.data?.type === 'text-markup'
+    const selectedTextMarkupPaint = pickBarTool === 'select' && selectedAnnot?.data?.type === 'text-markup'
       ? resolveTextMarkupEditPaint(selectedAnnot, strokeColor)
       : null;
     // UX 2026-09-23: with one callout or text box selected (and no live
@@ -25656,7 +25734,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         style: restyleGroup.firstTextStyle,
       }
       : null;
-    const selectedTextTarget = (activeTool === 'select' && !richTextEditor)
+    const selectedTextTarget = (pickBarTool === 'select' && !richTextEditor)
       ? (groupTextTarget || (groupSummary ? null : selectedToolbarCallout?.callout
         ? {
           kind: 'callout',
@@ -25786,7 +25864,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // the menu matches what will actually render.
       supportsCloudStyle: groupSummary
         ? groupSummary.capabilities.cloud
-        : selectionMappedTool && activeTool === 'select'
+        : selectionMappedTool && pickBarTool === 'select'
         ? (selectedToolbarCallout
           ? true
           : (selectedAnnot?.data?.type !== 'counter' && toolOffersCloudLineStyle(selectedType)))
@@ -25862,6 +25940,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     zoomMenuRef,
     pageInputRef,
     activeTool,
+    pickBarTool,
     liveTextSelection,
     selectionMode,
     lassoTouchOperation,
@@ -36596,7 +36675,7 @@ ${pageBlocks}
                                     // press elsewhere only drops the pick (the next makes a box).
                                     // A press on the selection itself never reaches here: it is
                                     // handed to the selection (hooks/useSelectionGrabHandoff).
-                                    const where = classifyPagePress(e.nativeEvent, { pageNumber, objects: pageAnnotations?.objects });
+                                    const where = classifyPagePress(e.nativeEvent, { pageNumber, objects: pageAnnotations?.objects, tool: 'text' });
                                     const press = resolveToolPress({
                                       tool: 'text', target: where.target, markGroup: where.markGroup, hasSelection: hasAnyPageSelection(),
                                     });
@@ -36724,7 +36803,7 @@ ${pageBlocks}
                                     // (the Counter's own group, owner 2026-10-04) picks it; any
                                     // other mark or empty page drops a pin.
                                     {
-                                      const where = classifyPagePress(e.nativeEvent, { pageNumber, objects: pageAnnotations?.objects });
+                                      const where = classifyPagePress(e.nativeEvent, { pageNumber, objects: pageAnnotations?.objects, tool: 'counter' });
                                       const press = resolveToolPress({ tool: 'counter', target: where.target, markGroup: where.markGroup, hasSelection: hasAnyPageSelection() });
                                       if (press.click === 'select') {
                                         e.stopPropagation();
