@@ -2734,7 +2734,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
       />
       <aside className="mobile-pdf-tools" aria-label="Document tools">
         <div className="mobile-pdf-tools__main">
-          <RailButton active={activeTool === 'pan'} icon="pan" label="Pan" onClick={() => { setOpenCategory(null); selectTool('pan'); }} />
+          <RailButton active={activeTool === 'pan'} icon="pan" label="Pan" data-tool-switch="true" onClick={() => { setOpenCategory(null); selectTool('pan'); }} />
           {/* PASS 7 (board 7, owner ruling 2026-09-22): Select is a PLAIN rail
               chip, the same 28px square as Pan and the group buttons. Tapping it
               arms the family and nothing else — no caret, no pop-up menu, and no
@@ -2748,6 +2748,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
               ? (regionApi.toolType === 'move' && !regionPanArmed)
               : (activeTool === 'select' || activeTool === 'text-select')}
             label={getSelectFamilyLabel(activeTool, bottomToolbarApi?.selectionMode)}
+            data-tool-switch="true"
             onClick={() => {
               if (regionApi) {
                 regionApi.setToolType?.('move');
@@ -2773,6 +2774,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
               disabled={Boolean(regionApi)}
               icon={group.icon}
               label={group.label}
+              data-tool-switch="true"
               onClick={() => { if (!regionApi) toggleCategory(groupId); }}
             />
           ))}
@@ -2833,6 +2835,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                     label={tool.label}
                     disabled={tool.disabled}
                     data-morph-icon={tool.icon}
+                    data-tool-switch="true"
                     onClick={() => { if (!tool.disabled) selectTool(tool.id); }}
                   />
                 ))}

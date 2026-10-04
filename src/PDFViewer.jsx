@@ -322,10 +322,11 @@ import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/u
 import { usePageOperations } from './hooks/usePageOperations.js';
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
 import { getPageViewBase } from './utils/pageViewDocument.js';
-import { getSelectFamilyTransition, getToolSwitchSelectionClearReason, loadSelectMode, resolveEscape, resolveTextDoubleClick, resolveToolPress, saveSelectMode, shouldBackdropPressDeselect, shouldEscapeDeselect, shouldShowHoverHalo } from './utils/selectModes.js';
+import { getSelectFamilyTransition, getToolSwitchSelectionClearReason, isSelectFamilyTool, loadSelectMode, resolveEscape, resolveTextDoubleClick, resolveToolPress, saveSelectMode, shouldBackdropPressDeselect, shouldEscapeDeselect, shouldShowHoverHalo } from './utils/selectModes.js';
 import { classifyPagePress } from './utils/toolPressRouting.js';
-import { dropStashedSelection, getAllSelectedItemIds, hasAnyPageSelection, isItemSelected, pageHasSelection, setEraseSparedIds } from './utils/pageSelectionPresence.js';
-import { isSelectionGrabPress } from './hooks/useSelectionGrabHandoff.js';
+import { CALLOUT_MARK_GROUP, getMarkGroup } from './utils/markToolGroup.js';
+import { dropStashedSelection, hasAnyPageSelection, isItemSelected, pageHasSelection } from './utils/pageSelectionPresence.js';
+import { isSelectionGrabPress, noteOverlayTapPick } from './hooks/useSelectionGrabHandoff.js';
 import { resolveToolBarGroup, TOOL_BAR_GROUPS } from './utils/toolbarRows.js';
 import { cycleLassoMode } from './utils/lassoSelection.js';
 import { pageNumberAfterOperation } from './utils/pageAnnotationReindex.js';
@@ -4160,7 +4161,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // UX: Escape and grey-page backdrop clicks clear every selection mode alike.
   // UX 2026-10-02 (owner): which tools listen comes from the selection
   // dismiss rules in utils/selectModes.js (Escape: every tool; backdrop
-  // press: Select family only).
+  // press: Select family, and a click under the Shapes / Text tools).
   useEffect(() => {
     const escapeDeselects = shouldEscapeDeselect(activeTool);
     const backdropDeselects = shouldBackdropPressDeselect(activeTool);
@@ -4185,6 +4186,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (event.type === 'pointerdown' && (event.button !== 0 || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey
         || !event.target?.closest?.('[data-mobile-pdf-surface]')
         || event.target?.closest?.('.survey-pdfjs-page-div'))) return;
+      // Owner 2026-10-04: a Shapes / Text tool holding a pick of its own
+      // group drops it on a CLICK on the grey area too — on release, so a
+      // drag there (a finger scrolling the view) keeps it (rule 12).
+      if (event.type === 'pointerdown' && !isSelectFamilyTool(activeTool)) {
+        const start = { id: event.pointerId, x: event.clientX, y: event.clientY };
+        const slop = event.pointerType === 'touch' ? 12 : 6;
+        const onUp = (up) => {
+          if (up.pointerId !== start.id) return;
+          window.removeEventListener('pointerup', onUp, true);
+          if (Math.hypot(up.clientX - start.x, up.clientY - start.y) <= slop) clearAnnotationSelectionForContextChange('backdrop-click');
+        };
+        window.addEventListener('pointerup', onUp, true);
+        return;
+      }
       // UX: Phase 19 — first Escape cancels a live selection drag only;
       // a second Escape (or one at rest) clears the prior selection.
       if (event.key === 'Escape') {
@@ -4324,8 +4339,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // getToolSwitchSelectionClearReason (utils/selectModes.js). Pan, Select and
   // Text Select keep it. Changing a property of the selected mark is not a
   // tool switch and never reaches this effect.
-  // Drawboard rule 12: a shortcut key or a category tab keeps it; a specific
-  // tool button (or any caller that does not say) drops it.
+  // Owner 2026-10-04: every switch drops it except Select <-> Pan, however it
+  // was asked for (the source only reaches the rule for its logs).
   const previousSelectionToolRef = useRef(activeTool);
   useEffect(() => {
     const previousTool = previousSelectionToolRef.current;
@@ -4355,9 +4370,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Throttled via requestAnimationFrame so resolveAnnotationAt (composedPath
   // + elementsFromPoint + querySelectorAll fallback) runs at most once per
   // frame, not per mousemove event.
-  // Drawboard rule 2 (owner 2026-10-02, utils/selectModes.js): the shape tools
-  // (Rectangle, Ellipse, Line, Arrow, Callout) show the same blue halo over a
-  // mark a click would pick, with their own crosshair kept (no pointer hand).
+  // Drawboard rule 2 (owner 2026-10-02, utils/selectModes.js): the tools that
+  // pick marks (Shapes, Text, Counter — own group only since 2026-10-04) show
+  // the same blue halo over a mark a click would pick, with their own cursor
+  // kept (no pointer hand).
   const eraserWholeModeRef = useRef(false);
   useEffect(() => {
     const haloByPosition = activeTool === 'pan' || activeTool === 'eraser'
@@ -4400,15 +4416,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return;
       }
       const hit = resolveAnnotationAt(e);
+      // Owner 2026-10-04 (own tool group only): a tool's halo shows only over
+      // a mark it may pick — any mark under Pan, its own group's under the
+      // Shapes / Text tools, none while a polygon is under way. The eraser's
+      // Whole-mode preview is its own and shows over every mark.
+      const haloAllowed = activeTool === 'eraser' || (!document.querySelector('[data-poly-draft-action]')
+        && shouldShowHoverHalo(activeTool, hit?.kind === 'callout'
+          ? CALLOUT_MARK_GROUP
+          : getMarkGroup(annotationsByPageRef.current?.[hit?.pageNumber]?.objects?.[hit?.annotationIndex])));
       // UX 2026-07-17 — pan-mode hover parity: annotations AND callouts both
       // glow under the pan tool (same affordance the Select tool shows).
       // Counters flow through their own hover path (or none).
       const isAnnotation = hit && hit.kind === 'annotation'
         && typeof hit.annotationIndex === 'number'
-        && hit.pageNumber != null;
+        && hit.pageNumber != null && haloAllowed;
       const isCallout = hit && hit.kind === 'callout'
         && hit.calloutId != null
-        && hit.pageNumber != null;
+        && hit.pageNumber != null && haloAllowed;
       const nextKey = isAnnotation
         ? `${hit.pageNumber}:${hit.annotationIndex}`
         : isCallout
@@ -5148,23 +5172,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Drawboard rule 5 (owner 2026-10-02): in Whole mode the eraser previews
   // what a press would delete with the hover halo (read by the hover effect).
   eraserWholeModeRef.current = eraserMode === 'entire';
-  // Drawboard rule 5: an eraser press that is not on the selection drops the
-  // selection, and that stroke never erases what was selected (the press on
-  // the selection itself moves it — hooks/useSelectionGrabHandoff).
+  // Drawboard rule 5: an eraser press drops the selection. Owner 2026-10-04
+  // (Draw group always uses the tool): the eraser no longer grabs the picked
+  // mark nor spares it — it erases whatever it touches, picked or not.
   useEffect(() => {
-    if (activeTool !== 'eraser') {
-      setEraseSparedIds(null);
-      return undefined;
-    }
+    if (activeTool !== 'eraser') return undefined;
     const onDown = (event) => {
       if (!event.isTrusted || event.defaultPrevented) return;
       if (event.pointerType === 'mouse' && event.button !== 0) return;
       if (!event.target?.closest?.('[data-page-number]')) return;
-      if (!hasAnyPageSelection()) {
-        setEraseSparedIds(null);
-        return;
-      }
-      setEraseSparedIds(getAllSelectedItemIds());
+      if (!hasAnyPageSelection()) return;
       window.setTimeout(() => {
         if (!isSelectionGrabPress(event)) clearAnnotationSelectionForContextChange('eraser-press');
       }, 0);
@@ -25960,8 +25977,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Drawboard rule 12 (utils/selectModes.js): a tool shortcut key keeps
-      // the selection, so every tool letter below switches through this.
+      // Rule 12 (utils/selectModes.js): every tool letter below switches
+      // through this and says so (a switch other than Select <-> Pan drops
+      // the selection, owner 2026-10-04).
       const setActiveTool = (tool) => setActiveToolLogged(tool, { source: 'shortcut-key' });
       const activeElement = document.activeElement;
       const isFormField =
@@ -36569,27 +36587,29 @@ ${pageBlocks}
                                   }}
                                   onPointerDown={(e) => {
                                     if (Date.now() - editModeCooldownRef.current < 300) return;
-                                    // Drawboard rule 6 (owner 2026-10-02, utils/selectModes.js):
-                                    // with something selected this press makes no box — on text
-                                    // it edits that text, on another mark it picks it, on empty
-                                    // page it only drops the pick (the next press makes a box).
+                                    // Rule 6 (owner 2026-10-04, utils/selectModes.js): a press on
+                                    // a text box or callout picks it (a second press on the picked
+                                    // text edits it, through the selection grab); any other mark
+                                    // is not there for the Text tool. With something selected a
+                                    // press elsewhere only drops the pick (the next makes a box).
                                     // A press on the selection itself never reaches here: it is
                                     // handed to the selection (hooks/useSelectionGrabHandoff).
-                                    if (hasAnyPageSelection()) {
+                                    const where = classifyPagePress(e.nativeEvent, { pageNumber, objects: pageAnnotations?.objects });
+                                    const press = resolveToolPress({
+                                      tool: 'text', target: where.target, markGroup: where.markGroup, hasSelection: hasAnyPageSelection(),
+                                    });
+                                    if (press.click === 'select' || press.click === 'deselect') {
                                       e.stopPropagation();
                                       e.preventDefault();
-                                      const where = classifyPagePress(e.nativeEvent, { pageNumber, objects: pageAnnotations?.objects });
-                                      const press = resolveToolPress({ tool: 'text', target: where.target, hasSelection: true });
-                                      if (press.click === 'edit') {
-                                        requestAnnotationEditEntryRef.current?.(where.calloutId != null
-                                          ? { pageNumber, annotationIndex: where.calloutId, annotationType: 'callout' }
-                                          : { pageNumber, annotationIndex: where.index });
-                                      } else if (press.click === 'select' && where.calloutId != null) {
+                                      const tapAt = { x: e.clientX, y: e.clientY, pointerType: e.pointerType };
+                                      if (press.click === 'select' && where.calloutId != null) {
                                         setAnnotationSelectionClearToken((token) => token + 1);
                                         setSelectedCalloutIds(new Set([where.calloutId]));
+                                        noteOverlayTapPick(`c:${where.calloutId}`, tapAt);
                                       } else if (press.click === 'select' && Number.isInteger(where.index)) {
                                         setSelectedCalloutIds((previous) => (previous instanceof Set && previous.size === 0 ? previous : new Set()));
                                         setPendingSvgSelection({ pageNumber, annotationIndex: where.index, tick: Date.now() });
+                                        noteOverlayTapPick(`a:${where.index}`, tapAt);
                                       } else {
                                         clearAnnotationSelectionForContextChange('text-tool-empty-click');
                                       }
@@ -36698,11 +36718,12 @@ ${pageBlocks}
                                       return;
                                     }
                                     // Owner 2026-10-02 (Drawboard rules, utils/selectModes.js
-                                    // 'place' tools): a press on an existing mark picks it
-                                    // instead of dropping a pin on it; empty page drops a pin.
+                                    // 'place' tools): a press on an existing Shapes-group mark
+                                    // (the Counter's own group, owner 2026-10-04) picks it; any
+                                    // other mark or empty page drops a pin.
                                     {
                                       const where = classifyPagePress(e.nativeEvent, { pageNumber, objects: pageAnnotations?.objects });
-                                      const press = resolveToolPress({ tool: 'counter', target: where.target, hasSelection: hasAnyPageSelection() });
+                                      const press = resolveToolPress({ tool: 'counter', target: where.target, markGroup: where.markGroup, hasSelection: hasAnyPageSelection() });
                                       if (press.click === 'select') {
                                         e.stopPropagation();
                                         e.preventDefault();
@@ -37279,6 +37300,7 @@ ${pageBlocks}
                       data-highlighter-caret-button={isHighlighterSplitMenu ? 'true' : undefined}
                       // w49: which glyph this tool shows, so a group switch can morph it (utils/loadoutTransition.js).
                       data-morph-icon={t.iconName}
+                      data-tool-switch="true"
                       onClick={(e) => {
                         if (isHighlighter) {
                           e.stopPropagation();
@@ -37499,6 +37521,7 @@ ${pageBlocks}
                       data-counter-caret-button={isCounter ? 'true' : undefined}
                       // w49: which glyph this tool shows, so a group switch can morph it (utils/loadoutTransition.js).
                       data-morph-icon={t.iconName}
+                      data-tool-switch="true"
                       onClick={(e) => {
                         setActiveTool(t.id);
                         // UX 2026-09-09: Polygon and Polyline are click-to-place
@@ -37937,6 +37960,7 @@ ${pageBlocks}
                       {...((isUnderlineMenu || isStrikeMenu) ? { [caretAttr]: 'true' } : {})}
                       // w49: which glyph this tool shows, so a group switch can morph it (utils/loadoutTransition.js).
                       data-morph-icon={t.iconName}
+                      data-tool-switch="true"
                       onClick={onMainClick}
                       {...chromeTip(isUnderlineMenu ? (activeTool === 'squiggly' ? 'Wavy underline' : 'Underline') : isStrikeMenu ? 'Strike through' : t.label, 'below')}
                       // UX 2026-09-16 (desktop sizing pass): shared

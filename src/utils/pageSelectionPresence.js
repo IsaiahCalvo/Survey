@@ -11,7 +11,6 @@
  * without another React state.
  */
 import { HISTORY_PAGE_SELECTION_EVENT } from './historyMarkFilter.js';
-import { getAnnotationRenderIdentity } from './annotationStorageIdentity.js';
 
 // Kept on window so a dev hot-reload of this module reads the same counts the
 // one installed listener writes.
@@ -85,24 +84,3 @@ export function installPageSelectionPresence(win) {
 }
 
 if (typeof window !== 'undefined') installPageSelectionPresence(window);
-
-/** Every picked id on every page (marks, callouts, counters, Survey Markers). */
-export function getAllSelectedItemIds() {
-  const all = new Set();
-  for (const ids of idsByPage.values()) for (const id of ids) all.add(id);
-  return all;
-}
-
-// Drawboard rule 5 (owner 2026-10-02): the eraser never touches the selected
-// mark. The viewer notes the selection as an eraser press lands (and then
-// drops the selection); FabricEraserCanvas's one erase gate skips these ids
-// for that stroke, live preview and commit alike.
-let eraseSparedIds = null;
-export function setEraseSparedIds(ids) {
-  eraseSparedIds = ids && ids.size ? new Set([...ids].map(String)) : null;
-}
-export function isEraseSpared(object) {
-  if (!eraseSparedIds || !object) return false;
-  const id = getAnnotationRenderIdentity(object)?.annotationId;
-  return id != null && eraseSparedIds.has(String(id));
-}

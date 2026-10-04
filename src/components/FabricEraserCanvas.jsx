@@ -57,7 +57,6 @@ import {
 import { getCoalescedOrCurrentEvents } from '../utils/eraserPointerSamples.js';
 import { paintAnnotationCanvas } from '../utils/annotationCanvasPainter.js';
 import { projectPaperInkForPresentation } from '../utils/paperInkPresentation.js';
-import { isEraseSpared } from '../utils/pageSelectionPresence.js';
 import {
   collectAtomicEraseAuditTargets,
   isAtomicEraseGeometryAuditEnabled,
@@ -1821,10 +1820,6 @@ const FabricEraserCanvas = memo(({
     // resurrected it (2026-07-19 audit). One shared rule here covers live AND
     // commit (canErase is built from this function).
     if (object?.locked === true) return 'locked';
-
-    // Drawboard rule 5 (owner 2026-10-02): the mark that was selected when
-    // this stroke began is never erased by it (utils/pageSelectionPresence).
-    if (isEraseSpared(object)) return 'selected';
 
     // KAL-89 — survey-mode gate, mirroring the space-scope rule below: what
     // survey mode hides, the eraser must not touch. Reuses the SHARED

@@ -22,6 +22,7 @@
 // tools) and PDFViewer (which draws the group tools themselves), so the two
 // always agree on which group is showing.
 import { isSelectFamilyTool } from './selectModes.js';
+import { TOOL_GROUP_BY_TOOL } from './markToolGroup.js';
 
 /**
  * What the Areas tools show for the one render between the viewer entering
@@ -49,22 +50,9 @@ export function isAreaEditing(api) {
 /** The tool groups whose tools sit in the tool bar. */
 export const TOOL_BAR_GROUPS = Object.freeze(['draw', 'shape', 'review', 'forms']);
 
-/** The group each drawing tool (or picked mark's tool) belongs to. */
-export const TOOL_GROUP_BY_TOOL = Object.freeze({
-  pen: 'draw',
-  highlighter: 'draw',
-  'text-highlight': 'draw',
-  eraser: 'draw',
-  rect: 'shape',
-  ellipse: 'shape',
-  polygon: 'shape',
-  polyline: 'shape',
-  line: 'shape',
-  arrow: 'shape',
-  counter: 'shape',
-  text: 'review',
-  callout: 'review',
-});
+/** The group each drawing tool (or picked mark's tool) belongs to — kept in
+ * utils/markToolGroup.js, the one tool / mark -> group table. */
+export { TOOL_GROUP_BY_TOOL };
 
 /**
  * Which group's tools the tool bar shows right of the group icons.

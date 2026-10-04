@@ -2953,6 +2953,14 @@ textarea:focus-visible,
   opacity: 0;
 }
 
+/* Owner 2026-10-04 (own tool group only): under a tool that may not grab the
+   picked mark (the Draw group, or a group tool over another group's pick) the
+   pick's handles and pads take no presses — the press is the tool's, so a
+   stroke or an erase that starts on a handle still draws / erases. */
+[data-selection-chrome-inert="true"] :is([data-resize-handle], [data-handle-hit-pad], [data-rotation-handle], [data-rotation-handle] *, [data-callout-handle-overlay] *) {
+  pointer-events: none !important;
+}
+
 /* Owner 2026-10-02 (test plan U2, "it gets a grey box around it"): the tool
    bar's icons - Pan, Select, the group icons, every tool beside them, Select's
    Box / Lasso / Text and the Areas tools - no longer paint a hover plate, a

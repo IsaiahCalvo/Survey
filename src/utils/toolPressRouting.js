@@ -6,6 +6,7 @@
  */
 import { resolveAnnotationAt } from './annotationHitTest.js';
 import { resolveToolPress } from './selectModes.js';
+import { CALLOUT_MARK_GROUP, getMarkGroup } from './markToolGroup.js';
 
 /** Text boxes (and callouts, handled by id) open an editor on rule 6 / 7. */
 export function isTextLikeAnnotation(obj) {
@@ -30,14 +31,16 @@ export function isPageCalloutSelected(callouts, selectedCalloutIds, pageNumber) 
 /**
  * What a press on a page landed on, by geometry (the same hit test Pan and the
  * right-click menu use, so it works while the marks are pointer-inert).
- * Returns { target: 'text' | 'mark' | 'empty', index, calloutId }.
+ * Returns { target: 'text' | 'mark' | 'empty', index, calloutId, markGroup } —
+ * markGroup is the pressed mark's tool group (utils/markToolGroup.js), which
+ * decides whether the armed tool may pick it (owner 2026-10-04).
  */
 export function classifyPagePress(nativeEvent, { pageNumber, objects } = {}) {
   let hit = null;
   try { hit = resolveAnnotationAt(nativeEvent); } catch (_) { hit = null; }
   const onPage = hit && (pageNumber == null || hit.pageNumber === pageNumber);
   if (onPage && hit.kind === 'callout' && hit.calloutId != null) {
-    return { target: 'text', index: null, calloutId: hit.calloutId, pageNumber: hit.pageNumber };
+    return { target: 'text', index: null, calloutId: hit.calloutId, pageNumber: hit.pageNumber, markGroup: CALLOUT_MARK_GROUP };
   }
   if (onPage && hit.kind === 'annotation' && Number.isInteger(hit.annotationIndex)) {
     const obj = Array.isArray(objects) ? objects[hit.annotationIndex] : null;
@@ -46,15 +49,18 @@ export function classifyPagePress(nativeEvent, { pageNumber, objects } = {}) {
       index: hit.annotationIndex,
       calloutId: null,
       pageNumber: hit.pageNumber,
+      markGroup: getMarkGroup(obj),
     };
   }
-  return { target: 'empty', index: null, calloutId: null, pageNumber: hit?.pageNumber ?? pageNumber ?? null };
+  return { target: 'empty', index: null, calloutId: null, pageNumber: hit?.pageNumber ?? pageNumber ?? null, markGroup: null };
 }
 
 /** classifyPagePress + the rule table in one call. */
 export function resolvePagePress(nativeEvent, { tool, pageNumber, objects, hasSelection }) {
   const where = classifyPagePress(nativeEvent, { pageNumber, objects });
-  const press = resolveToolPress({ tool, target: where.target, hasSelection, shiftKey: !!nativeEvent?.shiftKey });
+  const press = resolveToolPress({
+    tool, target: where.target, markGroup: where.markGroup, hasSelection, shiftKey: !!nativeEvent?.shiftKey,
+  });
   return { ...where, ...press };
 }
 
@@ -88,4 +94,19 @@ export function classifySelectionGrabTarget(el, svg, { selectedIds, selectedCall
     }
   }
   return null;
+}
+
+/**
+ * The tool groups of a page's picked marks (owner 2026-10-04): a tool may
+ * grab the selection only when it may pick every one of them
+ * (selectModes.canToolGrabSelection).
+ */
+export function pageSelectionMarkGroups({ selectedIds, objects, calloutSelected = false, surveyMarkerSelected = false } = {}) {
+  const groups = new Set();
+  for (const index of selectedIds || []) {
+    groups.add(getMarkGroup(Array.isArray(objects) ? objects[index] : null));
+  }
+  if (calloutSelected) groups.add(CALLOUT_MARK_GROUP);
+  if (surveyMarkerSelected) groups.add(getMarkGroup({ kind: 'survey-marker' }));
+  return groups;
 }
