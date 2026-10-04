@@ -5,7 +5,6 @@ import { useEffect, useState } from 'react';
 import { AuthContext } from './contexts/AuthContext';
 import { MSGraphContext } from './contexts/MSGraphContext';
 import ErrorBoundary from './components/ErrorBoundary';
-import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
 import App from './AppShell';
 
 const noop = () => {};
@@ -199,8 +198,10 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
     <ErrorBoundary>
       <AuthContext.Provider value={mockAuthValue}>
         <MSGraphContext.Provider value={mockMSGraphValue}>
+          {/* App mounts the shortcuts sheet itself (Home only, as main.jsx
+              does since 2026-05-13); a second copy here opened two stacked
+              sheets on "?" and Escape closed only one (polish round 6). */}
           <App devPreviewReturnTab={returnTab} />
-          <KeyboardShortcutsOverlay />
         </MSGraphContext.Provider>
       </AuthContext.Provider>
     </ErrorBoundary>

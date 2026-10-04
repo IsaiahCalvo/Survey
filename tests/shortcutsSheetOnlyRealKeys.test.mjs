@@ -25,3 +25,10 @@ test('…and indeed nothing in the app handles a bare B key', () => {
   ));
   assert.deepEqual(hits, []);
 });
+
+// The ?testPdf dev route rendered a second sheet next to App's own, so "?"
+// opened two stacked sheets and Escape closed only the top one.
+test('the dev test route does not mount a second shortcuts sheet', () => {
+  const route = readFileSync(path.join(root, 'src/DevTestRoute.jsx'), 'utf8');
+  assert.doesNotMatch(route, /<KeyboardShortcutsOverlay/);
+});
