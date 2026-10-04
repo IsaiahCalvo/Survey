@@ -12,3 +12,10 @@ test('desktop template rows show no second line when a template has no entities'
   // so an empty template no longer shows a lone "0".
   assert.match(source, /\{t\.roster\.length > 0 && \(\s*<div style=\{\{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 \}\}>/);
 });
+
+test('phone Document details: Open file and Share get a 44px tap pad', async () => {
+  const css = await read('home/hub.css');
+  assert.match(css, /\.documents-mobile-detail-actions \.btn \{\s*position: relative;\s*\}/);
+  assert.match(css, /\.documents-mobile-detail-actions \.btn::after \{[^}]*inset-block: -9px;/);
+  assert.match(css, /\.documents-mobile-detail-actions \.documents-preview-share::after \{\s*inset-inline: -9px;/);
+});
