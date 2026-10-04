@@ -186,6 +186,33 @@ async function settle(...handles) {
   }
 }
 
+// 2026-10-04 (test-reliability pass) — the multi-screen tests below count
+// checkpoint uploads (refused ones included). The boundary owner's checkpoint
+// fires dueQuietMs (30 ms) after its own last append; with strokes paced 5 ms
+// apart that is normally after the others' last strokes. On a loaded machine
+// each stroke takes longer than that, the checkpoint started mid-drawing, and
+// every row another screen appended during its upload refused it once more
+// (seen: 4 calls = 3 refusals + 1 at row 45 against "<= 3", 4 runs in 24 under
+// heavy load). Uploads now wait — like a slow network — until every stroke
+// of the batch is in the WAL, so the count no longer depends on CPU speed: a
+// checkpoint that started early is refused at most once (its retry reads the
+// finished tail), one that started late is accepted first time. Waiting is on
+// the real condition (rows in the WAL), not on a sleep.
+function createUploadGate() {
+  let open = () => {};
+  let opened = Promise.resolve();
+  return {
+    close() { opened = new Promise((resolve) => { open = resolve; }); },
+    open() { open(); },
+    wait() { return opened; },
+  };
+}
+
+async function untilWalHas(cloud, count) {
+  for (let waited = 0; cloud.rows.length < count && waited < 5000; waited += 10) await wait(10);
+  assert.equal(cloud.rows.length, count, `the WAL holds all ${count} rows`);
+}
+
 test('paced strokes on one screen: no checkpoint per stroke, one idle checkpoint once the tail is long enough', async () => {
   const documentId = 'checkpoint-paced';
   const cloud = createCloud(documentId);
@@ -237,7 +264,8 @@ test('a screen that only receives rows never checkpoints, not even on close', as
 
 test('three screens, 45 strokes: the writer of row 40 checkpoints; no whole-checkpoint re-download', async () => {
   const documentId = 'checkpoint-three';
-  const cloud = createCloud(documentId);
+  const uploads = createUploadGate();
+  const cloud = createCloud(documentId, { beforeSnapshot: () => uploads.wait() });
   const handles = [
     await open(cloud, 'user-a', 'a', documentId),
     await open(cloud, 'user-b', 'b', documentId),
@@ -246,6 +274,7 @@ test('three screens, 45 strokes: the writer of row 40 checkpoints; no whole-chec
   await settle(...handles);
   const bodyReadsAfterOpen = cloud.stats.snapshotBodyReads;
   const mine = handles.map(() => []);
+  uploads.close();
   for (let index = 0; index < 45; index += 1) {
     const who = index % 3;
     // Each screen repaints what the others drew, then adds its own stroke.
@@ -255,6 +284,8 @@ test('three screens, 45 strokes: the writer of row 40 checkpoints; no whole-chec
     handles[who].applyByPage({ 1: { objects: [...others.filter((object) => !mine[who].some((m) => m.data.id === object?.data?.id)), ...mine[who]] } });
     await wait(5);
   }
+  await untilWalHas(cloud, 45);
+  uploads.open();
   await settle(...handles);
   await wait(50);
   const routine = cloud.stats.snapshotCalls.filter((call) => call.atSeq >= 40);
@@ -388,8 +419,12 @@ test('a checkpoint queued behind a slow one never claims a row its bytes lack', 
 test('three screens, 125 strokes: at most one stored-checkpoint download, tail under 80 rows, a failed one is retried', async () => {
   const documentId = 'checkpoint-ninety';
   let failing = false;
+  const uploads = createUploadGate();
   const cloud = createCloud(documentId, {
-    async beforeSnapshot() { if (failing) throw new Error('network down'); },
+    async beforeSnapshot() {
+      if (failing) throw new Error('network down');
+      await uploads.wait();
+    },
   });
   const handles = [
     await open(cloud, 'user-a', 'a', documentId),
@@ -400,6 +435,7 @@ test('three screens, 125 strokes: at most one stored-checkpoint download, tail u
   const bodyReads = cloud.stats.snapshotBodyReads;
   const mine = handles.map(() => []);
   const draw = async (from, to) => {
+    uploads.close();
     for (let index = from; index < to; index += 1) {
       const who = index % 3;
       const others = handles[who].getByPage()?.[1]?.objects || [];
@@ -407,6 +443,8 @@ test('three screens, 125 strokes: at most one stored-checkpoint download, tail u
       handles[who].applyByPage({ 1: { objects: [...others.filter((object) => !mine[who].some((m) => m.data.id === object?.data?.id)), ...mine[who]] } });
       await wait(5);
     }
+    await untilWalHas(cloud, to);
+    uploads.open();
     await settle(...handles);
     await wait(80);
   };
