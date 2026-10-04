@@ -38,6 +38,16 @@ test('New project dialog: the file picker button wears the outlined hub button l
   assert.match(css, /\.create-project-file-input::file-selector-button \{[^}]*border: 1px solid var\(--border-strong\);[^}]*background: transparent;/);
 });
 
+test('desktop empty Projects / Templates say "no X yet" once, in the big empty state', async () => {
+  const projects = await read('home/ProjectsFolderTree.jsx');
+  assert.match(projects, /\{filtered\.length === 0 && localProjects\.length > 0 && \(/);
+  assert.doesNotMatch(projects, /'No projects yet\.'/);
+  const templates = await read('home/TemplatesEditor.jsx');
+  assert.match(templates, /\{visibleTemplates\.length === 0 && rich\.length > 0 && \(/);
+  assert.doesNotMatch(templates, /'No templates yet\.'/);
+  assert.match(templates, /\{tpl && tpl\.roster\.length === 0 && \(\s*<div className="meta"[^>]*>No entities on this template yet\.<\/div>/);
+});
+
 test('icon-only buttons carry a name: sidebar toggle, tab close X, project More', async () => {
   const sidebar = await read('PDFSidebar.jsx');
   assert.match(sidebar, /aria-label=\{isCollapsed \? 'Expand sidebar' : 'Collapse sidebar'\}/);

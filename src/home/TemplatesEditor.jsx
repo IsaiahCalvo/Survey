@@ -2226,9 +2226,13 @@ export default function TemplatesEditor({
               </div>
             </div>
             <div className="slim-scroll hub-side-list" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
-              {visibleTemplates.length === 0 && (
+              {/* Polish round 2 (2026-10-04): with no templates at all the
+                  centre empty state already says "No templates yet", so the
+                  list stays quiet (as on the phone); it still says when a
+                  search matches nothing. */}
+              {visibleTemplates.length === 0 && rich.length > 0 && (
                 <div className="meta" style={{ padding: '20px 8px', fontSize: 12 }}>
-                  {rich.length === 0 ? 'No templates yet.' : 'No templates match your search.'}
+                  No templates match your search.
                 </div>
               )}
               <SortableRearrangeList ids={visibleTemplates.map((t) => t.id)} onReorder={reorderTemplates}>
@@ -2708,7 +2712,9 @@ export default function TemplatesEditor({
               </div>
 
               <div className="slim-scroll" style={{ padding: '8px 8px 12px', display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto', flex: 1, minHeight: 0 }}>
-                {(!tpl || tpl.roster.length === 0) && (
+                {/* Only an open template can have no entities; with no
+                    template open there is nothing to say here. */}
+                {tpl && tpl.roster.length === 0 && (
                   <div className="meta" style={{ fontSize: 12, padding: '12px 2px' }}>No entities on this template yet.</div>
                 )}
                 {tpl && (

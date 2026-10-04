@@ -953,9 +953,13 @@ export default function ProjectsFolderTree({
             </div>
           </div>
           <div className="slim-scroll hub-side-list" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
-            {filtered.length === 0 && (
+            {/* Polish round 2 (2026-10-04): with no projects at all the
+                detail pane's empty state already says "No projects yet", so
+                the list stays quiet (as on the phone); it still says when a
+                search matches nothing. */}
+            {filtered.length === 0 && localProjects.length > 0 && (
               <div className="meta" style={{ fontSize: 12, padding: '14px 8px' }}>
-                {localProjects.length === 0 ? 'No projects yet.' : 'No projects match your search.'}
+                No projects match your search.
               </div>
             )}
             <SortableRearrangeList ids={filtered.map((p) => p.id)} onReorder={reorderProjects}>
