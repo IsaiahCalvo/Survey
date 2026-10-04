@@ -10,8 +10,10 @@ import {
   computeFitScale,
   parseZoomPercentInput,
   pickCurrentPage,
+  resolveFitPageLanding,
   resolvePageInput,
   sanitizeZoomInput,
+  TYPED_PAGE_JUMP_FITS_PAGE,
 } from '../src/utils/pageNavigationMath.js';
 
 // A laid-out strip: page heights h (already scaled), gap g between and above.
@@ -154,4 +156,43 @@ test('rail glyph buttons: no hover plate, the glyph grows and brightens instead'
   assert.match(states, /:is\([^)]*\[data-chrome-rail\][^)]*\) :is\(\[data-glyph-only\], \.chrome-icon-btn\)[^{]*:hover > :not\(\[data-anchored-tooltip\]\) \{\s*scale: 1\.08;/);
   assert.match(states, /:not\(\.btn-active, \.is-active, \[aria-pressed='true'\], \[aria-selected='true'\], \[data-active='true'\]\):hover \{\s*color: var\(--text-1\) !important;/);
   assert.match(appShell, /data-rail-footer-row="true"[\s\S]{0,200}data-chrome-rail="true"/);
+});
+
+// Drawboard parity (measured 2026-10-04, scratchpad pageJump): a typed page
+// number zooms to Fit page for THAT page; the page's top lands at the top of
+// the visible band, it is centred across, and page 1 / the last page rest
+// against the document's ends.
+test('typed page jump: Fit page, top at the top of the view, centred across, clamped at the document ends', () => {
+  assert.equal(TYPED_PAGE_JUMP_FITS_PAGE, true);
+  // Desktop, portrait letter in a 1344x831 viewer at its fitted 100.85%.
+  const s = computeFitScale({ mode: 'fitPage', pageW: 612, pageH: 792, viewportW: 1344, viewportH: 831, padX: 20, gap: 16 });
+  assert.equal(Math.round(s * 792 + 2 * 16 * s), 831, 'the page and its two gaps fill the view height');
+  const pageW = 612 * s;
+  const mid = resolveFitPageLanding({ pageTop: 5000, pageLeft: (1344 - pageW) / 2, pageWidth: pageW, gap: 16 * s, viewportWidth: 1344, maxScrollTop: 96969 });
+  assert.equal(mid.scrollTop, 5000 - 16 * s, 'top edge (with its own gap) at the top of the view');
+  assert.equal(mid.scrollLeft, 0, 'a page narrower than the view is already centred by the column');
+  // A page wider than the view (2448px at 400% in the 1344px viewer) is centred
+  // by scrolling: 20 + 2448/2 - 1344/2 = 572 px.
+  assert.equal(resolveFitPageLanding({ pageLeft: 20, pageWidth: 2448, viewportWidth: 1344, maxScrollLeft: 1124 }).scrollLeft, 572);
+  // Tool strips over the top of the viewer push the landing below them.
+  assert.equal(resolveFitPageLanding({ pageTop: 5000, gap: 16, topInset: 44 }).scrollTop, 5000 - 16 - 44);
+  // Page 1 rests at the start of the document; the last page cannot rise past the end.
+  assert.equal(resolveFitPageLanding({ pageTop: 10, gap: 16 }).scrollTop, 0);
+  assert.equal(resolveFitPageLanding({ pageTop: 1200, gap: 8, maxScrollTop: 851 }).scrollTop, 851);
+  // Wide sheet on a wide view (fits the width, not the height): hangs from the
+  // top, NOT centred up-and-down — Drawboard's 2400x600 strip measured the same.
+  const strip = computeFitScale({ mode: 'fitPage', pageW: 2400, pageH: 600, viewportW: 1344, viewportH: 831, padX: 20, gap: 16 });
+  assert.ok(strip * 600 < 831 / 2);
+  assert.equal(resolveFitPageLanding({ pageTop: 700, gap: 16 * strip }).scrollTop, 700 - 16 * strip);
+  // Side panels open: centred in the band between them.
+  const band = resolveFitPageLanding({ pageLeft: 800, pageWidth: 600, viewportWidth: 1344, insets: { left: 300, right: 0 } });
+  assert.equal(band.scrollLeft, 800 + 300 - (300 + 1344) / 2); // 278
+});
+
+test('typed page jump wiring: the page field asks for Fit page after navigating; Fit page lands through the shared rule', () => {
+  const commit = viewer.slice(viewer.indexOf('const commitPageInput = useCallback('), viewer.indexOf('const handlePageInputKeyDown'));
+  assert.match(commit, /goToPage\(value\);[\s\S]{0,400}if \(TYPED_PAGE_JUMP_FITS_PAGE\) handleZoomModeSelect\(ZOOM_MODES\.FIT_PAGE\);/);
+  const zoomTo = container.slice(container.indexOf('const zoomToScale = useCallback('), container.indexOf('const goToPage = useCallback('));
+  assert.match(zoomTo, /resolveFitPageLanding\(\{/);
+  assert.match(container, /fitToPage: \(\) => zoomToScale\('fit'\)/);
 });

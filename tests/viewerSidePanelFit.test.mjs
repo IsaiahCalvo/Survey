@@ -114,7 +114,10 @@ test('wiring: auto re-fits are marked and never land; user fits use the band', (
   assert.match(zoomTo, /if \(auto && !shouldAutoRefit\(lastFit, fitRecord\)\) return;/);
   assert.match(zoomTo, /viewportW: bandW,/);
   assert.match(zoomTo, /if \(!isFit \|\| auto \|\| !dimsPtRef\.current\.length\) return;/, 'an automatic re-fit stops before landing');
-  assert.match(zoomTo, /resolveBandCentreScrollLeft\(/);
+  // 2026-10-04: the fit landing moved into pageNavigationMath.resolveFitPageLanding
+  // (shared with the typed page jump), which centres through the same helper.
+  assert.match(zoomTo, /resolveFitPageLanding\(\{[\s\S]{0,400}insets: side,/);
+  assert.match(read('../src/utils/pageNavigationMath.js'), /export function resolveFitPageLanding[\s\S]{0,1200}resolveBandCentreScrollLeft\(\{/);
   assert.match(container, /refitAfterLayoutChange: \(target\) => \{[\s\S]{0,160}zoomToScale\(target, \{ auto: true \}\)/);
   // The room is part of every page's left edge, the scroll range and the content width.
   // 2026-09-30: pages share one centre line and one scroll range

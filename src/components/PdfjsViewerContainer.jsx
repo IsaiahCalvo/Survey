@@ -77,7 +77,7 @@ import {
   resolveVerticalPlacement,
   subscribeViewerTopOverlays,
 } from '../utils/viewerTopOverlay.js';
-import { computeFitScale, pickCurrentPage } from '../utils/pageNavigationMath.js';
+import { computeFitScale, pickCurrentPage, resolveFitPageLanding } from '../utils/pageNavigationMath.js';
 import {
   compensateScrollLeftForColumnWidth,
   resolveCentredPageLeft,
@@ -89,7 +89,6 @@ import {
   compensateScrollLeftForSideRoom,
   computeSideOverlayInsets,
   getViewerSideOccluders,
-  resolveBandCentreScrollLeft,
   resolveSideRoom,
   shouldAutoRefit,
   subscribeViewerSideOccluders,
@@ -3544,18 +3543,22 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // with the fitted scale leaves the matching gap at the bottom. Anchoring on
     // the view centre alone left half of the next page showing after a fit.
     // Every fit also centres the page in the band between the side panels.
+    // The typed page jump uses this same landing (Drawboard parity,
+    // pageNavigationMath.resolveFitPageLanding).
     const s = scaleRef.current;
-    const landTop = target !== 'fitw'
-      ? topAt(pageIndex, s) - layoutMetricsRef.current.gap * s - inset
-      : null;
     const d = dimsPtRef.current[pageIndex];
-    const landLeft = resolveBandCentreScrollLeft({
+    const landing = resolveFitPageLanding({
+      pageTop: topAt(pageIndex, s),
       pageLeft: getPageLeftAtScale(pageIndex, s),
       pageWidth: d.w * s,
+      gap: layoutMetricsRef.current.gap * s,
+      topInset: inset,
       viewportWidth: el.clientWidth,
       insets: side,
       maxScrollLeft: getHorizontalScrollMax(s),
     });
+    const landTop = target !== 'fitw' ? landing.scrollTop : null;
+    const landLeft = landing.scrollLeft;
     if (Math.abs(scaleRef.current - before) > 1e-4 && pendingAnchorRef.current) {
       pendingAnchorRef.current = {
         ...pendingAnchorRef.current,
