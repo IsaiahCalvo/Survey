@@ -94,6 +94,7 @@ import {
 import { moveItemById } from '../reorder/flatReorderUtils.js';
 import { CALM_STRIP_AUTO_SCROLL } from '../reorder/dragAutoScroll.js';
 import { pickByIds, removeByIds, duplicateAfterByIds } from './selectionById.js';
+import { countLabel } from './countLabel.js';
 import { flagRequiredInput, isBlank } from '../components/requiredInput';
 import './TemplatesEditor.css';
 import DismissBarrier from '../components/DismissBarrier';
@@ -2948,7 +2949,7 @@ export default function TemplatesEditor({
                               />
                               <span className="templates-mobile-copy">
                                 <strong>{t.name}</strong>
-                                <small>{t.modules.length} modules · {t.modules.reduce((sum, mod) => sum + (mod.categories || []).length, 0)} categories · {t.roster.length} entities</small>
+                                <small>{countLabel(t.modules.length, 'module')} · {countLabel(t.modules.reduce((sum, mod) => sum + (mod.categories || []).length, 0), 'category', 'categories')} · {countLabel(t.roster.length, 'entity', 'entities')}</small>
                                 <span className="templates-mobile-swatches">
                                   {t.roster.slice(0, 8).map((r) => {
                                     const sw = entitySwatch(r);

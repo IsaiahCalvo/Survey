@@ -11,6 +11,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { HubShell, Icon, Avatar, PdfThumb, Search, EmptyState } from './HubShell';
+import { countLabel } from './countLabel.js';
 import { presenceInitials, PRESENCE_SELF_TINT, PRESENCE_INK } from '../components/presenceIdentity.js';
 import SectionIconButton, { SelectModeButtons } from '../components/SectionIconButton.jsx';
 import { MoveCopyModal, RenameModal } from './BulkModals';
@@ -554,7 +555,7 @@ export default function DocumentsLedger({
               </div>
               <div style={{ marginTop: 10, fontSize: 15, fontWeight: 700, flex: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sel.name}</div>
               <div className="meta" style={{ marginTop: 4, fontSize: 12, flex: 'none' }}>
-                {[sel.project === 'Sandbox' ? null : sel.project, sel.size, sel.pages != null ? `${sel.pages} pages` : null, sel.rev || null].filter(Boolean).join(' · ')}
+                {[sel.project === 'Sandbox' ? null : sel.project, sel.size, sel.pages != null ? countLabel(sel.pages, 'page') : null, sel.rev || null].filter(Boolean).join(' · ')}
               </div>
               {/* Preview viewport — a set custom size; the page is contained
                   inside at its true aspect ratio, letterboxed against a dark
@@ -649,7 +650,7 @@ export default function DocumentsLedger({
                 <button ref={mobileDetailCloseRef} type="button" title="Close details" aria-label="Close details" onClick={closeMobileDetail} className="hub-icon-btn"><Icon name="close" size={13} /></button>
               </div>
               <div className="documents-mobile-detail-meta">
-                {[mobileDetailDoc.project === 'Sandbox' ? null : mobileDetailDoc.project, mobileDetailDoc.size, mobileDetailDoc.pages != null ? `${mobileDetailDoc.pages} pages` : null].filter(Boolean).join(' · ')}
+                {[mobileDetailDoc.project === 'Sandbox' ? null : mobileDetailDoc.project, mobileDetailDoc.size, mobileDetailDoc.pages != null ? countLabel(mobileDetailDoc.pages, 'page') : null].filter(Boolean).join(' · ')}
               </div>
               <div className="documents-mobile-detail-preview">
                 <PdfPageThumb
