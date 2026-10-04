@@ -102,7 +102,7 @@ import { ANNOTATION_HYDRATION_PENDING, ANNOTATION_HYDRATION_READY_LOCAL, isFirst
 import { BORDERS, COLORS, SHADOWS, TYPOGRAPHY } from './theme';
 import { ConfirmDeleteModal } from './components/collab/ConfirmDeleteModal.jsx';
 import { DEFAULT_ZOOM_PREFERENCES, ZOOM_MODES, clampScale, createZoomController, loadZoomPreferences, saveZoomPreferences } from './utils/zoomController';
-import { parseZoomPercentInput, resolvePageInput, sanitizeZoomInput } from './utils/pageNavigationMath.js';
+import { TYPED_PAGE_JUMP_FITS_PAGE, parseZoomPercentInput, resolvePageInput, sanitizeZoomInput } from './utils/pageNavigationMath.js';
 import { FORM_TOOLS as FORM_DESIGNER_TOOLS, getFormFieldTypeForTool, isFormTool } from './components/formDesignerTools';
 // PERF (KAL-384): pdf-lib is the PDF *export/write* library, not the renderer.
 // It is only needed when the user exports an annotated PDF, exports a space to
@@ -25200,6 +25200,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (value !== null) {
       // Navigate first, then update input value will be synced by useEffect when pageNum updates
       goToPage(value);
+      // Drawboard parity (measured 2026-10-04): a typed jump zooms to Fit page
+      // for that page — top at the top of the view, centred across, page 1 and
+      // the last page resting against the document ends. See pageNavigationMath.
+      if (TYPED_PAGE_JUMP_FITS_PAGE) handleZoomModeSelect(ZOOM_MODES.FIT_PAGE);
       // Also set it immediately for visual feedback, but useEffect will ensure it's correct
       setPageInputValue(String(value));
       setIsPageInputDirty(false);
@@ -25208,7 +25212,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setPageInputValue(String(pageNum));
       setIsPageInputDirty(false);
     }
-  }, [pageInputValue, numPages, goToPage, pageNum]);
+  }, [pageInputValue, numPages, goToPage, pageNum, handleZoomModeSelect]);
 
   const handlePageInputKeyDown = useCallback((e) => {
     if (e.key === 'Enter') {
