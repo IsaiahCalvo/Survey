@@ -1033,7 +1033,7 @@ export default function ProjectsFolderTree({
                           setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
                         }}
                         className="hub-icon-btn"
-                        title="More"
+                        title="More" aria-label="More"
                       ><Icon name="more" size={14} /></button>
                     )}
                   </div>
@@ -1202,7 +1202,7 @@ export default function ProjectsFolderTree({
                                   setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
                                 }}
                                 className="hub-icon-btn"
-                                title="More"
+                                title="More" aria-label="More"
                               ><Icon name="more" size={14} /></button>
                             )}
                           </div>
@@ -1410,7 +1410,7 @@ export default function ProjectsFolderTree({
                                   setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
                                 }}
                                 className="hub-icon-btn"
-                                title="More"
+                                title="More" aria-label="More"
                               ><Icon name="more" size={14} /></button>
                             )}
                           </div>
@@ -1684,7 +1684,7 @@ export default function ProjectsFolderTree({
                     setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
                   }}
                   className="hub-icon-btn"
-                  title="More"
+                  title="More" aria-label="More"
                 ><Icon name="more" size={14} /></button>
               )}
             </div>
@@ -1843,7 +1843,7 @@ export default function ProjectsFolderTree({
                           setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
                         }}
                         className="hub-icon-btn"
-                        title="More"
+                        title="More" aria-label="More"
                       ><Icon name="more" size={14} /></button>
                     )}
                   </div>

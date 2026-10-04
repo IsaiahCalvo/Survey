@@ -13,6 +13,15 @@ test('desktop template rows show no second line when a template has no entities'
   assert.match(source, /\{t\.roster\.length > 0 && \(\s*<div style=\{\{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 \}\}>/);
 });
 
+test('icon-only buttons carry a name: sidebar toggle, tab close X, project More', async () => {
+  const sidebar = await read('PDFSidebar.jsx');
+  assert.match(sidebar, /aria-label=\{isCollapsed \? 'Expand sidebar' : 'Collapse sidebar'\}/);
+  const tabs = await read('TabBar.jsx');
+  assert.match(tabs, /aria-label=\{`Close \$\{tab\.name\}`\}/);
+  const projects = await read('home/ProjectsFolderTree.jsx');
+  assert.doesNotMatch(projects, /title="More"\s*\n/);
+});
+
 test('phone Document details: Open file and Share get a 44px tap pad', async () => {
   const css = await read('home/hub.css');
   assert.match(css, /\.documents-mobile-detail-actions \.btn \{\s*position: relative;\s*\}/);

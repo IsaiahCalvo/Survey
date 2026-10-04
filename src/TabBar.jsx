@@ -257,6 +257,8 @@ function TabItem({
       {!isHome && (
         <button
           onClick={handleTabCloseClick}
+          // Polish round 2 (2026-10-04): the X had no name ("button").
+          aria-label={`Close ${tab.name}`}
           onPointerDown={(e) => e.stopPropagation()}
           // Pressing the X must not also paint the whole tab's pressed fill
           // (the tab's own onMouseDown) - that read as a grey box behind the X
