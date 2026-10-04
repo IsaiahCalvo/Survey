@@ -2305,6 +2305,7 @@ export default function TemplatesEditor({
                         </span>
                       ) : (
                         <button
+                          aria-haspopup="menu"
                           onClick={(e) => {
                             e.stopPropagation();
                             const rect = e.currentTarget.getBoundingClientRect();
@@ -2529,6 +2530,7 @@ export default function TemplatesEditor({
                           </span>
                         ) : (
                           <button
+                            aria-haspopup="menu"
                             type="button"
                             className="hub-icon-btn tpl-cat-more"
                             title="More" aria-label="More"
@@ -2803,6 +2805,7 @@ export default function TemplatesEditor({
                             </span>
                           ) : (
                             <button
+                              aria-haspopup="menu"
                               title="More" aria-label="More"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -2976,6 +2979,7 @@ export default function TemplatesEditor({
                                 <span className={`templates-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? <Icon name="check" size={11} /> : null}</span>
                               ) : (
                                 <button
+                                  aria-haspopup="menu"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     const rect = e.currentTarget.getBoundingClientRect();
@@ -3190,6 +3194,7 @@ export default function TemplatesEditor({
                                      stays the one disclosure button. */
                                   <span className="templates-mobile-category-more">
                                     <button
+                                      aria-haspopup="menu"
                                       type="button"
                                       className="templates-mobile-more"
                                       title="More" aria-label="More"
@@ -3395,6 +3400,7 @@ export default function TemplatesEditor({
                                      44px pad, which is what holds the entity
                                      row to the 36px the owner asked for. */
                                   <button
+                                    aria-haspopup="menu"
                                     type="button"
                                     className="templates-mobile-more"
                                     title="More" aria-label="More"

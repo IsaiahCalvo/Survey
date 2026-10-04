@@ -366,6 +366,7 @@ export default function DocumentsLedger({
   };
   const renderMobileMore = (d) => (
     <button
+      aria-haspopup="menu"
       type="button"
       onClick={(e) => openDocMenu(e, d)}
       className="hub-icon-btn"
@@ -501,6 +502,7 @@ export default function DocumentsLedger({
                         </span>
                       ) : (
                         <button
+                          aria-haspopup="menu"
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();

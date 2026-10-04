@@ -726,7 +726,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                         </span>
                       )
                     ) : (
-                      <button onClick={(e) => { e.stopPropagation(); setOpenInviteMenu(null); setOpenMenu(openMenu === m.id ? null : m.id); }}
+                      <button aria-haspopup="menu" onClick={(e) => { e.stopPropagation(); setOpenInviteMenu(null); setOpenMenu(openMenu === m.id ? null : m.id); }}
                         title="More" aria-label="More"
                         className="hub-icon-btn"><Icon name="more" size={14} /></button>
                     )}
@@ -767,7 +767,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                     </div>
                     <div style={{ fontSize: 12, color: BONE_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 14 }}>{roleLabel(inv.intended_role)}</div>
                     <div style={{ fontSize: 12, color: GOLD, fontWeight: 600 }}>Pending</div>
-                    <button onClick={(e) => { e.stopPropagation(); setOpenMenu(null); setOpenInviteMenu(openInviteMenu === inv.id ? null : inv.id); }}
+                    <button aria-haspopup="menu" onClick={(e) => { e.stopPropagation(); setOpenMenu(null); setOpenInviteMenu(openInviteMenu === inv.id ? null : inv.id); }}
                       title="More" aria-label="More"
                       className="hub-icon-btn"><Icon name="more" size={14} /></button>
                   </div>
