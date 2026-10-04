@@ -126,7 +126,7 @@ test('PDFViewer publishes the selection as the text bar source and writes back t
   assert.match(viewer, /textStyleDefaults: selectedTextTarget \? selectedTextTarget\.style : textStyleDefaults,/);
   assert.match(viewer, /onTextStyleDefaultsChange: handleTextStyleSourceChange,/);
   // The selection wins only under Select with no live editor (whose own bridge wins).
-  assert.match(viewer, /const selectedTextTarget = \(activeTool === 'select' && !richTextEditor\)/);
+  assert.match(viewer, /const selectedTextTarget = \(pickBarTool === 'select' && !richTextEditor\)/);
   assert.match(viewer, /selectedTextTargetRef\.current = selectedTextTarget;/);
   // The WHOLE handler runs inside the drag phase (so a drag's page snapshot is
   // always dropped), decides with resolveTextStyleWrite, and makes ONE write -

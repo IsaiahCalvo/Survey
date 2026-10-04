@@ -52,7 +52,9 @@ test('PDFViewer feeds the callout being typed in to the bar', () => {
   assert.match(VIEWER, /const selectedToolbarCallout = useMemo\(\(\) => resolveToolbarCallout\(\{\s*selectedCalloutIds,\s*callouts,\s*editingCalloutId: editingCalloutIdForToolbar,/);
   // ...and maps it onto the Callout row exactly like resolveRowTwoTool.
   assert.match(VIEWER, /if \(selectedToolbarCallout\) \{\s*selectionMappedTool = 'callout';/);
-  assert.match(VIEWER, /const contextTool = \(activeTool === 'select' && selectionMappedTool\)\s*\? selectionMappedTool\s*: activeTool;/);
+  // Owner 2026-10-04: pickBarTool is 'select' under Select (and a Pan /
+  // own-group pick), so this is still Select's mapping (toolPressMatrix).
+  assert.match(VIEWER, /const contextTool = \(pickBarTool === 'select' && selectionMappedTool\)\s*\? selectionMappedTool\s*: activeTool;/);
 });
 
 test("row 2's Callout controls are the armed tool's: colour, Width, Style, Arrowhead, Aa", () => {

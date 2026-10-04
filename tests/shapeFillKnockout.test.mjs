@@ -118,7 +118,7 @@ test('(1) the just-drawn mark is published with the selection and the paint hand
   for (const name of ['handleStrokeColorChange', 'handleStrokeOpacityChange', 'handleFillColorChange', 'handleFillOpacityChange']) {
     const start = viewerSource.indexOf(`const ${name} = useCallback`);
     const block = viewerSource.slice(start, viewerSource.indexOf('}, [', start));
-    assert.match(block, /if \(activeTool !== 'select'\) \{\s*if \(isJustDrawnMarkSelected\(\)/, `${name} restyles the just-drawn mark`);
+    assert.match(block, /if \(pickBarTool !== 'select'\) \{\s*if \(isJustDrawnMarkSelected\(\)/, `${name} restyles the just-drawn mark`);
     assert.ok(block.indexOf('updateToolPreference') < block.indexOf('isJustDrawnMarkSelected'), `${name} still updates the tool for the next mark`);
   }
 });

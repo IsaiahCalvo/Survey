@@ -28,7 +28,7 @@ test('selected annotation swatch colors come from the current saved annotation',
 });
 
 test('selected text markup publishes its own base color and opacity to the edit controls', () => {
-  assert.match(viewerSource, /const selectedTextMarkupPaint = activeTool === 'select' && selectedAnnot\?\.data\?\.type === 'text-markup'/);
+  assert.match(viewerSource, /const selectedTextMarkupPaint = pickBarTool === 'select' && selectedAnnot\?\.data\?\.type === 'text-markup'/);
   assert.match(viewerSource, /resolveTextMarkupEditPaint\(selectedAnnot, strokeColor\)/);
   assert.match(viewerSource, /strokeColor: selectedTextMarkupPaint\?\.color \|\| counterToolStrokeColor,/);
   assert.match(viewerSource, /strokeOpacity: selectedTextMarkupPaint\?\.opacity \?\? counterToolStrokeOpacity,/);
@@ -85,10 +85,10 @@ test('selected previews include renderer opacity and every editable rendered typ
 test('selected preview cannot override an armed drawing tool and only text markup hydrates picker bases', () => {
   assert.match(
     viewerSource,
-    /if \(activeTool !== 'select'\) return \{ fill: null, stroke: null \};/,
+    /if \(pickBarTool !== 'select'\) return \{ fill: null, stroke: null \};/,
   );
   assert.match(viewerSource, /strokeColor: selectedTextMarkupPaint\?\.color \|\| counterToolStrokeColor,/);
-  assert.match(viewerSource, /const selectedTextMarkupPaint = activeTool === 'select'/);
+  assert.match(viewerSource, /const selectedTextMarkupPaint = pickBarTool === 'select'/);
   assert.match(viewerSource, /fillColor: counterToolFillColor,/);
   assert.doesNotMatch(viewerSource, /strokeColor: selectedPreviewColors\.stroke/);
   assert.doesNotMatch(viewerSource, /fillColor: selectedPreviewColors\.fill/);
@@ -96,7 +96,7 @@ test('selected preview cannot override an armed drawing tool and only text marku
 
 test('counter draw mode previews the active series instead of unrelated tool defaults', () => {
   assert.match(viewerSource, /const activeCounterSeriesPaint = resolveCounterSeriesPaint\(/);
-  assert.match(viewerSource, /if \(activeTool === 'counter'\) \{/);
+  assert.match(viewerSource, /if \(pickBarTool === 'counter'\) \{/);
   assert.match(viewerSource, /fill: effectivePreviewColor\(activeCounterSeriesPaint\.fill\)/);
   assert.match(viewerSource, /stroke: effectivePreviewColor\(activeCounterSeriesPaint\.numberColor\)/);
   assert.match(
@@ -106,6 +106,9 @@ test('counter draw mode previews the active series instead of unrelated tool def
 });
 
 test('counter draw color edits patch only the active series and never a stale selection', () => {
+  // Owner 2026-10-04: the handlers branch on pickBarTool - the armed tool, or
+  // 'select' while the bar edits a pick (Select, Pan, an own-group pick, see
+  // toolPressMatrix.test.mjs) - so a Counter that picked a counter edits it.
   const handlerBlocks = [
     ['handleStrokeColorChange', 'handleStrokeOpacityChange', 'numberColor'],
     ['handleStrokeOpacityChange', 'handleFillColorChange', 'numberColor'],
@@ -122,7 +125,7 @@ test('counter draw color edits patch only the active series and never a stale se
     assert.match(block, /const activeSeriesId = activeCounterSeriesIdRef\.current;/);
     assert.match(block, /counterSeriesList\.some\(\(series\) => series\.seriesId === activeSeriesId && series\.count > 0\)/);
     assert.match(block, new RegExp(`handleCounterGroupUpdateRef\\.current\\?\\.\\(activeSeriesId, \\{ ${patchKey}:`));
-    assert.match(block, /if \(activeTool === 'counter'\) return;/);
+    assert.match(block, /if \(pickBarTool === 'counter'\) return;/);
     // DELIBERATE ASSERTION CHANGE (owner Test 15, 2026-10-02). Was
     // /if \(activeTool !== 'select'\) return;/. With a drawing tool armed the
     // bar is still the tool's defaults, and a pick left behind still never
@@ -131,10 +134,10 @@ test('counter draw color edits patch only the active series and never a stale se
     // edit on it did nothing. Every other armed-tool case still returns.
     assert.match(
       block,
-      /if \(activeTool !== 'select'\) \{\s*if \(isJustDrawnMarkSelected\(\) && is(Editable|Fillable)ShapeSelected\(\)\) patchSelected(Stroke|Fill)\(next(NumberColor|FillColor)\);\s*return;\s*\}/,
+      /if \(pickBarTool !== 'select'\) \{\s*if \(isJustDrawnMarkSelected\(\) && is(Editable|Fillable)ShapeSelected\(\)\) patchSelected(Stroke|Fill)\(next(NumberColor|FillColor)\);\s*return;\s*\}/,
     );
     assert.ok(
-      block.indexOf("if (activeTool === 'counter') return;") < block.indexOf('isCalloutSelected()'),
+      block.indexOf("if (pickBarTool === 'counter') return;") < block.indexOf('isCalloutSelected()'),
       `${startName} exits counter draw mode before selected-object edits`,
     );
   });

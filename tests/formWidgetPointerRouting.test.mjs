@@ -254,7 +254,7 @@ test('the pan hover glow leaves a form control its own affordance', () => {
     viewerSource.indexOf("document.body.style.cursor = 'pointer'"),
   );
   const bail = applyHover.indexOf('isLiveFormWidgetTarget(e.target)');
-  const hitTest = applyHover.indexOf('const hit = resolveAnnotationAt(e);');
+  const hitTest = applyHover.indexOf('const hit = resolveAnnotationAt(e, {');
   assert.ok(bail > 0 && bail < hitTest, 'the hover glow must bail on widgets before hit-testing');
   // Bailing has to clear whatever the previous frame left behind, or the glow
   // and the `pointer` cursor stick while the pointer sits inside the field.

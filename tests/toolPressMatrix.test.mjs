@@ -167,3 +167,120 @@ test('a click on empty page or the grey area drops the pick under every tool tha
   }
   for (const tool of ['pan', 'pen', 'highlighter', 'eraser']) assert.equal(rules.shouldBackdropPressDeselect(tool), false, tool);
 });
+
+// ---------------------------------------------------------------------------
+// Owner 2026-10-04, round 2: (1) a Pan pick brings up the mark's tool group and
+// formatting row as a Select pick does; (2) a Shapes / Text tool's own-group
+// pick is what its formatting row shows and edits, and the row is the tool's
+// own settings again once the pick goes; (3) another group's mark lying on top
+// of an own-group mark does not hide it from the tool (press and hover).
+// ---------------------------------------------------------------------------
+const barTarget = await import('../src/utils/toolbarCalloutTarget.js');
+const hitTest = await import('../src/utils/annotationHitTest.js');
+const { readFileSync } = await import('node:fs');
+const readSource = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
+
+test('the bar edits the pick under Select, Pan and a group tool holding its own group; else the tool\'s settings', () => {
+  for (const [tool, picks] of Object.entries(PICKS)) {
+    // Nothing picked: the bar is the armed tool's (Select keeps its own).
+    assert.equal(barTarget.resolvePickBarTool({ activeTool: tool, pickedGroups: [] }), tool, `${tool}, nothing picked`);
+    for (const name of ALL) {
+      const group = groups.getMarkGroup(MARKS[name]);
+      const got = barTarget.resolvePickBarTool({ activeTool: tool, pickedGroups: [group] });
+      // Text Select keeps its highlight bar; every other tool that may pick
+      // the mark hands the bar to the pick.
+      const editsPick = tool === 'select' || (tool !== 'text-select' && picks.includes(name));
+      assert.equal(got, editsPick ? 'select' : tool, `${tool} holding ${name}`);
+    }
+  }
+  // The mark just drawn (auto-picked, its tool still armed) keeps the tool's
+  // settings, which restyle it too (owner Test 15).
+  assert.equal(barTarget.resolvePickBarTool({ activeTool: 'rect', pickedGroups: ['shape'], justDrawn: true }), 'rect');
+  // A pick that is not all the tool's own group leaves the tool's settings.
+  assert.equal(barTarget.resolvePickBarTool({ activeTool: 'rect', pickedGroups: ['shape', 'draw'] }), 'rect');
+  assert.equal(barTarget.resolvePickBarTool({ activeTool: 'pan', pickedGroups: ['shape', 'draw', null] }), 'select');
+  // Row 2's tool: the picked mark's under Pan and an own-group pick.
+  assert.equal(barTarget.resolveRowTwoTool({ activeTool: 'pan', selectionMappedTool: 'rect', pickedGroups: ['shape'] }), 'rect');
+  assert.equal(barTarget.resolveRowTwoTool({ activeTool: 'rect', selectionMappedTool: 'ellipse', pickedGroups: ['shape'] }), 'ellipse');
+  assert.equal(barTarget.resolveRowTwoTool({ activeTool: 'text', selectionMappedTool: 'callout', pickedGroups: ['review'] }), 'callout');
+  assert.equal(barTarget.resolveRowTwoTool({ activeTool: 'pen', selectionMappedTool: 'rect', pickedGroups: ['shape'] }), 'pen');
+  assert.equal(barTarget.resolveRowTwoTool({ activeTool: 'pan' }), 'pan');
+});
+
+test('a Pan pick shows its group\'s tools and the formatting row, desktop and phone', () => {
+  assert.equal(bar.resolveToolBarGroup({ activeTool: 'pan', contextTool: 'pan' }), null);
+  assert.equal(bar.resolveToolBarGroup({ activeTool: 'pan', contextTool: 'rect' }), 'shape');
+  assert.equal(bar.resolveToolBarGroup({ activeTool: 'pan', contextTool: 'pen' }), 'draw');
+  assert.equal(bar.resolveToolBarGroup({ activeTool: 'pan', contextTool: 'callout' }), 'review');
+  assert.equal(bar.showsFormatRow({ activeTool: 'pan', contextTool: 'pan' }), false);
+  assert.equal(bar.showsFormatRow({ activeTool: 'pan', contextTool: 'ellipse' }), true);
+  // Phone: the strip hides for Pan only while nothing is picked.
+  assert.match(readSource('../src/mobile/MobilePdfViewerChrome.jsx'), /if \(api\.activeTool === 'pan' && \(!api\.contextTool \|\| api\.contextTool === 'pan'\)\) return null;/);
+  // The viewer routes Pan / own-group picks through Select's bar path.
+  const viewer = readSource('../src/PDFViewer.jsx');
+  assert.match(viewer, /const pickBarTool = useMemo\(\(\) => \{/);
+  assert.match(viewer, /const groupSummary = pickBarTool === 'select' \? \(restyleGroup\?\.summary \|\| null\) : null;/);
+  assert.match(viewer, /const contextTool = \(pickBarTool === 'select' && selectionMappedTool\)/);
+  assert.match(viewer, /if \(pickBarTool !== 'select'\) return null;/);
+  assert.match(viewer, /if \(pdfId && pickBarTool !== 'select' && paintPhaseRef\.current !== 'preview'\) updateToolPreference\(paintPreferenceKey\(pickBarTool\), \{ strokeColor: color \}\);/);
+  // When the pick goes, the tool's own settings come back.
+  assert.match(viewer, /const toolSettingsBeforePickRef = useRef\(null\);/);
+});
+
+test('a group tool\'s hit test looks past another group\'s mark to its own beneath (press and hover)', () => {
+  for (const tool of ['select', 'pan', 'text-select', 'pen', 'highlighter', 'eraser']) {
+    assert.equal(routing.ownGroupMarkFilter(tool, () => []), null, tool);
+  }
+  const objects = [MARKS.ellipse, MARKS.pen, MARKS.textbox, MARKS.rect];
+  const rect = routing.ownGroupMarkFilter('rect', () => objects);
+  assert.equal(rect({ pageNumber: 1, annotationIndex: 0 }), true);
+  assert.equal(rect({ pageNumber: 1, annotationIndex: 1 }), false);
+  assert.equal(rect({ pageNumber: 1, annotationIndex: 2 }), false);
+  assert.equal(rect({ pageNumber: 1, calloutId: 'c1' }), false);
+  const text = routing.ownGroupMarkFilter('text', () => objects);
+  assert.equal(text({ pageNumber: 1, annotationIndex: 2 }), true);
+  assert.equal(text({ pageNumber: 1, calloutId: 'c1' }), true);
+  assert.equal(text({ pageNumber: 1, annotationIndex: 3 }), false);
+
+  // The real hit test over a fake page: two marks under the pointer by ink
+  // geometry, index 1 drawn on top of index 0.
+  const el = (attrs, extra = {}) => ({ getAttribute: (k) => (k in attrs ? String(attrs[k]) : null), closest: () => null, ...extra });
+  const svg = { createSVGPoint: () => ({ x: 0, y: 0, matrixTransform() { return { x: this.x, y: this.y }; } }) };
+  const hitTarget = (index) => {
+    const carrier = el({ 'data-annotation-index': index });
+    return el({ 'data-path-hit-target': 'true' }, {
+      ownerSVGElement: svg,
+      getScreenCTM: () => ({ inverse: () => ({}) }),
+      isPointInStroke: () => true,
+      closest: (sel) => (sel.includes('[data-annotation-index]') ? carrier : null),
+    });
+  };
+  const stack = [hitTarget(0), hitTarget(1)];
+  const wrapper = el({ 'data-diag-svg-wrapper': 1 }, {
+    getBoundingClientRect: () => ({ left: 0, top: 0, right: 100, bottom: 100, width: 100, height: 100 }),
+    querySelectorAll: (sel) => (sel.includes('[data-annotation-index]') ? [] : stack),
+  });
+  const savedDocument = globalThis.document;
+  globalThis.document = { querySelector: () => null, querySelectorAll: (sel) => (sel.includes('data-diag-svg-wrapper') ? [wrapper] : []) };
+  try {
+    const press = { clientX: 5, clientY: 5, composedPath: () => [wrapper] };
+    const penOverEllipse = [MARKS.ellipse, MARKS.pen];
+    assert.equal(hitTest.resolveAnnotationAt(press).annotationIndex, 1, 'no filter: the top-most mark');
+    assert.equal(hitTest.resolveAnnotationAt(press, { acceptMark: routing.ownGroupMarkFilter('select', () => penOverEllipse) }).annotationIndex, 1, 'Select: the top-most mark');
+    assert.equal(hitTest.resolveAnnotationAt(press, { acceptMark: routing.ownGroupMarkFilter('rect', () => penOverEllipse) }).annotationIndex, 0, 'Rectangle: the ellipse beneath');
+    const penOverText = [MARKS.textbox, MARKS.pen];
+    const miss = hitTest.resolveAnnotationAt(press, { acceptMark: routing.ownGroupMarkFilter('rect', () => penOverText) });
+    assert.equal(miss.annotationIndex, null, 'Rectangle over a pen stroke on a text box: empty page');
+    assert.equal(miss.kind, 'page');
+    assert.equal(hitTest.resolveAnnotationAt(press, { acceptMark: routing.ownGroupMarkFilter('text', () => penOverText) }).annotationIndex, 0, 'Text: the text box beneath');
+  } finally {
+    globalThis.document = savedDocument;
+  }
+  // Every caller asks with the armed tool: the SVG layer (resolvePagePress),
+  // the Text / Counter overlays and the hover halo.
+  const viewer = readSource('../src/PDFViewer.jsx');
+  assert.match(viewer, /classifyPagePress\(e\.nativeEvent, \{ pageNumber, objects: pageAnnotations\?\.objects, tool: 'text' \}\)/);
+  assert.match(viewer, /classifyPagePress\(e\.nativeEvent, \{ pageNumber, objects: pageAnnotations\?\.objects, tool: 'counter' \}\)/);
+  assert.match(viewer, /acceptMark: ownGroupMarkFilter\(activeTool, \(page\) => annotationsByPageRef\.current\?\.\[page\]\?\.objects\)/);
+  assert.match(readSource('../src/utils/toolPressRouting.js'), /const where = classifyPagePress\(nativeEvent, \{ pageNumber, objects, tool \}\);/);
+});
