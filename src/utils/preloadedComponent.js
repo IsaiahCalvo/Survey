@@ -1,4 +1,4 @@
-import { createElement, useEffect, useState } from 'react';
+import { createElement, forwardRef, useEffect, useState } from 'react';
 
 /**
  * A component whose code sits in its own chunk, so the first screen does not
@@ -33,7 +33,11 @@ export function preloadedComponent(importer, pick = (module) => module.default) 
     return pending;
   };
 
-  function Preloaded(props) {
+  // The ref is passed through: the rails are forwardRef components and the
+  // app drives them through it (Pages / Search / Spaces on the phone dock,
+  // Ctrl+F, the Spaces chip). React 18 does not hand `ref` to a plain function
+  // component, so without forwardRef those calls found no panel API.
+  const Preloaded = forwardRef(function Preloaded(props, ref) {
     const [, setReady] = useState(Boolean(Loaded));
     useEffect(() => {
       if (Loaded) return undefined;
@@ -41,8 +45,8 @@ export function preloadedComponent(importer, pick = (module) => module.default) 
       load().then(() => { if (live) setReady(true); }, () => {});
       return () => { live = false; };
     }, []);
-    return Loaded ? createElement(Loaded, props) : null;
-  }
+    return Loaded ? createElement(Loaded, ref ? { ...props, ref } : props) : null;
+  });
 
   return { load, Component: Preloaded };
 }
