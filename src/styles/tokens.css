@@ -146,6 +146,12 @@
   --panel-well: var(--surface-1);
   --shadow-popover: 0 12px 28px rgba(0, 0, 0, 0.45);
   --shadow-sheet: 0 -15px 38px rgba(0, 0, 0, 0.5);
+  /* One drop shadow for every centred dialog card (polish round 2,
+     2026-10-04), the partner of --radius-dialog. 0 24px 60px at 55% was
+     already the common one (theme.js SHADOWS.xl, Confirm delete, Sign in,
+     Share, Redact); the few dialogs that drifted (64px / 58-60%, 8px /
+     40-60%, 18-20px) take it too. */
+  --shadow-dialog: 0 24px 60px rgba(0, 0, 0, 0.55);
 
   /* --- Borders: TWO JOBS, two values (revision 4) --------------------------
      Revision 3 pushed every border to 4.09-4.50:1 to satisfy WCAG 1.4.11. The

@@ -33,7 +33,8 @@ test('delete confirmation uses the shared app modal shell', () => {
   // 2026-10-04 (polish round 2): the card corner names the one dialog corner
   // token (--radius-dialog, 10px) so every dialog shares it.
   assert.match(styles, /border-radius:\s*var\(--radius-dialog\)/);
-  assert.match(styles, /box-shadow:\s*0 24px 60px rgba\(0,\s*0,\s*0,\s*0\.55\)/);
+  // 2026-10-04 (polish round 2): the one dialog shadow token, same value.
+  assert.match(styles, /box-shadow:\s*var\(--shadow-dialog\)/);
   assert.match(styles, /overflow:\s*hidden/);
 
   assert.match(styles, /confirm-delete-modal__content[\s\S]*padding:\s*18px 18px 14px/);

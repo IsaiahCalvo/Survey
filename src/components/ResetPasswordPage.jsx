@@ -153,8 +153,8 @@ export default function ResetPasswordPage() {
       <div
         style={{
           width: 460, maxWidth: '94vw', background: C.card,
-          border: `1px solid ${C.rule}`, borderRadius: 12,
-          boxShadow: '0 24px 60px rgba(0,0,0,0.55)', overflow: 'hidden',
+          border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)',
+          boxShadow: 'var(--shadow-dialog)', overflow: 'hidden',
         }}
         data-reset-password-phase={phase}
       >

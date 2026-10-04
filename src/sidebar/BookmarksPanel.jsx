@@ -2417,7 +2417,7 @@ const BookmarksPanel = ({
             maxHeight: '80vh',
             overflow: 'auto',
             border: '1px solid var(--border)',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
+            boxShadow: 'var(--shadow-dialog)'
           }} onClick={(e) => e.stopPropagation()}>
             <div style={{
               display: 'flex',
@@ -2817,7 +2817,7 @@ const BookmarksPanel = ({
             maxHeight: '80vh',
             overflow: 'auto',
             border: '1px solid var(--border)',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
+            boxShadow: 'var(--shadow-dialog)'
           }} onClick={(e) => e.stopPropagation()}>
             <div style={{
               display: 'flex',

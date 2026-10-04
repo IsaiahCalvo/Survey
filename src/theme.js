@@ -192,7 +192,8 @@ export const SHADOWS = {
   sm: '0 1px 2px rgba(0, 0, 0, 0.05)',
   md: '0 4px 12px rgba(0, 0, 0, 0.15)',
   lg: '0 12px 30px rgba(0, 0, 0, 0.5)',
-  xl: '0 24px 60px rgba(0, 0, 0, 0.55)',
+  // The dialog card shadow (tokens.css --shadow-dialog, same value).
+  xl: 'var(--shadow-dialog)',
   inner: 'inset 0 2px 4px rgba(0, 0, 0, 0.06)',
   // UX 2026-09-22: 2px, not 1px. A 1px ring at 35% gold composited to 2.09:1
   // and was invisible; the ring is the only thing a keyboard user has.

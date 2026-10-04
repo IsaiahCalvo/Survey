@@ -1685,7 +1685,7 @@ export default function RevisionsPanel({
           background: 'var(--surface-1)',
           border: '1px solid var(--border)',
           borderRadius: 'var(--radius-dialog)',
-          boxShadow: 'var(--shadow-lg, 0 8px 24px rgba(0,0,0,0.5))',
+          boxShadow: 'var(--shadow-dialog)',
           width: '100%',
           maxWidth: 480,
           margin: '0 16px',

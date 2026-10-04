@@ -3590,7 +3590,7 @@ export default function TemplatesEditor({
           style={{
             width: 440, maxWidth: 'calc(100vw - 32px)',
             background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-dialog)',
-            padding: '18px 20px 14px', boxShadow: '0 18px 60px rgba(0,0,0,0.55)',
+            padding: '18px 20px 14px', boxShadow: 'var(--shadow-dialog)',
             fontFamily: 'var(--font-ui)', color: 'var(--text-1)',
           }}
         >

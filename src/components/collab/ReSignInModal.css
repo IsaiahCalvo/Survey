@@ -48,7 +48,7 @@
   /* UX: shadow-lg drop shadow — heavier than the banner's shadow-md so the
    * modal floats over the document with clear depth, signaling "this is an
    * interactive surface above your content." */
-  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.6));
+  box-shadow: var(--shadow-dialog);
 
   /* UX: z-index 200 — above the banner (z-index 100) so the modal that the
    * banner action opens covers the banner; below AuthModal's 10000 so any

@@ -45,7 +45,10 @@ test('the dialog corner token exists and the dialog cards use it', () => {
     'components/SaveLogBanner.jsx',
     'components/SpaceSelectionDialog.jsx',
     'components/revisions/RevisionsPanel.jsx',
+    'home/AccessManagementModal.jsx',
     'home/BulkModals.jsx',
+    'home/InviteAcceptPage.jsx',
+    'components/ResetPasswordPage.jsx',
     'home/CreateProjectModal.jsx',
     'home/ManageTeamModal.jsx',
     'home/ShareModal.jsx',
@@ -63,4 +66,22 @@ test('the dialog corner token exists and the dialog cards use it', () => {
     const file = files.find(({ path }) => path.endsWith(`${rel}.jsx`));
     assert.match(file.text, /borderRadius: BORDERS\.radius\.dialog/, rel);
   }
+});
+
+// 2026-10-04 (polish round 2): one drop shadow for every dialog card.
+test('the dialog shadow token exists and the drifted dialog cards use it', () => {
+  const tokens = files.find(({ path }) => path.endsWith(join('styles', 'tokens.css'))).text;
+  assert.match(tokens, /--shadow-dialog:\s*0 24px 60px rgba\(0, 0, 0, 0\.55\);/);
+  const theme = files.find(({ path }) => path.endsWith('theme.js')).text;
+  assert.match(theme, /xl: 'var\(--shadow-dialog\)'/);
+  for (const rel of ['AccountSettings.css', 'ReSignInModal.css', 'CleanupResidueReviewPanel.css', 'CreateProjectModal.jsx',
+    'SaveLogBanner.jsx', 'BookmarksPanel.jsx', 'RevisionsPanel.jsx', 'AccessManagementModal.jsx']) {
+    const file = files.find(({ path }) => path.endsWith(rel));
+    assert.match(file.text, /var\(--shadow-dialog\)/, rel);
+  }
+  const typed = files
+    .filter(({ path }) => !path.endsWith(join('styles', 'tokens.css')))
+    .filter(({ text }) => /0 24px 6[04]px rgba\(0,\s*0,\s*0,\s*0\.5[58]\)/.test(text))
+    .map(({ path }) => path.slice(SRC.length));
+  assert.deepEqual(typed, []);
 });

@@ -51,7 +51,7 @@ export default function CreateProjectModal({
         aria-modal="true"
         aria-label="Create project"
         onClick={(event) => event.stopPropagation()}
-        style={{ width: 440, maxWidth: '100%', maxHeight: 'calc(100vh - 32px)', overflow: 'auto', borderRadius: 'var(--radius-dialog)', border: `1px solid ${COLORS.rule}`, background: COLORS.card, color: COLORS.ink, boxShadow: '0 24px 64px rgba(0,0,0,0.58)', fontFamily: 'var(--font-ui)' }}
+        style={{ width: 440, maxWidth: '100%', maxHeight: 'calc(100vh - 32px)', overflow: 'auto', borderRadius: 'var(--radius-dialog)', border: `1px solid ${COLORS.rule}`, background: COLORS.card, color: COLORS.ink, boxShadow: 'var(--shadow-dialog)', fontFamily: 'var(--font-ui)' }}
       >
         <header style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, padding: '18px 18px 14px', borderBottom: `1px solid ${COLORS.rule}` }}>
           <div>

@@ -51,7 +51,7 @@
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius-dialog);
-  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.5));
+  box-shadow: var(--shadow-dialog);
 
   width: 100%;
   max-width: 400px;
