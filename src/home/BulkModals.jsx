@@ -261,7 +261,7 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
               />
             </label>
           </div>
-          <button onClick={onClose} title="Close" className="hub-icon-btn"><Icon name="close" size={16} /></button>
+          <button type="button" onClick={onClose} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={16} /></button>
         </div>
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onClose} className="hub-btn" style={{ minHeight: 44 }}>Cancel</button>

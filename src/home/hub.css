@@ -335,6 +335,19 @@
 .hub-icon-btn:not(:disabled):active { background: transparent; }
 .hub-icon-btn:not(:disabled):active > svg { transform: scale(0.88); }
 .hub-icon-btn > svg { transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1); }
+/* Polish round 5 (2026-10-04): a dialog's × — Share, Rename, Move / Copy, New
+   project, Manage access, the phone Document details — keeps its 24px look
+   but is 44px to a finger on a touch screen (it measured 24). */
+@media (pointer: coarse) {
+  .hub-icon-btn:is([aria-label="Close"], [title="Close"], [aria-label="Close details"]) {
+    position: relative;
+  }
+  .hub-icon-btn:is([aria-label="Close"], [title="Close"], [aria-label="Close details"])::after {
+    content: '';
+    position: absolute;
+    inset: -10px;
+  }
+}
 
 /* ONE disabled look for all four kinds, from tokens — no opacity, which dims
    a gold fill into a paler gold instead of switching it off. */
