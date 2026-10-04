@@ -323,8 +323,10 @@ test('mobile PDF pinch previews translation, progressively sharpens, and commits
   assert.match(PDFJS_VIEWER_SOURCE, /resolveGesturePreview\(g, oldScale \* lz\)/);
   // 2026-10-02: the commit also says whether it came from an elastic (phone)
   // pinch, so the anchor effect can fold any browser clamp into the release
-  // spring instead of showing it as a jump.
-  assert.match(PDFJS_VIEWER_SOURCE, /pendingAnchorRef\.current = \{ left: preview\.left, top: preview\.top, elastic: Boolean\(g\.elastic\) \}/);
+  // spring instead of showing it as a jump. 2026-10-04: also when an older
+  // zoom-limit ease was still running under the gesture (it is folded into
+  // the new leftover, so the same clamp fold applies).
+  assert.match(PDFJS_VIEWER_SOURCE, /pendingAnchorRef\.current = \{ left: preview\.left, top: preview\.top, elastic: Boolean\(g\.elastic \|\| easingUnder\) \}/);
   assert.match(PDFJS_VIEWER_SOURCE, /translate\(\$\{liveTranslateX\}px, \$\{liveTranslateY\}px\) scale/);
   assert.match(PDFJS_VIEWER_SOURCE, /lastSharpAtRef/);
   assert.match(PDFJS_VIEWER_SOURCE, /240/);
@@ -374,7 +376,19 @@ test('desktop wheel and trackpad rubber-band at document edges and zoom limits',
   assert.match(PDFJS_VIEWER_SOURCE, /from '\.\.\/utils\/elasticEdges\.js'/);
   assert.match(PDFJS_VIEWER_SOURCE, /const overscroll = createWheelOverscroll\(\);/);
   assert.match(PDFJS_VIEWER_SOURCE, /if \(!el \|\| isMobileSurface\) return undefined;\s*const overscroll/);
-  assert.match(PDFJS_VIEWER_SOURCE, /elasticRef\.current = \{ ax: 0, ay: 0, z: 1, tx: -shown\.x, ty: -shown\.y, anim: null, wheel: true \};/);
+  // 2026-10-04 (owner: "it gets stuck sometimes"): the wheel controller is
+  // the ONE owner of its offset (wheelShiftRef, added on top of any other
+  // live transform) instead of sharing elasticRef with the zoom ease, and
+  // every stretch has a way home: idle timer, the controller's watchdog, and
+  // blur / tab hide / a press / a zoom start releasing it into the spring.
+  assert.match(PDFJS_VIEWER_SOURCE, /const changed = show\(shown\.active \? -shown\.x : 0, shown\.active \? -shown\.y : 0\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /liveTranslateX \+= wheelShift\.x;/);
+  assert.match(PDFJS_VIEWER_SOURCE, /window\.addEventListener\('blur', release\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(e\.ctrlKey \|\| e\.metaKey \|\| gestureRef\.current\) \{ if \(overscroll\.active\(\)\) release\(\); return; \}/);
+  // A zoom-limit ease is never cut off by the next gesture: it is composed
+  // under it and folded into the next leftover.
+  assert.match(PDFJS_VIEWER_SOURCE, /composeElasticTransform\(/);
+  assert.match(PDFJS_VIEWER_SOURCE, /elasticRef\.current = foldElasticLeftover\(\{/);
   assert.match(PDFJS_VIEWER_SOURCE, /if \(prefersReducedMotion\(\)\) return;/);
   assert.match(PDFJS_VIEWER_SOURCE, /elasticZoom: regime === 'trackpad' && !isMobileSurface && !prefersReducedMotion\(\),/);
   assert.match(PDFJS_VIEWER_SOURCE, /const previewScale = g\.elasticZoom \? rubberScale\(nextScale, minimumScale, maxScale\) : nextScale;/);

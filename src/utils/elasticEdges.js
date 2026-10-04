@@ -134,19 +134,69 @@ export function prefersReducedMotion() {
   }
 }
 
+// ---- one transform on top of another --------------------------------------
+// Owner 2026-10-04 ("it gets stuck sometimes ... it's weird"): a new gesture
+// that lands while a zoom-limit ease is still running used to cut the ease off
+// (the page snapped up to x1.8 in one frame). Now the ease keeps running ON TOP
+// of the new gesture's live transform, like OpenSeadragon / react-spring: the
+// new input takes over from what is shown, nothing ever jumps.
+//
+// Both transforms map the content node's own px: p -> o + t + s (p - o), with
+// o the transform-origin. Returns the composite { tx, ty, s } for origin `inner.o`.
+export function composeElasticTransform(inner, outer) {
+  const s1 = finite(inner?.s, 1);
+  const z = finite(outer?.s, 1);
+  const ix = finite(inner?.ox); const iy = finite(inner?.oy);
+  const ox = finite(outer?.ox); const oy = finite(outer?.oy);
+  return {
+    s: z * s1,
+    tx: finite(outer?.tx) + z * finite(inner?.tx) + (1 - z) * (ox - ix),
+    ty: finite(outer?.ty) + z * finite(inner?.ty) + (1 - z) * (oy - iy),
+  };
+}
+
+/**
+ * A gesture ended while the previous leftover was still easing home: carry
+ * what is still shown of it into the new leftover so the release starts from
+ * exactly what is on screen (zoom multiplies, offsets add).
+ */
+export function foldElasticLeftover(next, previous) {
+  if (!previous) return next;
+  const z = finite(previous.z, 1);
+  return {
+    ...next,
+    z: finite(next.z, 1) * z,
+    tx: finite(next.tx) + finite(previous.tx),
+    ty: finite(next.ty) + finite(previous.ty),
+  };
+}
+
 // ---- desktop: wheel / trackpad overscroll ---------------------------------
-// A wheel stream has no finger to follow, so the controller sorts each event:
-//   - a slow trackpad push at an edge stretches with the same iOS rubber band
-//     as a finger (capped at ELASTIC_MAX_BOUNCE_FRACTION of the view);
+// A wheel stream has no finger to follow and the browser does not say when the
+// fingers lift, so the controller sorts each event (same ideas as
+// @use-gesture's wheel engine and iOS UIScrollView, ported, no dependency):
+//   - a trackpad push at an edge stretches with the same iOS rubber band as a
+//     finger (capped at ELASTIC_MAX_BOUNCE_FRACTION of the view);
+//   - the stream "ends" WHEEL_OVERSCROLL_IDLE_MS after its last event (the
+//     idle timer, like @use-gesture's 140 ms wheelEnd debounce): a stretch then
+//     springs home from rest on the phone's critically damped curve;
+//   - the macOS momentum tail after the fingers lift is RELEASE-AND-IGNORE:
+//     once the recent deltas (mean of the last 3, so jitter cannot hide the
+//     decay) fall under WHEEL_TAIL_DROP of the stream's strongest, the page
+//     springs home and the rest of the tail is ignored. It used to need five
+//     strictly shrinking deltas in a row; real tails jitter, so the page rode
+//     the whole tail (up to ~3 s held past the edge - the "stuck" feel);
+//   - a tail that only starts after the idle timer fired (a short gap after
+//     the lift) is watched for a few events before it may stretch again:
+//     decaying deltas are ignored, steady or growing ones are fingers pushing
+//     again and catch the page where it is (never a restart from 0);
 //   - a fast stream (a fling's momentum) running into an edge hands its speed
-//     to the edge spring, capped like the phone flick, and the rest of the
-//     decaying momentum tail is ignored;
-//   - a stretch whose deltas have started decaying (the macOS momentum tail
-//     after the fingers lift) is released at once instead of riding the tail;
+//     to the edge spring, capped like the phone flick;
 //   - a mouse notch gives a small smooth bounce (a pulse that starts and ends
 //     at rest, so no frame moves more than ~3 px), never a jump.
-// The stream "stops" after WHEEL_OVERSCROLL_IDLE_MS without events; a stretch
-// then springs home on the same critically damped curve as the phone.
+// Every state has a way home even if a timer or event is lost: frame() springs
+// a stretch that has had no input for WHEEL_STRETCH_WATCHDOG_MS, and ends any
+// spring after ELASTIC_SPRING_MAX_MS.
 export const WHEEL_OVERSCROLL_IDLE_MS = 100;
 // Above this speed (px/s) a stream reaching an edge counts as momentum hitting
 // it (~10 px per 60 Hz event); slower is a deliberate push.
@@ -154,9 +204,18 @@ export const WHEEL_FLING_SPEED = 600;
 // A notch shows this share of the rubber band of its overflow (100 px -> ~13 px
 // on an 830 px view), as a pulse a·(ωt)²·e^(-ωt) that peaks at t = 2/ω.
 export const WHEEL_NOTCH_SHARE = 0.25;
+// Recent deltas under this share of the stream's strongest = the fingers have
+// lifted and this is the momentum tail.
+export const WHEEL_TAIL_DROP = 0.65;
+export const WHEEL_STRETCH_WATCHDOG_MS = 400;
+export const ELASTIC_SPRING_MAX_MS = 1500;
 const NOTCH_PULSE_PEAK = 4 * Math.exp(-2);
 const NOTCH_PULSE_LIFE_S = 0.9;
 const STREAM_GAP_MS = 120;
+const RECENT_EVENTS = 3;
+const PROBE_MAX_EVENTS = 6;
+const TAIL_MEMORY_MS = 400;
+const NONE = Object.freeze({ prevent: false, scrollBy: 0 });
 
 function notchPulse(a, t, omega) {
   if (t <= 0) return { x: 0, v: 0 };
@@ -165,17 +224,23 @@ function notchPulse(a, t, omega) {
   return { x: a * u * u * e, v: a * omega * (2 * u - u * u) * e };
 }
 
+const mean = (list) => (list.length ? list.reduce((a, b) => a + b, 0) / list.length : 0);
+
 /**
  * Two-axis overscroll state for wheel input. Offsets are in scroll space:
  * positive = past the far end (bottom / right), negative = before the start.
  * `wheel(axis, input)` returns { prevent, scrollBy }: prevent is true only when
  * the event was cancelable and the controller used it to pull a stretch back
  * in (scrollBy = what is left to scroll natively after the stretch is gone).
+ * The controller is the ONE owner of the wheel overscroll offset; the viewer
+ * only draws frame(now).
  */
 export function createWheelOverscroll({ omega = ELASTIC_SPRING_OMEGA } = {}) {
   const makeAxis = () => ({
-    mode: 'idle', excess: 0, x0: 0, v0: 0, t0: 0, pulses: [],
-    tail: false, lastAbs: 0, decayRun: 0, peakAbs: 0, vel: 0, lastT: -Infinity, notch: false, dim: 1,
+    mode: 'idle', excess: 0, x0: 0, v0: 0, t0: 0, pulses: [], dim: 1,
+    lastT: -Infinity, vel: 0, notch: false,
+    recent: [], peakMean: 0, ignore: false, floor: 0, growth: 0, probe: null,
+    tailUntil: -Infinity, tailFloor: 0,
   });
   let axes = { x: makeAxis(), y: makeAxis() };
   const capOf = (s) => s.dim * ELASTIC_MAX_BOUNCE_FRACTION;
@@ -207,6 +272,11 @@ export function createWheelOverscroll({ omega = ELASTIC_SPRING_OMEGA } = {}) {
     const shown = Math.sign(x) * Math.min(Math.abs(x), capOf(s) * 0.999);
     s.mode = 'stretch'; s.excess = inverseRubberBand(shown, s.dim); s.pulses = [];
   };
+  // Spring home now and ignore the rest of this stream unless it clearly grows.
+  const releaseAndIgnore = (s, now, level) => {
+    toSpring(s, now);
+    s.ignore = true; s.floor = level; s.growth = 0; s.probe = null;
+  };
 
   function wheelAxis(name, { delta = 0, room = 0, dimension = 1, notch = false, cancelable = false, now = 0 } = {}) {
     const s = axes[name];
@@ -214,21 +284,37 @@ export function createWheelOverscroll({ omega = ELASTIC_SPRING_OMEGA } = {}) {
     s.dim = Math.max(1, finite(dimension, 1));
     const dt = now - s.lastT;
     if (!(dt < STREAM_GAP_MS)) {
-      // A new stream: whether it is a mouse wheel is decided by its first event.
-      s.tail = false; s.decayRun = 0; s.peakAbs = 0; s.lastAbs = 0; s.notch = Boolean(notch);
+      // A new stream: whether it is a mouse wheel is decided by its first
+      // event. One that starts while the page is still springing home may be
+      // the momentum tail of the push that just ended, so it is watched first.
+      // A tail that was being ignored stays ignored across a short hiccup in
+      // the event stream (a busy main thread can delay events > 120 ms).
+      const springing = s.mode === 'spring' && Math.abs(stateAt(s, now).x) > 0.5;
+      const tailGoesOn = now < s.tailUntil && !notch;
+      s.notch = Boolean(notch);
       s.vel = d * 60;
+      s.recent = []; s.peakMean = 0; s.growth = 0;
+      s.ignore = tailGoesOn; s.floor = tailGoesOn ? s.tailFloor : 0;
+      s.tailUntil = -Infinity;
+      s.probe = !tailGoesOn && springing && !s.notch ? [] : null;
     } else {
       s.vel = 0.5 * s.vel + 0.5 * (d / Math.max(4, dt)) * 1000;
     }
     s.lastT = now;
     const dir = Math.sign(d);
-    if (!dir) return { prevent: false, scrollBy: 0 };
+    if (!dir) return NONE;
+    const abs = Math.abs(d);
+    s.recent.push(abs);
+    if (s.recent.length > RECENT_EVENTS) s.recent.shift();
+    const level = mean(s.recent);
+    s.peakMean = Math.max(s.peakMean, level);
     const cur = stateAt(s, now).x;
     const over = Math.abs(cur) > 0.01;
     if (over && Math.sign(cur) !== dir) {
       // Scrolling back in while past the edge: undo the stretch first, like a
       // finger dragging back. If the browser will scroll anyway (event not
       // cancelable), let the edge spring home instead of moving twice.
+      s.ignore = false; s.probe = null;
       if (s.mode === 'stretch' && cancelable) {
         const next = s.excess + d;
         if (Math.sign(next) === Math.sign(s.excess)) { s.excess = next; return { prevent: true, scrollBy: 0 }; }
@@ -236,12 +322,10 @@ export function createWheelOverscroll({ omega = ELASTIC_SPRING_OMEGA } = {}) {
         return { prevent: true, scrollBy: next };
       }
       if (s.mode === 'stretch') toSpring(s, now);
-      s.tail = false;
-      return { prevent: false, scrollBy: 0 };
+      return NONE;
     }
-    const overflow = over ? d : (Math.abs(d) > room ? d - dir * Math.max(0, room) : 0);
-    if (!overflow) return { prevent: false, scrollBy: 0 };
-    const abs = Math.abs(d);
+    const overflow = over ? d : (abs > room ? d - dir * Math.max(0, room) : 0);
+    if (!overflow) return NONE;
     if (s.notch) {
       if (s.mode !== 'spring') toSpring(s, now);
       const headroom = Math.max(0, 1 - Math.abs(cur) / capOf(s));
@@ -250,58 +334,78 @@ export function createWheelOverscroll({ omega = ELASTIC_SPRING_OMEGA } = {}) {
       // t0 is set by the first frame that draws it: an event that waited in
       // the queue must not start its bounce part-way up (that showed as a step).
       s.pulses.push({ t0: null, a: Math.sign(overflow) * (peak / NOTCH_PULSE_PEAK) });
-      return { prevent: false, scrollBy: 0 };
+      return NONE;
     }
-    if (s.tail) {
-      // The momentum tail after a bounce or a release: ignore it while it
-      // decays; a growing delta means fingers are pushing again.
-      if (abs <= s.lastAbs + 0.5) { s.lastAbs = abs; return { prevent: false, scrollBy: 0 }; }
-      s.tail = false; s.decayRun = 0; s.peakAbs = 0;
+    if (s.ignore) {
+      // The momentum tail after a bounce or a release: ignored while it
+      // decays. Three clearly bigger deltas in a row are fingers pushing again.
+      s.floor = Math.min(s.floor, level);
+      s.growth = abs > s.floor * 1.5 + 2 ? s.growth + 1 : 0;
+      if (s.growth < 3) return NONE;
+      s.ignore = false; s.growth = 0; s.peakMean = level;
       toStretch(s, now);
-    } else if (s.mode !== 'stretch' && Math.abs(s.vel) > WHEEL_FLING_SPEED && Math.sign(s.vel) === dir) {
+      s.excess += overflow;
+      return NONE;
+    }
+    if (s.probe) {
+      s.probe.push(abs);
+      const n = s.probe.length;
+      if (n < 4) return NONE;
+      const first = (s.probe[0] + s.probe[1]) / 2;
+      const last = (s.probe[n - 2] + s.probe[n - 1]) / 2;
+      if (last < first * 0.9) { releaseAndIgnore(s, now, level); return NONE; }
+      if (last <= first * 1.1 && n < PROBE_MAX_EVENTS) return NONE;
+      // Steady or growing: fingers pushing again. Catch the page where it is.
+      s.probe = null;
+    }
+    if (s.mode !== 'stretch' && Math.abs(s.vel) > WHEEL_FLING_SPEED && Math.sign(s.vel) === dir) {
       // Momentum hitting the edge: bounce with the stream's speed, capped like
       // the phone flick so the page never travels past 30% of the view.
       toSpring(s, now);
       s.v0 = capBounceVelocity(s.v0 + s.vel, s.dim, omega);
-      s.tail = true; s.lastAbs = abs;
-      return { prevent: false, scrollBy: 0 };
-    } else if (s.mode !== 'stretch') {
-      toStretch(s, now);
+      s.ignore = true; s.floor = level; s.growth = 0;
+      return NONE;
     }
+    if (s.mode !== 'stretch') toStretch(s, now);
     s.excess += overflow;
-    s.decayRun = abs < s.lastAbs - 0.01 ? s.decayRun + 1 : 0;
-    s.peakAbs = Math.max(s.peakAbs, abs);
-    s.lastAbs = abs;
-    if (s.decayRun >= 5 && abs < s.peakAbs * 0.6) {
-      // Deltas have shrunk five times running: the fingers lifted and this is
-      // the momentum tail. Go home now instead of riding it.
-      toSpring(s, now);
-      s.tail = true;
+    if (s.recent.length >= RECENT_EVENTS && s.peakMean >= 2 && level < s.peakMean * WHEEL_TAIL_DROP) {
+      // The deltas have dropped well below the stream's strongest: the fingers
+      // lifted and this is the momentum tail. Go home now instead of riding it.
+      releaseAndIgnore(s, now, level);
     }
-    return { prevent: false, scrollBy: 0 };
+    return NONE;
+  }
+
+  // The stream stopped (or the window lost focus, the tab was hidden, a zoom
+  // took over): a stretch springs home from rest; a spring keeps going.
+  function release(now) {
+    for (const s of Object.values(axes)) {
+      if (s.mode === 'stretch') { toSpring(s, now); s.v0 = 0; }
+      if (s.ignore) { s.tailUntil = s.lastT + TAIL_MEMORY_MS; s.tailFloor = s.floor; }
+      s.ignore = false; s.probe = null; s.growth = 0;
+      s.lastT = -Infinity;
+    }
   }
 
   return {
     wheel: wheelAxis,
-    // The wheel stream stopped: a stretch springs home from rest.
-    idle(now) {
-      for (const s of Object.values(axes)) {
-        if (s.mode === 'stretch') { toSpring(s, now); s.v0 = 0; }
-        s.tail = false;
-        s.lastT = -Infinity;
-      }
-    },
+    idle: release,
+    release,
     // Offsets to draw at `now`; active is false once both axes are home.
     frame(now) {
       const out = { x: 0, y: 0, active: false };
       for (const name of ['x', 'y']) {
         const s = axes[name];
         if (s.mode === 'idle') continue;
+        // Watchdog: a stretch nobody is feeding goes home even if the idle
+        // timer was lost.
+        if (s.mode === 'stretch' && now - s.lastT > WHEEL_STRETCH_WATCHDOG_MS) { toSpring(s, now); s.v0 = 0; }
         for (const p of s.pulses) if (p.t0 === null) p.t0 = now;
         const { x, v } = stateAt(s, now);
         if (s.mode === 'spring') {
           const pulsesLive = s.pulses.some((p) => (now - p.t0) / 1000 < NOTCH_PULSE_LIFE_S);
-          if (!pulsesLive && Math.abs(x) < 0.2 && Math.abs(v) < 6) {
+          const settled = Math.abs(x) < 0.2 && Math.abs(v) < 6;
+          if (!pulsesLive && (settled || now - s.t0 > ELASTIC_SPRING_MAX_MS)) {
             s.mode = 'idle';
             s.pulses = [];
             continue;
