@@ -37,7 +37,11 @@ function MarkControl({ mark, active, focused, paint, onToggle, onFocusPaint }) {
         <ToolIcon name={mark.icon} emphasized={active} />
       </button>
       <button className="text-selection-action-bar__button" type="button" aria-label={`Set ${mark.label} color`} {...chromeTip(`Set ${mark.label} color`, 'below')} onClick={() => onFocusPaint(mark.id)} onTouchEnd={(event) => activateFromTouch(event, () => onFocusPaint(mark.id))} style={{ ...buttonBase, padding: 4 }}>
-        <span aria-hidden="true" style={{ width: 14, height: 14, display: 'block', border: '1px solid #eef0f3', borderRadius: '50%', background: paint?.color || '#f5c229', opacity: 1, boxShadow: '0 0 0 1px #090b0e' }} />
+        {/* Polish 3 (2026-10-04): the resting ink ring (--ink-ring), the one
+            the colour dots in the row above use. It was a near-white 1px
+            border plus a black outer ring, so these four swatches looked
+            heavier than every other swatch in the tool bar. */}
+        <span aria-hidden="true" style={{ width: 14, height: 14, display: 'block', borderRadius: '50%', background: paint?.color || '#f5c229', opacity: 1, boxShadow: '0 0 0 1px var(--ink-ring)' }} />
       </button>
     </div>
   );
