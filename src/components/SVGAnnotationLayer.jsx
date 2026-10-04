@@ -41,7 +41,7 @@ import {
 } from '../utils/svgAnnotationRenderers';
 // UX 2026-09-09: cloud hover/hit geometry comes from the same resolver that
 // paints the cloud, so the grab surface is the scalloped outline itself.
-import { CLOUD_HIT_STROKE_WIDTH, resolveAnnotationCloudSpec } from '../utils/pdfAnnotationAppearance.js';
+import { resolveAnnotationCloudSpec } from '../utils/pdfAnnotationAppearance.js';
 // UX 2026-09-10 (round 4, defect 4): the glow is a RING around the ink — the
 // ink band is knocked out of it — so a translucent stroke keeps its own colour.
 import { buildCloudGlowPaint, cloudGlowMaskIdFor } from '../utils/cloudSvgPaint.js';
@@ -67,11 +67,11 @@ import { broadcastPageSelection } from '../utils/historyMarkFilter.js';
 // BUILDS each callout; it is drawn in its slot of the page's one stacking order
 // (stackedMarks), interleaved with every other mark.
 import { HANDLE_FILL, HANDLE_RING, HANDLE_RING_INVALID, HANDLE_RADIUS, HANDLE_RADIUS_SECONDARY } from '../utils/handleStyle';
-import { getMarkHitStrokePx, resolveHandleHitPadPageSize } from '../utils/handleHitPad.js';
+import { getMarkHitBandWidth, getSvgMatrixMaxScale, resolveHandleHitPadPageSize } from '../utils/handleHitPad.js';
 import { clampResizeScale } from '../utils/resizeMinimum.js';
 import { shouldAutoSelectAfterCommit } from '../utils/autoSelectAfterCommit.js';
-import { isSelectFamilyTool, shouldHideSelectionChrome } from '../utils/selectModes.js';
-import { classifySelectionGrabTarget, isPageCalloutSelected, resolvePagePress } from '../utils/toolPressRouting.js';
+import { canToolGrabSelection, isSelectFamilyTool, shouldHideSelectionChrome } from '../utils/selectModes.js';
+import { classifySelectionGrabTarget, isPageCalloutSelected, pageSelectionMarkGroups, resolvePagePress } from '../utils/toolPressRouting.js';
 import { dropStashedSelection, peekStashedSelection, stashPageSelection } from '../utils/pageSelectionPresence.js';
 import { useSelectionGrabHandoff } from '../hooks/useSelectionGrabHandoff.js';
 import { DRAWN_CENTERED_STROKE_CONTRACT } from '../utils/shapeCommitGeometry.js';
@@ -222,7 +222,7 @@ const hasVisiblePaint = (value) => {
   return true;
 };
 
-const getShapeHitTargetProps = ({ fill, stroke, strokeWidth, minStrokeWidth = 12, isInteractive }) => {
+const getShapeHitTargetProps = ({ fill, stroke, strokeWidth, hitStrokeWidth, isInteractive }) => {
   const hasFill = hasVisiblePaint(fill);
   const hasStroke = hasVisiblePaint(stroke) && Number(strokeWidth || 0) > 0;
   // UX 2026-07-17 — the geometry paints (invisible fill / stroke band) are
@@ -235,7 +235,8 @@ const getShapeHitTargetProps = ({ fill, stroke, strokeWidth, minStrokeWidth = 12
   return {
     fill: hasFill ? 'rgba(0,0,0,0.001)' : 'none',
     stroke: hasStroke ? 'rgba(0,0,0,0.001)' : 'none',
-    strokeWidth: hasStroke ? Math.max(minStrokeWidth, Number(strokeWidth || 1) + 10) : 0,
+    // Owner 2026-10-04: the ink plus a fixed screen tolerance (markHitBand).
+    strokeWidth: hasStroke ? hitStrokeWidth : 0,
     pointerEvents: !isInteractive ? 'none' : hasFill ? 'all' : (hasStroke ? 'stroke' : 'none'),
   };
 };
@@ -1041,9 +1042,17 @@ const SVGAnnotationLayer = memo(({
   // the tool's own.
   const pageHasSelection = (selectedIds?.size || 0) > 0 || selectedSurveyMarkerIds.size > 0
     || isPageCalloutSelected(callouts, selectedCalloutIds, pageNumber);
+  // Owner 2026-10-04 (own tool group only): only a tool that may pick every
+  // picked mark grabs it — never the Draw group, whose press always draws.
+  const selectionGrabbableByTool = pageHasSelection && canToolGrabSelection(activeTool, pageSelectionMarkGroups({
+    selectedIds,
+    objects: annotations?.objects,
+    calloutSelected: isPageCalloutSelected(callouts, selectedCalloutIds, pageNumber),
+    surveyMarkerSelected: selectedSurveyMarkerIds.size > 0,
+  }));
   const { armed: selectionGrabArmed, armedRef: selectionGrabArmedRef, notePick: noteSelectionPick } = useSelectionGrabHandoff({
     svgRef,
-    enabled: pageHasSelection && !isSelectFamilyTool(activeTool)
+    enabled: selectionGrabbableByTool && !isSelectFamilyTool(activeTool)
       && !isCalloutTextEditMode && (editingAnnotationIndex == null || isBboxEditMode),
     isSelectionTarget: (el) => classifySelectionGrabTarget(el, svgRef.current, {
       selectedIds,
@@ -2334,7 +2343,13 @@ const SVGAnnotationLayer = memo(({
   // a 12-unit band made a hairline shape almost impossible to select by touch.
   // Drawboard's own web build selects on-stroke only; the wider band is the
   // touch concession, matching its phone build's far larger targets.
-  const markHitStrokeWidth = getMarkHitStrokePx(isCoarsePointer);
+  // Owner 2026-10-04 ("I get the blue ring way earlier than when my cursor
+  // touches it"): every mark's invisible hit stroke is its real ink width plus
+  // a fixed screen tolerance (4 CSS px a side, 12 for a finger), in the units
+  // that stroke is drawn in — never widened by zoom or by an enlarged mark's
+  // scale. Hover, click-select and the Pan / tool hit test
+  // (annotationHitTest.js) all read these same elements, so they agree.
+  const markHitBand = (inkWidth, unitsPerPx = inverseScale) => getMarkHitBandWidth({ inkWidth, unitsPerPx, isCoarsePointer });
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
     const coarseQuery = window.matchMedia('(pointer: coarse)');
@@ -4545,7 +4560,7 @@ const SVGAnnotationLayer = memo(({
             x2={conn.effectiveKnee.x}
             y2={conn.effectiveKnee.y}
             stroke="transparent"
-            strokeWidth={markHitStrokeWidth}
+            strokeWidth={markHitBand(Number(callout.style?.lineThickness) || 1, inverseScale)}
             strokeLinecap="round"
             style={{ cursor: 'move', pointerEvents: 'stroke' }}
           />
@@ -4558,7 +4573,7 @@ const SVGAnnotationLayer = memo(({
           x2={atX}
           y2={atY}
           stroke="transparent"
-          strokeWidth={markHitStrokeWidth}
+          strokeWidth={markHitBand(Number(callout.style?.lineThickness) || 1, inverseScale)}
           strokeLinecap="round"
           style={{ cursor: 'move', pointerEvents: 'stroke' }}
         />
@@ -5740,7 +5755,7 @@ const SVGAnnotationLayer = memo(({
                     d={lineCurveD}
                     stroke="transparent"
                     fill="none"
-                    strokeWidth={Math.max(12, (renderObj.strokeWidth || 2) + 10)}
+                    strokeWidth={markHitBand((renderObj.strokeWidth || 2) / inverseScale, 1)}
                     strokeLinecap="round"
                     vectorEffect="non-scaling-stroke"
                     pointerEvents={annotationHitTargetsInteractive && isObjectInteractive ? 'stroke' : 'none'}
@@ -5754,7 +5769,7 @@ const SVGAnnotationLayer = memo(({
                   <line
                     x1={ep.x1} y1={ep.y1} x2={ep.x2} y2={ep.y2}
                     stroke="transparent"
-                    strokeWidth={Math.max(12, (renderObj.strokeWidth || 2) + 10)}
+                    strokeWidth={markHitBand((renderObj.strokeWidth || 2) / inverseScale, 1)}
                     strokeLinecap="round"
                     vectorEffect="non-scaling-stroke"
                     // UX: Plan 14-02 UX-01 — gate on isSelectTool (not
@@ -5802,7 +5817,7 @@ const SVGAnnotationLayer = memo(({
               fill: renderObj.fill,
               stroke: renderObj.stroke,
               strokeWidth: renderObj.strokeWidth || 1,
-              minStrokeWidth: markHitStrokeWidth,
+              hitStrokeWidth: markHitBand(renderObj.strokeWidth || 1),
               isInteractive: annotationHitTargetsInteractive && isObjectInteractive,
             });
             return (
@@ -5859,7 +5874,7 @@ const SVGAnnotationLayer = memo(({
               const headSize = Math.max(6, (renderObj.strokeWidth || 2) * 3);
               const lineEndX = arrowHead ? x2 - (headSize / 3) * Math.cos(angleDeg * Math.PI / 180) : x2;
               const lineEndY = arrowHead ? y2 - (headSize / 3) * Math.sin(angleDeg * Math.PI / 180) : y2;
-              const hitStrokeWidth = Math.max(markHitStrokeWidth, (renderObj.strokeWidth || 2) + 10);
+              const hitStrokeWidth = markHitBand((renderObj.strokeWidth || 2) / inverseScale, 1);
               return (
                 <g>
                   {annotationIsHovered && (
@@ -5965,7 +5980,7 @@ const SVGAnnotationLayer = memo(({
                   d={cloudD}
                   fill="none"
                   stroke="rgba(0,0,0,0.001)"
-                  strokeWidth={Math.max(CLOUD_HIT_STROKE_WIDTH, markHitStrokeWidth, sw + 10)}
+                  strokeWidth={markHitBand(sw, inverseScale / getSvgMatrixMaxScale(cloudHitGeometry.transform))}
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   pointerEvents={cloudInteractive ? 'stroke' : 'none'}
@@ -6028,7 +6043,7 @@ const SVGAnnotationLayer = memo(({
               fill: isPolygonShape ? renderObj.fill : 'none',
               stroke: renderObj.stroke,
               strokeWidth: sw,
-              minStrokeWidth: markHitStrokeWidth,
+              hitStrokeWidth: markHitBand(sw, inverseScale / (Math.max(Math.abs(shapeSx), Math.abs(shapeSy)) || 1)),
               isInteractive: annotationHitTargetsInteractive && isObjectInteractive,
             });
             return (
@@ -6119,7 +6134,7 @@ const SVGAnnotationLayer = memo(({
               fill: renderObj.fill,
               stroke: renderObj.stroke,
               strokeWidth: sw,
-              minStrokeWidth: markHitStrokeWidth,
+              hitStrokeWidth: markHitBand(sw),
               isInteractive: annotationHitTargetsInteractive && isObjectInteractive,
             });
             // Owner Test 15 (2026-10-02): the glow traces the border itself -
@@ -6190,7 +6205,7 @@ const SVGAnnotationLayer = memo(({
               fill: renderObj.fill,
               stroke: renderObj.stroke,
               strokeWidth: sw,
-              minStrokeWidth: markHitStrokeWidth,
+              hitStrokeWidth: markHitBand(sw),
               isInteractive: annotationHitTargetsInteractive && isObjectInteractive,
             });
             // Owner Test 15: centred on the border's own line, like the rect.
@@ -6257,9 +6272,18 @@ const SVGAnnotationLayer = memo(({
             // transparent boundary band for native ink so hairline strokes
             // stay grabbable). Null for plain stroked paths.
             const inkHitProps = getFilledInkHitTargetProps(pathAttrs, { strokeWidth: sw, inverseScale });
+            // Owner 2026-10-04: the band is the ink at its current scale plus
+            // a fixed screen tolerance. A filled ink outline (the pen's own
+            // ink) counts its fill, and its edge band is a non-scaling stroke
+            // in CSS px, so an enlarged (even stretched) stroke never widens
+            // it. A stroked path's ink scales with its matrix, so the
+            // tolerance is divided back out by the most-stretched axis.
+            const hitVectorEffect = inkHitProps ? 'non-scaling-stroke' : pathAttrs.vectorEffect;
             const hitStrokeWidth = inkHitProps
-              ? inkHitProps.strokeWidth
-              : Math.max(markHitStrokeWidth, pathAttrs.strokeWidth || sw || 1, 3 * inverseScale);
+              ? markHitBand(0, 1)
+              : markHitBand(pathAttrs.strokeWidth || sw || 1, pathAttrs.vectorEffect === 'non-scaling-stroke'
+                ? 1
+                : inverseScale / getSvgMatrixMaxScale(pathTransform));
             const pathPointerEvents = annotationHitTargetsInteractive && isObjectInteractive
               ? (isFilledPdfInkOutline ? 'all' : 'stroke')
               : 'none';
@@ -6298,7 +6322,7 @@ const SVGAnnotationLayer = memo(({
                   strokeMiterlimit={pathAttrs.strokeMiterlimit}
                   strokeDasharray={pathAttrs.strokeDasharray?.join(' ')}
                   strokeDashoffset={pathAttrs.strokeDashoffset}
-                  vectorEffect={pathAttrs.vectorEffect}
+                  vectorEffect={hitVectorEffect}
                   pointerEvents={pathPointerEvents}
                   data-path-hit-target="true"
                   onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
@@ -6603,6 +6627,9 @@ const SVGAnnotationLayer = memo(({
       // Drawboard rule 11: handles hide while the selection is moved,
       // resized or rotated (styles.css), and come back on release.
       data-selection-gesture={shouldHideSelectionChrome(interactionState) ? 'true' : undefined}
+      // Owner 2026-10-04: a tool that may not grab the pick presses through
+      // its handles (styles.css).
+      data-selection-chrome-inert={pageHasSelection && !isSelectTool && !selectionGrabbableByTool ? 'true' : undefined}
       viewBox={`0 0 ${width} ${height}`}
       width="100%"
       height="100%"
@@ -6698,6 +6725,13 @@ const SVGAnnotationLayer = memo(({
             }
             if (press.clearsSelection) clearPageSelection();
             if (press.drag === 'none' && press.click === 'deselect') {
+              e.preventDefault();
+              return;
+            }
+            // Polygon / Polyline before the first point: a click on a Shapes
+            // mark picks it (owner 2026-10-04) instead of starting a shape.
+            if (press.drag === 'none' && press.click === 'select') {
+              applyPressFallback({ ...press, pointerType: e.pointerType, x: e.clientX, y: e.clientY });
               e.preventDefault();
               return;
             }

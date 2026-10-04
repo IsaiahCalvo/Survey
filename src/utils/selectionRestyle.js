@@ -27,6 +27,7 @@ import { createInkAnnotation, boundsOfCommands } from './paperAnnotationGeometry
 import { isAbsoluteInkGeometry } from './inkGeometryTransform.js';
 import { toolSupportsCloudBorderStyle } from './pdfAnnotationAppearance.js';
 import { getAnnotationRenderIdentity } from './annotationStorageIdentity.js';
+import { isArrowLineMark, isCounterMark, markToolForAnnotation } from './markToolGroup.js';
 
 const NONE_ARROWHEAD = 'none';
 const DEFAULT_ARROWHEAD = 'solidTriangle';
@@ -74,14 +75,8 @@ export function colorToOpacity(color) {
   return 100;
 }
 
-const isCounter = (annotation) => lower(annotation?.type) === 'circle'
-  && annotation?.data?.type === 'counter';
-
-const isArrowLine = (annotation) => lower(annotation?.type) === 'line' && (
-  annotation?.tool === 'arrow'
-  || annotation?.data?.tool === 'arrow'
-  || annotation?.data?.arrowheadStyle != null
-);
+const isCounter = isCounterMark;
+const isArrowLine = isArrowLineMark;
 
 /**
  * True for a path whose visible body is its FILL (native paper ink,
@@ -507,21 +502,8 @@ export function calloutRestylePatch(callout, change) {
   }
 }
 
-/** The bar's tool for one selected mark (same mapping the single pick uses). */
-export function selectionToolForAnnotation(annotation) {
-  if (!annotation) return null;
-  const type = lower(annotation.type);
-  if (annotation.data?.type === 'text-markup') return 'text-markup';
-  if (type === 'rect') return 'rect';
-  if (type === 'ellipse' || (type === 'circle' && !isCounter(annotation))) return 'ellipse';
-  if (type === 'path') return 'pen';
-  if (type === 'textbox' || type === 'i-text' || type === 'text') return 'text';
-  if (type === 'polygon') return 'rect';
-  if (type === 'polyline') return 'line';
-  if (isCounter(annotation)) return 'counter';
-  if (type === 'line') return isArrowLine(annotation) ? 'arrow' : 'line';
-  return null;
-}
+/** The bar's tool for one selected mark (utils/markToolGroup.js owns the mapping). */
+export const selectionToolForAnnotation = markToolForAnnotation;
 
 const SAME = Symbol('same');
 

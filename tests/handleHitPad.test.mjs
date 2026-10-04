@@ -20,10 +20,12 @@ import {
   HANDLE_HIT_PAD_COARSE_PX,
   HANDLE_HIT_PAD_FINE_MARGIN_PX,
   HANDLE_HIT_PAD_FINE_PX,
-  MARK_HIT_STROKE_COARSE_PX,
-  MARK_HIT_STROKE_FINE_PX,
+  MARK_HIT_TOLERANCE_COARSE_PX,
+  MARK_HIT_TOLERANCE_FINE_PX,
   getHandleHitPadPx,
-  getMarkHitStrokePx,
+  getMarkHitBandWidth,
+  getMarkHitTolerancePx,
+  getSvgMatrixMaxScale,
   resolveHandleHitPadPageSize,
   resolveHandleHitPadSize,
 } from '../src/utils/handleHitPad.js';
@@ -35,11 +37,48 @@ test('a mouse gets a 20px pad and a finger gets 44px', () => {
   assert.equal(getHandleHitPadPx(true), 44);
 });
 
-test('the transparent stroke along a mark doubles on a coarse pointer', () => {
-  assert.equal(MARK_HIT_STROKE_FINE_PX, 12);
-  assert.equal(MARK_HIT_STROKE_COARSE_PX, 24);
-  assert.equal(getMarkHitStrokePx(false), 12);
-  assert.equal(getMarkHitStrokePx(true), 24);
+// DELIBERATE ASSERTION CHANGE (2026-10-04, owner: "I get the blue ring way
+// earlier than when my cursor touches it"): the old 12 / 24 transparent
+// stroke was drawn in the MARK's units, so zoom and an enlarged mark's scale
+// widened it. A mark's hit band is now its ink plus a fixed screen tolerance.
+test('a mark hit band is the ink plus 4 CSS px a side (12 for a finger), in the stroke\'s own units', () => {
+  assert.equal(MARK_HIT_TOLERANCE_FINE_PX, 4);
+  assert.equal(MARK_HIT_TOLERANCE_COARSE_PX, 12);
+  assert.equal(getMarkHitTolerancePx(false), 4);
+  assert.equal(getMarkHitTolerancePx(true), 12);
+  // page units at 100%: 2-unit ink + 4 px each side
+  assert.equal(getMarkHitBandWidth({ inkWidth: 2, unitsPerPx: 1 }), 10);
+  // zoomed in 2x (half a page unit per px): the tolerance stays 4 SCREEN px
+  assert.equal(getMarkHitBandWidth({ inkWidth: 2, unitsPerPx: 0.5 }), 6);
+  // a non-scaling stroke is in CSS px already
+  assert.equal(getMarkHitBandWidth({ inkWidth: 0, unitsPerPx: 1 }), 8);
+  assert.equal(getMarkHitBandWidth({ inkWidth: 0, unitsPerPx: 1, isCoarsePointer: true }), 24);
+});
+
+test('an enlarged pen stroke: 10 px off its ink is no hit, on its ink is a hit', () => {
+  // A horizontal stroke, 2 units of ink, enlarged 4x (its matrix) and seen at
+  // 1.5x zoom. Its band is drawn inside the matrix, so on screen one band
+  // unit is 4 * 1.5 = 6 px.
+  const inverseScale = 1 / 1.5;
+  const matrixScale = getSvgMatrixMaxScale('matrix(4 0 0 4 120 80)');
+  assert.equal(matrixScale, 4);
+  const pxPerUnit = matrixScale / inverseScale;
+  const band = getMarkHitBandWidth({ inkWidth: 2, unitsPerPx: inverseScale / matrixScale });
+  const inkHalfPx = (2 * pxPerUnit) / 2; // 6 px
+  const bandHalfPx = (band * pxPerUnit) / 2;
+  const hits = (pxFromInkEdge) => inkHalfPx + pxFromInkEdge <= bandHalfPx;
+  assert.equal(bandHalfPx, inkHalfPx + 4);
+  assert.equal(hits(0), true, 'on the ink edge');
+  assert.equal(hits(-inkHalfPx), true, 'on the ink centre');
+  assert.equal(hits(3), true, '3 px off');
+  assert.equal(hits(10), false, '10 px off');
+  // The old band (12 units inside the 4x matrix) caught the pointer 33 px out.
+  const oldBandHalfPx = (12 * pxPerUnit) / 2;
+  assert.equal(inkHalfPx + 10 <= oldBandHalfPx, true);
+  // A stretched stroke divides by its MOST stretched axis, so no direction
+  // gets more than the tolerance.
+  assert.equal(getSvgMatrixMaxScale('matrix(3.88 0 0 21.5 0 0)'), 21.5);
+  assert.equal(getSvgMatrixMaxScale('rotate(30)'), 1);
 });
 
 test('a roomy shape keeps the full pad', () => {

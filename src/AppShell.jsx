@@ -1955,6 +1955,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           aria-pressed={selected}
                           // w49: the glyph, so a group switch can morph it.
                           data-morph-icon={getSelectModeIconName(opt.mode)}
+                          data-tool-switch="true"
                           onClick={() => {
                             bottomToolbarApi.setSelectionMode?.(opt.mode);
                             bottomToolbarApi.setActiveTool(opt.tool);
@@ -2367,6 +2368,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 <button
                   type="button"
                   data-tool-group="true"
+                  data-tool-switch="true"
                   data-select-tool={isSelect ? 'true' : undefined}
                   aria-label={label}
                   onClick={() => {
@@ -2442,6 +2444,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 {...chromeTip('Draw', 'below')}
                 className={`btn chrome-control ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'draw' || ['pen', 'highlighter', 'text-highlight', 'eraser'].includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
                 data-tool-group="true"
+                data-tool-switch="true"
                 aria-label="Draw"
                 disabled={areasMode}
               >
@@ -2463,6 +2466,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 {...chromeTip('Shapes', 'below')}
                 className={`btn chrome-control ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'shape' || ['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'].includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
                 data-tool-group="true"
+                data-tool-switch="true"
                 aria-label="Shapes"
                 disabled={areasMode}
               >
@@ -2483,6 +2487,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 {...chromeTip('Text', 'below')}
                 className={`btn chrome-control ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'review' || REVIEW_TOOL_IDS.includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
                 data-tool-group="true"
+                data-tool-switch="true"
                 aria-label="Text"
                 disabled={areasMode}
               >

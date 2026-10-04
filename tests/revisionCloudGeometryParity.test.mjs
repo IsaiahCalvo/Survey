@@ -845,8 +845,12 @@ test('every render path and the hit target resolve clouds through the shared geo
   // Ink: fill region under the crowns, crowns stroked with round caps/joins.
   assert.match(svg, /fillRule="nonzero"/);
   assert.match(svg, /strokeLinecap="round"\s+strokeLinejoin="round"/);
-  // Hit target: the studio's transparent stroke along the crowns.
-  assert.match(layer, /CLOUD_HIT_STROKE_WIDTH/);
+  // Hit target: a transparent stroke along the crowns.
+  // DELIBERATE ASSERTION CHANGE (2026-10-04, owner: the hover ring showed
+  // "way earlier than when my cursor touches it"): the band is no longer the
+  // studio's fixed 18-unit CLOUD_HIT_STROKE_WIDTH but the cloud's own ink
+  // plus a fixed screen tolerance, like every other mark (handleHitPad.js).
+  assert.match(layer, /strokeWidth=\{markHitBand\(sw, inverseScale \/ getSvgMatrixMaxScale\(cloudHitGeometry\.transform\)\)\}/);
   assert.match(layer, /data-shape-hit-target="cloud"/);
   assert.match(layer, /data-shape-hit-target="cloud-fill"/);
   // Vertex drags replay moveVertex and store the memory on the annotation.

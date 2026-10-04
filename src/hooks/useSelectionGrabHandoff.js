@@ -3,6 +3,11 @@
  * tool" (Drawboard PDF rules 3 + 4, owner 2026-10-02; rule table in
  * utils/selectModes.js).
  *
+ * Owner 2026-10-04 (own tool group only): "every tool" now means every tool
+ * that may pick the whole selection (selectModes.canToolGrabSelection) — a
+ * Shapes tool over picked shapes, a Text tool over picked text. The caller
+ * leaves this off for the Draw group, whose press always draws or erases.
+ *
  * Under Select the SVG layer owns the pointer, so a press on the selection
  * moves / resizes it. Under every other tool something else owns the press:
  * the drawing surface (shapes, ink, polygon), the pdf.js pan scroller (Pan) or
@@ -37,6 +42,14 @@ import { flushSync } from 'react-dom';
 let activeGrabPointerId = null;
 export function isSelectionGrabPress(event) {
   return activeGrabPointerId != null && (event?.pointerId == null || event.pointerId === activeGrabPointerId);
+}
+
+// Rule 13: a TAP that picked text through a tool overlay above the layers
+// (the Text tool, owner 2026-10-04) counts as the first tap of a double-tap,
+// like notePick below — the overlay does not know which page layer owns it.
+let overlayTapPick = null;
+export function noteOverlayTapPick(key, { x, y, pointerType } = {}) {
+  overlayTapPick = pointerType === 'touch' ? { at: performance.now(), x, y, key } : null;
 }
 
 const NEVER_GRAB = 'button, input, textarea, select, a[href], [contenteditable]:not([contenteditable="false"]), [role="menu"], [role="dialog"], [data-counter-caret-popup], [data-text-edit-overlay], [data-rich-text-toolbar], [data-mini-toolbar]';
@@ -101,7 +114,9 @@ export function useSelectionGrabHandoff({ svgRef, enabled, isSelectionTarget, on
         if (below?.text) textInfo = below;
       }
       const now = performance.now();
-      const last = lastPressRef.current;
+      const ownLast = lastPressRef.current;
+      const last = overlayTapPick && (!ownLast || overlayTapPick.at > ownLast.at) ? overlayTapPick : ownLast;
+      overlayTapPick = null;
       lastPressRef.current = { at: now, x: event.clientX, y: event.clientY, key: textInfo ? textInfo.key : info.key };
       if (textInfo && last && last.key === textInfo.key && now - last.at < DOUBLE_PRESS_MS
         && Math.hypot(event.clientX - last.x, event.clientY - last.y) <= DOUBLE_PRESS_PX

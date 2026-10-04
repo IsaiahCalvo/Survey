@@ -11,6 +11,7 @@ const dom = new JSDOM(`<!doctype html><body>
   <div id="toolbar">
     <button id="width-trigger" aria-haspopup="dialog">2 pt</button>
     <button id="line-tool">Line</button>
+    <button id="callout-tool" data-tool-switch="true">Callout</button>
     <button id="picker-trigger">Colour</button>
   </div>
   <div id="picker"><input id="hex" /><button id="swatch">Red</button></div>
@@ -167,7 +168,10 @@ test('isBarePagePress: page canvas and SVG root are bare; annotations, form fiel
   assert.equal(isBarePagePress(at($('line-tool'))), false);
 });
 
-test('R3: typing in the text editor, press a tool button -> only ends the typing (commit), nothing else', () => {
+// DELIBERATE ASSERTION CHANGE (2026-10-04, owner): a real TOOL button
+// (data-tool-switch) now commits AND switches (next test); this one keeps the
+// rule for any other toolbar control, which only ends the typing.
+test('R3: typing in the text editor, press a toolbar button that is not a tool -> only ends the typing (commit), nothing else', () => {
   const s = spies();
   const ended = [];
   $('editable').focus();
@@ -201,6 +205,49 @@ test('R3: typing in the text editor, press a tool button -> only ends the typing
     }
     assert.deepEqual(ended, []);
   } finally { stop(); s.stop(); }
+});
+
+test('R3 exception (owner 2026-10-04): typing, press a TOOL button -> the press goes through (the editor commits on its own outside press, the click arms the tool)', () => {
+  const s = spies();
+  const ended = [];
+  $('editable').focus();
+  const stop = registerLightPopover({
+    kind: 'typing',
+    close: () => ended.push('close'),
+    contains: (target) => Boolean(target.closest('[data-text-edit-overlay]')),
+    typingField: () => $('editable'),
+    endTyping: () => ended.push('commit'),
+    escape: false,
+  });
+  // The editor's own outside-press commit (TextEditOverlay onDocPointerDown).
+  const editorOutsideCommit = (event) => { if (!event.target.closest('[data-text-edit-overlay]')) ended.push('editor-commit'); };
+  document.addEventListener('pointerdown', editorOutsideCommit, true);
+  try {
+    const tool = press($('callout-tool'));
+    assert.equal(tool.down.defaultPrevented, false);
+    assert.equal(tool.click.defaultPrevented, false);
+    assert.deepEqual(s.seen.clicks, ['callout-tool'], 'the tool button gets its click in the same press');
+    assert.deepEqual(ended, ['editor-commit'], 'and the text is committed by that same press');
+  } finally {
+    document.removeEventListener('pointerdown', editorOutsideCommit, true);
+    stop(); s.stop();
+  }
+});
+
+test('every tool button carries data-tool-switch (desktop bar and phone rail)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = (f) => readFileSync(new URL(`../src/${f}`, import.meta.url), 'utf8');
+  const appShell = src('AppShell.jsx');
+  const viewer = src('PDFViewer.jsx');
+  const phone = src('mobile/MobilePdfViewerChrome.jsx');
+  // Pan / Select and the Draw / Shapes / Text group buttons
+  assert.equal((appShell.match(/data-tool-group="true"\s*data-tool-switch="true"/g) || []).length, 4);
+  // Select's Box / Lasso / Text modes
+  assert.match(appShell, /data-morph-icon=\{getSelectModeIconName\(opt\.mode\)\}\s*data-tool-switch="true"/);
+  // the tools inside each group (Draw, Shapes, Text rows)
+  assert.equal((viewer.match(/data-morph-icon=\{t\.iconName\}\s*data-tool-switch="true"/g) || []).length, 3);
+  // phone: Pan, Select, the group buttons, each group's tools
+  assert.equal((phone.match(/data-tool-switch="true"/g) || []).length, 4);
 });
 
 test('R5: Escape closes only the topmost popover; a surface that owns Escape keeps it', () => {
