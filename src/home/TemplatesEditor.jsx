@@ -2058,12 +2058,14 @@ export default function TemplatesEditor({
       {/* Owner 2026-09-22: the tagline is gone; when the template has unsaved
           edits, Cancel / Save sit right here in the subtitle row instead. */}
       <span className="templates-desktop-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-        <span><b>{visibleTemplates.length}</b> templates</span>
+        <span><b>{visibleTemplates.length}</b> {visibleTemplates.length === 1 ? 'template' : 'templates'}</span>
         {saveRow('templates-desktop-save-row')}
       </span>
       <span className="templates-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
         <span className="templates-mobile-count">
-          <b>{mobileTemplateOpen && tpl ? orderedMods.length : visibleTemplates.length}</b> {mobileTemplateOpen && tpl ? 'modules' : 'templates'}
+          <b>{mobileTemplateOpen && tpl ? orderedMods.length : visibleTemplates.length}</b> {mobileTemplateOpen && tpl
+            ? (orderedMods.length === 1 ? 'module' : 'modules')
+            : (visibleTemplates.length === 1 ? 'template' : 'templates')}
         </span>
         {!mobileTemplateOpen ? mobileTemplateSelectRow : null}
       </span>

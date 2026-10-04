@@ -13,6 +13,17 @@ test('desktop template rows show no second line when a template has no entities'
   assert.match(source, /\{t\.roster\.length > 0 && \(\s*<div style=\{\{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 \}\}>/);
 });
 
+test('hub header counts: plain count, singular for one, no stale Projects tail', async () => {
+  const projects = await read('home/ProjectsFolderTree.jsx');
+  assert.doesNotMatch(projects, /projects · expand any/);
+  assert.match(projects, /<b>\{filtered\.length\}<\/b> \{filtered\.length === 1 \? 'project' : 'projects'\}/);
+  const templates = await read('home/TemplatesEditor.jsx');
+  assert.match(templates, /<b>\{visibleTemplates\.length\}<\/b> \{visibleTemplates\.length === 1 \? 'template' : 'templates'\}/);
+  assert.match(templates, /orderedMods\.length === 1 \? 'module' : 'modules'/);
+  const docs = await read('home/DocumentsLedger.jsx');
+  assert.match(docs, /<b>\{docs\.length\}<\/b> \{docs\.length === 1 \? 'file' : 'files'\}/);
+});
+
 test('icon-only buttons carry a name: sidebar toggle, tab close X, project More', async () => {
   const sidebar = await read('PDFSidebar.jsx');
   assert.match(sidebar, /aria-label=\{isCollapsed \? 'Expand sidebar' : 'Collapse sidebar'\}/);

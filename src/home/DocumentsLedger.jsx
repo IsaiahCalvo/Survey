@@ -256,7 +256,7 @@ export default function DocumentsLedger({
       onDismiss={() => setMobileSortOpen(false)}
     />
     <span className="documents-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
-      <span className="documents-file-count"><b>{docs.length}</b> files</span>
+      <span className="documents-file-count"><b>{docs.length}</b> {docs.length === 1 ? 'file' : 'files'}</span>
       <span className="documents-select-row mobile-header-select-row documents-mobile-select-sort-row">
         <span className="documents-mobile-select-main">
           <SectionIconButton

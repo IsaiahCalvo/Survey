@@ -788,7 +788,9 @@ test('the header is built on the Documents / Projects structure', () => {
 
   // Count + Select in the subtitle, as on both reference screens.
   assert.match(SCREEN, /const subtitle = \([\s\S]*?<b>\{rows\.length\}<\/b>[\s\S]*?\{selectMode \? 'Done' : 'Select'\}/);
-  assert.match(DOCS, /const subtitle = \([\s\S]*?<b>\{docs\.length\}<\/b> files/);
+  // Polish round 2 (2026-10-04): "1 file", not "1 files" — the word follows
+  // the count, as Archive's "1 item" already did.
+  assert.match(DOCS, /const subtitle = \([\s\S]*?<b>\{docs\.length\}<\/b> \{docs\.length === 1 \? 'file' : 'files'\}/);
 
   // Mobile search row + desktop search in the actions slot.
   assert.match(SCREEN, /<div className="archive-mobile-search-row" ref=\{menuRef\}>/);

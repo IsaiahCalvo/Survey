@@ -840,7 +840,10 @@ export default function ProjectsFolderTree({
       {/* The count first, then Cancel / Save when a project name is being
           edited — the same order and the same 8px gap as Templates. */}
       <span className="projects-desktop-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-        <span><b>{filtered.length}</b> projects · expand any to see its files and team</span>
+        {/* Polish round 2 (2026-10-04): just the count, as on the phone and on
+            Templates. The old tail ("expand any to see its files and team")
+            described the retired tree; desktop is a list + detail now. */}
+        <span><b>{filtered.length}</b> {filtered.length === 1 ? 'project' : 'projects'}</span>
         {projectSaveRow('hub-desktop-save-row')}
       </span>
       <span className="projects-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
