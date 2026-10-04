@@ -1558,6 +1558,15 @@
     touch-action: none;
   }
 
+  /* Polish round 5 (2026-10-04): the sheet must cover the header and the tab
+     bar. Since the phone page became a fixed frame (2026-10-01) the list body
+     is a flex item, and its z-index: 1 made it a stacking context that kept
+     the sheet's z-index under both bars — on an iPhone the tab bar hid Open
+     file and Share. While the sheet is open the body gives up that z-index. */
+  .survey-hub .documents-ledger-body:has(.documents-mobile-detail-scrim) {
+    z-index: auto;
+  }
+
   .survey-hub .documents-mobile-detail-modal {
     width: 100%;
     max-height: min(82dvh, 680px);
