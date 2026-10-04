@@ -2457,8 +2457,9 @@ input[type="text"].spaces-region__name-input:focus-visible {
   background: var(--surface-3);
   /* A menu: its own surface plus a drop shadow separate it — subtle edge. */
   border: 1px solid var(--border);
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  /* The one popup corner and shadow (polish 3). */
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
 }
 
 .spaces-header-export-menu {

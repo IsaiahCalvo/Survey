@@ -22,6 +22,7 @@ async function loadLayer() {
   const appearanceUrl = pathToFileURL(
     path.join(repoRoot, 'src/utils/pdfRedactionAppearance.js'),
   ).href;
+  const coarseHookPath = path.join(repoRoot, 'src/hooks/useCoarsePointer.js');
   const reactUrl = pathToFileURL(require.resolve('react')).href;
   const jsxRuntimeUrl = pathToFileURL(require.resolve('react/jsx-runtime')).href;
   let source = await readFile(componentPath, 'utf8');
@@ -38,6 +39,11 @@ async function loadLayer() {
       "from '../utils/pdfRedactionAppearance.js'",
       `from ${JSON.stringify(appearanceUrl)}`,
     );
+  // The layer reads the pointer through the shared useCoarsePointer hook
+  // (polish 3). The hook imports bare 'react' too, so it is staged next to the
+  // component with the same rewrite.
+  const hookSource = (await readFile(coarseHookPath, 'utf8'))
+    .replace("from 'react'", `from ${JSON.stringify(reactUrl)}`);
   const transformed = await transformWithOxc(source, componentPath, { lang: 'jsx' });
   const executable = transformed.code.replaceAll(
     '"react/jsx-runtime"',
@@ -45,7 +51,12 @@ async function loadLayer() {
   );
   const tempDir = await mkdtemp(path.join(tmpdir(), 'redaction-layer-test-'));
   const modulePath = path.join(tempDir, 'PdfjsRedactionMarkLayer.mjs');
-  await writeFile(modulePath, executable);
+  const hookPath = path.join(tempDir, 'useCoarsePointer.mjs');
+  await writeFile(hookPath, hookSource);
+  await writeFile(modulePath, executable.replace(
+    /(["'])\.\.\/hooks\/useCoarsePointer\.js\1/,
+    JSON.stringify(pathToFileURL(hookPath).href),
+  ));
   return {
     Layer: (await import(pathToFileURL(modulePath).href)).default,
     cleanup: () => rm(tempDir, { recursive: true, force: true }),

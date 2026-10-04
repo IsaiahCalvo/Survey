@@ -68,7 +68,11 @@ test('the Fit menu is the same kind of menu as its two siblings', () => {
   assert.match(menu[0], /minHeight: '28px'/, 'its rows are 28px');
   assert.doesNotMatch(menu[0], /renderFitIcon/, 'no fit glyph in the menu rows (the phone has none)');
   assert.match(menu[0], /isActive && <Icon name="check" size=\{RAIL_CONTROL_GLYPH\}/, 'the chosen row carries the check, at the token size');
-  assert.match(menu[0], /borderRadius: 'var\(--chrome-radius\)'/, 'its container takes the shared radius');
+  // CHANGED 2026-10-04 (polish 3): the shared POPUP corner is --radius-md, the
+  // one AnnotationDropdown's popover (its line-style sibling) already takes,
+  // with --shadow-popover; --chrome-radius (6) is the corner of a chrome button.
+  assert.match(menu[0], /borderRadius: 'var\(--radius-md\)'/, 'its container takes the shared popup radius');
+  assert.match(menu[0], /boxShadow: 'var\(--shadow-popover\)'/, 'and the shared popup shadow');
   assert.doesNotMatch(menu[0], /padding: '6px 8px'/, 'its row inset matches the other menus (4px 9px)');
 });
 

@@ -102,6 +102,11 @@ export default function DragRearrangeHandle({
       // that start inside [data-drag-handle].
       data-drag-handle=""
       title={morphs && collapseOpen ? 'Collapse' : title}
+      // Polish 3 (2026-10-04): a sortable grip gets role="button" and a tab
+      // stop from dnd-kit's attributes, but a title is not a name - screen
+      // readers and keyboard users met an unnamed button. The name is the
+      // hint itself; a caller's own aria-label (spread below) still wins.
+      aria-label={morphs && collapseOpen ? 'Collapse' : title}
       aria-expanded={morphs ? collapseOpen : undefined}
       onClick={(event) => {
         event.stopPropagation();
