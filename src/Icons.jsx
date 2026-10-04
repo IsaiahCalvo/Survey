@@ -8,6 +8,7 @@ import textStrikethroughUrl from './assets/icons/text-strikethrough.svg';
 import textHighlightUrl from './assets/icons/text-highlight.svg';
 import highlighterToolUrl from './assets/icons/highlighter-tool.svg';
 import selectionCursorUrl from './assets/icons/selection-cursor-rounded.svg';
+import selectGroupUrl from './assets/icons/select-group-rounded.svg';
 import lassoSelectUrl from './assets/icons/lasso-select-rounded.svg';
 import textSelectUrl from './assets/icons/text-select-rounded.svg';
 import textSquiggleUrl from './assets/icons/text-squiggle.svg';
@@ -1042,6 +1043,9 @@ const ICON_RENDERERS = {
     formatHighlight: (size, color, style, className) => renderMaskIcon(textHighlightUrl, size, color, style, className),
     highlighterTool: (size, color, style, className) => renderMaskIcon(highlighterToolUrl, size, color, style, className),
     selectCursor: (size, color, style, className) => renderMaskIcon(selectionCursorUrl, size, color, style, className),
+    // The Select tool GROUP button (desktop cluster, phone rail): the plain
+    // rounded cursor. Box / Lasso / Text keep their own glyphs.
+    selectGroup: (size, color, style, className) => renderMaskIcon(selectGroupUrl, size, color, style, className),
     // 2026-10-02 optical balance: Box / Lasso / Text Select are sized by their
     // assets, not here. Text Select used to carry a fixed translateY(2px) — 3
     // grid units at 16px and 4 at the 12px phone strip — which sat it low and

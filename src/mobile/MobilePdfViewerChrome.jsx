@@ -15,7 +15,7 @@ import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from '../components/Call
 import { ZOOM_MODE_OPTIONS, ensureRgbaOpacity, getCategoryGlyphLabel } from '../viewerShared';
 import { getMobileSyncPresentation, getMobileTextMarkupPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
 import { withDevFakePresence } from '../components/presenceIdentity.js';
-import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectFamilyTransition, getSelectModeIconName, SELECT_MODE_OPTIONS } from '../utils/selectModes.js';
+import { getSelectFamilyLabel, getSelectFamilyTransition, getSelectModeIconName, SELECT_MODE_OPTIONS } from '../utils/selectModes.js';
 import { tooltipForLabel } from '../utils/toolShortcuts.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
 import useRailGroupMotion from './useRailGroupMotion.js';
@@ -2761,7 +2761,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
           >
             {/* UX: centre the glyph on the phone rail axis; the desktop
                 horizontal pair's -3px shift does not fit a vertical rail. */}
-            <Icon name={getSelectFamilyIconName(activeTool, bottomToolbarApi?.selectionMode)} size={RAIL_GLYPH} color="currentColor" />
+            <Icon name="selectGroup" size={RAIL_GLYPH} color="currentColor" />
           </RailButton>
           <div className="mobile-pdf-tools__divider" />
           {Object.entries(TOOL_GROUPS).map(([groupId, group]) => (

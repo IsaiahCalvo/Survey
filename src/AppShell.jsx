@@ -54,7 +54,7 @@ import { randomUUID } from './utils/randomUUIDPolyfill';
 import { getDocumentOpenKey, isSameDocumentTab } from './utils/documentTabIdentity.js';
 import { schedulePdfViewerPrefetch } from './utils/pdfViewerPrefetch';
 import { shouldWarnBeforeUnloadForTab } from './utils/beforeUnloadGuard.js';
-import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectModeIconName, isSelectFamilyTool, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
+import { getSelectFamilyLabel, getSelectModeIconName, isSelectFamilyTool, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
 import { computeTextMarkupPickerPosition } from './utils/pdfTextMarkup.js';
 import { getLiveZoomViewerId, isLiveZoomEventForViewer, LIVE_ZOOM_EVENT } from './utils/liveZoomEvents.js';
 import { useAuth } from './contexts/AuthContext';
@@ -2339,7 +2339,7 @@ export default function App({ devPreviewReturnTab = null }) {
               }}>
               {[
                 { id: 'pan', label: 'Pan', iconName: 'pan' },
-                { id: 'select', label: 'Select', iconName: 'selectCursor' }
+                { id: 'select', label: 'Select', iconName: 'selectGroup' }
               ].map(t => {
                 // Select-family modes share one compact Drawboard-style button.
                 // PASS 7 (boards 8-14, owner ruling): the button ARMS the family
@@ -2396,12 +2396,12 @@ export default function App({ devPreviewReturnTab = null }) {
                   style={isSelect ? { position: 'relative' } : undefined}
                 >
                   {/* PASS 7 (boards 8-14): ONE glyph size for the whole tool
-                      cluster — CHROME_GLYPH (16) inside the 28px button. Select
-                      draws the live mode's own glyph (Box / Lasso / Text) so the
-                      button says which mode it will arm, and it is centred now
-                      that the caret beside it is gone. */}
+                      cluster — CHROME_GLYPH (16) inside the 28px button.
+                      2026-10-04 (owner, Test 34): Select draws its own GROUP
+                      glyph, the plain rounded cursor, like Draw / Shapes / Text
+                      do; the live mode shows in the Box / Lasso / Text row. */}
                   <Icon
-                    name={isSelect ? getSelectFamilyIconName(bottomToolbarApi.activeTool, bottomToolbarApi.selectionMode) : t.iconName}
+                    name={t.iconName}
                     size={CHROME_GLYPH}
                   />
                 </button>

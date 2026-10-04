@@ -166,8 +166,12 @@ test('desktop Select arms the family and its modes are a segmented toggle', () =
   assert.doesNotMatch(selectToolbar, /data-select-mode-caret/);
   assert.doesNotMatch(selectToolbar, /getNextSelectModeMenuOpen/);
   assert.doesNotMatch(selectToolbar, /chrome-control--split/);
-  // The trigger draws the live mode's glyph at the cluster's one glyph size.
-  assert.match(selectToolbar, /getSelectFamilyIconName\(bottomToolbarApi\.activeTool, bottomToolbarApi\.selectionMode\)[\s\S]{0,80}size=\{CHROME_GLYPH\}/);
+  // DELIBERATE ASSERTION CHANGE (2026-10-04, owner, Test 34): the trigger
+  // draws the Select GROUP glyph (the plain rounded cursor), like Draw /
+  // Shapes / Text draw theirs, at the cluster's one glyph size. The live mode
+  // shows only in the Box / Lasso / Text row.
+  assert.match(APP_SHELL_SOURCE, /{ id: 'select', label: 'Select', iconName: 'selectGroup' }/);
+  assert.match(selectToolbar, /name=\{t\.iconName\}[\s\S]{0,40}size=\{CHROME_GLYPH\}/);
 
   // The three modes, as a group of tool buttons.
   const toggle = APP_SHELL_SOURCE.slice(
@@ -224,7 +228,8 @@ test('Select family uses the larger optical sizes on mobile', () => {
   // FLYOUT. That flyout is deleted, so the three modes are drawn by the strip's
   // segmented toggle instead, at the strip's own STRIP_GLYPH.
   assert.match(MOBILE_CHROME_SOURCE, /const RAIL_GLYPH = 17;/);
-  assert.match(MOBILE_CHROME_SOURCE, /getSelectFamilyIconName\(activeTool, bottomToolbarApi\?\.selectionMode\)\} size=\{RAIL_GLYPH\}/);
+  // 2026-10-04 (owner, Test 34): the rail's Select button is the group glyph.
+  assert.match(MOBILE_CHROME_SOURCE, /<Icon name="selectGroup" size=\{RAIL_GLYPH\}/);
   assert.match(MOBILE_CHROME_SOURCE, /icon: getSelectModeIconName\('rectangle'\)/);
   assert.doesNotMatch(MOBILE_CHROME_SOURCE, /getSelectModeIconName\(option\.mode\)/);
 });
