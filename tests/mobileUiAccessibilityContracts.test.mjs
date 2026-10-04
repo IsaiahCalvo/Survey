@@ -208,8 +208,10 @@ test('named compact mobile controls expose 44px hit areas without resizing heade
   // Owner ruling 2026-09-22 (the two-row phone header): the gold action and the
   // back button sit in row 2, the last row, so their pad takes its 44px out of
   // the header's own bottom padding instead of growing 16px upward into row 1,
-  // where the Select word's pad already hangs 8px below its box. 4 + 28 + 12.
-  assert.match(hubCss, /\.survey-hub \.hub-mobile-primary-action::after,[\s\S]{0,300}inset-block: -4px -12px/);
+  // where the Select word's pad already hangs 8px below its box. The pad is
+  // placed from the padding edge inside the 1px border: 5 + 26 + 13 = 44
+  // (polish round 5; -4/-12 measured 42).
+  assert.match(hubCss, /\.survey-hub \.hub-mobile-primary-action::after,[\s\S]{0,300}inset-block: -5px -13px/);
   assert.match(hubCss, /\.survey-hub \.documents-mobile-filter \{[\s\S]{0,120}height: 44px/);
   assert.match(hubCss, /\.survey-hub \.documents-mobile-filter-visual \{[\s\S]{0,120}height: 28px/);
   // Same ruling: the avatar is one of the three controls on row 1's centre line

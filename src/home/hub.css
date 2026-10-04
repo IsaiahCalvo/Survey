@@ -1285,12 +1285,14 @@
 
   /* Row 2's controls take their 44px out of the header's own bottom padding
      rather than upward into row 1, where the Select word's pad already hangs
-     8px below its box. 4px up + 28px painted + 12px down = 44px, and nothing
-     reaches past the divider into the first card. */
+     8px below its box. These buttons have a 1px border and the pad is placed
+     from the padding edge inside it, so 5px up + 26px + 13px down = 44px
+     (it was -4/-12, which measured 42). Measured at 390 and 375: the pad runs
+     from y 50 (where Select's pad ends) to y 94, short of the divider at 96. */
   .survey-hub .hub-mobile-primary-action::after,
   .survey-hub .projects-mobile-search-actions .projects-mobile-back-button::after,
   .survey-hub .templates-mobile-search-actions .templates-mobile-back-button::after {
-    inset-block: -4px -12px;
+    inset-block: -5px -13px;
   }
 
   .survey-hub .documents-mobile-filter::after {
