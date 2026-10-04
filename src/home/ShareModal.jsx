@@ -184,7 +184,7 @@ export default function ShareModal({
         data-modal-focus-layer="true"
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
-        style={{ width: 440, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 10, boxShadow: '0 24px 60px rgba(0,0,0,0.55)', color: C.ink, overflow: 'hidden' }}
+        style={{ width: 440, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden' }}
       >
         {/* Header */}
         <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${C.rule}`, display: 'flex', alignItems: 'center', gap: 12 }}>

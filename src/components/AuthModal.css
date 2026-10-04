@@ -36,14 +36,14 @@
 
 .auth-modal {
   background: var(--surface-2);
-  border-radius: 10px;
+  border-radius: var(--radius-dialog);
   padding: 28px;
   max-width: 440px;
   width: 92%;
   max-height: 90vh;
   overflow-y: auto;
   position: relative;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--shadow-dialog);
   animation: slideUp 0.3s ease-out;
   border: 1px solid var(--border);
   font-family: var(--font-ui);

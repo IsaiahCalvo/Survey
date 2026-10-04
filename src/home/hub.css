@@ -202,6 +202,28 @@
 .hub-btn:not(:disabled):active,
 .survey-hub .btn:not(:disabled):active { background: var(--pressed); transform: none; box-shadow: none; }
 
+/* Polish round 2 (2026-10-04): the New project dialog's file picker drew the
+   browser's own light-grey "Choose Files" button, the one bright native
+   control in the dark hub. It now wears the outlined .hub-btn look. */
+.create-project-file-input::file-selector-button {
+  box-sizing: border-box;
+  height: 28px;
+  margin-right: 10px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 100ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.create-project-file-input:not(:disabled)::file-selector-button:hover { background: var(--hover); }
+.create-project-file-input:not(:disabled)::file-selector-button:active { background: var(--pressed); }
+.create-project-file-input:disabled::file-selector-button { color: var(--text-disabled); cursor: default; }
+
 /* PRIMARY — the single gold action. A gold control's own states are
    --accent-light (hover) and --accent-press (pressed); it must never take the
    neutral press, which turned the home screen's one gold button dark grey
@@ -1825,6 +1847,28 @@
     width: auto;
   }
   .survey-hub .btn.documents-preview-share > svg { width: 18px; height: 18px; }
+
+  /* Polish round 2 (2026-10-04): Open file and Share keep their 28px painted
+     height (the same as desktop), but a transparent pad makes each one 44px
+     tall to the finger, like the header's controls. The pad reaches 8px into
+     the gap above and the sheet's 12px bottom padding; Share's also reaches
+     8px to each side (the 8px gap and the sheet's side padding), so it is a
+     44 x 44 target. Nothing else sits in those strips. The pad is placed
+     from the padding edge, inside the 1px border, so -9px gives 8px outside
+     the painted box: 8 + 28 + 8 = 44. */
+  .survey-hub .documents-mobile-detail-actions .btn {
+    position: relative;
+  }
+  .survey-hub .documents-mobile-detail-actions .btn::after {
+    content: '';
+    position: absolute;
+    inset-block: -9px;
+    inset-inline: 0;
+    background: transparent;
+  }
+  .survey-hub .documents-mobile-detail-actions .documents-preview-share::after {
+    inset-inline: -9px;
+  }
 
   .survey-hub .kbd {
     display: none;

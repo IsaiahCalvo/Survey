@@ -2058,12 +2058,14 @@ export default function TemplatesEditor({
       {/* Owner 2026-09-22: the tagline is gone; when the template has unsaved
           edits, Cancel / Save sit right here in the subtitle row instead. */}
       <span className="templates-desktop-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-        <span><b>{visibleTemplates.length}</b> templates</span>
+        <span><b>{visibleTemplates.length}</b> {visibleTemplates.length === 1 ? 'template' : 'templates'}</span>
         {saveRow('templates-desktop-save-row')}
       </span>
       <span className="templates-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
         <span className="templates-mobile-count">
-          <b>{mobileTemplateOpen && tpl ? orderedMods.length : visibleTemplates.length}</b> {mobileTemplateOpen && tpl ? 'modules' : 'templates'}
+          <b>{mobileTemplateOpen && tpl ? orderedMods.length : visibleTemplates.length}</b> {mobileTemplateOpen && tpl
+            ? (orderedMods.length === 1 ? 'module' : 'modules')
+            : (visibleTemplates.length === 1 ? 'template' : 'templates')}
         </span>
         {!mobileTemplateOpen ? mobileTemplateSelectRow : null}
       </span>
@@ -2224,9 +2226,13 @@ export default function TemplatesEditor({
               </div>
             </div>
             <div className="slim-scroll hub-side-list" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
-              {visibleTemplates.length === 0 && (
+              {/* Polish round 2 (2026-10-04): with no templates at all the
+                  centre empty state already says "No templates yet", so the
+                  list stays quiet (as on the phone); it still says when a
+                  search matches nothing. */}
+              {visibleTemplates.length === 0 && rich.length > 0 && (
                 <div className="meta" style={{ padding: '20px 8px', fontSize: 12 }}>
-                  {rich.length === 0 ? 'No templates yet.' : 'No templates match your search.'}
+                  No templates match your search.
                 </div>
               )}
               <SortableRearrangeList ids={visibleTemplates.map((t) => t.id)} onReorder={reorderTemplates}>
@@ -2267,6 +2273,11 @@ export default function TemplatesEditor({
                             name + swatches stack is centred by its ink, not by
                             spare leading above the name. */}
                         <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{t.name}</div>
+                        {/* Polish round 2 (2026-10-04): a template with no
+                            entities shows no second line at all (it used to
+                            show a lone "0"); the name then sits centred in
+                            the row, the same as the phone list. */}
+                        {t.roster.length > 0 && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                             {/* Up to 10 entity swatches fit before the row gets crowded;
@@ -2283,6 +2294,7 @@ export default function TemplatesEditor({
                           </div>
                           <span className="mono meta" style={{ fontSize: 11 }}>{t.roster.length}</span>
                         </div>
+                        )}
                       </div>
                       {tplEdit ? (
                         <span
@@ -2700,7 +2712,9 @@ export default function TemplatesEditor({
               </div>
 
               <div className="slim-scroll" style={{ padding: '8px 8px 12px', display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto', flex: 1, minHeight: 0 }}>
-                {(!tpl || tpl.roster.length === 0) && (
+                {/* Only an open template can have no entities; with no
+                    template open there is nothing to say here. */}
+                {tpl && tpl.roster.length === 0 && (
                   <div className="meta" style={{ fontSize: 12, padding: '12px 2px' }}>No entities on this template yet.</div>
                 )}
                 {tpl && (
@@ -3569,14 +3583,14 @@ export default function TemplatesEditor({
       <div
         data-testid="archive-confirm-modal"
         onClick={() => setArchiveConfirm(null)}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(13, 15, 20, 0.55)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5100 }}
+        style={{ position: 'fixed', inset: 0, background: 'var(--overlay-scrim)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5100 }}
       >
         <div
           onClick={(e) => e.stopPropagation()}
           style={{
             width: 440, maxWidth: 'calc(100vw - 32px)',
-            background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10,
-            padding: '18px 20px 14px', boxShadow: '0 18px 60px rgba(0,0,0,0.55)',
+            background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-dialog)',
+            padding: '18px 20px 14px', boxShadow: 'var(--shadow-dialog)',
             fontFamily: 'var(--font-ui)', color: 'var(--text-1)',
           }}
         >
@@ -3633,12 +3647,12 @@ export default function TemplatesEditor({
       return (
         <div
           onClick={() => setModEdit(false)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(13, 15, 20, 0.55)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
+          style={{ position: 'fixed', inset: 0, background: 'var(--overlay-scrim)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
         >
           <div
             className="templates-module-edit-modal"
             onClick={(e) => e.stopPropagation()}
-            style={{ width: 400, maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100dvh - 32px)', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10 }}
+            style={{ width: 400, maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100dvh - 32px)', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-dialog)' }}
           >
             <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
               <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, letterSpacing: '-0.025em', flex: 'none', color: 'var(--text-1)', fontFamily: 'var(--font-ui)' }}>Edit modules</h3>
@@ -3736,7 +3750,7 @@ export default function TemplatesEditor({
     {moveModal && tpl && (
       <div
         onClick={closeMoveModal}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(13, 15, 20, 0.55)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5400 }}
+        style={{ position: 'fixed', inset: 0, background: 'var(--overlay-scrim)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5400 }}
       >
         <div
           ref={moveModalRef}
@@ -3746,7 +3760,7 @@ export default function TemplatesEditor({
           data-modal-focus-layer="true"
           tabIndex={-1}
           onClick={(e) => e.stopPropagation()}
-          style={{ width: 420, overflow: 'hidden', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10 }}
+          style={{ width: 420, overflow: 'hidden', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-dialog)' }}
         >
           <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>

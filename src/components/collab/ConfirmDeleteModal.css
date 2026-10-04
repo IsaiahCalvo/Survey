@@ -36,8 +36,8 @@
   max-width: 92vw;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  border-radius: var(--radius-dialog);
+  box-shadow: var(--shadow-dialog);
   color: var(--text-1);
   overflow: hidden;
 }

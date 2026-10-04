@@ -579,7 +579,7 @@ export default function SaveLogBanner() {
             inset: 0,
             // UX (KAL-62): the app's one modal scrim — warm-dark dim plus an
             // 8px blur, matching every other dialog.
-            background: 'rgba(13, 15, 20, 0.55)',
+            background: 'var(--overlay-scrim)',
             backdropFilter: 'blur(8px)',
             WebkitBackdropFilter: 'blur(8px)',
             display: 'flex',
@@ -595,8 +595,8 @@ export default function SaveLogBanner() {
               background: 'var(--surface-2)',
               color: 'var(--text-1)',
               padding: '20px 22px',
-              borderRadius: 12,
-              boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+              borderRadius: 'var(--radius-dialog)',
+              boxShadow: 'var(--shadow-dialog)',
               width: 380,
               maxWidth: '90vw'
             }}

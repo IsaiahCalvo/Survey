@@ -19,10 +19,10 @@
      --panel-bg, 10px corners, the same deep shadow. It was a darker
      --surface-1 card with 12px corners. */
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-dialog);
   background: var(--panel-bg);
   color: var(--text-1);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--shadow-dialog);
 }
 
 .apply-redactions-modal h2 {

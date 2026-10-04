@@ -2400,7 +2400,7 @@ const BookmarksPanel = ({
           // UX (KAL-62): the app's one modal scrim — warm-dark dim plus an 8px
           // blur, identical to every other dialog, so this one no longer reads
           // as heavier and colder than the rest.
-          background: 'rgba(13, 15, 20, 0.55)',
+          background: 'var(--overlay-scrim)',
           backdropFilter: 'blur(8px)',
           WebkitBackdropFilter: 'blur(8px)',
           display: 'flex',
@@ -2410,14 +2410,14 @@ const BookmarksPanel = ({
         }} onClick={() => setShowBookmarkGroupModal(false)}>
           <div style={{
             background: 'var(--surface-1)',
-            borderRadius: '12px',
+            borderRadius: 'var(--radius-dialog)',
             padding: '24px',
             width: '90%',
             maxWidth: '600px',
             maxHeight: '80vh',
             overflow: 'auto',
             border: '1px solid var(--border)',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
+            boxShadow: 'var(--shadow-dialog)'
           }} onClick={(e) => e.stopPropagation()}>
             <div style={{
               display: 'flex',
@@ -2796,7 +2796,7 @@ const BookmarksPanel = ({
           // UX (KAL-62): the app's one modal scrim — warm-dark dim plus an 8px
           // blur, identical to every other dialog, so this one no longer reads
           // as heavier and colder than the rest.
-          background: 'rgba(13, 15, 20, 0.55)',
+          background: 'var(--overlay-scrim)',
           backdropFilter: 'blur(8px)',
           WebkitBackdropFilter: 'blur(8px)',
           display: 'flex',
@@ -2810,14 +2810,14 @@ const BookmarksPanel = ({
         }}>
           <div style={{
             background: 'var(--surface-1)',
-            borderRadius: '12px',
+            borderRadius: 'var(--radius-dialog)',
             padding: '24px',
             width: '90%',
             maxWidth: '600px',
             maxHeight: '80vh',
             overflow: 'auto',
             border: '1px solid var(--border)',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
+            boxShadow: 'var(--shadow-dialog)'
           }} onClick={(e) => e.stopPropagation()}>
             <div style={{
               display: 'flex',

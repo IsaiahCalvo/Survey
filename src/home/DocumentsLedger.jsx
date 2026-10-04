@@ -256,7 +256,7 @@ export default function DocumentsLedger({
       onDismiss={() => setMobileSortOpen(false)}
     />
     <span className="documents-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
-      <span className="documents-file-count"><b>{docs.length}</b> files</span>
+      <span className="documents-file-count"><b>{docs.length}</b> {docs.length === 1 ? 'file' : 'files'}</span>
       <span className="documents-select-row mobile-header-select-row documents-mobile-select-sort-row">
         <span className="documents-mobile-select-main">
           <SectionIconButton
@@ -531,7 +531,10 @@ export default function DocumentsLedger({
                     <div style={stickyCell(docSelectMode ? isChecked : isSel)}>
                       <span style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{d.name}</span>
                     </div>
-                    <span className="meta" style={{ fontSize: 12, padding: '12px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.project === 'Sandbox' ? <span className="mono" style={{ color: 'var(--text-3)' }}>N/A</span> : d.project}</span>
+                    <span className="meta" style={{ fontSize: 12, padding: '12px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{/* Polish round 2 (2026-10-04): a file in no project leaves the cell
+                        empty, as the phone row, the preview and the phone details
+                        already do; it used to print a mono "N/A". */}
+                      {d.project === 'Sandbox' ? null : d.project}</span>
                     <div className="mono" style={{ fontSize: 11, padding: '10px 0', lineHeight: 1.35 }}>
                       <div style={{ fontWeight: 600 }}>{d.touchedTime}</div>
                       <div style={{ color: 'var(--text-3)' }}>{d.touchedAbs}</div>

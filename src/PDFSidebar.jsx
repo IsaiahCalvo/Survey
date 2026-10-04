@@ -451,6 +451,12 @@ const PDFSidebar = React.forwardRef(({
       }}>
         <button
           onClick={toggleCollapse}
+          // Polish round 2 (2026-10-04): the chevron carried no name, so a
+          // screen reader announced a bare "button". Named like the Survey
+          // rail's own toggle ("Expand / Collapse Survey panel").
+          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!isCollapsed}
+          {...(mobileMode ? {} : tip(isCollapsed ? 'Expand sidebar' : 'Collapse sidebar', isCollapsed ? 'right' : 'below'))}
           // UX 2026-09-16 (desktop sweep): the shared rail control box and glyph.
           // It was a 16px chevron in a padding-derived 24px box — a fourth glyph
           // size in a rail that already ran 17 and 18. The box measures the same

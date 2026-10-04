@@ -840,7 +840,10 @@ export default function ProjectsFolderTree({
       {/* The count first, then Cancel / Save when a project name is being
           edited — the same order and the same 8px gap as Templates. */}
       <span className="projects-desktop-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-        <span><b>{filtered.length}</b> projects · expand any to see its files and team</span>
+        {/* Polish round 2 (2026-10-04): just the count, as on the phone and on
+            Templates. The old tail ("expand any to see its files and team")
+            described the retired tree; desktop is a list + detail now. */}
+        <span><b>{filtered.length}</b> {filtered.length === 1 ? 'project' : 'projects'}</span>
         {projectSaveRow('hub-desktop-save-row')}
       </span>
       <span className="projects-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
@@ -950,9 +953,13 @@ export default function ProjectsFolderTree({
             </div>
           </div>
           <div className="slim-scroll hub-side-list" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
-            {filtered.length === 0 && (
+            {/* Polish round 2 (2026-10-04): with no projects at all the
+                detail pane's empty state already says "No projects yet", so
+                the list stays quiet (as on the phone); it still says when a
+                search matches nothing. */}
+            {filtered.length === 0 && localProjects.length > 0 && (
               <div className="meta" style={{ fontSize: 12, padding: '14px 8px' }}>
-                {localProjects.length === 0 ? 'No projects yet.' : 'No projects match your search.'}
+                No projects match your search.
               </div>
             )}
             <SortableRearrangeList ids={filtered.map((p) => p.id)} onReorder={reorderProjects}>
@@ -1033,7 +1040,7 @@ export default function ProjectsFolderTree({
                           setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
                         }}
                         className="hub-icon-btn"
-                        title="More"
+                        title="More" aria-label="More"
                       ><Icon name="more" size={14} /></button>
                     )}
                   </div>
@@ -1202,7 +1209,7 @@ export default function ProjectsFolderTree({
                                   setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
                                 }}
                                 className="hub-icon-btn"
-                                title="More"
+                                title="More" aria-label="More"
                               ><Icon name="more" size={14} /></button>
                             )}
                           </div>
@@ -1410,7 +1417,7 @@ export default function ProjectsFolderTree({
                                   setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
                                 }}
                                 className="hub-icon-btn"
-                                title="More"
+                                title="More" aria-label="More"
                               ><Icon name="more" size={14} /></button>
                             )}
                           </div>
@@ -1684,7 +1691,7 @@ export default function ProjectsFolderTree({
                     setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
                   }}
                   className="hub-icon-btn"
-                  title="More"
+                  title="More" aria-label="More"
                 ><Icon name="more" size={14} /></button>
               )}
             </div>
@@ -1843,7 +1850,7 @@ export default function ProjectsFolderTree({
                           setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
                         }}
                         className="hub-icon-btn"
-                        title="More"
+                        title="More" aria-label="More"
                       ><Icon name="more" size={14} /></button>
                     )}
                   </div>
