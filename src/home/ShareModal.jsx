@@ -27,6 +27,7 @@ import { copyTextToClipboard } from '../utils/clipboard';
 import { Icon } from './HubShell';
 import Spinner from '../components/Spinner';
 import useModalFocusTrap from './useModalFocusTrap';
+import useVisibleViewportBox from './useVisibleViewportBox';
 import { C } from '../uiPalette';
 
 
@@ -67,6 +68,20 @@ export default function ShareModal({
   const [activeInvite, setActiveInvite] = useState(null); // last link-invite for share-link display
   const dialogRef = useRef(null);
   const closeRef = useRef(null);
+  const bodyRef = useRef(null);
+  // Polish round 6: with the keyboard up, the dialog centres in (and is capped
+  // to) the part of the screen still visible, its body scrolls, and Send stays
+  // on screen. null at rest: the plain full-window centring.
+  const visibleBox = useVisibleViewportBox();
+  useEffect(() => {
+    const body = bodyRef.current;
+    const field = typeof document === 'undefined' ? null : document.activeElement;
+    if (!visibleBox || !body || !field || !body.contains(field)) return;
+    const r = field.getBoundingClientRect();
+    const b = body.getBoundingClientRect();
+    if (r.bottom > b.bottom) body.scrollTop += r.bottom - b.bottom + 8;
+    else if (r.top < b.top) body.scrollTop -= b.top - r.top + 8;
+  }, [visibleBox]);
 
   useEffect(() => {
     if (!open) {
@@ -171,6 +186,7 @@ export default function ShareModal({
       onClick={onClose}
       style={{
         position: 'fixed', inset: 0, background: C.scrim,
+        ...(visibleBox ? { bottom: 'auto', top: visibleBox.top, height: visibleBox.height } : null),
         backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1300,
         fontFamily: 'var(--font-ui)',
@@ -184,10 +200,10 @@ export default function ShareModal({
         data-modal-focus-layer="true"
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
-        style={{ width: 440, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden' }}
+        style={{ width: 440, maxWidth: '92vw', maxHeight: 'calc(100% - 16px)', display: 'flex', flexDirection: 'column', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden' }}
       >
         {/* Header */}
-        <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${C.rule}`, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${C.rule}`, display: 'flex', alignItems: 'center', gap: 12, flex: 'none' }}>
           <span style={{ width: 3, height: 30, background: C.gold, borderRadius: 2, flex: 'none' }}></span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600 }}>Share {noun}</div>
@@ -197,7 +213,7 @@ export default function ShareModal({
         </div>
 
         {/* Single role selector — applies to both link and email per locked spec. */}
-        <div style={{ padding: '14px 18px 0', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ padding: '14px 18px 0', display: 'flex', alignItems: 'center', gap: 12, flex: 'none' }}>
           <div style={fieldLabel}>Permission</div>
           <select
             value={role}
@@ -209,7 +225,7 @@ export default function ShareModal({
         </div>
 
         {/* Body */}
-        <div style={{ padding: '4px 18px 16px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div ref={bodyRef} style={{ padding: '4px 18px 16px', display: 'flex', flexDirection: 'column', gap: 18, flex: '0 1 auto', minHeight: 0, overflowY: 'auto' }}>
           <div>
             <div style={fieldLabel}>Invite link</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 82px', gap: 6 }}>
@@ -252,7 +268,7 @@ export default function ShareModal({
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
+        <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center', flex: 'none' }}>
           <button onClick={onClose} className="hub-btn share-dialog-touch-pad">Cancel</button>
           <button
             disabled={busy || !emails.trim() || !!blockedReason}
