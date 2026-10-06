@@ -49,7 +49,9 @@ export const TEMPLATES = [{
 export async function launch({ engine = 'chromium', device = 'desktop', mac = false } = {}) {
   const type = engine === 'webkit' ? webkit : chromium;
   const executablePath = engine === 'chromium' ? (process.env.PW_CHROMIUM_PATH || undefined) : undefined;
-  const browser = await type.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
+  // channel: undefined — under the Playwright runner the config's
+  // `channel: 'chromium'` is a launch default, which WebKit refuses.
+  const browser = await type.launch({ headless: true, channel: undefined, ...(executablePath ? { executablePath } : {}) });
   const phone = device === 'phone';
   const context = await browser.newContext(phone ? {
     viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, hasTouch: true, userAgent: IPHONE_UA,
