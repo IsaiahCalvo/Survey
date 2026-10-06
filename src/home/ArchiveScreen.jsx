@@ -273,6 +273,7 @@ export default function ArchiveScreen({
         <SectionIconButton
           action="select"
           label={selectMode ? 'Done' : 'Select'}
+          nothingToSelect={rows.length === 0}
           active={selectMode}
           className="mobile-header-select-button"
           onClick={() => {

@@ -3585,34 +3585,39 @@ const RegionSelectionTool = ({
           onClick={(e) => e.stopPropagation()}
         >
           <div
+            role="menuitem"
+            aria-disabled={selectedRegionIds.size > 0 ? undefined : 'true'}
             style={{
               padding: '8px 12px',
-              cursor: selectedRegionIds.size > 0 ? 'pointer' : 'not-allowed',
+              cursor: 'pointer',
               fontSize: '13px',
-              color: selectedRegionIds.size > 0 ? 'var(--text-2)' : 'var(--text-disabled)',
+              color: 'var(--text-2)',
               fontFamily: FONT_FAMILY
             }}
             onClick={selectedRegionIds.size > 0 ? handleCopy : undefined}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
+            onMouseEnter={(e) => { if (selectedRegionIds.size > 0) e.currentTarget.style.background = 'var(--hover)'; }}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
             Copy
           </div>
           <div
+            role="menuitem"
+            aria-disabled={selectedRegionIds.size > 0 ? undefined : 'true'}
             style={{
               padding: '8px 12px',
-              cursor: selectedRegionIds.size > 0 ? 'pointer' : 'not-allowed',
+              cursor: 'pointer',
               fontSize: '13px',
-              color: selectedRegionIds.size > 0 ? 'var(--text-2)' : 'var(--text-disabled)',
+              color: 'var(--text-2)',
               fontFamily: FONT_FAMILY
             }}
             onClick={selectedRegionIds.size > 0 ? handleCut : undefined}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
+            onMouseEnter={(e) => { if (selectedRegionIds.size > 0) e.currentTarget.style.background = 'var(--hover)'; }}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
             Cut
           </div>
           <div
+            role="menuitem"
             style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-2)', fontFamily: FONT_FAMILY }}
             onClick={handlePaste}
             onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
@@ -3622,10 +3627,12 @@ const RegionSelectionTool = ({
           </div>
           <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }} />
           <div
+            role="menuitem"
+            aria-disabled={contextMenu.canMerge ? undefined : 'true'}
             style={{
               padding: '8px 12px',
-              cursor: contextMenu.canMerge ? 'pointer' : 'not-allowed',
-              color: contextMenu.canMerge ? 'var(--text-2)' : 'var(--text-disabled)',
+              cursor: 'pointer',
+              color: 'var(--text-2)',
               fontSize: '13px',
               fontFamily: FONT_FAMILY,
               background: 'transparent'
@@ -3641,10 +3648,12 @@ const RegionSelectionTool = ({
             Merge
           </div>
           <div
+            role="menuitem"
+            aria-disabled={contextMenu.canUnmerge ? undefined : 'true'}
             style={{
               padding: '8px 12px',
-              cursor: contextMenu.canUnmerge ? 'pointer' : 'not-allowed',
-              color: contextMenu.canUnmerge ? 'var(--text-2)' : 'var(--text-disabled)',
+              cursor: 'pointer',
+              color: 'var(--text-2)',
               fontSize: '13px',
               fontFamily: FONT_FAMILY
             }}
@@ -3652,7 +3661,7 @@ const RegionSelectionTool = ({
             onMouseEnter={(e) => {
               if (contextMenu.canUnmerge) e.currentTarget.style.background = 'var(--hover)';
             }}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
           >
             Unmerge
           </div>

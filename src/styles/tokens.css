@@ -86,7 +86,9 @@
      hover     --hover          (desktop pointer only)
      pressed   --pressed        (desktop :active AND phone touch feedback)
      selected  --surface-3 plus a --accent edge, or a gold GLYPH with no fill
-     disabled  --disabled-fill + --text-disabled, never an opacity
+     disabled  --disabled-ink on icon and word (states.css section 6), plus
+               --disabled-fill only on a variant that HAS a fill; never an
+               element opacity, no hover, no press, cursor not-allowed
      focus     a 2px --focus ring on :focus-visible
    --surface-3 is a SELECTED or a FIELD surface. It is never a hover.
    A gold control's own states are --accent-light (hover) and --accent-press
@@ -292,6 +294,15 @@
      video's own description of a disabled control — "obviously disabled
      without any other visual cues, just from the light gray and white text". */
   --disabled-fill: var(--surface-2);
+  /* Disabled INK (owner 2026-10-06: "if nothing is selected ... those icons
+     need to be visibly disabled, or else the user can't tell whether they can
+     interact"). The icon and the word of ANY control that cannot act right
+     now: the normal --text-2 ink at 36%, so it reads as a faint ghost of the
+     enabled control on every surface (phone and desktop alike), well apart
+     from --text-3 "quiet but working". A destructive control gives up its red
+     too. Applied once, to every button family, by the DISABLED section of
+     src/styles/states.css; nothing else should paint a disabled colour. */
+  --disabled-ink: rgba(183, 190, 201, 0.36);
   /* The focus ring: gold at 62%, which composites to 4.00 / 3.85 / 3.57 /
      3.26 — past 3:1 on every layer, where 35% measured 2.09 and was painted by
      exactly one rule. Always 2px on :focus-visible, never on :focus, so a

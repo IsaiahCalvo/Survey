@@ -2324,7 +2324,7 @@ export default function App({ devPreviewReturnTab = null }) {
             alignItems: 'center',
             gap: 'var(--chrome-tool-gap)'
           }}>
-            <span {...chromeTip('Undo', 'below')} style={{ display: 'inline-flex' }}>
+            <span {...chromeTip(topToolbarApi.canUndo ? 'Undo' : 'Nothing to undo', 'below')} style={{ display: 'inline-flex' }}>
               <button
                 onClick={topToolbarApi.onUndo || (() => {})}
                 disabled={!topToolbarApi.canUndo}
@@ -2338,7 +2338,6 @@ export default function App({ devPreviewReturnTab = null }) {
                 className="btn chrome-control chrome-history"
                 aria-label="Undo"
                 style={{
-                  opacity: topToolbarApi.canUndo ? 1 : 0.4,
                   cursor: topToolbarApi.canUndo ? 'pointer' : 'not-allowed',
                   pointerEvents: topToolbarApi.canUndo ? 'auto' : 'none'
                 }}
@@ -2346,7 +2345,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 <Icon name="undo" size={HISTORY_GLYPH} />
               </button>
             </span>
-            <span {...chromeTip('Redo', 'below')} style={{ display: 'inline-flex' }}>
+            <span {...chromeTip(topToolbarApi.canRedo ? 'Redo' : 'Nothing to redo', 'below')} style={{ display: 'inline-flex' }}>
               <button
                 onClick={topToolbarApi.onRedo || (() => {})}
                 disabled={!topToolbarApi.canRedo}
@@ -2354,7 +2353,6 @@ export default function App({ devPreviewReturnTab = null }) {
                 className="btn chrome-control chrome-history"
                 aria-label="Redo"
                 style={{
-                  opacity: topToolbarApi.canRedo ? 1 : 0.4,
                   cursor: topToolbarApi.canRedo ? 'pointer' : 'not-allowed',
                   pointerEvents: topToolbarApi.canRedo ? 'auto' : 'none'
                   // UX 2026-09-16: the old -0.591158px ink-centre nudge is
@@ -4560,7 +4558,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     <div style={{ width: '24px', height: '1px', background: 'var(--surface-3)', margin: '4px 0' }} />
 
                     {/* Page nav — chevron up/down because vertical layout. */}
-                    <span {...chromeTip('Previous page', 'left')} style={{ display: 'inline-flex' }}>
+                    <span {...chromeTip(atFirstPage ? 'Already on the first page' : 'Previous page', 'left')} style={{ display: 'inline-flex' }}>
                       <button
                         onClick={api.goToPreviousPage}
                         disabled={atFirstPage}
@@ -4587,7 +4585,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 'var(--chrome-field-h)', color: 'var(--text-3)', fontSize: '10px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
                       {api.activeSpaceHasNoPages ? 0 : api.numPages}
                     </span>
-                    <span {...chromeTip('Next page', 'left')} style={{ display: 'inline-flex' }}>
+                    <span {...chromeTip(atLastPage ? 'Already on the last page' : 'Next page', 'left')} style={{ display: 'inline-flex' }}>
                       <button
                         onClick={api.goToNextPage}
                         disabled={atLastPage}
@@ -4707,7 +4705,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   <div style={{ width: '1px', height: '20px', flexShrink: 0, background: 'var(--surface-3)' }} />
 
                   {/* Page nav — left/right chevrons because horizontal row. */}
-                  <span {...chromeTip('Previous page', 'above')} style={{ display: 'inline-flex', flexShrink: 0 }}>
+                  <span {...chromeTip(atFirstPage ? 'Already on the first page' : 'Previous page', 'above')} style={{ display: 'inline-flex', flexShrink: 0 }}>
                     <button
                       onClick={api.goToPreviousPage}
                       disabled={atFirstPage}
@@ -4730,7 +4728,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       <FooterSlot widest={pageSlotWidest}>{api.activeSpaceHasNoPages ? 0 : api.numPages}</FooterSlot>
                     </span>
                   </span>
-                  <span {...chromeTip('Next page', 'above')} style={{ display: 'inline-flex', flexShrink: 0 }}>
+                  <span {...chromeTip(atLastPage ? 'Already on the last page' : 'Next page', 'above')} style={{ display: 'inline-flex', flexShrink: 0 }}>
                     <button
                       onClick={api.goToNextPage}
                       disabled={atLastPage}

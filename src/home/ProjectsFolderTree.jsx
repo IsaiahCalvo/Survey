@@ -776,6 +776,7 @@ export default function ProjectsFolderTree({
         data-testid="project-select-toggle"
         action="select"
         label={jobsEdit ? 'Done' : 'Select'}
+        nothingToSelect={filtered.length === 0}
         active={jobsEdit}
         className="mobile-header-select-button"
         onClick={() => { const next = !jobsEdit; setJobsEdit(next); if (!next) setSelProj(new Set()); }}
@@ -788,6 +789,8 @@ export default function ProjectsFolderTree({
               phone
               count={selCount}
               allSelected={allSel}
+              total={filtered.length}
+              can={{ share: selCount > 1 ? 'Share one project at a time' : true }}
               onToggleAll={() => setSelProj(allSel ? new Set() : new Set(filtered.map((p) => p.id)))}
               onDuplicate={() => { duplicateProjects([...selProj]); setSelProj(new Set()); }}
               onShare={() => { const first = filtered.find((p) => selProj.has(p.id)); if (first) onShare && onShare(first); }}
@@ -804,6 +807,7 @@ export default function ProjectsFolderTree({
       <SectionIconButton
         action="select"
         label={fileSelect ? 'Done' : 'Select'}
+        nothingToSelect={mobileDrillFiles.length === 0}
         active={fileSelect}
         className="mobile-header-select-button"
         onClick={() => { const next = !fileSelect; setFileSelect(next); if (!next) setSelFiles(new Set()); }}
@@ -818,6 +822,7 @@ export default function ProjectsFolderTree({
               phone
               count={c}
               allSelected={allSel}
+              total={mobileDrillFiles.length}
               onToggleAll={() => setSelFiles(allSel ? new Set() : new Set(mobileDrillFiles.map((f) => f.id)))}
               onDuplicate={() => { duplicateFiles(selectedFiles.map((f) => f.id)); setSelFiles(new Set()); }}
               onMove={() => openMoveCopy(selectedFiles, 'move')}
@@ -939,6 +944,8 @@ export default function ProjectsFolderTree({
                 <SelectModeButtons
                   count={selCount}
                   allSelected={selCount === filtered.length && filtered.length > 0}
+                  total={filtered.length}
+                  can={{ share: selCount > 1 ? 'Share one project at a time' : true }}
                   onToggleAll={() => setSelProj(selCount === filtered.length && filtered.length > 0 ? new Set() : new Set(filtered.map((p) => p.id)))}
                   onDuplicate={() => { duplicateProjects([...selProj]); setSelProj(new Set()); }}
                   onShare={() => { const first = filtered.find((p) => selProj.has(p.id)); if (first) onShare && onShare(first); }}
@@ -950,6 +957,7 @@ export default function ProjectsFolderTree({
                 data-testid="project-select-toggle"
                 action="select"
                 label={jobsEdit ? 'Done' : 'Select'}
+                nothingToSelect={filtered.length === 0}
                 active={jobsEdit}
                 onClick={() => { const next = !jobsEdit; setJobsEdit(next); if (!next) setSelProj(new Set()); }}
               />
@@ -1116,6 +1124,7 @@ export default function ProjectsFolderTree({
                           <SelectModeButtons
                             count={c}
                             allSelected={allSel}
+                            total={openFiles.length}
                             onToggleAll={() => setSelFiles(allSel ? new Set() : new Set(openFiles.map((f) => f.id)))}
                             onDuplicate={() => { duplicateFiles(selectedFiles.map((f) => f.id)); setSelFiles(new Set()); }}
                             onMove={() => openMoveCopy(selectedFiles, 'move')}
@@ -1128,6 +1137,7 @@ export default function ProjectsFolderTree({
                       <SectionIconButton
                         action="select"
                         label={fileSelect ? 'Done' : 'Select'}
+                        nothingToSelect={openFiles.length === 0}
                         active={fileSelect}
                         onClick={() => { const next = !fileSelect; setFileSelect(next); if (!next) setSelFiles(new Set()); }}
                       />

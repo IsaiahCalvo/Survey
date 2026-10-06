@@ -49,13 +49,10 @@
   position: absolute;
   inset: -4px;
 }
-/* Off looks the same everywhere (tokens.css): --text-disabled ink, never an
-   opacity. Delete gives up its red too, so an unavailable Delete reads off. */
-.section-icon-btn:disabled,
-.section-icon-btn.is-danger:disabled {
-  color: var(--text-disabled);
-  cursor: default;
-}
+/* Off (a select-mode action with nothing picked): the ONE disabled look from
+   src/styles/states.css section 6 - --disabled-ink on the glyph and the word,
+   Delete gives up its red, no hover / press, not-allowed. Nothing here, so a
+   hub or panel rule can never out-rank it again (owner 2026-10-06). */
 
 /* The row of header icons: right-aligned, [Select] then [Add]. */
 .section-icon-actions {
