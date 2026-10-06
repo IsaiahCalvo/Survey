@@ -4,9 +4,15 @@ import {
 } from './tp-local-doc.mjs';
 
 /** One "window": its own browser context on the shared fake backend. */
-export async function openWindow(browser, backend, docId, pdf, { device = DESKTOP, phone = false, longTasks = false } = {}) {
+export async function openWindow(browser, backend, docId, pdf, { device = DESKTOP, phone = false, longTasks = false, templates = null } = {}) {
   const context = await browser.newContext(device);
   await prepareLocalContext(context, docId, { backend });
+  if (templates) {
+    // Survey templates for the dev route (read by DevTestRoute).
+    await context.addInitScript((t) => {
+      try { localStorage.setItem('mobileWorkflowTemplates', JSON.stringify(t)); } catch { /* private mode */ }
+    }, templates);
+  }
   if (longTasks) {
     await context.addInitScript(() => {
       window.__tpLongTasks = [];

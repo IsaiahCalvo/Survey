@@ -49,6 +49,19 @@ export async function prepareLocalContext(context, docId, { backend = null } = {
     await context.routeWebSocket((url) => !isLocal(url.href), (ws) => ws.close());
   }
   if (backend) await backend.attach(context);
+  // Keep the full stack of every console.error (a render loop's stack names
+  // the component; the console message alone is cut short).
+  await context.addInitScript(() => {
+    window.__tpConsoleErrors = [];
+    const original = console.error;
+    console.error = (...args) => {
+      try {
+        window.__tpConsoleErrors.push(args.map((a) => (a && a.stack) ? `${a.message}\n${a.stack}` : (typeof a === 'object' ? JSON.stringify(a)?.slice(0, 4000) : String(a))).join(' | ').slice(0, 12000));
+        if (window.__tpConsoleErrors.length > 50) window.__tpConsoleErrors.shift();
+      } catch { /* keep logging */ }
+      return original.apply(console, args);
+    };
+  });
   await context.addInitScript((id) => {
     let held = null;
     Object.defineProperty(window, '__devTestPdf', {
@@ -163,6 +176,11 @@ export async function screenshotTo(page, name, opts = {}) {
 export function collectErrors(page) {
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e?.message || e).split('\n')[0].slice(0, 200)));
+  // A render crash caught by the app's ErrorBoundary never reaches pageerror.
+  page.on('console', (m) => {
+    const text = m.text();
+    if (m.type() === 'error' && /ErrorBoundary caught|Maximum update depth/.test(text)) errors.push(`console: ${text.slice(0, 300)}`);
+  });
   return errors;
 }
 

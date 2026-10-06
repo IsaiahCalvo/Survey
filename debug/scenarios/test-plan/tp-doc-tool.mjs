@@ -29,7 +29,9 @@ if (input.op === 'seed') {
   }
   const lanes = {};
   store.getEraserOpsMap(doc).forEach((lane, key) => { lanes[key] = plain(lane); });
-  process.stdout.write(JSON.stringify({ byPage: store.docToByPage(doc), lanes }));
+  let surveyMarkers = null;
+  try { surveyMarkers = store.docToSurveyMarkers(doc); } catch { surveyMarkers = null; }
+  process.stdout.write(JSON.stringify({ byPage: store.docToByPage(doc), lanes, surveyMarkers }));
 } else if (input.op === 'toPage') {
   // Ink outlines in PAGE units, through the app's one affine for rendering,
   // erasing and export (imported ink keeps local commands + left/top).

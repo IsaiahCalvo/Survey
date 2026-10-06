@@ -299,11 +299,16 @@ export class FakeBackend {
           ? rows.findIndex((r) => conflict.every((c) => String(r[c]) === String(row[c])))
           : rows.findIndex((r) => r.id === row.id);
         if (existingIndex >= 0) {
-          if (!ignore) rows[existingIndex] = { ...rows[existingIndex], ...raw };
+          if (!ignore) {
+            const old = rows[existingIndex];
+            rows[existingIndex] = { ...old, ...raw };
+            this.emitChange(name, 'UPDATE', rows[existingIndex], old);
+          }
           out.push(rows[existingIndex]);
         } else {
           rows.push(row);
           out.push(row);
+          this.emitChange(name, 'INSERT', row, null);
         }
       }
       if (wantsObject) return reply(201, out[0] ?? null);
@@ -311,13 +316,18 @@ export class FakeBackend {
     }
     if (method === 'PATCH') {
       const matched = applyFilters(rows, params);
-      for (const row of matched) Object.assign(row, body || {});
+      for (const row of matched) {
+        const old = { ...row };
+        Object.assign(row, body || {});
+        this.emitChange(name, 'UPDATE', row, old);
+      }
       if (wantsObject) return reply(200, matched[0] ?? null);
       return reply(200, prefer.includes('return=representation') ? matched : undefined);
     }
     if (method === 'DELETE') {
       const matched = new Set(applyFilters(rows, params));
       this.tables.set(name, rows.filter((r) => !matched.has(r)));
+      for (const row of matched) this.emitChange(name, 'DELETE', null, row);
       return reply(200, prefer.includes('return=representation') ? [...matched] : undefined);
     }
     return reply(405, { message: 'method' });
@@ -386,19 +396,23 @@ export class FakeBackend {
 
   // ------------------------------------------------------------ Realtime
 
-  emitInsert(table, record) {
+  emitInsert(table, record) { this.emitChange(table, 'INSERT', record, null); }
+
+  /** Postgres Realtime: tell every window subscribed to this table's changes. */
+  emitChange(table, type, record, oldRecord) {
+    const subject = record || oldRecord || {};
     for (const sock of this.sockets) {
       for (const [topic, ch] of sock.channels) {
         for (const binding of ch.postgres) {
-          if (binding.table !== table || !['INSERT', '*'].includes(binding.event)) continue;
+          if (binding.table !== table || ![type, '*'].includes(binding.event)) continue;
           if (binding.filter) {
             const [col, expr] = [binding.filter.slice(0, binding.filter.indexOf('=')), binding.filter.slice(binding.filter.indexOf('=') + 1)];
-            if (!testCondition(record, col, expr)) continue;
+            if (!testCondition(subject, col, expr)) continue;
           }
           this.count('WS postgres_changes delivered');
           sock.send([null, null, topic, 'postgres_changes', {
             ids: [binding.id],
-            data: { type: 'INSERT', schema: 'public', table, commit_timestamp: nowIso(), record, old_record: null, columns: [], errors: null },
+            data: { type, schema: 'public', table, commit_timestamp: nowIso(), record: record || {}, old_record: oldRecord || {}, columns: [], errors: null },
           }]);
         }
       }
