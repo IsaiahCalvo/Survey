@@ -27022,10 +27022,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       );
       gestureFieldTouchesByPageRef.current.set(interactionPageKey, touches);
     }
+    let localStepCoversGesture = false;
     if (!shouldSkipCheckpointByPolicy && !shouldSkipCheckpointByInteraction) {
       // w37: a new callout's first commit folds into its create step (read
       // and cleared by the push below).
       historyFoldIntoCreateRef.current = normalizedSaveContext?.foldIntoCreateOf || null;
+      const coversWholeGesture = Boolean(surveyMarkerFamilyCompanionRef.current)
+        || Boolean(previewBaseline && !isEraserCommit);
+      const localTopBefore = localAnnotationUndoRef.current[localAnnotationUndoRef.current.length - 1];
       if (previewBaseline && !isEraserCommit) {
         pushLocalAnnotationHistoryAction(restrictAnnotationHistoryActionFields(
           finalLocalHistoryAction,
@@ -27036,6 +27040,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // commit whose precise builder already names exactly what it changed.
         pushLocalAnnotationHistoryAction(finalLocalHistoryAction);
       }
+      // TEST-PLAN item 55 (2026-10-06): this step is the whole gesture — a
+      // live-preview release (diffed against the pre-gesture baseline) or a
+      // family action carrying Survey Markers. The legacy snapshot below
+      // would be taken mid-gesture and without the markers, so on a document
+      // without the CRDT layer one Undo put back only part of the selection.
+      localStepCoversGesture = coversWholeGesture
+        && localAnnotationUndoRef.current[localAnnotationUndoRef.current.length - 1] !== localTopBefore;
       historyFoldIntoCreateRef.current = null;
     }
     if (!shouldSkipCheckpointByPolicy) {
@@ -27112,6 +27123,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         changedObjectsCount: finalPageTransition.changedObjectsCount,
         previousPageHash: previousPageFingerprint.hash,
         nextPageHash: finalNextPageFingerprint.hash,
+        undoDepth: undoHistoryRef.current.length,
+        redoDepth: redoHistoryRef.current.length,
+        saveContext: normalizedSaveContext
+      });
+    } else if (localStepCoversGesture) {
+      // The local step pushed above already holds the whole gesture (see
+      // localStepCoversGesture); a legacy snapshot would split it in two.
+      pushHistoryDebugEvent('annotations_checkpoint_skipped_local_gesture_step', {
+        reason: 'annotations:save',
+        source,
+        pageNumber,
         undoDepth: undoHistoryRef.current.length,
         redoDepth: redoHistoryRef.current.length,
         saveContext: normalizedSaveContext
