@@ -4193,12 +4193,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (event.type === 'pointerdown' && !isSelectFamilyTool(activeTool)) {
         const start = { id: event.pointerId, x: event.clientX, y: event.clientY };
         const slop = event.pointerType === 'touch' ? 12 : 6;
+        // A press that ends without a pointerup (the touch became a scroll,
+        // or the window lost focus) must not leave this behind to drop a
+        // pick on some later release.
+        const stop = () => {
+          window.removeEventListener('pointerup', onUp, true);
+          window.removeEventListener('pointercancel', onPressCancel, true);
+          window.removeEventListener('blur', stop);
+        };
+        const onPressCancel = (cancel) => { if (cancel.pointerId === start.id) stop(); };
         const onUp = (up) => {
           if (up.pointerId !== start.id) return;
-          window.removeEventListener('pointerup', onUp, true);
+          stop();
           if (Math.hypot(up.clientX - start.x, up.clientY - start.y) <= slop) clearAnnotationSelectionForContextChange('backdrop-click');
         };
         window.addEventListener('pointerup', onUp, true);
+        window.addEventListener('pointercancel', onPressCancel, true);
+        window.addEventListener('blur', stop);
         return;
       }
       // UX: Phase 19 — first Escape cancels a live selection drag only;
