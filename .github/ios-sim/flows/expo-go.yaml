@@ -27,6 +27,17 @@ name: expo-go
     visible: "Welcome back|Documents"
     timeout: 60000
     optional: true
+# On a slow runner Expo Go can sit on its splash while it fetches the update
+# (run 37535055895). Open the link once more before giving up.
+- runFlow:
+    when:
+      notVisible: "Welcome back|Documents"
+    commands:
+      - openLink: ${EXPO_URL}
+      - extendedWaitUntil:
+          visible: "Welcome back|Documents"
+          timeout: 90000
+          optional: true
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: expo-02-survey-home
