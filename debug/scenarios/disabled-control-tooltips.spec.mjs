@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+if (process.env.PW_CHROMIUM_PATH) test.use({ launchOptions: { executablePath: process.env.PW_CHROMIUM_PATH } });
+
 // Owner 2026-10-06: a disabled control's tooltip says why it is off, never
 // what it would do ("Nothing to undo", not "Undo").
 test('disabled history and page controls show the shared tooltip with the reason', async ({ page }) => {
