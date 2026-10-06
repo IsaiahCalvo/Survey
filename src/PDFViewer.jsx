@@ -119,6 +119,7 @@ import { FORM_TOOLS as FORM_DESIGNER_TOOLS, getFormFieldTypeForTool, isFormTool 
 import { PageRenderCache } from './utils/pdfCache';
 import { UndoToast } from './components/collab/UndoToast.jsx';
 import { applyAnnotationGroupId, findGroupMembers, generateGroupId, getAnnotationGroupId, getCalloutGroupId } from './utils/annotationGroups';
+import { buildCrossPageMovePlan } from './utils/crossPageMove.js';
 import { applyAnnotationHistoryAction, dropAlreadyPresentRestoreTargets, getAnnotationHistoryId, buildAnnotationHistoryAction, buildPreciseAnnotationHistoryAction, createGestureTouchRecord, endPagePreviewGesture, filterAnnotationHistoryActionByOwner, invertAnnotationHistoryAction, recordGestureTouchesFromAction, restrictAnnotationHistoryActionFields } from './utils/annotationLocalHistory';
 import { normalizeMergedHistoryObject } from './utils/historyMergeNormalize';
 import {
@@ -27384,6 +27385,34 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   ]);
   commitTextMarkupDocumentTransactionRef.current = commitTextMarkupDocumentTransaction;
 
+  // Owner after Test 46 (2026-10-06): a picked mark dragged onto another page
+  // moves there. Both pages change in ONE state update (the mark keeps its
+  // id, so collaborators see one move, never a copy) and ONE undo step; the
+  // lock check and owner scoping are the document transaction's own.
+  const handleMoveMarksToPage = useCallback((fromPage, { toPage, marks } = {}) => {
+    const from = Number(fromPage);
+    const to = Number(toPage);
+    if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return false;
+    const pagesNow = annotationsByPageRef.current || {};
+    const plan = buildCrossPageMovePlan({ fromPage: pagesNow[from], toPage: pagesNow[to], marks });
+    if (!plan) return false;
+    const action = {
+      type: 'fabric:document-batch',
+      actions: [
+        buildAnnotationHistoryAction({ pageNumber: from, previousPage: pagesNow[from], nextPage: plan.fromPage }),
+        buildAnnotationHistoryAction({ pageNumber: to, previousPage: pagesNow[to] || { objects: [] }, nextPage: plan.toPage }),
+      ].filter(Boolean),
+    };
+    const moved = commitTextMarkupDocumentTransaction(
+      { action, nextByPage: { ...pagesNow, [from]: plan.fromPage, [to]: plan.toPage } },
+      { source: 'annotation:move-to-page', action: 'move-to-page', applyWithoutOwnedStep: true },
+    );
+    if (!moved) return false;
+    // The moved marks stay picked, now on their new page.
+    setPendingSvgSelection({ pageNumber: to, annotationIndices: plan.toIndices, surveyMarkerIds: [], exclusive: true, tick: Date.now() });
+    return true;
+  }, [commitTextMarkupDocumentTransaction]);
+
   const handleSaveAnnotationsWithTextMarkupAtomicity = useCallback((pageNumber, json, saveContext = null) => {
     const transaction = buildAtomicTextMarkupPageMutation({
       annotationsByPage: annotationsByPageRef.current || {},
@@ -31941,6 +31970,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleDeleteSurveyMarker,
     handleDeleteSurveyMarkers,
     handleSurveyMarkerCreated,
+    handleMoveMarksToPage,
   };
   const svgLayerPageHandlersRef = useRef(new Map());
   const getSvgLayerPageHandlers = (pageNumber) => {
@@ -31966,6 +31996,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       onSurveyMarkerCreated: (bounds) => latest().handleSurveyMarkerCreated(pageNumber, bounds),
       onDeleteSurveyMarker: (annotationId) => latest().handleDeleteSurveyMarker(annotationId),
       onDeleteSurveyMarkers: (annotationIds) => latest().handleDeleteSurveyMarkers(annotationIds),
+      onMoveMarksToPage: (move) => latest().handleMoveMarksToPage(pageNumber, move),
     };
     svgLayerPageHandlersRef.current.set(pageNumber, handlers);
     return handlers;
@@ -36394,6 +36425,7 @@ ${pageBlocks}
                                   isRegionOverlayEnabled={isRegionOverlayEnabled}
                                   layerVisibility={annotationLayerVisibility}
                                   onSaveAnnotations={getSvgLayerPageHandlers(pageNumber).onSaveAnnotations}
+                                  onMoveMarksToPage={getSvgLayerPageHandlers(pageNumber).onMoveMarksToPage}
                                   onRequestEditMode={getSvgLayerPageHandlers(pageNumber).onRequestEditMode}
                                   activeTool={activeTool}
                                   // UX 2026-09-15 (Drawboard parity — Pan is a selection
