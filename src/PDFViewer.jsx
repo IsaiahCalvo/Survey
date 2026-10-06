@@ -5192,9 +5192,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // commit, because AppShell creates it in the same commit it first renders us.
   const [subToolContextTool, setSubToolContextTool] = useState(null);
   const [subToolsHostEl, setSubToolsHostEl] = useState(null);
+  // Test plan 63 (2026-10-06): only call the setter when the host really
+  // changed. A functional no-op update still schedules a render whenever this
+  // component has other work pending, and this effect runs after EVERY commit:
+  // after a Delete in one window while another window had just deleted a mark,
+  // that fed itself until React threw "Maximum update depth exceeded" and the
+  // viewer was torn down.
+  const subToolsHostElRef = useRef(null);
   useLayoutEffect(() => {
     const el = typeof document !== 'undefined' ? document.getElementById('chrome-subtools-host') : null;
-    setSubToolsHostEl((prev) => (prev === el ? prev : el));
+    if (subToolsHostElRef.current === el) return;
+    subToolsHostElRef.current = el;
+    setSubToolsHostEl(el);
   });
   const [showSurveyPanel, setShowSurveyPanel] = useState(false);
   const [rightRailCollapsed, setRightRailCollapsed] = useState(true);
