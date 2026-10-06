@@ -9,6 +9,10 @@
 import { createClient } from '@supabase/supabase-js';
 import { navigatorLock } from '@supabase/auth-js';
 import { createSafeNavigatorLock } from './utils/safeNavigatorLock.js';
+import {
+  checkpointBodyFetch,
+  enableCheckpointBodySubstitution,
+} from './services/checkpointBodyFetch.js';
 
 const env = import.meta.env || {};
 
@@ -46,8 +50,12 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.warn('Supabase credentials not found. Running in offline mode.');
 }
 
+// 2026-10-06: `global.fetch` is the plain fetch, except that a multi-MB
+// annotation checkpoint's request body is assembled from bytes the checkpoint
+// worker prepared instead of from one huge string on the main thread (same
+// bytes on the wire; see services/checkpointBodyFetch.js).
 export const supabase = supabaseUrl && supabaseAnonKey
-  ? createClient(supabaseUrl, supabaseAnonKey, {
+  ? enableCheckpointBodySubstitution(createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         autoRefreshToken: true,
         persistSession: true,
@@ -55,7 +63,8 @@ export const supabase = supabaseUrl && supabaseAnonKey
         lock: clampedAuthLock,
         ...(SUPABASE_AUTH_STORAGE_KEY ? { storageKey: SUPABASE_AUTH_STORAGE_KEY } : {}),
       },
-    })
+      global: { fetch: checkpointBodyFetch },
+    }))
   : null;
 
 // The dev-only fixture route intentionally exercises the full local editor
