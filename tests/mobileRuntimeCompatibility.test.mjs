@@ -804,3 +804,18 @@ test('mobile viewer presence uses Supabase row names, deduplicates, and pins the
     { id: 'other', label: 'Other New', initials: 'ON', isCurrent: false },
   ]);
 });
+
+// iOS bottom push (Appetize, iPhone 16 Pro / iOS 26, 2026-10-06): the pure
+// parts live in elasticEdges.js (tests/mobileElasticEdges.test.mjs); this pins
+// the wiring. A viewer resize under a phone gesture is held then springs home;
+// a one-finger drag that starts on a PDF link pans (a tap still opens it).
+test('phone viewer: resize under a gesture is absorbed; drags from links pan', () => {
+  assert.match(PDFJS_VIEWER_SOURCE, /const shift = resolveFitCentreShift\(fitPlacementRef\.current, next\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /layoutShiftRef\.current\.absorb\(shift, performance\.now\(\), \{ held \}\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(layoutShiftYRef\.current\) liveTranslateY \+= layoutShiftYRef\.current;/);
+  assert.equal((PDFJS_VIEWER_SOURCE.match(/releaseLayoutShift\(\);/g) || []).length, 2, 'released at pan and pinch end');
+  assert.match(PDFJS_VIEWER_SOURCE, /resolveElasticPanStep\(\{/);
+  assert.match(PDFJS_VIEWER_SOURCE, /isLiveFormWidgetTarget\(nativeTarget\) \|\| nativeTarget\?\.closest\?\.\(PAN_THROUGH_LINK_SELECTOR\)/);
+  // never on desktop
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(!shift \|\| !isMobileSurface\) return;/);
+});

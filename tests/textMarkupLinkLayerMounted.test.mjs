@@ -117,3 +117,51 @@ test('text link layer opens in Pan, selects in Select, and opens with a clear Se
     for (const key of ['window', 'document', 'HTMLElement', 'Node', 'IS_REACT_ACT_ENVIRONMENT']) delete globalThis[key];
   }
 });
+
+// Appetize iOS run 2026-10-06 + Chromium phone repro: a one-finger pull past
+// the top edge that started on a text link panned the page AND opened the
+// link at the lift. Only a tap belongs to the link.
+test('text link layer: a drag that starts on a link is a page pan, not a click', async () => {
+  const dom = new JSDOM('<!doctype html><div id="root"></div>', { pretendToBeVisual: true, url: 'http://localhost/' });
+  const opened = [];
+  const selected = [];
+  dom.window.open = (...args) => { opened.push(args); return {}; };
+  Object.assign(globalThis, {
+    window: dom.window,
+    document: dom.window.document,
+    HTMLElement: dom.window.HTMLElement,
+    Node: dom.window.Node,
+    IS_REACT_ACT_ENVIRONMENT: true,
+  });
+  const { LinkLayer, cleanup } = await loadLinkLayer();
+  const root = createRoot(document.getElementById('root'));
+  const press = (button, from, to) => {
+    button.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, cancelable: true, detail: 1, button: 0, clientX: from[0], clientY: from[1] }));
+    button.dispatchEvent(new dom.window.MouseEvent('pointerup', { bubbles: true, cancelable: true, detail: 1, button: 0, clientX: to[0], clientY: to[1] }));
+  };
+  const render = (interactionMode) => act(async () => root.render(React.createElement(LinkLayer, {
+    annotations: [annotation({ id: 'web-link', url: 'https://example.com/docs' })],
+    pageSize: { width: 100, height: 100 },
+    interactionMode,
+    onSelectLink: (region) => selected.push(region.annotationId),
+  })));
+  try {
+    for (const interactionMode of ['open', 'select']) {
+      await render(interactionMode);
+      const button = document.querySelector('[data-text-markup-link="web-link"]');
+      await act(async () => press(button, [20, 30], [22, 370]));
+      await act(async () => press(button, [20, 30], [20, 39]));
+      assert.equal(opened.length, 0, `${interactionMode}: a drag never opens the link`);
+      assert.equal(selected.length, 0, `${interactionMode}: a drag never selects the link`);
+    }
+    // a tap with a little finger wobble still opens it
+    await render('open');
+    await act(async () => press(document.querySelector('[data-text-markup-link="web-link"]'), [20, 30], [24, 34]));
+    assert.equal(opened.length, 1);
+  } finally {
+    await act(async () => root.unmount());
+    await cleanup();
+    dom.window.close();
+    for (const key of ['window', 'document', 'HTMLElement', 'Node', 'IS_REACT_ACT_ENVIRONMENT']) delete globalThis[key];
+  }
+});

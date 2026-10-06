@@ -171,6 +171,99 @@ export function foldElasticLeftover(next, previous) {
   };
 }
 
+// ---- phone: one finger past an edge ---------------------------------------
+/**
+ * One step of a one-finger pan that may run past an edge, for one axis, in
+ * scroll space. `scroll` is the scroller's offset, `max` its scroll range (0
+ * for a page that fits the screen), `excess` the finger travel already past an
+ * edge, `delta` the finger's move (screen px, up = negative). Returns the new
+ * scroll offset, the new excess (positive = past the far end) and the offset
+ * to draw (negative = the page moves up, with the finger).
+ *
+ * A page that fits (max 0) has no scroll to use, so ALL finger travel is
+ * excess: pushing up past the bottom edge always moves the page up, pulling
+ * down past the top edge always moves it down - never the other way.
+ */
+export function resolveElasticPanStep({ scroll = 0, max = 0, excess = 0, delta = 0, dimension = 1 } = {}) {
+  const hi = Math.max(0, finite(max));
+  // Start from the in-range scroll: only finger travel may build up excess,
+  // never a whole-pixel scroll offset sitting a hair past a fractional max.
+  const free = Math.min(Math.max(0, finite(scroll)), hi) + finite(excess) - finite(delta);
+  const next = Math.min(Math.max(0, free), hi);
+  let left = free - next;
+  if (Math.abs(left) < 0.01) left = 0;
+  return { scroll: next, excess: left, shown: left ? -rubberBand(left, dimension) : 0 };
+}
+
+// ---- phone: the viewer changes size under a gesture -----------------------
+// Real iPhone (Appetize, iOS 26, 2026-10-06): pushing a page that fits the
+// screen past its bottom edge left it sitting ~145 px LOWER, cut off by the
+// dock, and it only came back seconds later. A page that fits is centred in
+// the scroller, so anything that changes the scroller's height while the
+// finger is down (Safari's toolbar collapsing or coming back, the visual
+// viewport or safe area settling after the keyboard) moved the centring
+// margin by half the change in ONE frame - straight down when the viewer grew,
+// against a push up. Now that move is held off while the finger is down (the
+// page stays exactly where the finger has it) and glides to the new centre on
+// the edge spring after the lift; a change that lands while the page is
+// already springing home joins that spring. Nothing jumps, nothing moves
+// against the finger.
+
+/**
+ * How far a page's resting place moved on screen when the viewer was resized:
+ * the change of the fit-centring margin, only when the zoom and the tool-strip
+ * room did not change too (those keep the page still on their own).
+ */
+export function resolveFitCentreShift(prev, next) {
+  if (!prev || !next) return 0;
+  if (Math.abs(finite(prev.scale, 1) - finite(next.scale, 1)) > 1e-9) return 0;
+  if (Math.abs(finite(prev.room) - finite(next.room)) > 0.01) return 0;
+  if (Math.abs(finite(prev.height) - finite(next.height)) < 0.5) return 0;
+  const shift = finite(next.centerPad) - finite(prev.centerPad);
+  return Math.abs(shift) < 0.01 ? 0 : shift;
+}
+
+/**
+ * The visual offset that hides such a move: absorb(shift) keeps the page where
+ * it is on screen; it is held while a finger is down and springs to the new
+ * resting place after release(now) (critically damped, ~0.6 s, the edge
+ * spring). frame(now) -> { y, active }: what to add to the drawn translate.
+ */
+export function createLayoutShiftHold({ omega = ELASTIC_SPRING_OMEGA } = {}) {
+  const IDLE = { mode: 'idle', y: 0, x0: 0, v0: 0, t0: 0 };
+  let s = IDLE;
+  const at = (now) => {
+    if (s.mode === 'held') return { x: s.y, v: 0 };
+    if (s.mode !== 'spring') return { x: 0, v: 0 };
+    return criticallyDampedSpring(s.x0, s.v0, Math.max(0, finite(now) - s.t0) / 1000, omega);
+  };
+  return {
+    absorb(shift, now, { held = false } = {}) {
+      const d = finite(shift);
+      if (!d) return;
+      const cur = at(now);
+      if (held || s.mode === 'held') s = { mode: 'held', y: cur.x - d, x0: 0, v0: 0, t0: 0 };
+      else s = { mode: 'spring', y: 0, x0: cur.x - d, v0: cur.v, t0: finite(now) };
+    },
+    release(now) {
+      if (s.mode === 'held') s = { mode: 'spring', y: 0, x0: s.y, v0: 0, t0: finite(now) };
+    },
+    frame(now) {
+      if (s.mode === 'idle') return { y: 0, active: false };
+      const { x, v } = at(now);
+      if (s.mode === 'spring'
+        && ((Math.abs(x) < 0.2 && Math.abs(v) < 6) || finite(now) - s.t0 > ELASTIC_SPRING_MAX_MS)) {
+        s = IDLE;
+        return { y: 0, active: false };
+      }
+      return { y: x, active: true };
+    },
+    active() { return s.mode !== 'idle'; },
+    held() { return s.mode === 'held'; },
+    reset() { s = IDLE; },
+  };
+}
+
 // ---- desktop: wheel / trackpad overscroll ---------------------------------
 // A wheel stream has no finger to follow and the browser does not say when the
 // fingers lift, so the controller sorts each event (same ideas as

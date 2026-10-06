@@ -9,11 +9,14 @@ import {
   WHEEL_OVERSCROLL_IDLE_MS,
   capBounceVelocity,
   composeElasticTransform,
+  createLayoutShiftHold,
   createWheelOverscroll,
   criticallyDampedSpring,
   easeInOutSine,
   foldElasticLeftover,
   inverseRubberBand,
+  resolveElasticPanStep,
+  resolveFitCentreShift,
   rubberBand,
   rubberClamp,
   rubberScale,
@@ -259,4 +262,87 @@ test('desktop: a hiccup in the event stream mid-tail does not restart the stretc
   t += 200;
   push(c, Array(12).fill(9), { t0: t });
   assert.ok(c.frame(t + 12 * 16).y > 5);
+});
+
+// ---- iOS bottom push (Appetize, iPhone 16 Pro / iOS 26, 2026-10-06) --------
+// A one-page PDF that fits the screen has no scroll range: every pixel of a
+// push is past an edge, and the page must move WITH the finger.
+test('phone: a page that fits the screen stretches in the finger direction at both edges', () => {
+  const d = 764;
+  let s = { scroll: 0, excess: 0 };
+  const shown = [];
+  for (let i = 0; i < 40; i += 1) {
+    const step = resolveElasticPanStep({ scroll: s.scroll, max: 0, excess: s.excess, delta: -8.5, dimension: d });
+    s = step;
+    shown.push(step.shown);
+  }
+  assert.equal(s.scroll, 0);
+  assert.ok(s.excess > 0, 'push up = past the bottom (far) end');
+  for (let i = 1; i < shown.length; i += 1) assert.ok(shown[i] < shown[i - 1], 'moves up every step, never down');
+  assert.ok(Math.abs(shown.at(-1) + rubberBand(340, d)) < 1e-6, '340 px of finger = the iOS rubber band');
+  // pulling down past the top edge mirrors it
+  const pull = resolveElasticPanStep({ scroll: 0, max: 0, excess: 0, delta: 340, dimension: d });
+  assert.ok(pull.excess < 0 && pull.shown > 0);
+  assert.ok(Math.abs(pull.shown - rubberBand(340, d)) < 1e-6);
+  // a page that scrolls uses its range first, then stretches
+  const long = resolveElasticPanStep({ scroll: 90, max: 100, excess: 0, delta: -30, dimension: d });
+  assert.equal(long.scroll, 100);
+  assert.ok(Math.abs(long.excess - 20) < 1e-9 && long.shown < 0);
+  // a scroll range that vanished mid-gesture (browser clamp) never turns into a
+  // stretch the other way
+  const clamped = resolveElasticPanStep({ scroll: 300, max: 0, excess: 10, delta: -5, dimension: d });
+  assert.equal(clamped.scroll, 0);
+  assert.ok(Math.abs(clamped.excess - 15) < 1e-9 && clamped.shown < 0);
+});
+
+test('phone: only a viewer resize at the same zoom and strip room moves the fit centre', () => {
+  const base = { scale: 1, room: 0, height: 740, centerPad: 152 };
+  // Safari's toolbar collapses: the viewer grows 290 px, the centre drops 145
+  assert.equal(resolveFitCentreShift(base, { ...base, height: 1030, centerPad: 297 }), 145);
+  assert.equal(resolveFitCentreShift(base, { ...base, height: 450, centerPad: 7 }), -145);
+  assert.equal(resolveFitCentreShift(null, base), 0, 'first measure is not a move');
+  assert.equal(resolveFitCentreShift(base, { ...base, scale: 1.2, height: 1030, centerPad: 200 }), 0, 'a zoom keeps its own anchor');
+  assert.equal(resolveFitCentreShift(base, { ...base, room: 44, centerPad: 152 }), 0, 'strip room keeps the page still on its own');
+  assert.equal(resolveFitCentreShift(base, { ...base, height: 1030, centerPad: 152 }), 0, 'a page taller than the view does not move');
+});
+
+test('phone: a viewer resize mid-push is held off screen, then glides to the new centre in ~0.6 s', () => {
+  const hold = createLayoutShiftHold();
+  // Finger down, pushing up; at t=500 the viewer grows and the centre would drop 145 px.
+  hold.absorb(145, 500, { held: true });
+  // While the finger is down nothing moves: the drawn offset exactly cancels the drop.
+  for (const t of [500, 700, 1200]) assert.equal(hold.frame(t).y, -145);
+  assert.ok(hold.held());
+  // The viewer shrinks back before the lift: the two cancel out exactly.
+  hold.absorb(-60, 1300, { held: true });
+  assert.equal(hold.frame(1300).y, -85);
+  hold.release(2000);
+  // After the lift: the edge spring (critically damped), never past the new centre.
+  const ys = [];
+  for (let t = 2000; t <= 3000; t += 1000 / 60) ys.push(hold.frame(t).y);
+  for (let i = 1; i < ys.length; i += 1) {
+    assert.ok(ys[i] >= ys[i - 1] - 1e-9, 'one way only, toward the new place');
+    assert.ok(ys[i] <= 0, 'never overshoots');
+    assert.ok(ys[i] - ys[i - 1] < 15, 'no frame jumps (85 px glide, ~11 px/frame peak)');
+  }
+  assert.ok(Math.abs(criticallyDampedSpring(-85, 0, 0.6).x) < 1.5);
+  assert.ok(Math.abs(hold.frame(2600).y) < 1.5, 'home within ~0.6 s');
+  assert.equal(hold.frame(3100).active, false);
+  assert.equal(hold.active(), false);
+});
+
+test('phone: a viewer resize while the page springs home joins the spring (no jump)', () => {
+  const hold = createLayoutShiftHold();
+  hold.absorb(40, 0, { held: false }); // after the lift: springs at once
+  const before = hold.frame(100).y;
+  hold.absorb(-40, 100); // the toolbar comes back mid-spring
+  const after = hold.frame(100).y;
+  assert.ok(Math.abs(after - (before + 40)) < 1e-9, 'what is shown does not move in that frame');
+  let prev = after;
+  for (let t = 100; t < 1000; t += 16) {
+    const y = hold.frame(t).y;
+    assert.ok(Math.abs(y - prev) < 12);
+    prev = y;
+  }
+  assert.equal(hold.active(), false);
 });
