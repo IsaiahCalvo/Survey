@@ -3,24 +3,30 @@
 // run when the erase is saved AND again when the page is rebuilt from the
 // store) asked pathToPageAnnotation for the base stroke's full polygon outline
 // — a Martinez self-union of every outline command — and then used only its
-// paint fields (fill, sourceWidth, paperSourceStroke). The outline is now
-// skipped there; the survivor already carries its own polygons.
+// paint fields (fill, sourceWidth, paperSourceStroke). It now asks for the
+// paint fields only (paintOnly); the survivor already carries its polygons.
+// (Speed is measured by debug/scenarios/test-plan/part10-eraser.spec.mjs —
+// 9.9 s -> 1.4 s longest block; blocking CI tests may not assert time.) Here:
+// the rebased result is unchanged.
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { rebaseErasedPathSurvivor } from '../src/utils/pageSpaceEraser.js';
 
-// A filled pen-style outline made of 1,500 overlapping squares: its polygon
-// outline is a large self-union (seconds), its paint fields are trivial.
-function bigOverlappingInk() {
+// A filled pen-style outline made of overlapping squares (its polygon outline
+// is a self-union; its paint fields are trivial).
+function overlappingInk({ curved = false, count = 40 } = {}) {
   const path = [];
-  for (let i = 0; i < 1500; i += 1) {
-    const x = 50 + i * 0.3 + 12 * Math.cos(i / 2.2);
+  for (let i = 0; i < count; i += 1) {
+    const x = 50 + i * 2 + 12 * Math.cos(i / 2.2);
     const y = 300 + 12 * Math.sin(i / 2.2);
-    path.push(['M', x, y], ['L', x + 6, y], ['L', x + 6, y + 6], ['L', x, y + 6], ['Z']);
+    path.push(['M', x, y]);
+    if (curved) path.push(['C', x + 2, y - 2, x + 4, y - 2, x + 6, y]);
+    else path.push(['L', x + 6, y]);
+    path.push(['L', x + 6, y + 6], ['L', x, y + 6], ['Z']);
   }
   return {
-    id: 'big-detailed-ink',
+    id: 'detailed-ink',
     type: 'path',
     tool: 'pen',
     path,
@@ -34,26 +40,31 @@ function bigOverlappingInk() {
     strokeWidth: 0,
     sourceWidth: 3,
     fillRule: 'nonzero',
-    data: { id: 'big-detailed-ink', tool: 'pen' },
+    data: { id: 'detailed-ink', tool: 'pen' },
   };
 }
 
-test('rebasing an erased survivor of a big detailed stroke skips the unused outline build', () => {
-  const base = bigOverlappingInk();
-  const survivor = {
-    ...base,
-    polygons: [[[[60, 290], [120, 290], [120, 320], [60, 320], [60, 290]]]],
-  };
-  const started = performance.now();
-  const rebased = rebaseErasedPathSurvivor(base, base, survivor);
-  const elapsed = performance.now() - started;
+const survivorOf = (base) => ({
+  ...base,
+  polygons: [[[[60, 290], [120, 290], [120, 320], [60, 320], [60, 290]]]],
+});
 
+test('a rebased erase survivor keeps its own outline and the base stroke\'s paint', () => {
+  const base = overlappingInk();
+  const survivor = survivorOf(base);
+  const rebased = rebaseErasedPathSurvivor(base, base, survivor);
   assert.ok(rebased, 'the survivor is rebased');
   assert.deepEqual(rebased.polygons, survivor.polygons, 'the survivor keeps its own outline');
   assert.equal(rebased.fill, '#ff0000', 'paint comes from the current base');
   assert.equal(rebased.strokeWidth, 0);
-  // Before the fix this shape ran over 13 minutes in Node (the self-union of
-  // 1,500 overlapping squares) and was killed; now it is just the
-  // copy. Generous bound for loaded CI machines.
-  assert.ok(elapsed < 750, `rebase took ${elapsed.toFixed(0)} ms`);
+  assert.equal(rebased.paperSourceStroke ?? null, null, 'straight outlines carry no source paint');
+});
+
+test('a curved base still hands its authored fill paint to the survivor', () => {
+  const base = overlappingInk({ curved: true });
+  const rebased = rebaseErasedPathSurvivor(base, base, survivorOf(base));
+  assert.ok(rebased);
+  assert.equal(rebased.paperSourceStroke?.paintMode, 'fill');
+  assert.equal(rebased.paperSourceStroke?.fill, '#ff0000');
+  assert.deepEqual(rebased.paperSourceStroke?.path, base.path);
 });
