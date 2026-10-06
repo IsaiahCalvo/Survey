@@ -74,6 +74,55 @@ test('a page off screen gives way to a page on screen and can ask again', async 
   on.release();
 });
 
+// Review 9 / robust 10 item 3: `ready` resolves inside pump(), but the page
+// creates its render task a microtask later. A page on screen that asked in
+// that gap used to find nothing to cancel, so the off-screen page drew to the
+// end while the page in view waited one full extra draw.
+test('a page on screen that asks before an off-screen draw has begun goes first', async () => {
+  // Same loop as PdfPageCanvas: request -> await ready -> (claim) -> draw.
+  const run = async ({ claim }) => {
+    let visible = new Set();
+    const queue = createPageRasterQueue({ isVisible: (i) => visible.has(i), focusIndex: () => 0 });
+    const log = [];
+    const holder = async (index, ms) => {
+      let task = null;
+      for (;;) {
+        const turn = queue.request(index, { onPreempt: () => task?.cancel() });
+        await turn.ready;
+        if (claim && !turn.claim()) { turn.release(); continue; }
+        let cancelled = false;
+        let finish;
+        task = { cancel: () => { cancelled = true; finish(); } };
+        log.push(`start ${index}`);
+        await new Promise((resolve) => { finish = resolve; setTimeout(resolve, ms); });
+        task = null;
+        turn.release();
+        if (cancelled) { log.push(`stopped ${index}`); continue; }
+        log.push(`done ${index}`);
+        return;
+      }
+    };
+    // Every mounted page's effect runs in one batch: the off-screen page 3
+    // wins the first turn, then (same task, before its continuation runs)
+    // the page on screen asks.
+    const off = holder(3, 40);
+    visible = new Set([0]);
+    const on = holder(0, 10);
+    await Promise.all([off, on]);
+    return log;
+  };
+  assert.deepEqual(await run({ claim: false }), ['start 3', 'done 3', 'start 0', 'done 0'], 'before: the page in view waited for the whole off-screen draw');
+  assert.deepEqual(await run({ claim: true }), ['start 0', 'done 0', 'start 3', 'done 3'], 'after: the page in view draws first, page 3 asks again');
+  // claim() is false once released, true for an untouched turn
+  const queue = createPageRasterQueue();
+  const t = queue.request(0);
+  await t.ready;
+  assert.equal(t.claim(), true);
+  t.release();
+  assert.equal(t.claim(), false);
+  assert.match(CONTAINER, /if \(turn && !turn\.claim\(\)\) \{ turn\.release\(\); continue; \}/);
+});
+
 test('a page that unmounts while waiting leaves the line', async () => {
   const queue = createPageRasterQueue();
   const first = queue.request(0);

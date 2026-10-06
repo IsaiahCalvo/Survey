@@ -19,6 +19,10 @@
  * createPageRasterQueue({ isVisible(index), focusIndex() }) returns
  *   request(index, { onPreempt }) -> turn
  *     turn.ready     promise that resolves when it is this page's turn
+ *     turn.claim()   call right before the draw starts: false when a page on
+ *                    screen took the turn in the gap between `ready` and now
+ *                    (release and ask again - there was no draw yet for
+ *                    onPreempt to stop)
  *     turn.release() frees the turn (finished, failed, cancelled or unmounted);
  *                    safe to call more than once, and before the turn starts
  *   pump()           re-checks the order (call when what is on screen changes)
@@ -66,7 +70,19 @@ export function createPageRasterQueue({ isVisible = () => true, focusIndex = () 
       started: false,
       preempted: false,
       released: false,
+      claimed: false,
       start: null,
+      // Review 9 / robust 10 item 3: `ready` resolves in pump(), but the page
+      // only creates its render task a microtask (or more) later. A page on
+      // screen asking in that gap marked this turn preempted and called
+      // onPreempt, which had nothing to cancel yet - so the off-screen draw
+      // then ran to the end while the page in view waited. claim() lets the
+      // holder see that before it starts.
+      claim: () => {
+        if (turn.released || turn.preempted) return false;
+        turn.claimed = true;
+        return true;
+      },
       ready: null,
       release: () => {
         if (turn.released) return;

@@ -426,6 +426,9 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
             : null;
           if (turn) await turn.ready;
           if (cancelled || myGen !== genRef.current) return;
+          // A page on screen took the turn before this draw began: give it
+          // way now (there is no task yet for onPreempt to stop) and ask again.
+          if (turn && !turn.claim()) { turn.release(); continue; }
 
           // Keep the previous bitmap visible until the replacement is complete.
           // Mobile uses a lower raster ceiling and releases this staging canvas
