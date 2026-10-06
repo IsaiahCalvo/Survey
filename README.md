@@ -185,14 +185,18 @@ areas, the real iOS keyboard, rubber-band scrolling and rotation.
   Without the label the jobs are skipped and cost nothing. Once the file is on
   `main`, Actions → "iOS simulator check" → Run workflow also works.
 - **Change what runs:** commit `.github/ios-sim/config.json` — `device`
-  ("iPhone 16"), `ios` ("latest" or e.g. "18.5"), `runner` (macOS image),
-  `urls.home` / `urls.doc`, `flows` (file names in `.github/ios-sim/flows/`),
-  `expoGo.enabled` / `expoGo.url`, `video`, `maxVideoMB`, `keepRuns`. With
-  `localDevServer: true` the job runs this commit's own Vite dev server on the
-  Mac, because the `?testPdf=` document route only exists in dev builds.
+  ("iPhone 16"), `ios` ("latest" or e.g. "26.4"), `runner` (macOS image),
+  `baseUrl` + `urls.home` / `urls.doc` (paths starting with `/` hang off
+  `baseUrl`), `flows` (file names in `.github/ios-sim/flows/`),
+  `expoGo.enabled` / `expoGo.url`, `video`, `maxVideoMB`, `keepRuns`. The
+  `?testPdf=` document route only exists in dev builds, so `baseUrl` must be a
+  dev build (e.g. a here.now copy); or set `localDevServer: true` and the job
+  runs this commit's own Vite dev server on the Mac (adds about 4 minutes).
 - **Flows** are [Maestro](https://docs.maestro.dev) YAML. `smoke` = home →
   e-mail field (keyboard) → guest home → Templates → test document → Draw tool
-  → Pages/Search (keyboard in a sheet) → hard scroll → landscape → portrait.
+  → Pages sheet → the PDF's form field (keyboard over the document) → hard
+  scroll → landscape → portrait. Steps are optional, so a missed tap does not
+  stop the run; `results.md` lists the skipped ones.
   `expo-go` = the same idea inside Expo Go's WKWebView. The default Expo link is
   the `expo-go` update branch from `mobile-expo/README.md`, which loads
   `https://surveytool.app/mobile`; point `expoGo.url` at another branch link to
@@ -207,7 +211,8 @@ areas, the real iOS keyboard, rubber-band scrolling and rotation.
   the full-size video.
 - **Limits:** no pinch or two-finger gestures (Maestro drives one finger), no
   camera or real sign-in, and the simulator is not a real device for speed or
-  memory. About 10–15 minutes a run.
+  memory. The Expo shell is locked to portrait, so its rotation shots stay
+  portrait. About 15 minutes a run.
 
 ## License
 

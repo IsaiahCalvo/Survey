@@ -93,12 +93,16 @@ jobs:
           python3 -I - .github/ios-sim/config.json "$GITHUB_ENV" <<'PY'
           import json, sys
           cfg = json.load(open(sys.argv[1]))
-          urls = cfg.get("urls", {})
           expo = cfg.get("expoGo", {})
+          # URLs that start with "/" hang off baseUrl, or off this commit's own
+          # dev server when localDevServer is on.
+          local = bool(cfg.get("localDevServer", False))
+          base = "http://127.0.0.1:5173" if local else cfg.get("baseUrl", "").rstrip("/")
+          urls = {k: (base + v if v.startswith("/") else v) for k, v in cfg.get("urls", {}).items()}
           env = {
               "DEVICE": cfg.get("device", "iPhone 16"),
               "IOS": str(cfg.get("ios", "latest")),
-              "LOCAL_DEV": "true" if cfg.get("localDevServer", True) else "false",
+              "LOCAL_DEV": "true" if local else "false",
               "HOME_URL": urls.get("home", ""),
               "DOC_URL": urls.get("doc", ""),
               "FLOWS": " ".join(cfg.get("flows", ["smoke"])),
@@ -269,8 +273,8 @@ jobs:
           if [ -n "$HOME_URL" ]; then
             xcrun simctl openurl "$UDID" "$HOME_URL"; sleep 20; shot base-01-safari-home
           fi
-          if [ -n "$DOC_URL" ] && [ "$LOCAL_DEV" = "true" ]; then
-            xcrun simctl openurl "$UDID" "$DOC_URL"; sleep 45; shot base-02-safari-document
+          if [ -n "$DOC_URL" ]; then
+            xcrun simctl openurl "$UDID" "$DOC_URL"; sleep 25; shot base-02-safari-document
           fi
           echo "$(date +%s) baseline" >> "$OUT/timings.txt"
 
@@ -374,12 +378,24 @@ jobs:
           VIDEO_NOTE="no video"
           if [ -s "$OUT/raw/video.mov" ]; then
             raw_mb=$(( $(stat -f%z "$OUT/raw/video.mov") / 1048576 ))
-            if command -v ffmpeg > /dev/null; then
-              ffmpeg -loglevel error -y -i "$OUT/raw/video.mov" -vf "scale=-2:960,fps=15" -c:v libx264 -crf 32 -preset veryfast -pix_fmt yuv420p -an "$PUB/video.mp4" || true
+            # The runner has no ffmpeg; the imageio-ffmpeg wheel carries a
+            # static one (seconds to install, unlike Homebrew). avconvert is
+            # the fallback but only has fixed-bitrate presets (~70 MB a run).
+            FF=$(command -v ffmpeg)
+            if [ -z "$FF" ]; then
+              python3 -m venv "$RUNNER_TEMP/ffvenv" > "$OUT/raw/ffmpeg-install.txt" 2>&1 \
+                && "$RUNNER_TEMP/ffvenv/bin/pip" install -q imageio-ffmpeg >> "$OUT/raw/ffmpeg-install.txt" 2>&1 \
+                && FF=$("$RUNNER_TEMP/ffvenv/bin/python" -c 'import imageio_ffmpeg as m; print(m.get_ffmpeg_exe())')
+            fi
+            if [ -n "$FF" ]; then
               tool=ffmpeg
+              "$FF" -loglevel error -y -i "$OUT/raw/video.mov" -vf "fps=10,scale=-2:800" -c:v libx264 -crf 34 -preset veryfast -pix_fmt yuv420p -movflags +faststart -an "$PUB/video.mp4" >> "$OUT/raw/ffmpeg-install.txt" 2>&1
+              if [ -s "$PUB/video.mp4" ] && [ $(( $(stat -f%z "$PUB/video.mp4") / 1048576 )) -ge "$MAX_VIDEO_MB" ]; then
+                "$FF" -loglevel error -y -i "$OUT/raw/video.mov" -vf "fps=6,scale=-2:600" -c:v libx264 -crf 40 -preset veryfast -pix_fmt yuv420p -movflags +faststart -an "$PUB/video.mp4" >> "$OUT/raw/ffmpeg-install.txt" 2>&1
+              fi
             else
-              avconvert --source "$OUT/raw/video.mov" --output "$PUB/video.mp4" --preset Preset960x540 --replace > "$OUT/raw/avconvert.log" 2>&1 || true
               tool=avconvert
+              avconvert --source "$OUT/raw/video.mov" --output "$PUB/video.mp4" --preset Preset640x480 --replace > "$OUT/raw/avconvert.log" 2>&1
             fi
             if [ -s "$PUB/video.mp4" ]; then
               mb=$(( $(stat -f%z "$PUB/video.mp4") / 1048576 ))
@@ -433,6 +449,12 @@ jobs:
               n = os.path.basename(d)
               rc = open(os.path.join(d, "exit-code")).read().strip() if os.path.exists(os.path.join(d, "exit-code")) else "did not run"
               L.append(f"### {n}: exit {rc}\n")
+              # Optional steps that did not find their target still "pass";
+              # list them so a missed tap is visible.
+              dbg = os.path.join(d, "debug", "maestro.log")
+              if os.path.exists(dbg):
+                  warned = [l.split("CommandWarned:", 1)[1].strip() for l in open(dbg, errors="replace") if "CommandWarned:" in l]
+                  L.append("Skipped optional steps: " + ("; ".join(warned) if warned else "none") + "\n")
               so = os.path.join(d, "stdout.txt")
               if os.path.exists(so):
                   lines = [re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", x.rstrip()) for x in open(so, errors="replace")]

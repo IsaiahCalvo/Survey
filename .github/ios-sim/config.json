@@ -2,10 +2,11 @@
   "runner": "macos-26",
   "device": "iPhone 16",
   "ios": "latest",
-  "localDevServer": true,
+  "baseUrl": "https://walnut-sierra-vmj2.here.now",
+  "localDevServer": false,
   "urls": {
-    "home": "https://sonic-tassel-snt8.here.now/mobile?mobileNav=tabs&nativeShell=expo",
-    "doc": "http://127.0.0.1:5173/?testPdf=clickable-link-test.pdf&surveyTemplateWorkflowE2E=1&mobileNav=tabs&nativeShell=expo"
+    "home": "/mobile?mobileNav=tabs&nativeShell=expo",
+    "doc": "/mobile?testPdf=clickable-link-test.pdf&surveyTemplateWorkflowE2E=1&mobileNav=tabs&nativeShell=expo"
   },
   "flows": ["smoke"],
   "expoGo": {

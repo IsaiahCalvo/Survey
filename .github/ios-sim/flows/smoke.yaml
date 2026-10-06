@@ -64,7 +64,7 @@ name: smoke
     text: "Pan"
     optional: true
 
-# 5. Pages sheet -> Search tab (a text field inside a sheet, keyboard up).
+# 5. Pages sheet open and closed again.
 - tapOn:
     text: "Open pages, search, and bookmarks"
     optional: true
@@ -72,14 +72,26 @@ name: smoke
     timeout: 3000
 - takeScreenshot: smoke-08-pages-sheet
 - tapOn:
-    text: "Search"
-    optional: true
-- waitForAnimationToEnd:
-    timeout: 3000
-- takeScreenshot: smoke-09-search-keyboard
-- tapOn:
     text: "Close document panel"
     optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# 5b. The PDF's own form field ("Type your name in the box"): the keyboard
+#     over the document. The field has no accessible name, so tap where it
+#     sits at the default fit on an iPhone 16 (move this if the layout moves).
+- tapOn:
+    point: "43%, 39%"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: smoke-09-form-field-keyboard
+- inputText: "iOS sim"
+- takeScreenshot: smoke-09b-form-field-typed
+- tapOn:
+    text: "Done"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
 
 # 6. Scroll hard to the bottom (rubber-band shows in the video).
 - swipe:
