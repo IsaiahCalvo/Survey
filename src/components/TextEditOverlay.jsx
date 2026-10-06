@@ -281,6 +281,10 @@ export default function TextEditOverlay({
   spaces = [],
   isRegionOverlayEnabled = null,
   onLiveTextGrow,
+  // Callouts only (owner Test 44): ({ width, height, fontSize }) -> { left, top }
+  // in page units - where the growing box goes so it grows away from its
+  // leader (PDFViewer -> selectedTextFormatting placeCalloutEditBox).
+  placeCalloutBox = null,
   onRichTextEditorChange,
   onCalloutTextStyleChange,
   onEditCommit,
@@ -358,6 +362,10 @@ export default function TextEditOverlay({
   const [liveOuterH, setLiveOuterH] = useState(geomRef.current.outerH);
   const liveOuterHRef = useRef(geomRef.current.outerH);
   const [, forceRender] = useState(0);
+  const placeCalloutBoxRef = useRef(placeCalloutBox);
+  placeCalloutBoxRef.current = placeCalloutBox;
+  // True once a callout's box has moved (grown away from its leader).
+  const boxMovedRef = useRef(false);
 
   const wrapperRef = useRef(null);
   const editableRef = useRef(null);
@@ -443,9 +451,24 @@ export default function TextEditOverlay({
     const naturalInnerH = measureNaturalInnerHeight();
     const floorH = g.outerH;
     const outerH = Math.max(naturalInnerH + 2 * padY, floorH);
+    // A callout's box grows away from its leader: with the knee below, the
+    // bottom edge stays and the top moves up (the knee and tip never move).
+    let moved = false;
+    if (isCallout && typeof placeCalloutBoxRef.current === 'function') {
+      const pos = placeCalloutBoxRef.current({ width: g.outerW, height: outerH, fontSize: s.fontSize });
+      if (pos && Number.isFinite(pos.left) && Number.isFinite(pos.top)
+        && (pos.left !== g.left || pos.top !== g.top)) {
+        g.left = pos.left;
+        g.top = pos.top;
+        boxMovedRef.current = true;
+        moved = true;
+      }
+    }
     if (outerH !== liveOuterHRef.current) {
       liveOuterHRef.current = outerH;
       setLiveOuterH(outerH);
+    } else if (moved) {
+      forceRender((n) => n + 1);
     }
     onLiveTextGrow({
       left: g.left,
@@ -610,6 +633,15 @@ export default function TextEditOverlay({
       if (!json) {
         if (typeof onEditCancel === 'function') onEditCancel();
         return;
+      }
+      // The callout box placed for its final size (grown away from its leader).
+      if (isCallout && typeof placeCalloutBoxRef.current === 'function') {
+        const pos = placeCalloutBoxRef.current({ width: json.width, height: json.height, fontSize: s.fontSize });
+        if (pos && Number.isFinite(pos.left) && Number.isFinite(pos.top)
+          && (boxMovedRef.current || pos.left !== json.left || pos.top !== json.top)) {
+          json.left = pos.left;
+          json.top = pos.top;
+        }
       }
     }
 
