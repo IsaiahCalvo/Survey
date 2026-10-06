@@ -544,10 +544,15 @@ const subtractPolygonGeometries = (subjectValue, clipValue) => {
   }
 };
 
+// paintOnly: the caller reads only the paint fields (fill, sourceWidth,
+// paperSourceStroke), never the outline. The outline build is then skipped:
+// on a big self-overlapping stroke it is a Martinez self-union of thousands
+// of commands (~4 s for a 1,600-point scribble, run twice per erase by the
+// lane rebase) whose result the rebase threw away (test plan item 68).
 function pathToPageAnnotation(
   object,
   internalId,
-  { forcePolygon = false, eraserRadius = null } = {},
+  { forcePolygon = false, eraserRadius = null, paintOnly = false } = {},
 ) {
   const persistedPolygons = normalizeMultiPolygon(object?.polygons);
   let exactAuthoredPath = null;
@@ -693,8 +698,7 @@ function pathToPageAnnotation(
   if (mustBakeStrokeOutline) {
     // This outline becomes permanent after the first bite. Keep it below the
     // visual-fidelity threshold and retain the authored cap/join/dash style.
-    const localPolygons = createLocalStrokeOutline();
-    const polygons = transformPolygons(localPolygons, transform);
+    const polygons = paintOnly ? [] : transformPolygons(createLocalStrokeOutline(), transform);
     const polygonCommands = polygonSetToCommands(polygons);
     return {
       id: internalId,
@@ -731,11 +735,10 @@ function pathToPageAnnotation(
     const hasAnalyticFillBoundary = localCommands.some((command) => (
       command?.[0] === 'Q' || command?.[0] === 'C'
     ));
-    const localPolygons = filledOutlineCommandsToPolygonSet(localCommands, {
+    const polygons = paintOnly ? [] : transformPolygons(filledOutlineCommandsToPolygonSet(localCommands, {
       curveTolerance: localCurveTolerance,
       fillRule: object?.fillRule === 'evenodd' ? 'evenodd' : 'nonzero',
-    });
-    const polygons = transformPolygons(localPolygons, transform);
+    }), transform);
     const polygonCommands = polygonSetToCommands(polygons);
     return {
       id: internalId,
@@ -778,8 +781,7 @@ function pathToPageAnnotation(
     // Partial erase must not globally reshape the untouched curve. Legacy
     // butt/square caps, bevel/miter joins, and dash gaps are promoted from
     // their exact visible stroke style instead of silently becoming round.
-    const localPolygons = createLocalStrokeOutline();
-    const polygons = transformPolygons(localPolygons, transform);
+    const polygons = paintOnly ? [] : transformPolygons(createLocalStrokeOutline(), transform);
     const polygonCommands = polygonSetToCommands(polygons);
     return {
       id: internalId,
@@ -1103,8 +1105,10 @@ export function rebaseErasedPathSurvivor(
         currentCommands,
       )
     : survivorPolygons;
+  // Only the paint fields are used below; the survivor brings its own outline.
   const currentGeometry = pathToPageAnnotation(currentBase, 'eraser-rebase', {
     forcePolygon: true,
+    paintOnly: true,
   });
   if (!currentGeometry) return null;
 
