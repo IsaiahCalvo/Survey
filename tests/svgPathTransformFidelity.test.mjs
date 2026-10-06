@@ -298,14 +298,20 @@ test('SVG path transform matches Fabric numeric origins', () => {
 });
 
 test('visible path, hover halo, and hit target all consume the same transform helper', () => {
+  // 2026-10-06 (smooth zoom): a moved-only path writes its move into the path
+  // data (resolveBakedFabricPath, utils/svgPathBake.js); all three surfaces
+  // take the same baked result, or the same transform helper otherwise.
   assert.match(
     SOURCE,
-    /cloneElement\(renderElement,\s*\{\s*transform:\s*cachedMarkGeometry\('pathTransform', renderObj, renderObj === obj, buildFabricPathSvgTransform\)/s,
+    /cloneElement\(renderElement, baked\s*\?\s*\{ d: baked\.d, transform: undefined \}\s*:\s*\{ transform: cachedMarkGeometry\('pathTransform', renderObj, renderObj === obj, buildFabricPathSvgTransform\) \}\)/s,
   );
   assert.match(
     SOURCE,
     /const pathTransform = cachedMarkGeometry\('pathTransform', renderObj, renderObj === obj, buildFabricPathSvgTransform\);/,
   );
+  assert.match(SOURCE, /const cachedBakedPath = cachedMarkGeometry\('bakedPath', renderObj, renderObj === obj, resolveBakedFabricPath\);/);
+  assert.match(SOURCE, /const targetD = bakedPath \? bakedPath\.d : pathD;/);
+  assert.match(SOURCE, /const targetTransform = bakedPath \? undefined : pathTransform;/);
   // (perf 2026-09-30: the helper result is cached per committed object; live
   // previews — renderObj !== obj — are always computed fresh)
   assert.match(SOURCE, /if \(!committed \|\| !target \|\| typeof target !== 'object'\) return compute\(target\);/);
