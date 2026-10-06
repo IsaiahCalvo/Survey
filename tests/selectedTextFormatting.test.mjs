@@ -20,16 +20,30 @@ import {
   buildSelectedTextStylePatch,
   isFormattableTextObject,
   patchCanReflowText,
+  placeCalloutEditBox,
   readCalloutTextStyle,
   readTextboxTextStyle,
   refitCalloutToText,
   refitTextboxToText,
   resolveFontSizeDraft,
   resolveTextStyleWrite,
+  TEXT_BOX_PADDING,
 } from '../src/utils/selectedTextFormatting.js';
 import { findSelectedAnnotationIndex } from '../src/utils/annotationStorageIdentity.js';
 import { composeTextColor } from '../src/utils/textColorOpacity.js';
 import { mergeEditOntoCurrent } from '../src/utils/dragCommitMerge.js';
+import {
+  MIN_KNEE_TO_BOX_EDGE_DISTANCE,
+  calculateCalloutConnection,
+  calloutDrawnBoxHeight,
+} from '../src/utils/calloutGeometry.js';
+import { planGroupUpdate, resolveGroupWrite } from '../src/utils/selectionRestyle.js';
+import {
+  applyCalloutListToByPage,
+  calloutToAnnotationObject,
+  deriveCalloutsFromByPage,
+} from '../src/utils/calloutAnnotationBridge.js';
+import { normalizeMergedHistoryObject } from '../src/utils/historyMergeNormalize.js';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -145,7 +159,9 @@ test('PDFViewer publishes the selection as the text bar source and writes back t
   assert.match(handler, /handlePatchSelectedAnnotation\(write\.patch, write\.reflows/);
   assert.equal((handler.match(/handlePatchSelected(Callout|Annotation)\(/g) || []).length, 2);
   // Both patch paths apply the refit to the object they save, in that save.
-  assert.match(viewer, /return typeof refit === 'function' \? \(refit\(patched, pageNumber\) \|\| patched\) : patched;/);
+  // Owner Test 44: the refit also gets the callout as it was (its old font
+  // size sets the old drawn box edge it anchors to).
+  assert.match(viewer, /return typeof refit === 'function' \? \(refit\(patched, pageNumber, c\) \|\| patched\) : patched;/);
   assert.match(viewer, /const nextObj = typeof refit === 'function' \? \(refit\(mergedObj\) \|\| mergedObj\) : mergedObj;/);
 });
 
@@ -224,44 +240,266 @@ test('an empty change writes nothing', () => {
 
 // A fake layout engine: `fontSize x lineStep` per wrapped line, where a line
 // holds floor(innerWidth / (0.6 x fontSize)) characters (bold is 10% wider).
-const fakeMeasure = ({ text, innerWidth, fontSize, fontWeight, lineHeight }) => {
+// `query: 'widestWord'` answers the widest word's one-line width.
+const fakeMeasure = ({ text, innerWidth, fontSize, fontWeight, lineHeight, query }) => {
   const charWidth = 0.6 * fontSize * (String(fontWeight) === 'bold' ? 1.1 : 1);
+  if (query === 'widestWord') {
+    return String(text).split(/\s+/).reduce((widest, word) => Math.max(widest, word.length * charWidth), 0);
+  }
   const perLine = Math.max(1, Math.floor(innerWidth / charWidth));
   const lines = String(text).split('\n').reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / perLine)), 0);
   return lines * fontSize * lineHeight;
 };
 
-test('a bigger size on a picked callout grows its box in the same write; the knee stays', () => {
-  const page = { width: 600, height: 800 };
-  const callout = {
-    id: 'c1', text: 'CALLOUT',
-    arrowTip: { x: 0.1, y: 0.1 }, knee: { x: 0.2, y: 0.2 },
-    textBoxPosition: { x: 0.3, y: 0.3 }, textBoxWidth: 120 / 600, textBoxHeight: 44 / 800,
-    style: { fontSize: 14 },
+// Owner Test 44 (2026-10-06): the box fits its text both ways and moves AWAY
+// from its leader. RULED: the earlier test here pinned "boxes never shrink"
+// and "the position never moves"; the owner's decision replaced both rules.
+const PAGE = { width: 600, height: 800 };
+const GAP = MIN_KNEE_TO_BOX_EDGE_DISTANCE;
+// Page units -> a callout (fractions of the page).
+const makeCallout = ({ id = 'c1', text = 'AB CD EF GH', box, knee, tip, fontSize = 12 }) => ({
+  id,
+  pageNumber: 1,
+  text,
+  arrowTip: tip ? { x: tip.x / PAGE.width, y: tip.y / PAGE.height } : undefined,
+  knee: knee ? { x: knee.x / PAGE.width, y: knee.y / PAGE.height } : undefined,
+  textBoxPosition: { x: box.left / PAGE.width, y: box.top / PAGE.height },
+  textBoxWidth: box.width / PAGE.width,
+  textBoxHeight: box.height / PAGE.height,
+  style: { fontSize },
+});
+// The box as DRAWN (stored height, at least 18, plus the descender strip).
+const drawn = (callout) => {
+  const left = callout.textBoxPosition.x * PAGE.width;
+  const top = callout.textBoxPosition.y * PAGE.height;
+  const width = callout.textBoxWidth * PAGE.width;
+  return {
+    left, top, right: left + width, width,
+    height: callout.textBoxHeight * PAGE.height,
+    bottom: top + calloutDrawnBoxHeight(callout.textBoxHeight * PAGE.height, callout.style.fontSize),
   };
-  const target = { kind: 'callout', key: 'callout:c1', style: readCalloutTextStyle(callout) };
-  const write = resolveTextStyleWrite({ next: { ...target.style, fontSize: 36 }, target, activeTool: 'select', dragRecord: null });
-  assert.equal(write.reflows, true);
-  // The patch handler merges the style, then refits - one object, one save.
-  const patched = { ...callout, style: { ...callout.style, ...write.patch } };
-  const refit = refitCalloutToText(patched, page, fakeMeasure);
-  // 7 chars at 36px in 108px inner width: 5 per line -> 2 lines x 36 x 1.13.
-  const expectedHeight = 2 * 36 * 1.13;
-  assert.ok(Math.abs(refit.textBoxHeight * 800 - expectedHeight) < 1e-6, `height ${refit.textBoxHeight * 800}`);
-  assert.equal(refit.style.fontSize, 36);
-  assert.deepEqual(refit.knee, callout.knee);
-  assert.deepEqual(refit.arrowTip, callout.arrowTip);
-  assert.deepEqual(refit.textBoxPosition, callout.textBoxPosition);
-  assert.equal(refit.textBoxWidth, callout.textBoxWidth);
-  // Boxes never shrink: back to 14pt keeps the grown box.
-  const smaller = refitCalloutToText({ ...refit, style: { ...refit.style, fontSize: 14 } }, page, fakeMeasure);
-  assert.equal(smaller.textBoxHeight, refit.textBoxHeight);
+};
+const resize = (callout, fontSize) => refitCalloutToText(
+  { ...callout, style: { ...callout.style, fontSize } }, PAGE, fakeMeasure, { before: callout },
+);
+const near = (a, b, label) => assert.ok(Math.abs(a - b) < 1e-6, `${label}: ${a} vs ${b}`);
+const distToBox = (p, r) => Math.hypot(Math.max(r.left - p.x, 0, p.x - r.right), Math.max(r.top - p.y, 0, p.y - r.bottom));
+// The renderer's own geometry keeps the stored knee (no bad-geometry re-route).
+const rendererKeepsKnee = (callout) => {
+  const r = drawn(callout);
+  const knee = { x: callout.knee.x * PAGE.width, y: callout.knee.y * PAGE.height };
+  const tip = { x: callout.arrowTip.x * PAGE.width, y: callout.arrowTip.y * PAGE.height };
+  const conn = calculateCalloutConnection(r.left, r.top, r.width, r.bottom - r.top, knee, tip, 0);
+  near(conn.effectiveKnee.x, knee.x, 'drawn knee x');
+  near(conn.effectiveKnee.y, knee.y, 'drawn knee y');
+};
+
+// 'AB CD EF GH' in a 120-wide box: one line at 12pt and 10pt, three at 36pt.
+const ONE_LINE_12 = 12 * 1.13;
+const THREE_LINES_36 = 3 * 36 * 1.13;
+
+test('knee below: 12 -> 36 -> 10 keeps the bottom edge, grows up and shrinks back down; knee and tip stay', () => {
+  const start = makeCallout({
+    box: { left: 100, top: 300, width: 120, height: ONE_LINE_12 },
+    knee: { x: 160, y: 500 }, tip: { x: 160, y: 650 },
+  });
+  const bottom = drawn(start).bottom;
+  const big = resize(start, 36);
+  near(big.textBoxHeight * PAGE.height, THREE_LINES_36, 'height at 36');
+  near(drawn(big).bottom, bottom, 'bottom edge at 36');
+  assert.ok(drawn(big).top < drawn(start).top, 'grew upward');
+  assert.equal(big.textBoxWidth, start.textBoxWidth);
+  assert.deepEqual(big.knee, start.knee);
+  assert.deepEqual(big.arrowTip, start.arrowTip);
+  rendererKeepsKnee(big);
+  const small = resize(big, 10);
+  near(small.textBoxHeight * PAGE.height, 10 * 1.13, 'shrinks to one line at 10');
+  near(drawn(small).bottom, bottom, 'bottom edge at 10');
+  assert.deepEqual(small.knee, start.knee);
+  rendererKeepsKnee(small);
+});
+
+test('knee above: the top edge stays and the box grows down; knee and tip stay', () => {
+  const start = makeCallout({
+    box: { left: 100, top: 300, width: 120, height: ONE_LINE_12 },
+    knee: { x: 160, y: 200 }, tip: { x: 160, y: 100 },
+  });
+  const big = resize(start, 36);
+  assert.deepEqual(big.textBoxPosition, start.textBoxPosition);
+  near(big.textBoxHeight * PAGE.height, THREE_LINES_36, 'height');
+  assert.deepEqual(big.knee, start.knee);
+  assert.deepEqual(big.arrowTip, start.arrowTip);
+  rendererKeepsKnee(big);
+  // Shrinking back keeps the top edge too.
+  const small = resize(big, 12);
+  assert.deepEqual(small.textBoxPosition, start.textBoxPosition);
+  near(small.textBoxHeight * PAGE.height, ONE_LINE_12, 'shrunk');
+});
+
+test('knee beside (left or right): the top edge stays and the box grows down', () => {
+  for (const [knee, tip] of [[{ x: 300, y: 310 }, { x: 400, y: 310 }], [{ x: 40, y: 310 }, { x: 10, y: 310 }]]) {
+    const start = makeCallout({ box: { left: 100, top: 300, width: 120, height: ONE_LINE_12 }, knee, tip });
+    const big = resize(start, 36);
+    assert.deepEqual(big.textBoxPosition, start.textBoxPosition, `knee at x=${knee.x}`);
+    near(big.textBoxHeight * PAGE.height, THREE_LINES_36, 'height');
+    assert.deepEqual(big.knee, start.knee);
+    rendererKeepsKnee(big);
+  }
+});
+
+test('a box that would grow over the leader shifts clear of it instead of moving the knee', () => {
+  // Knee to the right, leader running back down under the box: growing down
+  // would cross it, so the box slides the short way clear.
+  const start = makeCallout({
+    box: { left: 100, top: 300, width: 120, height: ONE_LINE_12 },
+    knee: { x: 260, y: 310 }, tip: { x: 150, y: 600 },
+  });
+  const big = resize(start, 36);
+  const r = drawn(big);
+  near(big.textBoxHeight * PAGE.height, THREE_LINES_36, 'height');
+  assert.deepEqual(big.knee, start.knee);
+  assert.deepEqual(big.arrowTip, start.arrowTip);
+  assert.ok(r.left < 100 && r.left > 60, `slid left a little (${r.left})`);
+  assert.ok(distToBox({ x: 260, y: 310 }, r) >= GAP - 1e-6);
+  rendererKeepsKnee(big);
+});
+
+test('at the top of the page a bottom-anchored box grows down as far as it must, still clear of the knee', () => {
+  const start = makeCallout({
+    box: { left: 100, top: 20, width: 120, height: ONE_LINE_12 },
+    knee: { x: 160, y: 200 }, tip: { x: 160, y: 300 },
+  });
+  const big = resize(start, 36);
+  const r = drawn(big);
+  near(r.top, 0, 'stops at the page top');
+  assert.ok(r.bottom <= 200 - GAP, 'clear of the knee');
+  assert.deepEqual(big.knee, start.knee);
+  rendererKeepsKnee(big);
+  // No room above or below: it slides sideways off the knee.
+  const tight = makeCallout({
+    box: { left: 100, top: 20, width: 120, height: ONE_LINE_12 },
+    knee: { x: 160, y: 120 }, tip: { x: 160, y: 300 },
+  });
+  const moved = resize(tight, 36);
+  const m = drawn(moved);
+  assert.ok(m.top >= 0 && m.right <= PAGE.width, 'on the page');
+  assert.ok(distToBox({ x: 160, y: 120 }, m) >= GAP - 1e-6, 'clear of the knee');
+  assert.deepEqual(moved.knee, tight.knee);
+  assert.deepEqual(moved.arrowTip, tight.arrowTip);
+  rendererKeepsKnee(moved);
+});
+
+test('one long word widens the box so it is not split mid-word; otherwise the width stays', () => {
+  const start = makeCallout({
+    text: 'SUPERCALIFRAGILISTIC',
+    box: { left: 100, top: 300, width: 120, height: 2 * ONE_LINE_12 },
+    knee: { x: 160, y: 500 }, tip: { x: 160, y: 650 },
+  });
+  const big = resize(start, 36);
+  const word = 20 * 0.6 * 36;
+  near(big.textBoxWidth * PAGE.width, word + 2 * TEXT_BOX_PADDING + 1, 'width fits the word');
+  near(big.textBoxHeight * PAGE.height, 36 * 1.13, 'one line');
+  near(drawn(big).left, 100, 'left edge stays (knee is not to the right)');
+  near(drawn(big).bottom, drawn(start).bottom, 'bottom edge stays');
+  // A word that already fits never changes the width.
+  assert.equal(resize(makeCallout({
+    box: { left: 100, top: 300, width: 120, height: ONE_LINE_12 }, knee: { x: 160, y: 500 }, tip: { x: 160, y: 650 },
+  }), 36).textBoxWidth, 120 / PAGE.width);
+});
+
+test('a callout without a leader and an unchanged fit are left alone', () => {
+  const bare = makeCallout({ box: { left: 100, top: 300, width: 120, height: ONE_LINE_12 } });
+  const big = resize(bare, 36);
+  assert.deepEqual(big.textBoxPosition, bare.textBoxPosition, 'top edge stays');
+  near(big.textBoxHeight * PAGE.height, THREE_LINES_36, 'height');
+  const fits = makeCallout({
+    box: { left: 100, top: 300, width: 120, height: ONE_LINE_12 }, knee: { x: 160, y: 500 }, tip: { x: 160, y: 650 },
+  });
+  assert.equal(refitCalloutToText(fits, PAGE, fakeMeasure, { before: fits }), fits);
+  // No browser measurer: never guesses.
+  assert.equal(refitCalloutToText({ ...fits, style: { fontSize: 36 } }, PAGE, () => null, { before: fits }).textBoxHeight, fits.textBoxHeight);
   // Colour alone never reflows.
   assert.equal(patchCanReflowText('callout', { fontColor: '#ff0000' }), false);
   assert.equal(patchCanReflowText('callout', { bold: true }), true);
 });
 
-test('a bigger size on a picked text box grows its height (width locked, tilt anchored)', () => {
+test('the text bar patch and its refit are one write on a picked callout', () => {
+  const callout = makeCallout({
+    box: { left: 100, top: 300, width: 120, height: ONE_LINE_12 }, knee: { x: 160, y: 500 }, tip: { x: 160, y: 650 },
+  });
+  const target = { kind: 'callout', key: 'callout:c1', style: readCalloutTextStyle(callout) };
+  const write = resolveTextStyleWrite({ next: { ...target.style, fontSize: 36 }, target, activeTool: 'select', dragRecord: null });
+  assert.equal(write.reflows, true);
+  const patched = { ...callout, style: { ...callout.style, ...write.patch } };
+  const refit = refitCalloutToText(patched, PAGE, fakeMeasure, { before: callout });
+  assert.equal(refit.style.fontSize, 36);
+  near(drawn(refit).bottom, drawn(callout).bottom, 'bottom edge');
+});
+
+test('several picked callouts: each refits on its own, in ONE write (one undo step)', () => {
+  const down = makeCallout({
+    id: 'down', box: { left: 100, top: 300, width: 120, height: ONE_LINE_12 }, knee: { x: 160, y: 500 }, tip: { x: 160, y: 650 },
+  });
+  const up = makeCallout({
+    id: 'up', box: { left: 350, top: 300, width: 120, height: ONE_LINE_12 }, knee: { x: 410, y: 200 }, tip: { x: 410, y: 100 },
+  });
+  const byPage = applyCalloutListToByPage({ 1: { objects: [] } }, [down, up], { 1: PAGE });
+  const plan = planGroupUpdate({
+    byPage,
+    calloutIds: ['down', 'up'],
+    calloutPageOf: () => 1,
+    calloutStyle: (callout) => buildSelectedTextStylePatch('callout', readCalloutTextStyle(callout), { fontSize: 36 }),
+    calloutRefit: (callout, page, stylePatch, before) => refitCalloutToText(callout, PAGE, fakeMeasure, { before }),
+    deriveCallouts: deriveCalloutsFromByPage,
+    applyCalloutList: applyCalloutListToByPage,
+    pageSizes: { 1: PAGE },
+  });
+  const out = resolveGroupWrite({ byPage, plan, phase: null, baseline: new Map(), buildDocumentAction: () => null });
+  assert.equal(out.kind, 'saves');
+  assert.equal(out.saves.length, 1, 'one page save = one undo step');
+  const after = deriveCalloutsFromByPage({ 1: out.saves[0][1] });
+  const nextDown = after.find((c) => c.id === 'down');
+  const nextUp = after.find((c) => c.id === 'up');
+  assert.equal(nextDown.style.fontSize, 36);
+  assert.equal(nextUp.style.fontSize, 36);
+  assert.ok(Math.abs(drawn(nextDown).bottom - drawn(down).bottom) < 1e-3, 'knee-below box keeps its bottom');
+  assert.ok(Math.abs(drawn(nextUp).top - drawn(up).top) < 1e-3, 'knee-above box keeps its top');
+  assert.ok(Math.abs(nextDown.knee.y - down.knee.y) < 1e-9 && Math.abs(nextUp.knee.y - up.knee.y) < 1e-9);
+});
+
+test('history merge normalisation refits a callout by the same rule (both ways, away from the leader)', () => {
+  const callout = makeCallout({
+    box: { left: 100, top: 300, width: 120, height: THREE_LINES_36 }, knee: { x: 160, y: 500 }, tip: { x: 160, y: 650 },
+    fontSize: 12,
+  });
+  const object = calloutToAnnotationObject(callout, PAGE);
+  const target = calloutToAnnotationObject({ ...callout, style: { fontSize: 36 } }, PAGE);
+  const merged = normalizeMergedHistoryObject(object, target, { pageNumber: 1, pageSize: PAGE, measure: fakeMeasure });
+  const next = deriveCalloutsFromByPage({ 1: { objects: [merged] } })[0];
+  assert.ok(Math.abs(next.textBoxHeight * PAGE.height - ONE_LINE_12) < 1e-3, 'shrinks to the 12pt text');
+  assert.ok(Math.abs(drawn(next).bottom - drawn(callout).bottom) < 1e-3, 'bottom edge stays (knee below)');
+  assert.ok(Math.abs(next.knee.y - callout.knee.y) < 1e-9);
+});
+
+test('typing into a callout: the growing box keeps the edge that faces the leader', () => {
+  const start = makeCallout({
+    box: { left: 100, top: 300, width: 120, height: ONE_LINE_12 }, knee: { x: 160, y: 500 }, tip: { x: 160, y: 650 },
+  });
+  const pos = placeCalloutEditBox(start, PAGE, { width: 120, height: 3 * ONE_LINE_12, fontSize: 12 });
+  near(pos.left, 100, 'left');
+  near(pos.top + calloutDrawnBoxHeight(3 * ONE_LINE_12, 12), drawn(start).bottom, 'bottom edge stays');
+  const above = makeCallout({
+    box: { left: 100, top: 300, width: 120, height: ONE_LINE_12 }, knee: { x: 160, y: 200 }, tip: { x: 160, y: 100 },
+  });
+  assert.deepEqual(placeCalloutEditBox(above, PAGE, { width: 120, height: 3 * ONE_LINE_12, fontSize: 12 }), { left: 100, top: 300 });
+  // The overlay places the box on every broadcast and commits that spot.
+  const overlay = read('src/components/TextEditOverlay.jsx');
+  assert.match(overlay, /const pos = placeCalloutBoxRef\.current\(\{ width: g\.outerW, height: outerH, fontSize: s\.fontSize \}\);/);
+  assert.match(overlay, /const pos = placeCalloutBoxRef\.current\(\{ width: json\.width, height: json\.height, fontSize: s\.fontSize \}\);/);
+  assert.match(read('src/PDFViewer.jsx'), /placeCalloutBox=\{editingAnnotation\?\.reactCalloutId\s*\? \(live\) => placeCalloutEditBox\(/);
+});
+
+test('a picked text box (no leader) fits both ways with its top edge fixed (width locked, tilt anchored)', () => {
   const box = { type: 'textbox', text: 'HELLO', left: 50, top: 60, width: 100, height: 34, fontSize: 16 };
   const refit = refitTextboxToText({ ...box, fontSize: 48 }, fakeMeasure);
   // 5 chars at 48px in 88px inner width: 3 per line -> 2 lines x 48 x 1.16 x 1.13, + 2 x 6 padding.
@@ -274,8 +512,13 @@ test('a bigger size on a picked text box grows its height (width locked, tilt an
   const dh = expected - 34;
   assert.ok(Math.abs(tilted.left - (50 - dh / 2)) < 1e-6);
   assert.ok(Math.abs(tilted.top - (60 - dh / 2)) < 1e-6);
+  // Now also shrinks: back to 10px is one line (10 x 1.16 x 1.13 + 12).
+  const small = refitTextboxToText({ ...refit, fontSize: 10 }, fakeMeasure);
+  assert.ok(Math.abs(small.height - (10 * 1.16 * 1.13 + 12)) < 1e-6, `shrunk ${small.height}`);
+  assert.equal(small.top, 60);
   // Already fits: unchanged object.
-  assert.equal(refitTextboxToText(box, fakeMeasure), box);
+  const fits = { ...box, height: 16 * 1.16 * 1.13 + 12 };
+  assert.equal(refitTextboxToText(fits, fakeMeasure), fits);
   // No browser measurer: never guesses.
   assert.equal(refitTextboxToText({ ...box, fontSize: 48 }, () => null).height, 34);
 });
