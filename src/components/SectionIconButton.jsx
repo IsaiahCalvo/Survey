@@ -27,6 +27,7 @@
 import { useContext } from 'react';
 import Icon from '../Icons.jsx';
 import { TooltipContext } from './Tooltip.jsx';
+import { selectAllState, selectModeActionState } from '../utils/disabledActions.js';
 import './SectionIconButton.css';
 
 export const SECTION_ACTION_ICONS = Object.freeze({
@@ -60,10 +61,17 @@ export default function SectionIconButton({
   phone = false,
   className = '',
   tooltipPlacement = 'below',
+  // A Select / Edit toggle over an empty list (owner 2026-10-06): off, with
+  // the reason as its tooltip. Never applies while the mode is on, so Done
+  // always works.
+  nothingToSelect = false,
   ...rest
 }) {
   const bindTooltip = useContext(TooltipContext);
-  const tip = tooltip || label;
+  const empty = Boolean(nothingToSelect) && !active;
+  const tip = empty
+    ? (typeof nothingToSelect === 'string' ? nothingToSelect : 'Nothing to select')
+    : (tooltip || label);
   const tipProps = bindTooltip ? bindTooltip(tip, tooltipPlacement) : { title: tip };
   const size = phone ? SECTION_ICON_SIZES.phone : SECTION_ICON_SIZES.desktop;
   return (
@@ -75,6 +83,7 @@ export default function SectionIconButton({
       className={`section-icon-btn${word ? ' is-word' : ''}${phone ? ' is-phone' : ''}${active ? ' is-active' : ''}${className ? ` ${className}` : ''}`}
       {...tipProps}
       {...rest}
+      {...(empty ? { disabled: true, onClick: undefined } : null)}
     >
       {word
         ? <span className="section-icon-btn__word">{word}</span>
@@ -101,8 +110,15 @@ export function SectionIconActions({ phone = false, className = '', children, ..
  * every one a SectionIconButton - same box, glyph, ink and hover / press as
  * Select / Add / Done. "All" stays a word (it reads "None" once everything is
  * picked). An action whose handler is not passed is left out (a template
- * list cannot be moved; a project list has no Move / Copy). With nothing
- * selected the actions are disabled: dimmed, no hover, no press.
+ * list cannot be moved; a project list has no Move / Copy).
+ *
+ * Owner 2026-10-06: with nothing selected the actions are DISABLED and look it
+ * (states.css section 6: --disabled-ink, no hover, no press, not-allowed), and
+ * their tooltip says what is missing ("Select something to delete"). `can`
+ * turns one action off for a selection that does not support it - false, or
+ * the reason as a string ({ share: 'Share one project at a time' }). "All"
+ * stays enabled whenever there is something to pick (`total`, optional).
+ * The rules are src/utils/disabledActions.js.
  */
 export const SELECT_MODE_ACTIONS = Object.freeze([
   { key: 'duplicate', label: 'Duplicate', handler: 'onDuplicate' },
@@ -115,13 +131,15 @@ export const SELECT_MODE_ACTIONS = Object.freeze([
 export function SelectModeButtons({
   phone = false,
   count = 0,
+  total,
   allSelected = false,
   onToggleAll,
+  can = {},
   tooltipPlacement = 'below',
   deleteProps,
   ...handlers
 }) {
-  const none = !count;
+  const all = selectAllState({ total, allSelected });
   return (
     <>
       {onToggleAll ? (
@@ -130,23 +148,30 @@ export function SelectModeButtons({
           action="all"
           word={allSelected ? 'None' : 'All'}
           label={allSelected ? 'Select none' : 'Select all'}
+          tooltip={all.tooltip}
           tooltipPlacement={tooltipPlacement}
-          onClick={onToggleAll}
+          disabled={!all.enabled}
+          onClick={() => { if (all.enabled) onToggleAll(); }}
         />
       ) : null}
-      {SELECT_MODE_ACTIONS.map(({ key, label, handler }) => (typeof handlers[handler] === 'function' ? (
-        <SectionIconButton
-          key={key}
-          phone={phone}
-          action={key}
-          label={label}
-          disabled={none}
-          className={key === 'delete' ? 'is-danger' : ''}
-          tooltipPlacement={tooltipPlacement}
-          onClick={() => { if (!none) handlers[handler](); }}
-          {...(key === 'delete' ? deleteProps : null)}
-        />
-      ) : null))}
+      {SELECT_MODE_ACTIONS.map(({ key, label, handler }) => {
+        if (typeof handlers[handler] !== 'function') return null;
+        const state = selectModeActionState(key, label, { count, can: can[key] });
+        return (
+          <SectionIconButton
+            key={key}
+            phone={phone}
+            action={key}
+            label={label}
+            tooltip={state.tooltip}
+            disabled={!state.enabled}
+            className={key === 'delete' ? 'is-danger' : ''}
+            tooltipPlacement={tooltipPlacement}
+            onClick={() => { if (state.enabled) handlers[handler](); }}
+            {...(key === 'delete' ? deleteProps : null)}
+          />
+        );
+      })}
     </>
   );
 }

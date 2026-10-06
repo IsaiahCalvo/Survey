@@ -1948,6 +1948,7 @@ const BookmarksPanel = ({
               label={isEditMode ? 'Done editing bookmarks' : 'Edit bookmarks'}
               tooltip={isEditMode ? 'Done' : 'Edit'}
               active={isEditMode}
+              nothingToSelect={(bookmarks || []).length === 0 && 'No bookmarks to edit'}
               onClick={() => {
                 setIsEditMode((editing) => !editing);
                 setMobileEditingBookmarkId(null);
@@ -1990,7 +1991,7 @@ const BookmarksPanel = ({
                 }
               }}
             />
-            <button type="button" className="tertiary" onClick={handleCreateMobileFolder}>Create</button>
+            <button type="button" className="tertiary" disabled={!newFolderName.trim()} onClick={handleCreateMobileFolder}>Create</button>
           </div>
         )}
         {showCreateMenu && !showMobileFolderEditor && (
@@ -2013,7 +2014,7 @@ const BookmarksPanel = ({
               placeholder="Page"
               onChange={(event) => setNewBookmarkPages(event.target.value)}
             />
-            <button type="button" className="tertiary" onClick={handleCreateBookmark}>Create</button>
+            <button type="button" className="tertiary" disabled={!newBookmarkName.trim() || !String(newBookmarkPages).trim()} onClick={handleCreateBookmark}>Create</button>
           </div>
         )}
         {isAddOpen && (
@@ -2066,7 +2067,18 @@ const BookmarksPanel = ({
                     value={mobileEditPage}
                     onChange={(event) => setMobileEditPage(event.target.value)}
                   />
-                  <button type="button" className="tertiary" onClick={() => saveMobileBookmarkEdit(item)}>Save</button>
+                  {/* Off with no name, or with nothing changed (owner 2026-10-06). */}
+                  <button
+                    type="button"
+                    className="tertiary"
+                    disabled={!mobileEditName.trim() || (
+                      mobileEditName.trim() === (item.name || '').trim()
+                      && String(mobileEditPage).trim() === (item.pageIds?.[0]?.toString() || '')
+                    )}
+                    onClick={() => saveMobileBookmarkEdit(item)}
+                  >
+                    Save
+                  </button>
                   <button type="button" className="secondary tertiary" onClick={() => setMobileEditingBookmarkId(null)}>Cancel</button>
                 </div>
               ) : (
@@ -2139,6 +2151,7 @@ const BookmarksPanel = ({
           label={isEditMode ? 'Done editing bookmarks' : 'Edit bookmarks'}
           tooltip={isEditMode ? 'Done' : 'Edit'}
           active={isEditMode}
+          nothingToSelect={(bookmarks || []).length === 0 && 'No bookmarks to edit'}
           onClick={() => setIsEditMode(!isEditMode)}
         />
         <div ref={menuRef} style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
@@ -2271,6 +2284,7 @@ const BookmarksPanel = ({
                         "Create" - the phone editor's gold word, no gold fill. */}
                     <button
                       onClick={handleCreateBookmark}
+                      disabled={!newBookmarkName.trim() || !String(newBookmarkPages).trim()}
                       style={{
                         display: 'block',
                         marginLeft: 'auto',
@@ -2284,7 +2298,7 @@ const BookmarksPanel = ({
                         cursor: 'pointer',
                         fontFamily: FONT_FAMILY
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
+                      onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = 'var(--hover)'; }}
                       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                     >
                       Create
@@ -2762,9 +2776,11 @@ const BookmarksPanel = ({
               </button>
               <button
                 onClick={handleSaveBookmarkGroup}
+                // Owner 2026-10-06: off until there is something to save.
+                disabled={!groupName.trim() || groupBookmarks.length === 0}
                 style={{
                   padding: '8px 16px',
-                  background: 'var(--accent)',
+                  background: (!groupName.trim() || groupBookmarks.length === 0) ? 'var(--disabled-fill)' : 'var(--accent)',
                   /* UX: the label ON a gold fill is --accent-text. --text-1 on
                      --accent-light measures 1.5:1; --accent-text is 8.6:1. */
                   color: 'var(--accent-text)',
@@ -2775,8 +2791,8 @@ const BookmarksPanel = ({
                   cursor: 'pointer',
                   fontFamily: FONT_FAMILY
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-light)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent)'}
+                onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = 'var(--accent-light)'; }}
+                onMouseLeave={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = 'var(--accent)'; }}
               >
                 Create
               </button>
@@ -3164,9 +3180,11 @@ const BookmarksPanel = ({
               </button>
               <button
                 onClick={handleSaveAddToGroup}
+                // Owner 2026-10-06: off until there is something to save.
+                disabled={addToGroupBookmarks.length === 0}
                 style={{
                   padding: '8px 16px',
-                  background: 'var(--accent)',
+                  background: (addToGroupBookmarks.length === 0) ? 'var(--disabled-fill)' : 'var(--accent)',
                   /* UX: the label ON a gold fill is --accent-text. --text-1 on
                      --accent-light measures 1.5:1; --accent-text is 8.6:1. */
                   color: 'var(--accent-text)',
@@ -3177,8 +3195,8 @@ const BookmarksPanel = ({
                   cursor: 'pointer',
                   fontFamily: FONT_FAMILY
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-light)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent)'}
+                onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = 'var(--accent-light)'; }}
+                onMouseLeave={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = 'var(--accent)'; }}
               >
                 Add bookmarks
               </button>

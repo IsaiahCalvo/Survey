@@ -422,6 +422,56 @@
 }
 
 /* --------------------------------------------------------------------------
+   6. DISABLED — ONE look for every control that cannot act right now
+      (owner 2026-10-06, desktop and phone identical).
+   -------------------------------------------------------------------------- */
+/* "When I'm in select mode, if nothing is selected, I shouldn't be able to
+   copy, move, duplicate, share, or even delete anything. Those icons need to
+   be visibly disabled, or else the user can't tell whether they can interact
+   with those buttons ... That goes for all types of buttons."
+
+   Measured before this section (390x844 and 1440x900, select mode with
+   nothing picked): Duplicate / Move / Copy / Share were `disabled` but painted
+   the SAME --text-2 ink as the working "All" beside them, and Delete stayed
+   bright red - a hub rule (.survey-hub .section-icon-btn.section-icon-btn,
+   doubled class) out-ranked the component's own :disabled rule. Each button
+   family had its own disabled rule, so any family whose resting colour was
+   set more specifically (or inline) silently lost it.
+
+   THE RULE, in this one place: a disabled control - the `disabled`
+   attribute, or aria-disabled="true" - paints its icon AND its words in
+   --disabled-ink (tokens.css: --text-2 at 36%), whatever colour it would
+   have had (a red Delete, a gold word, an inline colour, an icon whose stroke
+   is a theme variable). No hover, no press (every hover / press rule in this
+   file is gated on :not(:disabled):not([aria-disabled='true'])), and the
+   desktop pointer shows not-allowed. A variant that HAS a fill keeps its own
+   rule for --disabled-fill (styles.css .btn-primary:disabled, hub.css); this
+   section owns only the ink and the pointer. A focus ring, where a control
+   stays focusable (aria-disabled), is the usual grey one from section 4.
+
+   WHY !important: the colours it replaces are set inline by JSX
+   (style={{ color }}) and by doubled-class hub rules; nothing weaker reaches
+   them. A switch (role="switch") is not here - its knob position is its state
+   and it keeps its own off look. */
+:is(button, [role='button'], [role='menuitem'], [role='menuitemradio'], [role='menuitemcheckbox'], [role='tab'], [role='option']):is(:disabled, [aria-disabled='true']) {
+  color: var(--disabled-ink) !important;
+  cursor: not-allowed !important;
+}
+:is(button, [role='button'], [role='menuitem'], [role='menuitemradio'], [role='menuitemcheckbox'], [role='tab'], [role='option']):is(:disabled, [aria-disabled='true']) * {
+  color: inherit !important;
+  cursor: inherit !important;
+}
+/* Icons that paint a theme variable straight into stroke / fill (Icons.jsx
+   passes `color` to stroke=) follow the ink too. A hex or rgb stroke is a
+   drawing's own colour (a swatch, an ink preview) and is left alone. */
+:is(button, [role='button'], [role='menuitem'], [role='menuitemradio'], [role='menuitemcheckbox'], [role='tab'], [role='option']):is(:disabled, [aria-disabled='true']) :is([stroke^='var(--'], [stroke='currentColor']) {
+  stroke: currentColor !important;
+}
+:is(button, [role='button'], [role='menuitem'], [role='menuitemradio'], [role='menuitemcheckbox'], [role='tab'], [role='option']):is(:disabled, [aria-disabled='true']) [fill^='var(--'] {
+  fill: currentColor !important;
+}
+
+/* --------------------------------------------------------------------------
    DRAG LIFT — the one "picked up" look (owner 2026-10-01).
    -------------------------------------------------------------------------- */
 /* "This drag and drop still looks kind of ugly … just a uniform colour /

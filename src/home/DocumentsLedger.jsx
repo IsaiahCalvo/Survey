@@ -262,6 +262,7 @@ export default function DocumentsLedger({
           <SectionIconButton
             action="select"
             label={docSelectMode ? 'Done' : 'Select'}
+            nothingToSelect={docs.length === 0}
             active={docSelectMode}
             className="mobile-header-select-button"
             onClick={() => { const next = !docSelectMode; setDocSelectMode(next); if (!next) setSelDocs(new Set()); }}
@@ -275,6 +276,7 @@ export default function DocumentsLedger({
                   phone
                   count={docSelCount}
                   allSelected={allSel}
+                  total={docs.length}
                   onToggleAll={() => setSelDocs(allSel ? new Set() : new Set(docs.map((d) => d.id)))}
                   onDuplicate={() => { onDuplicate && onDuplicate(selectedRaw()); clearSel(); }}
                   onMove={() => { setMoveMode('move'); setMoveOpen(true); }}
