@@ -66,7 +66,7 @@ jobs:
     name: iPhone simulator walk-through
     needs: plan
     runs-on: ${{ needs.plan.outputs.runner }}
-    timeout-minutes: 25
+    timeout-minutes: 32
     permissions:
       contents: write # push screenshots to the ios-sim-results branch
     concurrency:
@@ -296,18 +296,18 @@ jobs:
 
       - name: Maestro flows in Safari
         id: flows
-        timeout-minutes: 9
+        timeout-minutes: 13
         continue-on-error: true
         run: |
-          trap 'rc=$?; echo "::error title=Maestro flows in Safari @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
-          set -uo pipefail
+          set +e
           rc_all=0
           for f in $FLOWS; do
             d="$OUT/maestro/$f"; mkdir -p "$d"
             echo "== flow $f" | tee -a "$OUT/log.txt"
-            # Maestro's XCUITest driver sometimes misses its start-up window on
-            # a busy runner (run 37522390998); that is not a test result, so
-            # try the flow once more.
+            # Maestro's XCUITest driver sometimes misses its start-up window
+            # (run 37522390998) or drops its connection mid-flow ("Device
+            # became unreachable", run 37529661670) on a busy runner. Neither
+            # is a test result, so the flow gets one more try.
             for attempt in 1 2; do
               maestro --device "$UDID" test \
                 -e HOME_URL="$HOME_URL" -e DOC_URL="$DOC_URL" -e EXPO_URL="$EXPO_URL" \
@@ -315,8 +315,11 @@ jobs:
                 --format junit --output "$d/report.xml" \
                 ".github/ios-sim/flows/$f.yaml" > "$d/stdout.txt" 2>&1
               rc=$?
-              grep -q "IOSDriverTimeoutException\|driver not ready" "$d/stdout.txt" || break
-              echo "flow $f: iOS driver did not start (attempt $attempt)" | tee -a "$OUT/log.txt"
+              [ "$rc" -eq 0 ] && break
+              grep -qiE "IOSDriverTimeoutException|driver not ready|unreachable" "$d/stdout.txt" "$d/debug/maestro.log" 2>/dev/null || break
+              echo "flow $f: Maestro lost the iOS driver (attempt $attempt), retrying" | tee -a "$OUT/log.txt"
+              echo "::warning title=ios-sim flow $f::Maestro lost the iOS driver on attempt $attempt; retried"
+              [ -f "$d/debug/maestro.log" ] && mv "$d/debug/maestro.log" "$d/debug/maestro-attempt$attempt.log"
             done
             echo "$rc" > "$d/exit-code"
             tail -25 "$d/stdout.txt"
@@ -330,18 +333,18 @@ jobs:
       - name: Expo Go walk-through
         id: expo
         if: env.EXPO_ENABLED == 'true' && steps.expo_install.outcome == 'success'
-        timeout-minutes: 7
+        timeout-minutes: 9
         continue-on-error: true
         run: |
-          trap 'rc=$?; echo "::error title=Expo Go walk-through @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
-          set -uo pipefail
+          set +e
           rc_all=0
           for f in $EXPO_FLOWS; do
             d="$OUT/maestro/$f"; mkdir -p "$d"
             echo "== flow $f" | tee -a "$OUT/log.txt"
-            # Maestro's XCUITest driver sometimes misses its start-up window on
-            # a busy runner (run 37522390998); that is not a test result, so
-            # try the flow once more.
+            # Maestro's XCUITest driver sometimes misses its start-up window
+            # (run 37522390998) or drops its connection mid-flow ("Device
+            # became unreachable", run 37529661670) on a busy runner. Neither
+            # is a test result, so the flow gets one more try.
             for attempt in 1 2; do
               maestro --device "$UDID" test \
                 -e HOME_URL="$HOME_URL" -e DOC_URL="$DOC_URL" -e EXPO_URL="$EXPO_URL" \
@@ -349,8 +352,11 @@ jobs:
                 --format junit --output "$d/report.xml" \
                 ".github/ios-sim/flows/$f.yaml" > "$d/stdout.txt" 2>&1
               rc=$?
-              grep -q "IOSDriverTimeoutException\|driver not ready" "$d/stdout.txt" || break
-              echo "flow $f: iOS driver did not start (attempt $attempt)" | tee -a "$OUT/log.txt"
+              [ "$rc" -eq 0 ] && break
+              grep -qiE "IOSDriverTimeoutException|driver not ready|unreachable" "$d/stdout.txt" "$d/debug/maestro.log" 2>/dev/null || break
+              echo "flow $f: Maestro lost the iOS driver (attempt $attempt), retrying" | tee -a "$OUT/log.txt"
+              echo "::warning title=ios-sim flow $f::Maestro lost the iOS driver on attempt $attempt; retried"
+              [ -f "$d/debug/maestro.log" ] && mv "$d/debug/maestro.log" "$d/debug/maestro-attempt$attempt.log"
             done
             echo "$rc" > "$d/exit-code"
             tail -25 "$d/stdout.txt"
@@ -447,7 +453,12 @@ jobs:
           for f in "$OUT"/maestro/*/; do
             n=$(basename "$f")
             [ -f "$f/stdout.txt" ] && tail -n 200 "$f/stdout.txt" > "$PUB/logs/maestro-$n.txt"
-            [ -f "$f/debug/maestro.log" ] && tail -n 400 "$f/debug/maestro.log" > "$PUB/logs/maestro-$n-debug.log"
+            for ml in "$f"/debug/maestro*.log; do
+              [ -f "$ml" ] || continue
+              b=$(basename "$ml" .log)
+              tail -n 400 "$ml" > "$PUB/logs/$n-$b-tail.log"
+              grep -E "onCommand(Start|Finished)|Unreachable|Exception" "$ml" | cut -c1-300 | tail -n 300 > "$PUB/logs/$n-$b-commands.txt"
+            done
           done
           [ -f "$OUT/raw/vite.log" ] && tail -n 80 "$OUT/raw/vite.log" > "$PUB/logs/vite.txt"
           [ -f "$OUT/raw/npm-install.log" ] && tail -n 40 "$OUT/raw/npm-install.log" > "$PUB/logs/npm-install.txt"

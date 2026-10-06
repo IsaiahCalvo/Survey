@@ -212,7 +212,9 @@ areas, the real iOS keyboard, rubber-band scrolling and rotation.
 - **Limits:** no pinch or two-finger gestures (Maestro drives one finger), no
   camera or real sign-in, and the simulator is not a real device for speed or
   memory. The Expo shell is locked to portrait, so its rotation shots stay
-  portrait. About 15 minutes a run.
+  portrait. Maestro's iOS driver sometimes drops its connection on the shared
+  runner ("Device became unreachable"); the job retries that flow once, and a
+  flow that still fails turns the job red. About 15–18 minutes a run.
 
 ## License
 
