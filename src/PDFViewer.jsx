@@ -7760,7 +7760,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const readPdfjsPageVisitState = useCallback((pageNumber) => {
     const pageContainerMap = pdfjsPageContainersStateRef.current || pageContainersRef.current || {};
     const directHost = pageContainerMap[pageNumber] || pageContainersRef.current?.[pageNumber] || null;
-    const domHost = typeof document !== 'undefined'
+    // Only search the document when the known host is gone: this runs for
+    // every mounted page on every render, and the search walked every mark of
+    // the pages before it (owner 2026-10-06, smooth zoom).
+    const domHost = !directHost?.isConnected && typeof document !== 'undefined'
       ? document.querySelector(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`)
       : null;
     const host = directHost?.isConnected ? directHost : domHost;
@@ -11528,6 +11531,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
 
     const intervalId = window.setInterval(() => {
+      // Never mid-gesture: its style read forced a whole-document style pass
+      // in the middle of a pinch or glide (owner 2026-10-06, smooth zoom).
+      if (document.querySelector('[data-pdfjs-moving="true"]')) return;
       const pages = annotationsByPageRef.current || {};
       const currentPageNumber = Number(pageNumRef.current) || Number(pageNum) || 1;
       const currentPageObjects = pages[currentPageNumber]?.objects || [];
@@ -35737,9 +35743,6 @@ ${pageBlocks}
                       const nativePdfAnnotationPolicy = pdfNativeAnnotationLayerPolicyByPage?.[pageNumber] ||
                         pdfNativeAnnotationLayerPolicyByPage?.[String(pageNumber)] ||
                         null;
-                      const appImportedPdfAnnotationIds = pageAnnotationObjects
-                        .filter((obj) => obj?.isPdfImported && obj?.pdfAnnotationId)
-                        .map((obj) => obj.pdfAnnotationId);
                       const importedTextMarkupIdsByType = pageAnnotationObjects.reduce((result, obj) => {
                         if (obj?.isPdfImported && obj?.data?.type === 'text-markup' && obj?.pdfAnnotationId) {
                           const subtype = String(obj.pdfAnnotationType || '');
@@ -35757,11 +35760,10 @@ ${pageBlocks}
                           deletedPdfAnnotations,
                         });
                       }
-                      const requiredImportedPdfAnnotationIds = Array.isArray(nativePdfAnnotationPolicy?.importedIds)
-                        ? nativePdfAnnotationPolicy.importedIds
-                        : [];
-                      const importedPdfCopiesAvailable = requiredImportedPdfAnnotationIds.length > 0 &&
-                        requiredImportedPdfAnnotationIds.every((id) => appImportedPdfAnnotationIds.includes(id));
+                      // (An unused "imported copies available" check stood here: an
+                      // every x includes over all of a page's imported marks on every
+                      // render — ~1M comparisons per large drawing per frame of a
+                      // zoom gesture. Removed 2026-10-06, smooth zoom.)
                       const shouldHideNativePdfAnnotationLayer = Boolean(
                         nativePdfAnnotationPolicy?.hideNativeLayer
                       );

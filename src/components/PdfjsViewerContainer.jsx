@@ -82,6 +82,7 @@ import {
 } from '../utils/viewerTopOverlay.js';
 import { computeFitScale, pickCurrentPage, resolveFitPageLanding } from '../utils/pageNavigationMath.js';
 import { createPageRasterQueue } from '../utils/pageRasterQueue.js';
+import { classifyRaster, pickRasterSource, resolveWantedRasterScale } from '../utils/pageRasterLod.js';
 import QuietLoading from './QuietLoading.jsx';
 import {
   compensateScrollLeftForColumnWidth,
@@ -126,6 +127,7 @@ const MOBILE_LIVE_ZOOM_REBASE_MIN = 0.67;
 // it exposes at most 16 viewports of source — far under the 800%-to-fit case).
 const MOBILE_LIVE_ZOOM_REBASE_SCALE = 2.5;
 const MOBILE_LIVE_ZOOM_HARD_FLOOR = 0.25;
+const RASTER_SCROLL_QUIET_MS = 120; // a scroll this recent still counts as moving (raster hold)
 const BASE_MAX_SCALE = 2.5; // above this the base canvas is a cheap backdrop; the detail tile owns sharpness
 const MOBILE_BASE_MAX_SCALE = 1.25;
 const SETTLE_MS = 110;      // commit the gesture this long after the last wheel tick
@@ -224,13 +226,6 @@ function getMinimumScaleForLayout(dims, containerHeight, metrics, containerWidth
     maximumScale: MAX_SCALE,
   });
 }
-function clampToBudget(backingW, backingH, isMobileSurface = false) {
-  const maxArea = isMobileSurface ? MOBILE_MAX_CANVAS_AREA : DESKTOP_MAX_CANVAS_AREA;
-  const dimOver = Math.max(backingW, backingH) / MAX_CANVAS_DIM;
-  const areaOver = Math.sqrt((backingW * backingH) / maxArea);
-  const over = Math.max(dimOver, areaOver, 1);
-  return { factor: over > 1 ? 1 / over : 1, clamped: over > 1 };
-}
 
 // --- rendered-page raster cache (Figma-style: draw once, paint back instantly) -
 // When a page scrolls out of the mount window its React component unmounts and the
@@ -269,19 +264,31 @@ function pageRasterCacheGet(key) {
   if (v) { PAGE_RASTER_CACHE.delete(key); PAGE_RASTER_CACHE.set(key, v); } // touch = most-recent
   return v ? v.canvas : null;
 }
-function pageRasterCacheSet(key, canvas, maxBytes = PAGE_RASTER_CACHE_MAX_BYTES) {
+// Owner 2026-10-06 (smooth at every zoom): every bitmap kept for one page,
+// at any raster scale, so a zoom change can reuse (or shrink) one instead of
+// drawing the page again. `pageId` = `${docKey}:${page view key}:r${rotation}`.
+const rasterCacheKey = (pageId, scale) => `${pageId}@${scale.toFixed(5)}`;
+function pageRasterCacheCandidates(pageId) {
+  const prefix = `${pageId}@`;
+  const out = [];
+  for (const [key, entry] of PAGE_RASTER_CACHE) {
+    if (key.startsWith(prefix) && entry.canvas?.width) out.push({ key, scale: entry.scale, canvas: entry.canvas });
+  }
+  return out;
+}
+function pageRasterCacheSet(key, canvas, maxBytes = PAGE_RASTER_CACHE_MAX_BYTES, scale = 0) {
   const bytes = (canvas.width * canvas.height * 4) || 0;
   const existing = PAGE_RASTER_CACHE.get(key);
   if (existing) {
     pageRasterCacheBytes -= existing.bytes;
     PAGE_RASTER_CACHE.delete(key);
-    releaseRasterCanvas(existing.canvas);
+    if (existing.canvas !== canvas) releaseRasterCanvas(existing.canvas);
   }
   if (!bytes || bytes > maxBytes) {
     releaseRasterCanvas(canvas);
     return;
   }
-  PAGE_RASTER_CACHE.set(key, { canvas, bytes });
+  PAGE_RASTER_CACHE.set(key, { canvas, bytes, scale });
   pageRasterCacheBytes += bytes;
   while (pageRasterCacheBytes > maxBytes && PAGE_RASTER_CACHE.size > 0) {
     const oldestKey = PAGE_RASTER_CACHE.keys().next().value;
@@ -345,15 +352,46 @@ function buildGetDocumentParams(source, password) {
 }
 
 // --- one mounted page: double-buffered, DPR-correct, cancellable raster -------
+// Copy `src` into `dst` at the given size (a straight copy when the sizes
+// match, a smooth shrink when smaller).
+function blitRaster(dst, src, width = src.width, height = src.height) {
+  if (!dst || !src) return;
+  if (dst.width !== width) dst.width = width;
+  if (dst.height !== height) dst.height = height;
+  const ctx = dst.getContext('2d', { alpha: false });
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src, 0, 0, width, height);
+}
+
 // memo: the viewer re-renders every live-zoom frame; a page whose raster inputs
 // did not change must not re-render with it (owner 2026-09-30: smooth pinch).
+//
+// Owner 2026-10-06 ("the PDF gets a little laggy when it's that zoomed out ...
+// the rendering needs to be strategic"): a zoom change no longer redraws every
+// page on screen (utils/pageRasterLod.js). Zooming out shrinks the sharper
+// bitmap already drawn (one image copy, never a redraw); zooming in shows the
+// softer one until the sharp draw lands, and that draw waits for the fingers
+// to lift (kind 'sharpen' in pageRasterQueue). A page with nothing to show
+// draws at once (kind 'fill'). Every bitmap at rest is one bitmap pixel per
+// screen pixel.
 const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, onRaster, isMobileSurface, rasterQueue }) {
   const canvasRef = useRef(null);
   const taskRef = useRef(null);
   const genRef = useRef(0);
+  // The bitmap on the canvas now: { id, scale } (scale = device px per point).
+  const shownRef = useRef(null);
   const baseScaleLimit = isMobileSurface ? MOBILE_BASE_MAX_SCALE : BASE_MAX_SCALE;
   const baseScale = Math.min(renderScale, baseScaleLimit);
   const tiled = renderScale > baseScaleLimit;
+  const { want } = resolveWantedRasterScale({
+    cssScale: baseScale,
+    dpr: DPR,
+    pageW,
+    pageH,
+    maxArea: isMobileSurface ? MOBILE_MAX_CANVAS_AREA : DESKTOP_MAX_CANVAS_AREA,
+    maxDim: MAX_CANVAS_DIM,
+  });
 
   // useLayoutEffect, not useEffect: a mounting <canvas> is 300x150 and empty
   // until something draws into it, and a plain effect runs AFTER the browser has
@@ -366,38 +404,76 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
   useLayoutEffect(() => {
     let cancelled = false;
     const myGen = ++genRef.current;
-
-    // Already drawn this page at this zoom/rotation? Paint it back instantly —
-    // no re-raster, no "loading" flash on scroll-return.
+    const done = () => { cancelled = true; };
+    const c = canvasRef.current;
     const docKey = rasterDocKey(pdf);
-    const keyTail = `${baseScale.toFixed(3)}:${DPR}:${rotation}`;
-    const cacheKey = `${docKey}:${pageViewKey(pdf, pageIndex)}:${keyTail}`;
-    const cachedCanvas = pageRasterCacheGet(cacheKey);
-    if (cachedCanvas) {
-      const c = canvasRef.current;
-      if (c) {
-        c.width = cachedCanvas.width;
-        c.height = cachedCanvas.height;
-        c.getContext('2d', { alpha: false }).drawImage(cachedCanvas, 0, 0);
+    const pageId = `${docKey}:${pageViewKey(pdf, pageIndex)}:r${rotation}`;
+    const maxBytes = pageRasterCacheMaxBytes(isMobileSurface);
+    const shown = shownRef.current?.id === pageId ? shownRef.current : null;
+
+    // The bitmap on screen is right for this zoom: nothing to do.
+    if (shown && classifyRaster(shown.scale, want) === 'sharp') return done;
+
+    // Already drawn this page at a usable scale (this zoom, a sharper one, or
+    // a softer one)? Paint it back instantly: no re-raster, no "loading"
+    // flash on scroll-return.
+    const candidates = pageRasterCacheCandidates(pageId);
+    if (shown && c?.width) candidates.push({ scale: shown.scale, canvas: c, onCanvas: true });
+    const pick = pickRasterSource(candidates, want);
+    if (pick.action === 'keep') {
+      if (!pick.use.onCanvas) {
+        pageRasterCacheGet(pick.use.key);
+        blitRaster(c, pick.use.canvas);
+        shownRef.current = { id: pageId, scale: pick.use.scale };
       }
-      return () => { cancelled = true; };
+      return done;
     }
-    // A page the user just rotated: turn its upright bitmap now, so the page
-    // shows rotated in the same frame; the sharp raster replaces it below.
-    const upright = pageViewUprightKey(pdf, pageIndex);
-    const uprightCanvas = upright ? pageRasterCacheGet(`${docKey}:${upright.key}:${keyTail}`) : null;
-    if (uprightCanvas && canvasRef.current) {
-      const c = canvasRef.current;
-      const quarter = upright.rotation % 180 !== 0;
-      c.width = quarter ? uprightCanvas.height : uprightCanvas.width;
-      c.height = quarter ? uprightCanvas.width : uprightCanvas.height;
-      const turnCtx = c.getContext('2d', { alpha: false });
-      turnCtx.save();
-      turnCtx.translate(c.width / 2, c.height / 2);
-      turnCtx.rotate((upright.rotation * Math.PI) / 180);
-      turnCtx.drawImage(uprightCanvas, -uprightCanvas.width / 2, -uprightCanvas.height / 2);
-      turnCtx.restore();
+    if (pick.action === 'shrink') {
+      // Sharper than needed (zoomed out): one smooth image copy down to the
+      // exact size a fresh draw would have, instead of a redraw. Not cached:
+      // the sharper original stays the cache's copy of this page.
+      const quarter = ((rotation % 180) + 180) % 180 !== 0;
+      const width = Math.max(1, Math.floor((quarter ? pageH : pageW) * want));
+      const height = Math.max(1, Math.floor((quarter ? pageW : pageH) * want));
+      if (pick.use.onCanvas) {
+        const copy = document.createElement('canvas');
+        blitRaster(copy, c);
+        blitRaster(c, copy, width, height);
+        releaseRasterCanvas(copy);
+      } else {
+        pageRasterCacheGet(pick.use.key);
+        blitRaster(c, pick.use.canvas, width, height);
+      }
+      shownRef.current = { id: pageId, scale: want };
+      return done;
     }
+    if (pick.action === 'placeholder' && !pick.use.onCanvas) {
+      pageRasterCacheGet(pick.use.key);
+      blitRaster(c, pick.use.canvas);
+      shownRef.current = { id: pageId, scale: pick.use.scale };
+    }
+    if (shownRef.current?.id !== pageId) {
+      // A page the user just rotated: turn its upright bitmap now, so the page
+      // shows rotated in the same frame; the sharp raster replaces it below.
+      const upright = pageViewUprightKey(pdf, pageIndex);
+      const uprightCanvas = upright
+        ? pickRasterSource(pageRasterCacheCandidates(`${docKey}:${upright.key}:r${rotation}`), want).use?.canvas
+        : null;
+      if (uprightCanvas && c) {
+        const quarter = upright.rotation % 180 !== 0;
+        c.width = quarter ? uprightCanvas.height : uprightCanvas.width;
+        c.height = quarter ? uprightCanvas.width : uprightCanvas.height;
+        const turnCtx = c.getContext('2d', { alpha: false });
+        turnCtx.save();
+        turnCtx.translate(c.width / 2, c.height / 2);
+        turnCtx.rotate((upright.rotation * Math.PI) / 180);
+        turnCtx.drawImage(uprightCanvas, -uprightCanvas.width / 2, -uprightCanvas.height / 2);
+        turnCtx.restore();
+      }
+    }
+    // A page already showing something only needs sharpening, which waits for
+    // a gesture to end; a page showing nothing draws at once.
+    const kind = shownRef.current?.id === pageId ? 'sharpen' : 'fill';
 
     // Owner 2026-10-04: pages draw one at a time, the page on screen first
     // (utils/pageRasterQueue.js). Every mounted page used to start at once,
@@ -410,15 +486,13 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
       try {
         const page = await pdf.getPage(pageIndex + 1);
         if (cancelled || myGen !== genRef.current) return;
-        const want = baseScale * DPR;
-        const { factor } = clampToBudget(pageW * want, pageH * want, isMobileSurface);
-        const rasterScale = want * factor;
-        const viewport = page.getViewport({ scale: rasterScale, rotation: page.rotate + rotation });
+        const viewport = page.getViewport({ scale: want, rotation: page.rotate + rotation });
 
         let t0 = 0;
         for (;;) {
           turn = rasterQueue
             ? rasterQueue.request(pageIndex, {
+              kind,
               // A page on screen asked for the turn: stop this off-screen draw;
               // the loop below asks again and starts over later.
               onPreempt: () => { try { taskRef.current?.cancel(); } catch { /* noop */ } },
@@ -447,7 +521,10 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
           // (matching the Pdfjs path, which hides the engine's native markup
           // layer); baking here would double them and make erase leave baked pixels.
           const task = page.render({ canvasContext: ctx, viewport, annotationMode: pdfjsLib.AnnotationMode.DISABLE });
-          task.onContinue = (resume) => requestAnimationFrame(resume);
+          // Each slice of the draw goes through the turn: a sharpen draw pauses
+          // while a gesture is moving the page and resumes after it.
+          const myTurn = turn;
+          task.onContinue = (resume) => (myTurn ? myTurn.continue(resume) : requestAnimationFrame(resume));
           taskRef.current = task;
           try {
             await task.promise;
@@ -467,16 +544,15 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
         turn?.release();
         if (cancelled || myGen !== genRef.current) return;
 
-        const c = canvasRef.current;
-        if (!c) return;
-        c.width = target.width;
-        c.height = target.height;
-        c.getContext('2d', { alpha: false }).drawImage(target, 0, 0);
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        blitRaster(canvas, target);
+        shownRef.current = { id: pageId, scale: want };
         // Keep the rendered bitmap so a scroll-return repaints instantly on
         // EVERY surface. Mobile used to release it here, which is why a page
         // leaving the mount window came back as an undrawn white canvas; the
         // byte ceiling is surface-aware instead.
-        pageRasterCacheSet(cacheKey, target, pageRasterCacheMaxBytes(isMobileSurface));
+        pageRasterCacheSet(rasterCacheKey(pageId, want), target, maxBytes, want);
         targetRetained = true;
         onRaster?.(pageIndex, { ms: Math.round(performance.now() - t0), clamped: tiled });
       } catch (error) {
@@ -496,13 +572,19 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
       if (taskRef.current) { try { taskRef.current.cancel(); } catch { /* noop */ } }
       turn?.release();
     };
-  }, [pdf, pageIndex, pageW, pageH, baseScale, rotation, tiled, onRaster, isMobileSurface, rasterQueue]);
+  }, [pdf, pageIndex, pageW, pageH, want, rotation, tiled, onRaster, isMobileSurface, rasterQueue]);
 
   useEffect(() => () => releaseRasterCanvas(canvasRef.current), []);
 
   return (
+    // The class names this canvas as the page surface for the shared page
+    // probes (viewerShared hasPdfjsPdfSurface, measurePdfjsPageScale, hit
+    // tests). Without it the surface probe, run for every mounted page on
+    // every viewer render, searched every annotation node of the page and
+    // never found one (owner 2026-10-06, smooth zoom on marked drawings).
     <canvas
       ref={canvasRef}
+      className="survey-pdfjs-page-canvas"
       style={{ display: 'block', width: '100%', height: '100%', background: '#fff', boxShadow: '0 2px 14px rgba(0,0,0,0.45)' }}
     />
   );
@@ -1258,6 +1340,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // drawing queue they share (utils/pageRasterQueue.js).
   const visiblePageRangeRef = useRef([-1, -1]);
   const rasterQueueRef = useRef(null);
+  // Owner 2026-10-06 (smooth zoom at every level): while the page is moving
+  // under a gesture (pinch, ctrl+wheel, pan, glide, a scroll in the last
+  // RASTER_SCROLL_QUIET_MS), pages that already show a bitmap are not redrawn;
+  // they sharpen once it stops (pageRasterQueue kinds).
+  const lastScrollAtRef = useRef(-Infinity);
+  const rasterQuietTimerRef = useRef(0);
+  const gestureHoldsRasterRef = useRef(() => false);
   if (!rasterQueueRef.current) {
     rasterQueueRef.current = createPageRasterQueue({
       isVisible: (index) => {
@@ -1265,6 +1354,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         return first < 0 || (index >= first && index <= last);
       },
       focusIndex: () => Math.max(0, (currentPageRef.current || 1) - 1),
+      isHeld: (kind) => gestureHoldsRasterRef.current(kind),
     });
   }
   // The last fit: { mode, viewW, viewH, pageW, pageH, pageIndex } (see
@@ -1316,6 +1406,37 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const panEdgeShownRef = useRef({ x: 0, y: 0 });
   const panEdgeRafRef = useRef(0);
   const coastElasticRef = useRef(null);
+  // What may draw right now (pageRasterQueue kinds): during a pinch or a
+  // ctrl+wheel zoom nothing does (pages a pinch reveals are not mounted until
+  // it ends anyway, and a draw slice costs a whole frame); while a pan, a
+  // glide, a bounce or a scroll moves the page only pages showing nothing do.
+  gestureHoldsRasterRef.current = (kind = 'sharpen') => {
+    if (zoomInteractionRef.current || mobileTouchRef.current?.mode === 'pinch') return true;
+    const moving = panInteractionRef.current
+      || Boolean(elasticRef.current?.anim)
+      || performance.now() - lastScrollAtRef.current < RASTER_SCROLL_QUIET_MS;
+    return moving && kind !== 'fill';
+  };
+  // Sharpen held pages once the page has been still for RASTER_SCROLL_QUIET_MS.
+  // `data-pdfjs-moving` on the viewer says the page is moving (PDFViewer's
+  // overlay watchdog stays off then: its style read cost a whole-document
+  // style pass in the middle of a pinch or glide).
+  const scheduleRasterQuietPump = useCallback(() => {
+    if (rasterQuietTimerRef.current) clearTimeout(rasterQuietTimerRef.current);
+    rasterQuietTimerRef.current = window.setTimeout(() => {
+      rasterQuietTimerRef.current = 0;
+      if (gestureHoldsRasterRef.current()) { scheduleRasterQuietPump(); return; }
+      const el = scrollerRef.current;
+      if (el?.dataset.pdfjsMoving) delete el.dataset.pdfjsMoving;
+      rasterQueueRef.current?.pump();
+    }, RASTER_SCROLL_QUIET_MS + 10);
+  }, []);
+  const markMoving = useCallback(() => {
+    const el = scrollerRef.current;
+    if (el && el.dataset.pdfjsMoving !== 'true') el.dataset.pdfjsMoving = 'true';
+    scheduleRasterQuietPump();
+  }, [scheduleRasterQuietPump]);
+  useEffect(() => () => { if (rasterQuietTimerRef.current) clearTimeout(rasterQuietTimerRef.current); }, []);
   const layoutMetrics = useMemo(() => resolveLayoutMetrics(isMobileSurface), [isMobileSurface]);
   const layoutMetricsRef = useRef(layoutMetrics);
   layoutMetricsRef.current = layoutMetrics;
@@ -2002,6 +2123,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (!el) return undefined;
     let raf = 0;
     const onScroll = () => {
+      lastScrollAtRef.current = performance.now();
+      markMoving();
       if (raf) return;
       raf = requestAnimationFrame(() => {
         raf = 0;
@@ -2022,7 +2145,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => { el.removeEventListener('scroll', onScroll); if (raf) cancelAnimationFrame(raf); };
-  }, [recomputeWindow, syncTopRoom, syncSideRoom]);
+  }, [recomputeWindow, syncTopRoom, syncSideRoom, markMoving]);
 
   useEffect(() => { recomputeWindow(); }, [recomputeWindow]);
 
@@ -2300,8 +2423,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const setZoomInteraction = useCallback((active) => {
     if (zoomInteractionRef.current === active) return;
     zoomInteractionRef.current = active;
+    if (active) markMoving(); else scheduleRasterQuietPump();
     window.dispatchEvent(new Event(active ? ZOOM_START_EVENT : ZOOM_END_EVENT));
-  }, []);
+  }, [markMoving, scheduleRasterQuietPump]);
 
   useLayoutEffect(() => {
     // A phone zoom-limit overshoot easing home keeps showing its own scale, so
@@ -2745,13 +2869,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const setPanInteraction = useCallback((active) => {
     if (panInteractionRef.current === active) return;
     panInteractionRef.current = active;
+    if (active) markMoving(); else scheduleRasterQuietPump();
     if (document.documentElement) {
       if (active) document.documentElement.dataset.surveyPdfjsPanActive = 'true';
       else delete document.documentElement.dataset.surveyPdfjsPanActive;
     }
     cb.current.onPanStateChange?.(active);
     window.dispatchEvent(new Event(active ? PAN_START_EVENT : PAN_END_EVENT));
-  }, []);
+  }, [markMoving, scheduleRasterQuietPump]);
 
   const updatePanPresentation = useCallback(() => {
     const el = scrollerRef.current;
@@ -4053,6 +4178,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       ),
       getMaximumScale: () => (isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE),
       rasterQueue: () => rasterQueueRef.current,
+      getPdf: () => pdfRef.current,
+      rasterCacheBytes: () => pageRasterCacheBytes,
     };
     window.__pdfjsViewerPerf = api;
     return () => { if (window.__pdfjsViewerPerf === api) delete window.__pdfjsViewerPerf; };

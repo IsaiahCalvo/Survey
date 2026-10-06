@@ -302,10 +302,14 @@ export const hasPdfjsPdfSurface = (host) => !!host?.querySelector?.(PDFJS_PDF_SU
 
 export const hasVisiblePdfjsSpinner = (host) => {
   if (!host?.querySelectorAll) return false;
-  const spinners = Array.from(host.querySelectorAll([
-    '.survey-pdfjs-spinner-pane:not(.survey-pdfjs-spin-hide)',
-    '.survey-pdfjs-spinner-pane[aria-hidden="false"]'
-  ].join(',')));
+  // Perf (owner 2026-10-06, smooth zoom): called for every mounted page on
+  // every viewer render, and no spinner pane exists under the pdf.js engine,
+  // so the selector query walked every annotation node of every page each
+  // time. The class collection is cached by the browser between DOM changes;
+  // the checks below reject hidden panes exactly as the old selector did.
+  const spinners = typeof host.getElementsByClassName === 'function'
+    ? Array.from(host.getElementsByClassName('survey-pdfjs-spinner-pane'))
+    : Array.from(host.querySelectorAll('.survey-pdfjs-spinner-pane'));
   return spinners.some((spinner) => {
     if (!spinner?.isConnected) return false;
     if (spinner.classList?.contains?.('survey-pdfjs-spin-hide')) return false;

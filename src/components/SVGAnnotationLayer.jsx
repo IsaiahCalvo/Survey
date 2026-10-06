@@ -140,6 +140,7 @@ import {
   applyPageAffineToInkObject,
   createInkPathAffine,
 } from '../utils/inkGeometryTransform.js';
+import { pureTranslationOf, translatePathSegmentsToD } from '../utils/svgPathBake.js';
 import {
   ANNOTATION_VISIBILITY_SCOPE,
   getAnnotationVisibilityScope,
@@ -218,6 +219,18 @@ export function buildFabricPathSvgTransform(obj) {
   return `matrix(${matrix.map(clean).join(' ')})`;
 }
 /* test-export:end buildFabricPathSvgTransform */
+
+// Owner 2026-10-06 (smooth zoom on heavily marked drawings): a path mark that
+// is only MOVED (pure translation) is drawn with the move written into its
+// path data and no transform of its own (utils/svgPathBake.js — each
+// transformed element was its own paint chunk, the main per-frame cost of a
+// zoomed-out set of drawings). { d } or null (keep the transform).
+function resolveBakedFabricPath(obj) {
+  const translation = pureTranslationOf(createInkPathAffine(obj, obj?.path).matrix);
+  if (!translation) return null;
+  const d = translatePathSegmentsToD(obj.path, translation.tx, translation.ty);
+  return d ? { d } : null;
+}
 
 const hasVisiblePaint = (value) => {
   if (value == null) return false;
@@ -5238,7 +5251,7 @@ const SVGAnnotationLayer = memo(({
   // state); live previews build new objects and are always computed fresh.
   const markGeometryCacheRef = useRef(null);
   if (!markGeometryCacheRef.current) {
-    markGeometryCacheRef.current = { bbox: new WeakMap(), pathTransform: new WeakMap() };
+    markGeometryCacheRef.current = { bbox: new WeakMap(), pathTransform: new WeakMap(), bakedPath: new WeakMap() };
   }
   const cachedMarkGeometry = (kind, target, committed, compute) => {
     if (!committed || !target || typeof target !== 'object') return compute(target);
@@ -5448,9 +5461,14 @@ const SVGAnnotationLayer = memo(({
       String(renderObj?.type || '').toLowerCase() === 'path'
       && renderElement
     ) {
-      renderElement = cloneElement(renderElement, {
-        transform: cachedMarkGeometry('pathTransform', renderObj, renderObj === obj, buildFabricPathSvgTransform),
-      });
+      // A moved-only plain <path> gets the move written into its data instead
+      // (resolveBakedFabricPath); the drawn result is the same.
+      const baked = renderElement.type === 'path'
+        ? cachedMarkGeometry('bakedPath', renderObj, renderObj === obj, resolveBakedFabricPath)
+        : null;
+      renderElement = cloneElement(renderElement, baked
+        ? { d: baked.d, transform: undefined }
+        : { transform: cachedMarkGeometry('pathTransform', renderObj, renderObj === obj, buildFabricPathSvgTransform) });
     }
 
     const bbox = cachedMarkGeometry('bbox', renderObj, renderObj === obj, getAnnotationBBox);
@@ -6270,6 +6288,11 @@ const SVGAnnotationLayer = memo(({
             // not just its edges. Predicate lives in svgPathAttrs.js.
             const isFilledPdfInkOutline = isFilledInkOutlineAttrs(pathAttrs);
             const pathTransform = cachedMarkGeometry('pathTransform', renderObj, renderObj === obj, buildFabricPathSvgTransform);
+            // Same baked geometry as the visible path (resolveBakedFabricPath):
+            // hover halo and hit target stay exactly on the ink.
+            const bakedPath = cachedMarkGeometry('bakedPath', renderObj, renderObj === obj, resolveBakedFabricPath);
+            const targetD = bakedPath ? bakedPath.d : pathD;
+            const targetTransform = bakedPath ? undefined : pathTransform;
             const sw = renderObj.strokeWidth || 1;
             // Zoom-out balloon fix: clamp inverseScale for the VISIBLE filled-ink
             // hover stroke so it stops growing on extreme zoom-out. The hit
@@ -6306,8 +6329,8 @@ const SVGAnnotationLayer = memo(({
                   // same 0.12 body tint as before).
                   <g opacity={HOVER_HALO_OPACITY} data-hover-halo="path" style={{ pointerEvents: 'none' }}>
                     <path
-                      d={pathD}
-                      transform={pathTransform}
+                      d={targetD}
+                      transform={targetTransform}
                       stroke="#4a90e2"
                       strokeWidth={hoverStrokeWidth}
                       fill={isFilledPdfInkOutline ? '#4a90e2' : 'none'}
@@ -6321,8 +6344,8 @@ const SVGAnnotationLayer = memo(({
                   </g>
                 )}
                 <path
-                  d={pathD}
-                  transform={pathTransform}
+                  d={targetD}
+                  transform={targetTransform}
                   fill={inkHitProps ? inkHitProps.fill : 'none'}
                   fillRule={inkHitProps ? inkHitProps.fillRule : undefined}
                   stroke={inkHitProps ? inkHitProps.stroke : 'rgba(0,0,0,0.001)'}

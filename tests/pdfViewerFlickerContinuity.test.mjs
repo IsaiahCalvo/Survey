@@ -94,11 +94,15 @@ test('every surface reads AND writes the page raster cache', () => {
   // The mobile-only cache bypass is what made a revisited page a blank white
   // slab for up to seconds on a large drawing. Both guards must stay gone.
   assert.doesNotMatch(PDFJS_VIEWER_SOURCE, /isMobileSurface \? null : pageRasterCacheGet/);
-  assert.match(PDFJS_VIEWER_SOURCE, /const cachedCanvas = pageRasterCacheGet\(cacheKey\)/);
+  // 2026-10-06 (smooth zoom at every level): the cache keeps every bitmap of a
+  // page at any scale (pageRasterCacheCandidates) so a zoom change can reuse
+  // or shrink one; still read and written on every surface.
+  assert.match(PDFJS_VIEWER_SOURCE, /const candidates = pageRasterCacheCandidates\(pageId\);/);
   assert.doesNotMatch(PDFJS_VIEWER_SOURCE, /if \(!isMobileSurface\) \{\s*\/\/[^\n]*\n\s*pageRasterCacheSet/);
+  assert.match(PDFJS_VIEWER_SOURCE, /const maxBytes = pageRasterCacheMaxBytes\(isMobileSurface\);/);
   assert.match(
     PDFJS_VIEWER_SOURCE,
-    /pageRasterCacheSet\(cacheKey, target, pageRasterCacheMaxBytes\(isMobileSurface\)\)/
+    /pageRasterCacheSet\(rasterCacheKey\(pageId, want\), target, maxBytes, want\)/
   );
   // The bypass is replaced by a surface-aware byte ceiling, not by an unbounded
   // cache: mobile must stay well under the WKWebView budget.

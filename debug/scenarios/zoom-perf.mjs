@@ -11,16 +11,22 @@
 // --levels  comma list: min,0.1,0.25,0.5,fit,1,2,4,max (default: all)
 // --gestures comma list: pinch,fling,wheel (default: pinch,fling on touch, wheel,fling on desktop)
 // --json    write every number to this file as well
+// --trace   level:gesture (e.g. fit:fling) — save a Chromium trace of that run
+//           to --trace-out (default ./zoom-perf-trace.json)
 // --chromium / --webkit  browser executable overrides (PW_CHROMIUM_PATH / PW_WEBKIT_PATH)
 //
-// For each document and zoom level it prints, per gesture: frame-time p50 /
-// p95 / max (ms), frames dropped (each frame past 16.7 ms counts the missed
-// vsyncs), long tasks over 50 ms, how long after the gesture ends until every
-// page on screen is drawn sharp ("sharp ms"), and how many sampled frames
-// showed a page on screen that was still blank. Before the gesture it records
-// mounted pages, canvas count and canvas megapixels, annotation SVG nodes and
-// the JS heap. The page's own dev hook (window.__pdfjsViewerPerf, DEV builds
-// only) sets the exact zoom.
+// For each document and zoom level it prints, per gesture:
+//   move p50 / p95 / max  frame times (ms) while the page is moving (fingers,
+//                         then any glide or bounce), and frames dropped then
+//                         (each frame past 16.7 ms counts its missed vsyncs)
+//   after                 the longest frame after it stopped, until sharp
+//   long                  tasks over 50 ms (Chromium) in the whole run
+//   blank                 sampled frames showing a page on screen still blank
+//   sharp                 ms after the page stops until every page on screen
+//                         is drawn at full sharpness
+// Before the gesture it records mounted pages, canvas count and canvas
+// megapixels, annotation SVG nodes and the JS heap. The page's own dev hook
+// (window.__pdfjsViewerPerf, DEV builds only) sets the exact zoom.
 import { chromium, webkit } from 'playwright';
 import fs from 'node:fs';
 
@@ -77,8 +83,16 @@ function installRecorder() {
     }
     return { visible, blank, soft };
   };
+  let lastPos = '';
   const loop = (t) => {
     if (R.on) {
+      // Is the page moving this frame? (scroll position or the live
+      // zoom/bounce transform changed)
+      const sc = document.querySelector('[data-mobile-pdf-surface="true"]') || document.querySelector('.survey-pdfjs-viewer');
+      const content = sc?.querySelector('[data-pdfjs-content="true"]');
+      const pos = sc ? `${sc.scrollTop}|${sc.scrollLeft}|${content?.style.transform || ''}` : '';
+      if (pos !== lastPos) R.lastMoveAt = t;
+      lastPos = pos;
       R.frames.push(t);
       if (R.frames.length % 4 === 0) {
         const s = R.pageState();
@@ -89,8 +103,19 @@ function installRecorder() {
     requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);
-  R.start = () => { R.frames = []; R.long = []; R.blankSamples = 0; R.samples = 0; R.on = true; };
-  R.stop = () => { R.on = false; return { frames: R.frames, long: R.long, blankSamples: R.blankSamples, samples: R.samples }; };
+  R.start = () => { R.frames = []; R.long = []; R.blankSamples = 0; R.samples = 0; R.lastMoveAt = performance.now(); R.on = true; };
+  R.inputEnded = () => { R.inputEndAt = performance.now(); };
+  R.stop = () => { R.on = false; return { frames: R.frames, long: R.long, blankSamples: R.blankSamples, samples: R.samples, moveEnd: Math.max(R.lastMoveAt || 0, R.inputEndAt || 0) }; };
+  // Resolves once the page has not moved for `quiet` ms.
+  R.untilStill = (quiet = 150, limit = 5000) => new Promise((resolve) => {
+    const t0 = performance.now();
+    const tick = () => {
+      const now = performance.now();
+      if (now - (R.lastMoveAt || 0) > quiet || now - t0 > limit) { resolve(); return; }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
   // Resolves with ms from now until every page on screen is drawn and sharp
   // (checked each frame), or null after `limit` ms.
   R.untilSharp = (limit = 10000) => new Promise((resolve) => {
@@ -123,9 +148,9 @@ function installRecorder() {
   };
 }
 
-function stats(frames) {
+function stats(frames, until = Infinity) {
   const d = [];
-  for (let i = 1; i < frames.length; i += 1) d.push(frames[i] - frames[i - 1]);
+  for (let i = 1; i < frames.length && frames[i - 1] <= until; i += 1) d.push(frames[i] - frames[i - 1]);
   if (!d.length) return { p50: null, p95: null, max: null, dropped: 0, n: 0 };
   const s = [...d].sort((a, b) => a - b);
   const q = (k) => s[Math.min(s.length - 1, Math.floor(k * (s.length - 1)))];
@@ -151,7 +176,9 @@ async function openDoc(ctx, doc) {
   page.on('pageerror', (e) => console.log('  PAGEERR', e.message.slice(0, 200)));
   const q = `?testPdf=${encodeURIComponent(doc.pdf)}${TOUCH ? '&mobileNav=tabs&nativeShell=expo' : '&surveyTemplateWorkflowE2E=1'}${doc.extra || ''}`;
   await page.goto(`${BASE}/${q}`, { waitUntil: 'load' });
-  await page.waitForFunction(() => window.__pdfjsViewerPerf && document.querySelector('[data-page-number="1"] canvas'), null, { timeout: 120000 });
+  const ready = () => page.waitForFunction(() => window.__pdfjsViewerPerf && document.querySelector('[data-page-number="1"] canvas'), null, { timeout: 90000 });
+  // A cold Vite server may re-optimise dependencies and drop the first load.
+  try { await ready(); } catch { await page.reload({ waitUntil: 'load' }); await ready(); }
   await sleep(4000);
   let cdp = null;
   if (DEVICE !== 'webkit') {
@@ -210,6 +237,12 @@ const snapshot = (page) => page.evaluate(() => {
 
 async function runGesture(page, cdp, name, box, level) {
   const cx = box.x + box.w / 2; const cy = box.y + box.h / 2;
+  const tracing = Boolean(cdp && args.trace === `${level}:${name}`);
+  const traceEvents = [];
+  if (tracing) {
+    cdp.on('Tracing.dataCollected', (d) => traceEvents.push(...d.value));
+    await cdp.send('Tracing.start', { categories: 'devtools.timeline,blink,cc,disabled-by-default-devtools.timeline', transferMode: 'ReportEvents' });
+  }
   await page.evaluate(() => window.__zp.start());
   const t0 = Date.now();
   const touch = async (type, pts) => {
@@ -249,12 +282,23 @@ async function runGesture(page, cdp, name, box, level) {
     for (let i = 0; i < 14; i += 1) { await page.mouse.wheel(0, -dir * 40); await sleep(16); }
     await page.keyboard.up('Control');
   }
+  await page.evaluate(() => window.__zp.inputEnded());
   const gestureMs = Date.now() - t0;
+  await page.evaluate(() => window.__zp.untilStill());
   const sharpMs = await page.evaluate(() => window.__zp.untilSharp(12000));
   const rec = await page.evaluate(() => window.__zp.stop());
-  const s = stats(rec.frames);
+  if (tracing) {
+    const done = new Promise((r) => cdp.once('Tracing.tracingComplete', r));
+    await cdp.send('Tracing.end'); await done;
+    fs.writeFileSync(args['trace-out'] || 'zoom-perf-trace.json', JSON.stringify({ traceEvents }));
+  }
+  const s = stats(rec.frames, rec.moveEnd);
+  const after = rec.frames.filter((t) => t > rec.moveEnd);
+  let afterMax = 0;
+  for (let i = 1; i < after.length; i += 1) afterMax = Math.max(afterMax, after[i] - after[i - 1]);
   return {
     ...s,
+    afterMax: +afterMax.toFixed(1),
     long: rec.long.filter((x) => x > 50).length,
     longMax: rec.long.length ? Math.round(Math.max(...rec.long)) : 0,
     blankFrames: rec.blankSamples,
@@ -271,7 +315,7 @@ for (const key of docKeys) {
   const doc = DOCS[key];
   if (!doc) { console.log(`unknown doc ${key}`); continue; }
   console.log(`\n== ${DEVICE} · ${doc.label}`);
-  console.log('level   scale  | mount vis canv  MP  svg   heap | gesture  p50  p95   max drop long blank sharp');
+  console.log('level   scale  | mount vis canv  MP  svg   heap | gesture  move: p50  p95   max drop | after  long blank sharp');
   const { page, cdp } = await openDoc(ctx, doc);
   const box = await viewerBox(page);
   results.docs[key] = {};
@@ -294,7 +338,7 @@ for (const key of docKeys) {
     const head = `${level.padEnd(6)} ${(lv.scale * 100).toFixed(1).padStart(6)}% | ${String(snap.mounted).padStart(4)} ${String(snap.visible).padStart(3)} ${String(snap.canvases).padStart(4)} ${String(snap.canvasMP).padStart(4)} ${String(snap.svgNodes).padStart(5)} ${String(snap.heapMB ?? '-').padStart(5)}`;
     GESTURES.forEach((g, i) => {
       const r = row.gestures[g];
-      console.log(`${i === 0 ? head : ' '.repeat(head.length)} | ${g.padEnd(6)} ${String(r.p50).padStart(5)} ${String(r.p95).padStart(5)} ${String(r.max).padStart(5)} ${String(r.dropped).padStart(4)} ${String(r.long).padStart(4)} ${String(r.blankFrames).padStart(5)} ${String(r.sharpMs ?? '>12s').padStart(5)}`);
+      console.log(`${i === 0 ? head : ' '.repeat(head.length)} | ${g.padEnd(6)}       ${String(r.p50).padStart(5)} ${String(r.p95).padStart(5)} ${String(r.max).padStart(5)} ${String(r.dropped).padStart(4)} | ${String(r.afterMax).padStart(5)} ${String(r.long).padStart(4)} ${String(r.blankFrames).padStart(5)} ${String(r.sharpMs ?? '>12s').padStart(5)}`);
     });
   }
   await page.close();
