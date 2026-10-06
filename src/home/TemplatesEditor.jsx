@@ -2020,6 +2020,7 @@ export default function TemplatesEditor({
       <SectionIconButton
         action="select"
         label={tplEdit ? 'Done' : 'Select'}
+        nothingToSelect={visibleTemplates.length === 0}
         active={tplEdit}
         className="mobile-header-select-button"
         onClick={() => { const next = !tplEdit; setTplEdit(next); if (!next) setSelTpls(new Set()); }}
@@ -2045,6 +2046,7 @@ export default function TemplatesEditor({
                 });
               }}
               onDuplicate={() => { duplicateTemplates(visibleSelectedIds); setSelTpls(new Set()); }}
+              can={{ share: visibleSelCount > 1 ? 'Share one template at a time' : true }}
               onShare={() => { const first = visibleTemplates.find((t) => visibleSelectedIds.has(t.id)); if (first) onShare && onShare(first); }}
               onDelete={() => { deleteTemplates(visibleSelectedIds); setSelTpls(new Set()); }}
             />
@@ -2210,7 +2212,8 @@ export default function TemplatesEditor({
                             });
                           }}
                           onDuplicate={() => { duplicateTemplates(visibleSelectedIds); setSelTpls(new Set()); }}
-                          onShare={() => { const first = visibleTemplates.find((t) => visibleSelectedIds.has(t.id)); if (first) onShare && onShare(first); }}
+                          can={{ share: visibleSelCount > 1 ? 'Share one template at a time' : true }}
+              onShare={() => { const first = visibleTemplates.find((t) => visibleSelectedIds.has(t.id)); if (first) onShare && onShare(first); }}
                           onDelete={() => { deleteTemplates(visibleSelectedIds); setSelTpls(new Set()); }}
                         />
                       );
@@ -2220,6 +2223,7 @@ export default function TemplatesEditor({
                 <SectionIconButton
                   action="select"
                   label={tplEdit ? 'Done' : 'Select'}
+                  nothingToSelect={visibleTemplates.length === 0}
                   active={tplEdit}
                   onClick={() => { const next = !tplEdit; setTplEdit(next); if (!next) setSelTpls(new Set()); }}
                 />
@@ -2384,6 +2388,7 @@ export default function TemplatesEditor({
                       action="select"
                       label="Select"
                       onClick={() => { setModEdit(true); setSelMods(new Set()); }}
+                      nothingToSelect={orderedMods.length === 0}
                     />
                     <SectionIconButton action="add" label="Add module" onClick={addModule} />
                   </SectionIconActions>
@@ -2424,6 +2429,7 @@ export default function TemplatesEditor({
                   <SectionIconButton
                     action="select"
                     label={catEdit ? 'Done' : 'Select'}
+                    nothingToSelect={visibleCats.length === 0}
                     active={catEdit}
                     onClick={() => { const next = !catEdit; setCatEdit(next); if (!next) setSelCats(new Set()); }}
                   />
@@ -2704,6 +2710,7 @@ export default function TemplatesEditor({
                 <SectionIconButton
                   action="select"
                   label={entityEdit ? 'Done' : 'Select'}
+                  nothingToSelect={!tpl || (tpl.roster || []).length === 0}
                   active={entityEdit}
                   onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
                 />
@@ -3048,6 +3055,7 @@ export default function TemplatesEditor({
                         label="Select"
                         className="templates-mobile-section-select"
                         onClick={() => { setModEdit(true); setSelMods(new Set()); }}
+                        nothingToSelect={orderedMods.length === 0}
                       />
                       <SectionIconButton phone action="add" label="Add module" data-search-dismiss-action onClick={addModule} />
                     </SectionIconActions>
@@ -3121,6 +3129,7 @@ export default function TemplatesEditor({
                           label="Select"
                           className="templates-mobile-section-select"
                           onClick={() => { setCatEdit(true); }}
+                          nothingToSelect={mobileVisibleCats.length === 0}
                         />
                         <SectionIconButton phone action="add" label="Add category" data-search-dismiss-action onClick={addCategory} />
                       </SectionIconActions>
@@ -3340,6 +3349,7 @@ export default function TemplatesEditor({
                       phone
                       action="select"
                       label={entityEdit ? 'Done' : 'Select'}
+                      nothingToSelect={mobileVisibleEntities.length === 0}
                       active={entityEdit}
                       onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
                     />

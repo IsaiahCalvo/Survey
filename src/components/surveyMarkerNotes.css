@@ -446,8 +446,9 @@
 }
 
 .survey-media-recorder__stop:disabled {
-  opacity: 0.5;
-  cursor: default;
+  /* The shared off look (states.css section 6) on the ink; a filled
+     button also gives up its red fill. No opacity (owner 2026-10-06). */
+  background: var(--disabled-fill);
 }
 
 /* ---- Upload media menu: phone action sheet ------------------------------ */

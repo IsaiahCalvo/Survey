@@ -2528,8 +2528,18 @@ const SurveySpacesRail = ({
                                           });
                                           setSelectedCategories(newSelection);
                                         }}
-                                        // There is no move flow for categories yet: Move keeps
-                                        // the old combined button's notice, now for moving only.
+                                        // There is no move flow for categories yet (owner
+                                        // 2026-10-06: a button that cannot act is disabled and
+                                        // says why, instead of answering a tap with a notice).
+                                        total={categoriesForModule.length}
+                                        can={{
+                                          move: 'Moving categories is not available yet',
+                                          // Copy copies the categories' Survey Markers, so a
+                                          // selection with none has nothing to copy.
+                                          copy: Object.values(surveyMarkers || {}).some((marker) => (
+                                            marker?.moduleId === selectedModuleId && selectedCategories[marker?.categoryId]
+                                          )) || 'The selected categories have no items to copy',
+                                        }}
                                         onMove={() => {
                                           showToast(`Moving ${selectedCategoryCount} categor${selectedCategoryCount === 1 ? 'y' : 'ies'} to another module is not available yet.`, 'info');
                                         }}
@@ -2545,6 +2555,7 @@ const SurveySpacesRail = ({
                                       <SectionIconButton
                                         action="select"
                                         label="Select"
+                                        nothingToSelect={categoriesForModule.length === 0}
                                         onClick={() => {
                                           setCategorySelectModeActive(true);
                                           setSelectedCategories({});
@@ -3199,6 +3210,7 @@ const SurveySpacesRail = ({
                                               <SectionIconActions className="survey-marker-select-toolbar" role="toolbar" aria-label="Item selection actions">
                                                 <SelectModeButtons
                                                   count={itemSelectedCount}
+                                                  total={categorySurveyMarkers.length}
                                                   allSelected={allItemsSelected}
                                                   onToggleAll={() => {
                                                     const newSelection = {};
@@ -3913,14 +3925,19 @@ const SurveySpacesRail = ({
                       header keeps only the template name and the X. "Export to
                       Excel" creates the workbook; with a linked workbook a "..."
                       beside it holds that workbook's actions. Same handlers. */}
-                  {!isMobileTemplateSwitching && (
+                  {!isMobileTemplateSwitching && (() => {
+                    // Owner 2026-10-06: Export is off while the survey has no
+                    // items - there is nothing to put in the workbook yet.
+                    const templateModuleIds = new Set(((selectedTemplate?.modules || selectedTemplate?.spaces) || []).map((module) => module.id));
+                    const surveyHasItems = Object.values(surveyMarkers || {}).some((marker) => templateModuleIds.has(marker?.moduleId));
+                    return (
                     <div className={mobileMode ? 'mobile-survey-foot' : 'survey-rail__foot'}>
                       <button
                         type="button"
                         className={mobileMode ? 'mobile-survey-foot__export' : 'survey-rail__foot-export'}
-                        onClick={() => handleExportSurveyToExcel()}
-                        disabled={isExporting}
-                        {...(mobileMode ? {} : tip('Create an Excel workbook from this survey', 'above'))}
+                        onClick={() => { if (surveyHasItems) handleExportSurveyToExcel(); }}
+                        disabled={isExporting || !surveyHasItems}
+                        {...(mobileMode ? {} : tip(surveyHasItems ? 'Create an Excel workbook from this survey' : 'Add a survey item to export', 'above'))}
                       >
                         {isExporting
                           ? <Spinner size={mobileMode ? 16 : 14} color="var(--text-1)" trackColor="var(--surface-3)" />
@@ -4283,7 +4300,8 @@ const SurveySpacesRail = ({
                         </div>
                       )}
                     </div>
-                  )}
+                    );
+                  })()}
                   </>
                   ) : (
                     <div ref={templatePickerRef} style={{

@@ -1415,18 +1415,48 @@ const createFilledPaperInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, opt
   const useMultiply = fabricObj.globalCompositeOperation === 'multiply'
     || fabricObj.tool === 'highlighter';
   const needsGraphicsState = alpha < 0.99999 || useMultiply;
+  // 2026-10-06 (test plan 68): a partially erased authored curve is drawn as
+  // its SURVIVOR polygons, filled even-odd, like the SVG layer and the canvas
+  // painter. Painting the source curve under a clip of those polygons put the
+  // clip edge on the curve's own edge, so viewers anti-aliased every edge
+  // pixel twice and thin lines printed 10-30% lighter than untouched ones.
+  const survivorFill = hasAnalyticPaperSource && normalizeMultiPolygon(polygons).some((polygon) => (
+    polygon.some((ring) => Array.isArray(ring) && ring.length >= 3)
+  ));
   const content = ['q'];
   if (needsGraphicsState) content.push('/GS0 gs');
   content.push(
     `${pdfNumberText(color.red)} ${pdfNumberText(color.green)} ${pdfNumberText(color.blue)} ${
-      hasAnalyticPaperSource && !sourceIsFill ? 'RG' : 'rg'
+      hasAnalyticPaperSource && !sourceIsFill && !survivorFill ? 'RG' : 'rg'
     }`,
   );
 
-  if (hasAnalyticPaperSource) {
-    // w38 (2026-09-25): clip the authored source to the SURVIVOR polygons,
-    // exactly like the SVG layer and the canvas painter. (Box minus
-    // paperEraserCuts is kept only for a survivor with no polygons.) The cuts
+  if (survivorFill) {
+    for (const polygon of polygons) {
+      for (const ring of polygon) {
+        if (!Array.isArray(ring) || ring.length < 3) continue;
+        const end = (
+          ring.length > 1
+          && ring[0][0] === ring.at(-1)[0]
+          && ring[0][1] === ring.at(-1)[1]
+        ) ? ring.length - 1 : ring.length;
+        content.push(
+          `${pdfNumberText(ring[0][0] - bounds.minX)} `
+          + `${pdfNumberText(bounds.maxY - ring[0][1])} m`,
+        );
+        for (let index = 1; index < end; index += 1) {
+          content.push(
+            `${pdfNumberText(ring[index][0] - bounds.minX)} `
+            + `${pdfNumberText(bounds.maxY - ring[index][1])} l`,
+          );
+        }
+        content.push('h');
+      }
+    }
+    content.push('f*');
+  } else if (hasAnalyticPaperSource) {
+    // Only a survivor with no polygons gets here: the authored source under
+    // a (box minus paperEraserCuts) clip. w38 (2026-09-25): the cuts
     // are a second boolean between two polygons that share most edges and
     // can be wrong: slivers inside erased holes, notches beside them.
     const survivorClip = normalizeMultiPolygon(polygons).some((polygon) => (

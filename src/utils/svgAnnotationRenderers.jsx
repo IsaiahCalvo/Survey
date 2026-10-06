@@ -313,16 +313,6 @@ const paperCutsToSvgD = (polygons) => (polygons || [])
   .filter(Boolean)
   .join(' ');
 
-const stablePaperClipId = (key, source, cutD) => {
-  const value = `${key}|${JSON.stringify(source?.path)}|${JSON.stringify(source?.matrix)}|${cutD}`;
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return `paper-eraser-clip-${(hash >>> 0).toString(36)}`;
-};
-
 // ---------------------------------------------------------------------------
 // Render Functions
 // ---------------------------------------------------------------------------
@@ -445,39 +435,30 @@ export const renderPath = (obj, index) => {
     && Array.isArray(paperSource?.path)
     && paperSource.path.length > 0
   ) {
-    const sourceD = paperSource.path.map((command) => command.join(' ')).join(' ');
-    const [a, b, c, d, e, f] = paperSource.matrix;
+    // Partially erased authored curve (imported PDF ink, legacy curves): fill
+    // the SURVIVOR polygons, the eraser's own verified output (even-odd).
+    // 2026-10-06 (test plan 68): this used to paint the authored source curve
+    // under a clipPath of those same polygons. The clip's edge lies exactly on
+    // the curve's own edge along the whole line, so every edge pixel was
+    // anti-aliased twice (coverage x coverage): thin imported lines came out
+    // 10-30% lighter than the untouched original. One filled outline has one
+    // anti-aliased edge, like the original paint. The survivor follows the
+    // authored curve to its 0.05 pt flattening tolerance; the clipped curve
+    // was already cut to those chords on its outer side.
     const sourceIsFill = paperSource.paintMode === 'fill';
-    const clipId = stablePaperClipId(key, paperSource, paperSurvivorD);
     return (
-      <g
+      <path
         key={key}
+        d={paperSurvivorD}
         transform={transform}
+        stroke="none"
+        strokeWidth={0}
+        fill={obj.fill || attrs.fill || (sourceIsFill ? paperSource.fill : paperSource.stroke)}
+        fillRule="evenodd"
+        opacity={attrs.opacity}
+        shapeRendering="geometricPrecision"
         style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
-      >
-        <defs>
-          <clipPath id={clipId} clipPathUnits="userSpaceOnUse">
-            <path d={paperSurvivorD} fillRule="evenodd" clipRule="evenodd" />
-          </clipPath>
-        </defs>
-        <g clipPath={`url(#${clipId})`}>
-          <path
-            d={sourceD}
-            transform={`matrix(${a} ${b} ${c} ${d} ${e} ${f})`}
-            stroke={sourceIsFill ? 'none' : (obj.fill || attrs.fill || paperSource.stroke)}
-            strokeWidth={sourceIsFill ? 0 : paperSource.strokeWidth}
-            fill={sourceIsFill ? (obj.fill || attrs.fill || paperSource.fill) : 'none'}
-            fillRule={sourceIsFill ? (paperSource.fillRule || 'nonzero') : undefined}
-            opacity={attrs.opacity}
-            strokeLinecap={paperSource.strokeLineCap || 'round'}
-            strokeLinejoin={paperSource.strokeLineJoin || 'round'}
-            strokeMiterlimit={paperSource.strokeMiterLimit}
-            strokeDasharray={paperSource.strokeDashArray?.join(' ')}
-            strokeDashoffset={paperSource.strokeDashOffset}
-            shapeRendering="geometricPrecision"
-          />
-        </g>
-      </g>
+      />
     );
   }
 

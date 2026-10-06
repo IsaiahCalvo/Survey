@@ -23,6 +23,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { appDebug } from '../viewerShared.js';
 import { deepClone } from '../utils/deepClone.js';
+import { zOrderMenuState } from '../utils/disabledActions.js';
 import { watchLightPopover } from '../components/dismissRules.js';
 import {
   clampFloatingMenuPosition,
@@ -312,6 +313,40 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       }
     };
     const hasAnyClipboard = Boolean(clipboardAnnotation || clipboardCallout || familyClipboard);
+    // Owner 2026-10-06: an item that would do nothing is disabled, not a
+    // silent no-op - "Bring forward" on the top mark, "Send to back" on the
+    // bottom one, and forward / backward with no overlapping mark that way
+    // (handleReorderAnnotation's Figma step). Reads the drawn page once per
+    // open; utils/disabledActions.js zOrderMenuState holds the rule.
+    const zOrderFor = (index) => {
+      const length = annotationsByPageRef.current?.[ctx.pageNumber]?.objects?.length || 0;
+      const svg = typeof document !== 'undefined'
+        ? document.querySelector(`[data-svg-annotation-layer="${ctx.pageNumber}"]`)
+        : null;
+      const bboxOf = (i) => {
+        const g = svg?.querySelector(`[data-annotation-index="${i}"]`)
+          || svg?.querySelector(`[data-stack-index="${i}"]`);
+        if (!g || typeof g.getBBox !== 'function') return null;
+        try { return g.getBBox(); } catch (_e) { return null; }
+      };
+      const own = Number.isInteger(index) ? bboxOf(index) : null;
+      const overlapToward = (step) => {
+        if (!own) return undefined;
+        for (let j = index + step; j >= 0 && j < length; j += step) {
+          const b = bboxOf(j);
+          if (b && !(own.x + own.width < b.x || b.x + b.width < own.x
+            || own.y + own.height < b.y || b.y + b.height < own.y)) return true;
+        }
+        return false;
+      };
+      return zOrderMenuState({
+        index,
+        length,
+        hasMarkers: Boolean(svg?.querySelector('[data-survey-marker-id]')),
+        overlapAbove: overlapToward(1),
+        overlapBelow: overlapToward(-1),
+      });
+    };
     // w53: Duplicate — a copy 16 page units down-right, one Undo step, the
     // clipboard untouched (same item on every menu).
     const duplicateItem = (selection) => item('Duplicate', 'duplicate', () => {
@@ -384,6 +419,9 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       };
       const calloutObj = findCalloutObj();
       const calloutEditable = !calloutObj || canModifyObj(calloutObj);
+      const calloutZ = zOrderFor(calloutObj
+        ? annotationsByPageRef.current?.[ctx.pageNumber]?.objects?.indexOf(calloutObj)
+        : null);
       items = [
         item('Cut', 'cut', () => {
           if (!ctx.calloutId) return;
@@ -415,10 +453,10 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         ...lockMenuItems(calloutObj ? [{ obj: calloutObj }] : [], { calloutIds: [ctx.calloutId] }),
         sep(),
         // w52: same z-order block as the shape menu, same handler.
-        item('Bring to front', 'bringToFront', () => reorderCallout('front')),
-        item('Bring forward', 'bringForward', () => reorderCallout('forward')),
-        item('Send backward', 'sendBackward', () => reorderCallout('backward')),
-        item('Send to back', 'sendToBack', () => reorderCallout('back')),
+        item('Bring to front', 'bringToFront', () => reorderCallout('front'), calloutZ.front),
+        item('Bring forward', 'bringForward', () => reorderCallout('forward'), calloutZ.forward),
+        item('Send backward', 'sendBackward', () => reorderCallout('backward'), calloutZ.backward),
+        item('Send to back', 'sendToBack', () => reorderCallout('back'), calloutZ.back),
       ];
     } else if (ctx.kind === 'counter') {
       // w52 (2026-09-28): right-clicking the page while the Counter tool is
@@ -432,6 +470,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     } else if (ctx.kind === 'annotation') {
       const menuObj = annotationsByPageRef.current?.[ctx.pageNumber]?.objects?.[ctx.annotationIndex] || null;
       const menuObjEditable = !menuObj || canModifyObj(menuObj);
+      const menuZ = zOrderFor(ctx.annotationIndex);
       items = [
         // UX: Cut = Copy + Delete. Stashes a deep clone of the shape on
         // the clipboard with mode='cut' (so doPasteAnnotation clears the
@@ -548,18 +587,18 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         //   Cmd+Shift+[  → Send to Back
         item('Bring to front', 'bringToFront', () => {
           handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'front');
-        }),
+        }, menuZ.front),
         item('Bring forward', 'bringForward', () => {
           if (ctx.annotationIndex == null) return;
           handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'forward');
-        }),
+        }, menuZ.forward),
         item('Send backward', 'sendBackward', () => {
           if (ctx.annotationIndex == null) return;
           handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'backward');
-        }),
+        }, menuZ.backward),
         item('Send to back', 'sendToBack', () => {
           handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'back');
-        }),
+        }, menuZ.back),
         // UX: 2026-04-21 — Group / Ungroup items intentionally omitted
         // from the right-click menu. The feature is hidden app-wide
         // until the matrix-per-shape rewrite ships.
@@ -1003,16 +1042,16 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
                   alignItems: 'center',
                   padding: '0 8px',
                   borderRadius: 'var(--radius-xs)',
-                  cursor: it.disabled ? 'default' : 'pointer',
+                  cursor: 'pointer',
                   userSelect: 'none',
                   font: '400 15px/20px var(--font-ui)',
-                  color: it.disabled ? 'var(--text-disabled)' : (it.key === 'delete' ? 'var(--danger-text)' : 'var(--text-1)'),
+                  color: it.key === 'delete' ? 'var(--danger-text)' : 'var(--text-1)', // off: states.css section 6
                 } : {
                   padding: '7px 12px',
                   borderRadius: 5,
-                  cursor: it.disabled ? 'default' : 'pointer',
+                  cursor: 'pointer',
                   userSelect: 'none',
-                  color: it.disabled ? 'var(--text-disabled)' : (it.key === 'delete' ? 'var(--danger-text)' : 'var(--text-1)'),
+                  color: it.key === 'delete' ? 'var(--danger-text)' : 'var(--text-1)', // off: states.css section 6
                 }}
                 onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = isMobileMenu ? 'var(--surface-2)' : 'var(--surface-3)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}

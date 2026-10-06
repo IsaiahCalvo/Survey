@@ -295,16 +295,35 @@ async function gunzip(u8) {
 }
 
 // PostgREST returns/accepts bytea as '\x<hex>'.
+// Postgres bytea hex text. Table-driven (2026-10-06, test plan 68): one erase
+// of a big detailed stroke is a ~1.4 MB WAL row and a checkpoint is several
+// MB; the per-byte toString/padStart/parseInt versions cost 30-130 ms of main
+// thread per row or checkpoint. Same text and bytes.
+const HEX_DIGIT_CODES = new TextEncoder().encode('0123456789abcdef');
+const HEX_VALUE_BY_CODE = (() => {
+  const table = new Uint8Array(128);
+  for (let i = 0; i < 10; i += 1) table[48 + i] = i;
+  for (let i = 0; i < 6; i += 1) { table[97 + i] = 10 + i; table[65 + i] = 10 + i; }
+  return table;
+})();
+const HEX_TEXT_DECODER = new TextDecoder();
 function bytesToPgHex(u8) {
-  let hex = '';
-  for (let i = 0; i < u8.length; i += 1) hex += u8[i].toString(16).padStart(2, '0');
-  return `\\x${hex}`;
+  const out = new Uint8Array(2 + u8.length * 2);
+  out[0] = 92; // backslash
+  out[1] = 120; // x
+  for (let i = 0, j = 2; i < u8.length; i += 1, j += 2) {
+    out[j] = HEX_DIGIT_CODES[u8[i] >> 4];
+    out[j + 1] = HEX_DIGIT_CODES[u8[i] & 15];
+  }
+  return HEX_TEXT_DECODER.decode(out);
 }
 function pgHexToBytes(str) {
   if (str instanceof Uint8Array) return str;
   const hex = (typeof str === 'string' && str.startsWith('\\x')) ? str.slice(2) : (str || '');
   const out = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < out.length; i += 1) out[i] = parseInt(hex.substr(i * 2, 2), 16);
+  for (let i = 0, j = 0; i < out.length; i += 1, j += 2) {
+    out[i] = (HEX_VALUE_BY_CODE[hex.charCodeAt(j) & 127] << 4) | HEX_VALUE_BY_CODE[hex.charCodeAt(j + 1) & 127];
+  }
   return out;
 }
 

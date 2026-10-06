@@ -8,6 +8,7 @@
  */
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { pageHasTransform } from '../utils/disabledActions.js';
 import Icon from '../Icons';
 import Spinner from '../components/Spinner';
 import { useTooltip } from '../components/Tooltip';
@@ -75,8 +76,9 @@ const PageMenuItem = ({ mobile = false, icon, label, disabled = false, danger = 
       ...(mobile
         ? { minHeight: 'var(--sheet-menu-item-h)', padding: '0 12px', gap: '12px', borderRadius: 'var(--radius-xs)', font: '400 15px/20px var(--font-ui)' }
         : { padding: '8px 12px', gap: '8px', borderRadius: '4px', fontSize: '13px' }),
-      cursor: disabled ? 'not-allowed' : 'pointer',
-      color: disabled ? 'var(--text-disabled)' : danger ? 'var(--danger-text)' : (mobile ? 'var(--text-1)' : 'var(--text-2)'),
+      // Off is the shared look (states.css section 6: --disabled-ink, not-allowed).
+      cursor: 'pointer',
+      color: danger ? 'var(--danger-text)' : (mobile ? 'var(--text-1)' : 'var(--text-2)'),
     }}
     onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = hoverBg; }}
     onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
@@ -84,7 +86,7 @@ const PageMenuItem = ({ mobile = false, icon, label, disabled = false, danger = 
     <Icon
       name={icon}
       size={mobile ? 16 : 14}
-      color={disabled ? 'var(--text-disabled)' : danger ? 'var(--danger)' : (mobile ? 'currentColor' : 'var(--text-3)')}
+      color={danger ? 'var(--danger)' : (mobile ? 'currentColor' : 'var(--text-3)')}
     />
     {label}
   </button>
@@ -1502,9 +1504,12 @@ const PagesPanel = ({
           <PageMenuItem mobile={mobileMode} icon="rotate" label="Rotate" onClick={() => handleRotate(contextMenu.pageNumber)} />
           <PageMenuItem mobile={mobileMode} icon="flipHorizontal" label="Mirror horizontally" onClick={() => handleMirrorHorizontal(contextMenu.pageNumber)} />
           <PageMenuItem mobile={mobileMode} icon="flipVertical" label="Mirror vertically" onClick={() => handleMirrorVertical(contextMenu.pageNumber)} />
-          <PageMenuItem mobile={mobileMode} icon="reset" label="Reset" onClick={() => handleReset(contextMenu.pageNumber)} />
+          {/* Owner 2026-10-06: a menu item that has nothing to act on is
+              disabled - Reset with no mirror / turn to undo, Delete on the
+              only page (a document cannot have zero pages). */}
+          <PageMenuItem mobile={mobileMode} icon="reset" label="Reset" disabled={!pageHasTransform(pageTransformations?.[contextMenu.pageNumber])} onClick={() => handleReset(contextMenu.pageNumber)} />
           <PageMenuDivider />
-          <PageMenuItem mobile={mobileMode} icon="trash" label="Delete" danger hoverBg={mobileMode ? 'var(--surface-2)' : 'var(--surface-3)'} onClick={() => handleDelete(contextMenu.pageNumber)} />
+          <PageMenuItem mobile={mobileMode} icon="trash" label="Delete" danger disabled={!(numPages > 1)} hoverBg={mobileMode ? 'var(--surface-2)' : 'var(--surface-3)'} onClick={() => handleDelete(contextMenu.pageNumber)} />
         </div>
         </>,
         document.body,
