@@ -4040,6 +4040,24 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
   }, [goToPage, focusPageRect, zoomToScale, applyAnchoredScale, getThumbnailDataUrl]);
 
+  // DEV only: the zoom-perf scenario (debug/scenarios/zoom-perf.mjs) sets
+  // exact zoom levels through this; never present in a production build.
+  useEffect(() => {
+    if (!import.meta.env.DEV || typeof window === 'undefined') return undefined;
+    const api = {
+      zoomTo: (target) => zoomToScale(target),
+      goToPage,
+      getScale: () => scaleRef.current,
+      getMinimumScale: () => getMinimumScaleForLayout(
+        dimsPtRef.current, containerHRef.current, layoutMetricsRef.current, containerWRef.current,
+      ),
+      getMaximumScale: () => (isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE),
+      rasterQueue: () => rasterQueueRef.current,
+    };
+    window.__pdfjsViewerPerf = api;
+    return () => { if (window.__pdfjsViewerPerf === api) delete window.__pdfjsViewerPerf; };
+  }, [zoomToScale, goToPage, isMobileSurface]);
+
   const loading = pageSizes.length === 0;
   // DetailTile reads the live zoom it is drawn under from this ref; the signal
   // re-runs its scheduling (see DetailTile).
