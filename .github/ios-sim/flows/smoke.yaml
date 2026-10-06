@@ -71,9 +71,11 @@ name: smoke
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: smoke-08-pages-sheet
+# Close it by tapping the dimmed page above the sheet. ("Close document
+# panel" is a full-screen backdrop; Maestro taps its centre, which is the
+# sheet itself, so that does nothing.)
 - tapOn:
-    text: "Close document panel"
-    optional: true
+    point: "50%, 18%"
 - waitForAnimationToEnd:
     timeout: 2000
 

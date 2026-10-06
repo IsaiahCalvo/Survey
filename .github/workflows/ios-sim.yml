@@ -572,3 +572,11 @@ jobs:
           done
           echo "::warning title=ios-sim publish::could not push to ios-sim-results"
           exit 1
+
+      # The flow steps are continue-on-error so the pictures always get
+      # published; turn a failed flow back into a red job here, last.
+      - name: Fail the job if a flow failed
+        if: always() && (steps.flows.outcome == 'failure' || steps.expo.outcome == 'failure')
+        run: |
+          echo "::error title=ios-sim::a Maestro flow failed (flows=${{ steps.flows.outcome }}, expo=${{ steps.expo.outcome }}); see results.md"
+          exit 1
