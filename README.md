@@ -173,6 +173,42 @@ control must visibly do something and throw no page error. It prints one
 shards. No Playwright Chromium installed? Add
 `PW_CHROMIUM_PATH=/path/to/chrome`.
 
+### iPhone simulator check (GitHub Actions, `.github/workflows/ios-sim.yml`)
+
+A macOS runner boots an iPhone simulator and walks the phone UI the way an
+iPhone does: Mobile Safari on the home page and on the test document, then
+Expo Go opening the Survey shell. It shows what desktop browsers cannot: safe
+areas, the real iOS keyboard, rubber-band scrolling and rotation.
+
+- **Start it:** add the label `ios-sim` to a pull request. It runs on the label
+  and on every push while the label is on. **Remove the label to stop it.**
+  Without the label the jobs are skipped and cost nothing. Once the file is on
+  `main`, Actions → "iOS simulator check" → Run workflow also works.
+- **Change what runs:** commit `.github/ios-sim/config.json` — `device`
+  ("iPhone 16"), `ios` ("latest" or e.g. "18.5"), `runner` (macOS image),
+  `urls.home` / `urls.doc`, `flows` (file names in `.github/ios-sim/flows/`),
+  `expoGo.enabled` / `expoGo.url`, `video`, `maxVideoMB`, `keepRuns`. With
+  `localDevServer: true` the job runs this commit's own Vite dev server on the
+  Mac, because the `?testPdf=` document route only exists in dev builds.
+- **Flows** are [Maestro](https://docs.maestro.dev) YAML. `smoke` = home →
+  e-mail field (keyboard) → guest home → Templates → test document → Draw tool
+  → Pages/Search (keyboard in a sheet) → hard scroll → landscape → portrait.
+  `expo-go` = the same idea inside Expo Go's WKWebView. The default Expo link is
+  the `expo-go` update branch from `mobile-expo/README.md`, which loads
+  `https://surveytool.app/mobile`; point `expoGo.url` at another branch link to
+  test a different shell build.
+- **Results:** screenshots (JPEG), a compressed video and `results.md` (step
+  outcomes, timings, the Maestro output) land on the `ios-sim-results` branch
+  in `runs/<run id>-<attempt>/`; the newest folder is in `LATEST`. Read them
+  with `git fetch origin ios-sim-results` then
+  `git show origin/ios-sim-results:LATEST`. The branch keeps the newest 10
+  runs and is rewritten as one commit every run (so old videos never pile up
+  in history) — do not commit to it. The run artifact has the same files plus
+  the full-size video.
+- **Limits:** no pinch or two-finger gestures (Maestro drives one finger), no
+  camera or real sign-in, and the simulator is not a real device for speed or
+  memory. About 10–15 minutes a run.
+
 ## License
 
 Proprietary — all rights reserved.

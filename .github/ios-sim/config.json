@@ -1,0 +1,20 @@
+{
+  "runner": "macos-26",
+  "device": "iPhone 16",
+  "ios": "latest",
+  "localDevServer": true,
+  "urls": {
+    "home": "https://sonic-tassel-snt8.here.now/mobile?mobileNav=tabs&nativeShell=expo",
+    "doc": "http://127.0.0.1:5173/?testPdf=clickable-link-test.pdf&surveyTemplateWorkflowE2E=1&mobileNav=tabs&nativeShell=expo"
+  },
+  "flows": ["smoke"],
+  "expoGo": {
+    "enabled": true,
+    "version": "57.0.9",
+    "url": "exp://u.expo.dev/7522d24f-7afd-4d5b-a5c0-58f2ea863c28/branch/019fd954-cd01-705b-a108-2e1ac9f755d7",
+    "flows": ["expo-go"]
+  },
+  "video": true,
+  "maxVideoMB": 8,
+  "keepRuns": 10
+}
