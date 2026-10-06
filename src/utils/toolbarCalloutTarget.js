@@ -41,6 +41,22 @@ export function resolvePickBarTool({ activeTool, pickedGroups = [], justDrawn = 
 }
 
 /**
+ * The style a NEW mark is drawn with (review round 9, 2026-10-04). While a
+ * Shapes / Text tool holds a pick of its own group the bar shows and edits the
+ * picked mark (resolvePickBarTool 'select'), so its values are that mark's. A
+ * drag that draws meanwhile must still use the tool's own settings - the ones
+ * saved when the pick began, which the bar returns to when the pick ends.
+ * Otherwise the live (bar) values.
+ * @param {{ activeTool: string, pickBarTool: string, live: object, savedToolSettings?: object|null }} input
+ */
+export function resolveNewMarkStyle({ activeTool, pickBarTool, live, savedToolSettings = null } = {}) {
+  if (pickBarTool === 'select' && activeTool !== 'select' && activeTool !== 'pan' && savedToolSettings) {
+    return savedToolSettings;
+  }
+  return live;
+}
+
+/**
  * @param {{ selectedCalloutIds?: Set<string>|null, callouts?: object[], editingCalloutId?: string|null }} input
  * @returns {{ id: string, pageNumber: number, callout: object, editing: boolean }|null}
  */
