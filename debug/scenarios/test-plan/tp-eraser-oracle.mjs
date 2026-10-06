@@ -120,6 +120,13 @@ export function pixelDiff(beforeBuf, afterBuf, { inArea, ink = isRed, edge = 2.5
   let lostOutside = 0;
   let addedOutside = 0;
   let removed = 0;
+  // Ink weight away from the eraser, before vs after: colour (max - min
+  // channel, so grey/black page content counts 0) and darkness. A partly
+  // erased line must keep the weight of the untouched original (2026-10-06:
+  // thin imported curves drew 10-30% lighter).
+  const weight = { colorBefore: 0, colorAfter: 0, darkBefore: 0, darkAfter: 0 };
+  const color = (png, i) => Math.max(png.data[i], png.data[i + 1], png.data[i + 2]) - Math.min(png.data[i], png.data[i + 1], png.data[i + 2]);
+  const dark = (png, i) => 765 - png.data[i] - png.data[i + 1] - png.data[i + 2];
   for (let y = 0; y < a.height; y += 1) {
     for (let x = 0; x < a.width; x += 1) {
       const i = (a.width * y + x) * 4;
@@ -130,7 +137,22 @@ export function pixelDiff(beforeBuf, afterBuf, { inArea, ink = isRed, edge = 2.5
       if (d < -edge && now) inkInsideAfter += 1;
       if (d > edge && was && !now) lostOutside += 1;
       if (d > edge && !was && now) addedOutside += 1;
+      if (d > edge) {
+        weight.colorBefore += color(a, i);
+        weight.colorAfter += color(b, i);
+        weight.darkBefore += dark(a, i);
+        weight.darkAfter += dark(b, i);
+      }
     }
   }
-  return { removed, inkInsideAfter, lostOutside, addedOutside };
+  const inkWeightKeptOutside = weight.colorBefore > 1000
+    ? weight.colorAfter / weight.colorBefore
+    : (weight.darkBefore > 0 ? weight.darkAfter / weight.darkBefore : 1);
+  return {
+    removed,
+    inkInsideAfter,
+    lostOutside,
+    addedOutside,
+    inkWeightKeptOutside: Math.round(inkWeightKeptOutside * 1000) / 1000,
+  };
 }

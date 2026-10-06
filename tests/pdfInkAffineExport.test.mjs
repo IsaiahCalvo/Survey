@@ -353,7 +353,12 @@ test('native ink adapter keeps erased filled ink red and visible without a stale
   assert.match(content, /f\*/);
 });
 
-test('partially erased authored curve exports as the exact stroked Q/C under a cut clip', async () => {
+// 2026-10-06 (test plan 68): a partially erased authored curve exports as its
+// survivor polygons, filled even-odd, like the screen renderers. It used to be
+// the authored Q/C stroked under a clip of those polygons; the clip edge sat on
+// the curve's own edge, so viewers anti-aliased it twice and thin lines
+// printed lighter than untouched ones.
+test('partially erased authored curve exports as its filled survivor polygons', async () => {
   const authoredPath = [
     ['M', 20, 150],
     ['Q', 170, 10, 320, 150],
@@ -394,12 +399,11 @@ test('partially erased authored curve exports as the exact stroked Q/C under a c
   const content = appearanceContent(pdfDoc, dict);
   const rect = readRect(dict);
 
-  assert.match(content, /W\*/, 'survivor cuts become an evenodd PDF clip');
-  assert.match(content, /\b12 w\b/);
-  assert.match(content, /\b1 J\b/);
-  assert.match(content, /\bc\b/, 'the authored quadratic remains an analytic curve');
-  assert.match(content, /\bS\b/, 'the authored curve is stroked, not filled as a mesh');
-  assert.doesNotMatch(content, /(?:^|\s)f\*?(?:\s|$)/m);
+  assert.doesNotMatch(content, /W\*?\s+n/, 'no clip: one anti-aliased edge');
+  assert.match(content, /1 0 0 rg/, 'the stroke colour fills the survivor');
+  assert.match(content, /(?:^|\s)f\*(?:\s|$)/m, 'the survivor polygons are filled even-odd');
+  assert.doesNotMatch(content, /\bS\b/);
+  assert.doesNotMatch(content, /\bc\b/, 'the survivor is polygons, not the source curve');
   closeTo(
     rect,
     [14, 244, 326, 326],
@@ -407,7 +411,7 @@ test('partially erased authored curve exports as the exact stroked Q/C under a c
   );
 });
 
-test('partially erased authored fill exports as the exact curved fill under a cut clip', async () => {
+test('partially erased authored fill exports as its filled survivor polygons', async () => {
   const authoredPath = [
     ['M', 20, 100],
     ['C', 80, 20, 240, 20, 300, 100],
@@ -451,14 +455,13 @@ test('partially erased authored fill exports as the exact curved fill under a cu
   const content = appearanceContent(pdfDoc, dict);
 
   closeTo(numbers(dict.get(PDFName.of('C'))), [0, 0, 1], 'live recolored fill');
-  assert.match(content, /W\*/);
+  assert.doesNotMatch(content, /W\*?\s+n/);
   assert.match(content, /0 0 1 rg/);
-  assert.match(content, /\bc\b/);
-  assert.match(content, /(?:^|\s)f(?:\s|$)/m);
+  assert.match(content, /(?:^|\s)f\*(?:\s|$)/m);
   assert.doesNotMatch(content, /\bS\b/);
 });
 
-test('partially erased authored arc exports through its operational cubic carrier', async () => {
+test('partially erased authored arc exports as its filled survivor polygons', async () => {
   const authoredPath = [
     ['M', 20, 100],
     ['A', 80, 80, 0, 0, 1, 180, 100],
@@ -503,9 +506,9 @@ test('partially erased authored arc exports through its operational cubic carrie
   const ref = adaptInk(survivor, { pdfDoc, page, pageHeight: PAGE_SIZE });
   const content = appearanceContent(pdfDoc, pdfDoc.context.lookup(ref));
 
-  assert.match(content, /W\*/);
-  assert.match(content, /\bc\b/);
-  assert.match(content, /\bS\b/);
+  assert.doesNotMatch(content, /W\*?\s+n/);
+  assert.match(content, /(?:^|\s)f\*(?:\s|$)/m);
+  assert.doesNotMatch(content, /\bS\b/);
 });
 
 test('analytic PDF bounds do not apply a miter limit where no join exists', async () => {

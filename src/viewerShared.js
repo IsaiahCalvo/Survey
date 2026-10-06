@@ -1960,6 +1960,10 @@ const shouldStampPdfImportedEditStateForSource = (source, previousObject, nextOb
   if (!previousObject) {
     return normalizedSource === 'object:modified' || normalizedSource.includes('paste');
   }
+  // The same object on both sides is unchanged (the erase commit plan shares
+  // untouched objects between its before and after page): skip two
+  // JSON.stringify calls per imported mark.
+  if (previousObject === nextObject) return false;
   return getPdfImportedEditComparable(previousObject) !== getPdfImportedEditComparable(nextObject);
 };
 
