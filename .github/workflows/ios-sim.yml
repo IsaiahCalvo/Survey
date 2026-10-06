@@ -75,6 +75,7 @@ jobs:
     env:
       MAESTRO_CLI_NO_ANALYTICS: '1'
       MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED: 'true'
+      MAESTRO_DRIVER_STARTUP_TIMEOUT: '240000'
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
     steps:
@@ -304,12 +305,20 @@ jobs:
           for f in $FLOWS; do
             d="$OUT/maestro/$f"; mkdir -p "$d"
             echo "== flow $f" | tee -a "$OUT/log.txt"
-            maestro --device "$UDID" test \
-              -e HOME_URL="$HOME_URL" -e DOC_URL="$DOC_URL" -e EXPO_URL="$EXPO_URL" \
-              --test-output-dir "$d" --debug-output "$d/debug" --flatten-debug-output \
-              --format junit --output "$d/report.xml" \
-              ".github/ios-sim/flows/$f.yaml" > "$d/stdout.txt" 2>&1
-            rc=$?; echo "$rc" > "$d/exit-code"
+            # Maestro's XCUITest driver sometimes misses its start-up window on
+            # a busy runner (run 37522390998); that is not a test result, so
+            # try the flow once more.
+            for attempt in 1 2; do
+              maestro --device "$UDID" test \
+                -e HOME_URL="$HOME_URL" -e DOC_URL="$DOC_URL" -e EXPO_URL="$EXPO_URL" \
+                --test-output-dir "$d" --debug-output "$d/debug" --flatten-debug-output \
+                --format junit --output "$d/report.xml" \
+                ".github/ios-sim/flows/$f.yaml" > "$d/stdout.txt" 2>&1
+              rc=$?
+              grep -q "IOSDriverTimeoutException\|driver not ready" "$d/stdout.txt" || break
+              echo "flow $f: iOS driver did not start (attempt $attempt)" | tee -a "$OUT/log.txt"
+            done
+            echo "$rc" > "$d/exit-code"
             tail -25 "$d/stdout.txt"
             echo "flow $f exit $rc" | tee -a "$OUT/log.txt"
             echo "::notice title=ios-sim flow $f::exit $rc — $(grep -E 'FAILED|Failed|PASSED|Passed|COMPLETED' "$d/stdout.txt" | tail -1 | cut -c1-200)"
@@ -330,12 +339,20 @@ jobs:
           for f in $EXPO_FLOWS; do
             d="$OUT/maestro/$f"; mkdir -p "$d"
             echo "== flow $f" | tee -a "$OUT/log.txt"
-            maestro --device "$UDID" test \
-              -e HOME_URL="$HOME_URL" -e DOC_URL="$DOC_URL" -e EXPO_URL="$EXPO_URL" \
-              --test-output-dir "$d" --debug-output "$d/debug" --flatten-debug-output \
-              --format junit --output "$d/report.xml" \
-              ".github/ios-sim/flows/$f.yaml" > "$d/stdout.txt" 2>&1
-            rc=$?; echo "$rc" > "$d/exit-code"
+            # Maestro's XCUITest driver sometimes misses its start-up window on
+            # a busy runner (run 37522390998); that is not a test result, so
+            # try the flow once more.
+            for attempt in 1 2; do
+              maestro --device "$UDID" test \
+                -e HOME_URL="$HOME_URL" -e DOC_URL="$DOC_URL" -e EXPO_URL="$EXPO_URL" \
+                --test-output-dir "$d" --debug-output "$d/debug" --flatten-debug-output \
+                --format junit --output "$d/report.xml" \
+                ".github/ios-sim/flows/$f.yaml" > "$d/stdout.txt" 2>&1
+              rc=$?
+              grep -q "IOSDriverTimeoutException\|driver not ready" "$d/stdout.txt" || break
+              echo "flow $f: iOS driver did not start (attempt $attempt)" | tee -a "$OUT/log.txt"
+            done
+            echo "$rc" > "$d/exit-code"
             tail -25 "$d/stdout.txt"
             echo "flow $f exit $rc" | tee -a "$OUT/log.txt"
             echo "::notice title=ios-sim flow $f::exit $rc — $(grep -E 'FAILED|Failed|PASSED|Passed|COMPLETED' "$d/stdout.txt" | tail -1 | cut -c1-200)"
@@ -404,7 +421,7 @@ jobs:
             fi
             if [ -n "$FF" ]; then
               tool=ffmpeg
-              "$FF" -loglevel error -y -i "$OUT/raw/video.mov" -vf "fps=10,scale=-2:800" -c:v libx264 -crf 34 -preset veryfast -pix_fmt yuv420p -movflags +faststart -an "$PUB/video.mp4" >> "$OUT/raw/ffmpeg-install.txt" 2>&1
+              "$FF" -loglevel error -y -i "$OUT/raw/video.mov" -vf "fps=15,scale=-2:1000" -c:v libx264 -crf 30 -preset veryfast -pix_fmt yuv420p -movflags +faststart -an "$PUB/video.mp4" >> "$OUT/raw/ffmpeg-install.txt" 2>&1
               if [ -s "$PUB/video.mp4" ] && [ $(( $(stat -f%z "$PUB/video.mp4") / 1048576 )) -ge "$MAX_VIDEO_MB" ]; then
                 "$FF" -loglevel error -y -i "$OUT/raw/video.mov" -vf "fps=6,scale=-2:600" -c:v libx264 -crf 40 -preset veryfast -pix_fmt yuv420p -movflags +faststart -an "$PUB/video.mp4" >> "$OUT/raw/ffmpeg-install.txt" 2>&1
               fi
@@ -413,12 +430,13 @@ jobs:
               avconvert --source "$OUT/raw/video.mov" --output "$PUB/video.mp4" --preset Preset640x480 --replace > "$OUT/raw/avconvert.log" 2>&1
             fi
             if [ -s "$PUB/video.mp4" ]; then
-              mb=$(( $(stat -f%z "$PUB/video.mp4") / 1048576 ))
+              kb=$(( $(stat -f%z "$PUB/video.mp4") / 1024 ))
+              mb=$(( kb / 1024 ))
               if [ "$mb" -ge "$MAX_VIDEO_MB" ]; then
                 mv "$PUB/video.mp4" "$OUT/video-too-big.mp4"
                 VIDEO_NOTE="video ${mb} MB after $tool (raw ${raw_mb} MB) is over ${MAX_VIDEO_MB} MB: artifact only"
               else
-                VIDEO_NOTE="[video.mp4](video.mp4) (${mb} MB via $tool, raw ${raw_mb} MB)"
+                VIDEO_NOTE="[video.mp4](video.mp4) (${kb} KB via $tool, raw ${raw_mb} MB)"
               fi
             else
               VIDEO_NOTE="video compression failed ($tool), raw ${raw_mb} MB in the artifact"
