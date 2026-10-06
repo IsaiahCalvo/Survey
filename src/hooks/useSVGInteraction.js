@@ -4319,8 +4319,34 @@ export function useSVGInteraction({
         reportDroppedMove({ reason: 'held-at-page-edge', mode: 'group-move', dx: rawGroupDx, dy: rawGroupDy, pageNumber });
       }
 
+      // TEST-PLAN item 55 (2026-10-06): the selected callouts are written
+      // FIRST and rendered (flushSync), so the page save below is built on a
+      // page that already holds them and closes ONE undo step for the whole
+      // selection — marks, callouts and Survey Markers — as the arrow-key
+      // nudge does (commitNudgeBurst). Writing them after the save made a
+      // second step: one Undo put the shapes back and left the callouts moved.
+      const groupCalloutEntries = (dx !== 0 || dy !== 0) && ds.groupCalloutOriginals
+        ? Object.entries(ds.groupCalloutOriginals)
+        : [];
+      if (groupCalloutEntries.length > 0 && typeof onUpdateCalloutLive === 'function') {
+        const W = pageWidth || 1;
+        const H = pageHeight || 1;
+        const dxNorm = dx / W;
+        const dyNorm = dy / H;
+        flushSync(() => {
+          for (const [cid, orig] of groupCalloutEntries) {
+            onUpdateCalloutLive(cid, {
+              arrowTip: { x: orig.arrowTip.x + dxNorm, y: orig.arrowTip.y + dyNorm },
+              knee: { x: orig.knee.x + dxNorm, y: orig.knee.y + dyNorm },
+              textBoxPosition: { x: orig.textBoxPosition.x + dxNorm, y: orig.textBoxPosition.y + dyNorm },
+            });
+          }
+        });
+      }
       if (dx !== 0 || dy !== 0) {
-        const updatedAnnotations = deepClone(annotations);
+        const updatedAnnotations = deepClone(groupCalloutEntries.length > 0
+          ? (nudgeLatestRef.current.annotations || annotations)
+          : annotations);
         const movedIndexes = [];
         let missing = 0;
 
@@ -4406,31 +4432,14 @@ export function useSVGInteraction({
           });
         }
       }
-      // UX: 2026-04-20 v2 — callout commit for group-move. Live drag now
-      // uses render-time translate via affectedCalloutIds (no setCallouts
-      // round-trip per frame). On pointerup we compute the final delta
-      // and call onUpdateCalloutLive to write each callout's actual new
-      // position, then onUpdateCallout for the undo checkpoint.
-      // w59: the callouts take the SAME clamped delta as the rest of the
-      // selection (it used to be the raw pointer delta — callouts could leave
-      // the page and part from the shapes they moved with).
-      if (ds.groupCalloutOriginals && (dx !== 0 || dy !== 0)) {
-        const W = pageWidth || 1;
-        const H = pageHeight || 1;
-        const dxNorm = dx / W;
-        const dyNorm = dy / H;
-        for (const [cid, orig] of Object.entries(ds.groupCalloutOriginals)) {
-          if (typeof onUpdateCalloutLive === 'function') {
-            onUpdateCalloutLive(cid, {
-              arrowTip: { x: orig.arrowTip.x + dxNorm, y: orig.arrowTip.y + dyNorm },
-              knee: { x: orig.knee.x + dxNorm, y: orig.knee.y + dyNorm },
-              textBoxPosition: { x: orig.textBoxPosition.x + dxNorm, y: orig.textBoxPosition.y + dyNorm },
-            });
-          }
-          if (typeof onUpdateCallout === 'function') {
-            onUpdateCallout(cid, {});
-          }
-        }
+      // UX: 2026-04-20 v2 — callout commit for group-move. Live drag uses
+      // render-time translate via affectedCalloutIds (no setCallouts
+      // round-trip per frame); the release wrote each callout's new pose
+      // above, before the page save (w59: the SAME clamped delta as the rest
+      // of the selection). onUpdateCallout closes the callout step when no
+      // save above closed it already (a no-op otherwise).
+      if (typeof onUpdateCallout === 'function') {
+        for (const [cid] of groupCalloutEntries) onUpdateCallout(cid, {});
       }
     } else if (ds.mode === 'text-markup-horizontal') {
       const releasePoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
