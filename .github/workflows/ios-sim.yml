@@ -121,17 +121,18 @@ jobs:
         id: boot
         run: |
           set -E; trap 'rc=$?; echo "::error title=Create and boot the simulator @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
-          set -euo pipefail
-          xcodebuild -version | tee -a "$OUT/log.txt"
+          set +e
+          xcodebuild -version > "$OUT/raw/xcode.txt" 2>&1; cat "$OUT/raw/xcode.txt" | tee -a "$OUT/log.txt"
           # Headless boot has no hardware keyboard, but make sure: the iOS
           # on-screen keyboard is the thing we want to see.
           defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false
-          xcrun simctl list -j runtimes devicetypes > "$OUT/raw/simctl-list.json"
-          echo "::notice title=ios-sim runtimes::$(xcrun simctl list runtimes | tr '\n' ' ' | cut -c1-900)"
-          read -r RT_ID RT_NAME DT_ID DT_NAME < <(python3 -I - "$OUT/raw/simctl-list.json" "$IOS" "$DEVICE" <<'PY'
+          xcrun simctl list -j runtimes devicetypes > "$OUT/raw/simctl-list.json" 2> "$OUT/raw/simctl-list.err"
+          xcrun simctl list runtimes > "$OUT/raw/runtimes.txt" 2>&1
+          echo "::notice title=ios-sim runtimes::$(grep -E '^iOS' "$OUT/raw/runtimes.txt" | tr '\n' ' ' | cut -c1-600)"
+          python3 -I - "$OUT/raw/simctl-list.json" "$IOS" "$DEVICE" > "$OUT/raw/pick.txt" 2> "$OUT/raw/pick.err" <<'PY'
           import json, sys
           data = json.load(open(sys.argv[1])); want_ios = sys.argv[2]; want_dev = sys.argv[3]
-          rts = [r for r in data["runtimes"] if r.get("isAvailable") and r.get("platform", "iOS") == "iOS" and r["identifier"].split(".")[-1].startswith("iOS")]
+          rts = [r for r in data["runtimes"] if r.get("isAvailable") and r["identifier"].split(".")[-1].startswith("iOS")]
           key = lambda r: tuple(int(x) for x in r["version"].split("."))
           rts.sort(key=key)
           if want_ios != "latest":
@@ -139,20 +140,23 @@ jobs:
               rts = m or rts
           rt = rts[-1]
           supported = {d["identifier"] for d in rt.get("supportedDeviceTypes", [])} or None
-          dts = [d for d in data["devicetypes"] if d.get("productFamily") == "iPhone" and (supported is None or d["identifier"] in supported)]
+          dts = [d for d in data["devicetypes"] if "iPhone" in d["name"] and (supported is None or d["identifier"] in supported)]
           dt = next((d for d in dts if d["name"] == want_dev), None) or next((d for d in dts if want_dev in d["name"]), None) or dts[-1]
           print(rt["identifier"], rt["name"].replace(" ", "_"), dt["identifier"], dt["name"].replace(" ", "_"))
           PY
-          )
-          UDID=$(xcrun simctl create "ios-sim" "$DT_ID" "$RT_ID")
-          xcrun simctl boot "$UDID"
+          echo "::notice title=ios-sim pick::$(cat "$OUT/raw/pick.txt") $(tr '\n' ' ' < "$OUT/raw/pick.err" | cut -c1-500)"
+          read -r RT_ID RT_NAME DT_ID DT_NAME < "$OUT/raw/pick.txt"
+          if [ -z "${DT_ID:-}" ]; then echo "::error title=ios-sim::could not pick a device/runtime"; exit 1; fi
+          UDID=$(xcrun simctl create "ios-sim" "$DT_ID" "$RT_ID" 2> "$OUT/raw/create.err")
+          if [ -z "$UDID" ]; then echo "::error title=ios-sim create::$(tr '\n' ' ' < "$OUT/raw/create.err" | cut -c1-500)"; exit 1; fi
+          if ! xcrun simctl boot "$UDID" 2> "$OUT/raw/boot.err"; then echo "::error title=ios-sim boot::$(tr '\n' ' ' < "$OUT/raw/boot.err" | cut -c1-500)"; exit 1; fi
           {
             echo "UDID=$UDID"
             echo "RUNTIME_NAME=${RT_NAME//_/ }"
             echo "DEVICE_NAME=${DT_NAME//_/ }"
           } >> "$GITHUB_ENV"
           echo "Booting ${DT_NAME//_/ } on ${RT_NAME//_/ } ($UDID)" | tee -a "$OUT/log.txt"
-          echo "::notice title=ios-sim device::${DT_NAME//_/ } / ${RT_NAME//_/ } / $(xcodebuild -version | head -1)"
+          echo "::notice title=ios-sim device::${DT_NAME//_/ } / ${RT_NAME//_/ } / $(head -1 "$OUT/raw/xcode.txt")"
           echo "$(date +%s) boot-requested" >> "$OUT/timings.txt"
 
       # The ?testPdf= document route is dev-only, so the published build cannot
@@ -172,7 +176,7 @@ jobs:
         timeout-minutes: 8
         run: |
           set -E; trap 'rc=$?; echo "::error title=Start dev server @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
-          set -uo pipefail
+          set +e
           npm install --include=optional --no-audit --no-fund > "$OUT/raw/npm-install.log" 2>&1
           echo "npm install exit $?" | tee -a "$OUT/log.txt"
           tail -5 "$OUT/raw/npm-install.log"
@@ -343,7 +347,7 @@ jobs:
             pid=$(cat "$OUT/raw/video.pid"); kill -INT "$pid" 2>/dev/null || true
             for i in $(seq 1 30); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
           fi
-          PUB="$OUT/publish"; rm -rf "$PUB"; mkdir -p "$PUB/shots" "$PUB/logs"
+          export PUB="$OUT/publish"; rm -rf "$PUB"; mkdir -p "$PUB/shots" "$PUB/logs"
           echo "PUB=$PUB" >> "$GITHUB_ENV"
           # Screenshots: simctl ones plus every PNG Maestro wrote (named shots
           # and failure shots), as JPEG to keep the results branch small.
@@ -401,6 +405,9 @@ jobs:
           [ -f "$OUT/raw/maestro-install.log" ] && tail -n 40 "$OUT/raw/maestro-install.log" > "$PUB/logs/maestro-install.txt"
           [ -f "$OUT/raw/avconvert.log" ] && cp "$OUT/raw/avconvert.log" "$PUB/logs/"
           cp "$OUT/log.txt" "$PUB/logs/steps.txt" 2>/dev/null || true
+          for f in "$OUT"/raw/*.txt "$OUT"/raw/*.err; do
+            [ -f "$f" ] && tail -n 60 "$f" > "$PUB/logs/raw-$(basename "$f").txt"
+          done
           python3 -I - <<'PY'
           import os, glob, json, time, re
           out = os.environ["OUT"]; pub = os.environ["PUB"]
