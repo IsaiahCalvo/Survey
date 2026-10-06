@@ -442,14 +442,15 @@ function drawPath(context, object, displayScale) {
   }
   context.lineDashOffset = toNumber(attrs.strokeDashoffset);
 
-  // Partially erased authored curve: paint the exact source stroke clipped to
-  // the SURVIVOR polygons (even-odd), the same clip the SVG layer uses
-  // (svgAnnotationRenderers renderPath). w38 (2026-09-25): this used to clip
-  // with (source bounds minus paperEraserCuts). The cuts come from a second
-  // polygon boolean (source outline minus survivor) whose operands share most
-  // of their edges, which Martinez gets wrong: the canvas painted slivers of
-  // ink inside erased holes and notched the ink beside them while the SVG
-  // layer was clean. The survivor is the eraser's own verified output.
+  // Partially erased authored curve: fill the SURVIVOR polygons (even-odd),
+  // exactly like the SVG layer (svgAnnotationRenderers renderPath) and the PDF
+  // export. w38 (2026-09-25): survivors, never (bounds minus paperEraserCuts):
+  // the cuts come from a second polygon boolean whose operands share most of
+  // their edges, which Martinez gets wrong (slivers in holes, notches).
+  // 2026-10-06 (test plan 68): the survivors used to CLIP the authored source
+  // stroke. That clip edge lies on the stroke's own edge, so each edge pixel
+  // was anti-aliased twice and thin lines drew 10-30% lighter than the
+  // untouched original; a filled outline has one anti-aliased edge.
   const paperSource = object?.paperSourceStroke;
   const paperSurvivors = object?.polygons;
   if (
@@ -458,43 +459,15 @@ function drawPath(context, object, displayScale) {
     && Array.isArray(paperSource.matrix)
     && paperSource.matrix.length === 6
     && Array.isArray(paperSurvivors)
-    // Same test as the SVG layer's clip path: at least one real ring.
+    // Same test as the SVG layer: at least one real ring.
     && paperSurvivors.some((polygon) => Array.isArray(polygon) && polygon.some(isClipRing))
-    && typeof context.clip === 'function'
-    && typeof context.transform === 'function'
   ) {
-    context.save();
     context.beginPath();
     tracePolygonSetInto(context, paperSurvivors);
-    context.clip('evenodd');
-    context.transform(...paperSource.matrix);
-    context.lineCap = paperSource.strokeLineCap || 'round';
-    context.lineJoin = paperSource.strokeLineJoin || 'round';
-    context.miterLimit = toNumber(paperSource.strokeMiterLimit, 10);
-    if (typeof context.setLineDash === 'function') {
-      context.setLineDash(
-        Array.isArray(paperSource.strokeDashArray)
-          ? paperSource.strokeDashArray
-          : [],
-      );
-    }
-    context.lineDashOffset = toNumber(paperSource.strokeDashOffset);
-    context.beginPath();
-    traceCommandsInto(
-      context,
-      Array.isArray(paperSource.operationalPath)
-        ? paperSource.operationalPath
-        : normalizeOperationalInkPath(paperSource.path),
+    context.fillStyle = object.fill || attrs.fill || (
+      paperSource.paintMode === 'fill' ? paperSource.fill : paperSource.stroke
     );
-    if (paperSource.paintMode === 'fill') {
-      context.fillStyle = object.fill || attrs.fill || paperSource.fill;
-      context.fill(paperSource.fillRule === 'evenodd' ? 'evenodd' : 'nonzero');
-    } else {
-      context.strokeStyle = object.fill || attrs.fill || paperSource.stroke;
-      context.lineWidth = toNumber(paperSource.strokeWidth);
-      context.stroke();
-    }
-    context.restore();
+    context.fill('evenodd');
     context.restore();
     return;
   }

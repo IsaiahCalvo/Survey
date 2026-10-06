@@ -1,8 +1,10 @@
 import {
   buildEraseIntent,
   classifyEraseObjectKind,
+  cloneForIntent,
   createEraseStorageKeyResolver,
   getEraseObjectId,
+  shallowCopyObject,
 } from './annotationEraseTransaction.js';
 import { renumberCounters } from './counterNumbering.js';
 import { markEditedImportedPdfAnnotationsOnPage } from '../viewerShared.js';
@@ -63,8 +65,13 @@ function findTargetIndex(records, target) {
   return -1;
 }
 
-function applyTargetsToPages(annotationsByPage, intent) {
-  const afterByPage = clone(annotationsByPage || {}) || {};
+// `deep`: clone every page first (the counter-renumber path mutates objects
+// in place). Otherwise the result shares the input's untouched objects, which
+// nothing downstream mutates.
+function applyTargetsToPages(annotationsByPage, intent, { deep = true } = {}) {
+  const afterByPage = deep
+    ? (clone(annotationsByPage || {}) || {})
+    : { ...(annotationsByPage || {}) };
   const byPage = new Map();
   for (const target of intent?.targets || []) {
     const pageNumber = targetPageNumber(intent, target);
@@ -87,8 +94,10 @@ function applyTargetsToPages(annotationsByPage, intent) {
       if (target.operation === 'delete') {
         deletes.push(index);
       } else {
+        // Shallow path: the intent's deep-frozen survivor is shared (nothing
+        // here mutates it; renumbering, which does, takes the deep path).
         objects[index] = setAnnotationStorageKey(
-          clone(target.after),
+          deep ? clone(target.after) : cloneForIntent(target.after),
           String(target.storageKey),
         );
       }
@@ -99,6 +108,19 @@ function applyTargetsToPages(annotationsByPage, intent) {
     afterByPage[pageKey] = { ...page, objects };
   }
   return afterByPage;
+}
+
+function touchedPagesCopy(annotationsByPage, pageNumbers) {
+  const copy = {};
+  for (const pageNumber of pageNumbers) {
+    const pageKey = String(pageNumber);
+    const page = annotationsByPage?.[pageKey];
+    if (!page) continue;
+    copy[pageKey] = Array.isArray(page.objects)
+      ? { ...page, objects: page.objects.map(shallowCopyObject) }
+      : { ...page };
+  }
+  return copy;
 }
 
 function recordsAcrossPages(annotationsByPage) {
@@ -131,13 +153,24 @@ export function prepareEraseIntentForCommit({
     throw new TypeError('intent must be built by buildEraseIntent');
   }
 
-  const beforeByPage = clone(annotationsByPage || {}) || {};
-  let afterByPage = applyTargetsToPages(beforeByPage, intent);
   const touchedPageNumbers = new Set(
     intent.targets
       .map((target) => targetPageNumber(intent, target))
       .filter((pageNumber) => Number.isInteger(pageNumber) && pageNumber > 0),
   );
+  const deletedCounter = intent.targets.some(
+    (target) => target.operation === 'delete' && target.before?.data?.type === 'counter',
+  );
+  // Test plan 68 (2026-10-06): this used to deep-clone EVERY page twice per
+  // erase (~0.6 s of main thread on a document with ~3,000 imported marks).
+  // Only a counter delete needs the whole document (renumbering spans pages
+  // and mutates objects); otherwise only the touched pages take part, as
+  // shallow object copies shared by the before and after page (the after
+  // page replaces the targets with fresh clones; nothing mutates the rest).
+  const beforeByPage = deletedCounter
+    ? (clone(annotationsByPage || {}) || {})
+    : touchedPagesCopy(annotationsByPage, touchedPageNumbers);
+  let afterByPage = applyTargetsToPages(beforeByPage, intent, { deep: deletedCounter });
 
   for (const pageNumber of touchedPageNumbers) {
     const pageKey = String(pageNumber);
@@ -160,9 +193,6 @@ export function prepareEraseIntentForCommit({
     afterByPage[pageKey] = markedPage;
   }
 
-  const deletedCounter = intent.targets.some(
-    (target) => target.operation === 'delete' && target.before?.data?.type === 'counter',
-  );
   const affectedCounterSeries = new Set(intent.targets
     .filter((target) => target.operation === 'delete' && target.before?.data?.type === 'counter')
     .map((target) => counterSeriesKey(target.before)));

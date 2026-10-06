@@ -22,7 +22,7 @@
 //   PW_CHROMIUM_PATH=/opt/pw-browsers/chromium PLAYWRIGHT_BASE_URL=http://127.0.0.1:5481 \
 //     npx playwright test --config debug/playwright.config.mjs debug/scenarios/test-plan/part10-eraser.spec.mjs
 import { test, expect } from '@playwright/test';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import {
   DESKTOP, OUT_DIR, centerMark, collectErrors, openViewer, pageFrame, prepareLocalContext, report, surface,
 } from './tp-local-doc.mjs';
@@ -86,7 +86,13 @@ async function gesture(page, n, pagePoints, { stepsPerSegment = 2 } = {}) {
 async function stallsSince(page, t0) {
   return page.evaluate((since) => {
     const list = (window.__tpLongTasks || []).filter((t) => t.start >= since);
-    return { count: list.length, longestMs: Math.round(Math.max(0, ...list.map((t) => t.ms))), totalMs: Math.round(list.reduce((s, t) => s + t.ms, 0)) };
+    return {
+      count: list.length,
+      longestMs: Math.round(Math.max(0, ...list.map((t) => t.ms))),
+      totalMs: Math.round(list.reduce((s, t) => s + t.ms, 0)),
+      // Every block over 100 ms: [ms after the gesture began, length ms].
+      over100: list.filter((t) => t.ms > 100).map((t) => [Math.round(t.start - since), Math.round(t.ms)]),
+    };
   }, t0);
 }
 
@@ -280,6 +286,9 @@ async function eraseAcross(page, backend, errors, pageNo, target, tag) {
   const cx = (bb.x0 + bb.x1) / 2;
   const span = bb.y1 - bb.y0;
   const wipe = Array.from({ length: 31 }, (_, i) => [cx + Math.min(12, (bb.x1 - bb.x0) / 6) * Math.sin(i / 4), bb.y0 - 6 + (span + 12) * (i / 30)]);
+  // TP_CPUPROFILE=1: also save a CPU profile of the erase (OUT_DIR/68-<tag>.cpuprofile).
+  const cdp = process.env.TP_CPUPROFILE ? await page.context().newCDPSession(page) : null;
+  if (cdp) { await cdp.send('Profiler.enable'); await cdp.send('Profiler.setSamplingInterval', { interval: 500 }); await cdp.send('Profiler.start'); }
   const tDown = Date.now();
   const { frame, t0 } = await gesture(page, pageNo, wipe);
   const tUp = Date.now();
@@ -289,22 +298,35 @@ async function eraseAcross(page, backend, errors, pageNo, target, tag) {
   await page.waitForTimeout(800);
   const after = await page.screenshot({ clip: visibleClip });
   await page.screenshot({ path: `${OUT_DIR}/68-${tag}-after.png`, clip: visibleClip });
+  if (cdp) {
+    const { profile } = await cdp.send('Profiler.stop');
+    await writeFile(`${OUT_DIR}/68-${tag}.cpuprofile`, JSON.stringify(profile));
+    await cdp.detach();
+  }
   const stalls = await stallsSince(page, t0);
   const gestures = lanes.flatMap((l) => l.gestures || []);
+  // TP_DUMP=1: keep the mark, its lanes and the whole server page set for offline benchmarks.
+  if (process.env.TP_DUMP) {
+    const { byPage } = await backend.serverState();
+    await writeFile(`${OUT_DIR}/68-${tag}-dump.json`, JSON.stringify({ target, lanes, byPage }));
+  }
   const geo = await exactness(backend, target, await viewerObject(page, id), await serverObject(backend, id), gestures);
   const pixels = pixelDiff(before, after, { inArea: screenArea(frame, gestures, visibleClip), ink: isDark });
   const timing = { dragMs: tUp - tDown, upToSavedMs: tSaved - tUp, ...stalls };
   // Curved (imported) outlines are flattened to polygons when first bitten, at
   // the app's 0.05 pt curve tolerance: allow that much area along the outline
-  // (it is spread along the edge, not a block). Thin imported lines also draw
-  // a little lighter after a bite (the clip edge is anti-aliased on top of the
-  // fill edge) — reported as pixels.lostOutside, judged by eye, not failed.
+  // (it is spread along the edge, not a block).
   const curved = target.path.some((c) => c[0] === 'C' || c[0] === 'Q');
   const tol = curved ? 3 : 0.5;
+  // Thin imported lines drew 10-30% lighter after a bite until 2026-10-06
+  // (the survivor clipped the source curve on its own edge: anti-aliased
+  // twice). The rest of the line must keep its weight (within 5%).
   const ok = lanes.length >= 1 && geo.window.paintedInsideEraserArea <= (curved ? tol : 0) && geo.server.paintedInsideEraserArea <= (curved ? tol : 0)
     && geo.window.missingOutsideEraserArea <= tol && geo.server.missingOutsideEraserArea <= tol
-    && pixels.removed > 20 && (curved || pixels.lostOutside <= 4)
-    // "a long pause": was 9.9 s on the detailed stroke before 9e4043d.
+    && pixels.removed > 20 && pixels.lostOutside <= (curved ? 12 : 4)
+    && pixels.inkWeightKeptOutside >= 0.95 && pixels.inkWeightKeptOutside <= 1.05
+    // "a long pause": was 9.9 s on the detailed stroke before 9e4043d, ~1.5 s
+    // before 2026-10-06 (whole-document clones in the erase commit).
     && stalls.longestMs < 3000 && errors.length === 0;
   return { ok, summary: `${tag}: ${String(id).slice(0, 24)} cmds=${target.path.length} box=${Math.round(bb.x1 - bb.x0)}x${Math.round(bb.y1 - bb.y0)}pt geo=${JSON.stringify(geo)} pixels=${JSON.stringify(pixels)} timing=${JSON.stringify(timing)}` };
 }
