@@ -56,7 +56,7 @@ import { showToast } from './utils/toast';
 import { randomUUID } from './utils/randomUUIDPolyfill';
 import { getDocumentOpenKey, isSameDocumentTab } from './utils/documentTabIdentity.js';
 import { schedulePdfViewerPrefetch } from './utils/pdfViewerPrefetch';
-import { preloadedComponent } from './utils/preloadedComponent.js';
+import { preloadedComponent, retryingLazy } from './utils/preloadedComponent.js';
 import { shouldWarnBeforeUnloadForTab } from './utils/beforeUnloadGuard.js';
 import { getSelectFamilyLabel, getSelectModeIconName, isSelectFamilyTool, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
 import { computeTextMarkupPickerPosition } from './utils/pdfTextMarkup.js';
@@ -155,12 +155,36 @@ const MemoTabBar = memo(TabBar);
 // No props: these only change from their own state and window events.
 const MemoSaveLogBanner = memo(SaveLogBanner);
 const MemoToastHost = memo(ToastHost);
+// A rail chunk that fails to download (offline, stale deploy) must not stop the
+// viewer opening: its area just stays empty (and asks again when it next mounts).
 const loadPDFViewerModule = () => Promise.all([
   import('./PDFViewer'),
-  PDFSidebarChunk.load(),
-  SurveySpacesRailChunk.load(),
+  PDFSidebarChunk.load().catch(() => null),
+  SurveySpacesRailChunk.load().catch(() => null),
 ]).then(([viewerModule]) => viewerModule);
-const PDFViewer = lazy(() => loadPDFViewerModule().then((m) => ({ default: m.PDFViewer })));
+// If the viewer chunk itself fails, one quiet line sits where the document
+// would be instead of the app's crash screen (plain React.lazy kept the
+// failure and rethrew it on every open). Tapping it reloads the page: Chromium
+// and WebKit both remember a failed module download for the life of the page
+// and never ask the network again (checked 2026-10-06), so retrying in place
+// cannot succeed there. In a production build main.jsx's vite:preloadError
+// handler usually reloads once on its own before this is even seen.
+const viewerLoadFailedStyle = {
+  position: 'absolute', inset: 0, width: '100%', border: 0, margin: 0, padding: 16,
+  background: 'var(--surface-0)', color: 'var(--text-3)', font: 'inherit',
+  fontSize: 13, lineHeight: '18px', cursor: 'pointer',
+};
+function ViewerLoadFailed() {
+  return (
+    <button type="button" onClick={() => window.location.reload()} style={viewerLoadFailedStyle}>
+      Couldn&rsquo;t open this file. Tap to try again.
+    </button>
+  );
+}
+const PDFViewer = retryingLazy(
+  () => loadPDFViewerModule().then((m) => ({ default: m.PDFViewer })),
+  ViewerLoadFailed,
+);
 // Lazy boundary: the compact color picker only renders deep inside the bottom
 // toolbar when a rich-text or annotation color picker is explicitly opened.
 const CompactColorPicker = lazy(() => import('./components/CompactColorPicker'));
