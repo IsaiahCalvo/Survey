@@ -14,8 +14,9 @@
  *    someone typed four more lines), the renderers — which trust the stored
  *    height and clip what does not fit — would cut the text off. So when the
  *    merged text/font differs from the snapshot the step restores, the box is
- *    grown to fit with the same grow-only rule the text bar and editor use
- *    (boxes grow, never shrink). A callout's knee never moves (KAL-30).
+ *    refitted with the text bar's rule (owner Test 44, 2026-10-06): it fits the
+ *    text both ways (never under one line), and a callout's box moves away
+ *    from its leader - the knee and tip never move (KAL-30).
  */
 import {
   calloutToAnnotationObject,

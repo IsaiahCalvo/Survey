@@ -691,7 +691,8 @@ export function resolveGroupPaintWrite(kind, value, previous, phase) {
  *  - calloutIds + calloutPageOf(id): the picked callouts and their pages,
  *  - annotationPage(pageJSON, members) -> new page or null,
  *  - calloutStyle(callout, page) -> style patch or null, calloutRefit
- *    optional (callout, page, stylePatch) -> callout,
+ *    optional (callout, page, stylePatch, before) -> callout (`before` is the
+ *    callout as it was before the style patch),
  *  - deriveCallouts / applyCalloutList: the callout <-> page bridge,
  *  - release: a drag's release - every page the group lives on is written
  *    even if unchanged, so the drag's baseline resolves into its one step.
@@ -740,7 +741,7 @@ export function planGroupUpdate({
         if (!stylePatch) return callout;
         changed = true;
         const patched = { ...callout, style: { ...(callout.style || {}), ...stylePatch } };
-        return typeof calloutRefit === 'function' ? (calloutRefit(patched, page, stylePatch) || patched) : patched;
+        return typeof calloutRefit === 'function' ? (calloutRefit(patched, page, stylePatch, callout) || patched) : patched;
       });
       if (!changed) return;
       const nextByPage = applyCalloutList(single, list, pageSizes || {});

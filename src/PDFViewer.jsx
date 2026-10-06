@@ -144,6 +144,7 @@ import {
   patchCanReflowText,
   readCalloutTextStyle,
   readTextboxTextStyle,
+  placeCalloutEditBox,
   refitCalloutToText,
   refitTextboxToText,
   resolveTextStyleWrite,
@@ -4193,12 +4194,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (event.type === 'pointerdown' && !isSelectFamilyTool(activeTool)) {
         const start = { id: event.pointerId, x: event.clientX, y: event.clientY };
         const slop = event.pointerType === 'touch' ? 12 : 6;
+        // A press that ends without a pointerup (the touch became a scroll,
+        // or the window lost focus) must not leave this behind to drop a
+        // pick on some later release.
+        const stop = () => {
+          window.removeEventListener('pointerup', onUp, true);
+          window.removeEventListener('pointercancel', onPressCancel, true);
+          window.removeEventListener('blur', stop);
+        };
+        const onPressCancel = (cancel) => { if (cancel.pointerId === start.id) stop(); };
         const onUp = (up) => {
           if (up.pointerId !== start.id) return;
-          window.removeEventListener('pointerup', onUp, true);
+          stop();
           if (Math.hypot(up.clientX - start.x, up.clientY - start.y) <= slop) clearAnnotationSelectionForContextChange('backdrop-click');
         };
         window.addEventListener('pointerup', onUp, true);
+        window.addEventListener('pointercancel', onPressCancel, true);
+        window.addEventListener('blur', stop);
         return;
       }
       // UX: Phase 19 — first Escape cancels a live selection drag only;
@@ -4645,7 +4657,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     commitCalloutMutation(pageNumber, (prev) => prev.map((c) => {
       if (!c || c.id !== sel.id) return c;
       const patched = { ...c, style: { ...(c.style || {}), ...stylePatch } };
-      return typeof refit === 'function' ? (refit(patched, pageNumber) || patched) : patched;
+      return typeof refit === 'function' ? (refit(patched, pageNumber, c) || patched) : patched;
     }), { source: 'callout:style', action: 'callout-style-patch' });
   }, [commitCalloutMutation, resolveCalloutPageNumber]);
 
@@ -8884,11 +8896,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           calloutStyle: (callout) => buildSelectedTextStylePatch(
             'callout', readCalloutTextStyle(callout), fields, { forceColor: inDrag },
           ),
-          calloutRefit: (callout, pageNumber, stylePatch) => (patchCanReflowText('callout', stylePatch)
+          calloutRefit: (callout, pageNumber, stylePatch, before) => (patchCanReflowText('callout', stylePatch)
             ? refitCalloutToText(
               callout,
               pageSizesRef.current?.[pageNumber] || pageSizesRef.current?.[String(pageNumber)],
               measureTextLayoutHeight,
+              { before },
             )
             : callout),
         });
@@ -8913,10 +8926,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (write.action !== 'patch') return;
       if (target.kind === 'callout') {
         handlePatchSelectedCallout(write.patch, write.reflows
-          ? (callout, pageNumber) => refitCalloutToText(
+          ? (callout, pageNumber, before) => refitCalloutToText(
             callout,
             pageSizesRef.current?.[pageNumber] || pageSizesRef.current?.[String(pageNumber)],
             measureTextLayoutHeight,
+            { before },
           )
           : null);
       } else {
@@ -36997,6 +37011,14 @@ ${pageBlocks}
                                   onLiveTextGrow={editingAnnotation?.reactCalloutId
                                     ? setLiveCalloutEditBounds
                                     : setLiveTextEditBounds}
+                                  // Owner Test 44: a callout's box grows away from its leader.
+                                  placeCalloutBox={editingAnnotation?.reactCalloutId
+                                    ? (live) => placeCalloutEditBox(
+                                      editingAnnotation.originalReactCallout,
+                                      editingAnnotation.pageSize || resolvedPageSize,
+                                      live,
+                                    )
+                                    : null}
                                   onRichTextEditorChange={setRichTextEditor}
                                   onCalloutTextStyleChange={handleCalloutTextStyleChange}
                                   onEditCommit={(updatedJSON, commitMeta) => {
