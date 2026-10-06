@@ -51,6 +51,15 @@ import {
   cloudSelectionChrome,
   resolveCloudAnnotationGeometry,
 } from '../utils/cloudAnnotationGeometry.js';
+// Owner Test 45 (2026-10-06): a clouded text box / callout box halos and
+// shows grabbers exactly like a clouded rectangle (one shared geometry).
+import {
+  calloutBoxCloudGeometry,
+  calloutBoxHandleLayout,
+  calloutVisibleBox,
+  markBorderCloudChrome,
+  markBorderCloudGeometry,
+} from '../utils/markBorderOutline.js';
 // UX 2026-09-09: Enter/Escape finish/cancel a click-to-place draft wherever
 // focus sits; only a real typing surface keeps those keys for itself — and
 // (2026-09-10) not even that when it is a numeric chrome field that opted out.
@@ -4513,20 +4522,6 @@ const SVGAnnotationLayer = memo(({
       })
       : calloutHandleR * 2;
     const calloutHitR = calloutHitPad / 2;
-    // The four text-box corners sit on a box that can be small, so their pads
-    // shrink to the shortest side's half-span and can never overlap each other.
-    const calloutCornerSpan = Math.min(
-      Math.max(0, (callout.textBoxWidth ?? 0.1) * pageSize.width),
-      Math.max(0, (callout.textBoxHeight ?? 0.05) * pageSize.height),
-    );
-    const calloutCornerHitPad = (isSelected && showHandles)
-      ? resolveHandleHitPadPageSize({
-        isCoarsePointer,
-        inverseScale: clampInverseScale(inverseScale),
-        neighbourSpacingPageUnits: calloutCornerSpan > 0 ? calloutCornerSpan : undefined,
-        minPadPageUnits: calloutHandleR * 2,
-      })
-      : calloutHandleR * 2;
     const { width: W, height: H } = pageSize;
     const atX = callout.arrowTip.x * W;
     const atY = callout.arrowTip.y * H;
@@ -4613,11 +4608,10 @@ const SVGAnnotationLayer = memo(({
         {/* UX: Phase 15 UAT-3 (2026-04-17) — visible drag chrome when the
             callout is selected. Knee + arrow tip use combined-tools'
             white/blue square look (distinguishes them from shape resize
-            handles). Four textbox corners use the SAME white circle + gray
-            stroke + drop shadow as regular shape corner handles (see
-            SVGSelectionOverlay) so callout resize chrome matches the app's
-            existing muscle memory. Corner circles carry
-            data-callout-part='textBox-tl' / 'tr' / 'bl' / 'br' so the
+            handles). The text box's eight grabbers are SVGSelectionOverlay's own
+            (Owner Test 45, 2026-10-06 - they were four corner circles)
+            so callout resize chrome is a rectangle's. Each grabber carries
+            data-callout-part='textBox-<tl|mt|tr|mr|br|mb|bl|ml>' so the
             interaction hook can route them to a resize drag mode. */}
         {showGlow && (() => {
           // UX: Phase 19 follow-up — callout hover / multi-select glow over
@@ -4652,6 +4646,11 @@ const SVGAnnotationLayer = memo(({
           const spec = headStyle === ARROWHEAD_STYLES.NONE
             ? null
             : buildArrowheadRenderSpec(headStyle, atX, atY, angleDeg, '#4a90e2', lineThickness);
+          // Owner Test 45 (2026-10-06): a clouded box's halo follows its humps
+          // - the cloud renderCallout paints (utils/markBorderOutline.js).
+          const glowBoxCloud = calloutBoxCloudGeometry(callout, {
+            x: tbX, y: tbY, width: tbW, height: glowBoxH, borderWidth: boxStroke,
+          });
           return (
             <g
               data-hover-halo="callout"
@@ -4660,14 +4659,24 @@ const SVGAnnotationLayer = memo(({
               fill="none"
               style={{ pointerEvents: 'none' }}
             >
-              <rect
-                x={tbX}
-                y={tbY}
-                width={tbW}
-                height={glowBoxH}
-                strokeWidth={boxStroke + 4}
-                strokeLinejoin="miter"
-              />
+              {glowBoxCloud ? (
+                <path
+                  d={cloudCommandsToPathData(glowBoxCloud.outline)}
+                  transform={glowBoxCloud.transform}
+                  strokeWidth={boxStroke + 4}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              ) : (
+                <rect
+                  x={tbX}
+                  y={tbY}
+                  width={tbW}
+                  height={glowBoxH}
+                  strokeWidth={boxStroke + 4}
+                  strokeLinejoin="miter"
+                />
+              )}
               {!glowConn.shouldHideLine1 && (
                 <line
                   x1={glowConn.line1Start.x}
@@ -4729,54 +4738,31 @@ const SVGAnnotationLayer = memo(({
                 pointerEvents: 'none',
               }}
             />
-            {/* Textbox corner handles — 4 corners only, interactive.
-                2026-04-20: bottom handles shifted down by the same
-                descender buffer the renderer applies, so the two
-                lower dots land exactly on the visible bottom border
-                instead of floating a few pixels above it. */}
+            {/* Owner Test 45 (2026-10-06): the text box's grabbers are a
+                rectangle's - all eight, on the drawn border (a clouded box:
+                on the outer hump edge with the dashed frame), drawn by the
+                same SVGSelectionOverlay. Callouts have no rotation in their
+                data, so no rotate grabber. Each carries data-callout-part
+                textBox-<id> and lets the press bubble to the delegated
+                callout handler (useSVGInteraction 'textBoxResize'). */}
             {(() => {
-              const calloutFs = Number(callout?.style?.fontSize || 12);
-              const descenderBuffer = calloutFs * 0.35;
-              const bottomY = tbY + tbH + descenderBuffer;
-              return [
-                { id: 'tl', x: tbX,       y: tbY,     cursor: 'nwse-resize' },
-                { id: 'tr', x: tbX + tbW, y: tbY,     cursor: 'nesw-resize' },
-                { id: 'bl', x: tbX,       y: bottomY, cursor: 'nesw-resize' },
-                { id: 'br', x: tbX + tbW, y: bottomY, cursor: 'nwse-resize' },
-              ];
-            })().map((p) => (
-              <g key={`cb-corner-${p.id}`}>
-                {/* Invisible hit pad, under the dot so a direct hit still
-                    lands on the dot itself. */}
-                <rect
-                  data-callout-part={`textBox-${p.id}`}
-                  data-handle-hit-pad={`textBox-${p.id}`}
-                  x={p.x - calloutCornerHitPad / 2}
-                  y={p.y - calloutCornerHitPad / 2}
-                  width={calloutCornerHitPad}
-                  height={calloutCornerHitPad}
-                  rx={calloutCornerHitPad / 4}
-                  fill="transparent"
-                  stroke="none"
-                  style={{ cursor: p.cursor, pointerEvents: 'all', touchAction: 'none' }}
+              const layout = calloutBoxHandleLayout(callout, calloutVisibleBox(callout, W, H));
+              if (!layout) return null;
+              return (
+                <SVGSelectionOverlay
+                  bbox={layout.bbox}
+                  handleAnchors={layout.anchors}
+                  frameRect={layout.frame}
+                  alwaysShowResizeHandles={!!layout.frame}
+                  hideBoundingBox={!layout.frame}
+                  padding={0}
+                  inverseScale={inverseScale}
+                  hideRotationHandle
+                  delegateHandlePress
+                  handlePartAttributes={(id) => ({ 'data-callout-part': `textBox-${id}` })}
                 />
-                <circle
-                  data-callout-part={`textBox-${p.id}`}
-                  cx={p.x}
-                  cy={p.y}
-                  r={calloutHandleR}
-                  fill={HANDLE_FILL}
-                  stroke={ringColor}
-                  strokeWidth={1.5}
-                  vectorEffect="non-scaling-stroke"
-                  style={{
-                    filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.15))',
-                    cursor: p.cursor,
-                    pointerEvents: 'all',
-                  }}
-                />
-              </g>
-            ))}
+              );
+            })()}
           </>
         )}
       </g>
@@ -5560,7 +5546,12 @@ const SVGAnnotationLayer = memo(({
     const cloudRenderGeometry = resolveAnnotationCloudSpec(renderObj)
       ? resolveCloudAnnotationGeometry(renderObj)
       : null;
-    const cloudGlowVisible = !!cloudRenderGeometry && (annotationIsHovered || annotationIsSelected);
+    // Owner Test 45: a clouded text box glows along its humps like a clouded
+    // rectangle (its border IS that rectangle cloud); it keeps hit-testing by
+    // its whole box, so only the glow takes this geometry.
+    const cloudGlowGeometry = cloudRenderGeometry
+      || (objTypeForEdit === 'textbox' && !isBeingEdited ? markBorderCloudGeometry(renderObj) : null);
+    const cloudGlowVisible = !!cloudGlowGeometry && (annotationIsHovered || annotationIsSelected);
     // UX 2026-09-10 (round 4, defect 4): painting the glow UNDER the ink is
     // only safe while the ink is opaque. At the app's translucent cloud stroke
     // (rgba alpha 0.5) the 0.666-opacity blue showed straight THROUGH the
@@ -5570,7 +5561,7 @@ const SVGAnnotationLayer = memo(({
     // band (the outline stroked at the ink width) is masked OUT of it, so the
     // blue is a ring on either side of the stroke and never sits beneath it.
     const cloudGlowPaint = cloudGlowVisible
-      ? buildCloudGlowPaint(cloudRenderGeometry, {
+      ? buildCloudGlowPaint(cloudGlowGeometry, {
         maskId: cloudGlowMaskIdFor(`p${pageNumber}-${obj?.id || renderIdentity.annotationId || i}`),
       })
       : null;
@@ -6346,7 +6337,7 @@ const SVGAnnotationLayer = memo(({
           return (
             <g transform={bbox.angle ? `rotate(${bbox.angle}, ${bbox.left + bbox.width / 2}, ${bbox.top + bbox.height / 2})` : undefined}>
               {/* Hover outline (shown before click, not when already selected) */}
-              {annotationIsHovered && (
+              {annotationIsHovered && !cloudGlowGeometry && (
                 <rect
                   x={bbox.left}
                   y={bbox.top}
@@ -8071,8 +8062,10 @@ const SVGAnnotationLayer = memo(({
         // and never stacked on a crown. Resolved from the live resize preview
         // so the frame tracks the crowns re-fitting during a drag. Non-cloud
         // shapes pass null through.
+        // Owner Test 45: a clouded text box gets the same chrome (its border
+        // is the rectangle cloud - utils/markBorderOutline.js).
         const cloudChrome = !isLockedStampProxy && !counterInBboxMode
-          ? cloudSelectionChrome(selectionChromeObj)
+          ? markBorderCloudChrome(selectionChromeObj)
           : null;
         if (cloudChrome) overlayRotationCenter = cloudChrome.rotationCenter;
 

@@ -405,7 +405,9 @@ test('PDFViewer: a picked pen stroke writes its FILL, and every bar handler trie
   // 2026-10-04: or Pan / a group tool's own-group pick - pickBarTool), and the bar
   // reloads the group's values only when the pick or its values change.
   assert.match(source, /const restyleGroup = useMemo\(\(\) => \{[\s\S]{0,600}if \(pickBarTool !== 'select'\) return null;/);
-  assert.match(source, /\}, \[restyleGroupLoadKey\]\);/);
+  // Owner Test 45 (2026-10-06): one loader for single picks and groups alike
+  // (utils/pickBarValues.js), keyed on the settled pick and its values.
+  assert.match(source, /\}, \[pickBarLoadKey\]\);/);
   // An empty Width over a mixed pick changes nothing.
   assert.match(source, /if \(rawValue === '' && pickBarTool === 'select' && restyleGroupRef\.current\?\.summary\?\.mixed\?\.width\) return;/);
   // A group arrowhead change keeps each arrow's own ends.
