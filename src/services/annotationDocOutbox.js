@@ -356,6 +356,9 @@ export function createMemoryAnnotationOutbox() {
         snapshotIdentity: normalizeSnapshotIdentity(checkpoint?.snapshotIdentity),
       };
     },
+    async compactionDue(documentId, actorUserId) {
+      return listStore(accepted, documentId, actorUserId).length >= COMPACT_AFTER_DELTAS;
+    },
     async compactAccepted(
       documentId,
       actorUserId,
@@ -483,6 +486,9 @@ export async function createAnnotationOutbox({
   );
 
   return {
+    // The checkpoint worker opens this same database to save a checkpoint
+    // without a multi-MB IndexedDB read/write on the main thread (2026-10-06).
+    storage: 'indexeddb',
     async list(documentId, actorUserId) {
       return list(PENDING_STORE, documentId, actorUserId);
     },
@@ -660,6 +666,15 @@ export async function createAnnotationOutbox({
         },
       );
     },
+    // Whether a non-forced compactAccepted would compact now (enough
+    // accepted records), without reading any record (2026-10-06).
+    async compactionDue(documentId, actorUserId) {
+      const scopeKey = actorScopeKey(documentId, actorUserId);
+      return run(ACCEPTED_STORE, 'readonly', async (stores, transaction) => (
+        (await requestResult(stores[ACCEPTED_STORE].index('scopeKey').count(scopeKey), transaction))
+          >= COMPACT_AFTER_DELTAS
+      ));
+    },
     async compactAccepted(
       documentId,
       actorUserId,
@@ -673,6 +688,21 @@ export async function createAnnotationOutbox({
         [CHECKPOINT_STORE, ACCEPTED_STORE, INCARNATION_STORE],
         'readwrite',
         async (stores, transaction) => {
+          if (!force) {
+            // 2026-10-06: most accepted rows do not compact. Count them
+            // first instead of reading the stored multi-MB checkpoint (and
+            // every record) only to return false: that read cost the main
+            // thread 20-80 ms after every accepted row on Package 2.
+            const [incarnation, count] = await Promise.all([
+              requestResult(stores[INCARNATION_STORE].get(documentId), transaction),
+              requestResult(stores[ACCEPTED_STORE].index('scopeKey').count(scopeKey), transaction),
+            ]);
+            if (
+              (Number(expectedIncarnation) || 0)
+              !== (Number(incarnation?.incarnation) || 0)
+            ) throw staleIncarnationError(documentId);
+            if (count < COMPACT_AFTER_DELTAS) return false;
+          }
           const [incarnation, checkpoint, records] = await Promise.all([
             requestResult(
               stores[INCARNATION_STORE].get(documentId),

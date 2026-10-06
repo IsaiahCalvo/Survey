@@ -113,6 +113,25 @@ import {
   markLiveStrokesLanded,
   setLiveStrokeSink,
 } from './annotationLiveStrokes.js';
+import {
+  bytesToPgHex,
+  gunzipBytes as gunzip,
+  pgHexToBytes,
+} from './annotationCheckpointCore.js';
+import {
+  applyToCheckpointMirror,
+  breakCheckpointMirror,
+  checkpointCoveredUpdatesOffThread,
+  compactAcceptedInWorker,
+  createCheckpointMirror,
+  prepareCheckpointUploadOffThread,
+  requestMirrorCheckpoint,
+} from './annotationCheckpointOffload.js';
+import {
+  canSubstituteCheckpointBody,
+  registerCheckpointBody,
+  releaseCheckpointBody,
+} from './checkpointBodyFetch.js';
 
 // The flat annotation store gets its OWN registry-managed Y.Doc, keyed apart
 // from the legacy CRDT doc so the two never share a map. (The applyUpdate-only
@@ -282,49 +301,31 @@ function invalidateDeletedState(state, error = deletedDocumentError(state.docume
   destroyLocalPersistence(state);
 }
 
-// Gzip the checkpoint so heavy documents stay well under request-size limits
-// (a many-thousand-mark Y.Doc compresses several-fold). Available in browsers
-// and Node 18+.
-async function gzip(u8) {
-  const stream = new Blob([u8]).stream().pipeThrough(new CompressionStream('gzip'));
-  return new Uint8Array(await new Response(stream).arrayBuffer());
-}
-async function gunzip(u8) {
-  const stream = new Blob([u8]).stream().pipeThrough(new DecompressionStream('gzip'));
-  return new Uint8Array(await new Response(stream).arrayBuffer());
+// gzip / gunzip and the bytea hex text helpers live in the pure checkpoint
+// module (annotationCheckpointCore.js), shared with the checkpoint worker.
+
+// A checkpoint upload's p_snapshot can be the worker's JSON bytes (never a
+// multi-MB string on this thread) only through the RPC of a client whose
+// fetch swaps upload markers for their bytes: the app's client (see
+// supabaseClient.js). Anything else (test doubles, the table-upsert
+// compatibility path) gets the hex string, as before.
+function useCheckpointJsonBody(state) {
+  return typeof state.supabase?.rpc === 'function' && canSubstituteCheckpointBody(state.supabase);
 }
 
-// PostgREST returns/accepts bytea as '\x<hex>'.
-// Postgres bytea hex text. Table-driven (2026-10-06, test plan 68): one erase
-// of a big detailed stroke is a ~1.4 MB WAL row and a checkpoint is several
-// MB; the per-byte toString/padStart/parseInt versions cost 30-130 ms of main
-// thread per row or checkpoint. Same text and bytes.
-const HEX_DIGIT_CODES = new TextEncoder().encode('0123456789abcdef');
-const HEX_VALUE_BY_CODE = (() => {
-  const table = new Uint8Array(128);
-  for (let i = 0; i < 10; i += 1) table[48 + i] = i;
-  for (let i = 0; i < 6; i += 1) { table[97 + i] = 10 + i; table[65 + i] = 10 + i; }
-  return table;
-})();
-const HEX_TEXT_DECODER = new TextDecoder();
-function bytesToPgHex(u8) {
-  const out = new Uint8Array(2 + u8.length * 2);
-  out[0] = 92; // backslash
-  out[1] = 120; // x
-  for (let i = 0, j = 2; i < u8.length; i += 1, j += 2) {
-    out[j] = HEX_DIGIT_CODES[u8[i] >> 4];
-    out[j + 1] = HEX_DIGIT_CODES[u8[i] & 15];
+// Every change to acceptedDoc goes through here (2026-10-06): the same bytes
+// then go to the checkpoint worker's mirror of it, in the same order, so a
+// checkpoint can be encoded there instead of on this thread. A failed apply
+// may have changed acceptedDoc part way: the mirror is no longer a copy, so
+// it is dropped (checkpoints are then encoded here, as before).
+function applyAcceptedUpdate(state, update) {
+  try {
+    Y.applyUpdate(state.acceptedDoc, update, HYDRATE_ORIGIN);
+  } catch (error) {
+    breakCheckpointMirror(state.checkpointMirror);
+    throw error;
   }
-  return HEX_TEXT_DECODER.decode(out);
-}
-function pgHexToBytes(str) {
-  if (str instanceof Uint8Array) return str;
-  const hex = (typeof str === 'string' && str.startsWith('\\x')) ? str.slice(2) : (str || '');
-  const out = new Uint8Array(hex.length / 2);
-  for (let i = 0, j = 0; i < out.length; i += 1, j += 2) {
-    out[i] = (HEX_VALUE_BY_CODE[hex.charCodeAt(j) & 127] << 4) | HEX_VALUE_BY_CODE[hex.charCodeAt(j + 1) & 127];
-  }
-  return out;
+  applyToCheckpointMirror(state.checkpointMirror, update);
 }
 
 function randomClientId() {
@@ -461,6 +462,9 @@ export async function openAnnotationDoc({
     writerId: activeWriterId,
     doc: activeDoc,
     acceptedDoc: createDetachedYDoc(`accepted:${documentId}:${activeWriterId}`),
+    // The checkpoint worker's copy of acceptedDoc (null: no worker, or no
+    // cloud to checkpoint to). See applyAcceptedUpdate.
+    checkpointMirror: supabase ? createCheckpointMirror() : null,
     stagedDoc: createDetachedYDoc(`staged:${documentId}:${activeWriterId}`),
     persistedDoc: createDetachedYDoc(`persisted:${documentId}:${activeWriterId}`),
     stagedSeeded: false,   // w29: stagedDoc is seeded from acceptedDoc late in the open
@@ -824,7 +828,7 @@ export async function openAnnotationDoc({
         return;
       }
       if (origin === HYDRATE_ORIGIN) {
-        Y.applyUpdate(state.acceptedDoc, update, HYDRATE_ORIGIN);
+        applyAcceptedUpdate(state, update);
         Y.applyUpdate(state.stagedDoc, update, HYDRATE_ORIGIN);
         if (state.persistedDoc) Y.applyUpdate(state.persistedDoc, update, HYDRATE_ORIGIN);
         return;
@@ -928,6 +932,7 @@ export async function openAnnotationDoc({
     }
     try { await state.outbox?.close?.(); } catch { /* */ }
     try { state.acceptedDoc.destroy(); } catch { /* */ }
+    breakCheckpointMirror(state.checkpointMirror);
     try { state.stagedDoc.destroy(); } catch { /* */ }
     releasePersistedCandidate(state);
     try { state.legacyPersistenceDoc?.destroy(); } catch { /* */ }
@@ -1463,7 +1468,7 @@ function applyAuthoritativeCloudUpdate(state, update) {
   // so its live update event may not fire. Cloud acceptance must still advance
   // every clean shadow explicitly.
   const liveChanged = applyToLiveDoc(state, update, REMOTE_ORIGIN);
-  Y.applyUpdate(state.acceptedDoc, update, HYDRATE_ORIGIN);
+  applyAcceptedUpdate(state, update);
   applyToLocalPersistence(state, update);
   // Before the open seeds stagedDoc from acceptedDoc (which then holds this
   // row), rows would only sit there as pending structs (w29 review A).
@@ -1852,22 +1857,59 @@ async function settleAcceptedRecord(
   try {
     const token = newCleanCheckpointToken();
     const outcome = {};
-    const compacted = await state.outbox?.compactAccepted(
-      state.documentId,
-      state.actorUserId,
-      // Lazy: encoded only when the outbox actually compacts (w26).
-      () => encodeSnapshot(state.acceptedDoc),
-      false,
-      state.documentIncarnation,
-      // w29: see cleanCoverage / currentSnapshotIdentity. The identity is read
-      // in the same tick as the lazy encode.
-      {
-        covered: cleanCoverage(state),
-        identity: () => currentSnapshotIdentity(state),
-        token,
-        outcome,
-      },
-    );
+    let compacted = null;
+    // 2026-10-06: the compaction itself (every COMPACT_AFTER_DELTAS accepted
+    // rows: encode the accepted state, merge it with the stored copy, write
+    // it) runs in the checkpoint worker, from its mirror of acceptedDoc as it
+    // is in this tick, on the worker's own connection to the same database.
+    if (
+      state.outbox?.storage === 'indexeddb'
+      && typeof state.outbox.compactionDue === 'function'
+      && state.checkpointMirror && !state.checkpointMirror.broken
+      && await state.outbox.compactionDue(state.documentId, state.actorUserId)
+    ) {
+      try {
+        const inWorker = compactAcceptedInWorker(state.checkpointMirror, {
+          documentId: state.documentId,
+          actorUserId: state.actorUserId,
+          update: null,
+          force: false,
+          expectedIncarnation: state.documentIncarnation,
+          expectedVector: Y.encodeStateVector(state.acceptedDoc),
+          options: {
+            covered: cleanCoverage(state),
+            identity: currentSnapshotIdentity(state),
+            token,
+          },
+        });
+        const result = inWorker ? await inWorker : null;
+        if (result) {
+          compacted = result.compacted;
+          if (result.merged != null) outcome.merged = result.merged;
+        }
+      } catch (error) {
+        console.warn('[annotationDocSync] accepted cache compaction in the worker failed; compacting here', error?.message);
+        compacted = null;
+      }
+    }
+    if (compacted == null) {
+      compacted = await state.outbox?.compactAccepted(
+        state.documentId,
+        state.actorUserId,
+        // Lazy: encoded only when the outbox actually compacts (w26).
+        () => encodeSnapshot(state.acceptedDoc),
+        false,
+        state.documentIncarnation,
+        // w29: see cleanCoverage / currentSnapshotIdentity. The identity is read
+        // in the same tick as the lazy encode.
+        {
+          covered: cleanCoverage(state),
+          identity: () => currentSnapshotIdentity(state),
+          token,
+          outcome,
+        },
+      );
+    }
     noteCleanCompaction(state, compacted, token, outcome);
   } catch (error) {
     // The exact accepted delta is already durable in the clean journal. A
@@ -1895,23 +1937,11 @@ async function settleAcceptedRecord(
   if (state.appendRecords.size > 0) scheduleOutboxReplay(state);
 }
 
-function snapshotSemanticallyCoversUpdate(snapshotUpdate, update) {
-  const before = createDetachedYDoc(`coverage-before:${randomClientId()}`);
-  const after = createDetachedYDoc(`coverage-after:${randomClientId()}`);
-  try {
-    Y.applyUpdate(before, snapshotUpdate, HYDRATE_ORIGIN);
-    Y.applyUpdate(after, snapshotUpdate, HYDRATE_ORIGIN);
-    Y.applyUpdate(after, update, HYDRATE_ORIGIN);
-    return durableDocsEqual(before, after);
-  } finally {
-    try { before.destroy(); } catch { /* */ }
-    try { after.destroy(); } catch { /* */ }
-  }
-}
-
-async function settleSnapshotCoveredRecords(state, snapshotUpdate, epochAtStart) {
+// `snapshotVector`: the checkpoint bytes' state vector, when the caller has it
+// (the checkpoint upload computes it, in the worker when there is one).
+async function settleSnapshotCoveredRecords(state, snapshotUpdate, epochAtStart, snapshotVector = null) {
   if (!snapshotUpdate || state.appendRecords.size === 0) return;
-  const snapshotVector = Y.encodeStateVectorFromUpdate(snapshotUpdate);
+  const vector = snapshotVector || Y.encodeStateVectorFromUpdate(snapshotUpdate);
   const records = [...state.appendRecords.values()]
     .filter((record) => (
       (Number(record.editEpoch) || 0) <= (Number(epochAtStart) || 0)
@@ -1919,11 +1949,24 @@ async function settleSnapshotCoveredRecords(state, snapshotUpdate, epochAtStart)
     .sort((left, right) => (
       (left.ordinal || 0) - (right.ordinal || 0)
       || String(left.key).localeCompare(String(right.key))
-    ));
-  for (const record of records) {
-    const missing = Y.diffUpdate(record.update, snapshotVector);
-    if (Y.decodeUpdate(missing).structs.length > 0) continue;
-    if (!snapshotSemanticallyCoversUpdate(snapshotUpdate, record.update)) continue;
+    ))
+    // Cheap first test (a small record against the vector): no struct of it
+    // may be missing from the checkpoint.
+    .filter((record) => Y.decodeUpdate(Y.diffUpdate(record.update, vector)).structs.length === 0);
+  if (records.length === 0) return;
+  // The semantic test rebuilds the whole checkpoint twice per record (~1 s on
+  // Package 2 on a phone): in the checkpoint worker when there is one
+  // (2026-10-06). Pure on bytes, so asking first and settling after gives the
+  // same answers as asking per record.
+  const covered = await checkpointCoveredUpdatesOffThread(
+    snapshotUpdate,
+    records.map((record) => record.update),
+    DURABLE_MAP_NAMES,
+    vector,
+  );
+  for (let index = 0; index < records.length; index += 1) {
+    if (!covered[index]) continue;
+    const record = records[index];
     // Durable now, but only in the snapshot: peers that already have the
     // document open read the WAL, never the snapshot. Re-send the exact bytes
     // under the same writer/seq (an exact replay is idempotent server-side)
@@ -2077,7 +2120,7 @@ async function hydrateCleanAcceptedState(state) {
   for (const update of updates) Y.applyUpdate(state.doc, update, HYDRATE_ORIGIN);
   if (updates.length) await emitOpenPreview(state, 'local-copy');
   for (const update of updates) {
-    Y.applyUpdate(state.acceptedDoc, update, HYDRATE_ORIGIN);
+    applyAcceptedUpdate(state, update);
   }
 }
 
@@ -2328,7 +2371,7 @@ async function loadFromBackend(state) {
       try {
         Y.applyUpdate(doc, bytes, HYDRATE_ORIGIN);
         await emitOpenPreview(state, 'cloud-snapshot');
-        Y.applyUpdate(state.acceptedDoc, bytes, HYDRATE_ORIGIN);
+        applyAcceptedUpdate(state, bytes);
         applyToLocalPersistence(state, bytes);
       } catch (err) {
         throw new Error(`snapshot decode failed: ${err?.message || 'invalid Yjs update'}`, { cause: err });
@@ -2451,21 +2494,50 @@ function newCleanCheckpointToken() {
 // nothing else was saved meanwhile; otherwise nothing is done (no merge on
 // the main thread after every snapshot). Best effort: skipping or failing
 // only means the next open downloads the row.
-async function recordWrittenSnapshotInCleanState(state, update, covered, identity) {
+// 2026-10-06: `transferUpdate` — the bytes are this call's to give away (the
+// worker's own encoding): with an IndexedDB outbox the save then runs in the
+// checkpoint worker (the multi-MB read of the stored copy and write of the
+// new one off this thread). A failed worker save is skipped like any failed
+// save here.
+async function recordWrittenSnapshotInCleanState(state, update, covered, identity, { transferUpdate = false } = {}) {
   if (!covered || !update || typeof state.outbox?.compactAccepted !== 'function') return;
   const token = newCleanCheckpointToken();
   const outcome = {};
   try {
-    const compacted = await state.outbox.compactAccepted(
-      state.documentId,
-      state.actorUserId,
-      update,
-      true,
-      state.documentIncarnation,
-      // Only the cheap as-is store (review A): anything that would need a
-      // ~20 MB merge is left for the next open's compaction.
-      { covered, identity, token, outcome, onlyIfCovered: true },
-    );
+    let compacted = null;
+    const inWorker = state.outbox.storage === 'indexeddb'
+      ? compactAcceptedInWorker(state.checkpointMirror, {
+        documentId: state.documentId,
+        actorUserId: state.actorUserId,
+        update,
+        transfer: transferUpdate,
+        force: true,
+        expectedIncarnation: state.documentIncarnation,
+        options: { covered, identity, token, onlyIfCovered: true },
+      })
+      : null;
+    if (inWorker) {
+      try {
+        const result = await inWorker;
+        compacted = result?.compacted ?? false;
+        if (result?.merged != null) outcome.merged = result.merged;
+      } catch (error) {
+        console.warn('[annotationDocSync] saving the written snapshot locally (worker) failed', error?.message);
+        compacted = update.length > 0 ? null : false;
+      }
+    }
+    if (compacted == null) {
+      compacted = await state.outbox.compactAccepted(
+        state.documentId,
+        state.actorUserId,
+        update,
+        true,
+        state.documentIncarnation,
+        // Only the cheap as-is store (review A): anything that would need a
+        // ~20 MB merge is left for the next open's compaction.
+        { covered, identity, token, outcome, onlyIfCovered: true },
+      );
+    }
     noteCleanCompaction(state, compacted, token, outcome);
   } catch (error) {
     console.warn('[annotationDocSync] saving the written snapshot locally failed', error?.message);
@@ -2749,18 +2821,6 @@ function mapValueEqual(left, right) {
   try { return JSON.stringify(left) === JSON.stringify(right); } catch { return false; }
 }
 
-function durableDocsEqual(leftDoc, rightDoc) {
-  for (const mapName of DURABLE_MAP_NAMES) {
-    const left = leftDoc.getMap(mapName);
-    const right = rightDoc.getMap(mapName);
-    if (left.size !== right.size) return false;
-    for (const [key, value] of left.entries()) {
-      if (!right.has(key) || !mapValueEqual(value, right.get(key))) return false;
-    }
-  }
-  return true;
-}
-
 function resetStagedToAccepted(state) {
   try { state.stagedDoc.destroy(); } catch { /* */ }
   state.stagedDoc = createDetachedYDoc(
@@ -2894,8 +2954,18 @@ function captureSnapshotOptions(state) {
       cleanCoverage: snapshotUpdate ? cleanCoverage(state) : null,
     };
   }
+  // 2026-10-06: the checkpoint worker encodes its mirror of acceptedDoc as
+  // it is in this tick (no mirror: encoded here, as before).
+  const pendingSnapshot = requestMirrorCheckpoint(
+    state.checkpointMirror,
+    Y.encodeStateVector(state.acceptedDoc),
+    { asJsonBody: useCheckpointJsonBody(state) },
+  );
+  pendingSnapshot?.catch(() => {}); // awaited (and its failure handled) in writeSnapshotOnce
   return {
-    snapshotUpdate: encodeSnapshot(state.acceptedDoc),
+    snapshotUpdate: pendingSnapshot ? null : encodeSnapshot(state.acceptedDoc),
+    pendingSnapshot,
+    fromAccepted: true,
     // w33 review B: the frontier these bytes hold (same tick as the encode).
     atSeqAtEncode: state.coveredSeq,
     epoch: state.acceptedEditEpoch,
@@ -4132,7 +4202,7 @@ async function refreshAfterSnapshotConflict(state, localSnapshotUpdate) {
 
     // Publish only cloud-acknowledged bytes before the retry. The local
     // candidate remains staged until the snapshot CAS accepts it.
-    Y.applyUpdate(state.acceptedDoc, latest.update, HYDRATE_ORIGIN);
+    applyAcceptedUpdate(state, latest.update);
     Y.applyUpdate(state.stagedDoc, latest.update, HYDRATE_ORIGIN);
     // w35 review B: through the same path as a row, so marks the stored
     // checkpoint changes refresh their live-edit arrival copies (w33's
@@ -4170,7 +4240,24 @@ function snapshotWriteTimeoutMs(state, payloadChars) {
 
 // Write the full Y.Doc as one idempotent checkpoint. Retries hard — this is the
 // durability guarantee that makes dropped op inserts self-heal on next open.
-async function writeSnapshotNow(state, {
+// 2026-10-06: a checkpoint of acceptedDoc is built by the checkpoint worker
+// from its mirror of acceptedDoc. When that fails, the whole attempt starts
+// over here, encoding on this thread exactly as before (a fresh at_seq taken
+// in the same tick as the encode), with the mirror switched off.
+const MIRROR_CHECKPOINT_FAILED = Symbol('mirror-checkpoint-failed');
+async function writeSnapshotNow(state, options = {}) {
+  // Upload bodies registered for this write (checkpointBodyFetch.js).
+  const bodyMarkers = [];
+  try {
+    const result = await writeSnapshotOnce(state, options, bodyMarkers);
+    if (result !== MIRROR_CHECKPOINT_FAILED) return result;
+    return await writeSnapshotOnce(state, options, bodyMarkers);
+  } finally {
+    for (const marker of bodyMarkers) releaseCheckpointBody(marker);
+  }
+}
+
+async function writeSnapshotOnce(state, {
   snapshotUpdate = null,
   // w33: a conflict retry's bytes are merged with the accepted state HERE,
   // in the same tick as at_seq is taken, so rows applied while the retry was
@@ -4193,7 +4280,12 @@ async function writeSnapshotNow(state, {
   // when they were encoded (w29, see captureSnapshotOptions). null = unknown:
   // the write is not recorded in the saved copy.
   cleanCoverage: cleanCoverageAtEncode = null,
-} = {}) {
+  // captureSnapshotOptions' bytes, still being encoded by the checkpoint
+  // worker (2026-10-06): { update, hex, gzippedLength, stateVector }.
+  pendingSnapshot = null,
+  // The given bytes are an encoding of acceptedDoc (captureSnapshotOptions).
+  fromAccepted = false,
+} = {}, bodyMarkers = []) {
   const repairsGapAtStart = repairsGap ?? state.durabilityGap;
   const gapGenerationAtStart = gapGeneration ?? state.durabilityGapGeneration;
   if (!state.supabase) {
@@ -4203,6 +4295,20 @@ async function writeSnapshotNow(state, {
       containsUnacceptedPrefix: repairsGapAtStart,
       error: null,
     };
+  }
+  let preparedGiven = null;
+  if (pendingSnapshot && !snapshotUpdate) {
+    try {
+      preparedGiven = await pendingSnapshot;
+      snapshotUpdate = preparedGiven.update;
+    } catch (err) {
+      console.warn('[annotationDocSync] checkpoint worker failed; encoding on the main thread', err?.message);
+      breakCheckpointMirror(state.checkpointMirror);
+      // acceptedDoc only grows: encoded now it holds everything the capture
+      // named (epoch, cleanCoverage) and the frontier read in this tick.
+      snapshotUpdate = encodeSnapshot(state.acceptedDoc);
+      atSeqAtEncode = state.coveredSeq;
+    }
   }
   // Capture at_seq AND the edit generation BEFORE encoding (same synchronous
   // tick as encodeSnapshot, no await between). at_seq can then never claim an op
@@ -4234,13 +4340,25 @@ async function writeSnapshotNow(state, {
     state.snapshotGeneration,
     state.snapshotBaseWriterEpoch,
   ) + 1;
-  const updateAtStart = snapshotUpdate || (
-    repairsGapAtStart ? encodeRepairCheckpoint(state) : encodeSnapshot(state.acceptedDoc)
+  // The bytes are acceptedDoc itself (not given bytes, not a repair
+  // checkpoint): the worker encodes its mirror of acceptedDoc. The request is
+  // posted in THIS tick, after every acceptedDoc update so far, so the bytes
+  // are acceptedDoc exactly as it is now (2026-10-06); later edits go into
+  // the next checkpoint. No mirror: encoded here, as before.
+  const encodesAccepted = !snapshotUpdate && !repairsGapAtStart;
+  // The app's Supabase client can send the worker's JSON bytes as the
+  // p_snapshot text without this thread ever holding the multi-MB string.
+  const asJsonBody = useCheckpointJsonBody(state);
+  const mirrorCheckpoint = encodesAccepted
+    ? requestMirrorCheckpoint(state.checkpointMirror, Y.encodeStateVector(state.acceptedDoc), { asJsonBody })
+    : null;
+  let updateAtStart = snapshotUpdate || (
+    repairsGapAtStart ? encodeRepairCheckpoint(state) : (mirrorCheckpoint ? null : encodeSnapshot(state.acceptedDoc))
   );
   const coverageAtStart = snapshotUpdate
     ? cleanCoverageAtEncode
-    : (updateAtStart ? cleanCoverage(state) : null);
-  if (!updateAtStart) {
+    : ((updateAtStart || mirrorCheckpoint) ? cleanCoverage(state) : null);
+  if (!updateAtStart && !mirrorCheckpoint) {
     return {
       ok: false,
       permissionDenied: false,
@@ -4249,10 +4367,33 @@ async function writeSnapshotNow(state, {
     };
   }
   let hex;
+  let hexLength = 0;
+  let prepared = null;
+  // The worker already prepared the given bytes (not merged since).
+  if (preparedGiven && updateAtStart === preparedGiven.update) prepared = preparedGiven;
+  if (mirrorCheckpoint) {
+    try {
+      prepared = await mirrorCheckpoint;
+      updateAtStart = prepared.update;
+    } catch (err) {
+      console.warn('[annotationDocSync] checkpoint worker failed; encoding on the main thread', err?.message);
+      breakCheckpointMirror(state.checkpointMirror);
+      return MIRROR_CHECKPOINT_FAILED;
+    }
+  }
   try {
-    const gzipped = await gzip(updateAtStart);
-    state.lastSnapshotBytes = gzipped.length;
-    hex = bytesToPgHex(gzipped);
+    // gzip + bytea hex (+ the bytes' state vector), in the worker when there
+    // is one; same text either way.
+    if (!prepared) prepared = await prepareCheckpointUploadOffThread(updateAtStart, { asJsonBody });
+    state.lastSnapshotBytes = prepared.gzippedLength;
+    hexLength = prepared.hexLength;
+    if (prepared.jsonBody && asJsonBody) {
+      // p_snapshot is a marker the client's fetch swaps for these bytes.
+      hex = registerCheckpointBody(prepared.jsonBody);
+      bodyMarkers.push(hex);
+    } else {
+      hex = prepared.hex ?? (prepared.jsonBody ? JSON.parse(await prepared.jsonBody.text()) : null);
+    }
   } catch (err) {
     console.warn('[annotationDocSync] snapshot gzip failed, storing raw', err?.message);
     return {
@@ -4268,7 +4409,7 @@ async function writeSnapshotNow(state, {
       let accepted = true;
       if (typeof state.supabase.rpc === 'function') {
         let data;
-        syncTrace('snapshot-rpc-start', { hexChars: hex.length });
+        syncTrace('snapshot-rpc-start', { hexChars: hexLength });
         ({ data, error } = await withCloudRequest(
           state,
           state.supabase.rpc('store_annotation_snapshot', {
@@ -4283,7 +4424,7 @@ async function writeSnapshotNow(state, {
             p_expected_writer_epoch: state.snapshotBaseWriterEpoch,
           }),
           'annotation snapshot write',
-          snapshotWriteTimeoutMs(state, hex.length),
+          snapshotWriteTimeoutMs(state, hexLength),
         ));
         syncTrace('snapshot-rpc-end', { error: error?.message || null });
         const rpcResult = Array.isArray(data) ? data[0] : data;
@@ -4385,13 +4526,21 @@ async function writeSnapshotNow(state, {
           clearGapRepairTimer(state);
           clearRepairCheckpoint(state);
         }
-        Y.applyUpdate(state.acceptedDoc, updateAtStart, HYDRATE_ORIGIN);
+        // Bytes encoded from acceptedDoc (or its mirror), possibly merged with
+        // a later encoding of it, are already in it: applying them back
+        // decoded the whole document for nothing (~0.1-0.5 s on Package 2).
+        // Repair or rebased bytes may hold more: applied.
+        if (!encodesAccepted && !(fromAccepted && !repairsGapAtStart)) applyAcceptedUpdate(state, updateAtStart);
         state.acceptedEditEpoch = Math.max(state.acceptedEditEpoch, epochAtStart || 0);
-        await settleSnapshotCoveredRecords(state, updateAtStart, epochAtStart);
+        await settleSnapshotCoveredRecords(state, updateAtStart, epochAtStart, prepared?.stateVector || null);
         await recordWrittenSnapshotInCleanState(state, updateAtStart, coverageAtStart, {
           atSeq,
           writerId: state.writerId,
           writerEpoch: snapshotGenerationAtStart,
+        }, {
+          // The worker's own encoding, used for nothing after this: moved
+          // back to the worker for the save instead of copied.
+          transferUpdate: Boolean(prepared?.update) && prepared.update === updateAtStart,
         });
         void queueEraseOutboxDrain(state);
         if (repairedGap && state.pendingAppends === 0 && state.appendRecords.size > 0) {
@@ -6639,6 +6788,7 @@ function makeHandle(state) {
       destroyLocalPersistence(state);
       try { await state.outbox?.close?.(); } catch { /* */ }
       try { state.acceptedDoc.destroy(); } catch { /* */ }
+      breakCheckpointMirror(state.checkpointMirror);
       try { state.stagedDoc.destroy(); } catch { /* */ }
       releasePersistedCandidate(state);
       try { state.legacyPersistenceDoc?.destroy(); } catch { /* */ }
