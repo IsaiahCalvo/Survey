@@ -100,3 +100,44 @@
 .section-icon-btn.is-danger {
   color: var(--danger);
 }
+
+/*
+ * Done (owner 2026-10-06, after a circle-vs-square debate: circle). A mode
+ * toggle that is on shows its check on a round disc, so the commit reads as a
+ * button and not a stray tick - like iOS 26's round Done check and the app's
+ * own round text-box commit. Filled --surface-3 disc with a hairline, check in
+ * --text-1; the glyph keeps the shared hover/press scale. Desktop 24px disc in
+ * the 28px hit; phone 32px in the 36px box (44px touch pad unchanged).
+ */
+.section-icon-btn.is-active {
+  color: var(--text-1);
+}
+.section-icon-btn.is-active::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--border);
+  pointer-events: none;
+}
+.section-icon-btn.is-active.is-phone::before {
+  width: 32px;
+  height: 32px;
+}
+.section-icon-btn.is-active > svg {
+  position: relative;
+  z-index: 1;
+}
+@media (hover: hover) {
+  .section-icon-btn.is-active:not(:disabled):hover::before {
+    box-shadow: inset 0 0 0 1px var(--border-strong);
+  }
+}
+.section-icon-btn.is-active:not(:disabled):active::before {
+  background: var(--pressed);
+}
