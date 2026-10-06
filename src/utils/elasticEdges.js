@@ -156,18 +156,164 @@ export function composeElasticTransform(inner, outer) {
 }
 
 /**
- * A gesture ended while the previous leftover was still easing home: carry
- * what is still shown of it into the new leftover so the release starts from
- * exactly what is on screen (zoom multiplies, offsets add).
+ * A pinch ends while the previous zoom-limit ease is still running on top of
+ * it (review 9 / robust 10): the leftover to ease home must be EXACTLY the
+ * picture the last frame showed, i.e. the same nesting the render draws with
+ * composeElasticTransform - not foldElasticLeftover's multiply-and-add, which
+ * is only that picture when both pivots are the same point (pivots 150 px
+ * apart with 8% of a x1.8 bounce left: a ~12 px jump in the release frame).
+ *
+ * `pinch` is the pinch's own leftover in the committed layout ({ ax, ay, z,
+ * tx, ty }, pivot in the new scroll space). `ease` is the running ease
+ * ({ ax, ay, z, tx, ty }, pivot in the scroll space of the layout it was
+ * drawn over). The ease is the OUTER transform: it acts on the picture as
+ * drawn, so its pivot keeps its place on screen - in the new scroll space it
+ * moves by the scroll change (`scrollShiftX/Y` = new scroll - old scroll),
+ * never by the zoom ratio.
  */
-export function foldElasticLeftover(next, previous) {
-  if (!previous) return next;
-  const z = finite(previous.z, 1);
+export function composeReleaseLeftover(pinch, ease, { scrollShiftX = 0, scrollShiftY = 0 } = {}) {
+  if (!ease) return pinch;
+  const out = composeElasticTransform(
+    { ox: pinch.ax, oy: pinch.ay, s: pinch.z, tx: pinch.tx, ty: pinch.ty },
+    {
+      ox: finite(ease.ax) + finite(scrollShiftX),
+      oy: finite(ease.ay) + finite(scrollShiftY),
+      s: ease.z,
+      tx: ease.tx,
+      ty: ease.ty,
+    },
+  );
+  return { ...pinch, z: out.s, tx: out.tx, ty: out.ty };
+}
+
+// ---- phone: one finger past an edge ---------------------------------------
+/**
+ * One step of a one-finger pan that may run past an edge, for one axis, in
+ * scroll space. `scroll` is the scroller's offset, `max` its scroll range (0
+ * for a page that fits the screen), `excess` the finger travel already past an
+ * edge, `delta` the finger's move (screen px, up = negative). Returns the new
+ * scroll offset, the new excess (positive = past the far end) and the offset
+ * to draw (negative = the page moves up, with the finger).
+ *
+ * A page that fits (max 0) has no scroll to use, so ALL finger travel is
+ * excess: pushing up past the bottom edge always moves the page up, pulling
+ * down past the top edge always moves it down - never the other way.
+ */
+export function resolveElasticPanStep({ scroll = 0, max = 0, excess = 0, delta = 0, dimension = 1 } = {}) {
+  const hi = Math.max(0, finite(max));
+  // Start from the in-range scroll: only finger travel may build up excess,
+  // never a whole-pixel scroll offset sitting a hair past a fractional max.
+  const free = Math.min(Math.max(0, finite(scroll)), hi) + finite(excess) - finite(delta);
+  const next = Math.min(Math.max(0, free), hi);
+  let left = free - next;
+  if (Math.abs(left) < 0.01) left = 0;
+  return { scroll: next, excess: left, shown: left ? -rubberBand(left, dimension) : 0 };
+}
+
+/**
+ * A two-axis edge offset with its own spring (review 9 / robust 10 item 2):
+ * a one-finger pan that reaches an edge while a zoom-limit bounce is still
+ * easing used to REPLACE the bounce with its edge offset - the zoom snapped
+ * back to x1 in one frame. Its edge offset lives here instead, drawn as a
+ * plain translation on top of the bounce, so both run to the end on their own
+ * clocks. set() while the finger holds it; release(now) springs it home on the
+ * edge spring; frame(now) -> { x, y, active }.
+ */
+export function createOffsetSpring({ omega = ELASTIC_SPRING_OMEGA } = {}) {
+  let s = { mode: 'idle', x: 0, y: 0, t0: 0, vx: 0, vy: 0 };
+  const at = (now) => {
+    if (s.mode !== 'spring') return { x: s.x, y: s.y, vx: 0, vy: 0 };
+    const t = Math.max(0, finite(now) - s.t0) / 1000;
+    const a = criticallyDampedSpring(s.x, s.vx, t, omega);
+    const b = criticallyDampedSpring(s.y, s.vy, t, omega);
+    return { x: a.x, y: b.x, vx: a.v, vy: b.v };
+  };
   return {
-    ...next,
-    z: finite(next.z, 1) * z,
-    tx: finite(next.tx) + finite(previous.tx),
-    ty: finite(next.ty) + finite(previous.ty),
+    set(x, y) { s = { mode: x || y ? 'held' : 'idle', x: finite(x), y: finite(y), t0: 0, vx: 0, vy: 0 }; },
+    release(now) {
+      if (s.mode === 'held') s = { ...s, mode: 'spring', t0: finite(now) };
+    },
+    frame(now) {
+      if (s.mode === 'idle') return { x: 0, y: 0, active: false };
+      const c = at(now);
+      if (s.mode === 'spring' && ((Math.hypot(c.x, c.y) < 0.2 && Math.hypot(c.vx, c.vy) < 6)
+        || finite(now) - s.t0 > ELASTIC_SPRING_MAX_MS)) {
+        s = { mode: 'idle', x: 0, y: 0, t0: 0, vx: 0, vy: 0 };
+        return { x: 0, y: 0, active: false };
+      }
+      return { x: c.x, y: c.y, active: true };
+    },
+    active() { return s.mode !== 'idle'; },
+    held() { return s.mode === 'held'; },
+  };
+}
+
+// ---- phone: the viewer changes size under a gesture -----------------------
+// Real iPhone (Appetize, iOS 26, 2026-10-06): pushing a page that fits the
+// screen past its bottom edge left it sitting ~145 px LOWER, cut off by the
+// dock, and it only came back seconds later. A page that fits is centred in
+// the scroller, so anything that changes the scroller's height while the
+// finger is down (Safari's toolbar collapsing or coming back, the visual
+// viewport or safe area settling after the keyboard) moved the centring
+// margin by half the change in ONE frame - straight down when the viewer grew,
+// against a push up. Now that move is held off while the finger is down (the
+// page stays exactly where the finger has it) and glides to the new centre on
+// the edge spring after the lift; a change that lands while the page is
+// already springing home joins that spring. Nothing jumps, nothing moves
+// against the finger.
+
+/**
+ * How far a page's resting place moved on screen when the viewer was resized:
+ * the change of the fit-centring margin, only when the zoom and the tool-strip
+ * room did not change too (those keep the page still on their own).
+ */
+export function resolveFitCentreShift(prev, next) {
+  if (!prev || !next) return 0;
+  if (Math.abs(finite(prev.scale, 1) - finite(next.scale, 1)) > 1e-9) return 0;
+  if (Math.abs(finite(prev.room) - finite(next.room)) > 0.01) return 0;
+  if (Math.abs(finite(prev.height) - finite(next.height)) < 0.5) return 0;
+  const shift = finite(next.centerPad) - finite(prev.centerPad);
+  return Math.abs(shift) < 0.01 ? 0 : shift;
+}
+
+/**
+ * The visual offset that hides such a move: absorb(shift) keeps the page where
+ * it is on screen; it is held while a finger is down and springs to the new
+ * resting place after release(now) (critically damped, ~0.6 s, the edge
+ * spring). frame(now) -> { y, active }: what to add to the drawn translate.
+ */
+export function createLayoutShiftHold({ omega = ELASTIC_SPRING_OMEGA } = {}) {
+  const IDLE = { mode: 'idle', y: 0, x0: 0, v0: 0, t0: 0 };
+  let s = IDLE;
+  const at = (now) => {
+    if (s.mode === 'held') return { x: s.y, v: 0 };
+    if (s.mode !== 'spring') return { x: 0, v: 0 };
+    return criticallyDampedSpring(s.x0, s.v0, Math.max(0, finite(now) - s.t0) / 1000, omega);
+  };
+  return {
+    absorb(shift, now, { held = false } = {}) {
+      const d = finite(shift);
+      if (!d) return;
+      const cur = at(now);
+      if (held || s.mode === 'held') s = { mode: 'held', y: cur.x - d, x0: 0, v0: 0, t0: 0 };
+      else s = { mode: 'spring', y: 0, x0: cur.x - d, v0: cur.v, t0: finite(now) };
+    },
+    release(now) {
+      if (s.mode === 'held') s = { mode: 'spring', y: 0, x0: s.y, v0: 0, t0: finite(now) };
+    },
+    frame(now) {
+      if (s.mode === 'idle') return { y: 0, active: false };
+      const { x, v } = at(now);
+      if (s.mode === 'spring'
+        && ((Math.abs(x) < 0.2 && Math.abs(v) < 6) || finite(now) - s.t0 > ELASTIC_SPRING_MAX_MS)) {
+        s = IDLE;
+        return { y: 0, active: false };
+      }
+      return { y: x, active: true };
+    },
+    active() { return s.mode !== 'idle'; },
+    held() { return s.mode === 'held'; },
+    reset() { s = IDLE; },
   };
 }
 
