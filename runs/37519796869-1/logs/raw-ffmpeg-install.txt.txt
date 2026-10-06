@@ -1,0 +1,1 @@
+/Users/runner/work/_temp/b40b75ec-104a-4981-8fc7-bdd4cbf75e63.sh: line 46: ::error title=Stop recording and build results @ line 38::command -v ffmpeg (exit 1): command not found

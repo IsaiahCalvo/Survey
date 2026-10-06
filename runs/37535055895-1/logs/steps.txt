@@ -1,0 +1,12 @@
+Xcode 26.6
+Build version 17F113
+Booting iPhone 16 on iOS 26.5 (6AE2C142-5830-4855-90BC-4744A1231F06)
+maestro 2.11.0
+booted
+Expo Go 57.0.9 installed
+shot base-01-safari-home
+shot base-02-safari-document
+== flow smoke
+flow smoke exit 0
+== flow expo-go
+flow expo-go exit 0

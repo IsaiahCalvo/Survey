@@ -1,0 +1,6 @@
+Xcode 26.6
+Build version 17F113
+Booting iPhone 16 on iOS 26.5 (36854192-90B3-4B2A-B5CC-88863D4ED490)
+maestro 2.11.0
+booted
+Expo Go 57.0.9 installed

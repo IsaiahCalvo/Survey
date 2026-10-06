@@ -1,0 +1,3 @@
+Xcode 26.6
+Build version 17F113
+Booting iPhone 16 on iOS 26.5 (792BAD0A-5F31-48E1-BA37-7668B344EFCE)

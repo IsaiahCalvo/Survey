@@ -1,0 +1,7 @@
+
+Waiting for flows to complete...
+WARNING: GL pipe is running in software mode (Renderer ID=0x1020400)
+[Passed] expo-go (5m 6s)
+
+1/1 Flow Passed in 5m 6s
+

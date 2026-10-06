@@ -1,0 +1,271 @@
+21:09:29.380 [ INFO] maestro.cli.report.TestDebugReporter.logSystemInfo: Debug output path: /Users/runner/work/_temp/ios-sim-out/maestro/expo-go/debug
+21:09:29.387 [ INFO] MAESTRO.logSystemInfo: ---- System Info ----
+21:09:29.391 [ INFO] MAESTRO.logSystemInfo: Maestro Version: 2.11.0
+21:09:29.414 [ INFO] MAESTRO.logSystemInfo: CI: github
+21:09:29.415 [ INFO] MAESTRO.logSystemInfo: OS Name: Mac OS X
+21:09:29.415 [ INFO] MAESTRO.logSystemInfo: OS Version: 26.6.2
+21:09:29.415 [ INFO] MAESTRO.logSystemInfo: Architecture: aarch64
+21:09:29.416 [ INFO] MAESTRO.logSystemInfo: Java Version: 17
+21:09:29.698 [ INFO] MAESTRO.logSystemInfo: Xcode Version: 26.6
+21:09:29.734 [ INFO] MAESTRO.logSystemInfo: Flutter Version: Undefined
+21:09:29.772 [ INFO] MAESTRO.logSystemInfo: Flutter Channel: Undefined
+21:09:29.772 [ INFO] MAESTRO.logSystemInfo: ---------------------
+21:09:31.280 [DEBUG] io.micrometer.common.util.internal.logging.InternalLoggerFactory.newDefaultFactory: Using SLF4J as the default logging framework
+21:09:48.262 [ INFO] maestro.cli.command.TestCommand.runShardSuite: [shard 1] Selected device 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7 using port 57328 with execution plan ExecutionPlan(flowsToRun=[/Users/runner/work/Survey/Survey/.github/ios-sim/flows/expo-go.yaml], sequence=FlowSequence(flows=[], continueOnFailure=true), workspaceConfig=WorkspaceConfig(flows=null, includeTags=null, excludeTags=null, executionOrder=null, baselineBranch=null, notifications=null, disableRetries=false, platform=PlatformConfiguration(android=AndroidConfiguration(disableAnimations=false), ios=IOSConfiguration(disableAnimations=false, snapshotKeyHonorModalViews=null)), testOutputDir=null))
+21:09:49.929 [TRACE] ios.xctest.XCTestIOSDevice.open: Opening a connection
+21:09:49.930 [TRACE] xcuitest.XCTestDriverClient.restartXCTestRunner: Restarting XCTest Runner (uninstalling, installing and starting)
+21:09:49.945 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:09:49.950 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:09:49.950 [TRACE] xcuitest.XCTestDriverClient.restartXCTestRunner: XCTest Runner uninstalled, will install and start it
+21:09:49.952 [ INFO] xcuitest.installer.LocalXCTestInstaller.start$lambda$3: start()
+21:09:49.955 [ INFO] xcuitest.installer.LocalXCTestInstaller.start$lambda$3: [Start] Install XCUITest runner on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:09:49.955 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:09:49.957 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:09:49.957 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Start] Writing build products
+21:09:50.200 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Done] Writing build products
+21:09:50.201 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Start] Writing maestro-driver-iosUITests-Runner app
+21:09:50.855 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Done] Writing maestro-driver-iosUITests-Runner app
+21:09:50.856 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Start] Writing maestro-driver-ios app
+21:09:50.875 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Done] Writing maestro-driver-ios app
+21:09:50.884 [ INFO] xcuitest.installer.LocalXCTestInstaller.startXCTestRunner: Installing driver with xcodebuild
+21:09:50.887 [ INFO] xcuitest.installer.LocalXCTestInstaller.startXCTestRunner: [Start] Running XcUITest with `xcodebuild test-without-building` with 57328 and config: IOSDriverConfig(prebuiltRunner=false, sourceDirectory=driver-iPhoneSimulator, context=CLI, snapshotKeyHonorModalViews=null)
+21:09:50.894 [ INFO] util.CommandLineUtils.runCommand: Running command line operation: [xcodebuild, test-without-building, -xctestrun, /var/folders/36/tjdph2t965j8snz9_vkdnw0r0000gn/T/975D1C2F-6206-4CD1-BB84-B31EEB2CB4E78347355347651880416/maestro-driver-ios-config.xctestrun, -destination, id=975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, -derivedDataPath, /var/folders/36/tjdph2t965j8snz9_vkdnw0r0000gn/T/maestro_xctestrunner_xcodebuild_output15517900418694262750] with {TEST_RUNNER_PORT=57328}
+21:09:50.904 [ INFO] xcuitest.installer.LocalXCTestInstaller.startXCTestRunner: [Done] Running XcUITest with `xcodebuild test-without-building`
+21:09:50.905 [ INFO] xcuitest.installer.LocalXCTestInstaller.start$lambda$3: [Done] Install XCUITest runner on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:09:50.906 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:09:50.908 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:09:51.469 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:09:51.471 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:09:52.120 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:09:52.122 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:09:52.726 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:09:52.728 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:09:53.383 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:09:53.388 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:09:54.037 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:09:54.040 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:09:54.699 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:09:54.701 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:09:55.208 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:09:55.212 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:09:55.864 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:09:55.866 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:09:56.475 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:09:56.476 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:09:56.986 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:09:56.988 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:09:57.506 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:09:57.508 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:09:58.150 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:09:58.152 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:09:58.675 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:09:58.676 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:09:59.257 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:09:59.258 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:09:59.889 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:09:59.891 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:00.540 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:00.547 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:01.168 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:01.169 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:01.818 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:01.819 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:02.469 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:02.470 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:03.120 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:03.122 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:03.769 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:03.771 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:04.417 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:04.420 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:04.959 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:04.962 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:05.582 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:05.586 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:06.156 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:06.157 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:06.790 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:06.792 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:07.332 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:07.333 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:07.939 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:07.940 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:08.591 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:08.592 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:09.109 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:09.112 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:09.757 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:09.758 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:10.372 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:10.374 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:11.005 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:11.006 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:11.600 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:11.601 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:12.208 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:12.241 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:12.858 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:12.859 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:13.502 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:13.504 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:14.154 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:14.163 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:14.686 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:14.689 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:15.328 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:15.330 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:15.980 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:15.983 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:16.608 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:16.609 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:17.204 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:17.206 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:17.850 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:17.852 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:18.471 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:18.474 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:19.122 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:19.124 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:19.747 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:19.748 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:20.285 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:20.286 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:20.797 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:20.798 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:21.307 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:21.309 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:21.872 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:21.873 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:22.421 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:22.440 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:23.033 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:23.041 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:23.570 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:23.581 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:24.182 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:24.198 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:24.827 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:24.829 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:25.486 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:25.487 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:26.223 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:26.945 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:27.668 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:27.671 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:28.194 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:28.209 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:28.758 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:28.759 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:29.406 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:29.415 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:30.064 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:30.066 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:30.649 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:30.673 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:31.290 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:31.292 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:31.890 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:31.893 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:32.412 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:32.414 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:33.048 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:33.049 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:33.550 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:33.551 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:34.199 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:34.200 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:34.857 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:34.858 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:35.486 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:35.496 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:36.115 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:36.116 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:36.748 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:36.750 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:37.406 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:37.419 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:38.068 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:38.070 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:38.721 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:38.730 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:39.343 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:39.369 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:40.112 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:40.122 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:40.687 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:40.690 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:41.330 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:41.340 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:41.914 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:41.918 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:42.599 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:42.606 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:43.170 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:43.173 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:43.819 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:43.821 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:44.465 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:44.470 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:45.097 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:45.098 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:45.625 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:45.632 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:46.245 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:46.246 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:46.911 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:46.914 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:47.442 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:47.444 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:48.028 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:48.029 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:48.622 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:48.623 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:49.268 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:49.280 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:49.782 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:49.783 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:50.424 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:50.425 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:51.057 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:51.058 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:51.675 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:51.676 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:57328
+21:10:52.323 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:52.414 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Done] Perform XCUITest driver status check on 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7
+21:10:52.759 [ INFO] maestro.cli.runner.TestSuiteInteractor.runFlow:  Running flow expo-go
+21:10:52.821 [ INFO] maestro.Maestro.cachedDeviceInfo_delegate$lambda$0: Getting device info
+21:11:06.107 [ INFO] maestro.Maestro.cachedDeviceInfo_delegate$lambda$0: Got device info: DeviceInfo(platform=IOS, widthPixels=1179, heightPixels=2556, widthGrid=393, heightGrid=852)
+21:11:06.428 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Define variables RUNNING
+21:11:06.436 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Define variables COMPLETED
+21:11:06.438 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Apply configuration RUNNING
+21:11:06.438 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Apply configuration COMPLETED
+21:11:06.438 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Open ${EXPO_URL} RUNNING
+21:11:08.457 [ INFO] maestro.Maestro.openLink: Opening link exp://u.expo.dev/7522d24f-7afd-4d5b-a5c0-58f2ea863c28/branch/019fd954-cd01-705b-a108-2e1ac9f755d7 for app: host.exp.Exponent with autoVerify config as false
+21:11:08.462 [ INFO] util.CommandLineUtils.runCommand: Running command line operation: [xcrun, simctl, openurl, 975D1C2F-6206-4CD1-BB84-B31EEB2CB4E7, exp://u.expo.dev/7522d24f-7afd-4d5b-a5c0-58f2ea863c28/branch/019fd954-cd01-705b-a108-2e1ac9f755d7] with {}
+21:11:10.506 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+21:11:14.764 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Open ${EXPO_URL} COMPLETED
+21:11:14.767 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Run flow when "Open" is visible RUNNING
+21:11:15.064 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Tap on "Open" RUNNING
+21:11:15.296 [ INFO] maestro.Maestro.tap-HgV9Ck0: Tapping on element:  UiElement(treeNode=TreeNode(attributes={accessibilityText=Open, title=, value=, text=, hintText=, resource-id=, bounds=[200,437][340,485], enabled=true, focused=false, selected=false, checked=false}, children=[], clickable=null, enabled=true, focused=false, checked=false, selected=false), bounds=Bounds(x=200, y=437, width=140, height=48))
+21:11:15.298 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+21:11:15.691 [ INFO] maestro.Maestro.tap-HgV9Ck0: Tap aimed via trusted pre-wait hierarchy (null settle, no recent scroll)
+21:11:15.695 [ INFO] maestro.Maestro.screenshotBasedTap-ogj28Uc: Try tapping at (270, 461) using hierarchy based logic for wait
+21:11:15.701 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+21:11:15.701 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+21:11:18.528 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+21:11:21.005 [ INFO] maestro.Maestro.screenshotBasedTap-ogj28Uc: Something have changed in the UI judging by view hierarchy. Proceed.
+21:11:21.039 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Tap on "Open" COMPLETED
+21:11:21.041 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Run flow when "Open" is visible COMPLETED
+21:11:21.044 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Assert that (Optional) "Welcome back|Documents|Sign in|Continue" is visible RUNNING
+21:11:22.072 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Assert that (Optional) "Welcome back|Documents|Sign in|Continue" is visible COMPLETED
+21:11:22.074 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Take screenshot expo-01-first-screen RUNNING
+21:11:22.463 [ INFO] maestro.Maestro.takeScreenshot: Taking screenshot
+21:11:22.466 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+21:11:22.711 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Take screenshot expo-01-first-screen COMPLETED
+21:11:22.712 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Tap on (Optional) "Continue" RUNNING
+21:12:06.217 [ WARN] xcuitest.XCTestDriverClient.handleExceptions: XCTestDriver request failed. Status code: 500, path: viewHierarchy, body: {"code":"internal","errorMessage":"Timed out snapshotting Unknown process name, app is either unresponsive or taking too long to snapshot."}
+21:12:06.330 [ERROR] xcuitest.XCTestDriverClient.handleExceptions: Request for viewHierarchy failed, because of unknown reason, body: {"code":"internal","errorMessage":"Timed out snapshotting Unknown process name, app is either unresponsive or taking too long to snapshot."}
+21:12:06.347 [ERROR] maestro.orchestra.Orchestra.executeCommands: [Command execution] CommandFailed: null
+21:12:11.588 [ INFO] maestro.Maestro.takeScreenshot: Taking screenshot
+21:12:11.590 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+21:12:12.032 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Tap on (Optional) "Continue" FAILED

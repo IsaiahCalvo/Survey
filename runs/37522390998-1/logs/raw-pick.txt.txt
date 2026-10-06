@@ -1,0 +1,1 @@
+com.apple.CoreSimulator.SimRuntime.iOS-26-5 iOS_26.5 com.apple.CoreSimulator.SimDeviceType.iPhone-16 iPhone_16

@@ -1,0 +1,126 @@
+21:57:48.737 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:57:48.739 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:57:49.163 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:57:49.709 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:57:50.356 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:57:50.906 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:57:51.426 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:57:52.075 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:57:52.711 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:57:53.333 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:57:53.935 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:57:54.581 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:57:55.197 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:57:55.828 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:57:56.447 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:57:57.067 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:57:57.712 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:57:58.327 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:57:59.013 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:57:59.623 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:00.151 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:00.802 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:01.455 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:02.102 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:02.625 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:03.278 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:03.945 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:04.536 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:05.141 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:05.974 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:06.678 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:07.463 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:08.196 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:09.177 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:11.100 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:12.029 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:12.650 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:13.615 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:14.282 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:14.829 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:15.507 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:16.345 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:17.062 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:17.697 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:18.581 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:20.164 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:20.868 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:21.886 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:22.436 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:23.009 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:23.826 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:24.480 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:25.262 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:26.060 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:26.727 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:27.545 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:28.196 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:28.868 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:29.630 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:30.361 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 6AE2C142-5830-4855-90BC-4744A1231F06, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:58777
+21:58:38.675 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Define variables RUNNING
+21:58:38.694 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Define variables COMPLETED
+21:58:38.695 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Apply configuration RUNNING
+21:58:38.695 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Apply configuration COMPLETED
+21:58:38.695 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Open ${EXPO_URL} RUNNING
+21:59:10.726 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Open ${EXPO_URL} COMPLETED
+21:59:10.750 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Run flow when "Open" is visible RUNNING
+21:59:11.248 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Tap on "Open" RUNNING
+21:59:28.857 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Tap on "Open" COMPLETED
+21:59:28.857 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Run flow when "Open" is visible COMPLETED
+21:59:28.858 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Assert that (Optional) "Welcome back|Documents|Sign in|Continue" is visible RUNNING
+22:01:37.645 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Assert that (Optional) "Welcome back|Documents|Sign in|Continue" is visible WARNED
+22:01:37.772 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Take screenshot expo-01-first-screen RUNNING
+22:01:38.609 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Take screenshot expo-01-first-screen COMPLETED
+22:01:38.611 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Tap on (Optional) "Continue" RUNNING
+22:01:41.044 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Tap on (Optional) "Continue" WARNED
+22:01:41.044 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Tap on (Optional) "Close" RUNNING
+22:01:43.125 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Tap on (Optional) "Close" WARNED
+22:01:43.126 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Assert that (Optional) "Welcome back|Documents" is visible RUNNING
+22:01:46.448 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Assert that (Optional) "Welcome back|Documents" is visible WARNED
+22:01:46.498 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Wait for animation to end within 3000 ms RUNNING
+22:02:07.966 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Wait for animation to end within 3000 ms COMPLETED
+22:02:08.000 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Take screenshot expo-02-survey-home RUNNING
+22:02:12.381 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Take screenshot expo-02-survey-home COMPLETED
+22:02:12.392 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Tap on (Optional) "you@example.com" RUNNING
+22:02:51.734 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Tap on (Optional) "you@example.com" WARNED
+22:02:51.735 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Wait for animation to end within 3000 ms RUNNING
+22:02:53.281 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Wait for animation to end within 3000 ms COMPLETED
+22:02:53.281 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Take screenshot expo-03-keyboard RUNNING
+22:02:53.489 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Take screenshot expo-03-keyboard COMPLETED
+22:02:53.492 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Input text ios-sim@example.com RUNNING
+22:03:01.510 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Input text ios-sim@example.com COMPLETED
+22:03:01.537 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Take screenshot expo-04-keyboard-typed RUNNING
+22:03:01.801 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Take screenshot expo-04-keyboard-typed COMPLETED
+22:03:01.801 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Tap on (Optional) "Welcome back" RUNNING
+22:03:09.584 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Tap on (Optional) "Welcome back" WARNED
+22:03:09.585 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Tap on (Optional) "Continue without an account" RUNNING
+22:03:10.600 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Tap on (Optional) "Continue without an account" WARNED
+22:03:10.600 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Wait for animation to end within 3000 ms RUNNING
+22:03:11.964 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Wait for animation to end within 3000 ms COMPLETED
+22:03:11.964 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Take screenshot expo-05-home-guest RUNNING
+22:03:12.180 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Take screenshot expo-05-home-guest COMPLETED
+22:03:12.180 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Tap on (Optional) "Projects" RUNNING
+22:03:20.276 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Tap on (Optional) "Projects" WARNED
+22:03:20.277 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Wait for animation to end within 3000 ms RUNNING
+22:03:22.733 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Wait for animation to end within 3000 ms COMPLETED
+22:03:22.735 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Take screenshot expo-06-projects-tab RUNNING
+22:03:23.027 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Take screenshot expo-06-projects-tab COMPLETED
+22:03:23.067 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Swipe from (50%, 30%) to (50%, 85%) in 300 ms RUNNING
+22:03:25.571 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Swipe from (50%, 30%) to (50%, 85%) in 300 ms COMPLETED
+22:03:25.576 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Swipe from (50%, 85%) to (50%, 15%) in 200 ms RUNNING
+22:03:26.924 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Swipe from (50%, 85%) to (50%, 15%) in 200 ms COMPLETED
+22:03:26.925 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Take screenshot expo-07-after-scroll RUNNING
+22:03:27.127 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Take screenshot expo-07-after-scroll COMPLETED
+22:03:27.129 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Set orientation LANDSCAPE_LEFT RUNNING
+22:03:27.744 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Set orientation LANDSCAPE_LEFT COMPLETED
+22:03:27.744 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Wait for animation to end within 4000 ms RUNNING
+22:03:29.590 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Wait for animation to end within 4000 ms COMPLETED
+22:03:29.590 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Take screenshot expo-08-landscape RUNNING
+22:03:29.745 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Take screenshot expo-08-landscape COMPLETED
+22:03:29.746 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Set orientation PORTRAIT RUNNING
+22:03:30.064 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Set orientation PORTRAIT COMPLETED
+22:03:30.064 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Wait for animation to end within 4000 ms RUNNING
+22:03:31.121 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Wait for animation to end within 4000 ms COMPLETED
+22:03:31.122 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Take screenshot expo-09-portrait-again RUNNING
+22:03:31.355 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Take screenshot expo-09-portrait-again COMPLETED

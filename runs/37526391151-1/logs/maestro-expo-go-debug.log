@@ -1,0 +1,320 @@
+20:43:16.695 [ INFO] maestro.cli.report.TestDebugReporter.logSystemInfo: Debug output path: /Users/runner/work/_temp/ios-sim-out/maestro/expo-go/debug
+20:43:16.706 [ INFO] MAESTRO.logSystemInfo: ---- System Info ----
+20:43:16.707 [ INFO] MAESTRO.logSystemInfo: Maestro Version: 2.11.0
+20:43:16.708 [ INFO] MAESTRO.logSystemInfo: CI: github
+20:43:16.708 [ INFO] MAESTRO.logSystemInfo: OS Name: Mac OS X
+20:43:16.708 [ INFO] MAESTRO.logSystemInfo: OS Version: 26.6.2
+20:43:16.708 [ INFO] MAESTRO.logSystemInfo: Architecture: aarch64
+20:43:16.709 [ INFO] MAESTRO.logSystemInfo: Java Version: 17
+20:43:16.850 [ INFO] MAESTRO.logSystemInfo: Xcode Version: 26.6
+20:43:16.879 [ INFO] MAESTRO.logSystemInfo: Flutter Version: Undefined
+20:43:16.907 [ INFO] MAESTRO.logSystemInfo: Flutter Channel: Undefined
+20:43:16.908 [ INFO] MAESTRO.logSystemInfo: ---------------------
+20:43:17.708 [DEBUG] io.micrometer.common.util.internal.logging.InternalLoggerFactory.newDefaultFactory: Using SLF4J as the default logging framework
+20:43:19.768 [ INFO] maestro.cli.command.TestCommand.runShardSuite: [shard 1] Selected device 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11 using port 54325 with execution plan ExecutionPlan(flowsToRun=[/Users/runner/work/Survey/Survey/.github/ios-sim/flows/expo-go.yaml], sequence=FlowSequence(flows=[], continueOnFailure=true), workspaceConfig=WorkspaceConfig(flows=null, includeTags=null, excludeTags=null, executionOrder=null, baselineBranch=null, notifications=null, disableRetries=false, platform=PlatformConfiguration(android=AndroidConfiguration(disableAnimations=false), ios=IOSConfiguration(disableAnimations=false, snapshotKeyHonorModalViews=null)), testOutputDir=null))
+20:43:20.534 [TRACE] ios.xctest.XCTestIOSDevice.open: Opening a connection
+20:43:20.534 [TRACE] xcuitest.XCTestDriverClient.restartXCTestRunner: Restarting XCTest Runner (uninstalling, installing and starting)
+20:43:20.534 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:20.536 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:20.536 [TRACE] xcuitest.XCTestDriverClient.restartXCTestRunner: XCTest Runner uninstalled, will install and start it
+20:43:20.537 [ INFO] xcuitest.installer.LocalXCTestInstaller.start$lambda$3: start()
+20:43:20.537 [ INFO] xcuitest.installer.LocalXCTestInstaller.start$lambda$3: [Start] Install XCUITest runner on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:20.537 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:20.537 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:20.537 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Start] Writing build products
+20:43:20.588 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Done] Writing build products
+20:43:20.589 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Start] Writing maestro-driver-iosUITests-Runner app
+20:43:20.888 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Done] Writing maestro-driver-iosUITests-Runner app
+20:43:20.888 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Start] Writing maestro-driver-ios app
+20:43:20.896 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Done] Writing maestro-driver-ios app
+20:43:20.896 [ INFO] xcuitest.installer.LocalXCTestInstaller.startXCTestRunner: Installing driver with xcodebuild
+20:43:20.901 [ INFO] xcuitest.installer.LocalXCTestInstaller.startXCTestRunner: [Start] Running XcUITest with `xcodebuild test-without-building` with 54325 and config: IOSDriverConfig(prebuiltRunner=false, sourceDirectory=driver-iPhoneSimulator, context=CLI, snapshotKeyHonorModalViews=null)
+20:43:20.903 [ INFO] util.CommandLineUtils.runCommand: Running command line operation: [xcodebuild, test-without-building, -xctestrun, /var/folders/36/tjdph2t965j8snz9_vkdnw0r0000gn/T/3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11116263022330046472/maestro-driver-ios-config.xctestrun, -destination, id=3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, -derivedDataPath, /var/folders/36/tjdph2t965j8snz9_vkdnw0r0000gn/T/maestro_xctestrunner_xcodebuild_output6153475824614996157] with {TEST_RUNNER_PORT=54325}
+20:43:20.908 [ INFO] xcuitest.installer.LocalXCTestInstaller.startXCTestRunner: [Done] Running XcUITest with `xcodebuild test-without-building`
+20:43:20.908 [ INFO] xcuitest.installer.LocalXCTestInstaller.start$lambda$3: [Done] Install XCUITest runner on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:20.909 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:20.910 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:21.484 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:21.486 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:22.135 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:22.138 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:22.645 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:22.649 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:23.187 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:23.189 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:23.825 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:23.827 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:24.470 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:24.471 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:25.102 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:25.104 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:25.678 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:25.680 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:26.330 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:26.332 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:26.937 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:26.939 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:27.590 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:27.593 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:28.210 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:28.216 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:28.866 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:28.868 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:29.507 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:29.508 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:30.159 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:30.160 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:30.746 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:30.747 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:31.369 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:31.370 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:32.019 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:32.021 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:32.672 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:32.673 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:33.261 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:33.277 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:33.934 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:33.935 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:34.583 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:34.584 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:35.227 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:35.229 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:35.896 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:36.151 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:36.802 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:36.967 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:37.643 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:38.096 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:38.808 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:38.830 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:39.478 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:39.480 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:40.118 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:40.119 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:40.769 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:40.770 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:41.412 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:41.415 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:42.060 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:42.061 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:42.715 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:42.719 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:43.366 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:43.367 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:44.015 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:44.016 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:44.660 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:44.663 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:45.302 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:45.318 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:45.934 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:45.935 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:46.587 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:46.589 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:47.239 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:47.242 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:47.894 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:47.896 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:48.471 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:48.477 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:49.038 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:49.039 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:49.687 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:49.689 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:50.334 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:50.351 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:50.990 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:50.999 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:51.645 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:51.659 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:52.288 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:52.289 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:54325
+20:43:52.928 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:52.981 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Done] Perform XCUITest driver status check on 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11
+20:43:53.315 [ INFO] maestro.cli.runner.TestSuiteInteractor.runFlow:  Running flow expo-go
+20:43:53.367 [ INFO] maestro.Maestro.cachedDeviceInfo_delegate$lambda$0: Getting device info
+20:43:55.113 [ INFO] maestro.Maestro.cachedDeviceInfo_delegate$lambda$0: Got device info: DeviceInfo(platform=IOS, widthPixels=1179, heightPixels=2556, widthGrid=393, heightGrid=852)
+20:43:56.100 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Define variables RUNNING
+20:43:56.104 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Define variables COMPLETED
+20:43:56.105 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Apply configuration RUNNING
+20:43:56.105 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Apply configuration COMPLETED
+20:43:56.106 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Open ${EXPO_URL} RUNNING
+20:43:59.788 [ INFO] maestro.Maestro.openLink: Opening link exp://u.expo.dev/7522d24f-7afd-4d5b-a5c0-58f2ea863c28/branch/019fd954-cd01-705b-a108-2e1ac9f755d7 for app: host.exp.Exponent with autoVerify config as false
+20:43:59.794 [ INFO] util.CommandLineUtils.runCommand: Running command line operation: [xcrun, simctl, openurl, 3813D1C3-4ADA-44BE-A63A-5A1FFBE56A11, exp://u.expo.dev/7522d24f-7afd-4d5b-a5c0-58f2ea863c28/branch/019fd954-cd01-705b-a108-2e1ac9f755d7] with {}
+20:44:11.338 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+20:44:13.019 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Open ${EXPO_URL} COMPLETED
+20:44:13.055 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Run flow when "Open" is visible RUNNING
+20:44:16.270 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Tap on "Open" RUNNING
+20:44:16.896 [ INFO] maestro.Maestro.tap-HgV9Ck0: Tapping on element:  UiElement(treeNode=TreeNode(attributes={accessibilityText=Open, title=, value=, text=, hintText=, resource-id=, bounds=[200,437][340,485], enabled=true, focused=false, selected=false, checked=false}, children=[], clickable=null, enabled=true, focused=false, checked=false, selected=false), bounds=Bounds(x=200, y=437, width=140, height=48))
+20:44:16.897 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+20:44:17.211 [ INFO] maestro.Maestro.tap-HgV9Ck0: Tap aimed via trusted pre-wait hierarchy (null settle, no recent scroll)
+20:44:17.294 [ INFO] maestro.Maestro.screenshotBasedTap-ogj28Uc: Try tapping at (270, 461) using hierarchy based logic for wait
+20:44:17.394 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+20:44:17.394 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:44:20.142 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+20:44:20.663 [ INFO] maestro.Maestro.screenshotBasedTap-ogj28Uc: Something have changed in the UI judging by view hierarchy. Proceed.
+20:44:20.666 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Tap on "Open" COMPLETED
+20:44:20.667 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Run flow when "Open" is visible COMPLETED
+20:44:20.671 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Assert that (Optional) "Welcome back|Documents|Sign in|Continue" is visible RUNNING
+20:45:11.743 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Assert that (Optional) "Welcome back|Documents|Sign in|Continue" is visible COMPLETED
+20:45:12.042 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Take screenshot expo-01-first-screen RUNNING
+20:45:12.712 [ INFO] maestro.Maestro.takeScreenshot: Taking screenshot
+20:45:12.791 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:45:13.647 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Take screenshot expo-01-first-screen COMPLETED
+20:45:13.653 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Tap on (Optional) "Continue" RUNNING
+20:45:14.552 [ INFO] maestro.Maestro.tap-HgV9Ck0: Tapping on element:  UiElement(treeNode=TreeNode(attributes={accessibilityText=Continue, title=, value=, text=, hintText=, resource-id=, bounds=[23,765][369,809], enabled=true, focused=false, selected=false, checked=false}, children=[], clickable=null, enabled=true, focused=false, checked=false, selected=false), bounds=Bounds(x=23, y=765, width=346, height=44))
+20:45:14.687 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+20:45:15.203 [ INFO] maestro.Maestro.tap-HgV9Ck0: Tap aimed via trusted pre-wait hierarchy (null settle, no recent scroll)
+20:45:15.256 [ INFO] maestro.Maestro.screenshotBasedTap-ogj28Uc: Try tapping at (196, 787) using hierarchy based logic for wait
+20:45:15.280 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+20:45:15.281 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:45:17.949 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+20:45:18.515 [ INFO] maestro.Maestro.screenshotBasedTap-ogj28Uc: Something have changed in the UI judging by view hierarchy. Proceed.
+20:45:18.567 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Tap on (Optional) "Continue" COMPLETED
+20:45:18.567 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Tap on (Optional) "Close" RUNNING
+20:45:19.577 [ INFO] maestro.Maestro.tap-HgV9Ck0: Tapping on element:  UiElement(treeNode=TreeNode(attributes={accessibilityText=Close, title=, value=, text=, hintText=, resource-id=xmark, bounds=[335,390][369,425], enabled=true, focused=false, selected=false, checked=false}, children=[], clickable=null, enabled=true, focused=false, checked=false, selected=false), bounds=Bounds(x=335, y=390, width=34, height=35))
+20:45:19.601 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+20:45:20.105 [ INFO] maestro.Maestro.tap-HgV9Ck0: Tap aimed via trusted pre-wait hierarchy (null settle, no recent scroll)
+20:45:20.144 [ INFO] maestro.Maestro.screenshotBasedTap-ogj28Uc: Try tapping at (352, 407) using hierarchy based logic for wait
+20:45:20.149 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+20:45:20.149 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:45:22.201 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+20:45:23.403 [ INFO] maestro.Maestro.screenshotBasedTap-ogj28Uc: Something have changed in the UI judging by view hierarchy. Proceed.
+20:45:23.437 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Tap on (Optional) "Close" COMPLETED
+20:45:23.438 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Assert that (Optional) "Welcome back|Documents" is visible RUNNING
+20:45:24.118 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Assert that (Optional) "Welcome back|Documents" is visible COMPLETED
+20:45:24.121 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Wait for animation to end within 3000 ms RUNNING
+20:45:24.392 [ INFO] maestro.Maestro.waitForAnimationToEnd$lambda$53: Waiting for animation to end with timeout 3000
+20:45:24.398 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+20:45:24.399 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:45:25.237 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+20:45:25.239 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:45:28.661 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Wait for animation to end within 3000 ms COMPLETED
+20:45:28.663 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Take screenshot expo-02-survey-home RUNNING
+20:45:28.665 [ INFO] maestro.Maestro.takeScreenshot: Taking screenshot
+20:45:28.704 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:45:28.914 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Take screenshot expo-02-survey-home COMPLETED
+20:45:28.915 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Tap on (Optional) "you@example.com" RUNNING
+20:45:29.311 [ INFO] maestro.Maestro.tap-HgV9Ck0: Tapping on element:  UiElement(treeNode=TreeNode(attributes={accessibilityText=Email, title=, value=you@example.com, text=you@example.com, hintText=you@example.com, resource-id=, bounds=[44,223][349,267], enabled=true, focused=true, selected=false, checked=false}, children=[], clickable=null, enabled=true, focused=true, checked=false, selected=false), bounds=Bounds(x=44, y=223, width=305, height=44))
+20:45:29.312 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+20:45:29.599 [ INFO] maestro.Maestro.tap-HgV9Ck0: Tap aimed via trusted pre-wait hierarchy (null settle, no recent scroll)
+20:45:29.606 [ INFO] maestro.Maestro.screenshotBasedTap-ogj28Uc: Try tapping at (196, 245) using hierarchy based logic for wait
+20:45:29.607 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+20:45:29.607 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:45:34.235 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+20:45:35.563 [ INFO] maestro.Maestro.screenshotBasedTap-ogj28Uc: Something have changed in the UI judging by view hierarchy. Proceed.
+20:45:35.610 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Tap on (Optional) "you@example.com" COMPLETED
+20:45:35.611 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Wait for animation to end within 3000 ms RUNNING
+20:45:35.612 [ INFO] maestro.Maestro.waitForAnimationToEnd$lambda$53: Waiting for animation to end with timeout 3000
+20:45:35.613 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+20:45:35.613 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:45:37.230 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+20:45:37.230 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:45:48.917 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Wait for animation to end within 3000 ms COMPLETED
+20:45:48.922 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Take screenshot expo-03-keyboard RUNNING
+20:45:48.927 [ INFO] maestro.Maestro.takeScreenshot: Taking screenshot
+20:45:48.928 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:45:49.147 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Take screenshot expo-03-keyboard COMPLETED
+20:45:49.147 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Input text ios-sim@example.com RUNNING
+20:45:49.153 [ INFO] maestro.Maestro.inputText: Inputting text: ios-sim@example.com
+20:45:59.195 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+20:46:00.422 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Input text ios-sim@example.com COMPLETED
+20:46:00.455 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Take screenshot expo-04-keyboard-typed RUNNING
+20:46:00.463 [ INFO] maestro.Maestro.takeScreenshot: Taking screenshot
+20:46:00.467 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:46:00.650 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Take screenshot expo-04-keyboard-typed COMPLETED
+20:46:00.650 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Tap on (Optional) "Welcome back" RUNNING
+20:46:01.289 [ INFO] maestro.Maestro.tap-HgV9Ck0: Tapping on element:  UiElement(treeNode=TreeNode(attributes={accessibilityText=Welcome back, title=, value=Welcome back, text=Welcome back, hintText=, resource-id=, bounds=[44,134][164,156], enabled=true, focused=false, selected=false, checked=false}, children=[], clickable=null, enabled=true, focused=false, checked=false, selected=false), bounds=Bounds(x=44, y=134, width=120, height=22))
+20:46:01.296 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+20:46:01.634 [ INFO] maestro.Maestro.tap-HgV9Ck0: Tap aimed via trusted pre-wait hierarchy (null settle, no recent scroll)
+20:46:01.638 [ INFO] maestro.Maestro.screenshotBasedTap-ogj28Uc: Try tapping at (104, 145) using hierarchy based logic for wait
+20:46:01.639 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+20:46:01.639 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:46:02.503 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+20:46:02.885 [ INFO] maestro.Maestro.screenshotBasedTap-ogj28Uc: Something have changed in the UI judging by view hierarchy. Proceed.
+20:46:02.885 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Tap on (Optional) "Welcome back" COMPLETED
+20:46:02.885 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Tap on (Optional) "Continue without an account" RUNNING
+20:46:03.274 [ INFO] maestro.Maestro.tap-HgV9Ck0: Tapping on element:  UiElement(treeNode=TreeNode(attributes={accessibilityText=Continue without an account, title=, value=, text=, hintText=, resource-id=, bounds=[111,743][282,776], enabled=true, focused=true, selected=false, checked=false}, children=[], clickable=null, enabled=true, focused=true, checked=false, selected=false), bounds=Bounds(x=111, y=743, width=171, height=33))
+20:46:03.287 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+20:46:03.705 [ INFO] maestro.Maestro.tap-HgV9Ck0: Tap aimed via trusted pre-wait hierarchy (null settle, no recent scroll)
+20:46:03.708 [ INFO] maestro.Maestro.screenshotBasedTap-ogj28Uc: Try tapping at (196, 759) using hierarchy based logic for wait
+20:46:03.709 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+20:46:03.710 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:46:04.318 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+20:46:04.580 [ INFO] maestro.Maestro.screenshotBasedTap-ogj28Uc: Something have changed in the UI judging by view hierarchy. Proceed.
+20:46:04.580 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Tap on (Optional) "Continue without an account" COMPLETED
+20:46:04.581 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Wait for animation to end within 3000 ms RUNNING
+20:46:04.581 [ INFO] maestro.Maestro.waitForAnimationToEnd$lambda$53: Waiting for animation to end with timeout 3000
+20:46:04.582 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+20:46:04.582 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:46:04.811 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+20:46:04.822 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:46:05.735 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Wait for animation to end within 3000 ms COMPLETED
+20:46:05.736 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Take screenshot expo-05-home-guest RUNNING
+20:46:05.738 [ INFO] maestro.Maestro.takeScreenshot: Taking screenshot
+20:46:05.739 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:46:05.872 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Take screenshot expo-05-home-guest COMPLETED
+20:46:05.872 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Tap on (Optional) "Projects" RUNNING
+20:46:06.119 [ INFO] maestro.Maestro.tap-HgV9Ck0: Tapping on element:  UiElement(treeNode=TreeNode(attributes={accessibilityText=Projects, title=, value=, text=, hintText=, resource-id=, bounds=[133,769][260,817], enabled=true, focused=true, selected=false, checked=false}, children=[], clickable=null, enabled=true, focused=true, checked=false, selected=false), bounds=Bounds(x=133, y=769, width=127, height=48))
+20:46:06.119 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+20:46:06.350 [ INFO] maestro.Maestro.tap-HgV9Ck0: Tap aimed via trusted pre-wait hierarchy (null settle, no recent scroll)
+20:46:06.352 [ INFO] maestro.Maestro.screenshotBasedTap-ogj28Uc: Try tapping at (196, 793) using hierarchy based logic for wait
+20:46:06.352 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+20:46:06.353 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:46:06.874 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+20:46:08.243 [ INFO] maestro.Maestro.screenshotBasedTap-ogj28Uc: Something have changed in the UI judging by view hierarchy. Proceed.
+20:46:08.249 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Tap on (Optional) "Projects" COMPLETED
+20:46:08.249 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Wait for animation to end within 3000 ms RUNNING
+20:46:08.252 [ INFO] maestro.Maestro.waitForAnimationToEnd$lambda$53: Waiting for animation to end with timeout 3000
+20:46:08.252 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+20:46:08.252 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:46:08.434 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+20:46:08.434 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:46:09.347 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Wait for animation to end within 3000 ms COMPLETED
+20:46:09.354 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Take screenshot expo-06-projects-tab RUNNING
+20:46:09.355 [ INFO] maestro.Maestro.takeScreenshot: Taking screenshot
+20:46:09.356 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:46:09.466 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Take screenshot expo-06-projects-tab COMPLETED
+20:46:09.473 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Swipe from (50%, 30%) to (50%, 85%) in 300 ms RUNNING
+20:46:09.517 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+20:46:14.705 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+20:46:14.989 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Swipe from (50%, 30%) to (50%, 85%) in 300 ms COMPLETED
+20:46:14.989 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Swipe from (50%, 85%) to (50%, 15%) in 200 ms RUNNING
+20:46:15.034 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+20:46:15.830 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+20:46:16.065 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Swipe from (50%, 85%) to (50%, 15%) in 200 ms COMPLETED
+20:46:16.066 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Take screenshot expo-07-after-scroll RUNNING
+20:46:16.066 [ INFO] maestro.Maestro.takeScreenshot: Taking screenshot
+20:46:16.068 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:46:16.210 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Take screenshot expo-07-after-scroll COMPLETED
+20:46:16.210 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Set orientation LANDSCAPE_LEFT RUNNING
+20:46:16.217 [ INFO] maestro.Maestro.setOrientation: Setting orientation: LANDSCAPE_LEFT
+20:46:18.086 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+20:46:18.328 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Set orientation LANDSCAPE_LEFT COMPLETED
+20:46:18.329 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Wait for animation to end within 4000 ms RUNNING
+20:46:18.330 [ INFO] maestro.Maestro.waitForAnimationToEnd$lambda$53: Waiting for animation to end with timeout 4000
+20:46:18.330 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+20:46:18.331 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:46:18.579 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+20:46:18.579 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:46:20.082 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Wait for animation to end within 4000 ms COMPLETED
+20:46:20.083 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Take screenshot expo-08-landscape RUNNING
+20:46:20.094 [ INFO] maestro.Maestro.takeScreenshot: Taking screenshot
+20:46:20.110 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:46:20.230 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Take screenshot expo-08-landscape COMPLETED
+20:46:20.230 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Set orientation PORTRAIT RUNNING
+20:46:20.230 [ INFO] maestro.Maestro.setOrientation: Setting orientation: PORTRAIT
+20:46:20.258 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+20:46:20.494 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Set orientation PORTRAIT COMPLETED
+20:46:20.494 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Wait for animation to end within 4000 ms RUNNING
+20:46:20.495 [ INFO] maestro.Maestro.waitForAnimationToEnd$lambda$53: Waiting for animation to end with timeout 4000
+20:46:20.495 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+20:46:20.495 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:46:20.679 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+20:46:20.680 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:46:21.168 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Wait for animation to end within 4000 ms COMPLETED
+20:46:21.168 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Take screenshot expo-09-portrait-again RUNNING
+20:46:21.169 [ INFO] maestro.Maestro.takeScreenshot: Taking screenshot
+20:46:21.169 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:46:21.297 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandFinished: Take screenshot expo-09-portrait-again COMPLETED

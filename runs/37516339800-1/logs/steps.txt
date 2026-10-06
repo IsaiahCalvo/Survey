@@ -1,0 +1,14 @@
+Xcode 26.6
+Build version 17F113
+Booting iPhone 16 on iOS 26.5 (6FCA6F73-A772-42AD-9A3C-92AE2F458275)
+npm install exit 0
+dev server: / -> 200, test pdf -> 200
+maestro 2.11.0
+booted
+Expo Go 57.0.9 installed
+shot base-01-safari-home
+shot base-02-safari-document
+== flow smoke
+flow smoke exit 0
+== flow expo-go
+flow expo-go exit 0

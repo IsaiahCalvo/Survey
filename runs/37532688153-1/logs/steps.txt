@@ -1,0 +1,7 @@
+Xcode 26.6
+Build version 17F113
+Booting iPhone 16 on iOS 26.5 (06AAD1FF-8E31-42F1-B550-F7430F86B1F4)
+maestro 2.11.0
+booted
+Expo Go 57.0.9 installed
+shot base-01-safari-home
