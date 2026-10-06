@@ -21,7 +21,7 @@
  * Phase 9 Plan 03: Multi-select group ops (group-move visual, group bbox, delete)
  */
 import { boxWorldBounds, markerIdsByGap } from '../utils/surveyMarkerFamily.js';
-import { cloneElement, memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
+import { cloneElement, memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback, useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
 import { deepClone } from '../utils/deepClone.js';
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
@@ -177,6 +177,7 @@ import { isClientPointNearRect } from '../utils/selectionPointerOwnership.js';
 import { forwardClickToFormWidget, liveFormWidgetAtPoint } from '../utils/formWidgetPointerTargets.js';
 import { beginLiveStroke } from '../services/annotationLiveStrokes.js';
 import LiveStrokeGhosts from './LiveStrokeGhosts.jsx';
+import { crossPageGhostFor, crossPageGhostKind, subscribeCrossPageGhost } from '../utils/crossPageMove.js';
 
 const svgAnnotationDebug = (...args) => {
   if (typeof window === 'undefined' || window.__SVG_ANNOTATION_DEBUG !== true) return;
@@ -450,6 +451,9 @@ const SVGAnnotationLayer = memo(({
   layerVisibility,
   // Selection / interaction props (Phase 9)
   onSaveAnnotations,   // (updatedJSON, saveContext) => void
+  // Owner after Test 46: a picked mark dragged onto another page moves there
+  // (utils/crossPageMove.js). ({ toPage, marks }) => true when saved.
+  onMoveMarksToPage = null,
   onRequestEditMode,   // (annotationIndex, annotationType) => void
   activeTool,          // string — current tool (e.g., 'pan', 'pen', etc.)
   // w32: the open document's id — live ink (in-progress strokes) is sent on,
@@ -838,7 +842,15 @@ const SVGAnnotationLayer = memo(({
     getSurveyMarkerMembers,
     selectedSurveyMarkerIds,
     onSelectedSurveyMarkerIdsChange: setSelectedSurveyMarkerIds,
+    onMoveMarksToPage,
+    documentId,
   });
+  // The picture of a mark being carried over THIS page from another one.
+  const crossPageGhost = useSyncExternalStore(
+    subscribeCrossPageGhost,
+    () => crossPageGhostFor(documentId, pageNumber),
+    () => null,
+  );
 
   // UX: apply a pan-mode quick-click selection command from App.jsx. Matches
   // this layer's pageNumber, then calls the hook's selectAnnotation. The
@@ -5513,6 +5525,9 @@ const SVGAnnotationLayer = memo(({
     const objTypeForEdit = String(obj.type || '').toLowerCase();
     const isInPlaceEdit = isBeingEdited && EDIT_IN_PLACE_TYPES.has(objTypeForEdit);
     const hideForEdit = isBeingEdited && !isInPlaceEdit && !isBboxEdit;
+    // Owner after Test 46: carried onto another page -> hidden here.
+    const hideForCrossPage = visualTransform?.crossPageAway === true
+      && (visualTransform.id === i || (visualTransform.id === 'group' && visualTransform.affectedIds?.has(i)));
 
     // UX 2026-07-14 (same-surface editor): during edit, TextEditOverlay is
     // the visible glyph surface — caret and letters share ONE CSS layout, so
@@ -5590,7 +5605,7 @@ const SVGAnnotationLayer = memo(({
         data-pan-edit-entry={editEntryKind ? 'true' : undefined}
         style={{
           cursor: annotationIsSelected ? 'move' : (annotationIsHovered ? 'pointer' : undefined),
-          opacity: hideForEdit ? 0 : undefined,
+          opacity: (hideForEdit || hideForCrossPage) ? 0 : undefined,
           // UX 2026-04-19: bbox edit mode keeps pointer events live so the
           // user can click the SVG handles (resize + rotate) and drag the
           // shape inside the uniform box. Without this, the handles render
@@ -7258,6 +7273,31 @@ const SVGAnnotationLayer = memo(({
       )}
       {/* w32: other screens' strokes while they are being drawn. */}
       <LiveStrokeGhosts documentId={documentId} pageNumber={pageNumber} />
+      {/* Owner after Test 46: a mark carried over from another page, at the
+          pointer, clipped by this page. Only a picture until it is let go. */}
+      {crossPageGhost && (
+        <g
+          data-cross-page-ghost="true"
+          transform={`translate(${crossPageGhost.dx}, ${crossPageGhost.dy})`}
+          style={{ pointerEvents: 'none' }}
+        >
+          {crossPageGhost.objects.map((ghostObj, k) => {
+            const ghostIndex = -1000 - k;
+            const kind = crossPageGhostKind(ghostObj);
+            let el = kind === 'path' ? renderPath(ghostObj, ghostIndex)
+              : kind === 'rect' ? renderRect(ghostObj, ghostIndex)
+              : kind === 'line' ? renderLine(ghostObj, ghostIndex)
+              : kind === 'arrow' ? renderArrow(ghostObj, ghostIndex)
+              : kind === 'ellipse' ? renderEllipse(ghostObj, ghostIndex)
+              : kind === 'polygon' ? renderPolygon(ghostObj, ghostIndex)
+              : kind === 'polyline' ? renderPolyline(ghostObj, ghostIndex)
+              : kind === 'text' ? renderText(ghostObj, ghostIndex)
+              : null;
+            if (el && kind === 'path') el = cloneElement(el, { transform: buildFabricPathSvgTransform(ghostObj) });
+            return el ? <g key={`cross-page-ghost-${k}`}>{el}</g> : null;
+          })}
+        </g>
+      )}
       {shapeCreation && FREEHAND_CREATION_TOOLS.includes(shapeCreation.tool)
         && freehandPointsRef.current.length > 0 && (
         <polyline

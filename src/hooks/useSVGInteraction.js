@@ -148,6 +148,7 @@ import {
   clampResizeScale,
 } from '../utils/resizeMinimum.js';
 import { resolveTextDoubleClick } from '../utils/selectModes.js';
+import { useCrossPageMove } from './useCrossPageMove.js';
 import { isTextLikeAnnotation } from '../utils/toolPressRouting.js';
 
 const cloneAnnotations = (annotations) => deepClone(annotations);
@@ -325,6 +326,12 @@ export function useSVGInteraction({
   getSurveyMarkerMembers = null,
   selectedSurveyMarkerIds = null,
   onSelectedSurveyMarkerIdsChange = null,
+  // Owner after Test 46 (2026-10-06): a picked mark dragged 100 % off its page
+  // onto another page moves there (utils/crossPageMove.js). The viewer saves
+  // it: ({ toPage, marks: [{ id, object }] }) => true when moved. Absent ->
+  // marks stay clamped to their page (legacy mounts unchanged).
+  onMoveMarksToPage = null,
+  documentId = null,
 }) {
   // ---------------------------------------------------------------------------
   // State
@@ -452,6 +459,9 @@ export function useSVGInteraction({
   // if a drag just ended within a 400ms window. Mirrors the 300ms
   // `editModeCooldownRef` pattern in App.jsx:26690.
   const justDraggedAtRef = useRef(0);
+  const crossPageMove = useCrossPageMove({
+    svgRef, pageNumber, documentId, onMoveMarksToPage, setVisualTransform, selectedCount: selectedIds?.size ?? 0,
+  });
   // Drawboard rule 7: the last two presses on marks ({ key, wasSelected, at,
   // pointerType }, newest first) and when each picked mark joined the
   // selection (key -> ms) — read by the double-click handler to tell text
@@ -2152,6 +2162,12 @@ export function useSVGInteraction({
       // w59: the preview shows the SAME page-clamped delta the release saves
       // (utils/moveCommit.js), so the mark never jumps when it is let go.
       ensureMoveStart(ds, annotations?.objects);
+      // Owner after Test 46: a mark that may change pages follows the pointer
+      // off its page (clipped) and jumps to the next page once fully off.
+      if (crossPageMove.preview(ds, e, annotations?.objects)) {
+        setInteractionState('dragging');
+        return;
+      }
       const shown = clampMoveDelta(ds.moveBoxes, dx, dy, pageWidth, pageHeight);
       if (ds.orbitBase) {
         // After a Shift-orbit the stored counter is still the pre-orbit one:
@@ -2240,6 +2256,10 @@ export function useSVGInteraction({
         pageHeight,
         markerBoxes: getGroupMarkerBoxes(ds.groupMarkerIds),
       });
+      if (crossPageMove.preview(ds, e, annotations?.objects)) {
+        setInteractionState('dragging');
+        return;
+      }
       const { dx, dy } = clampMoveDelta(
         ds.groupBoxes,
         svgPoint.x - ds.startSVGPoint.x,
@@ -3988,7 +4008,13 @@ export function useSVGInteraction({
       partType: ds.partType || null,
     });
 
-    if (ds.mode === 'move') {
+    // Owner after Test 46: let go over another page -> the marks move there
+    // (one save, one undo step — PDFViewer handleMoveMarksToPage).
+    const crossPageDropped = (ds.mode === 'move' || ds.mode === 'group-move') && crossPageMove.drop(ds, e);
+    if (crossPageDropped) {
+      try { e.target?.releasePointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+      justDraggedAtRef.current = Date.now();
+    } else if (ds.mode === 'move') {
       const pt = new DOMPoint(e.clientX, e.clientY);
       const svgPoint = ds.ctmInverse
         ? pt.matrixTransform(ds.ctmInverse)
@@ -4893,6 +4919,7 @@ export function useSVGInteraction({
       setActiveCalloutDrag(null);
     }
 
+    crossPageMove.end(ds);
     // Reset drag state
     dragStateRef.current = {
       active: false, mode: null, handleId: null, startSVGPoint: null,
@@ -4946,6 +4973,53 @@ export function useSVGInteraction({
     setVisualTransform(null);
     setInteractionState('idle');
   }, []);
+
+  // Owner after Test 46 (2026-10-06): Escape mid-drag puts a moving mark back
+  // where it started (nothing is saved, the pick stays). And a mark carried
+  // over another page keeps answering to this page even if the browser hands
+  // the pointer to the other page (lost capture).
+  useEffect(() => {
+    if (interactionState !== 'dragging') return undefined;
+    const activeMoveDrag = () => {
+      const ds = dragStateRef.current;
+      return ds?.active && (ds.mode === 'move' || ds.mode === 'group-move') ? ds : null;
+    };
+    const cancelMoveDrag = () => {
+      const ds = activeMoveDrag();
+      if (!ds) return false;
+      crossPageMove.end(ds);
+      dragStateRef.current = { ...ds, active: false, mode: null, crossPage: undefined };
+      justDraggedAtRef.current = Date.now();
+      setVisualTransform(null);
+      setInteractionState('idle');
+      return true;
+    };
+    // The viewer's Escape asks live gestures to cancel first (its seam); the
+    // key listener covers tools where the viewer does not listen.
+    const onCancelGesture = (event) => {
+      if (cancelMoveDrag() && event?.detail) event.detail.cancelled = true;
+    };
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      if (cancelMoveDrag()) event.preventDefault();
+    };
+    const onWindowPointer = (event) => {
+      const ds = activeMoveDrag();
+      if (!ds?.crossPage || svgRef.current?.contains(event.target)) return;
+      if (event.type === 'pointermove') handlePointerMove(event);
+      else handlePointerUp(event);
+    };
+    window.addEventListener('survey-cancel-selection-gesture', onCancelGesture);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('pointermove', onWindowPointer, true);
+    window.addEventListener('pointerup', onWindowPointer, true);
+    return () => {
+      window.removeEventListener('survey-cancel-selection-gesture', onCancelGesture);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('pointermove', onWindowPointer, true);
+      window.removeEventListener('pointerup', onWindowPointer, true);
+    };
+  }, [interactionState, handlePointerMove, handlePointerUp, crossPageMove, svgRef]);
 
   // Pointer capture normally sends the release back to this page's SVG. At
   // low zoom, a drag can cross into a sibling page before the browser grants
