@@ -819,3 +819,12 @@ test('phone viewer: resize under a gesture is absorbed; drags from links pan', (
   // never on desktop
   assert.match(PDFJS_VIEWER_SOURCE, /if \(!shift \|\| !isMobileSurface\) return;/);
 });
+
+// Review 9 / robust 10 item 2: a pan that lands during a zoom-limit bounce
+// draws its edge offset on top of the bounce and never re-starts it.
+test('phone viewer: a pan during a zoom bounce rides on top of it', () => {
+  assert.match(PDFJS_VIEWER_SOURCE, /touchPanOverEaseRef\.current = elastic && Boolean\(caught\.easing\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(touchPanOverEaseRef\.current\) \{\s*\/\/ The bounce keeps easing on its own; the edge offset rides on top\.\s*panEdgeRef\.current\.set\(sx\.shown, sy\.shown\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(elasticPan && elasticRef\.current && !elasticRef\.current\.anim\) releaseElastic\(\{ kind: 'spring' \}\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /liveTranslateY \+= panEdgeShown\.y;/);
+});

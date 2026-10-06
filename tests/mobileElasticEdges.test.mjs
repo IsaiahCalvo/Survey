@@ -11,6 +11,7 @@ import {
   composeElasticTransform,
   composeReleaseLeftover,
   createLayoutShiftHold,
+  createOffsetSpring,
   createWheelOverscroll,
   criticallyDampedSpring,
   easeInOutSine,
@@ -386,4 +387,28 @@ test('phone: a viewer resize while the page springs home joins the spring (no ju
     prev = y;
   }
   assert.equal(hold.active(), false);
+});
+
+// Review 9 / robust 10 (item 2): a one-finger pan that reaches an edge during a
+// zoom-limit bounce. Its edge offset rides on top of the bounce in its own
+// spring; the bounce is never replaced (it used to snap x1.5 -> x1 in a frame).
+test('pan over a running bounce: the edge offset is held, then springs home on its own clock', () => {
+  const edge = createOffsetSpring();
+  assert.equal(edge.frame(0).active, false);
+  edge.set(0, 60);
+  assert.ok(edge.held());
+  assert.deepEqual(edge.frame(500), { x: 0, y: 60, active: true }, 'held while the finger is down');
+  edge.release(1000);
+  let prev = 60;
+  for (let t = 1000; t <= 2000; t += 1000 / 60) {
+    const f = edge.frame(t);
+    assert.ok(f.y <= prev + 1e-9 && f.y >= 0, 'one way home, never past the edge');
+    assert.ok(prev - f.y < 9, 'no frame jumps');
+    prev = f.y;
+  }
+  assert.equal(edge.active(), false);
+  // set(0, 0) clears it at once (a pinch takes the pull over)
+  edge.set(5, 5);
+  edge.set(0, 0);
+  assert.equal(edge.active(), false);
 });

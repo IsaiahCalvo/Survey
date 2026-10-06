@@ -210,6 +210,44 @@ export function resolveElasticPanStep({ scroll = 0, max = 0, excess = 0, delta =
   return { scroll: next, excess: left, shown: left ? -rubberBand(left, dimension) : 0 };
 }
 
+/**
+ * A two-axis edge offset with its own spring (review 9 / robust 10 item 2):
+ * a one-finger pan that reaches an edge while a zoom-limit bounce is still
+ * easing used to REPLACE the bounce with its edge offset - the zoom snapped
+ * back to x1 in one frame. Its edge offset lives here instead, drawn as a
+ * plain translation on top of the bounce, so both run to the end on their own
+ * clocks. set() while the finger holds it; release(now) springs it home on the
+ * edge spring; frame(now) -> { x, y, active }.
+ */
+export function createOffsetSpring({ omega = ELASTIC_SPRING_OMEGA } = {}) {
+  let s = { mode: 'idle', x: 0, y: 0, t0: 0, vx: 0, vy: 0 };
+  const at = (now) => {
+    if (s.mode !== 'spring') return { x: s.x, y: s.y, vx: 0, vy: 0 };
+    const t = Math.max(0, finite(now) - s.t0) / 1000;
+    const a = criticallyDampedSpring(s.x, s.vx, t, omega);
+    const b = criticallyDampedSpring(s.y, s.vy, t, omega);
+    return { x: a.x, y: b.x, vx: a.v, vy: b.v };
+  };
+  return {
+    set(x, y) { s = { mode: x || y ? 'held' : 'idle', x: finite(x), y: finite(y), t0: 0, vx: 0, vy: 0 }; },
+    release(now) {
+      if (s.mode === 'held') s = { ...s, mode: 'spring', t0: finite(now) };
+    },
+    frame(now) {
+      if (s.mode === 'idle') return { x: 0, y: 0, active: false };
+      const c = at(now);
+      if (s.mode === 'spring' && ((Math.hypot(c.x, c.y) < 0.2 && Math.hypot(c.vx, c.vy) < 6)
+        || finite(now) - s.t0 > ELASTIC_SPRING_MAX_MS)) {
+        s = { mode: 'idle', x: 0, y: 0, t0: 0, vx: 0, vy: 0 };
+        return { x: 0, y: 0, active: false };
+      }
+      return { x: c.x, y: c.y, active: true };
+    },
+    active() { return s.mode !== 'idle'; },
+    held() { return s.mode === 'held'; },
+  };
+}
+
 // ---- phone: the viewer changes size under a gesture -----------------------
 // Real iPhone (Appetize, iOS 26, 2026-10-06): pushing a page that fits the
 // screen past its bottom edge left it sitting ~145 px LOWER, cut off by the

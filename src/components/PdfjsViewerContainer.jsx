@@ -47,6 +47,7 @@ import {
   composeElasticTransform,
   composeReleaseLeftover,
   createLayoutShiftHold,
+  createOffsetSpring,
   createWheelOverscroll,
   criticallyDampedSpring,
   easeInOutSine,
@@ -1303,6 +1304,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const lastPhoneGestureEndRef = useRef(-Infinity);
   const panExcessRef = useRef({ x: 0, y: 0 });
   const touchPanElasticRef = useRef(false);
+  // A one-finger pan that started while a zoom-limit bounce was easing: its
+  // edge offset is drawn on top of the bounce (createOffsetSpring) instead of
+  // replacing it, so the bounce never snaps.
+  const touchPanOverEaseRef = useRef(false);
+  const panEdgeRef = useRef(null);
+  if (!panEdgeRef.current) panEdgeRef.current = createOffsetSpring();
+  const panEdgeShownRef = useRef({ x: 0, y: 0 });
+  const panEdgeRafRef = useRef(0);
   const coastElasticRef = useRef(null);
   const layoutMetrics = useMemo(() => resolveLayoutMetrics(isMobileSurface), [isMobileSurface]);
   const layoutMetricsRef = useRef(layoutMetrics);
@@ -2770,6 +2779,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (Math.abs(el.scrollTop - sy.scroll) > 0.01) el.scrollTop = sy.scroll;
     excess.x = sx.excess;
     excess.y = sy.excess;
+    if (touchPanOverEaseRef.current) {
+      // The bounce keeps easing on its own; the edge offset rides on top.
+      panEdgeRef.current.set(sx.shown, sy.shown);
+      panEdgeShownRef.current = { x: sx.shown, y: sy.shown };
+      setLiveGestureFrame((frame) => frame + 1);
+      return;
+    }
     if (!excess.x && !excess.y && !elasticRef.current) return;
     // A zoom-limit ease still running under this pan finishes on its own.
     if (!excess.x && !excess.y && elasticRef.current?.anim) return;
@@ -2784,6 +2800,23 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (!excess.x && !excess.y) elasticRef.current = null;
     setLiveGestureFrame((frame) => frame + 1);
   }, [getHorizontalScrollMax]);
+
+  // The over-the-bounce pan edge offset springs home on its own clock.
+  const stepPanEdge = useCallback(() => {
+    panEdgeRafRef.current = 0;
+    const shown = panEdgeRef.current.frame(performance.now());
+    panEdgeShownRef.current = { x: shown.x, y: shown.y };
+    if (shown.active && !panEdgeRef.current.held()) panEdgeRafRef.current = requestAnimationFrame(stepPanEdge);
+    setLiveGestureFrame((frame) => frame + 1);
+  }, []);
+  const releasePanEdge = useCallback(() => {
+    if (!panEdgeRef.current.held()) return;
+    panEdgeRef.current.release(performance.now());
+    if (!panEdgeRafRef.current) panEdgeRafRef.current = requestAnimationFrame(stepPanEdge);
+  }, [stepPanEdge]);
+  useEffect(() => () => {
+    if (panEdgeRafRef.current) cancelAnimationFrame(panEdgeRafRef.current);
+  }, []);
 
   const flushPan = useCallback(() => {
     if (panRafRef.current) {
@@ -3108,6 +3141,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const pulled = panExcessRef.current;
       panExcessRef.current = { x: 0, y: 0 };
       touchPanElasticRef.current = false;
+      // A pull held on top of a bounce is carried by `pulled` into the pinch.
+      if (touchPanOverEaseRef.current && panEdgeRef.current.held()) {
+        panEdgeRef.current.set(0, 0);
+        panEdgeShownRef.current = { x: 0, y: 0 };
+      }
+      touchPanOverEaseRef.current = false;
       const freeShiftX = elastic ? (pulled.x || inverseRubberBand(-caught.x, containerWRef.current)) : 0;
       const freeShiftY = elastic ? (pulled.y || inverseRubberBand(-caught.y, containerHRef.current)) : 0;
       if (!elastic && (caught.x || caught.y)) stopElastic();
@@ -3199,6 +3238,17 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const elastic = !prefersReducedMotion();
       const caught = catchElastic();
       touchPanElasticRef.current = elastic;
+      // Landing during a zoom-limit bounce: the bounce runs on, this pan's
+      // edge offset rides on top of it (and catches a previous one mid-spring).
+      touchPanOverEaseRef.current = elastic && Boolean(caught.easing);
+      if (touchPanOverEaseRef.current && panEdgeRef.current.active()) {
+        if (panEdgeRafRef.current) cancelAnimationFrame(panEdgeRafRef.current);
+        panEdgeRafRef.current = 0;
+        const held = panEdgeRef.current.frame(performance.now());
+        panEdgeRef.current.set(held.x, held.y);
+        caught.x = held.x;
+        caught.y = held.y;
+      }
       panExcessRef.current = elastic
         ? {
           x: inverseRubberBand(-caught.x, containerWRef.current),
@@ -3433,7 +3483,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         const pulled = panExcessRef.current;
         touchPanElasticRef.current = false;
         panExcessRef.current = { x: 0, y: 0 };
-        if (elasticPan && elasticRef.current) releaseElastic({ kind: 'spring' });
+        touchPanOverEaseRef.current = false;
+        releasePanEdge();
+        // A bounce already animating keeps its own clock (re-releasing it
+        // restarted the 250 ms ease: a visible pause, then a second start).
+        if (elasticPan && elasticRef.current && !elasticRef.current.anim) releaseElastic({ kind: 'spring' });
         releaseLayoutShift();
         startPanInertia(
           elasticPan && pulled.x ? 0 : velocityX,
@@ -3516,11 +3570,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       });
       mobileTouchRef.current = null;
       touchPanElasticRef.current = false;
+      touchPanOverEaseRef.current = false;
       panExcessRef.current = { x: 0, y: 0 };
       setMobileTouchMode(null);
       cancelPanInertia();
     };
-  }, [applyWheelZoom, cancelPanInertia, catchElastic, checkpointPinchGesture, commitGesture, flushPan, isMobileSurface, releaseElastic, releaseLayoutShift, schedulePan, setPanInteraction, setZoomInteraction, startPanInertia, stopElastic]);
+  }, [applyWheelZoom, cancelPanInertia, catchElastic, checkpointPinchGesture, commitGesture, flushPan, isMobileSurface, releaseElastic, releaseLayoutShift, releasePanEdge, schedulePan, setPanInteraction, setZoomInteraction, startPanInertia, stopElastic]);
 
   // Mobile long-press → context menu (Phase D parity). Isolated, additive,
   // and passive: this effect only OBSERVES touches (it never preventDefaults or
@@ -4046,6 +4101,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   }
   // Phone: a viewer resize under the finger, held then gliding home.
   if (layoutShiftYRef.current) liveTranslateY += layoutShiftYRef.current;
+  // Phone: a one-finger pull past an edge made during a zoom-limit bounce,
+  // drawn on top of the bounce (it never replaces it).
+  const panEdgeShown = panEdgeShownRef.current;
+  if (panEdgeShown.x || panEdgeShown.y) {
+    liveTranslateX += panEdgeShown.x;
+    liveTranslateY += panEdgeShown.y;
+  }
 
   // The page list does not depend on the live zoom (the content node's
   // transform carries the preview), so a pinch frame re-renders ONE element,
