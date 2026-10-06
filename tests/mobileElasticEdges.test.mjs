@@ -9,11 +9,15 @@ import {
   WHEEL_OVERSCROLL_IDLE_MS,
   capBounceVelocity,
   composeElasticTransform,
+  composeReleaseLeftover,
+  createLayoutShiftHold,
+  createOffsetSpring,
   createWheelOverscroll,
   criticallyDampedSpring,
   easeInOutSine,
-  foldElasticLeftover,
   inverseRubberBand,
+  resolveElasticPanStep,
+  resolveFitCentreShift,
   rubberBand,
   rubberClamp,
   rubberScale,
@@ -237,11 +241,52 @@ test('a zoom-limit ease composed under a new gesture shows exactly both transfor
   // an identity ease changes nothing
   const same = composeElasticTransform(inner, { ox: 5, oy: 6, s: 1, tx: 0, ty: 0 });
   assert.deepEqual(same, { s: 1.3, tx: -12, ty: 40 });
-  // the next leftover starts from what is shown: zoom multiplies, offsets add
-  const folded = foldElasticLeftover({ ax: 1, ay: 2, z: 1.2, tx: 3, ty: 4, anim: null }, { z: 1.5, tx: -1, ty: 10 });
-  assert.ok(Math.abs(folded.z - 1.8) < 1e-12);
-  assert.deepEqual({ ...folded, z: 1.8 }, { ax: 1, ay: 2, z: 1.8, tx: 2, ty: 14, anim: null });
-  assert.equal(foldElasticLeftover(folded, null), folded);
+  // no ease under the pinch: its own leftover, untouched
+  const own = { ax: 1, ay: 2, z: 1.2, tx: 3, ty: 4, anim: null };
+  assert.equal(composeReleaseLeftover(own, null), own);
+});
+
+// Review 9 / robust 10 (item 1): a pinch ending while the previous zoom-limit
+// ease is still running. The release leftover must be the picture the last
+// frame drew (the ease nested OUTSIDE the pinch), for any pivots and a zoom
+// change. The old fold (zoom multiplies, offsets add) was only that picture
+// when both pivots were the same point.
+test('pinch release over a running zoom ease keeps every page point where the last frame drew it', () => {
+  const apply = (m, p) => ({ x: m.ox + m.tx + m.s * (p.x - m.ox), y: m.oy + m.ty + m.s * (p.y - m.oy) });
+  // Model: old layout point p (scroll space); the commit lays out at k x the
+  // old scale (L(p) = k p) and moves the scroll from S0 to S1.
+  const cases = [
+    { name: 'same pivot', k: 1, a: { x: 400, y: 900 }, e: { x: 400, y: 900 }, S0: { x: 200, y: 600 }, S1: { x: 200, y: 600 } },
+    { name: 'pivots 150 px apart', k: 1, a: { x: 400, y: 900 }, e: { x: 550, y: 900 }, S0: { x: 200, y: 600 }, S1: { x: 200, y: 600 } },
+    { name: 'zoom change + scroll move', k: 0.8, a: { x: 400, y: 900 }, e: { x: 250, y: 1010 }, S0: { x: 200, y: 600 }, S1: { x: 130, y: 470 } },
+  ];
+  let oldWorst = 0;
+  for (const c of cases) {
+    // live pinch preview G (pivot a, old layout) and the ease E (8% of a x1.8 bounce left)
+    const G = { ox: c.a.x, oy: c.a.y, s: 1.35, tx: -14, ty: 22 };
+    const E = { ax: c.e.x, ay: c.e.y, z: 1.8 ** 0.08, tx: 3, ty: -5 };
+    const shown = (p) => {
+      const q = apply({ ox: E.ax, oy: E.ay, s: E.z, tx: E.tx, ty: E.ty }, apply(G, p));
+      return { x: q.x - c.S0.x, y: q.y - c.S0.y };
+    };
+    // the pinch's own leftover, as commitGesture builds it
+    const A = { x: c.k * c.a.x, y: c.k * c.a.y };
+    const anchorShown = { x: c.a.x + G.tx - c.S0.x, y: c.a.y + G.ty - c.S0.y };
+    const pinch = {
+      ax: A.x, ay: A.y, z: G.s / c.k, tx: anchorShown.x - (A.x - c.S1.x), ty: anchorShown.y - (A.y - c.S1.y),
+    };
+    const R = composeReleaseLeftover(pinch, E, { scrollShiftX: c.S1.x - c.S0.x, scrollShiftY: c.S1.y - c.S0.y });
+    const naive = { ...pinch, z: pinch.z * E.z, tx: pinch.tx + E.tx, ty: pinch.ty + E.ty };
+    for (const p of [{ x: 0, y: 0 }, { x: 400, y: 900 }, { x: 900, y: 1500 }, { x: -50, y: 2400 }]) {
+      const want = shown(p);
+      const L = { x: c.k * p.x, y: c.k * p.y };
+      const got = apply({ ox: R.ax, oy: R.ay, s: R.z, tx: R.tx, ty: R.ty }, L);
+      assert.ok(Math.hypot(got.x - c.S1.x - want.x, got.y - c.S1.y - want.y) < 1e-6, `${c.name}: no jump in the release frame`);
+      const old = apply({ ox: naive.ax, oy: naive.ay, s: naive.z, tx: naive.tx, ty: naive.ty }, L);
+      oldWorst = Math.max(oldWorst, Math.hypot(old.x - c.S1.x - want.x, old.y - c.S1.y - want.y));
+    }
+  }
+  assert.ok(oldWorst > 5, `the old fold jumped ${oldWorst.toFixed(1)} px`);
 });
 
 test('desktop: a hiccup in the event stream mid-tail does not restart the stretch', () => {
@@ -259,4 +304,111 @@ test('desktop: a hiccup in the event stream mid-tail does not restart the stretc
   t += 200;
   push(c, Array(12).fill(9), { t0: t });
   assert.ok(c.frame(t + 12 * 16).y > 5);
+});
+
+// ---- iOS bottom push (Appetize, iPhone 16 Pro / iOS 26, 2026-10-06) --------
+// A one-page PDF that fits the screen has no scroll range: every pixel of a
+// push is past an edge, and the page must move WITH the finger.
+test('phone: a page that fits the screen stretches in the finger direction at both edges', () => {
+  const d = 764;
+  let s = { scroll: 0, excess: 0 };
+  const shown = [];
+  for (let i = 0; i < 40; i += 1) {
+    const step = resolveElasticPanStep({ scroll: s.scroll, max: 0, excess: s.excess, delta: -8.5, dimension: d });
+    s = step;
+    shown.push(step.shown);
+  }
+  assert.equal(s.scroll, 0);
+  assert.ok(s.excess > 0, 'push up = past the bottom (far) end');
+  for (let i = 1; i < shown.length; i += 1) assert.ok(shown[i] < shown[i - 1], 'moves up every step, never down');
+  assert.ok(Math.abs(shown.at(-1) + rubberBand(340, d)) < 1e-6, '340 px of finger = the iOS rubber band');
+  // pulling down past the top edge mirrors it
+  const pull = resolveElasticPanStep({ scroll: 0, max: 0, excess: 0, delta: 340, dimension: d });
+  assert.ok(pull.excess < 0 && pull.shown > 0);
+  assert.ok(Math.abs(pull.shown - rubberBand(340, d)) < 1e-6);
+  // a page that scrolls uses its range first, then stretches
+  const long = resolveElasticPanStep({ scroll: 90, max: 100, excess: 0, delta: -30, dimension: d });
+  assert.equal(long.scroll, 100);
+  assert.ok(Math.abs(long.excess - 20) < 1e-9 && long.shown < 0);
+  // a scroll range that vanished mid-gesture (browser clamp) never turns into a
+  // stretch the other way
+  const clamped = resolveElasticPanStep({ scroll: 300, max: 0, excess: 10, delta: -5, dimension: d });
+  assert.equal(clamped.scroll, 0);
+  assert.ok(Math.abs(clamped.excess - 15) < 1e-9 && clamped.shown < 0);
+});
+
+test('phone: only a viewer resize at the same zoom and strip room moves the fit centre', () => {
+  const base = { scale: 1, room: 0, height: 740, centerPad: 152 };
+  // Safari's toolbar collapses: the viewer grows 290 px, the centre drops 145
+  assert.equal(resolveFitCentreShift(base, { ...base, height: 1030, centerPad: 297 }), 145);
+  assert.equal(resolveFitCentreShift(base, { ...base, height: 450, centerPad: 7 }), -145);
+  assert.equal(resolveFitCentreShift(null, base), 0, 'first measure is not a move');
+  assert.equal(resolveFitCentreShift(base, { ...base, scale: 1.2, height: 1030, centerPad: 200 }), 0, 'a zoom keeps its own anchor');
+  assert.equal(resolveFitCentreShift(base, { ...base, room: 44, centerPad: 152 }), 0, 'strip room keeps the page still on its own');
+  assert.equal(resolveFitCentreShift(base, { ...base, height: 1030, centerPad: 152 }), 0, 'a page taller than the view does not move');
+});
+
+test('phone: a viewer resize mid-push is held off screen, then glides to the new centre in ~0.6 s', () => {
+  const hold = createLayoutShiftHold();
+  // Finger down, pushing up; at t=500 the viewer grows and the centre would drop 145 px.
+  hold.absorb(145, 500, { held: true });
+  // While the finger is down nothing moves: the drawn offset exactly cancels the drop.
+  for (const t of [500, 700, 1200]) assert.equal(hold.frame(t).y, -145);
+  assert.ok(hold.held());
+  // The viewer shrinks back before the lift: the two cancel out exactly.
+  hold.absorb(-60, 1300, { held: true });
+  assert.equal(hold.frame(1300).y, -85);
+  hold.release(2000);
+  // After the lift: the edge spring (critically damped), never past the new centre.
+  const ys = [];
+  for (let t = 2000; t <= 3000; t += 1000 / 60) ys.push(hold.frame(t).y);
+  for (let i = 1; i < ys.length; i += 1) {
+    assert.ok(ys[i] >= ys[i - 1] - 1e-9, 'one way only, toward the new place');
+    assert.ok(ys[i] <= 0, 'never overshoots');
+    assert.ok(ys[i] - ys[i - 1] < 15, 'no frame jumps (85 px glide, ~11 px/frame peak)');
+  }
+  assert.ok(Math.abs(criticallyDampedSpring(-85, 0, 0.6).x) < 1.5);
+  assert.ok(Math.abs(hold.frame(2600).y) < 1.5, 'home within ~0.6 s');
+  assert.equal(hold.frame(3100).active, false);
+  assert.equal(hold.active(), false);
+});
+
+test('phone: a viewer resize while the page springs home joins the spring (no jump)', () => {
+  const hold = createLayoutShiftHold();
+  hold.absorb(40, 0, { held: false }); // after the lift: springs at once
+  const before = hold.frame(100).y;
+  hold.absorb(-40, 100); // the toolbar comes back mid-spring
+  const after = hold.frame(100).y;
+  assert.ok(Math.abs(after - (before + 40)) < 1e-9, 'what is shown does not move in that frame');
+  let prev = after;
+  for (let t = 100; t < 1000; t += 16) {
+    const y = hold.frame(t).y;
+    assert.ok(Math.abs(y - prev) < 12);
+    prev = y;
+  }
+  assert.equal(hold.active(), false);
+});
+
+// Review 9 / robust 10 (item 2): a one-finger pan that reaches an edge during a
+// zoom-limit bounce. Its edge offset rides on top of the bounce in its own
+// spring; the bounce is never replaced (it used to snap x1.5 -> x1 in a frame).
+test('pan over a running bounce: the edge offset is held, then springs home on its own clock', () => {
+  const edge = createOffsetSpring();
+  assert.equal(edge.frame(0).active, false);
+  edge.set(0, 60);
+  assert.ok(edge.held());
+  assert.deepEqual(edge.frame(500), { x: 0, y: 60, active: true }, 'held while the finger is down');
+  edge.release(1000);
+  let prev = 60;
+  for (let t = 1000; t <= 2000; t += 1000 / 60) {
+    const f = edge.frame(t);
+    assert.ok(f.y <= prev + 1e-9 && f.y >= 0, 'one way home, never past the edge');
+    assert.ok(prev - f.y < 9, 'no frame jumps');
+    prev = f.y;
+  }
+  assert.equal(edge.active(), false);
+  // set(0, 0) clears it at once (a pinch takes the pull over)
+  edge.set(5, 5);
+  edge.set(0, 0);
+  assert.equal(edge.active(), false);
 });

@@ -388,7 +388,7 @@ test('desktop wheel and trackpad rubber-band at document edges and zoom limits',
   // A zoom-limit ease is never cut off by the next gesture: it is composed
   // under it and folded into the next leftover.
   assert.match(PDFJS_VIEWER_SOURCE, /composeElasticTransform\(/);
-  assert.match(PDFJS_VIEWER_SOURCE, /elasticRef\.current = foldElasticLeftover\(\{/);
+  assert.match(PDFJS_VIEWER_SOURCE, /elasticRef\.current = composeReleaseLeftover\(\{/);
   assert.match(PDFJS_VIEWER_SOURCE, /if \(prefersReducedMotion\(\)\) return;/);
   assert.match(PDFJS_VIEWER_SOURCE, /elasticZoom: regime === 'trackpad' && !isMobileSurface && !prefersReducedMotion\(\),/);
   assert.match(PDFJS_VIEWER_SOURCE, /const previewScale = g\.elasticZoom \? rubberScale\(nextScale, minimumScale, maxScale\) : nextScale;/);
@@ -803,4 +803,28 @@ test('mobile viewer presence uses Supabase row names, deduplicates, and pins the
     { id: 'me', label: 'Isaiah Calvo', initials: 'IC', isCurrent: true },
     { id: 'other', label: 'Other New', initials: 'ON', isCurrent: false },
   ]);
+});
+
+// iOS bottom push (Appetize, iPhone 16 Pro / iOS 26, 2026-10-06): the pure
+// parts live in elasticEdges.js (tests/mobileElasticEdges.test.mjs); this pins
+// the wiring. A viewer resize under a phone gesture is held then springs home;
+// a one-finger drag that starts on a PDF link pans (a tap still opens it).
+test('phone viewer: resize under a gesture is absorbed; drags from links pan', () => {
+  assert.match(PDFJS_VIEWER_SOURCE, /const shift = resolveFitCentreShift\(fitPlacementRef\.current, next\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /layoutShiftRef\.current\.absorb\(shift, performance\.now\(\), \{ held \}\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(layoutShiftYRef\.current\) liveTranslateY \+= layoutShiftYRef\.current;/);
+  assert.equal((PDFJS_VIEWER_SOURCE.match(/releaseLayoutShift\(\);/g) || []).length, 2, 'released at pan and pinch end');
+  assert.match(PDFJS_VIEWER_SOURCE, /resolveElasticPanStep\(\{/);
+  assert.match(PDFJS_VIEWER_SOURCE, /isLiveFormWidgetTarget\(nativeTarget\) \|\| nativeTarget\?\.closest\?\.\(PAN_THROUGH_LINK_SELECTOR\)/);
+  // never on desktop
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(!shift \|\| !isMobileSurface\) return;/);
+});
+
+// Review 9 / robust 10 item 2: a pan that lands during a zoom-limit bounce
+// draws its edge offset on top of the bounce and never re-starts it.
+test('phone viewer: a pan during a zoom bounce rides on top of it', () => {
+  assert.match(PDFJS_VIEWER_SOURCE, /touchPanOverEaseRef\.current = elastic && Boolean\(caught\.easing\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(touchPanOverEaseRef\.current\) \{\s*\/\/ The bounce keeps easing on its own; the edge offset rides on top\.\s*panEdgeRef\.current\.set\(sx\.shown, sy\.shown\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(elasticPan && elasticRef\.current && !elasticRef\.current\.anim\) releaseElastic\(\{ kind: 'spring' \}\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /liveTranslateY \+= panEdgeShown\.y;/);
 });
