@@ -17,6 +17,8 @@
 // .env): YDocProvider reads `supabase.channel` unguarded and crashes on a
 // client-less build. The client exists but can never reach the network.
 
+import { record } from './lib.mjs';
+
 export const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
 export const DESKTOP = { viewport: { width: 1440, height: 900 } };
 export const PHONE = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, userAgent: IPHONE_UA };
@@ -164,8 +166,12 @@ export function collectErrors(page) {
   return errors;
 }
 
-/** Print one result line the walkthrough tables are built from. */
-export function report(item, result, evidence) {
+/**
+ * Print one result line and file it with the shared table
+ * (node debug/scenarios/test-plan/summary.mjs prints every item's verdict).
+ */
+export function report(item, result, evidence, variant = 'desktop-local-backend') {
   // eslint-disable-next-line no-console
   console.log(`[TEST-PLAN ${item}] ${result} — ${evidence}`);
+  record(item, variant, result, evidence);
 }

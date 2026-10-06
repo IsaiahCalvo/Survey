@@ -170,6 +170,7 @@ function applyFilters(rows, params) {
 export class FakeBackend {
   constructor({ documentId, ownerId = 'dev-test-user', role = 'owner', latencyMs = 0 } = {}) {
     this.documentId = documentId;
+    this.ownerId = ownerId;
     this.role = role;
     this.latencyMs = latencyMs;
     this.tables = new Map();
@@ -199,7 +200,23 @@ export class FakeBackend {
     return this.tables.get(name);
   }
 
-  count(key) { this.counts.set(key, (this.counts.get(key) || 0) + 1); }
+  count(key) {
+    this.counts.set(key, (this.counts.get(key) || 0) + 1);
+    if (!key.startsWith('GET ') && !key.startsWith('WS ')) this.lastWriteAt = Date.now();
+  }
+
+  /**
+   * Wait until no write has arrived for `quietMs` (a first open uploads the
+   * PDF's own markup as dozens of log rows; edits made meanwhile queue
+   * behind it for a few seconds).
+   */
+  async settle({ quietMs = 1500, timeout = 60_000 } = {}) {
+    const until = Date.now() + timeout;
+    this.lastWriteAt = this.lastWriteAt || Date.now();
+    while (Date.now() < until && Date.now() - this.lastWriteAt < quietMs) {
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
 
   summary() {
     return [...this.counts.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${v}x ${k}`);
@@ -228,7 +245,21 @@ export class FakeBackend {
     const accept = req.headers().accept || '';
     const prefer = req.headers().prefer || '';
     const wantsObject = accept.includes('vnd.pgrst.object');
-    const reply = (status, body) => route.fulfill({ status, contentType: 'application/json', body: body === undefined ? '' : json(body) });
+    // Same CORS answer as the real API (WebKit enforces it on fulfilled
+    // responses; Chromium does not).
+    const cors = {
+      'access-control-allow-origin': req.headers().origin || '*',
+      'access-control-allow-credentials': 'true',
+      'access-control-allow-headers': '*, authorization, apikey, content-type, prefer, accept-profile, content-profile, x-client-info, range',
+      'access-control-allow-methods': 'GET, POST, PATCH, PUT, DELETE, HEAD, OPTIONS',
+      'access-control-expose-headers': 'content-range, content-profile, range',
+    };
+    const reply = (status, body, headers = {}) => {
+      // eslint-disable-next-line no-console
+      if (process.env.TP_DEBUG && method !== 'GET') console.log(`[fake] ${method} ${path} -> ${status}`);
+      return route.fulfill({ status, headers: { ...cors, ...headers }, contentType: 'application/json', body: body === undefined ? '' : json(body) });
+    };
+    if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: cors, body: '' });
 
     if (path.startsWith('/auth/')) { this.count(`${method} ${path}`); return reply(401, { message: 'no session (fake backend)' }); }
     if (path.startsWith('/storage/') || path.startsWith('/functions/')) { this.count(`${method} ${path}`); return reply(200, {}); }
@@ -246,9 +277,11 @@ export class FakeBackend {
     this.count(`${method} ${name}`);
     const rows = this.table(name);
     const params = url.searchParams;
-    if (method === 'HEAD') return route.fulfill({ status: 200, headers: { 'content-range': `0-0/${rows.length}` }, body: '' });
+    if (method === 'HEAD') return route.fulfill({ status: 200, headers: { ...cors, 'content-range': `0-0/${rows.length}` }, body: '' });
     if (method === 'GET') {
       const result = applyFilters(rows, params);
+      // eslint-disable-next-line no-console
+      if (process.env.TP_DEBUG) console.log(`[fake] GET ${name}?${decodeURIComponent(url.search.slice(1))} -> ${result.length}/${rows.length}`);
       if (wantsObject) return result[0] ? reply(200, result[0]) : reply(406, { code: 'PGRST116', message: 'no rows' });
       return reply(200, result);
     }
@@ -304,6 +337,7 @@ export class FakeBackend {
       document_id: this.documentId,
       client_id: 'tp-seed-writer',
       client_seq: this.walSeq,
+      actor_user_id: this.ownerId,
       data: `\\x${hex}`,
       created_at: nowIso(),
     });
@@ -337,6 +371,8 @@ export class FakeBackend {
         document_id: args.p_document_id,
         client_id: args.p_client_id,
         client_seq: args.p_client_seq,
+        // The real append function stamps the caller (auth.uid()); readers check it.
+        actor_user_id: this.ownerId,
         data: args.p_data,
         created_at: nowIso(),
       };

@@ -93,9 +93,10 @@ test('71 [R2] undo keeps a colleague\'s later move (two windows)', async ({ brow
   const blueInB = await waitFor(async () => (await windowMarks(B.page))[0]?.stroke !== red, { timeout: 10_000 });
   const blue = (await windowMarks(A.page))[0].stroke;
   // B: move the same rectangle 60 pt right.
-  // (click to pick it, then drag it, as a person does)
-  await pickAt(B.page, 1, 100, 640);
-  await dragPage(B.page, 1, [[100, 640], [130, 640], [160, 640]], { steps: 6 });
+  // (click to pick it, then drag it by its top edge between the handles —
+  // the side midpoints are resize handles — as a person does)
+  await pickAt(B.page, 1, 130, 600);
+  await dragPage(B.page, 1, [[130, 600], [160, 600], [190, 600]], { steps: 6 });
   const moved = await waitFor(async () => {
     const m = (await windowMarks(A.page))[0];
     return m && !near(m.left, rect.left, 5) ? m : null;
@@ -111,9 +112,10 @@ test('71 [R2] undo keeps a colleague\'s later move (two windows)', async ({ brow
   const fin = settled || { ma: (await windowMarks(A.page))[0], mb: (await windowMarks(B.page))[0], ms: (await serverMarks(backend))[0] };
   await A.page.screenshot({ path: `${OUT_DIR}/71-A-after-undo.png` });
   await B.page.screenshot({ path: `${OUT_DIR}/71-B-after-undo.png` });
-  const posKept = [fin.ma, fin.mb, fin.ms].every((m) => m && near(m.left, movedLeft));
+  // A move, not a resize: same width; and the undo keeps B's new spot.
+  const posKept = [fin.ma, fin.mb, fin.ms].every((m) => m && near(m.left, movedLeft) && near(m.width, rect.width));
   const ok = Boolean(blueInB) && Boolean(moved) && Boolean(settled) && posKept && A.errors.length + B.errors.length === 0;
-  report('71', ok ? 'PASS' : 'FAIL', `start left=${rect.left} ${red}; A recolour -> B saw ${blue}=${Boolean(blueInB)}; B move -> A saw left=${moved?.left}; A Ctrl+Z -> A ${fin.ma?.stroke}@${fin.ma?.left}, B ${fin.mb?.stroke}@${fin.mb?.left}, server ${fin.ms?.stroke}@${fin.ms?.left} (want ${red}@${movedLeft}); errors=${A.errors.length + B.errors.length}; fake-backend calls: ${backend.summary().slice(0, 4).join(', ')} shots=71-A/B-after-undo.png`);
+  report('71', ok ? 'PASS' : 'FAIL', `start left=${rect.left} ${red}; A recolour -> B saw ${blue}=${Boolean(blueInB)}; B move -> A saw left=${moved?.left}; A Ctrl+Z -> A ${fin.ma?.stroke}@${fin.ma?.left}, B ${fin.mb?.stroke}@${fin.mb?.left}, server ${fin.ms?.stroke}@${fin.ms?.left} (want ${red}@${movedLeft}, width ${rect.width} kept=${posKept}); errors=${A.errors.length + B.errors.length}; fake-backend calls: ${backend.summary().slice(0, 4).join(', ')} shots=71-A/B-after-undo.png`);
   await A.context.close();
   await B.context.close();
   expect(ok).toBe(true);

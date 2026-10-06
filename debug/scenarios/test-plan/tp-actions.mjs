@@ -20,6 +20,7 @@ export async function openWindow(browser, backend, docId, pdf, { device = DESKTO
   const page = await context.newPage();
   const errors = collectErrors(page);
   await openViewer(page, pdf, { phone });
+  await backend?.settle?.();
   return { context, page, errors };
 }
 
@@ -80,7 +81,7 @@ export const windowMarks = (page, n = 1) => page.evaluate((num) => Array.from(
   (g) => {
     const id = g.getAttribute('data-anno-id');
     const a = window.__phase35GetAnnotationById?.(id) || {};
-    return { id, type: a.type ?? null, stroke: a.stroke ?? null, fill: a.fill ?? null, left: a.left ?? null, top: a.top ?? null, imported: Boolean(a.isPdfImported) };
+    return { id, type: a.type ?? null, stroke: a.stroke ?? null, fill: a.fill ?? null, left: a.left ?? null, top: a.top ?? null, width: a.width ?? null, height: a.height ?? null, imported: Boolean(a.isPdfImported) };
   },
 ), n);
 
@@ -89,7 +90,7 @@ export async function serverMarks(backend, n = 1) {
   const { byPage } = await backend.serverState();
   return (byPage[n]?.objects || []).map((o) => ({
     id: o?.data?.id ?? o?.id, type: o?.type, dataType: o?.data?.type ?? null, stroke: o?.stroke ?? null, fill: o?.fill ?? null,
-    left: o?.left ?? null, top: o?.top ?? null, imported: Boolean(o?.isPdfImported), raw: o,
+    left: o?.left ?? null, top: o?.top ?? null, width: o?.width ?? null, height: o?.height ?? null, imported: Boolean(o?.isPdfImported), raw: o,
   }));
 }
 
@@ -108,6 +109,33 @@ export async function pickAt(page, n, x, y, opts = {}) {
   await selectTool(page);
   await clickPage(page, n, x, y, opts);
   await page.waitForTimeout(400);
+}
+
+/**
+ * Pick a mark by clicking its top edge where it is on screen now (any zoom),
+ * after bringing it into view.
+ */
+export async function pickMark(page, id, { at = 0.3 } = {}) {
+  await selectTool(page);
+  await page.evaluate((key) => {
+    const g = document.querySelector(`[data-anno-id="${CSS.escape(key)}"]`);
+    const r = g?.getBoundingClientRect();
+    if (!r || (r.top > 80 && r.bottom < innerHeight - 40 && r.left > 60 && r.right < innerWidth - 60)) return;
+    let s = g.parentElement;
+    while (s && !(s.scrollHeight > s.clientHeight + 4 && /(auto|scroll)/.test(getComputedStyle(s).overflowY))) s = s.parentElement;
+    if (!s) return;
+    s.scrollTop += r.top + r.height / 2 - innerHeight / 2;
+    s.scrollLeft += r.left + r.width / 2 - innerWidth / 2;
+  }, id);
+  await page.waitForTimeout(500);
+  const box = await page.evaluate((key) => {
+    const r = document.querySelector(`[data-anno-id="${CSS.escape(key)}"]`)?.getBoundingClientRect();
+    return r ? { x: r.left, y: r.top, w: r.width } : null;
+  }, id);
+  if (!box) throw new Error(`mark ${id} not on the page`);
+  await page.mouse.click(box.x + box.w * at, box.y);
+  await page.waitForTimeout(500);
+  return box;
 }
 
 export async function setStrokeColor(page, hex) {
