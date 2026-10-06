@@ -85,7 +85,7 @@ jobs:
       - name: Read config
         id: config
         run: |
-          set -E; trap 'rc=$?; echo "::error title=Read config @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
+          trap 'rc=$?; echo "::error title=Read config @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
           OUT="$RUNNER_TEMP/ios-sim-out"
           mkdir -p "$OUT/shots" "$OUT/maestro" "$OUT/raw"
           echo "OUT=$OUT" >> "$GITHUB_ENV"
@@ -124,7 +124,7 @@ jobs:
       - name: Create and boot the simulator
         id: boot
         run: |
-          set -E; trap 'rc=$?; echo "::error title=Create and boot the simulator @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
+          trap 'rc=$?; echo "::error title=Create and boot the simulator @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
           set +e
           xcodebuild -version > "$OUT/raw/xcode.txt" 2>&1; cat "$OUT/raw/xcode.txt" | tee -a "$OUT/log.txt"
           # Headless boot has no hardware keyboard, but make sure: the iOS
@@ -179,7 +179,7 @@ jobs:
         if: env.LOCAL_DEV == 'true'
         timeout-minutes: 8
         run: |
-          set -E; trap 'rc=$?; echo "::error title=Start dev server @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
+          trap 'rc=$?; echo "::error title=Start dev server @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
           set +e
           npm install --include=optional --no-audit --no-fund > "$OUT/raw/npm-install.log" 2>&1
           echo "npm install exit $?" | tee -a "$OUT/log.txt"
@@ -214,7 +214,7 @@ jobs:
         id: maestro_install
         timeout-minutes: 4
         run: |
-          set -E; trap 'rc=$?; echo "::error title=Install Maestro @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
+          trap 'rc=$?; echo "::error title=Install Maestro @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
           set -euo pipefail
           curl -fsSL "https://get.maestro.mobile.dev" | bash > "$OUT/raw/maestro-install.log" 2>&1
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
@@ -226,7 +226,7 @@ jobs:
         id: ready
         timeout-minutes: 6
         run: |
-          set -E; trap 'rc=$?; echo "::error title=Wait for boot, set the status bar @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
+          trap 'rc=$?; echo "::error title=Wait for boot, set the status bar @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
           set -euo pipefail
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl status_bar "$UDID" override --time "9:41" --dataNetwork wifi --wifiMode active --wifiBars 3 --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 || true
@@ -241,7 +241,7 @@ jobs:
         if: env.EXPO_ENABLED == 'true'
         timeout-minutes: 5
         run: |
-          set -E; trap 'rc=$?; echo "::error title=Install Expo Go @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
+          trap 'rc=$?; echo "::error title=Install Expo Go @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
           set -euo pipefail
           mkdir -p ~/expo-go-cache
           TGZ=~/expo-go-cache/Expo-Go-$EXPO_VERSION.tar.gz
@@ -257,7 +257,7 @@ jobs:
       - name: Start screen recording
         if: env.VIDEO == 'true'
         run: |
-          set -E; trap 'rc=$?; echo "::error title=Start screen recording @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
+          trap 'rc=$?; echo "::error title=Start screen recording @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
           nohup xcrun simctl io "$UDID" recordVideo --codec=h264 --force "$OUT/raw/video.mov" > "$OUT/raw/video.log" 2>&1 &
           echo $! > "$OUT/raw/video.pid"
           sleep 2
@@ -266,15 +266,30 @@ jobs:
       # Maestro still leaves pictures of the real iOS rendering.
       - name: Safari baseline screenshots (simctl only)
         id: baseline
-        timeout-minutes: 4
+        timeout-minutes: 5
+        # Pictures only; a miss here must never stop the Maestro flows.
+        continue-on-error: true
         run: |
-          set -E; trap 'rc=$?; echo "::error title=Safari baseline screenshots simctl only @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
+          set +e
           shot() { xcrun simctl io "$UDID" screenshot "$OUT/shots/$1.png" > /dev/null 2>&1 && echo "shot $1" | tee -a "$OUT/log.txt"; }
+          # On a busy runner the first Safari launch can outlast openurl's own
+          # wait (exit 60 = timed out, seen in run 37521088396), so start Safari
+          # first and retry the link.
+          open_url() {
+            for try in 1 2 3; do
+              if xcrun simctl openurl "$UDID" "$1" 2>> "$OUT/raw/openurl.err"; then return 0; fi
+              rc=$?; echo "openurl try $try exit $rc" | tee -a "$OUT/log.txt"; sleep 8
+            done
+            echo "::warning title=ios-sim openurl::could not open $1 after 3 tries"
+            return 1
+          }
+          xcrun simctl launch "$UDID" com.apple.mobilesafari > /dev/null 2>> "$OUT/raw/openurl.err" || echo "safari launch exit $?" | tee -a "$OUT/log.txt"
+          sleep 5
           if [ -n "$HOME_URL" ]; then
-            xcrun simctl openurl "$UDID" "$HOME_URL"; sleep 20; shot base-01-safari-home
+            open_url "$HOME_URL" && { sleep 15; shot base-01-safari-home; }
           fi
           if [ -n "$DOC_URL" ]; then
-            xcrun simctl openurl "$UDID" "$DOC_URL"; sleep 25; shot base-02-safari-document
+            open_url "$DOC_URL" && { sleep 20; shot base-02-safari-document; }
           fi
           echo "$(date +%s) baseline" >> "$OUT/timings.txt"
 
@@ -283,7 +298,7 @@ jobs:
         timeout-minutes: 9
         continue-on-error: true
         run: |
-          set -E; trap 'rc=$?; echo "::error title=Maestro flows in Safari @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
+          trap 'rc=$?; echo "::error title=Maestro flows in Safari @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
           set -uo pipefail
           rc_all=0
           for f in $FLOWS; do
@@ -309,7 +324,7 @@ jobs:
         timeout-minutes: 7
         continue-on-error: true
         run: |
-          set -E; trap 'rc=$?; echo "::error title=Expo Go walk-through @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
+          trap 'rc=$?; echo "::error title=Expo Go walk-through @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
           set -uo pipefail
           rc_all=0
           for f in $EXPO_FLOWS; do
@@ -344,7 +359,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          set -E; trap 'rc=$?; echo "::error title=Stop recording and build results @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
+          trap 'rc=$?; echo "::error title=Stop recording and build results @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
           set +e
           echo "$(date +%s) end" >> "$OUT/timings.txt"
           if [ -f "$OUT/raw/video.pid" ]; then
@@ -381,7 +396,7 @@ jobs:
             # The runner has no ffmpeg; the imageio-ffmpeg wheel carries a
             # static one (seconds to install, unlike Homebrew). avconvert is
             # the fallback but only has fixed-bitrate presets (~70 MB a run).
-            FF=$(command -v ffmpeg)
+            FF=$(command -v ffmpeg || true)
             if [ -z "$FF" ]; then
               python3 -m venv "$RUNNER_TEMP/ffvenv" > "$OUT/raw/ffmpeg-install.txt" 2>&1 \
                 && "$RUNNER_TEMP/ffvenv/bin/pip" install -q imageio-ffmpeg >> "$OUT/raw/ffmpeg-install.txt" 2>&1 \
@@ -499,7 +514,7 @@ jobs:
           TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
-          set -E; trap 'rc=$?; echo "::error title=Publish to the ios-sim-results branch @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
+          trap 'rc=$?; echo "::error title=Publish to the ios-sim-results branch @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
           set +e +o pipefail
           NAME="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           AUTH="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 | tr -d '\n')"
