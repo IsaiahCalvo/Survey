@@ -62,6 +62,7 @@ import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
 import SpaceSelectionDialog from './components/SpaceSelectionDialog';
 import TextEditOverlay from './components/TextEditOverlay';
 import { resolveNewMarkStyle, resolvePickBarTool, resolveToolbarCallout } from './utils/toolbarCalloutTarget.js';
+import { resolvePickBarValues } from './utils/pickBarValues.js';
 import FabricEraserCanvas from './components/FabricEraserCanvas';
 import FormFieldPropertiesPanel from './components/FormFieldPropertiesPanel';
 import AnnotationDropdown from './components/AnnotationDropdown';
@@ -153,7 +154,6 @@ import {
   calloutRestylePatch,
   isFilledInkPath,
   planGroupUpdate,
-  readRestyleStyle,
   resolveGroupWrite,
   resolveGroupPaintWrite,
   resolvePickedMembers,
@@ -4649,151 +4649,41 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }), { source: 'callout:style', action: 'callout-style-patch' });
   }, [commitCalloutMutation, resolveCalloutPageNumber]);
 
-  useEffect(() => {
+  // Owner Test 45 (2026-10-06): the bar shows the PICKED mark(s) - one page
+  // mark, one callout (picked or open for typing) or a multi-pick group - and
+  // reloads whenever the settled pick or any of its values changes
+  // (utils/pickBarValues.js). This replaces three loaders keyed on object
+  // identity: a pick switch passes through one render holding both the old
+  // and the new pick, the group loader loaded the OLD mark's values there, and
+  // nothing reloaded afterwards - a solid callout picked after a cloud read
+  // "Cloud". Only while the bar works for the pick (pickBarTool 'select'):
+  // otherwise it is the armed tool's settings and a pick left behind never
+  // loads into them (review 2026-09-25). Under Select these states are only
+  // what the bar shows; the tool defaults reload when a drawing tool is armed.
+  const pickBarLoad = useMemo(() => {
+    if (pickBarTool !== 'select') return null;
     const sel = selectedToolbarAnnotation;
-    if (!sel || !sel.annotation) return;
-    const type = String(sel.annotation.type || '').toLowerCase();
-    const annot = sel.annotation;
-    const isCounter = type === 'circle' && annot?.data?.type === 'counter';
-    if (type !== 'rect' && type !== 'ellipse' && type !== 'path'
-      && type !== 'line' && type !== 'textbox'
-      && type !== 'polygon' && type !== 'polyline'
-      && !isCounter) return;
-    // w41: a pen / highlighter stroke (and imported pressure ink) is a filled
-    // outline - its colour is its FILL and its width is sourceWidth, so the
-    // bar reads those (utils/selectionRestyle).
-    if (isFilledInkPath(annot)) {
-      const inkStyle = readRestyleStyle(annot);
-      if (inkStyle.strokeColor) {
-        setStrokeColor(inkStyle.strokeColor);
-        setStrokeOpacity(inkStyle.strokeOpacity ?? 100);
-      }
-      if (Number.isFinite(inkStyle.width) && inkStyle.width > 0) {
-        const nextWidthInputValue = String(Number.isInteger(inkStyle.width)
-          ? inkStyle.width
-          : Math.round(inkStyle.width * 10) / 10);
-        setStrokeWidth(inkStyle.width);
-        strokeWidthInputValueRef.current = nextWidthInputValue;
-        setStrokeWidthInputValue(nextWidthInputValue);
-      }
-      return;
+    let annotation = null;
+    let annotationKey = '';
+    if (sel?.annotation) {
+      const pageObjects = annotationsByPage?.[sel.pageNumber]?.objects || [];
+      const liveIndex = findSelectedAnnotationIndex(pageObjects, sel);
+      annotation = (liveIndex >= 0 ? pageObjects[liveIndex] : null) || sel.annotation;
+      annotationKey = `${sel.pageNumber}:${liveIndex >= 0 ? liveIndex : sel.annotationIndex}:${getAnnotationRenderIdentity(annotation).annotationId || ''}`;
     }
-    const isFillable = type === 'rect' || type === 'ellipse' || type === 'textbox'
-      || type === 'polygon' || isCounter;
-    const fillSource = type === 'textbox' ? annot.backgroundColor : annot.fill;
-    const strokeSource = isCounter ? annot.data?.numberColor : annot.stroke;
-    const strokeHex = strokeSource ? getHexFromColor(strokeSource) : null;
-    const strokeOp = strokeSource ? getOpacityFromEntityColor(strokeSource) : 100;
-    const fillHex = fillSource && fillSource !== 'transparent' ? getHexFromColor(fillSource) : null;
-    const fillOp = fillSource && fillSource !== 'transparent' ? getOpacityFromEntityColor(fillSource) : 0;
-    if (strokeHex) {
-      setStrokeColor(strokeHex);
-      setStrokeOpacity(strokeOp);
-    }
-    if (isFillable) {
-      if (fillHex) {
-        setFillColor(fillHex);
-        setFillOpacity(fillOp);
-      } else if (fillSource === 'transparent' || !fillSource) {
-        setFillOpacity(0);
-      }
-    }
-    const sizeValue = isCounter ? Number(annot.radius) : Number(annot.strokeWidth);
-    if (Number.isFinite(sizeValue) && sizeValue > 0) {
-      // A cloud's studio-default 2.5 line must read as "2.5", not round to 3.
-      const nextWidthInputValue = String(Number.isInteger(sizeValue)
-        ? sizeValue
-        : Math.round(sizeValue * 10) / 10);
-      setStrokeWidth(sizeValue);
-      strokeWidthInputValueRef.current = nextWidthInputValue;
-      setStrokeWidthInputValue(nextWidthInputValue);
-    }
-    const dash = Array.isArray(annot.strokeDashArray) ? annot.strokeDashArray : null;
-    // UX 2026-09-09: selecting ANY cloud shape (rect, ellipse/circle, polygon,
-    // polyline) puts the Style picker on Cloud and loads its bump size, so the
-    // toolbar always reflects what is selected. Counters are circles internally
-    // but are never clouds, hence the isCounter guard.
-    // w43: a clouded text box border loads Cloud + its bump size the same way.
-    if (!isCounter && toolOffersCloudLineStyle(type) && annot.data?.pdfCloudIntensity != null) {
-      setLineBorderStyle('cloud');
-      setCloudIntensity(Number(annot.data.pdfCloudIntensity) || 2);
-    } else if (dash && dash.length >= 2) {
-      if (dash[0] === 6) setLineBorderStyle('dashed');
-      else if (dash[0] === 2) setLineBorderStyle('dotted');
-      else setLineBorderStyle('solid');
-    } else {
-      setLineBorderStyle('solid');
-    }
-    if (type === 'line' && annot.data?.arrowheadStyle) {
-      setArrowheadStyle(annot.data.arrowheadStyle);
-    }
-    if (type === 'line' && (annot.tool === 'arrow' || annot.data?.arrowheadStyle)) {
-      // Reflect the selected arrow: "both ends" is on only when its start
-      // ending explicitly matches its end ending. An imported line with two
-      // different endings therefore shows the toggle OFF and keeps both.
-      const startStyle = annot.data?.startArrowheadStyle ?? null;
-      const endStyle = annot.data?.arrowheadStyle ?? null;
-      setArrowBothEnds(Boolean(startStyle && startStyle !== ARROWHEAD_STYLES.NONE && startStyle === endStyle));
-    }
-  }, [selectedToolbarAnnotation]);
-
+    return resolvePickBarValues({
+      pickBarTool,
+      group: restyleGroup,
+      callout: selectedToolbarCallout,
+      annotation,
+      annotationKey,
+    });
+  }, [pickBarTool, restyleGroup, selectedToolbarCallout, selectedToolbarAnnotation, annotationsByPage]);
+  const pickBarLoadRef = useRef(pickBarLoad);
+  pickBarLoadRef.current = pickBarLoad;
+  const pickBarLoadKey = pickBarLoad ? pickBarLoad.key : '';
   useEffect(() => {
-    const sel = selectedToolbarCallout;
-    if (!sel || !sel.callout) return;
-    const style = sel.callout.style || {};
-    const border = style.borderColor || style.lineColor;
-    if (border) {
-      const borderHex = getHexFromColor(border);
-      if (borderHex) setStrokeColor(borderHex);
-    }
-    if (Number.isFinite(Number(style.borderOpacity))) {
-      setStrokeOpacity(Math.round(Math.max(0, Math.min(1, Number(style.borderOpacity))) * 100));
-    } else {
-      setStrokeOpacity(100);
-    }
-    if (style.fillColor && style.fillColor !== 'transparent') {
-      const fillHex = getHexFromColor(style.fillColor);
-      if (fillHex) setFillColor(fillHex);
-      const fo = Number(style.fillOpacity);
-      if (Number.isFinite(fo)) setFillOpacity(Math.round(Math.max(0, Math.min(1, fo)) * 100));
-      else setFillOpacity(100);
-    } else {
-      setFillOpacity(0);
-    }
-    const thickness = Number(style.lineThickness);
-    if (Number.isFinite(thickness) && thickness > 0) {
-      const nextWidthInputValue = String(Math.round(thickness));
-      setStrokeWidth(thickness);
-      strokeWidthInputValueRef.current = nextWidthInputValue;
-      setStrokeWidthInputValue(nextWidthInputValue);
-    }
-    if (style.arrowheadStyle) {
-      setArrowheadStyle(style.arrowheadStyle);
-    }
-    // UX (2026-07-17, callout line style): reflect the selected callout's
-    // leader style in the Style picker (absent field = legacy solid callout).
-    // w43: a callout whose text box is clouded shows Cloud and its bump size.
-    setLineBorderStyle(
-      style.lineStyle === 'dashed' || style.lineStyle === 'dotted' || style.lineStyle === 'cloud'
-        ? style.lineStyle
-        : 'solid',
-    );
-    if (style.lineStyle === 'cloud') setCloudIntensity(Number(style.cloudIntensity) || 2);
-  }, [selectedToolbarCallout]);
-
-  // w41: a restyle group loads ITS values into the bar (the first member that
-  // has each property; mixed properties are flagged in the published API).
-  // Runs after the single-pick loaders above, so a group always wins. Under
-  // Select these states are only what the bar shows - the tool defaults are
-  // reloaded from the saved preferences when a drawing tool is armed.
-  // Keyed by the pick and its values, not the memo's identity: every save
-  // (any page) rebuilds the memo, and reloading then would stomp a value the
-  // user is part-way through setting.
-  const restyleGroupLoadKey = restyleGroup
-    ? `${restyleGroup.key}|${JSON.stringify(restyleGroup.summary.values)}`
-    : '';
-  useEffect(() => {
-    const values = restyleGroupRef.current?.summary?.values;
+    const values = pickBarLoadRef.current?.values;
     if (!values) return;
     if (values.strokeColor) {
       strokeColorStateRef.current = values.strokeColor;
@@ -4813,6 +4703,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     if (Number.isFinite(Number(values.width)) && Number(values.width) > 0) {
       const width = Number(values.width);
+      // A cloud's studio-default 2.5 line must read as "2.5", not round to 3.
       const nextWidthInputValue = String(Number.isInteger(width) ? width : Math.round(width * 10) / 10);
       setStrokeWidth(width);
       if (!isStrokeWidthFocusedRef.current) {
@@ -4825,7 +4716,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (values.arrowheadStyle) setArrowheadStyle(values.arrowheadStyle);
     if (values.arrowBothEnds != null) setArrowBothEnds(Boolean(values.arrowBothEnds));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [restyleGroupLoadKey]);
+  }, [pickBarLoadKey]);
 
   // Clipboard handlers for callouts
   // w52: (pageNumber) => paste scope; assigned next to pasteAnnotationAt.

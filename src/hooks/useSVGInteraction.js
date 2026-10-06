@@ -27,6 +27,7 @@ import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { roundCommittedAnnotationsGeometry } from '../utils/annotationCommitRounding.js';
 import { mergeDraggedMarksOntoPage } from '../utils/dragCommitMerge.js';
 import { remapSelectedIndices } from '../utils/selectionRemap.js';
+import { resizeCalloutBox } from '../utils/markBorderOutline.js';
 // w59: one rule for where a moved mark lands (preview === save).
 import {
   markIdOf,
@@ -1854,7 +1855,7 @@ export function useSVGInteraction({
         active: true,
         mode: 'callout-part',
         partType,
-        textBoxCorner,           // 'tl' | 'tr' | 'bl' | 'br' | null
+        textBoxCorner,           // 'tl' | 'mt' | 'tr' | 'mr' | 'br' | 'mb' | 'bl' | 'ml' | null
         calloutId,
         startSVGPoint: svgPoint,
         ctmInverse,
@@ -3564,37 +3565,21 @@ export function useSVGInteraction({
           // grabbed corner stays put, the grabbed corner follows the
           // pointer. New rect dims fall out of that. Minimum size floor
           // (20px on each axis) matches the renderCallout min textBox dims.
-          const corner = ds.textBoxCorner || 'br';
-          const origLeft = original.textBoxPosition.x;
-          const origTop = original.textBoxPosition.y;
-          const origRight = origLeft + (original.textBoxWidth || 0);
-          const origBottom = origTop + (original.textBoxHeight || 0);
-          // Anchor point (opposite corner) in normalized coords.
-          let anchorX, anchorY;
-          if (corner === 'tl') { anchorX = origRight;  anchorY = origBottom; }
-          else if (corner === 'tr') { anchorX = origLeft;  anchorY = origBottom; }
-          else if (corner === 'bl') { anchorX = origRight; anchorY = origTop; }
-          else                      { anchorX = origLeft;  anchorY = origTop; }
-          // Moving corner = original corner + drag delta (in normalized).
-          let mvX, mvY;
-          if (corner === 'tl')      { mvX = origLeft + dxNorm;  mvY = origTop + dyNorm; }
-          else if (corner === 'tr') { mvX = origRight + dxNorm; mvY = origTop + dyNorm; }
-          else if (corner === 'bl') { mvX = origLeft + dxNorm;  mvY = origBottom + dyNorm; }
-          else                      { mvX = origRight + dxNorm; mvY = origBottom + dyNorm; }
-          const minW = 20 / W;
-          const minH = 20 / H;
-          // w63: the box flips through the fixed corner (text never mirrors)
-          // and, at its 20-unit minimum, stays attached to that corner on
-          // whichever side the pointer is — it no longer slides off it.
-          const newWidth = Math.max(minW, Math.abs(mvX - anchorX));
-          const newHeight = Math.max(minH, Math.abs(mvY - anchorY));
-          const newLeft = mvX >= anchorX ? anchorX : anchorX - newWidth;
-          const newTop = mvY >= anchorY ? anchorY : anchorY - newHeight;
-          const resizePatch = {
-            textBoxPosition: { x: newLeft, y: newTop },
-            textBoxWidth: newWidth,
-            textBoxHeight: newHeight,
-          };
+          // Owner Test 45 (2026-10-06): eight grabbers, rectangle-style - a
+          // corner moves both of its edges, an edge grabber only its own
+          // (utils/markBorderOutline.js resizeCalloutBox).
+          const resizePatch = resizeCalloutBox(
+            {
+              position: original.textBoxPosition,
+              width: original.textBoxWidth || 0,
+              height: original.textBoxHeight || 0,
+            },
+            ds.textBoxCorner || 'br',
+            dxNorm,
+            dyNorm,
+            20 / W,
+            20 / H,
+          );
           ds.currentCalloutPatch = resizePatch;
           setVisualTransform({
             id: 'callout',
