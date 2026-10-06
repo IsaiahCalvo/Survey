@@ -309,7 +309,7 @@ test('visible path, hover halo, and hit target all consume the same transform he
     SOURCE,
     /const pathTransform = cachedMarkGeometry\('pathTransform', renderObj, renderObj === obj, buildFabricPathSvgTransform\);/,
   );
-  assert.match(SOURCE, /const bakedPath = cachedMarkGeometry\('bakedPath', renderObj, renderObj === obj, resolveBakedFabricPath\);/);
+  assert.match(SOURCE, /const cachedBakedPath = cachedMarkGeometry\('bakedPath', renderObj, renderObj === obj, resolveBakedFabricPath\);/);
   assert.match(SOURCE, /const targetD = bakedPath \? bakedPath\.d : pathD;/);
   assert.match(SOURCE, /const targetTransform = bakedPath \? undefined : pathTransform;/);
   // (perf 2026-09-30: the helper result is cached per committed object; live

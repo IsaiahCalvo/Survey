@@ -229,8 +229,15 @@ function resolveBakedFabricPath(obj) {
   const translation = pureTranslationOf(createInkPathAffine(obj, obj?.path).matrix);
   if (!translation) return null;
   const d = translatePathSegmentsToD(obj.path, translation.tx, translation.ty);
-  return d ? { d } : null;
+  return d ? { d, path: obj.path, length: obj.path.length, last: obj.path[obj.path.length - 1] } : null;
 }
+// The cached result only while the path array is the one it was made from
+// (same guard as svgPathAttrs' d cache: an in-place append re-derives it).
+const isBakedPathCurrent = (baked, obj) => !baked || (
+  baked.path === obj?.path
+  && baked.length === obj.path.length
+  && baked.last === obj.path[obj.path.length - 1]
+);
 
 const hasVisiblePaint = (value) => {
   if (value == null) return false;
@@ -5463,9 +5470,10 @@ const SVGAnnotationLayer = memo(({
     ) {
       // A moved-only plain <path> gets the move written into its data instead
       // (resolveBakedFabricPath); the drawn result is the same.
-      const baked = renderElement.type === 'path'
+      let baked = renderElement.type === 'path'
         ? cachedMarkGeometry('bakedPath', renderObj, renderObj === obj, resolveBakedFabricPath)
         : null;
+      if (!isBakedPathCurrent(baked, renderObj)) baked = null;
       renderElement = cloneElement(renderElement, baked
         ? { d: baked.d, transform: undefined }
         : { transform: cachedMarkGeometry('pathTransform', renderObj, renderObj === obj, buildFabricPathSvgTransform) });
@@ -6290,7 +6298,8 @@ const SVGAnnotationLayer = memo(({
             const pathTransform = cachedMarkGeometry('pathTransform', renderObj, renderObj === obj, buildFabricPathSvgTransform);
             // Same baked geometry as the visible path (resolveBakedFabricPath):
             // hover halo and hit target stay exactly on the ink.
-            const bakedPath = cachedMarkGeometry('bakedPath', renderObj, renderObj === obj, resolveBakedFabricPath);
+            const cachedBakedPath = cachedMarkGeometry('bakedPath', renderObj, renderObj === obj, resolveBakedFabricPath);
+            const bakedPath = isBakedPathCurrent(cachedBakedPath, renderObj) ? cachedBakedPath : null;
             const targetD = bakedPath ? bakedPath.d : pathD;
             const targetTransform = bakedPath ? undefined : pathTransform;
             const sw = renderObj.strokeWidth || 1;
