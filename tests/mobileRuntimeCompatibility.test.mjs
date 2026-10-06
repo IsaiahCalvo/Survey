@@ -388,7 +388,7 @@ test('desktop wheel and trackpad rubber-band at document edges and zoom limits',
   // A zoom-limit ease is never cut off by the next gesture: it is composed
   // under it and folded into the next leftover.
   assert.match(PDFJS_VIEWER_SOURCE, /composeElasticTransform\(/);
-  assert.match(PDFJS_VIEWER_SOURCE, /elasticRef\.current = foldElasticLeftover\(\{/);
+  assert.match(PDFJS_VIEWER_SOURCE, /elasticRef\.current = composeReleaseLeftover\(\{/);
   assert.match(PDFJS_VIEWER_SOURCE, /if \(prefersReducedMotion\(\)\) return;/);
   assert.match(PDFJS_VIEWER_SOURCE, /elasticZoom: regime === 'trackpad' && !isMobileSurface && !prefersReducedMotion\(\),/);
   assert.match(PDFJS_VIEWER_SOURCE, /const previewScale = g\.elasticZoom \? rubberScale\(nextScale, minimumScale, maxScale\) : nextScale;/);

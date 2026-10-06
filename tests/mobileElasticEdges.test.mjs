@@ -9,11 +9,11 @@ import {
   WHEEL_OVERSCROLL_IDLE_MS,
   capBounceVelocity,
   composeElasticTransform,
+  composeReleaseLeftover,
   createLayoutShiftHold,
   createWheelOverscroll,
   criticallyDampedSpring,
   easeInOutSine,
-  foldElasticLeftover,
   inverseRubberBand,
   resolveElasticPanStep,
   resolveFitCentreShift,
@@ -240,11 +240,52 @@ test('a zoom-limit ease composed under a new gesture shows exactly both transfor
   // an identity ease changes nothing
   const same = composeElasticTransform(inner, { ox: 5, oy: 6, s: 1, tx: 0, ty: 0 });
   assert.deepEqual(same, { s: 1.3, tx: -12, ty: 40 });
-  // the next leftover starts from what is shown: zoom multiplies, offsets add
-  const folded = foldElasticLeftover({ ax: 1, ay: 2, z: 1.2, tx: 3, ty: 4, anim: null }, { z: 1.5, tx: -1, ty: 10 });
-  assert.ok(Math.abs(folded.z - 1.8) < 1e-12);
-  assert.deepEqual({ ...folded, z: 1.8 }, { ax: 1, ay: 2, z: 1.8, tx: 2, ty: 14, anim: null });
-  assert.equal(foldElasticLeftover(folded, null), folded);
+  // no ease under the pinch: its own leftover, untouched
+  const own = { ax: 1, ay: 2, z: 1.2, tx: 3, ty: 4, anim: null };
+  assert.equal(composeReleaseLeftover(own, null), own);
+});
+
+// Review 9 / robust 10 (item 1): a pinch ending while the previous zoom-limit
+// ease is still running. The release leftover must be the picture the last
+// frame drew (the ease nested OUTSIDE the pinch), for any pivots and a zoom
+// change. The old fold (zoom multiplies, offsets add) was only that picture
+// when both pivots were the same point.
+test('pinch release over a running zoom ease keeps every page point where the last frame drew it', () => {
+  const apply = (m, p) => ({ x: m.ox + m.tx + m.s * (p.x - m.ox), y: m.oy + m.ty + m.s * (p.y - m.oy) });
+  // Model: old layout point p (scroll space); the commit lays out at k x the
+  // old scale (L(p) = k p) and moves the scroll from S0 to S1.
+  const cases = [
+    { name: 'same pivot', k: 1, a: { x: 400, y: 900 }, e: { x: 400, y: 900 }, S0: { x: 200, y: 600 }, S1: { x: 200, y: 600 } },
+    { name: 'pivots 150 px apart', k: 1, a: { x: 400, y: 900 }, e: { x: 550, y: 900 }, S0: { x: 200, y: 600 }, S1: { x: 200, y: 600 } },
+    { name: 'zoom change + scroll move', k: 0.8, a: { x: 400, y: 900 }, e: { x: 250, y: 1010 }, S0: { x: 200, y: 600 }, S1: { x: 130, y: 470 } },
+  ];
+  let oldWorst = 0;
+  for (const c of cases) {
+    // live pinch preview G (pivot a, old layout) and the ease E (8% of a x1.8 bounce left)
+    const G = { ox: c.a.x, oy: c.a.y, s: 1.35, tx: -14, ty: 22 };
+    const E = { ax: c.e.x, ay: c.e.y, z: 1.8 ** 0.08, tx: 3, ty: -5 };
+    const shown = (p) => {
+      const q = apply({ ox: E.ax, oy: E.ay, s: E.z, tx: E.tx, ty: E.ty }, apply(G, p));
+      return { x: q.x - c.S0.x, y: q.y - c.S0.y };
+    };
+    // the pinch's own leftover, as commitGesture builds it
+    const A = { x: c.k * c.a.x, y: c.k * c.a.y };
+    const anchorShown = { x: c.a.x + G.tx - c.S0.x, y: c.a.y + G.ty - c.S0.y };
+    const pinch = {
+      ax: A.x, ay: A.y, z: G.s / c.k, tx: anchorShown.x - (A.x - c.S1.x), ty: anchorShown.y - (A.y - c.S1.y),
+    };
+    const R = composeReleaseLeftover(pinch, E, { scrollShiftX: c.S1.x - c.S0.x, scrollShiftY: c.S1.y - c.S0.y });
+    const naive = { ...pinch, z: pinch.z * E.z, tx: pinch.tx + E.tx, ty: pinch.ty + E.ty };
+    for (const p of [{ x: 0, y: 0 }, { x: 400, y: 900 }, { x: 900, y: 1500 }, { x: -50, y: 2400 }]) {
+      const want = shown(p);
+      const L = { x: c.k * p.x, y: c.k * p.y };
+      const got = apply({ ox: R.ax, oy: R.ay, s: R.z, tx: R.tx, ty: R.ty }, L);
+      assert.ok(Math.hypot(got.x - c.S1.x - want.x, got.y - c.S1.y - want.y) < 1e-6, `${c.name}: no jump in the release frame`);
+      const old = apply({ ox: naive.ax, oy: naive.ay, s: naive.z, tx: naive.tx, ty: naive.ty }, L);
+      oldWorst = Math.max(oldWorst, Math.hypot(old.x - c.S1.x - want.x, old.y - c.S1.y - want.y));
+    }
+  }
+  assert.ok(oldWorst > 5, `the old fold jumped ${oldWorst.toFixed(1)} px`);
 });
 
 test('desktop: a hiccup in the event stream mid-tail does not restart the stretch', () => {

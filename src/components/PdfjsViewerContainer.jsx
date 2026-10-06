@@ -45,11 +45,11 @@ import {
   WHEEL_OVERSCROLL_IDLE_MS,
   capBounceVelocity,
   composeElasticTransform,
+  composeReleaseLeftover,
   createLayoutShiftHold,
   createWheelOverscroll,
   criticallyDampedSpring,
   easeInOutSine,
-  foldElasticLeftover,
   inverseRubberBand,
   prefersReducedMotion,
   resolveElasticPanStep,
@@ -2042,6 +2042,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (liveGesture?.elastic) {
       liveGesture.originScrollLeft = el.scrollLeft;
       liveGesture.originScrollTop = el.scrollTop;
+      // A zoom ease still running on top of the rebased pinch is the OUTER
+      // transform: its pivot keeps its screen place (composeReleaseLeftover).
+      const easeUnder = elasticRef.current;
+      if (easeUnder && Number.isFinite(p.fromLeft)) {
+        easeUnder.ax += el.scrollLeft - p.fromLeft;
+        easeUnder.ay += el.scrollTop - p.fromTop;
+      }
     }
     if (nativeAnchorMarkerRef.current) {
       const error = Math.hypot(
@@ -2435,15 +2442,20 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const easingUnder = elasticRef.current;
     if (g.elastic || easingUnder || (g.elasticZoom && Math.abs(preview.displayScale / newScale - 1) > 1e-4)) {
       // What the fingers were shown minus what is committed, pivoting on the
-      // fingers' point: drawn as a transform and eased away (no jump).
-      elasticRef.current = foldElasticLeftover({
+      // fingers' point: drawn as a transform and eased away (no jump). A
+      // still-running ease is nested exactly as the last frame drew it.
+      const scroller = scrollerRef.current;
+      elasticRef.current = composeReleaseLeftover({
         ax: preview.committedAnchorX,
         ay: preview.committedAnchorY,
         z: preview.displayScale / newScale,
         tx: preview.shownX - (preview.committedAnchorX - preview.left),
         ty: preview.shownY - (preview.committedAnchorY - preview.top),
         anim: null,
-      }, easingUnder);
+      }, easingUnder, {
+        scrollShiftX: preview.left - (scroller ? scroller.scrollLeft : preview.left),
+        scrollShiftY: preview.top - (scroller ? scroller.scrollTop : preview.top),
+      });
       releaseElastic();
     }
     if (Math.abs(newScale - oldScale) < 1e-6) {
@@ -2486,7 +2498,16 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // so WebKit never downscales one enormous compositor layer for the whole
     // 800%-to-fit gesture.
     const elastic = Boolean(gesture.elastic);
-    pendingAnchorRef.current = { left: preview.left, top: preview.top, elastic };
+    // fromLeft/fromTop: the scroll the running zoom ease (if any) was drawn
+    // over, so its pivot can keep its place on screen across the rebase.
+    const rebaseFrom = scrollerRef.current;
+    pendingAnchorRef.current = {
+      left: preview.left,
+      top: preview.top,
+      elastic,
+      fromLeft: rebaseFrom ? rebaseFrom.scrollLeft : preview.left,
+      fromTop: rebaseFrom ? rebaseFrom.scrollTop : preview.top,
+    };
     scaleRef.current = preview.targetScale;
     setScale(preview.targetScale);
     // Phone: keep showing the same (possibly past-the-limit) scale after the

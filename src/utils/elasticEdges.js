@@ -156,19 +156,34 @@ export function composeElasticTransform(inner, outer) {
 }
 
 /**
- * A gesture ended while the previous leftover was still easing home: carry
- * what is still shown of it into the new leftover so the release starts from
- * exactly what is on screen (zoom multiplies, offsets add).
+ * A pinch ends while the previous zoom-limit ease is still running on top of
+ * it (review 9 / robust 10): the leftover to ease home must be EXACTLY the
+ * picture the last frame showed, i.e. the same nesting the render draws with
+ * composeElasticTransform - not foldElasticLeftover's multiply-and-add, which
+ * is only that picture when both pivots are the same point (pivots 150 px
+ * apart with 8% of a x1.8 bounce left: a ~12 px jump in the release frame).
+ *
+ * `pinch` is the pinch's own leftover in the committed layout ({ ax, ay, z,
+ * tx, ty }, pivot in the new scroll space). `ease` is the running ease
+ * ({ ax, ay, z, tx, ty }, pivot in the scroll space of the layout it was
+ * drawn over). The ease is the OUTER transform: it acts on the picture as
+ * drawn, so its pivot keeps its place on screen - in the new scroll space it
+ * moves by the scroll change (`scrollShiftX/Y` = new scroll - old scroll),
+ * never by the zoom ratio.
  */
-export function foldElasticLeftover(next, previous) {
-  if (!previous) return next;
-  const z = finite(previous.z, 1);
-  return {
-    ...next,
-    z: finite(next.z, 1) * z,
-    tx: finite(next.tx) + finite(previous.tx),
-    ty: finite(next.ty) + finite(previous.ty),
-  };
+export function composeReleaseLeftover(pinch, ease, { scrollShiftX = 0, scrollShiftY = 0 } = {}) {
+  if (!ease) return pinch;
+  const out = composeElasticTransform(
+    { ox: pinch.ax, oy: pinch.ay, s: pinch.z, tx: pinch.tx, ty: pinch.ty },
+    {
+      ox: finite(ease.ax) + finite(scrollShiftX),
+      oy: finite(ease.ay) + finite(scrollShiftY),
+      s: ease.z,
+      tx: ease.tx,
+      ty: ease.ty,
+    },
+  );
+  return { ...pinch, z: out.s, tx: out.tx, ty: out.ty };
 }
 
 // ---- phone: one finger past an edge ---------------------------------------
