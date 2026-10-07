@@ -14,6 +14,9 @@ import Spinner from '../components/Spinner';
 import { useTooltip } from '../components/Tooltip';
 import { watchLightPopover } from '../components/dismissRules.js';
 import { placeAnchoredMenu } from '../utils/floatingUiGeometry.js';
+import { PageMenuList } from './PageActionsMenu.jsx';
+import { availableActions, buildPageMenuItems, runPageMenuAction } from './pageMenuItems.js';
+import { thumbnailBoxSize, thumbnailBoxStyle } from './pageThumbnailBox.js';
 import { getPageViewBase, pageViewKey, pageViewUprightKey } from '../utils/pageViewDocument.js';
 import {
   getCachedPageThumbnails,
@@ -49,55 +52,19 @@ const IDLE_PREFILL_SPAN = 16;
 // The page menu's layer: above the phone dock (6750), sheets and popovers
 // (up to 7400), below modals (10000+), the tooltip and toasts.
 const PAGE_MENU_Z = 9000;
+// Phone: how long a still finger on a card takes to open its page menu (the
+// viewer's own long-press menu uses 380ms; a list that scrolls wants a touch
+// longer so a slow scroll start never opens it).
+const MOBILE_LONG_PRESS_MS = 450;
 
-/* One row of the page menu (polish 3, 2026-10-04). The menu used to spell out
-   the same 15-line style on each of its eleven buttons, and they had drifted:
-   Move up / down had no font size (13.3px), Paste was dimmed twice (grey AND
-   50% opacity) and Move up / down by opacity alone. Now:
-     - off is --text-disabled, never an opacity (tokens.css);
-     - the phone row is the phone menu row every other phone menu uses
-       (--sheet-menu-item-h, 15px/400, --text-1, 16px glyph: the More menu);
-     - the desktop row is unchanged (13px, 8px 12px, --text-2, 14px glyph).
-   The hover fill is passed through unchanged (menu shades: owner decision
-   pending). */
-const PageMenuItem = ({ mobile = false, icon, label, disabled = false, danger = false, hoverBg = 'var(--hover)', onClick }) => (
-  <button
-    type="button"
-    role="menuitem"
-    disabled={disabled}
-    onClick={onClick}
-    style={{
-      width: '100%',
-      display: 'flex',
-      alignItems: 'center',
-      textAlign: 'left',
-      background: 'transparent',
-      border: 'none',
-      ...(mobile
-        ? { minHeight: 'var(--sheet-menu-item-h)', padding: '0 12px', gap: '12px', borderRadius: 'var(--radius-xs)', font: '400 15px/20px var(--font-ui)' }
-        : { padding: '8px 12px', gap: '8px', borderRadius: '4px', fontSize: '13px' }),
-      // Off is the shared look (states.css section 6: --disabled-ink, not-allowed).
-      cursor: 'pointer',
-      color: danger ? 'var(--danger-text)' : (mobile ? 'var(--text-1)' : 'var(--text-2)'),
-    }}
-    onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = hoverBg; }}
-    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-  >
-    <Icon
-      name={icon}
-      size={mobile ? 16 : 14}
-      color={danger ? 'var(--danger)' : (mobile ? 'currentColor' : 'var(--text-3)')}
-    />
-    {label}
-  </button>
+// The page menu's rows and list: sidebar/PageActionsMenu.jsx and
+// sidebar/pageMenuItems.js (one list, shared with the viewer's page menu).
+
+// The drawn width of a card's thumbnail (its page box, not the whole card):
+// thumbnails are drawn at the size they are shown.
+const thumbnailBoxWidth = (card) => (
+  card?.querySelector?.('[data-page-preview]')?.clientWidth || card?.clientWidth || 0
 );
-
-/* A hairline between groups. --border, the divider token: the old
-   --surface-3 line vanished on the desktop menu, whose fill IS --surface-3. */
-const PageMenuDivider = () => (
-  <div role="separator" style={{ height: '1px', margin: '4px 0', background: 'var(--border)' }} />
-);
-
 
 // Thumbnails drawn for `previousDoc`, re-addressed to the pages of `nextDoc`
 // (a page view over the same document). null when the documents differ.
@@ -510,7 +477,7 @@ const PagesPanel = ({
     const dpr = Math.min(window.devicePixelRatio || 1, dprCap);
     let scale = quality === 'crisp' ? CRISP_THUMBNAIL_SCALE : FAST_THUMBNAIL_SCALE;
     if (quality === 'crisp') {
-      const cardWidth = thumbnailRefs.current[pageNumber]?.clientWidth || 0;
+      const cardWidth = thumbnailBoxWidth(thumbnailRefs.current[pageNumber]);
       const base = page.getViewport({ scale: 1 });
       const sideways = getRotationDelta(pageNumber) % 180 !== 0;
       const pageWidth = sideways ? base.height : base.width;
@@ -585,7 +552,7 @@ const PagesPanel = ({
     // One CSS pixel per card pixel: a quick, small first image (encoded in a
     // millisecond or two); the crisp pass sharpens it.
     const dpr = 1;
-    const cardWidth = thumbnailRefs.current[pageNumber]?.clientWidth || 160;
+    const cardWidth = thumbnailBoxWidth(thumbnailRefs.current[pageNumber]) || 160;
     const width = Math.max(1, Math.min(source.width, Math.round(cardWidth * dpr)));
     const height = Math.max(1, Math.round(width / pageRatio));
     const canvas = document.createElement('canvas');
@@ -901,12 +868,14 @@ const PagesPanel = ({
     }
   }, [selectedPage]);
 
-  const handleContextMenu = useCallback((e, pageNumber) => {
+  // A right-click anywhere on a card, or its "..." button (fromButton: the
+  // menu then sits beside the button, as on the phone).
+  const handleContextMenu = useCallback((e, pageNumber, { fromButton = false } = {}) => {
     e.preventDefault();
     e.stopPropagation();
     // The press point only; the menu is placed once it has been measured
     // (placeContextMenu below).
-    setContextMenu({ pageNumber, x: e.clientX, y: e.clientY });
+    setContextMenu({ pageNumber, x: e.clientX, y: e.clientY, fromButton });
   }, []);
 
   // Owner 2026-10-01 (iPhone): the page menu was drawn inside the Pages sheet,
@@ -932,7 +901,7 @@ const PagesPanel = ({
       const dock = document.querySelector('.mobile-pdf-dock')?.getBoundingClientRect();
       if (dock && dock.height > 0 && dock.top < bottom) bottom = dock.top;
     }
-    const card = mobileMode ? thumbnailRefs.current[contextMenu.pageNumber] : null;
+    const card = (mobileMode || contextMenu.fromButton) ? thumbnailRefs.current[contextMenu.pageNumber] : null;
     const anchorEl = card?.querySelector('[data-page-menu-anchor]');
     const position = placeAnchoredMenu({
       anchor: anchorEl ? anchorEl.getBoundingClientRect() : { left: contextMenu.x, top: contextMenu.y },
@@ -966,7 +935,42 @@ const PagesPanel = ({
     setContextMenu(null);
   }, [allowedPages, onReorderPages]);
 
+  // Phone: a finger held still on a card opens its page menu (the touch
+  // right-click; iOS fires no contextmenu event, and showed its own image
+  // callout instead). The tap that ends the press does nothing else.
+  const longPressRef = useRef({ timer: 0, x: 0, y: 0, fired: false });
+  const clearLongPress = useCallback(() => {
+    if (longPressRef.current.timer) clearTimeout(longPressRef.current.timer);
+    longPressRef.current.timer = 0;
+  }, []);
+  useEffect(() => clearLongPress, [clearLongPress]);
+  const handleCardPointerDown = useCallback((event, pageNumber) => {
+    if (!mobileMode || event.pointerType === 'mouse') return;
+    if (event.target?.closest?.('button')) return;
+    clearLongPress();
+    const state = longPressRef.current;
+    state.x = event.clientX;
+    state.y = event.clientY;
+    state.fired = false;
+    const card = event.currentTarget;
+    state.timer = setTimeout(() => {
+      state.timer = 0;
+      state.fired = true;
+      const anchor = card?.querySelector?.('[data-page-menu-anchor]')?.getBoundingClientRect();
+      setContextMenu({ pageNumber, x: anchor?.left ?? state.x, y: anchor?.top ?? state.y, fromButton: true });
+    }, MOBILE_LONG_PRESS_MS);
+  }, [clearLongPress, mobileMode]);
+  const handleCardPointerMove = useCallback((event) => {
+    const state = longPressRef.current;
+    if (!state.timer) return;
+    if (Math.abs(event.clientX - state.x) > 8 || Math.abs(event.clientY - state.y) > 8) clearLongPress();
+  }, [clearLongPress]);
+
   const handlePageClick = useCallback((pageNumber) => {
+    if (longPressRef.current.fired) {
+      longPressRef.current.fired = false;
+      return;
+    }
     if (mobileMode && mobileSelectMode) {
       setMobileSelectedPages((current) => {
         const next = new Set(current);
@@ -988,35 +992,7 @@ const PagesPanel = ({
     }
   }, [onNavigateToPage]);
 
-  const handleDuplicate = useCallback((pageNumber) => {
-    if (onDuplicatePage) {
-      onDuplicatePage(pageNumber);
-    }
-    setContextMenu(null);
-  }, [onDuplicatePage]);
-
-
-  const handleDelete = useCallback((pageNumber) => {
-    if (onDeletePage && window.confirm(`Delete page ${pageNumber}?`)) {
-      onDeletePage(pageNumber);
-    }
-    setContextMenu(null);
-  }, [onDeletePage]);
-
-  const handleCut = useCallback((pageNumber) => {
-    if (onCutPage) {
-      onCutPage(pageNumber);
-    }
-    setContextMenu(null);
-  }, [onCutPage]);
-
-  const handleCopy = useCallback((pageNumber) => {
-    if (onCopyPage) {
-      onCopyPage(pageNumber);
-    }
-    setContextMenu(null);
-  }, [onCopyPage]);
-
+  // The phone action bar's Paste: below the current page.
   const handlePaste = useCallback((pageNumber) => {
     if (onPastePage && clipboardPage) {
       onPastePage(pageNumber, clipboardPage, clipboardType);
@@ -1024,33 +1000,31 @@ const PagesPanel = ({
     setContextMenu(null);
   }, [onPastePage, clipboardPage, clipboardType]);
 
-  const handleRotate = useCallback((pageNumber) => {
-    if (onRotatePage) {
-      onRotatePage(pageNumber);
-    }
-    setContextMenu(null);
-  }, [onRotatePage]);
+  // The page menu: the one shared list (sidebar/pageMenuItems.js), run
+  // through these page operations. The viewer's page menu runs the same list.
+  const pageMenuHandlers = useMemo(() => ({
+    move: onReorderPages ? movePageByOffset : undefined,
+    cut: onCutPage,
+    copy: onCopyPage,
+    paste: onPastePage
+      ? (pageNumber, position) => { if (clipboardPage) onPastePage(pageNumber, clipboardPage, clipboardType, position); }
+      : undefined,
+    duplicate: onDuplicatePage,
+    insertBlank: onInsertBlankPage,
+    rotate: onRotatePage,
+    mirror: onMirrorPage,
+    reset: onResetPage,
+    delete: onDeletePage
+      ? (pageNumber) => { if (window.confirm(`Delete page ${pageNumber}?`)) onDeletePage(pageNumber); }
+      : undefined,
+  }), [movePageByOffset, onReorderPages, onCutPage, onCopyPage, onPastePage, clipboardPage, clipboardType, onDuplicatePage, onInsertBlankPage, onRotatePage, onMirrorPage, onResetPage, onDeletePage]);
 
-  const handleMirrorHorizontal = useCallback((pageNumber) => {
-    if (onMirrorPage) {
-      onMirrorPage(pageNumber, 'horizontal');
-    }
+  const pickPageMenuItem = useCallback((key) => {
+    const pageNumber = contextMenu?.pageNumber;
+    // Closed first: Delete asks a question, and the menu must not sit over it.
     setContextMenu(null);
-  }, [onMirrorPage]);
-
-  const handleMirrorVertical = useCallback((pageNumber) => {
-    if (onMirrorPage) {
-      onMirrorPage(pageNumber, 'vertical');
-    }
-    setContextMenu(null);
-  }, [onMirrorPage]);
-
-  const handleReset = useCallback((pageNumber) => {
-    if (onResetPage) {
-      onResetPage(pageNumber);
-    }
-    setContextMenu(null);
-  }, [onResetPage]);
+    if (pageNumber) runPageMenuAction(key, pageNumber, pageMenuHandlers);
+  }, [contextMenu, pageMenuHandlers]);
 
   // Handle drag start for internal reordering
   const handleDragStart = useCallback((e, pageNumber) => {
@@ -1129,7 +1103,10 @@ const PagesPanel = ({
   }, []);
 
   return (
-    <div className={mobileMode ? 'mobile-pages-panel' : undefined} style={{
+    <div
+      className={mobileMode ? 'mobile-pages-panel' : 'pages-panel'}
+      data-pages-panel=""
+      style={{
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
@@ -1165,7 +1142,7 @@ const PagesPanel = ({
           // Off-screen thumbnail rows skip layout/paint; estimate each row's
           // height from the same per-page aspect ratio that drives the live
           // thumbnail box so the scrollbar geometry stays stable.
-          const estimatedRowHeight = Math.round(8 + (150 * displayRatio) / 100);
+          const estimatedRowHeight = Math.round(10 + thumbnailBoxSize(displayRatio / 100, 249).height);
           const transformState = pageTransformations[pageNumber] || { rotation: 0, mirrorH: false, mirrorV: false };
           const rotationDelta = getRotationDelta(pageNumber);
           const transforms = [];
@@ -1184,9 +1161,12 @@ const PagesPanel = ({
           return (
             <div
               key={cardKeys[pageNumber]}
-              className={mobileMode ? `mobile-page-card${isSelected ? ' is-active' : ''}${isMobileSelected ? ' is-selected' : ''}` : undefined}
+              className={mobileMode
+                ? `mobile-page-card${isSelected ? ' is-active' : ''}${isMobileSelected ? ' is-selected' : ''}`
+                : `pages-panel-card${isSelected ? ' is-active' : ''}${contextMenu?.pageNumber === pageNumber ? ' is-menu-open' : ''}`}
               ref={el => { thumbnailRefs.current[pageNumber] = el; }}
               data-page-number={pageNumber}
+              data-page-card=""
               draggable={!mobileMode}
               onDragStart={(e) => {
                 handleDragStart(e, pageNumber);
@@ -1200,6 +1180,10 @@ const PagesPanel = ({
               onDrop={(e) => handleDrop(e, pageNumber)}
               onContextMenu={(e) => handleContextMenu(e, pageNumber)}
               onClick={() => handlePageClick(pageNumber)}
+              onPointerDown={mobileMode ? (e) => handleCardPointerDown(e, pageNumber) : undefined}
+              onPointerMove={mobileMode ? handleCardPointerMove : undefined}
+              onPointerUp={mobileMode ? clearLongPress : undefined}
+              onPointerCancel={mobileMode ? clearLongPress : undefined}
               onDoubleClick={() => handlePageDoubleClick(pageNumber)}
               style={{
                 position: 'relative',
@@ -1214,6 +1198,10 @@ const PagesPanel = ({
                 borderRadius: '4px',
                 cursor: mobileMode ? 'pointer' : (draggedPage === pageNumber ? 'grabbing' : 'grab'),
                 touchAction: mobileMode ? 'pan-y' : undefined,
+                // No iOS image callout / text selection on a long-press.
+                WebkitTouchCallout: mobileMode ? 'none' : undefined,
+                WebkitUserSelect: mobileMode ? 'none' : undefined,
+                userSelect: mobileMode ? 'none' : undefined,
                 // The card left behind while its page is carried.
                 opacity: draggedPage === pageNumber ? 0.45 : 1,
                 zIndex: draggedPage === pageNumber ? 1 : 'auto',
@@ -1232,28 +1220,6 @@ const PagesPanel = ({
                 }
               }}
             >
-              {/* Page Number Badge */}
-              <div style={{
-                position: 'absolute',
-                top: '6px',
-                right: '6px',
-                width: '20px',
-                height: '20px',
-                borderRadius: '50%',
-                background: 'var(--surface-3)',
-                color: 'var(--text-1)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '10px',
-                fontWeight: '600',
-                fontFamily: FONT_FAMILY,
-                zIndex: 1,
-                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)'
-              }}>
-                {pageNumber}
-              </div>
-
               {/* UX 2026-07-12 — Mobile clipboard indicator: when this page is the
                   cut/copy source, surface a green-bordered badge at the top-left of
                   the card so the user can see which page is on the clipboard before
@@ -1276,14 +1242,40 @@ const PagesPanel = ({
               )}
 
               {/* Thumbnail */}
-              <div className={mobileMode ? 'mobile-page-preview' : undefined} data-drag-keep-fill style={{
+              {/* Owner 2026-10-07 ("the pages are being shown too big"):
+                  the thumbnail fits one square box, keeping the page's shape
+                  (sidebar/pageThumbnailBox.js), centred in its card. A sheet
+                  turned on its side is no taller than a letter page. */}
+              <div className={mobileMode ? 'mobile-page-preview' : 'pages-panel-preview'} data-drag-keep-fill data-page-preview="" style={{
                 position: 'relative',
-                width: '100%',
-                paddingBottom: `${displayRatio}%`,
+                ...thumbnailBoxStyle(displayRatio / 100),
+                margin: '0 auto',
                 background: '#ffffff',
                 borderRadius: '2px',
                 overflow: 'hidden'
               }}>
+                {/* Page number: on the page's top-right corner. */}
+                <div style={{
+                  position: 'absolute',
+                  top: '6px',
+                  right: '6px',
+                  width: '20px',
+                  height: '20px',
+                  borderRadius: '50%',
+                  background: 'var(--surface-3)',
+                  color: 'var(--text-1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '10px',
+                  fontWeight: '600',
+                  fontFamily: FONT_FAMILY,
+                  zIndex: 1,
+                  pointerEvents: 'none',
+                  boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)'
+                }}>
+                  {pageNumber}
+                </div>
                 {thumbnailSrc ? (
                   <img
                     src={thumbnailSrc}
@@ -1304,13 +1296,23 @@ const PagesPanel = ({
                 {/* Owner 2026-10-01: no "Loading..." text. A page not drawn
                     yet is the plain paper box above, in the page's own shape;
                     its low-res image lands in it a moment later. */}
-                {mobileMode && (
-                  <button
+                {/* The page's "..." menu button, bottom-right on the page.
+                    Phone: always shown. Desktop (owner 2026-10-07: "I don't
+                    see the three dots"): shown on the hovered, focused or
+                    current card and while its menu is open (.pages-panel-more
+                    in styles.css); it opens the same menu as a right-click. */}
+                <button
                     type="button"
+                    className={mobileMode ? undefined : 'pages-panel-more'}
                     aria-label={`Page ${pageNumber} actions`}
+                    aria-haspopup="menu"
+                    aria-expanded={contextMenu?.pageNumber === pageNumber}
                     {...tip(`Page ${pageNumber} actions`, 'below')}
-                    onClick={(event) => handleContextMenu(event, pageNumber)}
-                    style={{
+                    onClick={(event) => handleContextMenu(event, pageNumber, { fromButton: true })}
+                    onDoubleClick={(event) => event.stopPropagation()}
+                    draggable={false}
+                    onDragStart={(event) => { event.preventDefault(); event.stopPropagation(); }}
+                    style={mobileMode ? {
                       /* Owner 2026-10-01 (iPhone): the old control was a see-through
                          bordered square straddling the thumbnail's corner, so the card
                          border, the paper edge, its own border and the page lines all
@@ -1332,14 +1334,28 @@ const PagesPanel = ({
                       background: 'transparent',
                       border: 0,
                       zIndex: 2,
+                    } : {
+                      position: 'absolute',
+                      right: 0,
+                      bottom: 0,
+                      width: 36,
+                      height: 36,
+                      padding: 0,
+                      display: 'grid',
+                      placeItems: 'center',
+                      color: 'var(--text-1)',
+                      background: 'transparent',
+                      border: 0,
+                      cursor: 'pointer',
+                      zIndex: 2,
                     }}
                   >
                     <span
                       data-page-menu-anchor="true"
                       aria-hidden="true"
                       style={{
-                        width: 28,
-                        height: 28,
+                        width: mobileMode ? 28 : 24,
+                        height: mobileMode ? 28 : 24,
                         display: 'grid',
                         placeItems: 'center',
                         borderRadius: '50%',
@@ -1347,10 +1363,9 @@ const PagesPanel = ({
                         boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
                       }}
                     >
-                      <Icon name="moreHorizontal" size={18} color="currentColor" />
+                      <Icon name="moreHorizontal" size={mobileMode ? 18 : 16} color="currentColor" />
                     </span>
                   </button>
-                )}
               </div>
             </div>
           );
@@ -1454,7 +1469,11 @@ const PagesPanel = ({
             boxShadow: 'var(--shadow-popover)',
             padding: '6px',
             zIndex: PAGE_MENU_Z,
-            width: '188px',
+            // As wide as its longest row ("Mirror horizontally"), at least
+            // the old 188px.
+            width: 'max-content',
+            minWidth: '188px',
+            maxWidth: 'calc(100vw - 32px)',
             overflowY: 'auto',
             fontFamily: FONT_FAMILY
           } : {
@@ -1472,44 +1491,28 @@ const PagesPanel = ({
             fontFamily: FONT_FAMILY
           }}
         >
-          {mobileMode && (
-            <>
-              {/* UX: demo menus lead with a muted title row + divider
-                  (FloatingContextMenu, styles.ts:872-889). Polish 3: the
-                  phone's section label type (--sheet-section), not 11/800. */}
-              <div style={{ color: 'var(--text-3)', font: 'var(--sheet-section)', padding: '4px 6px' }}>{`Page ${contextMenu.pageNumber}`}</div>
-              <PageMenuDivider />
-              <PageMenuItem
-                mobile
-                icon="chevronUp"
-                label="Move up"
-                disabled={allowedPages.indexOf(contextMenu.pageNumber) <= 0}
-                onClick={() => movePageByOffset(contextMenu.pageNumber, -1)}
-              />
-              <PageMenuItem
-                mobile
-                icon="chevronDown"
-                label="Move down"
-                disabled={allowedPages.indexOf(contextMenu.pageNumber) >= allowedPages.length - 1}
-                onClick={() => movePageByOffset(contextMenu.pageNumber, 1)}
-              />
-              <PageMenuDivider />
-            </>
-          )}
-          <PageMenuItem mobile={mobileMode} icon="scissors" label="Cut" onClick={() => handleCut(contextMenu.pageNumber)} />
-          <PageMenuItem mobile={mobileMode} icon="copy" label="Copy" onClick={() => handleCopy(contextMenu.pageNumber)} />
-          <PageMenuItem mobile={mobileMode} icon="paste" label="Paste" disabled={!clipboardPage} onClick={() => handlePaste(contextMenu.pageNumber)} />
-          <PageMenuItem mobile={mobileMode} icon="duplicate" label="Duplicate" onClick={() => handleDuplicate(contextMenu.pageNumber)} />
-          <PageMenuDivider />
-          <PageMenuItem mobile={mobileMode} icon="rotate" label="Rotate" onClick={() => handleRotate(contextMenu.pageNumber)} />
-          <PageMenuItem mobile={mobileMode} icon="flipHorizontal" label="Mirror horizontally" onClick={() => handleMirrorHorizontal(contextMenu.pageNumber)} />
-          <PageMenuItem mobile={mobileMode} icon="flipVertical" label="Mirror vertically" onClick={() => handleMirrorVertical(contextMenu.pageNumber)} />
-          {/* Owner 2026-10-06: a menu item that has nothing to act on is
-              disabled - Reset with no mirror / turn to undo, Delete on the
-              only page (a document cannot have zero pages). */}
-          <PageMenuItem mobile={mobileMode} icon="reset" label="Reset" disabled={!pageHasTransform(pageTransformations?.[contextMenu.pageNumber])} onClick={() => handleReset(contextMenu.pageNumber)} />
-          <PageMenuDivider />
-          <PageMenuItem mobile={mobileMode} icon="trash" label="Delete" danger disabled={!(numPages > 1)} hoverBg={mobileMode ? 'var(--surface-2)' : 'var(--surface-3)'} onClick={() => handleDelete(contextMenu.pageNumber)} />
+          {/* The one page menu list (sidebar/pageMenuItems.js), shared
+              with the viewer's page menu. The phone adds Move up / down (it
+              has no drag). Owner 2026-10-06: an item with nothing to act on
+              is disabled (Paste with an empty clipboard, Reset with nothing
+              to undo, Delete on the only page). */}
+          <PageMenuList
+            mobile={mobileMode}
+            onPick={pickPageMenuItem}
+            dangerHoverBg={mobileMode ? 'var(--surface-2)' : 'var(--surface-3)'}
+            items={buildPageMenuItems({
+              pageNumber: contextMenu.pageNumber,
+              pageCount: numPages,
+              clipboardPage,
+              clipboardType,
+              hasTransform: pageHasTransform(pageTransformations?.[contextMenu.pageNumber]),
+              move: mobileMode ? {
+                canUp: allowedPages.indexOf(contextMenu.pageNumber) > 0,
+                canDown: allowedPages.indexOf(contextMenu.pageNumber) < allowedPages.length - 1,
+              } : null,
+              available: availableActions(pageMenuHandlers),
+            })}
+          />
         </div>
         </>,
         document.body,

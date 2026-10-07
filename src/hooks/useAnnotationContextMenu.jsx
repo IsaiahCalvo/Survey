@@ -38,6 +38,10 @@ import {
 import { canModify, canToggleLock, isUserLocked } from '../lib/collab/permissionScope.js';
 import { reorderSelectionInStack } from '../utils/annotationFamilyRules.js';
 import { resolveMenuTargets, sameMenuTargets, stampMenuTargetIds } from '../utils/selectionRemap.js';
+import { pageHasTransform } from '../utils/disabledActions.js';
+import { PICK_ANY_TOOLS } from '../utils/selectModes.js';
+import { PageMenuList } from '../sidebar/PageActionsMenu.jsx';
+import { availableActions, buildPageMenuItems, runPageMenuAction } from '../sidebar/pageMenuItems.js';
 
 // w61: `getPageObjects(pageNumber)` (optional) returns the page's mark list,
 // so the menu can note which marks it was opened on (by id) and still act on
@@ -215,6 +219,12 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // w56: PDFViewer's handleBeginBatchDelete — arms a mixed marks+callouts
     // delete so the group menu's Delete is one save / one Undo.
     beginBatchDelete = null,
+    // Owner 2026-10-07: a right-click (phone: long-press) on a bare page with
+    // Pan or Select armed opens the page menu - the SAME list as the Pages
+    // tab's (sidebar/pageMenuItems.js). { activeTool, pageCount,
+    // clipboardPage, clipboardType, pageTransformations, handlers } where
+    // handlers are the page operations (runPageMenuAction). Optional.
+    pageMenu = null,
   } = actions;
 
   // May this mark be cut / deleted? RULED 2026-09-28 owner: open editing +
@@ -881,22 +891,47 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         // hidden app-wide until the matrix-per-shape rewrite ships.
       ];
     } else {
-      // Empty canvas / page — only Paste lives here (for annotation paste).
-      // Page-level operations (Cut/Copy/Delete/Rotate/Mirror) belong in the
-      // thumbnails sidebar (src/sidebar/PagesPanel.jsx), not the canvas
-      // right-click. This matches Acrobat and Bluebeam: right-click a page
-      // thumbnail for page ops; right-click the page body for annotation
-      // ops. Shares doPasteAnnotation with the annotation menu above.
+      // Empty canvas / page. Paste (marks) at the press point lives here,
+      // shared with the annotation menu above (doPasteAny). Owner 2026-10-07:
+      // with Pan or Select armed the page operations are here too (below).
       items = [
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
       ];
     }
 
+    // The page menu: a bare page under Pan / Select (any Select mode). A
+    // drawing tool keeps the plain Paste menu (its press is for drawing).
+    const pageMenuItems = ctx.kind === 'page'
+      && pageMenu && PICK_ANY_TOOLS.includes(pageMenu.activeTool)
+      && Number.isInteger(ctx.pageNumber) && ctx.pageNumber >= 1
+      ? [
+        // Marks on the clipboard still paste here first, at the press point.
+        ...(hasAnyClipboard ? [
+          { key: 'pasteMarks', label: 'Paste', icon: 'paste' },
+          { key: 'sep-marks', separator: true },
+        ] : []),
+        ...buildPageMenuItems({
+          pageNumber: ctx.pageNumber,
+          pageCount: pageMenu.pageCount,
+          clipboardPage: pageMenu.clipboardPage,
+          clipboardType: pageMenu.clipboardType,
+          hasTransform: pageHasTransform(pageMenu.pageTransformations?.[ctx.pageNumber]),
+          available: availableActions(pageMenu.handlers),
+        }),
+      ]
+      : null;
+    const pickPageMenuItem = (key) => {
+      closeAnnotationContextMenu();
+      if (key === 'pasteMarks') { doPasteAny(); return; }
+      runPageMenuAction(key, ctx.pageNumber, pageMenu?.handlers);
+    };
+
     // UX: mobile context-menu chrome (Phase D parity). Panel width tracks the
     // demo per menu type: object menus (annotation / group / callout) = 176px,
     // paste/counter/text-markup = 154px (demo App.tsx:866/897 + styles.ts:861).
     const isMobileMenu = !!mobileMode;
-    const mobileWidth = (ctx.kind === 'annotation' || ctx.kind === 'group' || ctx.kind === 'callout' || ctx.kind === 'surveyMarker') ? 176 : 154;
+    const mobileWidth = pageMenuItems ? 'max-content'
+      : (ctx.kind === 'annotation' || ctx.kind === 'group' || ctx.kind === 'callout' || ctx.kind === 'surveyMarker') ? 176 : 154;
     const mobileTitle = (ctx.kind === 'annotation' || ctx.kind === 'group') ? 'Annotation'
       : ctx.kind === 'surveyMarker' ? 'Survey Marker'
       : ctx.kind === 'callout' ? 'Callout'
@@ -968,7 +1003,8 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           }
         }}
         role="menu"
-        aria-label={`${mobileTitle} actions`}
+        aria-label={pageMenuItems ? `Page ${ctx.pageNumber} actions` : `${mobileTitle} actions`}
+        data-page-menu={pageMenuItems ? ctx.pageNumber : undefined}
         // Polish 3 (2026-10-04): both menus take the one popup corner and
         // shadow (--radius-md / --shadow-popover), and the phone rows are the
         // phone menu row (below). The fills and hover colours are unchanged:
@@ -986,6 +1022,10 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           boxShadow: 'var(--shadow-popover)',
           zIndex: 10000,
           width: mobileWidth,
+          // The page menu is as wide as its longest row, at least 188px
+          // (the Pages tab's page menu).
+          minWidth: pageMenuItems ? 188 : undefined,
+          maxWidth: pageMenuItems ? 'calc(100vw - 32px)' : undefined,
           padding: 6,
           fontSize: 13,
           color: 'var(--text-1)',
@@ -1012,13 +1052,24 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       >
         {/* UX: mobile menus lead with a muted title row + divider, matching the
             demo FloatingContextMenu (styles.ts:872-889). Desktop stays title-less. */}
-        {isMobileMenu && (
+        {isMobileMenu && !pageMenuItems && (
           <>
             <div style={{ color: 'var(--text-3)', font: 'var(--sheet-section)', padding: '4px 6px' }}>{mobileTitle}</div>
             <div role="separator" style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
           </>
         )}
-        {items.map((it) => (
+        {pageMenuItems && (
+          // The Pages tab's own rows (sidebar/PageActionsMenu.jsx); hover is
+          // this menu's (it sits on --surface-2 / --surface-1).
+          <PageMenuList
+            items={pageMenuItems}
+            mobile={isMobileMenu}
+            onPick={pickPageMenuItem}
+            hoverBg={isMobileMenu ? 'var(--surface-2)' : 'var(--surface-3)'}
+            dangerHoverBg={isMobileMenu ? 'var(--surface-2)' : 'var(--surface-3)'}
+          />
+        )}
+        {!pageMenuItems && items.map((it) => (
           it.separator
             ? <div key={it.key} role="separator" style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
             : (

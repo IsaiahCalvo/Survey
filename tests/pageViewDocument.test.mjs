@@ -82,9 +82,11 @@ function randomOperation(count, random) {
   const type = kinds[Math.floor(random() * kinds.length)];
   if (type === 'move') return { type, from: page(), to: page() };
   if (type === 'delete') return { type, page: page() };
-  if (type === 'insert') return { type, afterPage: page() };
+  // Slot 0 = above the first page (insert / paste above page 1).
+  const slot = () => Math.floor(random() * (count + 1));
+  if (type === 'insert') return { type, afterPage: slot() };
   if (type === 'duplicate') return { type, page: page() };
-  if (type === 'copy') return { type, source: page(), afterPage: page() };
+  if (type === 'copy') return { type, source: page(), afterPage: slot() };
   return { type, page: page(), delta: random() < 0.5 ? 90 : -90 };
 }
 

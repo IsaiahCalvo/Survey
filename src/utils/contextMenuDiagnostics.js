@@ -185,6 +185,19 @@ function diag(line) {
       return;
     }
 
+    // A panel that covers the viewer (the left Pages / Search / Bookmarks
+    // panel, the Survey panel, a phone sheet: [data-viewer-occluder]) is never
+    // a page. The hit-test below falls back to elementsFromPoint, which also
+    // returns the PDF page lying BEHIND the panel, so a right-click on a Pages
+    // thumbnail over a wide sheet opened the viewer's menu (and cancelled the
+    // thumbnail's own page menu) - owner 2026-10-07: "sometimes I don't see
+    // the option to manipulate". Let the panel handle its own right-click.
+    if (e.target && typeof e.target.closest === 'function'
+        && e.target.closest('[data-viewer-occluder]')) {
+      diag('[CTXDIAG] skipped — inside a panel over the viewer');
+      return;
+    }
+
     // Region Editor owns its own right-click menu. This dispatcher runs in
     // capture phase, so without this guard it opens the page-level disabled
     // Paste menu before RegionSelectionTool can show Copy/Cut/Paste/Merge.

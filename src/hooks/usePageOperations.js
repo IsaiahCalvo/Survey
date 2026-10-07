@@ -271,22 +271,25 @@ export function usePageOperations({
     setClipboardType('copy');
   }, [setClipboardPage, setClipboardType]);
 
-  const handlePastePage = useCallback(async (targetPageNumber, sourcePageNumber, pasteType) => {
+  // Paste the clipboard page below the target (the default, "after") or above
+  // it (position 'above'; owner 2026-10-07, the page menu's Paste above).
+  const handlePastePage = useCallback(async (targetPageNumber, sourcePageNumber, pasteType, position = 'below') => {
     if (!sourcePageNumber || !pasteType) return false;
     if (pasteType === 'cut' && sourcePageNumber === targetPageNumber) {
       setClipboardPage(null);
       setClipboardType(null);
       return true;
     }
+    // The slot the page goes into: after this page (0 = before page 1).
+    const afterPage = position === 'above' ? targetPageNumber - 1 : targetPageNumber;
     const operation = pasteType === 'cut'
       ? {
         type: 'move',
         from: sourcePageNumber,
-        // Paste means "after target". Removing a source that was before the
-        // target shifts that insertion slot back by one.
-        to: sourcePageNumber <= targetPageNumber ? targetPageNumber : targetPageNumber + 1,
+        // Removing a source that was before the slot shifts it back by one.
+        to: sourcePageNumber <= afterPage ? afterPage : afterPage + 1,
       }
-      : { type: 'copy', source: sourcePageNumber, afterPage: targetPageNumber };
+      : { type: 'copy', source: sourcePageNumber, afterPage };
     const succeeded = await runMutation(operation, 'pasting');
     if (succeeded && pasteType === 'cut') {
       setClipboardPage(null);
@@ -307,8 +310,9 @@ export function usePageOperations({
     runMutation({ type: 'move', from: sourcePageNumber, to: targetPageNumber }, 'moving')
   ), [runMutation]);
 
-  const handleRotatePage = useCallback((pageNumber) => (
-    runMutation({ type: 'rotate', page: pageNumber, delta: 90 }, 'rotating')
+  // delta: 90 turns right (clockwise), -90 left.
+  const handleRotatePage = useCallback((pageNumber, delta = 90) => (
+    runMutation({ type: 'rotate', page: pageNumber, delta: delta === -90 ? -90 : 90 }, 'rotating')
   ), [runMutation]);
 
   const handleMirrorPage = useCallback((pageNumber, direction) => {
@@ -341,8 +345,10 @@ export function usePageOperations({
     runMutation({ type: 'rotate', page: pageNumber, delta: -90 }, 'rotating')
   ), [runMutation]);
 
+  // afterPageNumber 0 adds the blank above page 1. Its size is the page
+  // above it (or page 1 at the top): utils/blankPageSize.js.
   const handleInsertBlankPage = useCallback((afterPageNumber) => (
-    runMutation({ type: 'insert', afterPage: afterPageNumber }, 'inserting')
+    runMutation({ type: 'insert', afterPage: Math.max(0, Number(afterPageNumber) || 0) }, 'inserting')
   ), [runMutation]);
 
   return {

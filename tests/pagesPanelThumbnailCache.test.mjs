@@ -52,6 +52,7 @@ test('the panel restores from the cache and shows no "Loading..." text', () => {
   assert.match(PANEL, /useState\(\(\) => getCachedPageThumbnails\(pdfDoc\)\?\.thumbnails \|\| \{\}\)/);
   assert.match(PANEL, /rememberPageThumbnails\(pdfDoc, thumbnails, pageAspectRatios\)/);
   assert.doesNotMatch(PANEL, />\s*Loading\.\.\.\s*</);
-  // the phone page menu control is one circle with the level glyph
-  assert.match(PANEL, /<Icon name="moreHorizontal" size=\{18\}/);
+  // the page menu control is one circle with the level glyph (18px on the
+  // phone; the desktop Pages tab has it too since 2026-10-07, at 16px)
+  assert.match(PANEL, /<Icon name="moreHorizontal" size=\{mobileMode \? 18 : 16\}/);
 });
