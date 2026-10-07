@@ -337,7 +337,10 @@ function rasterDocKey(pdf) {
 const PAGE_THUMBS = new Map(); // pageId -> { canvas, scale, bytes }
 let pageThumbBytesTotal = 0;
 const PAGE_THUMBS_MAX_BYTES = 96 * 1024 * 1024;
-const MOBILE_PAGE_THUMBS_MAX_BYTES = 24 * 1024 * 1024;
+// Phone: 32 MB keeps a thumbnail of every page of a ~150-page letter-size
+// document (a 120-page file at 24 MB left its last 20 pages white for a
+// second after a fling at the farthest zoom).
+const MOBILE_PAGE_THUMBS_MAX_BYTES = 32 * 1024 * 1024;
 const pageThumbsMaxBytes = (isMobileSurface) => (isMobileSurface ? MOBILE_PAGE_THUMBS_MAX_BYTES : PAGE_THUMBS_MAX_BYTES);
 function pageThumbGet(pageId) {
   const entry = PAGE_THUMBS.get(pageId);
