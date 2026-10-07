@@ -41,6 +41,35 @@ export const PAN_MOMENTUM_DEFAULTS = Object.freeze({
   externalScrollEpsilonPx: 1.5,
 });
 
+// Phone finger flicks (owner 2026-10-07: "glide like native iOS"). iOS
+// UIScrollView's normal deceleration keeps 0.998 of the speed per ms, an
+// exponential time constant of -1 / ln(0.998) = 499.5 ms. The glide is called
+// over once it moves less than ~1 px a frame (0.06 px/ms), so a gentle flick
+// glides ~0.5 s and a hard one ~2 s. Frames up to 500 ms advance the glide by
+// their real length: WebKit drops frames while it paints pages, and the old
+// 32 ms cap played the glide in slow motion there (a 1.6 s glide took 11 s in
+// headless WebKit). The desktop pointer glide keeps PAN_MOMENTUM_DEFAULTS.
+export const IOS_DECELERATION_RATE = 0.998;
+export const IOS_DECELERATION_TAU_MS = -1 / Math.log(IOS_DECELERATION_RATE);
+export const TOUCH_PAN_MOMENTUM = Object.freeze({
+  ...PAN_MOMENTUM_DEFAULTS,
+  decayTauMs: IOS_DECELERATION_TAU_MS,
+  minRestSpeed: 0.06,
+  maxFrameMs: 500,
+});
+
+// Pages on screen that show a softer bitmap sharpen DURING a finger glide once
+// it has slowed under this speed (px/ms; 0.25 = 4 px a frame at 60 Hz), the
+// way iOS does, instead of only after it has fully stopped. Faster than this
+// a page redraw would cost visible frames of the glide.
+export const GLIDE_SHARPEN_SPEED = 0.25;
+
+/** True when a glide moving at (vx, vy) px/ms is slow enough to sharpen pages. */
+export function isGlideSlowEnoughToSharpen(vx, vy, threshold = GLIDE_SHARPEN_SPEED) {
+  const speed = Math.hypot(Number(vx) || 0, Number(vy) || 0);
+  return speed < threshold;
+}
+
 function withDefaults(config) {
   return config === PAN_MOMENTUM_DEFAULTS || !config
     ? PAN_MOMENTUM_DEFAULTS
@@ -52,6 +81,17 @@ export function decayFactor(dtMs, tauMs = PAN_MOMENTUM_DEFAULTS.decayTauMs) {
   const dt = Number.isFinite(dtMs) ? dtMs : 0;
   const tau = Number.isFinite(tauMs) && tauMs > 0 ? tauMs : PAN_MOMENTUM_DEFAULTS.decayTauMs;
   return Math.exp(-dt / tau);
+}
+
+/**
+ * Distance a glide at `speed` px/ms travels in `dtMs` under exponential
+ * friction (the exact integral, so the path does not depend on frame rate).
+ */
+export function glideDistance(speed, dtMs, tauMs = PAN_MOMENTUM_DEFAULTS.decayTauMs) {
+  const v = Number(speed) || 0;
+  const dt = Number.isFinite(dtMs) ? Math.max(0, dtMs) : 0;
+  const tau = Number.isFinite(tauMs) && tauMs > 0 ? tauMs : PAN_MOMENTUM_DEFAULTS.decayTauMs;
+  return v * tau * (1 - Math.exp(-dt / tau));
 }
 
 /** Clamp a frame delta into the runner's safe integration window. */
@@ -216,7 +256,10 @@ export function createPanMomentumRunner({
   now = () => performance.now(),
   config,
 } = {}) {
-  const cfg = withDefaults(config);
+  const baseCfg = withDefaults(config);
+  // The settings of the glide in flight (start() may pass its own, e.g.
+  // TOUCH_PAN_MOMENTUM for a finger flick).
+  let cfg = baseCfg;
   let handle = 0;
   let vx = 0;
   let vy = 0;
@@ -248,7 +291,7 @@ export function createPanMomentumRunner({
       stop('external-scroll');
       return;
     }
-    scrollBy(-vx * dt, -vy * dt);
+    scrollBy(-glideDistance(vx, dt, cfg.decayTauMs), -glideDistance(vy, dt, cfg.decayTauMs));
     const after = getScroll();
     written = { left: after.left, top: after.top };
     if (Math.abs(after.left - before.left) < cfg.stallEpsilonPx) vx = 0;
@@ -266,10 +309,15 @@ export function createPanMomentumRunner({
 
   return {
     isRunning: () => Boolean(handle),
-    /** @returns {boolean} true when a coast actually started. */
-    start(releaseVx, releaseVy) {
+    /**
+     * @param {object} [glideConfig] settings for this glide only (merged over
+     *   the runner's own), e.g. TOUCH_PAN_MOMENTUM for a finger flick.
+     * @returns {boolean} true when a coast actually started.
+     */
+    start(releaseVx, releaseVy, glideConfig) {
       if (handle) cancelFrame(handle);
       handle = 0;
+      cfg = glideConfig ? { ...baseCfg, ...glideConfig } : baseCfg;
       vx = Number(releaseVx) || 0;
       vy = Number(releaseVy) || 0;
       written = null;

@@ -39,7 +39,7 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { extractPdfOutlineBookmarks } from '../utils/bookmarkOutline';
 import { resolvePinchCommitCursor, resolvePinchEndTransition } from '../utils/mobilePinchGesture';
-import { createPanMomentumRunner, createPanVelocityTracker } from '../utils/panMomentum';
+import { createPanMomentumRunner, createPanVelocityTracker, isGlideSlowEnoughToSharpen, TOUCH_PAN_MOMENTUM } from '../utils/panMomentum';
 import {
   ELASTIC_ZOOM_EASE_MS,
   WHEEL_OVERSCROLL_IDLE_MS,
@@ -143,6 +143,8 @@ const SETTLE_MS = 110;      // commit the gesture this long after the last wheel
 const DPR = Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, 2);
 const PAN_START_EVENT = 'survey-pdfjs-pan-start';
 const PAN_END_EVENT = 'survey-pdfjs-pan-end';
+// A finger glide slowed under GLIDE_SHARPEN_SPEED: the deep-zoom tile may draw.
+const GLIDE_SETTLING_EVENT = 'survey-pdfjs-glide-settling';
 const ZOOM_START_EVENT = 'survey-pdfjs-zoom-start';
 const ZOOM_END_EVENT = 'survey-pdfjs-zoom-end';
 const PINCH_START_EVENT = 'survey-pdfjs-pinch-start';
@@ -694,7 +696,7 @@ function applyDetailTileStyle(canvas, box, atScale, atRotation) {
 // pinch-live / idle on the phone, where no tile raster runs while the fingers
 // are down — each one competed with touchmove on the main thread. The tile
 // re-sharpens once, on release.
-const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, liveZoomRef, liveZoomSignal, interactionRef, scrollerRef, isMobileSurface }) {
+const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, liveZoomRef, liveZoomSignal, interactionRef, glideSettlingRef, scrollerRef, isMobileSurface }) {
   const hostRef = useRef(null);
   const canvasRef = useRef(null);
   const taskRef = useRef(null);
@@ -739,10 +741,11 @@ const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, l
     // pinch out, so it stays sharper than the base canvas and costs not one byte
     // more than it already occupied.
     if (isMobileSurface && liveZoom < 1) return;
-    // Ordinary one-finger panning waits until momentum settles. A pinch is
+    // Ordinary one-finger panning waits until momentum slows down (a finger
+    // glide under GLIDE_SHARPEN_SPEED may draw). A pinch is
     // different: periodically refresh the visible tile while fingers remain
     // down so a slow deep zoom does not stay blurry until release.
-    if (interactionRef?.current && liveZoom === 1) return;
+    if (interactionRef?.current && !glideSettlingRef?.current && liveZoom === 1) return;
     const baseScaleLimit = isMobileSurface ? MOBILE_BASE_MAX_SCALE : BASE_MAX_SCALE;
     const targetScale = scale * liveZoom;
     // Below the base-canvas ceiling the base is already sharp enough, so there is
@@ -807,7 +810,7 @@ const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, l
         if (isMobileSurface) releaseRasterCanvas(off);
       }
     }
-  }, [pdf, pageIndex, scale, rotation, liveZoomRef, interactionRef, scrollerRef, isMobileSurface, dropTile]);
+  }, [pdf, pageIndex, scale, rotation, liveZoomRef, interactionRef, glideSettlingRef, scrollerRef, isMobileSurface, dropTile]);
 
   latestRenderRef.current = render;
   useEffect(() => {
@@ -885,9 +888,11 @@ const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, l
     const onPanEnd = () => render();
     window.addEventListener(PAN_START_EVENT, onPanStart);
     window.addEventListener(PAN_END_EVENT, onPanEnd);
+    window.addEventListener(GLIDE_SETTLING_EVENT, onPanEnd);
     return () => {
       window.removeEventListener(PAN_START_EVENT, onPanStart);
       window.removeEventListener(PAN_END_EVENT, onPanEnd);
+      window.removeEventListener(GLIDE_SETTLING_EVENT, onPanEnd);
     };
   }, [render]);
 
@@ -1514,6 +1519,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const panEdgeShownRef = useRef({ x: 0, y: 0 });
   const panEdgeRafRef = useRef(0);
   const coastElasticRef = useRef(null);
+  // True while a finger glide runs slower than GLIDE_SHARPEN_SPEED (and no
+  // edge bounce is easing): pages on screen may sharpen then.
+  const glideSettlingRef = useRef(false);
+  const glideTouchRef = useRef(false); // the running glide came from a finger
   // What may draw right now (pageRasterQueue kinds): during a pinch or a
   // ctrl+wheel zoom nothing does (pages a pinch reveals are not mounted until
   // it ends anyway, and a draw slice costs a whole frame); while a pan, a
@@ -1523,7 +1532,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const moving = panInteractionRef.current
       || Boolean(elasticRef.current?.anim)
       || performance.now() - lastScrollAtRef.current < RASTER_SCROLL_QUIET_MS;
-    return moving && kind !== 'fill';
+    if (!moving || kind === 'fill') return false;
+    // Owner 2026-10-07 (iOS feel): a finger glide that has slowed down lets
+    // the pages on screen sharpen while it finishes, not only once it stops.
+    // Prefetch stays held until the page is still (the quiet pump below
+    // asks with 'prefetch' for that reason).
+    return !(kind === 'sharpen' && glideSettlingRef.current);
   };
   // Sharpen held pages once the page has been still for RASTER_SCROLL_QUIET_MS.
   // `data-pdfjs-moving` on the viewer says the page is moving (PDFViewer's
@@ -1533,7 +1547,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (rasterQuietTimerRef.current) clearTimeout(rasterQuietTimerRef.current);
     rasterQuietTimerRef.current = window.setTimeout(() => {
       rasterQuietTimerRef.current = 0;
-      if (gestureHoldsRasterRef.current()) { scheduleRasterQuietPump(); return; }
+      if (gestureHoldsRasterRef.current('prefetch')) { scheduleRasterQuietPump(); return; }
       const el = scrollerRef.current;
       if (el?.dataset.pdfjsMoving) delete el.dataset.pdfjsMoving;
       rasterQueueRef.current?.pump();
@@ -3127,6 +3141,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     releaseElastic({ kind: 'spring', vx, vy });
   };
   panMomentumHooksRef.current.velocity = (vx, vy) => {
+    const settling = glideTouchRef.current && !elasticRef.current?.anim && isGlideSlowEnoughToSharpen(vx, vy);
+    const startedSettling = settling && !glideSettlingRef.current;
+    glideSettlingRef.current = settling;
+    if (startedSettling) window.dispatchEvent(new Event(GLIDE_SETTLING_EVENT));
+    // Each slow frame re-checks the draw order (pages it brings on screen
+    // and the held sharpen turns may go now).
+    if (settling) rasterQueueRef.current?.pump();
     const coast = coastElasticRef.current;
     if (!coast) return;
     if (vx) coast.vx = vx;
@@ -3154,7 +3175,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         panMomentumHooksRef.current.mark?.(left, top);
         panMomentumHooksRef.current.velocity?.(vx, vy);
       },
-      onSettle: () => { panMomentumHooksRef.current.restore?.(); },
+      onSettle: () => {
+        glideSettlingRef.current = false;
+        panMomentumHooksRef.current.restore?.();
+      },
     });
     return panMomentumRef.current;
   }, []);
@@ -3182,14 +3206,18 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // Release a pan drag while still moving and the page keeps gliding, decaying
   // to rest on the same curve mobile has always used. Bounds are respected by
   // the runner: a coast into an edge stops instead of banking velocity.
-  const startPanInertia = useCallback((fingerVelocityX, fingerVelocityY, { elastic = false } = {}) => {
+  const startPanInertia = useCallback((fingerVelocityX, fingerVelocityY, { elastic = false, touch = false } = {}) => {
+    glideTouchRef.current = touch;
+    glideSettlingRef.current = false;
     coastElasticRef.current = elastic
       ? { vx: fingerVelocityX, vy: fingerVelocityY, kickedX: false, kickedY: false }
       : null;
     const el = scrollerRef.current;
     panCoastOriginRef.current = { left: el?.scrollLeft || 0, top: el?.scrollTop || 0 };
     markPanCoast(panCoastOriginRef.current.left, panCoastOriginRef.current.top);
-    const started = getPanMomentumRunner().start(fingerVelocityX, fingerVelocityY);
+    // A finger flick glides like iOS (TOUCH_PAN_MOMENTUM); a mouse drag keeps
+    // the desktop glide.
+    const started = getPanMomentumRunner().start(fingerVelocityX, fingerVelocityY, touch ? TOUCH_PAN_MOMENTUM : undefined);
     if (started) setPanInteraction(true);
     else restorePanInteraction();
     return started;
@@ -3728,7 +3756,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         startPanInertia(
           elasticPan && pulled.x ? 0 : velocityX,
           elasticPan && pulled.y ? 0 : velocityY,
-          { elastic: elasticPan },
+          { elastic: elasticPan, touch: true },
         );
       }
     };
@@ -4506,6 +4534,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
               liveZoomRef={tileLiveZoomRef}
               liveZoomSignal={tileLiveZoomSignal}
               interactionRef={panInteractionRef}
+              glideSettlingRef={glideSettlingRef}
               scrollerRef={scrollerRef}
               isMobileSurface={isMobileSurface}
             />

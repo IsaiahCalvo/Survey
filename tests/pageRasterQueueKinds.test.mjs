@@ -109,7 +109,11 @@ test('a prefetch gives way to any page that can draw', async () => {
 test('the viewer holds soft pages while moving and every draw during a pinch', () => {
   assert.match(CONTAINER, /isHeld: \(kind\) => gestureHoldsRasterRef\.current\(kind\)/);
   assert.match(CONTAINER, /if \(zoomInteractionRef\.current \|\| mobileTouchRef\.current\?\.mode === 'pinch'\) return true;/);
-  assert.match(CONTAINER, /return moving && kind !== 'fill';/);
-  // and pumps the line once the page is still
-  assert.match(CONTAINER, /if \(gestureHoldsRasterRef\.current\(\)\) \{ scheduleRasterQuietPump\(\); return; \}/);
+  // 2026-10-07: fill always draws; sharpen is held while moving EXCEPT during
+  // a finger glide that has slowed down (iOS sharpens during the slowdown);
+  // prefetch stays held until the page is still.
+  assert.match(CONTAINER, /if \(!moving \|\| kind === 'fill'\) return false;/);
+  assert.match(CONTAINER, /return !\(kind === 'sharpen' && glideSettlingRef\.current\);/);
+  // and pumps the line once the page is still ('prefetch' = held while anything moves)
+  assert.match(CONTAINER, /if \(gestureHoldsRasterRef\.current\('prefetch'\)\) \{ scheduleRasterQuietPump\(\); return; \}/);
 });
