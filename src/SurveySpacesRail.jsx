@@ -916,6 +916,33 @@ const SurveySpacesRail = ({
     requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
   };
 
+  // Owner 2026-10-07 (rail headers round): "On the right of all of these
+  // tabs, to the right of the head of the title, there should be an exit
+  // button to close out the window." Desktop: the close glyph at the right end
+  // of every Survey panel title row (template list, a template, its sub-views)
+  // - exactly the Survey tab pressed again. From the keyboard, focus goes back
+  // to that tab, since this button leaves with the panel. The phone sheet keeps
+  // its own header.
+  const desktopPanelClose = mobileMode ? null : (
+    <SectionIconButton
+      icon="close"
+      className="survey-rail__close"
+      data-rail-panel-close=""
+      label="Close Survey"
+      tooltip="Close"
+      onClick={(event) => {
+        const fromKeyboard = event.detail === 0;
+        const railHost = event.currentTarget.closest('#chrome-right-host') || document;
+        toggleDesktopSurveyPanel();
+        if (fromKeyboard) {
+          requestAnimationFrame(() => {
+            railHost.querySelector('.survey-rail-strip button[aria-label="Survey"]')?.focus();
+          });
+        }
+      }}
+    />
+  );
+
   useEffect(() => {
     if (expandRequestKey > 0) {
       setIsSurveyPanelCollapsed(false);
@@ -2044,7 +2071,10 @@ const SurveySpacesRail = ({
                     <div
                       ref={mobileMode ? undefined : templateSelectorRef}
                       className={mobileMode ? 'mobile-survey-head-title' : undefined}
-                      style={{ flex: 1, minWidth: 0 }}
+                      // Desktop (owner 2026-10-07, rail headers round): the
+                      // title and what goes with it (the space chip) stay
+                      // together on the left; the close glyph is at the right.
+                      style={{ flex: mobileMode ? 1 : '0 1 auto', minWidth: 0 }}
                     >
                       {mobileMode ? (
                         !mobileAccordionOpen && (
@@ -2150,6 +2180,7 @@ const SurveySpacesRail = ({
                     {activeSpaceId && (spaces || []).some((s) => s?.id === activeSpaceId) && (
                       <span className="survey-active-space">{(spaces || []).find((s) => s?.id === activeSpaceId)?.name || 'Space'}</span>
                     )}
+                    {!mobileMode && <span className="survey-rail__head-fill" aria-hidden="true" />}
                     <div className={mobileMode ? 'mobile-survey-head-actions' : 'survey-rail__head-actions'}>
                       {/* UX (mobile demo parity): 34px round export button in the sheet
                           header opening a 218px menu with 48px rows (demo
@@ -2189,6 +2220,7 @@ const SurveySpacesRail = ({
                           <Icon name="close" size={18} color="currentColor" />
                         </button>
                       )}
+                      {desktopPanelClose}
                     </div>
                   </div>
                   {/* Desktop: the Excel sync status is one quiet line under the
@@ -4286,8 +4318,11 @@ const SurveySpacesRail = ({
                           /* Owner 2026-10-02 (phone = desktop): centred, 600. */
                           <h2 className="mobile-survey-head-title">Choose a survey template</h2>
                         ) : (
-                          /* Owner 2026-10-02: the prompt is centred. */
-                          <h2 className="survey-rail__title survey-rail__title--centred">Choose a survey template</h2>
+                          /* Owner 2026-10-07 (rail headers round): one rule for
+                             every panel title row - the title on the left, the
+                             close glyph at the right end (it was centred,
+                             2026-10-02, with nothing beside it). */
+                          <h2 className="survey-rail__title">Choose a survey template</h2>
                         )}
                         {/* Owner 2026-10-07 (DEBATE.md): no "Exit Survey" here -
                             closing the picker without choosing a template
@@ -4306,6 +4341,11 @@ const SurveySpacesRail = ({
                           >
                             <Icon name="close" size={18} color="currentColor" />
                           </button>
+                          </div>
+                        )}
+                        {!mobileMode && (
+                          <div className="survey-rail__head-actions">
+                            {desktopPanelClose}
                           </div>
                         )}
                       </div>

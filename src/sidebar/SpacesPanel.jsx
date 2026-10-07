@@ -672,6 +672,9 @@ const SpacesPanel = ({
   onMobilePanelMetricsChange = null,
   // Phone only: exits space mode and closes the sheet (PDFSidebar owns both).
   onExitSpacesAction = null,
+  // Desktop (owner 2026-10-07, rail headers round): the rail's title row slot
+  // the header actions are drawn into, in line with the "Spaces" title.
+  headActionsHost = null,
   // Spaces chunk A: counts what a page removal / space delete would delete
   // (PDFViewer.getSpaceRemovalImpact), for the confirm.
   getSpaceRemovalImpact = null,
@@ -1312,6 +1315,66 @@ const SpacesPanel = ({
     />
   ) : null;
 
+  // The header's controls, drawn either in the panel's own header (phone)
+  // or in the rail's title row (desktop, owner 2026-10-07 rail headers).
+  const exportControl = (
+    <div
+      ref={spacesExportAnchorRef}
+      className="spaces-panel__export-anchor"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <SectionIconButton
+        phone={mobileMode}
+        action="export"
+        /* Owner 2026-10-02: every export that hands you a file draws
+           `download` (arrow into the tray); `upload` means putting files
+           INTO the app. */
+        icon="download"
+        className="spaces-panel__head-icon spaces-panel__head-icon--export"
+        label={exportSpaceLabel}
+        aria-haspopup={mobileMode ? 'dialog' : 'menu'}
+        aria-expanded={isSpacesExportMenuOpen}
+        disabled={!spacesExportTarget}
+        onClick={() => {
+          if (!spacesExportTarget) return;
+          if (isSpacesExportMenuOpen) {
+            setExportSpaceId(null);
+            return;
+          }
+          openSpacesExport(spacesExportTarget.id);
+        }}
+      />
+      {!mobileMode && exportPanel && (
+        <AnchoredPopover getAnchor={() => spacesExportAnchorRef.current} gap={2} zIndex={7000}>
+          <div ref={spacesExportMenuRef} className="spaces-export spaces-export--menu" role="menu" aria-label={`Export ${orderedSpaces.find((space) => space.id === exportSpaceId)?.name || 'space'}`}>
+            {exportPanel}
+          </div>
+        </AnchoredPopover>
+      )}
+    </div>
+  );
+  const addControl = (
+    <SectionIconButton
+      phone={mobileMode}
+      action="add"
+      className="spaces-panel__head-icon spaces-panel__head-icon--add"
+      label={createSpaceLabel}
+      onClick={handleCreateSpace}
+    />
+  );
+  const exitSpaceChip = !mobileMode && activeSpace && (
+    <button
+      type="button"
+      className="spaces-panel__exit-chip"
+      onClick={() => handleExitSpace(activeSpace.id)}
+      {...tip(`Turn off ${activeSpace.name || 'the space'} and show every page`, 'below')}
+      aria-label={`Exit ${activeSpace.name || 'space'}`}
+    >
+      <span>Exit space</span>
+      <Icon name="close" size={10} color="currentColor" />
+    </button>
+  );
+
   return (
     <div
       ref={mobilePanelRootRef}
@@ -1337,66 +1400,26 @@ const SpacesPanel = ({
           looked way better"), right-aligned, Add last - the [Select] [Add]
           order of every list header: [Export] [Add] (desktop: after the
           Exit space chip; phone: before Done). */}
+      {/* Owner 2026-10-07 (rail headers round): on desktop these actions sit
+          in the rail's title row, right after "Spaces" ("in line with the
+          title, but on the left") - [Export] [Add], then the Exit space chip
+          while a space is on - so the panel's own header row is gone there. */}
+      {!mobileMode && headActionsHost ? createPortal(
+        <>
+          {exportControl}
+          {addControl}
+          {exitSpaceChip}
+        </>,
+        headActionsHost
+      ) : (
       <div className="spaces-panel__head">
         {mobileMode && <h2 className="spaces-panel__heading">Spaces</h2>}
 
         {!mobileMode && <span className="spaces-panel__head-fill" aria-hidden="true" />}
 
-        {!mobileMode && activeSpace && (
-          <button
-            type="button"
-            className="spaces-panel__exit-chip"
-            onClick={() => handleExitSpace(activeSpace.id)}
-            {...tip(`Turn off ${activeSpace.name || 'the space'} and show every page`, 'below')}
-            aria-label={`Exit ${activeSpace.name || 'space'}`}
-          >
-            <span>Exit space</span>
-            <Icon name="close" size={10} color="currentColor" />
-          </button>
-        )}
-
-        <div
-          ref={spacesExportAnchorRef}
-          className="spaces-panel__export-anchor"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <SectionIconButton
-            phone={mobileMode}
-            action="export"
-            /* Owner 2026-10-02: every export that hands you a file draws
-               `download` (arrow into the tray); `upload` means putting files
-               INTO the app. */
-            icon="download"
-            className="spaces-panel__head-icon spaces-panel__head-icon--export"
-            label={exportSpaceLabel}
-            aria-haspopup={mobileMode ? 'dialog' : 'menu'}
-            aria-expanded={isSpacesExportMenuOpen}
-            disabled={!spacesExportTarget}
-            onClick={() => {
-              if (!spacesExportTarget) return;
-              if (isSpacesExportMenuOpen) {
-                setExportSpaceId(null);
-                return;
-              }
-              openSpacesExport(spacesExportTarget.id);
-            }}
-          />
-          {!mobileMode && exportPanel && (
-            <AnchoredPopover getAnchor={() => spacesExportAnchorRef.current} gap={2} zIndex={7000}>
-              <div ref={spacesExportMenuRef} className="spaces-export spaces-export--menu" role="menu" aria-label={`Export ${orderedSpaces.find((space) => space.id === exportSpaceId)?.name || 'space'}`}>
-                {exportPanel}
-              </div>
-            </AnchoredPopover>
-          )}
-        </div>
-
-        <SectionIconButton
-          phone={mobileMode}
-          action="add"
-          className="spaces-panel__head-icon spaces-panel__head-icon--add"
-          label={createSpaceLabel}
-          onClick={handleCreateSpace}
-        />
+        {exitSpaceChip}
+        {exportControl}
+        {addControl}
 
         {typeof onExitSpacesAction === 'function' && (
           <button
@@ -1408,6 +1431,7 @@ const SpacesPanel = ({
           </button>
         )}
       </div>
+      )}
 
       {/* Spaces List — one line per space, no gaps: each line carries its
           own hairline, like the Survey categories (owner 2026-10-02). */}

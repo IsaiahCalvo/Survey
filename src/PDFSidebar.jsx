@@ -25,6 +25,7 @@ import { useMobileSheetMotion } from './mobile/useMobileSheetMotion';
 import { useTooltip } from './components/Tooltip';
 import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH } from './viewerShared';
 import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
+import SectionIconButton from './components/SectionIconButton.jsx';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -32,7 +33,7 @@ const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pr
 // Owner 2026-10-07 (Drawboard rail): History is a rail control like the tabs
 // above it - it opens its panel, and pressed again while that panel is open it
 // closes it (onClick is the sidebar's togglePanel('history')).
-const HistoryButton = ({ isActive, onClick }) => {
+const HistoryButton = ({ isActive, onClick, round = false }) => {
   // KAL-65: sidebar controls use the app's instant shared tooltip, never a
   // native title= (the OS tooltip takes ~1.5s and is OS-styled, so mixing the
   // two showed users two different tooltips on the same control).
@@ -52,16 +53,21 @@ const HistoryButton = ({ isActive, onClick }) => {
     // column showing 14, 16, 17 and 18 at once.
     // Owner 2026-10-07: the rail no longer opens into a wide one-row footer, so
     // the round "face-sized" History variant that row used is gone.
+    // Owner 2026-10-07 (rail headers round): "When the left rail is expanded,
+    // the user annotation history and syncing should still assume the
+    // horizontal position" - with a panel open the footer is the one-row band
+    // again (faces, sync, History), and there History is the face-sized
+    // circle it was in that row (owner 2026-09-23).
     style={{
-      width: `${RAIL_CONTROL}px`,
-      height: `${RAIL_CONTROL}px`,
+      width: round ? '24px' : `${RAIL_CONTROL}px`,
+      height: round ? '24px' : `${RAIL_CONTROL}px`,
       display: 'inline-flex',
       alignItems: 'center',
       justifyContent: 'center',
       background: 'transparent',
       border: 0,
       color: isActive ? 'var(--accent)' : 'var(--text-2)',
-      borderRadius: '6px',
+      borderRadius: round ? '50%' : '6px',
       cursor: 'pointer',
       fontSize: '12px',
       fontFamily: FONT_FAMILY,
@@ -70,7 +76,27 @@ const HistoryButton = ({ isActive, onClick }) => {
       whiteSpace: 'nowrap'
     }}
   >
-    <Icon name="history" size={RAIL_CONTROL_GLYPH} color="currentColor" />
+    {round ? (
+      /* The circle is a child, not the button's own background, so the app's
+         glyph-only press rule shrinks the whole circle instead of wiping its
+         fill; filled and edged like the sync pill beside it. */
+      <span style={{
+        width: '24px',
+        height: '24px',
+        boxSizing: 'border-box',
+        borderRadius: '50%',
+        background: 'var(--surface-2)',
+        border: '1px solid var(--border)',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+      }}>
+        <Icon name="history" size={14} color="currentColor" />
+      </span>
+    ) : (
+      <Icon name="history" size={RAIL_CONTROL_GLYPH} color="currentColor" />
+    )}
   </button>
   );
 };
@@ -222,6 +248,15 @@ const PDFSidebar = React.forwardRef(({
   // PDF; fits size and centre the page beside it (utils/viewerSideOverlay.js).
   const sideOccluderRef = useViewerSideOccluderRef();
   const [searchFocusRequestToken, setSearchFocusRequestToken] = useState(0);
+  // Owner 2026-10-07 (rail headers round): "the title row should be centered
+  // when there are options, like in bookmarks and spaces to export or create.
+  // Those should be in line with the title, but on the left." Desktop: the
+  // title row holds a slot per panel that has actions; Bookmarks, Spaces and
+  // History draw their header actions into it (a portal) instead of a second
+  // row of their own. The phone keeps each panel's own header.
+  const [bookmarksHeadHost, setBookmarksHeadHost] = useState(null);
+  const [spacesHeadHost, setSpacesHeadHost] = useState(null);
+  const [historyHeadHost, setHistoryHeadHost] = useState(null);
   const [searchSelectOnFocus, setSearchSelectOnFocus] = useState(true);
   const [mobileSpacesPageRows, setMobileSpacesPageRows] = useState(0);
   // 2026-07-12 (demo parity defect #4): the spaces sheet follows its REAL
@@ -413,9 +448,29 @@ const PDFSidebar = React.forwardRef(({
       flexDirection: 'column',
       background: 'var(--panel-bg)',
       borderLeft: '1px solid var(--border)',
+      // Owner 2026-10-07 (rail headers round): "they should have a border on
+      // the inside, where the canvas is. The right rail seems to have it, but
+      // the left rail does not." The rail's own right edge sat under this
+      // panel, so the panel draws the canvas-side hairline itself - the same
+      // 1px var(--border) the Survey panel draws on its canvas side.
+      borderRight: '1px solid var(--border)',
       boxSizing: 'border-box',
     },
   };
+
+  const MainFrame = mobileMode ? React.Fragment : 'div';
+  const mainFrameProps = mobileMode ? {} : {
+    className: 'left-rail__main',
+    style: {
+      flex: '1 1 auto',
+      minHeight: 0,
+      display: 'flex',
+      flexDirection: 'row',
+    },
+  };
+  // Dev only: `?fakePeers=N` fills the presence row with N fake people
+  // (presenceIdentity.js) and shows the footer without cloud sync.
+  const showFooter = !mobileMode && (cloudSyncEnabled || footerPresence.fake);
 
   return (
     <>
@@ -456,7 +511,10 @@ const PDFSidebar = React.forwardRef(({
       background: 'var(--panel-bg)',
       borderRight: mobileMode ? 'none' : '1px solid var(--border)',
       display: 'flex',
-      flexDirection: mobileMode ? 'column' : 'row',
+      // Desktop (owner 2026-10-07, rail headers round): the rail and its
+      // panel side by side, and - while a panel is open - the one-row
+      // collaboration footer across both under them.
+      flexDirection: 'column',
       // Phone: every height change (detents, the keyboard) is the sheet
       // hook's resize glide now (2026-10-01), so no CSS height leg here - a
       // second engine on the same property would fight it.
@@ -488,6 +546,9 @@ const PDFSidebar = React.forwardRef(({
           opens its panel, the open tab pressed again closes it, another tab
           swaps the panel in place. The tabs start at the top of the rail, where
           the collapse row used to be. */}
+      {/* Desktop: the icon column and the open panel, side by side. Phone: no
+          wrapper - the sheet's children stay as they were. */}
+      <MainFrame {...mainFrameProps}>
       {!mobileMode && (
         <div className="left-rail__column" style={{
           width: `${LEFT_RAIL_W}px`,
@@ -590,12 +651,10 @@ const PDFSidebar = React.forwardRef(({
         {/* 2026-04-25 — Collaboration footer (sync chip, History, presence)
             anchored at the bottom of the rail. Lives here so it stays on
             screen for every page. Hidden entirely when cloud sync is disabled
-            (free tier or no PDF). Owner 2026-10-07: the rail no longer widens,
-            so this is always the rail's vertical stack (the wide one-row
-            footer of the old expanded sidebar is gone). */}
-        {/* Dev only: `?fakePeers=N` fills the presence row with N fake people
-            (presenceIdentity.js) and shows the footer without cloud sync. */}
-        {(cloudSyncEnabled || footerPresence.fake) && (
+            (free tier or no PDF). This is the vertical stack while no panel
+            is open; with a panel open the footer is the one-row band across
+            the rail and the panel (below, owner 2026-10-07 rail headers). */}
+        {showFooter && isCollapsed && (
           <div data-chrome-rail="true" data-presence-footer="collapsed" style={{
             borderTop: '1px solid var(--border)',
             padding: '10px 6px',
@@ -612,7 +671,7 @@ const PDFSidebar = React.forwardRef(({
               compact
               onRetry={cloudSyncOnRetry}
             />
-            {documentId && <HistoryButton isActive={!isCollapsed && activeTab === 'history'} onClick={toggleHistoryPanel} />}
+            {documentId && <HistoryButton isActive={false} onClick={toggleHistoryPanel} />}
             <PresenceAvatars
               presence={footerPresence.presence}
               currentUserId={footerPresence.currentUserId}
@@ -635,9 +694,37 @@ const PDFSidebar = React.forwardRef(({
               panel title ("Pages", "Search"...); the rail's gold tab is the
               other half of that answer. The same 40px band as the Survey
               panel's header on the right. */}
+          {/* Owner 2026-10-07 (rail headers round): the title row is exactly
+              the sub-toolbar's height (--chrome-bar-h, styles.css), and reads
+              [title + the panel's actions] ... [close]. */}
           {!mobileMode && (
             <div className="left-rail__head">
               <h2 className="left-rail__title">{PANEL_TITLES[activeTab]}</h2>
+              <div ref={setBookmarksHeadHost} className="left-rail__head-actions" hidden={activeTab !== 'bookmarks'} />
+              <div ref={setSpacesHeadHost} className="left-rail__head-actions" hidden={activeTab !== 'spaces'} />
+              <div ref={setHistoryHeadHost} className="left-rail__head-actions left-rail__head-actions--grow" hidden={activeTab !== 'history'} />
+              <span className="left-rail__head-fill" aria-hidden="true" />
+              <SectionIconButton
+                icon="close"
+                className="left-rail__close"
+                data-rail-panel-close=""
+                label={`Close ${PANEL_TITLES[activeTab]}`}
+                tooltip="Close"
+                // Exactly the open tab pressed again (owner: "an exit button to
+                // close out the window"). From the keyboard, focus goes back to
+                // that tab, since this button leaves with the panel.
+                onClick={(event) => {
+                  const fromKeyboard = event.detail === 0;
+                  const tabLabel = activeTab === 'search' ? 'Search text' : PANEL_TITLES[activeTab];
+                  const railEl = event.currentTarget.closest('.left-rail');
+                  togglePanel(activeTab);
+                  if (fromKeyboard) {
+                    window.requestAnimationFrame(() => {
+                      railEl?.querySelector(`.left-rail__column button[aria-label="${tabLabel}"]`)?.focus();
+                    });
+                  }
+                }}
+              />
             </div>
           )}
           {/* Owner 2026-09-30: no close X on a phone sheet. History closes with
@@ -794,6 +881,7 @@ const PDFSidebar = React.forwardRef(({
                 pageNum={pageNum}
                 numPages={numPages}
                 mobileMode={mobileMode}
+                headActionsHost={mobileMode ? null : bookmarksHeadHost}
               />
             </div>
 
@@ -835,6 +923,7 @@ const PDFSidebar = React.forwardRef(({
                 showSurveyPanel={showSurveyPanel}
                 selectedModuleId={selectedModuleId}
                 mobileMode={mobileMode}
+                headActionsHost={mobileMode ? null : spacesHeadHost}
                 mobilePanelVisible={mobileMode && activeTab === 'spaces' && !isCollapsed}
                 onMobilePanelMetricsChange={handleMobileSpacesMetricsChange}
                 // Spaces chunk B: the phone header's neutral "Done" (it took
@@ -863,10 +952,59 @@ const PDFSidebar = React.forwardRef(({
                 getHistoryMarkIndex={getHistoryMarkIndex}
                 locateHistoryMark={locateHistoryMark}
                 focusHistoryMark={focusHistoryMark}
+                headActionsHost={mobileMode ? null : historyHeadHost}
               />
             </div>
           </div>
         </PanelFrame>
+      )}
+      </MainFrame>
+
+      {/* Owner 2026-10-07 (rail headers round): "When the left rail is
+          expanded, the user annotation history and syncing should still assume
+          the horizontal position with a bar going across as a divider" - with
+          a panel open the collaboration footer is the one-row band across the
+          rail and the panel (owner 2026-09-23 layout: faces on the left, sync
+          in the middle, History on the right), under a full-width hairline.
+          Closed, it is the rail's vertical stack above. */}
+      {showFooter && !isCollapsed && (
+        <div data-chrome-rail="true" data-presence-footer="expanded" style={{
+          flex: '0 0 auto',
+          borderTop: '1px solid var(--border)',
+          padding: '8px 12px',
+          display: 'grid',
+          // The side columns never go narrower than what they hold, so the
+          // faces never run under the sync pill; the pill's label trims.
+          gridTemplateColumns: 'minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr)',
+          alignItems: 'center',
+          columnGap: '8px',
+          background: 'var(--panel-bg)',
+          position: 'relative',
+          zIndex: 1
+        }}>
+          <div style={{ justifySelf: 'start', minWidth: 0, display: 'flex', alignItems: 'center' }}>
+            <PresenceAvatars
+              presence={footerPresence.presence}
+              currentUserId={footerPresence.currentUserId}
+              currentUserEmail={footerPresence.currentUserEmail}
+              currentUserDisplayName={footerPresence.currentUserDisplayName}
+              enabled
+              row
+            />
+          </div>
+          <div style={{ minWidth: 0, maxWidth: '100%', display: 'flex', justifyContent: 'center' }}>
+            <SyncStatusChip
+              status={cloudSyncStatus}
+              queueSize={cloudSyncQueueSize}
+              enabled
+              row
+              onRetry={cloudSyncOnRetry}
+            />
+          </div>
+          <div style={{ justifySelf: 'end', display: 'flex', alignItems: 'center' }}>
+            {documentId && <HistoryButton round isActive={activeTab === 'history'} onClick={toggleHistoryPanel} />}
+          </div>
+        </div>
       )}
 
     </div>

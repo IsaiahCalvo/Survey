@@ -45,7 +45,9 @@
   font-family: var(--font-ui);
   /* The rail reads the shared desktop row scale (src/styles/tokens.css). */
   --sv-edge: var(--row-pad-x);    /* 12: text / glyph inset from the panel edge */
-  --sv-head-h: var(--row-h-page); /* 40: the Bookmarks + Spaces header height */
+  /* Owner 2026-10-07 (rail headers round): the title row is the sub-toolbar
+     row's height - the one --chrome-bar-h token both are drawn at (36). */
+  --sv-head-h: var(--chrome-bar-h);
   --sv-row-h: var(--row-h);       /* 32: a template / category line */
   --sv-line-h: var(--row-h-sub);  /* 28: a Survey Marker line, a detail line */
   /* A category line and a Survey Marker line carry a 1px hairline of their
@@ -114,10 +116,6 @@
    the 13px title with a 10px --text-3 chevron, opening the template menu
    below. In category-select mode it shows the module's name, disabled and
    without the chevron. */
-.survey-rail .survey-rail__title--centred {
-  text-align: center;
-}
-
 .survey-rail .survey-rail__title-button {
   appearance: none;
   max-width: 100%;
@@ -249,6 +247,12 @@
   align-self: stretch;
   display: flex;
   align-items: stretch;
+}
+
+/* Owner 2026-10-07 (rail headers round): [title + its chip] ... [close]. */
+.survey-rail .survey-rail__head-fill {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 /* ---------- FOOTER: Export (owner 2026-10-01) ---------------------------

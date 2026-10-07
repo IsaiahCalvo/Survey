@@ -182,21 +182,77 @@
   }
 }
 
-/* The left rail's open panel: a one-line 40px header naming the panel, the
+/* The left rail's open panel: a one-line header naming the panel, the
    Survey panel's header on the right is the same band (owner 2026-10-07,
-   Drawboard rail; src/PDFSidebar.jsx). */
+   Drawboard rail; src/PDFSidebar.jsx).
+   Owner 2026-10-07 (rail headers round): "The sub-toolbar ... isn't as tall
+   as the rows that show for the page title ... Those title rows should be
+   more narrow to match the sub-toolbar." Every panel title row on both rails
+   is --chrome-bar-h tall, hairline included - the same token the sub-toolbar
+   row under the tool bar is drawn at, so the two cannot drift apart. The row
+   reads [title + the panel's actions] ... [close]: the actions sit in line
+   with the title on the left, the close glyph at the right end, its 28px box
+   placed so the glyph keeps the same 12px edge as the title. */
 .left-rail__head {
-  flex: 0 0 40px;
-  height: 40px;
+  position: relative;
+  flex: 0 0 var(--chrome-bar-h);
+  height: var(--chrome-bar-h);
   box-sizing: border-box;
-  padding: 0 12px;
+  padding: 0 6px 0 12px;
   display: flex;
   align-items: center;
+  gap: 6px;
   background: var(--panel-bg);
   border-bottom: 1px solid var(--border);
 }
 
+.left-rail__head-actions {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.left-rail__head-actions[hidden] {
+  display: none;
+}
+
+/* History's slot holds its search field when search is open, so it takes the
+   free width (the fill after it then has none). */
+.left-rail__head-actions--grow {
+  flex: 1 1 auto;
+}
+
+.left-rail__head-fill {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* History's count and search toggle in the title row (RevisionsPanel draws
+   them here on desktop): [History] [n entries] [search] ... [close], the
+   search glyph in the same --text-2 ink as the other panels' header icons. */
+.left-rail__head .dh-headrow {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 6px;
+}
+
+.left-rail__head .dh-count {
+  flex: 0 1 auto;
+}
+
+.left-rail__head .dh-ib {
+  color: var(--text-2);
+}
+
+.left-rail__head .dh-ib[aria-pressed='true'] {
+  color: var(--text-1);
+}
+
 .left-rail__title {
+  /* The panel names are short; the actions beside it give way, not it. */
+  flex: none;
   margin: 0;
   min-width: 0;
   color: var(--text-1);
