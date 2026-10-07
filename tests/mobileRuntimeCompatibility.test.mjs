@@ -430,7 +430,9 @@ test('mobile pan keeps two-axis velocity and coasts after release', () => {
   assert.match(PDFJS_VIEWER_SOURCE, /velocityY/);
   // 2026-10-02: an axis let go while pulled past an edge springs home
   // instead of gliding; the other axis still coasts with its own velocity.
-  assert.match(PDFJS_VIEWER_SOURCE, /startPanInertia\(\s*elasticPan && pulled\.x \? 0 : velocityX,\s*elasticPan && pulled\.y \? 0 : velocityY,\s*\{ elastic: elasticPan \},\s*\)/);
+  // 2026-10-07: a finger flick says it is touch, so it glides like iOS
+  // (panMomentum TOUCH_PAN_MOMENTUM); the desktop pointer glide is unchanged.
+  assert.match(PDFJS_VIEWER_SOURCE, /startPanInertia\(\s*elasticPan && pulled\.x \? 0 : velocityX,\s*elasticPan && pulled\.y \? 0 : velocityY,\s*\{ elastic: elasticPan, touch: true \},\s*\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /panVelocityRef\.current\.release\(performance\.now\(\)\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /PDF pan coast distance/);
   assert.match(PAN_MOMENTUM_SOURCE, /state\.samples\.push/);
@@ -442,7 +444,7 @@ test('mobile pan keeps two-axis velocity and coasts after release', () => {
 test('desktop pointer panning reuses the mobile flick physics', () => {
   // One physics, two surfaces: the desktop pointer path must call the same
   // tracker and the same runner, and must stop a glide on a new grab or wheel.
-  assert.match(PDFJS_VIEWER_SOURCE, /import \{ createPanMomentumRunner, createPanVelocityTracker \} from '\.\.\/utils\/panMomentum'/);
+  assert.match(PDFJS_VIEWER_SOURCE, /import \{ createPanMomentumRunner, createPanVelocityTracker[^}]*\} from '\.\.\/utils\/panMomentum'/);
   assert.match(PDFJS_VIEWER_SOURCE, /panVelocityRef\.current\.start\(event\.clientX, event\.clientY, performance\.now\(\)\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /panVelocityRef\.current\.move\(event\.clientX, event\.clientY, performance\.now\(\)\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /finishPan\(\{ glide: true \}\)/);

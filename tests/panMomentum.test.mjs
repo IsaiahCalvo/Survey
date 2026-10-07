@@ -13,6 +13,12 @@ import {
   pickDominantVelocity,
   releaseIdleScale,
   shouldStartPanMomentum,
+  GLIDE_SHARPEN_SPEED,
+  IOS_DECELERATION_RATE,
+  IOS_DECELERATION_TAU_MS,
+  TOUCH_PAN_MOMENTUM,
+  glideDistance,
+  isGlideSlowEnoughToSharpen,
 } from '../src/utils/panMomentum.js';
 
 // A deterministic rAF + clock so the coast can be integrated frame by frame
@@ -493,4 +499,98 @@ test('touch release with idleTaper:false keeps full velocity after a short lift 
   const mouse = tapered.release(96 + 100);
   assert.ok(touch.vx > 0.9, `touch keeps its velocity (${touch.vx})`);
   assert.ok(mouse.vx < touch.vx * 0.5, `mouse release tapers (${mouse.vx} vs ${touch.vx})`);
+});
+
+// ---------------------------------------------------------------------------
+// 2026-10-07 - finger flicks glide like iOS, in real time, and sharpen as they
+// slow down
+// ---------------------------------------------------------------------------
+
+test('touch glides use the iOS deceleration rate (0.998 per ms)', () => {
+  assert.equal(IOS_DECELERATION_RATE, 0.998);
+  // Speed kept after 1 ms is exactly the iOS rate.
+  assert.ok(Math.abs(decayFactor(1, TOUCH_PAN_MOMENTUM.decayTauMs) - 0.998) < 1e-12);
+  assert.ok(Math.abs(IOS_DECELERATION_TAU_MS - 499.5) < 0.1);
+  // The desktop pointer glide is unchanged.
+  assert.equal(PAN_MOMENTUM_DEFAULTS.decayTauMs, 325);
+  assert.equal(PAN_MOMENTUM_DEFAULTS.maxFrameMs, 32);
+});
+
+test('glideDistance is the exact integral, so the path does not depend on frame rate', () => {
+  const tau = TOUCH_PAN_MOMENTUM.decayTauMs;
+  assert.equal(glideDistance(0, 16, tau), 0);
+  // One 32 ms step travels exactly as far as two 16 ms steps.
+  const one = glideDistance(2, 32, tau);
+  const two = glideDistance(2, 16, tau) + glideDistance(2 * decayFactor(16, tau), 16, tau);
+  assert.ok(Math.abs(one - two) < 1e-9);
+  // A very long step never travels further than the whole glide (v * tau).
+  assert.ok(glideDistance(2, 1e9, tau) <= 2 * tau + 1e-9);
+});
+
+function glideRun(speed, frameMs, config) {
+  const surface = createFakeSurface({ top: 100000, maxTop: 400000 });
+  surface.state.frameMs = frameMs;
+  const runner = makeRunner(surface);
+  runner.start(0, -speed, config);
+  const frames = surface.pump(100000);
+  return { distance: surface.state.top - 100000, ms: frames * frameMs };
+}
+
+test('a finger glide lasts ~0.5-2 s depending on speed, like iOS', () => {
+  const gentle = glideRun(0.2, 16, TOUCH_PAN_MOMENTUM);
+  const medium = glideRun(1.5, 16, TOUCH_PAN_MOMENTUM);
+  const hard = glideRun(4, 16, TOUCH_PAN_MOMENTUM);
+  assert.ok(gentle.ms >= 350 && gentle.ms <= 700, `gentle ${gentle.ms} ms`);
+  assert.ok(medium.ms >= 1300 && medium.ms <= 1800, `medium ${medium.ms} ms`);
+  assert.ok(hard.ms >= 1800 && hard.ms <= 2300, `hard ${hard.ms} ms`);
+  // Distance is v * tau less the tail cut at the rest speed.
+  const tau = TOUCH_PAN_MOMENTUM.decayTauMs;
+  assert.ok(Math.abs(medium.distance - (1.5 - 0.06) * tau) < 15, `medium ${medium.distance}`);
+});
+
+test('dropped frames do not slow the glide down (WebKit paints pages mid-glide)', () => {
+  // 60 Hz vs a browser managing one frame every 200 ms: same length, same distance.
+  const smooth = glideRun(1.5, 16, TOUCH_PAN_MOMENTUM);
+  const choppy = glideRun(1.5, 200, TOUCH_PAN_MOMENTUM);
+  assert.ok(Math.abs(choppy.ms - smooth.ms) <= 200, `smooth ${smooth.ms} ms, choppy ${choppy.ms} ms`);
+  assert.ok(Math.abs(choppy.distance - smooth.distance) < 40, `smooth ${smooth.distance}, choppy ${choppy.distance}`);
+  // The desktop glide keeps its 32 ms frame cap.
+  assert.equal(clampFrameDelta(200), 32);
+  assert.equal(clampFrameDelta(200, TOUCH_PAN_MOMENTUM), 200);
+  assert.equal(clampFrameDelta(4000, TOUCH_PAN_MOMENTUM), 500);
+});
+
+test('per-glide settings apply to that glide only', () => {
+  const surface = createFakeSurface({ top: 100000, maxTop: 400000 });
+  const runner = makeRunner(surface);
+  runner.start(0, -1.5, TOUCH_PAN_MOMENTUM);
+  surface.pump(100000);
+  const touchDistance = surface.state.top - 100000;
+  const before = surface.state.top;
+  runner.start(0, -1.5);
+  surface.pump(100000);
+  const mouseDistance = surface.state.top - before;
+  assert.ok(touchDistance > mouseDistance * 1.4, `touch ${touchDistance} mouse ${mouseDistance}`);
+  assert.ok(Math.abs(mouseDistance - (1.5 - 0.015) * 325) < 15, `mouse ${mouseDistance}`);
+});
+
+test('pages may sharpen once a glide is under GLIDE_SHARPEN_SPEED', () => {
+  assert.equal(GLIDE_SHARPEN_SPEED, 0.25);
+  assert.equal(isGlideSlowEnoughToSharpen(0, -1.5), false);
+  assert.equal(isGlideSlowEnoughToSharpen(0.2, 0.2), false); // 0.28 px/ms diagonal
+  assert.equal(isGlideSlowEnoughToSharpen(0, -0.2), true);
+  assert.equal(isGlideSlowEnoughToSharpen(0, 0), true);
+  // A hard flick spends its last ~0.7 s under the threshold.
+  const tau = TOUCH_PAN_MOMENTUM.decayTauMs;
+  const slowFor = tau * Math.log(GLIDE_SHARPEN_SPEED / TOUCH_PAN_MOMENTUM.minRestSpeed);
+  assert.ok(slowFor > 600 && slowFor < 800, `slow tail ${slowFor} ms`);
+});
+
+test('the viewer gives finger flicks the touch glide and lets a slowing glide sharpen', async () => {
+  const source = await readFile(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
+  assert.match(source, /getPanMomentumRunner\(\)\.start\(fingerVelocityX, fingerVelocityY, touch \? TOUCH_PAN_MOMENTUM : undefined\)/);
+  assert.match(source, /\{ elastic: elasticPan, touch: true \}/);
+  assert.match(source, /return !\(kind === 'sharpen' && glideSettlingRef\.current\);/);
+  // The quiet pump (which clears data-pdfjs-moving) still waits for the page to be still.
+  assert.match(source, /if \(gestureHoldsRasterRef\.current\('prefetch'\)\) \{ scheduleRasterQuietPump\(\); return; \}/);
 });

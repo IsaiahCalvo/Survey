@@ -28,6 +28,7 @@ import {
   deletePendingSurveyMarkerUi,
 } from './utils/pendingSurveyMarkerHistory.js';
 import { buildSpaceCSVContent } from './utils/spaceCSVExporter.js';
+import { createPageSizeCommitBatcher } from './utils/pageSizeCommitBatcher.js';
 import { renderPdfPageForExport } from './utils/spacePdfPageRender.js';
 import { eraserDiameterToScreenRadius } from './utils/eraserSizing.js';
 // UX 2026-09-09: arming a click-to-place shape tool (polygon / polyline) hands
@@ -23796,6 +23797,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           remainingPages.push(i);
         }
 
+        // Commit the sizes a few times, not once per batch (WebKit warned
+        // "Maximum update depth exceeded" on open) — utils/pageSizeCommitBatcher.
+        const pageSizeCommits = createPageSizeCommitBatcher({
+          commit: ({ heights, sizes, pages }) => {
+            setPageHeights((prev) => ({ ...prev, ...heights }));
+            setPageSizes((prev) => ({ ...prev, ...sizes }));
+            setPageObjects((prev) => ({ ...prev, ...pages }));
+          },
+        });
         for (let start = 0; start < remainingPages.length; start += maxWorkers) {
           const batch = remainingPages.slice(start, start + maxWorkers);
           const batchResults = await Promise.all(batch.map(async (pageNumber) => {
@@ -23824,10 +23834,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // page view whose numbering differs from this document's; the view
           // measures its own pages (usePageViewDocument).
           if (isPageViewOver(pdf)) continue;
-          setPageHeights((prev) => ({ ...prev, ...batchHeights }));
-          setPageSizes((prev) => ({ ...prev, ...batchSizes }));
-          setPageObjects((prev) => ({ ...prev, ...batchPages }));
+          pageSizeCommits.add(batchHeights, batchSizes, batchPages);
         }
+        if (!isPageViewOver(pdf)) pageSizeCommits.flush();
 
         perfLoad.mark(docName, `Page sizes calculated (${pdf.numPages} pages)`);
 
