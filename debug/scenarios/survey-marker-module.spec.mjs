@@ -622,7 +622,7 @@ test.describe('Leaving survey mode', () => {
       'regular markup must stay hidden while a template is active',
     ).toBe(0);
 
-    // Owner 2026-10-07: Survey is left with the Survey chip's x.
+    // Owner 2026-10-07: Survey is left with "Done" (Leave Survey) at the end of the survey bar.
     await page.getByRole('button', { name: 'Leave Survey' }).click();
     await expect(page.getByRole('button', { name: 'Survey', exact: true })).toBeVisible();
     await showPage(page, 1);

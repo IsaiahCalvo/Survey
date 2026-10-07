@@ -12,7 +12,6 @@ import { SheetOpacitySlider, SheetPreview, SheetRow, SheetScaleSlider, SheetSect
 import DismissBarrier from '../components/DismissBarrier';
 import Spinner from '../components/Spinner';
 import ActiveSpaceChip from '../sidebar/ActiveSpaceChip';
-import SurveyModeChip from '../components/SurveyModeChip';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS, ensureRgbaOpacity, getCategoryGlyphLabel } from '../viewerShared';
 import { getMobileSyncPresentation, getMobileTextMarkupPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
@@ -323,7 +322,7 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
  * (opens up). Keyboard: Enter/Space or ArrowDown opens; arrows move; Enter
  * selects; Escape closes. Tap: outside pointerdown closes.
  */
-function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = false, minWidth, width, placeholder, fitOptions = false }) {
+function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = false, minWidth, width, placeholder, fitOptions = false, className = '', leading = null }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -428,7 +427,7 @@ function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = fa
   };
 
   return (
-    <div className="mobile-styled-select" ref={triggerRef}>
+    <div className={`mobile-styled-select${className ? ` ${className}` : ''}`} ref={triggerRef}>
       <DismissBarrier
         active={open}
         insideRefs={dismissInsideRefs}
@@ -464,6 +463,9 @@ function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = fa
             preview is the control's own sample - a stroke at its real weight, a
             dashed rule, an arrowhead - so it belongs to the option, not to this
             component. */}
+        {/* `leading` (owner 2026-10-07): a fixed mark before the label - the
+            survey bar's gold Survey glyph in front of the template name. */}
+        {leading ? <span className="mobile-styled-select__preview" aria-hidden="true">{leading}</span> : null}
         {selected?.preview ? <span className="mobile-styled-select__preview" aria-hidden="true">{selected.preview}</span> : null}
         {fitOptions ? (
           /* `fitOptions` (owner 2026-09-30, the survey module pill): the pill is
@@ -975,7 +977,7 @@ function MobileTextSizeRow({ value, onCommit }) {
 // the pdf.js viewer: zoomController FIT_HEIGHT + PDFViewer handleZoomModeSelect).
 const ZOOM_FIT_OPTIONS = ZOOM_MODE_OPTIONS.filter((option) => option.id !== 'manual');
 
-export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi, bottomToolbarApi, activeSpace = null, onOpenSpaces = null, onTurnOffSpace = null, activeSurvey = null, onOpenSurvey = null, onLeaveSurvey = null }) {
+export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi, bottomToolbarApi, activeSpace = null, onOpenSpaces = null, onTurnOffSpace = null }) {
   // OWNER DECISION 2 (2026-07-12): the page pill has two tap zones — the
   // fraction opens an inline page-jump input (type-to-jump), the chevron opens
   // the zoom/fit dropdown ONLY. The old combined page+zoom single surface is
@@ -1201,26 +1203,16 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           open the Spaces sheet; x turns the space off. Hidden while drawing
           a space's areas: it sat over the top of the page and blocked
           starting an area there (owner 2026-10-01). */}
-      {/* Owner 2026-10-07 (scratchpad railDrawboard/DEBATE.md): the Survey
-          chip joins it - "Survey · <template> x". The words open the Survey
-          sheet; x leaves Survey (the sheet has no Exit Survey any more). */}
-      {((activeSpace && !bottomToolbarApi?.regionEditing) || activeSurvey) && (
+      {/* (Owner 2026-10-07, survey bar round: the Survey chip that sat here
+          is gone - the survey strip names Survey and ends with "Done".) */}
+      {activeSpace && !bottomToolbarApi?.regionEditing && (
         <div className="mobile-pdf-header__space">
-          {activeSurvey && (
-            <SurveyModeChip
-              templateName={activeSurvey.name}
-              onOpen={onOpenSurvey}
-              onLeave={onLeaveSurvey}
-            />
-          )}
-          {activeSpace && !bottomToolbarApi?.regionEditing && (
-            <ActiveSpaceChip
-              name={activeSpace.name}
-              pageCount={activeSpace.pageCount}
-              onOpen={onOpenSpaces}
-              onTurnOff={onTurnOffSpace}
-            />
-          )}
+          <ActiveSpaceChip
+            name={activeSpace.name}
+            pageCount={activeSpace.pageCount}
+            onOpen={onOpenSpaces}
+            onTurnOff={onTurnOffSpace}
+          />
         </div>
       )}
     </header>
@@ -1331,11 +1323,24 @@ export function MobileToolProperties({ api }) {
               relabelled "Repeat", then "Reuse" (owner 2026-10-01): it keeps
               the CATEGORY armed after a Survey Marker is placed (PDFViewer
               clears selectedCategoryId otherwise).
-            - No Exit here (owner 2026-10-01, after a debate). Since
-              2026-10-07 (another debate, scratchpad railDrawboard/DEBATE.md)
-              Survey is left with the x on the Survey chip under the top bar,
-              and the panel has no Exit either. */}
+            Owner 2026-10-07 (survey bar round, after a debate - the floating
+            Survey chip under the top bar is gone): the strip names the mode
+            itself and is the way out, the desktop bar's twin:
+              [glyph template v]  [ Module v ] (switch) Reuse   Done
+            The template is a menu (switch template); it is the one item
+            that gives way when the strip runs out of room (ellipsis). "Done"
+            leaves Survey with an Undo toast; 44px finger target. */}
         <MobileStyledSelect
+          className="mobile-pdf-properties__survey-template"
+          ariaLabel="Survey template"
+          leading={<Icon name="survey" size={14} color="var(--accent)" />}
+          value={survey.templateId || ''}
+          placeholder={survey.templateName || 'Survey'}
+          options={(survey.templates || []).map((template) => ({ value: template.id, label: template.name }))}
+          onChange={(value) => survey.onSelectTemplate?.(value)}
+        />
+        <MobileStyledSelect
+          className="mobile-pdf-properties__survey-module"
           ariaLabel="Survey module"
           fitOptions
           disabled={!survey.modules?.length}
@@ -1354,6 +1359,16 @@ export function MobileToolProperties({ api }) {
         >
           <span className="mobile-pdf-properties__keep-track" aria-hidden="true" />
           <span>Reuse</span>
+        </button>
+        {/* A rule keeps "Reuse" and "Done" from reading as one phrase. */}
+        <span aria-hidden="true" className="mobile-pdf-properties__divider mobile-pdf-properties__done-rule" />
+        <button
+          type="button"
+          className="mobile-pdf-properties__done"
+          aria-label="Leave Survey"
+          onClick={() => survey.onExit?.()}
+        >
+          Done
         </button>
       </div>
     );

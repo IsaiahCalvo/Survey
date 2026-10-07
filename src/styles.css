@@ -721,30 +721,124 @@
    the chips are .chrome-subcontrol, the rules are .chrome-divider.
    ========================================================================== */
 .survey-subrow {
+  /* Owner 2026-10-07 (survey bar round): the bar now runs edge to edge -
+     [glyph template v] ...... [Module v] | (C)(D) | Reuse ...... Done.
+     Three columns: the two sides are equal (1fr each), so the category chips
+     stay exactly on the bar's centre whatever the names are, as before. Each
+     side packs to its edge: the template name hugs the left end and Done the
+     right end; the module pill and Reuse stay against the chips. When room
+     runs out the TEMPLATE NAME gives way first (it ellipsises); the chips,
+     then the module name; the chips, Reuse and Done keep their size.
+     The left panel and the Survey panel are drawn OVER this row, so the bar
+     is inset by whichever is open (PDFViewer sets the two insets) and centres
+     in what stays visible; it eases across as a panel opens or closes. */
   position: relative;
+  width: 100%;
   height: 100%;
-  display: flex;
+  box-sizing: border-box;
+  padding: 0 calc(8px + var(--survey-bar-inset-r, 0px)) 0 calc(8px + var(--survey-bar-inset-l, 0px));
+  transition: padding 180ms ease-out;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: center;
 }
 
 .survey-subrow__side {
-  position: absolute;
-  top: 0;
-  bottom: 0;
+  min-width: 0;
+  height: 100%;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   white-space: nowrap;
   /* The side groups are not gap rows, so each rule keeps its full 8px inset. */
   --chrome-row-gap: 0px;
-  /* 2026-09-30: an absolute box pinned by right:100% only gets the sub-row's
-     own width to shrink-to-fit into, so a content-sized module pill would
-     overflow onto the category chips. The side is always its content's width. */
-  width: max-content;
 }
 
-.survey-subrow__side--start { right: 100%; }
-.survey-subrow__side--end { left: 100%; }
+.survey-subrow__reuse {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+.survey-subrow__module {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.survey-subrow__module .annotation-dropdown {
+  min-width: 0;
+  display: flex;
+}
+
+.survey-subrow__module .chrome-pill {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/* The mode's name: a plateless menu trigger (a title, not a setting) - the
+   gold survey glyph (the Survey tab's glyph), the template in bright ink, its
+   chevron. Hover gives it the pill's surface step. It is the one item that
+   shrinks: the name ellipsises down to the glyph and a few letters. */
+.survey-subrow__template {
+  flex: 0 1000 auto;
+  min-width: 0;
+  display: flex;
+}
+
+.survey-subrow__template .chrome-pill {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: 260px;
+  padding: 0 6px;
+  color: var(--text-1);
+  background: transparent;
+  font-size: 12px;
+}
+
+.survey-subrow__template .chrome-pill:hover,
+.survey-subrow__template .chrome-pill[data-state='open'] {
+  background: var(--hover);
+}
+
+.survey-subrow__template .chrome-pill__label {
+  text-overflow: ellipsis;
+}
+
+/* "Done" leaves Survey. A plain word, neutral ink (never red, never gold),
+   32px tall so it is an easy target at the bar's far end. */
+.survey-subrow__done {
+  flex: 0 0 auto;
+  height: 32px;
+  min-width: 48px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-1);
+  background: transparent;
+  border: 0;
+  border-radius: var(--chrome-radius);
+  font: 600 12px/1 var(--font-ui);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.survey-subrow__done:hover {
+  background: var(--hover);
+}
+
+.survey-subrow__done:active {
+  background: var(--pressed);
+}
+
+.survey-subrow__done:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
 
 .survey-subrow__cats {
   display: flex;
@@ -860,7 +954,7 @@
    every name sits in one grid cell, only the current one visible - so switching
    module never moves anything, capped at 220px with an ellipsis. The pill's
    width token is `auto` for this one pill (PDFViewer passes width="auto"). */
-.survey-subrow__side--start .chrome-pill {
+.survey-subrow__module .chrome-pill {
   max-width: 220px;
   /* Owner 2026-10-01 ("the text is not centred when it should be, like it is
      on mobile"): the label is centred in the PILL, as the phone's module pill
@@ -890,6 +984,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .survey-subrow,
   .survey-subrow__track,
   .survey-subrow__track::after {
     transition: none;
@@ -1917,20 +2012,6 @@ input[type="text"].spaces-region__name-input:focus-visible {
 .active-space-chip__off:active,
 .active-space-chip__open:active {
   color: var(--text-1);
-}
-
-/* The Survey chip (src/components/SurveyModeChip.jsx, owner 2026-10-07): the
-   Space chip's twin. "Survey" always shows; the template name after it is
-   what trims when room runs out. */
-.survey-mode-chip .active-space-chip__name {
-  flex: 0 0 auto;
-}
-
-.survey-mode-chip .active-space-chip__meta {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 @media (hover: hover) and (pointer: fine) {

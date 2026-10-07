@@ -489,6 +489,7 @@ const SurveySpacesRail = ({
   onLiveSyncToggle,
   onVerifyLiveSync,
   onCloseSurveyMode,
+  surveyReenterCollapsedRef = null,
   onRequestCreateTemplate,
   onSelectSurveyTemplate,
   pdfFile,
@@ -868,11 +869,17 @@ const SurveySpacesRail = ({
     const wasOn = surveyWasOnRef.current;
     surveyWasOnRef.current = Boolean(showSurveyPanel);
     if (showSurveyPanel) {
+      // Owner 2026-10-07 (survey bar round): an Undo of "Left Survey" puts
+      // the panel back the way it was - closed, when it was closed.
+      if (surveyReenterCollapsedRef?.current) {
+        surveyReenterCollapsedRef.current = false;
+        return;
+      }
       setIsSurveyPanelCollapsed(false);
       return;
     }
-    // Owner 2026-10-07 (DEBATE.md): Survey is left from OUTSIDE the panel now
-    // - the Survey chip's x - so the panel follows the mode out, and the
+    // Owner 2026-10-07: Survey is left from OUTSIDE the panel - "Done" at
+    // the end of the survey bar - so the panel follows the mode out, and the
     // phone's accordion starts closed next time.
     if (!wasOn) return;
     if (mobileMode) {
@@ -1037,9 +1044,18 @@ const SurveySpacesRail = ({
       setTemplateSwitchQuery('');
     }
   }, [isTemplateSelectorOpen, isSurveyPanelCollapsed, mobileAccordionOpen, mobileMode, categorySelectModeActive]);
+  const lastTemplateIdRef = useRef(selectedTemplate?.id || null);
   useEffect(() => {
     setIsTemplateSelectorOpen(false);
     setTemplateSwitchQuery('');
+    // Owner 2026-10-07: a template switched from the survey bar's menu also
+    // starts on its category list on the phone (as a switch in the sheet).
+    const previousId = lastTemplateIdRef.current;
+    lastTemplateIdRef.current = selectedTemplate?.id || null;
+    if (mobileMode && previousId && selectedTemplate?.id && previousId !== selectedTemplate.id) {
+      collapseMobileAccordion();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTemplate?.id]);
 
   // Focus lands on the current template when the list or menu opens.
@@ -1826,8 +1842,8 @@ const SurveySpacesRail = ({
                 scratchpad railDrawboard/DRAWBOARD-SIDEBAR.md). No collapse row
                 and no chevron: the Survey tab opens the panel beside it, and
                 pressed again while the panel is open it closes it. Closing the
-                panel never leaves Survey - the Survey chip's x does that (see
-                SurveyModeChip; DEBATE.md in the same folder). The zoom / page /
+                panel never leaves Survey - "Done" at the end of the survey bar
+                does that (owner 2026-10-07, survey bar round). The zoom / page /
                 fit footer AppShell draws at the bottom of this rail sits above
                 it (same layer, later in the page). */}
             {!mobileMode && (
@@ -1990,7 +2006,7 @@ const SurveySpacesRail = ({
                       phone this is ONE slim 44px line - the template name as its
                       own switcher. The "SURVEY TEMPLATE" eyebrow and the round
                       plated buttons are gone; Exit Survey left the panel on
-                      2026-10-07 for the Survey chip.
+                      2026-10-07 (the survey bar's "Done" leaves Survey now).
                       UX 2026-09-23 (owner: desktop survey polish): desktop is one
                       40px line too, the Bookmarks / Spaces header - the template
                       name as a 13px title, then "Export" as a quiet glyph-and-word
@@ -2158,9 +2174,9 @@ const SurveySpacesRail = ({
                       )}
                       {/* Owner 2026-10-07 (DEBATE.md): no "Exit Survey" in the
                           panel any more, on either platform. Survey is left
-                          with the x on the Survey chip outside the panel (the
-                          desktop tool bar, the phone's top area), the way a
-                          Space is turned off. */}
+                          with "Done" at the right end of the survey bar
+                          (desktop and phone), with an Undo toast; the
+                          floating Survey chip that did it first is gone. */}
                       {mobileMode && (
                         <button
                           onClick={() => {

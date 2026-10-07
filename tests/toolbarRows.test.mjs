@@ -335,7 +335,9 @@ test('owner 2026-10-01: opening or closing a side panel never moves the tool bar
 
 test('owner 2026-10-01: the desktop survey module pill centres its label like the phone pill', () => {
   const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
-  const pill = css.slice(css.indexOf('.survey-subrow__side--start .chrome-pill {'));
+  // 2026-10-07 (survey bar round): the module pill has its own wrapper
+  // (.survey-subrow__module) - the template menu now shares the start side.
+  const pill = css.slice(css.indexOf('.survey-subrow__module .chrome-pill {\n  max-width'));
   assert.match(pill.slice(0, pill.indexOf('}')), /padding-left: calc\(var\(--chrome-field-pad-x\) \+ 9px \+ var\(--chrome-gap\)\);/);
   const fit = css.slice(css.indexOf('.survey-subrow__fit {'));
   assert.match(fit.slice(0, fit.indexOf('}')), /text-align: center;/);
