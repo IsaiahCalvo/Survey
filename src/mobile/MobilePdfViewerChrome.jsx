@@ -2565,7 +2565,7 @@ export function MobileToolProperties({ api }) {
   );
 }
 
-export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenPanel, onAuxPanelStateChange, auxCloseRequestKey = 0 }) {
+export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedInUser = null, onOpenPanel, onAuxPanelStateChange, auxCloseRequestKey = 0 }) {
   const [openCategory, setOpenCategory] = useState(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [presenceOpen, setPresenceOpen] = useState(false);
@@ -2588,14 +2588,19 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   // withDevFakePresence: dev-only `?fakePeers=N`, as on the desktop footer.
   const presenceUsers = useMemo(() => normalizeMobilePresence(withDevFakePresence({
     presence: leftRailApi?.presence,
-    currentUserId: leftRailApi?.currentUserId,
-    currentUserEmail: leftRailApi?.currentUserEmail,
-    currentUserDisplayName: leftRailApi?.currentUserDisplayName,
+    // 2026-10-07 (phone loading): until the viewer publishes who is here, the
+    // signed-in account stands in, so the avatar opens on your own initials
+    // instead of a placeholder "U" that switched a moment later.
+    currentUserId: leftRailApi?.currentUserId ?? signedInUser?.id ?? null,
+    currentUserEmail: leftRailApi?.currentUserEmail ?? signedInUser?.email ?? null,
+    currentUserDisplayName: leftRailApi?.currentUserDisplayName
+      ?? signedInUser?.user_metadata?.full_name ?? null,
   })), [
     leftRailApi?.presence,
     leftRailApi?.currentUserId,
     leftRailApi?.currentUserEmail,
     leftRailApi?.currentUserDisplayName,
+    signedInUser,
   ]);
   const sync = useMemo(() => getMobileSyncPresentation(
     leftRailApi?.cloudSyncStatus,

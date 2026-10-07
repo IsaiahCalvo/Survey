@@ -56,6 +56,26 @@ const QUIET_LOADING_CSS = `
   opacity: 0;
   animation: quietLoadingIn 220ms ease-out both;
 }
+/* 2026-10-07 (phone loading): on a phone the line always sits at the middle of
+   the viewer's page area (between its 34px header and the dock), not of
+   whichever box happens to be loading. One open passes through three boxes
+   (the home while the PDF downloads, the viewer's frame while its code
+   arrives, the page area while the PDF parses) whose middles were 34-52px
+   apart, so the same words jumped twice on the way in. The page area itself
+   is a containing box for fixed children (contain: strict), so inside it the
+   middle is simply 50%. */
+@media (max-width: 720px) {
+  .quiet-loading-text {
+    --quiet-phone-header-h: calc(34px + env(safe-area-inset-top, 0px));
+    --quiet-phone-dock-h: calc(36px + max(10px, var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px))));
+    position: fixed;
+    left: 50%;
+    top: calc((var(--quiet-phone-header-h) + 100% - var(--quiet-phone-dock-h)) / 2);
+    transform: translate(-50%, -50%);
+  }
+  html[data-native-shell="expo"] .quiet-loading-text { --quiet-phone-header-h: 34px; }
+  .survey-pdfjs-viewer .quiet-loading-text { top: 50%; }
+}
 @media (prefers-reduced-motion: reduce) {
   .quiet-loading-text { animation-duration: 1ms; }
 }

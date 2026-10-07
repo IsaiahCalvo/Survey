@@ -7,7 +7,7 @@
  * connected-services availability flag. Used app-wide for cloud sync + auth.
  */
 import { createClient } from '@supabase/supabase-js';
-import { navigatorLock } from '@supabase/auth-js';
+import { isAuthRetryableFetchError, navigatorLock } from '@supabase/auth-js';
 import { createSafeNavigatorLock } from './utils/safeNavigatorLock.js';
 import {
   checkpointBodyFetch,
@@ -134,6 +134,35 @@ export async function getSupabaseSession(context = 'auth') {
     return session || null;
   } catch (err) {
     if (await recoverSupabaseAuthSession(err, context)) return null;
+    throw err;
+  }
+}
+
+// 2026-10-07 (phone loading): the start-up read of the saved sign-in. When the
+// saved token has expired and the network is down or slow (a phone opened
+// after hours away, in a lift, on weak signal), getSession() answers "no
+// session" with a retryable network error while the saved session stays in
+// storage. Reading that as "signed out" showed a signed-in person the
+// signed-out home and the sign-in sheet; `offline` tells the caller the sign-in
+// is still there and only needs the network to come back.
+//
+// A slow refresh can also lose the auth lock to another reader (the lock is
+// clamped to 2.5 s above), which throws "Lock broken by another request with
+// the 'steal' option" - that reader carries on with the same saved sign-in, so
+// it is a wait too, not a sign-out.
+const isAuthLockStolenError = (error) => (
+  error?.name === 'AbortError' || /lock broken|steal/i.test(String(error?.message || ''))
+);
+
+export async function readStartupSession(context = 'auth') {
+  if (!supabase) return { session: null, offline: false };
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    const session = data?.session || null;
+    return { session, offline: !session && isAuthRetryableFetchError(error) };
+  } catch (err) {
+    if (await recoverSupabaseAuthSession(err, context)) return { session: null, offline: false };
+    if (isAuthLockStolenError(err)) return { session: null, offline: true };
     throw err;
   }
 }

@@ -175,6 +175,26 @@ const viewerLoadFailedStyle = {
   fontSize: 13, lineHeight: '18px', cursor: 'pointer',
 };
 function ViewerLoadFailed() {
+  // 2026-10-07 (phone loading): the page reloads by itself instead of waiting
+  // for the tap - at once when the device is online (shares main.jsx's
+  // once-per-20 s guard, so it can never loop), otherwise as soon as the
+  // connection comes back.
+  useEffect(() => {
+    const reload = () => {
+      try {
+        const last = Number(window.sessionStorage.getItem('__vite_preload_reloaded_at') || 0);
+        if (Number.isFinite(last) && Date.now() - last < 20000) return;
+        window.sessionStorage.setItem('__vite_preload_reloaded_at', String(Date.now()));
+      } catch { /* storage unavailable: still reload once */ }
+      window.location.reload();
+    };
+    if (window.navigator?.onLine !== false) {
+      reload();
+      return undefined;
+    }
+    window.addEventListener('online', reload);
+    return () => window.removeEventListener('online', reload);
+  }, []);
   return (
     <button type="button" onClick={() => window.location.reload()} style={viewerLoadFailedStyle}>
       Couldn&rsquo;t open this file. Tap to try again.
@@ -1235,6 +1255,11 @@ export default function App({ devPreviewReturnTab = null }) {
   const [documentLockedByTab, setDocumentLockedByTab] = useState({});
   // Track PDFs that are currently being opened to prevent duplicate opens
   const openingPdfsRef = useRef(new Set());
+  // 2026-10-07 (phone loading): a document tapped on the home whose PDF is
+  // still downloading ({ name } while it does). The screen shows the one quiet
+  // "Opening <file>…" from the tap on, and the viewer's own opening state takes
+  // over the same words without a blink (QuietLoading keeps one clock).
+  const [pendingDocumentOpen, setPendingDocumentOpen] = useState(null);
 
   // Template management state
   const [appTemplates, setAppTemplates] = useState(() => (
@@ -1295,6 +1320,7 @@ export default function App({ devPreviewReturnTab = null }) {
   const generateTabId = () => `tab-${randomUUID()}`;
 
   const handleDocumentSelect = (file, filePath = null) => {
+    setPendingDocumentOpen(null);
     if (!file) {
       console.error('No file provided to handleDocumentSelect');
       return;
@@ -1645,6 +1671,10 @@ export default function App({ devPreviewReturnTab = null }) {
 
   // Stable identities for the memoised home screen and tab strip.
   const stableDocumentSelect = useStableHandler(handleDocumentSelect);
+  const stableDocumentOpenStart = useStableHandler((doc) => {
+    setPendingDocumentOpen({ name: doc?.name || '' });
+  });
+  const stableDocumentOpenEnd = useStableHandler(() => setPendingDocumentOpen(null));
   const stableBack = useStableHandler(handleBack);
   const stableShowAuthModal = useCallback(() => setShowAuthModal(true), [setShowAuthModal]);
   const stableTabClick = useStableHandler(handleTabClick);
@@ -4056,6 +4086,7 @@ export default function App({ devPreviewReturnTab = null }) {
               <MobilePdfViewerToolRail
                 bottomToolbarApi={bottomToolbarApi}
                 leftRailApi={leftRailApi}
+                signedInUser={user}
                 onOpenPanel={openMobileDocumentPanel}
                 onAuxPanelStateChange={setMobileAuxPanel}
                 auxCloseRequestKey={mobileAuxCloseRequestKey}
@@ -4174,6 +4205,8 @@ export default function App({ devPreviewReturnTab = null }) {
               ref={dashboardRef}
               onDocumentSelect={stableDocumentSelect}
               onBack={stableBack}
+              onDocumentOpenStart={stableDocumentOpenStart}
+              onDocumentOpenEnd={stableDocumentOpenEnd}
               documents={documents}
               setDocuments={setDocuments}
               templates={appTemplates}
@@ -4257,6 +4290,14 @@ export default function App({ devPreviewReturnTab = null }) {
                 </div>
               );
             })}
+            {pendingDocumentOpen && currentView !== 'viewer' && (
+              // Covers the home (and takes its taps) while the PDF downloads;
+              // the same quiet line, place and background as the viewer's own
+              // opening state, which replaces it.
+              <div style={{ position: 'absolute', inset: 0, zIndex: 5000, background: 'var(--surface-0)' }}>
+                <QuietLoading label={openingLabel(pendingDocumentOpen.name)} background="var(--surface-0)" />
+              </div>
+            )}
           </div>
           </div>
           {/* UX 2026-05-14/29: chrome-right-host — slim always-visible right rail.

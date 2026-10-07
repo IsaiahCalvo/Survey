@@ -25,7 +25,11 @@ test('Supabase client has explicit browser auth persistence and recovery helpers
 });
 
 test('AuthProvider recovers corrupted refresh-token state before dev auto-login', () => {
-  assert.match(AUTH_CONTEXT_SOURCE, /getSupabaseSession\('AuthProvider\.getSession'\)/);
+  // 2026-10-07: the start-up read moved to readStartupSession (same recovery,
+  // plus an `offline` answer so a saved sign-in that only lacks the network is
+  // not treated as signed out).
+  assert.match(AUTH_CONTEXT_SOURCE, /readStartupSession\('AuthProvider\.getSession'\)/);
+  assert.match(SUPABASE_CLIENT_SOURCE, /export async function readStartupSession[\s\S]*?recoverSupabaseAuthSession\(err, context\)/);
   assert.match(AUTH_CONTEXT_SOURCE, /recoverSupabaseAuthSession\(error, 'AuthProvider\.getSession'\)/);
   assert.match(AUTH_CONTEXT_SOURCE, /finishAuthBoot\(null\)/);
   assert.match(AUTH_CONTEXT_SOURCE, /runDevAutoLoginIfNeeded/);

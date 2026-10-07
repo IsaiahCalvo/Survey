@@ -23,6 +23,7 @@ import ShareModal from './ShareModal';
 import AccessManagementModal from './AccessManagementModal';
 import { HubChromeContext, HubShell } from './HubShell';
 import HubLoading from './HubLoading';
+import useAutoRetryLoad from './useAutoRetryLoad';
 import { installOverlayScrollbars } from '../utils/overlayScrollbars';
 const AccountSettings = lazy(() => import('../components/AccountSettings').then(m => ({ default: m.AccountSettings })));
 import './hub.css';
@@ -90,6 +91,12 @@ export default function SurveyHub({
      document-level listener covers the lists, the sheets and the portalled
      menus, so no list has to wire itself up. */
   useEffect(() => installOverlayScrollbars(), []);
+
+  // A list that could not load tries again by itself (connection back, app back
+  // in front, widening timer) instead of waiting on its Try again button.
+  useAutoRetryLoad(Boolean(documentsLoadError) && documents.length === 0, onRetryDocuments);
+  useAutoRetryLoad(Boolean(projectsLoadError) && projects.length === 0, onRetryProjects);
+  useAutoRetryLoad(Boolean(templatesLoadError) && templates.length === 0, onRetryTemplates);
 
   // Documents, Projects, and Templates are primary navigation, not optional
   // features. Keep their code eager and retain the current frame while React

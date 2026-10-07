@@ -15,6 +15,11 @@ if (typeof window !== 'undefined') {
   const RELOAD_KEY = '__vite_preload_reloaded_at';
   window.addEventListener('vite:preloadError', (event) => {
     try {
+      // 2026-10-07 (phone loading): offline, a reload cannot fetch anything
+      // either - it only swapped the app for the browser's "No internet" page.
+      // Let the import fail quietly; the viewer's own retry line reloads once
+      // the connection is back.
+      if (window.navigator?.onLine === false) return;
       const last = Number(window.sessionStorage.getItem(RELOAD_KEY) || 0);
       if (!Number.isFinite(last) || Date.now() - last > 20000) {
         window.sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
