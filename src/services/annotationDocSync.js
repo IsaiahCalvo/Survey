@@ -116,6 +116,7 @@ import {
 import {
   bytesToPgHex,
   gunzipBytes as gunzip,
+  mergeCheckpointWithUpdate,
   pgHexToBytes,
 } from './annotationCheckpointCore.js';
 import {
@@ -183,6 +184,21 @@ const GAP_REPAIR_RETRY_MAX_MS = 30_000;
 const REMOTE_ORIGIN = 'remote';
 const HYDRATE_ORIGIN = 'hydrate';
 const PERMISSION_ROLLBACK_ORIGIN = 'permission-rollback';
+// 2026-10-07 (first-open save, owner-approved): a PDF's own markup imported
+// on a document's first open is written by its own Yjs client in transactions
+// with this origin and saved as ONE checkpoint (accepted state + the import),
+// never as WAL rows. The user's edits keep the WAL to themselves meanwhile:
+// they do not wait behind the import (only an edit of an imported mark waits
+// for that checkpoint). Open screens learn about it from one small WAL row
+// (BULK_CHECKPOINT_NOTICE_KEY) and take the stored checkpoint in.
+const BULK_ORIGIN = 'bulk-import';
+const BULK_NOTICE_ORIGIN = Object.freeze({ source: 'bulk-checkpoint-notice' });
+export const BULK_CHECKPOINT_NOTICE_KEY = 'bulkCheckpointNotice';
+const BULK_RETRY_BASE_MS = 1_000;
+const BULK_RETRY_MAX_MS = 30_000;
+const BULK_QUICK_RETRIES = 3;          // refusals retried at once (after catching up)
+const BULK_QUIET_MS = 600;             // no local edit for this long before uploading
+const BULK_QUIET_MAX_WAIT_MS = 8_000;  // ...but never wait longer than this
 // w30 live previews (annotationLiveBus.js): another screen's NEW mark,
 // broadcast the moment it was drawn, shown here as an overlay until its WAL row
 // arrives. It never enters this screen's Y.Doc (so nothing can build on it,
@@ -600,6 +616,22 @@ export async function openAnnotationDoc({
     onPageHide: null,      // window listener that force-checkpoints on real tab close
     onDocUpdate: null,     // the local-mutation observer, kept so teardown can detach it
     flushQueue: Promise.resolve(),
+    // 2026-10-07 bulk lane (see BULK_ORIGIN): updates waiting to be folded
+    // into a checkpoint, the Yjs clients they were written by (client -> end
+    // clock) until a checkpoint holding them is accepted, and who waits.
+    bulk: {
+      clientId: null,
+      pending: [],
+      unaccepted: new Map(),
+      waiter: null,
+      retryTimer: null,
+      attempt: 0,
+      scheduled: false,
+      blocked: 0, // queued edits waiting for this checkpoint (bulkDependencyFor)
+    },
+    lastLocalEditAt: 0,
+    bulkChain: Promise.resolve(),
+    lastBulkNoticeSeen: null,
     requestTimeoutMs,
     walUpdateMaxBytes: Math.max(1024, Number(walUpdateMaxBytes) || WAL_UPDATE_MAX_BYTES),
     walReadPageRows: Math.max(1, Math.floor(Number(walReadPageRows) || WAL_READ_PAGE_ROWS)),
@@ -816,7 +848,11 @@ export async function openAnnotationDoc({
       if (state.destroyed || state.deleted) return;
       // A closing handle owns only receipts from its already-running effects,
       // not new edits in the registry doc borrowed by the next viewer.
-      if (state.closePromise && origin !== state.eraseOutboxOrigin) return;
+      if (
+        state.closePromise
+        && origin !== state.eraseOutboxOrigin
+        && origin !== BULK_NOTICE_ORIGIN
+      ) return;
       if (origin?.source === 'erase-outbox' && origin !== state.eraseOutboxOrigin) return;
       // Ignore writes we didn't originate as user edits: remote ops, the initial
       // hydrate, and the local IndexedDB replay (re-appending those would loop).
@@ -834,9 +870,15 @@ export async function openAnnotationDoc({
         return;
       }
       if (origin === PERMISSION_ROLLBACK_ORIGIN || origin === state.idbProvider) return;
+      if (origin === BULK_ORIGIN) {
+        // Saved as part of one checkpoint, not appended (see BULK_ORIGIN).
+        if (supabase) queueBulkUpdate(state, update);
+        return;
+      }
       if (supabase) {
         syncTrace('local-update', { bytes: update.length });
         state.editEpoch += 1;
+        state.lastLocalEditAt = Date.now(); // the import checkpoint waits for a pause
         const staged = state.rebaseLocalMutations
           ? stageRebasedLocalMutation(state, transaction)
           : stageExactLocalUpdate(state, update);
@@ -918,6 +960,7 @@ export async function openAnnotationDoc({
     // No await between the final incarnation check and registration: purge
     // either sees this opening state or its bumped incarnation rejects open.
     registerActiveState(state);
+    state.openComplete = true;
   } catch (err) {
     abortBackendPrefetch(state);
     clearEraseOutboxRetry(state);
@@ -2067,6 +2110,7 @@ async function flushLiveResend(state) {
 async function applyAuthoritativeCloudRow(state, row) {
   const update = pgHexToBytes(row.data);
   const liveChanged = applyAuthoritativeCloudUpdate(state, update);
+  noteBulkCheckpointNotice(state);
   confirmLivePreview(state, row?.client_id, row?.client_seq);
   if (hasLiveStrokeGhosts(state.documentId)) {
     const marks = getAnnotationsMap(state.doc);
@@ -2683,18 +2727,27 @@ async function prunedTailVerdict(state, fromSeq) {
 async function recoverFromPrunedTail(state, fromSeq) {
   if (state.destroyed || !state.supabase) return false;
   console.warn('[annotationDocSync] catch-up rows after seq', fromSeq, 'were pruned; taking the stored checkpoint in');
+  return takeInLatestCloudCheckpoint(state, 'pruned-tail recovery');
+}
+
+// The stored checkpoint and the rows after it, taken in exactly as a cloud
+// row is (live, accepted, local copy, staged); the baselines move up to it.
+// Shared by the pruned-tail recovery (w36) and an import checkpoint notice
+// (2026-10-07).
+async function takeInLatestCloudCheckpoint(state, label) {
+  if (state.destroyed || !state.supabase) return false;
   let latest;
   try {
     latest = await loadLatestCloudCheckpoint(state);
   } catch (error) {
-    console.warn('[annotationDocSync] pruned-tail recovery failed; retrying on the next catch-up', error?.message);
+    console.warn(`[annotationDocSync] ${label} failed; retrying later`, error?.message);
     return false;
   }
   if (state.destroyed) return false;
   try {
     applyAuthoritativeCloudUpdate(state, latest.update);
   } catch (error) {
-    console.warn('[annotationDocSync] pruned-tail recovery apply failed', error?.message);
+    console.warn(`[annotationDocSync] ${label} apply failed`, error?.message);
     return false;
   }
   const covered = Number(latest.coveredSeq) || 0;
@@ -2719,11 +2772,12 @@ async function recoverFromPrunedTail(state, fromSeq) {
 }
 
 function currentSyncStatus(state) {
+  const bulkPending = state.bulk && (state.bulk.pending.length > 0 || state.bulk.unaccepted.size > 0) ? 1 : 0;
   const queueSize = Math.max(
     0,
     Number(state.pendingAppends) || 0,
     state.appendRecords?.size || 0,
-  );
+  ) + bulkPending;
   return {
     healthy: state.syncHealthy,
     error: state.syncHealthy ? null : state.lastSyncError,
@@ -3124,6 +3178,17 @@ function reconcilePersistedLocalState(state) {
     publishAcceptedAndVisiblePendingState(state);
     return Promise.resolve();
   }
+  // 2026-10-07: more than one WAL row's worth (a first-open import whose tab
+  // closed before its checkpoint was stored) is saved the way the import is:
+  // one checkpoint, after the open, not dozens of rows the open waits for.
+  // The screen holds the real bytes (as replayOutbox does for records), so
+  // an edit of one of those marks names structs the checkpoint will hold
+  // (and waits for it, see bulkDependencyFor).
+  if (state.supabase && persisted.update.length > state.walUpdateMaxBytes) {
+    Y.applyUpdate(state.doc, persisted.update, HYDRATE_ORIGIN);
+    queueBulkUpdate(state, persisted.update, { alreadyStaged: true });
+    return Promise.resolve();
+  }
   state.editEpoch += 1;
   const queued = enqueueAppend(state, persisted.update, persisted.snapshot, state.editEpoch);
   scheduleSnapshot(state);
@@ -3324,7 +3389,9 @@ function publishAcceptedAndVisiblePendingState(state) {
     || record.status === 'integrity-error'
     || record.status === 'dependency-error'
   ));
-  if (records.length === 0) {
+  // 2026-10-07: an import on its way to its checkpoint is pending too.
+  const bulkPending = state.bulk?.pending || [];
+  if (records.length === 0 && bulkPending.length === 0) {
     // Nothing pending to show: the projection is acceptedDoc itself (w29, no
     // ~20 MB copy on every open).
     publishProjectedStateIfChanged(state, state.acceptedDoc);
@@ -3335,6 +3402,7 @@ function publishAcceptedAndVisiblePendingState(state) {
   );
   try {
     Y.applyUpdate(projection, encodeSnapshot(state.acceptedDoc), HYDRATE_ORIGIN);
+    for (const update of bulkPending) Y.applyUpdate(projection, update, HYDRATE_ORIGIN);
     for (const record of records) {
       Y.applyUpdate(projection, record.update, HYDRATE_ORIGIN);
     }
@@ -3487,6 +3555,305 @@ function handleSnapshotResult(state, result) {
   return result;
 }
 
+// ---------------------------------------------------------------------------
+// 2026-10-07 bulk lane (first-open save; see BULK_ORIGIN).
+//
+// Before: the PDF's own markup (Package 2: 3,055 marks, ~5.8 MB) was cut into
+// ~25 WAL rows of 256 KB, appended one after another on the same queue as the
+// user's edits, each echoed back over Realtime and applied again; the user's
+// first edit waited behind all of them (6 s and more), and a full checkpoint
+// was uploaded afterwards anyway. Now the import is written by its own Yjs
+// client and saved as ONE checkpoint (the accepted state plus the import,
+// built and gzipped in the checkpoint worker), then announced by one small WAL
+// row. Nothing about the server changes: the checkpoint RPC's compare-and-set
+// still guards the frontier, and every checkpoint written after it contains it.
+
+// A Yjs client that has never written into this document.
+function bulkClientIdFor(state) {
+  if (state.bulk.clientId != null) return state.bulk.clientId;
+  let id = null;
+  while (id == null || id === state.doc.clientID || state.doc.store.clients.has(id)) {
+    const probe = createDetachedYDoc(`bulk-client:${state.documentId}:${randomClientId()}`);
+    id = probe.clientID;
+    try { probe.destroy(); } catch { /* */ }
+  }
+  state.bulk.clientId = id;
+  return id;
+}
+
+// Run `run` (which makes transactions with BULK_ORIGIN) as the bulk client.
+// Yjs itself reassigns doc.clientID at runtime (on a client-id clash), and
+// restoreAcceptedState does too: items are stamped with the client current
+// when they are created, and the main client's clock simply continues after.
+function runBulkTransaction(state, run) {
+  const mainClient = state.doc.clientID;
+  state.doc.clientID = bulkClientIdFor(state);
+  try {
+    run();
+  } finally {
+    state.doc.clientID = mainClient;
+  }
+}
+
+function queueBulkUpdate(state, update, { alreadyStaged = false } = {}) {
+  // Staged like any local update (stagedDoc = accepted + everything pending).
+  if (!alreadyStaged) Y.applyUpdate(state.stagedDoc, update, HYDRATE_ORIGIN);
+  const bytes = new Uint8Array(update);
+  state.bulk.pending.push(bytes);
+  for (const [client, range] of updateClockRanges(bytes)) {
+    const end = state.bulk.unaccepted.get(client) || 0;
+    if (range.end > end) state.bulk.unaccepted.set(client, range.end);
+  }
+  if (!state.bulk.waiter) {
+    let resolve;
+    const promise = new Promise((done) => { resolve = done; });
+    state.bulk.waiter = { promise, resolve };
+  }
+  syncTrace('bulk-queued', { bytes: bytes.length, parts: state.bulk.pending.length });
+  notifySyncStatus(state);
+  scheduleBulkFold(state);
+}
+
+function settleBulkWaiter(state, ok) {
+  const waiter = state.bulk.waiter;
+  state.bulk.waiter = null;
+  waiter?.resolve(ok);
+}
+
+// One fold per burst (an import writes one transaction per page, all in the
+// same task): queued behind a macrotask so every page is in it. A retry
+// waits `delayMs` unless the handle starts closing (then it runs at once).
+function scheduleBulkFold(state, delayMs = 0) {
+  if (state.bulk.scheduled || state.destroyed) return;
+  state.bulk.scheduled = true;
+  state.bulkChain = state.bulkChain
+    .then(() => new Promise((resolve) => {
+      state.bulk.wake = resolve;
+      state.bulk.retryTimer = setTimeout(resolve, state.closePromise ? 0 : delayMs);
+    }))
+    .then(() => {
+      if (state.bulk.retryTimer) clearTimeout(state.bulk.retryTimer);
+      state.bulk.retryTimer = null;
+      state.bulk.wake = null;
+      return runBulkFold(state);
+    })
+    .catch((error) => {
+      state.bulk.scheduled = false;
+      console.warn('[annotationDocSync] import checkpoint failed', error?.message);
+    });
+}
+
+function pruneAcceptedBulkClients(state) {
+  if (state.bulk.unaccepted.size === 0) return;
+  const accepted = Y.decodeStateVector(Y.encodeStateVector(state.acceptedDoc));
+  for (const [client, end] of [...state.bulk.unaccepted]) {
+    if ((Number(accepted.get(client)) || 0) >= end) state.bulk.unaccepted.delete(client);
+  }
+}
+
+async function runBulkFold(state) {
+  state.bulk.scheduled = false;
+  // Queued during the open (reconcilePersistedLocalState): run once it is
+  // done, so the notice row goes through the attached observer.
+  while (!state.openComplete && !state.destroyed && !state.deleted) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  if (state.destroyed || state.deleted) {
+    settleBulkWaiter(state, false);
+    return;
+  }
+  if (state.bulk.pending.length === 0) {
+    pruneAcceptedBulkClients(state);
+    if (state.bulk.unaccepted.size === 0) settleBulkWaiter(state, true);
+    return;
+  }
+  // The checkpoint must claim the log head when it lands (the RPC refuses it
+  // otherwise, and a refusal costs a whole re-upload): start it when this
+  // screen's own appends are done and the user paused for a moment.
+  await waitForBulkQuiet(state);
+  if (state.destroyed || state.deleted) {
+    settleBulkWaiter(state, false);
+    return;
+  }
+  const updates = state.bulk.pending.slice();
+  const bulkUpdate = updates.length === 1 ? updates[0] : Y.mergeUpdates(updates);
+  const folded = new Map();
+  for (const update of updates) {
+    for (const [client, range] of updateClockRanges(update)) {
+      if (range.end > (folded.get(client) || 0)) folded.set(client, range.end);
+    }
+  }
+  syncTrace('bulk-fold-start', { bytes: bulkUpdate.length, parts: updates.length });
+  const result = await writeSnapshot(state, {
+    bulkUpdate,
+    repairsGap: false,
+    // Not an edit epoch of its own: the bytes cover what acceptedDoc covers.
+    epoch: state.acceptedEditEpoch,
+    // A refusal comes back at once (no main-thread rebase merge of the whole
+    // document); the retry below rebuilds the bytes in the worker.
+    conflictAttempt: SNAPSHOT_RETRIES - 1,
+  });
+  syncTrace('bulk-fold-end', { ok: Boolean(result?.ok), stale: Boolean(result?.stale) });
+  if (!result?.ok && result?.stale && !state.destroyed) {
+    // Refused: the log head moved (someone wrote meanwhile) or another
+    // checkpoint was stored. Catch up / take that checkpoint in, then try
+    // again soon.
+    await rebaseBulkFold(state);
+    state.bulk.attempt += 1;
+    if (state.bulk.attempt <= BULK_QUICK_RETRIES && !state.closePromise) {
+      scheduleBulkFold(state);
+      return;
+    }
+  }
+  if (result?.ok) {
+    state.bulk.pending.splice(0, updates.length);
+    state.bulk.attempt = 0;
+    pruneAcceptedBulkClients(state);
+    await finalizeSnapshotResult(state, result);
+    writeBulkCheckpointNotice(state, folded);
+    if (state.bulk.pending.length > 0) scheduleBulkFold(state);
+    else if (state.bulk.unaccepted.size === 0) settleBulkWaiter(state, true);
+    notifySyncStatus(state);
+    return;
+  }
+  if (result?.permissionDenied) {
+    // The document cannot take these marks (locked, or access withdrawn):
+    // they go, exactly like a refused WAL append's.
+    state.bulk.pending.length = 0;
+    state.bulk.unaccepted.clear();
+    state.bulk.clientId = null;
+    settleBulkWaiter(state, false);
+    const outcome = await quarantineDefinitivePermissionDenial(state, result.error, {
+      reason: 'permission-denied-snapshot',
+    });
+    if (outcome?.status === 'accepted-before-snapshot-denial') {
+      restoreAcceptedState(state, {
+        reason: 'permission-denied-snapshot',
+        code: result?.error?.code || '42501',
+        requiresFullHistoryReset: true,
+      });
+    }
+    notifySyncStatus(state);
+    return;
+  }
+  // Not stored (network, repeated refusals): try again later. The marks stay
+  // on this device (IndexedDB) meanwhile; a reopen saves them too.
+  if (!result?.stale) markSyncHealth(state, false, result?.error || new Error('import checkpoint not stored yet'));
+  if (state.closePromise) {
+    console.warn('[annotationDocSync] import checkpoint not stored before close; the next open saves it');
+    settleBulkWaiter(state, false);
+    return;
+  }
+  if (!result?.stale) state.bulk.attempt += 1;
+  scheduleBulkFold(state, Math.min(
+    BULK_RETRY_MAX_MS,
+    BULK_RETRY_BASE_MS * (2 ** Math.max(0, state.bulk.attempt - 1 - BULK_QUICK_RETRIES)),
+  ));
+}
+
+// Until this screen has no append of its own on the way (other than edits
+// waiting for this very checkpoint) and no local edit for BULK_QUIET_MS.
+// Bounded: a screen that never pauses still gets its turn.
+async function waitForBulkQuiet(state) {
+  const until = Date.now() + BULK_QUIET_MAX_WAIT_MS;
+  while (!state.destroyed && !state.closePromise && Date.now() < until) {
+    const appending = (Number(state.pendingAppends) || 0) - (Number(state.bulk.blocked) || 0) > 0;
+    const editedRecently = Date.now() - (Number(state.lastLocalEditAt) || 0) < BULK_QUIET_MS;
+    if (!appending && !editedRecently) break;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  // Rows other screens wrote are read in order first, so at_seq can be the
+  // head (Realtime alone never moves the frontier).
+  if (!state.destroyed && (Number(state.lastSeq) || 0) > (Number(state.coveredSeq) || 0)) {
+    await catchUpTail(state, { countsAsReconnect: false });
+  }
+}
+
+// After a refused import checkpoint: the same base with a moved head needs
+// only the rows after it; a different stored checkpoint is taken in whole.
+async function rebaseBulkFold(state) {
+  try {
+    const { data, error } = await withCloudRequest(
+      state,
+      snapshotIdentityReadQuery(state),
+      'snapshot identity read',
+    );
+    if (error || state.destroyed) return;
+    if (snapshotRowMatchesBase(state, data || null)) {
+      await catchUpTail(state, { countsAsReconnect: false });
+    } else {
+      await (state.catchupChain = state.catchupChain.then(() => takeInLatestCloudCheckpoint(state, 'import checkpoint rebase')));
+    }
+  } catch (error) {
+    console.warn('[annotationDocSync] import checkpoint rebase failed', error?.message);
+  }
+}
+
+// One small row after the checkpoint is stored: screens that already have
+// the document open read the WAL only, so this tells them to take the stored
+// checkpoint in (noteBulkCheckpointNotice). Fresh opens read the checkpoint.
+function writeBulkCheckpointNotice(state, folded) {
+  if (state.destroyed || state.deleted || folded.size === 0) return;
+  try {
+    setMetaValue(state.doc, BULK_CHECKPOINT_NOTICE_KEY, {
+      writerId: state.writerId,
+      atSeq: state.snapshotBaseAtSeq,
+      at: new Date().toISOString(),
+      clients: [...folded].map(([client, clock]) => [client, clock]),
+    }, BULK_NOTICE_ORIGIN);
+  } catch (error) {
+    console.warn('[annotationDocSync] import checkpoint notice failed', error?.message);
+  }
+}
+
+// An edit that names a struct of an import not stored yet (an edit or delete
+// of an imported mark) waits for that checkpoint: a WAL row may never refer
+// to bytes no reader can get. Returns the promise to wait for, or null.
+function bulkDependencyFor(state, update) {
+  if (state.bulk.unaccepted.size === 0 || !state.bulk.waiter) return null;
+  const pending = state.bulk.unaccepted;
+  const names = (id) => id != null && typeof id === 'object' && pending.has(Number(id.client));
+  const decoded = Y.decodeUpdate(update);
+  for (const struct of decoded.structs) {
+    if (names(struct.origin) || names(struct.rightOrigin) || names(struct.parent)) return state.bulk.waiter.promise;
+  }
+  for (const client of decoded.ds.clients.keys()) {
+    if (pending.has(Number(client))) return state.bulk.waiter.promise;
+  }
+  return null;
+}
+
+// Peer side: a row changed the notice and this screen lacks what it names.
+function noteBulkCheckpointNotice(state) {
+  if (!state.supabase || state.destroyed) return;
+  const notice = state.doc.getMap(META_MAP).get(BULK_CHECKPOINT_NOTICE_KEY);
+  if (!notice || notice === state.lastBulkNoticeSeen) return;
+  state.lastBulkNoticeSeen = notice;
+  if (!Array.isArray(notice.clients) || notice.clients.length === 0) return;
+  const accepted = Y.decodeStateVector(Y.encodeStateVector(state.acceptedDoc));
+  const missing = notice.clients.some(([client, clock]) => (
+    (Number(accepted.get(Number(client))) || 0) < Number(clock)
+  ));
+  if (!missing || state.bulkAdoptQueued) return;
+  state.bulkAdoptQueued = true;
+  state.catchupChain = state.catchupChain.then(async () => {
+    state.bulkAdoptQueued = false;
+    if (state.destroyed) return false;
+    const taken = await takeInLatestCloudCheckpoint(state, 'import checkpoint notice');
+    if (!taken && !state.destroyed) {
+      // Read it again shortly.
+      state.lastBulkNoticeSeen = null;
+      const retry = setTimeout(() => noteBulkCheckpointNotice(state), 2_000);
+      retry?.unref?.();
+    }
+    return taken;
+  }).catch((error) => {
+    state.bulkAdoptQueued = false;
+    console.warn('[annotationDocSync] taking the import checkpoint in failed', error?.message);
+    return false;
+  });
+}
+
 // Serialize appends so client_seq increments cleanly and ordering is stable.
 //
 // No WAL row may be huge (w26, 2026-09-24): an update over
@@ -3593,6 +3960,10 @@ function enqueueAppendRecord(
   state.appendRecords.set(record.key, record);
   syncTrace('enqueued', { writer: state.writerId, clientSeq, deps: record.dependsOn.length, pending: state.appendRecords.size });
   const persisted = persistOutboxRecord(state, record);
+  // 2026-10-07: an edit of a mark whose import checkpoint is not stored yet
+  // waits for it (bulkDependencyFor); every other edit goes straight on.
+  const bulkWait = bulkDependencyFor(state, record.update);
+  if (bulkWait) state.bulk.blocked += 1;
   state.pendingAppends += 1;
   notifySyncStatus(state);
   state.flushQueue = state.flushQueue.then(async () => {
@@ -3600,6 +3971,18 @@ function enqueueAppendRecord(
       syncTrace('queue-start', { writer: state.writerId, clientSeq });
       await persisted;
       syncTrace('outbox-persisted', { writer: state.writerId, clientSeq });
+      if (bulkWait) {
+        syncTrace('bulk-wait', { writer: state.writerId, clientSeq });
+        let stored;
+        try {
+          stored = await bulkWait;
+        } finally {
+          state.bulk.blocked = Math.max(0, state.bulk.blocked - 1);
+        }
+        // Closing without it: the record stays in the outbox and the next
+        // open sends it together with the import.
+        if (!stored && (state.closePromise || state.destroyed)) return;
+      }
       if (ordinal <= state.permissionRejectedCutoff) {
         if (
           record.status === 'integrity-error'
@@ -4285,6 +4668,10 @@ async function writeSnapshotOnce(state, {
   pendingSnapshot = null,
   // The given bytes are an encoding of acceptedDoc (captureSnapshotOptions).
   fromAccepted = false,
+  // 2026-10-07: a bulk import saved by this checkpoint (runBulkFold): the
+  // bytes are acceptedDoc plus it, merged where acceptedDoc is encoded (the
+  // checkpoint worker); acceptedDoc takes it in once the write is accepted.
+  bulkUpdate = null,
 } = {}, bodyMarkers = []) {
   const repairsGapAtStart = repairsGap ?? state.durabilityGap;
   const gapGenerationAtStart = gapGeneration ?? state.durabilityGapGeneration;
@@ -4349,12 +4736,16 @@ async function writeSnapshotOnce(state, {
   // The app's Supabase client can send the worker's JSON bytes as the
   // p_snapshot text without this thread ever holding the multi-MB string.
   const asJsonBody = useCheckpointJsonBody(state);
+  const withBulk = encodesAccepted && bulkUpdate ? bulkUpdate : null;
   const mirrorCheckpoint = encodesAccepted
-    ? requestMirrorCheckpoint(state.checkpointMirror, Y.encodeStateVector(state.acceptedDoc), { asJsonBody })
+    ? requestMirrorCheckpoint(state.checkpointMirror, Y.encodeStateVector(state.acceptedDoc), { asJsonBody, extraUpdate: withBulk })
     : null;
   let updateAtStart = snapshotUpdate || (
     repairsGapAtStart ? encodeRepairCheckpoint(state) : (mirrorCheckpoint ? null : encodeSnapshot(state.acceptedDoc))
   );
+  if (withBulk && updateAtStart && !mirrorCheckpoint) {
+    updateAtStart = mergeCheckpointWithUpdate(updateAtStart, withBulk);
+  }
   const coverageAtStart = snapshotUpdate
     ? cleanCoverageAtEncode
     : ((updateAtStart || mirrorCheckpoint) ? cleanCoverage(state) : null);
@@ -4404,6 +4795,23 @@ async function writeSnapshotOnce(state, {
     };
   }
   for (let attempt = 1; attempt <= SNAPSHOT_RETRIES; attempt += 1) {
+    // 2026-10-07: an import checkpoint is several MB. When this screen
+    // already knows the RPC would refuse it (its own row landed, or is on
+    // the way, since at_seq was taken), it is not sent: the caller catches
+    // up and builds it again.
+    if (withBulk && (
+      state.coveredSeq !== atSeq
+      || (Number(state.pendingAppends) || 0) - (Number(state.bulk?.blocked) || 0) > 0
+    )) {
+      syncTrace('bulk-fold-skip-send', { atSeq, coveredSeq: state.coveredSeq });
+      return {
+        ok: false,
+        permissionDenied: false,
+        stale: true,
+        containsUnacceptedPrefix: false,
+        error: null,
+      };
+    }
     try {
       let error;
       let accepted = true;
@@ -4531,6 +4939,8 @@ async function writeSnapshotOnce(state, {
         // decoded the whole document for nothing (~0.1-0.5 s on Package 2).
         // Repair or rebased bytes may hold more: applied.
         if (!encodesAccepted && !(fromAccepted && !repairsGapAtStart)) applyAcceptedUpdate(state, updateAtStart);
+        // Only the import is new to acceptedDoc (the rest is its own encoding).
+        else if (withBulk) applyAcceptedUpdate(state, withBulk);
         state.acceptedEditEpoch = Math.max(state.acceptedEditEpoch, epochAtStart || 0);
         await settleSnapshotCoveredRecords(state, updateAtStart, epochAtStart, prepared?.stateVector || null);
         await recordWrittenSnapshotInCleanState(state, updateAtStart, coverageAtStart, {
@@ -6174,12 +6584,14 @@ async function drainStateQueues(state) {
     const authoritativeQueue = state.authoritativeChain;
     const resendQueue = state.liveResendChain;
     const compactionQueue = state.compactionChain;
+    const bulkQueue = state.bulkChain;
     await Promise.all([
       flushQueue.catch(() => {}),
       replayQueue.catch(() => {}),
       authoritativeQueue.catch(() => {}),
       resendQueue.catch(() => {}),
       compactionQueue.catch(() => {}),
+      bulkQueue.catch(() => {}),
     ]);
     await Promise.resolve();
     if (
@@ -6188,6 +6600,7 @@ async function drainStateQueues(state) {
       && authoritativeQueue === state.authoritativeChain
       && resendQueue === state.liveResendChain
       && compactionQueue === state.compactionChain
+      && bulkQueue === state.bulkChain
       && !state.outboxReplayScheduled
     ) return;
   }
@@ -6389,12 +6802,23 @@ function makeHandle(state) {
           }, opts.origin || 'local');
         }
       }
+      // 2026-10-07: `opts.bulkKeys` names a PDF's own markup being imported;
+      // its new marks take the bulk lane (one checkpoint, see BULK_ORIGIN).
+      const { bulkKeys: requestedBulkKeys, ...syncOpts } = opts;
+      const bulkKeys = state.supabase && requestedBulkKeys instanceof Set && requestedBulkKeys.size > 0
+        ? requestedBulkKeys
+        : null;
       const res = syncByPageToDoc(state.doc, byPage, {
         origin: 'local',
         eraserWriterId: state.writerId,
         viewer,
         stackOrderIgnoreKeys: liveEditStrip.appendedKeys,
-        ...opts,
+        ...syncOpts,
+        ...(bulkKeys ? {
+          bulkKeys,
+          bulkOrigin: BULK_ORIGIN,
+          bulkTransact: (run) => runBulkTransaction(state, run),
+        } : {}),
       });
       state.lastByPage = byPage;
       syncTrace('capture-end', { added: res.added, updated: res.updated, removed: res.removed });
@@ -6722,6 +7146,16 @@ function makeHandle(state) {
       assertStateWritable(state);
     },
 
+    /**
+     * 2026-10-07: resolves true once every bulk import (applyByPage
+     * `bulkKeys`) is in a stored checkpoint, false if this handle gave up on
+     * it (closed first, or the document refused it). True when there is none.
+     */
+    whenBulkSaved() {
+      if (state.bulk.pending.length === 0 && state.bulk.unaccepted.size === 0) return Promise.resolve(true);
+      return state.bulk.waiter ? state.bulk.waiter.promise : Promise.resolve(false);
+    },
+
     destroy() {
       if (state.closePromise) return state.closePromise;
       state.closePromise = (async () => {
@@ -6747,6 +7181,8 @@ function makeHandle(state) {
         window.removeEventListener('pagehide', state.onPageHide);
         state.onPageHide = null;
       }
+      // An import checkpoint waiting to retry goes now (one last try).
+      if (state.bulk.wake) state.bulk.wake();
       // Final checkpoint before teardown so the latest state is durable even if a
       // debounce was still pending. (Mark destroyed AFTER, so the write proceeds.)
       await drainStateQueues(state);

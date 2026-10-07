@@ -143,15 +143,19 @@ export function breakCheckpointMirror(mirror) {
  * no usable mirror. Rejects when the worker fails: the caller then breaks the
  * mirror and encodes on this thread.
  */
-export function requestMirrorCheckpoint(mirror, expectedVector, { asJsonBody = false } = {}) {
+export function requestMirrorCheckpoint(mirror, expectedVector, { asJsonBody = false, extraUpdate = null } = {}) {
   if (!mirrorUsable(mirror)) return null;
+  // 2026-10-07: `extraUpdate` (a bulk import) is merged into the bytes there;
+  // the mirror itself is not changed.
+  const extra = extraUpdate ? ownCopy(extraUpdate) : null;
   return request(mirror.worker, {
     op: 'mirror-checkpoint',
     mirrorId: mirror.id,
     expectedApplied: mirror.applied,
     expectedVector: expectedVector ? ownCopy(expectedVector) : null,
     asJsonBody,
-  });
+    extraUpdate: extra,
+  }, extra ? [extra.buffer] : []);
 }
 
 /**

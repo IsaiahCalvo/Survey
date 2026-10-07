@@ -4,7 +4,9 @@
 // treats the repo's .js files as CommonJS, so the specs cannot import them
 // directly; this script is spawned instead. JSON in on stdin, JSON out.
 //   { op: 'seed', byPage, lanes }  -> { hex }   one Y update holding the marks
-//   { op: 'decode', rows }         -> { byPage, lanes }  every WAL row applied
+//   { op: 'decode', rows, snapshot? } -> { byPage, lanes }  the checkpoint
+//        ({ data: '\\x…', encoding: 2 = gzip }) then every WAL row applied
+import { gunzipSync } from 'node:zlib';
 import * as Y from 'yjs';
 import * as store from '../../../src/services/annotationDocStore.js';
 
@@ -23,6 +25,11 @@ if (input.op === 'seed') {
   process.stdout.write(JSON.stringify({ hex: Buffer.from(Y.encodeStateAsUpdate(doc)).toString('hex') }));
 } else if (input.op === 'decode') {
   const doc = new Y.Doc();
+  if (input.snapshot?.data) {
+    let bytes = Uint8Array.from(Buffer.from(String(input.snapshot.data).replace(/^\\x/, ''), 'hex'));
+    if (Number(input.snapshot.encoding) === 2) bytes = new Uint8Array(gunzipSync(bytes));
+    Y.applyUpdate(doc, bytes);
+  }
   for (const row of input.rows || []) {
     const hex = String(row.data).replace(/^\\x/, '');
     Y.applyUpdate(doc, Uint8Array.from(Buffer.from(hex, 'hex')));
