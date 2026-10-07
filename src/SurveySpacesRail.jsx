@@ -574,16 +574,28 @@ const SurveySpacesRail = ({
   // `if (!confirmed) return;` shape and nothing deletes before the user answers.
   const [askConfirm, confirmDialogElement] = useConfirmDialog();
   const [isSurveyPanelCollapsed, setIsSurveyPanelCollapsed] = useState(true);
-  // Desktop panel motion (owner 2026-09-30: "the expand animation isn't
-  // smooth"). Once the panel has been expanded or collapsed at least once, it
-  // plays surveyRailExpand / surveyRailCollapse (styles.css) instead of the
-  // mount-time slideInRight, so the very first render never plays a collapse.
-  const railPrevCollapsedRef = useRef(isSurveyPanelCollapsed);
-  const railToggledRef = useRef(false);
-  if (railPrevCollapsedRef.current !== isSurveyPanelCollapsed) {
-    railPrevCollapsedRef.current = isSurveyPanelCollapsed;
-    railToggledRef.current = true;
-  }
+  // Desktop panel motion (owner 2026-09-30 "the expand animation isn't
+  // smooth"; 2026-10-07 Drawboard rail): the open panel slides out from under
+  // the Survey rail (surveyRailExpand) and, once closed, stays drawn for the
+  // 0.2s it takes to slide back under it (surveyRailCollapse). A timer, not
+  // animationend, ends that, so reduced motion (no animation) cannot strand
+  // it on screen.
+  const [railPanelLeaving, setRailPanelLeaving] = useState(false);
+  const railPanelWasOpenRef = useRef(false);
+  useLayoutEffect(() => {
+    if (mobileMode) return undefined;
+    if (!isSurveyPanelCollapsed) {
+      railPanelWasOpenRef.current = true;
+      setRailPanelLeaving(false);
+      return undefined;
+    }
+    if (!railPanelWasOpenRef.current) return undefined;
+    railPanelWasOpenRef.current = false;
+    setRailPanelLeaving(true);
+    const timer = window.setTimeout(() => setRailPanelLeaving(false), 200);
+    return () => window.clearTimeout(timer);
+  }, [isSurveyPanelCollapsed, mobileMode]);
+  const desktopSurveyPanelShown = !isSurveyPanelCollapsed || railPanelLeaving;
   const [openEntityDropdownId, setOpenEntityDropdownId] = useState(null);
   // The template switcher (owner 2026-10-01, "hybrid" design): the template
   // name in the panel header is a button. Phone: it swaps the category list
@@ -851,11 +863,51 @@ const SurveySpacesRail = ({
     setIsSurveyPanelCollapsed(true);
   };
 
+  const surveyWasOnRef = useRef(Boolean(showSurveyPanel));
   useEffect(() => {
+    const wasOn = surveyWasOnRef.current;
+    surveyWasOnRef.current = Boolean(showSurveyPanel);
     if (showSurveyPanel) {
       setIsSurveyPanelCollapsed(false);
+      return;
     }
+    // Owner 2026-10-07 (DEBATE.md): Survey is left from OUTSIDE the panel now
+    // - the Survey chip's x - so the panel follows the mode out, and the
+    // phone's accordion starts closed next time.
+    if (!wasOn) return;
+    if (mobileMode) {
+      collapseMobileAccordion();
+      mobileListScrollRef.current = { top: 0, key: '' };
+    }
+    setIsSurveyPanelCollapsed(true);
+    // Only Survey turning on / off moves the panel here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showSurveyPanel]);
+
+  // Owner 2026-10-07 (DEBATE.md): opening Survey and closing the template
+  // picker without choosing one leaves Survey - nothing was started, so there
+  // is nothing to be "in" (and no Exit button is needed to undo it). Closing
+  // the panel with a template chosen keeps you in Survey, as before.
+  useEffect(() => {
+    if (!isSurveyPanelCollapsed || !showSurveyPanel || selectedTemplate) return;
+    exitSurveyMode();
+    // Only the panel closing runs this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSurveyPanelCollapsed]);
+
+  // Desktop: the Survey tab in the rail. Closed: open the panel (and start
+  // Survey - the template picker - if it is off). Open: close it. Like every
+  // rail tab (Drawboard model, owner 2026-10-07).
+  const toggleDesktopSurveyPanel = () => {
+    setRailIconHover(null);
+    if (!isSurveyPanelCollapsed) {
+      setIsSurveyPanelCollapsed(true);
+    } else {
+      setIsSurveyPanelCollapsed(false);
+      if (!showSurveyPanel) handleSurveyToggle();
+    }
+    requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
+  };
 
   useEffect(() => {
     if (expandRequestKey > 0) {
@@ -939,7 +991,9 @@ const SurveySpacesRail = ({
     const previous = shownArmedCategoryRef.current;
     shownArmedCategoryRef.current = armedCategoryId;
     if (previous === armedCategoryId) return;
-    const root = railMorphAnchorRef.current?.closest?.('.survey-rail, .mobile-survey-sheet');
+    // The phone's handle, or (desktop, no top row since 2026-10-07) the title.
+    const anchor = railMorphAnchorRef.current || templateTitleButtonRef.current || templatePickerRef.current;
+    const root = anchor?.closest?.('.survey-rail, .mobile-survey-sheet');
     if (!root) return;
     if (previous) playCategoryArmPress(root, previous, 'reverse');
     if (armedCategoryId) playCategoryArmPress(root, armedCategoryId, 'normal');
@@ -1767,12 +1821,89 @@ const SurveySpacesRail = ({
                 style={surveyBackdropStyle}
               />
             )}
+            {/* Desktop: the Survey tab's rail - always on screen, the right-hand
+                twin of the left rail (owner 2026-10-07, copied from Drawboard;
+                scratchpad railDrawboard/DRAWBOARD-SIDEBAR.md). No collapse row
+                and no chevron: the Survey tab opens the panel beside it, and
+                pressed again while the panel is open it closes it. Closing the
+                panel never leaves Survey - the Survey chip's x does that (see
+                SurveyModeChip; DEBATE.md in the same folder). The zoom / page /
+                fit footer AppShell draws at the bottom of this rail sits above
+                it (same layer, later in the page). */}
+            {!mobileMode && (
+              <div className="survey-rail-strip" data-chrome-rail="true" style={{
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                width: '48px',
+                height: '100%',
+                boxSizing: 'border-box',
+                // Above the panel, which slides out from under it.
+                zIndex: 2,
+                display: 'flex',
+                flexDirection: 'column',
+                background: 'var(--panel-bg)',
+                pointerEvents: 'none'
+              }}>
+                <div role="toolbar" aria-label="Survey panel" aria-orientation="vertical" style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  padding: '8px',
+                  gap: '4px',
+                  pointerEvents: 'auto'
+                }}>
+                  <div style={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={toggleDesktopSurveyPanel}
+                      aria-label="Survey"
+                      aria-expanded={!isSurveyPanelCollapsed}
+                      aria-controls={isSurveyPanelCollapsed ? undefined : 'survey-rail-panel'}
+                      {...tip('Survey', 'left')}
+                      // UX 2026-09-16 (desktop sweep): the Survey tab is a rail
+                      // TAB, so it takes the rail tab glyph (18) like Pages,
+                      // Search, Bookmarks and Spaces in the left rail, in the
+                      // same 40px tab box (padding 11/6).
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        /* UX 2026-09-22: resting chrome icon = --text-2, one
+                           grey across both rails and the top bar. Gold while
+                           Survey is on (the mode, not just the panel). */
+                        color: showSurveyPanel ? 'var(--accent)' : 'var(--text-2)',
+                        cursor: 'pointer',
+                        padding: '11px 6px',
+                        borderRadius: '6px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'background 0.15s',
+                        minWidth: '28px',
+                        minHeight: '28px',
+                        width: '100%'
+                      }}
+                      // Owner 2026-10-02: no hover plate (states.css section 5);
+                      // the shared rail hint comes from the tip() spread above.
+                    >
+                      <Icon
+                        name="survey"
+                        size={RAIL_GLYPH}
+                        color="currentColor"
+                        style={{ width: `${RAIL_GLYPH}px`, height: `${RAIL_GLYPH}px`, flexShrink: 0 }}
+                      />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             {/* Panel */}
             {/* UX 2026-05-29: the right rail starts at the same y-coordinate as
                 chrome-sub-toolbar-host. It overlays the right edge of that strip
-                instead of pushing or sitting below it, mirroring the left rail's
-                top collapse row. */}
+                instead of pushing or sitting below it. Desktop (owner
+                2026-10-07): the open panel stands beside the 48px Survey rail
+                (right: 48px), so the Survey tab stays on screen to close it. */}
             <div
+              id={mobileMode ? undefined : 'survey-rail-panel'}
               // Survey audit P1-5: the phone sheet is a bottom occluder (as the
               // phone Pages sheet is), so "Locate on page" fits the marker in
               // the page left above it.
@@ -1785,45 +1916,40 @@ const SurveySpacesRail = ({
                 // PASS 7 (DESIGN-SYSTEM.md, owner): every phone panel opens at
                 // Standard - 448px plus the bottom safe area - so the tray does
                 // not change height as you move between Pages, Search, Spaces and
-                // Survey. This panel used to measure its own content instead (154
-                // plus 48 a template, 392 with one chosen, 314 plus the checklist
-                // window in detail), which made it the odd one out AND made it
-                // resize under your finger as you moved through it. The token is
-                // --mobile-panel-standard, and .mobile-pdf-sheet already falls
-                // back to it, so nothing is set here: leaving --mobile-sheet-height
-                // unset is what lets .is-expanded and .is-fullscreen set it on a
-                // pull-up, which an inline value would have outranked.
+                // Survey. Leaving --mobile-sheet-height unset is what lets
+                // .is-expanded and .is-fullscreen set it on a pull-up, which an
+                // inline value would have outranked.
                 position: mobileMode ? 'fixed' : 'absolute',
                 top: mobileMode ? 'auto' : 0,
-                right: 0,
+                right: mobileMode ? 0 : '48px',
                 bottom: mobileMode ? 0 : 'auto',
                 left: mobileMode ? 0 : 'auto',
                 height: mobileMode ? 'var(--mobile-sheet-height, var(--mobile-panel-standard))' : '100%',
-                width: mobileMode ? '100%' : (isSurveyPanelCollapsed ? '48px' : '320px'),
+                width: mobileMode ? '100%' : '320px',
                 background: 'var(--panel-bg)',
                 borderLeft: mobileMode ? 'none' : '1px solid var(--border)',
+                // Desktop: a hairline against the Survey rail beside it, as the
+                // left panel has against the left rail.
+                borderRight: mobileMode ? undefined : '1px solid var(--border)',
+                boxSizing: mobileMode ? undefined : 'border-box',
                 zIndex: mobileMode ? 6500 : 1,
-                display: 'flex',
+                // Desktop: drawn while open, and for the 0.2s it slides back
+                // under the rail after closing.
+                display: (mobileMode || desktopSurveyPanelShown) ? 'flex' : 'none',
+                pointerEvents: (!mobileMode && railPanelLeaving) ? 'none' : undefined,
                 flexDirection: 'column',
-                // 2026-09-17: the desktop rail keeps its horizontal slide-in; on
-                // phone the sheet rises from the bottom, so a right-edge
-                // keyframe here would fight useMobileSheetMotion's transform.
-                // 2026-09-30 (owner: expand/collapse not smooth, the footer
-                // stretched ahead of the panel): the width is no longer
-                // transitioned, which re-laid-out every row of the panel on
-                // every frame. Expanding lays the panel out ONCE at 320px and
-                // slides it in with a transform (surveyRailExpand); collapsing
-                // shrinks only the light collapsed strip (surveyRailCollapse).
-                // Both are 0.2s ease like the old transition, end in an
-                // animationend the viewer's side-room measure listens for, and
-                // are off under prefers-reduced-motion (styles.css). The rail
-                // footer's expanded row lives INSIDE this panel (AppShell
-                // portals it here), so it moves with it frame for frame.
+                // Desktop motion (owner 2026-09-30: "the expand animation isn't
+                // smooth"; 2026-10-07 Drawboard rail): the panel is laid out
+                // ONCE at its 320px and slides out from under the Survey rail
+                // (surveyRailExpand), and back under it on close
+                // (surveyRailCollapse) - transforms only, 0.2s ease, so no row
+                // re-wraps mid-motion. Both end in an animationend the viewer's
+                // side-room measure listens for; off under prefers-reduced-motion
+                // (styles.css). On the phone the sheet rises from the bottom
+                // (useMobileSheetMotion), so no keyframe here.
                 animation: mobileMode
                   ? 'none'
-                  : (railToggledRef.current
-                    ? (isSurveyPanelCollapsed ? 'surveyRailCollapse 0.2s ease' : 'surveyRailExpand 0.2s ease')
-                    : 'slideInRight 0.3s ease-out'),
+                  : (railPanelLeaving ? 'surveyRailCollapse 0.2s ease forwards' : 'surveyRailExpand 0.2s ease'),
                 // Phone: the sheet hook's resize glide owns every height
                 // change (2026-10-01), so no CSS height leg to fight it.
                 transition: mobileMode ? 'none' : 'right 0.2s ease, top 0.2s ease, height 0.2s ease',
@@ -1832,213 +1958,39 @@ const SurveySpacesRail = ({
                 ...(mobileMode ? surveySheetMotionStyle : null)
               }}
             >
-              {/* Collapsed strip — Survey icon only, with a hover tooltip.
-                  Mirrors the left rail's collapsed button metrics while keeping
-                  Survey in its own persistent right-side home. */}
-              {isSurveyPanelCollapsed && (
+              {(!isSurveyPanelCollapsed || railPanelLeaving) && (
                 <>
-                  <div className={mobileMode ? 'mobile-survey-sheet-header' : undefined} data-chrome-rail={mobileMode ? undefined : 'true'} style={{
-                    height: '35px',
-                    padding: '0 8px',
-                    borderBottom: '1px solid var(--border)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    // UX 2026-09-16: the collapsed rail is one icon column, so
-                    // its top toggle sits on the same centre line as Survey,
-                    // zoom, the page steppers and Fit below it. Left-aligning
-                    // it to the rail's padding edge left it 3px off-axis.
-                    justifyContent: mobileMode ? 'flex-start' : 'center',
-                    background: 'var(--panel-bg)',
-                    flexShrink: 0
-                  }}>
-                    <button
-                      onClick={() => {
-                        setIsSurveyPanelCollapsed(false);
-                        requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
-                      }}
-                      aria-label="Expand Survey panel"
-                      {...tip('Expand Survey panel', 'left')}
-                      // UX 2026-09-16 (desktop sweep): the shared rail control box
-                      // and glyph. It was a 16px chevron in a padding-derived 24px
-                      // box, so the top of the rail carried a glyph size nothing
-                      // else in the column used. The box measures the same 24 as
-                      // before, so the strip's 35px height and the rail's centre
-                      // line are unchanged — nothing moves.
-                      /* UX 2026-09-22 (desktop critic round): a resting chrome
-                         icon is --text-2 on every rail and on the top bar — see
-                         the note on the left rail's tabs in PDFSidebar.jsx.
-                         The box radius is the house 6, not a rail-only 4. */
-                      style={{ background: 'transparent', border: 'none', color: 'var(--text-2)', cursor: 'pointer', ...(mobileMode ? { padding: '4px' } : { padding: 0, width: `${RAIL_CONTROL}px`, height: `${RAIL_CONTROL}px` }), borderRadius: 'var(--chrome-radius)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.12s ease-out' }}
-                      // Owner 2026-10-02: no hover plate - the chevron grows and
-                      // brightens like every chrome icon (states.css section 5).
-                    >
-                      <Icon name="chevronLeft" size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="currentColor" />
-                    </button>
-                  </div>
-                  <div data-chrome-rail={mobileMode ? undefined : 'true'} style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    padding: '8px',
-                    gap: '4px',
-                    background: 'var(--panel-bg)',
-                    position: 'relative',
-                    flex: 1
-                  }}>
-                    <div style={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center' }}>
-                      <button
-                        onClick={() => {
-                          setRailIconHover(null);
-                          if (showSurveyPanel) {
-                            setIsSurveyPanelCollapsed(false);
-                          } else {
-                            setIsSurveyPanelCollapsed(false);
-                            handleSurveyToggle();
-                          }
-                          requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
-                        }}
-                        aria-label="Survey"
-                        {...tip('Survey', 'left')}
-                        // UX 2026-09-16 (desktop sweep): the Survey tab is a rail
-                        // TAB, so it takes the rail tab glyph (18) like Pages,
-                        // Search, Bookmarks and Spaces in the left rail — it was
-                        // the one 20 in either rail. The padding is split 11/6 the
-                        // way the left rail's tabs are, which keeps the button the
-                        // same 40px tall around the smaller glyph: 18 + 22 = 40,
-                        // exactly what 20 + 20 came to. Nothing moves.
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          /* UX 2026-09-22: resting chrome icon = --text-2, one
-                             grey across both rails and the top bar. */
-                          color: showSurveyPanel ? 'var(--accent)' : 'var(--text-2)',
-                          cursor: 'pointer',
-                          padding: '11px 6px',
-                          borderRadius: '6px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          transition: 'background 0.15s',
-                          minWidth: '28px',
-                          minHeight: '28px',
-                          width: '100%'
-                        }}
-                        // Owner 2026-10-02: no hover plate (states.css section 5);
-                        // the shared rail hint comes from the tip() spread above.
-                      >
-                        <Icon
-                          name="survey"
-                          size={RAIL_GLYPH}
-                          color="currentColor"
-                          style={{ width: `${RAIL_GLYPH}px`, height: `${RAIL_GLYPH}px`, flexShrink: 0 }}
-                        />
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {!isSurveyPanelCollapsed && (
-                <>
-                  {/* Collapse row: mirrors the left rail's top strip. */}
-                  <div
-                    ref={railMorphAnchorRef}
-                    className={mobileMode ? 'mobile-pdf-sheet__handle mobile-pdf-sheet__handle--wide' : undefined}
-                    data-chrome-rail={mobileMode ? undefined : 'true'}
-                    style={{
-                      height: '35px',
-                      padding: '0 8px',
-                      borderBottom: '1px solid var(--border)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'flex-start',
-                      background: 'var(--panel-bg)',
-                      flexShrink: 0
-                    }}
-                  >
-                    <button
-                      onClick={() => {
-                        // Phase F: mobile collapse slides the sheet down first;
-                        // desktop collapses immediately (no bottom-sheet motion).
-                        if (mobileMode) {
-                          requestSurveySheetClose();
-                          return;
-                        }
-                        setIsSurveyPanelCollapsed(true);
-                        requestAnimationFrame(() => {
-                          applyLayoutDrivenZoom();
-                        });
-                      }}
-                      aria-label="Collapse Survey panel"
-                      // UX 2026-09-16 (desktop sweep): the shared rail control box
-                      // and glyph, the same as its twin "Expand Survey panel" — it
-                      // is the same control in the other state, so it cannot be a
-                      // different size. The phone keeps its own 16px sheet handle
-                      // chevron; mobile sizing is not this pass's lane.
+                  {/* Phone: the sheet's grab handle. Owner 2026-10-07: the
+                      invisible "Collapse Survey panel" chevron that filled it is
+                      gone (no collapse arrow anywhere); a swipe down, a tap
+                      outside or the dock's Survey button closes the sheet. */}
+                  {mobileMode && (
+                    <div
+                      ref={railMorphAnchorRef}
+                      className="mobile-pdf-sheet__handle mobile-pdf-sheet__handle--wide"
+                      aria-hidden="true"
                       style={{
-                        background: 'transparent',
-                        border: 'none',
-                        /* UX 2026-09-22: was a raw rgb(153,153,153) — the one
-                           chrome icon in the app painting a hand-typed grey.
-                           It is the Expand chevron's twin, so it takes the same
-                           resting token and the same house radius. */
-                        color: 'var(--text-2)',
-                        cursor: 'pointer',
-                        ...(mobileMode
-                          ? { padding: '4px' }
-                          : { padding: 0, width: `${RAIL_CONTROL}px`, height: `${RAIL_CONTROL}px` }),
-                        borderRadius: 'var(--chrome-radius)',
+                        height: '35px',
+                        padding: '0 8px',
+                        borderBottom: '1px solid var(--border)',
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'center',
-                        transition: 'color 0.12s ease-out'
+                        justifyContent: 'flex-start',
+                        background: 'var(--panel-bg)',
+                        flexShrink: 0
                       }}
-                      // Owner 2026-10-02: no hover plate (states.css section 5).
-                    >
-                      <Icon name={mobileMode ? 'chevronDown' : 'chevronRight'} size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="currentColor" />
-                    </button>
-                    {/* Owner 2026-10-02 (survey panel polish): the Exit Survey X
-                        sits in THIS row, opposite the collapse arrow - the
-                        panel's one top row - in every state (choosing a
-                        template or in one). It used to take the header row
-                        below. Same box and glyph rules as the collapse arrow. */}
-                    {!mobileMode && (
-                      // Owner 2026-10-02 (phone = desktop): the red word the
-                      // phone shows, in the same spot the X held - 13/600
-                      // --danger-text, like .mobile-survey-exit.
-                      <button
-                        type="button"
-                        onClick={exitSurveyMode}
-                        className="survey-rail__exit"
-                        style={{
-                          marginLeft: 'auto',
-                          background: 'transparent',
-                          border: 'none',
-                          color: 'var(--danger-text)',
-                          cursor: 'pointer',
-                          padding: '0 4px',
-                          height: `${RAIL_CONTROL}px`,
-                          borderRadius: 'var(--chrome-radius)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          font: '600 13px/1 var(--font-ui)',
-                          whiteSpace: 'nowrap'
-                        }}
-                      >
-                        Exit Survey
-                      </button>
-                    )}
-                  </div>
+                    />
+                  )}
 
                   {selectedTemplate && showSurveyPanel ? (
                   <>
-                  {/* Template title lives below the rail tabs, not in the collapse row.
+                  {/* The panel's top line (owner 2026-10-07: no collapse row
+                      above it any more).
                       UX 2026-09-23 (owner: phone Survey panel integrated): on the
                       phone this is ONE slim 44px line - the template name as its
-                      own switcher, then Exit Survey as a quiet red word, the
-                      export glyph and the close glyph. The "SURVEY TEMPLATE"
-                      eyebrow and the round plated buttons are gone, and Exit
-                      Survey no longer takes a whole footer band.
+                      own switcher. The "SURVEY TEMPLATE" eyebrow and the round
+                      plated buttons are gone; Exit Survey left the panel on
+                      2026-10-07 for the Survey chip.
                       UX 2026-09-23 (owner: desktop survey polish): desktop is one
                       40px line too, the Bookmarks / Spaces header - the template
                       name as a 13px title, then "Export" as a quiet glyph-and-word
@@ -2183,13 +2135,6 @@ const SurveySpacesRail = ({
                       <span className="survey-active-space">{(spaces || []).find((s) => s?.id === activeSpaceId)?.name || 'Space'}</span>
                     )}
                     <div className={mobileMode ? 'mobile-survey-head-actions' : 'survey-rail__head-actions'}>
-                      {/* Owner 2026-10-01 (after a debate): ONE Exit, and it is
-                          here - the red "Exit Survey" on the right of the panel
-                          header in EVERY state (template picker, template view,
-                          "< Categories", choosing a template), so it is always in
-                          the same spot whenever the panel is open. The survey bar
-                          above the page no longer has one. A swipe down or a tap
-                          outside only closes the sheet; it never leaves Survey. */}
                       {/* UX (mobile demo parity): 34px round export button in the sheet
                           header opening a 218px menu with 48px rows (demo
                           SurveySheet.tsx:324-348, styles.ts:2731-2775; accent gold, not
@@ -2211,13 +2156,11 @@ const SurveySpacesRail = ({
                           Cancel
                         </button>
                       )}
-                      {mobileMode && (
-                        <button type="button" className="mobile-survey-exit" onClick={exitSurveyMode}>
-                          Exit Survey
-                        </button>
-                      )}
-                      {/* Desktop's Exit X lives in the collapse row above
-                          (owner 2026-10-02). */}
+                      {/* Owner 2026-10-07 (DEBATE.md): no "Exit Survey" in the
+                          panel any more, on either platform. Survey is left
+                          with the x on the Survey chip outside the panel (the
+                          desktop tool bar, the phone's top area), the way a
+                          Space is turned off. */}
                       {mobileMode && (
                         <button
                           onClick={() => {
@@ -4327,15 +4270,15 @@ const SurveySpacesRail = ({
                           /* Owner 2026-10-02 (phone = desktop): centred, 600. */
                           <h2 className="mobile-survey-head-title">Choose a survey template</h2>
                         ) : (
-                          /* Owner 2026-10-02: the prompt is centred; the
-                             Exit X moved up into the collapse row. */
+                          /* Owner 2026-10-02: the prompt is centred. */
                           <h2 className="survey-rail__title survey-rail__title--centred">Choose a survey template</h2>
                         )}
+                        {/* Owner 2026-10-07 (DEBATE.md): no "Exit Survey" here -
+                            closing the picker without choosing a template
+                            (a swipe, a tap outside, the Survey tab or dock
+                            button again) leaves Survey on its own. */}
                         {mobileMode && (
                           <div className="mobile-survey-head-actions">
-                          <button type="button" className="mobile-survey-exit" onClick={exitSurveyMode}>
-                            Exit Survey
-                          </button>
                           <button
                             type="button"
                             className="mobile-survey-close"

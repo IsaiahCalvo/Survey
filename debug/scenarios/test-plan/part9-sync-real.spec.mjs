@@ -211,14 +211,16 @@ test.describe('Part 9 on the real backend, two accounts', () => {
     // Survey Markers need a survey template; the Survey panel says what this
     // account can do. Not faked: if the account cannot place markers, say so.
     const { A } = S;
-    const open = A.page.getByRole('button', { name: /^(Survey|Expand Survey panel|Open survey)$/ }).filter({ visible: true }).first();
+    const open = A.page.getByRole('button', { name: /^(Survey|Open survey)$/ }).filter({ visible: true }).first();
     await open.click().catch(() => {});
     await A.page.waitForTimeout(1500);
     const text = (await A.page.evaluate(() => document.body.innerText)).replace(/\s+/g, ' ');
     const proOnly = /Survey templates are a Pro feature[^.]*\./.exec(text)?.[0];
     const noTemplates = /No templates available/.test(text);
     await A.page.screenshot({ path: `${OUT_DIR}/real-62-A-survey.png` });
-    await A.page.getByRole('button', { name: 'Exit Survey' }).first().click().catch(() => {});
+    // Owner 2026-10-07: no Exit Survey; the Survey tab closes the panel (and,
+    // with no template chosen, that leaves Survey).
+    await A.page.getByRole('button', { name: 'Survey', exact: true }).first().click().catch(() => {});
     await A.page.keyboard.press('Escape');
     if (proOnly || noTemplates) {
       report(62, 'BLOCKED', `the test accounts cannot place Survey Markers (${[proOnly, noTemplates && 'Survey panel: "No templates available"'].filter(Boolean).join('; ')}); Survey templates are Pro-only, both accounts are Free; needs a Pro test account with one template; local-backend run covers the sync code; shot=real-62-A-survey.png`, VARIANT);

@@ -265,7 +265,9 @@ test.describe('desktop 1440x900', () => {
       async () => !(await hasClass(button(page, 'Draw'), 'btn-active')));
     await page.keyboard.press('m');
 
-    // Left rail: each panel opens, the sidebar collapses again.
+    // Left rail (owner 2026-10-07, Drawboard rail): there is no collapse
+    // chevron any more. Each tab opens its panel, another tab swaps it in
+    // place, and the open tab pressed again closes it.
     const leftPanels = [
       ['Pages', null],
       ['Search text', '.search-text-panel__input'],
@@ -275,13 +277,12 @@ test.describe('desktop 1440x900', () => {
     for (const [name, selector] of leftPanels) {
       await step(`left rail: ${name}`, () => button(page, name).click({ timeout: 5000 }),
         async () => (await hasClass(button(page, name), 'is-active'))
-          && (selector ? shown(page, selector) : shown(page, '.survey-surface-in-left')));
+          && (await button(page, name).getAttribute('aria-expanded')) === 'true'
+          && (selector ? shown(page, selector) : shown(page, '#left-rail-panel')));
     }
-    await step('left rail: Collapse sidebar', () => button(page, 'Collapse sidebar').click({ timeout: 5000 }),
-      () => button(page, 'Expand sidebar').isVisible());
-    await step('left rail: Expand sidebar', () => button(page, 'Expand sidebar').click({ timeout: 5000 }),
-      () => button(page, 'Collapse sidebar').isVisible());
-    await button(page, 'Collapse sidebar').click();
+    await step('left rail: the open tab closes its panel', () => button(page, 'Spaces').click({ timeout: 5000 }),
+      async () => (await hidden(page, '#left-rail-panel'))
+        && (await button(page, 'Spaces').getAttribute('aria-expanded')) === 'false');
     await page.waitForTimeout(300);
 
     // Ctrl/Cmd+F with the sidebar closed: the search field opens AND has focus
@@ -291,18 +292,15 @@ test.describe('desktop 1440x900', () => {
       () => focusedMatches(page, '.search-text-panel__input'));
     await page.keyboard.press('Escape');
     await page.mouse.click(30, 600);
+    await button(page, 'Search text').click().catch(() => {});
+    await page.waitForTimeout(300);
 
-    // Right rail: Survey panel.
+    // Right rail: the Survey tab opens the Survey panel and, pressed again,
+    // closes it (no collapse chevron, no Exit word - owner 2026-10-07).
     await step('right rail: Survey', () => button(page, 'Survey').click({ timeout: 5000 }),
       () => shown(page, '.survey-rail:not(.is-collapsed)'));
-    await step('right rail: Survey panel closes', async () => {
-      const collapse = page.getByRole('button', { name: /Collapse Survey panel|Close survey|Exit survey/i }).filter({ visible: true }).first();
-      if (await collapse.count()) await collapse.click({ timeout: 5000 });
-      else await page.locator('.survey-rail__exit').filter({ visible: true }).first().click({ timeout: 5000 });
-    }, () => hidden(page, '.survey-rail:not(.is-collapsed)'));
-    await step('right rail: Expand Survey panel', () => button(page, 'Expand Survey panel').click({ timeout: 5000 }),
-      () => shown(page, '.survey-rail:not(.is-collapsed)'));
-    await page.locator('.survey-rail__exit').filter({ visible: true }).first().click().catch(() => {});
+    await step('right rail: Survey tab closes the panel', () => button(page, 'Survey').click({ timeout: 5000 }),
+      () => hidden(page, '.survey-rail:not(.is-collapsed)'));
     await page.waitForTimeout(300);
 
     // Zoom.

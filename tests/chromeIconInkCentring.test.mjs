@@ -76,18 +76,17 @@ test('the Fit menu is the same kind of menu as its two siblings', () => {
   assert.doesNotMatch(menu[0], /padding: '6px 8px'/, 'its row inset matches the other menus (4px 9px)');
 });
 
+// DELIBERATE ASSERTION CHANGE (owner 2026-10-07, Drawboard rail): the desktop
+// has no tab strip any more - the 48px rail stays and IS the tabs, open or
+// closed - so there is one desktop size to pin (RAIL_GLYPH) and the strip's
+// desktop padding is gone. The phone's hub row keeps its 22px glyphs.
 test('the panel tabs are one glyph size, open or collapsed', () => {
+  assert.match(sidebar, /<Icon\s+name=\{tab\.icon\}\s+size=\{RAIL_GLYPH\}/, 'the desktop rail tabs draw RAIL_GLYPH');
   assert.match(
     sidebar,
-    /size=\{mobileMode \? 22 : RAIL_GLYPH\}/,
-    'the expanded tab strip draws the same four tabs as the collapsed rail, so on the desktop it '
-    + 'takes the same RAIL_GLYPH; the phone draws 22 (owner 2026-10-01: bigger Pages / Search / '
-    + 'Bookmarks icons in the same 34x32 tab, the row does not grow)',
+    /<Icon\s+name=\{tab\.icon\}\s+size=\{22\}/,
+    'the phone hub draws 22 (owner 2026-10-01: bigger Pages / Search / Bookmarks icons in the same '
+    + '34x32 tab, the row does not grow)',
   );
-  assert.match(
-    sidebar,
-    /padding: mobileMode \? '10px 2px' : '9px 2px'/,
-    'the desktop tab pads 1px less top and bottom, so the 2px the glyph gained does not make the '
-    + 'tab strip taller and push the panel\'s content down',
-  );
+  assert.doesNotMatch(sidebar, /'9px 2px'/, 'no desktop tab strip');
 });

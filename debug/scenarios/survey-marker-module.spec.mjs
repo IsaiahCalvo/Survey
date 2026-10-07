@@ -622,7 +622,8 @@ test.describe('Leaving survey mode', () => {
       'regular markup must stay hidden while a template is active',
     ).toBe(0);
 
-    await page.getByRole('button', { name: 'Close Survey panel' }).click();
+    // Owner 2026-10-07: Survey is left with the Survey chip's x.
+    await page.getByRole('button', { name: 'Leave Survey' }).click();
     await expect(page.getByRole('button', { name: 'Survey', exact: true })).toBeVisible();
     await showPage(page, 1);
     await page.keyboard.press('v');

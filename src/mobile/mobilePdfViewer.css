@@ -4414,6 +4414,14 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   max-width: calc(100vw - 44px - 24px);
   z-index: 1;
   transition: top 140ms ease-out;
+  /* Owner 2026-10-07: the Survey chip and the Space chip share the line. */
+  display: flex;
+  gap: 6px;
+}
+
+.mobile-pdf-header__space > .active-space-chip {
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 html:has([data-mobile-tool-properties]) .mobile-pdf-header__space {
