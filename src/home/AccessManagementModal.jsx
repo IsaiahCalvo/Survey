@@ -32,6 +32,7 @@ import {
   sendAccessRemovedEmail,
 } from '../services/shareEmailService';
 import { copyTextToClipboard } from '../utils/clipboard';
+import { accessInviteRows } from './accessRows';
 import { presenceInitials } from '../components/presenceIdentity.js';
 import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
 import { Icon } from './HubShell';
@@ -223,9 +224,10 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
 
   if (!open) return null;
 
-  const pendingInvites = invites.filter((i) => !i.accepted_at && !i.revoked_at && new Date(i.expires_at) > new Date());
-  const activeLinks = pendingInvites.filter((i) => !i.target_email);
-  const emailPending = pendingInvites.filter((i) => i.target_email);
+  // One person, one row: an email invite for someone who is already an active
+  // member (e.g. their invite email failed after access was granted) is not
+  // listed again as Pending with Resend. See accessRows.js.
+  const { links: activeLinks, emails: emailPending } = accessInviteRows(invites, members);
 
   return (
     <>
@@ -252,7 +254,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
           <div className="slim-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '6px 8px 12px', display: 'flex', flexDirection: 'column', gap: 2 }}>
             {loading && <div style={{ padding: '20px 12px', color: C.muted, fontSize: 12 }}>Loading collaborators…</div>}
 
-            {!loading && members.length === 0 && pendingInvites.length === 0 && (
+            {!loading && members.length === 0 && emailPending.length === 0 && activeLinks.length === 0 && (
               <div style={{ padding: '20px 12px', color: C.muted, fontSize: 12 }}>No collaborators yet. Use Invite to add one.</div>
             )}
 

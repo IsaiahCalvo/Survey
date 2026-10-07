@@ -26,6 +26,9 @@ import Spinner from '../components/Spinner';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import DismissBarrier from '../components/DismissBarrier';
 import { copyTextToClipboard } from '../utils/clipboard';
+import { visibleOpenInvites } from './accessRows';
+import { mergeRetryResult, summarizeInviteSend } from './inviteSendSummary';
+import InviteSendNotice from './InviteSendNotice';
 import { C } from '../uiPalette';
 import {
   createProjectInvite,
@@ -178,6 +181,7 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
   const [error, setError] = React.useState("");
   const [success, setSuccess] = React.useState("");
   const [activeInvite, setActiveInvite] = React.useState(null); // last minted link invite
+  const [sendEntries, setSendEntries] = React.useState(null); // last send needing a follow-up
   const cardRef = React.useRef(null);
 
   // Accessibility (KAL-66): the shared modal primitive — Tab stays inside the
@@ -231,6 +235,7 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
     if (blockedReason) { setError(blockedReason); return; }
     const list = parseEmails(emails);
     if (!list.length) { setError('Enter at least one valid email.'); return; }
+    setSendEntries(null);
     setBusy(true);
     const results = await Promise.all(list.map((addr) => createProjectInvite({
       projectId,
@@ -241,14 +246,51 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
       inviterName,
     })));
     setBusy(false);
-    const failed = results.filter((r) => !r.success);
-    if (failed.length) {
-      setError(`Sent ${results.length - failed.length} of ${results.length}. First failure: ${failed[0].error || 'unknown'}.`);
-    } else {
-      setSuccess(`Sent ${results.length} ${emailRole} invite${results.length === 1 ? '' : 's'}.`);
-      setEmails("");
-    }
+    showSendOutcome(list.map((email, i) => ({ email, result: results[i] })));
     onChanged?.();
+  };
+
+  /* inviteFix: one plain summary (inviteSendSummary.js) instead of
+     the old "Sent X of Y" + raw error line, with Copy link / Try again. */
+  const showSendOutcome = (entries) => {
+    const summary = summarizeInviteSend(entries, { roleLabel: emailRole });
+    if (summary.tone === 'success') {
+      setSendEntries(null);
+      setSuccess(summary.message);
+      setEmails("");
+    } else {
+      setSendEntries(entries);
+    }
+  };
+
+  const retrySend = async () => {
+    if (!sendEntries) return;
+    const retryEmails = new Set(summarizeInviteSend(sendEntries).items.filter((i) => i.canRetry).map((i) => i.email));
+    setError(""); setSuccess("");
+    setBusy(true);
+    const next = await Promise.all(sendEntries.map(async (entry) => {
+      if (!retryEmails.has(entry.email) || !entry.result?.invite?.id) return entry;
+      let retry;
+      try {
+        retry = await resendProjectInvite(entry.result.invite.id, { projectName: project?.name || '', inviterName });
+      } catch (err) {
+        retry = { success: false, error: err?.message || String(err) };
+      }
+      return mergeRetryResult(entry, retry);
+    }));
+    setBusy(false);
+    showSendOutcome(next);
+    onChanged?.();
+  };
+
+  const copyFailedInviteLink = async (item) => {
+    const copyResult = await copyTextToClipboard(buildInviteUrl(item.invite), { surface: 'project_unsent_invite_link' });
+    if (!copyResult.ok) {
+      setError('Survey could not copy the invite link. Try again.');
+      return false;
+    }
+    setError("");
+    return true;
   };
 
   return (
@@ -288,6 +330,14 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
             <div style={{ background: "var(--alert-danger-bg)", border: "var(--alert-danger-border)", borderRadius: "var(--alert-radius)", padding: "8px 10px", color: BONE_100, fontSize: 12 }}>
               {blockedReason || error}
             </div>
+          )}
+          {sendEntries && !blockedReason && (
+            <InviteSendNotice
+              summary={summarizeInviteSend(sendEntries, { roleLabel: emailRole })}
+              busy={busy}
+              onCopyLink={copyFailedInviteLink}
+              onRetry={retrySend}
+            />
           )}
           {success && !error && (
             <div style={{ background: "var(--accent-soft)", border: `1px solid ${GOLD}`, borderRadius: 6, padding: "8px 10px", color: GOLD, fontSize: 12 }}>
@@ -421,9 +471,11 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
     return [...seedMembers, ...collabs];
   }, [seedMembers, collabRows]);
 
+  // One person, one row: an email invite for someone already on the team is
+  // not listed again as Pending with Resend (accessRows.js).
   const pendingInvites = React.useMemo(() => (
-    invites.filter((i) => !i.accepted_at && !i.revoked_at && new Date(i.expires_at) > new Date())
-  ), [invites]);
+    visibleOpenInvites(invites, memberList)
+  ), [invites, memberList]);
 
   /* Last-owner protection mirrors AccessManagementModal: the creator counts
      as an owner, so ownerCount is creator + collaborator owners. */

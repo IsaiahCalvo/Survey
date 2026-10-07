@@ -20,9 +20,11 @@
  */
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
-import { createDocumentInvite, buildInviteUrl } from '../services/documentInviteService';
-import { createProjectInvite } from '../services/projectInviteService';
-import { createTemplateInvite } from '../services/templateInviteService';
+import { createDocumentInvite, buildInviteUrl, resendDocumentInvite } from '../services/documentInviteService';
+import { createProjectInvite, resendProjectInvite } from '../services/projectInviteService';
+import { createTemplateInvite, resendTemplateInvite } from '../services/templateInviteService';
+import { mergeRetryResult, summarizeInviteSend } from './inviteSendSummary';
+import InviteSendNotice from './InviteSendNotice';
 import { copyTextToClipboard } from '../utils/clipboard';
 import { Icon } from './HubShell';
 import Spinner from '../components/Spinner';
@@ -66,6 +68,9 @@ export default function ShareModal({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [activeInvite, setActiveInvite] = useState(null); // last link-invite for share-link display
+  // inviteFix: the last email send that needs a follow-up ([{ email, result }]),
+  // drawn by InviteSendNotice with words from inviteSendSummary.js.
+  const [sendEntries, setSendEntries] = useState(null);
   const dialogRef = useRef(null);
   const closeRef = useRef(null);
   const bodyRef = useRef(null);
@@ -90,6 +95,7 @@ export default function ShareModal({
       setError('');
       setSuccess('');
       setActiveInvite(null);
+      setSendEntries(null);
       setCopied(false);
       setBusy(false);
     }
@@ -124,6 +130,15 @@ export default function ShareModal({
       return createTemplateInvite({ templateId: targetId, templateName: name || '', ...common });
     }
     return createDocumentInvite({ documentId: targetId, documentName: name || '', ...common });
+  };
+
+  // Try again for an invite whose email did not send: an ordinary (idempotent)
+  // retry of the same invite, never a forced extra copy.
+  const retryInviteEmail = (invite) => {
+    const inviterName = currentUser?.user_metadata?.full_name || currentUser?.email || null;
+    if (kind === 'project') return resendProjectInvite(invite.id, { projectName: name || '', inviterName });
+    if (kind === 'template') return resendTemplateInvite(invite.id, { templateName: name || '', inviterName });
+    return resendDocumentInvite(invite.id, { documentName: name || '', inviterName });
   };
 
   // Honest placeholder until a real token is minted — never show a fake URL
@@ -167,16 +182,48 @@ export default function ShareModal({
     if (blockedReason) { setError(blockedReason); return; }
     const list = parseEmails(emails);
     if (!list.length) { setError('Enter at least one valid email.'); return; }
+    setSendEntries(null);
     setBusy(true);
     const results = await Promise.all(list.map((addr) => mintInvite(addr)));
     setBusy(false);
-    const failed = results.filter((r) => !r.success);
-    if (failed.length) {
-      setError(`Sent ${results.length - failed.length} of ${results.length}. First failure: ${failed[0].error || 'unknown'}.`);
-    } else {
-      setSuccess(`Sent ${results.length} ${role.toLowerCase()} share email${results.length === 1 ? '' : 's'}.`);
+    showSendOutcome(list.map((email, i) => ({ email, result: results[i] })));
+  };
+
+  const showSendOutcome = (entries) => {
+    const summary = summarizeInviteSend(entries, { roleLabel: role });
+    if (summary.tone === 'success') {
+      setSendEntries(null);
+      setSuccess(summary.message);
       setEmails('');
+    } else {
+      setSendEntries(entries);
     }
+  };
+
+  const retrySend = async () => {
+    if (!sendEntries) return;
+    const summary = summarizeInviteSend(sendEntries);
+    const retryEmails = new Set(summary.items.filter((i) => i.canRetry).map((i) => i.email));
+    setError(''); setSuccess('');
+    setBusy(true);
+    const next = await Promise.all(sendEntries.map(async (entry) => {
+      if (!retryEmails.has(entry.email) || !entry.result?.invite?.id) return entry;
+      let retry;
+      try { retry = await retryInviteEmail(entry.result.invite); } catch (err) { retry = { success: false, error: err?.message || String(err) }; }
+      return mergeRetryResult(entry, retry);
+    }));
+    setBusy(false);
+    showSendOutcome(next);
+  };
+
+  const copyFailedInviteLink = async (item) => {
+    const copyResult = await copyTextToClipboard(buildInviteUrl(item.invite), { surface: `${kind}_share_unsent_invite_link` });
+    if (!copyResult.ok) {
+      setError('Survey could not copy the invite link. Try again.');
+      return false;
+    }
+    setError('');
+    return true;
   };
 
   const fieldLabel = { fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600, marginBottom: 8 };
@@ -259,6 +306,14 @@ export default function ShareModal({
             <div style={{ background: 'var(--alert-danger-bg)', border: 'var(--alert-danger-border)', borderRadius: 'var(--alert-radius)', padding: '8px 10px', color: C.ink, fontSize: 12 }}>
               {error}
             </div>
+          )}
+          {sendEntries && !blockedReason && (
+            <InviteSendNotice
+              summary={summarizeInviteSend(sendEntries, { roleLabel: role })}
+              busy={busy}
+              onCopyLink={copyFailedInviteLink}
+              onRetry={retrySend}
+            />
           )}
           {success && (
             <div style={{ background: 'var(--accent-soft)', border: `1px solid ${C.gold}`, borderRadius: 6, padding: '8px 10px', color: C.gold, fontSize: 12 }}>
