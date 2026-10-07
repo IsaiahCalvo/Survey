@@ -42,6 +42,24 @@ async function applyOperation(pdf, operation) {
     const reference = pdf.getPage(blankPageReferencePage(afterPage, count) - 1);
     const { width, height } = blankPageSize({ ...reference.getSize(), rotation: reference.getRotation().angle });
     pdf.insertPage(afterPage, [width, height]);
+  } else if (type === 'restore') {
+    // Undo of a delete (utils/pageOperationHistory.js): the removed page goes
+    // back as it was shown. `entry` is its page-view entry
+    // (pageViewEntry): a blank page, or page `entry.src` of the document as
+    // first opened (`baseBytes`) turned a further `entry.rot` degrees.
+    const afterPage = slotNumber(operation.afterPage, count, 'afterPage');
+    const entry = operation.entry || {};
+    const extra = Number(entry.rot || 0);
+    if (entry.blank) {
+      const page = pdf.insertPage(afterPage, [entry.blank.width, entry.blank.height]);
+      page.setRotation(degrees(((extra % 360) + 360) % 360));
+    } else {
+      if (!operation.baseBytes) throw new Error('restore needs the document as first opened');
+      const base = await PDFDocument.load(operation.baseBytes);
+      const [copied] = await pdf.copyPages(base, [Number(entry.src) - 1]);
+      copied.setRotation(degrees((((copied.getRotation().angle + extra) % 360) + 360) % 360));
+      pdf.insertPage(afterPage, copied);
+    }
   } else if (type === 'duplicate' || type === 'copy') {
     const source = pageNumber(operation.page ?? operation.source, count, 'source');
     const afterPage = slotNumber(operation.afterPage ?? operation.page ?? operation.target, count, 'afterPage');

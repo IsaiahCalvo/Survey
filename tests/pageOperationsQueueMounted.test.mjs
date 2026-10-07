@@ -43,7 +43,9 @@ async function loadUsePageOperations() {
     .replace(
       "from '../utils/pdfPageMutationOffThread.js';",
       `from ${JSON.stringify(moduleUrl('src/utils/pdfPageMutationOffThread.js'))};`,
-    );
+    )
+    // Any other ../utils module the hook imports (page Undo / Redo helpers).
+    .replace(/from '\.\.\/utils\/([A-Za-z0-9_]+\.js)';/g, (_m, file) => `from ${JSON.stringify(moduleUrl(`src/utils/${file}`))};`);
 
   const tempDir = await mkdtemp(path.join(tmpdir(), 'page-operations-queue-test-'));
   const modulePath = path.join(tempDir, 'usePageOperations.mjs');

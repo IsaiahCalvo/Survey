@@ -19,6 +19,8 @@ import { transformPageState } from '../utils/pageAnnotationReindex.js';
 // a worker (or, as a fallback, imported dynamically) only when a page
 // operation is saved, never at first viewer paint.
 import { mutatePdfPagesOffThread } from '../utils/pdfPageMutationOffThread.js';
+import { inversePageOperation } from '../utils/pageOperationHistory.js';
+import { pageViewEntry } from '../utils/pageViewDocument.js';
 
 // Short: long enough that a burst of taps (move down, move down, ...) becomes
 // one rewrite, short enough that the upload starts right away.
@@ -32,7 +34,14 @@ const OPERATION_VERBS = {
   move: 'move',
   reorder: 'move',
   rotate: 'rotate',
+  restore: 'restore',
 };
+
+const newPageCopyId = () => (
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `page-copy-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+);
 
 const deepCopy = (value) => {
   if (value == null) return value;
@@ -72,17 +81,30 @@ export function usePageOperations({
   setClipboardType,
   flushDelayMs = FLUSH_DELAY_MS,
 }) {
+  // Undo / Redo (utils/pageOperationHistory.js): every page change the user
+  // makes is kept here by id, with what its inverse needs. commitPageState's
+  // third argument tells the viewer which step a commit is ({ id, phase:
+  // 'do' | 'undo' | 'redo' }); the viewer puts 'do' steps on its timeline.
+  const historyRef = useRef(new Map());
+  const historySeqRef = useRef(0);
   // The newest PDF bytes this hook knows about: the prop, or a rewrite of ours
   // that React has not rendered yet. Files we produced never reset the chain.
   const pdfFileRef = useRef(pdfFile);
   const renderedPdfFileRef = useRef(pdfFile);
   const ownFilesRef = useRef(new WeakSet());
   const pageStateRef = useRef(null);
+  // The bytes the viewer's document was opened from: a deleted page is put
+  // back from them on Undo (its page view entry names its page there).
+  const baseFileRef = useRef(pdfFile);
   if (renderedPdfFileRef.current !== pdfFile) {
     renderedPdfFileRef.current = pdfFile;
     if (!pdfFile || !ownFilesRef.current.has(pdfFile)) {
       pdfFileRef.current = pdfFile;
+      baseFileRef.current = pdfFile;
       pageStateRef.current = null;
+      // A different document (or someone else's version) is open now: the
+      // page steps kept for the old one can no longer be undone.
+      historyRef.current = new Map();
     }
   }
 
@@ -107,6 +129,9 @@ export function usePageOperations({
   const rollback = useCallback((records, error) => {
     const first = records[0];
     if (!first) return;
+    // The steps that failed to save are gone, and the viewer clears its
+    // timeline on this rollback commit: nothing kept here refers to it.
+    historyRef.current = new Map();
     const { commitPageState: commit, restorePageView: restore } = callbacksRef.current;
     if (first.viewBefore !== undefined) restore?.(first.viewBefore);
     if (first.stateBefore) {
@@ -130,10 +155,19 @@ export function usePageOperations({
       if (!currentPdfFile || !callbacksRef.current.onUpdatePDFFile) {
         throw new Error('PDF file not available for manipulation');
       }
+      // An Undo of a delete copies the page back from the document as first
+      // opened; those bytes are read only when such a step is saved.
+      const needsBase = records.some((record) => record.pdfOperation?.type === 'restore' && !record.pdfOperation.entry?.blank);
+      const baseBytes = needsBase && baseFileRef.current ? await baseFileRef.current.arrayBuffer() : null;
+      const operations = records.map((record) => (
+        record.pdfOperation?.type === 'restore' && baseBytes
+          ? { ...record.pdfOperation, baseBytes: baseBytes.slice(0) }
+          : record.pdfOperation
+      ));
       // pdf-lib runs in a worker: the rewrite never janks the UI it follows.
       const pdfBytes = await mutatePdfPagesOffThread(
         () => currentPdfFile.arrayBuffer(),
-        records.map((record) => record.pdfOperation),
+        operations,
       );
       const newFile = createPageMutationFile(pdfBytes, currentPdfFile);
       // 2026-04-30 fix: preserve all Supabase metadata across page-mutation
@@ -205,7 +239,9 @@ export function usePageOperations({
     };
   }, [flush]);
 
-  const executeMutation = useCallback((operation, errorVerb) => {
+  // `step` (Undo / Redo only): { id, phase, stateOperation, pdfOperation,
+  // createdIds } - run that instead of `operation` and record nothing new.
+  const executeMutation = useCallback((operation, errorVerb, step = null) => {
     if (!pdfFileRef.current || !onUpdatePDFFile) {
       showToast('PDF file not available for manipulation', 'error');
       return false;
@@ -221,20 +257,48 @@ export function usePageOperations({
       const sourceState = chained && (!fromGetter || chained.base === fromGetter)
         ? chained.next
         : fromGetter;
-      const nextState = sourceState ? transformPageState(sourceState, operation) : null;
-      const pdfOperation = operation?.type === 'rotate'
+      // A copied page's marks get new ids; Redo hands out the SAME ids again
+      // so later steps that touch those marks still find them.
+      const replayIds = step?.createdIds ? [...step.createdIds] : null;
+      const createdIds = [];
+      const createId = () => {
+        const id = (replayIds && replayIds.length > 0) ? replayIds.shift() : newPageCopyId();
+        createdIds.push(id);
+        return id;
+      };
+      const stateOperation = step?.stateOperation || operation;
+      const nextState = sourceState ? transformPageState(sourceState, stateOperation, { createId }) : null;
+      const pdfOperation = step?.pdfOperation || (operation?.type === 'rotate'
         ? {
           ...operation,
           delta: Number(operation.delta || 0)
             + Number(sourceState?.pageTransformations?.[operation.page]?.rotation || 0),
         }
-        : operation;
+        : operation);
       // View first, then the remapped state, in the same tick: React renders
       // the moved page and its annotations together.
       const viewBefore = typeof applyPageView === 'function' ? applyPageView(pdfOperation) : undefined;
-      if (nextState) commitPageState(nextState, operation);
+      let historyStep = step ? { id: step.id, phase: step.phase } : null;
+      if (!step) {
+        const inverse = inversePageOperation(pdfOperation, {
+          stateBefore: sourceState,
+          deletedEntry: pdfOperation?.type === 'delete' ? pageViewEntry(viewBefore, pdfOperation.page) : null,
+          pageTransformBefore: sourceState?.pageTransformations?.[operation?.page] ?? null,
+        });
+        if (inverse) {
+          historySeqRef.current += 1;
+          const id = historySeqRef.current;
+          historyRef.current.set(id, {
+            forward: { pdfOperation, stateOperation, commitOperation: operation },
+            inverse: { ...inverse, commitOperation: inverse.stateOperation },
+            createdIds,
+          });
+          historyStep = { id, phase: 'do' };
+        }
+      }
+      if (nextState) commitPageState(nextState, step?.commitOperation || operation, historyStep);
       pageStateRef.current = { base: fromGetter, next: nextState };
-      pendingRef.current.push({ operation, pdfOperation, stateBefore: sourceState, viewBefore });
+      pendingRef.current.push({ operation: step?.commitOperation || operation, pdfOperation, stateBefore: sourceState, viewBefore });
       publishStatus();
       scheduleFlush();
       return true;
@@ -244,6 +308,34 @@ export function usePageOperations({
       return false;
     }
   }, [applyPageView, commitPageState, getPageState, onUpdatePDFFile, publishStatus, scheduleFlush]);
+
+  // Undo / Redo one page step (the viewer's timeline calls these). Returns
+  // false when the step is no longer known (another document version was
+  // opened, or a save failed and was rolled back): it cannot be taken back.
+  const undoPageOperation = useCallback((id) => {
+    const entry = historyRef.current.get(id);
+    if (!entry) return false;
+    return executeMutation(entry.inverse.commitOperation, 'undoing', {
+      id,
+      phase: 'undo',
+      stateOperation: entry.inverse.stateOperation,
+      pdfOperation: entry.inverse.pdfOperation,
+      commitOperation: entry.inverse.commitOperation,
+    });
+  }, [executeMutation]);
+
+  const redoPageOperation = useCallback((id) => {
+    const entry = historyRef.current.get(id);
+    if (!entry) return false;
+    return executeMutation(entry.forward.commitOperation, 'redoing', {
+      id,
+      phase: 'redo',
+      stateOperation: entry.forward.stateOperation,
+      pdfOperation: entry.forward.pdfOperation,
+      commitOperation: entry.forward.commitOperation,
+      createdIds: entry.createdIds,
+    });
+  }, [executeMutation]);
 
   const runMutation = useCallback((operation, errorVerb) => (
     Promise.resolve(executeMutation(operation, errorVerb))
@@ -367,6 +459,8 @@ export function usePageOperations({
     handleRotatePageCW,
     handleRotatePageCCW,
     handleInsertBlankPage,
+    undoPageOperation,
+    redoPageOperation,
     // Resolves (with the newest File) once every page change on screen is in
     // the PDF bytes — export/print read the bytes, so they wait for it.
     flushPageOperations: flush,
