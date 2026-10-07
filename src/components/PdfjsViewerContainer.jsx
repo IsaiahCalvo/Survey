@@ -70,6 +70,7 @@ import {
 import { getViewportScrollbarAxis } from '../utils/pdfViewportScrollbar';
 import { computeDetailTileBox, resolveDetailTileStyle } from '../utils/pdfDetailTileGeometry.js';
 import { LIVE_ZOOM_EVENT } from '../utils/liveZoomEvents.js';
+import { createZoomGlide, retargetZoomGlide, stepZoomGlide } from '../utils/zoomGlide.js';
 import { isLiveFormWidgetTarget } from '../utils/formWidgetPointerTargets.js';
 import {
   compensateScrollTopForRoom,
@@ -1430,6 +1431,15 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const tileLiveZoomRef = useRef(1);
   const zoomInteractionRef = useRef(false);
   const gestureRef = useRef(null);
+  // Smooth zoom glide (owner 2026-10-07, Drawboard parity): zoom buttons,
+  // Ctrl/Cmd +/- and mouse-wheel notches glide to their target on the live
+  // zoom transform (utils/zoomGlide.js); one real re-render at the end.
+  const zoomGlideRef = useRef(null);
+  const zoomGlideRafRef = useRef(0);
+  const zoomGlideStepRef = useRef(null);
+  const zoomGlideCancelRef = useRef(null);
+  const zoomGlideFinishRef = useRef(null);
+  const zoomGlideScheduleRef = useRef(null);
   const dimsPtRef = useRef([]);
   // Widest page in PDF points (rotation applied): sizes the shared column.
   const widestPagePtRef = useRef(0);
@@ -2505,6 +2515,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // callback, which is declared further down this component — naming it in
     // this dependency array would read it in its TDZ.)
     panMomentumRef.current?.cancel('zoom');
+    // A fit / typed zoom / jump made while a zoom glide is still playing
+    // replaces it (the glide's gesture must not keep drawing over the new scale).
+    zoomGlideCancelRef.current?.();
     if (Math.abs(newScale - oldScale) < 1e-4) return;
     // Stage 3: imperative zoom (toolbar/keyboard/fit) commits instantly — signal
     // gesture-start here so Canvas tools flush before the host re-layouts. (Wheel
@@ -2778,6 +2791,167 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     setLiveZoom(1);
   }, [releaseElastic, resolveGesturePreview, setZoomInteraction]);
 
+  // ---- smooth zoom glide (owner 2026-10-07, Drawboard parity) --------------
+  // "On Drawboard ... you can see it grow into it and shrink out of it. On ours
+  // it snaps." A button / key press or a mouse-wheel notch no longer jumps: it
+  // sets a target and the shown scale glides there on the same live-zoom
+  // transform a pinch uses (gestureRef + liveZoomRef), anchored where that
+  // gesture is anchored (view centre for buttons, the cursor for the wheel).
+  // The real re-render (commitGesture) happens once, when it lands. Trackpad
+  // pinches and reduced motion keep today's 1:1 / instant behaviour.
+  // Where a new zoom gesture's scroll starts. Right after a commit the new
+  // scale is set but React has not laid it out yet, so the scroller still
+  // holds the OLD scroll: a wheel notch or press landing in that gap (common
+  // with a glide on a heavy drawing) would anchor on the wrong point and fling
+  // the page. The scroll the commit is about to apply is the true origin.
+  const readZoomScrollOrigin = (el) => {
+    const pending = pendingAnchorRef.current;
+    if (pending && Number.isFinite(pending.left) && Number.isFinite(pending.top)) {
+      return { left: Math.max(0, pending.left), top: Math.max(0, pending.top) };
+    }
+    return { left: el.scrollLeft, top: el.scrollTop };
+  };
+
+  const stopZoomGlideFrame = useCallback(() => {
+    if (zoomGlideRafRef.current) cancelAnimationFrame(zoomGlideRafRef.current);
+    zoomGlideRafRef.current = 0;
+  }, []);
+
+  const scheduleZoomGlideFrame = useCallback(() => {
+    if (settleTimerRef.current) { clearTimeout(settleTimerRef.current); settleTimerRef.current = null; }
+    if (!zoomGlideRafRef.current) {
+      zoomGlideRafRef.current = requestAnimationFrame((now) => zoomGlideStepRef.current?.(now));
+    }
+  }, []);
+  zoomGlideScheduleRef.current = scheduleZoomGlideFrame;
+
+  const landZoomGlide = useCallback(() => {
+    settleTimerRef.current = null;
+    stopZoomGlideFrame();
+    zoomGlideRef.current = null;
+    commitGesture();
+  }, [commitGesture, stopZoomGlideFrame]);
+
+  zoomGlideStepRef.current = (now) => {
+    zoomGlideRafRef.current = 0;
+    const glide = zoomGlideRef.current;
+    if (!glide || !gestureRef.current) { zoomGlideRef.current = null; return; }
+    const next = stepZoomGlide(glide, now);
+    zoomGlideRef.current = next;
+    liveZoomRef.current = next.shown / scaleRef.current;
+    setLiveZoom(liveZoomRef.current);
+    if (!next.done) {
+      zoomGlideRafRef.current = requestAnimationFrame((t) => zoomGlideStepRef.current?.(t));
+      return;
+    }
+    // Landed. A wheel chase still waits out the usual settle after its last
+    // notch (another may be on the way); a button glide commits at once.
+    const wait = next.mode === 'chase'
+      ? Math.max(0, SETTLE_MS - (performance.now() - (next.inputAt || 0)))
+      : 0;
+    if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+    settleTimerRef.current = setTimeout(landZoomGlide, wait);
+  };
+
+  // Something else takes the page mid-glide (a scroll, a click or touch on the
+  // page): commit what is SHOWN right now, synchronously, so that input starts
+  // on a laid-out page and nothing jumps.
+  zoomGlideFinishRef.current = () => {
+    if (!zoomGlideRef.current) return false;
+    if (settleTimerRef.current) { clearTimeout(settleTimerRef.current); settleTimerRef.current = null; }
+    stopZoomGlideFrame();
+    zoomGlideRef.current = null;
+    flushSync(() => commitGesture());
+    return true;
+  };
+
+  // An imperative zoom (fit, typed %, jump to a mark) replaces a running glide.
+  zoomGlideCancelRef.current = () => {
+    if (!zoomGlideRef.current) return;
+    if (settleTimerRef.current) { clearTimeout(settleTimerRef.current); settleTimerRef.current = null; }
+    stopZoomGlideFrame();
+    zoomGlideRef.current = null;
+    gestureRef.current = null;
+    liveZoomRef.current = 1;
+    setLiveZoom(1);
+    setZoomInteraction(false);
+  };
+
+  useEffect(() => () => {
+    if (zoomGlideRafRef.current) cancelAnimationFrame(zoomGlideRafRef.current);
+    zoomGlideRafRef.current = 0;
+    zoomGlideRef.current = null;
+  }, []);
+
+  // Zoom buttons and Ctrl/Cmd +/-: glide to `requested`, holding the middle of
+  // the part of the viewer you can see (zoomToScale's anchor). A press during
+  // the glide retargets it from what is shown. Returns false when the caller
+  // should take the instant path instead.
+  const glideZoomTo = useCallback((requested) => {
+    const el = scrollerRef.current;
+    const dims = dimsPtRef.current;
+    const wanted = Number(requested);
+    if (!el || !dims.length || !Number.isFinite(wanted) || wanted <= 0) return false;
+    const glide = zoomGlideRef.current;
+    // Reduced motion, or a pinch / trackpad zoom already live: the instant path.
+    if (prefersReducedMotion() || (gestureRef.current && !glide)) return false;
+    const maxScale = isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE;
+    const minimumScale = getMinimumScaleForLayout(
+      dims,
+      containerHRef.current,
+      layoutMetricsRef.current,
+      containerWRef.current,
+    );
+    const target = Math.min(maxScale, Math.max(minimumScale, wanted));
+    const now = performance.now();
+    if (glide) {
+      zoomGlideRef.current = retargetZoomGlide(glide, { to: target, now, mode: 'tween' });
+    } else {
+      const committed = scaleRef.current;
+      if (Math.abs(target - committed) < 1e-4) return false;
+      panMomentumRef.current?.cancel('zoom');
+      const side = sideInsetRef.current;
+      const bandW = Math.max(1, el.clientWidth - side.left - side.right);
+      const inset = Math.min(topInsetRef.current, el.clientHeight);
+      const cursorX = side.left + bandW / 2;
+      const cursorY = inset + (el.clientHeight - inset) / 2;
+      const origin = readZoomScrollOrigin(el);
+      gestureRef.current = {
+        regime: 'glide',
+        originScale: committed,
+        originCursorX: cursorX,
+        originCursorY: cursorY,
+        originContentX: origin.left + cursorX,
+        originContentY: origin.top + cursorY,
+      };
+      // zoomGeneration contract: signal at zoom START, as every zoom does.
+      cb.current.onZoomPhase?.('gesture-start', {
+        atPct: Math.round(committed * 100),
+        source: 'imperative',
+      });
+      setZoomInteraction(true);
+      zoomGlideRef.current = createZoomGlide({ from: committed, to: target, now, mode: 'tween' });
+    }
+    scheduleZoomGlideFrame();
+    return true;
+  }, [isMobileSurface, scheduleZoomGlideFrame, setZoomInteraction]);
+
+  // A click or touch on the page while a glide plays finishes it first.
+  useEffect(() => {
+    const onDown = (event) => {
+      if (!zoomGlideRef.current) return;
+      const el = scrollerRef.current;
+      if (!el || !(event.target instanceof Node) || !el.contains(event.target)) return;
+      zoomGlideFinishRef.current?.();
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('touchstart', onDown, { capture: true, passive: true });
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('touchstart', onDown, { capture: true });
+    };
+  }, []);
+
   const checkpointPinchGesture = useCallback((touchState, center, distance) => {
     const gesture = gestureRef.current;
     if (!gesture || !touchState) return false;
@@ -2856,12 +3030,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const rect = el.getBoundingClientRect();
       const cursorX = e.clientX - rect.left;
       const cursorY = e.clientY - rect.top;
+      const normalizedDelta = normalizeWheelDelta(e.deltaY, e.deltaMode, el.clientHeight);
+      const regime = e.deltaMode === 0 && Math.abs(normalizedDelta) < 50 ? 'trackpad' : 'notch';
       if (!gestureRef.current) {
-        const normalizedDelta = normalizeWheelDelta(e.deltaY, e.deltaMode, el.clientHeight);
-        const regime = e.deltaMode === 0 && Math.abs(normalizedDelta) < 50 ? 'trackpad' : 'notch';
         // A zoom-limit ease from the previous pinch is still running: it keeps
         // easing on top of this gesture (composed in the render, folded into
         // the next leftover at the commit), so nothing snaps.
+        const origin = readZoomScrollOrigin(el);
         gestureRef.current = {
           regime,
           // Desktop trackpad pinch (owner 2026-10-02): past min/max zoom it
@@ -2872,8 +3047,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
           originScale: scaleRef.current,
           originCursorX: cursorX,
           originCursorY: cursorY,
-          originContentX: el.scrollLeft + cursorX,
-          originContentY: el.scrollTop + cursorY,
+          originContentX: origin.left + cursorX,
+          originContentY: origin.top + cursorY,
         };
         // Stage 3: a zoom gesture has started — let the host flush in-progress
         // Canvas drawing before the page hosts re-layout on settle.
@@ -2892,6 +3067,34 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         containerWRef.current,
       );
       const g = gestureRef.current;
+      // A mouse-wheel notch (owner 2026-10-07): adds to the glide's target and
+      // the shown scale chases it, anchored under the cursor. Trackpad pinch
+      // ticks stay 1:1 with the fingers (below).
+      if (regime === 'notch' && !g.elasticZoom && !prefersReducedMotion()) {
+        const glide = zoomGlideRef.current;
+        const target = getWheelZoomScale(glide ? glide.target : committed * liveZoomRef.current, {
+          deltaY: e.deltaY,
+          maximumDelta: 1000,
+          deltaMode: e.deltaMode,
+          viewportHeight: el.clientHeight,
+          minimumScale,
+          maximumScale: maxScale,
+        });
+        const now = performance.now();
+        const next = glide
+          ? retargetZoomGlide(glide, { to: target, now, mode: 'chase' })
+          : createZoomGlide({ from: committed * liveZoomRef.current, to: target, now, mode: 'chase' });
+        next.inputAt = now;
+        zoomGlideRef.current = next;
+        zoomGlideScheduleRef.current?.();
+        return;
+      }
+      // A trackpad tick during a glide carries on 1:1 from what is shown.
+      if (zoomGlideRef.current) {
+        if (zoomGlideRafRef.current) cancelAnimationFrame(zoomGlideRafRef.current);
+        zoomGlideRafRef.current = 0;
+        zoomGlideRef.current = null;
+      }
       const nextScale = getWheelZoomScale(g.elasticZoom ? g.rawScale : committed * liveZoomRef.current, {
         deltaY: e.deltaY,
         // Rate per EVENT, like Walkthu (owner 2026-10-02): a pixel delta under
@@ -2961,6 +3164,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       if (overscroll.active()) schedule();
     };
     const onWheel = (e) => {
+      // A plain scroll while a zoom glide plays: land the glide where it is
+      // shown first, then scroll the laid-out page as usual.
+      if (!(e.ctrlKey || e.metaKey) && zoomGlideRef.current) zoomGlideFinishRef.current?.();
       // Zoom (ctrl/cmd+wheel) owns the gesture: a stretch springs home under it.
       if (e.ctrlKey || e.metaKey || gestureRef.current) { if (overscroll.active()) release(); return; }
       if (prefersReducedMotion()) return;
@@ -4187,6 +4393,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   }, [applyAnchoredScale, cancelPanInertia, getPageLeftAtScale, getHorizontalScrollMax, isMobileSurface]);
 
   const goToPage = useCallback((n) => {
+    // A zoom glide still playing lands first (where it is shown), so the jump
+    // is measured on the laid-out page and the glide's commit cannot undo it.
+    zoomGlideFinishRef.current?.();
     const el = scrollerRef.current;
     const tops = topsRef.current;
     if (!el || !tops.length) return false;
@@ -4311,6 +4520,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       getPageCount: () => numPagesRef.current || 0,
       getCurrentPage: () => currentPageRef.current || 1,
       getZoomValue: () => Math.round((scaleRef.current || 1) * 100),
+      // The scale a zoom glide is heading to (null when none plays): the next
+      // zoom step counts from here, so quick presses add up like slow ones.
+      getZoomGlideTarget: () => (zoomGlideRef.current ? zoomGlideRef.current.target : null),
       getMinimumScale: () => getMinimumScaleForLayout(
         dimsPtRef.current,
         containerHRef.current,
@@ -4348,7 +4560,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       },
       // zoom
       magnificationModule: {
-        zoomTo: (pct) => { const s = Number(pct) / 100; if (Number.isFinite(s)) zoomToScale(s); },
+        // { animate: true } (zoom buttons, Ctrl/Cmd +/-): glide there.
+        zoomTo: (pct, options) => {
+          const s = Number(pct) / 100;
+          if (!Number.isFinite(s)) return;
+          if (options?.animate && glideZoomTo(s)) return;
+          zoomToScale(s);
+        },
         fitToPage: () => zoomToScale('fit'),
         fitToWidth: () => zoomToScale('fitw'),
         fitToHeight: () => zoomToScale('fith'),
@@ -4389,7 +4607,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       selectFormField: () => false,
       getFormFieldCollection: () => [],
     };
-  }, [goToPage, focusPageRect, zoomToScale, applyAnchoredScale, getThumbnailDataUrl]);
+  }, [goToPage, focusPageRect, zoomToScale, glideZoomTo, applyAnchoredScale, getThumbnailDataUrl]);
 
   // Owner 2026-10-07 (far zoom: "maybe a more blurry version"): draw every
   // page's small thumbnail ahead of need, nearest the reader first, at the
@@ -4828,9 +5046,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
             // after a pinch settles, exhausting WKWebView across repeated deep
             // zoom cycles. WebKit promotes the active transform on demand; do
             // not ask it to keep the document layer resident.
-            willChange: isMobileSurface
-              ? 'auto'
-              : (renderedLiveZoom !== 1 || liveTranslateX || liveTranslateY ? 'transform' : 'auto'),
+            // Desktop keeps the document on its own layer all the time (owner
+            // 2026-10-07, smooth zoom): promoting it at the first frame of a
+            // zoom made that frame stall (~0.5 s on Package 2 in a slow test
+            // browser) and dropping it at the commit cost a second stall, so a
+            // glide started with a hitch. Chrome tiles the layer like the
+            // scroller's own, so it holds no more than the visible area.
+            willChange: isMobileSurface ? 'auto' : 'transform',
           }}
         >
           {pageNodes}
