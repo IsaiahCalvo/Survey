@@ -19,8 +19,18 @@ import { transformPageState } from '../utils/pageAnnotationReindex.js';
 // a worker (or, as a fallback, imported dynamically) only when a page
 // operation is saved, never at first viewer paint.
 import { mutatePdfPagesOffThread } from '../utils/pdfPageMutationOffThread.js';
-import { inversePageOperation } from '../utils/pageOperationHistory.js';
-import { pageViewEntry } from '../utils/pageViewDocument.js';
+import { inversePageOperation, inversePageOperationSteps } from '../utils/pageOperationHistory.js';
+import { applyPageViewOperation, pageViewEntry } from '../utils/pageViewDocument.js';
+import {
+  batchOperation,
+  copyPagesAfter,
+  deletePages,
+  duplicatePages,
+  movePagesNextTo,
+  movePagesToIndex,
+  normalizePageSelection,
+  rotatePages,
+} from '../utils/pageSelectionOperations.js';
 
 // Short: long enough that a burst of taps (move down, move down, ...) becomes
 // one rewrite, short enough that the upload starts right away.
@@ -35,7 +45,16 @@ const OPERATION_VERBS = {
   reorder: 'move',
   rotate: 'rotate',
   restore: 'restore',
+  batch: 'change',
 };
+
+// A selection of pages (an array) or one page (a number).
+const isPageList = (value) => Array.isArray(value);
+
+// Several single-page steps of a batch run as one pdf-lib pass list.
+const flattenOperations = (operations) => operations.flatMap((operation) => (
+  operation?.type === 'batch' ? flattenOperations(operation.operations || []) : [operation]
+));
 
 const newPageCopyId = () => (
   typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -140,7 +159,9 @@ export function usePageOperations({
       pageStateRef.current = null;
     }
     statusRef.current.failedCount += 1;
-    const verb = OPERATION_VERBS[first.operation?.type] || 'change';
+    const verb = OPERATION_VERBS[first.operation?.type === 'batch'
+      ? first.operation.operations?.[0]?.type
+      : first.operation?.type] || 'change';
     const what = records.length > 1 ? 'the last page changes' : `the page ${verb}`;
     showToast(`Couldn't save ${what}, so it was undone. ${error?.message || ''}`.trim(), 'error');
   }, []);
@@ -157,12 +178,13 @@ export function usePageOperations({
       }
       // An Undo of a delete copies the page back from the document as first
       // opened; those bytes are read only when such a step is saved.
-      const needsBase = records.some((record) => record.pdfOperation?.type === 'restore' && !record.pdfOperation.entry?.blank);
+      const steps = flattenOperations(records.map((record) => record.pdfOperation));
+      const needsBase = steps.some((step) => step?.type === 'restore' && !step.entry?.blank);
       const baseBytes = needsBase && baseFileRef.current ? await baseFileRef.current.arrayBuffer() : null;
-      const operations = records.map((record) => (
-        record.pdfOperation?.type === 'restore' && baseBytes
-          ? { ...record.pdfOperation, baseBytes: baseBytes.slice(0) }
-          : record.pdfOperation
+      const operations = steps.map((step) => (
+        step?.type === 'restore' && baseBytes
+          ? { ...step, baseBytes: baseBytes.slice(0) }
+          : step
       ));
       // pdf-lib runs in a worker: the rewrite never janks the UI it follows.
       const pdfBytes = await mutatePdfPagesOffThread(
@@ -267,29 +289,62 @@ export function usePageOperations({
         return id;
       };
       const stateOperation = step?.stateOperation || operation;
-      const nextState = sourceState ? transformPageState(sourceState, stateOperation, { createId }) : null;
-      const pdfOperation = step?.pdfOperation || (operation?.type === 'rotate'
+      // A turn folds the page's old presentation rotation into the PDF.
+      const foldRotation = (single, state) => (single?.type === 'rotate'
         ? {
-          ...operation,
-          delta: Number(operation.delta || 0)
-            + Number(sourceState?.pageTransformations?.[operation.page]?.rotation || 0),
+          ...single,
+          delta: Number(single.delta || 0)
+            + Number(state?.pageTransformations?.[single.page]?.rotation || 0),
         }
-        : operation);
+        : single);
+      // A batch (several pages at once) runs its steps in order; each step's
+      // state before it is kept for its own inverse (one Undo for them all).
+      const batchSteps = !step && operation?.type === 'batch' ? [] : null;
+      let nextState;
+      let pdfOperation;
+      if (batchSteps) {
+        let state = sourceState;
+        for (const single of operation.operations || []) {
+          const pdfStep = foldRotation(single, state);
+          batchSteps.push({
+            pdfOperation: pdfStep,
+            context: { stateBefore: state, pageTransformBefore: state?.pageTransformations?.[single?.page] ?? null },
+          });
+          state = state ? transformPageState(state, single, { createId }) : null;
+        }
+        nextState = state;
+        pdfOperation = { type: 'batch', operations: batchSteps.map((entry) => entry.pdfOperation) };
+      } else {
+        nextState = sourceState ? transformPageState(sourceState, stateOperation, { createId }) : null;
+        pdfOperation = step?.pdfOperation || foldRotation(operation, sourceState);
+      }
       // View first, then the remapped state, in the same tick: React renders
       // the moved page and its annotations together.
       const viewBefore = typeof applyPageView === 'function' ? applyPageView(pdfOperation) : undefined;
       let historyStep = step ? { id: step.id, phase: step.phase } : null;
       if (!step) {
-        const inverse = inversePageOperation(pdfOperation, {
-          stateBefore: sourceState,
-          deletedEntry: pdfOperation?.type === 'delete' ? pageViewEntry(viewBefore, pdfOperation.page) : null,
-          pageTransformBefore: sourceState?.pageTransformations?.[operation?.page] ?? null,
-        });
+        let inverse;
+        if (batchSteps) {
+          // What each deleted page showed, read off the view as it was just
+          // before that step.
+          let view = viewBefore;
+          for (const entry of batchSteps) {
+            if (entry.pdfOperation?.type === 'delete') entry.context.deletedEntry = pageViewEntry(view, entry.pdfOperation.page);
+            try { view = view ? applyPageViewOperation(view, entry.pdfOperation) : view; } catch { view = null; }
+          }
+          inverse = inversePageOperationSteps(batchSteps);
+        } else {
+          inverse = inversePageOperation(pdfOperation, {
+            stateBefore: sourceState,
+            deletedEntry: pdfOperation?.type === 'delete' ? pageViewEntry(viewBefore, pdfOperation.page) : null,
+            pageTransformBefore: sourceState?.pageTransformations?.[operation?.page] ?? null,
+          });
+        }
         if (inverse) {
           historySeqRef.current += 1;
           const id = historySeqRef.current;
           historyRef.current.set(id, {
-            forward: { pdfOperation, stateOperation, commitOperation: operation },
+            forward: { pdfOperation, stateOperation: operation, commitOperation: operation },
             inverse: { ...inverse, commitOperation: inverse.stateOperation },
             createdIds,
           });
@@ -341,25 +396,45 @@ export function usePageOperations({
     Promise.resolve(executeMutation(operation, errorVerb))
   ), [executeMutation]);
 
+  // Several pages at once (an array of page numbers, the Pages tab's
+  // selection): ONE batch = one view swap, one commit, one Undo step.
+  // Resolves to the pages the result occupies (the new selection), or false.
+  const runPlan = useCallback((plan, errorVerb) => {
+    const operation = batchOperation(plan?.operations);
+    if (!operation) return Promise.resolve(false);
+    return runMutation(operation, errorVerb).then((ok) => (ok ? plan.selection : false));
+  }, [runMutation]);
+
   const handleDuplicatePage = useCallback((pageNumber) => (
-    runMutation({ type: 'duplicate', page: pageNumber }, 'duplicating')
-  ), [runMutation]);
+    isPageList(pageNumber)
+      ? runPlan(duplicatePages(Infinity, pageNumber), 'duplicating')
+      : runMutation({ type: 'duplicate', page: pageNumber }, 'duplicating')
+  ), [runMutation, runPlan]);
 
   const handleRenamePage = useCallback((pageNumber, newName) => {
     setPageNames((prev) => ({ ...prev, [pageNumber]: newName }));
   }, [setPageNames]);
 
   const handleDeletePage = useCallback((pageNumber) => (
-    runMutation({ type: 'delete', page: pageNumber }, 'deleting')
-  ), [runMutation]);
+    isPageList(pageNumber)
+      ? runPlan(deletePages(Infinity, pageNumber), 'deleting')
+      : runMutation({ type: 'delete', page: pageNumber }, 'deleting')
+  ), [runMutation, runPlan]);
+
+  // The page clipboard holds one page number, or several (a sorted array).
+  const clipboardValue = (pageNumber) => {
+    if (!isPageList(pageNumber)) return pageNumber;
+    const pages = normalizePageSelection(pageNumber);
+    return pages.length === 1 ? pages[0] : pages;
+  };
 
   const handleCutPage = useCallback((pageNumber) => {
-    setClipboardPage(pageNumber);
+    setClipboardPage(clipboardValue(pageNumber));
     setClipboardType('cut');
   }, [setClipboardPage, setClipboardType]);
 
   const handleCopyPage = useCallback((pageNumber) => {
-    setClipboardPage(pageNumber);
+    setClipboardPage(clipboardValue(pageNumber));
     setClipboardType('copy');
   }, [setClipboardPage, setClipboardType]);
 
@@ -367,6 +442,20 @@ export function usePageOperations({
   // it (position 'above'; owner 2026-10-07, the page menu's Paste above).
   const handlePastePage = useCallback(async (targetPageNumber, sourcePageNumber, pasteType, position = 'below') => {
     if (!sourcePageNumber || !pasteType) return false;
+    if (isPageList(sourcePageNumber)) {
+      // Several pages: a cut moves them as one block next to the target, a
+      // copy pastes copies of them (in order) as one block.
+      const target = Number(targetPageNumber);
+      const plan = pasteType === 'cut'
+        ? movePagesNextTo(Math.max(target, ...sourcePageNumber), sourcePageNumber, target, position)
+        : copyPagesAfter(Math.max(target, ...sourcePageNumber), sourcePageNumber, position === 'above' ? target - 1 : target);
+      const result = await runPlan(plan, 'pasting');
+      if (result && pasteType === 'cut') {
+        setClipboardPage(null);
+        setClipboardType(null);
+      }
+      return result;
+    }
     if (pasteType === 'cut' && sourcePageNumber === targetPageNumber) {
       setClipboardPage(null);
       setClipboardType(null);
@@ -398,14 +487,20 @@ export function usePageOperations({
     handlePastePage(targetPageNumber, clipboardPage, clipboardType)
   ), [clipboardPage, clipboardType, handlePastePage]);
 
+  // One page to a page's slot, or several pages (an array) as one block to
+  // `{ index, pageCount }`: the slot among the pages that stay (a drag).
   const handleReorderPages = useCallback((sourcePageNumber, targetPageNumber) => (
-    runMutation({ type: 'move', from: sourcePageNumber, to: targetPageNumber }, 'moving')
-  ), [runMutation]);
+    isPageList(sourcePageNumber)
+      ? runPlan(movePagesToIndex(targetPageNumber?.pageCount, sourcePageNumber, targetPageNumber?.index), 'moving')
+      : runMutation({ type: 'move', from: sourcePageNumber, to: targetPageNumber }, 'moving')
+  ), [runMutation, runPlan]);
 
   // delta: 90 turns right (clockwise), -90 left.
   const handleRotatePage = useCallback((pageNumber, delta = 90) => (
-    runMutation({ type: 'rotate', page: pageNumber, delta: delta === -90 ? -90 : 90 }, 'rotating')
-  ), [runMutation]);
+    isPageList(pageNumber)
+      ? runPlan(rotatePages(Infinity, pageNumber, delta), 'rotating')
+      : runMutation({ type: 'rotate', page: pageNumber, delta: delta === -90 ? -90 : 90 }, 'rotating')
+  ), [runMutation, runPlan]);
 
   const handleMirrorPage = useCallback((pageNumber, direction) => {
     setPageTransformations((prev) => {

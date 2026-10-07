@@ -84,3 +84,26 @@ export function inversePageOperation(pdfOperation, { stateBefore = null, deleted
   }
   return null;
 }
+
+/**
+ * The inverse of a change to several pages at once (owner 2026-10-07: delete,
+ * turn, duplicate, paste or move a selection = ONE Undo step). `steps` are its
+ * single-page changes in the order they ran, each { pdfOperation, context }
+ * where context is what inversePageOperation needs AT THAT STEP. The inverse
+ * runs their inverses newest first, as one batch. null if any step cannot be
+ * undone.
+ */
+export function inversePageOperationSteps(steps = []) {
+  const pdfOperations = [];
+  const stateOperations = [];
+  for (let index = steps.length - 1; index >= 0; index -= 1) {
+    const inverse = inversePageOperation(steps[index]?.pdfOperation, steps[index]?.context || {});
+    if (!inverse) return null;
+    pdfOperations.push(inverse.pdfOperation);
+    stateOperations.push(inverse.stateOperation);
+  }
+  return {
+    pdfOperation: { type: 'batch', operations: pdfOperations },
+    stateOperation: { type: 'batch', operations: stateOperations },
+  };
+}

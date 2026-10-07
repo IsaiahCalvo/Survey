@@ -588,7 +588,11 @@ test('mobile viewer exposes the preserved dynamic tool and page controls', () =>
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /aria-label="Text formatting"/);
   assert.match(PAGES_PANEL_SOURCE, /aria-label="Page actions"/);
   assert.match(PAGES_PANEL_SOURCE, /onInsertBlankPage\?\.\(pageNum\)/);
-  assert.match(PAGES_PANEL_SOURCE, /mobileSelectMode \? 'Done' : 'Select'/);
+  // Owner 2026-10-07 (multi-select): Select opens the sheet's Select mode,
+  // whose header row ends with Done and whose bar acts on the ticked pages.
+  assert.match(PAGES_PANEL_SOURCE, /<span>Select<\/span>/);
+  assert.match(PAGES_PANEL_SOURCE, /onClick=\{leaveSelectMode\}>Done</);
+  assert.match(PAGES_PANEL_SOURCE, /aria-label="Selected pages actions"/);
 });
 
 test('mobile live text formatting fits its band with 44px touch targets', () => {

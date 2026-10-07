@@ -337,8 +337,20 @@ function reinstatePageSlice(next, source, sourcePage, targetPage) {
   return next;
 }
 
+// How many pages an operation adds (+) or removes (-).
+export function pageCountChange(operation) {
+  const type = operation?.type;
+  if (type === 'batch') return (operation.operations || []).reduce((sum, step) => sum + pageCountChange(step), 0);
+  if (type === 'delete') return -1;
+  return ['insert', 'duplicate', 'copy', 'restore'].includes(type) ? 1 : 0;
+}
+
 export function transformPageState(model = {}, op, { createId = fallbackId } = {}) {
   const type = op?.type;
+  if (type === 'batch') {
+    // Several pages at once: each step in order (pageSelectionOperations.js).
+    return (op.operations || []).reduce((state, step) => transformPageState(state, step, { createId }), model);
+  }
   if (type === 'restore') {
     // Undo of a delete: { afterPage, from: state before the delete, fromPage }.
     const afterPage = asSlot(op.afterPage);
@@ -405,6 +417,16 @@ export function transformPageState(model = {}, op, { createId = fallbackId } = {
 export function pageNumberAfterOperation(currentPage, operation, resultingPageCount) {
   const page = asPage(currentPage) || 1;
   const type = operation?.type;
+  if (type === 'batch') {
+    const steps = operation.operations || [];
+    let current = page;
+    let count = Math.max(1, Number(resultingPageCount) || 1) - pageCountChange(operation);
+    for (const step of steps) {
+      count += pageCountChange(step);
+      current = pageNumberAfterOperation(current, step, Math.max(1, count));
+    }
+    return Math.min(Math.max(1, current), Math.max(1, Number(resultingPageCount) || current));
+  }
   let next = page;
   if (type === 'delete') {
     const removed = asPage(operation.page);

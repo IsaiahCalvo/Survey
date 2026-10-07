@@ -64,9 +64,13 @@ test('every reorder surface opts into the shared lift instead of its own paint',
   assert.doesNotMatch(styles, /\.spaces-item\.is-dragging \.spaces-item__block \{/);
 
   const pages = read('src/sidebar/PagesPanel.jsx');
-  // Since 2026-10-07 the Pages tab drags with dnd-kit: the lifted copy
-  // (DragOverlay) wears the shared lift.
-  assert.match(pages, /data-drag-lifted=""/);
+  // Since 2026-10-07 the Pages tab drags with dnd-kit. Owner 2026-10-07 ("I
+  // just want to be picking up and moving that page"): the lifted copy
+  // (DragOverlay) is the page itself on the shared lift shadow, not a card
+  // box wearing the shared lift surface.
+  assert.match(pages, /data-page-drag-sheet=""/);
+  assert.match(pages, /boxShadow: 'var\(--drag-lift-shadow\)'/);
+  assert.doesNotMatch(pages, /data-drag-lifted=""/);
   assert.doesNotMatch(pages, /dragOverPage === pageNumber \? '1px solid var\(--accent\)'/);
 });
 

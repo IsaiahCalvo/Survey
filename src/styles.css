@@ -3254,44 +3254,89 @@ textarea:focus-visible,
   }
 }
 
-/* Pages tab (desktop): the page's "..." menu button (owner 2026-10-07: "I
-   don't see the three dots ... so I can't manipulate it"). It sits on the
-   page's bottom-right corner and shows on the hovered card, the current card,
-   the card whose menu is open, and whenever it or its card has keyboard
-   focus. The phone sheet always shows it (no hover there). */
+/* Pages tab (desktop): the page's "..." menu button. Owner 2026-10-07 ("the
+   three dots in the bottom right-hand corner should be visible on all pages,
+   whether it's selected or not"): always shown, on the page's bottom-right
+   corner, as a small calm dot (muted ink on a see-through fill) so a strip of
+   30 pages does not look busy; hovered or open it firms up. */
 .pages-panel-more {
-  opacity: 0;
-  transition: opacity 0.12s ease;
+  color: var(--text-2);
 }
-.pages-panel-card:hover .pages-panel-more,
-.pages-panel-card.is-active .pages-panel-more,
-.pages-panel-card.is-menu-open .pages-panel-more,
-.pages-panel-card:focus-within .pages-panel-more,
-.pages-panel-more:focus-visible {
-  opacity: 1;
+.pages-panel-more > span {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--surface-3) 82%, transparent);
+  box-shadow: 0 0 0 1px var(--border);
+  transition: background-color 0.12s ease, box-shadow 0.12s ease, color 0.12s ease;
 }
-/* Hovered / open: a hairline ring on the circle (it is already the raised
-   --surface-3 fill, so a fill change would not read). */
+.pages-panel-more:hover,
+.pages-panel-card.is-menu-open .pages-panel-more {
+  color: var(--text-1);
+}
 .pages-panel-more:hover > span,
 .pages-panel-card.is-menu-open .pages-panel-more > span {
-  box-shadow: 0 0 0 1px var(--border-strong), 0 1px 2px rgba(0, 0, 0, 0.3) !important;
+  background: var(--surface-3);
+  box-shadow: 0 0 0 1px var(--border-strong), 0 1px 2px rgba(0, 0, 0, 0.3);
 }
-@media (hover: none) {
-  .pages-panel-more { opacity: 1; }
+.pages-panel-more:focus-visible > span {
+  box-shadow: 0 0 0 2px var(--focus-ring, var(--accent));
 }
 @media (prefers-reduced-motion: reduce) {
-  .pages-panel-more { transition: none; }
+  .pages-panel-more > span { transition: none; }
 }
 
-/* Pages tab drag (owner 2026-10-07): the card a page was lifted from is the
-   app's one drag slot - the quiet dashed outline where the page will land -
-   with its picture hidden (the lifted copy rides above). */
-[data-page-card][data-drag-placeholder] > * {
+/* Pages tab cards (owner 2026-10-07: "there's a gold box bigger than the
+   page. I want that gold box just to outline the page"). The card has no
+   selected fill or border: a selected page (desktop: the selection, one page =
+   the current page; phone: the current page, or a ticked page in Select mode)
+   has the gold outline around the page picture itself. */
+.pages-panel-card:hover:not([data-drag-placeholder]) {
+  background: var(--hover);
+}
+.pages-panel-card.is-selected [data-page-preview],
+.mobile-page-card.is-active .mobile-page-preview,
+.mobile-page-card.is-selected .mobile-page-preview {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Pages tab drag: the card a page was lifted from shows the app's one drag
+   slot - the quiet dashed outline - in the shape of the page, where the page
+   will land (its picture hidden: the lifted copy rides above). Other selected
+   pages carried along fade while they ride. */
+[data-page-card][data-drag-placeholder] > :not([data-page-preview]),
+[data-page-card][data-drag-placeholder] [data-page-preview] > * {
   visibility: hidden;
 }
-.mobile-page-card[data-drag-placeholder] {
+[data-page-card][data-drag-placeholder] [data-page-preview] {
   background: var(--drag-slot-bg) !important;
-  border: var(--drag-slot-border) !important;
+  border-color: transparent !important;
+  outline: var(--drag-slot-border) !important;
+  outline-offset: 0 !important;
+}
+[data-page-card][data-drag-rider] {
+  opacity: 0.35;
+}
+/* The count on a stack of carried pages. */
+.pages-drag-count {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font: 600 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 /* Keyboard: a focused card shows where focus is (it is the drag target). */
 [data-page-card]:focus-visible {
