@@ -3730,6 +3730,23 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   font-variant-numeric: tabular-nums;
 }
 
+/* Select mode: "Select all | 3 selected | Done" in the same 28px row. */
+.mobile-pages-counter.is-selecting {
+  justify-content: space-between;
+  padding: 0 16px;
+}
+.mobile-pages-counter.is-selecting > button {
+  height: 28px;
+  padding: 0 4px;
+  color: var(--text-1);
+  background: transparent;
+  border: 0;
+  font: 600 12px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+.mobile-pages-counter.is-selecting > strong {
+  color: var(--text-2);
+}
+
 .mobile-pages-counter > strong {
   color: var(--text-3);
   font-size: 11px;
@@ -3772,18 +3789,15 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   border-radius: 8px !important;
 }
 
-.mobile-page-card.is-active {
-  background: var(--surface-3) !important;
-  border-color: var(--accent) !important;
-}
+/* Owner 2026-10-07 ("I want that gold box just to outline the page"): the
+   current page's gold outline is on the page picture, not the card (styles.css
+   .mobile-page-card.is-active .mobile-page-preview). */
 
 /* UX 2026-09-22 (owner: "remove this"): the current page card carried a
    5px gold pill down its left edge on top of the gold border — two "current"
    marks on one card. The border alone says it now. */
 
-.mobile-page-card.is-selected {
-  border-color: var(--accent) !important;
-}
+
 
 .mobile-page-select-indicator {
   position: absolute;

@@ -8,6 +8,13 @@
 /**
  * @param {object} o
  * @param {number} o.pageNumber     the page the menu acts on
+ * @param {number[]} [o.pageNumbers] several selected pages the menu acts on
+ *                                  (owner 2026-10-07, multi-select): title
+ *                                  "3 pages", only the actions that apply to
+ *                                  a selection (cut, copy, paste, duplicate,
+ *                                  rotate, delete)
+ * @param {boolean} [o.select]      adds "Select" (the phone Pages sheet:
+ *                                  starts picking several pages)
  * @param {number} o.pageCount      pages in the document
  * @param {number|null} o.clipboardPage  page on the page clipboard
  * @param {'cut'|'copy'|null} o.clipboardType
@@ -21,20 +28,45 @@
  */
 export function buildPageMenuItems({
   pageNumber,
+  pageNumbers = null,
   pageCount,
   clipboardPage = null,
   clipboardType = null,
   hasTransform = false,
   move = null,
+  select = false,
   available = {},
 } = {}) {
   const has = (key) => available[key] !== false;
-  const hasClipboard = Boolean(clipboardPage);
+  // The clipboard holds one page number or several (an array).
+  const hasClipboard = Array.isArray(clipboardPage) ? clipboardPage.length > 0 : Boolean(clipboardPage);
+  const many = Array.isArray(pageNumbers) && pageNumbers.length > 1 ? pageNumbers.length : 0;
+  if (many) {
+    return joinGroups([
+      [{ key: 'header', header: true, label: `${many} pages` }],
+      [
+        has('cut') && { key: 'cut', label: 'Cut', icon: 'scissors' },
+        has('copy') && { key: 'copy', label: 'Copy', icon: 'copy' },
+        has('paste') && { key: 'pasteAbove', label: 'Paste above', icon: 'paste', disabled: !hasClipboard },
+        has('paste') && { key: 'pasteBelow', label: 'Paste below', icon: 'paste', disabled: !hasClipboard },
+        has('duplicate') && { key: 'duplicate', label: 'Duplicate', icon: 'duplicate' },
+      ],
+      [
+        has('rotate') && { key: 'rotateLeft', label: 'Rotate left', icon: 'rotateCcw' },
+        has('rotate') && { key: 'rotateRight', label: 'Rotate right', icon: 'rotateCw' },
+      ],
+      [
+        // A document keeps at least one page.
+        has('delete') && { key: 'delete', label: 'Delete', icon: 'trash', danger: true, disabled: !(pageCount > many) },
+      ],
+    ]);
+  }
   // Pasting a cut page onto itself would do nothing.
   const pasteIsNoop = clipboardType === 'cut' && clipboardPage === pageNumber;
   const pasteOff = !hasClipboard || pasteIsNoop;
-  const groups = [
+  return joinGroups([
     [{ key: 'header', header: true, label: `Page ${pageNumber}` }],
+    select ? [{ key: 'select', label: 'Select', icon: 'listChecks' }] : [],
     move ? [
       { key: 'moveUp', label: 'Move up', icon: 'chevronUp', disabled: !move.canUp },
       { key: 'moveDown', label: 'Move down', icon: 'chevronDown', disabled: !move.canDown },
@@ -62,8 +94,11 @@ export function buildPageMenuItems({
       // A document cannot have zero pages.
       has('delete') && { key: 'delete', label: 'Delete', icon: 'trash', danger: true, disabled: !(pageCount > 1) },
     ],
-  ].map((group) => group.filter(Boolean)).filter((group) => group.length > 0);
+  ]);
+}
 
+function joinGroups(rawGroups) {
+  const groups = rawGroups.map((group) => group.filter(Boolean)).filter((group) => group.length > 0);
   const items = [];
   groups.forEach((group, index) => {
     if (index > 0) items.push({ key: `sep-${index}`, separator: true });
@@ -74,7 +109,8 @@ export function buildPageMenuItems({
 
 /**
  * Runs a page menu item. `handlers` are the page operations
- * (hooks/usePageOperations.js through the host's props):
+ * (hooks/usePageOperations.js through the host's props). `pageNumber` is one
+ * page, or an array for a selection (the handlers then act on them all):
  *   cut(page) copy(page) paste(targetPage, position) duplicate(page)
  *   insertBlank(afterPage) rotate(page, delta) mirror(page, direction)
  *   reset(page) delete(page) move(page, offset)
@@ -88,6 +124,7 @@ export function runPageMenuAction(key, pageNumber, handlers = {}) {
     return true;
   };
   switch (key) {
+    case 'select': return call('select', pageNumber);
     case 'moveUp': return call('move', pageNumber, -1);
     case 'moveDown': return call('move', pageNumber, 1);
     case 'cut': return call('cut', pageNumber);

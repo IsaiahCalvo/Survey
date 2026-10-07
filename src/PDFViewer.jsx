@@ -339,7 +339,7 @@ import { dropStashedSelection, hasAnyPageSelection, isItemSelected, pageHasSelec
 import { isSelectionGrabPress, noteOverlayTapPick } from './hooks/useSelectionGrabHandoff.js';
 import { resolveToolBarGroup, TOOL_BAR_GROUPS } from './utils/toolbarRows.js';
 import { cycleLassoMode } from './utils/lassoSelection.js';
-import { pageNumberAfterOperation } from './utils/pageAnnotationReindex.js';
+import { pageCountChange, pageNumberAfterOperation } from './utils/pageAnnotationReindex.js';
 import { usePdfjsFormFieldPersistence } from './hooks/usePdfjsFormFieldPersistence.js';
 import { useRegionOverlayVisibility } from './hooks/useRegionOverlayVisibility.js';
 import { userRedo, userUndo } from './lib/collab/crdtUndoManager.js';
@@ -14444,6 +14444,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // remapped annotation/sidebar stores together. `_surveyPdfId` stays stable,
   // so the same-document reload path cannot hydrate the pre-mutation keys.
   const pageStructureStateRef = useRef(null);
+  // The marks a page change already wrote at its commit: the mirror effect
+  // below skips that same object (one stringify per page change, not two).
+  const pageChangeBackedUpMarksRef = useRef(null);
   pageStructureStateRef.current = {
     annotationsByPage: annotationsByPageRef.current || {},
     surveyMarkers: surveyMarkersRef.current || {},
@@ -14485,6 +14488,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // the transformed graph rather than racing a later effect.
     if (pdfId) {
       saveAnnotationsByPage(pdfId, next.annotationsByPage);
+      pageChangeBackedUpMarksRef.current = next.annotationsByPage;
       saveSurveyMarkers(pdfId, next.surveyMarkers);
       try {
         localStorage.setItem(`pdfSidebar_${pdfId}`, JSON.stringify({
@@ -14503,9 +14507,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     }
 
-    const pageCountDelta = operation?.type === 'delete'
-      ? -1
-      : ['insert', 'duplicate', 'copy', 'restore'].includes(operation?.type) ? 1 : 0;
+    const pageCountDelta = pageCountChange(operation);
     setPageNum((current) => pageNumberAfterOperation(
       current,
       operation,
@@ -23083,6 +23085,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => {
     if (!pdfId) return;
     if (pdfFile?.id) return;
+    if (pageChangeBackedUpMarksRef.current === annotationsByPage) return;
     saveAnnotationsByPage(pdfId, annotationsByPage);
   }, [pdfId, pdfFile?.id, annotationsByPage]);
 

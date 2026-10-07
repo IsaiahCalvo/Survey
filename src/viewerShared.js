@@ -1837,14 +1837,35 @@ export const saveSurveyMarkers = (pdfId, surveyMarkers) => {
   return false;
 };
 
+// 2026-10-07 (owner: page drops lag): a document whose marks are far bigger
+// than any browser's storage quota (the IC package: 22.5 M characters of
+// imported markup) spent ~270 ms on JSON.stringify for a setItem that could
+// only fail - twice per page move, inside the drop frame. Once a map that big
+// did not fit, skip it until it has fewer objects than that one. Only maps
+// past every quota (browsers keep ~5 M characters per site) are remembered:
+// a smaller one that did not fit is always tried again (a Save after the
+// user trimmed it must still land).
+const ANNOTATION_BACKUP_NEVER_FITS_CHARS = 8000000;
+const annotationsByPageTooLarge = new Map(); // pdfId -> object count that did not fit
+
 export const saveAnnotationsByPage = (pdfId, annotationsByPage) => {
   if (!pdfId) return false;
+  const tooLargeAt = annotationsByPageTooLarge.get(pdfId);
+  if (tooLargeAt != null && countAnnotationPageObjects(annotationsByPage) >= tooLargeAt) return false;
+  let data = null;
   try {
-    const data = JSON.stringify(annotationsByPage);
+    data = JSON.stringify(annotationsByPage);
     if (typeof data !== 'string') return false;
     localStorage.setItem(`annotationsByPage_${pdfId}`, data);
+    annotationsByPageTooLarge.delete(pdfId);
     return true;
-  } catch {
+  } catch (e) {
+    const objectCount = countAnnotationPageObjects(annotationsByPage);
+    if ((e?.name === 'QuotaExceededError' || e?.code === 22)
+      && objectCount > 0
+      && typeof data === 'string' && data.length > ANNOTATION_BACKUP_NEVER_FITS_CHARS) {
+      annotationsByPageTooLarge.set(pdfId, objectCount);
+    }
     // These entries may be the only copy of local/offline edits, not a cache.
     // Never evict another document to make room or claim this backup succeeded.
     // setItem is atomic on failure, so the prior saved snapshot remains intact.

@@ -54,5 +54,5 @@ test('the panel restores from the cache and shows no "Loading..." text', () => {
   assert.doesNotMatch(PANEL, />\s*Loading\.\.\.\s*</);
   // the page menu control is one circle with the level glyph (18px on the
   // phone; the desktop Pages tab has it too since 2026-10-07, at 16px)
-  assert.match(PANEL, /<Icon name="moreHorizontal" size=\{mobileMode \? 18 : 16\}/);
+  assert.match(PANEL, /<Icon name="moreHorizontal" size=\{mobileMode \? 18 : 14\}/);
 });

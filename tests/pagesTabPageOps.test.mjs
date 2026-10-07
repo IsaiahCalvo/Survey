@@ -202,7 +202,9 @@ test('the Pages tab drags whole cards with dnd-kit: mouse 5px, finger held 300ms
   assert.match(panel, /const PAGE_DRAG_TOUCH_DELAY_MS = 300;/);
   assert.match(panel, /useSensor\(KeyboardSensor/);
   assert.match(panel, /<DragOverlay dropAnimation=\{dropAnimation\}/);
-  assert.match(panel, /onReorderPages\?\.\(source, target\)/);
+  assert.match(panel, /onReorderPages\(source, target\)/);
+  // Owner 2026-10-07: a selection of several pages is carried as one block.
+  assert.match(panel, /onReorderPages\(block\.pages, \{ index, pageCount: numPages \}\)/);
   assert.doesNotMatch(panel, /draggable=\{!mobileMode\}/, 'no native HTML5 drag any more');
   assert.doesNotMatch(panel, /data-drag-handle/, 'no handle: the card is the target');
 });
