@@ -60,9 +60,12 @@ export const normalizeMobilePresence = ({
   }
 
   let users = Array.from(unique.values());
-  if (users.length === 0 && (currentUserId || currentUserEmail || currentUserDisplayName)) {
+  // You are always on your own list - also when your own row has aged out
+  // (2 min without activity) while other people's rows are still fresh.
+  const selfMissing = currentUserId ? !unique.has(currentUserId) : users.length === 0;
+  if (selfMissing && (currentUserId || currentUserEmail || currentUserDisplayName)) {
     const label = presenceLabel(presenceSelfRow({ currentUserId, currentUserEmail, currentUserDisplayName }));
-    users = [{
+    users = [...users, {
       id: currentUserId || 'current-user',
       label,
       lastSeen: '',

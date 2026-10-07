@@ -69,6 +69,32 @@ export function presenceSelfRow({ currentUserId = null, currentUserEmail = null,
   };
 }
 
+/**
+ * One row per person (a user can have several client rows: web, desktop —
+ * keep the most recently seen), you first, then most recently seen.
+ * You are always on your own list: before your row has synced, and also after
+ * it has aged out (2 min without activity) while other people's are fresh.
+ */
+export function presencePeopleRows(presence = [], { currentUserId = null, currentUserEmail = null, currentUserDisplayName = null } = {}) {
+  const byUser = new Map();
+  for (const entry of presence || []) {
+    const id = entry?.user_id;
+    if (!id) continue;
+    const prior = byUser.get(id);
+    if (!prior || (entry.last_seen && entry.last_seen > (prior.last_seen || ''))) byUser.set(id, entry);
+  }
+  const list = Array.from(byUser.values());
+  if (currentUserId && !byUser.has(currentUserId)) {
+    list.push(presenceSelfRow({ currentUserId, currentUserEmail, currentUserDisplayName }));
+  }
+  list.sort((a, b) => {
+    if (a.user_id === currentUserId) return -1;
+    if (b.user_id === currentUserId) return 1;
+    return (b.last_seen || '').localeCompare(a.last_seen || '');
+  });
+  return list;
+}
+
 /*
  * Tints. Per-person identity hues are outside the chrome palette (tokens.css,
  * "NOT IN SCOPE": they are the same class of thing as an ink colour), so they
