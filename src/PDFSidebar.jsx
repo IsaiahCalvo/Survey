@@ -518,6 +518,9 @@ const PDFSidebar = React.forwardRef(({
                   // open panel's tab is marked like an armed tool - gold glyph.
                   className={mobileMode ? `mobile-pdf-hub-tab${isActive ? ' is-active' : ''}` : `chrome-icon-btn${isActive ? ' is-active' : ''}`}
                   {...tip(tab.label, 'below')}
+                  // The phone hides the word under the glyph (mobilePdfViewer.css),
+                  // so the button carries its own name for screen readers.
+                  aria-label={tab.label}
                   onClick={() => {
                     if (tab.id === '__savelog') {
                       // UX 2026-04-22: Mobile-only tile that fires the Save Log
