@@ -2948,7 +2948,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
               aria-expanded={presenceOpen}
               onClick={() => { setPresenceOpen((open) => !open); setMoreOpen(false); }}
             >
-              <span className="mobile-pdf-tools__avatar" style={{ background: presenceUsers[0]?.tint }}>
+              <span className="mobile-pdf-tools__avatar" style={presenceUsers[0]?.face}>
                 {userInitial}
                 <span className="mobile-presence-dot" data-presence-dot="here" />
               </span>
@@ -3087,7 +3087,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
             <div className="mobile-pdf-users-sheet__list">
               {(presenceUsers.length ? presenceUsers : [{ id: 'current', label: 'You', initials: 'U', isCurrent: true }]).map((person) => (
                 <div key={person.id} className="mobile-pdf-users-sheet__row">
-                  <span className="mobile-pdf-users-sheet__avatar" style={{ background: person.tint }}>
+                  <span className="mobile-pdf-users-sheet__avatar" style={person.face}>
                     {person.initials}
                     <span className="mobile-presence-dot" data-presence-dot={person.state || 'here'} />
                   </span>

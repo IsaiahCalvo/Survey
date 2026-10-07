@@ -19,6 +19,7 @@
 */
 import React from 'react';
 import { presenceInitials } from '../components/presenceIdentity.js';
+import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
 import { Icon } from './HubShell';
 import { AuthContext } from '../contexts/AuthContext';
 import Spinner from '../components/Spinner';
@@ -66,14 +67,11 @@ const ROLES = ["Owner", "Editor", "Viewer"];
 const ROLE_ORDER = { Owner: 0, Editor: 1, Viewer: 2 };
 const PAID_TIERS = new Set(['pro', 'enterprise', 'developer']);
 
-/* Deterministic avatar colors for collaborators (creator keeps gold). */
-const COLLAB_COLORS = ['#5fbf83', '#7aa2f7', '#b48ead', '#8fbcbb', '#cf9f6f'];
-const colorFor = (seed) => {
-  const s = String(seed || '');
-  let h = 0;
-  for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return COLLAB_COLORS[h % COLLAB_COLORS.length];
-};
+/* Every member's face is their own pastel from their user id
+   (utils/userColors.js, owner 2026-10-07) with dark initials - the creator
+   too, so a person looks the same here as in the viewer and the account
+   button. A pending invite stays grey: nobody is active on it yet. */
+const colorFor = (seed) => userColorFill(seed);
 
 /* Two-letter initials from a display name — used for the avatar glyph so the
    circle shows real initials, never a raw user id. The one app-wide rule
@@ -684,7 +682,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
               return (
                 <div key={m.id} data-kal31-project-member={m.userId || m.id} style={{ position: "relative" }}>
                   <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 1fr 1fr 24px", gap: 14, alignItems: "center", padding: "8px 10px", borderRadius: 6, height: 50, boxSizing: "border-box" }}>
-                    <div style={{ width: 30, height: 30, borderRadius: "50%", background: m.color, color: "var(--accent-text)", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 800, flex: "none" }}>{m.initials || initialsOf(m.name)}</div>
+                    <div data-user-avatar="" style={{ width: 30, height: 30, borderRadius: "50%", background: colorFor(m.userId || m.id), color: USER_INITIALS_INK, display: "grid", placeItems: "center", fontSize: 11, fontWeight: 600, flex: "none" }}>{m.initials || initialsOf(m.name)}</div>
                     <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.name}{m.isCreator ? " · creator" : ""}</div>
                       <div className="mono" style={{ fontFamily: MONO_FONT, fontSize: 11, color: INK_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.email}</div>

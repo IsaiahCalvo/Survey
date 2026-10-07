@@ -33,6 +33,7 @@ import {
 } from '../services/shareEmailService';
 import { copyTextToClipboard } from '../utils/clipboard';
 import { presenceInitials } from '../components/presenceIdentity.js';
+import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
 import { Icon } from './HubShell';
 import { C } from '../uiPalette';
 
@@ -40,19 +41,13 @@ import { C } from '../uiPalette';
 const ROLES = ['Owner', 'Editor', 'Viewer'];
 const MONO_FONT = '"JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace';
 
-/* Avatar colours for collaborators — the same identity palette and the same
-   deterministic pick as ManageTeamModal and ProjectsFolderTree, so one person
-   wears one colour everywhere. An owner keeps gold.
-   UX 2026-09-17: every non-owner here used to be the SAME #5fbf83 green, which
-   told you nothing about who they were and read as a status ("all good") in an
-   app where green means synced. These colours are identity, never state. */
-const COLLAB_COLORS = ['#5fbf83', '#7aa2f7', '#b48ead', '#8fbcbb', '#cf9f6f'];
-const colorFor = (seed) => {
-  const str = String(seed || '');
-  let hash = 0;
-  for (let i = 0; i < str.length; i += 1) hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
-  return COLLAB_COLORS[hash % COLLAB_COLORS.length];
-};
+/* Avatar colours for collaborators: each person's own pastel from their user
+   id (utils/userColors.js, owner 2026-10-07), the one palette ManageTeamModal,
+   ProjectsFolderTree, the account button and the viewer use, so one person
+   wears one colour everywhere - an owner too (no gold: gold means selected).
+   These colours are identity, never state. A pending invite stays grey:
+   nobody is active on it yet. */
+const colorFor = (seed) => userColorFill(seed);
 
 function roleLabel(role) {
   const r = String(role || '').toLowerCase();
@@ -268,7 +263,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
               const isLastOwner = rl === 'owner' && ownerCount <= 1;
               return (
                 <div key={m.id || `${m.user_id}-${m.document_id}`} data-kal31-row="member" data-kal31-role={rl} style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, height: 56, boxSizing: 'border-box' }}>
-                  <div style={{ width: 30, height: 30, borderRadius: '50%', background: rl === 'owner' ? C.gold : colorFor(m.user_id || m.user?.email || m.email), color: 'var(--accent-text)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, flex: 'none' }}>{initials}</div>
+                  <div data-user-avatar="" style={{ width: 30, height: 30, borderRadius: '50%', background: colorFor(m.user_id || m.user?.email || m.email), color: USER_INITIALS_INK, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 600, flex: 'none' }}>{initials}</div>
                   <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.user?.email || m.email || 'Unknown'}</div>
                     <div style={{ fontFamily: MONO_FONT, fontSize: 11, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.user_id}</div>

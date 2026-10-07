@@ -2,6 +2,7 @@ import { getCompactSyncStatusMessage, getSyncStatusViewModel } from '../utils/sy
 import {
   PRESENCE_STATE_LABEL,
   assignPresenceTints,
+  presenceFaceColors,
   presenceInitials,
   presenceLabel,
   presenceRowForUser,
@@ -80,14 +81,15 @@ export const normalizeMobilePresence = ({
     if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
     return String(b.lastSeen).localeCompare(String(a.lastSeen));
   });
-  // Same face as the desktop footer (components/presenceIdentity.js): your
-  // calm grey, a muted tint per other person, and here-now / idle from
-  // last_seen — no gold, which means "selected".
+  // Same face as the desktop footer (components/presenceIdentity.js): each
+  // person's own pastel (yours too), grey only while idle, and here-now / idle
+  // from last_seen — no gold, which means "selected".
   const selfId = users.find((user) => user.isCurrent)?.id || currentUserId;
   const tints = assignPresenceTints(users.map((user) => user.id), selfId);
   return users.map((user) => {
     const state = presenceState({ last_seen: user.lastSeen }, { now, isCurrent: user.isCurrent });
-    return { ...user, tint: tints.get(user.id), state, stateLabel: PRESENCE_STATE_LABEL[state] };
+    const tint = tints.get(user.id);
+    return { ...user, tint, face: presenceFaceColors(tint, state), state, stateLabel: PRESENCE_STATE_LABEL[state] };
   });
 };
 

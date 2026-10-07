@@ -1275,9 +1275,11 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 /* Owner 2026-10-02: the people faces match the desktop sidebar footer
-   (components/presenceIdentity.js, after the Astryx Avatar docs): initials in
-   --text-1 on a calm tint (yours grey, set inline), no gold - gold means
-   "selected" - and a status dot on the edge at 4:30. */
+   (components/presenceIdentity.js, after the Astryx Avatar docs), and a
+   status dot on the edge at 4:30. Owner 2026-10-07: fill and ink are set
+   inline from the person's pastel (utils/userColors.js; dark initials), yours
+   included; grey only while idle. No gold - gold means "selected". The fill
+   below is only the fallback before a roster exists. */
 .mobile-pdf-tools__avatar {
   --presence-ring: var(--surface-1);
   position: relative;

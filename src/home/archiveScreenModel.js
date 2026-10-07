@@ -427,6 +427,13 @@ export function collaboratorInitials(person) {
   return String(source).trim() ? presenceInitials(source) : '—';
 }
 
+/** What a collaborator's face colour is keyed on (utils/userColors.js): their
+ *  user id, so they wear the same pastel here as everywhere else; the email
+ *  when an invite has no account yet. */
+export function collaboratorColorId(person) {
+  return (person && (person.user_id || person.userId || person.email)) || null;
+}
+
 /** Short archived-on date, matching the Documents ledger's date formatting. */
 export function archivedDateLabel(iso) {
   const ms = Date.parse(iso || '') || 0;

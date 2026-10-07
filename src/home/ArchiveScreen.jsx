@@ -39,6 +39,7 @@ import {
   buildBulkFailureMessage,
   buildBulkOutcomeMessage,
   collaboratorInitials,
+  collaboratorColorId,
   daysRemainingLabel,
   defaultExpandedIds,
   defaultPreviewCollapsedIds,
@@ -600,6 +601,7 @@ export default function ArchiveScreen({
               ...team.shown.map(collaboratorInitials),
               ...(team.overflow ? [`+${team.overflow}`] : []),
             ]}
+            ids={team.shown.map(collaboratorColorId)}
             size={SUBLINE_GLYPH}
           />
           <span className="mono meta" style={{ fontSize: 11 }}>{(item.collaborators || []).length}</span>
@@ -1109,6 +1111,7 @@ export default function ArchiveScreen({
                           ...previewTeam.shown.map(collaboratorInitials),
                           ...(previewTeam.overflow ? [`+${previewTeam.overflow}`] : []),
                         ]}
+                        ids={previewTeam.shown.map(collaboratorColorId)}
                         size={22}
                       />
                     </div>

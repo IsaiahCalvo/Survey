@@ -5,7 +5,8 @@ import { useState, useRef, useEffect, useLayoutEffect, useContext, createContext
 import { useAuth } from '../contexts/AuthContext';
 import AppIcon from '../Icons';
 import DismissBarrier from '../components/DismissBarrier';
-import { presenceInitials, PRESENCE_SELF_TINT, PRESENCE_INK } from '../components/presenceIdentity.js';
+import { presenceInitials } from '../components/presenceIdentity.js';
+import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
 
 const HUB_BUILD_STAMP = (
   typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STAMP__
@@ -49,9 +50,14 @@ export const Icon = ({ name, size = 14, color, contentType, style, className }) 
   />
 );
 
-/* Round initials badge. */
-export const Avatar = ({ initials, color = 'var(--gold)', ink = 'var(--accent-text)', size = 22 }) => (
-  <div data-drag-keep-fill style={{ width: size, height: size, borderRadius: '50%', background: color, color: ink, display: 'grid', placeItems: 'center', fontSize: size * 0.42, fontWeight: 800, flex: 'none' }}>{initials}</div>
+/* Round initials badge. Owner 2026-10-07: a person's face is their own soft
+   pastel with dark initials (utils/userColors.js), picked from their user id
+   so they wear the same colour on every screen and device. Pass `id` (the
+   user id); `color` overrides it only where a screen has already resolved
+   colours for a group. Never gold (gold = selected), never grey (grey =
+   inactive). Weight 600 like the viewer's presence faces. */
+export const Avatar = ({ initials, id = null, color = null, ink = USER_INITIALS_INK, size = 22 }) => (
+  <div data-drag-keep-fill data-user-avatar="" style={{ width: size, height: size, borderRadius: '50%', background: color || userColorFill(id ?? initials), color: ink, display: 'grid', placeItems: 'center', fontSize: size * 0.42, fontWeight: 600, flex: 'none' }}>{initials}</div>
 );
 
 /* Overlapping row of avatars — used to preview a team compactly.
@@ -60,11 +66,17 @@ export const Avatar = ({ initials, color = 'var(--gold)', ink = 'var(--accent-te
    sits on, so it measured 1.00:1 and was literally invisible: the avatars ran
    into each other with no edge at all. It is --border now (3.60:1 on that card),
    which is the token for a hairline that has to be seen. */
-export const AvatarStack = ({ members, size = 22 }) => (
+/* Owner 2026-10-07: each face is that person's own pastel (by `ids[i]`, the
+   user id; the initials stand in when no id is known) instead of a colour by
+   position, so a person keeps one colour here and everywhere else. A "+N"
+   entry is the neutral overflow chip, not a person. */
+export const AvatarStack = ({ members, ids = [], size = 22 }) => (
   <div style={{ display: 'flex' }}>
     {members.map((m, i) => (
       <div key={i} style={{ marginLeft: i === 0 ? 0 : -6, border: '2px solid var(--border)', borderRadius: '50%' }}>
-        <Avatar initials={m} color={['var(--gold)', 'var(--blue)', 'var(--slate)', 'var(--lilac)'][i % 4]} size={size} />
+        {/^\+\d+$/.test(String(m))
+          ? <Avatar initials={m} color="var(--surface-3)" ink="var(--text-2)" size={size} />
+          : <Avatar initials={m} id={ids[i] ?? null} size={size} />}
       </div>
     ))}
   </div>
@@ -244,7 +256,7 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
         title={email || name}
         style={{ display: 'flex', alignItems: 'center', gap: 7, width: '100%', background: open ? 'var(--ink-600)' : 'transparent', border: 0, borderRadius: 6, padding: '4px 6px', cursor: 'pointer', fontFamily: 'inherit', color: 'inherit', textAlign: 'left' }}
       >
-        <Avatar initials={initials} color={PRESENCE_SELF_TINT} ink={PRESENCE_INK} size={24} />
+        <Avatar initials={initials} id={user?.id || email || name} size={24} />
         <div style={{ minWidth: 0 }}>
           <div className="name">{name}</div>
           <div className="who-meta">{resolvedMeta}</div>
@@ -264,7 +276,7 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
           />
           <div className="profile-menu-popup" role="menu" aria-label="Account menu" style={{ position: 'absolute', bottom: 'calc(100% + 6px)', left: 0, width: 270, background: 'var(--ink-700)', border: '1px solid var(--ink-500)', borderRadius: 10, boxShadow: '0 16px 40px rgba(0,0,0,0.5)', overflow: 'hidden', zIndex: 50 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12 }}>
-              <Avatar initials={initials} color={PRESENCE_SELF_TINT} ink={PRESENCE_INK} size={34} />
+              <Avatar initials={initials} id={user?.id || email || name} size={34} />
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
                 {email ? <div style={{ fontSize: 11, color: 'var(--ink-200)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{email}</div> : null}

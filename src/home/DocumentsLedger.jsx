@@ -12,7 +12,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { HubShell, Icon, Avatar, PdfThumb, Search, EmptyState } from './HubShell';
 import { countLabel } from './countLabel.js';
-import { presenceInitials, PRESENCE_SELF_TINT, PRESENCE_INK } from '../components/presenceIdentity.js';
+import { presenceInitials } from '../components/presenceIdentity.js';
 import SectionIconButton, { SelectModeButtons } from '../components/SectionIconButton.jsx';
 import { MoveCopyModal, RenameModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
@@ -80,9 +80,9 @@ function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168 }) {
   );
 }
 
-/* The Team avatar is YOUR face: the one initials rule and the calm own-face
-   grey the account avatar and the viewer's presence row use (owner
-   2026-10-02), not a gold disc with its own initials rule. */
+/* The Team avatar is YOUR face: the one initials rule (owner 2026-10-02) and
+   your own pastel (utils/userColors.js, owner 2026-10-07) - the same face the
+   account button and the viewer's presence row show. */
 const initialsOf = (name) => presenceInitials(name || 'You');
 
 const longDate = (value) => {
@@ -595,7 +595,7 @@ export default function DocumentsLedger({
               <div style={{ marginTop: 14, flex: 'none' }}>
                 <div className="section-label">Team</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                  <Avatar initials={initialsOf(user?.name || user?.email || 'You')} size={22} color={PRESENCE_SELF_TINT} ink={PRESENCE_INK} />
+                  <Avatar initials={initialsOf(user?.name || user?.email || 'You')} id={user?.id || user?.email || null} size={22} />
                   <span style={{ fontSize: 12, fontWeight: 600 }}>{user?.name || user?.email?.split('@')[0] || 'You'}</span>
                 </div>
               </div>
@@ -673,7 +673,7 @@ export default function DocumentsLedger({
                 <div>
                   <span>Team</span>
                   <div className="documents-mobile-detail-owner">
-                    <Avatar initials={initialsOf(user?.name || user?.email || 'You')} size={22} color={PRESENCE_SELF_TINT} ink={PRESENCE_INK} />
+                    <Avatar initials={initialsOf(user?.name || user?.email || 'You')} id={user?.id || user?.email || null} size={22} />
                     <strong>{user?.name || user?.email?.split('@')[0] || 'You'}</strong>
                   </div>
                 </div>

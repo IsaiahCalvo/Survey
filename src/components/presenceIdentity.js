@@ -24,11 +24,14 @@
  * person in the list is on this document, and `last_seen` tells us how
  * recently they did something here. That gives two honest states:
  *   here  — last activity within the last minute (or it is you): calm green.
- *   idle  — still on the document, but nothing for 1-2 minutes: hollow grey.
+ *   idle  — still on the document, but nothing for 1-2 minutes: hollow grey
+ *           dot, and the face itself turns grey (owner 2026-10-07: grey is
+ *           how he reads "inactive", so it is kept for exactly that).
  * "In the project but on another document" would need a new query across
  * every document in the project, which the owner's small-database-traffic rule
  * rules out, so it is not shown.
  */
+import { USER_INACTIVE_FILL, USER_INACTIVE_INK, USER_INITIALS_INK, assignUserColors } from '../utils/userColors.js';
 
 export const PRESENCE_IDLE_MS = 60 * 1000;
 
@@ -96,61 +99,34 @@ export function presencePeopleRows(presence = [], { currentUserId = null, curren
 }
 
 /*
- * Tints. Per-person identity hues are outside the chrome palette (tokens.css,
- * "NOT IN SCOPE": they are the same class of thing as an ink colour), so they
- * are literals here — but calm ones: every fill is a dark, low-saturation tone
- * that reads as a colour without shouting, and --text-1 (#dadfe8) on each
- * measures at least 5.6:1 (WCAG AA wants 4.5:1).
- *   you    #4a505c  grey   6.05:1  (owner: "gray is fine" — never blue)
- *   others #2f5759  teal   5.97:1
- *          #54476a  plum   6.31:1
- *          #6b4a3c  clay   5.88:1
- *          #4e5838  moss   5.65:1
- *          #6a4452  rose   6.13:1
- *          #44516a  slate  5.97:1  (a grey-blue at ~22% saturation, not a
- *                                   saturated blue)
+ * Tints (owner 2026-10-07): a soft pastel per person from utils/userColors.js
+ * — the same colour this person has on the account button, in member lists
+ * and on the phone — with dark initials on it. You wear your own pastel too:
+ * grey used to be "you" and read as "offline", so grey now means only that.
+ * An idle face (see presenceState) turns grey until the person is back.
  * No gold: gold means "selected" in this app.
  */
-export const PRESENCE_SELF_TINT = '#4a505c';
-export const PRESENCE_PEER_TINTS = ['#2f5759', '#54476a', '#6b4a3c', '#4e5838', '#6a4452', '#44516a'];
-export const PRESENCE_INK = 'var(--text-1)';
-
-function hashId(id) {
-  let hash = 0;
-  const s = String(id || '');
-  for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
-  return hash;
-}
+export const PRESENCE_INK = USER_INITIALS_INK;
 
 /**
- * Tint per person: each peer starts at the slot their id hashes to; when two
- * peers in the same roster would share a slot, the later one takes the next
- * free slot. Up to six peers therefore always get six different tints;
- * past six a second round starts (each tint at most twice for 12 peers), and
- * the names in the list tell the repeats apart.
- * Returns Map(userId -> tint).
+ * Tint per person on one document: Map(userId -> pastel fill). Everyone
+ * starts at their own colour; you never move; when two others would share a
+ * colour, the later one (in id order) takes the next free one, so up to eight
+ * people are always eight different colours (assignUserColors).
  */
 export function assignPresenceTints(userIds = [], currentUserId = null) {
+  const colors = assignUserColors(userIds, currentUserId);
   const out = new Map();
-  const unique = [...new Set(userIds.filter((id) => id && id !== currentUserId))];
-  // Six or fewer: by id, so a person keeps their tint as others come and go.
-  // More than six: in the order given (the display order - most recent
-  // first), so the faces on show and each run of six rows in the list are
-  // all different.
-  const peers = unique.length <= PRESENCE_PEER_TINTS.length ? [...unique].sort() : unique;
-  const used = new Set();
-  for (const id of peers) {
-    // Every tint is used once before any is used twice, then a fresh round.
-    if (used.size >= PRESENCE_PEER_TINTS.length) used.clear();
-    let slot = hashId(id) % PRESENCE_PEER_TINTS.length;
-    while (used.has(slot)) slot = (slot + 1) % PRESENCE_PEER_TINTS.length;
-    used.add(slot);
-    out.set(id, PRESENCE_PEER_TINTS[slot]);
-  }
-  if (currentUserId) out.set(currentUserId, PRESENCE_SELF_TINT);
+  for (const [id, color] of colors) out.set(id, color.fill);
   return out;
 }
 
+/** The fill and ink a face is painted with: the person's pastel and dark
+ *  initials while they are here, grey (the one "inactive" colour) while idle. */
+export function presenceFaceColors(tint, state = 'here') {
+  if (state === 'idle') return { background: USER_INACTIVE_FILL, color: USER_INACTIVE_INK };
+  return { background: tint || USER_INACTIVE_FILL, color: tint ? USER_INITIALS_INK : USER_INACTIVE_INK };
+}
 /** 'here' | 'idle' for one presence row (see the header comment). */
 export function presenceState(row, { now = Date.now(), isCurrent = false } = {}) {
   if (isCurrent) return 'here';
@@ -164,7 +140,8 @@ export const PRESENCE_STATE_LABEL = { here: 'Here now', idle: 'Idle' };
 /*
  * DEV ONLY — fake a room full of people so the footer can be looked at and
  * screenshotted without a second account: add `?fakePeers=N` (N = everyone,
- * you included, 1-40) to a dev URL. Every second peer is idle. Compiled out of
+ * you included, 1-40) to a dev URL. Every second peer is idle (add
+ * `&fakeIdle=0` for nobody idle). Compiled out of
  * production builds (import.meta.env.DEV is false there).
  */
 const FAKE_NAMES = [
@@ -186,11 +163,19 @@ export function readDevFakePeerCount() {
   }
 }
 
-export function buildFakePresence(count, now = Date.now()) {
+function readDevFakeIdle() {
+  try {
+    return new URLSearchParams(window.location.search).get('fakeIdle') !== '0';
+  } catch {
+    return true;
+  }
+}
+
+export function buildFakePresence(count, now = Date.now(), { withIdle = true } = {}) {
   const rows = [];
   for (let i = 0; i < count; i++) {
     const email = FAKE_NAMES[i] || `guest.${i + 1}@example.com`;
-    const idle = i > 0 && i % 2 === 0;
+    const idle = withIdle && i > 0 && i % 2 === 0;
     rows.push({
       id: `dev-fake-${i}`,
       user_id: i === 0 ? 'dev-fake-you' : `dev-fake-peer-${i}`,
@@ -210,7 +195,7 @@ export function withDevFakePresence(inputs) {
   if (!n) return { ...inputs, fake: false };
   return {
     ...inputs,
-    presence: buildFakePresence(n),
+    presence: buildFakePresence(n, Date.now(), { withIdle: readDevFakeIdle() }),
     currentUserId: 'dev-fake-you',
     currentUserEmail: FAKE_NAMES[0],
     currentUserDisplayName: FAKE_NAMES[0],
