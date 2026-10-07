@@ -9,11 +9,11 @@
 // moves A's mark) and the presence faces are covered too, plus one phone
 // (390x844, touch) window. The document is deleted through the app at the end.
 //
-// Skipped unless the test accounts are given (owner-made test accounts only;
-// see tp-real-backend.mjs for the variables). Not for CI. Run against a dev
+// Skipped unless run under a verified two-account test lease (owner's test
+// accounts only; see tp-real-backend.mjs). Not for CI. Run against a dev
 // server whose .env points at the project (sign-in uses the dev module graph):
-//   TP_REAL_A_EMAIL=… TP_REAL_A_PW_FILE=… TP_REAL_B_EMAIL=… TP_REAL_B_PW_FILE=… \
-//   [TP_REALTIME_RELAY=1] PW_CHROMIUM_PATH=/opt/pw-browsers/chromium PLAYWRIGHT_BASE_URL=http://127.0.0.1:5611 \
+//   node scripts/test-account-lease.mjs run --task <ID> … -- \
+//     env [TP_REALTIME_RELAY=1] PW_CHROMIUM_PATH=/opt/pw-browsers/chromium PLAYWRIGHT_BASE_URL=http://127.0.0.1:5611 \
 //     npx playwright test --config debug/playwright.config.mjs debug/scenarios/test-plan/part9-sync-real.spec.mjs
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
@@ -46,7 +46,7 @@ const openDialogs = (page) => page.evaluate(() => [...document.querySelectorAll(
 const errs = () => [S.A, S.B, S.P].filter(Boolean).reduce((n, w) => n + w.errors.length, 0);
 
 test.describe('Part 9 on the real backend, two accounts', () => {
-  test.skip(!ACCOUNTS, 'set TP_REAL_A_EMAIL/TP_REAL_A_PW_FILE/TP_REAL_B_EMAIL/TP_REAL_B_PW_FILE to run');
+  test.skip(!ACCOUNTS, 'run through scripts/test-account-lease.mjs run with a two-account lease');
 
   test.beforeAll(async ({ browser }) => {
     test.setTimeout(420_000);

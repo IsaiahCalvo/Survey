@@ -7,11 +7,11 @@
 // test accounts, and keep traffic small (one document per run, deleted at
 // the end through Home -> Archive -> Delete forever).
 //
-// Credentials come from the environment and are never printed:
-//   TP_REAL_A_EMAIL, TP_REAL_A_PW_FILE   (account A, owns the document)
-//   TP_REAL_B_EMAIL, TP_REAL_B_PW_FILE   (account B, the second person)
-// A password file holds the password on its LAST non-empty line (a file of
-// "email\npassword" works too).
+// Accounts come ONLY from a verified test-account lease (repo policy,
+// tests/testAccountLease.test.mjs), two of them: the first leased account is
+// A (owns the document), the second is B. Run the spec through
+//   node scripts/test-account-lease.mjs run --task <ID> ... -- npx playwright test ...
+// Without a lease the spec skips. Credentials are never printed.
 //
 // TP_REALTIME_RELAY=1: hand each page's Realtime WebSocket to this Node
 // process, which opens the same socket with its own client and passes frames
@@ -26,19 +26,14 @@
 // production build) and skips the Turnstile captcha widget a headless browser
 // cannot pass.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { loadVerifiedTestAccounts } from '../../../scripts/test-account-lease.mjs';
 import { baseUrl, collectErrors } from './tp-local-doc.mjs';
 
-function readPassword(file) {
-  if (!file || !existsSync(file)) return null;
-  const lines = readFileSync(file, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean);
-  return lines.length ? lines[lines.length - 1] : null;
-}
-
+/** { A, B } from the verified lease, or null (no lease: the spec skips). */
 export function realAccounts() {
-  const a = { email: process.env.TP_REAL_A_EMAIL, password: readPassword(process.env.TP_REAL_A_PW_FILE) };
-  const b = { email: process.env.TP_REAL_B_EMAIL, password: readPassword(process.env.TP_REAL_B_PW_FILE) };
-  return a.email && a.password && b.email && b.password ? { A: a, B: b } : null;
+  if (!process.env.SURVEY_TEST_LEASE_TASK) return null;
+  const [a, b] = loadVerifiedTestAccounts({ minimumAccounts: 2 });
+  return { A: { email: a.email, password: a.password }, B: { email: b.email, password: b.password } };
 }
 
 /** Launch options: the sandbox's HTTPS proxy (when set) for plain requests. */
