@@ -20,6 +20,7 @@ import ProjectsFolderTree from './ProjectsFolderTree';
 import TemplatesEditor from './TemplatesEditor';
 const ArchiveScreenContainer = lazy(() => import('./ArchiveScreenContainer'));
 import ShareModal from './ShareModal';
+import { templateShareTarget } from './templateShareTarget';
 import AccessManagementModal from './AccessManagementModal';
 import { HubChromeContext, HubShell } from './HubShell';
 import HubLoading from './HubLoading';
@@ -125,7 +126,8 @@ export default function SurveyHub({
   const shareTemplate = (template) => {
     // manage:false always — AccessManagementModal is document-only; template
     // sharing goes through ShareModal (project/template invites are live).
-    if (template) setShare({ kind: 'template', name: template.name, item: template, manage: false });
+    // The invite is keyed on the template's row id, not the editor's config id.
+    if (template) setShare({ kind: 'template', name: template.name, item: templateShareTarget(template, templates), manage: false });
   };
 
   const common = { onNav: navigateToTab, user, templatesLocked: false };
