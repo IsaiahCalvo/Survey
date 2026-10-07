@@ -9,8 +9,12 @@ const SOURCE = readFileSync(
 const APP_SOURCE = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
 
 test('base and detail PDF raster tasks yield between operator chunks', () => {
-  const yieldCount = SOURCE.match(/task\.onContinue = \(resume\) => requestAnimationFrame\(resume\);/g)?.length || 0;
-  assert.ok(yieldCount >= 2, `expected both raster paths to yield, found ${yieldCount}`);
+  // The detail tile yields to the next frame directly. The page raster yields
+  // through its queue turn (2026-10-06): next frame as before, or later when a
+  // gesture is moving the page and the draw can wait (pageRasterQueue kinds).
+  const directYields = SOURCE.match(/task\.onContinue = \(resume\) => requestAnimationFrame\(resume\);/g)?.length || 0;
+  const queuedYields = SOURCE.match(/task\.onContinue = \(resume\) => \(myTurn \? myTurn\.continue\(resume\) : requestAnimationFrame\(resume\)\);/g)?.length || 0;
+  assert.ok(directYields >= 1 && queuedYields >= 1, `expected both raster paths to yield, found ${directYields} + ${queuedYields}`);
 });
 
 test('Space pan is capture-level and has complete lost-focus cleanup', () => {
