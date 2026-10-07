@@ -315,7 +315,10 @@ test('mobile PDF rendering stays inside the WKWebView memory budget', () => {
   assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_PAGE_RASTER_CACHE_MAX_BYTES = 48 \* 1024 \* 1024/);
   assert.match(PDFJS_VIEWER_SOURCE, /target = document\.createElement\('canvas'\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /if \(target && !targetRetained\) releaseRasterCanvas\(target\)/);
-  assert.match(PDFJS_VIEWER_SOURCE, /finally \{\s*releaseRasterCanvas\(off\)/);
+  // 2026-10-07: the detail tile's staging canvas is reused between renders on
+  // desktop (GC pauses during wheel zoom); the phone still hands it back as
+  // soon as the latest render is done.
+  assert.match(PDFJS_VIEWER_SOURCE, /finally \{[\s\S]{0,300}?if \(isMobileSurface\) releaseRasterCanvas\(off\);/);
   assert.match(PDFJS_VIEWER_SOURCE, /const externalPdf = isPdfDocumentProxy\(activeSource\) \? activeSource : null/);
 });
 

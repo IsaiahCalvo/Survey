@@ -586,15 +586,54 @@ export function useSVGInteraction({
     // slices between frames instead of one long freeze (~1 s on a phone with
     // a set of marked drawings in view). The marks themselves never wait:
     // the viewBox scales them.
-    const observer = new ResizeObserver(() => {
+    //
+    // Owner 2026-10-07 (phone: a pinch started right after the last one
+    // stuttered while every layer re-rendered): the retune also waits while
+    // the page is still moving (a pinch, glide or scroll — the viewer marks
+    // its scroller data-pdfjs-moving) and runs once it is still, and a page
+    // off screen retunes after the ones on screen. Only hit pads and handle
+    // sizes wait; the marks are scaled by the viewBox, never by this.
+    let waitTimer = 0;
+    let stillChecks = 0;
+    const apply = () => {
+      waitTimer = 0;
+      if (!svgEl.isConnected) return;
       const next = getInverseScale(svgEl, pageWidth);
       startTransition(() => setInverseScale(next));
-    });
+    };
+    // Still means still for a moment: pinches often come one after another,
+    // and a retune that starts just before the next one competes with it.
+    const schedule = () => {
+      if (waitTimer) clearTimeout(waitTimer);
+      waitTimer = 0;
+      if (svgEl.closest?.('[data-pdfjs-moving="true"]')) {
+        stillChecks = 0;
+        waitTimer = setTimeout(schedule, 120);
+        return;
+      }
+      if (stillChecks < 2) {
+        stillChecks += 1;
+        waitTimer = setTimeout(schedule, 150);
+        return;
+      }
+      stillChecks = 0;
+      const rect = svgEl.getBoundingClientRect?.();
+      const vw = window.innerWidth || 0;
+      const vh = window.innerHeight || 0;
+      const offScreen = rect && vh > 0 && (rect.bottom < -vh * 0.5 || rect.top > vh * 1.5 || rect.right < 0 || rect.left > vw);
+      if (offScreen) {
+        waitTimer = setTimeout(apply, 400);
+        return;
+      }
+      apply();
+    };
+    const observer = new ResizeObserver(schedule);
 
     observer.observe(svgEl);
 
     return () => {
       observer.disconnect();
+      if (waitTimer) clearTimeout(waitTimer);
     };
   }, [svgRef, pageWidth]);
 
