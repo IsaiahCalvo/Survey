@@ -239,7 +239,11 @@ test('members: direct document role wins over the project role; the creators are
   assert.deepEqual(byId, { [B]: 'viewer', [C]: 'owner' });
 });
 
-test('plan: add missing rows, raise viewer to editor, never lower, never touch a switched-off row', () => {
+// realCheck3 (2026-10-07, real backend): this used to pin "never lower", so
+// a member the owner switched to viewer on the document could still change
+// the template. The role now follows the document role both ways, except for
+// a row the person got through a template invite of its own.
+test('plan: add missing rows, raise viewer to editor, lower a document-given editor to viewer, never touch a switched-off row', () => {
   const plan = planTemplateGrants({
     templateRowIds: [TPL],
     templateOwners: new Map([[TPL, A]]),
@@ -259,6 +263,19 @@ test('plan: add missing rows, raise viewer to editor, never lower, never touch a
   });
   assert.deepEqual(plan.inserts.map((r) => [r.user_id, r.role, r.status, r.invited_by]), [['e', 'editor', 'active', A]]);
   assert.deepEqual(plan.upgrades.map((r) => [r.id, r.role]), [['r2', 'editor']]);
+  assert.deepEqual(plan.downgrades.map((r) => [r.id, r.role]), [['r1', 'viewer']]);
+});
+
+test('plan: a row from an accepted template invite is never lowered', () => {
+  const plan = planTemplateGrants({
+    templateRowIds: [TPL],
+    templateOwners: new Map([[TPL, A]]),
+    members: [{ userId: B, role: 'viewer' }],
+    existing: [{ id: 'r1', template_id: TPL, user_id: B, role: 'editor', status: 'active' }],
+    grantedBy: A,
+    invitedKeys: new Set([`${TPL}|${B}`]),
+  });
+  assert.deepEqual([plan.inserts.length, plan.upgrades.length, plan.downgrades.length], [0, 0, 0]);
 });
 
 // ---------------------------------------------------------------- granting
@@ -287,6 +304,35 @@ test('running again writes nothing (reads first, writes only what is missing)', 
   const again = await grantDocumentTemplates({ client, documentId: DOC, userId: A, ownerName: 'Ann Lee', templateRowIds: [TPL] });
   assert.deepEqual([again.granted, again.upgraded], [0, 0]);
   assert.equal(db.writes.length, writes);
+});
+
+test('the owner switches an editor to viewer: their template row goes to viewer (one invites read)', async () => {
+  const db = makeDb();
+  db.template_invites = [];
+  const client = clientFor(db, A);
+  await grantDocumentTemplates({ client, documentId: DOC, userId: A, templateRowIds: [TPL] });
+  db.document_collaborators.find((r) => r.user_id === B).role = 'viewer';
+  const res = await grantDocumentTemplates({ client, documentId: DOC, userId: A, templateRowIds: [TPL] });
+  assert.deepEqual([res.granted, res.upgraded, res.downgraded], [0, 0, 1]);
+  assert.equal(db.template_collaborators.find((r) => r.user_id === B).role, 'viewer');
+  // B can still read it, but no longer change it.
+  await clientFor(db, B).from('templates').update({ name: 'B edit' }).eq('id', TPL);
+  assert.equal(db.templates.find((t) => t.id === TPL).name, 'Walls');
+  // Back to editor: raised again.
+  db.document_collaborators.find((r) => r.user_id === B).role = 'editor';
+  const up = await grantDocumentTemplates({ client, documentId: DOC, userId: A, templateRowIds: [TPL] });
+  assert.equal(up.upgraded, 1);
+  assert.equal(db.template_collaborators.find((r) => r.user_id === B).role, 'editor');
+});
+
+test('a person who accepted a template invite as editor keeps editing when the document makes them viewer', async () => {
+  const db = makeDb();
+  db.template_collaborators = [{ id: 'tc-b', template_id: TPL, user_id: B, role: 'editor', status: 'active', invited_by: A }];
+  db.template_invites = [{ template_id: TPL, accepted_by: B }];
+  db.document_collaborators.find((r) => r.user_id === B).role = 'viewer';
+  const res = await grantDocumentTemplates({ client: clientFor(db, A), documentId: DOC, userId: A, templateRowIds: [TPL] });
+  assert.equal(res.downgraded, 0);
+  assert.equal(db.template_collaborators.find((r) => r.user_id === B).role, 'editor');
 });
 
 test('a member cannot grant someone else\'s template (only the owner can, as the database says)', async () => {
