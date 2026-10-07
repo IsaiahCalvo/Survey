@@ -132,6 +132,13 @@ const MOBILE_LIVE_ZOOM_HARD_FLOOR = 0.25;
 const RASTER_SCROLL_QUIET_MS = 120; // a scroll this recent still counts as moving (raster hold)
 const BASE_MAX_SCALE = 2.5; // above this the base canvas is a cheap backdrop; the detail tile owns sharpness
 const MOBILE_BASE_MAX_SCALE = 1.25;
+// Desktop, once the detail tile owns sharpness (past BASE_MAX_SCALE): the
+// backdrop under it stays the bitmap drawn at 200% (owner 2026-10-07, desktop
+// zoom spikes). Zooming on past 250% then never redraws or re-uploads the
+// whole page (a 24 MP canvas for an 11x17 sheet at 2x screen density, ~1 s to
+// hand to the screen on a slow machine); it only shows outside the tile, for
+// a moment while panning.
+const DESKTOP_TILED_BACKDROP_SCALE = 2;
 const SETTLE_MS = 110;      // commit the gesture this long after the last wheel tick
 const DPR = Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, 2);
 const PAN_START_EVENT = 'survey-pdfjs-pan-start';
@@ -438,7 +445,7 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
   const baseScale = Math.min(renderScale, baseScaleLimit);
   const tiled = renderScale > baseScaleLimit;
   const { want } = resolveWantedRasterScale({
-    cssScale: baseScale,
+    cssScale: tiled && !isMobileSurface ? Math.min(baseScale, DESKTOP_TILED_BACKDROP_SCALE) : baseScale,
     dpr: DPR,
     pageW,
     pageH,
