@@ -5,7 +5,10 @@
 //     every member gets the owner's templates this document's survey uses
 //     (src/services/sharedTemplates.js grantDocumentTemplates). Reads first,
 //     writes only what is missing, once per document open and again if the
-//     document becomes shared while it is open. It also remembers, on this
+//     document becomes shared while it is open. While the document is still
+//     private it only links the templates to it (document_templates), so
+//     someone who joins later -- even while the owner is away -- can claim
+//     them. It also remembers, on this
 //     device, which templates the document uses, so a share made later from
 //     Home can grant them straight away.
 //   * In every member's app: when the document has survey markers from a
@@ -19,8 +22,10 @@ import { useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import {
   claimDocumentTemplates,
+  documentTemplatesAction,
   grantDocumentTemplates,
   isUuid,
+  linkDocumentTemplates,
   ownTemplateRowIds,
   ownerDisplayName,
   refreshTemplateLists,
@@ -64,13 +69,19 @@ export default function useSharedDocumentTemplates({
     if (!enabled) return undefined;
     const ids = ownKey ? ownKey.split(',') : [];
     rememberDocumentTemplates(documentId, ids);
-    // A viewer cannot survey, and a document known to be private has nobody
-    // to give the template to (null = not known yet: the grant checks).
-    if (!ids.length || docRole === 'viewer' || isDocShared === false) return undefined;
+    // A viewer cannot survey. A document known to be private has nobody to
+    // give the template to yet, so it only links them (one write) for whoever
+    // joins later (null = not known yet: the grant checks, and links too).
+    const action = documentTemplatesAction({ templateRowIds: ids, docRole, isDocShared });
+    if (action === 'none') return undefined;
     const signature = `${documentId}|${userId}|${ownKey}|${isDocShared}`;
     if (grantedRef.current.has(signature)) return undefined;
     const timer = setTimeout(() => {
       grantedRef.current.add(signature);
+      if (action === 'link') {
+        void linkDocumentTemplates({ client, documentId, userId, templateRowIds: ids });
+        return;
+      }
       grantDocumentTemplates({ client, documentId, userId, ownerName, templateRowIds: ids })
         .then((result) => {
           if (!DONE_REASONS.has(result?.skipped ?? null)) grantedRef.current.delete(signature);

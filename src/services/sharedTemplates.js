@@ -20,11 +20,12 @@
 // invite of its own is never lowered, and a row someone switched off (status
 // other than active) is left alone.
 //
-// The collaborator's own app cannot ask for the template (no policy allows
-// it); it just re-reads its templates when a document it opens has markers
-// from a template it does not have yet, which picks up the owner's grant.
-// scratchpad/sharedTemplates/PROPOSED-DB-CHANGE.md has the optional server
-// function that would let the collaborator's app do the back-fill itself.
+// The owner's app also links the templates to the document
+// (document_templates, migration 20261007180000) -- even while nobody has
+// joined yet -- so a member who joins later, by a link or an invite accepted
+// while the owner is away, claims them from their own app
+// (claim_document_templates) when a document they open has markers from a
+// template they do not have yet.
 
 import { notifyTemplatesChanged } from '../hooks/libraryChangeBus.js';
 
@@ -369,14 +370,15 @@ async function runGrant({ client, documentId, userId, ownerName = null, template
     projectOwnerId,
     projectRows,
   });
-  if (members.length === 0) return { granted: 0, upgraded: 0, skipped: 'not shared' };
-
   // Record which of my templates this document uses (owner-approved
   // 2026-10-07, migration 20261007180000_document_templates.sql), so a member
-  // who joins later can claim them without me being online. Best effort: an
-  // older database without the table simply refuses and the grant below still
-  // covers everyone who is a member now.
+  // who joins later can claim them without me being online -- also when
+  // nobody has joined yet (realCheck4: a document shared by a link that is
+  // accepted while I am away). Best effort: an older database without the
+  // table simply refuses and the grant below still covers everyone who is a
+  // member now.
   await linkDocumentTemplates({ client, documentId, userId, templateRowIds: mineIds });
+  if (members.length === 0) return { granted: 0, upgraded: 0, skipped: 'not shared' };
 
   const { data: existing, error: existingError } = await client
     .from('template_collaborators').select('id, template_id, user_id, role, status').in('template_id', mineIds);
@@ -445,18 +447,41 @@ export async function grantRememberedDocumentTemplates({ client, documentId, use
   }
 }
 
-/** Link my templates to a document (document_templates). Never throws. */
+// Links this app session already wrote, per client: "userId|documentId|templateId".
+const linkedThisSession = new WeakMap();
+
+/** Link my templates to a document (document_templates). Writes each link
+ *  once per app session (a link is never removed while the document and the
+ *  template exist). Never throws. */
 export async function linkDocumentTemplates({ client, documentId, userId, templateRowIds = [] } = {}) {
   try {
     const ids = [...new Set((templateRowIds || []).filter(isUuid))];
     if (!client?.from || !isUuid(documentId) || !userId || ids.length === 0) return false;
-    const rows = ids.map((templateId) => ({ document_id: documentId, template_id: templateId, linked_by: userId }));
+    const done = linkedThisSession.get(client) || new Set();
+    const todo = ids.filter((templateId) => !done.has(`${userId}|${documentId}|${templateId}`));
+    if (todo.length === 0) return true;
+    const rows = todo.map((templateId) => ({ document_id: documentId, template_id: templateId, linked_by: userId }));
     const { error } = await client.from('document_templates')
       .upsert(rows, { onConflict: 'document_id,template_id', ignoreDuplicates: true });
-    return !error;
+    if (error) return false;
+    for (const templateId of todo) done.add(`${userId}|${documentId}|${templateId}`);
+    linkedThisSession.set(client, done);
+    return true;
   } catch {
     return false;
   }
+}
+
+/**
+ * What the template owner's open document does with the templates it uses:
+ * 'grant' (shared, or not known yet: give them to the members, which also
+ * links them), 'link' (private for now: only link them, one write, so whoever
+ * joins later can claim them) or 'none' (no own templates used, or I am a
+ * viewer of this document and cannot survey).
+ */
+export function documentTemplatesAction({ templateRowIds = [], docRole = null, isDocShared = null } = {}) {
+  if (!(templateRowIds || []).length || docRole === 'viewer') return 'none';
+  return isDocShared === false ? 'link' : 'grant';
 }
 
 /** As a member: take the templates the owner linked to this document

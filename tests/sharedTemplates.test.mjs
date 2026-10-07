@@ -62,6 +62,7 @@ function makeDb() {
       { document_id: DOC, user_id: C, role: 'viewer', email: 'c@example.com', status: 'active' },
     ],
     template_collaborators: [],
+    document_templates: [],
     projects: [],
     project_collaborators: [],
     writes: [],
@@ -102,6 +103,7 @@ function clientFor(db, uid) {
       maybeSingle() { single = true; return builder; },
       insert(rows) { op = 'insert'; payload = rows; return builder; },
       update(patch) { op = 'update'; payload = patch; return builder; },
+      upsert(rows) { op = 'upsert'; payload = rows; return builder; },
       then(resolve, reject) {
         try { resolve(run()); } catch (e) { reject(e); }
       },
@@ -122,6 +124,16 @@ function clientFor(db, uid) {
         }
         payload.forEach((r, i) => rows.push({ id: `tc-${rows.length + i}`, ...r }));
         db.writes.push({ table, op, n: payload.length });
+        return { data: null, error: null };
+      }
+      if (op === 'upsert') {
+        // document_templates: only the template's owner links it (insert policy).
+        if (payload.some((r) => r.linked_by !== uid || !canAccessTemplate(db, uid, r.template_id, 'owner'))) {
+          return { data: null, error: { message: 'new row violates row-level security policy' } };
+        }
+        const fresh = payload.filter((r) => !rows.some((x) => x.document_id === r.document_id && x.template_id === r.template_id));
+        rows.push(...fresh.map((r) => ({ ...r })));
+        db.writes.push({ table, op, n: fresh.length });
         return { data: null, error: null };
       }
       if (op === 'update') {
@@ -350,12 +362,23 @@ test('an editor\'s own template used on the document goes to the other members, 
   assert.deepEqual(byUser, { [A]: 'editor', [C]: 'viewer' });
 });
 
-test('a private document grants nothing', async () => {
+test('a private document grants nothing, but links its templates for whoever joins later', async () => {
+  // realCheck4 (real backend, 2026-10-07): a document shared by a link that
+  // is accepted while the owner is away got no link row, so the member's
+  // claim found nothing. The grant now links before it checks for members.
   const db = makeDb();
   db.document_collaborators = [];
   const res = await grantDocumentTemplates({ client: clientFor(db, A), documentId: DOC, userId: A, templateRowIds: [TPL] });
   assert.equal(res.skipped, 'not shared');
-  assert.equal(db.writes.length, 0);
+  assert.equal(db.template_collaborators.length, 0);
+  assert.deepEqual(db.document_templates, [{ document_id: DOC, template_id: TPL, linked_by: A }]);
+  assert.deepEqual(db.writes, [{ table: 'document_templates', op: 'upsert', n: 1 }]);
+});
+
+test('a member cannot link someone else\'s template to the document', async () => {
+  const db = makeDb();
+  await grantDocumentTemplates({ client: clientFor(db, B), documentId: DOC, userId: B, templateRowIds: [TPL] });
+  assert.deepEqual(db.document_templates, []);
 });
 
 test('a share from Home grants the templates this device saw the document use', async () => {
