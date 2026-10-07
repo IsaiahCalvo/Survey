@@ -4,9 +4,9 @@ import {
 } from './tp-local-doc.mjs';
 
 /** One "window": its own browser context on the shared fake backend. */
-export async function openWindow(browser, backend, docId, pdf, { device = DESKTOP, phone = false, longTasks = false, templates = null } = {}) {
+export async function openWindow(browser, backend, docId, pdf, { device = DESKTOP, phone = false, longTasks = false, templates = null, user = null, cloudLibrary = false } = {}) {
   const context = await browser.newContext(device);
-  await prepareLocalContext(context, docId, { backend });
+  await prepareLocalContext(context, docId, { backend, user });
   if (templates) {
     // Survey templates for the dev route (read by DevTestRoute).
     await context.addInitScript((t) => {
@@ -25,7 +25,7 @@ export async function openWindow(browser, backend, docId, pdf, { device = DESKTO
   }
   const page = await context.newPage();
   const errors = collectErrors(page);
-  await openViewer(page, pdf, { phone });
+  await openViewer(page, pdf, { phone, cloudLibrary });
   await backend?.settle?.();
   return { context, page, errors };
 }

@@ -21,6 +21,7 @@ import { countSpaceCascadeImpact, isSpaceScopedEntry, resolveSpaceCascadeScope }
 import { EMBEDDED_IMPORT_INCOMPLETE_KEY, EMBEDDED_IMPORT_MARKER_KEY, embeddedImportDecision, embeddedImportFailedPages, embeddedImportMarkerDecision, selectEmbeddedImportObjects } from './utils/embeddedImportGate.js';
 import { READ_ONLY_BLOCKED_KEYS } from './utils/toolShortcuts.js';
 import { sanitizeTemplateConfig } from './utils/templateConfig.js';
+import useSharedDocumentTemplates from './hooks/useSharedDocumentTemplates.js';
 import { migrateSidebarData } from './utils/sidebarPersistence.js';
 import { resolveMarkerEntityFromName } from './utils/surveyMarkerEntityResolver.js';
 import {
@@ -11464,6 +11465,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     isDocShared: yjsIsDocShared,
     accessRevoked: yjsAccessRevoked,
   } = useYDoc();
+  // Owner 2026-10-07: a shared document carries its survey templates to the
+  // people it is shared with (all logic in hooks/useSharedDocumentTemplates).
+  useSharedDocumentTemplates({ documentId: pdfFile?.id ?? null, user, docRole: yjsDocRole, isDocShared: yjsIsDocShared, surveyMarkers, templates: appTemplates, selectedTemplateId: selectedTemplate?.id ?? null });
   const [devAccessRevoked, setDevAccessRevoked] = useState(false);
   useEffect(() => {
     if (

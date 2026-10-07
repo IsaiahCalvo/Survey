@@ -40,6 +40,7 @@ import { resolveAutoCompleteEntity } from './utils/surveyAutoEntity.js';
 import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt.js';
 import { captureMorph, playMorph, prefersReducedMotion } from './surveyRailMorph.js';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from './components/SectionIconButton.jsx';
+import SharedTemplateBadge from './components/SharedTemplateBadge.jsx';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -2113,10 +2114,11 @@ const SurveySpacesRail = ({
                                 role="menuitemradio"
                                 aria-checked={isCurrent}
                                 tabIndex={isCurrent ? 0 : -1}
-                                className="survey-rail__menu-item survey-rail__template-option"
+                                className={`survey-rail__menu-item survey-rail__template-option${template.sharedFrom ? ' survey-rail__template-option--shared' : ''}`}
                                 onClick={() => switchSurveyTemplate(template)}
                               >
                                 <span className="survey-rail__template-option-name">{template.name || 'Untitled template'}</span>
+                                {template.sharedFrom ? <SharedTemplateBadge sharedFrom={template.sharedFrom} size={16} /> : null}
                                 <span className="survey-rail__template-option-meta">{moduleCount} module{moduleCount === 1 ? '' : 's'}</span>
                                 <span className="survey-rail__template-option-check" aria-hidden="true">
                                   {isCurrent ? <Icon name="check" size={12} color="currentColor" /> : null}
@@ -2254,6 +2256,7 @@ const SurveySpacesRail = ({
                                 onClick={() => switchSurveyTemplate(template)}
                               >
                                 <span className="mobile-survey-template-name">{template.name || 'Untitled template'}</span>
+                                {template.sharedFrom ? <SharedTemplateBadge sharedFrom={template.sharedFrom} size={18} /> : null}
                                 <span className="mobile-survey-template-meta">
                                   {moduleCount} module{moduleCount === 1 ? '' : 's'}
                                 </span>
@@ -4357,6 +4360,8 @@ const SurveySpacesRail = ({
                                   }}
                                 >
                                   <span className={mobileMode ? 'mobile-survey-template-name' : 'survey-rail__template-name'}>{template.name || 'Untitled template'}</span>
+                                  {/* Owner 2026-10-07: a template shared with you wears its owner's face. */}
+                                  {template.sharedFrom ? <SharedTemplateBadge sharedFrom={template.sharedFrom} size={mobileMode ? 18 : 16} /> : null}
                                   <span className={mobileMode ? 'mobile-survey-template-meta' : 'survey-rail__template-meta'}>
                                     {moduleCount} module{moduleCount === 1 ? '' : 's'}
                                   </span>
