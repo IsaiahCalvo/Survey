@@ -159,14 +159,14 @@
   }
 }
 
-/* Desktop Survey panel expand / collapse (owner 2026-09-30). Expand: the panel
-   is laid out once at its open 320px and slides in from where the 48px rail
-   was (320 - 48 = 272px), so no row re-wraps mid-motion. Collapse: only the
-   collapsed strip is left, and it narrows back to the rail. The expanded rail
-   footer is inside the panel, so it rides the same motion. */
+/* Desktop Survey panel open / close (owner 2026-09-30; 2026-10-07 Drawboard
+   rail). The panel stands beside the 48px Survey rail, which never moves. It
+   is laid out once at its open 320px and slides out from under the rail
+   (the rail is drawn above it), then back under it on close - transforms
+   only, so no row re-wraps mid-motion. */
 @keyframes surveyRailExpand {
   from {
-    transform: translateX(272px);
+    transform: translateX(100%);
   }
   to {
     transform: none;
@@ -175,11 +175,38 @@
 
 @keyframes surveyRailCollapse {
   from {
-    width: 320px;
+    transform: none;
   }
   to {
-    width: 48px;
+    transform: translateX(100%);
   }
+}
+
+/* The left rail's open panel: a one-line 40px header naming the panel, the
+   Survey panel's header on the right is the same band (owner 2026-10-07,
+   Drawboard rail; src/PDFSidebar.jsx). */
+.left-rail__head {
+  flex: 0 0 40px;
+  height: 40px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  background: var(--panel-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.left-rail__title {
+  margin: 0;
+  min-width: 0;
+  color: var(--text-1);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1892,6 +1919,20 @@ input[type="text"].spaces-region__name-input:focus-visible {
   color: var(--text-1);
 }
 
+/* The Survey chip (src/components/SurveyModeChip.jsx, owner 2026-10-07): the
+   Space chip's twin. "Survey" always shows; the template name after it is
+   what trims when room runs out. */
+.survey-mode-chip .active-space-chip__name {
+  flex: 0 0 auto;
+}
+
+.survey-mode-chip .active-space-chip__meta {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 @media (hover: hover) and (pointer: fine) {
   .active-space-chip__off:hover { color: var(--text-1); }
   .active-space-chip__open:hover .active-space-chip__name { text-decoration: underline; text-underline-offset: 2px; }
@@ -2989,10 +3030,25 @@ textarea:focus-visible,
   animation: surveySurfaceInFromLeft 140ms cubic-bezier(0.33, 1, 0.68, 1);
 }
 
+/* The left rail's panel closing (owner 2026-10-07): the same 140ms in
+   reverse - it fades and slides 6px back into the rail. */
+@keyframes surveySurfaceOutToLeft {
+  from { opacity: 1; translate: 0 0; }
+  to { opacity: 0; translate: -6px 0; }
+}
+
+.survey-surface-out-left {
+  animation: surveySurfaceOutToLeft 140ms cubic-bezier(0.32, 0, 0.67, 0) forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .survey-surface-in,
   .survey-surface-in-left {
     animation: none;
+  }
+  .survey-surface-out-left {
+    animation: none;
+    opacity: 0;
   }
 }
 

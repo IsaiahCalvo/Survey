@@ -22,13 +22,11 @@ test('numbers sit in fixed boxes sized by their widest value, tabular and centre
   assert.match(appShell, /<FooterSlot widest=\{pageSlotWidest\} field=\{\(/, 'the page edit field fills the same box');
 });
 
-test('the row never squeezes a control and can only overflow to the right', () => {
-  assert.match(row, /justifyContent: 'space-between', gap: '3px'/);
-  assert.doesNotMatch(row, /justifyContent: 'center', gap/, 'a centred row overflowed out past the panel\'s left edge');
-  assert.match(row, /const footerRowBtn = \{ width: '20px', flexShrink: 0 \};/);
-  assert.equal((row.match(/\.\.\.footerRowBtn/g) || []).length, 4, 'minus, plus and both page arrows');
-  assert.match(row, /<FooterSlot widest=\{pageSlotWidest\}>\{api\.activeSpaceHasNoPages \? 0 : api\.numPages\}<\/FooterSlot>/);
-  assert.match(row, /<FooterSlot widest=\{fitLabelWidest\}>\{fitMode === ZOOM_MODES\.MANUAL \? 'Manual' : api\.zoomDropdownLabel\}<\/FooterSlot>/,
-    'the fit label is a fixed box; a manual zoom reads "Manual" (the number is in the zoom readout and the tooltip)');
-  assert.match(row, /chromeTip\(`Page fit: \$\{api\.zoomDropdownLabel\}`, 'above'\)/);
+// DELIBERATE ASSERTION CHANGE (owner 2026-10-07, Drawboard rail): the Survey
+// rail no longer widens into its open panel, so the one-row footer that was
+// portalled into the panel is gone; the zoom / page / fit controls are always
+// the rail's vertical stack, whose fixed boxes the test above still pins.
+test('there is no portalled one-row footer any more: the stack is the only footer', () => {
+  assert.equal(row, '', 'no footerRow block');
+  assert.doesNotMatch(appShell, /data-rail-footer-row|createPortal\(footerRow/);
 });

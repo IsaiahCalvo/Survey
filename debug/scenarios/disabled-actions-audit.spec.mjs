@@ -235,7 +235,8 @@ async function walkHomeSelect(page, a, phone) {
 }
 
 async function openSurvey(page, phone) {
-  await press(phone, btn(page, phone ? 'Open survey' : 'Expand Survey panel'));
+  // Owner 2026-10-07: the desktop Survey tab opens the panel (no chevron).
+  await press(phone, btn(page, phone ? 'Open survey' : 'Survey'));
   await page.waitForTimeout(1200);
   const tpl = visible(page.getByRole('button', { name: /Audit Template/ }));
   if (await tpl.count()) { await press(phone, tpl); await page.waitForTimeout(1500); }

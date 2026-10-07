@@ -102,7 +102,8 @@ const viewer = await readFile(new URL('../src/PDFViewer.jsx', import.meta.url), 
 const states = await readFile(new URL('../src/styles/states.css', import.meta.url), 'utf8');
 
 test('rail "1 · 36": drawn dot between two equal-height number boxes', () => {
-  const collapsed = appShell.slice(appShell.indexOf('if (!railPanelEl)'), appShell.indexOf('// Expanded 320px survey panel'));
+  // Owner 2026-10-07: the vertical stack is the rail's only footer now.
+  const collapsed = appShell.slice(appShell.indexOf('// Owner 2026-10-07 (Drawboard rail): the Survey rail never'), appShell.indexOf('})()}', appShell.indexOf('// Owner 2026-10-07 (Drawboard rail): the Survey rail never')));
   const dotAt = collapsed.indexOf('data-rail-page-dot');
   // Spaces chunk A (2026-10-01): the total reads 0 while the active space has
   // no pages, so it is `{api.activeSpaceHasNoPages ? 0 : api.numPages}`.
@@ -155,7 +156,10 @@ test('rail glyph buttons: no hover plate, the glyph grows and brightens instead'
   assert.doesNotMatch(states, /#chrome-right-host button\[data-glyph-only\]/);
   assert.match(states, /:is\([^)]*\[data-chrome-rail\][^)]*\) :is\(\[data-glyph-only\], \.chrome-icon-btn\)[^{]*:hover > :not\(\[data-anchored-tooltip\]\) \{\s*scale: 1\.08;/);
   assert.match(states, /:not\(\.btn-active, \.is-active, \[aria-pressed='true'\], \[aria-selected='true'\], \[data-active='true'\]\):hover \{\s*color: var\(--text-1\) !important;/);
-  assert.match(appShell, /data-rail-footer-row="true"[\s\S]{0,200}data-chrome-rail="true"/);
+  // Owner 2026-10-07 (Drawboard rail): the one-row footer is gone; the vertical
+  // stack is the rail's only footer and it is the chrome region.
+  assert.doesNotMatch(appShell, /data-rail-footer-row/);
+  assert.match(appShell, /the Survey rail never[\s\S]{0,800}return \(\s*<div data-chrome-rail="true"/);
 });
 
 // Drawboard parity (measured 2026-10-04, scratchpad pageJump): a typed page

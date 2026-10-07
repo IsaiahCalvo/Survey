@@ -67,7 +67,9 @@ test('text toolbar matches the rail height and contains the full focus outline',
     const mark = toolbar.querySelector('[data-focused="true"]');
     const row = toolbar.getBoundingClientRect();
     const focus = mark.getBoundingClientRect();
-    const rail = document.querySelector('button[aria-label="Expand Survey panel"]').getBoundingClientRect();
+    // The rail's control box (RAIL_CONTROL); the Expand Survey chevron that
+    // used to be measured here is gone (owner 2026-10-07).
+    const rail = document.querySelector('button[aria-label="Zoom in"]').getBoundingClientRect();
     return { row: row.height, rail: rail.height, top: focus.top - row.top, bottom: row.bottom - focus.bottom,
       border: parseFloat(getComputedStyle(toolbar).borderBottomWidth) };
   });

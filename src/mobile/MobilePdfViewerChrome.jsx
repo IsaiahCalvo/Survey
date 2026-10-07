@@ -12,6 +12,7 @@ import { SheetOpacitySlider, SheetPreview, SheetRow, SheetScaleSlider, SheetSect
 import DismissBarrier from '../components/DismissBarrier';
 import Spinner from '../components/Spinner';
 import ActiveSpaceChip from '../sidebar/ActiveSpaceChip';
+import SurveyModeChip from '../components/SurveyModeChip';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS, ensureRgbaOpacity, getCategoryGlyphLabel } from '../viewerShared';
 import { getMobileSyncPresentation, getMobileTextMarkupPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
@@ -974,7 +975,7 @@ function MobileTextSizeRow({ value, onCommit }) {
 // the pdf.js viewer: zoomController FIT_HEIGHT + PDFViewer handleZoomModeSelect).
 const ZOOM_FIT_OPTIONS = ZOOM_MODE_OPTIONS.filter((option) => option.id !== 'manual');
 
-export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi, bottomToolbarApi, activeSpace = null, onOpenSpaces = null, onTurnOffSpace = null }) {
+export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi, bottomToolbarApi, activeSpace = null, onOpenSpaces = null, onTurnOffSpace = null, activeSurvey = null, onOpenSurvey = null, onLeaveSurvey = null }) {
   // OWNER DECISION 2 (2026-07-12): the page pill has two tap zones — the
   // fraction opens an inline page-jump input (type-to-jump), the chevron opens
   // the zoom/fit dropdown ONLY. The old combined page+zoom single surface is
@@ -1200,14 +1201,26 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           open the Spaces sheet; x turns the space off. Hidden while drawing
           a space's areas: it sat over the top of the page and blocked
           starting an area there (owner 2026-10-01). */}
-      {activeSpace && !bottomToolbarApi?.regionEditing && (
+      {/* Owner 2026-10-07 (scratchpad railDrawboard/DEBATE.md): the Survey
+          chip joins it - "Survey · <template> x". The words open the Survey
+          sheet; x leaves Survey (the sheet has no Exit Survey any more). */}
+      {((activeSpace && !bottomToolbarApi?.regionEditing) || activeSurvey) && (
         <div className="mobile-pdf-header__space">
-          <ActiveSpaceChip
-            name={activeSpace.name}
-            pageCount={activeSpace.pageCount}
-            onOpen={onOpenSpaces}
-            onTurnOff={onTurnOffSpace}
-          />
+          {activeSurvey && (
+            <SurveyModeChip
+              templateName={activeSurvey.name}
+              onOpen={onOpenSurvey}
+              onLeave={onLeaveSurvey}
+            />
+          )}
+          {activeSpace && !bottomToolbarApi?.regionEditing && (
+            <ActiveSpaceChip
+              name={activeSpace.name}
+              pageCount={activeSpace.pageCount}
+              onOpen={onOpenSpaces}
+              onTurnOff={onTurnOffSpace}
+            />
+          )}
         </div>
       )}
     </header>
@@ -1318,10 +1331,10 @@ export function MobileToolProperties({ api }) {
               relabelled "Repeat", then "Reuse" (owner 2026-10-01): it keeps
               the CATEGORY armed after a Survey Marker is placed (PDFViewer
               clears selectedCategoryId otherwise).
-            - No Exit here any more (owner 2026-10-01, after a debate): the
-              red "Exit Survey" lives in the Survey panel's header, on the
-              right, in every panel state, so there is one Exit in one
-              place. */}
+            - No Exit here (owner 2026-10-01, after a debate). Since
+              2026-10-07 (another debate, scratchpad railDrawboard/DEBATE.md)
+              Survey is left with the x on the Survey chip under the top bar,
+              and the panel has no Exit either. */}
         <MobileStyledSelect
           ariaLabel="Survey module"
           fitOptions
@@ -3107,7 +3120,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   );
 }
 
-export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hubMode = 'pages', hubOpen = false, spacesActive, surveyActive, covered = false }) {
+export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hubMode = 'pages', hubOpen = false, spacesActive, surveyActive, covered = false, openPanel = null }) {
   const hubLabels = { pages: 'Pages', search: 'Search', bookmarks: 'Bookmarks' };
   // Pages draws the desktop rail's Pages glyph (PDFSidebar), not the document.
   const hubIcons = { pages: 'pages', search: 'search', bookmarks: 'bookmark' };
@@ -3126,6 +3139,9 @@ export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hu
         type="button"
         className={`mobile-pdf-dock__side${spacesActive ? ' is-active' : ''}`}
         aria-label="Open spaces"
+        // Owner 2026-10-07: a dock button toggles its sheet, so it says
+        // whether that sheet is up (no highlight - see AppShell's note).
+        aria-expanded={openPanel === 'spaces'}
         onClick={() => onOpenPanel?.('spaces')}
       >
         <Icon name="layers" size={DOCK_GLYPH} color="currentColor" />
@@ -3136,6 +3152,7 @@ export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hu
         // chrome icon (src/styles/states.css section 5, owner 2026-10-02).
         className={`mobile-pdf-dock__center chrome-icon-btn${hubOpen ? ' is-active' : ''}`}
         aria-label="Open pages, search, and bookmarks"
+        aria-expanded={openPanel === 'hub'}
         onClick={onToggleHub}
       >
         {/* UX 2026-09-16: one size across all three dock controls; they ran
@@ -3149,6 +3166,7 @@ export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hu
         type="button"
         className={`mobile-pdf-dock__side${surveyActive ? ' is-active' : ''}`}
         aria-label="Open survey"
+        aria-expanded={openPanel === 'survey'}
         onClick={onOpenSurvey}
       >
         <Icon name="survey" size={DOCK_GLYPH} color="currentColor" />

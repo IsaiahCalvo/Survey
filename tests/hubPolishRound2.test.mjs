@@ -48,9 +48,14 @@ test('desktop empty Projects / Templates say "no X yet" once, in the big empty s
   assert.match(templates, /\{tpl && tpl\.roster\.length === 0 && \(\s*<div className="meta"[^>]*>No entities on this template yet\.<\/div>/);
 });
 
-test('icon-only buttons carry a name: sidebar toggle, tab close X, project More', async () => {
+test('icon-only buttons carry a name: rail tabs, tab close X, project More', async () => {
   const sidebar = await read('PDFSidebar.jsx');
-  assert.match(sidebar, /aria-label=\{isCollapsed \? 'Expand sidebar' : 'Collapse sidebar'\}/);
+  // DELIBERATE ASSERTION CHANGE (owner 2026-10-07, Drawboard rail): the
+  // sidebar's "Expand / Collapse sidebar" chevron is gone - a rail tab opens
+  // and closes its own panel. The icon-only rail tabs carry their name and say
+  // whether their panel is open.
+  assert.doesNotMatch(sidebar, /'Expand sidebar'|'Collapse sidebar'/);
+  assert.match(sidebar, /aria-label=\{tab\.label\}\s*\/\/[^\n]*\n[^\n]*\n\s*aria-expanded=\{isPanelTab \? isOpenTab : undefined\}/);
   const tabs = await read('TabBar.jsx');
   assert.match(tabs, /aria-label=\{`Close \$\{tab\.name\}`\}/);
   const projects = await read('home/ProjectsFolderTree.jsx');

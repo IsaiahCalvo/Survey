@@ -5,8 +5,10 @@ import test from 'node:test';
 const appShell = await readFile(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
 
 test('collapsed zoom rail shows zoom in above the level and zoom out below it', () => {
-  const collapsedStart = appShell.indexOf('if (!railPanelEl)');
-  const collapsedEnd = appShell.indexOf('// Expanded 320px survey panel', collapsedStart);
+  // Owner 2026-10-07 (Drawboard rail): the vertical stack is the rail's only
+  // footer now (the open Survey panel no longer takes a one-row footer).
+  const collapsedStart = appShell.indexOf('// Owner 2026-10-07 (Drawboard rail): the Survey rail never');
+  const collapsedEnd = appShell.indexOf('})()}', collapsedStart);
 
   assert.ok(collapsedStart >= 0 && collapsedEnd > collapsedStart, 'collapsed zoom rail exists');
 

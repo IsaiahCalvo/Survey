@@ -37,6 +37,7 @@ import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from '.
 // stay here, in the same place in the cascade they always had.
 import './surveyRailStyles.js';
 import ActiveSpaceChip from './sidebar/ActiveSpaceChip';
+import SurveyModeChip from './components/SurveyModeChip';
 import TabBar from './TabBar';
 import {
   MobilePdfViewerDock,
@@ -737,14 +738,6 @@ export default function App({ devPreviewReturnTab = null }) {
   // as the page number — plain "100%" by default, click to swap to an
   // input. Typing is clamped to 1-4000 (the PDF engine's zoom range).
   const [isEditingRailZoom, setIsEditingRailZoom] = useState(false);
-
-  // UX 2026-07-14 (rail-footer redesign): mirrors the survey panel's
-  // collapsed/expanded state (SurveySpacesRail owns it and publishes via
-  // onCollapseChange). The rail footer below switches between a vertical
-  // stack (collapsed 48px rail) and a horizontal row overlaying the
-  // expanded 320px panel — the Walkthru reference behavior. Starts true
-  // to match SurveySpacesRail's useState(true) default.
-  const [rightRailCollapsed, setRightRailCollapsed] = useState(true);
 
   // UX 2026-07-08 (mobile design pass): on narrow viewports (Capacitor phones,
   // narrow browser windows) the top toolbar's absolutely-pinned clusters
@@ -1653,8 +1646,6 @@ export default function App({ devPreviewReturnTab = null }) {
   const stablePageDrop = useStableHandler(handlePageDrop);
   const handleRightRailCollapseChange = useStableHandler((collapsed) => {
     setMobileSurveyPanelOpen(!collapsed);
-    // Rail footer flips vertical/horizontal off this.
-    setRightRailCollapsed(collapsed);
     rightRailApi?.onCollapseChange?.(collapsed);
   });
 
@@ -1881,6 +1872,25 @@ export default function App({ devPreviewReturnTab = null }) {
   const turnOffSpaceFromChip = useCallback(() => {
     leftRailApi?.onExitSpaceMode?.();
   }, [leftRailApi]);
+
+  // Owner 2026-10-07 (scratchpad railDrawboard/DEBATE.md): while Survey is on
+  // (a template chosen), a chip names it outside the Survey panel, beside the
+  // Space chip. Its words open the Survey panel; its x leaves Survey - the
+  // job the red "Exit Survey" inside the panel used to do.
+  const surveyForChip = rightRailApi?.showSurveyPanel && rightRailApi?.selectedTemplate
+    ? { name: rightRailApi.selectedTemplate.name || 'Survey' }
+    : null;
+  const openSurveyFromChip = useCallback(() => {
+    if (mobileSurveyPanelOpen) return;
+    if (isMobileViewer) {
+      openMobileSurveyPanel();
+      return;
+    }
+    setMobileSurveyRequestKey((key) => key + 1);
+  }, [isMobileViewer, mobileSurveyPanelOpen, openMobileSurveyPanel]);
+  const leaveSurveyFromChip = useCallback(() => {
+    rightRailApi?.onCloseSurveyMode?.();
+  }, [rightRailApi]);
 
   useEffect(() => {
     if (isViewerVisible) return;
@@ -2216,6 +2226,12 @@ export default function App({ devPreviewReturnTab = null }) {
             activeSpace={(mobileDocumentPanelState.isOpen || mobileSurveyPanelOpen || mobileAuxPanel) ? null : activeSpaceForChip}
             onOpenSpaces={openSpacesFromChip}
             onTurnOffSpace={turnOffSpaceFromChip}
+            // Owner 2026-10-07: the Survey chip, beside the Space chip, by the
+            // same rule (it steps aside while a sheet is up - the Survey sheet
+            // names its template itself).
+            activeSurvey={(mobileDocumentPanelState.isOpen || mobileSurveyPanelOpen || mobileAuxPanel) ? null : surveyForChip}
+            onOpenSurvey={openSurveyFromChip}
+            onLeaveSurvey={leaveSurveyFromChip}
           />
         ) : (
         <div
@@ -2275,10 +2291,20 @@ export default function App({ devPreviewReturnTab = null }) {
             }}>
               {/* Spaces chunk B: the active space, left of Export. While it
                   shows, IT carries data-toolbar-export, so the tool bar's plan
-                  (useResponsiveToolbar) keeps the tools clear of the chip. */}
+                  (useResponsiveToolbar) keeps the tools clear of the chip.
+                  Owner 2026-10-07: the Survey chip sits first when Survey is
+                  on, and then it is the one marked. */}
+              {surveyForChip && (
+                <SurveyModeChip
+                  data-toolbar-export="true"
+                  templateName={surveyForChip.name}
+                  onOpen={openSurveyFromChip}
+                  onLeave={leaveSurveyFromChip}
+                />
+              )}
               {activeSpaceForChip && (
                 <ActiveSpaceChip
-                  data-toolbar-export="true"
+                  data-toolbar-export={surveyForChip ? undefined : 'true'}
                   name={activeSpaceForChip.name}
                   pageCount={activeSpaceForChip.pageCount}
                   onOpen={openSpacesFromChip}
@@ -2288,7 +2314,7 @@ export default function App({ devPreviewReturnTab = null }) {
               {/* Export annotated PDF — browser-visible entry point for the
                   same handler the desktop File menu drives. */}
               <button
-                data-toolbar-export={activeSpaceForChip ? undefined : 'true'}
+                data-toolbar-export={(activeSpaceForChip || surveyForChip) ? undefined : 'true'}
                 onClick={bottomToolbarApi.exportAnnotatedPdf}
                 {...chromeTip('Export annotated PDF', 'below')}
                 aria-label="Export annotated PDF"
@@ -4352,13 +4378,6 @@ export default function App({ devPreviewReturnTab = null }) {
                 color: disabled ? 'var(--text-disabled)' : 'var(--text-2)',
                 cursor: disabled ? 'not-allowed' : 'pointer'
               });
-              // The expanded row lives inside the open panel (see below). The
-              // panel reports its collapse to this component one frame after
-              // it changes, so until an OPEN panel element exists the rail
-              // keeps drawing the vertical stack - never a row over nothing.
-              const railPanelEl = rightRailCollapsed
-                ? null
-                : document.querySelector('#chrome-right-host .survey-rail:not(.is-collapsed)');
               // Footer lock (owner 2026-10-02): the zoom and page values and
               // their edit fields share one box style, so opening a field puts
               // it exactly where the value was. The zoom reads 11px in the
@@ -4366,7 +4385,7 @@ export default function App({ devPreviewReturnTab = null }) {
               // collapsed 48px stack. The page box is as wide as this
               // document's page count ("120" -> 3 digits) for as long as the
               // document is open, so paging 9 -> 10 -> 100 moves nothing.
-              const footerFieldBoxStyle = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxSizing: 'content-box', height: 'var(--chrome-field-h)', padding: '0 2px', borderRadius: 'var(--chrome-radius)', lineHeight: 1, fontSize: railPanelEl ? '11px' : '10px', fontVariantNumeric: 'tabular-nums' };
+              const footerFieldBoxStyle = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxSizing: 'content-box', height: 'var(--chrome-field-h)', padding: '0 2px', borderRadius: 'var(--chrome-radius)', lineHeight: 1, fontSize: '10px', fontVariantNumeric: 'tabular-nums' };
               const pageSlotWidest = '0'.repeat(String(Math.max(1, Number(api.numPages) || 0)).length);
               // Editable zoom % — Walkthru-style: plain "100%" by default,
               // click swaps to an input (it only mounts while editing so the
@@ -4529,12 +4548,14 @@ export default function App({ devPreviewReturnTab = null }) {
                 </div>
               );
 
-              if (!railPanelEl) {
-                // Collapsed 48px rail — vertical stack. position:relative +
-                // zIndex 2 keeps it above (and clickable over) the collapsed
-                // survey overlay, which is absolute at the rail's full
-                // height with zIndex 1; transparent background lets the
-                // host/panel color (--panel-bg) show through.
+              // Owner 2026-10-07 (Drawboard rail): the Survey rail never
+              // widens now - its open panel stands BESIDE it - so the footer
+              // is always this vertical stack at the foot of the 48px rail
+              // (the 320px one-row footer portalled into the open panel is
+              // gone). position:relative + zIndex 2 keeps it above (and
+              // clickable over) the Survey rail strip, which is absolute at the
+              // rail's full height; a transparent background lets the strip's
+              // --panel-bg show through.
                 return (
                   <div data-chrome-rail="true" style={{ position: 'relative', zIndex: 2, width: '100%', borderTop: '1px solid var(--border)', padding: '8px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: 'transparent' }}>
                     <button
@@ -4650,138 +4671,6 @@ export default function App({ devPreviewReturnTab = null }) {
                     </div>
                   </div>
                 );
-              }
-
-              // Expanded 320px survey panel — horizontal row pinned to the
-              // panel bottom: [ − % + ] | [ ‹ n · N › ] | [ Fit ▴ ].
-              // 2026-09-30 (owner: "it stretches, and it's missing its left
-              // border when stretched"): the row is portalled INTO the panel
-              // element and spans its content box, so the panel's own left
-              // border runs down beside it and the row rides the panel's
-              // expand / collapse motion frame for frame (it used to be a
-              // separate 320px box that jumped to full width at once while the
-              // panel was still growing).
-              // Footer lock (owner 2026-10-02: "the minus or plus, the arrows
-              // of the page navigation, the icon of the page fit - all that
-              // stuff needs to be locked down"): every control and number box
-              // has a fixed width and never shrinks (a squeezed flex item was
-              // what slid the minus 22px left at 4000%), and the row spreads
-              // them edge to edge with space-between. Nothing in the row then
-              // depends on a value, so nothing moves while you zoom or page.
-              // space-between can only overflow to the RIGHT, so even an
-              // unexpectedly wide font never pushes the minus out past the
-              // panel's left edge. The 20px icon boxes and 3px minimum gap are
-              // what make a 4-digit page count fit the 320px panel.
-              const footerRowBtn = { width: '20px', flexShrink: 0 };
-              const fitLabelWidest = ZOOM_MODE_OPTIONS.map((option) => (option.id === ZOOM_MODES.MANUAL ? 'Manual' : option.label));
-              const footerRow = (
-                <div
-                  data-rail-footer-row="true"
-                  // Owner 2026-10-02: a chrome region - its icons take the one
-                  // hover / press / chosen look (states.css section 5).
-                  data-chrome-rail="true"
-                  // Polish 3: the panel's own --panel-bg, not a darker band;
-                  // the top hairline already marks where the footer starts.
-                  style={{ position: 'absolute', left: 0, right: 0, bottom: 0, boxSizing: 'border-box', zIndex: 2, background: 'var(--panel-bg)', borderTop: '1px solid var(--border)', padding: '6px 6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '3px' }}
-                >
-                  <button
-                    onClick={api.zoomOut}
-                    {...chromeTip('Zoom out', 'above')}
-                    aria-label="Zoom out"
-                    style={{ ...footerBtn(), ...footerRowBtn }}
-                  >
-                    <Icon name="minus" size={RAIL_CONTROL_GLYPH} />
-                  </button>
-                  {zoomValue}
-                  <button
-                    onClick={api.zoomIn}
-                    {...chromeTip('Zoom in', 'above')}
-                    aria-label="Zoom in"
-                    style={{ ...footerBtn(), ...footerRowBtn }}
-                  >
-                    <Icon name="plus" size={RAIL_CONTROL_GLYPH} />
-                  </button>
-
-                  <div style={{ width: '1px', height: '20px', flexShrink: 0, background: 'var(--surface-3)' }} />
-
-                  {/* Page nav — left/right chevrons because horizontal row. */}
-                  <span {...chromeTip(atFirstPage ? 'Already on the first page' : 'Previous page', 'above')} style={{ display: 'inline-flex', flexShrink: 0 }}>
-                    <button
-                      onClick={api.goToPreviousPage}
-                      disabled={atFirstPage}
-                      aria-label="Previous page"
-                      style={{ ...footerBtn(atFirstPage), ...footerRowBtn, pointerEvents: atFirstPage ? 'none' : 'auto' }}
-                    >
-                      <Icon name="chevronLeft" size={RAIL_CONTROL_GLYPH} />
-                    </button>
-                  </span>
-                  {/* UX 2026-09-23 (rail audit): the same drawn dot as the
-                      vertical stack, and the total takes the page field's 4px
-                      side padding, so the dot sits the same distance from both
-                      numbers (it was 7px from the page, 3px from the total).
-                      Footer lock: both numbers sit in boxes as wide as the
-                      page count, so the total's box is always full. */}
-                  <span style={{ display: 'flex', flexShrink: 0, alignItems: 'center', gap: '3px', fontSize: '11px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums' }}>
-                    {pageValue}
-                    <span aria-hidden="true" data-rail-page-dot style={RAIL_PAGE_DOT_STYLE} />
-                    <span style={{ ...footerFieldBoxStyle, color: 'var(--text-3)' }}>
-                      <FooterSlot widest={pageSlotWidest}>{api.activeSpaceHasNoPages ? 0 : api.numPages}</FooterSlot>
-                    </span>
-                  </span>
-                  <span {...chromeTip(atLastPage ? 'Already on the last page' : 'Next page', 'above')} style={{ display: 'inline-flex', flexShrink: 0 }}>
-                    <button
-                      onClick={api.goToNextPage}
-                      disabled={atLastPage}
-                      aria-label="Next page"
-                      style={{ ...footerBtn(atLastPage), ...footerRowBtn, pointerEvents: atLastPage ? 'none' : 'auto' }}
-                    >
-                      <Icon name="chevronRight" size={RAIL_CONTROL_GLYPH} />
-                    </button>
-                  </span>
-
-                  <div style={{ width: '1px', height: '20px', flexShrink: 0, background: 'var(--surface-3)' }} />
-
-                  {/* Page-fit trigger — icon + current-mode label + chevron
-                      pointing UP because the popup opens upward here.
-                      Footer lock (owner 2026-10-02): the label sits in a box
-                      as wide as the longest mode word, and a manual zoom reads
-                      just "Manual" - "Manual 4000%" repeated the zoom number
-                      two controls to the left and, at 73px, could not fit the
-                      320px panel beside everything else. The tooltip still
-                      says "Page fit: Manual 4000%". */}
-                  <div ref={api.zoomMenuRef} style={{ position: 'relative', flexShrink: 0 }}>
-                    <button
-                      onClick={api.toggleZoomMenu}
-                      aria-haspopup="listbox"
-                      aria-expanded={api.isZoomMenuOpen}
-                      aria-label="Fit options"
-                      data-active={fitMode !== ZOOM_MODES.MANUAL}
-                      // Icon + short word: it presses like every chrome icon
-                      // (states.css section 5), with no hover plate.
-                      className="chrome-icon-btn"
-                      {...chromeTip(`Page fit: ${api.zoomDropdownLabel}`, 'above')}
-                      style={{ ...footerBtn(), width: 'auto', height: `${RAIL_CONTROL}px`, gap: '4px', padding: '0 4px', color: fitMode !== ZOOM_MODES.MANUAL ? 'var(--text-2)' : 'var(--text-3)', fontSize: '11px', fontFamily: FONT_FAMILY }}
-                    >
-                      {renderFitIcon(fitIconMode, RAIL_CONTROL_GLYPH)}
-                      <FooterSlot widest={fitLabelWidest}>{fitMode === ZOOM_MODES.MANUAL ? 'Manual' : api.zoomDropdownLabel}</FooterSlot>
-                      {/* UX 2026-09-16 (desktop sweep): the shared <Icon>, not a
-                          hand-written <svg>. This caret was drawn inline at stroke
-                          1.8 in an 11px box — 3.6 units on the house 24 grid, 140%
-                          over the house 1.5 — so it read heavier than every glyph
-                          beside it in the same footer. It keeps flipping with the
-                          menu: the popup opens upward here, so the resting state
-                          points up and the open state points down. */}
-                      <Icon
-                        name={api.isZoomMenuOpen ? 'chevronDown' : 'chevronUp'}
-                        size={RAIL_CARET}
-                        color="currentColor"
-                      />
-                    </button>
-                    {api.isZoomMenuOpen && fitMenu({ right: 0, bottom: '100%', marginBottom: '6px' })}
-                  </div>
-                </div>
-              );
-              return createPortal(footerRow, railPanelEl);
             })()}
           </div>
         </div>
@@ -4806,6 +4695,13 @@ export default function App({ devPreviewReturnTab = null }) {
             hubMode={['pages', 'search', 'bookmarks'].includes(mobileDocumentPanelState.activePanel) ? mobileDocumentPanelState.activePanel : 'pages'}
             spacesActive={Boolean(leftRailApi?.activeSpaceId)}
             surveyActive={Boolean(rightRailApi?.showSurveyPanel)}
+            openPanel={mobileSurveyPanelOpen
+              ? 'survey'
+              : (mobileDocumentPanelState.isOpen
+                ? (mobileDocumentPanelState.activePanel === 'spaces'
+                  ? 'spaces'
+                  : (['pages', 'search', 'bookmarks'].includes(mobileDocumentPanelState.activePanel) ? 'hub' : null))
+                : null)}
           />
         )}
         {/* UX 2026-05-14: chrome-bottom-host deleted. Every tool that lived

@@ -274,31 +274,9 @@
   border-top: 1px solid var(--border);
 }
 
-/* AppShell portals the zoom / page / fit row into the panel, pinned to its
-   bottom (absolute, 37px). The Export line sits just above it. */
-.survey-rail:has([data-rail-footer-row]) .survey-rail__foot {
-  margin-bottom: 37px;
-}
-
-/* The portalled zoom / page / fit row (owner 2026-10-02, UI consistency
-   audit). Its controls are styled inline in AppShell with the old 10px
-   readout and the Helvetica Neue stack, so the rail corrects them here:
-   - every word in it is the rail's one font;
-   - the zoom readout is 11px, the smallest text the app uses, like the page
-     numbers beside it;
-   - "Fit page" stays on one line (it wrapped to two in the 89px button). */
-.survey-rail [data-rail-footer-row] button,
-.survey-rail [data-rail-footer-row] input,
-.survey-rail [data-rail-footer-row] span {
-  font-family: var(--font-ui) !important;
-}
-.survey-rail [data-rail-footer-row] button[aria-label="Edit zoom percentage"],
-.survey-rail [data-rail-footer-row] input[aria-label="Zoom percentage"] {
-  font-size: var(--sv-small-type) !important;
-}
-.survey-rail [data-rail-footer-row] button[aria-label="Fit options"] {
-  white-space: nowrap;
-}
+/* Owner 2026-10-07 (Drawboard rail): the zoom / page / fit controls stay in
+   the 48px Survey rail beside the open panel, so nothing is portalled into
+   the panel's foot any more and the Export line is the panel's last line. */
 
 .survey-rail .survey-rail__foot-export,
 .survey-rail .survey-rail__foot-more {

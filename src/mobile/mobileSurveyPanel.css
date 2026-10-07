@@ -242,25 +242,9 @@
   gap: 0;
 }
 
-/* Exit Survey: a quiet red word, not an outlined block in its own band
-   (13px/600, --sheet-action). Owner 2026-10-01 (after a debate): it is THE
-   Exit, on the right of the header in every panel state, with the header's
-   full 44px tap height. */
-.mobile-survey-sheet .mobile-survey-exit {
-  height: 44px;
-  padding: 0 8px;
-  color: var(--danger-text);
-  background: transparent;
-  border: 0;
-  font: var(--sheet-action);
-  white-space: nowrap;
-  -webkit-tap-highlight-color: transparent;
-  transition: opacity 90ms ease-out;
-}
-
-.mobile-survey-sheet .mobile-survey-exit:active {
-  opacity: 0.6;
-}
+/* Owner 2026-10-07 (scratchpad railDrawboard/DEBATE.md): the red "Exit Survey"
+   word left this header - Survey is left with the x on the Survey chip under
+   the top bar (src/components/SurveyModeChip.jsx). */
 
 /* Close: a bare glyph, an invisible 32px hit area. The export menu's anchor
    (now in the footer) keeps its wrap. */
