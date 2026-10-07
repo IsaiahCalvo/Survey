@@ -217,6 +217,14 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [open]);
 
+  // 2026-10-07 (phone loading): until the saved sign-in has been read, neither
+  // the account button nor "Sign in" is known to be right. A signed-in phone
+  // flashed "Sign in" here on every start; the corner now stays empty for that
+  // moment and fills with the right one.
+  if (!user && auth?.loading) {
+    return <div className="who who-guest" aria-hidden="true" />;
+  }
+
   if (!user) {
     return (
       <div className="who who-guest">

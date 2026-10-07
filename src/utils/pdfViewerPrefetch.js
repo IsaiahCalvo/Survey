@@ -12,8 +12,19 @@ export function schedulePdfViewerPrefetch(loadViewer, {
   let timerId = null;
   let idleId = null;
 
+  // 2026-10-07 (phone loading): never fetch the viewer while the device says
+  // it is offline - wait for the connection instead. A prefetch that failed
+  // offline fired main.jsx's stale-deploy reload (a "No internet" page on a
+  // phone that had only lost signal), and the browser remembers a failed module
+  // download for the life of the page, so the first document opened later
+  // could not load either.
+  const onOnline = () => run();
   const run = () => {
     if (cancelled) return;
+    if (windowObject.navigator?.onLine === false) {
+      windowObject.addEventListener?.('online', onOnline, { once: true });
+      return;
+    }
     void Promise.resolve(loadViewer()).catch(() => {});
   };
 
@@ -39,6 +50,7 @@ export function schedulePdfViewerPrefetch(loadViewer, {
   return () => {
     cancelled = true;
     windowObject.removeEventListener?.('load', scheduleIdle);
+    windowObject.removeEventListener?.('online', onOnline);
     if (timerId !== null) windowObject.clearTimeout?.(timerId);
     if (idleId !== null) windowObject.cancelIdleCallback?.(idleId);
   };

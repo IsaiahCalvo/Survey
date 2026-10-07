@@ -56,7 +56,7 @@ const serializeError = (error) => {
   };
 };
 
-const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, documents, setDocuments, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal, entities, setEntities }, ref) {
+const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOpenStart, onDocumentOpenEnd, onBack, documents, setDocuments, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal, entities, setEntities }, ref) {
   const fileInputRef = useRef();
   const projectFileInputRef = useRef();
   // Destination project for the next browser-input upload. The browser file
@@ -88,7 +88,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const [askConfirm, confirmDialogElement] = useConfirmDialog();
   const [askPrompt, promptDialogElement] = usePromptDialog();
   // Auth state and user dropdown menu
-  const { user, isAuthenticated, signOut, signInWithGoogle, features } = useAuth();
+  const { user, isAuthenticated, signOut, signInWithGoogle, features, loading: authLoading } = useAuth();
   const { isAuthenticated: isMSAuthenticated, login: msLogin, logout: msLogout, account: msAccount, needsReconnect: msNeedsReconnect } = useMSGraph();
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
@@ -438,6 +438,25 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       }, 0);
     }
   }, [templates, supabaseTemplates, onTemplatesChange]);
+
+  // 2026-10-07 (phone loading): coming back to the app after a while (the
+  // phone was in a pocket, another app was in front) reads the lists again, so
+  // a document added from another device shows up by itself instead of only
+  // after a reload. Rows on screen stay put while the read runs.
+  useEffect(() => {
+    if (!user || typeof document === 'undefined') return undefined;
+    let hiddenAt = document.visibilityState === 'hidden' ? Date.now() : null;
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now();
+        return;
+      }
+      if (hiddenAt !== null && Date.now() - hiddenAt >= 60_000) notifyLibraryChanged();
+      hiddenAt = null;
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [user]);
 
   // Sync Supabase documents with parent component state
   useEffect(() => {
@@ -1404,6 +1423,11 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         // So we'll proceed with download. Optimization: Check tabs by name/size if possible?
         // For now, let's download. The browser cache might help.
 
+        // 2026-10-07 (phone loading): the screen answers the tap at once with
+        // the one quiet "Opening <file>…" while the PDF downloads. Before, the
+        // home sat unchanged for the whole download (seconds on a phone
+        // connection, ~30 s for a large drawing set), so a tap looked ignored.
+        onDocumentOpenStart?.(doc);
         const blob = await downloadFromStorage(filePath);
         const file = new File([blob], doc.name, { type: 'application/pdf' });
 
@@ -1436,6 +1460,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         throw new Error('Document has no filePath, file_path, or dataUrl');
       }
     } catch (error) {
+      onDocumentOpenEnd?.();
       console.error('Error opening document:', error);
 
       // Check if file no longer exists in storage
@@ -2198,6 +2223,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     documentsInitialLoading,
     projectsInitialLoading,
     templatesInitialLoading,
+    authLoading,
+    documentsAwaitingSync: (supabaseDocuments?.length || 0) > 0 && (documents?.length || 0) === 0,
   });
 
   return (

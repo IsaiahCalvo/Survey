@@ -116,7 +116,8 @@ export const useProjects = () => {
     });
     try {
       setLoading(true);
-      setError(null);
+      // The last error stays until a read succeeds (2026-10-07): a retry that
+      // cleared it up front flashed the empty list between two error screens.
       // KAL-285 — explicit column list instead of select('*'). The live
       // `projects` table has exactly these 8 columns (verified against prod
       // schema); Dashboard.jsx and this hook consume id/name/user_id directly
@@ -165,6 +166,7 @@ export const useProjects = () => {
       ).values()].sort((a, b) => (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0));
       if (!isCurrentRequest()) return [];
       setProjects(projectsData);
+      setError(null);
       return projectsData; // Return the data so callers can use it immediately
     } catch (err) {
       if (!isCurrentRequest()) return [];
@@ -378,13 +380,15 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
     });
     try {
       setLoading(true);
-      setError(null);
+      // The last error stays until a read succeeds (2026-10-07): a retry that
+      // cleared it up front flashed the empty list between two error screens.
       const key = `documents:${user.id}:${projectId ?? 'null'}`;
       const merged = coalesce
         ? await coalesceRead(key, runDocumentsQuery)
         : await runDocumentsQuery();
       if (!isCurrentRequest()) return [];
       setDocuments(merged);
+      setError(null);
       return merged;
     } catch (err) {
       if (!isCurrentRequest()) return [];
@@ -605,13 +609,15 @@ export const useTemplates = () => {
     });
     try {
       setLoading(true);
-      setError(null);
+      // The last error stays until a read succeeds (2026-10-07): a retry that
+      // cleared it up front flashed the empty list between two error screens.
       const key = `templates:${user.id}`;
       const rows = coalesce
         ? await coalesceRead(key, runTemplatesQuery)
         : await runTemplatesQuery();
       if (!isCurrentRequest()) return [];
       setTemplates(rows);
+      setError(null);
       return rows;
     } catch (err) {
       if (!isCurrentRequest()) return [];
