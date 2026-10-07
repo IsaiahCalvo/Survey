@@ -697,6 +697,13 @@ const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, l
   const lastSharpAtRef = useRef(0);
   const lastRenderStartedAtRef = useRef(0);
   const wasLiveZoomRef = useRef(1);
+  // Owner 2026-10-07 (desktop wheel-zoom spikes): one staging canvas per tile,
+  // reused by every render. A new full-viewport canvas per render (~18 MB on a
+  // 2x desktop screen, several per second while a wheel zoom sharpens) was the
+  // main source of the long garbage-collection pauses during and after a zoom.
+  const offRef = useRef(null);
+  // The generation of the render drawing into it now (0: none).
+  const renderingRef = useRef(0);
   const [tile, setTile] = useState(null);
 
   // Retire the tile: hide it and hand its backing store back. Used only where no
@@ -707,6 +714,7 @@ const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, l
     // with display:none — seen right after a pinch commit on the phone.
     if (canvasRef.current) canvasRef.current.style.display = 'none';
     releaseRasterCanvas(canvasRef.current);
+    if (!renderingRef.current) releaseRasterCanvas(offRef.current);
     setTile(null);
   }, []);
 
@@ -753,10 +761,14 @@ const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, l
       const viewport = page.getViewport({ scale: targetScale, rotation: page.rotate + rotation });
       const cw = Math.max(1, Math.round(vw * DPR));
       const ch = Math.max(1, Math.round(vh * DPR));
-      off = document.createElement('canvas');
-      off.width = cw; off.height = ch;
-      const ctx = off.getContext('2d', { alpha: false });
+      // Stop the previous draw first: it may be drawing into the same staging
+      // canvas (pdf.js refuses a canvas still in use).
       if (taskRef.current) { try { taskRef.current.cancel(); } catch { /* noop */ } }
+      off = offRef.current || (offRef.current = document.createElement('canvas'));
+      if (off.width !== cw) off.width = cw;
+      if (off.height !== ch) off.height = ch;
+      const ctx = off.getContext('2d', { alpha: false });
+      renderingRef.current = myGen;
       const transform = [DPR, 0, 0, DPR, -vx * DPR, -vy * DPR];
       // Page only, no baked annotation appearance — see PdfPageCanvas note.
       const task = page.render({ canvasContext: ctx, viewport, transform, annotationMode: pdfjsLib.AnnotationMode.DISABLE });
@@ -771,7 +783,9 @@ const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, l
       // through the commit that ends it (where scale becomes scale * liveZoom,
       // the exact resolution this tile was rasterized at).
       const nextTile = computeDetailTileBox({ vx, vy, vw, vh, scale, liveZoom, rotation });
-      c.width = cw; c.height = ch;
+      // Same size: keep the backing store (the copy below covers all of it).
+      if (c.width !== cw) c.width = cw;
+      if (c.height !== ch) c.height = ch;
       c.getContext('2d', { alpha: false }).drawImage(off, 0, 0);
       applyDetailTileStyle(c, nextTile, scale, rotation);
       lastSharpAtRef.current = performance.now();
@@ -779,7 +793,12 @@ const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, l
     } catch {
       /* never throw out of the engine */
     } finally {
-      releaseRasterCanvas(off);
+      // The staging canvas is kept for the next render (offRef); the phone,
+      // tight on memory, hands it back once nothing newer is drawing.
+      if (off && renderingRef.current === myGen) {
+        renderingRef.current = 0;
+        if (isMobileSurface) releaseRasterCanvas(off);
+      }
     }
   }, [pdf, pageIndex, scale, rotation, liveZoomRef, interactionRef, scrollerRef, isMobileSurface, dropTile]);
 
@@ -816,16 +835,25 @@ const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, l
       void render();
       return;
     }
+    // Owner 2026-10-07 (desktop wheel-zoom spikes): a sharpening draw already
+    // under way is left to land (its box is in page units, so it is in the
+    // right place and sharper than the base) instead of being restarted every
+    // 240 ms; on a heavy drawing the restarts meant no draw ever finished
+    // while the wheel turned, only their cost.
+    const drawing = () => renderingRef.current !== 0
+      && performance.now() - lastRenderStartedAtRef.current < 1000;
     const elapsed = performance.now() - Math.max(lastSharpAtRef.current, lastRenderStartedAtRef.current);
-    if (elapsed >= 240) {
+    if (elapsed >= 240 && !drawing()) {
       void render();
       return;
     }
     if (!progressiveTimerRef.current) {
-      progressiveTimerRef.current = window.setTimeout(() => {
+      const tick = () => {
         progressiveTimerRef.current = 0;
+        if (drawing()) { progressiveTimerRef.current = window.setTimeout(tick, 60); return; }
         void latestRenderRef.current?.();
-      }, Math.max(16, 240 - elapsed));
+      };
+      progressiveTimerRef.current = window.setTimeout(tick, Math.max(16, 240 - elapsed));
     }
   }, [liveZoomSignal, liveZoomRef, isMobileSurface, render]);
 
@@ -860,6 +888,7 @@ const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, l
     if (progressiveTimerRef.current) clearTimeout(progressiveTimerRef.current);
     if (taskRef.current) { try { taskRef.current.cancel(); } catch { /* noop */ } }
     releaseRasterCanvas(canvasRef.current);
+    releaseRasterCanvas(offRef.current);
   }, []);
 
   // No staleness cutoff. The old gate hid the tile whenever liveZoom drifted
