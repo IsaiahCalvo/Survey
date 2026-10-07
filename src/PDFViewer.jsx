@@ -35686,6 +35686,11 @@ ${pageBlocks}
                       const layerScale = zoomOverlayTransformActiveRef.current && hasCommittedPageScale
                         ? committedPageScale
                         : resolvedMeasuredPageScale;
+                      // Owner 2026-10-07 (far zoom): a page this small on screen
+                      // has no tappable links or fillable fields; skipping those
+                      // layers keeps a zoomed-out document (dozens of pages in
+                      // view) light. Marks and redactions always render.
+                      const pageTinyOnScreen = resolvedPageSize.width * layerScale < 96;
 
                       // [DEBUG] Log props being passed to PAL
                       // 2026-04-29: silenced — fires on every frame and floods
@@ -35898,7 +35903,7 @@ ${pageBlocks}
                               fillContainer
                             />
                           )}
-                          {pdfDoc && (
+                          {pdfDoc && !pageTinyOnScreen && (
                             <PdfjsLinkLayer
                               pdf={pdfDoc}
                               pageNumber={pageNumber}
@@ -35914,7 +35919,7 @@ ${pageBlocks}
                               excludedAnnotationIds={importedTextMarkupIdsByType.Redact || []}
                             />
                           )}
-                          <TextMarkupLinkLayer
+                          {!pageTinyOnScreen && <TextMarkupLinkLayer
                             annotations={pageAnnotationObjects}
                             pageSize={resolvedPageSize}
                             interactionMode={activeTool === 'pan' ? 'open' : activeTool === 'select' || activeTool === 'text-select' ? 'select' : 'disabled'}
@@ -35928,8 +35933,8 @@ ${pageBlocks}
                               setSelectedToolbarAnnotation(nextSelection);
                               setPendingSvgSelection({ pageNumber, annotationIndex: region.annotationIndex, tick: Date.now() });
                             }}
-                          />
-                          {true && pdfDoc && (
+                          />}
+                          {true && pdfDoc && !pageTinyOnScreen && (
                             <PdfjsFormLayer
                               pdf={pdfDoc}
                               pageNumber={pageNumber}

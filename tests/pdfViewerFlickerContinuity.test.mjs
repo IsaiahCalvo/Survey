@@ -102,7 +102,8 @@ test('every surface reads AND writes the page raster cache', () => {
   assert.match(PDFJS_VIEWER_SOURCE, /const maxBytes = pageRasterCacheMaxBytes\(isMobileSurface\);/);
   assert.match(
     PDFJS_VIEWER_SOURCE,
-    /pageRasterCacheSet\(rasterCacheKey\(pageId, want\), target, maxBytes, want\)/
+    // 2026-10-07: far out a page draws at its thumbnail scale (drawScale >= want).
+    /pageRasterCacheSet\(rasterCacheKey\(pageId, drawScale\), target, maxBytes, drawScale\)/
   );
   // The bypass is replaced by a surface-aware byte ceiling, not by an unbounded
   // cache: mobile must stay well under the WKWebView budget.

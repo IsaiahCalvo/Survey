@@ -6,9 +6,13 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import {
   RASTER_EXACT_TOLERANCE,
+  THUMB_LONG_SIDE,
   classifyRaster,
   pickRasterSource,
+  planThumbPrefetch,
   resolveWantedRasterScale,
+  thumbBytes,
+  thumbRasterScale,
 } from '../src/utils/pageRasterLod.js';
 
 const CONTAINER = readFileSync(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
@@ -49,10 +53,43 @@ test('the wanted scale is the CSS scale times the pixel ratio, inside the canvas
   assert.ok(792 * dim.want <= 16384 + 1e-6);
 });
 
-test('the page canvas uses the reuse rules and draws at exactly the wanted scale', () => {
+test('the page canvas uses the reuse rules and draws at the wanted scale (never below its thumbnail)', () => {
   assert.match(CONTAINER, /const pick = pickRasterSource\(candidates, want\);/);
   assert.match(CONTAINER, /if \(shown && classifyRaster\(shown\.scale, want\) === 'sharp'\) return done;/);
-  assert.match(CONTAINER, /page\.getViewport\(\{ scale: want, rotation: page\.rotate \+ rotation \}\)/);
+  // 2026-10-07: far out the draw is at the thumbnail scale and shrunk to fit;
+  // the thumbnail itself is a reuse candidate.
+  assert.match(CONTAINER, /const drawScale = Math\.max\(want, thumbScale\);/);
+  assert.match(CONTAINER, /page\.getViewport\(\{ scale: drawScale, rotation: page\.rotate \+ rotation \}\)/);
+  assert.match(CONTAINER, /const thumb = pageThumbGet\(pageId\);\s*if \(thumb\) candidates\.push/);
   // A page already showing something only sharpens, which waits for a gesture.
   assert.match(CONTAINER, /const kind = shownRef\.current\?\.id === pageId \? 'sharpen' : 'fill';/);
+});
+
+// Owner 2026-10-07 (far zoom: "maybe a more blurry version"): one small
+// bitmap per page, drawn ahead nearest the reader first, inside a budget.
+test('a thumbnail is THUMB_LONG_SIDE device pixels on the page\'s longest side', () => {
+  assert.equal(thumbRasterScale(2592, 1728) * 2592, THUMB_LONG_SIDE);
+  assert.equal(thumbRasterScale(612, 792) * 792, THUMB_LONG_SIDE);
+  assert.equal(thumbRasterScale(0, 0), 0);
+  assert.equal(thumbBytes(612, 792), Math.floor(612 * (THUMB_LONG_SIDE / 792)) * THUMB_LONG_SIDE * 4);
+});
+
+test('thumbnails are drawn nearest the reader first, inside the budget, skipping ones already kept', () => {
+  const sizes = Array.from({ length: 6 }, () => ({ w: 612, h: 792 }));
+  assert.deepEqual(planThumbPrefetch(sizes, { focus: 2 }), [2, 3, 1, 4, 0, 5]);
+  assert.deepEqual(planThumbPrefetch(sizes, { focus: 0 }), [0, 1, 2, 3, 4, 5]);
+  assert.deepEqual(planThumbPrefetch(sizes, { focus: 2, skip: (i) => i === 3 }), [2, 1, 4, 0, 5]);
+  const one = thumbBytes(612, 792);
+  assert.deepEqual(planThumbPrefetch(sizes, { focus: 2, maxBytes: one * 3 }), [2, 3, 1]);
+  // A kept page still counts against the budget (it is held in memory too).
+  assert.deepEqual(planThumbPrefetch(sizes, { focus: 2, maxBytes: one * 3, skip: (i) => i === 2 }), [3, 1]);
+  assert.deepEqual(planThumbPrefetch([], { focus: 4 }), []);
+});
+
+test('the viewer keeps thumbnails apart from the raster cache and draws them at the lowest priority', () => {
+  assert.match(CONTAINER, /const PAGE_THUMBS = new Map\(\);/);
+  assert.match(CONTAINER, /queue\.request\(index, \{ kind: 'prefetch'/);
+  assert.match(CONTAINER, /pageThumbOffer\(pageId, target, drawScale, thumbScale, pageThumbsMaxBytes\(isMobileSurface\)\);/);
+  const mobile = /MOBILE_PAGE_THUMBS_MAX_BYTES = (\d+) \* 1024 \* 1024/.exec(CONTAINER);
+  assert.ok(mobile && Number(mobile[1]) <= 32, 'phone thumbnails stay well inside the WKWebView budget');
 });

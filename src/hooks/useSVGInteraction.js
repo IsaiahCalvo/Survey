@@ -8,7 +8,7 @@
  * Phase 9 Plan 02: Drag-to-move, resize-by-handle, rotation.
  * Phase 9 Plan 03: Multi-select group ops (group-move, group-delete), double-click edit trigger.
  */
-import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, startTransition } from 'react';
 import { flushSync } from 'react-dom';
 import { screenToSVG, normalizeAngle, getInverseScale, snapAngleToNearest45, clampInverseScale } from '../utils/svgTransformMath';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, getLineEndpoints, computeLineBboxCenter, isImportedPath, isAbsoluteCoordPath } from '../utils/svgBoundingBox';
@@ -580,8 +580,15 @@ export function useSVGInteraction({
     // Initial computation
     setInverseScale(getInverseScale(svgEl, pageWidth));
 
+    // Owner 2026-10-07 (smooth zoom): a zoom commit resizes every mounted
+    // page's svg at once, and this update re-renders each whole layer (every
+    // mark, to retune a few hit pads). As a transition React renders it in
+    // slices between frames instead of one long freeze (~1 s on a phone with
+    // a set of marked drawings in view). The marks themselves never wait:
+    // the viewBox scales them.
     const observer = new ResizeObserver(() => {
-      setInverseScale(getInverseScale(svgEl, pageWidth));
+      const next = getInverseScale(svgEl, pageWidth);
+      startTransition(() => setInverseScale(next));
     });
 
     observer.observe(svgEl);

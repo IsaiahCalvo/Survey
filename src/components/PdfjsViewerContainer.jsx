@@ -82,7 +82,9 @@ import {
 } from '../utils/viewerTopOverlay.js';
 import { computeFitScale, pickCurrentPage, resolveFitPageLanding } from '../utils/pageNavigationMath.js';
 import { createPageRasterQueue } from '../utils/pageRasterQueue.js';
-import { classifyRaster, pickRasterSource, resolveWantedRasterScale } from '../utils/pageRasterLod.js';
+import {
+  classifyRaster, pickRasterSource, planThumbPrefetch, resolveWantedRasterScale, thumbRasterScale,
+} from '../utils/pageRasterLod.js';
 import QuietLoading from './QuietLoading.jsx';
 import {
   compensateScrollLeftForColumnWidth,
@@ -307,6 +309,13 @@ function pageRasterCacheClearDocument(docKey) {
     releaseRasterCanvas(entry.canvas);
   }
   pageRasterCacheBytes = Math.max(0, pageRasterCacheBytes);
+  for (const [key, entry] of PAGE_THUMBS.entries()) {
+    if (!key.startsWith(prefix)) continue;
+    PAGE_THUMBS.delete(key);
+    pageThumbBytesTotal -= entry.bytes;
+    releaseRasterCanvas(entry.canvas);
+  }
+  pageThumbBytesTotal = Math.max(0, pageThumbBytesTotal);
 }
 
 function isPdfDocumentProxy(source) {
@@ -319,6 +328,47 @@ function isPdfDocumentProxy(source) {
 function rasterDocKey(pdf) {
   const base = getPageViewBase(pdf);
   return (base?.fingerprints && base.fingerprints[0]) || base?.fingerprint || 'doc';
+}
+
+// Owner 2026-10-07 (far zoom: "maybe a more blurry version ... things need to
+// load quick and snappy"): one small bitmap per page (utils/pageRasterLod.js
+// thumbnails), kept apart from the raster cache so big draws never push them
+// out. `pageId` as in the raster cache.
+const PAGE_THUMBS = new Map(); // pageId -> { canvas, scale, bytes }
+let pageThumbBytesTotal = 0;
+const PAGE_THUMBS_MAX_BYTES = 96 * 1024 * 1024;
+const MOBILE_PAGE_THUMBS_MAX_BYTES = 24 * 1024 * 1024;
+const pageThumbsMaxBytes = (isMobileSurface) => (isMobileSurface ? MOBILE_PAGE_THUMBS_MAX_BYTES : PAGE_THUMBS_MAX_BYTES);
+function pageThumbGet(pageId) {
+  const entry = PAGE_THUMBS.get(pageId);
+  return entry?.canvas?.width ? entry : null;
+}
+// Keep a thumbnail of `src` (drawn at `srcScale`) for this page, unless one
+// at least as sharp is already kept. A sharper source is shrunk to the
+// thumbnail scale with one image copy.
+function pageThumbOffer(pageId, src, srcScale, thumbScale, maxBytes) {
+  if (!src?.width || !(srcScale > 0) || !(thumbScale > 0)) return;
+  const existing = PAGE_THUMBS.get(pageId);
+  const scale = Math.min(srcScale, thumbScale);
+  if (existing && existing.scale >= scale * 0.999) return;
+  const k = scale / srcScale;
+  const canvas = document.createElement('canvas');
+  blitRaster(canvas, src, Math.max(1, Math.floor(src.width * k)), Math.max(1, Math.floor(src.height * k)));
+  const bytes = canvas.width * canvas.height * 4;
+  if (existing) {
+    PAGE_THUMBS.delete(pageId);
+    pageThumbBytesTotal -= existing.bytes;
+    releaseRasterCanvas(existing.canvas);
+  }
+  PAGE_THUMBS.set(pageId, { canvas, scale, bytes });
+  pageThumbBytesTotal += bytes;
+  while (pageThumbBytesTotal > maxBytes && PAGE_THUMBS.size > 1) {
+    const oldestKey = PAGE_THUMBS.keys().next().value;
+    const oldest = PAGE_THUMBS.get(oldestKey);
+    PAGE_THUMBS.delete(oldestKey);
+    pageThumbBytesTotal -= oldest.bytes;
+    releaseRasterCanvas(oldest.canvas);
+  }
 }
 
 // Normalize the app's documentSource into pdf.js getDocument params. The app
@@ -419,10 +469,13 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
     // flash on scroll-return.
     const candidates = pageRasterCacheCandidates(pageId);
     if (shown && c?.width) candidates.push({ scale: shown.scale, canvas: c, onCanvas: true });
+    const thumb = pageThumbGet(pageId);
+    if (thumb) candidates.push({ scale: thumb.scale, canvas: thumb.canvas });
     const pick = pickRasterSource(candidates, want);
+    const touch = (use) => { if (use.key) pageRasterCacheGet(use.key); };
     if (pick.action === 'keep') {
       if (!pick.use.onCanvas) {
-        pageRasterCacheGet(pick.use.key);
+        touch(pick.use);
         blitRaster(c, pick.use.canvas);
         shownRef.current = { id: pageId, scale: pick.use.scale };
       }
@@ -441,14 +494,14 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
         blitRaster(c, copy, width, height);
         releaseRasterCanvas(copy);
       } else {
-        pageRasterCacheGet(pick.use.key);
+        touch(pick.use);
         blitRaster(c, pick.use.canvas, width, height);
       }
       shownRef.current = { id: pageId, scale: want };
       return done;
     }
     if (pick.action === 'placeholder' && !pick.use.onCanvas) {
-      pageRasterCacheGet(pick.use.key);
+      touch(pick.use);
       blitRaster(c, pick.use.canvas);
       shownRef.current = { id: pageId, scale: pick.use.scale };
     }
@@ -486,7 +539,12 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
       try {
         const page = await pdf.getPage(pageIndex + 1);
         if (cancelled || myGen !== genRef.current) return;
-        const viewport = page.getViewport({ scale: want, rotation: page.rotate + rotation });
+        // Far out a page draws at no less than its thumbnail scale (the cost
+        // is the same at any size) and is shrunk to fit: the bitmap kept is
+        // then a usable stand-in when zooming back in.
+        const thumbScale = thumbRasterScale(pageW, pageH);
+        const drawScale = Math.max(want, thumbScale);
+        const viewport = page.getViewport({ scale: drawScale, rotation: page.rotate + rotation });
 
         let t0 = 0;
         for (;;) {
@@ -546,13 +604,24 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
 
         const canvas = canvasRef.current;
         if (!canvas) return;
-        blitRaster(canvas, target);
+        if (drawScale > want * 1.001) {
+          const quarter = ((rotation % 180) + 180) % 180 !== 0;
+          blitRaster(
+            canvas,
+            target,
+            Math.max(1, Math.floor((quarter ? pageH : pageW) * want)),
+            Math.max(1, Math.floor((quarter ? pageW : pageH) * want)),
+          );
+        } else {
+          blitRaster(canvas, target);
+        }
         shownRef.current = { id: pageId, scale: want };
         // Keep the rendered bitmap so a scroll-return repaints instantly on
         // EVERY surface. Mobile used to release it here, which is why a page
         // leaving the mount window came back as an undrawn white canvas; the
         // byte ceiling is surface-aware instead.
-        pageRasterCacheSet(rasterCacheKey(pageId, want), target, maxBytes, want);
+        pageThumbOffer(pageId, target, drawScale, thumbScale, pageThumbsMaxBytes(isMobileSurface));
+        pageRasterCacheSet(rasterCacheKey(pageId, drawScale), target, maxBytes, drawScale);
         targetRetained = true;
         onRaster?.(pageIndex, { ms: Math.round(performance.now() - t0), clamped: tiled });
       } catch (error) {
@@ -4165,6 +4234,88 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
   }, [goToPage, focusPageRect, zoomToScale, applyAnchoredScale, getThumbnailDataUrl]);
 
+  // Owner 2026-10-07 (far zoom: "maybe a more blurry version"): draw every
+  // page's small thumbnail ahead of need, nearest the reader first, at the
+  // lowest priority of the shared drawing queue (kind 'prefetch': it waits
+  // for every page on screen, pauses while anything moves the page, and stops
+  // the moment another page asks for a draw). So zooming out over a set of
+  // drawings, or flinging through them, shows each page at once (soft until
+  // its sharp draw lands) instead of a white slab. Pages already drawn sharp
+  // get theirs from that draw for free (pageThumbOffer).
+  useEffect(() => {
+    const pdf = pdfRef.current;
+    const queue = rasterQueueRef.current;
+    if (!pdf || !queue || pageSizes.length === 0) return undefined;
+    let cancelled = false;
+    let turn = null;
+    let task = null;
+    const docKey = rasterDocKey(pdf);
+    const maxBytes = pageThumbsMaxBytes(isMobileSurface);
+    const pageIdOf = (index) => `${docKey}:${pageViewKey(pdf, index)}:r${rotation}`;
+    const run = async () => {
+      const plan = planThumbPrefetch(pageSizes, {
+        focus: Math.max(0, (currentPageRef.current || 1) - 1),
+        maxBytes: maxBytes * 0.8,
+        skip: (index) => Boolean(pageThumbGet(pageIdOf(index))),
+      });
+      for (let at = 0; at < plan.length && !cancelled;) {
+        const index = plan[at];
+        const pageId = pageIdOf(index);
+        const size = pageSizes[index];
+        const thumbScale = thumbRasterScale(size?.w, size?.h);
+        if (pageThumbGet(pageId) || !(thumbScale > 0)) { at += 1; continue; }
+        // A sharper bitmap of it is already kept: shrink that, no draw.
+        const kept = pickRasterSource(pageRasterCacheCandidates(pageId), thumbScale);
+        if (kept.use && kept.action !== 'placeholder') {
+          pageThumbOffer(pageId, kept.use.canvas, kept.use.scale, thumbScale, maxBytes);
+          at += 1;
+          continue;
+        }
+        turn = queue.request(index, { kind: 'prefetch', onPreempt: () => { try { task?.cancel(); } catch { /* noop */ } } });
+        await turn.ready;
+        if (cancelled) return;
+        if (!turn.claim() || pageThumbGet(pageId)) { turn.release(); turn = null; continue; }
+        let target = null;
+        try {
+          const page = await pdf.getPage(index + 1);
+          if (cancelled) return;
+          const viewport = page.getViewport({ scale: thumbScale, rotation: page.rotate + rotation });
+          target = document.createElement('canvas');
+          target.width = Math.max(1, Math.floor(viewport.width));
+          target.height = Math.max(1, Math.floor(viewport.height));
+          task = page.render({
+            canvasContext: target.getContext('2d', { alpha: false }),
+            viewport,
+            annotationMode: pdfjsLib.AnnotationMode.DISABLE,
+          });
+          const myTurn = turn;
+          task.onContinue = (resume) => myTurn.continue(resume);
+          await task.promise;
+          task = null;
+          if (cancelled) return;
+          pageThumbOffer(pageId, target, thumbScale, thumbScale, maxBytes);
+          at += 1;
+        } catch (error) {
+          task = null;
+          // Stopped for a page that needed the turn: ask again later.
+          if (error?.name !== 'RenderingCancelledException') at += 1;
+        } finally {
+          if (target) releaseRasterCanvas(target);
+          turn?.release();
+          turn = null;
+        }
+      }
+    };
+    // After the pages on screen have had their first turn.
+    const timer = window.setTimeout(() => { run().catch(() => { /* a closed document */ }); }, 1500);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      try { task?.cancel(); } catch { /* noop */ }
+      turn?.release();
+    };
+  }, [pageSizes, rotation, isMobileSurface]);
+
   // DEV only: the zoom-perf scenario (debug/scenarios/zoom-perf.mjs) sets
   // exact zoom levels through this; never present in a production build.
   useEffect(() => {
@@ -4180,6 +4331,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       rasterQueue: () => rasterQueueRef.current,
       getPdf: () => pdfRef.current,
       rasterCacheBytes: () => pageRasterCacheBytes,
+      thumbs: () => ({ count: PAGE_THUMBS.size, bytes: pageThumbBytesTotal }),
     };
     window.__pdfjsViewerPerf = api;
     return () => { if (window.__pdfjsViewerPerf === api) delete window.__pdfjsViewerPerf; };

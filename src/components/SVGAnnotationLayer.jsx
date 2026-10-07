@@ -441,7 +441,7 @@ const hasCoarsePointer = () => (
 // w53: shared empty selection (stable identity keeps memo deps quiet).
 const EMPTY_SURVEY_MARKER_IDS = new Set();
 
-const SVGAnnotationLayer = memo(({
+const SVGAnnotationLayerBody = memo(({
   pageNumber,
   width,          // unscaled PDF page width (e.g., 612)
   height,         // unscaled PDF page height (e.g., 792)
@@ -665,6 +665,7 @@ const SVGAnnotationLayer = memo(({
   // Zoom-start signal (CLAUDE.md invariant): commit in-flight freehand work
   // before the zoom re-lays-out the page — mirror of the fabric canvas flush.
   zoomGeneration = 0,
+  zoomGenerationSignal = null,
   // Survey-marker drag-out routes through the marker store, not page objects.
   onSurveyMarkerCreated,
   // w53 (2026-09-28) — Survey Markers in the one annotation family.
@@ -2637,16 +2638,27 @@ const SVGAnnotationLayer = memo(({
   // mid-stroke commits the in-flight freehand work before the page re-lays
   // out — the exact behavior the fabric canvas flush provided. Drag-out
   // shapes keep tracking (they re-derive from live pointer coords).
+  // The bump arrives through `zoomGenerationSignal` (see the SVGAnnotationLayer
+  // wrapper at the end of this file), so a zoom start never re-renders the
+  // whole layer; the reaction here is the same as when it came as a prop.
   const initialZoomGenRef = useRef(zoomGeneration);
   useEffect(() => {
-    if (zoomGeneration === initialZoomGenRef.current) return;
-    initialZoomGenRef.current = zoomGeneration;
-    cancelLasso();
-    const state = shapeCreationRef.current;
-    if (state && FREEHAND_CREATION_TOOLS.includes(state.tool)) {
-      commitShapeCreationRef.current(null);
+    const onZoomGeneration = (next) => {
+      if (next === initialZoomGenRef.current) return;
+      initialZoomGenRef.current = next;
+      cancelLasso();
+      const state = shapeCreationRef.current;
+      if (state && FREEHAND_CREATION_TOOLS.includes(state.tool)) {
+        commitShapeCreationRef.current(null);
+      }
+    };
+    if (!zoomGenerationSignal) {
+      onZoomGeneration(zoomGeneration);
+      return undefined;
     }
-  }, [zoomGeneration, cancelLasso]);
+    onZoomGeneration(zoomGenerationSignal.get());
+    return zoomGenerationSignal.subscribe(onZoomGeneration);
+  }, [zoomGeneration, zoomGenerationSignal, cancelLasso]);
 
   // A second finger means the user is pinching the PDF, not finishing a mark —
   // cancel (never commit) the first finger's partial gesture. Parity with the
@@ -8503,6 +8515,51 @@ const SVGAnnotationLayer = memo(({
     />
     </>
   );
+}, (prev, next) => {
+  // zoomGeneration reaches the body through zoomGenerationSignal (below); a
+  // change of it alone does not re-render the marks.
+  for (const key in next) {
+    if (key !== 'zoomGeneration' && !Object.is(prev[key], next[key])) return false;
+  }
+  for (const key in prev) {
+    if (!(key in next)) return false;
+  }
+  return true;
+});
+SVGAnnotationLayerBody.displayName = 'SVGAnnotationLayerBody';
+
+// Owner 2026-10-07 (smooth zoom on heavily marked drawings): every zoom
+// gesture bumps zoomGeneration (CLAUDE.md invariant: the layer commits
+// in-flight freehand work and drops a lasso before the page re-lays out). As
+// a plain prop that bump re-rendered every mounted layer: on a phone with
+// 36 marked drawings in view, one 1.2-1.8 s freeze at the first touch of each
+// pinch. This thin wrapper keeps the same prop and hands the new value to
+// the layer through a stable signal, so only the reaction runs.
+function createZoomGenerationSignal(initial) {
+  let value = initial;
+  const listeners = new Set();
+  return {
+    get: () => value,
+    set(next) {
+      if (Object.is(next, value)) return;
+      value = next;
+      for (const listener of [...listeners]) listener(next);
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
+  };
+}
+
+const SVGAnnotationLayer = memo((props) => {
+  const { zoomGeneration = 0 } = props;
+  const signalRef = useRef(null);
+  if (!signalRef.current) signalRef.current = createZoomGenerationSignal(zoomGeneration);
+  useEffect(() => {
+    signalRef.current.set(zoomGeneration);
+  }, [zoomGeneration]);
+  return <SVGAnnotationLayerBody {...props} zoomGenerationSignal={signalRef.current} />;
 });
 
 SVGAnnotationLayer.displayName = 'SVGAnnotationLayer';

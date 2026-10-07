@@ -77,3 +77,50 @@ export function resolveWantedRasterScale({ cssScale, dpr = 1, pageW, pageH, maxA
   if (Number(maxDim) > 0) cap = Math.min(cap, maxDim / Math.max(w, h));
   return want > cap ? { want: cap, capped: true } : { want, capped: false };
 }
+
+// ---- page thumbnails: a small bitmap of every page ---------------------------
+// Owner 2026-10-07 ("if it's that zoomed out, things maybe don't have to be so
+// detailed — maybe a more blurry version ... things need to load quick and
+// snappy"). Far out, a page is a few dozen pixels wide, yet drawing it costs
+// as much as drawing it full size (a large drawing: ~0.3-0.5 s on a slowed
+// phone), so zooming out over 36 sheets left them white for many seconds.
+// Each page keeps one small bitmap (THUMB_LONG_SIDE device pixels on its
+// longest side): made for free from any sharper draw, or drawn ahead in idle
+// time, nearest pages first. Far out it IS the sharp page (shrunk to size);
+// nearer in, and during a fling, it is the soft stand-in shown until the
+// sharp draw lands, so a page on screen is never blank.
+export const THUMB_LONG_SIDE = 256;
+
+// Raster scale (device px per point) of a page's thumbnail.
+export function thumbRasterScale(pageW, pageH, longSide = THUMB_LONG_SIDE) {
+  const side = Math.max(Number(pageW) || 0, Number(pageH) || 0);
+  return side > 0 ? longSide / side : 0;
+}
+
+// Bytes of a page's thumbnail (RGBA).
+export function thumbBytes(pageW, pageH, longSide = THUMB_LONG_SIDE) {
+  const s = thumbRasterScale(pageW, pageH, longSide);
+  return Math.max(1, Math.floor((Number(pageW) || 0) * s)) * Math.max(1, Math.floor((Number(pageH) || 0) * s)) * 4;
+}
+
+// The pages to draw thumbnails for, in order: nearest `focus` first (ties go
+// to the page after it), skipping `skip(index)`, and only as many as fit in
+// `maxBytes` (sizes: [{ w, h }] in points). A document too big for the budget
+// gets thumbnails around where the reader is.
+export function planThumbPrefetch(sizes, { focus = 0, maxBytes = Infinity, skip = () => false, longSide = THUMB_LONG_SIDE } = {}) {
+  const list = Array.isArray(sizes) ? sizes : [];
+  const n = list.length;
+  const out = [];
+  let bytes = 0;
+  const f = Math.min(Math.max(0, Math.round(Number(focus) || 0)), Math.max(0, n - 1));
+  for (let d = 0; d < n; d += 1) {
+    for (const i of d === 0 ? [f] : [f + d, f - d]) {
+      if (i < 0 || i >= n) continue;
+      const b = thumbBytes(list[i]?.w, list[i]?.h, longSide);
+      if (bytes + b > maxBytes) return out;
+      bytes += b;
+      if (!skip(i)) out.push(i);
+    }
+  }
+  return out;
+}
