@@ -21013,6 +21013,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     metaGet: excelSyncMetaGet,
     metaSet: excelSyncMetaSet,
     hasStoredMarks: annotationDocHasStoredMarks,
+    beginBulkImport: annotationDocBeginBulkImport,
+    whenBulkImportSaved: annotationDocWhenBulkImportSaved,
     // w53: other screens' in-flight Survey Marker / spaces changes (draw only).
     liveMarkerOverlay,
   } = useAnnotationDoc({
@@ -28107,6 +28109,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             });
             if (stamped.length === 0) return;
             stamped.forEach((object) => importedIds.push(object.id));
+            // 2026-10-07: saved as one checkpoint, apart from the user's edits.
+            annotationDocBeginBulkImport(stamped.map((object) => object.id));
             handleSaveAnnotations(pageNumber, { ...current, objects: [...currentObjects, ...stamped] }, {
               source: 'embedded-import-once',
               action: 'import-pdf-annotations',
@@ -28135,6 +28139,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         if (importedIds.length > 0 && !annotationDocHasStoredMarks(importedIds)) {
           throw new Error('embedded import did not reach the store yet');
         }
+        // ...and the cloud (one checkpoint; also one a closed tab left to
+        // this open): the marker must never be read where the marks cannot.
+        if (!(await annotationDocWhenBulkImportSaved())) {
+          throw new Error('embedded import was not stored yet');
+        }
+        if (cancelled) return;
         // w27: a page with markup that pdf.js could not read was skipped; no
         // marker yet (it would hide that page's markup for good). Record the
         // attempt and retry on the next open — the per-mount guard stays set,
@@ -28182,7 +28192,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     })();
 
     return () => { cancelled = true; };
-  }, [normalAnnotationHydration, pdfFile, pdfDoc, handleSaveAnnotations, yjsDocRole, documentOwnerId, user?.id, excelSyncMetaGet, excelSyncMetaSet, annotationDocHasStoredMarks]);
+  }, [normalAnnotationHydration, pdfFile, pdfDoc, handleSaveAnnotations, yjsDocRole, documentOwnerId, user?.id, excelSyncMetaGet, excelSyncMetaSet, annotationDocHasStoredMarks, annotationDocBeginBulkImport, annotationDocWhenBulkImportSaved]);
 
   // Keep this document's list thumbnail current (page 1 with its markup),
   // debounced after edits settle and never while drawing — see the hook.

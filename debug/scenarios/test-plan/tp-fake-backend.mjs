@@ -10,7 +10,10 @@
 //     lt, lte, in, is, the History keyset `or`), order, limit.
 //   * RPC: append_annotation_update (the write-ahead log; assigns `seq` and
 //     tells every subscribed window, as Postgres Realtime would),
-//     get_my_document_role ('owner'); anything else answers null.
+//     store_annotation_snapshot (the checkpoint, with the real function's
+//     compare-and-set: at_seq must be the log head and the expected base must
+//     be the stored one), get_my_document_role ('owner'); anything else
+//     answers null.
 //   * Realtime (WebSocket, Phoenix protocol v2): channel join/leave, heartbeat,
 //     broadcast relay between windows (JSON and binary user pushes), presence,
 //     and postgres_changes INSERT delivery for annotation_updates.
@@ -269,6 +272,15 @@ export class FakeBackend {
       this.count(`RPC ${rpc[1]}`);
       let args = {};
       try { args = JSON.parse(req.postData() || '{}') || {}; } catch { args = {}; }
+      // A test can hold checkpoint uploads (`holdSnapshots()`): the request
+      // waits, then is answered — or dropped, as when its tab is reloaded.
+      if (rpc[1] === 'store_annotation_snapshot' && this.snapshotHold) {
+        const verdict = await this.snapshotHold.promise;
+        if (verdict === 'drop') {
+          this.count('snapshot dropped (tab gone)');
+          return route.abort().catch(() => {});
+        }
+      }
       return reply(200, this.rpc(rpc[1], args));
     }
     const tableMatch = path.match(/^\/rest\/v1\/([^/]+)$/);
@@ -355,12 +367,19 @@ export class FakeBackend {
   }
 
   /**
-   * The document as the server holds it (every WAL row applied, with the
-   * app's store code): { byPage, lanes } — lanes keyed "<writer> <storageKey>".
+   * The document as the server holds it (the stored checkpoint, then every
+   * WAL row after it, applied with the app's store code — what a fresh open
+   * reads): { byPage, lanes } — lanes keyed "<writer> <storageKey>".
    */
   async serverState() {
-    const rows = [...this.table('annotation_updates')].sort((a, b) => a.seq - b.seq);
-    return runDocTool({ op: 'decode', rows });
+    const snapshot = this.table('annotation_snapshots').find((r) => r.document_id === this.documentId) || null;
+    const after = snapshot ? Number(snapshot.at_seq) || 0 : 0;
+    const rows = [...this.table('annotation_updates')].filter((r) => r.seq > after).sort((a, b) => a.seq - b.seq);
+    return runDocTool({
+      op: 'decode',
+      rows,
+      snapshot: snapshot ? { data: snapshot.snapshot, encoding: snapshot.encoding_version } : null,
+    });
   }
 
   /** Ink objects' outlines in page units (same transform the app renders with). */
@@ -390,8 +409,63 @@ export class FakeBackend {
       this.emitInsert('annotation_updates', row);
       return row.seq;
     }
+    if (name === 'store_annotation_snapshot') return this.storeSnapshot(args);
     if (name === 'get_my_document_role') return this.role;
     return null;
+  }
+
+  /**
+   * Hold every checkpoint upload until the returned release(verdict) is
+   * called: 'answer' (stored or refused as usual) or 'drop' (never reaches
+   * the server, as when its tab is reloaded first).
+   */
+  holdSnapshots() {
+    let release;
+    const promise = new Promise((resolve) => { release = resolve; });
+    this.snapshotHold = { promise };
+    return (verdict = 'answer') => { this.snapshotHold = null; release(verdict); };
+  }
+
+  /** public.store_annotation_snapshot (supabase/migrations/20260727131230), in memory. */
+  storeSnapshot(args) {
+    const rows = this.table('annotation_snapshots');
+    const current = rows.find((r) => r.document_id === args.p_document_id) || null;
+    const same = (a, b) => (a ?? null) === (b ?? null);
+    if (current
+      && Number(current.at_seq) === Number(args.p_at_seq)
+      && current.snapshot === args.p_snapshot
+      && Number(current.encoding_version) === Number(args.p_encoding_version)
+      && same(current.writer_id, args.p_writer_id)
+      && Number(current.writer_epoch) === Number(args.p_writer_epoch)) return true;
+    const head = this.table('annotation_updates')
+      .filter((r) => r.document_id === args.p_document_id)
+      .reduce((max, r) => Math.max(max, Number(r.seq) || 0), 0);
+    if (head !== Number(args.p_at_seq)) { this.count('snapshot refused (head moved)'); return false; }
+    if (current) {
+      if (!same(current.at_seq == null ? null : Number(current.at_seq), args.p_expected_at_seq == null ? null : Number(args.p_expected_at_seq))
+        || !same(current.writer_id, args.p_expected_writer_id)
+        || Number(current.writer_epoch) !== Number(args.p_expected_writer_epoch)
+        || Number(current.at_seq) > Number(args.p_at_seq)
+        || Number(current.writer_epoch) >= Number(args.p_writer_epoch)) { this.count('snapshot refused (base changed)'); return false; }
+    } else if (args.p_expected_at_seq != null || args.p_expected_writer_id != null
+      || Number(args.p_expected_writer_epoch) !== 0 || !(Number(args.p_writer_epoch) > 0)) {
+      this.count('snapshot refused (base changed)');
+      return false;
+    }
+    const row = {
+      document_id: args.p_document_id,
+      at_seq: Number(args.p_at_seq),
+      snapshot: args.p_snapshot,
+      encoding_version: args.p_encoding_version,
+      writer_id: args.p_writer_id,
+      writer_epoch: Number(args.p_writer_epoch),
+      base_at_seq: args.p_expected_at_seq,
+      base_writer_id: args.p_expected_writer_id,
+      base_writer_epoch: args.p_expected_writer_epoch,
+      updated_at: nowIso(),
+    };
+    if (current) Object.assign(current, row); else rows.push(row);
+    return true;
   }
 
   // ------------------------------------------------------------ Realtime

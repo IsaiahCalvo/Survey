@@ -193,6 +193,16 @@ export function encodeCheckpointFromMirror(mirror, { expectedApplied, expectedVe
   return encodeCheckpointUpdate(mirror.doc);
 }
 
+/**
+ * A checkpoint's bytes plus one more update (2026-10-07, first-open save: the
+ * PDF's own markup goes into the checkpoint instead of WAL rows). A byte-level
+ * merge: applying the result gives exactly the document applying both gives.
+ */
+export function mergeCheckpointWithUpdate(checkpointUpdate, extraUpdate) {
+  if (!extraUpdate || extraUpdate.length === 0) return checkpointUpdate;
+  return Y.mergeUpdates([checkpointUpdate, extraUpdate]);
+}
+
 // ---- one request, as the worker receives it --------------------------------
 // `mirrors` is the worker's Map of mirror id -> mirror. Returns the reply and
 // the buffers to transfer with it. Kept here (not in the worker file) so the
@@ -234,7 +244,11 @@ export async function runCheckpointRequest(mirrors, request, { getOutbox = null 
       throw new Error('checkpoint mirror missing');
     }
     if (mirror.failed) throw new Error(`checkpoint mirror failed: ${mirror.failed}`);
-    const update = encodeCheckpointFromMirror(mirror, request);
+    let update = encodeCheckpointFromMirror(mirror, request);
+    // 2026-10-07: a bulk import saved as part of this checkpoint (the mirror
+    // itself is not changed: it gets those bytes only once the checkpoint is
+    // accepted, like the accepted document).
+    if (request.extraUpdate) update = mergeCheckpointWithUpdate(update, request.extraUpdate);
     const prepared = await prepareCheckpointUpload(update, { asJsonBody: Boolean(request.asJsonBody) });
     return {
       reply: { update, ...prepared },
