@@ -17,6 +17,13 @@ const asPage = (value) => {
   return Number.isInteger(page) && page > 0 ? page : null;
 };
 
+// An insertion slot: 0 = before page 1 (insert / paste above the first
+// page), n = after page n.
+const asSlot = (value) => {
+  const slot = Number(value);
+  return Number.isInteger(slot) && slot >= 0 ? slot : null;
+};
+
 const remapPageFields = (value, mapPage) => {
   if (!value || typeof value !== 'object') return value;
   const next = { ...value };
@@ -288,8 +295,8 @@ export function transformPageState(model = {}, op, { createId = fallbackId } = {
   }
 
   if (type === 'insert') {
-    const afterPage = asPage(op.afterPage);
-    if (afterPage == null) throw new Error('insert requires a positive afterPage');
+    const afterPage = asSlot(op.afterPage);
+    if (afterPage == null) throw new Error('insert requires an afterPage of 0 or more');
     return baseRemap(model, (value) => (value <= afterPage ? value : value + 1));
   }
 
@@ -307,7 +314,7 @@ export function transformPageState(model = {}, op, { createId = fallbackId } = {
 
   if (type === 'duplicate' || type === 'copy') {
     const sourcePage = asPage(op.page ?? op.source);
-    const afterPage = asPage(op.afterPage ?? op.page ?? op.target);
+    const afterPage = asSlot(op.afterPage ?? op.page ?? op.target);
     if (sourcePage == null || afterPage == null) throw new Error(`${type} requires source and target pages`);
     const targetPage = afterPage + 1;
     const next = baseRemap(model, (value) => (value <= afterPage ? value : value + 1));
@@ -325,10 +332,10 @@ export function pageNumberAfterOperation(currentPage, operation, resultingPageCo
     const removed = asPage(operation.page);
     next = page < removed ? page : page === removed ? removed : page - 1;
   } else if (type === 'insert') {
-    const after = asPage(operation.afterPage);
+    const after = asSlot(operation.afterPage);
     next = page <= after ? page : page + 1;
   } else if (type === 'duplicate' || type === 'copy') {
-    const after = asPage(operation.afterPage ?? operation.page ?? operation.target);
+    const after = asSlot(operation.afterPage ?? operation.page ?? operation.target);
     next = page <= after ? page : page + 1;
   } else if (type === 'move' || type === 'reorder') {
     const from = asPage(operation.from);

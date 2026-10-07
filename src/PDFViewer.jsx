@@ -35226,6 +35226,26 @@ ${pageBlocks}
         viewerId: user?.id ?? null,
         documentOwnerId,
         selectedCalloutIds,
+        // Owner 2026-10-07: right-click / long-press a bare page under Pan or
+        // Select = the Pages tab's page menu (sidebar/pageMenuItems.js).
+        pageMenu: {
+          activeTool,
+          pageCount: numPages,
+          clipboardPage,
+          clipboardType,
+          pageTransformations,
+          handlers: {
+            cut: handleCutPage,
+            copy: handleCopyPage,
+            paste: (page, position) => { if (clipboardPage) handlePastePage(page, clipboardPage, clipboardType, position); },
+            duplicate: handleDuplicatePage,
+            insertBlank: handleInsertBlankPage,
+            rotate: handleRotatePage,
+            mirror: handleMirrorPage,
+            reset: handleResetPage,
+            delete: (page) => { if (window.confirm(`Delete page ${page}?`)) handleDeletePage(page); },
+          },
+        },
       })}
 
       {/* Unsupported Annotations Notice — see UnsupportedAnnotationsNotice.jsx

@@ -3116,3 +3116,32 @@ textarea:focus-visible,
     top: var(--app-chrome-top, 34px) !important;
   }
 }
+
+/* Pages tab (desktop): the page's "..." menu button (owner 2026-10-07: "I
+   don't see the three dots ... so I can't manipulate it"). It sits on the
+   page's bottom-right corner and shows on the hovered card, the current card,
+   the card whose menu is open, and whenever it or its card has keyboard
+   focus. The phone sheet always shows it (no hover there). */
+.pages-panel-more {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.pages-panel-card:hover .pages-panel-more,
+.pages-panel-card.is-active .pages-panel-more,
+.pages-panel-card.is-menu-open .pages-panel-more,
+.pages-panel-card:focus-within .pages-panel-more,
+.pages-panel-more:focus-visible {
+  opacity: 1;
+}
+/* Hovered / open: a hairline ring on the circle (it is already the raised
+   --surface-3 fill, so a fill change would not read). */
+.pages-panel-more:hover > span,
+.pages-panel-card.is-menu-open .pages-panel-more > span {
+  box-shadow: 0 0 0 1px var(--border-strong), 0 1px 2px rgba(0, 0, 0, 0.3) !important;
+}
+@media (hover: none) {
+  .pages-panel-more { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pages-panel-more { transition: none; }
+}

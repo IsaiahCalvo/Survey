@@ -1,4 +1,5 @@
 import { PDFDocument, degrees } from 'pdf-lib';
+import { blankPageReferencePage, blankPageSize } from './blankPageSize.js';
 
 const pageNumber = (value, count, label) => {
   const page = Number(value);
@@ -6,6 +7,15 @@ const pageNumber = (value, count, label) => {
     throw new RangeError(`${label} must be between 1 and ${count}`);
   }
   return page;
+};
+
+// An insertion slot: 0 = before page 1, n = after page n.
+const slotNumber = (value, count, label) => {
+  const slot = Number(value);
+  if (!Number.isInteger(slot) || slot < 0 || slot > count) {
+    throw new RangeError(`${label} must be between 0 and ${count}`);
+  }
+  return slot;
 };
 
 function reorderPages(pdf, from, to) {
@@ -27,13 +37,14 @@ async function applyOperation(pdf, operation) {
     if (count <= 1) throw new Error('A PDF must keep at least one page.');
     pdf.removePage(pageNumber(operation.page, count, 'page') - 1);
   } else if (type === 'insert') {
-    const afterPage = pageNumber(operation.afterPage, count, 'afterPage');
-    const reference = pdf.getPage(afterPage - 1);
-    const { width, height } = reference.getSize();
+    // Sized like the page above it as shown (utils/blankPageSize.js).
+    const afterPage = slotNumber(operation.afterPage, count, 'afterPage');
+    const reference = pdf.getPage(blankPageReferencePage(afterPage, count) - 1);
+    const { width, height } = blankPageSize({ ...reference.getSize(), rotation: reference.getRotation().angle });
     pdf.insertPage(afterPage, [width, height]);
   } else if (type === 'duplicate' || type === 'copy') {
     const source = pageNumber(operation.page ?? operation.source, count, 'source');
-    const afterPage = pageNumber(operation.afterPage ?? operation.page ?? operation.target, count, 'afterPage');
+    const afterPage = slotNumber(operation.afterPage ?? operation.page ?? operation.target, count, 'afterPage');
     const [copied] = await pdf.copyPages(pdf, [source - 1]);
     pdf.insertPage(afterPage, copied);
   } else if (type === 'move' || type === 'reorder') {

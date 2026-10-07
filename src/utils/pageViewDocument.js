@@ -15,6 +15,8 @@
 // The operations mirror utils/pdfPageMutation.js exactly, so the view always
 // shows what the rewritten bytes will contain.
 
+import { blankPageReferencePage, blankPageSize } from './blankPageSize.js';
+
 const VIEW = Symbol('surveyPageView');
 let viewSeq = 0;
 
@@ -225,6 +227,15 @@ const pageIndexOf = (value, count, label) => {
   return page - 1;
 };
 
+// An insertion slot as an index: -1 = before the first page.
+const slotIndexOf = (value, count, label) => {
+  const slot = Number(value);
+  if (!Number.isInteger(slot) || slot < 0 || slot > count) {
+    throw new RangeError(`${label} must be between 0 and ${count}`);
+  }
+  return slot - 1;
+};
+
 // Returns a NEW view with `operation` applied (same op shapes as
 // mutatePdfPages). `doc` may be the base document or a previous view.
 export function applyPageViewOperation(doc, operation, options = {}) {
@@ -238,18 +249,24 @@ export function applyPageViewOperation(doc, operation, options = {}) {
     if (count <= 1) throw new Error('A PDF must keep at least one page.');
     entries.splice(pageIndexOf(operation.page, count, 'page'), 1);
   } else if (type === 'insert') {
-    const after = pageIndexOf(operation.afterPage, count, 'afterPage');
-    const reference = entries[after];
-    let blank = reference.blank ? { ...reference.blank } : reference.media ? { ...reference.media } : null;
-    if (!blank) {
-      // Size unknown yet: the displayed size, unturned by any known rotation.
-      const turned = normRotation((reference.baseRotate || 0) + (reference.rot || 0)) % 180 !== 0;
-      blank = reference.size ? (turned ? swapSize(reference.size) : { ...reference.size }) : { width: 612, height: 792 };
-    }
+    // Sized like the page above it as shown, stored unturned
+    // (utils/blankPageSize.js, the same rule as the pdf-lib rewrite).
+    const after = slotIndexOf(operation.afterPage, count, 'afterPage');
+    const reference = entries[blankPageReferencePage(after + 1, count) - 1];
+    const media = reference.blank || reference.media;
+    // How far the reference is turned on screen (null when its own
+    // rotation is not known yet; then its displayed size is used).
+    let turn = null;
+    if (reference.blank) turn = reference.rot || 0;
+    else if (reference.baseRotate != null) turn = reference.baseRotate + (reference.rot || 0);
+    let blank;
+    if (media && turn != null) blank = blankPageSize({ ...media, rotation: turn });
+    else if (reference.size) blank = { width: reference.size.width, height: reference.size.height };
+    else blank = blankPageSize({ ...(media || {}), rotation: reference.rot || 0 });
     entries.splice(after + 1, 0, { src: null, rot: 0, blank, size: { ...blank }, media: { ...blank }, baseRotate: 0 });
   } else if (type === 'duplicate' || type === 'copy') {
     const source = pageIndexOf(operation.page ?? operation.source, count, 'source');
-    const after = pageIndexOf(operation.afterPage ?? operation.page ?? operation.target, count, 'afterPage');
+    const after = slotIndexOf(operation.afterPage ?? operation.page ?? operation.target, count, 'afterPage');
     entries.splice(after + 1, 0, { ...entries[source] });
   } else if (type === 'move' || type === 'reorder') {
     const from = pageIndexOf(operation.from, count, 'from');

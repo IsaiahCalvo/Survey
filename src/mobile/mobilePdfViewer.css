@@ -3797,10 +3797,11 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
 }
 
 .mobile-page-preview {
-  /* UX 2026-09-22: in the two-column grid the thumbnail fills its card and
-     keeps the page's own shape (the inline padding-bottom ratio), instead of
-     a fixed 92x112 portrait box floating in a wider card. */
-  width: 100% !important;
+  /* UX 2026-09-22: in the two-column grid the thumbnail keeps the page's own
+     shape instead of a fixed 92x112 portrait box floating in a wider card.
+     Owner 2026-10-07: its width / shape are inline (sidebar/pageThumbnailBox.js,
+     the same square fit as desktop), so a page turned on its side is no taller
+     than a letter page; this rule must not force the width back to 100%. */
   height: auto !important;
   flex: 0 0 auto;
   /* A page thumbnail is a picture of PAPER, so it keeps paper colours — the
