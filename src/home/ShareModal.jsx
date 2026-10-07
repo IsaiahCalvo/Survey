@@ -316,7 +316,7 @@ export default function ShareModal({
             />
           )}
           {success && (
-            <div style={{ background: 'var(--accent-soft)', border: `1px solid ${C.gold}`, borderRadius: 6, padding: '8px 10px', color: C.gold, fontSize: 12 }}>
+            <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 10px', color: 'var(--success-text)', fontSize: 12 }}>
               {success}
             </div>
           )}
