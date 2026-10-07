@@ -357,6 +357,13 @@ async function runGrant({ client, documentId, userId, ownerName = null, template
   });
   if (members.length === 0) return { granted: 0, upgraded: 0, skipped: 'not shared' };
 
+  // Record which of my templates this document uses (owner-approved
+  // 2026-10-07, migration 20261007180000_document_templates.sql), so a member
+  // who joins later can claim them without me being online. Best effort: an
+  // older database without the table simply refuses and the grant below still
+  // covers everyone who is a member now.
+  await linkDocumentTemplates({ client, documentId, userId, templateRowIds: mineIds });
+
   const { data: existing, error: existingError } = await client
     .from('template_collaborators').select('id, template_id, user_id, role, status').in('template_id', mineIds);
   if (existingError) return { granted: 0, upgraded: 0, skipped: existingError.message };
@@ -403,6 +410,33 @@ export async function grantRememberedDocumentTemplates({ client, documentId, use
     return await grantDocumentTemplates({ client, documentId, userId: user.id, ownerName: ownerDisplayName(user), templateRowIds: ids });
   } catch (err) {
     return { granted: 0, upgraded: 0, skipped: err?.message || String(err) };
+  }
+}
+
+/** Link my templates to a document (document_templates). Never throws. */
+export async function linkDocumentTemplates({ client, documentId, userId, templateRowIds = [] } = {}) {
+  try {
+    const ids = [...new Set((templateRowIds || []).filter(isUuid))];
+    if (!client?.from || !isUuid(documentId) || !userId || ids.length === 0) return false;
+    const rows = ids.map((templateId) => ({ document_id: documentId, template_id: templateId, linked_by: userId }));
+    const { error } = await client.from('document_templates')
+      .upsert(rows, { onConflict: 'document_id,template_id', ignoreDuplicates: true });
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+/** As a member: take the templates the owner linked to this document
+ *  (claim_document_templates gives editor or viewer from my document role).
+ *  Returns how many rows it added or raised; 0 on any refusal. Never throws. */
+export async function claimDocumentTemplates({ client, documentId } = {}) {
+  try {
+    if (!client?.rpc || !isUuid(documentId)) return 0;
+    const { data, error } = await client.rpc('claim_document_templates', { p_document_id: documentId });
+    return error ? 0 : (Number(data) || 0);
+  } catch {
+    return 0;
   }
 }
 

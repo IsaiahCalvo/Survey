@@ -9,14 +9,16 @@
 //     device, which templates the document uses, so a share made later from
 //     Home can grant them straight away.
 //   * In every member's app: when the document has survey markers from a
-//     template this person does not have yet, the templates lists read again
-//     once, which picks up a grant the owner's app made since sign-in.
+//     template this person does not have yet, it claims the templates the
+//     owner linked to the document (claim_document_templates), then the
+//     templates lists read again once.
 //
 // Nothing here runs for a document without a database id (local files, the
 // plain test route).
 import { useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import {
+  claimDocumentTemplates,
   grantDocumentTemplates,
   isUuid,
   ownTemplateRowIds,
@@ -87,8 +89,10 @@ export default function useSharedDocumentTemplates({
     if (!needsUnknownTemplate || refreshedForRef.current === documentId) return undefined;
     const timer = setTimeout(() => {
       refreshedForRef.current = documentId;
-      refreshTemplateLists();
+      // Claim what the owner linked to this document first (works while the
+      // owner is away), then read the lists again either way.
+      claimDocumentTemplates({ client, documentId }).finally(refreshTemplateLists);
     }, delayMs);
     return () => clearTimeout(timer);
-  }, [needsUnknownTemplate, documentId, delayMs]);
+  }, [needsUnknownTemplate, client, documentId, delayMs]);
 }
