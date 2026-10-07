@@ -3,10 +3,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 // list matches the sync status hint and the rail tooltips beside it.
 import { TOOLTIP_SURFACE } from './Tooltip';
 import {
-  PRESENCE_INK,
   PRESENCE_STATE_LABEL,
   assignPresenceTints,
   presenceInitials,
+  presenceFaceColors,
   presenceLabel,
   presencePeopleRows,
   presenceRowForUser,
@@ -28,7 +28,9 @@ import {
  *   - the status dot is 8px + the same 2px ring, centred on the face's edge at
  *     4:30: calm green = here now, hollow grey ring = idle (shape, not only
  *     colour, tells them apart);
- *   - you are always first, in calm grey; other people get muted tints.
+ *   - you are always first; everyone (you too) wears their own pastel from
+ *     utils/userColors.js, the same one they have everywhere else, and an
+ *     idle face turns grey (grey means inactive, owner 2026-10-07).
  *
  * Fit (the footer never wraps or overflows):
  *   expanded rail (`row`)   — three slots in a row: up to three faces, or two
@@ -249,7 +251,7 @@ export default function PresenceAvatars({
   );
 }
 
-// One face: initials on the person's tint, a ring in the surface colour, and
+// One face: initials on the person's pastel (grey while idle), a ring in the surface colour, and
 // the status dot on the edge at 4:30. In a group each face paints over the one
 // before it (Astryx order) but every status dot paints above all the faces,
 // its surface ring cutting a clean notch into the next face.
@@ -269,8 +271,8 @@ function Face({ person, offset = 0, vertical = false, size = FACE, dot = DOT, ri
         height: `${size}px`,
         flexShrink: 0,
         borderRadius: '50%',
-        background: person.tint,
-        color: PRESENCE_INK,
+        // The person's pastel with dark initials; grey while idle.
+        ...presenceFaceColors(person.tint, person.state),
         boxShadow: inGroup ? `0 0 0 ${RING}px ${ringColor}` : undefined,
         display: 'inline-flex',
         alignItems: 'center',

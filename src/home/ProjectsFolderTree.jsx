@@ -26,6 +26,7 @@ import { createPortal } from 'react-dom';
 import { mergeProjectDocumentOrder, orderDocumentsByProject } from './projectDocumentOrder.js';
 import { HubShell, Icon, Avatar, AvatarStack, Search, EmptyState } from './HubShell';
 import { presenceInitials } from '../components/presenceIdentity.js';
+import { userColorFill } from '../utils/userColors.js';
 import { countLabel } from './countLabel.js';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from '../components/SectionIconButton.jsx';
 import ManageTeamModal from './ManageTeamModal';
@@ -91,6 +92,7 @@ const ProjectTeamSummary = ({ memberIds, lookupMember }) => (
   >
     <AvatarStack
       members={memberIds.slice(0, 3).map((id) => initialsOf(lookupMember(id)?.name))}
+      ids={memberIds.slice(0, 3)}
       size={14}
     />
     <span className="mono meta" style={{ fontSize: 11 }}>{memberIds.length}</span>
@@ -392,27 +394,21 @@ export default function ProjectsFolderTree({
           name: user.name || user.email?.split('@')[0] || 'You',
           email: user.email || '',
           role: 'Owner',
-          // Literal gold (not a CSS var): the Manage Team modal renders
-          // outside the `.survey-hub` root where CSS vars are not in scope.
-          color: 'var(--accent)',
+          // Your own pastel (utils/userColors.js, owner 2026-10-07): the
+          // same face as the account button and the viewer - not gold.
+          color: userColorFill(user.id),
           online: true,
         }
       : null
   ), [user]);
 
-  // Deterministic avatar colors for real collaborators (owner keeps gold).
-  const COLLAB_COLORS = ['#5fbf83', '#7aa2f7', '#b48ead', '#8fbcbb', '#cf9f6f'];
-  const collabColor = (seed) => {
-    const s = String(seed || '');
-    let h = 0;
-    for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-    return COLLAB_COLORS[h % COLLAB_COLORS.length];
-  };
+  // Every member's face is their own pastel from their user id
+  // (utils/userColors.js), the same colour they wear everywhere else.
 
   const memberById = useMemo(() => {
     const map = new Map();
     if (ownerMember) map.set(ownerMember.id, ownerMember);
-    members.forEach((m) => { if (m && m.id != null) map.set(m.id, m); });
+    members.forEach((m) => { if (m && m.id != null) map.set(m.id, { ...m, color: userColorFill(m.id) }); });
     // Real collaborator rows → directory records (name from the stored email
     // prefix; role capitalized). Owner/host records take precedence.
     collabByProject.forEach((rows) => {
@@ -425,7 +421,7 @@ export default function ProjectsFolderTree({
           name,
           email: r.email || '',
           role: role.charAt(0).toUpperCase() + role.slice(1),
-          color: collabColor(r.user_id),
+          color: userColorFill(r.user_id),
           online: false,
         });
       });
@@ -474,7 +470,7 @@ export default function ProjectsFolderTree({
         initials: m ? initialsOf(m.name) : '—',
         email: m?.email || '',
         role: m?.role || 'Member',
-        color: m?.color || 'var(--accent)',
+        color: m?.color || userColorFill(id),
         added,
       };
     });
@@ -1198,7 +1194,7 @@ export default function ProjectsFolderTree({
                             {/* "Last edited by" — file's owner resolved against
                                 the member directory: avatar + first name. */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                              <Avatar initials={ownerInitials} size={18} color={owner?.color} />
+                              <Avatar initials={ownerInitials} size={18} id={ownerId} />
                               <span className="meta" style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ownerFirst}</span>
                             </div>
                             {/* 16px line: the mono glyph box is 14px, so an even
@@ -1260,7 +1256,7 @@ export default function ProjectsFolderTree({
                           const memName = mem?.name || 'Teammate';
                           return (
                             <div key={m} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <Avatar initials={mem ? initialsOf(mem.name) : '—'} size={22} color={mem?.color} />
+                              <Avatar initials={mem ? initialsOf(mem.name) : '—'} size={22} id={m} />
                               <div style={{ minWidth: 0, flex: 1 }}>
                                 <div style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{memName}</div>
                                 <div className="meta" style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -1686,6 +1682,7 @@ export default function ProjectsFolderTree({
                 <div className="mobile-card-meta" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                   <AvatarStack
                     members={projMembers.slice(0, 3).map((id) => initialsOf(lookupMember(id)?.name))}
+                    ids={projMembers.slice(0, 3)}
                     size={14}
                   />
                   <span>{projectFileCount(p.id)} files · {projectLastEditedLabel(p.id)}</span>
@@ -1729,7 +1726,7 @@ export default function ProjectsFolderTree({
                 >
                   <span className="projects-mobile-compact-title">{p.name}</span>
                   <span>{projectFileCount(p.id)} files</span>
-                  <AvatarStack members={projMembers.slice(0, 3).map((id) => initialsOf(lookupMember(id)?.name))} size={14} />
+                  <AvatarStack members={projMembers.slice(0, 3).map((id) => initialsOf(lookupMember(id)?.name))} ids={projMembers.slice(0, 3)} size={14} />
                 </button>
               );
             })}
@@ -1786,7 +1783,7 @@ export default function ProjectsFolderTree({
                   onClick={() => setOpenId(p.id)}
                 >
                   <span className="projects-mobile-team-name">{p.name}</span>
-                  <AvatarStack members={team.slice(0, 4).map((id) => initialsOf(lookupMember(id)?.name))} size={16} />
+                  <AvatarStack members={team.slice(0, 4).map((id) => initialsOf(lookupMember(id)?.name))} ids={team.slice(0, 4)} size={16} />
                   <span>{countLabel(team.length, 'member')} · {countLabel(projectFileCount(p.id), 'file')}</span>
                 </button>
               );
@@ -1883,7 +1880,7 @@ export default function ProjectsFolderTree({
                 const memName = mem?.name || 'Teammate';
                 return (
                   <div key={`mobile-team-${m}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Avatar initials={mem ? initialsOf(mem.name) : '—'} size={22} color={mem?.color} />
+                    <Avatar initials={mem ? initialsOf(mem.name) : '—'} size={22} id={m} />
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 12, fontWeight: 600 }}>{memName}</div>
                       <div className="meta" style={{ fontSize: 11 }}>{mem?.role || 'Member'}</div>
@@ -1919,7 +1916,7 @@ export default function ProjectsFolderTree({
                 const memName = mem?.name || 'Teammate';
                 return (
                   <div key={`team-layout-${m}`} className="projects-mobile-member-row">
-                    <Avatar initials={mem ? initialsOf(mem.name) : '—'} size={24} color={mem?.color} />
+                    <Avatar initials={mem ? initialsOf(mem.name) : '—'} size={24} id={m} />
                     <div>
                       <div>{memName}</div>
                       <span>{mem?.role || 'Member'}</span>

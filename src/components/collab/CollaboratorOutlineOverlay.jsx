@@ -32,6 +32,7 @@
 // editors initially; per-page bbox feed is a follow-up (Phase 32 hardening).
 
 import { useMemo } from 'react';
+import { userColor } from '../../utils/userColors.js';
 import './CollaboratorOutlineOverlay.css';
 
 /**
@@ -67,7 +68,11 @@ export function CollaboratorOutlineOverlay({ pageNumber, pageSize, editors = [] 
         y: e.bbox.top - offset,
         width: e.bbox.width + offset * 2,
         height: e.bbox.height + offset * 2,
-        colorVar: `var(--user-color-${slot}, #4A90E2)`,
+        // Owner 2026-10-07: colour = person. With a user id the outline is that
+        // person's own colour (utils/userColors.js, the darker `line` twin of
+        // their face pastel, so it shows on white paper); the old slot
+        // variable is only the fallback for an awareness entry with no id.
+        colorVar: e.userId ? userColor(e.userId).line : `var(--user-color-${slot}, #4A90E2)`,
       };
     });
   }, [editors]);
