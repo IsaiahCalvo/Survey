@@ -10,11 +10,48 @@
  */
 import { supabase } from '../supabaseClient.js';
 import { slimHistoryPreviewBefore } from '../utils/historyPreviewAnnotation.js';
+import { LIVE_EDIT_FLAG, LIVE_PREVIEW_FLAG } from './annotationLiveOverlay.js';
 
 const HISTORY_EVENT_LIMIT = 200;
 const MAX_PAYLOAD_CHARS = 12000;
 const LOCAL_HISTORY_STORAGE_KEY = 'survey_document_history_events_v1';
 let warnedMissingTable = false;
+
+// 2026-10-06 (real two-account run, TEST-PLAN 61): a mark recoloured while
+// another screen was dragging it is that screen's live overlay copy, which
+// carries LIVE_EDIT_FLAG = "writer\u0000seq\u0000key". It went into the History
+// row's preview, and Postgres refuses any text/jsonb holding U+0000 (22P05),
+// so the whole row was lost. Live flags are screen-only state (a restored mark
+// carrying one would be treated as an overlay), and NUL can never be stored:
+// clean every row before it is shown, cached or sent. Returns the same object
+// when there is nothing to clean.
+const SCREEN_ONLY_KEYS = new Set([LIVE_EDIT_FLAG, LIVE_PREVIEW_FLAG]);
+const NUL_RE = /\u0000/g;
+
+export function historyRowForStorage(value, depth = 0) {
+  if (typeof value === 'string') return value.includes('\u0000') ? value.replace(NUL_RE, '') : value;
+  if (!value || typeof value !== 'object' || depth > 64) return value;
+  if (Array.isArray(value)) {
+    let changed = false;
+    const out = value.map((item) => {
+      const next = historyRowForStorage(item, depth + 1);
+      if (next !== item) changed = true;
+      return next;
+    });
+    return changed ? out : value;
+  }
+  const proto = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null) return value;
+  let changed = false;
+  const out = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (SCREEN_ONLY_KEYS.has(key)) { changed = true; continue; }
+    const next = historyRowForStorage(item, depth + 1);
+    if (next !== item) changed = true;
+    out[key] = next;
+  }
+  return changed ? out : value;
+}
 
 function isMissingHistoryTableError(error) {
   return error?.code === '42P01' || String(error?.message || '').includes('document_history_events');
@@ -329,7 +366,7 @@ export function buildHistoryEventRowFromDebugEvent(event, { documentId, user } =
 
   const actorName = getActorName(user);
   const pageNumber = Number(event.pageNumber ?? event.context?.pageNumber);
-  const compactPayload = trimPayload(event);
+  const compactPayload = historyRowForStorage(trimPayload(event));
   const order = event.order ?? event.checkpointId ?? event.seq ?? Date.now();
   const source = event.historySource || event.lane || event.chosenSource || null;
   const occurredAt = event.timestamp || event.at || new Date().toISOString();
@@ -425,8 +462,9 @@ export function buildPartialEraseHistoryRow({
   };
 }
 
-export async function recordDocumentHistoryEvent(row) {
-  if (!row?.document_id || !row?.client_event_id) return { data: null, error: null };
+export async function recordDocumentHistoryEvent(rawRow) {
+  if (!rawRow?.document_id || !rawRow?.client_event_id) return { data: null, error: null };
+  const row = historyRowForStorage(rawRow);
   cacheLocalHistoryRow(row);
   if (!supabase) return { data: null, error: null };
   // w55: created_at is left to the server (column default NOW()) so it is the
@@ -481,8 +519,9 @@ export function notifyDocumentHistoryEventRecorded(row) {
   }
 }
 
-export async function recordAndNotifyDocumentHistoryEvent(row) {
-  if (!row?.document_id || !row?.client_event_id) return { data: null, error: null };
+export async function recordAndNotifyDocumentHistoryEvent(rawRow) {
+  if (!rawRow?.document_id || !rawRow?.client_event_id) return { data: null, error: null };
+  const row = historyRowForStorage(rawRow);
   notifyDocumentHistoryEventRecorded(row);
   return recordDocumentHistoryEvent(row);
 }
