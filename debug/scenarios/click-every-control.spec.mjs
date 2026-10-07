@@ -296,6 +296,16 @@ test.describe('desktop 1440x900', () => {
       async () => (await hidden(page, '#left-rail-panel'))
         && (await button(page, 'Spaces').getAttribute('aria-expanded')) === 'false');
     await page.waitForTimeout(300);
+    // Owner 2026-10-07 (rail headers round): every panel's title row ends in
+    // a close glyph that closes it exactly like its open tab.
+    for (const [name] of leftPanels) {
+      await button(page, name).click({ timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(300);
+      await step(`left rail: ${name} close (x)`, () => button(page, `Close ${name}`).click({ timeout: 5000 }),
+        async () => (await hidden(page, '#left-rail-panel'))
+          && (await button(page, name).getAttribute('aria-expanded')) === 'false');
+      await page.waitForTimeout(300);
+    }
 
     // Ctrl/Cmd+F with the sidebar closed: the search field opens AND has focus
     // (round 4 broke this silently).
@@ -314,12 +324,20 @@ test.describe('desktop 1440x900', () => {
     await step('right rail: Survey tab closes the panel', () => button(page, 'Survey').click({ timeout: 5000 }),
       () => hidden(page, '.survey-rail:not(.is-collapsed)'));
     await page.waitForTimeout(300);
+    await button(page, 'Survey').click({ timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    await step('right rail: template list close (x)', () => button(page, 'Close Survey').click({ timeout: 5000 }),
+      async () => (await hidden(page, '.survey-rail:not(.is-collapsed)'))
+        && (await button(page, 'Survey').getAttribute('aria-expanded')) === 'false');
+    await page.waitForTimeout(300);
 
     // The survey bar (owner 2026-10-07): in with a template, its template
     // menu, "Done" out with a toast, Undo back in, Done again.
     await button(page, 'Survey').click({ timeout: 5000 }).catch(() => {});
     await step('Survey: pick a template', () => page.getByRole('button', { name: /Walk Template/ }).filter({ visible: true }).first().click({ timeout: 5000 }),
       () => shown(page, '.survey-subrow'));
+    await step('Survey panel: close (x) keeps Survey on', () => button(page, 'Close Survey').click({ timeout: 5000 }),
+      async () => (await hidden(page, '.survey-rail:not(.is-collapsed)')) && shown(page, '.survey-subrow'));
     await step('survey bar: template menu', () => page.getByRole('button', { name: /^Survey template: / }).filter({ visible: true }).first().click({ timeout: 5000 }),
       () => shown(page, '[data-survey-template-menu] [role="option"]'));
     await step('survey bar: template menu closes (Escape stays in Survey)', () => page.keyboard.press('Escape'),

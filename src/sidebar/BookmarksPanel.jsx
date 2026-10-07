@@ -7,6 +7,7 @@
  * onBookmarkCreate/Update/Delete to mutate the flat bookmarks array owned by App.
  */
 import React, { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   DndContext,
   KeyboardSensor,
@@ -790,7 +791,10 @@ const BookmarksPanel = ({
   // bubbles, up/down move buttons; BookmarkRow.tsx / styles.ts:1306-1391) inside
   // the bottom sheet. Reuses the same navigate + onBookmarkUpdate(order) paths as
   // desktop; no new store writes. Desktop rendering is untouched.
-  mobileMode = false
+  mobileMode = false,
+  // Desktop (owner 2026-10-07, rail headers round): the rail's title row slot
+  // the header actions are drawn into, in line with the "Bookmarks" title.
+  headActionsHost = null
 }) => {
   const tip = useTooltip();
   const [expandedFolders, setExpandedFolders] = useState(() => new Set(initialExpandedFolders));
@@ -2131,20 +2135,15 @@ const BookmarksPanel = ({
         way better"), right-aligned in the [Select] [Add] order every list
         header uses: [Edit] [Add]. Edit's glyph turns gold while editing. The
         6px side pad puts each 28px box's glyph on the 12px edge.
+        Owner 2026-10-07 (rail headers round): on desktop the two icons sit in
+        the rail's title row, right after "Bookmarks" ("in line with the
+        title, but on the left"), so this row of their own is gone there; the
+        Add menu still drops down from that title row (it is the positioned
+        box the portal lands in).
       */}
-      <div style={{
-        position: 'relative',
-        height: '40px',
-        boxSizing: 'border-box',
-        padding: '0 6px',
-        background: 'var(--panel-bg)',
-        borderBottom: '1px solid var(--border)',
-        display: 'flex',
-        justifyContent: 'flex-end',
-        alignItems: 'center',
-        gap: '2px',
-        flexShrink: 0
-      }}>
+      {(() => {
+      const headActions = (
+      <>
         <SectionIconButton
           action="edit"
           icon="editList"
@@ -2307,7 +2306,27 @@ const BookmarksPanel = ({
                 </div>
               )}
         </div>
+      </>
+      );
+      if (headActionsHost) return createPortal(headActions, headActionsHost);
+      return (
+      <div style={{
+        position: 'relative',
+        height: '40px',
+        boxSizing: 'border-box',
+        padding: '0 6px',
+        background: 'var(--panel-bg)',
+        borderBottom: '1px solid var(--border)',
+        display: 'flex',
+        justifyContent: 'flex-end',
+        alignItems: 'center',
+        gap: '2px',
+        flexShrink: 0
+      }}>
+        {headActions}
       </div>
+      );
+      })()}
 
       {/* Bookmarks List with Drag-and-Drop */}
       <div
