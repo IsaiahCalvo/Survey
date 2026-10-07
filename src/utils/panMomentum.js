@@ -24,6 +24,11 @@ export const PAN_MOMENTUM_DEFAULTS = Object.freeze({
   // Frame delta clamp: a backgrounded tab must not teleport the page.
   minFrameMs: 1,
   maxFrameMs: 32,
+  // The first glide frame moves at least one 60 Hz frame's worth. The release
+  // event can land a moment before the next frame; timing the first step from
+  // it made that frame move almost nothing - a one-frame stop right as the
+  // finger let go (owner 2026-10-07, "this reset that happens").
+  minFirstFrameMs: 1000 / 60,
   // Velocity is sampled from the trailing window of pointer moves only.
   sampleWindowMs: 140,
   // Exponential moving average weight kept from the previous sample.
@@ -264,6 +269,7 @@ export function createPanMomentumRunner({
   let vx = 0;
   let vy = 0;
   let last = 0;
+  let firstTick = false;
   // Where the surface stood after the runner's own last write. Used to notice
   // that somebody else moved the scroller between frames.
   let written = null;
@@ -279,7 +285,9 @@ export function createPanMomentumRunner({
 
   const tick = (frameTime) => {
     handle = 0;
-    const dt = clampFrameDelta((Number(frameTime) || now()) - last, cfg);
+    const raw = (Number(frameTime) || now()) - last;
+    const dt = clampFrameDelta(firstTick ? Math.max(raw, cfg.minFirstFrameMs) : raw, cfg);
+    firstTick = false;
     last = Number(frameTime) || now();
     const before = getScroll();
     // A programmatic jump (page nav, thumbnail, bookmark, search hit, a
@@ -327,6 +335,7 @@ export function createPanMomentumRunner({
         return false;
       }
       last = now();
+      firstTick = true;
       handle = requestFrame(tick);
       return true;
     },

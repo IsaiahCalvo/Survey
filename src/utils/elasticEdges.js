@@ -60,6 +60,16 @@ export function inverseRubberBand(offset, dimension, coefficient = ELASTIC_RUBBE
   return sign * ((d / coefficient) * (1 / (1 - ay / d) - 1));
 }
 
+/**
+ * How fast the page moves per px of finger travel at `excess` px past an edge
+ * (the slope of rubberBand): `coefficient` right at the edge, ever less further out.
+ */
+export function rubberBandSlope(excess, dimension, coefficient = ELASTIC_RUBBER_COEFFICIENT) {
+  const d = Math.max(1e-6, finite(dimension, 1));
+  const k = (Math.abs(finite(excess)) * coefficient) / d + 1;
+  return coefficient / (k * k);
+}
+
 /** Clamp `value` into [min, max], letting what is past either end through with resistance. */
 export function rubberClamp(value, min, max, dimension, coefficient = ELASTIC_RUBBER_COEFFICIENT) {
   const v = finite(value);
@@ -211,13 +221,48 @@ export function resolveElasticPanStep({ scroll = 0, max = 0, excess = 0, delta =
 }
 
 /**
+ * Letting go while the page is pulled past an edge, for one axis (owner
+ * 2026-10-07: "from side to side ... there's this reset ... it gets stuck in
+ * the middle"). That axis used to drop the finger's speed: the page stopped
+ * dead in the release frame and then crept back from rest, so flicking side
+ * to side never swung through. Now the page carries on as fast as it moved:
+ *  - heading back in where there is document to scroll: the glide takes the
+ *    finger's speed like any other flick, and the stretch springs home on top
+ *    of it from rest (so the page only ever speeds up through the edge);
+ *  - heading further out, or across a page that fits on this axis (nothing
+ *    to scroll): the edge spring starts with the page's own speed (the
+ *    finger's times the rubber band's give), so it runs on a little or swings
+ *    through the middle, then settles. Capped like a flick into an edge.
+ * `shown` is the page's offset past the edge (screen px, + = right / down),
+ * `excess` the finger travel behind it, `velocity` the finger's (screen px/ms),
+ * `room` whether the document can scroll the way the finger is heading.
+ * A drift back in too slow to glide past the stretch on its own (glide
+ * distance v * tau under |shown|) springs instead, so a slow let-go still
+ * lands exactly on the edge, every time.
+ * Returns { glide } (px/ms, for the coast) and { spring } (px/s, edge spring).
+ */
+export function resolveEdgeRelease({
+  shown = 0, excess = 0, velocity = 0, dimension = 1, room = false, glideTauMs = 500,
+} = {}) {
+  const v = finite(velocity);
+  const x = finite(shown);
+  if (!x) return { glide: v, spring: 0 };
+  if (v && Math.sign(v) !== Math.sign(x) && room && Math.abs(v) * finite(glideTauMs, 500) > Math.abs(x)) {
+    return { glide: v, spring: 0 };
+  }
+  const page = v * rubberBandSlope(excess, dimension) * 1000;
+  return { glide: 0, spring: capBounceVelocity(page, dimension) };
+}
+
+/**
  * A two-axis edge offset with its own spring (review 9 / robust 10 item 2):
  * a one-finger pan that reaches an edge while a zoom-limit bounce is still
  * easing used to REPLACE the bounce with its edge offset - the zoom snapped
  * back to x1 in one frame. Its edge offset lives here instead, drawn as a
  * plain translation on top of the bounce, so both run to the end on their own
- * clocks. set() while the finger holds it; release(now) springs it home on the
- * edge spring; frame(now) -> { x, y, active }.
+ * clocks. set() while the finger holds it; release(now, { vx, vy }) springs it
+ * home on the edge spring, starting at that speed (px/s; from rest when left
+ * out); frame(now) -> { x, y, active }.
  */
 export function createOffsetSpring({ omega = ELASTIC_SPRING_OMEGA } = {}) {
   let s = { mode: 'idle', x: 0, y: 0, t0: 0, vx: 0, vy: 0 };
@@ -230,8 +275,8 @@ export function createOffsetSpring({ omega = ELASTIC_SPRING_OMEGA } = {}) {
   };
   return {
     set(x, y) { s = { mode: x || y ? 'held' : 'idle', x: finite(x), y: finite(y), t0: 0, vx: 0, vy: 0 }; },
-    release(now) {
-      if (s.mode === 'held') s = { ...s, mode: 'spring', t0: finite(now) };
+    release(now, { vx = 0, vy = 0 } = {}) {
+      if (s.mode === 'held') s = { ...s, mode: 'spring', t0: finite(now), vx: finite(vx), vy: finite(vy) };
     },
     frame(now) {
       if (s.mode === 'idle') return { x: 0, y: 0, active: false };

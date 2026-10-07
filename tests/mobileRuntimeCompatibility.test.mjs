@@ -432,7 +432,10 @@ test('mobile pan keeps two-axis velocity and coasts after release', () => {
   // instead of gliding; the other axis still coasts with its own velocity.
   // 2026-10-07: a finger flick says it is touch, so it glides like iOS
   // (panMomentum TOUCH_PAN_MOMENTUM); the desktop pointer glide is unchanged.
-  assert.match(PDFJS_VIEWER_SOURCE, /startPanInertia\(\s*elasticPan && pulled\.x \? 0 : velocityX,\s*elasticPan && pulled\.y \? 0 : velocityY,\s*\{ elastic: elasticPan, touch: true \},\s*\)/);
+  // 2026-10-07 (side to side): the pulled axis no longer drops its speed - it
+  // carries on into the glide or the edge spring (resolveEdgeRelease).
+  assert.match(PDFJS_VIEWER_SOURCE, /const release = releaseElasticPan\(velocityX, velocityY, \{ touch: true \}\);\s*releaseLayoutShift\(\);\s*startPanInertia\(release\.vx, release\.vy, \{ elastic: release\.elastic, touch: true \}\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /resolveEdgeRelease\(\{/);
   assert.match(PDFJS_VIEWER_SOURCE, /panVelocityRef\.current\.release\(performance\.now\(\)\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /PDF pan coast distance/);
   assert.match(PAN_MOMENTUM_SOURCE, /state\.samples\.push/);
@@ -830,6 +833,8 @@ test('phone viewer: resize under a gesture is absorbed; drags from links pan', (
 test('phone viewer: a pan during a zoom bounce rides on top of it', () => {
   assert.match(PDFJS_VIEWER_SOURCE, /touchPanOverEaseRef\.current = elastic && Boolean\(caught\.easing\);/);
   assert.match(PDFJS_VIEWER_SOURCE, /if \(touchPanOverEaseRef\.current\) \{\s*\/\/ The bounce keeps easing on its own; the edge offset rides on top\.\s*panEdgeRef\.current\.set\(sx\.shown, sy\.shown\);/);
-  assert.match(PDFJS_VIEWER_SOURCE, /if \(elasticPan && elasticRef\.current && !elasticRef\.current\.anim\) releaseElastic\(\{ kind: 'spring' \}\);/);
+  // A bounce already animating keeps its own clock; a held pull springs home
+  // carrying the release speed (2026-10-07).
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(elasticPan && held\) releaseElastic\(\{ kind: 'spring', vx: rx\.spring, vy: ry\.spring, lead: 1000 \/ 60 \}\);/);
   assert.match(PDFJS_VIEWER_SOURCE, /liveTranslateY \+= panEdgeShown\.y;/);
 });

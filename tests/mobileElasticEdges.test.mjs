@@ -16,9 +16,11 @@ import {
   criticallyDampedSpring,
   easeInOutSine,
   inverseRubberBand,
+  resolveEdgeRelease,
   resolveElasticPanStep,
   resolveFitCentreShift,
   rubberBand,
+  rubberBandSlope,
   rubberClamp,
   rubberScale,
 } from '../src/utils/elasticEdges.js';
@@ -411,4 +413,86 @@ test('pan over a running bounce: the edge offset is held, then springs home on i
   edge.set(5, 5);
   edge.set(0, 0);
   assert.equal(edge.active(), false);
+});
+
+// ---- side to side, both extents (owner 2026-10-07) ---------------------------
+// "I should be able to go from side to side, both extents, just to continually
+// spring back, but there's this thing where it gets stuck in the middle."
+// Letting go while pulled past an edge used to drop that axis' speed: the page
+// stopped dead in the release frame, then crept back from rest.
+test('rubber band slope: the give per px of finger, steepest at the edge', () => {
+  const d = 764;
+  assert.ok(Math.abs(rubberBandSlope(0, d) - 0.55) < 1e-12);
+  for (const x of [10, 80, 300, -120]) {
+    const h = 1e-3;
+    const numeric = (rubberBand(Math.abs(x) + h, d) - rubberBand(Math.abs(x) - h, d)) / (2 * h);
+    assert.ok(Math.abs(rubberBandSlope(x, d) - numeric) < 1e-6, `matches rubberBand's derivative at ${x}`);
+  }
+  assert.ok(rubberBandSlope(400, d) < rubberBandSlope(100, d));
+});
+
+test('release past an edge: the page carries on at its own speed, never a dead stop', () => {
+  const d = 354;
+  const frame = 1000 / 60;
+  // A fitting page pulled right (left edge showing), finger flicking left
+  // back across the middle at 1.2 px/ms, let go before the middle.
+  let s = { scroll: 0, excess: 0, shown: 0 };
+  s = resolveElasticPanStep({ scroll: 0, max: 0, excess: 0, delta: 150, dimension: d });
+  const shownBefore = s.shown;
+  const step = resolveElasticPanStep({ scroll: 0, max: 0, excess: s.excess, delta: -1.2 * frame, dimension: d });
+  const pageV = (step.shown - shownBefore) / frame; // px/ms the page was moving
+  const r = resolveEdgeRelease({ shown: step.shown, excess: step.excess, velocity: -1.2, dimension: d, room: false });
+  assert.equal(r.glide, 0, 'nothing to scroll on a fitting axis');
+  assert.ok(Math.abs(r.spring / 1000 - pageV) < 0.05 * Math.abs(pageV), 'spring starts at the page speed');
+  // First frame after the lift keeps moving the same way, about as far.
+  const first = criticallyDampedSpring(step.shown, r.spring, frame / 1000).x - step.shown;
+  assert.ok(Math.sign(first) === Math.sign(pageV) && Math.abs(first) > 0.7 * Math.abs(pageV * frame), 'no dead stop');
+  // ...and a hard flick swings through the middle and springs back from the other side.
+  const hard = resolveEdgeRelease({ shown: 40, excess: inverseRubberBand(-40, d), velocity: -3, dimension: d, room: false });
+  let crossed = false;
+  let end = 0;
+  for (let t = 0; t <= 1.5; t += 1 / 60) {
+    end = criticallyDampedSpring(40, hard.spring, t).x;
+    if (end < -0.5) crossed = true;
+  }
+  assert.ok(crossed, 'swings past the middle');
+  assert.ok(Math.abs(end) < 0.2, 'and settles in the middle');
+});
+
+test('release past an edge heading back into a scrollable document glides at the finger speed', () => {
+  const r = resolveEdgeRelease({ shown: 30, excess: -60, velocity: -2, dimension: 354, room: true });
+  assert.deepEqual(r, { glide: -2, spring: 0 }, 'glide takes the flick, the stretch springs home on top from rest');
+  // Not pulled past anything: a plain flick.
+  assert.deepEqual(resolveEdgeRelease({ shown: 0, excess: 0, velocity: 1.5, dimension: 354, room: true }), { glide: 1.5, spring: 0 });
+  // A slow drift back in (would glide less than the stretch) springs instead,
+  // so it still lands exactly on the edge, carrying its speed.
+  const slow = resolveEdgeRelease({ shown: 30, excess: -60, velocity: -0.05, dimension: 354, room: true });
+  assert.equal(slow.glide, 0);
+  assert.ok(slow.spring < 0);
+  for (let t = 0; t <= 1.5; t += 1 / 60) assert.ok(criticallyDampedSpring(30, slow.spring, t).x > -1e-9, 'never past the edge into the page');
+  // Let go without moving: springs home from rest, as before.
+  assert.deepEqual(resolveEdgeRelease({ shown: 30, excess: -60, velocity: 0, dimension: 354, room: true }), { glide: 0, spring: 0 });
+});
+
+test('release past an edge heading further out: runs on a little, capped, then comes home', () => {
+  const d = 354;
+  const r = resolveEdgeRelease({ shown: 50, excess: -110, velocity: 1.2, dimension: d, room: true });
+  assert.equal(r.glide, 0, 'no scroll that way');
+  assert.ok(r.spring > 0);
+  let peak = 50;
+  for (let t = 0; t <= 1.5; t += 1 / 60) peak = Math.max(peak, criticallyDampedSpring(50, r.spring, t).x);
+  assert.ok(peak > 50 && peak < 50 + d * 0.3, 'goes on a little, never past the 30% cap');
+  assert.ok(Math.abs(criticallyDampedSpring(50, r.spring, 1.5).x) < 0.5, 'home');
+  // An absurd flick is capped like a flick into an edge.
+  const wild = resolveEdgeRelease({ shown: 5, excess: -9, velocity: 400, dimension: d, room: false });
+  assert.equal(wild.spring, capBounceVelocity(1e9, d));
+});
+
+test('pan over a running bounce: a release with speed starts the edge spring at that speed', () => {
+  const edge = createOffsetSpring();
+  edge.set(40, 0);
+  edge.release(0, { vx: -600 });
+  const a = edge.frame(1000 / 60);
+  assert.ok(a.x < 40 - 600 / 60 * 0.7, 'moves on at once');
+  assert.equal(edge.frame(2000).active, false);
 });

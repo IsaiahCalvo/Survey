@@ -39,7 +39,7 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { extractPdfOutlineBookmarks } from '../utils/bookmarkOutline';
 import { resolvePinchCommitCursor, resolvePinchEndTransition } from '../utils/mobilePinchGesture';
-import { createPanMomentumRunner, createPanVelocityTracker, isGlideSlowEnoughToSharpen, TOUCH_PAN_MOMENTUM } from '../utils/panMomentum';
+import { createPanMomentumRunner, createPanVelocityTracker, isGlideSlowEnoughToSharpen, PAN_MOMENTUM_DEFAULTS, TOUCH_PAN_MOMENTUM } from '../utils/panMomentum';
 import {
   ELASTIC_ZOOM_EASE_MS,
   WHEEL_OVERSCROLL_IDLE_MS,
@@ -53,6 +53,7 @@ import {
   easeInOutSine,
   inverseRubberBand,
   prefersReducedMotion,
+  resolveEdgeRelease,
   resolveElasticPanStep,
   resolveFitCentreShift,
   rubberClamp,
@@ -1380,6 +1381,17 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const [scale, setScale] = useState(1);
   const [liveZoom, setLiveZoom] = useState(1);
   const [, setLiveGestureFrame] = useState(0);
+  // Edge pull / spring frames run in requestAnimationFrame while the scroll
+  // offset is written straight to the DOM. A plain state update paints the
+  // transform a frame AFTER the scroll (React flushes it in a later task), so
+  // every hand-off between the two - a pull reaching the edge, a glide hitting
+  // it, a release - showed a frame where the page stood still or jumped
+  // (owner 2026-10-07, "this reset that happens"). Those frames render now,
+  // in the same frame. Only from rAF / native input handlers, never from a
+  // React render or effect.
+  const paintLiveFrame = useCallback(() => {
+    flushSync(() => setLiveGestureFrame((frame) => frame + 1));
+  }, []);
   // Mouse/trackpad desktop (the same test as index.html's no-bounce rule).
   const [finePointer] = useState(() => typeof window !== 'undefined'
     && typeof window.matchMedia === 'function'
@@ -2595,7 +2607,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const e = elasticRef.current;
     if (!e?.anim) return;
     const a = e.anim;
-    if (!Number.isFinite(a.t0)) a.t0 = now;
+    // A release's first frame already moves one frame's worth (see `lead`).
+    if (!Number.isFinite(a.t0)) a.t0 = now - (a.lead || 0);
     let done;
     if (a.kind === 'ease') {
       // Zoom limit: Drawboard eases scale AND position home together in ~250 ms
@@ -2619,11 +2632,16 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (a.kind === 'ease') publishElasticZoom(done ? 1 : e.z);
     if (done) elasticRef.current = null;
     else elasticRafRef.current = requestAnimationFrame(stepElastic);
-    setLiveGestureFrame((frame) => frame + 1);
-  }, [publishElasticZoom]);
+    paintLiveFrame();
+  }, [paintLiveFrame, publishElasticZoom]);
 
   // Start (or retarget) the return home from the CURRENT leftover.
-  const releaseElastic = useCallback(({ kind = 'spring', vx = 0, vy = 0 } = {}) => {
+  // `startAt` (ms, the rAF clock) is when the spring really began - a glide
+  // that hit the edge part-way through this frame - and `now` (that frame's
+  // time) draws its first frame at once, in the frame being painted. `lead`
+  // (ms): with no startAt, the first frame starts that far along, so a spring
+  // let go with speed moves on at once instead of standing still for a frame.
+  const releaseElastic = useCallback(({ kind = 'spring', vx = 0, vy = 0, startAt = NaN, now = NaN, lead = 0 } = {}) => {
     const e = elasticRef.current;
     if (!e) return;
     const zoomed = Math.abs(e.z - 1) > 1e-4;
@@ -2633,15 +2651,31 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     }
     e.anim = {
       kind: zoomed ? 'ease' : kind,
-      t0: NaN,
+      t0: zoomed ? NaN : startAt,
       z0: e.z,
       tx0: e.tx,
       ty0: e.ty,
       vx0: vx,
       vy0: vy,
+      lead: zoomed ? 0 : lead,
     };
+    if (!zoomed && Number.isFinite(now)) {
+      if (elasticRafRef.current) cancelAnimationFrame(elasticRafRef.current);
+      elasticRafRef.current = 0;
+      stepElastic(now);
+      return;
+    }
     if (!elasticRafRef.current) elasticRafRef.current = requestAnimationFrame(stepElastic);
   }, [stepElastic, stopElastic]);
+
+  // The edge spring's speed right now (px/s), so a new kick on one axis keeps
+  // the other axis moving exactly as it was.
+  const elasticSpringVelocityAt = useCallback((now) => {
+    const a = elasticRef.current?.anim;
+    if (!a || a.kind !== 'spring' || !Number.isFinite(a.t0)) return { vx: 0, vy: 0 };
+    const t = Math.max(0, now - a.t0) / 1000;
+    return { vx: criticallyDampedSpring(a.tx0, a.vx0, t).v, vy: criticallyDampedSpring(a.ty0, a.vy0, t).v };
+  }, []);
 
   // A finger landing on a page that is still springing home catches it where
   // it is. Returns the shown offset (px) so the new gesture can start from it;
@@ -2917,7 +2951,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const shown = overscroll.frame(now);
       const changed = show(shown.active ? -shown.x : 0, shown.active ? -shown.y : 0);
       if (shown.active) raf = requestAnimationFrame(paint);
-      if (changed) setLiveGestureFrame((frame) => frame + 1);
+      if (changed) paintLiveFrame();
     };
     const schedule = () => { if (!raf) raf = requestAnimationFrame(paint); };
     const release = () => {
@@ -2985,7 +3019,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       overscroll.reset();
       if (show(0, 0)) setLiveGestureFrame((frame) => frame + 1);
     };
-  }, [getHorizontalScrollMax, isMobileSurface]);
+  }, [getHorizontalScrollMax, isMobileSurface, paintLiveFrame]);
 
   // ---- pan: Space always overrides the active tool; writes are rAF-batched --
   const setPanInteraction = useCallback((active) => {
@@ -3013,7 +3047,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // Phone one-finger pan past an edge (owner 2026-10-02, Drawboard parity):
   // the scroll stops at the edge and the rest of the finger travel moves the
   // page with iOS rubber-band resistance, drawn as a transform (no layout).
-  const applyElasticPan = useCallback((dx, dy) => {
+  // Desktop Pan-tool / Space drags use it too (owner 2026-10-07: the same
+  // spring at both extents on phone and desktop). `sync`: called from rAF,
+  // paint the transform in this same frame as the scroll write.
+  const applyElasticPan = useCallback((dx, dy, sync = false) => {
+    const paint = sync ? paintLiveFrame : () => setLiveGestureFrame((frame) => frame + 1);
     const el = scrollerRef.current;
     if (!el) return;
     const excess = panExcessRef.current;
@@ -3033,7 +3071,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       // The bounce keeps easing on its own; the edge offset rides on top.
       panEdgeRef.current.set(sx.shown, sy.shown);
       panEdgeShownRef.current = { x: sx.shown, y: sy.shown };
-      setLiveGestureFrame((frame) => frame + 1);
+      paint();
       return;
     }
     if (!excess.x && !excess.y && !elasticRef.current) return;
@@ -3048,8 +3086,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       anim: null,
     };
     if (!excess.x && !excess.y) elasticRef.current = null;
-    setLiveGestureFrame((frame) => frame + 1);
-  }, [getHorizontalScrollMax]);
+    paint();
+  }, [getHorizontalScrollMax, paintLiveFrame]);
 
   // The over-the-bounce pan edge offset springs home on its own clock.
   const stepPanEdge = useCallback(() => {
@@ -3057,13 +3095,76 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const shown = panEdgeRef.current.frame(performance.now());
     panEdgeShownRef.current = { x: shown.x, y: shown.y };
     if (shown.active && !panEdgeRef.current.held()) panEdgeRafRef.current = requestAnimationFrame(stepPanEdge);
-    setLiveGestureFrame((frame) => frame + 1);
-  }, []);
-  const releasePanEdge = useCallback(() => {
+    paintLiveFrame();
+  }, [paintLiveFrame]);
+  const releasePanEdge = useCallback(({ vx = 0, vy = 0 } = {}) => {
     if (!panEdgeRef.current.held()) return;
-    panEdgeRef.current.release(performance.now());
+    panEdgeRef.current.release(performance.now(), { vx, vy });
     if (!panEdgeRafRef.current) panEdgeRafRef.current = requestAnimationFrame(stepPanEdge);
   }, [stepPanEdge]);
+
+  // A pan starting (finger on the phone, Pan-tool / Space drag on desktop):
+  // a page still springing home is caught where it is, as the finger excess
+  // past the edge. Reduced motion keeps the hard edge. (Was inside the phone
+  // touch effect; shared so desktop drags spring the same way.)
+  const beginElasticPan = useCallback(() => {
+    const elastic = !prefersReducedMotion();
+    const caught = catchElastic();
+    touchPanElasticRef.current = elastic;
+    // Landing during a zoom-limit bounce: the bounce runs on, this pan's
+    // edge offset rides on top of it (and catches a previous one mid-spring).
+    touchPanOverEaseRef.current = elastic && Boolean(caught.easing);
+    if (touchPanOverEaseRef.current && panEdgeRef.current.active()) {
+      if (panEdgeRafRef.current) cancelAnimationFrame(panEdgeRafRef.current);
+      panEdgeRafRef.current = 0;
+      const held = panEdgeRef.current.frame(performance.now());
+      panEdgeRef.current.set(held.x, held.y);
+      caught.x = held.x;
+      caught.y = held.y;
+    }
+    panExcessRef.current = elastic
+      ? {
+        x: inverseRubberBand(-caught.x, containerWRef.current),
+        y: inverseRubberBand(-caught.y, containerHRef.current),
+      }
+      : { x: 0, y: 0 };
+    if (!elastic && (caught.x || caught.y)) stopElastic();
+  }, [catchElastic, stopElastic]);
+
+  // A pan let go (finger lifted / mouse released) at release speed (vx, vy)
+  // px/ms in the finger's direction. Returns the speeds the glide should
+  // start with. An axis pulled past an edge carries its speed on
+  // (resolveEdgeRelease) instead of dropping it - the old dead stop in the
+  // release frame was the "stuck in the middle" (owner 2026-10-07).
+  const releaseElasticPan = useCallback((vx, vy, { touch = false } = {}) => {
+    const elasticPan = touchPanElasticRef.current;
+    const pulled = panExcessRef.current;
+    const overEase = touchPanOverEaseRef.current;
+    touchPanElasticRef.current = false;
+    panExcessRef.current = { x: 0, y: 0 };
+    touchPanOverEaseRef.current = false;
+    const held = elasticRef.current && !elasticRef.current.anim ? elasticRef.current : null;
+    const shown = overEase ? panEdgeShownRef.current : { x: held?.tx || 0, y: held?.ty || 0 };
+    const el = scrollerRef.current;
+    const decide = (excess, shownPx, velocity, dimension, scroll, max) => (elasticPan && excess
+      ? resolveEdgeRelease({
+        shown: shownPx,
+        excess,
+        velocity,
+        dimension,
+        room: shownPx > 0 ? max - scroll > 1 : scroll > 1,
+        glideTauMs: (touch ? TOUCH_PAN_MOMENTUM : PAN_MOMENTUM_DEFAULTS).decayTauMs,
+      })
+      : { glide: velocity, spring: 0 });
+    const rx = decide(pulled.x, shown.x, vx, containerWRef.current, el?.scrollLeft || 0, getHorizontalScrollMax(scaleRef.current));
+    const ry = decide(pulled.y, shown.y, vy, containerHRef.current, el?.scrollTop || 0, el ? el.scrollHeight - el.clientHeight : 0);
+    releasePanEdge({ vx: rx.spring, vy: ry.spring });
+    // A bounce already animating keeps its own clock (re-releasing it
+    // restarted the 250 ms ease: a visible pause, then a second start).
+    // The first spring frame moves one frame on, like the glide's.
+    if (elasticPan && held) releaseElastic({ kind: 'spring', vx: rx.spring, vy: ry.spring, lead: 1000 / 60 });
+    return { vx: rx.glide, vy: ry.glide, elastic: elasticPan };
+  }, [getHorizontalScrollMax, releaseElastic, releasePanEdge]);
   useEffect(() => () => {
     if (panEdgeRafRef.current) cancelAnimationFrame(panEdgeRafRef.current);
   }, []);
@@ -3093,7 +3194,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const delta = panDeltaRef.current;
       panDeltaRef.current = { x: 0, y: 0 };
       if (!el) return;
-      if (touchPanElasticRef.current) { applyElasticPan(delta.x, delta.y); return; }
+      if (touchPanElasticRef.current) { applyElasticPan(delta.x, delta.y, true); return; }
       el.scrollLeft -= delta.x;
       el.scrollTop -= delta.y;
       clampHorizontalScroll();
@@ -3127,18 +3228,35 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (!coast) return;
     let vx = 0;
     let vy = 0;
+    // How long the page has already been past the edge in this frame (the
+    // part of the frame's glide the scroller could not take): the bounce
+    // starts that far along and is drawn in this same frame. It used to start
+    // from 0 on the NEXT frame, so the page stood still for 1-2 frames at the
+    // edge before it bounced (owner 2026-10-07, "it gets stuck").
+    let lead = 0;
     if (!coast.kickedX && Math.abs(clipX) > 0.5 && coast.vx) {
       coast.kickedX = true;
       vx = capBounceVelocity(coast.vx * 1000, containerWRef.current);
+      lead = Math.max(lead, Math.abs(clipX) / Math.abs(coast.vx));
     }
     if (!coast.kickedY && Math.abs(clipY) > 0.5 && coast.vy) {
       coast.kickedY = true;
       vy = capBounceVelocity(coast.vy * 1000, containerHRef.current);
+      lead = Math.max(lead, Math.abs(clipY) / Math.abs(coast.vy));
     }
     if (!vx && !vy) return;
+    const frameNow = Number(document.timeline?.currentTime) || performance.now();
     const current = elasticRef.current && Math.abs(elasticRef.current.z - 1) < 1e-4 ? elasticRef.current : null;
+    // The other axis, if it is still springing, keeps its speed.
+    const running = current ? elasticSpringVelocityAt(frameNow) : { vx: 0, vy: 0 };
     elasticRef.current = { ax: 0, ay: 0, z: 1, tx: current?.tx || 0, ty: current?.ty || 0, anim: null };
-    releaseElastic({ kind: 'spring', vx, vy });
+    releaseElastic({
+      kind: 'spring',
+      vx: vx || running.vx,
+      vy: vy || running.vy,
+      startAt: frameNow - Math.min(40, lead),
+      now: frameNow,
+    });
   };
   panMomentumHooksRef.current.velocity = (vx, vy) => {
     const settling = glideTouchRef.current && !elasticRef.current?.anim && isGlideSlowEnoughToSharpen(vx, vy);
@@ -3238,9 +3356,17 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     updatePanPresentation();
     const release = glide && pointer ? panVelocityRef.current.release(performance.now()) : null;
     panVelocityRef.current.reset();
+    // A mouse drag past an edge springs home like a finger (any release; a
+    // stop-dead one from rest), and its glide bounces off the far edge.
+    if (pointer && touchPanElasticRef.current) {
+      const elastic = releaseElasticPan(release?.vx || 0, release?.vy || 0);
+      if (release && startPanInertia(elastic.vx, elastic.vy, { elastic: true })) return;
+      setPanInteraction(spacePanRef.current);
+      return;
+    }
     if (release && startPanInertia(release.vx, release.vy)) return;
     setPanInteraction(spacePanRef.current);
-  }, [flushPan, setPanInteraction, startPanInertia, updatePanPresentation]);
+  }, [flushPan, releaseElasticPan, setPanInteraction, startPanInertia, updatePanPresentation]);
 
   useEffect(() => {
     const activateSpacePan = (event) => {
@@ -3316,6 +3442,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         x: event.clientX,
         y: event.clientY,
       };
+      // Same rubber band as the phone: catches a page still springing home.
+      beginElasticPan();
       panVelocityRef.current.start(event.clientX, event.clientY, performance.now());
       try { el.setPointerCapture(event.pointerId); } catch { /* not capturable */ }
       setPanInteraction(true);
@@ -3368,7 +3496,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       cancelPanInertia();
       finishPan();
     };
-  }, [cancelPanInertia, finishPan, schedulePan, setPanInteraction, updatePanPresentation]);
+  }, [beginElasticPan, cancelPanInertia, finishPan, schedulePan, setPanInteraction, updatePanPresentation]);
 
   useEffect(() => {
     if (interactionMode !== 'Pan' && !spacePanRef.current && panPointerRef.current) {
@@ -3495,32 +3623,6 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // lifts with the native click intact and focuses/toggles the field.
     const WIDGET_TAP_TO_PAN_SLOP_PX = 8;
 
-    // Phone pan rubber band (owner 2026-10-02): a finger landing on a page
-    // still springing home catches it where it is, as the finger excess past
-    // the edge. Reduced motion keeps the hard edge.
-    const beginElasticPan = () => {
-      const elastic = !prefersReducedMotion();
-      const caught = catchElastic();
-      touchPanElasticRef.current = elastic;
-      // Landing during a zoom-limit bounce: the bounce runs on, this pan's
-      // edge offset rides on top of it (and catches a previous one mid-spring).
-      touchPanOverEaseRef.current = elastic && Boolean(caught.easing);
-      if (touchPanOverEaseRef.current && panEdgeRef.current.active()) {
-        if (panEdgeRafRef.current) cancelAnimationFrame(panEdgeRafRef.current);
-        panEdgeRafRef.current = 0;
-        const held = panEdgeRef.current.frame(performance.now());
-        panEdgeRef.current.set(held.x, held.y);
-        caught.x = held.x;
-        caught.y = held.y;
-      }
-      panExcessRef.current = elastic
-        ? {
-          x: inverseRubberBand(-caught.x, containerWRef.current),
-          y: inverseRubberBand(-caught.y, containerHRef.current),
-        }
-        : { x: 0, y: 0 };
-      if (!elastic && (caught.x || caught.y)) stopElastic();
-    };
     let widgetTapCandidate = null;
     let widgetTapPromotedToPan = false;
 
@@ -3741,23 +3843,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         // keeps its original, untapered release — the feel the desktop copy
         // was matched to.
         const { vx: velocityX, vy: velocityY } = panVelocityRef.current.release(performance.now(), { idleTaper: false });
-        // Let go while pulled past an edge: that axis springs home from rest
-        // (no glide); the other axis glides as usual.
-        const elasticPan = touchPanElasticRef.current;
-        const pulled = panExcessRef.current;
-        touchPanElasticRef.current = false;
-        panExcessRef.current = { x: 0, y: 0 };
-        touchPanOverEaseRef.current = false;
-        releasePanEdge();
-        // A bounce already animating keeps its own clock (re-releasing it
-        // restarted the 250 ms ease: a visible pause, then a second start).
-        if (elasticPan && elasticRef.current && !elasticRef.current.anim) releaseElastic({ kind: 'spring' });
+        // Let go while pulled past an edge: that axis carries its speed on
+        // (glide back in, or the edge spring) - see releaseElasticPan.
+        const release = releaseElasticPan(velocityX, velocityY, { touch: true });
         releaseLayoutShift();
-        startPanInertia(
-          elasticPan && pulled.x ? 0 : velocityX,
-          elasticPan && pulled.y ? 0 : velocityY,
-          { elastic: elasticPan, touch: true },
-        );
+        startPanInertia(release.vx, release.vy, { elastic: release.elastic, touch: true });
       }
     };
 
@@ -3839,7 +3929,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       setMobileTouchMode(null);
       cancelPanInertia();
     };
-  }, [applyWheelZoom, cancelPanInertia, catchElastic, checkpointPinchGesture, commitGesture, flushPan, isMobileSurface, releaseElastic, releaseLayoutShift, releasePanEdge, schedulePan, setPanInteraction, setZoomInteraction, startPanInertia, stopElastic]);
+  }, [applyWheelZoom, beginElasticPan, cancelPanInertia, catchElastic, checkpointPinchGesture, commitGesture, flushPan, isMobileSurface, releaseElastic, releaseElasticPan, releaseLayoutShift, schedulePan, setPanInteraction, setZoomInteraction, startPanInertia, stopElastic]);
 
   // Mobile long-press → context menu (Phase D parity). Isolated, additive,
   // and passive: this effect only OBSERVES touches (it never preventDefaults or
