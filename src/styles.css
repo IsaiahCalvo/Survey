@@ -783,8 +783,11 @@
      stay exactly on the bar's centre whatever the names are, as before. Each
      side packs to its edge: the template name hugs the left end and Done the
      right end; the module pill and Reuse stay against the chips. When room
-     runs out the TEMPLATE NAME gives way first (it ellipsises); the chips,
-     then the module name; the chips, Reuse and Done keep their size.
+     runs out the bar gives ground in a fixed order (2026-10-07, narrow
+     windows; planSurveyBarStep in utils/responsiveToolbar.js): the template
+     name shortens, then goes (glyph stays); the module name shortens; then
+     Reuse, the module menu and the template menu move into a "..." menu.
+     The chips and Done always stay, at full size.
      The left panel and the Survey panel are drawn OVER this row, so the bar
      is inset by whichever is open (PDFViewer sets the two insets) and centres
      in what stays visible; it eases across as a panel opens or closes. */
@@ -795,8 +798,62 @@
   padding: 0 calc(8px + var(--survey-bar-inset-r, 0px)) 0 calc(8px + var(--survey-bar-inset-l, 0px));
   transition: padding 180ms ease-out;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  /* 2026-10-07 (narrow windows): each side is at least as wide as its
+     contents, so when one side needs more than half the chips slide off the
+     centre just enough instead of running under it. The bar only draws this
+     look while everything fits at full width (planSurveyBarStep). */
+  grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr);
   align-items: center;
+}
+
+/* Past full width (useSurveyBarFit sets data-survey-bar-step): the start side
+   takes what the chips and the end side leave, and gives ground inside it -
+   the template name, then the module name, each down to the minimum the plan
+   allows (--survey-template-min / --survey-module-min). */
+.survey-subrow:not([data-survey-bar-step='full']) {
+  grid-template-columns: minmax(0, 1fr) max-content max-content;
+}
+
+/* Last resort (many categories in a tiny span): the chips scroll sideways
+   rather than being cut or covered. */
+.survey-subrow[data-survey-bar-step='scroll-categories'] {
+  grid-template-columns: 0 minmax(0, 1fr) max-content;
+}
+
+.survey-subrow[data-survey-bar-step='scroll-categories'] .survey-subrow__cats {
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.survey-subrow[data-survey-bar-step='scroll-categories'] .survey-subrow__cats::-webkit-scrollbar {
+  display: none;
+}
+
+/* The More (...) menu that takes Reuse, then the module and template menus,
+   in a narrow bar. With nothing before the chips it sits a gutter after
+   them, without a rule. */
+.survey-subrow__more {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+.survey-subrow[data-survey-bar-step='fold-template'] .survey-subrow__more,
+.survey-subrow[data-survey-bar-step='scroll-categories'] .survey-subrow__more {
+  margin-left: 8px;
+}
+
+/* The template and module menus inside More: ordinary setting pills, as wide
+   as their name up to a cap. */
+.survey-more__pill .chrome-pill {
+  width: auto;
+  min-width: 0;
+  max-width: 200px;
+}
+
+.survey-more__pill .chrome-pill__label {
+  text-overflow: ellipsis;
 }
 
 .survey-subrow__side {
@@ -825,29 +882,30 @@
 }
 
 .survey-subrow__module .annotation-dropdown {
+  flex: 0 1 auto;
   min-width: 0;
   display: flex;
 }
 
 .survey-subrow__module .chrome-pill {
   flex: 0 1 auto;
-  min-width: 0;
+  min-width: var(--survey-module-min, 0px);
 }
 
 /* The mode's name: a plateless menu trigger (a title, not a setting) - the
    gold survey glyph (the Survey tab's glyph), the template in bright ink, its
-   chevron. Hover gives it the pill's surface step. It is the one item that
-   shrinks: the name ellipsises down to the glyph and a few letters. */
+   chevron. Hover gives it the pill's surface step. It is the first item to
+   give ground: the name ellipsises down to a few letters, then goes. */
 .survey-subrow__template {
   flex: 0 1000 auto;
-  min-width: 0;
+  min-width: var(--survey-template-min, 0px);
   display: flex;
 }
 
 .survey-subrow__template .chrome-pill {
   flex: 0 1 auto;
   width: auto;
-  min-width: 0;
+  min-width: var(--survey-template-min, 0px);
   max-width: 260px;
   padding: 0 6px;
   color: var(--text-1);

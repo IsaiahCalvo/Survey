@@ -463,6 +463,124 @@ export function planTextRowStep(span, { verticalAlign = true } = {}) {
   return { step: TEXT_ROW_STEPS[last], index: last, width: textRowWidth(last, { verticalAlign }), fits: false };
 }
 
+/**
+ * SURVEY BAR (the strip under the tool bar in Survey, 2026-10-07):
+ *   [gold glyph + template v] ... [Module v] | (C)(D)(AC) | Reuse ... [Done]
+ * Owner report (rail-headers round): at 1024px with the left panel AND the
+ * Survey panel open, the template name was cut and the module pill ran over
+ * the category chips. Rule: nothing ever overlaps or slides under a panel.
+ *
+ * The bar gives ground in this order (planSurveyBarStep):
+ *   0 full            everything at its natural width; the chips stay on the
+ *                     bar's centre, or slide just enough off it;
+ *   1 short-template  the template name ends in "..." (down to a few letters);
+ *   2 glyph-template  the template name goes: the gold glyph and its chevron
+ *                     stay, and still open the template menu;
+ *   3 short-module    the module name ends in "..." (down to a few letters);
+ *   4 fold-reuse      Reuse moves into a "..." (More) menu before Done;
+ *   5 fold-module     the module menu moves into More too;
+ *   6 fold-template   the template menu moves into More too (only the chips,
+ *                     More and Done are left);
+ *   7 scroll-categories  last resort, many categories in a tiny span: the
+ *                     chips scroll sideways instead of being cut.
+ * The category chips and Done never hide. Steps 5 and 6 are only reached with
+ * both side panels open (or a very long template); with the Survey panel open
+ * its own head already shows the template and the module tabs.
+ *
+ * Every chrome width below is a fixed CSS size (styles.css .survey-subrow*),
+ * and the two names are measured as text, so the step depends only on the
+ * room and the names, never on what the bar draws now: it cannot flip back
+ * and forth.
+ */
+export const SURVEY_BAR_STEPS = ['full', 'short-template', 'glyph-template', 'short-module', 'fold-reuse', 'fold-module', 'fold-template', 'scroll-categories'];
+
+export const SURVEY_BAR_PARTS = Object.freeze({
+  gap: 8, // the sides' gutter
+  divider: 17, // .chrome-divider: 1px + 8px each side
+  // Template trigger: 6px inset, 14px glyph, 6px, the name, 6px, 9px chevron, 6px.
+  templateChrome: 47,
+  templateGlyph: 41, // the same with no name (and no gutter before it)
+  templateMax: 260,
+  // Module pill: 21px start inset (centres the name), the name, 6px, 9px chevron, 6px.
+  moduleChrome: 42,
+  moduleMax: 220,
+  nameMin: 40, // the fewest pixels of a name worth showing ("Exis...")
+  reuse: 67, // the switch and its word
+  more: 28, // the More (...) button
+  done: 50,
+  slack: 2, // text is measured, not drawn: a hair of room for rounding
+});
+
+/**
+ * What the survey bar draws at `step`.
+ * @returns {{ step: string, index: number, centred: boolean,
+ *   template: 'full'|'short'|'glyph'|'more', module: 'full'|'short'|'more',
+ *   reuse: 'bar'|'more', more: boolean, scroll: boolean }}
+ */
+export function surveyBarLook(step) {
+  const at = typeof step === 'number' ? step : Math.max(0, SURVEY_BAR_STEPS.indexOf(step));
+  return {
+    step: SURVEY_BAR_STEPS[at],
+    index: at,
+    centred: at === 0,
+    template: at >= 6 ? 'more' : at >= 2 ? 'glyph' : at === 1 ? 'short' : 'full',
+    module: at >= 5 ? 'more' : at >= 3 ? 'short' : 'full',
+    reuse: at >= 4 ? 'more' : 'bar',
+    more: at >= 4,
+    scroll: at >= 7,
+  };
+}
+
+/**
+ * The survey bar's widths at `step`. `templateText` / `moduleText` are the
+ * names' text widths (the module's is its LONGEST name: the pill is sized to
+ * it), `categories` the chips' row.
+ * @returns {{ start: number, end: number, categories: number, total: number,
+ *   templateMin: number, moduleMin: number }}
+ */
+export function surveyBarWidths(step, { templateText = 0, moduleText = 0, categories = 0 } = {}) {
+  const P = SURVEY_BAR_PARTS;
+  const look = surveyBarLook(step);
+  const templateFull = Math.min(P.templateMax, P.templateChrome + templateText);
+  const templateShort = Math.min(templateFull, P.templateChrome + P.nameMin);
+  const moduleFull = Math.min(P.moduleMax, P.moduleChrome + moduleText);
+  const moduleShort = Math.min(moduleFull, P.moduleChrome + P.nameMin);
+  const templateWidth = { full: templateFull, short: templateShort, glyph: P.templateGlyph, more: 0 }[look.template];
+  const moduleWidth = { full: moduleFull, short: moduleShort, more: 0 }[look.module];
+  let start = 0;
+  if (look.template !== 'more') {
+    start = templateWidth + P.divider;
+    if (look.module !== 'more') start += P.gap + moduleWidth;
+  }
+  // With nothing left before the chips, More sits a gutter after them (no rule).
+  const end = look.reuse === 'bar'
+    ? P.divider + P.reuse + P.gap + P.done
+    : (look.template === 'more' ? P.gap : P.divider) + P.more + P.gap + P.done;
+  return {
+    start,
+    end,
+    categories: look.scroll ? 0 : categories,
+    total: start + (look.scroll ? 0 : categories) + end,
+    templateMin: templateWidth,
+    moduleMin: moduleWidth,
+  };
+}
+
+/**
+ * Pick the survey bar's step for `room` px (the bar's width less its insets
+ * and the parts of it an open side panel covers): the first step that fits.
+ * @returns {{ step: string, index: number, widths: object, fits: boolean }}
+ */
+export function planSurveyBarStep(room, sizes = {}) {
+  const last = SURVEY_BAR_STEPS.length - 1;
+  for (let index = 0; index < last; index += 1) {
+    const widths = surveyBarWidths(index, sizes);
+    if (widths.total + SURVEY_BAR_PARTS.slack <= room) return { step: SURVEY_BAR_STEPS[index], index, widths, fits: true };
+  }
+  const widths = surveyBarWidths(last, sizes);
+  return { step: SURVEY_BAR_STEPS[last], index: last, widths, fits: widths.total + SURVEY_BAR_PARTS.slack <= room };
+}
+
 /** The desktop rails either side of rows 2 and 3 (48px each). */
 export const DESKTOP_RAIL_WIDTH = 48;
 
