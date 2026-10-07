@@ -365,6 +365,39 @@
    The generic 1px hover lift shoved the hovered button's rounded top —
    the visible "glow" — past that clip line, so it looked sliced flat.
    Inside the strip the lift is cancelled; the hover colors/ring stay. */
+/* Owner 2026-10-07: "The top sub-toolbars don't have dividers or borders on
+   their left and right ... they just blend straight into the left and right
+   rails." The rows under the tool bar (row 2's settings, the Aa bar, the
+   survey bar) are the rails' own surface, so each rail edge gets the 1px
+   var(--border) hairline the rail panels draw on their canvas side, for the
+   height of whatever rows are showing (none showing = no line). The host
+   spans the canvas column between the two 48px rails, so the lines sit on
+   the rails' edges. An open panel (Pages ... History on the left, Survey on
+   the right) is drawn OVER the rows and carries the same hairline on its
+   own canvas side, so the edge line travels with the panel as it slides or
+   fades in and out - same timing, nothing to keep in step - and the row's
+   own line underneath is covered, never doubled. Desktop only (AppShell sets
+   data-row-edges off the phone). */
+#chrome-sub-toolbar-host[data-row-edges='true']::before,
+#chrome-sub-toolbar-host[data-row-edges='true']::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+  pointer-events: none;
+  z-index: 20;
+}
+
+#chrome-sub-toolbar-host[data-row-edges='true']::before {
+  left: 0;
+}
+
+#chrome-sub-toolbar-host[data-row-edges='true']::after {
+  right: 0;
+}
+
 #chrome-sub-toolbar-host .btn:not(:disabled):hover,
 #chrome-subtools-host .btn:not(:disabled):hover,
 [data-select-mode-toggle] .btn:not(:disabled):hover,

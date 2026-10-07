@@ -4127,6 +4127,9 @@ export default function App({ devPreviewReturnTab = null }) {
                   || bottomToolbarApi?.contextTool === 'text-markup'
                 ) ? 5800 : 5400
               }}
+              // Owner 2026-10-07: the rows under the tool bar draw a 1px edge
+              // where they meet each rail (styles.css), desktop only.
+              data-row-edges={isMobileViewer ? undefined : 'true'}
             >
               {/* RULED 2026-09-26 owner: flip rows (w44). Desktop only: the
                   FORMATTING ROW (row 2 — the armed tool's or picked mark's
