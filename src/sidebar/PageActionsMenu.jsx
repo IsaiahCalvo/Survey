@@ -1,6 +1,7 @@
 // The page menu's rows, drawn from the one list in sidebar/pageMenuItems.js.
 // Used by the Pages tab (PagesPanel) and the viewer's page menu
 // (hooks/useAnnotationContextMenu.jsx), so both show the same rows.
+import { useLayoutEffect, useRef, useState } from 'react';
 import Icon from '../Icons';
 
 /* One row of the page menu (polish 3, 2026-10-04). The menu used to spell out
@@ -13,12 +14,13 @@ import Icon from '../Icons';
      - the desktop row is unchanged (13px, 8px 12px, --text-2, 14px glyph).
    The hover fill is passed through unchanged (menu shades: owner decision
    pending). */
-export const PageMenuItem = ({ mobile = false, icon, label, disabled = false, danger = false, hoverBg = 'var(--hover)', onClick, itemKey }) => (
+export const PageMenuItem = ({ mobile = false, icon, label, disabled = false, danger = false, hoverBg = 'var(--hover)', onClick, itemKey, trailingIcon = null, ariaHasPopup }) => (
   <button
     type="button"
     role="menuitem"
     disabled={disabled}
     data-page-menu-item={itemKey}
+    aria-haspopup={ariaHasPopup}
     onClick={onClick}
     style={{
       width: '100%',
@@ -46,6 +48,11 @@ export const PageMenuItem = ({ mobile = false, icon, label, disabled = false, da
       />
     ) : null}
     {label}
+    {trailingIcon ? (
+      <span style={{ marginLeft: 'auto', paddingLeft: 12, display: 'grid', placeItems: 'center', color: 'var(--text-3)' }}>
+        <Icon name={trailingIcon} size={mobile ? 16 : 14} color="currentColor" />
+      </span>
+    ) : null}
   </button>
 );
 
@@ -70,11 +77,25 @@ export const PageMenuHeader = ({ mobile = false, label }) => (
 /**
  * The rows for `items` (buildPageMenuItems). `onPick(key)` runs an item.
  * `dangerHoverBg` is the Delete row's hover fill (it differs per menu fill).
+ * A "More" row (an item with `more`: the phone's compact menu,
+ * buildPageMenuItems({ compact })) opens its rows in the same box, under a
+ * "< Page 3" back row - like an iOS submenu. `onLayout` runs after the box
+ * swaps its rows (the host re-places the menu for its new height).
  */
-export function PageMenuList({ items, mobile = false, onPick, hoverBg, dangerHoverBg }) {
-  return items.map((item) => {
+export function PageMenuList({ items, mobile = false, onPick, hoverBg, dangerHoverBg, onLayout }) {
+  const [openKey, setOpenKey] = useState(null);
+  const firstRef = useRef(false);
+  const moreItem = openKey ? items.find((item) => item.key === openKey && Array.isArray(item.more)) : null;
+  useLayoutEffect(() => {
+    if (!firstRef.current) { firstRef.current = true; return; }
+    onLayout?.();
+  // Only when the rows swap (onLayout is the host's latest placer).
+  }, [openKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rowHover = (item) => (item.danger && dangerHoverBg ? dangerHoverBg : (hoverBg || 'var(--hover)'));
+  const rows = (list) => list.map((item) => {
     if (item.separator) return <PageMenuDivider key={item.key} />;
     if (item.header) return <PageMenuHeader key={item.key} mobile={mobile} label={item.label} />;
+    const opensMore = Array.isArray(item.more);
     return (
       <PageMenuItem
         key={item.key}
@@ -84,9 +105,27 @@ export function PageMenuList({ items, mobile = false, onPick, hoverBg, dangerHov
         label={item.label}
         disabled={Boolean(item.disabled)}
         danger={Boolean(item.danger)}
-        hoverBg={item.danger && dangerHoverBg ? dangerHoverBg : (hoverBg || 'var(--hover)')}
-        onClick={item.disabled ? undefined : () => onPick?.(item.key)}
+        hoverBg={rowHover(item)}
+        trailingIcon={opensMore ? 'chevronRight' : null}
+        ariaHasPopup={opensMore ? 'menu' : undefined}
+        onClick={item.disabled ? undefined : () => (opensMore ? setOpenKey(item.key) : onPick?.(item.key))}
       />
     );
   });
+  if (moreItem) {
+    return [
+      <PageMenuItem
+        key="more-back"
+        itemKey="moreBack"
+        mobile={mobile}
+        icon="chevronLeft"
+        label={moreItem.backLabel || 'Back'}
+        hoverBg={hoverBg || 'var(--hover)'}
+        onClick={() => setOpenKey(null)}
+      />,
+      <PageMenuDivider key="more-back-sep" />,
+      ...rows(moreItem.more),
+    ];
+  }
+  return rows(items);
 }

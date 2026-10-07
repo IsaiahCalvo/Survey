@@ -76,9 +76,13 @@ const IDLE_PREFILL_SPAN = 16;
 // (up to 7400), below modals (10000+), the tooltip and toasts.
 const PAGE_MENU_Z = 9000;
 // Phone: how long a still finger on a card takes to lift the page for a drag
-// (a swipe that starts sooner scrolls the list). Let go without moving and
-// the page menu opens instead (the long-press).
+// (a swipe that starts sooner scrolls the list). Owner 2026-10-07: a hold is
+// ALWAYS a drag - let go without moving and the page just goes back.
 const PAGE_DRAG_TOUCH_DELAY_MS = 300;
+// Phone: a second tap on the same card this soon after the first opens the
+// page menu (owner 2026-10-07: "if I double-tap on a page thumbnail ... the
+// context menu"). The first tap goes to the page at once, never waiting.
+const PAGE_DOUBLE_TAP_MS = 320;
 // The lifted page rides above the sheets (7400) and below the page menu.
 const PAGE_DRAG_OVERLAY_Z = 8500;
 const PAGE_SLIDE = { duration: 180, easing: 'cubic-bezier(0.2, 0, 0, 1)' };
@@ -204,7 +208,6 @@ const PagesPanel = ({
   const [thumbnails, setThumbnails] = useState(() => getCachedPageThumbnails(pdfDoc)?.thumbnails || {});
   const [pageAspectRatios, setPageAspectRatios] = useState(() => getCachedPageThumbnails(pdfDoc)?.ratios || {});
   const [contextMenu, setContextMenu] = useState(null);
-  const [selectedPage, setSelectedPage] = useState(pageNum);
   const [mobileSelectMode, setMobileSelectMode] = useState(false);
   const contextMenuRef = useRef(null);
   const thumbnailRefs = useRef({});
@@ -410,16 +413,35 @@ const PagesPanel = ({
     return keys;
   }, [allowedPages, pdfDoc]);
 
-  // Update selected page when pageNum prop changes
-  useEffect(() => {
-    if (allowedPages.includes(pageNum)) {
-      setSelectedPage(pageNum);
-    } else if (allowedPages.length > 0) {
-      setSelectedPage(allowedPages[0]);
-    } else {
-      setSelectedPage(null);
+  // The current page (the gold outline on the phone, the lone selection on
+  // desktop), kept by WHAT it shows as well as its number. Owner 2026-10-07
+  // (iPhone): after a drop the outline flickered between the moved page and
+  // the page that took its old slot - the strip got the new page order a
+  // render before it re-read the current page number (an effect), so for a
+  // frame or two the old number pointed at the other page. Now it is worked
+  // out in the render itself: a new page order with the same current-page
+  // number follows the page (its card key) to its new number; a new number
+  // from the viewer is taken as it comes. Zero frames on the wrong card.
+  const [currentPage, setCurrentPage] = useState(() => {
+    const page = allowedPages.includes(pageNum) ? pageNum : (allowedPages[0] ?? null);
+    return { doc: pdfDoc, pageNum, allowed: allowedPages, page, key: page ? cardKeys[page] : null };
+  });
+  let selectedPage = currentPage.page;
+  if (currentPage.doc !== pdfDoc || currentPage.pageNum !== pageNum || currentPage.allowed !== allowedPages) {
+    let page = null;
+    if (currentPage.pageNum === pageNum && currentPage.key) {
+      page = allowedPages.find((p) => cardKeys[p] === currentPage.key) ?? null;
     }
-  }, [pageNum, allowedPages]);
+    if (page == null) page = allowedPages.includes(pageNum) ? pageNum : (allowedPages[0] ?? null);
+    selectedPage = page;
+    setCurrentPage({ doc: pdfDoc, pageNum, allowed: allowedPages, page, key: page ? cardKeys[page] : null });
+  }
+  // A tap / click on a card: that page at once (the viewer's page follows).
+  const cardKeysRef = useRef(cardKeys);
+  cardKeysRef.current = cardKeys;
+  const setSelectedPage = useCallback((page) => {
+    setCurrentPage((prev) => ({ ...prev, page, key: page ? cardKeysRef.current[page] : null }));
+  }, []);
 
   // Generate aspect ratios for all pages (lightweight, runs once)
   useEffect(() => {
@@ -1061,17 +1083,27 @@ const PagesPanel = ({
   );
   const multiSelected = selectedPages.length > 1;
 
+  // A lone selection follows the current page when the current page CHANGES
+  // (a click, the viewer scrolled to another page) - not when a page change
+  // only renumbers it: a page just dragged on desktop stays selected after
+  // its drop (it used to jump back to the current page a frame later).
+  const currentKey = selectedPage ? cardKeys[selectedPage] : null;
+  const followedKeyRef = useRef(undefined);
   useEffect(() => {
     if (selectMode) return;
-    const key = selectedPage ? cardKeys[selectedPage] : null;
+    const key = currentKey;
+    const changed = key !== followedKeyRef.current;
+    followedKeyRef.current = key;
     setSelection((prev) => {
       const live = prev.keys.filter((k) => pageByCardKey.has(k));
-      if (live.length > 1) return live.length === prev.keys.length ? prev : { ...prev, keys: live };
-      if (!key) return live.length === prev.keys.length ? prev : { keys: live, anchor: prev.anchor };
+      const pruned = live.length === prev.keys.length ? prev : { ...prev, keys: live };
+      if (live.length > 1) return pruned;
+      if (!key) return pruned;
+      if (!changed && live.length === 1) return pruned;
       if (live.length === 1 && live[0] === key && prev.keys.length === 1) return prev;
       return { keys: [key], anchor: key };
     });
-  }, [selectedPage, cardKeys, pageByCardKey, selectMode]);
+  }, [currentKey, pageByCardKey, selectMode]);
 
   // The latest values for the window listeners and the drag handlers.
   const liveRef = useRef({});
@@ -1104,12 +1136,28 @@ const PagesPanel = ({
     });
   }, [pageByCardKey]);
 
+  // Phone double-tap: the first tap navigates at once; a second tap on the
+  // same card within PAGE_DOUBLE_TAP_MS opens its page menu (beside the
+  // card's "..." button, like that button does).
+  const lastTapRef = useRef(null);
   const handlePageClick = useCallback((pageNumber, event) => {
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
       return;
     }
     flushPendingDrop();
+    if (mobileMode && !selectMode) {
+      const now = Date.now();
+      const last = lastTapRef.current;
+      const near = !last || !event || Math.hypot((event.clientX || 0) - last.x, (event.clientY || 0) - last.y) < 40;
+      if (last && last.page === pageNumber && now - last.at <= PAGE_DOUBLE_TAP_MS && near) {
+        lastTapRef.current = null;
+        const anchor = thumbnailRefs.current[pageNumber]?.querySelector('[data-page-menu-anchor]')?.getBoundingClientRect();
+        setContextMenu({ pageNumber, pages: null, x: anchor?.left ?? 0, y: anchor?.top ?? 0, fromButton: true });
+        return;
+      }
+      lastTapRef.current = { page: pageNumber, at: now, x: event?.clientX || 0, y: event?.clientY || 0 };
+    }
     if (selectMode) {
       togglePage(pageNumber);
       return;
@@ -1290,8 +1338,9 @@ const PagesPanel = ({
   //   - desktop: the mouse moves 5px with the button down -> drag (a click,
   //     a right-click and the "..." button stay what they were);
   //   - phone: a finger held still 300ms lifts the page (a swipe before that
-  //     scrolls the list). Then, like an iPhone home-screen icon: move ->
-  //     drag; let go without moving -> the page menu opens (the long-press);
+  //     scrolls the list) and it follows the finger; let go without moving
+  //     and it goes back. A hold never opens a menu (owner 2026-10-07) - the
+  //     page menu is a double-tap on the card or its "..." button;
   //   - keyboard: Space / Enter on a focused card picks it up, arrows move,
   //     Space / Enter drops, Escape cancels.
   // Dragging a page of a selection of several carries them all (owner: "I
@@ -1364,7 +1413,7 @@ const PagesPanel = ({
     setTimeout(dispatch, 120);
   }, [pdfDoc]);
 
-  const handleDndEnd = useCallback(({ active, over, delta }) => {
+  const handleDndEnd = useCallback(({ active, over }) => {
     const start = dragStartRef.current;
     endDrag();
     suppressClickRef.current = true;
@@ -1410,17 +1459,9 @@ const PagesPanel = ({
       landDrop(moved.map((key) => pageByCardKey.get(key)), () => onReorderPages(source, target));
       return;
     }
-    // Phone: held, lifted and let go in place = the long-press page menu.
-    if (start?.touch && source && Math.hypot(delta?.x || 0, delta?.y || 0) < 8) {
-      const anchor = thumbnailRefs.current[source]?.querySelector('[data-page-menu-anchor]')?.getBoundingClientRect();
-      setContextMenu({
-        pageNumber: source,
-        pages: block && block.pages.length > 1 ? block.pages : null,
-        x: anchor?.left ?? 0,
-        y: anchor?.top ?? 0,
-        fromButton: true,
-      });
-    }
+    // Phone: held and let go in place = the page goes back (owner
+    // 2026-10-07: a hold is only ever a drag; the menu is a double-tap or
+    // the "..." button).
   }, [cardKeys, endDrag, landDrop, numPages, onReorderPages, pageByCardKey, sortableIds, visiblePages]);
 
   const dropAnimation = useMemo(() => (reducedMotion || !dropGlide ? null : {
@@ -1490,7 +1531,8 @@ const PagesPanel = ({
               <img
                 src={src}
                 alt=""
-                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', display: 'block', transform: imageTransform, transformOrigin: 'center center' }}
+                draggable={false}
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', display: 'block', transform: imageTransform, transformOrigin: 'center center', pointerEvents: 'none', WebkitTouchCallout: 'none', WebkitUserDrag: 'none' }}
               />
             ) : null}
           </div>
@@ -1617,7 +1659,9 @@ const PagesPanel = ({
               data-drag-rider={isRider ? '' : undefined}
               aria-label={`Page ${shownNumber}`}
               data-selected={isPicked ? '' : undefined}
-              onContextMenu={(e) => handleContextMenu(e, pageNumber)}
+              // Phone: a hold is a drag, so the browser's own long-press
+              // (Android's contextmenu) does nothing here.
+              onContextMenu={(e) => (mobileMode ? e.preventDefault() : handleContextMenu(e, pageNumber))}
               onClick={(event) => handlePageClick(pageNumber, event)}
               onDoubleClick={() => handlePageDoubleClick(pageNumber)}
               style={{
@@ -1636,7 +1680,8 @@ const PagesPanel = ({
                 cursor: mobileMode ? 'pointer' : (isDragging ? 'grabbing' : 'grab'),
                 transform: CSS.Translate.toString(transform),
                 touchAction: mobileMode ? 'pan-y' : undefined,
-                // No iOS image callout / text selection on a long-press.
+                // No iOS image callout / text selection on a long-press (the
+                // picture itself takes no touches either: see its <img>).
                 WebkitTouchCallout: mobileMode ? 'none' : undefined,
                 WebkitUserSelect: mobileMode ? 'none' : undefined,
                 userSelect: mobileMode ? 'none' : undefined,
@@ -1696,6 +1741,14 @@ const PagesPanel = ({
                     alt={`Page ${shownNumber}`}
                     draggable={false}
                     style={{
+                      // Owner 2026-10-07 (iPhone): holding a thumbnail raised
+                      // iOS's image preview (Share / Save to Photos / Copy).
+                      // The picture never takes a touch or a press: the card
+                      // under it does (tap, double-tap, hold-to-drag).
+                      pointerEvents: 'none',
+                      WebkitTouchCallout: 'none',
+                      WebkitUserDrag: 'none',
+                      userSelect: 'none',
                       position: 'absolute',
                       top: 0,
                       left: 0,
@@ -1973,8 +2026,10 @@ const PagesPanel = ({
               nothing to act on is disabled (Paste with an empty clipboard,
               Reset with nothing to undo, Delete on the only page). */}
           <PageMenuList
+            key={`${contextMenu.pageNumber}:${contextMenu.pages ? contextMenu.pages.join(',') : ''}:${contextMenu.x}:${contextMenu.y}`}
             mobile={mobileMode}
             onPick={pickPageMenuItem}
+            onLayout={placeContextMenu}
             dangerHoverBg={mobileMode ? 'var(--surface-2)' : 'var(--surface-3)'}
             items={buildPageMenuItems({
               pageNumber: contextMenu.pageNumber,
@@ -1989,6 +2044,9 @@ const PagesPanel = ({
                 canDown: allowedPages.indexOf(contextMenu.pageNumber) < allowedPages.length - 1,
               } : null,
               available: availableActions(pageMenuHandlers),
+              // Phone: fits an iPhone SE without scrolling ("More" holds
+              // blank pages, mirror, reset and move up / down).
+              compact: mobileMode,
             })}
           />
         </div>
