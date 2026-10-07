@@ -589,8 +589,29 @@ test('pages may sharpen once a glide is under GLIDE_SHARPEN_SPEED', () => {
 test('the viewer gives finger flicks the touch glide and lets a slowing glide sharpen', async () => {
   const source = await readFile(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
   assert.match(source, /getPanMomentumRunner\(\)\.start\(fingerVelocityX, fingerVelocityY, touch \? TOUCH_PAN_MOMENTUM : undefined\)/);
-  assert.match(source, /\{ elastic: elasticPan, touch: true \}/);
+  assert.match(source, /\{ elastic: release\.elastic, touch: true \}/);
   assert.match(source, /return !\(kind === 'sharpen' && glideSettlingRef\.current\);/);
   // The quiet pump (which clears data-pdfjs-moving) still waits for the page to be still.
   assert.match(source, /if \(gestureHoldsRasterRef\.current\('prefetch'\)\) \{ scheduleRasterQuietPump\(\); return; \}/);
+});
+
+// Owner 2026-10-07 ("this reset that happens"): a release that lands a moment
+// before the next frame used to time the first glide step from the release,
+// so that frame moved almost nothing - the page stood still for a frame right
+// as the finger let go.
+test('the first glide frame moves a whole frame even when the release lands just before it', () => {
+  const surface = createFakeSurface({ left: 5000 });
+  const runner = makeRunner(surface);
+  surface.state.time = 100;
+  runner.start(1, 0);
+  // The next frame comes only 2 ms after the release.
+  const fn = surface.state.queue.shift();
+  surface.state.time += 2;
+  fn(surface.state.time);
+  const firstStep = 5000 - surface.state.left;
+  assert.ok(Math.abs(firstStep - glideDistance(1, 1000 / 60)) < 1e-9, `first step ${firstStep}`);
+  // Later frames use their real length again.
+  const before = surface.state.left;
+  surface.pump(1);
+  assert.ok(before - surface.state.left < glideDistance(1, 16) + 1e-9);
 });
