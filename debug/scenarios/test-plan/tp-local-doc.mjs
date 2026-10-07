@@ -30,8 +30,10 @@ export const OUT_DIR = process.env.TP_OUT
 
 export const baseUrl = () => (process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5173').replace(/\/$/, '');
 
-export function viewerUrl(pdf, { phone = false } = {}) {
-  return `${baseUrl()}/?testPdf=${encodeURIComponent(pdf)}&surveyTemplateWorkflowE2E=1${phone ? '&mobileNav=tabs&nativeShell=expo' : ''}`;
+// cloudLibrary: the app's library reads (documents, projects, templates)
+// stay on and go to the FakeBackend (supabaseClient.js devCloudLibrary).
+export function viewerUrl(pdf, { phone = false, cloudLibrary = false } = {}) {
+  return `${baseUrl()}/?testPdf=${encodeURIComponent(pdf)}&surveyTemplateWorkflowE2E=1${phone ? '&mobileNav=tabs&nativeShell=expo' : ''}${cloudLibrary ? '&devCloudLibrary=1' : ''}`;
 }
 
 /**
@@ -39,7 +41,7 @@ export function viewerUrl(pdf, { phone = false } = {}) {
  * With `backend` (a FakeBackend from tp-fake-backend.mjs) the Supabase calls
  * are answered in memory instead of failing.
  */
-export async function prepareLocalContext(context, docId, { backend = null } = {}) {
+export async function prepareLocalContext(context, docId, { backend = null, user = null } = {}) {
   const local = new URL(baseUrl());
   const isLocal = (url) => {
     try { const u = new URL(url); return u.hostname === local.hostname && u.port === local.port; } catch { return false; }
@@ -48,7 +50,10 @@ export async function prepareLocalContext(context, docId, { backend = null } = {
   if (typeof context.routeWebSocket === 'function') {
     await context.routeWebSocket((url) => !isLocal(url.href), (ws) => ws.close());
   }
-  if (backend) await backend.attach(context);
+  if (backend) await backend.attach(context, { userId: user?.id || null });
+  // A second person (DevTestRoute reads window.__devTestUser before the app
+  // mounts); the document stays owned by 'dev-test-user'.
+  if (user) await context.addInitScript((u) => { window.__devTestUser = u; }, user);
   // Keep the full stack of every console.error (a render loop's stack names
   // the component; the console message alone is cut short).
   await context.addInitScript(() => {
@@ -82,8 +87,8 @@ export async function prepareLocalContext(context, docId, { backend = null } = {
   }, docId);
 }
 
-export async function openViewer(page, pdf, { phone = false, settle = 2500 } = {}) {
-  await page.goto(viewerUrl(pdf, { phone }));
+export async function openViewer(page, pdf, { phone = false, settle = 2500, cloudLibrary = false } = {}) {
+  await page.goto(viewerUrl(pdf, { phone, cloudLibrary }));
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').first().waitFor({ timeout: 90_000 });
   await page.waitForFunction(() => typeof window.__ydocAnnotationCount === 'number', null, { timeout: 30_000 });
   await page.waitForTimeout(settle);

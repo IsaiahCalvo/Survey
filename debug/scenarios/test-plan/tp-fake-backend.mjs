@@ -20,6 +20,20 @@
 //   * auth answers 401 (the route has no session), storage/functions answer {}.
 // Two browser contexts that share one FakeBackend behave like two windows on
 // one live document. `counts` records every call for the evidence table.
+//
+// Two accounts (2026-10-07, shared templates): `attach(context, { userId })`
+// makes every request from that window act as that person, and the template
+// tables answer under the same row-level rules as the real database
+// (supabase/migrations/20260701120000_project_template_sharing.sql):
+//   templates             SELECT owner or any active collaborator; UPDATE owner
+//                         or an editor+ collaborator; INSERT/DELETE owner
+//   template_collaborators SELECT anyone who can see the template; INSERT /
+//                         UPDATE only the template's owner; DELETE owner or self
+//   template_invites      owner only
+//   replace_my_templates  the caller's own rows only (refuses another's row)
+// get_my_document_role answers per person (the document's owner, else their
+// document_collaborators row). Without a userId everything acts as the owner,
+// exactly as before.
 
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -232,14 +246,105 @@ export class FakeBackend {
   }
 
   /** Install REST + Realtime handlers on a browser context (after any blocking route). */
-  async attach(context) {
-    await context.route(/\.supabase\.co\//, (route) => this.handleRest(route));
+  async attach(context, { userId = null } = {}) {
+    const caller = userId || this.ownerId;
+    await context.route(/\.supabase\.co\//, (route) => this.handleRest(route, caller));
     if (typeof context.routeWebSocket === 'function') {
       await context.routeWebSocket(/\.supabase\.co\/realtime\//, (ws) => this.handleSocket(ws));
     }
   }
 
-  async handleRest(route) {
+  // ------------------------------------------------ row-level rules (templates)
+
+  templateRole(caller, templateId) {
+    const tpl = this.table('templates').find((t) => t.id === templateId);
+    if (!tpl) return null;
+    if (tpl.user_id === caller) return 'owner-of-row';
+    const row = this.table('template_collaborators')
+      .find((r) => r.template_id === templateId && r.user_id === caller && (r.status ?? 'active') === 'active');
+    return row?.role || null;
+  }
+
+  canAccessTemplate(caller, templateId, need = 'viewer') {
+    const role = this.templateRole(caller, templateId);
+    if (!role) return false;
+    if (role === 'owner-of-row') return true;
+    const rank = { viewer: 1, editor: 2, owner: 3 };
+    return (rank[role] || 0) >= rank[need];
+  }
+
+  canSee(caller, name, row) {
+    if (name === 'templates') return this.canAccessTemplate(caller, row.id, 'viewer');
+    if (name === 'template_collaborators') return this.canAccessTemplate(caller, row.template_id, 'viewer');
+    if (name === 'template_invites') return this.canAccessTemplate(caller, row.template_id, 'owner');
+    return true;
+  }
+
+  canInsert(caller, name, row) {
+    if (name === 'templates') return row.user_id === caller;
+    if (name === 'template_collaborators' || name === 'template_invites') return this.canAccessTemplate(caller, row.template_id, 'owner');
+    return true;
+  }
+
+  canUpdate(caller, name, row) {
+    if (name === 'templates') return row.user_id === caller || this.canAccessTemplate(caller, row.id, 'editor');
+    if (name === 'template_collaborators' || name === 'template_invites') return this.canAccessTemplate(caller, row.template_id, 'owner');
+    return true;
+  }
+
+  canDelete(caller, name, row) {
+    if (name === 'templates') return row.user_id === caller || this.canAccessTemplate(caller, row.id, 'owner');
+    if (name === 'template_collaborators') return row.user_id === caller || this.canAccessTemplate(caller, row.template_id, 'owner');
+    if (name === 'template_invites') return this.canAccessTemplate(caller, row.template_id, 'owner');
+    return true;
+  }
+
+  /** The caller's role on this document, as get_my_document_role answers. */
+  documentRoleFor(caller) {
+    if (!caller || caller === this.ownerId) return this.role;
+    const row = this.table('document_collaborators')
+      .find((r) => r.document_id === this.documentId && r.user_id === caller && (r.status ?? 'active') === 'active');
+    return row?.role || null;
+  }
+
+  /** public.replace_my_templates (migration 20260811140000), in memory: the
+   *  caller's whole template list in one go; another person's row refuses. */
+  replaceMyTemplates(entries, caller) {
+    if (!Array.isArray(entries)) return { __rpcError: 'Templates must be a JSON array' };
+    const rows = this.table('templates');
+    const retained = [];
+    for (const entry of entries) {
+      const id = entry?.supabase_id;
+      if (!id) return { __rpcError: 'Invalid template row id' };
+      const existing = rows.find((r) => r.id === id);
+      if (existing && existing.user_id !== caller) return { __rpcError: 'Template row does not belong to the signed-in user' };
+      if (existing) Object.assign(existing, { name: String(entry.name).trim(), config: entry.config, updated_at: nowIso() });
+      else rows.push({ id, user_id: caller, name: String(entry.name).trim(), config: entry.config, created_at: nowIso(), updated_at: nowIso(), user_archived_at: null });
+      retained.push(id);
+    }
+    this.tables.set('templates', rows.filter((r) => r.user_id !== caller || retained.includes(r.id)));
+    return this.table('templates').filter((r) => r.user_id === caller)
+      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  }
+
+  /** A template row owned by `ownerId` (config = the app's template object). */
+  seedTemplate({ ownerId = this.ownerId, config, name = config?.name || 'Template' }) {
+    const row = {
+      id: fakeUuid(), user_id: ownerId, name, config,
+      created_at: nowIso(), updated_at: nowIso(), user_archived_at: null,
+    };
+    this.table('templates').push(row);
+    return row;
+  }
+
+  /** Share the document with `userId` as `role` (a document_collaborators row). */
+  seedDocumentCollaborator({ userId, role = 'editor', email = null }) {
+    const row = { id: fakeUuid(), document_id: this.documentId, user_id: userId, role, email, status: 'active', created_at: nowIso() };
+    this.table('document_collaborators').push(row);
+    return row;
+  }
+
+  async handleRest(route, caller = this.ownerId) {
     const req = route.request();
     const url = new URL(req.url());
     const method = req.method();
@@ -281,7 +386,9 @@ export class FakeBackend {
           return route.abort().catch(() => {});
         }
       }
-      return reply(200, this.rpc(rpc[1], args));
+      const answer = this.rpc(rpc[1], args, caller);
+      if (answer && answer.__rpcError) return reply(400, { code: 'P0001', message: answer.__rpcError });
+      return reply(200, answer);
     }
     const tableMatch = path.match(/^\/rest\/v1\/([^/]+)$/);
     if (!tableMatch) { this.count(`${method} ${path}`); return reply(404, { message: 'unknown path' }); }
@@ -291,7 +398,7 @@ export class FakeBackend {
     const params = url.searchParams;
     if (method === 'HEAD') return route.fulfill({ status: 200, headers: { ...cors, 'content-range': `0-0/${rows.length}` }, body: '' });
     if (method === 'GET') {
-      const result = applyFilters(rows, params);
+      const result = applyFilters(rows.filter((r) => this.canSee(caller, name, r)), params);
       // eslint-disable-next-line no-console
       if (process.env.TP_DEBUG) console.log(`[fake] GET ${name}?${decodeURIComponent(url.search.slice(1))} -> ${result.length}/${rows.length}`);
       if (wantsObject) return result[0] ? reply(200, result[0]) : reply(406, { code: 'PGRST116', message: 'no rows' });
@@ -304,6 +411,11 @@ export class FakeBackend {
       const conflict = params.get('on_conflict')?.split(',') || null;
       const ignore = prefer.includes('ignore-duplicates');
       const out = [];
+      const refused = incoming.find((raw) => !this.canInsert(caller, name, raw));
+      if (refused) {
+        this.count(`refused INSERT ${name} (row-level security)`);
+        return reply(403, { code: '42501', message: `new row violates row-level security policy for table "${name}"` });
+      }
       for (const raw of incoming) {
         const row = { id: raw.id ?? fakeUuid(), created_at: raw.created_at ?? nowIso(), ...raw };
         if (name === 'document_history_events') row.created_at = nowIso();
@@ -327,7 +439,8 @@ export class FakeBackend {
       return reply(201, prefer.includes('return=representation') ? out : undefined);
     }
     if (method === 'PATCH') {
-      const matched = applyFilters(rows, params);
+      const matched = applyFilters(rows.filter((r) => this.canSee(caller, name, r) && this.canUpdate(caller, name, r)), params);
+      if (wantsObject && matched.length === 0) return reply(406, { code: 'PGRST116', message: 'JSON object requested, multiple (or no) rows returned' });
       for (const row of matched) {
         const old = { ...row };
         Object.assign(row, body || {});
@@ -337,7 +450,7 @@ export class FakeBackend {
       return reply(200, prefer.includes('return=representation') ? matched : undefined);
     }
     if (method === 'DELETE') {
-      const matched = new Set(applyFilters(rows, params));
+      const matched = new Set(applyFilters(rows.filter((r) => this.canSee(caller, name, r) && this.canDelete(caller, name, r)), params));
       this.tables.set(name, rows.filter((r) => !matched.has(r)));
       for (const row of matched) this.emitChange(name, 'DELETE', null, row);
       return reply(200, prefer.includes('return=representation') ? [...matched] : undefined);
@@ -388,7 +501,7 @@ export class FakeBackend {
     return (await runDocTool({ op: 'toPage', objects })).paths;
   }
 
-  rpc(name, args) {
+  rpc(name, args, caller = this.ownerId) {
     if (name === 'append_annotation_update') {
       const rows = this.table('annotation_updates');
       const existing = rows.find((r) => r.client_id === args.p_client_id && Number(r.client_seq) === Number(args.p_client_seq));
@@ -401,7 +514,7 @@ export class FakeBackend {
         client_id: args.p_client_id,
         client_seq: args.p_client_seq,
         // The real append function stamps the caller (auth.uid()); readers check it.
-        actor_user_id: this.ownerId,
+        actor_user_id: caller,
         data: args.p_data,
         created_at: nowIso(),
       };
@@ -410,7 +523,8 @@ export class FakeBackend {
       return row.seq;
     }
     if (name === 'store_annotation_snapshot') return this.storeSnapshot(args);
-    if (name === 'get_my_document_role') return this.role;
+    if (name === 'get_my_document_role') return this.documentRoleFor(caller);
+    if (name === 'replace_my_templates') return this.replaceMyTemplates(args.p_templates, caller);
     return null;
   }
 

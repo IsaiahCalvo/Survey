@@ -21,6 +21,7 @@ import { retryCompensatingCleanup, runCompensatingBatch } from './home/compensat
 import { readPdfPageCount, mapUploadsBounded } from './home/pdfUploadWork.js';
 import { moveOrCopyDocumentsAtomically, parseDocumentBatchRecovery } from './home/documentBatchOperations.js';
 import { mapAuthoritativeTemplateRows, persistTemplateSnapshot } from './home/templatePersistence.js';
+import { ownerDisplayName, sameTemplateConfig, sharedFromRow, splitTemplatesForSave, stripSharedFields } from './services/sharedTemplates.js';
 import { useAuth } from './contexts/AuthContext';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { useDocuments, useProjects, useStorage, useTemplates } from './hooks/useDatabase';
@@ -217,8 +218,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         ? templateRow.config
         : {};
       const templateId = config.id || templateRow.id;
+      const { sharedFrom: _storedSharedFrom, ...storedConfig } = config;
+      // A template shared with me (through a document or a template invite)
+      // carries its owner and my role; it saves through its own row.
+      const sharedFrom = sharedFromRow(templateRow);
       return {
-        ...config,
+        ...storedConfig,
+        ...(sharedFrom ? { sharedFrom } : {}),
         id: templateId,
         supabaseId: templateRow.id,
         name: config.name || templateRow.name || 'Untitled Template',
@@ -262,7 +268,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
 
   const sanitizeTemplateConfig = (template) => {
     if (!template || typeof template !== 'object') return template;
-    const { supabaseId, ...rest } = template;
+    const { supabaseId, sharedFrom, ...rest } = template;
     return rest;
   };
 
@@ -1178,6 +1184,37 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   const exitSelectionMode = useCallback(() => {}, []);
 
 
+  // Save the changes made to templates shared with me, each to its own row
+  // (the database lets an editor collaborator update it; useTemplates keeps
+  // the saved row marked as shared).
+  const persistSharedTemplateEdits = async (sharedTemplates) => {
+    const viewOnlyChanged = [];
+    for (const template of sharedTemplates || []) {
+      const row = (supabaseRowsRef.current || []).find((r) => r?.id === template.supabaseId);
+      if (!row) continue;
+      const storedConfig = row.config && typeof row.config === 'object' ? row.config : {};
+      const nextConfig = { ...storedConfig, ...stripSharedFields(template) };
+      if (sameTemplateConfig(storedConfig, nextConfig)) continue;
+      if (!template.sharedFrom?.canEdit) {
+        viewOnlyChanged.push(template.name || 'A shared template');
+        continue;
+      }
+      await updateSupabaseTemplate(row.id, {
+        name: template.name || row.name,
+        config: nextConfig,
+        updated_at: new Date().toISOString(),
+      });
+    }
+    if (viewOnlyChanged.length) {
+      showToast(
+        viewOnlyChanged.length === 1
+          ? `${viewOnlyChanged[0]} is shared with you to use only, so your changes to it were not saved.`
+          : `${viewOnlyChanged.length} templates are shared with you to use only, so your changes to them were not saved.`,
+        'warn'
+      );
+    }
+  };
+
   // Persist templates to Supabase
   const persistTemplates = async (templatesToSave) => {
     if (!user) {
@@ -1185,8 +1222,19 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     }
 
     try {
-      const withResolvedRows = templatesToSave.map((template) => ({
+      // Owner 2026-10-07 (shared templates): a template shared with me never
+      // goes into MY snapshot (the snapshot function refuses another
+      // person's row). An editor's changes to it save to its own row; a
+      // use-only template's changes are not saved (and say so).
+      // The snapshot's answer keeps the shared rows (useTemplates), with any
+      // edit saved just above already in them.
+      const { own, shared } = splitTemplatesForSave(templatesToSave);
+      await persistSharedTemplateEdits(shared);
+      // The people I share a template with see my name on it.
+      const ownerName = ownerDisplayName(user);
+      const withResolvedRows = own.map((template) => ({
         ...template,
+        ...(ownerName ? { ownerName } : {}),
         supabaseId: template.supabaseId || resolveSupabaseTemplateId(template) || undefined,
       }));
       const freshRows = await persistTemplateSnapshot({
@@ -1661,7 +1709,19 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     const selection = Array.from(templateIds || [])
       .map((entry) => (typeof entry === 'string' ? { id: entry, name: null } : entry))
       .filter((entry) => entry && entry.id);
-    const ids = selection.map((entry) => entry.id);
+    // A template shared with me stays until its owner archives it.
+    const sharedSelected = selection.filter((entry) => (templatesRef.current || [])
+      .some((t) => t && t.id === entry.id && t.sharedFrom));
+    if (sharedSelected.length) {
+      showToast(
+        sharedSelected.length === 1
+          ? 'A template shared with you can only be archived by its owner.'
+          : `${sharedSelected.length} templates are shared with you; only their owners can archive them.`,
+        'warn'
+      );
+    }
+    const sharedIds = new Set(sharedSelected.map((entry) => entry.id));
+    const ids = selection.filter((entry) => !sharedIds.has(entry.id)).map((entry) => entry.id);
     if (ids.length === 0) return false;
     if (!user) { showToast('Please sign in to archive templates', 'warn'); return false; }
     const confirmed = await askConfirm({
@@ -1676,7 +1736,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     // display name comes from the same lookup so Archive names the template
     // instead of showing a generic label.
     const known = templatesRef.current || [];
-    const rows = selection.map((entry) => {
+    const rows = selection.filter((entry) => !sharedIds.has(entry.id)).map((entry) => {
       const match = known.find((t) => t && t.id === entry.id);
       return {
         id: entry.id,

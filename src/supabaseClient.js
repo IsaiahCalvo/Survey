@@ -70,10 +70,14 @@ export const supabase = supabaseUrl && supabaseAnonKey
 // The dev-only fixture route intentionally exercises the full local editor
 // without a cloud session. Keep its mock viewer identity out of Supabase
 // consumers even when this checkout has valid public Supabase credentials.
+// `devCloudLibrary=1` (dev only) keeps the library reads on for the
+// two-account walks, whose every Supabase request an in-memory stand-in
+// answers (debug/scenarios/test-plan/tp-fake-backend.mjs).
 const isDevTestPdfRoute = () => (
   import.meta.env.DEV
   && typeof window !== 'undefined'
   && new URLSearchParams(window.location.search).has('testPdf')
+  && new URLSearchParams(window.location.search).get('devCloudLibrary') !== '1'
 );
 
 // Helper to check if Supabase is available

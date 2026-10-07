@@ -25,6 +25,8 @@ import { createProjectInvite, resendProjectInvite } from '../services/projectInv
 import { createTemplateInvite, resendTemplateInvite } from '../services/templateInviteService';
 import { mergeRetryResult, summarizeInviteSend } from './inviteSendSummary';
 import InviteSendNotice from './InviteSendNotice';
+import { grantRememberedDocumentTemplates } from '../services/sharedTemplates.js';
+import { supabase } from '../supabaseClient';
 import { copyTextToClipboard } from '../utils/clipboard';
 import { Icon } from './HubShell';
 import Spinner from '../components/Spinner';
@@ -186,6 +188,13 @@ export default function ShareModal({
     setBusy(true);
     const results = await Promise.all(list.map((addr) => mintInvite(addr)));
     setBusy(false);
+    // Owner 2026-10-07: people a document is shared with get its survey
+    // templates. Existing accounts are members now, so give them the
+    // templates this device saw the document use (fire-and-forget; the open
+    // document grants the rest the next time its owner opens it).
+    if (kind === 'document' && results.some((r) => r.success || r.accessGranted)) {
+      void grantRememberedDocumentTemplates({ client: supabase, documentId: targetId, user: currentUser });
+    }
     showSendOutcome(list.map((email, i) => ({ email, result: results[i] })));
   };
 

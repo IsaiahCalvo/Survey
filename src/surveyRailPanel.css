@@ -239,6 +239,13 @@
   color: var(--text-1);
 }
 
+/* A template shared with you (owner 2026-10-07): its owner's face sits
+   after the name. */
+.survey-rail .survey-rail__template-menu .survey-rail__template-option--shared {
+  grid-template-columns: minmax(0, 1fr) auto auto 12px;
+  column-gap: 8px;
+}
+
 .survey-rail .survey-rail__template-option:focus-visible {
   outline: none;
   background: var(--hover);

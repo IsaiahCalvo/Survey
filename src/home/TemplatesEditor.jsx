@@ -98,6 +98,7 @@ import { countLabel } from './countLabel.js';
 import { flagRequiredInput, isBlank } from '../components/requiredInput';
 import './TemplatesEditor.css';
 import DismissBarrier from '../components/DismissBarrier';
+import SharedTemplateBadge from '../components/SharedTemplateBadge.jsx';
 
 /* Desktop/web already use this quiet chevron for category disclosure. Keep
    one shared glyph so mobile cannot drift to a different arrow treatment.
@@ -283,6 +284,8 @@ const buildRich = (templates, mint = (_key, prefix) => newId(prefix)) => templat
     accent: t?.accent || ACCENTS[i % ACCENTS.length],
     modules: mods,
     roster,
+    // A template someone shared with me: its owner's face shows on the row.
+    ...(t?.sharedFrom ? { sharedFrom: t.sharedFrom } : {}),
   };
 });
 
@@ -1955,7 +1958,12 @@ export default function TemplatesEditor({
     if (!onSaveTemplates) { setDirty(false); setBaseline(savedBaseline); return; }
     const rev = editRevisionRef.current;
     const req = ++saveReqSeqRef.current;
-    dispatchTemplatesSave(payload.map(richToTemplate))
+    /* A template shared with me saves to its own row, and only when it really
+       changed (shared templates, owner 2026-10-07); my own templates always
+       go as one whole list. */
+    const currentPrints = fingerprintOf(payload);
+    const toSave = payload.filter((r) => !r.sharedFrom || !baseline || baseline[r.id] !== currentPrints[r.id]);
+    dispatchTemplatesSave(toSave.map(richToTemplate))
       .then(() => {
         if (saveReqSeqRef.current === req) setBaseline(savedBaseline);
         if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
@@ -2276,7 +2284,14 @@ export default function TemplatesEditor({
                         {/* lineHeight 1.2: the line box hugs the glyphs, so the
                             name + swatches stack is centred by its ink, not by
                             spare leading above the name. */}
+                        {t.sharedFrom ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', minWidth: 0 }}>{t.name}</div>
+                            <SharedTemplateBadge sharedFrom={t.sharedFrom} size={16} />
+                          </div>
+                        ) : (
                         <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{t.name}</div>
+                        )}
                         {/* Polish round 2 (2026-10-04): a template with no
                             entities shows no second line at all (it used to
                             show a lone "0"); the name then sits centred in
@@ -2974,7 +2989,12 @@ export default function TemplatesEditor({
                                 style={{ width: 24, height: 24 }}
                               />
                               <span className="templates-mobile-copy">
-                                <strong>{t.name}</strong>
+                                {t.sharedFrom ? (
+                                  <strong style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+                                    <SharedTemplateBadge sharedFrom={t.sharedFrom} size={16} />
+                                  </strong>
+                                ) : <strong>{t.name}</strong>}
                                 <small>{countLabel(t.modules.length, 'module')} · {countLabel(t.modules.reduce((sum, mod) => sum + (mod.categories || []).length, 0), 'category', 'categories')} · {countLabel(t.roster.length, 'entity', 'entities')}</small>
                                 <span className="templates-mobile-swatches">
                                   {t.roster.slice(0, 8).map((r) => {
