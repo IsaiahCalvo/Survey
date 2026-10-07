@@ -89,7 +89,9 @@ const KeyboardShortcutsOverlay = () => {
     { category: 'Interface', items: [
       { keys: ['?'], description: 'Toggle shortcuts' },
       { keys: ['Esc'], description: 'Close dialogs/cancel' },
-      { keys: ['B'], description: 'Toggle sidebar' },
+      // Polish round 6: "B  Toggle sidebar" was listed here, but no key
+      // handler for B exists anywhere in the app (the walkthrough pressed it:
+      // nothing). The sheet only lists keys that work.
     ]},
   ];
 
@@ -116,7 +118,7 @@ const KeyboardShortcutsOverlay = () => {
         ref={modalContentRef}
         style={{
           background: COLORS.background.secondary,
-          borderRadius: BORDERS.radius.xl,
+          borderRadius: BORDERS.radius.dialog,
           padding: '32px',
           maxWidth: '700px',
           width: '420px',
@@ -157,6 +159,8 @@ const KeyboardShortcutsOverlay = () => {
             Keyboard shortcuts
           </h2>
           <button
+            type="button"
+            aria-label="Close keyboard shortcuts"
             onClick={() => setIsOpen(false)}
             style={{
               background: 'transparent',

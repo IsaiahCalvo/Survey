@@ -106,7 +106,7 @@ const EXCEPTIONS = [
       + 'so the chip never changes size.',
   },
   {
-    match: /\.survey-marker-leading-check\.is-selected \.survey-marker-leading-checkbox|\.mobile-pdf-properties__keep\.is-active > span|\.mobile-page-select-indicator\.is-selected/,
+    match: /\.survey-marker-leading-check\.is-selected \.survey-marker-leading-checkbox|\.mobile-page-select-indicator\.is-selected/,
     why: 'CHECKBOXES. A ticked box is a filled box with a dark tick, here and in '
       + 'every other application; there is no glyph beside it to turn gold.',
   },

@@ -1286,6 +1286,14 @@ export function syncByPageToDoc(doc, byPage, {
   // w52: keys whose place in the page array is not the viewer's (a mark a
   // live overlay hid, put back at the end) — left out of the stacking order.
   stackOrderIgnoreKeys = null,
+  // 2026-10-07 (first-open save): NEW marks whose key (or own id) is in
+  // `bulkKeys` — a PDF's own markup being imported — are written in their own
+  // transaction(s) with `bulkOrigin`, run through `bulkTransact(run)` (the
+  // sync layer runs it under a separate Yjs client and saves it as one
+  // checkpoint instead of WAL rows). Everything else is written as before.
+  bulkKeys = null,
+  bulkOrigin = null,
+  bulkTransact = null,
 } = {}) {
   const identityNormalization = normalizeByPageAnnotationIdentities(byPage);
   byPage = identityNormalization.byPage;
@@ -1386,7 +1394,14 @@ export function syncByPageToDoc(doc, byPage, {
       if (unchanged || isLaneProtected(id)) continue;
       if (viewer && isViewerUntouched(viewer, id, obj)) continue;
       if (!writesByPage.has(page)) writesByPage.set(page, []);
-      writesByPage.get(page).push({ key: id, object: obj, pageKey: String(pageKey) });
+      writesByPage.get(page).push({
+        key: id,
+        object: obj,
+        pageKey: String(pageKey),
+        ...(bulkKeys && (bulkKeys.has(id) || (embeddedId != null && bulkKeys.has(String(embeddedId))))
+          ? { bulk: true }
+          : {}),
+      });
     }
     if (keysOnPage) presentPageKeys.set(String(pageKey), keysOnPage);
   }
@@ -1454,71 +1469,90 @@ export function syncByPageToDoc(doc, byPage, {
     topZByPage.set(pageKey, next);
     return next;
   };
-  for (const [page, entries] of writesByPage) {
-    doc.transact(() => {
-      for (const { key, object, pageKey } of entries) {
-        const stored = readAnnotationEntry(doc, key);
-        let base;
-        let basePage;
-        let echoVersions = null;
-        if (viewer) {
-          const known = viewer.base.get(key);
-          if (!stored && known) {
-            // The viewer knew this mark and the document no longer has it:
-            // someone else deleted it. Their delete wins over this edit.
-            reconcile.push({ pageKey, from: object, to: null, key });
-            continue;
-          }
-          if (stored) {
-            base = known
-              ? (derivedFromOlderCopy(viewer, key, object, known.object) || known.object)
-              : stored.o;
-            basePage = known ? known.page : stored.p;
-            echoVersions = echoVersionsFor(viewer, key);
-          }
-        }
-        const previousTombstone = tombstoneFor(stored);
-        const nextPdfAnnotationId = object?.pdfAnnotationId
-          ? String(object.pdfAnnotationId)
-          : null;
-        if (
-          previousTombstone
-          && (
-            previousTombstone.pdfAnnotationId !== nextPdfAnnotationId
-            || Number(previousTombstone.pageNumber) !== Number(page)
-          )
-        ) {
-          deletedPdfAnnotations.set(
-            deletedPdfAnnotationStorageKey(
-              previousTombstone.pageNumber,
-              previousTombstone.pdfAnnotationId,
-            ),
-            previousTombstone,
-          );
-        }
-        if (nextPdfAnnotationId) {
-          const tombstoneKey = deletedPdfAnnotationStorageKey(page, nextPdfAnnotationId);
-          if (deletedPdfAnnotations.has(tombstoneKey)) deletedPdfAnnotations.delete(tombstoneKey);
-        }
-        const result = writeAnnotationMark(doc, key, page, object, {
-          base: stored ? base : undefined,
-          basePage,
-          echoVersions,
-        });
-        if (!stored) {
-          added += 1;
-          createdKeys.add(key);
-          writeAnnotationZ(doc, key, nextTopZ(String(pageKey)));
-        } else if (String(stored.p) !== String(page)) {
-          // Moved to this page: the store dropped its old page's z; it goes
-          // on top here, where the moving screen shows it.
-          createdKeys.add(key);
-          writeAnnotationZ(doc, key, nextTopZ(String(pageKey)));
-        }
-        else if (result.writes > 0) updated += 1;
-        written.push({ key, object, pageKey });
+  const writeEntry = (page, { key, object, pageKey }) => {
+    const stored = readAnnotationEntry(doc, key);
+    let base;
+    let basePage;
+    let echoVersions = null;
+    if (viewer) {
+      const known = viewer.base.get(key);
+      if (!stored && known) {
+        // The viewer knew this mark and the document no longer has it:
+        // someone else deleted it. Their delete wins over this edit.
+        reconcile.push({ pageKey, from: object, to: null, key });
+        return false;
       }
-    }, origin);
+      if (stored) {
+        base = known
+          ? (derivedFromOlderCopy(viewer, key, object, known.object) || known.object)
+          : stored.o;
+        basePage = known ? known.page : stored.p;
+        echoVersions = echoVersionsFor(viewer, key);
+      }
+    }
+    const previousTombstone = tombstoneFor(stored);
+    const nextPdfAnnotationId = object?.pdfAnnotationId
+      ? String(object.pdfAnnotationId)
+      : null;
+    if (
+      previousTombstone
+      && (
+        previousTombstone.pdfAnnotationId !== nextPdfAnnotationId
+        || Number(previousTombstone.pageNumber) !== Number(page)
+      )
+    ) {
+      deletedPdfAnnotations.set(
+        deletedPdfAnnotationStorageKey(
+          previousTombstone.pageNumber,
+          previousTombstone.pdfAnnotationId,
+        ),
+        previousTombstone,
+      );
+    }
+    if (nextPdfAnnotationId) {
+      const tombstoneKey = deletedPdfAnnotationStorageKey(page, nextPdfAnnotationId);
+      if (deletedPdfAnnotations.has(tombstoneKey)) deletedPdfAnnotations.delete(tombstoneKey);
+    }
+    const result = writeAnnotationMark(doc, key, page, object, {
+      base: stored ? base : undefined,
+      basePage,
+      echoVersions,
+    });
+    if (!stored) {
+      added += 1;
+      createdKeys.add(key);
+      writeAnnotationZ(doc, key, nextTopZ(String(pageKey)));
+    } else if (String(stored.p) !== String(page)) {
+      // Moved to this page: the store dropped its old page's z; it goes
+      // on top here, where the moving screen shows it.
+      createdKeys.add(key);
+      writeAnnotationZ(doc, key, nextTopZ(String(pageKey)));
+    }
+    else if (result.writes > 0) updated += 1;
+    written.push({ key, object, pageKey });
+    return true;
+  };
+  // 2026-10-07: a bulk import's new marks go first, in their own
+  // transaction under the caller's bulk lane (see bulkKeys above).
+  const bulkWritten = [];
+  for (const [page, entries] of writesByPage) {
+    const bulkEntries = bulkTransact ? entries.filter((entry) => entry.bulk && !map.has(entry.key)) : [];
+    const bulkSet = bulkEntries.length > 0 ? new Set(bulkEntries) : null;
+    const normalEntries = bulkSet ? entries.filter((entry) => !bulkSet.has(entry)) : entries;
+    if (bulkEntries.length > 0) {
+      bulkTransact(() => {
+        doc.transact(() => {
+          for (const entry of bulkEntries) {
+            if (writeEntry(page, entry)) bulkWritten.push(entry.key);
+          }
+        }, bulkOrigin ?? origin);
+      });
+    }
+    if (normalEntries.length > 0) {
+      doc.transact(() => {
+        for (const entry of normalEntries) writeEntry(page, entry);
+      }, origin);
+    }
   }
 
   // w52: the page's stacking order. The array order of each changed page is
@@ -1592,6 +1626,7 @@ export function syncByPageToDoc(doc, byPage, {
     skipped,
     ...(reordered ? { reordered } : {}),
     ...(reconcile.length ? { reconcile } : {}),
+    ...(bulkWritten.length ? { bulkWritten } : {}),
     ...(identityNormalization.changed
       ? { normalizedByPage: byPage, identityChanged: true }
       : {}),

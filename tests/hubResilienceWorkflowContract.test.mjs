@@ -6,7 +6,7 @@ const read = (file) => readFileSync(file, 'utf8');
 const harness = read('agent-cli/mobile-workflows/hub-resilience-e2e.mjs');
 const preview = read('src/home/HubPreview.jsx');
 const documents = read('src/home/DocumentsLedger.jsx');
-const loading = read('src/home/HubLoadingSkeletons.jsx');
+const loading = read('src/home/HubLoading.jsx');
 const workflowModel = read('agent-cli/mobile-workflows/project-document-model.mjs');
 
 test('hub resilience runner is explicitly fast mock-local and not a durable certification', () => {
@@ -86,5 +86,7 @@ test('dev preview exposes stable empty, loading, and long-document fixtures used
   assert.match(documents, /No documents match your search/);
   assert.match(documents, /sortOptions/);
   assert.match(loading, /aria-busy="true"/);
-  assert.match(loading, /aria-label=\{`Loading \$\{title\.toLowerCase\(\)\}`\}/);
+  // Owner 2026-10-04: the first load is the app's one quiet line, which
+  // announces itself (QuietLoading is role="status"), not a labelled skeleton.
+  assert.match(loading, /<QuietLoading label=\{`Loading \$\{title\.toLowerCase\(\)\}…`\} \/>/);
 });

@@ -12,15 +12,21 @@
 // ZWJ + gender sign + VS16) and 🇯🇵 is two regional indicators; splitting
 // either draws nonsense. `Intl.Segmenter` is the only correct splitter and is
 // available in every runtime this app ships to.
-const graphemeSegmenter = (() => {
+// Made on first use, not at import: building one costs ~15 ms of main-thread
+// time (about 60 ms on a 4x-slowed CPU), and this module is imported by the
+// home screen, which never splits text.
+let graphemeSegmenter;
+function getGraphemeSegmenter() {
+  if (graphemeSegmenter !== undefined) return graphemeSegmenter;
   try {
-    return typeof Intl !== 'undefined' && Intl.Segmenter
+    graphemeSegmenter = typeof Intl !== 'undefined' && Intl.Segmenter
       ? new Intl.Segmenter('und', { granularity: 'grapheme' })
       : null;
   } catch {
-    return null;
+    graphemeSegmenter = null;
   }
-})();
+  return graphemeSegmenter;
+}
 
 // 2026-09-15: the fallback for a runtime WITHOUT `Intl.Segmenter` used to be a
 // bare per-code-point walk, which splits every flag, keycap, skin tone and ZWJ
@@ -63,6 +69,7 @@ function segmentGraphemesWithoutIntl(source) {
 export function segmentGraphemes(text) {
   const source = String(text ?? '');
   if (!source) return [];
-  if (!graphemeSegmenter) return segmentGraphemesWithoutIntl(source);
-  return [...graphemeSegmenter.segment(source)].map((entry) => entry.segment);
+  const segmenter = getGraphemeSegmenter();
+  if (!segmenter) return segmentGraphemesWithoutIntl(source);
+  return [...segmenter.segment(source)].map((entry) => entry.segment);
 }

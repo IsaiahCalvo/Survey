@@ -1,21 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
-import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from '../components/AnnotationSizeControl';
+import { ANNOTATION_SIZE_PRESETS } from '../components/AnnotationSizeControl';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from '../utils/annotationSize';
-import { needsSwatchHairline, normaliseQuickColour, swatchCheckInk, swatchRingColour, withQuickColoursFirst } from '../utils/quickStylePresets';
-import CompactColorPicker from '../components/CompactColorPicker';
+import CompactColorPicker, { PRESET_COLORS } from '../components/CompactColorPicker';
 import { composeTextColor, splitTextColor } from '../utils/textColorOpacity';
 import { resolveFontSizeDraft } from '../utils/selectedTextFormatting.js';
-import { ChosenCheck, QuickColourDots, QuickPaintSwatch } from '../components/QuickStyleControls';
+import { QuickColourDots, QuickPaintSwatch } from '../components/QuickStyleControls';
+import { isPaintSelectionMixed } from '../utils/selectionRestyle.js';
+import { SheetOpacitySlider, SheetPreview, SheetRow, SheetScaleSlider, SheetSection, SheetSegmented, SheetSizeField, SheetSwatchRow } from './MobileToolSheetControls';
 import DismissBarrier from '../components/DismissBarrier';
+import Spinner from '../components/Spinner';
+import ActiveSpaceChip from '../sidebar/ActiveSpaceChip';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from '../components/Callout/types';
-import { ZOOM_MODE_OPTIONS, ensureRgbaOpacity } from '../viewerShared';
+import { ZOOM_MODE_OPTIONS, ensureRgbaOpacity, getCategoryGlyphLabel } from '../viewerShared';
 import { getMobileSyncPresentation, getMobileTextMarkupPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
-import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectFamilyTransition, getSelectModeIconName } from '../utils/selectModes.js';
+import { withDevFakePresence } from '../components/presenceIdentity.js';
+import { getSelectFamilyLabel, getSelectFamilyTransition, getSelectModeIconName, SELECT_MODE_OPTIONS } from '../utils/selectModes.js';
 import { tooltipForLabel } from '../utils/toolShortcuts.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
+import useRailGroupMotion from './useRailGroupMotion.js';
 import { useViewerTopOverlayRef } from '../utils/viewerTopOverlay.js';
+import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE } from '../utils/toolbarRows.js';
 import './mobilePdfViewer.css';
 
 // UX 2026-09-16 (phone sweep, owner ruling "everything reads a little big").
@@ -54,7 +60,15 @@ const HISTORY_GLYPH = 14;
 // every other tier carries, and 12 is also the glyph size the boards' own
 // segmented toggles draw (boards 6 and 7).
 const STRIP_GLYPH = 12;
-const DOCK_GLYPH = 17;
+// Owner 2026-10-01 (iPhone): "The icons for pages, search, and bookmarks, I
+// would prefer them to be bigger. I don't want the actual row that they're in
+// to grow." The Pages / Search / Bookmarks glyph in the dock pill draws at 20
+// (it was 17); then "make the Spaces and Survey dock icons match too", so the
+// circles either side draw at 20 as well. The 30px pill, its label and its
+// chevron and the circles' size are unchanged. Same 1.5 stroke on the 24 grid
+// - the glyphs simply draw larger.
+const DOCK_HUB_GLYPH = 20;
+const DOCK_GLYPH = 20;
 
 /**
  * Keeps the live text editor focused while one of its formatting buttons is
@@ -150,13 +164,18 @@ const BORDER_STYLE_TOOLS = new Set(['rect', 'ellipse', 'polygon', 'polyline', 'l
 // picker"). The 2026-09-22 row-list rebuild deleted this palette with the
 // panel's row of colour circles; both are back. The panel's big swatch opens the
 // NEW shared picker sheet, which is the one change the owner asked for.
-const MOBILE_ANNOTATION_COLORS = withQuickColoursFirst([
-  '#F4D35E',
-  '#ffffff',
-  '#1e293b',
-  '#C7A7FF',
-  '#FF8A3D',
-]);
+// Owner 2026-10-02 (Test 19): the row is EIGHT equal cells across the sheet's
+// 16px gutter - seven colours and the custom colour - so it always fits the
+// width exactly with every circle a 44px target. To make room for the custom
+// cell the slate #1e293b left the row: it sat beside black and read as black
+// on the dark sheet. It is still the text box's default colour; when it (or
+// any colour not in the row) is in force, the custom cell shows it, ringed.
+// Owner 2026-10-02 (phone/desktop consistency): ONE preset row everywhere -
+// the desktop picker's eight (CompactColorPicker PRESET_COLORS, which opens
+// with the three quick colours), then the custom cell. The phone's own tail
+// (#F4D35E #ffffff #C7A7FF #FF8A3D) is gone; any of those is still one tap away
+// in the custom cell's picker.
+const MOBILE_ANNOTATION_COLORS = PRESET_COLORS;
 
 // Mirrors zoomController's clampScale bounds (MIN_SCALE 0.01, MAX_SCALE 40) so
 // the phone steppers grey out at exactly the limits the desktop toolbar hits.
@@ -199,6 +218,15 @@ const TOOL_LABELS = {
  * the demo's never-dim overlay convention.
  */
 function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPreset, minOpacity, onChange, onClose, title, tabs = null }) {
+  // Owner 2026-09-30: the colour sheet moves like every other phone sheet -
+  // it slides up, follows a swipe down from anywhere on it (the gradient and
+  // sliders keep their own drags), and slides off on a tap outside or Done.
+  const {
+    motionStyle,
+    backdropStyle,
+    sheetProps,
+    requestClose,
+  } = useMobileSheetMotion(onClose);
   if (typeof document === 'undefined') return null;
   return createPortal(
     <>
@@ -218,7 +246,8 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
         className="mobile-pdf-colorpicker-backdrop"
         data-rich-text-toolbar
         aria-label={`Close ${title || 'color'} picker`}
-        onClick={onClose}
+        onClick={() => requestClose()}
+        style={backdropStyle}
       />
       {/* PASS 7 (boards 17 & 18): the picker is a bottom sheet in the shared
           sheet frame, not a floating panel in the middle of the screen. It
@@ -228,11 +257,18 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
           way. The panel inside it is the app's ONE shared CompactColorPicker
           (project rule) — its presets, grid, gradient and opacity row belong to
           the picker pass, and this only gives them the sheet to sit in. */}
-      <div className="mobile-pdf-colorpicker-surface" data-rich-text-toolbar role="dialog" aria-label={`${title || 'Color'} picker`}>
+      <div
+        className="mobile-pdf-colorpicker-surface"
+        data-rich-text-toolbar
+        role="dialog"
+        aria-label={`${title || 'Color'} picker`}
+        {...sheetProps}
+        style={motionStyle}
+      >
         <div className="mobile-pdf-sheet__handle" />
         <header className="mobile-pdf-tool-sheet__header">
           <strong>{title || 'Color'}</strong>
-          <button type="button" aria-label="Done" onClick={onClose}>Done</button>
+          <button type="button" aria-label="Done" onClick={() => requestClose()}>Done</button>
         </header>
         <div className="mobile-pdf-colorpicker-surface__body">
           <CompactColorPicker
@@ -266,7 +302,7 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
                and never reaches the strip or the page behind. */
             dismissMode="blocking"
             onChange={onChange}
-            onClose={onClose}
+            onClose={() => requestClose()}
           />
         </div>
       </div>
@@ -286,7 +322,7 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
  * (opens up). Keyboard: Enter/Space or ArrowDown opens; arrows move; Enter
  * selects; Escape closes. Tap: outside pointerdown closes.
  */
-function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = false, minWidth, width, placeholder }) {
+function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = false, minWidth, width, placeholder, fitOptions = false, className = '', leading = null }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -391,7 +427,7 @@ function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = fa
   };
 
   return (
-    <div className="mobile-styled-select" ref={triggerRef}>
+    <div className={`mobile-styled-select${className ? ` ${className}` : ''}`} ref={triggerRef}>
       <DismissBarrier
         active={open}
         insideRefs={dismissInsideRefs}
@@ -427,8 +463,24 @@ function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = fa
             preview is the control's own sample - a stroke at its real weight, a
             dashed rule, an arrowhead - so it belongs to the option, not to this
             component. */}
+        {/* `leading` (owner 2026-10-07): a fixed mark before the label - the
+            survey bar's gold Survey glyph in front of the template name. */}
+        {leading ? <span className="mobile-styled-select__preview" aria-hidden="true">{leading}</span> : null}
         {selected?.preview ? <span className="mobile-styled-select__preview" aria-hidden="true">{selected.preview}</span> : null}
-        <span>{currentLabel}</span>
+        {fitOptions ? (
+          /* `fitOptions` (owner 2026-09-30, the survey module pill): the pill is
+             exactly as wide as its LONGEST option - every label sits invisibly
+             in one grid cell under the live one - so it neither hugs whichever
+             name is picked (and jumps when you switch) nor pads a short name
+             out to a fixed width. A cap on the trigger still ellipsises a
+             very long name. */
+          <span className="mobile-styled-select__fit">
+            <span>{currentLabel}</span>
+            {options.map((option) => (
+              <span key={option.value} className="mobile-styled-select__fit-ghost" aria-hidden="true">{option.label}</span>
+            ))}
+          </span>
+        ) : <span>{currentLabel}</span>}
         <Icon name="chevronDown" size={9} color="currentColor" />
       </button>
       {open && typeof document !== 'undefined' && pos && createPortal(
@@ -491,11 +543,10 @@ function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = fa
   );
 }
 
-const categoryGlyph = (name) => {
-  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
-  if (parts.length > 1) return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase();
-  return (parts[0] || '?').slice(0, 2).toUpperCase();
-};
+// Owner 2026-10-01: the rail's category discs read exactly like the desktop
+// survey row's chips - the initial of each word ("Cameras" -> C, "Access
+// Control" -> AC) - from the one shared helper, not the first two letters.
+const categoryGlyph = getCategoryGlyphLabel;
 
 const toHexColor = (value, fallback = '#d8a84e') => {
   const source = String(value || '').trim();
@@ -593,44 +644,17 @@ const strokeSample = (width, length) => (
 /* Board 15's four line-style samples, at the two lengths the board uses. Cloud
    is the Drawboard-style scallop: three bumps plus the two half-bumps that make
    the run read as a continuous edge. */
-const lineStyleSample = (style, length) => {
-  const w = length;
-  if (style === 'dashed') {
-    return (
-      <svg width={w} height="12" viewBox="0 0 24 12" fill="none" aria-hidden="true">
-        <path d="M1 6H6M9.5 6H14.5M18 6H23" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  if (style === 'dotted') {
-    return (
-      <svg width={w} height="12" viewBox="0 0 24 12" fill="none" aria-hidden="true">
-        {/* The house 1.5 weight, not the board's 1.8: every chrome glyph in this
-            app strokes 1.5 on the 24 grid (tests/chromeInlineIconWholeTree) and a
-            dotted rule reads fine at it. */}
-        <path d="M1 6H23" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeDasharray="1 4" />
-      </svg>
-    );
-  }
-  if (style === 'cloud') {
-    return (
-      <svg width={w} height="14" viewBox="0 0 24 14" fill="none" aria-hidden="true">
-        <path
-          d="M1 11a2.75 2.75 0 0 1 5.5 0 2.75 2.75 0 0 1 5.5 0 2.75 2.75 0 0 1 5.5 0 2.75 2.75 0 0 1 5.5 0"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    );
-  }
-  return (
-    <svg width={w} height="12" viewBox="0 0 24 12" fill="none" aria-hidden="true">
-      <path d="M1 6H23" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
+const LINE_STYLE_SAMPLE_ICONS = {
+  solid: 'lineSampleSolid',
+  dashed: 'lineSampleDashed',
+  dotted: 'lineSampleDotted',
+  cloud: 'lineSampleCloud',
 };
+// Owner 2026-10-02 (phone/desktop consistency): the samples are the desktop's
+// own Icons.jsx drawings (the phone's cloud used to be a redrawn scallop).
+const lineStyleSample = (style, length) => (
+  <Icon name={LINE_STYLE_SAMPLE_ICONS[style] || 'lineSampleSolid'} size={length} color="currentColor" />
+);
 
 /* Board 15's arrowhead drawings — the head itself, on a shaft, so the menu reads
    as "what the end of my arrow will look like" rather than as a list of words.
@@ -742,6 +766,14 @@ const MOBILE_FONT_FAMILY_OPTIONS = ['Arial', 'Helvetica', 'Times New Roman', 'Co
 
 const MOBILE_FONT_SIZE_PRESETS = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 56, 64, 72];
 
+/* The settings sheet shows all six fonts at once, each in its own face; the
+   long two are shortened on the button (the accessible name stays the full
+   one). */
+const MOBILE_FONT_SHORT_NAMES = { 'Times New Roman': 'Times', 'Courier New': 'Courier' };
+
+// The cloud's Bump runs 1..20 (the desktop bar's clamp).
+const CLOUD_BUMP_STOPS = Array.from({ length: 20 }, (_, index) => index + 1);
+
 /* Board 12 + the units ruling: a size field says "16 pt", never a bare "16". A
    size the presets do not hold — one typed on the desktop, one carried in by an
    imported mark — is prepended so the pill never lies about the text in force,
@@ -755,10 +787,15 @@ const mobileFontSizeOptions = (current) => {
   return sizes.map((value) => ({ value: String(value), label: `${value} pt` }));
 };
 
-/* The app's own horizontal alignment glyphs (src/Icons.jsx, drawn for board
-   12). The live text strip's alignment button draws the one in force; the two
-   alignment rows themselves are the settings panel's big icons
-   (MobileTextAlignmentGlyph below). */
+/* The app's own alignment glyphs (src/Icons.jsx, drawn for board 12) - the
+   same six the desktop text bar draws. The live text strip's alignment button
+   draws the one in force; the settings panel's two alignment rows draw all six
+   (owner 2026-10-02: one glyph per action on both platforms - the panel's own
+   256-unit drawings are gone). */
+const ALIGNMENT_ICONS = {
+  left: 'alignLeft', center: 'alignCenter', right: 'alignRight',
+  top: 'alignTop', middle: 'alignMiddle', bottom: 'alignBottom',
+};
 const HORIZONTAL_ALIGNMENTS = [
   { value: 'left', icon: 'alignLeft', label: 'Align left' },
   // US spelling, app-wide ruling (owner 2026-09-22): "center", never "centre".
@@ -795,77 +832,6 @@ const RailButton = ({ active = false, disabled = false, icon, label, glyph = RAI
     {children || <Icon name={icon} size={glyph} color="currentColor" />}
   </button>
 );
-
-/* The settings panel's big alignment icons (demo AnnotationEditPanel), drawn on a
-   256-unit grid at 48x34 for the two rows of alignment buttons in the Text card.
-   RESTORED 2026-09-23 with the panel they belong to (owner: "We already had panel
-   layouts with icons and all that"). One adaptation, for the selected-state
-   ruling ("selected = gold glyph only"): the bars used to be painted gold on
-   EVERY button, chosen or not, so all six read as selected. They take the
-   button's own colour now - grey at rest, gold when chosen - and the middle bar
-   is the same colour at 55% so the glyph keeps its two-tone look. */
-function MobileTextAlignmentGlyph({ axis, value }) {
-  const common = {
-    stroke: 'currentColor',
-    strokeWidth: 6,
-    strokeLinecap: 'round',
-  };
-  const bar = { fill: 'currentColor' };
-  const softBar = { fill: 'currentColor', fillOpacity: 0.55 };
-
-  if (axis === 'horizontal') {
-    const leftContent = (
-      <>
-        <line x1="48" y1="44" x2="48" y2="212" {...common} />
-        <rect x="70" y="62" width="150" height="34" rx="8" {...bar} />
-        <rect x="70" y="111" width="76" height="34" rx="8" {...softBar} />
-        <rect x="70" y="160" width="116" height="34" rx="8" {...bar} />
-      </>
-    );
-    return (
-      <svg width="48" height="34" viewBox="0 0 256 256" aria-hidden="true">
-        {value === 0 && leftContent}
-        {value === 1 && (
-          <>
-            <line x1="128" y1="44" x2="128" y2="212" {...common} />
-            <rect x="53" y="62" width="150" height="34" rx="8" {...bar} />
-            <rect x="91" y="111" width="74" height="34" rx="8" {...softBar} />
-            <rect x="72" y="160" width="112" height="34" rx="8" {...bar} />
-          </>
-        )}
-        {value === 2 && <g transform="translate(256 0) scale(-1 1)">{leftContent}</g>}
-      </svg>
-    );
-  }
-
-  return (
-    <svg width="48" height="34" viewBox="0 0 256 256" aria-hidden="true">
-      {value === 0 && (
-        <>
-          <rect x="53" y="66" width="150" height="34" rx="8" {...bar} />
-          <line x1="128" y1="130" x2="128" y2="202" {...common} />
-          <path d="M128 130 L105 153 M128 130 L151 153" fill="none" {...common} strokeLinejoin="round" />
-        </>
-      )}
-      {value === 1 && (
-        <>
-          <rect x="53" y="111" width="150" height="34" rx="8" {...bar} />
-          <line x1="128" y1="40" x2="128" y2="82" {...common} />
-          <path d="M128 82 L105 59 M128 82 L151 59" fill="none" {...common} strokeLinejoin="round" />
-          <line x1="128" y1="174" x2="128" y2="216" {...common} />
-          <path d="M128 174 L105 197 M128 174 L151 197" fill="none" {...common} strokeLinejoin="round" />
-        </>
-      )}
-      {value === 2 && (
-        <>
-          <line x1="128" y1="48" x2="128" y2="120" {...common} />
-          <path d="M128 120 L105 97 M128 120 L151 97" fill="none" {...common} strokeLinejoin="round" />
-          <rect x="53" y="156" width="150" height="34" rx="8" {...bar} />
-        </>
-      )}
-    </svg>
-  );
-}
 
 /* The Text card's "Text size" field. Review 2026-09-23: it used to save on
    every keystroke, so typing 24 on a picked text box saved 2 and then 24 (two
@@ -930,75 +896,80 @@ function MobileFontSizeField({ value, onCommit }) {
    `keepFocus` is the live editor's pointerdown guard; the defaults panel passes
    none. Labels are the panel's own ("Left horizontal alignment", US "Center"). */
 function MobileTextAlignmentCard({ textAlign = 'left', verticalAlign = 'top', onTextAlign, onVerticalAlign, keepFocus, showVertical = true }) {
+  // Owner 2026-10-02 (Test 19): the alignment card is a section of the sheet
+  // like every other - two labelled 44px rows of three, no card around them.
   return (
-    <section className="mobile-pdf-text-card mobile-pdf-text-card--alignment">
-      <strong>Text alignment</strong>
-      <div className="mobile-pdf-text-defaults__alignments" role="toolbar" aria-label="Text alignment">
-        {['left', 'center', 'right'].map((alignment) => (
-          <button
-            key={alignment}
-            type="button"
-            aria-label={`${alignment[0].toUpperCase()}${alignment.slice(1)} horizontal alignment`}
-            aria-pressed={textAlign === alignment}
-            className={textAlign === alignment ? 'is-active' : ''}
-            onPointerDown={keepFocus}
-            onClick={() => onTextAlign?.(alignment)}
-          >
-            <MobileTextAlignmentGlyph axis="horizontal" value={['left', 'center', 'right'].indexOf(alignment)} />
-          </button>
-        ))}
-      </div>
+    <SheetSection className="mobile-tool-sheet__alignment">
+      <SheetRow label="Align">
+        <div className="mobile-tool-sheet__seg mobile-pdf-text-defaults__alignments" role="toolbar" aria-label="Text alignment">
+          {['left', 'center', 'right'].map((alignment) => (
+            <button
+              key={alignment}
+              type="button"
+              aria-label={`${alignment[0].toUpperCase()}${alignment.slice(1)} horizontal alignment`}
+              aria-pressed={textAlign === alignment}
+              className={textAlign === alignment ? 'is-active' : ''}
+              onPointerDown={keepFocus}
+              onClick={() => onTextAlign?.(alignment)}
+            >
+              <Icon name={ALIGNMENT_ICONS[alignment]} size={18} color="currentColor" />
+            </button>
+          ))}
+        </div>
+      </SheetRow>
       {/* Review 2026-09-23: callout text is always vertically centred, so
           its card has no top / middle / bottom row (showVertical). */}
       {showVertical && (
-      <div className="mobile-pdf-text-defaults__alignments" role="toolbar" aria-label="Vertical text alignment">
-        {['top', 'middle', 'bottom'].map((alignment) => (
-          <button
-            key={alignment}
-            type="button"
-            aria-label={`${alignment === 'middle' ? 'Center' : `${alignment[0].toUpperCase()}${alignment.slice(1)}`} vertical alignment`}
-            aria-pressed={verticalAlign === alignment}
-            className={verticalAlign === alignment ? 'is-active' : ''}
-            onPointerDown={keepFocus}
-            onClick={() => onVerticalAlign?.(alignment)}
-          >
-            <MobileTextAlignmentGlyph axis="vertical" value={['top', 'middle', 'bottom'].indexOf(alignment)} />
-          </button>
-        ))}
-      </div>
+      <SheetRow label="Vertical">
+        <div className="mobile-tool-sheet__seg mobile-pdf-text-defaults__alignments" role="toolbar" aria-label="Vertical text alignment">
+          {['top', 'middle', 'bottom'].map((alignment) => (
+            <button
+              key={alignment}
+              type="button"
+              aria-label={`${alignment === 'middle' ? 'Center' : `${alignment[0].toUpperCase()}${alignment.slice(1)}`} vertical alignment`}
+              aria-pressed={verticalAlign === alignment}
+              className={verticalAlign === alignment ? 'is-active' : ''}
+              onPointerDown={keepFocus}
+              onClick={() => onVerticalAlign?.(alignment)}
+            >
+              <Icon name={ALIGNMENT_ICONS[alignment]} size={18} color="currentColor" />
+            </button>
+          ))}
+        </div>
+      </SheetRow>
       )}
-    </section>
+    </SheetSection>
   );
 }
 
-/* One of the panel's colour circles. HeroUI swatch behaviour (owner 2026-09-23,
-   src/styles/swatches.css): the chosen colour is ringed in its OWN colour with a
-   white (or dark, on a light colour) check - never gold. */
-function MobilePanelColorSwatch({ color, chosen, label, onPick }) {
+/* The Text side's Size row: the font-size presets as a slider and the typed
+   field beside it (MobileFontSizeField keeps its save-once contract). A drag
+   shows its value as it goes and saves ONCE on release, so dragging over a
+   picked text box is one undo step, not one per preset passed. */
+function MobileTextSizeRow({ value, onCommit }) {
+  const [sliding, setSliding] = useState(null);
+  const shown = sliding ?? value;
   return (
-    <button
-      type="button"
-      className="hero-swatch"
-      data-selected={chosen ? 'true' : 'false'}
-      data-ink-swatch="true"
-      aria-label={label}
-      aria-pressed={chosen}
-      style={{ borderRadius: '50%', '--hero-swatch-ring': swatchRingColour(color) }}
-      onClick={onPick}
-    >
-      <span
-        className={`hero-swatch__fill${needsSwatchHairline(color) ? ' has-hairline' : ''}`}
-        style={{ background: color }}
-      >
-        {chosen && (
-          <span className="hero-swatch__check" style={{ color: swatchCheckInk(color) }} aria-hidden="true">
-            <ChosenCheck size={12} />
-          </span>
-        )}
-      </span>
-    </button>
+    <SheetRow label="Size">
+      <SheetScaleSlider
+        ariaLabel="Text size"
+        stops={MOBILE_FONT_SIZE_PRESETS}
+        value={shown}
+        unit="pt"
+        onSlide={setSliding}
+        onRelease={(fontSize) => {
+          setSliding(null);
+          if (fontSize !== Number(value)) onCommit?.(fontSize);
+        }}
+      />
+      <label className="mobile-tool-sheet__field">
+        <MobileFontSizeField value={shown} onCommit={onCommit} />
+        <span aria-hidden="true">pt</span>
+      </label>
+    </SheetRow>
   );
 }
+
 // Demo zoom-fit dropdown lists ONLY the fit modes (demo constants.tsx:92-96:
 // Fit Page / Fit Width / Fit Height). 'manual' is the pinch-zoom RESULT state,
 // never a menu choice, so it's filtered out here — keeps parity with the demo's
@@ -1006,7 +977,7 @@ function MobilePanelColorSwatch({ color, chosen, label, onPick }) {
 // the pdf.js viewer: zoomController FIT_HEIGHT + PDFViewer handleZoomModeSelect).
 const ZOOM_FIT_OPTIONS = ZOOM_MODE_OPTIONS.filter((option) => option.id !== 'manual');
 
-export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi, bottomToolbarApi }) {
+export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi, bottomToolbarApi, activeSpace = null, onOpenSpaces = null, onTurnOffSpace = null }) {
   // OWNER DECISION 2 (2026-07-12): the page pill has two tap zones — the
   // fraction opens an inline page-jump input (type-to-jump), the chevron opens
   // the zoom/fit dropdown ONLY. The old combined page+zoom single surface is
@@ -1070,7 +1041,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           <Icon name="chevronLeft" size={HEADER_GLYPH} color="currentColor" />
         </button>
 
-        <div className={`mobile-pdf-header__page-pill${(pageEditing || zoomOpen) ? ' is-open' : ''}`}>
+        <div className={`mobile-pdf-header__page-pill${(pageEditing || zoomOpen) ? ' is-open' : ''}${zoomOpen ? ' is-zoom-open' : ''}`}>
           {pageEditing ? (
             <span className="mobile-pdf-header__page-frac">
               <input
@@ -1099,7 +1070,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
                   setPageEditing(false);
                 }}
               />
-              <span className="mobile-pdf-header__page-total">/ {bottomToolbarApi?.numPages || 1}</span>
+              <span className="mobile-pdf-header__page-total">/ {bottomToolbarApi?.activeSpaceHasNoPages ? 0 : (bottomToolbarApi?.numPages || 1)}</span>
             </span>
           ) : (
             /* UX: the WHOLE "n / N" fraction is the page-jump tap zone (owner
@@ -1111,19 +1082,85 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
               aria-label="Jump to page"
               onClick={openPageEdit}
             >
-              {bottomToolbarApi?.pageNum || 1}
-              <span className="mobile-pdf-header__page-total">/ {bottomToolbarApi?.numPages || 1}</span>
+              {bottomToolbarApi?.activeSpaceHasNoPages ? 0 : (bottomToolbarApi?.pageNum || 1)}
+              <span className="mobile-pdf-header__page-total">/ {bottomToolbarApi?.activeSpaceHasNoPages ? 0 : (bottomToolbarApi?.numPages || 1)}</span>
             </button>
           )}
+          {/* Owner 2026-10-02 (second verdict: "Put the chevron back"): the
+              pill's second tap zone is the bare chevron again, as it was
+              before the zoom % was folded into the pill. The live zoom number
+              lives in the menu, between minus and plus. */}
           <button
             type="button"
             className="mobile-pdf-header__page-chevron"
             aria-label="Zoom and fit options"
+            aria-haspopup="true"
             aria-expanded={zoomOpen}
             onClick={toggleZoom}
           >
             <Icon name="chevronDown" size={11} color="currentColor" />
           </button>
+
+          {/* The zoom menu hangs off the pill itself (it is the pill's child):
+              it shares the pill's surface, border and radius and opens
+              downward from the pill's bottom edge, its width growing out of
+              the pill's own. It stays mounted so it can animate BOTH in and
+              out via CSS, the close being the open played backwards;
+              visibility flips off only once the close has finished, so it
+              leaves the tab order when closed. prefers-reduced-motion drops
+              the motion. */}
+          {bottomToolbarApi && (
+            <div
+              className={`mobile-pdf-header__zoom-menu${zoomOpen ? ' is-open' : ''}`}
+              aria-hidden={!zoomOpen}
+            >
+              {/* UX 2026-09-16 (phone reach pass): minus and plus step by exactly
+                  the desktop's 1.25x per tap and honour the same 1%-4000% limits
+                  (they call the very same zoomOut/zoomIn the desktop toolbar
+                  uses). Owner 2026-10-02: "put the numbers between the minus
+                  and plus" - the live reading sits centred between them, in
+                  the rows' quiet face with tabular digits so it never jiggles
+                  as it changes. The menu stays open so you can tap
+                  repeatedly. */}
+              <div className="mobile-pdf-header__zoom-steppers" role="group" aria-label="Zoom level">
+                <button
+                  type="button"
+                  aria-label="Zoom out"
+                  disabled={zoomPercent <= MOBILE_ZOOM_MIN_PERCENT}
+                  onClick={() => bottomToolbarApi.zoomOut?.()}
+                >
+                  <Icon name="minus" size={HEADER_GLYPH} color="currentColor" />
+                </button>
+                <span className="mobile-pdf-header__zoom-percent" aria-live="polite">{`${zoomPercent}%`}</span>
+                <button
+                  type="button"
+                  aria-label="Zoom in"
+                  disabled={zoomPercent >= MOBILE_ZOOM_MAX_PERCENT}
+                  onClick={() => bottomToolbarApi.zoomIn?.()}
+                >
+                  <Icon name="plus" size={HEADER_GLYPH} color="currentColor" />
+                </button>
+              </div>
+              <div className="mobile-pdf-header__zoom-fits" role="listbox" aria-label="Zoom and fit mode">
+                {ZOOM_FIT_OPTIONS.map((option) => (
+                  <button
+                    type="button"
+                    key={option.id}
+                    role="option"
+                    aria-selected={bottomToolbarApi.zoomMode === option.id}
+                    className={bottomToolbarApi.zoomMode === option.id ? 'is-active' : ''}
+                    onClick={() => {
+                      bottomToolbarApi.handleZoomModeSelect(option.id);
+                      setZoomOpen(false);
+                    }}
+                  >
+                    <span>{option.label}</span>
+                    {bottomToolbarApi.zoomMode === option.id && <Icon name="check" size={14} color="currentColor" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <button
@@ -1137,65 +1174,6 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           <Icon name="chevronRight" size={HEADER_GLYPH} color="currentColor" />
         </button>
 
-        {/* Phase F: the zoom/fit dropdown stays mounted so it can animate BOTH
-            in (~150ms) and out (~130ms) via CSS — opacity + translateY(-4->0) +
-            scale(.97->1), demo App.tsx:410-428. `is-open` drives the state;
-            visibility flips off only after the out-transition so it leaves the
-            tab order when closed. prefers-reduced-motion drops the easing. */}
-        {bottomToolbarApi && (
-          <div
-            className={`mobile-pdf-header__zoom-menu${zoomOpen ? ' is-open' : ''}`}
-            aria-hidden={!zoomOpen}
-          >
-            {/* UX 2026-09-16 (phone reach pass): the phone could only pick a fit
-                mode here — there was no way to step the zoom by hand and no
-                number telling you where you were, so the only manual zoom on a
-                phone was a pinch. Minus and plus step by exactly the desktop's
-                1.25x per tap and honour the same 1%-4000% limits (they call the
-                very same zoomOut/zoomIn the desktop toolbar uses), and the
-                reading between them is the live scale. The menu deliberately
-                stays open so you can tap up or down repeatedly. Reference:
-                Drawboard PDF's phone zoom control pairs steppers with a live
-                percentage rather than fit modes alone. */}
-            <div className="mobile-pdf-header__zoom-steppers" role="group" aria-label="Zoom level">
-              <button
-                type="button"
-                aria-label="Zoom out"
-                disabled={zoomPercent <= MOBILE_ZOOM_MIN_PERCENT}
-                onClick={() => bottomToolbarApi.zoomOut?.()}
-              >
-                <Icon name="minus" size={HEADER_GLYPH} color="currentColor" />
-              </button>
-              <span className="mobile-pdf-header__zoom-percent" aria-live="polite">{`${zoomPercent}%`}</span>
-              <button
-                type="button"
-                aria-label="Zoom in"
-                disabled={zoomPercent >= MOBILE_ZOOM_MAX_PERCENT}
-                onClick={() => bottomToolbarApi.zoomIn?.()}
-              >
-                <Icon name="plus" size={HEADER_GLYPH} color="currentColor" />
-              </button>
-            </div>
-            <div className="mobile-pdf-header__zoom-fits" role="listbox" aria-label="Zoom and fit mode">
-              {ZOOM_FIT_OPTIONS.map((option) => (
-                <button
-                  type="button"
-                  key={option.id}
-                  role="option"
-                  aria-selected={bottomToolbarApi.zoomMode === option.id}
-                  className={bottomToolbarApi.zoomMode === option.id ? 'is-active' : ''}
-                  onClick={() => {
-                    bottomToolbarApi.handleZoomModeSelect(option.id);
-                    setZoomOpen(false);
-                  }}
-                >
-                  <span>{option.label}</span>
-                  {bottomToolbarApi.zoomMode === option.id && <Icon name="check" size={14} color="currentColor" />}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="mobile-pdf-header__history">
@@ -1220,6 +1198,23 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           <Icon name="redo" size={HISTORY_GLYPH} color="currentColor" />
         </button>
       </div>
+      {/* Spaces chunk B: the active space, floating just under the top bar
+          (and under a tool strip when one is open - see the CSS). The words
+          open the Spaces sheet; x turns the space off. Hidden while drawing
+          a space's areas: it sat over the top of the page and blocked
+          starting an area there (owner 2026-10-01). */}
+      {/* (Owner 2026-10-07, survey bar round: the Survey chip that sat here
+          is gone - the survey strip names Survey and ends with "Done".) */}
+      {activeSpace && !bottomToolbarApi?.regionEditing && (
+        <div className="mobile-pdf-header__space">
+          <ActiveSpaceChip
+            name={activeSpace.name}
+            pageCount={activeSpace.pageCount}
+            onOpen={onOpenSpaces}
+            onTurnOff={onTurnOffSpace}
+          />
+        </div>
+      )}
     </header>
   );
 }
@@ -1238,7 +1233,8 @@ export function MobileToolProperties({ api }) {
   // AnnotationEditPanel.tsx:141-199 / inv-demo §17).
   const {
     motionStyle: textSheetMotionStyle,
-    dragHandlers: textSheetDragHandlers,
+    backdropStyle: textSheetBackdropStyle,
+    sheetProps: textSheetProps,
     requestClose: requestTextSheetClose,
   } = useMobileSheetMotion(() => setTextDefaultsOpen(false), { open: textDefaultsOpen });
   /* RESTORED 2026-09-23 (owner: "We had panels for every single annotation ...
@@ -1258,6 +1254,7 @@ export function MobileToolProperties({ api }) {
   const topOverlayRef = useViewerTopOverlayRef();
   const textMarkup = getMobileTextMarkupPresentation(api);
   const liveTextEditing = Boolean(api?.richTextEditor);
+  const wasLiveTextEditingRef = useRef(liveTextEditing);
 
   useEffect(() => {
     // Close every tool-scoped popover/sheet when the active tool changes so a
@@ -1265,6 +1262,13 @@ export function MobileToolProperties({ api }) {
     // ending a live text edit closes it too: the panel shows the editor's
     // alignment card while typing and the tool's defaults otherwise, so one must
     // never carry over into the other.
+    // Owner 2026-10-02 (Test 21, "nothing ever disappears abruptly"): while
+    // one live edit carries on, a flip of the context tool under it is not a
+    // reason to yank the Font color / alignment sheet away mid-gesture - that
+    // unmount has no slide. Those sheets close on a real dismiss only.
+    const editContinues = wasLiveTextEditingRef.current && liveTextEditing;
+    wasLiveTextEditingRef.current = liveTextEditing;
+    if (editContinues) return;
     setColorPicker(null);
     setTextDefaultsOpen(false);
     api?.setShowAnnotationColorPicker?.(false);
@@ -1287,11 +1291,14 @@ export function MobileToolProperties({ api }) {
       );
     }
     return (
-      <div className="mobile-pdf-properties mobile-pdf-properties--actions" data-mobile-tool-properties="true" role="toolbar" aria-label="Region editing" ref={topOverlayRef}>
-        <button type="button" className="mobile-pdf-properties__primary" onClick={region.confirm}>Confirm</button>
+      // Owner 2026-10-01 (Spaces toolbar): the same actions, in the same order,
+      // as the desktop tool bar's Areas row - what you can do to the areas,
+      // then Cancel, then Done (the one gold button) on the trailing edge.
+      <div className="mobile-pdf-properties mobile-pdf-properties--actions" data-mobile-tool-properties="true" role="toolbar" aria-label="Area editing" ref={topOverlayRef}>
         <button type="button" disabled={!region.canDelete} onClick={region.deleteSelected}>Delete</button>
         <button type="button" disabled={!region.canSetFullPage} onClick={region.setFullPage}>Full page</button>
         <button type="button" onClick={region.cancel}>Cancel</button>
+        <button type="button" className="mobile-pdf-properties__primary" onClick={region.confirm}>Done</button>
       </div>
     );
   }
@@ -1306,9 +1313,36 @@ export function MobileToolProperties({ api }) {
     return (
       <div className="mobile-pdf-properties mobile-pdf-properties--survey" data-mobile-tool-properties="true" role="toolbar" aria-label="Survey placement" ref={topOverlayRef}>
         {/* App-styled dropdown (OWNER DECISION 3) replaces the OS module roller. */}
+        {/* Owner 2026-09-30 (survey bar design, decided after a design review):
+              [ Module v ] (switch) Reuse   (centred)
+            - The pill is exactly as wide as its LONGEST module name
+              (fitOptions: every name sits invisibly in one grid cell), so
+              switching module never moves the switch; it shrinks and
+              ellipsises only when the row runs out of room.
+            - "Keep active" is the desktop survey row's plateless switch,
+              relabelled "Repeat", then "Reuse" (owner 2026-10-01): it keeps
+              the CATEGORY armed after a Survey Marker is placed (PDFViewer
+              clears selectedCategoryId otherwise).
+            Owner 2026-10-07 (survey bar round, after a debate - the floating
+            Survey chip under the top bar is gone): the strip names the mode
+            itself and is the way out, the desktop bar's twin:
+              [glyph template v]  [ Module v ] (switch) Reuse   Done
+            The template is a menu (switch template); it is the one item
+            that gives way when the strip runs out of room (ellipsis). "Done"
+            leaves Survey with an Undo toast; 44px finger target. */}
         <MobileStyledSelect
+          className="mobile-pdf-properties__survey-template"
+          ariaLabel="Survey template"
+          leading={<Icon name="survey" size={14} color="var(--accent)" />}
+          value={survey.templateId || ''}
+          placeholder={survey.templateName || 'Survey'}
+          options={(survey.templates || []).map((template) => ({ value: template.id, label: template.name }))}
+          onChange={(value) => survey.onSelectTemplate?.(value)}
+        />
+        <MobileStyledSelect
+          className="mobile-pdf-properties__survey-module"
           ariaLabel="Survey module"
-          minWidth={138}
+          fitOptions
           disabled={!survey.modules?.length}
           placeholder="No modules"
           value={survey.selectedModuleId || ''}
@@ -1317,13 +1351,24 @@ export function MobileToolProperties({ api }) {
         />
         <button
           type="button"
-          className={`mobile-pdf-properties__keep${survey.keepCategoryActive ? ' is-active' : ''}`}
-          role="checkbox"
+          className="mobile-pdf-properties__keep"
+          role="switch"
           aria-checked={Boolean(survey.keepCategoryActive)}
+          aria-label="Reuse category"
           onClick={() => survey.onKeepCategoryActiveChange?.(!survey.keepCategoryActive)}
         >
-          <span aria-hidden="true">{survey.keepCategoryActive ? <Icon name="check" size={14} /> : null}</span>
-          Keep active
+          <span className="mobile-pdf-properties__keep-track" aria-hidden="true" />
+          <span>Reuse</span>
+        </button>
+        {/* A rule keeps "Reuse" and "Done" from reading as one phrase. */}
+        <span aria-hidden="true" className="mobile-pdf-properties__divider mobile-pdf-properties__done-rule" />
+        <button
+          type="button"
+          className="mobile-pdf-properties__done"
+          aria-label="Leave Survey"
+          onClick={() => survey.onExit?.()}
+        >
+          Done
         </button>
       </div>
     );
@@ -1439,9 +1484,13 @@ export function MobileToolProperties({ api }) {
           opacity={splitTextColor(state.fontColor).opacity}
           minOpacity={0.05}
           firstPreset="none"
+          /* Owner 2026-10-02 (Test 21): refocus: false - the colour lands on
+             the text being edited and the box stays in edit mode, but the
+             keyboard stays down while the sheet is in use (a refocus raised
+             it on every swatch tap and every gradient or slider move). */
           onChange={(hex, alpha, meta) => editorApi.setFontColor?.(
             composeTextColor(hex, alpha > 0 ? alpha : splitTextColor(state.fontColor).opacity),
-            meta,
+            { ...meta, refocus: false },
           )}
           onClose={() => setColorPicker(null)}
         />
@@ -1462,27 +1511,21 @@ export function MobileToolProperties({ api }) {
             aria-label="Close text formatting"
             onPointerDown={keepTextEditFocus}
             onClick={requestTextSheetClose}
+            style={textSheetBackdropStyle}
           />
           <section
-            className="mobile-pdf-text-defaults is-text"
+            className="mobile-pdf-text-defaults mobile-tool-sheet is-text"
             data-rich-text-toolbar
             aria-label={`${TOOL_LABELS[tool] || 'Text'} settings`}
+            {...textSheetProps}
             style={textSheetMotionStyle}
           >
-            <div
-              className="mobile-pdf-sheet__handle"
-              onTouchStart={textSheetDragHandlers.onTouchStart}
-              onTouchMove={textSheetDragHandlers.onTouchMove}
-              onTouchEnd={textSheetDragHandlers.onTouchEnd}
-            />
-            <header>
-              <div>
-                <strong>{TOOL_LABELS[tool] || 'Text'} settings</strong>
-                <span>Focused on Text</span>
-              </div>
-              <button type="button" aria-label="Close annotation settings" onPointerDown={keepTextEditFocus} onClick={requestTextSheetClose}>
-                <Icon name="close" size={17} color="currentColor" />
-              </button>
+            <div className="mobile-pdf-sheet__handle" />
+            {/* Owner 2026-09-30: no close X - a tap outside or a swipe down
+                (anywhere on the sheet) closes it. Owner 2026-10-02: the title
+                says what the sheet holds, with no "Focused on" line. */}
+            <header className="mobile-tool-sheet__header">
+              <strong>Text alignment</strong>
             </header>
             <div className="mobile-pdf-text-defaults__scroll">
               <MobileTextAlignmentCard
@@ -1490,8 +1533,9 @@ export function MobileToolProperties({ api }) {
                 verticalAlign={verticalAlign}
                 keepFocus={keepTextEditFocus}
                 showVertical={api.textVerticalAlignSupported !== false}
-                onTextAlign={(next) => editorApi.setTextAlign?.(next)}
-                onVerticalAlign={(next) => editorApi.setVerticalAlign?.(next)}
+                // The keyboard stays down while this sheet is in use (Test 21).
+                onTextAlign={(next) => editorApi.setTextAlign?.(next, { refocus: false })}
+                onVerticalAlign={(next) => editorApi.setVerticalAlign?.(next, { refocus: false })}
               />
             </div>
           </section>
@@ -1522,6 +1566,8 @@ export function MobileToolProperties({ api }) {
     const selectMode = api.activeTool === 'text-select' ? 'text' : (api.selectionMode || 'rectangle');
     return (
       <div className="mobile-pdf-properties" data-mobile-tool-properties="true" role="toolbar" aria-label="Select settings" ref={topOverlayRef}>
+        {/* The full names are the desktop's (SELECT_MODE_OPTIONS):
+            "Rectangle Select / Lasso Select / Text Select" on both. */}
         <MobileStripSegmented
           ariaLabel="Selection mode"
           width={150}
@@ -1532,9 +1578,9 @@ export function MobileToolProperties({ api }) {
             api.setActiveTool?.(next.activeTool);
           }}
           options={[
-            { value: 'rectangle', label: 'Box', ariaLabel: 'Box select', icon: getSelectModeIconName('rectangle') },
-            { value: 'lasso', label: 'Lasso', ariaLabel: 'Lasso select', icon: getSelectModeIconName('lasso') },
-            { value: 'text', label: 'Text', ariaLabel: 'Text select', icon: getSelectModeIconName('text') },
+            { value: 'rectangle', label: 'Box', ariaLabel: SELECT_MODE_OPTIONS[0].label, icon: getSelectModeIconName('rectangle') },
+            { value: 'lasso', label: 'Lasso', ariaLabel: SELECT_MODE_OPTIONS[1].label, icon: getSelectModeIconName('lasso') },
+            { value: 'text', label: 'Text', ariaLabel: SELECT_MODE_OPTIONS[2].label, icon: getSelectModeIconName('text') },
           ]}
         />
       </div>
@@ -1628,7 +1674,9 @@ export function MobileToolProperties({ api }) {
   }
 
   // Pan has nothing to set, so it has no strip and the page keeps the 36px.
-  if (api.activeTool === 'pan') return null;
+  // Owner 2026-10-04: a Pan pick shows the picked mark's strip, as a Select
+  // pick does (contextTool is then the mark's tool).
+  if (api.activeTool === 'pan' && (!api.contextTool || api.contextTool === 'pan')) return null;
 
   const isEraser = tool === 'eraser';
   // w41: the picked mark(s) decide what can change - a partly erased or
@@ -1694,7 +1742,6 @@ export function MobileToolProperties({ api }) {
   // shape colour card to a single Stroke section (no Fill/Stroke sub-tabs).
   const hasFillSheet = FILL_TOOLS.has(tool);
   const shapeSection = hasFillSheet ? textShapeColorSection : 'stroke';
-  const showBorderStyleSheet = BORDER_STYLE_TOOLS.has(tool) && typeof api.setLineBorderStyle === 'function';
   const shapeColor = shapeSection === 'fill'
     ? toHexColor(api.fillColor, '#ffffff')
     : toHexColor(api.strokeColor, '#ff0000');
@@ -1716,6 +1763,16 @@ export function MobileToolProperties({ api }) {
     // "Border", so this panel does too (it said "Stroke").
     return tool === 'counter' ? 'Number' : 'Border';
   };
+  // Owner 2026-10-02 (Test 19): a pen's colour row said "Border color". A line
+  // tool has ONE colour and the sheet just calls it "Color"; the channel word
+  // is only spoken where there are two (Fill / Border, Fill / Number).
+  const channelWord = hasFillSheet ? shapeSectionLabel(shapeSection) : '';
+  // The opacity of the channel the colour row is on - the same value and the
+  // same write the shared colour picker's Opacity slider uses for that tab.
+  const channelOpacity = Math.round(Number(shapeSection === 'fill' ? (api.fillOpacity ?? 100) : (api.strokeOpacity ?? 100)));
+  const channelOpacityHandler = shapeSection === 'fill' ? api.handleFillOpacityChange : api.handleStrokeOpacityChange;
+  const widthMixed = !!api.selectionMixed?.width;
+  const textColor = splitTextColor(textDefaults.fontColor);
   // Open the panel. "..." opens the Shape side on the channel the strip's swatch
   // shows (the border for a shape, the pin for a counter); "Aa" opens the Text
   // side (demo: swatch / Aa -> AnnotationEditPanel focused on that face).
@@ -1886,6 +1943,34 @@ export function MobileToolProperties({ api }) {
      so the same "..." opens the same panel acting on the selection. Every strip
      still fits a 375px phone with it (tests/mobileToolPropertiesReach). */
   const showMoreOnStrip = true;
+  // The live preview at the top of the sheet: what the tool will draw.
+  const strokePaint = ensureRgbaOpacity(toHexColor(api.strokeColor, '#ff0000'), Math.max(0, Math.min(1, (api.strokeOpacity ?? 100) / 100)));
+  const fillPaint = ensureRgbaOpacity(toHexColor(api.fillColor, '#ffffff'), Math.max(0, Math.min(1, (api.fillOpacity ?? 100) / 100)));
+  const sheetPreview = isEraser
+    ? { kind: 'eraser', width: sizeValue }
+    : sheetTab === 'text'
+      ? {
+        kind: 'text',
+        text: {
+          fontFamily: textDefaults.fontFamily || 'Arial',
+          fontSize: `${Math.max(10, Math.min(28, Number(textDefaults.fontSize) || 16))}px`,
+          fontWeight: textDefaults.bold ? 700 : 400,
+          fontStyle: textDefaults.italic ? 'italic' : 'normal',
+          textDecoration: [textDefaults.underline && 'underline', textDefaults.strike && 'line-through'].filter(Boolean).join(' ') || 'none',
+          color: composeTextColor(textColor.hex, textColor.opacity),
+        },
+      }
+      : tool === 'counter'
+        ? { kind: 'counter', stroke: strokePaint, fill: fillPaint, width: api.strokeWidthInputValue }
+        : hasFillSheet
+          ? { kind: 'shape', shape: tool, stroke: strokePaint, fill: fillPaint, width: api.strokeWidthInputValue, lineStyle: lineStyleValue }
+          : {
+            kind: tool === 'line' || tool === 'arrow' ? 'line' : tool === 'polyline' ? 'polyline' : 'stroke',
+            stroke: strokePaint,
+            width: api.strokeWidthInputValue,
+            lineStyle: showBorderStyle ? lineStyleValue : 'solid',
+            arrowhead: tool === 'arrow' ? (api.arrowheadStyle || 'solidTriangle') : 'none',
+          };
 
   /* PASS 7 (boards 17 and 18): the COLOUR SHEET the strip's colour controls
      open — titled "Color", with a gold Done, the shared picker's 12 presets
@@ -2032,6 +2117,7 @@ export function MobileToolProperties({ api }) {
              the Border / Fill tabs for the other one. It used to open the old
              "<Tool> settings" sheet instead, which is not a colour picker. */
           onOpen={() => setColorPicker(tool === 'counter' ? 'fill' : 'stroke')}
+          mixed={isPaintSelectionMixed(api.selectionMixed)}
         />
       )}
       <MobileStripDivider />
@@ -2158,139 +2244,114 @@ export function MobileToolProperties({ api }) {
           className="mobile-pdf-sheet-backdrop"
           aria-label="Close text formatting"
           onClick={requestTextSheetClose}
+          style={textSheetBackdropStyle}
         />
         <section
-          className={`mobile-pdf-text-defaults is-${isEraser ? 'eraser' : sheetTab}${tool === 'callout' ? ' is-callout' : ''}`}
+          className={`mobile-pdf-text-defaults mobile-tool-sheet is-${isEraser ? 'eraser' : sheetTab}${tool === 'callout' ? ' is-callout' : ''}`}
           aria-label={`${sheetTitle} settings`}
+          {...textSheetProps}
           style={textSheetMotionStyle}
         >
-          <div
-            className="mobile-pdf-sheet__handle"
-            onTouchStart={textSheetDragHandlers.onTouchStart}
-            onTouchMove={textSheetDragHandlers.onTouchMove}
-            onTouchEnd={textSheetDragHandlers.onTouchEnd}
-          />
-          <header>
-            <div>
-              <strong>{sheetTitle} settings</strong>
-              <span>Focused on {isEraser ? 'Eraser' : sheetTab === 'text' ? 'Text' : 'Shape'}</span>
-            </div>
-            <button type="button" aria-label="Close annotation settings" onClick={requestTextSheetClose}>
-              <Icon name="close" size={17} color="currentColor" />
-            </button>
+          <div className="mobile-pdf-sheet__handle" />
+          {/* Owner 2026-09-30: no close X - a tap outside or a swipe down
+              (anywhere on the sheet) closes it.
+              Owner 2026-10-02 (Test 19): the title is the tool's name and
+              nothing under it - "Focused on Shape" named a tab, not the tool,
+              and read wrong on a pen. */}
+          <header className="mobile-tool-sheet__header">
+            <strong>{sheetTitle}</strong>
           </header>
-          {/* Text/Shape segmented control only for text & callout — pen/shape/
-              counter show shape-side cards directly (demo AnnotationEditPanel
-              tabs appear only when both a text and a shape face exist). */}
+          {/* Shape / Text only for the text box and callout - the two tools
+              that have both a box and the words in it. */}
           {isTextTool && (
-          <div className="mobile-pdf-text-defaults__tabs" role="tablist" aria-label="Annotation settings section">
-            <button
-              type="button"
-              role="tab"
-              aria-label="Shape settings"
-              aria-selected={textDefaultsTab === 'shape'}
-              className={textDefaultsTab === 'shape' ? 'is-active' : ''}
-              onClick={() => setTextDefaultsTab('shape')}
-            >
-              Shape
-            </button>
-            <span aria-hidden="true" />
-            <button
-              type="button"
-              role="tab"
-              aria-label="Text settings"
-              aria-selected={textDefaultsTab === 'text'}
-              className={textDefaultsTab === 'text' ? 'is-active' : ''}
-              onClick={() => setTextDefaultsTab('text')}
-            >
-              Text
-            </button>
-          </div>
+            <SheetSegmented
+              kind="tab"
+              className="mobile-tool-sheet__tabs"
+              ariaLabel="Annotation settings section"
+              value={textDefaultsTab}
+              options={[
+                { value: 'shape', label: 'Shape', ariaLabel: 'Shape settings' },
+                { value: 'text', label: 'Text', ariaLabel: 'Text settings' },
+              ]}
+              onChange={setTextDefaultsTab}
+            />
           )}
           <div className="mobile-pdf-text-defaults__scroll">
+            <SheetPreview {...sheetPreview} />
             {isEraser ? (
-              /* The eraser's card: its mode and its TYPED size side by side - the
-                 two controls the old eraser strip carried (a mode menu and a
-                 typed size), in the panel's own split card. The strip keeps its
-                 Partial / Whole toggle and its size dropdown. */
-              <section className="mobile-pdf-text-card mobile-pdf-text-card--split">
-                <div className="mobile-pdf-text-card__pane">
-                  <strong>Eraser mode</strong>
-                  <MobileStyledSelect
+              <SheetSection>
+                <SheetRow label="Mode">
+                  <SheetSegmented
                     ariaLabel="Eraser mode"
                     value={api.eraserMode === 'entire' ? 'entire' : 'partial'}
                     options={[
-                      { value: 'partial', label: 'Partial' },
-                      { value: 'entire', label: 'Whole' },
+                      { value: 'partial', label: 'Partial', ariaLabel: 'Partial erase' },
+                      { value: 'entire', label: 'Whole', ariaLabel: 'Erase the whole mark' },
                     ]}
                     onChange={(mode) => api.setEraserMode?.(mode)}
                   />
-                </div>
-                <span className="mobile-pdf-text-card__divider" aria-hidden="true" />
-                <div className="mobile-pdf-text-card__pane mobile-pdf-text-card__size">
-                  <strong>Size</strong>
-                  <AnnotationSizeControl
+                </SheetRow>
+                <SheetRow label="Size">
+                  <SheetScaleSlider
+                    ariaLabel="Eraser size"
+                    stops={sizePresets}
+                    value={sizeValue}
+                    onSlide={(size) => handleSizeDraft(String(size))}
+                    onRelease={(size) => { handleSizeDraft(String(size)); handleSizeCommit(String(size)); }}
+                  />
+                  <SheetSizeField
                     label={sizeLabel}
                     value={sizeValue}
                     min={sizeMin}
                     max={sizeMax}
-                    decimals={0}
-                    presets={sizePresets}
-                    onValueChange={handleSizeDraft}
-                    onValueCommit={handleSizeCommit}
+                    onDraft={handleSizeDraft}
+                    onCommit={handleSizeCommit}
                     onFocusChange={handleSizeFocus}
                   />
-                </div>
-              </section>
+                </SheetRow>
+              </SheetSection>
             ) : sheetTab === 'text' ? (
               <>
-                <section className="mobile-pdf-text-card mobile-pdf-text-card--color mobile-pdf-text-card--text-color">
-                  <div className="mobile-pdf-text-card__header">
-                    <div>
-                      <strong>Text color</strong>
-                      {/* The colour AND its opacity (UX 2026-09-23): "#1E293B" at
-                          full strength, "#1E293B · 40%" when see-through. */}
-                      <span>{splitTextColor(textDefaults.fontColor).hex.toUpperCase()}{splitTextColor(textDefaults.fontColor).opacity < 1 ? ` · ${Math.round(splitTextColor(textDefaults.fontColor).opacity * 100)}%` : ''}</span>
-                    </div>
-                    {/* The big swatch opens the NEW shared colour picker sheet. */}
-                    <button
-                      type="button"
-                      className="mobile-pdf-text-card__large-swatch"
-                      aria-label="Open Text color picker"
-                      style={{ '--mobile-text-color': composeTextColor(splitTextColor(textDefaults.fontColor).hex, splitTextColor(textDefaults.fontColor).opacity) }}
-                      onClick={() => setColorPicker('textColor')}
-                    />
-                  </div>
-                  <div className="mobile-pdf-text-card__colors">
-                    {MOBILE_ANNOTATION_COLORS.map((color) => (
-                      <MobilePanelColorSwatch
-                        key={color}
-                        color={color}
-                        chosen={normaliseQuickColour(color) === normaliseQuickColour(splitTextColor(textDefaults.fontColor).hex)}
-                        label={`Set Text color ${color}`}
-                        onPick={() => updateTextDefaults({ fontColor: composeTextColor(color, splitTextColor(textDefaults.fontColor).opacity) })}
-                      />
-                    ))}
-                  </div>
-                </section>
-
-                {/* KEPT from the 2026-09-22 row sheet (nothing may be lost): the
-                    font picker, on the desktop bar's own list (single-name fonts
-                    only - gotcha 2026-04-08). */}
-                <section className="mobile-pdf-text-card mobile-pdf-text-card--inline mobile-pdf-text-card--font">
-                  <strong>Font</strong>
-                  <MobileStyledSelect
-                    ariaLabel="Font"
-                    value={textDefaults.fontFamily || 'Arial'}
-                    options={MOBILE_FONT_FAMILY_OPTIONS}
-                    onChange={(fontFamily) => updateTextDefaults({ fontFamily })}
+                <SheetSection label="Color">
+                  <SheetSwatchRow
+                    colors={MOBILE_ANNOTATION_COLORS}
+                    value={textColor.hex}
+                    ariaLabel="Text color"
+                    swatchLabel={(color) => `Set Text color ${color}`}
+                    customLabel="Open Text color picker"
+                    onPick={(color) => updateTextDefaults({ fontColor: composeTextColor(color, textColor.opacity) })}
+                    onCustom={() => setColorPicker('textColor')}
                   />
-                </section>
-
-                <section className="mobile-pdf-text-card mobile-pdf-text-card--split">
-                  <div className="mobile-pdf-text-card__pane">
-                    <strong>Text formatting</strong>
-                    <div className="mobile-pdf-text-defaults__format" role="toolbar" aria-label="Text formatting">
+                  {/* The text colour carries its opacity (UX 2026-09-23); the
+                      picker's floor is 5%, so this slider's is too. */}
+                  <SheetOpacitySlider
+                    color={textColor.hex}
+                    value={Math.round(textColor.opacity * 100)}
+                    min={0.05}
+                    onChange={(percent, meta) => updateTextDefaults({ fontColor: composeTextColor(textColor.hex, percent / 100) }, meta)}
+                  />
+                </SheetSection>
+                <SheetSection>
+                  {/* KEPT from the 2026-09-22 row sheet: the font picker, on
+                      the desktop bar's own list (single-name fonts only -
+                      gotcha 2026-04-08). Six names, all on show, each in its
+                      own face - no list leaving the sheet. */}
+                  <SheetRow label="Font" className="is-tall">
+                    <SheetSegmented
+                      className="is-grid-3"
+                      ariaLabel="Font"
+                      value={textDefaults.fontFamily || 'Arial'}
+                      options={MOBILE_FONT_FAMILY_OPTIONS.map(({ value }) => ({
+                        value,
+                        label: MOBILE_FONT_SHORT_NAMES[value] || value,
+                        ariaLabel: value,
+                        style: { fontFamily: value },
+                      }))}
+                      onChange={(fontFamily) => updateTextDefaults({ fontFamily })}
+                    />
+                  </SheetRow>
+                  <SheetRow label="Style">
+                    <div className="mobile-tool-sheet__seg mobile-pdf-text-defaults__format" role="toolbar" aria-label="Text formatting">
                       {[
                         ['formatBold', 'bold', 'Bold'],
                         ['formatItalic', 'italic', 'Italic'],
@@ -2305,21 +2366,16 @@ export function MobileToolProperties({ api }) {
                           aria-pressed={Boolean(textDefaults[key])}
                           onClick={() => updateTextDefaults({ [key]: !textDefaults[key] })}
                         >
-                          <Icon name={iconName} size={18} />
+                          <Icon name={iconName} size={16} />
                         </button>
                       ))}
                     </div>
-                  </div>
-                  <span className="mobile-pdf-text-card__divider" aria-hidden="true" />
-                  <label className="mobile-pdf-text-card__pane mobile-pdf-text-card__size">
-                    <strong>Text size</strong>
-                    <MobileFontSizeField
-                      value={textDefaults.fontSize ?? 16}
-                      onCommit={(fontSize) => updateTextDefaults({ fontSize })}
-                    />
-                  </label>
-                </section>
-
+                  </SheetRow>
+                  <MobileTextSizeRow
+                    value={textDefaults.fontSize ?? 16}
+                    onCommit={(fontSize) => updateTextDefaults({ fontSize })}
+                  />
+                </SheetSection>
                 <MobileTextAlignmentCard
                   textAlign={textDefaults.textAlign || 'left'}
                   verticalAlign={textDefaults.verticalAlign || 'top'}
@@ -2330,179 +2386,188 @@ export function MobileToolProperties({ api }) {
               </>
             ) : (
               <>
-                <section className={`mobile-pdf-text-card mobile-pdf-text-card--color mobile-pdf-text-card--shape-color${hasFillSheet ? '' : ' mobile-pdf-text-card--stroke-only'}`}>
-                  {/* Fill/Stroke sub-tabs only for tools that HAVE a fill
-                      (rect/ellipse/polygon/text/callout/counter). Pen/highlighter/
-                      line/arrow/polyline show a single stroke section — matches
-                      demo AnnotationEditPanel, which omits the fill face for
-                      strokes-only annotations. */}
-                  {hasFillSheet && (
-                    <div className="mobile-pdf-text-card__color-tabs" role="tablist" aria-label="Shape color section">
-                      {['fill', 'stroke'].map((section) => (
-                        <button
-                          key={section}
-                          type="button"
-                          role="tab"
-                          aria-label={`${shapeSectionLabel(section)} color`}
-                          aria-selected={textShapeColorSection === section}
-                          className={textShapeColorSection === section ? 'is-active' : ''}
-                          onClick={() => setTextShapeColorSection(section)}
-                        >
-                          <i style={{ backgroundColor: section === 'fill' ? toHexColor(api.fillColor, '#ffffff') : toHexColor(api.strokeColor, '#ff0000') }} />
-                          {shapeSectionLabel(section)}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <div className="mobile-pdf-text-card__header">
-                    <div>
-                      <strong>{shapeSectionLabel(shapeSection)} color</strong>
-                      <span>{shapeColor.toUpperCase()}</span>
-                    </div>
-                    {/* The big swatch opens the NEW shared colour picker sheet
-                        (the one change to this panel the owner asked for), on the
-                        channel this card is showing. */}
-                    <button
-                      type="button"
-                      className="mobile-pdf-text-card__large-swatch"
-                      aria-label={`Open ${shapeSectionLabel(shapeSection)} color picker`}
-                      style={{ '--mobile-text-color': shapeColor }}
-                      onClick={() => setColorPicker(shapeSection)}
+                {/* COLOR. A line tool has one colour (its stroke) and the row
+                    is just "Color" - a pen has no border. A shape, text box,
+                    callout or counter has two, picked with Fill / Border (Fill
+                    / Number on a counter) at the end of the label line. */}
+                <SheetSection
+                  label="Color"
+                  aside={hasFillSheet ? (
+                    <SheetSegmented
+                      kind="tab"
+                      className="is-compact"
+                      ariaLabel="Shape color section"
+                      value={textShapeColorSection}
+                      options={['fill', 'stroke'].map((section) => ({
+                        value: section,
+                        label: shapeSectionLabel(section),
+                        ariaLabel: `${shapeSectionLabel(section)} color`,
+                      }))}
+                      onChange={setTextShapeColorSection}
                     />
-                  </div>
-                  <div className="mobile-pdf-text-card__colors">
-                    {MOBILE_ANNOTATION_COLORS.map((color) => (
-                      <MobilePanelColorSwatch
-                        key={color}
-                        color={color}
-                        chosen={normaliseQuickColour(color) === normaliseQuickColour(shapeColor)}
-                        label={`Set ${shapeSectionLabel(shapeSection)} color ${color}`}
-                        onPick={() => applyShapeColor(color)}
-                      />
-                    ))}
-                  </div>
-                </section>
+                  ) : null}
+                >
+                  <SheetSwatchRow
+                    colors={MOBILE_ANNOTATION_COLORS}
+                    value={shapeColor}
+                    ariaLabel={channelWord ? `${channelWord} color` : 'Color'}
+                    swatchLabel={(color) => `Set ${channelWord ? `${channelWord} color` : 'color'} ${color}`}
+                    customLabel={`Open ${channelWord ? `${channelWord} color` : 'color'} picker`}
+                    onPick={applyShapeColor}
+                    onCustom={() => setColorPicker(shapeSection)}
+                  />
+                  {typeof channelOpacityHandler === 'function' && (
+                    <SheetOpacitySlider
+                      color={shapeColor}
+                      value={channelOpacity}
+                      onChange={(percent, meta) => channelOpacityHandler(percent, meta)}
+                    />
+                  )}
+                </SheetSection>
 
-                <section className={`mobile-pdf-text-card mobile-pdf-text-card--split${showBorderStyleSheet ? '' : ' mobile-pdf-text-card--width-only'}`}>
-                  {showBorderStyleSheet && (
-                    <>
-                      <div className="mobile-pdf-text-card__pane">
-                        <strong>Stroke style</strong>
-                        {/* UX 2026-09-09: once Cloud is picked here the Bump size
-                            sits right beside it on the same row - same 1..20
-                            clamp as the desktop bar, so a cloud looks the same
-                            wherever it was set. This is the bump's home on the
-                            phone for every cloud shape (rectangle, ellipse,
-                            polygon, polyline, text box, callout). */}
-                        <div className="mobile-pdf-text-card__style-row">
-                          <MobileStyledSelect
-                            ariaLabel="Stroke style"
-                            value={lineStyleValue}
-                            placeholder={lineStylePlaceholder}
-                            options={lineStyleOptions}
-                            onChange={(value) => api.setLineBorderStyle?.(value)}
+                {(showWidth || showBorderStyle) && (
+                  <SheetSection>
+                    {showWidth && (
+                      <SheetRow label={tool === 'counter' ? 'Size' : 'Width'}>
+                        {/* The width presets as a slider (no list that leaves
+                            the sheet), and the TYPED value beside it - a width
+                            the presets do not hold (a typed 40, a cloud's
+                            2.5pt - tests/cloudFillKnockout) is still typed
+                            here and still places the thumb. */}
+                        <SheetScaleSlider
+                          ariaLabel={tool === 'counter' ? 'Counter size' : 'Line width'}
+                          stops={tool === 'counter' ? ANNOTATION_SIZE_PRESETS.counter : ANNOTATION_SIZE_PRESETS.width}
+                          value={widthMixed ? null : api.strokeWidthInputValue}
+                          unit={tool === 'counter' ? '' : 'pt'}
+                          onSlide={(width) => api.handleStrokeWidthInputChange?.({ target: { value: String(width) } })}
+                          onRelease={(width) => {
+                            api.handleStrokeWidthInputChange?.({ target: { value: String(width) } });
+                            api.handleStrokeWidthInputBlur?.({ currentTarget: { value: String(width) } });
+                          }}
+                        />
+                        <SheetSizeField
+                          label={tool === 'counter' ? 'Size' : 'Width'}
+                          mixed={widthMixed}
+                          value={api.strokeWidthInputValue}
+                          min={tool === 'counter' ? COUNTER_SIZE_MIN : 1}
+                          max={tool === 'counter' ? COUNTER_SIZE_MAX : 50}
+                          decimals={tool === 'counter' ? 0 : ANNOTATION_WIDTH_DECIMALS}
+                          unit={tool === 'counter' ? '' : 'pt'}
+                          onDraft={(value) => api.handleStrokeWidthInputChange?.({ target: { value } })}
+                          onCommit={(value) => api.handleStrokeWidthInputBlur?.({ currentTarget: { value } })}
+                          onFocusChange={(focused) => api.setIsStrokeWidthFocused?.(focused)}
+                        />
+                      </SheetRow>
+                    )}
+                    {showBorderStyle && (
+                      <SheetRow label="Style">
+                        <SheetSegmented
+                          ariaLabel="Stroke style"
+                          value={lineStyleValue}
+                          options={lineStyleOptions.map((option) => ({
+                            value: option.value,
+                            ariaLabel: option.label,
+                            preview: lineStyleSample(option.value, 26),
+                          }))}
+                          onChange={(value) => api.setLineBorderStyle?.(value)}
+                        />
+                      </SheetRow>
+                    )}
+                    {/* UX 2026-09-09: once Cloud is picked the Bump size sits
+                        right under it - same 1..20 clamp as the desktop bar,
+                        so a cloud looks the same wherever it was set. */}
+                    {showBorderStyle && api.supportsCloudStyle && api.lineBorderStyle === 'cloud' && api.setCloudIntensity && (
+                      <SheetRow label="Bump">
+                        <SheetScaleSlider
+                          ariaLabel="Cloud bump"
+                          stops={CLOUD_BUMP_STOPS}
+                          value={api.cloudIntensity ?? 2}
+                          onSlide={(value) => api.setCloudIntensity(value)}
+                          onRelease={(value) => api.setCloudIntensity(value)}
+                        />
+                        <label className="mobile-tool-sheet__field">
+                          <input
+                            aria-label="Cloud bump size"
+                            inputMode="numeric"
+                            // UX 2026-09-10: numeric chrome field - yields
+                            // Enter / Escape to a click-to-place draft.
+                            data-draft-yields-keys="true"
+                            value={api.cloudIntensity ?? 2}
+                            onChange={(event) => {
+                              const value = Number.parseInt(event.target.value, 10);
+                              if (Number.isFinite(value)) api.setCloudIntensity(Math.max(1, Math.min(20, value)));
+                            }}
                           />
-                          {api.supportsCloudStyle && api.lineBorderStyle === 'cloud' && api.setCloudIntensity && (
-                            <label className="mobile-pdf-properties__bump mobile-pdf-text-card__bump">
-                              <span>Bump</span>
-                              <input
-                                aria-label="Cloud bump size"
-                                inputMode="numeric"
-                                // UX 2026-09-10: numeric chrome field — yields
-                                // Enter / Escape to a click-to-place draft.
-                                data-draft-yields-keys="true"
-                                value={api.cloudIntensity ?? 2}
-                                onChange={(event) => {
-                                  const value = Number.parseInt(event.target.value, 10);
-                                  if (Number.isFinite(value)) api.setCloudIntensity(Math.max(1, Math.min(20, value)));
-                                }}
-                              />
-                            </label>
-                          )}
-                        </div>
-                      </div>
-                      <span className="mobile-pdf-text-card__divider" aria-hidden="true" />
-                    </>
-                  )}
-                  <div className="mobile-pdf-text-card__pane mobile-pdf-text-card__size">
-                    <strong>{tool === 'counter' ? 'Size' : 'Width'}</strong>
-                    {/* The TYPED width (or a counter's typed size): the strip's
-                        pill offers the presets only, and a cloud's own default
-                        is 2.5pt (the decimal contract tests/cloudFillKnockout
-                        pins). */}
-                    <AnnotationSizeControl
-                      label={tool === 'counter' ? 'Size' : 'Width'}
-                      mixed={!!api.selectionMixed?.width}
-                      value={api.strokeWidthInputValue}
-                      min={tool === 'counter' ? COUNTER_SIZE_MIN : 1}
-                      max={tool === 'counter' ? COUNTER_SIZE_MAX : 50}
-                      decimals={tool === 'counter' ? 0 : ANNOTATION_WIDTH_DECIMALS}
-                      presets={tool === 'counter' ? ANNOTATION_SIZE_PRESETS.counter : ANNOTATION_SIZE_PRESETS.width}
-                      onValueChange={(value) => api.handleStrokeWidthInputChange?.({ target: { value } })}
-                      onValueCommit={(value) => api.handleStrokeWidthInputBlur?.({ currentTarget: { value } })}
-                      onFocusChange={(focused) => api.setIsStrokeWidthFocused?.(focused)}
-                    />
-                  </div>
-                </section>
+                        </label>
+                      </SheetRow>
+                    )}
+                  </SheetSection>
+                )}
 
-                {/* The arrowhead card, with board 16's content folded in: the
-                    Arrowhead dropdown (the six one-word heads the desktop bar
-                    lists) and, for the arrow, Arrow ends - End / Both / None,
-                    the IDENTICAL control the desktop bar carries. It replaces
-                    the old "Both ends" on/off button. */}
+                {/* Arrowhead (arrow, callout) and, for the arrow, its ends -
+                    End / Both / None, the IDENTICAL control the desktop bar
+                    carries. Every head is on show, drawn, not listed. */}
                 {showArrowhead && (
-                  <section className="mobile-pdf-text-card mobile-pdf-text-card--arrowhead">
-                    <strong>Arrowhead</strong>
-                    <MobileStyledSelect
-                      ariaLabel="Arrowhead"
-                      value={arrowheadValue}
-                      options={arrowheadOptions}
-                      onChange={(value) => api.setArrowheadStyle?.(value)}
-                    />
+                  <SheetSection>
+                    <SheetRow label="Head">
+                      <SheetSegmented
+                        ariaLabel="Arrowhead"
+                        value={arrowheadValue}
+                        options={arrowheadOptions.map((option) => ({
+                          value: option.value,
+                          ariaLabel: option.label,
+                          preview: arrowheadSample(option.value, 20),
+                        }))}
+                        onChange={(value) => api.setArrowheadStyle?.(value)}
+                      />
+                    </SheetRow>
                     {tool === 'arrow' && typeof api.setArrowBothEnds === 'function' && (
-                      <>
-                        <strong>Arrow ends</strong>
-                        <MobileStyledSelect
+                      <SheetRow label="Ends">
+                        <SheetSegmented
                           ariaLabel="Arrow ends"
                           value={arrowEndsValue}
-                          options={ARROW_ENDS_OPTIONS}
+                          options={ARROW_ENDS_OPTIONS.map((option) => ({
+                            value: option.value,
+                            label: option.label,
+                            preview: option.menuPreview,
+                          }))}
                           onChange={applyArrowEnds}
                         />
-                      </>
+                      </SheetRow>
                     )}
-                  </section>
+                  </SheetSection>
                 )}
 
-                {/* The counter's series beside its size: the strip's own series
-                    pill and this one are the same control (one option list,
-                    one handler), so the two can never disagree. */}
-                {tool === 'counter' && (
-                  <section className="mobile-pdf-text-card mobile-pdf-text-card--inline">
-                    <strong>Counter series</strong>
-                    <MobileStyledSelect
-                      ariaLabel="Counter series"
-                      value={activeCounterSeriesId}
-                      placeholder="Count"
-                      options={counterSeriesOptions}
-                      onChange={applyCounterSeries}
-                    />
-                  </section>
-                )}
-
-                {/* A selected line / polygon / polyline / counter can switch from
-                    point handles to a resize-and-rotate box. */}
-                {canResizeRotate && (
-                  <section className="mobile-pdf-text-card mobile-pdf-text-card--inline">
-                    <strong>Handles</strong>
-                    <button
-                      type="button"
-                      className="mobile-pdf-tool-sheet__action"
-                      aria-label="Resize and rotate"
-                      onClick={() => { requestTextSheetClose(); api.onEnterBBoxEdit(); }}
-                    >
-                      Resize and rotate
-                    </button>
-                  </section>
+                {/* The counter's series: the strip's own series pill and this
+                    one are the same control (one option list, one handler). */}
+                {(tool === 'counter' || canResizeRotate) && (
+                  <SheetSection>
+                    {tool === 'counter' && (
+                      <SheetRow label="Series">
+                        <MobileStyledSelect
+                          ariaLabel="Counter series"
+                          value={activeCounterSeriesId}
+                          placeholder="Count"
+                          options={counterSeriesOptions}
+                          onChange={applyCounterSeries}
+                        />
+                      </SheetRow>
+                    )}
+                    {/* A selected line / polygon / polyline / counter can
+                        switch from point handles to a resize-and-rotate box. */}
+                    {canResizeRotate && (
+                      <SheetRow label="Handles">
+                        <button
+                          type="button"
+                          className="mobile-tool-sheet__action"
+                          aria-label="Resize and rotate"
+                          onClick={() => { requestTextSheetClose(); api.onEnterBBoxEdit(); }}
+                        >
+                          Resize and rotate
+                        </button>
+                      </SheetRow>
+                    )}
+                  </SheetSection>
                 )}
               </>
             )}
@@ -2528,7 +2593,7 @@ export function MobileToolProperties({ api }) {
   );
 }
 
-export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenPanel, onAuxPanelStateChange }) {
+export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedInUser = null, onOpenPanel, onAuxPanelStateChange, auxCloseRequestKey = 0 }) {
   const [openCategory, setOpenCategory] = useState(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [presenceOpen, setPresenceOpen] = useState(false);
@@ -2540,23 +2605,30 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   // back + 170ms slide-down exit before unmount (inv-demo §17).
   const {
     motionStyle: usersSheetMotionStyle,
-    dragHandlers: usersSheetDragHandlers,
+    backdropStyle: usersBackdropStyle,
+    sheetProps: usersSheetProps,
     requestClose: requestUsersSheetClose,
   } = useMobileSheetMotion(() => setPresenceOpen(false), { open: presenceOpen });
   const popoverRef = useRef(null);
   const syncButtonRef = useRef(null);
   const syncDetailsRef = useRef(null);
   const popoverInsideRefs = useMemo(() => [popoverRef, syncDetailsRef], []);
-  const presenceUsers = useMemo(() => normalizeMobilePresence({
+  // withDevFakePresence: dev-only `?fakePeers=N`, as on the desktop footer.
+  const presenceUsers = useMemo(() => normalizeMobilePresence(withDevFakePresence({
     presence: leftRailApi?.presence,
-    currentUserId: leftRailApi?.currentUserId,
-    currentUserEmail: leftRailApi?.currentUserEmail,
-    currentUserDisplayName: leftRailApi?.currentUserDisplayName,
-  }), [
+    // 2026-10-07 (phone loading): until the viewer publishes who is here, the
+    // signed-in account stands in, so the avatar opens on your own initials
+    // instead of a placeholder "U" that switched a moment later.
+    currentUserId: leftRailApi?.currentUserId ?? signedInUser?.id ?? null,
+    currentUserEmail: leftRailApi?.currentUserEmail ?? signedInUser?.email ?? null,
+    currentUserDisplayName: leftRailApi?.currentUserDisplayName
+      ?? signedInUser?.user_metadata?.full_name ?? null,
+  })), [
     leftRailApi?.presence,
     leftRailApi?.currentUserId,
     leftRailApi?.currentUserEmail,
     leftRailApi?.currentUserDisplayName,
+    signedInUser,
   ]);
   const sync = useMemo(() => getMobileSyncPresentation(
     leftRailApi?.cloudSyncStatus,
@@ -2595,6 +2667,16 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
 
   const activeTool = bottomToolbarApi?.activeTool || 'pan';
   const activeGroup = TOOL_TO_GROUP[activeTool] || null;
+  // Owner 2026-10-01 (Spaces toolbar): while a Space's areas are edited the
+  // rail's own Select picks areas (no second Select), the area tools are the
+  // open group's tools (so they morph in like a group switch), and the drawing
+  // groups wait, dimmed, until Done or Cancel. Pan stays Pan.
+  // Until the tool publishes its state (a render after the mode starts) the
+  // rail draws its opening state, so the area tools morph in as one change.
+  const regionApi = isAreaEditing(bottomToolbarApi) ? (bottomToolbarApi.regionToolbarApi || REGION_TOOLBAR_OPENING_STATE) : null;
+  const regionPanArmed = Boolean(regionApi) && activeTool === 'pan';
+  const regionDrawing = Boolean(regionApi) && regionApi.toolType !== 'move' && !regionPanArmed;
+  const railGroupKey = regionApi ? 'areas' : openCategory;
   const userInitial = presenceUsers[0]?.initials || 'U';
   const presenceCount = Math.max(presenceUsers.length, 1);
 
@@ -2602,6 +2684,15 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
     onAuxPanelStateChange?.(presenceOpen ? 'users' : null);
     return () => onAuxPanelStateChange?.(null);
   }, [onAuxPanelStateChange, presenceOpen]);
+
+  // Another panel was opened (the dock stays usable under this sheet since
+  // 2026-10-01): slide the Active users sheet away so only one sheet is up.
+  const auxCloseKeyRef = useRef(auxCloseRequestKey);
+  useEffect(() => {
+    if (auxCloseKeyRef.current === auxCloseRequestKey) return;
+    auxCloseKeyRef.current = auxCloseRequestKey;
+    if (presenceOpen) requestUsersSheetClose();
+  }, [auxCloseRequestKey, presenceOpen, requestUsersSheetClose]);
 
   useEffect(() => {
     if (activeGroup) {
@@ -2611,9 +2702,29 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
     }
   }, [activeGroup, activeTool]);
 
+  const [groupToolsEl, setGroupToolsEl] = useState(null);
+  const [groupBoxEl, setGroupBoxEl] = useState(null);
+  const [groupSlotEl, setGroupSlotEl] = useState(null);
+  const [groupGhostLayerEl, setGroupGhostLayerEl] = useState(null);
+  useRailGroupMotion({
+    wrap: groupToolsEl, box: groupBoxEl, slot: groupSlotEl, layer: groupGhostLayerEl, groupKey: railGroupKey, glyphPx: SUBTOOL_GLYPH,
+  });
+
   const selectTool = (toolId) => {
     bottomToolbarApi?.setActiveTool?.(toolId);
     bottomToolbarApi?.setActiveCategoryDropdown?.(null);
+  };
+
+  // 2026-10-01 (owner: rail toggles must read the way they look): a survey
+  // category or entity disc that is already armed (gold) disarms on a second
+  // tap and hands the tool back to Pan, like a closed tool group. Any other tap
+  // arms it exactly as before.
+  const toggleSurveyPick = (picked, arm) => {
+    if (picked && activeTool === 'survey-marker') {
+      selectTool('pan');
+      return;
+    }
+    arm();
   };
 
   const toggleCategory = (groupId) => {
@@ -2624,8 +2735,15 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
     // change, not a tool change. Reference: Drawboard PDF's phone rail
     // collapses an expanded group on a repeat tap. Opening a group still arms
     // its last-used tool (unchanged).
+    // RULED CHANGE 2026-10-01 (owner: closing a group that way left its icon
+    // gold, because its tool stayed armed): the repeat tap now also hands the
+    // tool back to Pan, so a closed group is never the live one. Pan, not
+    // "whatever came before": it is the phone's resting tool, the tool a
+    // one-shot Survey Marker placement already returns to, and the same
+    // result every time, whatever was armed before the group opened.
     if (openCategory === groupId) {
       setOpenCategory(null);
+      if (activeGroup === groupId) selectTool('pan');
       return;
     }
     setOpenCategory(groupId);
@@ -2651,7 +2769,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
       />
       <aside className="mobile-pdf-tools" aria-label="Document tools">
         <div className="mobile-pdf-tools__main">
-          <RailButton active={activeTool === 'pan'} icon="pan" label="Pan" onClick={() => { setOpenCategory(null); selectTool('pan'); }} />
+          <RailButton active={activeTool === 'pan'} icon="pan" label="Pan" data-tool-switch="true" onClick={() => { setOpenCategory(null); selectTool('pan'); }} />
           {/* PASS 7 (board 7, owner ruling 2026-09-22): Select is a PLAIN rail
               chip, the same 28px square as Pan and the group buttons. Tapping it
               arms the family and nothing else — no caret, no pop-up menu, and no
@@ -2661,9 +2779,16 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
               control the desktop bar draws, so a mode picked on one platform
               reads the same on the other. */}
           <RailButton
-            active={activeTool === 'select' || activeTool === 'text-select'}
+            active={regionApi
+              ? (regionApi.toolType === 'move' && !regionPanArmed)
+              : (activeTool === 'select' || activeTool === 'text-select')}
             label={getSelectFamilyLabel(activeTool, bottomToolbarApi?.selectionMode)}
+            data-tool-switch="true"
             onClick={() => {
+              if (regionApi) {
+                regionApi.setToolType?.('move');
+                return;
+              }
               setOpenCategory(null);
               selectTool(
                 activeTool === 'text-select' || bottomToolbarApi?.selectionMode === 'text'
@@ -2674,23 +2799,69 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
           >
             {/* UX: centre the glyph on the phone rail axis; the desktop
                 horizontal pair's -3px shift does not fit a vertical rail. */}
-            <Icon name={getSelectFamilyIconName(activeTool, bottomToolbarApi?.selectionMode)} size={RAIL_GLYPH} color="currentColor" />
+            <Icon name="selectGroup" size={RAIL_GLYPH} color="currentColor" />
           </RailButton>
           <div className="mobile-pdf-tools__divider" />
           {Object.entries(TOOL_GROUPS).map(([groupId, group]) => (
             <RailButton
               key={groupId}
-              active={activeGroup === groupId || openCategory === groupId}
+              active={!regionApi && (activeGroup === groupId || openCategory === groupId)}
+              disabled={Boolean(regionApi)}
               icon={group.icon}
               label={group.label}
-              onClick={() => toggleCategory(groupId)}
+              data-tool-switch="true"
+              onClick={() => { if (!regionApi) toggleCategory(groupId); }}
             />
           ))}
-          {openCategory && (
-            <>
-              <div className="mobile-pdf-tools__divider is-short" />
-              <div className="mobile-pdf-tools__subtools">
-                {TOOL_GROUPS[openCategory].tools.map((tool) => (
+          {/* Owner 2026-10-01: the desktop group-switch morph on the phone
+              (useRailGroupMotion). The block stays mounted, closed at zero
+              height, so a switch can morph slot by slot and the block can
+              glide open and shut instead of popping in and out. */}
+          <div
+            ref={setGroupToolsEl}
+            className={`mobile-pdf-tools__group-tools${railGroupKey ? ' is-open' : ''}`}
+          >
+            <div className="mobile-pdf-tools__divider is-short" />
+            <div ref={setGroupBoxEl} className="mobile-pdf-tools__subtools is-group">
+              <div ref={setGroupSlotEl} className="mobile-pdf-tools__group-slot">
+                {regionApi && (
+                  <>
+                    <RailButton
+                      active={regionDrawing && regionApi.toolType === 'rectangular'}
+                      icon="areaRect"
+                      glyph={SUBTOOL_GLYPH}
+                      label="Rectangle area"
+                      data-morph-icon="areaRect"
+                      onClick={() => regionApi.setToolType?.('rectangular')}
+                    />
+                    <RailButton
+                      active={regionDrawing && regionApi.toolType === 'freehand'}
+                      icon="areaFreehand"
+                      glyph={SUBTOOL_GLYPH}
+                      label="Freehand area"
+                      data-morph-icon="areaFreehand"
+                      onClick={() => regionApi.setToolType?.('freehand')}
+                    />
+                    <div className="mobile-pdf-tools__divider is-short" />
+                    <RailButton
+                      active={regionApi.selectionMode === 'add'}
+                      icon="plus"
+                      glyph={SUBTOOL_GLYPH}
+                      label="Add to area"
+                      data-morph-icon="plus"
+                      onClick={() => regionApi.setSelectionMode?.('add')}
+                    />
+                    <RailButton
+                      active={regionApi.selectionMode === 'subtract'}
+                      icon="minus"
+                      glyph={SUBTOOL_GLYPH}
+                      label="Subtract from area"
+                      data-morph-icon="minus"
+                      onClick={() => regionApi.setSelectionMode?.('subtract')}
+                    />
+                  </>
+                )}
+                {!regionApi && (TOOL_GROUPS[openCategory]?.tools || []).map((tool) => (
                   <RailButton
                     key={tool.id}
                     active={activeTool === tool.id}
@@ -2698,50 +2869,15 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                     glyph={SUBTOOL_GLYPH}
                     label={tool.label}
                     disabled={tool.disabled}
+                    data-morph-icon={tool.icon}
+                    data-tool-switch="true"
                     onClick={() => { if (!tool.disabled) selectTool(tool.id); }}
                   />
                 ))}
               </div>
-            </>
-          )}
-          {bottomToolbarApi?.regionEditing && bottomToolbarApi?.regionToolbarApi && (
-            <>
-              <div className="mobile-pdf-tools__divider is-short" />
-              <div className="mobile-pdf-tools__subtools" aria-label="Region tools">
-                <RailButton
-                  active={bottomToolbarApi.regionToolbarApi.toolType === 'move'}
-                  icon="cursor"
-                  label="Select region"
-                  onClick={() => bottomToolbarApi.regionToolbarApi.setToolType?.('move')}
-                />
-                <RailButton
-                  active={bottomToolbarApi.regionToolbarApi.toolType === 'rectangular'}
-                  icon="rect"
-                  label="Rectangular region"
-                  onClick={() => bottomToolbarApi.regionToolbarApi.setToolType?.('rectangular')}
-                />
-                <RailButton
-                  active={bottomToolbarApi.regionToolbarApi.toolType === 'freehand'}
-                  icon="pen"
-                  label="Freehand region"
-                  onClick={() => bottomToolbarApi.regionToolbarApi.setToolType?.('freehand')}
-                />
-                <div className="mobile-pdf-tools__divider is-short" />
-                <RailButton
-                  active={bottomToolbarApi.regionToolbarApi.selectionMode === 'add'}
-                  icon="plus"
-                  label="Additive region mode"
-                  onClick={() => bottomToolbarApi.regionToolbarApi.setSelectionMode?.('add')}
-                />
-                <RailButton
-                  active={bottomToolbarApi.regionToolbarApi.selectionMode === 'subtract'}
-                  icon="minus"
-                  label="Subtractive region mode"
-                  onClick={() => bottomToolbarApi.regionToolbarApi.setSelectionMode?.('subtract')}
-                />
-              </div>
-            </>
-          )}
+              <div ref={setGroupGhostLayerEl} className="mobile-pdf-tools__group-ghosts" data-loadout-ghost-layer="true" aria-hidden="true" />
+            </div>
+          </div>
           {bottomToolbarApi?.showSurveyPanel
             && bottomToolbarApi?.surveyToolbar
             && !bottomToolbarApi?.regionEditing
@@ -2756,7 +2892,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                     className={bottomToolbarApi.surveyToolbar.selectedCategoryId === category.id && activeTool === 'survey-marker' ? 'is-active' : ''}
                     aria-label={`Survey category ${category.name || 'Untitled Category'}`}
                     title={category.name || 'Untitled Category'}
-                    onClick={() => bottomToolbarApi.surveyToolbar.onSelectCategory?.(category.id)}
+                    onClick={() => toggleSurveyPick(bottomToolbarApi.surveyToolbar.selectedCategoryId === category.id, () => bottomToolbarApi.surveyToolbar.onSelectCategory?.(category.id))}
                   >
                     {categoryGlyph(category.name)}
                   </button>
@@ -2778,7 +2914,17 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                     className={bottomToolbarApi.surveyToolbar.selectedEntityId === entity.id && activeTool === 'survey-marker' ? 'is-active' : ''}
                     aria-label={`Survey entity ${entity.name || 'Untitled Entity'}`}
                     title={entity.name || 'Untitled Entity'}
-                    onClick={() => bottomToolbarApi.surveyToolbar.onSelectEntity?.(entity.id)}
+                    onClick={() => {
+                      // Survey audit P1-3: a second tap on the picked entity
+                      // drops just the entity while a category is armed (it
+                      // used to disarm the whole tool).
+                      const toolbar = bottomToolbarApi.surveyToolbar;
+                      if (toolbar.selectedEntityId === entity.id && toolbar.selectedCategoryId && activeTool === 'survey-marker') {
+                        toolbar.onSelectEntity?.(null);
+                        return;
+                      }
+                      toggleSurveyPick(toolbar.selectedEntityId === entity.id, () => toolbar.onSelectEntity?.(entity.id));
+                    }}
                   >
                     <span style={{ background: entity.color || 'var(--border-strong)' }} />
                   </button>
@@ -2789,10 +2935,15 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
         </div>
 
         <div className="mobile-pdf-tools__footer" ref={popoverRef}>
+          {/* Polish 3 (2026-10-04): an open menu is not a picked tool, so it
+              never turns gold (gold = the active tool, owner 2026-10-02). The
+              trigger says it is open (aria-expanded) and its glyph lights to
+              --text-1, as the Spaces export icon does (styles.css). */}
           <RailButton
             icon="more"
             label="More document options"
-            active={moreOpen}
+            aria-haspopup="menu"
+            aria-expanded={moreOpen}
             onClick={() => { setMoreOpen((open) => !open); setPresenceOpen(false); }}
           />
           <div className="mobile-pdf-tools__footer-stack">
@@ -2803,11 +2954,16 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
               aria-label={sync.state === 'synced' ? `${sync.label}. Tap to sync now.` : `${sync.label}. ${sync.compactMessage}`}
               aria-expanded={sync.state !== 'synced' && syncDetailsOpen}
               aria-controls="mobile-sync-status-details"
-              title={sync.state === 'synced' ? `${sync.label}. Tap to sync now.` : `${sync.label}. Tap for details.`}
+              // The desktop chip's hover hint is the bare label; so is this.
+              title={sync.label}
               disabled={leftRailApi?.cloudSyncEnabled === false}
               onClick={activateSyncStatus}
             >
-              <span style={{ background: sync.color }} />
+              {/* Same look as the desktop chip (SyncStatusChip): a dot, and a
+                  small spinner in its place while syncing. */}
+              {sync.state === 'syncing'
+                ? <Spinner size={14} color={sync.color} style={{ boxShadow: 'none' }} />
+                : <span style={{ background: sync.color }} />}
             </button>
             <RailButton
               icon="history"
@@ -2821,10 +2977,14 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
             />
             <RailButton
               label={`${presenceCount} active user${presenceCount === 1 ? '' : 's'}`}
-              active={presenceOpen}
+              aria-haspopup="dialog"
+              aria-expanded={presenceOpen}
               onClick={() => { setPresenceOpen((open) => !open); setMoreOpen(false); }}
             >
-              <span className="mobile-pdf-tools__avatar">{userInitial}</span>
+              <span className="mobile-pdf-tools__avatar" style={presenceUsers[0]?.face}>
+                {userInitial}
+                <span className="mobile-presence-dot" data-presence-dot="here" />
+              </span>
               {presenceCount > 1 && <span className="mobile-pdf-tools__user-count">+{presenceCount - 1}</span>}
             </RailButton>
           </div>
@@ -2924,7 +3084,9 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
               type="button"
               aria-label="Retry now"
               title="Retry now"
-              style={{ color: sync.color }}
+              // A button glyph is chrome, not a status dot: --text-2, as on
+              // the desktop chip's Retry.
+              style={{ color: 'var(--text-2)' }}
               onClick={() => {
                 setSyncDetailsOpen(false);
                 void leftRailApi.cloudSyncOnRetry();
@@ -2943,32 +3105,30 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
             className="mobile-pdf-sheet-backdrop"
             aria-label="Close active users"
             onClick={requestUsersSheetClose}
+            style={usersBackdropStyle}
           />
-          <section className="mobile-pdf-sheet mobile-pdf-users-sheet" aria-label="Active users" style={usersSheetMotionStyle}>
-            <div
-              className="mobile-pdf-sheet__handle"
-              onTouchStart={usersSheetDragHandlers.onTouchStart}
-              onTouchMove={usersSheetDragHandlers.onTouchMove}
-              onTouchEnd={usersSheetDragHandlers.onTouchEnd}
-            />
+          <section className="mobile-pdf-sheet mobile-pdf-users-sheet" aria-label="Active users" {...usersSheetProps} style={usersSheetMotionStyle}>
+            <div className="mobile-pdf-sheet__handle" />
+            {/* Owner 2026-09-30: no close X - a tap outside or a swipe down
+                (anywhere on the sheet) closes it. */}
             <header>
               <div>
                 <strong>Active users</strong>
                 <span>{presenceCount} viewing this document</span>
               </div>
-              <button type="button" aria-label="Close active users" onClick={requestUsersSheetClose}>
-                <Icon name="close" size={17} color="currentColor" />
-              </button>
             </header>
             <div className="mobile-pdf-users-sheet__list">
               {(presenceUsers.length ? presenceUsers : [{ id: 'current', label: 'You', initials: 'U', isCurrent: true }]).map((person) => (
                 <div key={person.id} className="mobile-pdf-users-sheet__row">
-                  <span className="mobile-pdf-users-sheet__avatar">{person.initials}</span>
+                  <span className="mobile-pdf-users-sheet__avatar" style={person.face}>
+                    {person.initials}
+                    <span className="mobile-presence-dot" data-presence-dot={person.state || 'here'} />
+                  </span>
                   <p>
                     <strong>{person.label}{person.isCurrent ? ' (you)' : ''}</strong>
                     <span>{person.role || (person.isCurrent ? 'Document owner' : 'Collaborator')}</span>
                   </p>
-                  <em>{person.status || (person.isCurrent ? 'Viewing document' : 'Online')}</em>
+                  <em data-presence-state={person.state || 'here'}>{person.status || person.stateLabel || 'Here now'}</em>
                 </div>
               ))}
             </div>
@@ -2980,30 +3140,45 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   );
 }
 
-export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hubMode = 'pages', hubOpen = false, spacesActive, surveyActive }) {
+export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hubMode = 'pages', hubOpen = false, spacesActive, surveyActive, covered = false, openPanel = null }) {
   const hubLabels = { pages: 'Pages', search: 'Search', bookmarks: 'Bookmarks' };
-  const hubIcons = { pages: 'document', search: 'search', bookmarks: 'bookmark' };
+  // Pages draws the desktop rail's Pages glyph (PDFSidebar), not the document.
+  const hubIcons = { pages: 'pages', search: 'search', bookmarks: 'bookmark' };
+  // `covered`: a phone panel is open over the dock. The dock stays mounted
+  // under it (so it is already in place when the panel slides away - see
+  // AppShell), but takes no focus, taps or screen-reader reads meanwhile.
   return (
-    <nav className="mobile-pdf-dock" aria-label="Document panels">
+    <nav
+      className="mobile-pdf-dock"
+      aria-label="Document panels"
+      aria-hidden={covered ? 'true' : undefined}
+      inert={covered ? '' : undefined}
+    >
       <div className="mobile-pdf-dock__surface" aria-hidden="true" />
       <button
         type="button"
         className={`mobile-pdf-dock__side${spacesActive ? ' is-active' : ''}`}
         aria-label="Open spaces"
+        // Owner 2026-10-07: a dock button toggles its sheet, so it says
+        // whether that sheet is up (no highlight - see AppShell's note).
+        aria-expanded={openPanel === 'spaces'}
         onClick={() => onOpenPanel?.('spaces')}
       >
         <Icon name="layers" size={DOCK_GLYPH} color="currentColor" />
       </button>
       <button
         type="button"
-        className={`mobile-pdf-dock__center${hubOpen ? ' is-active' : ''}`}
+        // chrome-icon-btn: an icon + short word, so it presses like every
+        // chrome icon (src/styles/states.css section 5, owner 2026-10-02).
+        className={`mobile-pdf-dock__center chrome-icon-btn${hubOpen ? ' is-active' : ''}`}
         aria-label="Open pages, search, and bookmarks"
+        aria-expanded={openPanel === 'hub'}
         onClick={onToggleHub}
       >
         {/* UX 2026-09-16: one size across all three dock controls; they ran
             21 / 18 / 22. DOCK_GLYPH is that size, 0.57 of the 30px dock
             chip the sizing pass settled on. */}
-        <Icon name={hubIcons[hubMode] || 'pages'} size={DOCK_GLYPH} color="currentColor" />
+        <Icon name={hubIcons[hubMode] || 'pages'} size={DOCK_HUB_GLYPH} color="currentColor" />
         <span>{hubLabels[hubMode] || 'Pages'}</span>
         <Icon name="chevronDown" size={12} color="currentColor" />
       </button>
@@ -3011,6 +3186,7 @@ export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hu
         type="button"
         className={`mobile-pdf-dock__side${surveyActive ? ' is-active' : ''}`}
         aria-label="Open survey"
+        aria-expanded={openPanel === 'survey'}
         onClick={onOpenSurvey}
       >
         <Icon name="survey" size={DOCK_GLYPH} color="currentColor" />

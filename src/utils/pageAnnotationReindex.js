@@ -17,6 +17,13 @@ const asPage = (value) => {
   return Number.isInteger(page) && page > 0 ? page : null;
 };
 
+// An insertion slot: 0 = before page 1 (insert / paste above the first
+// page), n = after page n.
+const asSlot = (value) => {
+  const slot = Number(value);
+  return Number.isInteger(slot) && slot >= 0 ? slot : null;
+};
+
 const remapPageFields = (value, mapPage) => {
   if (!value || typeof value !== 'object') return value;
   const next = { ...value };
@@ -267,11 +274,101 @@ function addPageClone(next, source, sourcePage, targetPage, createId) {
   return next;
 }
 
+// Undo of a page delete: everything that was on page `sourcePage` of
+// `source` (the state just before the delete) comes back on `targetPage` of
+// `next` WITH ITS OWN IDS (unlike a copy) - its marks, Survey Markers, name,
+// mirror, bookmark links, space assignment and region overlay switches.
+function reinstatePageSlice(next, source, sourcePage, targetPage) {
+  const toTarget = () => targetPage;
+  const sourcePageData = source.annotationsByPage?.[sourcePage] || source.annotationsByPage?.[String(sourcePage)];
+  if (sourcePageData) {
+    const page = clone(sourcePageData);
+    page.objects = (page.objects || []).map((object) => remapPageFields(object, toTarget));
+    next.annotationsByPage[targetPage] = page;
+  }
+  for (const key of ['surveyMarkers', 'annotations']) {
+    for (const [id, value] of Object.entries(source[key] || {})) {
+      if (asPage(value?.pageNumber ?? value?.pageId ?? value?.page) !== sourcePage) continue;
+      next[key][id] = remapPageFields(clone(value), toTarget);
+    }
+  }
+  if (source.pageNames?.[sourcePage] != null) next.pageNames[targetPage] = source.pageNames[sourcePage];
+  if (source.pageTransformations?.[sourcePage] != null) {
+    next.pageTransformations[targetPage] = clone(source.pageTransformations[sourcePage]);
+  }
+  const relink = (nextList, sourceList) => (Array.isArray(nextList) ? nextList : []).map((bookmark, index) => {
+    const before = (bookmark?.id != null
+      ? (sourceList || []).find((candidate) => candidate?.id === bookmark.id)
+      : sourceList?.[index]) || null;
+    if (!before) return bookmark;
+    const out = { ...bookmark };
+    if (Array.isArray(before.pageIds) && before.pageIds.some((page) => asPage(page) === sourcePage)) {
+      out.pageIds = [...new Set([...(bookmark.pageIds || []), targetPage])].sort((left, right) => left - right);
+    }
+    for (const field of ['pageNumber', 'pageId', 'page', 'targetPage']) {
+      if (asPage(before[field]) === sourcePage && out[field] == null) out[field] = targetPage;
+    }
+    if (Array.isArray(bookmark?.children)) out.children = relink(bookmark.children, before.children);
+    return out;
+  });
+  next.bookmarks = relink(next.bookmarks, source.bookmarks);
+  next.spaces = next.spaces.map((space, index) => {
+    const before = (space?.id != null
+      ? (source.spaces || []).find((candidate) => candidate?.id === space.id)
+      : source.spaces?.[index]) || null;
+    const entry = (before?.assignedPages || []).find((candidate) => asPage(candidate?.pageId ?? candidate?.pageNumber) === sourcePage);
+    if (!entry) return space;
+    const restored = clone(entry);
+    restored.pageId = targetPage;
+    if (Array.isArray(restored.regions)) restored.regions = restored.regions.map((region) => remapPageFields(region, toTarget));
+    return {
+      ...space,
+      assignedPages: [...(space.assignedPages || []), restored].sort((left, right) => left.pageId - right.pageId),
+    };
+  });
+  for (const [key, value] of source.regionOverlayDisabled instanceof Map
+    ? source.regionOverlayDisabled.entries()
+    : Object.entries(source.regionOverlayDisabled || {})) {
+    const suffix = `-${sourcePage}`;
+    if (String(key).endsWith(suffix)) {
+      next.regionOverlayDisabled.set(`${String(key).slice(0, -suffix.length)}-${targetPage}`, value);
+    }
+  }
+  return next;
+}
+
+// How many pages an operation adds (+) or removes (-).
+export function pageCountChange(operation) {
+  const type = operation?.type;
+  if (type === 'batch') return (operation.operations || []).reduce((sum, step) => sum + pageCountChange(step), 0);
+  if (type === 'delete') return -1;
+  return ['insert', 'duplicate', 'copy', 'restore'].includes(type) ? 1 : 0;
+}
+
 export function transformPageState(model = {}, op, { createId = fallbackId } = {}) {
   const type = op?.type;
+  if (type === 'batch') {
+    // Several pages at once: each step in order (pageSelectionOperations.js).
+    return (op.operations || []).reduce((state, step) => transformPageState(state, step, { createId }), model);
+  }
+  if (type === 'restore') {
+    // Undo of a delete: { afterPage, from: state before the delete, fromPage }.
+    const afterPage = asSlot(op.afterPage);
+    const fromPage = asPage(op.fromPage);
+    if (afterPage == null || fromPage == null || !op.from) throw new Error('restore requires afterPage, fromPage and the earlier state');
+    const next = baseRemap(model, (value) => (value <= afterPage ? value : value + 1));
+    return reinstatePageSlice(next, op.from, fromPage, afterPage + 1);
+  }
   if (type === 'rotate') {
     const next = baseRemap(model, (page) => page);
     const page = asPage(op.page);
+    // Undo of a turn puts the page's presentation transform back as it was
+    // (the turn folded any old presentation rotation into the PDF).
+    if (Object.prototype.hasOwnProperty.call(op, 'pageTransformation')) {
+      if (op.pageTransformation) next.pageTransformations[page] = clone(op.pageTransformation);
+      else delete next.pageTransformations[page];
+      return next;
+    }
     const previous = next.pageTransformations?.[page];
     if (previous) {
       const cleared = { ...previous, rotation: 0 };
@@ -288,8 +385,8 @@ export function transformPageState(model = {}, op, { createId = fallbackId } = {
   }
 
   if (type === 'insert') {
-    const afterPage = asPage(op.afterPage);
-    if (afterPage == null) throw new Error('insert requires a positive afterPage');
+    const afterPage = asSlot(op.afterPage);
+    if (afterPage == null) throw new Error('insert requires an afterPage of 0 or more');
     return baseRemap(model, (value) => (value <= afterPage ? value : value + 1));
   }
 
@@ -307,7 +404,7 @@ export function transformPageState(model = {}, op, { createId = fallbackId } = {
 
   if (type === 'duplicate' || type === 'copy') {
     const sourcePage = asPage(op.page ?? op.source);
-    const afterPage = asPage(op.afterPage ?? op.page ?? op.target);
+    const afterPage = asSlot(op.afterPage ?? op.page ?? op.target);
     if (sourcePage == null || afterPage == null) throw new Error(`${type} requires source and target pages`);
     const targetPage = afterPage + 1;
     const next = baseRemap(model, (value) => (value <= afterPage ? value : value + 1));
@@ -320,15 +417,25 @@ export function transformPageState(model = {}, op, { createId = fallbackId } = {
 export function pageNumberAfterOperation(currentPage, operation, resultingPageCount) {
   const page = asPage(currentPage) || 1;
   const type = operation?.type;
+  if (type === 'batch') {
+    const steps = operation.operations || [];
+    let current = page;
+    let count = Math.max(1, Number(resultingPageCount) || 1) - pageCountChange(operation);
+    for (const step of steps) {
+      count += pageCountChange(step);
+      current = pageNumberAfterOperation(current, step, Math.max(1, count));
+    }
+    return Math.min(Math.max(1, current), Math.max(1, Number(resultingPageCount) || current));
+  }
   let next = page;
   if (type === 'delete') {
     const removed = asPage(operation.page);
     next = page < removed ? page : page === removed ? removed : page - 1;
-  } else if (type === 'insert') {
-    const after = asPage(operation.afterPage);
+  } else if (type === 'insert' || type === 'restore') {
+    const after = asSlot(operation.afterPage);
     next = page <= after ? page : page + 1;
   } else if (type === 'duplicate' || type === 'copy') {
-    const after = asPage(operation.afterPage ?? operation.page ?? operation.target);
+    const after = asSlot(operation.afterPage ?? operation.page ?? operation.target);
     next = page <= after ? page : page + 1;
   } else if (type === 'move' || type === 'reorder') {
     const from = asPage(operation.from);

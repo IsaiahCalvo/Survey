@@ -1,0 +1,130 @@
+/**
+ * toolPressRouting — the DOM half of the Drawboard press rules (owner
+ * 2026-10-02). utils/selectModes.js decides WHAT a press does; this file only
+ * finds out what the press landed on and hands that to the rule table, so the
+ * SVG layer and the Text / Counter overlays ask one question the same way.
+ */
+import { resolveAnnotationAt } from './annotationHitTest.js';
+import { canToolPickAnyGroup, canToolPickMark, PICK_ANY_TOOLS, resolveToolPress } from './selectModes.js';
+import { CALLOUT_MARK_GROUP, getMarkGroup } from './markToolGroup.js';
+
+/** Text boxes (and callouts, handled by id) open an editor on rule 6 / 7. */
+export function isTextLikeAnnotation(obj) {
+  const type = String(obj?.type || '').toLowerCase();
+  return type === 'textbox' || type === 'i-text' || type === 'text';
+}
+
+const idSetHas = (ids, id) => {
+  if (id == null || !ids) return false;
+  if (ids instanceof Set) return ids.has(id) || ids.has(String(id));
+  return Array.isArray(ids) && (ids.includes(id) || ids.includes(String(id)));
+};
+
+/** True when one of the selected callouts lives on this page. */
+export function isPageCalloutSelected(callouts, selectedCalloutIds, pageNumber) {
+  const size = selectedCalloutIds instanceof Set ? selectedCalloutIds.size
+    : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds.length : 0);
+  if (!size || !Array.isArray(callouts)) return false;
+  return callouts.some((c) => c && c.pageNumber === pageNumber && idSetHas(selectedCalloutIds, c.id));
+}
+
+/**
+ * The hit test's mark filter for a tool that picks only its own group's marks
+ * (owner 2026-10-04): another group's mark is not there for it, so a press or
+ * hover over one lying on top of an own-group mark reaches the mark beneath
+ * (annotationHitTest acceptMark). Null for the tools that pick any mark
+ * (Select, Text Select, Pan) and for the Draw group, which never picks.
+ * `getObjects(pageNumber)` returns that page's objects.
+ */
+export function ownGroupMarkFilter(tool, getObjects) {
+  if (!tool || PICK_ANY_TOOLS.includes(tool) || !canToolPickAnyGroup(tool)) return null;
+  return ({ pageNumber, annotationIndex, calloutId }) => canToolPickMark(tool, calloutId != null
+    ? CALLOUT_MARK_GROUP
+    : getMarkGroup((getObjects?.(pageNumber) || [])[annotationIndex]));
+}
+
+/**
+ * What a press on a page landed on, by geometry (the same hit test Pan and the
+ * right-click menu use, so it works while the marks are pointer-inert).
+ * Returns { target: 'text' | 'mark' | 'empty', index, calloutId, markGroup } —
+ * markGroup is the pressed mark's tool group (utils/markToolGroup.js), which
+ * decides whether the armed tool may pick it (owner 2026-10-04). With `tool`
+ * given, a mark that tool may not pick is passed over for the one beneath it
+ * (ownGroupMarkFilter).
+ */
+export function classifyPagePress(nativeEvent, { pageNumber, objects, tool = null } = {}) {
+  let hit = null;
+  const acceptMark = ownGroupMarkFilter(tool, (page) => (pageNumber == null || page === pageNumber ? objects : null));
+  try { hit = resolveAnnotationAt(nativeEvent, { acceptMark }); } catch (_) { hit = null; }
+  const onPage = hit && (pageNumber == null || hit.pageNumber === pageNumber);
+  if (onPage && hit.kind === 'callout' && hit.calloutId != null) {
+    return { target: 'text', index: null, calloutId: hit.calloutId, pageNumber: hit.pageNumber, markGroup: CALLOUT_MARK_GROUP };
+  }
+  if (onPage && hit.kind === 'annotation' && Number.isInteger(hit.annotationIndex)) {
+    const obj = Array.isArray(objects) ? objects[hit.annotationIndex] : null;
+    return {
+      target: isTextLikeAnnotation(obj) ? 'text' : 'mark',
+      index: hit.annotationIndex,
+      calloutId: null,
+      pageNumber: hit.pageNumber,
+      markGroup: getMarkGroup(obj),
+    };
+  }
+  return { target: 'empty', index: null, calloutId: null, pageNumber: hit?.pageNumber ?? pageNumber ?? null, markGroup: null };
+}
+
+/** classifyPagePress + the rule table in one call. */
+export function resolvePagePress(nativeEvent, { tool, pageNumber, objects, hasSelection }) {
+  const where = classifyPagePress(nativeEvent, { pageNumber, objects, tool });
+  const press = resolveToolPress({
+    tool, target: where.target, markGroup: where.markGroup, hasSelection, shiftKey: !!nativeEvent?.shiftKey,
+  });
+  return { ...where, ...press };
+}
+
+/**
+ * Is `el` (what the browser finds under the pointer with the layer armed)
+ * part of the current selection? Returns null, or
+ * { key, text, index, calloutId, el } — `text` when a double press on it
+ * should open its editor (rule 7).
+ */
+export function classifySelectionGrabTarget(el, svg, { selectedIds, selectedCalloutIds, selectedMarkerIds, objects } = {}) {
+  if (!el || !svg || !svg.contains(el)) return null;
+  if (el.closest('[data-resize-handle], [data-handle-hit-pad], [data-rotation-handle], [data-text-range-handle-hit-target]')) {
+    return { key: 'handle', text: false, index: null, calloutId: null, el };
+  }
+  const callout = el.closest('[data-callout-id]');
+  if (callout) {
+    const id = callout.getAttribute('data-callout-id');
+    return idSetHas(selectedCalloutIds, id) ? { key: `c:${id}`, text: true, index: null, calloutId: id, el } : null;
+  }
+  const marker = el.closest('[data-survey-marker-id]');
+  if (marker) {
+    const id = marker.getAttribute('data-survey-marker-id');
+    return idSetHas(selectedMarkerIds, id) ? { key: `m:${id}`, text: false, index: null, calloutId: null, el } : null;
+  }
+  const wrap = el.closest('[data-annotation-index]');
+  if (wrap) {
+    const index = Number(wrap.getAttribute('data-annotation-index'));
+    if (Number.isInteger(index) && idSetHas(selectedIds, index)) {
+      const obj = Array.isArray(objects) ? objects[index] : null;
+      return { key: `a:${index}`, text: isTextLikeAnnotation(obj), index, calloutId: null, el };
+    }
+  }
+  return null;
+}
+
+/**
+ * The tool groups of a page's picked marks (owner 2026-10-04): a tool may
+ * grab the selection only when it may pick every one of them
+ * (selectModes.canToolGrabSelection).
+ */
+export function pageSelectionMarkGroups({ selectedIds, objects, calloutSelected = false, surveyMarkerSelected = false } = {}) {
+  const groups = new Set();
+  for (const index of selectedIds || []) {
+    groups.add(getMarkGroup(Array.isArray(objects) ? objects[index] : null));
+  }
+  if (calloutSelected) groups.add(CALLOUT_MARK_GROUP);
+  if (surveyMarkerSelected) groups.add(getMarkGroup({ kind: 'survey-marker' }));
+  return groups;
+}

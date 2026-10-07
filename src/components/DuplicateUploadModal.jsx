@@ -86,7 +86,7 @@ const DuplicateUploadModal = ({
         style={{
           background: COLORS.modal.surface,
           border: `1px solid ${COLORS.modal.border}`,
-          borderRadius: BORDERS.radius.xl,
+          borderRadius: BORDERS.radius.dialog,
           boxShadow: SHADOWS.lg,
           padding: 24,
           width: 'min(92vw, 440px)',

@@ -16,7 +16,11 @@
   scrollbar-width: thin;
   scrollbar-color: var(--text-disabled) transparent;
   border-bottom: 1px solid var(--border);
-  background: linear-gradient(100deg, var(--surface-1), var(--surface-1));
+  /* Polish 3 (2026-10-04): --panel-bg, the colour of every other tool bar
+     row (tokens.css, ONE SURFACE RULE). It was a --surface-1 to --surface-1
+     "gradient" left by the palette merge, which drew this row as a darker
+     band under the tool bar. */
+  background: var(--panel-bg);
   box-sizing: border-box;
   scroll-padding-inline: 8px;
 }
@@ -43,7 +47,9 @@
 }
 
 .text-selection-action-bar__mark[data-focused='true'] {
-  border-color: rgba(229, 173, 24, 0.26);
+  /* The mark whose colour is being picked: the neutral identifying edge,
+     not a yellow one (owner: no gold on chrome edges). */
+  border-color: var(--border-strong);
 }
 
 .text-selection-action-bar__button {
@@ -62,7 +68,7 @@
 
 .text-selection-action-bar__button:focus-visible,
 .text-selection-action-bar__link-form button:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: -2px;
 }
 
@@ -79,7 +85,9 @@
   overflow-x: hidden;
   overflow-y: auto;
   border-bottom: 1px solid var(--border);
-  background: linear-gradient(100deg, var(--surface-1), var(--surface-2));
+  /* Polish 3: flat --panel-bg like the bar above it; its fields stay on
+     --surface-1, the well colour. */
+  background: var(--panel-bg);
   box-shadow: 0 5px 16px rgba(0, 0, 0, 0.25);
   box-sizing: border-box;
 }

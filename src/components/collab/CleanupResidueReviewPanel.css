@@ -26,7 +26,7 @@
   z-index: 210;
   /* UX (KAL-62): the app's one modal scrim — warm-dark dim plus an 8px blur,
      matching every other dialog instead of a flat black wash. */
-  background: rgba(13, 15, 20, 0.55);
+  background: var(--overlay-scrim);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 
@@ -50,8 +50,8 @@
      existing modal family. */
   background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.5));
+  border-radius: var(--radius-dialog);
+  box-shadow: var(--shadow-dialog);
 
   width: 100%;
   max-width: 400px;

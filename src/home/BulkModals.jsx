@@ -18,11 +18,11 @@ const overlay = {
   position: 'fixed', inset: 0, background: C.scrim,
   backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
   display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1300,
-  fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+  fontFamily: 'var(--font-ui)',
 };
 
-export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfirm }) {
-  const [mode, setMode] = useState('move'); // 'move' | 'copy'
+export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfirm, initialMode = 'move' }) {
+  const [mode, setMode] = useState(initialMode); // 'move' | 'copy'
   const [destId, setDestId] = useState(null);
   const cardRef = useRef(null);
   const [submitting, setSubmitting] = useState(false);
@@ -47,9 +47,11 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
   // and focus returns to whatever opened it.
   useFocusTrap(cardRef, open, { onEscape: submitting ? undefined : onClose });
 
+  // The select row has separate Move and Copy buttons (owner 2026-10-02);
+  // each opens this picker already set to its own mode.
   useEffect(() => {
-    if (open) setSubmitError('');
-  }, [open]);
+    if (open) { setSubmitError(''); setMode(initialMode === 'copy' ? 'copy' : 'move'); }
+  }, [open, initialMode]);
 
   if (!open) return null;
 
@@ -58,7 +60,7 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
       onClick={() => setMode(val)}
       style={{
         flex: 1, height: 28, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit',
-        fontSize: 11.5, fontWeight: 600,
+        fontSize: 12, fontWeight: 600,
         background: mode === val ? C.gold : 'transparent',
         color: mode === val ? 'var(--accent-text)' : C.inkSoft,
         border: `1px solid ${mode === val ? C.gold : C.ruleStrong}`,
@@ -70,10 +72,10 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
 
   return (
     <div onClick={submitting ? undefined : onClose} style={overlay}>
-      <div ref={cardRef} role="dialog" aria-modal="true" aria-label="Move or copy documents" onClick={(e) => e.stopPropagation()} style={{ width: 420, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 10, boxShadow: '0 24px 60px rgba(0,0,0,0.55)', color: C.ink, overflow: 'hidden' }}>
+      <div ref={cardRef} role="dialog" aria-modal="true" aria-label="Move or copy documents" onClick={(e) => e.stopPropagation()} style={{ width: 420, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden' }}>
         <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${C.rule}`, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
           <div>
-            <div style={{ fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>Move or copy</div>
+            <div style={{ fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600 }}>Move or copy</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.015em', marginTop: 4 }}>{count} {count === 1 ? 'document' : 'documents'}</div>
           </div>
           <button disabled={submitting} onClick={onClose} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={13} /></button>
@@ -87,14 +89,14 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
             {mode === 'move' ? 'Moves the documents into the chosen project.' : 'Copies the documents into the chosen project; originals stay where they are.'}
           </div>
           {submitError && (
-            <div role="alert" style={{ fontSize: 11.5, color: C.dangerText, lineHeight: 1.4 }}>
+            <div role="alert" style={{ fontSize: 12, color: C.dangerText, lineHeight: 1.4 }}>
               {submitError} Try again.
             </div>
           )}
           <div>
-            <div style={{ fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, fontWeight: 700, marginBottom: 8 }}>Destination project</div>
+            <div style={{ fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600, marginBottom: 8 }}>Destination project</div>
             <div style={{ maxHeight: 200, overflowY: 'auto', border: `1px solid ${C.rule}`, borderRadius: 6 }}>
-              {projects.length === 0 && <div style={{ padding: '12px', fontSize: 11.5, color: C.muted }}>No projects to move into.</div>}
+              {projects.length === 0 && <div style={{ padding: '12px', fontSize: 12, color: C.muted }}>No projects to move into.</div>}
               {projects.map((p) => (
                 <button
                   type="button"
@@ -102,7 +104,7 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
                   onClick={() => setDestId(p.id)}
                   aria-pressed={destId === p.id}
                   style={{
-                    display: 'block', width: '100%', padding: '9px 12px', fontSize: 12.5,
+                    display: 'block', width: '100%', padding: '9px 12px', fontSize: 13,
                     cursor: 'pointer', color: C.ink, textAlign: 'left', fontFamily: 'inherit',
                     // UX 2026-09-17 (owner ruling: no warm fill on a selected thing).
                     // A destination is a ROW, so it takes the approved row cue — a
@@ -165,7 +167,7 @@ export function ConfirmModal({ open, onClose, title = 'Are you sure?', message =
 
   return (
     <div onClick={submitting ? undefined : onClose} style={overlay}>
-      <div ref={cardRef} role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()} style={{ width: 380, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 10, boxShadow: '0 24px 60px rgba(0,0,0,0.55)', color: C.ink, overflow: 'hidden' }}>
+      <div ref={cardRef} role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()} style={{ width: 380, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden' }}>
         <div style={{ padding: '18px 18px 14px', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.015em' }}>{title}</div>
@@ -222,9 +224,11 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
 
   if (!open) return null;
   const trimmed = name.trim();
+  // Owner 2026-10-02: only a real change is saved. The same name just closes.
+  const unchanged = trimmed === (initialName || '').trim();
   const submit = () => {
     if (!trimmed) return;
-    onConfirm?.(trimmed);
+    if (!unchanged) onConfirm?.(trimmed);
     onClose?.();
   };
 
@@ -235,7 +239,7 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
         aria-modal="true"
         aria-label={title}
         onClick={(event) => event.stopPropagation()}
-        style={{ width: 380, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 10, boxShadow: '0 24px 60px rgba(0,0,0,0.55)', color: C.ink, overflow: 'hidden' }}
+        style={{ width: 380, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden' }}
       >
         <div style={{ padding: '18px 18px 14px', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
           <div style={{ minWidth: 0, flex: 1 }}>
@@ -257,12 +261,12 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
               />
             </label>
           </div>
-          <button onClick={onClose} title="Close" className="hub-icon-btn"><Icon name="close" size={16} /></button>
+          <button type="button" onClick={onClose} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={16} /></button>
         </div>
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onClose} className="hub-btn" style={{ minHeight: 44 }}>Cancel</button>
           <button
-            disabled={!trimmed}
+            disabled={!trimmed || unchanged}
             onClick={submit}
             className="hub-btn hub-btn--primary"
             style={{ minHeight: 44 }}

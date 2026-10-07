@@ -114,12 +114,17 @@ test('wiring: auto re-fits are marked and never land; user fits use the band', (
   assert.match(zoomTo, /if \(auto && !shouldAutoRefit\(lastFit, fitRecord\)\) return;/);
   assert.match(zoomTo, /viewportW: bandW,/);
   assert.match(zoomTo, /if \(!isFit \|\| auto \|\| !dimsPtRef\.current\.length\) return;/, 'an automatic re-fit stops before landing');
-  assert.match(zoomTo, /resolveBandCentreScrollLeft\(/);
+  // 2026-10-04: the fit landing moved into pageNavigationMath.resolveFitPageLanding
+  // (shared with the typed page jump), which centres through the same helper.
+  assert.match(zoomTo, /resolveFitPageLanding\(\{[\s\S]{0,400}insets: side,/);
+  assert.match(read('../src/utils/pageNavigationMath.js'), /export function resolveFitPageLanding[\s\S]{0,1200}resolveBandCentreScrollLeft\(\{/);
   assert.match(container, /refitAfterLayoutChange: \(target\) => \{[\s\S]{0,160}zoomToScale\(target, \{ auto: true \}\)/);
   // The room is part of every page's left edge, the scroll range and the content width.
-  assert.match(container, /return sideRoomRef\.current\.left \+ \(pageWidth <= viewportWidth/);
-  assert.match(container, /return sideRoomRef\.current\.left \+ sideRoomRef\.current\.right \+ \(pageWidth <= containerWRef\.current/);
-  assert.match(container, /: maxW \+ 2 \* metrics\.padX\) \+ sideRoom\.left \+ sideRoom\.right;/);
+  // 2026-09-30: pages share one centre line and one scroll range
+  // (src/utils/pdfPageColumn.js, tests/pdfPageColumn.test.mjs).
+  assert.match(container, /resolveCentredPageLeft\(\{[\s\S]{0,120}sideLeft: sideRoomRef\.current\.left,/);
+  assert.match(container, /resolveDocumentScrollLeftMax\(\{[\s\S]{0,160}sideLeft: sideRoomRef\.current\.left,\s*sideRight: sideRoomRef\.current\.right,/);
+  assert.match(container, /const contentW = columnW \+ sideRoom\.left \+ sideRoom\.right;/);
   assert.match(container, /compensateScrollLeftForSideRoom\(base, previous\.left, sideRoom\.left\)/);
 
   const viewer = read('../src/PDFViewer.jsx');
@@ -128,7 +133,9 @@ test('wiring: auto re-fits are marked and never land; user fits use the band', (
 
   // Both desktop panels register as side panels.
   const rail = read('../src/SurveySpacesRail.jsx');
-  assert.match(rail, /ref=\{mobileMode \? undefined : sideOccluderRef\}\s*data-viewer-occluder=\{!mobileMode && !isSurveyPanelCollapsed \? 'side' : undefined\}/);
+  // Survey audit P1-5 (2026-10-01): the phone Survey sheet is a 'sheet'
+  // occluder (like the phone Pages sheet), so Locate fits above it.
+  assert.match(rail, /ref=\{mobileMode \? undefined : sideOccluderRef\}\s*data-viewer-occluder=\{isSurveyPanelCollapsed \? undefined : \(mobileMode \? 'sheet' : 'side'\)\}/);
   const sidebar = read('../src/PDFSidebar.jsx');
   assert.match(sidebar, /data-viewer-occluder=\{isCollapsed \? undefined : \(mobileMode \? 'sheet' : 'side'\)\}\s*ref=\{mobileMode \? undefined : sideOccluderRef\}/);
 });

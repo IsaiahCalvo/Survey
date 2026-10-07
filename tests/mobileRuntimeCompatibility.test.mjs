@@ -315,22 +315,105 @@ test('mobile PDF rendering stays inside the WKWebView memory budget', () => {
   assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_PAGE_RASTER_CACHE_MAX_BYTES = 48 \* 1024 \* 1024/);
   assert.match(PDFJS_VIEWER_SOURCE, /target = document\.createElement\('canvas'\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /if \(target && !targetRetained\) releaseRasterCanvas\(target\)/);
-  assert.match(PDFJS_VIEWER_SOURCE, /finally \{\s*releaseRasterCanvas\(off\)/);
+  // 2026-10-07: the detail tile's staging canvas is reused between renders on
+  // desktop (GC pauses during wheel zoom); the phone still hands it back as
+  // soon as the latest render is done.
+  assert.match(PDFJS_VIEWER_SOURCE, /finally \{[\s\S]{0,300}?if \(isMobileSurface\) releaseRasterCanvas\(off\);/);
   assert.match(PDFJS_VIEWER_SOURCE, /const externalPdf = isPdfDocumentProxy\(activeSource\) \? activeSource : null/);
 });
 
 test('mobile PDF pinch previews translation, progressively sharpens, and commits the same anchor', () => {
   assert.match(PDFJS_VIEWER_SOURCE, /resolveGesturePreview\(g, oldScale \* lz\)/);
-  assert.match(PDFJS_VIEWER_SOURCE, /pendingAnchorRef\.current = \{ left: preview\.left, top: preview\.top \}/);
+  // 2026-10-02: the commit also says whether it came from an elastic (phone)
+  // pinch, so the anchor effect can fold any browser clamp into the release
+  // spring instead of showing it as a jump. 2026-10-04: also when an older
+  // zoom-limit ease was still running under the gesture (it is folded into
+  // the new leftover, so the same clamp fold applies).
+  assert.match(PDFJS_VIEWER_SOURCE, /pendingAnchorRef\.current = \{ left: preview\.left, top: preview\.top, elastic: Boolean\(g\.elastic \|\| easingUnder\) \}/);
   assert.match(PDFJS_VIEWER_SOURCE, /translate\(\$\{liveTranslateX\}px, \$\{liveTranslateY\}px\) scale/);
   assert.match(PDFJS_VIEWER_SOURCE, /lastSharpAtRef/);
   assert.match(PDFJS_VIEWER_SOURCE, /240/);
+  // 2026-09-30: the transform pivots on the SAME clamped anchor the commit
+  // holds still (a pinch in the gutter beside a narrow page used to slide the
+  // page, then snap on release), and the tile's progressive re-sharpening is
+  // desktop-only: on the phone the tile signal is just pinch-live / idle.
+  assert.match(PDFJS_VIEWER_SOURCE, /\$\{preview\.anchorX\}px \$\{preview\.anchorY - layout\.padTop\}px/);
+  assert.match(PDFJS_VIEWER_SOURCE, /const tileLiveZoomSignal = isMobileSurface \? \(liveZoom === 1 \? 1 : 0\) : liveZoom;/);
+});
+
+// Owner 2026-10-02 (Drawboard PDF iPhone parity): the phone viewer lets the
+// page go past a document edge or a zoom limit with resistance and eases it
+// back; nothing may jump. Desktop (wheel / trackpad) got the same feel the
+// same day; see the desktop test below.
+test('mobile pinch and pan rubber-band past edges and zoom limits, then ease home', () => {
+  // The bottom-edge snap: the predicted scroll range must count a gap above
+  // every page and one below the last, exactly like the layout memo.
+  assert.match(PDFJS_VIEWER_SOURCE, /let height = metrics\.padTop \+ gapPx \+ metrics\.padBottom;\s*dims\.forEach\(\(dim\) => \{\s*height \+= dim\.h \* sc \+ gapPx;/);
+  // Zoom past the limits shows with resistance; reduced motion clamps hard.
+  assert.match(PDFJS_VIEWER_SOURCE, /\? rubberScale\(rawScale, minimumScale, maxScale\)\s*: Math\.max\(minimumScale, Math\.min\(maxScale, rawScale\)\)/);
+  assert.match(PDFJS_VIEWER_SOURCE, /const elastic = !prefersReducedMotion\(\);/);
+  // The preview shows the requested scale and rubber-banded scroll, the commit
+  // keeps the clamped target, and the leftover eases away pivoting on the fingers.
+  assert.match(PDFJS_VIEWER_SOURCE, /renderedLiveZoom = preview\.displayScale \/ scale;/);
+  assert.match(PDFJS_VIEWER_SOURCE, /rubberClamp\(freeTopAt\(displayScale\), 0,/);
+  assert.match(PDFJS_VIEWER_SOURCE, /z: preview\.displayScale \/ newScale,/);
+  assert.match(PDFJS_VIEWER_SOURCE, /releaseElastic\(\);/);
+  // One-finger pan past an edge, and a flick into an edge, use the same spring.
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(touchPanElasticRef\.current\) \{ applyElasticPan\(delta\.x, delta\.y\); return; \}/);
+  assert.match(PDFJS_VIEWER_SOURCE, /panMomentumHooksRef\.current\.bounce\?\.\(/);
+  // The wheel path never sets the touch `elastic` flag (rubber-banded scroll
+  // placement); desktop pinch has its own zoom-only elasticZoom flag.
+  assert.doesNotMatch(PDFJS_VIEWER_SOURCE, /regime,\s*\n[^}]*\belastic:/);
+  // A retired detail tile is hidden in the same frame (no black box).
+  assert.match(PDFJS_VIEWER_SOURCE, /canvasRef\.current\.style\.display = 'none';\s*releaseRasterCanvas\(canvasRef\.current\);/);
+});
+
+// Owner 2026-10-02 (desktop): "I wish the desktop version had the same
+// slingshot/spring back effect when scrolling to extents." Wheel/trackpad
+// scrolling inside the document stays native; only a delta that runs past an
+// edge goes to the shared controller and is drawn through the same content
+// transform as the phone. A trackpad pinch past a zoom limit overshoots and
+// eases back; mouse notches and reduced motion keep the hard clamp. The zoom
+// lifecycle (gesture-start -> zoomGeneration, one commit, settle) is unchanged.
+test('desktop wheel and trackpad rubber-band at document edges and zoom limits', () => {
+  assert.match(PDFJS_VIEWER_SOURCE, /from '\.\.\/utils\/elasticEdges\.js'/);
+  assert.match(PDFJS_VIEWER_SOURCE, /const overscroll = createWheelOverscroll\(\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(!el \|\| isMobileSurface\) return undefined;\s*const overscroll/);
+  // 2026-10-04 (owner: "it gets stuck sometimes"): the wheel controller is
+  // the ONE owner of its offset (wheelShiftRef, added on top of any other
+  // live transform) instead of sharing elasticRef with the zoom ease, and
+  // every stretch has a way home: idle timer, the controller's watchdog, and
+  // blur / tab hide / a press / a zoom start releasing it into the spring.
+  assert.match(PDFJS_VIEWER_SOURCE, /const changed = show\(shown\.active \? -shown\.x : 0, shown\.active \? -shown\.y : 0\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /liveTranslateX \+= wheelShift\.x;/);
+  assert.match(PDFJS_VIEWER_SOURCE, /window\.addEventListener\('blur', release\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(e\.ctrlKey \|\| e\.metaKey \|\| gestureRef\.current\) \{ if \(overscroll\.active\(\)\) release\(\); return; \}/);
+  // A zoom-limit ease is never cut off by the next gesture: it is composed
+  // under it and folded into the next leftover.
+  assert.match(PDFJS_VIEWER_SOURCE, /composeElasticTransform\(/);
+  assert.match(PDFJS_VIEWER_SOURCE, /elasticRef\.current = composeReleaseLeftover\(\{/);
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(prefersReducedMotion\(\)\) return;/);
+  assert.match(PDFJS_VIEWER_SOURCE, /elasticZoom: regime === 'trackpad' && !isMobileSurface && !prefersReducedMotion\(\),/);
+  assert.match(PDFJS_VIEWER_SOURCE, /const previewScale = g\.elasticZoom \? rubberScale\(nextScale, minimumScale, maxScale\) : nextScale;/);
+  // Pushing on at a limit commits nothing, so no extra settle phase.
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(!overshootOnly\) cb\.current\.onZoomPhase\?\.\('settle'/);
+  // The viewer's own bounce replaces Safari's native one on mouse/trackpad.
+  assert.match(PDFJS_VIEWER_SOURCE, /overscrollBehavior: finePointer && !isMobileSurface \? 'none' : 'contain'/);
 });
 
 test('mobile deep zoom-out rebases before WebKit composites an unsafe downscale', () => {
   assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_LIVE_ZOOM_REBASE_MIN = 0\.67/);
   assert.match(PDFJS_VIEWER_SOURCE, /checkpointPinchGesture/);
-  assert.match(PDFJS_VIEWER_SOURCE, /nextLiveZoom < MOBILE_LIVE_ZOOM_REBASE_MIN/);
+  // 2026-09-30 (owner: phone pinch as smooth as desktop): each rebase is a
+  // mid-gesture layout + raster commit — a visible hitch — so the 0.67
+  // checkpoint only applies where the WKWebView crash lived (committed zoom
+  // deeper than 250%). Shallower pinch-outs are one transform, bounded by a
+  // 4x hard floor. Measured on a mixed-size PDF: pinch 245% -> 74% went from
+  // two rebases to none. Still needs the device run (test:mobile-zoomout-native).
+  assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_LIVE_ZOOM_REBASE_SCALE = 2\.5/);
+  assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_LIVE_ZOOM_HARD_FLOOR = 0\.25/);
+  assert.match(PDFJS_VIEWER_SOURCE, /const rebaseFloor = committedScale > MOBILE_LIVE_ZOOM_REBASE_SCALE\s*\? MOBILE_LIVE_ZOOM_REBASE_MIN\s*: MOBILE_LIVE_ZOOM_HARD_FLOOR;/);
+  assert.match(PDFJS_VIEWER_SOURCE, /nextLiveZoom < rebaseFloor/);
   assert.match(PDFJS_VIEWER_SOURCE, /PDF live zoom floor/);
   assert.match(PDFJS_VIEWER_SOURCE, /if \(isMobileSurface && liveZoom < 1\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /willChange: isMobileSurface[\s\S]{0,80}\? 'auto'/);
@@ -339,28 +422,37 @@ test('mobile deep zoom-out rebases before WebKit composites an unsafe downscale'
 // The flick physics moved out of PdfjsViewerContainer into the shared
 // src/utils/panMomentum.js so desktop pointer panning reuses the very same
 // curve. These assertions are relocated, not relaxed: every invariant the
-// mobile coast relied on (EMA + sample push, two-axis velocity, the release
-// call site, the coast marker, the hypot rest test, the 325ms exponential
-// decay) is still asserted, now against the module that owns it.
+// mobile coast relied on (sample push, two-axis velocity, the release call
+// site, the coast marker, the hypot rest test, the exponential decay) is
+// still asserted, now against the module that owns it.
 test('mobile pan keeps two-axis velocity and coasts after release', () => {
   assert.match(PDFJS_VIEWER_SOURCE, /velocityX/);
   assert.match(PDFJS_VIEWER_SOURCE, /velocityY/);
-  assert.match(PDFJS_VIEWER_SOURCE, /startPanInertia\(velocityX, velocityY\)/);
-  assert.match(PDFJS_VIEWER_SOURCE, /panVelocityRef\.current\.release\(performance\.now\(\)\)/);
+  // 2026-10-02: an axis let go while pulled past an edge springs home
+  // instead of gliding; the other axis still coasts with its own velocity.
+  // 2026-10-07 (side to side): the pulled axis no longer drops its speed - it
+  // carries on into the glide or the edge spring (resolveEdgeRelease).
+  // 2026-10-07 (flickPan): finger and mouse share ONE glide (iOS 0.998/ms
+  // decay, Drawboard-matched release); the finger lift reads its velocity at
+  // the touchend's own event time.
+  assert.match(PDFJS_VIEWER_SOURCE, /const release = releaseElasticPan\(velocityX, velocityY\);\s*releaseLayoutShift\(\);\s*startPanInertia\(release\.vx, release\.vy, \{ elastic: release\.elastic, touch: true \}\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /resolveEdgeRelease\(\{/);
+  assert.match(PDFJS_VIEWER_SOURCE, /panVelocityRef\.current\.release\(panEventTime\(event\)\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /PDF pan coast distance/);
-  assert.match(PAN_MOMENTUM_SOURCE, /state\.samples\.push/);
+  assert.match(PAN_MOMENTUM_SOURCE, /samples\.push\(\{ x, y, at \}\)/);
   assert.match(PAN_MOMENTUM_SOURCE, /Math\.hypot\(x, y\)/);
-  assert.match(PAN_MOMENTUM_SOURCE, /decayTauMs: 325/);
+  assert.match(PAN_MOMENTUM_SOURCE, /decayTauMs: IOS_DECELERATION_TAU_MS/);
   assert.match(PAN_MOMENTUM_SOURCE, /Math\.exp\(-dt \/ tau\)/);
 });
 
 test('desktop pointer panning reuses the mobile flick physics', () => {
   // One physics, two surfaces: the desktop pointer path must call the same
   // tracker and the same runner, and must stop a glide on a new grab or wheel.
-  assert.match(PDFJS_VIEWER_SOURCE, /import \{ createPanMomentumRunner, createPanVelocityTracker \} from '\.\.\/utils\/panMomentum'/);
-  assert.match(PDFJS_VIEWER_SOURCE, /panVelocityRef\.current\.start\(event\.clientX, event\.clientY, performance\.now\(\)\)/);
-  assert.match(PDFJS_VIEWER_SOURCE, /panVelocityRef\.current\.move\(event\.clientX, event\.clientY, performance\.now\(\)\)/);
-  assert.match(PDFJS_VIEWER_SOURCE, /finishPan\(\{ glide: true \}\)/);
+  assert.match(PDFJS_VIEWER_SOURCE, /import \{ createPanMomentumRunner, createPanVelocityTracker[^}]*\} from '\.\.\/utils\/panMomentum'/);
+  // Samples are timed by the event (panEventTime), not by when the handler ran.
+  assert.match(PDFJS_VIEWER_SOURCE, /panVelocityRef\.current\.start\(event\.clientX, event\.clientY, panEventTime\(event\)\)/);
+  assert.match(PDFJS_VIEWER_SOURCE, /panVelocityRef\.current\.move\(event\.clientX, event\.clientY, panEventTime\(event\)\)/);
+  assert.match(PDFJS_VIEWER_SOURCE, /finishPan\(\{ glide: true, at: panEventTime\(event\) \}\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /const onWheelStopGlide = \(\) => \{ cancelPanInertia\(\); \}/);
   // A new grab always beats an in-flight glide.
   assert.match(PDFJS_VIEWER_SOURCE, /cancelPanInertia\(\);[\s\S]{0,120}panPointerRef\.current = \{/);
@@ -498,7 +590,11 @@ test('mobile viewer exposes the preserved dynamic tool and page controls', () =>
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /aria-label="Text formatting"/);
   assert.match(PAGES_PANEL_SOURCE, /aria-label="Page actions"/);
   assert.match(PAGES_PANEL_SOURCE, /onInsertBlankPage\?\.\(pageNum\)/);
-  assert.match(PAGES_PANEL_SOURCE, /mobileSelectMode \? 'Done' : 'Select'/);
+  // Owner 2026-10-07 (multi-select): Select opens the sheet's Select mode,
+  // whose header row ends with Done and whose bar acts on the ticked pages.
+  assert.match(PAGES_PANEL_SOURCE, /<span>Select<\/span>/);
+  assert.match(PAGES_PANEL_SOURCE, /onClick=\{leaveSelectMode\}>Done</);
+  assert.match(PAGES_PANEL_SOURCE, /aria-label="Selected pages actions"/);
 });
 
 test('mobile live text formatting fits its band with 44px touch targets', () => {
@@ -567,7 +663,10 @@ test('mobile annotation settings retain the preserved app geometry and controls'
    */
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /MOBILE_ANNOTATION_COLORS/);
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /Shape settings/);
-  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /<strong>Font<\/strong>/, 'the panel keeps the font picker the row sheet added');
+  // RULED CHANGE 2026-10-02 (owner, Test 19 sheet redesign): every label in the
+  // sheet comes from one row component, so the font row is <SheetRow
+  // label="Font"> and its six fonts are all on show (no list leaving the sheet).
+  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /<SheetRow label="Font"/, 'the panel keeps the font picker the row sheet added');
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /MOBILE_FONT_FAMILY_OPTIONS/, 'on the desktop bar\'s own list');
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /Text alignment/);
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /Vertical text alignment/);
@@ -589,12 +688,15 @@ test('mobile annotation settings retain the preserved app geometry and controls'
   assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-text-defaults \{[^}]{0,1600}max-height: calc\(100dvh/);
   assert.doesNotMatch(MOBILE_VIEWER_CSS_SOURCE, /is-shape:not\(\.is-callout\) \{\s*height:/);
   assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-text-defaults__scroll \{[\s\S]{0,120}flex: 1 1 auto/);
-  assert.match(MOBILE_VIEWER_CSS_SOURCE, /mobile-pdf-text-card--shape-color[\s\S]{0,120}height: 150px/);
-  /* RULED 2026-09-23 (owner: restore the per-tool panels; fold board 16 into the
-     arrowhead card): the arrowhead card holds the arrow's Arrow ends under the
-     Arrowhead now, so its 85px is a floor (one row) rather than a fixed height -
-     a fixed 85px would clip the second row. Was: height: 85px. */
-  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-text-card--arrowhead \{[\s\S]{0,80}min-height: 85px/);
+  /* RULED CHANGE 2026-10-02 (owner, Test 19: "it doesn't look like a designer
+     built this"): the panel's cards are gone - the 150px colour card and the
+     85px arrowhead card this pinned. The sheet is sections split by one
+     hairline, made of 44px rows, and the colour row is eight equal circles
+     across the gutter. Those are what is pinned now. */
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-tool-sheet__row \{[\s\S]{0,80}min-height: var\(--sheet-row-h\)/);
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-tool-sheet__section \+ \.mobile-tool-sheet__section \{\s*border-top: var\(--sheet-divider\)/);
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-tool-sheet__swatches \{[\s\S]{0,120}justify-content: space-between/);
+  assert.doesNotMatch(MOBILE_VIEWER_CSS_SOURCE, /mobile-pdf-text-card/);
 });
 
 test('native mobile home remains viewport-contained with a solid full-width tab bar', () => {
@@ -606,6 +708,17 @@ test('native mobile home remains viewport-contained with a solid full-width tab 
   // here would pass while the rest of the app moved.
   assert.match(HUB_CSS_SOURCE, /\.survey-hub \.mobile-home-tabs \{[\s\S]{0,1000}background: var\(--surface-0\)/);
   assert.match(HUB_CSS_SOURCE, /\.survey-hub \.mobile-home-tabs::before \{\s*display: none/);
+});
+
+// 2026-10-01 (owner: "on mobile web the box moves when I scroll"): the phone
+// web home is a fixed frame like the app — the page never scrolls, only the
+// rows inside the list's panel do.
+test('phone web home scrolls the list box, not the page, like the native shell', () => {
+  assert.match(HUB_CSS_SOURCE, /html\.survey-hub-mobile-scroll-page,\s*body\.survey-hub-mobile-scroll-page \{[\s\S]{0,120}height: 100dvh !important;[\s\S]{0,80}overflow: hidden !important;\s*overscroll-behavior: none;/);
+  assert.match(HUB_CSS_SOURCE, /\.survey-hub\.hub-native-shell-expo \.templates-mobile-layout,\s*\.survey-hub:not\(\.hub-native-shell-expo\) \.documents-mobile-list,\s*\.survey-hub:not\(\.hub-native-shell-expo\) \.projects-mobile-layout,\s*\.survey-hub:not\(\.hub-native-shell-expo\) \.templates-mobile-layout \{[\s\S]{0,80}overflow-y: auto;\s*overscroll-behavior-y: contain;/);
+  assert.match(HUB_CSS_SOURCE, /\.survey-hub:not\(\.hub-native-shell-expo\) \.archive-mobile-list \{[\s\S]{0,80}overflow-y: auto;/);
+  // The old phone-web clip on the box would stop it scrolling.
+  assert.doesNotMatch(HUB_CSS_SOURCE, /\.survey-hub:not\(\.hub-native-shell-expo\) \.templates-mobile-layout:has\(> \.templates-mobile-browser\) \{\s*overflow: hidden;/);
 });
 
 // DELIBERATE ASSERTION CHANGE 2026-09-22: the phone left host went from a fixed
@@ -629,18 +742,32 @@ test('mobile viewer rails do not mix flex shorthand with flexShrink during reren
 
 test('mobile Survey and Spaces drawers follow their content', () => {
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /else \{\s*setOpenCategory\(null\)/);
-  assert.match(SURVEY_RAIL_SOURCE, /mobile-survey-template-menu/);
-  // 2026-07-12 Phase C (vocabulary rule): the mobile hint spells out the full
-  // product term "Survey Marker" — never bare "marker".
-  assert.match(SURVEY_RAIL_SOURCE, /Tap category to place a Survey Marker/);
+  // DELIBERATE ASSERTION CHANGE 2026-10-01 (owner: template switcher, the
+  // "hybrid" design): the phone's template popover (.mobile-survey-template-menu)
+  // is gone. Tapping the template title now swaps the category list for an
+  // in-sheet list of templates, so the guard pins that list (and that the old
+  // popover does not come back as a second way to switch).
+  assert.doesNotMatch(SURVEY_RAIL_SOURCE, /mobile-survey-template-menu/);
+  assert.match(SURVEY_RAIL_SOURCE, /className="mobile-survey-card mobile-survey-template-list mobile-survey-switch-list"/);
+  assert.match(SURVEY_RAIL_SOURCE, /className="survey-rail__title-button"/);
+  // DELIBERATE ASSERTION CHANGE 2026-10-01 (owner: the phone Survey panel works
+  // like desktop, one accordion): a tap on a category OPENS it, so the old
+  // "Tap category to place a Survey Marker" hint is gone. Placing is each row's
+  // own "+ Place", whose label still spells out the full product term "Survey
+  // Marker" (2026-07-12 Phase C vocabulary rule) — never bare "marker".
+  assert.doesNotMatch(SURVEY_RAIL_SOURCE, /Tap category to place a Survey Marker/);
+  assert.match(SURVEY_RAIL_SOURCE, /aria-label=\{`Place a Survey Marker in \$\{category\.name/);
   assert.match(SPACES_PANEL_SOURCE, /Array\.isArray\(space\.assignedPages\)/);
   // 2026-07-12 Phase B (defect #4): the spaces sheet now follows MEASURED
   // panel content instead of predicted row heights — the metrics callback
   // reports contentHeight alongside the legacy expandedPageRows fallback.
   assert.match(SPACES_PANEL_SOURCE, /onMobilePanelMetricsChange\(\{ expandedPageRows, contentHeight \}\)/);
-  // 2026-07-12 Phase B (S3): every bottom sheet bakes home-indicator
-  // clearance into itself, like the demo's paddingBottom: inset + 10..14.
-  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-sheet \{[\s\S]{0,1200}padding-bottom: calc\(12px \+ var\(--mobile-bottom-inset\)\)/);
+  // 2026-07-12 Phase B (S3) baked home-indicator clearance into every bottom
+  // sheet. DELIBERATE CHANGE 2026-10-01 (owner: the dock hid the foot of the
+  // sheets): a sheet now stands on the dock, which clears the home indicator
+  // itself, so the sheet ends at the dock's top edge and keeps only its 12px.
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-sheet \{[\s\S]{0,200}bottom: var\(--mobile-dock-bar-height\) !important;/);
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-sheet \{[\s\S]{0,1600}padding-bottom: 12px;/);
 });
 
 // DELIBERATE ASSERTION CHANGE (2026-09-17, revision-2 palette approved by the
@@ -690,4 +817,30 @@ test('mobile viewer presence uses Supabase row names, deduplicates, and pins the
     { id: 'me', label: 'Isaiah Calvo', initials: 'IC', isCurrent: true },
     { id: 'other', label: 'Other New', initials: 'ON', isCurrent: false },
   ]);
+});
+
+// iOS bottom push (Appetize, iPhone 16 Pro / iOS 26, 2026-10-06): the pure
+// parts live in elasticEdges.js (tests/mobileElasticEdges.test.mjs); this pins
+// the wiring. A viewer resize under a phone gesture is held then springs home;
+// a one-finger drag that starts on a PDF link pans (a tap still opens it).
+test('phone viewer: resize under a gesture is absorbed; drags from links pan', () => {
+  assert.match(PDFJS_VIEWER_SOURCE, /const shift = resolveFitCentreShift\(fitPlacementRef\.current, next\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /layoutShiftRef\.current\.absorb\(shift, performance\.now\(\), \{ held \}\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(layoutShiftYRef\.current\) liveTranslateY \+= layoutShiftYRef\.current;/);
+  assert.equal((PDFJS_VIEWER_SOURCE.match(/releaseLayoutShift\(\);/g) || []).length, 2, 'released at pan and pinch end');
+  assert.match(PDFJS_VIEWER_SOURCE, /resolveElasticPanStep\(\{/);
+  assert.match(PDFJS_VIEWER_SOURCE, /isLiveFormWidgetTarget\(nativeTarget\) \|\| nativeTarget\?\.closest\?\.\(PAN_THROUGH_LINK_SELECTOR\)/);
+  // never on desktop
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(!shift \|\| !isMobileSurface\) return;/);
+});
+
+// Review 9 / robust 10 item 2: a pan that lands during a zoom-limit bounce
+// draws its edge offset on top of the bounce and never re-starts it.
+test('phone viewer: a pan during a zoom bounce rides on top of it', () => {
+  assert.match(PDFJS_VIEWER_SOURCE, /touchPanOverEaseRef\.current = elastic && Boolean\(caught\.easing\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(touchPanOverEaseRef\.current\) \{\s*\/\/ The bounce keeps easing on its own; the edge offset rides on top\.\s*panEdgeRef\.current\.set\(sx\.shown, sy\.shown\);/);
+  // A bounce already animating keeps its own clock; a held pull springs home
+  // carrying the release speed (2026-10-07).
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(elasticPan && held\) releaseElastic\(\{ kind: 'spring', vx: rx\.spring, vy: ry\.spring, lead: 1000 \/ 60 \}\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /liveTranslateY \+= panEdgeShown\.y;/);
 });

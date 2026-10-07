@@ -1,27 +1,42 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-labelledby="title desc">
   <title id="title">Lasso select</title>
   <desc id="desc">A rounded dashed lasso with a rounded stroke cursor.</desc>
-
-  <g transform="translate(12 12) scale(.9828 .9901) translate(-12.1 -12.225)">
+  <!--
+    2026-10-02 optical balance (owner: "Lasso looks smaller than Rectangular").
+    The eye sizes this glyph by its one SOLID shape, the cursor, and that cursor
+    was drawn at 65% of the Box Select cursor (13.0 vs 19.5 units of ink) while
+    the rest of the 20-unit box was a dashed loop with only 73% of its length
+    inked. Now: the cursor is 72% scale (14.5 units of ink), the dashes are
+    longer (3 on / 2.1 off, 83% inked) so the loop reads as a line, and the
+    loop's last curve is trimmed (de Casteljau at t = 0.85) so it stops clear of
+    the bigger cursor instead of running into it. The cursor's stroke is
+    1.5 / 0.72 = 2.083, which resolves to the house 1.5. No outer group: both
+    parts are drawn straight on the 24 grid, ink 1.75..22 x 1.95..22.
+    2026-10-02 (Box Select became Hugeicons Cursor Rectangle Selection 02):
+    the lasso now draws Box Select's own cursor at the same size and place
+    (its 0.93 group, stroke 1.61 = the house 1.5), so the pair reads as one
+    family - a dashed shape with the cursor on its lower-right corner. The
+    72% arrow had grown to stand in for Box's old full-size arrow; beside the
+    new Box it read bigger. Measured: box 20.3 x 20.1, core 17.25 (Box 17.7,
+    Text 17.9), ink 99 (Box 90, Text 116; it was 108).
+  -->
   <path
-    d="M8.75 19.08C5.18 18.65 2.51 17.51 2.5 15.46c-.01-1.7 1.75-2.81 2.45-4.68.45-1.2.38-2.29.58-3.12C6.28 4.52 8.78 2.7 12.3 2.7c4.48 0 7.77 3.64 8.72 9.12"
+    d="M8.75 19.08C5.18 18.65 2.51 17.51 2.5 15.46c-.01-1.7 1.75-2.81 2.45-4.68.45-1.2.38-2.29.58-3.12C6.28 4.52 8.78 2.7 12.3 2.7c3.808 0 6.756 2.63 8.138 6.784"
     fill="none"
     stroke="currentColor"
     stroke-width="1.5"
     stroke-linecap="round"
     stroke-linejoin="round"
-    stroke-dasharray="1.5 2.1"
+    stroke-dasharray="3 2.1"
   />
-
-  <g transform="translate(8.1 8.15) scale(.65)">
-    <path
-      d="M9.80282 4.62973L15.8364 6.99069C19.3164 8.35243 21.0564 9.03329 20.9987 10.1133C20.941 11.1934 19.1251 11.6886 15.4933 12.6791C14.412 12.974 13.8713 13.1215 13.4964 13.4963C13.1215 13.8712 12.9741 14.4119 12.6791 15.4933C11.6887 19.125 11.1934 20.9409 10.1134 20.9986C9.03335 21.0563 8.35249 19.3163 6.99075 15.8363L4.62979 9.80276C3.20411 6.15934 2.49127 4.33764 3.41448 3.41442C4.3377 2.49121 6.15941 3.20405 9.80282 4.62973Z"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2.3"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    />
-  </g>
+  <g
+    transform="translate(12 12) scale(0.93) translate(-12 -12)"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.61"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <path d="M14.5352 11.0865L18.5575 12.6605C20.8775 13.5683 22.0375 14.0222 21.9991 14.7422C21.9606 15.4622 20.75 15.7924 18.3288 16.4527C17.6079 16.6493 17.2475 16.7476 16.9976 16.9976C16.7476 17.2475 16.6493 17.6079 16.4527 18.3288C15.7924 20.75 15.4622 21.9606 14.7422 21.9991C14.0222 22.0375 13.5683 20.8775 12.6605 18.5575L11.0865 14.5352C10.136 12.1062 9.6608 10.8918 10.2763 10.2763C10.8918 9.6608 12.1062 10.136 14.5352 11.0865Z" />
   </g>
 </svg>

@@ -1,0 +1,15 @@
+name: Cloud testing update
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  publish_cloud_testing_update:
+    name: Publish cloud-testing update (iOS)
+    type: update
+    env:
+      EXPO_PUBLIC_SURVEY_URL: https://sonic-tassel-snt8.here.now/mobile
+    params:
+      branch: cloud-testing
+      platform: ios
+      message: Cloud testing build (Here.now sonic-tassel-snt8)

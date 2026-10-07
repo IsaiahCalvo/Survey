@@ -18,8 +18,20 @@ import { MSGraphContext } from '../contexts/MSGraphContext';
    preview without a real backend. Same pattern as src/DevTestRoute.jsx. */
 const asyncNoop = async () => {};
 
+/* `?signedIn=1` gives the mock auth a signed-in user so the Settings page
+   (which reads the user from AuthContext, not the hub's prop) actually opens. */
+const previewSignedIn = typeof window !== 'undefined'
+  && new URLSearchParams(window.location.search).get('signedIn') === '1';
+const PREVIEW_AUTH_USER = {
+  id: 'u1',
+  email: 'isaiah@example.com',
+  user_metadata: { first_name: 'Isaiah', last_name: 'Calvo' },
+  app_metadata: { provider: 'email' },
+  identities: [],
+};
+
 const mockAuthValue = {
-  user: null,
+  user: previewSignedIn ? PREVIEW_AUTH_USER : null,
   session: null,
   loading: false,
   signUp: asyncNoop,

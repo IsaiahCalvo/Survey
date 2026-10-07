@@ -87,7 +87,11 @@ test('KAL-88/89: text + counter creations stamp survey scope; eraser refuses sur
   await page.getByRole('button', { name: /KAL-436 Preservation Template/ }).click();
   await expect(page.getByRole('button', { name: 'Existing Survey Data' })).toBeVisible();
   await page.getByRole('button', { name: /Walls/ }).click();
-  await expect(page.getByRole('button', { name: 'Expand Survey panel' })).toBeVisible();
+  // Owner 2026-10-07 (Drawboard rail + Survey chip): no "Expand / Close Survey
+  // panel" chevrons and no "Exit Survey" any more. The Survey tab opens and
+  // closes the panel; "Done" (Leave Survey) at the end of the survey bar
+  // leaves Survey (the floating Survey chip is gone, survey bar round).
+  await expect(page.getByRole('button', { name: 'Leave Survey' })).toBeVisible();
   // Survey mode hides ALL canvas-scoped content — same assertion as KAL-436.
   await expect.poll(() => uniqueAnnotationIds(page)).toEqual([]);
 
@@ -134,10 +138,8 @@ test('KAL-88/89: text + counter creations stamp survey scope; eraser refuses sur
   // of survey content is covered by kal436-survey-transition.spec.mjs plus
   // the isAnnotationVisibleInSurveyMode unit tests.)
 
-  // ---- Back to standard mode ('Close Survey panel' only exists while the
-  // panel is expanded — same expand-then-close step as KAL-436). ----
-  await page.getByRole('button', { name: 'Expand Survey panel' }).click();
-  await page.getByRole('button', { name: 'Close Survey panel' }).click();
+  // ---- Back to standard mode: "Done" on the survey bar (owner 2026-10-07). ----
+  await page.getByRole('button', { name: 'Leave Survey' }).click();
   await expect(page.getByRole('button', { name: 'Survey', exact: true })).toBeVisible();
 
   // KAL-89: the survey-mode sweep erased NOTHING — the standard id set is

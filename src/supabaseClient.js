@@ -7,8 +7,12 @@
  * connected-services availability flag. Used app-wide for cloud sync + auth.
  */
 import { createClient } from '@supabase/supabase-js';
-import { navigatorLock } from '@supabase/auth-js';
+import { isAuthRetryableFetchError, navigatorLock } from '@supabase/auth-js';
 import { createSafeNavigatorLock } from './utils/safeNavigatorLock.js';
+import {
+  checkpointBodyFetch,
+  enableCheckpointBodySubstitution,
+} from './services/checkpointBodyFetch.js';
 
 const env = import.meta.env || {};
 
@@ -46,8 +50,12 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.warn('Supabase credentials not found. Running in offline mode.');
 }
 
+// 2026-10-06: `global.fetch` is the plain fetch, except that a multi-MB
+// annotation checkpoint's request body is assembled from bytes the checkpoint
+// worker prepared instead of from one huge string on the main thread (same
+// bytes on the wire; see services/checkpointBodyFetch.js).
 export const supabase = supabaseUrl && supabaseAnonKey
-  ? createClient(supabaseUrl, supabaseAnonKey, {
+  ? enableCheckpointBodySubstitution(createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         autoRefreshToken: true,
         persistSession: true,
@@ -55,16 +63,21 @@ export const supabase = supabaseUrl && supabaseAnonKey
         lock: clampedAuthLock,
         ...(SUPABASE_AUTH_STORAGE_KEY ? { storageKey: SUPABASE_AUTH_STORAGE_KEY } : {}),
       },
-    })
+      global: { fetch: checkpointBodyFetch },
+    }))
   : null;
 
 // The dev-only fixture route intentionally exercises the full local editor
 // without a cloud session. Keep its mock viewer identity out of Supabase
 // consumers even when this checkout has valid public Supabase credentials.
+// `devCloudLibrary=1` (dev only) keeps the library reads on for the
+// two-account walks, whose every Supabase request an in-memory stand-in
+// answers (debug/scenarios/test-plan/tp-fake-backend.mjs).
 const isDevTestPdfRoute = () => (
   import.meta.env.DEV
   && typeof window !== 'undefined'
   && new URLSearchParams(window.location.search).has('testPdf')
+  && new URLSearchParams(window.location.search).get('devCloudLibrary') !== '1'
 );
 
 // Helper to check if Supabase is available
@@ -125,6 +138,35 @@ export async function getSupabaseSession(context = 'auth') {
     return session || null;
   } catch (err) {
     if (await recoverSupabaseAuthSession(err, context)) return null;
+    throw err;
+  }
+}
+
+// 2026-10-07 (phone loading): the start-up read of the saved sign-in. When the
+// saved token has expired and the network is down or slow (a phone opened
+// after hours away, in a lift, on weak signal), getSession() answers "no
+// session" with a retryable network error while the saved session stays in
+// storage. Reading that as "signed out" showed a signed-in person the
+// signed-out home and the sign-in sheet; `offline` tells the caller the sign-in
+// is still there and only needs the network to come back.
+//
+// A slow refresh can also lose the auth lock to another reader (the lock is
+// clamped to 2.5 s above), which throws "Lock broken by another request with
+// the 'steal' option" - that reader carries on with the same saved sign-in, so
+// it is a wait too, not a sign-out.
+const isAuthLockStolenError = (error) => (
+  error?.name === 'AbortError' || /lock broken|steal/i.test(String(error?.message || ''))
+);
+
+export async function readStartupSession(context = 'auth') {
+  if (!supabase) return { session: null, offline: false };
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    const session = data?.session || null;
+    return { session, offline: !session && isAuthRetryableFetchError(error) };
+  } catch (err) {
+    if (await recoverSupabaseAuthSession(err, context)) return { session: null, offline: false };
+    if (isAuthLockStolenError(err)) return { session: null, offline: true };
     throw err;
   }
 }

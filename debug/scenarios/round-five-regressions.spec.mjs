@@ -92,11 +92,13 @@ test('faded rails leave right and bottom edge drags to the pen', async ({ page }
   }
 });
 
-test('expand Survey tooltip appears and clears on press', async ({ page }) => {
+// Owner 2026-10-07: the Expand Survey chevron is gone; the Survey tab is the
+// rail's one control and carries the same tooltip behaviour.
+test('Survey tab tooltip appears and clears on press', async ({ page }) => {
   await load(page);
-  const button = page.getByRole('button', { name: 'Expand Survey panel', exact: true });
+  const button = page.getByRole('button', { name: 'Survey', exact: true });
   await button.hover();
-  const tooltip = page.locator('body > div[aria-hidden="true"]').filter({ hasText: 'Expand Survey panel' });
+  const tooltip = page.locator('body > div[aria-hidden="true"]').filter({ hasText: /^Survey$/ });
   await expect(tooltip).toBeVisible();
   await button.click();
   await expect(tooltip).toHaveCount(0);

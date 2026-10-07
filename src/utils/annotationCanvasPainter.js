@@ -47,6 +47,7 @@ import {
 } from './textMarkupRenderSpec.js';
 import { calloutBoxCloudStandIn, colorWithAlpha, textboxCloudStandIn } from './textCloudBorder.js';
 import { DRAWN_CENTERED_STROKE_CONTRACT } from './shapeCommitGeometry.js';
+import { insetRectForFill, shouldKnockOutShapeFill } from './shapeFillKnockout.js';
 import { createInkPathAffine } from './inkGeometryTransform.js';
 import { normalizeOperationalInkPath } from './inkPathNormalization.js';
 import { getCounterLabelLayout } from './counterGeometry.js';
@@ -441,14 +442,15 @@ function drawPath(context, object, displayScale) {
   }
   context.lineDashOffset = toNumber(attrs.strokeDashoffset);
 
-  // Partially erased authored curve: paint the exact source stroke clipped to
-  // the SURVIVOR polygons (even-odd), the same clip the SVG layer uses
-  // (svgAnnotationRenderers renderPath). w38 (2026-09-25): this used to clip
-  // with (source bounds minus paperEraserCuts). The cuts come from a second
-  // polygon boolean (source outline minus survivor) whose operands share most
-  // of their edges, which Martinez gets wrong: the canvas painted slivers of
-  // ink inside erased holes and notched the ink beside them while the SVG
-  // layer was clean. The survivor is the eraser's own verified output.
+  // Partially erased authored curve: fill the SURVIVOR polygons (even-odd),
+  // exactly like the SVG layer (svgAnnotationRenderers renderPath) and the PDF
+  // export. w38 (2026-09-25): survivors, never (bounds minus paperEraserCuts):
+  // the cuts come from a second polygon boolean whose operands share most of
+  // their edges, which Martinez gets wrong (slivers in holes, notches).
+  // 2026-10-06 (test plan 68): the survivors used to CLIP the authored source
+  // stroke. That clip edge lies on the stroke's own edge, so each edge pixel
+  // was anti-aliased twice and thin lines drew 10-30% lighter than the
+  // untouched original; a filled outline has one anti-aliased edge.
   const paperSource = object?.paperSourceStroke;
   const paperSurvivors = object?.polygons;
   if (
@@ -457,43 +459,15 @@ function drawPath(context, object, displayScale) {
     && Array.isArray(paperSource.matrix)
     && paperSource.matrix.length === 6
     && Array.isArray(paperSurvivors)
-    // Same test as the SVG layer's clip path: at least one real ring.
+    // Same test as the SVG layer: at least one real ring.
     && paperSurvivors.some((polygon) => Array.isArray(polygon) && polygon.some(isClipRing))
-    && typeof context.clip === 'function'
-    && typeof context.transform === 'function'
   ) {
-    context.save();
     context.beginPath();
     tracePolygonSetInto(context, paperSurvivors);
-    context.clip('evenodd');
-    context.transform(...paperSource.matrix);
-    context.lineCap = paperSource.strokeLineCap || 'round';
-    context.lineJoin = paperSource.strokeLineJoin || 'round';
-    context.miterLimit = toNumber(paperSource.strokeMiterLimit, 10);
-    if (typeof context.setLineDash === 'function') {
-      context.setLineDash(
-        Array.isArray(paperSource.strokeDashArray)
-          ? paperSource.strokeDashArray
-          : [],
-      );
-    }
-    context.lineDashOffset = toNumber(paperSource.strokeDashOffset);
-    context.beginPath();
-    traceCommandsInto(
-      context,
-      Array.isArray(paperSource.operationalPath)
-        ? paperSource.operationalPath
-        : normalizeOperationalInkPath(paperSource.path),
+    context.fillStyle = object.fill || attrs.fill || (
+      paperSource.paintMode === 'fill' ? paperSource.fill : paperSource.stroke
     );
-    if (paperSource.paintMode === 'fill') {
-      context.fillStyle = object.fill || attrs.fill || paperSource.fill;
-      context.fill(paperSource.fillRule === 'evenodd' ? 'evenodd' : 'nonzero');
-    } else {
-      context.strokeStyle = object.fill || attrs.fill || paperSource.stroke;
-      context.lineWidth = toNumber(paperSource.strokeWidth);
-      context.stroke();
-    }
-    context.restore();
+    context.fill('evenodd');
     context.restore();
     return;
   }
@@ -736,6 +710,43 @@ function drawCloud(context, object, geometry, strokeFallback = null) {
   context.restore();
 }
 
+// Owner Test 15 (2026-10-02), twin of KnockoutMaskedShape (SVG): a shape
+// whose see-through border would show its fill under the inner half of the
+// stroke gets its fill painted on the scratch layer, the stroke band erased
+// from it (destination-out at the ink width, solid, the stroke's join) and
+// the layer composited back with the context's own alpha / blend - the cloud
+// knockout above, for any traced outline. `trace(ctx)` issues the outline
+// path. Returns false when there is no scratch layer, so the caller paints
+// the fill inline as it always did.
+const paintKnockedOutFill = (context, trace, { fill, strokeWidth, lineJoin = 'miter' }) => {
+  const layer = acquireScratchLayer(context);
+  if (!layer) return false;
+  const scratch = layer.context;
+  scratch.save();
+  scratch.setTransform(1, 0, 0, 1, 0, 0);
+  scratch.globalAlpha = 1;
+  scratch.globalCompositeOperation = 'source-over';
+  scratch.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
+  scratch.setTransform(context.getTransform());
+  scratch.beginPath();
+  trace(scratch);
+  scratch.fillStyle = fill;
+  scratch.fill('nonzero');
+  scratch.globalCompositeOperation = 'destination-out';
+  if (typeof scratch.setLineDash === 'function') scratch.setLineDash([]);
+  scratch.lineJoin = lineJoin;
+  scratch.lineCap = 'round';
+  scratch.lineWidth = strokeWidth;
+  scratch.strokeStyle = '#000';
+  scratch.stroke();
+  scratch.restore();
+  context.save();
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.drawImage(layer.canvas, 0, 0);
+  context.restore();
+  return true;
+};
+
 // Twin of renderPolygon / renderPolyline: the exact SVG transform chain
 // (translate → rotate about the pathOffset-corrected center → scale →
 // translate(−pathOffset)) so points land where the SVG puts them.
@@ -778,14 +789,26 @@ function drawPoints(context, object, close) {
   context.translate(-pathOffsetX, -pathOffsetY);
 
   const strokeWidth = toNumber(object.strokeWidth, 1);
+  const tracePoints = (target) => {
+    points.forEach((point, index) => {
+      const x = toNumber(point?.x);
+      const y = toNumber(point?.y);
+      if (index === 0) target.moveTo(x, y);
+      else target.lineTo(x, y);
+    });
+    if (close) target.closePath();
+  };
+  // Owner Test 15: a see-through border never shows the fill under it.
+  const knockedOut = close
+    && shouldKnockOutShapeFill({
+      fill: object.fill,
+      stroke: object.stroke,
+      strokeWidth,
+      opacity: context.globalAlpha,
+    })
+    && paintKnockedOutFill(context, tracePoints, { fill: object.fill, strokeWidth, lineJoin: 'round' });
   context.beginPath();
-  points.forEach((point, index) => {
-    const x = toNumber(point?.x);
-    const y = toNumber(point?.y);
-    if (index === 0) context.moveTo(x, y);
-    else context.lineTo(x, y);
-  });
-  if (close) context.closePath();
+  tracePoints(context);
 
   if (typeof context.setLineDash === 'function') {
     context.setLineDash(Array.isArray(object.strokeDashArray) && object.strokeDashArray.length > 0
@@ -797,7 +820,7 @@ function drawPoints(context, object, close) {
   paintCurrentPath(context, {
     // Polygon: stroke defaults to invisible like SVG (renderPolygon:780);
     // polyline defaults to '#000' (renderPolyline:858). Both honor fill.
-    fill: isVisiblePaint(object.fill) ? object.fill : null,
+    fill: !knockedOut && isVisiblePaint(object.fill) ? object.fill : null,
     stroke: isVisiblePaint(object.stroke) ? object.stroke : (close ? null : '#000'),
     strokeWidth,
   });
@@ -977,7 +1000,18 @@ function drawText(context, object) {
   }
   if (!cloudBorderGeometry && isVisiblePaint(object.backgroundColor)) {
     context.fillStyle = object.backgroundColor;
-    context.fillRect(0, 0, effectiveWidth, effectiveHeight);
+    // Owner Test 15: under a see-through border the background stops at the
+    // border's inner edge (renderText twin).
+    const backgroundBox = toNumber(object.strokeWidth) > 0 && isVisiblePaint(object.stroke)
+      && shouldKnockOutShapeFill({
+        fill: object.backgroundColor,
+        stroke: object.stroke,
+        strokeWidth: object.strokeWidth,
+        opacity: context.globalAlpha,
+      })
+      ? insetRectForFill({ x: 0, y: 0, width: effectiveWidth, height: effectiveHeight }, toNumber(object.strokeWidth))
+      : { x: 0, y: 0, width: effectiveWidth, height: effectiveHeight };
+    context.fillRect(backgroundBox.x, backgroundBox.y, backgroundBox.width, backgroundBox.height);
   }
   if (!cloudBorderGeometry && toNumber(object.strokeWidth) > 0 && isVisiblePaint(object.stroke)) {
     context.strokeStyle = object.stroke;
@@ -1343,7 +1377,6 @@ export function drawAnnotationObject(context, object, displayScale = 1) {
   applyRotation(context, toNumber(object.angle), effectiveWidth / 2, effectiveHeight / 2);
 
   const isEllipse = type === 'circle' || type === 'ellipse';
-  context.beginPath();
 
   // Inset-stroke contract (renderRect:324-393 / renderEllipse:933-952): drawn
   // shapes tagged drawn-centered-stroke keep a centered stroke; everything
@@ -1352,43 +1385,75 @@ export function drawAnnotationObject(context, object, displayScale = 1) {
     && strokeWidth > 0
     && object?.data?.strokeRenderContract !== DRAWN_CENTERED_STROKE_CONTRACT;
   const half = inset ? strokeWidth / 2 : 0;
-  if (isEllipse) {
-    const rx = object.radius != null
-      ? Math.abs(toNumber(object.radius)) * Math.abs(scaleX)
-      : Math.abs(toNumber(object.rx)) * Math.abs(scaleX);
-    const ry = object.radius != null
-      ? Math.abs(toNumber(object.radius)) * Math.abs(scaleY)
-      : Math.abs(toNumber(object.ry)) * Math.abs(scaleY);
-    context.ellipse(
-      rx,
-      ry,
-      Math.max(0.5, rx - half),
-      Math.max(0.5, ry - half),
-      0,
-      0,
-      Math.PI * 2,
-    );
-  } else if (type === 'triangle') {
-    context.moveTo(effectiveWidth / 2, 0);
-    context.lineTo(effectiveWidth, effectiveHeight);
-    context.lineTo(0, effectiveHeight);
-    context.closePath();
-  } else {
-    context.rect(half, half, Math.max(0, effectiveWidth - 2 * half), Math.max(0, effectiveHeight - 2 * half));
+  const ellipseRx = object.radius != null
+    ? Math.abs(toNumber(object.radius)) * Math.abs(scaleX)
+    : Math.abs(toNumber(object.rx)) * Math.abs(scaleX);
+  const ellipseRy = object.radius != null
+    ? Math.abs(toNumber(object.radius)) * Math.abs(scaleY)
+    : Math.abs(toNumber(object.ry)) * Math.abs(scaleY);
+  const rectBox = {
+    x: half,
+    y: half,
+    width: Math.max(0, effectiveWidth - 2 * half),
+    height: Math.max(0, effectiveHeight - 2 * half),
+  };
+  const traceShape = (target) => {
+    if (isEllipse) {
+      target.ellipse(
+        ellipseRx,
+        ellipseRy,
+        Math.max(0.5, ellipseRx - half),
+        Math.max(0.5, ellipseRy - half),
+        0,
+        0,
+        Math.PI * 2,
+      );
+    } else if (type === 'triangle') {
+      target.moveTo(effectiveWidth / 2, 0);
+      target.lineTo(effectiveWidth, effectiveHeight);
+      target.lineTo(0, effectiveHeight);
+      target.closePath();
+    } else {
+      target.rect(rectBox.x, rectBox.y, rectBox.width, rectBox.height);
+    }
+  };
+  // Survey-marker pseudo-rects mimic SVG vectorEffect non-scaling-stroke.
+  const lineWidth = object?.nonScalingStroke
+    ? strokeWidth / Math.max(0.01, displayScale)
+    : strokeWidth;
+  const strokePaint = isVisiblePaint(object.stroke) ? object.stroke : null;
+
+  // Owner Test 15 (2026-10-02), twin of renderRect / renderEllipse: a
+  // see-through border never shows the fill under its inner half - the fill
+  // stops at the stroke's inner edge (inset rect; knocked-out ellipse).
+  let fillPaint = object.fill;
+  if (type !== 'triangle' && strokePaint && shouldKnockOutShapeFill({
+    fill: object.fill,
+    stroke: strokePaint,
+    strokeWidth: lineWidth,
+    opacity: context.globalAlpha,
+  })) {
+    if (isEllipse) {
+      if (paintKnockedOutFill(context, traceShape, { fill: object.fill, strokeWidth: lineWidth })) fillPaint = null;
+    } else {
+      const inner = insetRectForFill(rectBox, lineWidth);
+      context.fillStyle = object.fill;
+      context.fillRect(inner.x, inner.y, inner.width, inner.height);
+      fillPaint = null;
+    }
   }
+
+  context.beginPath();
+  traceShape(context);
   if (typeof context.setLineDash === 'function' && !isEllipse) {
     // SVG never emits strokeDasharray on ellipses — rects/triangles only.
     if (Array.isArray(object.strokeDashArray) && object.strokeDashArray.length > 0) {
       context.setLineDash(object.strokeDashArray);
     }
   }
-  // Survey-marker pseudo-rects mimic SVG vectorEffect non-scaling-stroke.
-  const lineWidth = object?.nonScalingStroke
-    ? strokeWidth / Math.max(0.01, displayScale)
-    : strokeWidth;
   paintCurrentPath(context, {
-    fill: object.fill,
-    stroke: isVisiblePaint(object.stroke) ? object.stroke : null,
+    fill: fillPaint,
+    stroke: strokePaint,
     strokeWidth: lineWidth,
   });
   context.restore();

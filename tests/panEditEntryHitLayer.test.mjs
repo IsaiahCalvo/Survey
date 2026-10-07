@@ -119,7 +119,10 @@ test('the edit-entry hit layer mounts in Pan and in every Select mode', () => {
   assert.match(svgSource, /data-edit-entry-kind=\{editEntryTargetsMounted \? 'callout' : undefined\}/);
   assert.match(svgSource, /data-pan-edit-entry=\{editEntryTargetsMounted \? 'true' : undefined\}/);
   // isSelectTool already covers rectangle, lasso and Text Select.
-  assert.match(svgSource, /const isSelectTool = \(activeTool === 'select' \|\| activeTool === 'text-select'\)/);
+  // 2026-10-02 (Drawboard rule 3/4): the same gate also opens while a press
+  // on the selection is in hand under another tool (selectionGrabArmed), so
+  // the pin stops at the select-family half of the condition.
+  assert.match(svgSource, /const isSelectTool = \(activeTool === 'select' \|\| activeTool === 'text-select'/);
 });
 
 test('Pan still owns every drag: no pointer-events gate learns about panEditEntryEnabled', () => {
@@ -156,7 +159,11 @@ test('annotation carriers never claim the pan-escape marker', () => {
   // `data-pan-interactive="true"` means "Pan must not preventDefault here".
   // Putting it on an annotation would stop a drag over that annotation from
   // panning — the opposite of Drawboard, where an unselected shape pans.
-  assert.equal(svgSource.includes('data-pan-interactive='), false);
+  // 2026-10-02 (Drawboard rule 3): the ONE use is the page <svg> while a press
+  // on the current SELECTION is in hand under Pan (that press moves the
+  // selected mark). No annotation carrier ever carries it.
+  assert.equal((svgSource.match(/data-pan-interactive=/g) || []).length, 1);
+  assert.match(svgSource, /data-pan-interactive=\{selectionGrabArmed \? 'true' : undefined\}/);
   assert.match(containerSource, /data-pan-interactive="true"/);
 });
 

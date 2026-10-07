@@ -18,12 +18,17 @@
      --bone-100 #f4f1ea --bone-200 #e8e2d4 --gold #d8a84e
 */
 import React from 'react';
+import { presenceInitials } from '../components/presenceIdentity.js';
+import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
 import { Icon } from './HubShell';
 import { AuthContext } from '../contexts/AuthContext';
 import Spinner from '../components/Spinner';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import DismissBarrier from '../components/DismissBarrier';
 import { copyTextToClipboard } from '../utils/clipboard';
+import { visibleOpenInvites } from './accessRows';
+import { mergeRetryResult, summarizeInviteSend } from './inviteSendSummary';
+import InviteSendNotice from './InviteSendNotice';
 import { C } from '../uiPalette';
 import {
   createProjectInvite,
@@ -65,19 +70,16 @@ const ROLES = ["Owner", "Editor", "Viewer"];
 const ROLE_ORDER = { Owner: 0, Editor: 1, Viewer: 2 };
 const PAID_TIERS = new Set(['pro', 'enterprise', 'developer']);
 
-/* Deterministic avatar colors for collaborators (creator keeps gold). */
-const COLLAB_COLORS = ['#5fbf83', '#7aa2f7', '#b48ead', '#8fbcbb', '#cf9f6f'];
-const colorFor = (seed) => {
-  const s = String(seed || '');
-  let h = 0;
-  for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return COLLAB_COLORS[h % COLLAB_COLORS.length];
-};
+/* Every member's face is their own pastel from their user id
+   (utils/userColors.js, owner 2026-10-07) with dark initials - the creator
+   too, so a person looks the same here as in the viewer and the account
+   button. A pending invite stays grey: nobody is active on it yet. */
+const colorFor = (seed) => userColorFill(seed);
 
 /* Two-letter initials from a display name — used for the avatar glyph so the
-   circle shows real initials, never a raw user id. */
-const initialsOf = (name) => (name || '')
-  .trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase() || '—';
+   circle shows real initials, never a raw user id. The one app-wide rule
+   (presenceIdentity.js); "—" when there is no name at all. */
+const initialsOf = (name) => (String(name || '').trim() ? presenceInitials(name) : '—');
 
 const roleLabel = (role) => {
   const r = String(role || 'viewer').toLowerCase();
@@ -129,17 +131,17 @@ const ActivityModal = ({ member, onClose }) => {
   else items.sort((a, b) => sign * (editedMs(a) - editedMs(b)));
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(13,15,20,0.55)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 120, fontFamily: "\"Helvetica Neue\", Helvetica, Arial, sans-serif" }}>
-      <div ref={cardRef} role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()} style={{ width: 520, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 10, boxShadow: "0 24px 60px rgba(0,0,0,0.55)", color: BONE_100, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--overlay-scrim)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 120, fontFamily: "var(--font-ui)" }}>
+      <div ref={cardRef} role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()} style={{ width: 520, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: "var(--radius-dialog)", boxShadow: "var(--shadow-dialog)", color: BONE_100, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "16px 18px 14px", borderBottom: `1px solid ${INK_500}`, display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ width: 3, height: 30, background: member.color, borderRadius: 2, flex: "none", marginRight: 10 }}></span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>Activity</div>
+            <div style={{ fontSize: 11, letterSpacing: 0, color: INK_200, fontWeight: 600 }}>Activity</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4 }}>{member.name} · activity</div>
           </div>
           <button onClick={onClose} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={13} /></button>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 130px", gap: 14, padding: "8px 18px 6px", borderBottom: `1px solid ${INK_500}`, fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 130px", gap: 14, padding: "8px 18px 6px", borderBottom: `1px solid ${INK_500}`, fontSize: 11, letterSpacing: 0, color: INK_200, fontWeight: 600 }}>
           <span onClick={() => click("file")} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "file" ? BONE_100 : "inherit" }}>File{arrow("file")}</span>
           <span onClick={() => click("edited")} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "edited" ? BONE_100 : "inherit" }}>Edited{arrow("edited")}</span>
         </div>
@@ -148,16 +150,16 @@ const ActivityModal = ({ member, onClose }) => {
             <div style={{ padding: "24px 10px", textAlign: "center", color: INK_200, fontSize: 12 }}>No recent activity.</div>
           ) : items.map((ev, i) => (
             <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 130px", gap: 14, alignItems: "center", padding: "8px 10px", borderRadius: 6, height: 42, boxSizing: "border-box" }}>
-              <div style={{ fontSize: 12.5, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ev.file}</div>
+              <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ev.file}</div>
               <div className="mono" style={{ fontFamily: MONO_FONT, display: "flex", flexDirection: "column", gap: 1, lineHeight: 1.25 }}>
-                <span style={{ fontSize: 11.5, color: BONE_200, fontWeight: 600 }}>{ev.time}</span>
-                <span style={{ fontSize: 10.5, color: INK_200 }}>{ev.date}</span>
+                <span style={{ fontSize: 12, color: BONE_200, fontWeight: 600 }}>{ev.time}</span>
+                <span style={{ fontSize: 11, color: INK_200 }}>{ev.date}</span>
               </div>
             </div>
           ))}
         </div>
         <div style={{ padding: "12px 16px", borderTop: `1px solid ${INK_500}`, background: INK_800, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontSize: 10.5, color: INK_200, letterSpacing: 0.06, textTransform: "uppercase", fontWeight: 700 }}>{items.length} event{items.length === 1 ? "" : "s"}</span>
+          <span style={{ fontSize: 11, color: INK_200, letterSpacing: 0, fontWeight: 600 }}>{items.length} event{items.length === 1 ? "" : "s"}</span>
           <button onClick={onClose} className="hub-btn hub-btn--primary">Done</button>
         </div>
       </div>
@@ -179,6 +181,7 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
   const [error, setError] = React.useState("");
   const [success, setSuccess] = React.useState("");
   const [activeInvite, setActiveInvite] = React.useState(null); // last minted link invite
+  const [sendEntries, setSendEntries] = React.useState(null); // last send needing a follow-up
   const cardRef = React.useRef(null);
 
   // Accessibility (KAL-66): the shared modal primitive — Tab stays inside the
@@ -232,6 +235,7 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
     if (blockedReason) { setError(blockedReason); return; }
     const list = parseEmails(emails);
     if (!list.length) { setError('Enter at least one valid email.'); return; }
+    setSendEntries(null);
     setBusy(true);
     const results = await Promise.all(list.map((addr) => createProjectInvite({
       projectId,
@@ -242,33 +246,70 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
       inviterName,
     })));
     setBusy(false);
-    const failed = results.filter((r) => !r.success);
-    if (failed.length) {
-      setError(`Sent ${results.length - failed.length} of ${results.length}. First failure: ${failed[0].error || 'unknown'}.`);
-    } else {
-      setSuccess(`Sent ${results.length} ${emailRole} invite${results.length === 1 ? '' : 's'}.`);
-      setEmails("");
-    }
+    showSendOutcome(list.map((email, i) => ({ email, result: results[i] })));
     onChanged?.();
   };
 
+  /* inviteFix: one plain summary (inviteSendSummary.js) instead of
+     the old "Sent X of Y" + raw error line, with Copy link / Try again. */
+  const showSendOutcome = (entries) => {
+    const summary = summarizeInviteSend(entries, { roleLabel: emailRole });
+    if (summary.tone === 'success') {
+      setSendEntries(null);
+      setSuccess(summary.message);
+      setEmails("");
+    } else {
+      setSendEntries(entries);
+    }
+  };
+
+  const retrySend = async () => {
+    if (!sendEntries) return;
+    const retryEmails = new Set(summarizeInviteSend(sendEntries).items.filter((i) => i.canRetry).map((i) => i.email));
+    setError(""); setSuccess("");
+    setBusy(true);
+    const next = await Promise.all(sendEntries.map(async (entry) => {
+      if (!retryEmails.has(entry.email) || !entry.result?.invite?.id) return entry;
+      let retry;
+      try {
+        retry = await resendProjectInvite(entry.result.invite.id, { projectName: project?.name || '', inviterName });
+      } catch (err) {
+        retry = { success: false, error: err?.message || String(err) };
+      }
+      return mergeRetryResult(entry, retry);
+    }));
+    setBusy(false);
+    showSendOutcome(next);
+    onChanged?.();
+  };
+
+  const copyFailedInviteLink = async (item) => {
+    const copyResult = await copyTextToClipboard(buildInviteUrl(item.invite), { surface: 'project_unsent_invite_link' });
+    if (!copyResult.ok) {
+      setError('Survey could not copy the invite link. Try again.');
+      return false;
+    }
+    setError("");
+    return true;
+  };
+
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(13,15,20,0.55)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 130, fontFamily: "\"Helvetica Neue\", Helvetica, Arial, sans-serif" }}>
-      <div ref={cardRef} role="dialog" aria-modal="true" aria-label="Invite User" data-kal31-project-invite-modal="true" onClick={(e) => e.stopPropagation()} style={{ width: 440, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 10, boxShadow: "0 24px 60px rgba(0,0,0,0.55)", color: BONE_100, overflow: "hidden" }}>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--overlay-scrim)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 130, fontFamily: "var(--font-ui)" }}>
+      <div ref={cardRef} role="dialog" aria-modal="true" aria-label="Invite User" data-kal31-project-invite-modal="true" onClick={(e) => e.stopPropagation()} style={{ width: 440, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: "var(--radius-dialog)", boxShadow: "var(--shadow-dialog)", color: BONE_100, overflow: "hidden" }}>
         <div style={{ padding: "16px 18px 14px", borderBottom: `1px solid ${INK_500}`, display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ width: 3, height: 30, background: project.color || GOLD, borderRadius: 2, flex: "none", marginRight: 10 }}></span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>Invite User</div>
+            <div style={{ fontSize: 11, letterSpacing: 0, color: INK_200, fontWeight: 600 }}>Invite User</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{project.name}</div>
           </div>
           <button onClick={onClose} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={13} /></button>
         </div>
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 18 }}>
           <div>
-            <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700, marginBottom: 8 }}>Share link</div>
+            <div style={{ fontSize: 11, letterSpacing: 0, color: INK_200, fontWeight: 600, marginBottom: 8 }}>Share link</div>
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 96px 82px", gap: 6 }}>
-              <div className="mono" style={{ fontFamily: MONO_FONT, flex: 1, minWidth: 0, background: INK_800, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "0 11px", height: 30, display: "flex", alignItems: "center", fontSize: 11.5, color: BONE_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{url}</div>
-              <select value={linkRole} onChange={(e) => setLinkRole(e.target.value)} style={{ height: 30, background: INK_700, color: BONE_100, border: `1px solid ${INK_500_FIELD}`, borderRadius: 6, padding: "0 8px", fontSize: 11.5, fontFamily: "inherit" }}>
+              <div className="mono" style={{ fontFamily: MONO_FONT, flex: 1, minWidth: 0, background: INK_800, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "0 11px", height: 30, display: "flex", alignItems: "center", fontSize: 12, color: BONE_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{url}</div>
+              <select value={linkRole} onChange={(e) => setLinkRole(e.target.value)} style={{ height: 30, background: INK_700, color: BONE_100, border: `1px solid ${INK_500_FIELD}`, borderRadius: 6, padding: "0 8px", fontSize: 12, fontFamily: "inherit" }}>
                 {ROLES.slice().reverse().map((r) => <option key={r}>{r}</option>)}
               </select>
               <button onClick={copyLink} disabled={busy || !!blockedReason} className="hub-btn">{copied ? "Copied" : "Copy link"}</button>
@@ -276,22 +317,30 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
             <div style={{ fontSize: 11, color: INK_200, marginTop: 8, lineHeight: 1.4 }}>Anyone with this invite link can join as {linkRole}. Free users enter as Viewer until upgrade.</div>
           </div>
           <div>
-            <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700, marginBottom: 8 }}>Invite by email</div>
+            <div style={{ fontSize: 11, letterSpacing: 0, color: INK_200, fontWeight: 600, marginBottom: 8 }}>Invite by email</div>
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 96px", gap: 6 }}>
-              <textarea value={emails} onChange={(e) => setEmails(e.target.value)} placeholder="name@example.com, name@example.com" rows={3} style={{ width: "100%", background: INK_800, border: `1px solid ${INK_500_FIELD}`, borderRadius: 6, padding: "9px 11px", fontSize: 12.5, fontFamily: "inherit", color: BONE_100, resize: "vertical", outline: "none", minHeight: 72, lineHeight: 1.45, boxSizing: "border-box" }}/>
-              <select value={emailRole} onChange={(e) => setEmailRole(e.target.value)} style={{ height: 30, alignSelf: "start", background: INK_700, color: BONE_100, border: `1px solid ${INK_500_FIELD}`, borderRadius: 6, padding: "0 8px", fontSize: 11.5, fontFamily: "inherit" }}>
+              <textarea value={emails} onChange={(e) => setEmails(e.target.value)} placeholder="name@example.com, name@example.com" rows={3} style={{ width: "100%", background: INK_800, border: `1px solid ${INK_500_FIELD}`, borderRadius: 6, padding: "9px 11px", fontSize: 13, fontFamily: "inherit", color: BONE_100, resize: "vertical", outline: "none", minHeight: 72, lineHeight: 1.45, boxSizing: "border-box" }}/>
+              <select value={emailRole} onChange={(e) => setEmailRole(e.target.value)} style={{ height: 30, alignSelf: "start", background: INK_700, color: BONE_100, border: `1px solid ${INK_500_FIELD}`, borderRadius: 6, padding: "0 8px", fontSize: 12, fontFamily: "inherit" }}>
                 {ROLES.slice().reverse().map((r) => <option key={r}>{r}</option>)}
               </select>
             </div>
             <div style={{ fontSize: 11, color: INK_200, marginTop: 8, lineHeight: 1.4 }}>Separate addresses with commas. Each invitee gets an email with a link to join as {emailRole}.</div>
           </div>
           {(blockedReason || error) && (
-            <div style={{ background: "var(--danger-soft)", borderLeft: `3px solid ${DANGER}`, borderRadius: 8, padding: "8px 10px", color: BONE_100, fontSize: 11.5 }}>
+            <div style={{ background: "var(--alert-danger-bg)", border: "var(--alert-danger-border)", borderRadius: "var(--alert-radius)", padding: "8px 10px", color: BONE_100, fontSize: 12 }}>
               {blockedReason || error}
             </div>
           )}
+          {sendEntries && !blockedReason && (
+            <InviteSendNotice
+              summary={summarizeInviteSend(sendEntries, { roleLabel: emailRole })}
+              busy={busy}
+              onCopyLink={copyFailedInviteLink}
+              onRetry={retrySend}
+            />
+          )}
           {success && !error && (
-            <div style={{ background: "var(--accent-soft)", border: `1px solid ${GOLD}`, borderRadius: 6, padding: "8px 10px", color: GOLD, fontSize: 11.5 }}>
+            <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--success-text)", fontSize: 12 }}>
               {success}
             </div>
           )}
@@ -422,9 +471,11 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
     return [...seedMembers, ...collabs];
   }, [seedMembers, collabRows]);
 
+  // One person, one row: an email invite for someone already on the team is
+  // not listed again as Pending with Resend (accessRows.js).
   const pendingInvites = React.useMemo(() => (
-    invites.filter((i) => !i.accepted_at && !i.revoked_at && new Date(i.expires_at) > new Date())
-  ), [invites]);
+    visibleOpenInvites(invites, memberList)
+  ), [invites, memberList]);
 
   /* Last-owner protection mirrors AccessManagementModal: the creator counts
      as an owner, so ownerCount is creator + collaborator owners. */
@@ -599,13 +650,13 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
           setBulkRoleOpen(false);
         }}
       />
-      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(13,15,20,0.55)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 110, fontFamily: "\"Helvetica Neue\", Helvetica, Arial, sans-serif" }}>
-        <div role="dialog" aria-modal="true" aria-label="Manage Team" data-kal31-manage-team="true" onClick={(e) => e.stopPropagation()} style={{ width: 560, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 10, boxShadow: "0 24px 60px rgba(0,0,0,0.55)", color: BONE_100, overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "84vh" }}>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--overlay-scrim)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 110, fontFamily: "var(--font-ui)" }}>
+        <div role="dialog" aria-modal="true" aria-label="Manage Team" data-kal31-manage-team="true" onClick={(e) => e.stopPropagation()} style={{ width: 560, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: "var(--radius-dialog)", boxShadow: "var(--shadow-dialog)", color: BONE_100, overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "84vh" }}>
           {/* Header */}
           <div style={{ padding: "16px 18px 14px", borderBottom: `1px solid ${INK_500}`, display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ width: 3, height: 30, background: project.color || GOLD, borderRadius: 2, flex: "none", marginRight: 10 }}></span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>Manage Team</div>
+              <div style={{ fontSize: 11, letterSpacing: 0, color: INK_200, fontWeight: 600 }}>Manage Team</div>
               <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{project.name}</div>
             </div>
             <button onClick={() => setInviteOpen(true)} className="hub-btn hub-btn--primary">
@@ -664,7 +715,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
           </div>
 
           {/* Column headers */}
-          <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 1fr 1fr 24px", gap: 14, alignItems: "center", padding: "8px 18px 6px", borderBottom: `1px solid ${INK_500}`, fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 1fr 1fr 24px", gap: 14, alignItems: "center", padding: "8px 18px 6px", borderBottom: `1px solid ${INK_500}`, fontSize: 11, letterSpacing: 0, color: INK_200, fontWeight: 600 }}>
             <span></span>
             <span onClick={() => onSort("name")} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "name" ? BONE_100 : "inherit" }}>Users{arrow("name")}</span>
             <span onClick={() => onSort("role")} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "role" ? BONE_100 : "inherit" }}>Role{arrow("role")}</span>
@@ -683,7 +734,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
               return (
                 <div key={m.id} data-kal31-project-member={m.userId || m.id} style={{ position: "relative" }}>
                   <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 1fr 1fr 24px", gap: 14, alignItems: "center", padding: "8px 10px", borderRadius: 6, height: 50, boxSizing: "border-box" }}>
-                    <div style={{ width: 30, height: 30, borderRadius: "50%", background: m.color, color: "var(--accent-text)", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 800, flex: "none" }}>{m.initials || initialsOf(m.name)}</div>
+                    <div data-user-avatar="" style={{ width: 30, height: 30, borderRadius: "50%", background: colorFor(m.userId || m.id), color: USER_INITIALS_INK, display: "grid", placeItems: "center", fontSize: 11, fontWeight: 600, flex: "none" }}>{m.initials || initialsOf(m.name)}</div>
                     <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.name}{m.isCreator ? " · creator" : ""}</div>
                       <div className="mono" style={{ fontFamily: MONO_FONT, fontSize: 11, color: INK_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.email}</div>
@@ -714,9 +765,9 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                         )}
                       </div>
                     ) : (
-                      <div style={{ fontSize: 11.5, color: BONE_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 14 }}>{m.role}</div>
+                      <div style={{ fontSize: 12, color: BONE_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 14 }}>{m.role}</div>
                     )}
-                    <div className="mono" style={{ fontFamily: MONO_FONT, fontSize: 11.5, color: INK_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.added}</div>
+                    <div className="mono" style={{ fontFamily: MONO_FONT, fontSize: 12, color: INK_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.added}</div>
                     {editMode ? (
                       m.isCreator ? <span /> : (
                         <span onClick={(e) => { e.stopPropagation(); toggleSel(m.id); }}
@@ -725,7 +776,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                         </span>
                       )
                     ) : (
-                      <button onClick={(e) => { e.stopPropagation(); setOpenInviteMenu(null); setOpenMenu(openMenu === m.id ? null : m.id); }}
+                      <button aria-haspopup="menu" onClick={(e) => { e.stopPropagation(); setOpenInviteMenu(null); setOpenMenu(openMenu === m.id ? null : m.id); }}
                         title="More" aria-label="More"
                         className="hub-icon-btn"><Icon name="more" size={14} /></button>
                     )}
@@ -758,15 +809,15 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
               const label = isLink ? 'Link invite' : inv.target_email;
               return (
                 <div key={inv.id} data-kal31-project-invite={inv.id} style={{ position: "relative" }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 1fr 1fr 24px", gap: 14, alignItems: "center", padding: "8px 10px", borderRadius: 6, height: 50, boxSizing: "border-box", background: "var(--accent-soft)" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 1fr 1fr 24px", gap: 14, alignItems: "center", padding: "8px 10px", borderRadius: 6, height: 50, boxSizing: "border-box", background: "var(--surface-2)" }}>
                     <div style={{ width: 30, height: 30, borderRadius: "50%", background: isLink ? 'var(--surface-3)' : INK_200, color: isLink ? BONE_100 : "var(--accent-text)", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 800, flex: "none" }}>{isLink ? 'L' : initialsOf(inv.target_email)}</div>
                     <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
                       <div className="mono" style={{ fontFamily: MONO_FONT, fontSize: 11, color: INK_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{isLink ? buildInviteUrl(inv) : `expires ${fmtDate(inv.expires_at)}`}</div>
                     </div>
-                    <div style={{ fontSize: 11.5, color: BONE_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 14 }}>{roleLabel(inv.intended_role)}</div>
-                    <div style={{ fontSize: 11.5, color: GOLD, fontWeight: 600 }}>Pending</div>
-                    <button onClick={(e) => { e.stopPropagation(); setOpenMenu(null); setOpenInviteMenu(openInviteMenu === inv.id ? null : inv.id); }}
+                    <div style={{ fontSize: 12, color: BONE_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 14 }}>{roleLabel(inv.intended_role)}</div>
+                    <div style={{ fontSize: 12, color: GOLD, fontWeight: 600 }}>Pending</div>
+                    <button aria-haspopup="menu" onClick={(e) => { e.stopPropagation(); setOpenMenu(null); setOpenInviteMenu(openInviteMenu === inv.id ? null : inv.id); }}
                       title="More" aria-label="More"
                       className="hub-icon-btn"><Icon name="more" size={14} /></button>
                   </div>
@@ -801,7 +852,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
 
           {/* Footer */}
           <div style={{ padding: "12px 16px", borderTop: `1px solid ${INK_500}`, background: INK_800, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 10.5, color: INK_200, letterSpacing: 0.06, textTransform: "uppercase", fontWeight: 700 }}>
+            <span style={{ fontSize: 11, color: INK_200, letterSpacing: 0, fontWeight: 600 }}>
               {memberList.length} member{memberList.length === 1 ? "" : "s"}{pendingInvites.length ? ` · ${pendingInvites.length} pending` : ""}
             </span>
             <button onClick={onClose} className="hub-btn hub-btn--primary">Done</button>

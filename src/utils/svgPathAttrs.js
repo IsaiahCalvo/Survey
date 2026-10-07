@@ -171,10 +171,25 @@ export function hasSubstantiveClosedSubpath(path) {
   });
 }
 
-export function renderPathToSvgD(obj, attrs = renderPathToSvgAttrs(obj)) {
-  if (!Array.isArray(obj?.path) || obj.path.length === 0) return '';
+// Perf (2026-09-30): the d string is a pure function of obj.path, yet every
+// SVG layer render rebuilt it for every path mark (the per-mark hit target
+// re-derives it even when the visible <path> is memoised) — the largest
+// self-time function while scrolling or zooming a heavily marked page. Cache
+// per path array; the length / last-segment check also covers an in-place
+// append. (The unused `attrs` argument no longer defaults to a full
+// renderPathToSvgAttrs() pass.)
+const svgPathDCache = new WeakMap();
 
-  return obj.path.map(formatPathCommand).join(' ');
+export function renderPathToSvgD(obj, _attrs) {
+  const path = obj?.path;
+  if (!Array.isArray(path) || path.length === 0) return '';
+
+  const last = path[path.length - 1];
+  const cached = svgPathDCache.get(path);
+  if (cached && cached.length === path.length && cached.last === last) return cached.d;
+  const d = path.map(formatPathCommand).join(' ');
+  svgPathDCache.set(path, { d, length: path.length, last });
+  return d;
 }
 
 /**

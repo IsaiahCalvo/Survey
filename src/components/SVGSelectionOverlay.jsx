@@ -78,12 +78,24 @@ const SVGSelectionOverlay = memo(({
   // be resized or rotated) and a small lock badge on the frame's top-right
   // corner, in the handles' own white-and-blue, so the reason is visible.
   locked = false,
+  // Owner Test 45 (2026-10-06): a callout's text box shows these same eight
+  // grabbers, rectangle-style. Its drags start in the layer's delegated
+  // callout handler, keyed on data-callout-part, so the grabbers carry the
+  // extra attributes this returns per handle id and, with delegateHandlePress,
+  // let the press bubble to that handler instead of calling onHandleDrag.
+  handlePartAttributes = null, // (handleId) => object | null
+  delegateHandlePress = false,
 }) => {
   // UX 2026-09-16: hit pads grow on a finger (44 pt) and stay tight on a mouse
   // (the grabber + 4 px, min 20 px - w63). Read before the bbox early-return
   // because hooks cannot run conditionally.
   const isCoarsePointer = useCoarsePointer();
   if (!bbox) return null;
+  const partAttrs = (id) => (typeof handlePartAttributes === 'function' ? (handlePartAttributes(id) || {}) : {});
+  const pressHandler = (id) => (delegateHandlePress ? undefined : (e) => {
+    e.stopPropagation();
+    onHandleDrag?.(e, id);
+  });
 
   const { left, top, width, height, angle } = bbox;
   // Zoom-out balloon fix: clamp the inverseScale used for VISUAL SIZING so
@@ -162,7 +174,6 @@ const SVGSelectionOverlay = memo(({
     if (id === 'mr') return { x: pos.x + out.x, y: pos.y };
     return pos;
   };
-  const rotationArmAnchor = edgeHandlePos('mt');
 
   // One ELEMENT TYPE for an edge grabber, whatever shape it is wearing. A dot
   // is a <rect> with rx = half its side, which renders as a circle — so when a
@@ -263,6 +274,7 @@ const SVGSelectionOverlay = memo(({
     <rect
       key={`hit-${id}`}
       data-handle-hit-pad={id}
+      {...partAttrs(id)}
       x={pos.x - size / 2}
       y={pos.y - size / 2}
       width={size}
@@ -275,10 +287,7 @@ const SVGSelectionOverlay = memo(({
         pointerEvents: 'auto',
         touchAction: 'none',
       }}
-      onPointerDown={(e) => {
-        e.stopPropagation();
-        onHandleDrag?.(e, id);
-      }}
+      onPointerDown={pressHandler(id)}
     />
   );
 
@@ -343,6 +352,7 @@ const SVGSelectionOverlay = memo(({
               <circle
                 key={`corner-${id}`}
                 data-resize-handle={id}
+                {...partAttrs(id)}
                 cx={pos.x}
                 cy={pos.y}
                 r={handleMetrics.cornerR}
@@ -354,10 +364,7 @@ const SVGSelectionOverlay = memo(({
                   cursor: getCursorForHandle(id, angle || 0),
                   pointerEvents: 'auto',
                 }}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  onHandleDrag?.(e, id);
-                }}
+                onPointerDown={pressHandler(id)}
               />
             );
           })}
@@ -370,6 +377,7 @@ const SVGSelectionOverlay = memo(({
               <rect
                 key={`pill-${id}`}
                 data-resize-handle={id}
+                {...partAttrs(id)}
                 data-edge-handle-shape={edgeHandlesAreDots ? 'dot' : undefined}
                 x={geom.x}
                 y={geom.y}
@@ -384,10 +392,7 @@ const SVGSelectionOverlay = memo(({
                   cursor: getCursorForHandle(id, angle || 0),
                   pointerEvents: 'auto',
                 }}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  onHandleDrag?.(e, id);
-                }}
+                onPointerDown={pressHandler(id)}
               />
             );
           })}
@@ -425,6 +430,7 @@ const SVGSelectionOverlay = memo(({
                 )}
                 <rect
                   data-resize-handle={id}
+                  {...partAttrs(id)}
                   data-edge-handle-shape={geom.isDot ? 'dot' : undefined}
                   data-text-range-handle-visual={horizontalResizeOnly ? id : undefined}
                   x={geom.x}
@@ -440,10 +446,7 @@ const SVGSelectionOverlay = memo(({
                     cursor: getCursorForHandle(id, angle || 0),
                     pointerEvents: horizontalResizeOnly ? 'none' : 'auto',
                   }}
-                  onPointerDown={horizontalResizeOnly ? undefined : (e) => {
-                    e.stopPropagation();
-                    onHandleDrag?.(e, id);
-                  }}
+                  onPointerDown={horizontalResizeOnly ? undefined : pressHandler(id)}
                 />
               </g>
             );
@@ -455,16 +458,8 @@ const SVGSelectionOverlay = memo(({
             {/* Invisible hit pad — same grab area rule as the resize
                 grabbers, drawn under the visible circle. */}
             {renderHitPad('mtr', handles.mtr, rotationHitPad, 'crosshair')}
-            {/* Connector line from top-center of bbox to rotation handle */}
-            <line
-              x1={rotationArmAnchor.x}
-              y1={rotationArmAnchor.y}
-              x2={handles.mtr.x}
-              y2={handles.mtr.y}
-              stroke="#d1d1d1"
-              strokeWidth={1 * is}
-              style={{ pointerEvents: 'none' }}
-            />
+            {/* UX 2026-10-02 (owner): no connector line to the box — the
+                grabber floats on its own; position and hit pad unchanged. */}
             {/* Rotation circle */}
             <circle
               cx={handles.mtr.x}

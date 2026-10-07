@@ -55,5 +55,18 @@ export function installGlyphOnlyButtons(root = typeof document !== 'undefined' ?
     }
   });
   observer.observe(root, { childList: true, subtree: true, characterData: true });
-  return () => { observer.disconnect(); if (frame) cancelAnimationFrame(frame); };
+  // iOS WebKit (Safari and the app's WKWebView) only applies :active to a
+  // touched element when a touchstart listener exists on it or an ancestor.
+  // The icon press (states.css section 5: the glyph tightens to 92%) is pure
+  // :active, so without this a tap on the phone gave no press at all whenever
+  // no other screen happened to have registered one. Passive and empty: it
+  // never delays or blocks a scroll.
+  const enableActive = () => {};
+  const doc = root.ownerDocument || (typeof document !== 'undefined' ? document : null);
+  doc?.addEventListener?.('touchstart', enableActive, { passive: true });
+  return () => {
+    observer.disconnect();
+    if (frame) cancelAnimationFrame(frame);
+    doc?.removeEventListener?.('touchstart', enableActive, { passive: true });
+  };
 }

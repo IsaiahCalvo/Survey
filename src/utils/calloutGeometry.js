@@ -631,3 +631,166 @@ export const calculateCalloutConnection = (boxLeft, boxTop, boxW, boxH, knee, ar
 
 // Export helper functions for potential external use
 export { findClosestBorderPoint, isPointInsideBox, isPointOnBorder, arePointsStacked, distanceToBoxEdge, constrainKneePosition };
+
+/*
+ * Box placement after a resize (owner Test 44, 2026-10-06). When a callout's
+ * box is refitted to its text (a size / font / bold / italic change from the
+ * text bar, or typing), it grows or shrinks AWAY from its leader:
+ *  - knee below the box: the bottom edge stays, the box grows upward;
+ *  - knee above or beside: the top edge stays, the box grows downward;
+ *  - a wider box (one long word) keeps the side edge that faces the knee.
+ * The knee and arrow tip never move. If the new box would still come within
+ * one handle radius of the knee or tip, or cross the knee-to-tip line, the
+ * whole box shifts to the nearest clear spot (away from the leader first);
+ * the box stays on the page. Before this, the box always grew down from its
+ * top-left corner and, when it ran into the knee, the renderer's bad-geometry
+ * branch (calculateCalloutConnection) silently re-routed the knee.
+ *
+ * All values are unscaled page units. A stored box is drawn
+ * max(18, height) + fontSize * 0.35 tall (the descender strip,
+ * svgAnnotationRenderers renderCallout), so the edges compared here are the
+ * DRAWN edges and a font-size change alone moves a bottom-anchored box too.
+ */
+export const CALLOUT_MIN_BOX_SIZE = 18;
+export const CALLOUT_DESCENDER_RATIO = 0.35;
+
+export const calloutDrawnBoxHeight = (height, fontSize) => (
+  Math.max(CALLOUT_MIN_BOX_SIZE, Number(height) || 0) + (Number(fontSize) || 12) * CALLOUT_DESCENDER_RATIO
+);
+
+const finitePoint = (point) => (
+  point && Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y))
+    ? { x: Number(point.x), y: Number(point.y) }
+    : null
+);
+
+const pointToRectDistance = (p, r) => {
+  const dx = Math.max(r.left - p.x, 0, p.x - r.right);
+  const dy = Math.max(r.top - p.y, 0, p.y - r.bottom);
+  return Math.sqrt(dx * dx + dy * dy);
+};
+
+// Liang-Barsky: does segment a-b touch rectangle r?
+const segmentTouchesRect = (a, b, r) => {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const p = [-dx, dx, -dy, dy];
+  const q = [a.x - r.left, r.right - a.x, a.y - r.top, r.bottom - a.y];
+  for (let i = 0; i < 4; i += 1) {
+    if (p[i] === 0) {
+      if (q[i] < 0) return false;
+    } else {
+      const t = q[i] / p[i];
+      if (p[i] < 0) {
+        if (t > t1) return false;
+        if (t > t0) t0 = t;
+      } else {
+        if (t < t0) return false;
+        if (t < t1) t1 = t;
+      }
+    }
+  }
+  return t0 <= t1;
+};
+
+/**
+ * Where a callout's box goes when its size changes.
+ *
+ * @param {object} args
+ * @param {{left:number, top:number, width:number, height:number}} args.box
+ *   the stored box before the change
+ * @param {number} args.fontSize the font size before the change
+ * @param {{width:number, height:number, fontSize:number}} args.next the new
+ *   stored size and font size
+ * @param {{x:number, y:number}|null} args.knee
+ * @param {{x:number, y:number}|null} args.arrowTip
+ * @param {{width:number, height:number}} args.page
+ * @param {number} [args.gap] clear space kept around the knee and tip
+ * @returns {{left:number, top:number}} the new top-left corner
+ */
+export function placeResizedCalloutBox({
+  box, fontSize, next, knee, arrowTip, page, gap = MIN_KNEE_TO_BOX_EDGE_DISTANCE,
+}) {
+  const oldLeft = Number(box?.left) || 0;
+  const oldTop = Number(box?.top) || 0;
+  const oldW = Math.max(CALLOUT_MIN_BOX_SIZE, Number(box?.width) || 0);
+  const oldH = calloutDrawnBoxHeight(box?.height, fontSize);
+  const newW = Math.max(CALLOUT_MIN_BOX_SIZE, Number(next?.width) || 0);
+  const newH = calloutDrawnBoxHeight(next?.height, next?.fontSize ?? fontSize);
+  const old = { left: oldLeft, top: oldTop, right: oldLeft + oldW, bottom: oldTop + oldH };
+  const unchanged = { left: oldLeft, top: oldTop };
+
+  const kneePt = finitePoint(knee);
+  const tipPt = finitePoint(arrowTip);
+  const inside = (p) => p.x >= old.left && p.x <= old.right && p.y >= old.top && p.y <= old.bottom;
+  // The point the box must turn away from: the knee, or the tip when the knee
+  // already sits inside the box. No leader: the top-left corner stays.
+  const lead = [kneePt, tipPt].find((p) => p && !inside(p)) || null;
+  if (!lead) return unchanged;
+
+  const below = lead.y > old.bottom;
+  const above = lead.y < old.top;
+  const right = lead.x > old.right;
+  const left = lead.x < old.left;
+  const preferred = {
+    left: right ? old.right - newW : oldLeft,
+    top: below ? old.bottom - newH : oldTop,
+  };
+
+  // Stay on the page (a box already hanging off it may stay where it was).
+  const W = Number(page?.width);
+  const H = Number(page?.height);
+  const range = (oldPos, oldSize, size, pageSize) => {
+    if (!(pageSize > 0)) return [-Infinity, Infinity];
+    const lo = Math.min(0, oldPos);
+    let hi = Math.max(lo, pageSize - size);
+    if (oldPos + oldSize > pageSize) hi = Math.max(hi, oldPos);
+    return [lo, hi];
+  };
+  const [loX, hiX] = range(oldLeft, oldW, newW, W);
+  const [loY, hiY] = range(oldTop, oldH, newH, H);
+  const clampPos = (pos) => ({
+    left: Math.max(loX, Math.min(hiX, pos.left)),
+    top: Math.max(loY, Math.min(hiY, pos.top)),
+  });
+
+  const clear = (pos, w, h) => {
+    const r = { left: pos.left, top: pos.top, right: pos.left + w, bottom: pos.top + h };
+    if (kneePt && pointToRectDistance(kneePt, r) < gap - 1e-6) return false;
+    if (tipPt && pointToRectDistance(tipPt, r) < gap - 1e-6) return false;
+    if (kneePt && tipPt) {
+      // Half the gap: the knee itself may sit exactly one gap away.
+      const pad = gap / 2;
+      const grown = { left: r.left - pad, top: r.top - pad, right: r.right + pad, bottom: r.bottom + pad };
+      if (segmentTouchesRect(kneePt, tipPt, grown)) return false;
+    }
+    return true;
+  };
+
+  const start = clampPos(preferred);
+  // A layout that was already crowded before the change is left to the
+  // anchoring rule alone - never shuffled further on a guess.
+  if (clear(start, newW, newH) || !clear(unchanged, oldW, oldH)) return start;
+
+  const up = { x: 0, y: -1 };
+  const down = { x: 0, y: 1 };
+  const toLeft = { x: -1, y: 0 };
+  const toRight = { x: 1, y: 0 };
+  let order;
+  if (below) order = [up, right ? toLeft : toRight, right ? toRight : toLeft, down];
+  else if (above) order = [down, right ? toLeft : toRight, right ? toRight : toLeft, up];
+  else if (right) order = [toLeft, up, down, toRight];
+  else if (left) order = [toRight, up, down, toLeft];
+  else order = [up, down, toLeft, toRight];
+
+  const maxShift = Math.max(W > 0 ? W : 0, H > 0 ? H : 0, newW + newH);
+  for (let d = 1; d <= maxShift; d += 1) {
+    for (const dir of order) {
+      const pos = clampPos({ left: start.left + dir.x * d, top: start.top + dir.y * d });
+      if (clear(pos, newW, newH)) return pos;
+    }
+  }
+  return start;
+}

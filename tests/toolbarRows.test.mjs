@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs';
 import {
   FORMAT_ROW_TOOLS,
   TOOL_BAR_GROUPS,
+  isAreaEditing,
   resolveToolBarGroup,
   showsFormatRow,
 } from '../src/utils/toolbarRows.js';
@@ -78,8 +79,12 @@ test('PDFViewer draws a group\'s tools into the tool bar, keyed on the picked ma
   assert.match(pdfViewer, /setSubToolContextTool\(\(prev\) => \(prev === subToolTool \? prev : subToolTool\)\)/);
   assert.match(pdfViewer, /document\.getElementById\('chrome-subtools-host'\)/);
   assert.match(pdfViewer, /TOOL_BAR_GROUPS\.includes\(toolBarGroup\) && subToolsHostEl/);
-  // The Survey row keeps its own bar under the tool bar.
-  assert.match(pdfViewer, /activeCategoryDropdown && !TOOL_BAR_GROUPS\.includes\(activeCategoryDropdown\) && subRowHost/);
+  // The Survey row keeps its own bar under the tool bar. Survey audit P1-1
+  // (2026-10-01): it shows whenever survey mode is on with a template chosen
+  // (it used to follow activeCategoryDropdown === 'survey', which Select / Pan
+  // cleared, so the bar vanished for good).
+  assert.match(pdfViewer, /const subRowGroup = \(showSurveyPanel && selectedTemplate\)\s*\? 'survey'\s*: \(activeCategoryDropdown && !TOOL_BAR_GROUPS\.includes\(activeCategoryDropdown\) \? activeCategoryDropdown : null\);/);
+  assert.match(pdfViewer, /if \(subRowGroup && subRowHost\) \{\s*rows\.push\(renderSubRow\(subRowGroup, subRowHost, false\)\);/);
   for (const group of ['draw', 'shape', 'review', 'survey']) {
     assert.match(pdfViewer, new RegExp(`\\{subRowCategory === '${group}' && `), group);
   }
@@ -141,12 +146,25 @@ test('Select mode: the modes sit in the tool bar with nothing picked, or for a m
   const toolBar = appShell.slice(appShell.indexOf('data-toolbar-subtools="true"'), appShell.indexOf('id="chrome-subtools-host"'));
   assert.match(toolBar, /\{selectModesInToolBar && renderSelectModeToggle\(\)\}/);
   // The same rule before them as before a group's tools.
-  assert.match(toolBar, /\(\(toolBarGroup && toolBarGroup !== 'select'\) \|\| selectModesInToolBar\) && \(\s*<div className="chrome-divider" \/>/);
+  // (2026-10-01, Spaces toolbar: the Areas tools take the same rule.)
+  assert.match(toolBar, /\(\(toolBarGroup && toolBarGroup !== 'select'\) \|\| selectModesInToolBar \|\| areasMode\) && \(\s*<div className="chrome-divider" \/>/);
   // They answer the pointer exactly as the group tools beside them do.
+  // DELIBERATE ASSERTION CHANGE (owner 2026-10-02, test plan U2: "the icons
+  // in the toolbar ... get a grey box around it ... There's no consistency"):
+  // the shared answer used to be a --hover plate (+ edge + shadow) and a
+  // --pressed fill, pinned here as three styles.css rules. Those rules are
+  // gone. The modes, the group tools and the group icons all sit inside
+  // #chrome-top-host, and ONE rule set answers for every icon there:
+  // src/styles/states.css section 5 - no plate, the glyph grows on hover and
+  // tightens on press. "Exactly as the group tools do" is still the point;
+  // only the look they share changed.
   const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
-  assert.match(css, /#chrome-subtools-host \.btn:hover:not\(:disabled\),\s*\[data-select-mode-toggle\] \.btn:hover:not\(:disabled\)/);
-  assert.match(css, /#chrome-subtools-host \.btn-active:hover:not\(:disabled\),\s*\[data-select-mode-toggle\] \.btn-active:hover:not\(:disabled\)/);
-  assert.match(css, /#chrome-subtools-host \.btn:active:not\(:disabled\),\s*\[data-select-mode-toggle\] \.btn:active:not\(:disabled\)/);
+  assert.doesNotMatch(css, /\[data-select-mode-toggle\] \.btn(-active)?:(hover|active):not\(:disabled\)/);
+  assert.doesNotMatch(css, /#chrome-subtools-host \.btn(-active)?:(hover|active):not\(:disabled\)/);
+  assert.doesNotMatch(css, /\.btn\[data-tool-group\]:(hover|active)/);
+  const states = readFileSync(new URL('../src/styles/states.css', import.meta.url), 'utf8');
+  assert.match(states, /:is\(#chrome-top-host, [^)]*\) :is\(\[data-glyph-only\], \.chrome-icon-btn\)[^{]*:hover > :not\(\[data-anchored-tooltip\]\) \{\s*scale: 1\.08;/);
+  assert.match(states, /:is\(#chrome-top-host, [^)]*\) :is\(\[data-glyph-only\], \.chrome-icon-btn\)[^{]*:active > :not\(\[data-anchored-tooltip\]\) \{\s*scale: 0\.92;/);
 });
 
 test('row 2 coming and going in Select mode moves neither the Survey row nor the storage banner', () => {
@@ -267,4 +285,60 @@ test('w47: the room kept for the widest loadout matches the Shapes group\'s seve
   const listed = shapes.slice(0, shapes.indexOf('].map(')).match(/\{ id: '[a-z-]+', label: /g) || [];
   assert.equal(listed.length, 7);
   assert.equal(WIDEST_SUBTOOLS_WIDTH, listed.length * 28 + (listed.length - 1) * 6 + 17);
+});
+
+// Owner 2026-10-01 (Spaces toolbar): "it shouldn't be in a floating toolbar ...
+// make it into a sub-toolbar option ... we shouldn't have two different Select
+// tools." While a Space's areas are edited the desktop tool bar is in Areas
+// mode: the area tools stand where a group's tools go, the app's own Select
+// picks areas, and row 2 holds the actions.
+test('Areas mode: the area tools take the loadout, the actions take row 2, no drawing group shows', () => {
+  // The viewer publishes its armed tool a frame early, so either signal counts.
+  assert.equal(isAreaEditing({ regionEditing: true, activeTool: 'pan' }), true);
+  assert.equal(isAreaEditing({ regionEditing: false, activeTool: 'region-edit' }), true);
+  assert.equal(isAreaEditing({ regionEditing: false, activeTool: 'select' }), false);
+  assert.equal(showsFormatRow({ regionEditing: true, activeTool: 'pan', contextTool: 'pan' }), true);
+  // A Draw row left open from before never shows beside the Areas tools.
+  assert.equal(resolveToolBarGroup({ activeTool: 'region-edit', activeCategoryDropdown: 'draw' }), null);
+  assert.equal(resolveToolBarGroup({ activeTool: 'pan', activeCategoryDropdown: 'draw', regionEditing: true }), null);
+
+  const toolBar = appShell.slice(appShell.indexOf('data-toolbar-subtools="true"'), appShell.indexOf('id="chrome-subtools-host"'));
+  assert.match(toolBar, /\{areasMode && renderAreaTools\(\)\}/);
+  const row2 = appShell.slice(appShell.indexOf('data-chrome-settings-holder="true"'), appShell.indexOf('data-eraser-mode-toggle="true"'));
+  assert.match(row2, /\{areasMode && renderAreaActions\(\)\}/);
+  // One Select: in Areas mode the app's Select button arms the area Select.
+  assert.match(appShell, /if \(isSelect && areasMode\) \{\s*\/\/[^\n]*\n\s*regionApi\.setToolType\?\.\('move'\);/);
+  // Done stands out without gold (owner 2026-10-04: no gold outside a
+  // dialog's primary button): a neutral plate with bright ink, and so does the
+  // inline full-page answer. Nothing on the row is gold.
+  const actions = appShell.slice(appShell.indexOf('const renderAreaActions'), appShell.indexOf('const toolbarOverflowItems'));
+  assert.equal((actions.match(/btn-primary/g) || []).length, 0, 'no gold button on the Areas row');
+  assert.equal((actions.match(/btn-secondary" style=\{AREA_CONFIRM_STYLE\}/g) || []).length, 2, 'Done, and the inline full-page answer');
+  assert.match(actions, /className="btn btn-sm btn-secondary" style=\{AREA_CONFIRM_STYLE\} onClick=\{regionApi\.confirm\}/);
+});
+
+test('owner 2026-10-01: opening or closing a side panel never moves the tool bar', () => {
+  // "When I expand any of the rails ... it pushes the top bar ... Those should
+  // not get affected by the left or right rails." The group icons (and Pan /
+  // Select and the loadout hung off them) centre on the column between the two
+  // slim rails; an open Pages / Search / Bookmarks / Spaces / Survey panel is
+  // not taken off that column (the panels open below the tool bar).
+  const hook = readFileSync(new URL('../src/hooks/useResponsiveToolbar.js', import.meta.url), 'utf8');
+  const topPlan = hook.slice(hook.indexOf('let canvasLeft = 0;'), hook.indexOf('const top = planTopBar('));
+  assert.match(topPlan, /canvasLeft = columnRect\.left - hostRect\.left;\s*canvasRight = columnRect\.right - hostRect\.left;/);
+  assert.doesNotMatch(topPlan, /usableRowSpan/);
+  // Rows 2 and 3 still keep clear of an open panel, and re-plan when the
+  // Survey panel's slide-in ANIMATION ends (not only on transitionend).
+  assert.match(hook, /const span = usableRowSpan\(rowRect\);/);
+  assert.match(hook, /document\.addEventListener\('animationend', onTransitionEnd, true\);/);
+});
+
+test('owner 2026-10-01: the desktop survey module pill centres its label like the phone pill', () => {
+  const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+  // 2026-10-07 (survey bar round): the module pill has its own wrapper
+  // (.survey-subrow__module) - the template menu now shares the start side.
+  const pill = css.slice(css.indexOf('.survey-subrow__module .chrome-pill {\n  max-width'));
+  assert.match(pill.slice(0, pill.indexOf('}')), /padding-left: calc\(var\(--chrome-field-pad-x\) \+ 9px \+ var\(--chrome-gap\)\);/);
+  const fit = css.slice(css.indexOf('.survey-subrow__fit {'));
+  assert.match(fit.slice(0, fit.indexOf('}')), /text-align: center;/);
 });

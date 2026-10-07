@@ -3,13 +3,18 @@
  * regions and per-page annotation visibility).
  *
  * Default-exports the SpacesPanel component; internal SpaceSortableCard renders
- * each space as one divided list row (2026-09-23: no cards, desktop and phone)
- * with expand, inline rename, toggle, page-range add (parsePageRangeInput),
- * region rename/edit, and canvas/survey annotation-visibility
- * toggles (gated on the Pro `features` flags). Cards reorder via dnd-kit
- * SortableRearrangeList with optimistic ordering and frame-capture debug hooks.
+ * each space as a flat line in the panel, like a Survey category (owner
+ * 2026-10-02, "integrated within the panel as separate rows"): grip, page
+ * count, fold arrow, click-to-rename name, switch and delete; open, an
+ * "Add pages" line (parsePageRangeInput) with a quiet [+], then one nested
+ * line per page ("region") with page number, outline switch, name, edit
+ * areas, marks bulb and remove.
+ * SpacesExportPanel is the "Export <space>" menu (desktop) / sheet (phone).
+ * Spaces reorder via dnd-kit SortableRearrangeList with optimistic ordering
+ * and frame-capture debug hooks.
  */
 import React, { useState, useCallback, useRef } from 'react';
+import { createPortal, flushSync } from 'react-dom';
 import Icon from '../Icons';
 import { parsePageRangeInput, sanitizePageRangeInput } from '../utils/pageRangeParser';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
@@ -21,7 +26,15 @@ import {
 } from '../utils/annotationVisibilityRules';
 import { showToast } from '../utils/toast';
 import { useTooltip } from '../components/Tooltip';
+import SectionIconButton from '../components/SectionIconButton.jsx';
 import { watchLightPopover } from '../components/dismissRules.js';
+import AnchoredPopover from '../components/AnchoredPopover';
+import { useConfirmDialog } from '../components/dialogPrompts';
+import {
+  buildDeleteSpaceConfirm,
+  buildRemovePageConfirm,
+  formatSpaceCountLabel,
+} from '../utils/spaceCascadeImpact.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const animateSpaceLayoutChanges = () => false;
@@ -62,6 +75,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   isRegionOverlayToggleEnabled = null,
   showSurveyPanel = false,
   selectedModuleId = null,
+  mobileMode = false,
 }) {
   // KAL-65: sidebar controls use the app's instant shared tooltip, never a
   // native title= (the OS tooltip takes ~1.5s and is OS-styled, so mixing the
@@ -69,7 +83,11 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   const tip = useTooltip();
   const [editingRegionId, setEditingRegionId] = useState(null);
   const [editingRegionValue, setEditingRegionValue] = useState('');
+  // The name the field opened with: committing it unchanged is not a rename
+  // (owner 2026-10-02: only a real change is saved).
+  const editingRegionStartRef = useRef('');
   const editingRegionInputRef = useRef(null);
+  const spaceNameInputRef = useRef(null);
   React.useEffect(() => {
     if (!isExpanded) {
       setEditingRegionId(null);
@@ -89,7 +107,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
     }
     const labelToSave = editingRegionValue.trim();
 
-    onRenameRegion?.(space.id, pageId, labelToSave);
+    if (labelToSave !== editingRegionStartRef.current.trim()) {
+      onRenameRegion?.(space.id, pageId, labelToSave);
+    }
     setEditingRegionId(null);
     setEditingRegionValue('');
   }, [editingRegionId, editingRegionValue, onRenameRegion, space.id]);
@@ -109,8 +129,16 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   }, [editingRegionId]);
 
   const handleRegionEditClick = useCallback((pageId, currentLabel) => {
-    setEditingRegionId(pageId);
-    setEditingRegionValue(currentLabel);
+    // Spaces chunk A: render the field and focus it inside the tap itself -
+    // iOS only raises the keyboard for a focus() made in the user's gesture,
+    // and the rAF focus below came a frame too late for that.
+    editingRegionStartRef.current = currentLabel || '';
+    flushSync(() => {
+      setEditingRegionId(pageId);
+      setEditingRegionValue(currentLabel);
+    });
+    editingRegionInputRef.current?.focus();
+    editingRegionInputRef.current?.select();
   }, []);
 
   const commitSpaceName = useCallback((input) => {
@@ -121,30 +149,38 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
     if (input.parentElement) {
       input.parentElement.dataset.value = nextName || ' ';
     }
-    if (nextName !== space.name) {
-      onRenameSpace?.(space.id, nextName);
+    // Only a real change is a rename (owner 2026-10-02). A refused rename
+    // (duplicate name, no permission) leaves space.name, and so this
+    // uncontrolled input's key, unchanged: put the real name back instead of
+    // leaving the refused text showing as a second "Space 2".
+    if (nextName !== space.name && onRenameSpace?.(space.id, nextName) !== true) {
+      input.value = space.name || '';
+      if (input.parentElement) {
+        input.parentElement.dataset.value = space.name || ' ';
+      }
     }
   }, [onRenameSpace, space.id, space.name]);
 
-
   /*
-   * UX 2026-09-23 (owner: "everything is so bulky ... some shit that doesn't
-   * even align ... the hitbox should be invisible"; then "not individual cards;
-   * like documents, projects and templates; dividers but integrated within the
-   * panel", desktop AND phone). One design on both, sized per platform by the
-   * .spaces-list block in styles.css (desktop) and mobilePdfViewer.css (phone):
-   *   - a space is a ROW, parted from the next space by a hairline that reaches
-   *     both edges of the panel; no bordered card, no shadow, no card per region;
-   *   - its pages ("Region N") are indented LINES under it, like a to-do list
-   *     nested under its parent;
-   *   - every row shares the same right-hand columns, so the switches, the
-   *     trash cans, the lightbulbs and the region count each sit on one x;
-   *   - every control is a glyph or a word with an invisible tap pad (44px on
-   *     the phone). Nothing paints a plate on hover or press: glyphs tighten
-   *     (states.css data-glyph-only), words darken their ink.
-   * Reference: the phone home "layout B — one card, divided" (src/home/hub.css).
-   * The grip is a plain grip; the fold arrow sits beside it (owner
-   * 2026-09-23), turning from right to down as the space opens.
+   * Owner 2026-10-02 ("I want it back to the way I had it, except slightly
+   * cleaner"), then the same day: "it's like boxes within boxes ... I want
+   * it integrated within the panel as separate rows, just like we updated
+   * the survey panel." Every control of the card layout (d6b8563) is kept,
+   * with every later behaviour fix (empty-space guard, honest delete
+   * confirms, rename only on a real change, refused rename restores, iOS
+   * keyboard focus, drag); only the cards are gone.
+   *   - a space is a LINE in the panel, a hairline under it: grip · page
+   *     count · fold arrow · name (click to rename) · switch · delete;
+   *   - open, one step in: "Add pages (e.g. 3, 6-9, 12)" in the panel's one
+   *     recessed well with a quiet [+] joined to it, then one line per page
+   *     ("region"), hairlines between: page number (goes to the page) ·
+   *     outline switch · name (click to rename) · edit areas · light bulb
+   *     (survey icon in survey mode) · remove;
+   *   - cleaner than before: numbers are plain small muted figures (no
+   *     circles), switches turn ON in the app's calm neutral ink (the Survey
+   *     "Reuse" switch), never gold; the [+] is grey, never a gold square.
+   * Sizes: the .spaces-panel custom properties in styles.css (desktop rows
+   * 32) and mobilePdfViewer.css (phone rows 44).
    */
   const visibilityControlMode = getPageVisibilityControlMode({ showSurveyPanel, selectedModuleId });
   const isSurveyVisibilityContext =
@@ -155,9 +191,21 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   const onToggleVisibility = isSurveyVisibilityContext
     ? onToggleSurveyAnnotations
     : onToggleCanvasAnnotations;
-  const regionCountLabel = `${regionCount} region${regionCount !== 1 ? 's' : ''}`;
-  const spaceSwitchLabel = isActive ? 'Turn off space' : 'Turn on space';
-  const toggleThisSpace = () => onToggleSpace?.(space.id, !isActive);
+  // Spaces chunk A: the row counts PAGES (it counted drawn areas, so a space
+  // listing two pages could read 0); the full "3 pages · 2 areas" is its name.
+  const regionCountLabel = formatSpaceCountLabel(pageCount, regionCount);
+  // A space with no pages would hide every page: it cannot be turned on until
+  // it has some (an active one can always be turned off).
+  const isSwitchBlocked = !isActive && pageCount === 0;
+  const spaceSwitchLabel = isActive ? 'Turn off space' : (isSwitchBlocked ? 'Add pages first' : 'Turn on space');
+  const toggleThisSpace = () => {
+    if (isSwitchBlocked) {
+      if (!isExpanded) onToggleExpand(space.id);
+      showToast(`Add pages to ${space.name || 'this space'} first.`, 'info');
+      return;
+    }
+    onToggleSpace?.(space.id, !isActive);
+  };
   const switchKeyDown = (handler) => (e) => {
     if (e.key === ' ' || e.key === 'Enter') {
       e.preventDefault();
@@ -165,35 +213,44 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
       handler();
     }
   };
+  const spaceName = space.name || 'Space';
 
   return (
     <div
       data-space-sortable-row-id={space.id}
-      className={`spaces-item${isExpanded ? ' is-expanded' : ''}${isDragging ? ' is-dragging' : ''}`}
+      className={`space-card${isExpanded ? ' is-expanded' : ''}${isDragging ? ' is-dragging' : ''}${isActive ? ' is-active' : ''}`}
     >
-      <div data-drag-rearrange-row className="spaces-item__block">
+      <div data-drag-rearrange-row className="space-card__block">
         <div
-          className="spaces-item__row"
+          className="space-card__head"
           aria-expanded={isExpanded}
           onClick={() => onToggleExpand(space.id)}
         >
           <DragRearrangeHandle
             {...dragHandleProps}
-            className="spaces-item__grip"
+            className="space-card__grip"
             data-space-drag-handle
             isDragging={isDragging}
             title="Drag to rearrange"
-            onClick={() => onToggleExpand(space.id)}
+            onClick={(e) => e.stopPropagation()}
             style={{ width: undefined, height: undefined, color: 'var(--text-3)' }}
           />
 
-          {/* Owner 2026-09-23: the fold arrow is back, between the grip and
-              the name, in the gap that was already there (nothing moves).
-              Right when folded, down when open. */}
+          {/* The page count, a plain muted figure (no circle). Its name and
+              tooltip say "3 pages · 2 areas". */}
+          <span
+            className="space-card__count"
+            data-space-meta
+            aria-label={regionCountLabel}
+            {...tip(regionCountLabel, 'below')}
+          >
+            {pageCount}
+          </span>
+
           <button
             type="button"
-            className="spaces-item__chevron"
-            aria-label={isExpanded ? `Fold ${space.name || 'space'}` : `Open ${space.name || 'space'}`}
+            className="space-card__chevron"
+            aria-label={isExpanded ? `Fold ${spaceName}` : `Open ${spaceName}`}
             aria-expanded={isExpanded}
             onClick={(e) => {
               e.stopPropagation();
@@ -203,34 +260,34 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             <Icon name="chevronRight" size={12} color="currentColor" />
           </button>
 
-          <span className="spaces-item__name-fit" data-value={space.name || ' '}>
+          {/* Click to rename (the layout the owner had). Enter or a click
+              away saves; Escape puts the name back; an unchanged or refused
+              name is not saved. */}
+          <span className="space-card__name-fit" data-value={space.name || ' '}>
             <input
+              ref={spaceNameInputRef}
               type="text"
               size={1}
-              className="spaces-item__name"
+              className="space-card__name"
               defaultValue={space.name}
               key={`${space.id}:${space.name}`}
+              aria-label={`Rename ${spaceName}`}
               {...tip('Click to rename', 'below')}
-              aria-label={`Rename ${space.name || 'Space'}`}
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
-              onDoubleClick={(e) => {
-                e.stopPropagation();
-                e.currentTarget.select();
-              }}
               onInput={(e) => {
                 if (e.currentTarget.parentElement) {
                   e.currentTarget.parentElement.dataset.value = e.currentTarget.value || ' ';
                 }
               }}
-              onBlur={(e) => {
-                tip('Click to rename', 'below').onBlur(e);
-                commitSpaceName(e.currentTarget);
-              }}
+              onBlur={(e) => commitSpaceName(e.currentTarget)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
+                  e.preventDefault();
                   e.currentTarget.blur();
                 } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  e.stopPropagation();
                   e.currentTarget.value = space.name || '';
                   if (e.currentTarget.parentElement) {
                     e.currentTarget.parentElement.dataset.value = space.name || ' ';
@@ -241,21 +298,13 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             />
           </span>
 
-          <span className="spaces-item__fill" aria-hidden="true" />
-
-          {/* Region count: quiet ink in the lightbulb column, no circle. */}
-          <span
-            className="spaces-item__count"
-            {...tip(regionCountLabel, 'below')}
-            aria-label={regionCountLabel}
-          >
-            {regionCount}
-          </span>
+          <span className="space-card__fill" aria-hidden="true" />
 
           <div
             role="switch"
             tabIndex={0}
             aria-checked={isActive}
+            aria-disabled={isSwitchBlocked || undefined}
             aria-label={spaceSwitchLabel}
             className="spaces-switch"
             {...tip(spaceSwitchLabel, 'below')}
@@ -270,9 +319,10 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
 
           <button
             type="button"
-            className="spaces-item__icon spaces-item__delete"
-            {...tip('Delete', 'below')}
-            aria-label="Delete"
+            className="space-card__icon space-card__delete"
+            data-glyph-only=""
+            aria-label={`Delete ${spaceName}`}
+            {...tip('Delete space', 'below')}
             onClick={(e) => {
               e.stopPropagation();
               onDelete(space.id);
@@ -283,48 +333,51 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
         </div>
 
         {isExpanded && (
-          <div className="spaces-item__body">
-            <div className="spaces-item__add">
-              <input
-                type="text"
-                className="spaces-item__add-input"
-                value={pageInputValue}
-                placeholder="Add pages, e.g. 3, 6-9"
-                aria-label="Add pages (e.g. 3, 6-9, 12)"
-                onChange={(e) => onPageInputChange(space.id, sanitizePageRangeInput(e.target.value))}
-                inputMode="numeric"
-                pattern="[0-9,-]*"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
+          <div className="space-card__body">
+            <div className="space-card__add-line">
+              <div className="space-card__add">
+                <input
+                  type="text"
+                  className="space-card__add-input"
+                  value={pageInputValue}
+                  placeholder="Add pages (e.g. 3, 6-9, 12)"
+                  aria-label="Add pages (e.g. 3, 6-9, 12)"
+                  onChange={(e) => onPageInputChange(space.id, sanitizePageRangeInput(e.target.value))}
+                  inputMode="numeric"
+                  pattern="[0-9,-]*"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      onAssignPages(space.id);
+                    }
+                  }}
+                />
+                {/* Quiet grey, joined to the field - never a gold square. */}
+                <button
+                  type="button"
+                  className="space-card__add-go"
+                  data-glyph-only=""
+                  aria-label="Add pages"
+                  {...tip('Add pages', 'below')}
+                  onClick={(e) => {
+                    e.stopPropagation();
                     onAssignPages(space.id);
-                  }
-                }}
-              />
-              {/* A word, not a gold square. It turns gold only once there is
-                  something to add; empty, it rests in quiet ink. */}
-              <button
-                type="button"
-                className={`spaces-item__add-go tertiary${pageInputValue ? ' has-value' : ''}`}
-                aria-label="Add pages"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAssignPages(space.id);
-                }}
-              >
-                Add
-              </button>
+                  }}
+                >
+                  <Icon name="plus" size={14} color="currentColor" />
+                </button>
+              </div>
             </div>
             {pageError && (
-              <div className="spaces-item__error" role="alert">
+              <div className="space-card__error" role="alert">
                 {pageError}
               </div>
             )}
 
             {pageCount === 0 ? (
-              <div className="spaces-item__empty">No pages added yet.</div>
+              <div className="space-card__empty">No pages added yet.</div>
             ) : (
-              <ul className="spaces-item__regions">
+              <ul className="space-card__regions">
                 {space.assignedPages
                   ?.slice()
                   .sort((a, b) => (a.pageId || 0) - (b.pageId || 0))
@@ -334,20 +387,20 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                       : `Region ${page.pageId}`;
                     const isEditingRegion = editingRegionId === page.pageId;
 
-                    // Region overlay switch — always shown, dimmed when it cannot act.
+                    // Region outline (the hatching outside the drawn areas).
                     const hasOverlayProps = onToggleRegionOverlay && getRegionOverlayEnabled && isRegionOverlayToggleEnabled;
                     const isOverlayEnabled = hasOverlayProps ? getRegionOverlayEnabled(space.id, page.pageId, page) : false;
                     const isOverlayToggleEnabled = hasOverlayProps ? isRegionOverlayToggleEnabled(space.id, page.pageId, page) : false;
                     const overlayLabel = !hasOverlayProps
-                      ? 'Overlay toggle'
+                      ? 'Outline not available here'
                       : !isActive
-                        ? 'Enable space to toggle overlay'
+                        ? 'Turn the space on to show its outline'
                         : !isOverlayToggleEnabled
-                          ? 'Define regions first to enable overlay'
-                          : (isOverlayEnabled ? 'Hide overlay for this region' : 'Show overlay for this region');
+                          ? 'Draw an area first to show its outline'
+                          : (isOverlayEnabled ? 'Hide the outline' : 'Show the outline');
                     const toggleOverlay = () => {
-                      if (!isOverlayToggleEnabled || !onToggleRegionOverlay) return;
-                      onToggleRegionOverlay(space.id, page.pageId);
+                      if (!isOverlayToggleEnabled) return;
+                      onToggleRegionOverlay?.(space.id, page.pageId);
                     };
 
                     // KAL-313 / history F1 (2026-06-11): the region-edit entry
@@ -357,23 +410,26 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                       isRegionSelectionActive &&
                       regionSelectionPage === page.pageId &&
                       activeSpaceId === space.id;
-                    const regionEditLabel = isActiveRegionEdit ? 'Exit region edit' : 'Edit region areas on the page';
+                    const areaCount = Array.isArray(page.regions) ? page.regions.length : 0;
+                    const regionEditLabel = isActiveRegionEdit
+                      ? 'Stop editing areas'
+                      : (areaCount > 0 ? `Edit the areas on page ${page.pageId}` : `Draw an area on page ${page.pageId}`);
 
-                    // One visible control on screen, but separate canvas/survey features in code.
+                    // One visible control, separate canvas/survey features in code.
                     const hasVisibility = Boolean(getVisibilityState && onToggleVisibility);
-                    const visibilityState = hasVisibility ? getVisibilityState(space.id, page.pageId) : false;
+                    const visibilityState = hasVisibility ? getVisibilityState(space.id, page.pageId) : true;
                     const isVisibilityDisabled = !isActive || activeSpaceId === null;
-                    const visibilityLabel = !isVisibilityDisabled
-                      ? (isSurveyVisibilityContext
-                        ? (visibilityState ? 'Hide survey annotations' : 'Show survey annotations')
-                        : (visibilityState ? 'Hide canvas annotations' : 'Show canvas annotations'))
-                      : 'Toggle is only available when a space is active';
+                    const visibilityLabel = isVisibilityDisabled
+                      ? 'Turn the space on to show or hide marks'
+                      : isSurveyVisibilityContext
+                        ? (visibilityState ? 'Hide survey markers' : 'Show survey markers')
+                        : (visibilityState ? 'Hide marks' : 'Show marks');
 
                     return (
-                      <li key={page.pageId} className="spaces-region">
+                      <li key={page.pageId} className={`space-region-card${isActiveRegionEdit ? ' is-editing' : ''}`}>
                         <button
                           type="button"
-                          className="spaces-region__page tertiary"
+                          className="spaces-region__page"
                           {...tip(`Go to page ${page.pageId}`, 'below')}
                           aria-label={`Go to page ${page.pageId}`}
                           onClick={(e) => {
@@ -382,8 +438,25 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                             onNavigateToPage?.(page.pageId);
                           }}
                         >
-                          <span>{page.pageId}</span>
+                          {page.pageId}
                         </button>
+
+                        <div
+                          role="switch"
+                          tabIndex={isOverlayToggleEnabled ? 0 : -1}
+                          aria-checked={Boolean(isOverlayToggleEnabled && isOverlayEnabled)}
+                          aria-disabled={!isOverlayToggleEnabled || undefined}
+                          aria-label={overlayLabel}
+                          className="spaces-switch spaces-switch--sm"
+                          {...tip(overlayLabel, 'below')}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleOverlay();
+                          }}
+                          onKeyDown={switchKeyDown(toggleOverlay)}
+                        >
+                          <span className="spaces-switch__knob" />
+                        </div>
 
                         <div className="spaces-region__name">
                           {isEditingRegion ? (
@@ -395,7 +468,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                               onChange={(e) => setEditingRegionValue(e.target.value)}
                               onMouseDown={(e) => e.stopPropagation()}
                               onClick={(e) => e.stopPropagation()}
-                              onFocus={(e) => e.stopPropagation()}
+                              // No onFocus stopPropagation: the window focusin
+                              // listener in mobile/keyboardViewport.js is what
+                              // lifts the field above the phone keyboard.
                               onBlur={() => {
                                 if (isRegionSelectionActive) return;
                                 commitRegionRename(page.pageId);
@@ -415,27 +490,27 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                           ) : (
                             <button
                               type="button"
-                              className="spaces-region__label tertiary"
+                              className="spaces-region__label"
+                              {...tip('Click to rename', 'below')}
+                              aria-label={`Rename ${regionLabel}`}
                               onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
                                 handleRegionEditClick(page.pageId, regionLabel);
                               }}
-                              {...tip('Click to rename', 'below')}
-                              aria-label="Click to rename"
                             >
                               {regionLabel}
                             </button>
                           )}
                         </div>
 
-                        {/* UX 2026-09-17 (owner ruling): region-edit ON turns the
-                            pencil gold and leaves its chrome alone. */}
                         <button
                           type="button"
-                          className={`spaces-item__icon spaces-region__edit${isActiveRegionEdit ? ' is-editing' : ''}`}
-                          {...tip(regionEditLabel, 'below')}
+                          className={`space-card__icon spaces-region__edit${isActiveRegionEdit ? ' is-on' : ''}`}
+                          data-glyph-only=""
+                          aria-pressed={isActiveRegionEdit}
                           aria-label={regionEditLabel}
+                          {...tip(regionEditLabel, 'below')}
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
@@ -446,63 +521,44 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                             }
                           }}
                         >
-                          <Icon name="edit" size={14} color="currentColor" />
+                          <Icon name="regionEdit" size={14} color="currentColor" />
                         </button>
 
-                        {hasVisibility ? (
+                        {hasVisibility && (
                           <button
                             type="button"
-                            className={`spaces-item__icon spaces-region__visibility${visibilityState ? ' is-on' : ''}`}
-                            disabled={isVisibilityDisabled}
-                            {...tip(visibilityLabel, 'below')}
+                            className={`space-card__icon spaces-region__marks${visibilityState ? ' is-on' : ''}`}
+                            data-glyph-only=""
+                            aria-pressed={Boolean(visibilityState)}
+                            aria-disabled={isVisibilityDisabled || undefined}
                             aria-label={visibilityLabel}
+                            {...tip(visibilityLabel, 'below')}
                             onClick={(e) => {
-                              const now = Date.now();
-                              const lastClick = parseInt(e.currentTarget.dataset.lastClick || '0', 10);
-                              if (now - lastClick < 300) {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                return;
-                              }
-                              e.currentTarget.dataset.lastClick = now.toString();
-                              if (isVisibilityDisabled) return;
+                              e.preventDefault();
                               e.stopPropagation();
+                              if (isVisibilityDisabled) return;
                               onToggleVisibility(space.id, page.pageId, !visibilityState);
                             }}
                           >
                             {isSurveyVisibilityContext ? (
-                              <Icon name="survey" size={14} />
+                              <Icon name="survey" size={14} color="currentColor" />
                             ) : (
                               <Icon name={visibilityState ? 'lightbulbOn' : 'lightbulbOff'} size={14} color="currentColor" />
                             )}
                           </button>
-                        ) : (
-                          <span className="spaces-item__icon" aria-hidden="true" />
                         )}
-
-                        <div
-                          role="switch"
-                          tabIndex={isOverlayToggleEnabled ? 0 : -1}
-                          aria-checked={Boolean(isOverlayToggleEnabled && isOverlayEnabled)}
-                          aria-disabled={!isOverlayToggleEnabled}
-                          aria-label={overlayLabel}
-                          className="spaces-switch"
-                          {...tip(overlayLabel, 'below')}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleOverlay();
-                          }}
-                          onKeyDown={switchKeyDown(toggleOverlay)}
-                        >
-                          <span className="spaces-switch__knob" />
-                        </div>
 
                         <button
                           type="button"
-                          className="spaces-item__icon spaces-item__delete"
-                          {...tip('Delete', 'below')}
-                          aria-label="Delete"
-                          onClick={() => onRemovePage(space.id, page.pageId)}
+                          className="space-card__icon space-card__delete"
+                          data-glyph-only=""
+                          aria-label={`Remove page ${page.pageId} from ${spaceName}`}
+                          {...tip('Remove from space', 'below')}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onRemovePage(space.id, page.pageId);
+                          }}
                         >
                           <Icon name="trash" size={14} color="currentColor" />
                         </button>
@@ -517,6 +573,67 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
     </div>
   );
 });
+
+/*
+ * Spaces chunk B: "Export <space>" - which space, then CSV or PDF pages. The
+ * desktop shows it as a menu under Export; the phone as its own small sheet
+ * (portalled above the Spaces sheet), never the desktop popover.
+ */
+function SpacesExportPanel({ spaces, spaceId, onSpaceChange, onExportCSV, onExportPDF, onClose }) {
+  const target = spaces.find((space) => space.id === spaceId) || null;
+  const title = `Export ${target?.name || 'space'}`;
+  return (
+    <>
+      <div className="spaces-export__head">
+        <strong>{title}</strong>
+        {onClose ? (
+          <button type="button" className="spaces-export__close tertiary" onClick={onClose}>Cancel</button>
+        ) : null}
+      </div>
+      <div className="spaces-export__label">Space</div>
+      <div className="spaces-export__spaces" role="radiogroup" aria-label="Space to export">
+        {spaces.map((space) => {
+          const chosen = space.id === spaceId;
+          const pages = space.assignedPages?.length || 0;
+          return (
+            <button
+              key={space.id}
+              type="button"
+              role="radio"
+              aria-checked={chosen}
+              className={`spaces-export__space${chosen ? ' is-chosen' : ''}`}
+              onClick={() => onSpaceChange(space.id)}
+            >
+              <span>{space.name || 'Space'}</span>
+              <small>{pages} {pages === 1 ? 'page' : 'pages'}</small>
+              {chosen ? <Icon name="check" size={14} color="currentColor" /> : <i aria-hidden="true" />}
+            </button>
+          );
+        })}
+      </div>
+      <div className="spaces-export__actions">
+        <button
+          type="button"
+          className="spaces-export__action"
+          disabled={!target}
+          onClick={() => onExportCSV(target.id)}
+        >
+          <span>CSV</span>
+          <small>One row per mark in this space</small>
+        </button>
+        <button
+          type="button"
+          className="spaces-export__action"
+          disabled={!target}
+          onClick={() => onExportPDF(target.id)}
+        >
+          <span>PDF Pages</span>
+          <small>Exports base PDF pages only; app annotations are not embedded.</small>
+        </button>
+      </div>
+    </>
+  );
+}
 
 const SpacesPanel = ({
   spaces,
@@ -555,13 +672,36 @@ const SpacesPanel = ({
   onMobilePanelMetricsChange = null,
   // Phone only: exits space mode and closes the sheet (PDFSidebar owns both).
   onExitSpacesAction = null,
+  // Desktop (owner 2026-10-07, rail headers round): the rail's title row slot
+  // the header actions are drawn into, in line with the "Spaces" title.
+  headActionsHost = null,
+  // Spaces chunk A: counts what a page removal / space delete would delete
+  // (PDFViewer.getSpaceRemovalImpact), for the confirm.
+  getSpaceRemovalImpact = null,
+  // Phone: the space whose areas were just edited opens again with the sheet.
+  initiallyExpandedSpaceId = null,
+  // Spaces chunk B: a ref owned by PDFSidebar (which outlives this panel) that
+  // remembers which spaces are open, so closing and reopening the phone sheet
+  // (or the desktop panel) brings them back as they were.
+  expandedSpacesStoreRef = null,
 }) => {
   const tip = useTooltip();
-  const [expandedSpaces, setExpandedSpaces] = useState(() => new Set());
+  const [askConfirm, confirmDialogElement] = useConfirmDialog();
+  const [expandedSpaces, setExpandedSpaces] = useState(() => new Set([
+    ...(expandedSpacesStoreRef?.current || []),
+    ...(initiallyExpandedSpaceId ? [initiallyExpandedSpaceId] : []),
+  ]));
+  React.useEffect(() => {
+    if (expandedSpacesStoreRef) expandedSpacesStoreRef.current = expandedSpaces;
+  }, [expandedSpaces, expandedSpacesStoreRef]);
   const [selectedSpaceId, setSelectedSpaceId] = useState(null);
   const [isRearrangingSpaces, setIsRearrangingSpaces] = useState(false);
   const [optimisticSpaceIds, setOptimisticSpaceIds] = useState(() => spaces.map(space => space.id));
-  const [isSpacesExportMenuOpen, setIsSpacesExportMenuOpen] = useState(false);
+  // Spaces chunk B: the space the Export menu / sheet is open for (null =
+  // closed).
+  const [exportSpaceId, setExportSpaceId] = useState(null);
+  const isSpacesExportMenuOpen = exportSpaceId !== null;
+  const spacesExportMenuRef = useRef(null);
 
   // Sync external selectedSpaceId prop with internal state
   React.useEffect(() => {
@@ -641,13 +781,18 @@ const SpacesPanel = ({
   const spacesExportAnchorRef = useRef(null);
 
   React.useEffect(() => {
-    if (!isSpacesExportMenuOpen) return undefined;
+    // The phone sheet has its own backdrop (a blocking window, R4).
+    if (!isSpacesExportMenuOpen || mobileMode) return undefined;
     // Light popover — shared dismiss rules R1/R2/R5 (src/components/dismissRules.js).
     return watchLightPopover({
-      contains: (target) => !spacesExportAnchorRef.current || spacesExportAnchorRef.current.contains(target),
-      close: () => setIsSpacesExportMenuOpen(false),
+      contains: (target) => Boolean(
+        !spacesExportAnchorRef.current
+        || spacesExportAnchorRef.current.contains(target)
+        || spacesExportMenuRef.current?.contains(target)
+      ),
+      close: () => setExportSpaceId(null),
     });
-  }, [isSpacesExportMenuOpen]);
+  }, [isSpacesExportMenuOpen, mobileMode]);
 
   const captureSpacesDropFrame = useCallback((label, details = {}) => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return null;
@@ -677,8 +822,8 @@ const SpacesPanel = ({
       const wrapper = node.closest('[data-sortable-rearrange-item]');
       const card = node.querySelector('[data-drag-rearrange-row]');
       const header = card?.firstElementChild || null;
-      // 2026-09-23: the row itself carries aria-expanded (no separate expand button).
-      const expandButton = node.querySelector('.spaces-item__row[aria-expanded]');
+      // The space row itself carries aria-expanded.
+      const expandButton = node.querySelector('.space-card__head[aria-expanded]');
 
       return {
         id: node.getAttribute('data-space-sortable-row-id'),
@@ -807,8 +952,8 @@ const SpacesPanel = ({
       const item = node.querySelector('[data-sortable-rearrange-item]') || node;
       const rect = item.getBoundingClientRect();
       const outerRect = node.getBoundingClientRect();
-      // 2026-09-23: the row itself carries aria-expanded.
-      const expandButton = node.querySelector('.spaces-item__row[aria-expanded]');
+      // The space row itself carries aria-expanded.
+      const expandButton = node.querySelector('.space-card__head[aria-expanded]');
       const style = window.getComputedStyle(node);
 
       return {
@@ -855,31 +1000,55 @@ const SpacesPanel = ({
 
   const handleCreateSpace = useCallback(() => {
     if (!requireSpaceManagement()) return;
-    const name = `Space ${spaces.length + 1}`;
+    // Next UNUSED number, not the count: after a delete, `Space ${length + 1}`
+    // can equal a surviving space's name ("Space 2") and the create was refused
+    // with a duplicate-name toast (owner's phone report 2026-09-30).
+    const takenNames = new Set((spaces || []).map((space) => (
+      typeof space?.name === 'string' ? space.name.trim().toLowerCase() : ''
+    )));
+    let counter = (spaces || []).length + 1;
+    while (takenNames.has(`space ${counter}`)) counter += 1;
+    const name = `Space ${counter}`;
     if (onSpaceCreate) {
       onSpaceCreate({
         name,
         assignedPages: []
       });
     }
-  }, [requireSpaceManagement, spaces.length, onSpaceCreate]);
+  }, [requireSpaceManagement, spaces, onSpaceCreate]);
 
   const handleRenameSpace = useCallback((spaceId, nextName) => {
     if (!requireSpaceManagement()) return;
     const name = nextName?.trim();
-    if (spaceId && name && onSpaceUpdate) {
+    if (!name) return false;
+    // Same rule as PDFViewer's handleSpaceUpdate (which keeps the final say);
+    // checked here too so the row knows to put the old name back.
+    const lowered = name.toLowerCase();
+    if ((spaces || []).some((space) => space?.id !== spaceId
+      && typeof space?.name === 'string' && space.name.trim().toLowerCase() === lowered)) {
+      showToast('A space with this name already exists. Please choose a different name.', 'error');
+      return false;
+    }
+    if (spaceId && onSpaceUpdate) {
       onSpaceUpdate(spaceId, { name });
     }
-  }, [onSpaceUpdate, requireSpaceManagement]);
+    return true;
+  }, [onSpaceUpdate, requireSpaceManagement, spaces]);
 
+  // Spaces chunk A: deleting a space also deletes what was placed in it (the
+  // cascade), so the confirm says so, with counts. Undo restores it all.
   const handleDelete = useCallback((spaceId) => {
     if (!requireSpaceManagement()) return;
-    if (window.confirm('Delete this space? This will not delete the pages, only the space assignment.')) {
-      if (onSpaceDelete) {
-        onSpaceDelete(spaceId);
-      }
-    }
-  }, [onSpaceDelete, requireSpaceManagement]);
+    const space = (spaces || []).find((entry) => entry?.id === spaceId);
+    const impact = getSpaceRemovalImpact?.(spaceId, null) || null;
+    askConfirm(buildDeleteSpaceConfirm({
+      spaceName: space?.name,
+      pageCount: space?.assignedPages?.length || 0,
+      impact,
+    })).then((confirmed) => {
+      if (confirmed && onSpaceDelete) onSpaceDelete(spaceId);
+    });
+  }, [askConfirm, getSpaceRemovalImpact, onSpaceDelete, requireSpaceManagement, spaces]);
 
   const handleToggleExpand = useCallback((spaceId) => {
     setExpandedSpaces(prev => {
@@ -991,6 +1160,16 @@ const SpacesPanel = ({
     setOptimisticSpaceIds(spaces.map(space => space.id));
   }, [spaces]);
 
+  // Spaces chunk A: an active space with no pages (the viewer's "No pages in
+  // ..." card sends the user here) opens on its Add pages field.
+  const activeSpaceIsEmpty = Boolean(activeSpaceId) && (spaces || []).some((space) => (
+    space?.id === activeSpaceId && (space.assignedPages?.length || 0) === 0
+  ));
+  React.useEffect(() => {
+    if (!activeSpaceIsEmpty) return;
+    setExpandedSpaces((prev) => (prev.has(activeSpaceId) ? prev : new Set(prev).add(activeSpaceId)));
+  }, [activeSpaceId, activeSpaceIsEmpty]);
+
   const orderedSpaces = React.useMemo(() => {
     const byId = new Map(spaces.map(space => [space.id, space]));
     const seen = new Set();
@@ -1012,11 +1191,26 @@ const SpacesPanel = ({
     return ordered;
   }, [optimisticSpaceIds, spaces]);
 
+  // Spaces chunk A: removing a page also deletes the marks placed in this
+  // space on it and its drawn areas - ask first when there is any, with the
+  // counts. A bare page assignment goes without a question (one Undo step).
   const handleRemovePage = useCallback((spaceId, pageId) => {
     if (!requireSpaceManagement()) return;
     if (!onSpaceRemovePage) return;
-    onSpaceRemovePage(spaceId, pageId);
-  }, [onSpaceRemovePage, requireSpaceManagement]);
+    const space = (spaces || []).find((entry) => entry?.id === spaceId);
+    const prompt = buildRemovePageConfirm({
+      spaceName: space?.name,
+      pageId,
+      impact: getSpaceRemovalImpact?.(spaceId, [pageId]) || null,
+    });
+    if (!prompt) {
+      onSpaceRemovePage(spaceId, pageId);
+      return;
+    }
+    askConfirm(prompt).then((confirmed) => {
+      if (confirmed) onSpaceRemovePage(spaceId, pageId);
+    });
+  }, [askConfirm, getSpaceRemovalImpact, onSpaceRemovePage, requireSpaceManagement, spaces]);
 
   const handleRenameRegion = useCallback((spaceId, pageId, label) => {
     if (!requireSpaceManagement()) return;
@@ -1092,6 +1286,94 @@ const SpacesPanel = ({
   const spacesExportTarget = orderedSpaces.find((space) => space.id === spacesExportTargetId) || null;
   const createSpaceLabel = canManageSpaces ? 'Create space' : 'Upgrade to Pro to create spaces';
   const exportSpaceLabel = spacesExportTarget ? `Export ${spacesExportTarget.name || 'space'}` : 'Create a space to export';
+  const activeSpace = activeSpaceId ? orderedSpaces.find((space) => space.id === activeSpaceId) || null : null;
+
+  // Chunk B: Export opens on a chosen space (the row's `⋯` passes its own;
+  // the header's Export the selected / active / open / first one) and the
+  // menu lets you pick another.
+  const openSpacesExport = useCallback((spaceId) => {
+    if (!spaceId) return;
+    if (!features?.excelExport) {
+      showToast('Exporting spaces is a Pro feature.', 'error');
+      return;
+    }
+    setExportSpaceId(spaceId);
+  }, [features?.excelExport]);
+  const runSpacesExport = (kind, spaceId) => {
+    setExportSpaceId(null);
+    if (kind === 'csv') onExportSpaceCSV?.(spaceId);
+    else onExportSpacePDF?.(spaceId);
+  };
+  const exportPanel = isSpacesExportMenuOpen ? (
+    <SpacesExportPanel
+      spaces={orderedSpaces}
+      spaceId={exportSpaceId}
+      onSpaceChange={setExportSpaceId}
+      onExportCSV={(spaceId) => runSpacesExport('csv', spaceId)}
+      onExportPDF={(spaceId) => runSpacesExport('pdf', spaceId)}
+      onClose={mobileMode ? () => setExportSpaceId(null) : null}
+    />
+  ) : null;
+
+  // The header's controls, drawn either in the panel's own header (phone)
+  // or in the rail's title row (desktop, owner 2026-10-07 rail headers).
+  const exportControl = (
+    <div
+      ref={spacesExportAnchorRef}
+      className="spaces-panel__export-anchor"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <SectionIconButton
+        phone={mobileMode}
+        action="export"
+        /* Owner 2026-10-02: every export that hands you a file draws
+           `download` (arrow into the tray); `upload` means putting files
+           INTO the app. */
+        icon="download"
+        className="spaces-panel__head-icon spaces-panel__head-icon--export"
+        label={exportSpaceLabel}
+        aria-haspopup={mobileMode ? 'dialog' : 'menu'}
+        aria-expanded={isSpacesExportMenuOpen}
+        disabled={!spacesExportTarget}
+        onClick={() => {
+          if (!spacesExportTarget) return;
+          if (isSpacesExportMenuOpen) {
+            setExportSpaceId(null);
+            return;
+          }
+          openSpacesExport(spacesExportTarget.id);
+        }}
+      />
+      {!mobileMode && exportPanel && (
+        <AnchoredPopover getAnchor={() => spacesExportAnchorRef.current} gap={2} zIndex={7000}>
+          <div ref={spacesExportMenuRef} className="spaces-export spaces-export--menu" role="menu" aria-label={`Export ${orderedSpaces.find((space) => space.id === exportSpaceId)?.name || 'space'}`}>
+            {exportPanel}
+          </div>
+        </AnchoredPopover>
+      )}
+    </div>
+  );
+  const addControl = (
+    <SectionIconButton
+      phone={mobileMode}
+      action="add"
+      className="spaces-panel__head-icon spaces-panel__head-icon--add"
+      label={createSpaceLabel}
+      onClick={handleCreateSpace}
+    />
+  );
+  const exitSpaceChip = !mobileMode && activeSpace && (
+    <button
+      type="button"
+      className="spaces-panel__exit-chip"
+      onClick={() => handleExitSpace(activeSpace.id)}
+      {...tip(`Turn off ${activeSpace.name || 'the space'} and show every page`, 'below')}
+      aria-label={`Exit ${activeSpace.name || 'space'}`}
+    >
+      <span>Exit space</span>
+      <Icon name="close" size={10} color="currentColor" />
+    </button>
+  );
 
   return (
     <div
@@ -1104,82 +1386,55 @@ const SpacesPanel = ({
         flex: mobileMode ? 1 : undefined,
         minHeight: 0,
         fontFamily: FONT_FAMILY,
-        background: mobileMode ? 'var(--surface-2)' : 'var(--surface-1)'
+        background: 'var(--panel-bg)'
       }}
     >
-      {/* UX 2026-09-23 (owner): the Bookmarks header pattern — [+ Add] on the
-          far left and [Export] on the far
-          right. One slim row; both buttons are quiet words of equal weight (no
-          gold square, no outlined square) with the same edge gap. */}
+      {/* UX 2026-09-23 (owner): the Bookmarks header pattern - [+ Add] on the
+          left and [Export] on the right, quiet words of equal weight.
+          Spaces chunk B: the phone header is the Survey sheet's - a "Spaces"
+          title, then Add, the export glyph and a neutral "Done" (it leaves
+          Spaces mode and closes the sheet, as the red "Exit Spaces / Regions"
+          link at the foot of the list did). The desktop header gains an
+          "Exit space" chip while a space is on.
+          Owner 2026-10-02: section header actions are ICONS ("The icons
+          looked way better"), right-aligned, Add last - the [Select] [Add]
+          order of every list header: [Export] [Add] (desktop: after the
+          Exit space chip; phone: before Done). */}
+      {/* Owner 2026-10-07 (rail headers round): on desktop these actions sit
+          in the rail's title row, right after "Spaces" ("in line with the
+          title, but on the left") - [Export] [Add], then the Exit space chip
+          while a space is on - so the panel's own header row is gone there. */}
+      {!mobileMode && headActionsHost ? createPortal(
+        <>
+          {exportControl}
+          {addControl}
+          {exitSpaceChip}
+        </>,
+        headActionsHost
+      ) : (
       <div className="spaces-panel__head">
-        <button
-          type="button"
-          className="spaces-panel__head-btn spaces-panel__head-btn--add tertiary"
-          onClick={handleCreateSpace}
-          {...tip(createSpaceLabel, 'below')}
-          aria-label={createSpaceLabel}
-        >
-          <Icon name="plus" size={14} color="currentColor" />
-          <span>Add</span>
-        </button>
+        {mobileMode && <h2 className="spaces-panel__heading">Spaces</h2>}
 
-        {/* Owner 2026-09-23: nothing in the middle - the tab above names the
-            panel and the list below says when there are no spaces. */}
+        {!mobileMode && <span className="spaces-panel__head-fill" aria-hidden="true" />}
 
-        <div
-          ref={spacesExportAnchorRef}
-          className="spaces-panel__export-anchor"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Future: replace this compact menu with a custom Spaces export panel that lets users choose which space to export. */}
+        {exitSpaceChip}
+        {exportControl}
+        {addControl}
+
+        {typeof onExitSpacesAction === 'function' && (
           <button
             type="button"
-            className="spaces-panel__head-btn spaces-panel__head-btn--export tertiary"
-            {...tip(exportSpaceLabel, 'below')}
-            aria-label={exportSpaceLabel}
-            aria-expanded={isSpacesExportMenuOpen}
-            disabled={!spacesExportTarget}
-            onClick={() => {
-              if (!spacesExportTarget) return;
-              if (!features?.excelExport) {
-                showToast('Exporting spaces is a Pro feature.', 'error');
-                return;
-              }
-              setIsSpacesExportMenuOpen((open) => !open);
-            }}
+            className="spaces-panel__done tertiary"
+            onClick={onExitSpacesAction}
           >
-            <Icon name="upload" size={14} color="currentColor" />
-            <span>Export</span>
+            Done
           </button>
-          {isSpacesExportMenuOpen && spacesExportTarget && (
-            <div className="spaces-header-export-menu" role="menu">
-              <button
-                type="button"
-                className="spaces-header-export-menu-button"
-                onClick={() => {
-                  setIsSpacesExportMenuOpen(false);
-                  onExportSpaceCSV?.(spacesExportTarget.id);
-                }}
-              >
-                CSV
-              </button>
-              <button
-                type="button"
-                className="spaces-header-export-menu-button"
-                {...tip('Exports base PDF pages only; app annotations are not embedded.', 'below')}
-                onClick={() => {
-                  setIsSpacesExportMenuOpen(false);
-                  onExportSpacePDF?.(spacesExportTarget.id);
-                }}
-              >
-                PDF Pages
-              </button>
-            </div>
-          )}
-        </div>
+        )}
       </div>
+      )}
 
-      {/* Spaces List — one divided list, no cards. */}
+      {/* Spaces List — one line per space, no gaps: each line carries its
+          own hairline, like the Survey categories (owner 2026-10-02). */}
       <div ref={mobileSpacesListRef} className="spaces-list">
         {spaces.length === 0 ? (
           <div className="spaces-list__empty">
@@ -1249,6 +1504,7 @@ const SpacesPanel = ({
                       isRegionOverlayToggleEnabled={isRegionOverlayToggleEnabled}
                       showSurveyPanel={showSurveyPanel}
                       selectedModuleId={selectedModuleId}
+                      mobileMode={mobileMode}
                     />
                   )}
                 </SortableRearrangeRow>
@@ -1256,18 +1512,30 @@ const SpacesPanel = ({
             })}
           </SortableRearrangeList>
         )}
-        {/* Phone: "Exit Spaces / Regions" is a quiet red word at the end of
-            the list, not a bordered button in its own footer band. */}
-        {typeof onExitSpacesAction === 'function' && (
-          <button
-            type="button"
-            className="spaces-list__exit tertiary"
-            onClick={onExitSpacesAction}
-          >
-            Exit Spaces / Regions
-          </button>
-        )}
       </div>
+      {/* Rendered on <body>, above the phone sheet (z 6500): inside the sheet a
+          fixed overlay is caught by the sheet's transform. */}
+      {typeof document !== 'undefined' && createPortal(
+        <div style={{ position: 'relative', zIndex: 7000 }}>
+          {confirmDialogElement}
+          {/* Chunk B (phone): Export is its own small sheet over the Spaces
+              sheet, standing on the dock like every phone sheet. */}
+          {mobileMode && exportPanel && (
+            <>
+              <button
+                type="button"
+                className="spaces-export-sheet__backdrop"
+                aria-label="Close export"
+                onClick={() => setExportSpaceId(null)}
+              />
+              <div className="spaces-export spaces-export-sheet" role="dialog" aria-label={`Export ${orderedSpaces.find((space) => space.id === exportSpaceId)?.name || 'space'}`}>
+                {exportPanel}
+              </div>
+            </>
+          )}
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

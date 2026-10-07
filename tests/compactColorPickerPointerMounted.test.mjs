@@ -69,8 +69,12 @@ test('mounted CompactColorPicker follows pointer-captured spectrum and hue drags
 
     await act(async () => {
       spectrum.dispatchEvent(pointerEvent(dom.window, 'pointerdown', { clientX: 30, clientY: 110 }));
-      spectrum.dispatchEvent(pointerEvent(dom.window, 'pointermove', { clientX: 170, clientY: 40 }));
-      spectrum.dispatchEvent(pointerEvent(dom.window, 'pointerup', { clientX: 170, clientY: 40 }));
+      // CHANGED 2026-10-07 (owner: "the cross should sit inside the circle"):
+      // the pointer is read over the handle's own inset travel (8px each
+      // side), so 80%/80% is the point 8 + 0.8*184 = 155.2 across and
+      // 8 + 0.2*84 = 24.8 down — exactly where the circle's centre is drawn.
+      spectrum.dispatchEvent(pointerEvent(dom.window, 'pointermove', { clientX: 165.2, clientY: 44.8 }));
+      spectrum.dispatchEvent(pointerEvent(dom.window, 'pointerup', { clientX: 165.2, clientY: 44.8 }));
     });
     // CHANGED 2026-09-21. Was an exact `style.left === '80%'` on the handle.
     // RULING (pass-7 picker boards, "nothing may spill, collide or clip"): the

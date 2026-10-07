@@ -177,21 +177,29 @@ test('every icon button in the header and the rich-text strip centres its glyph 
     assert.match(rule, /place-items: center/, `${selector} must centre geometrically`);
   }
 
-  // The chevron carries a 1px border-left, which is part of its box: an even
-  // 5/5 padding centres the caret on the CONTENT box and leaves it 0.5px right
-  // of the button the user sees. With the 4/5 split and the board's 24px
-  // section, the 11px caret's centre lands on 12 - the section's own centre.
+  // DELIBERATE ASSERTION CHANGE (2026-10-02, owner: "the chevron is not
+  // centred in its segment"). This used to centre the caret on the BUTTON's
+  // 24px box (4/5 padding after the 1px hairline) and called that the
+  // section's centre. Measured in the app it was 2.0px left of the segment the
+  // eye sees, because that segment runs on past the button, over the pill's
+  // 3px right padding, to the pill's own border. The rule is now about the
+  // VISIBLE segment: the button reaches the pill's border (a -3px margin over
+  // that padding, so its box is the segment), and the caret's centre is the
+  // centre of the segment right of the hairline.
   const chevron = block(css, '.mobile-pdf-header__page-chevron');
   assert.match(chevron, /border-left: 1px solid/);
-  assert.match(chevron, /padding: 0 5px 0 4px/);
+  assert.match(chevron, /padding: 0 4px;/);
+  const pillPad = Number(/padding: 0 (\d+)px;/.exec(block(css, '.mobile-pdf-header__page-pill'))?.[1]);
+  assert.match(chevron, new RegExp(`margin-right: -${pillPad}px;`), 'the button runs over the pill\'s right padding to its border');
   const chevronWidth = Number(/min-width:\s*(\d+(?:\.\d+)?)px/.exec(chevron)?.[1]);
-  assert.equal(chevronWidth, 24, 'board 1-pen draws the zoom section 24px wide');
+  assert.equal(chevronWidth, 24 + pillPad, 'the board\'s 24px section plus the pill padding it now covers');
   const CARET = 11;
-  const caretCentre = 1 + 4 + ((chevronWidth - 1 - 4 - 5) - CARET) / 2 + CARET / 2;
+  const caretCentre = 1 + 4 + ((chevronWidth - 1 - 4 - 4) - CARET) / 2 + CARET / 2;
+  const segmentCentre = 1 + (chevronWidth - 1) / 2;
   assert.equal(
     caretCentre,
-    chevronWidth / 2,
-    `the caret's centre sits at ${caretCentre}px in a ${chevronWidth}px section, not on its centre line`,
+    segmentCentre,
+    `the caret's centre sits at ${caretCentre}px, the visible segment's centre is ${segmentCentre}px`,
   );
 
   // One box and one radius across the four format buttons - they share a single

@@ -10,7 +10,7 @@
      surface like every other screen. */
   background: var(--surface-0);
   color: var(--text-1);
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: var(--font-ui);
   letter-spacing: -0.005em;
   /* UX 2026-09-17 (revision-2 palette, owner approved): local aliases of
      src/styles/tokens.css, not a second ramp. Two local names were DELETED. A
@@ -26,17 +26,17 @@
   --ink-300: var(--text-disabled); --ink-200: var(--text-3); --bone-100: var(--text-1);
 }
 .ed-scope * { box-sizing: border-box; min-width: 0; }
+/* .micro / .micro-mid are section labels: the interface font, 11/600,
+   normal case (owner 2026-10-02), not tracked monospace capitals. */
 .ed-scope .mono,
-.ed-scope .micro,
-.ed-scope .micro-mid,
 .ed-scope .pin,
 .ed-scope .pill-mono { font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace; }
 .ed-scope .micro {
-  font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase;
-  color: var(--text-3); font-weight: 700;
+  font-size: 11px; letter-spacing: 0;
+  color: var(--text-3); font-weight: 600;
 }
 .ed-scope .micro-mid {
-  font-size: 10.5px; letter-spacing: 0.10em; text-transform: uppercase;
+  font-size: 11px; letter-spacing: 0;
   color: var(--text-3); font-weight: 600;
 }
 .ed-scope .meta { color: var(--ink-muted); }
@@ -74,14 +74,12 @@
   color: var(--ink); font: inherit; font-size: 13px; padding: 4px 0;
   width: 100%; outline: none;
 }
-.ed-scope .inline-edit:hover { border-bottom-color: var(--rule); }
-.ed-scope .inline-edit:focus { border-bottom-color: var(--accent); }
+/* The underline itself (rest / hover / typing) is the shared rename look,
+   hub.css .hub-rename, which every rename field in the editor carries. */
 /* UX (KAL-69): placeholders are greyed italic so an empty required row reads as
    "type here", visibly different from a row that genuinely holds short text. */
 .ed-scope .inline-edit::placeholder { color: var(--text-disabled); font-style: italic; }
-.ed-scope .cat-title { cursor: text; border-bottom: 1px dashed transparent; }
-.ed-scope .cat-title:hover { border-bottom-color: var(--rule-strong); }
-.ed-scope .cat-title:focus { border-bottom: 1px solid var(--accent); }
+.ed-scope .cat-title { cursor: text; }
 
 /* Prevent horizontal scrolling anywhere inside the editor */
 .ed-scope .slim-scroll { overflow-x: hidden; }
@@ -113,22 +111,16 @@
 }
 
 /* "More" popup — rendered into a document.body portal at fixed coords so
-   the panels' overflow:hidden can never clip it. Literal hex colours
-   because the portal renders outside the .ed-scope CSS-variable root. */
+   the panels' overflow:hidden can never clip it. The box matches hub.css
+   .hub-menu and its rows are the shared .hub-menu__item (owner 2026-10-02):
+   28px on desktop, 44px at 15px on the phone. */
 .ed-tpl-menu {
   position: fixed; z-index: 4000;
-  background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
-  padding: 4px; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  box-sizing: border-box;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-md);
+  padding: 4px; box-shadow: var(--shadow-popover);
+  font-family: var(--font-ui);
 }
-.ed-tpl-menu button {
-  display: block; width: 100%; text-align: left;
-  background: transparent; border: 0; color: var(--text-1);
-  padding: 7px 10px; font-size: 12px; border-radius: 4px;
-  cursor: pointer; font-family: inherit;
-}
-.ed-tpl-menu button:hover { background: var(--hover); }
-.ed-tpl-menu button.danger { color: var(--danger-text); }
 
 /* The editor's two button shapes had no hover and no press (UX 2026-09-22).
    A FILLED gold button lightens to the gold hover tint and darkens to the gold
@@ -138,3 +130,93 @@
 .ed-scope .btn-ink:active { background: var(--accent-press); border-color: var(--accent-press); }
 .ed-scope .btn-line:hover { background: var(--hover); }
 .ed-scope .btn-line:active { background: var(--pressed); }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   CATEGORY + ENTITY ROWS (owner decision 2026-10-01: the row looked "off,
+   weird, random"). One rhythm for both, 40px tall, 6px side pad:
+     [grip 24][chevron 22 | dot 22][name = its own text][......][count][⋮ 28]
+   The name's text starts 56px in, and the checklist items line up under it.
+   A click anywhere on the row opens / closes it (the chevron is only the
+   cue); the name renames and its hit box is just its text (hover tint + text
+   cursor); the grip only drags; in Select mode a click ticks the row.
+   ───────────────────────────────────────────────────────────────────────── */
+.ed-scope .tpl-cat-row,
+.ed-scope .tpl-entity-row {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+.ed-scope .tpl-entity-row { height: 40px; }
+.ed-scope .tpl-cat-row.is-selected { background: var(--surface-3); }
+.ed-scope .tpl-cat-row > [data-drag-rearrange-handle],
+.ed-scope .tpl-entity-row > [data-drag-rearrange-handle] {
+  flex: none;
+  opacity: 0.45;
+}
+.ed-scope .tpl-cat-row:hover > [data-drag-rearrange-handle],
+.ed-scope .tpl-entity-row:hover > [data-drag-rearrange-handle],
+.ed-scope [data-drag-rearrange-handle]:focus-visible {
+  opacity: 1;
+}
+.ed-scope .tpl-cat-chevron {
+  flex: none;
+  width: 22px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+/* The button turns, not its glyph: the app-wide press rule scales a lone
+   glyph, which would un-turn an open chevron under the pointer. */
+.ed-scope .tpl-cat-chevron { transition: transform 0.15s; }
+.ed-scope .tpl-cat-chevron > svg { width: 16px; height: 16px; }
+.ed-scope .tpl-cat-row.is-open > .tpl-cat-chevron { transform: rotate(90deg); }
+.ed-scope .tpl-cat-row:hover .tpl-cat-chevron { color: var(--text-1); }
+.ed-scope .tpl-entity-row > button[title="Edit color"] { flex: none; }
+.ed-scope .tpl-cat-name,
+.ed-scope .tpl-entity-name {
+  --aw-pad: 4px;
+  flex: 0 1 auto;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+/* No radius and no hover plate (owner 2026-10-02): the rounded corners bent
+   the underline up at both ends. The line is hub.css .hub-rename. */
+.ed-scope .tpl-cat-name > input,
+.ed-scope .tpl-entity-name > input {
+  padding-block: 3px;
+  cursor: text;
+}
+/* In Select mode the name is part of the row: a click ticks, never renames. */
+.ed-scope .is-selecting > .tpl-cat-name > input,
+.ed-scope .is-selecting > .tpl-entity-name > input { pointer-events: none; }
+.ed-scope .tpl-cat-count {
+  flex: none;
+  margin-left: auto;
+  padding-left: 12px;
+  font-size: 12px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ed-scope .tpl-cat-more,
+.ed-scope .tpl-entity-more {
+  flex: none;
+  width: 28px;
+  height: 28px;
+}
+.ed-scope .tpl-cat-more { margin-left: 4px; }
+.ed-scope .tpl-entity-more,
+.ed-scope .tpl-entity-check { margin-left: auto; }
+/* The tick sits centred in the ⋮ slot it replaces. */
+.ed-scope .tpl-cat-check { flex: none; margin: 0 7px 0 11px; }
+.ed-scope .tpl-entity-check { flex: none; margin-right: 7px; }
+.ed-scope .tpl-entity-row.is-selected { background: var(--surface-3); }

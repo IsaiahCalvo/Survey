@@ -27,6 +27,7 @@ import { createInkAnnotation, boundsOfCommands } from './paperAnnotationGeometry
 import { isAbsoluteInkGeometry } from './inkGeometryTransform.js';
 import { toolSupportsCloudBorderStyle } from './pdfAnnotationAppearance.js';
 import { getAnnotationRenderIdentity } from './annotationStorageIdentity.js';
+import { isArrowLineMark, isCounterMark, markToolForAnnotation } from './markToolGroup.js';
 
 const NONE_ARROWHEAD = 'none';
 const DEFAULT_ARROWHEAD = 'solidTriangle';
@@ -74,14 +75,8 @@ export function colorToOpacity(color) {
   return 100;
 }
 
-const isCounter = (annotation) => lower(annotation?.type) === 'circle'
-  && annotation?.data?.type === 'counter';
-
-const isArrowLine = (annotation) => lower(annotation?.type) === 'line' && (
-  annotation?.tool === 'arrow'
-  || annotation?.data?.tool === 'arrow'
-  || annotation?.data?.arrowheadStyle != null
-);
+const isCounter = isCounterMark;
+const isArrowLine = isArrowLineMark;
 
 /**
  * True for a path whose visible body is its FILL (native paper ink,
@@ -507,21 +502,8 @@ export function calloutRestylePatch(callout, change) {
   }
 }
 
-/** The bar's tool for one selected mark (same mapping the single pick uses). */
-export function selectionToolForAnnotation(annotation) {
-  if (!annotation) return null;
-  const type = lower(annotation.type);
-  if (annotation.data?.type === 'text-markup') return 'text-markup';
-  if (type === 'rect') return 'rect';
-  if (type === 'ellipse' || (type === 'circle' && !isCounter(annotation))) return 'ellipse';
-  if (type === 'path') return 'pen';
-  if (type === 'textbox' || type === 'i-text' || type === 'text') return 'text';
-  if (type === 'polygon') return 'rect';
-  if (type === 'polyline') return 'line';
-  if (isCounter(annotation)) return 'counter';
-  if (type === 'line') return isArrowLine(annotation) ? 'arrow' : 'line';
-  return null;
-}
+/** The bar's tool for one selected mark (utils/markToolGroup.js owns the mapping). */
+export const selectionToolForAnnotation = markToolForAnnotation;
 
 const SAME = Symbol('same');
 
@@ -709,7 +691,8 @@ export function resolveGroupPaintWrite(kind, value, previous, phase) {
  *  - calloutIds + calloutPageOf(id): the picked callouts and their pages,
  *  - annotationPage(pageJSON, members) -> new page or null,
  *  - calloutStyle(callout, page) -> style patch or null, calloutRefit
- *    optional (callout, page, stylePatch) -> callout,
+ *    optional (callout, page, stylePatch, before) -> callout (`before` is the
+ *    callout as it was before the style patch),
  *  - deriveCallouts / applyCalloutList: the callout <-> page bridge,
  *  - release: a drag's release - every page the group lives on is written
  *    even if unchanged, so the drag's baseline resolves into its one step.
@@ -758,7 +741,7 @@ export function planGroupUpdate({
         if (!stylePatch) return callout;
         changed = true;
         const patched = { ...callout, style: { ...(callout.style || {}), ...stylePatch } };
-        return typeof calloutRefit === 'function' ? (calloutRefit(patched, page, stylePatch) || patched) : patched;
+        return typeof calloutRefit === 'function' ? (calloutRefit(patched, page, stylePatch, callout) || patched) : patched;
       });
       if (!changed) return;
       const nextByPage = applyCalloutList(single, list, pageSizes || {});
@@ -887,4 +870,17 @@ export function restoreDragBaseline(byPage, pages, baseline) {
     if (touched) previous[key] = { ...current, objects };
   });
   return previous;
+}
+
+/**
+ * True when the picked marks disagree on any colour the combined paint swatch
+ * shows (border, fill, or either one's opacity). The swatch then wears the
+ * custom disc's rainbow ring and plus instead of one mark's paint (owner
+ * 2026-10-04, Test 43). A property only some members carry (an arrow has no
+ * fill) is compared among the members that have it, so a circle and an arrow
+ * with the same border are not mixed.
+ */
+export function isPaintSelectionMixed(mixed) {
+  if (!mixed) return false;
+  return !!(mixed.strokeColor || mixed.fillColor || mixed.strokeOpacity || mixed.fillOpacity);
 }

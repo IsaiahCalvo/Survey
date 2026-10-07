@@ -170,6 +170,7 @@ export default function DocumentLockBanner({
   return (
     <div
       data-testid="kal49-lock-banner"
+      className="document-lock-banner"
       style={{
         position: 'fixed',
         top: 0,

@@ -155,6 +155,67 @@ skips.
 Set `ERASER_PERMISSION_E2E_ENV_ROOT=/absolute/repo/path` only when Git cannot
 discover the main repository.
 
+### Click-every-control walkthrough (run before merging UI work)
+
+```
+PLAYWRIGHT_BASE_URL=http://127.0.0.1:5199 npx playwright test \
+  --config debug/playwright.config.mjs debug/scenarios/click-every-control.spec.mjs
+```
+
+It starts its own Vite on that port, uses only local fake data (no account,
+no database), and on a 1440x900 desktop and a 390x844 touch phone presses
+every toolbar / rail / dock / tab button, every tool's sub-tools and style
+controls, the tool letters, Ctrl/Cmd+F, Ctrl/Cmd+Z, zoom keys, `?`, Escape,
+every Home tab, the row menus, Share, the account menu and Settings. Each
+control must visibly do something and throw no page error. It prints one
+`ok` / `FAIL` line per control and saves a screenshot of each failure under
+`test-results/`. About 5 minutes. It needs a browser, so it is not in the CI
+shards. No Playwright Chromium installed? Add
+`PW_CHROMIUM_PATH=/path/to/chrome`.
+
+### iPhone simulator check (GitHub Actions, `.github/workflows/ios-sim.yml`)
+
+A macOS runner boots an iPhone simulator and walks the phone UI the way an
+iPhone does: Mobile Safari on the home page and on the test document, then
+Expo Go opening the Survey shell. It shows what desktop browsers cannot: safe
+areas, the real iOS keyboard, rubber-band scrolling and rotation.
+
+- **Start it:** add the label `ios-sim` to a pull request. It runs on the label
+  and on every push while the label is on. **Remove the label to stop it.**
+  Without the label the jobs are skipped and cost nothing. Once the file is on
+  `main`, Actions → "iOS simulator check" → Run workflow also works.
+- **Change what runs:** commit `.github/ios-sim/config.json` — `device`
+  ("iPhone 16"), `ios` ("latest" or e.g. "26.4"), `runner` (macOS image),
+  `baseUrl` + `urls.home` / `urls.doc` (paths starting with `/` hang off
+  `baseUrl`), `flows` (file names in `.github/ios-sim/flows/`),
+  `expoGo.enabled` / `expoGo.url`, `video`, `maxVideoMB`, `keepRuns`. The
+  `?testPdf=` document route only exists in dev builds, so `baseUrl` must be a
+  dev build (e.g. a here.now copy); or set `localDevServer: true` and the job
+  runs this commit's own Vite dev server on the Mac (adds about 4 minutes).
+- **Flows** are [Maestro](https://docs.maestro.dev) YAML. `smoke` = home →
+  e-mail field (keyboard) → guest home → Templates → test document → Draw tool
+  → Pages sheet → the PDF's form field (keyboard over the document) → hard
+  scroll → landscape → portrait. Steps are optional, so a missed tap does not
+  stop the run; `results.md` lists the skipped ones.
+  `expo-go` = the same idea inside Expo Go's WKWebView. The default Expo link is
+  the `expo-go` update branch from `mobile-expo/README.md`, which loads
+  `https://surveytool.app/mobile`; point `expoGo.url` at another branch link to
+  test a different shell build.
+- **Results:** screenshots (JPEG), a compressed video and `results.md` (step
+  outcomes, timings, the Maestro output) land on the `ios-sim-results` branch
+  in `runs/<run id>-<attempt>/`; the newest folder is in `LATEST`. Read them
+  with `git fetch origin ios-sim-results` then
+  `git show origin/ios-sim-results:LATEST`. The branch keeps the newest 10
+  runs and is rewritten as one commit every run (so old videos never pile up
+  in history) — do not commit to it. The run artifact has the same files plus
+  the full-size video.
+- **Limits:** no pinch or two-finger gestures (Maestro drives one finger), no
+  camera or real sign-in, and the simulator is not a real device for speed or
+  memory. The Expo shell is locked to portrait, so its rotation shots stay
+  portrait. Maestro's iOS driver sometimes drops its connection on the shared
+  runner ("Device became unreachable"); the job retries that flow once, and a
+  flow that still fails turns the job red. About 15–18 minutes a run.
+
 ## License
 
 Proprietary — all rights reserved.

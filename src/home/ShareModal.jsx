@@ -20,13 +20,18 @@
  */
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
-import { createDocumentInvite, buildInviteUrl } from '../services/documentInviteService';
-import { createProjectInvite } from '../services/projectInviteService';
-import { createTemplateInvite } from '../services/templateInviteService';
+import { createDocumentInvite, buildInviteUrl, resendDocumentInvite } from '../services/documentInviteService';
+import { createProjectInvite, resendProjectInvite } from '../services/projectInviteService';
+import { createTemplateInvite, resendTemplateInvite } from '../services/templateInviteService';
+import { mergeRetryResult, summarizeInviteSend } from './inviteSendSummary';
+import InviteSendNotice from './InviteSendNotice';
+import { grantRememberedDocumentTemplates } from '../services/sharedTemplates.js';
+import { supabase } from '../supabaseClient';
 import { copyTextToClipboard } from '../utils/clipboard';
 import { Icon } from './HubShell';
 import Spinner from '../components/Spinner';
 import useModalFocusTrap from './useModalFocusTrap';
+import useVisibleViewportBox from './useVisibleViewportBox';
 import { C } from '../uiPalette';
 
 
@@ -65,8 +70,25 @@ export default function ShareModal({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [activeInvite, setActiveInvite] = useState(null); // last link-invite for share-link display
+  // inviteFix: the last email send that needs a follow-up ([{ email, result }]),
+  // drawn by InviteSendNotice with words from inviteSendSummary.js.
+  const [sendEntries, setSendEntries] = useState(null);
   const dialogRef = useRef(null);
   const closeRef = useRef(null);
+  const bodyRef = useRef(null);
+  // Polish round 6: with the keyboard up, the dialog centres in (and is capped
+  // to) the part of the screen still visible, its body scrolls, and Send stays
+  // on screen. null at rest: the plain full-window centring.
+  const visibleBox = useVisibleViewportBox();
+  useEffect(() => {
+    const body = bodyRef.current;
+    const field = typeof document === 'undefined' ? null : document.activeElement;
+    if (!visibleBox || !body || !field || !body.contains(field)) return;
+    const r = field.getBoundingClientRect();
+    const b = body.getBoundingClientRect();
+    if (r.bottom > b.bottom) body.scrollTop += r.bottom - b.bottom + 8;
+    else if (r.top < b.top) body.scrollTop -= b.top - r.top + 8;
+  }, [visibleBox]);
 
   useEffect(() => {
     if (!open) {
@@ -75,6 +97,7 @@ export default function ShareModal({
       setError('');
       setSuccess('');
       setActiveInvite(null);
+      setSendEntries(null);
       setCopied(false);
       setBusy(false);
     }
@@ -109,6 +132,15 @@ export default function ShareModal({
       return createTemplateInvite({ templateId: targetId, templateName: name || '', ...common });
     }
     return createDocumentInvite({ documentId: targetId, documentName: name || '', ...common });
+  };
+
+  // Try again for an invite whose email did not send: an ordinary (idempotent)
+  // retry of the same invite, never a forced extra copy.
+  const retryInviteEmail = (invite) => {
+    const inviterName = currentUser?.user_metadata?.full_name || currentUser?.email || null;
+    if (kind === 'project') return resendProjectInvite(invite.id, { projectName: name || '', inviterName });
+    if (kind === 'template') return resendTemplateInvite(invite.id, { templateName: name || '', inviterName });
+    return resendDocumentInvite(invite.id, { documentName: name || '', inviterName });
   };
 
   // Honest placeholder until a real token is minted — never show a fake URL
@@ -152,28 +184,68 @@ export default function ShareModal({
     if (blockedReason) { setError(blockedReason); return; }
     const list = parseEmails(emails);
     if (!list.length) { setError('Enter at least one valid email.'); return; }
+    setSendEntries(null);
     setBusy(true);
     const results = await Promise.all(list.map((addr) => mintInvite(addr)));
     setBusy(false);
-    const failed = results.filter((r) => !r.success);
-    if (failed.length) {
-      setError(`Sent ${results.length - failed.length} of ${results.length}. First failure: ${failed[0].error || 'unknown'}.`);
-    } else {
-      setSuccess(`Sent ${results.length} ${role.toLowerCase()} share email${results.length === 1 ? '' : 's'}.`);
+    // Owner 2026-10-07: people a document is shared with get its survey
+    // templates. Existing accounts are members now, so give them the
+    // templates this device saw the document use (fire-and-forget; the open
+    // document grants the rest the next time its owner opens it).
+    if (kind === 'document' && results.some((r) => r.success || r.accessGranted)) {
+      void grantRememberedDocumentTemplates({ client: supabase, documentId: targetId, user: currentUser });
+    }
+    showSendOutcome(list.map((email, i) => ({ email, result: results[i] })));
+  };
+
+  const showSendOutcome = (entries) => {
+    const summary = summarizeInviteSend(entries, { roleLabel: role });
+    if (summary.tone === 'success') {
+      setSendEntries(null);
+      setSuccess(summary.message);
       setEmails('');
+    } else {
+      setSendEntries(entries);
     }
   };
 
-  const fieldLabel = { fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, fontWeight: 700, marginBottom: 8 };
+  const retrySend = async () => {
+    if (!sendEntries) return;
+    const summary = summarizeInviteSend(sendEntries);
+    const retryEmails = new Set(summary.items.filter((i) => i.canRetry).map((i) => i.email));
+    setError(''); setSuccess('');
+    setBusy(true);
+    const next = await Promise.all(sendEntries.map(async (entry) => {
+      if (!retryEmails.has(entry.email) || !entry.result?.invite?.id) return entry;
+      let retry;
+      try { retry = await retryInviteEmail(entry.result.invite); } catch (err) { retry = { success: false, error: err?.message || String(err) }; }
+      return mergeRetryResult(entry, retry);
+    }));
+    setBusy(false);
+    showSendOutcome(next);
+  };
+
+  const copyFailedInviteLink = async (item) => {
+    const copyResult = await copyTextToClipboard(buildInviteUrl(item.invite), { surface: `${kind}_share_unsent_invite_link` });
+    if (!copyResult.ok) {
+      setError('Survey could not copy the invite link. Try again.');
+      return false;
+    }
+    setError('');
+    return true;
+  };
+
+  const fieldLabel = { fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600, marginBottom: 8 };
 
   return (
     <div
       onClick={onClose}
       style={{
         position: 'fixed', inset: 0, background: C.scrim,
+        ...(visibleBox ? { bottom: 'auto', top: visibleBox.top, height: visibleBox.height } : null),
         backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1300,
-        fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+        fontFamily: 'var(--font-ui)',
       }}
     >
       <div
@@ -184,20 +256,20 @@ export default function ShareModal({
         data-modal-focus-layer="true"
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
-        style={{ width: 440, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 10, boxShadow: '0 24px 60px rgba(0,0,0,0.55)', color: C.ink, overflow: 'hidden' }}
+        style={{ width: 440, maxWidth: '92vw', maxHeight: 'calc(100% - 16px)', display: 'flex', flexDirection: 'column', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden' }}
       >
         {/* Header */}
-        <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${C.rule}`, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${C.rule}`, display: 'flex', alignItems: 'center', gap: 12, flex: 'none' }}>
           <span style={{ width: 3, height: 30, background: C.gold, borderRadius: 2, flex: 'none' }}></span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>Share {noun}</div>
+            <div style={{ fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600 }}>Share {noun}</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.015em', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name || 'Untitled'}</div>
           </div>
           <button ref={closeRef} onClick={onClose} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={13} /></button>
         </div>
 
         {/* Single role selector — applies to both link and email per locked spec. */}
-        <div style={{ padding: '14px 18px 0', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ padding: '14px 18px 0', display: 'flex', alignItems: 'center', gap: 12, flex: 'none' }}>
           <div style={fieldLabel}>Permission</div>
           <select
             value={role}
@@ -209,12 +281,15 @@ export default function ShareModal({
         </div>
 
         {/* Body */}
-        <div style={{ padding: '4px 18px 16px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div ref={bodyRef} style={{ padding: '4px 18px 16px', display: 'flex', flexDirection: 'column', gap: 18, flex: '0 1 auto', minHeight: 0, overflowY: 'auto' }}>
           <div>
             <div style={fieldLabel}>Invite link</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 82px', gap: 6 }}>
-              <div style={{ flex: 1, minWidth: 0, background: C.deep, border: `1px solid ${C.rule}`, borderRadius: 6, padding: '0 11px', height: 30, display: 'flex', alignItems: 'center', fontSize: 11.5, color: C.inkSoft, fontFamily: 'ui-monospace, Menlo, monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{linkText}</div>
-              <button onClick={copyLink} disabled={busy || !!blockedReason} className="hub-btn">{copied ? 'Copied' : 'Copy link'}</button>
+              {/* A block with a 28px line, not a flex box: text-overflow only
+                  works on a block's own line, so the hint used to be cut
+                  mid-letter on a phone instead of ending in an ellipsis. */}
+              <div style={{ minWidth: 0, boxSizing: 'border-box', background: C.deep, border: `1px solid ${C.rule}`, borderRadius: 6, padding: '0 11px', height: 30, lineHeight: '28px', fontSize: 12, color: C.inkSoft, fontFamily: 'ui-monospace, Menlo, monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{linkText}</div>
+              <button onClick={copyLink} disabled={busy || !!blockedReason} className="hub-btn share-dialog-touch-pad">{copied ? 'Copied' : 'Copy link'}</button>
             </div>
             <div style={{ fontSize: 11, color: C.muted, marginTop: 8, lineHeight: 1.4 }}>{explicitLinkText}{freeNote}</div>
           </div>
@@ -226,35 +301,43 @@ export default function ShareModal({
               onChange={(e) => setEmails(e.target.value)}
               placeholder="name@example.com, name@example.com"
               rows={3}
-              style={{ width: '100%', background: C.deep, border: `1px solid ${C.ruleStrong}`, borderRadius: 6, padding: '9px 11px', fontSize: 12.5, fontFamily: 'inherit', color: C.ink, resize: 'vertical', outline: 'none', minHeight: 72, lineHeight: 1.45, boxSizing: 'border-box' }}
+              style={{ width: '100%', background: C.deep, border: `1px solid ${C.ruleStrong}`, borderRadius: 6, padding: '9px 11px', fontSize: 13, fontFamily: 'inherit', color: C.ink, resize: 'vertical', outline: 'none', minHeight: 72, lineHeight: 1.45, boxSizing: 'border-box' }}
             />
             <div style={{ fontSize: 11, color: C.muted, marginTop: 8, lineHeight: 1.4 }}>Separate addresses with commas. New users get an invite link; existing users get a direct-access link as {role.toLowerCase()}.</div>
           </div>
 
           {blockedReason && (
-            <div style={{ background: 'var(--danger-soft)', borderLeft: `3px solid ${C.danger}`, borderRadius: 8, padding: '8px 10px', color: C.ink, fontSize: 11.5 }}>
+            <div style={{ background: 'var(--alert-danger-bg)', border: 'var(--alert-danger-border)', borderRadius: 'var(--alert-radius)', padding: '8px 10px', color: C.ink, fontSize: 12 }}>
               {blockedReason}
             </div>
           )}
           {error && !blockedReason && (
-            <div style={{ background: 'var(--danger-soft)', borderLeft: `3px solid ${C.danger}`, borderRadius: 8, padding: '8px 10px', color: C.ink, fontSize: 11.5 }}>
+            <div style={{ background: 'var(--alert-danger-bg)', border: 'var(--alert-danger-border)', borderRadius: 'var(--alert-radius)', padding: '8px 10px', color: C.ink, fontSize: 12 }}>
               {error}
             </div>
           )}
+          {sendEntries && !blockedReason && (
+            <InviteSendNotice
+              summary={summarizeInviteSend(sendEntries, { roleLabel: role })}
+              busy={busy}
+              onCopyLink={copyFailedInviteLink}
+              onRetry={retrySend}
+            />
+          )}
           {success && (
-            <div style={{ background: 'var(--accent-soft)', border: `1px solid ${C.gold}`, borderRadius: 6, padding: '8px 10px', color: C.gold, fontSize: 11.5 }}>
+            <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 10px', color: 'var(--success-text)', fontSize: 12 }}>
               {success}
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
-          <button onClick={onClose} className="hub-btn">Cancel</button>
+        <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center', flex: 'none' }}>
+          <button onClick={onClose} className="hub-btn share-dialog-touch-pad">Cancel</button>
           <button
             disabled={busy || !emails.trim() || !!blockedReason}
             onClick={sendInvite}
-            className="hub-btn hub-btn--primary"
+            className="hub-btn hub-btn--primary share-dialog-touch-pad"
           >
             {/* UX (KAL-73): sending an invite is a network round-trip well over
                 500ms, so it takes the shared button loading treatment — 14px ring

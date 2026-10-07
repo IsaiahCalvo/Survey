@@ -86,7 +86,9 @@
      hover     --hover          (desktop pointer only)
      pressed   --pressed        (desktop :active AND phone touch feedback)
      selected  --surface-3 plus a --accent edge, or a gold GLYPH with no fill
-     disabled  --disabled-fill + --text-disabled, never an opacity
+     disabled  --disabled-ink on icon and word (states.css section 6), plus
+               --disabled-fill only on a variant that HAS a fill; never an
+               element opacity, no hover, no press, cursor not-allowed
      focus     a 2px --focus ring on :focus-visible
    --surface-3 is a SELECTED or a FIELD surface. It is never a hover.
    A gold control's own states are --accent-light (hover) and --accent-press
@@ -124,9 +126,34 @@
 :root {
   /* --- Surfaces: an even 5% brightness step per layer -------------------- */
   --surface-0: #0d0f14;   /* the page behind everything  · B 8%  */
-  --surface-1: #171a21;   /* a panel, a bar, a header    · B 13% */
-  --surface-2: #21252e;   /* a card or a well on a panel · B 18% */
+  --surface-1: #171a21;   /* a recessed well (--panel-well) · B 13% */
+  --surface-2: #21252e;   /* a panel, a bar, a sheet (--panel-bg) · B 18% */
   --surface-3: #2b303b;   /* raised: a SELECTED row, a field, a menu · B 23% */
+
+  /* --- ONE SURFACE RULE, PHONE = DESKTOP (owner 2026-10-02) --------------
+     The two platforms used to paint the same panel two colours: desktop
+     rails on --surface-1, phone sheets on --surface-2, so every well inside
+     a panel stepped UP on desktop and DOWN on the phone. One rule now:
+       app background, the area round the PDF page   --surface-0
+       docked chrome and panels (toolbar, context bar, rails, the Survey /
+         Spaces / Bookmarks / Search / Pages panels, the phone header, dock
+         and every phone sheet)                       --panel-bg  (--surface-2)
+       a recessed field or well inside a panel (search field, notes box,
+         Y/N/N/A track, Spaces add-pages field)       --panel-well (--surface-1)
+       floating (menus, popovers, dropdowns, tooltips), a selected row,
+         the drag lift                                --surface-3 + --shadow-popover
+     Point a panel or a well at these two tokens, never at a raw surface, so a
+     well can never flip direction again. */
+  --panel-bg: var(--surface-2);
+  --panel-well: var(--surface-1);
+  --shadow-popover: 0 12px 28px rgba(0, 0, 0, 0.45);
+  --shadow-sheet: 0 -15px 38px rgba(0, 0, 0, 0.5);
+  /* One drop shadow for every centred dialog card (polish round 2,
+     2026-10-04), the partner of --radius-dialog. 0 24px 60px at 55% was
+     already the common one (theme.js SHADOWS.xl, Confirm delete, Sign in,
+     Share, Redact); the few dialogs that drifted (64px / 58-60%, 8px /
+     40-60%, 18-20px) take it too. */
+  --shadow-dialog: 0 24px 60px rgba(0, 0, 0, 0.55);
 
   /* --- Borders: TWO JOBS, two values (revision 4) --------------------------
      Revision 3 pushed every border to 4.09-4.50:1 to satisfy WCAG 1.4.11. The
@@ -173,6 +200,11 @@
   --text-3: #959eae;          /* subtext, captions, inactive icons · 4.90 on
                                  surface-3, where #8d96a6 measured 4.44 */
   --text-disabled: #5c6370;   /* fails contrast on purpose */
+  /* An underlined text link ("Create an account", "Forgot password?"): calm
+     grey at rest, the heading white under the pointer. The underline is what
+     says "link"; the colour stays quiet. Never gold (owner 2026-10-04). */
+  --link: var(--text-2);
+  --link-hover: var(--text-1);
 
   /* --- Gold: the one accent -------------------------------------------- */
   --accent-light: #edc26d;    /* hover on a gold control */
@@ -205,8 +237,23 @@
   /* The warning's own tint, derived the same way --accent-soft and
      --danger-soft are, rather than re-typing the olive's channels. */
   --warning-soft: rgba(152, 156, 74, 0.14);
-  /* Status DOTS only (owner amendment b). Never a button, border or text. */
+  /* Status DOTS (owner amendment b). Never a button or border. */
   --success: #548c71;
+  /* Owner 2026-10-01: a Survey checklist "Y" answer is GREEN. --success fails
+     as a word (4.45 on surface-1, 3.38 on surface-3), so the answer takes this
+     label twin, the green --danger-text is to --danger: 6.73 on surface-1,
+     5.11 on surface-3. Survey answers only. */
+  --success-text: #6fae8e;
+  /* The chosen Survey answer's chip (owner 2026-10-01: "make Y and N look as
+     polished as N/A"). N/A is a solid --border grey plate with --text-1 on it
+     (6.9:1); Y and N are the same kind of chip in their hue: an opaque plate
+     (--success 55% / --danger 52% over surface-1) with a near-white label of
+     the same hue, 7.0:1 each. Solid, so it reads the same on surface-1, -2
+     and -3. Survey answers only (phone sheet, desktop rail, archived badge). */
+  --success-plate: #39594d;
+  --on-success-plate: #eef5f1;
+  --danger-plate: #7c3b3d;
+  --on-danger-plate: #fbeceb;
   /* The destructive twin of --accent-soft, derived from --danger the same way
      (the base colour at 14-16% alpha) rather than invented: the hover wash on a
      small remove/delete control, which used to be a #3a1f1f dark-red literal.
@@ -247,11 +294,22 @@
      video's own description of a disabled control — "obviously disabled
      without any other visual cues, just from the light gray and white text". */
   --disabled-fill: var(--surface-2);
+  /* Disabled INK (owner 2026-10-06: "if nothing is selected ... those icons
+     need to be visibly disabled, or else the user can't tell whether they can
+     interact"). The icon and the word of ANY control that cannot act right
+     now: the normal --text-2 ink at 36%, so it reads as a faint ghost of the
+     enabled control on every surface (phone and desktop alike), well apart
+     from --text-3 "quiet but working". A destructive control gives up its red
+     too. Applied once, to every button family, by the DISABLED section of
+     src/styles/states.css; nothing else should paint a disabled colour. */
+  --disabled-ink: rgba(183, 190, 201, 0.36);
   /* The focus ring: gold at 62%, which composites to 4.00 / 3.85 / 3.57 /
      3.26 — past 3:1 on every layer, where 35% measured 2.09 and was painted by
      exactly one rule. Always 2px on :focus-visible, never on :focus, so a
      mouse click never draws it. */
-  --focus: rgba(216, 168, 78, 0.62);
+  /* Owner 2026-10-02: no gold ring. Calm light grey (--text-2 #b7bec9 at
+     70%), still past 3:1 on every surface. */
+  --focus: rgba(183, 190, 201, 0.7);
 
   /* --- Kept from the previous token block ------------------------------ */
   /* --accent-red is the one destructive red (KAL-72, docs/ui/colors.md); it
@@ -260,4 +318,127 @@
      backdrop-filter: blur(8px); keep theme.js overlay in sync with it. */
   --accent-red: var(--danger);
   --overlay-scrim: rgba(13, 15, 20, 0.55);
+
+  /* --- DRAG LIFT (owner 2026-10-01) ------------------------------------ */
+  /* "A uniform colour / uniform style when it gets picked up." Every
+     drag-to-reorder item in the app - tabs, template / category / item /
+     entity rows, project and file rows, bookmarks, Spaces, Survey categories
+     and markers, the picture of a dragged page, desktop and phone - lifts with exactly this look and nothing
+     else: ONE raised surface edge to edge (no child keeps a fill of its own),
+     a soft drop shadow with a faint neutral hairline, 6px corners on every item,
+     no gold, no focus ring, no scale (the text stays exactly where it was).
+     The rule that applies it is `[data-drag-lifted]` in states.css.
+     The slot the item will land in is one quiet dashed outline, the same in
+     every vertical list (SortableRearrangeList) and in Bookmarks. */
+  --drag-lift-bg: var(--surface-3);
+  --drag-lift-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --drag-lift-radius: 6px;
+  --drag-slot-bg: rgba(255, 255, 255, 0.02);
+  --drag-slot-border: 1px dashed var(--border-strong);
+
+  /* --- ONE UI FONT (owner 2026-10-02, UI consistency audit) -------------- */
+  /* Every piece of interface text - desktop, web and phone - uses the
+     system font: San Francisco on Apple, Segoe UI on Windows, Roboto on
+     Android. The home screens used to ask for Helvetica Neue, which Windows
+     does not have (it fell back to Arial), while the viewer used the system
+     font, so the same app showed two typefaces.
+     NOT for annotations: Fabric / SVG text keeps its single-name fonts
+     (CLAUDE.md, "fontFamily MUST be a single font name"). */
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  /* --- DESKTOP ROW SCALE (owner 2026-10-02, UI consistency audit) -------- */
+  /* Ten different one-line heights were in use on desktop (26 to 42). One
+     scale now; the phone has its own (--sheet-*, below), sized for a finger.
+     Divider lines sit INSIDE these heights, never on top of them. */
+  --row-h: 32px;          /* a normal one-line row in a side panel */
+  --row-h-sub: 28px;      /* a nested row: a Survey Marker, a page, a detail line */
+  --row-h-page: 40px;     /* a panel header, a one-line row in the main area */
+  --row-h-2line: 50px;    /* a row with a title and a meta line */
+  --row-pad-x: 12px;      /* text inset from the panel edge */
+  --row-gap: 8px;
+  --row-icon: 14px;
+  --row-text-x: 40px;     /* where the text starts on a row with a grip and an icon */
+  --menu-item-h: 28px;    /* one item in a popup menu */
+
+  /* --- CORNERS (owner 2026-10-02) --------------------------------------- */
+  /* Five radii. A control's corner is 6; a small chip or a menu item 4; a
+     card or a popup 8; a phone sheet 16; a pill 999. */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+  /* One corner for every centred dialog card (polish round 2, 2026-10-04).
+     Dialogs used 8, 10 and 12; 10 was the most common (Confirm delete,
+     Sign in, Share, Redact, the prompt dialogs, theme.js BORDERS.radius.xl),
+     so it is the one value now. Phone sheets keep --radius-lg. */
+  --radius-dialog: 10px;
+
+  /* --- ONE CALM ALERT (owner 2026-10-02) ------------------------------- */
+  /* An error box is a soft red tint inside a thin red edge all the way
+     round, with --text-1 words. It used to be a 3px red bar down the left
+     side only, which read loud next to everything else. */
+  --alert-danger-bg: var(--danger-soft);
+  --alert-danger-border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  --alert-radius: var(--radius-md);
+  /* The same box for a caution, and for news that is neither (saved, done,
+     working): a plain surface inside the ordinary hairline - no gold. A box
+     that floats over the page (a toast, a banner) lays its tint over
+     --surface-2 so the page never shows through. */
+  --alert-warning-bg: var(--warning-soft);
+  --alert-warning-border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent);
+  --alert-neutral-border: 1px solid var(--border);
+
+  /* --- PHONE SHEET SCALE (owner 2026-10-01) ---------------------------- */
+  /* "Consistency across all bottom panels (text sizes and spacing)." Every
+     phone bottom sheet - Pages / Search / Bookmarks, Spaces, Survey, History,
+     Active users and the settings sheets - takes its type and spacing from
+     here instead of picking its own. Layout comes from the Spaces sheet (44px
+     rows, 16px side inset, 16px glyphs, full-width hairlines); the 16/700
+     title is the 2026-09-22 "ONE TYPE SCALE" ruling.
+     The type tokens are `font` shorthands: use them as `font: var(--sheet-x)`.
+     The shorthand resets font-variant, so a rule that wants tabular-nums
+     declares font-variant-numeric AFTER the font line. Colour is not part of
+     a token: meta, section labels and empty states are --text-3.
+     Phone FIELDS are not on this scale: they render at 16px so iOS never
+     zooms on focus (index.html); a field that must look smaller is drawn at
+     a scale, see .mobile-survey-detail-name. Desktop uses the --row-* scale
+     above instead. Owner 2026-10-02: every phone row a finger taps is 44,
+     including nested rows and menu items; --sheet-row-h-sub (40) is left for
+     a line that is not tapped on its own. */
+  --sheet-font: var(--font-ui);
+  --sheet-bg: var(--panel-bg);
+  --sheet-head-h: 44px;
+  --sheet-title: 700 16px/20px var(--sheet-font);
+  --sheet-subtitle: 500 12px/16px var(--sheet-font);   /* --text-3 */
+  --sheet-section: 600 12px/16px var(--sheet-font);    /* --text-3, no caps, no tracking */
+  --sheet-label: 600 11px/1 var(--sheet-font);         /* a field label in a settings card */
+  --sheet-row-h: 44px;
+  --sheet-row-h-sub: 40px;                            /* a line that is not tapped on its own. The
+                                                         Spaces page line and a Survey check still
+                                                         read it; the phone-sheet pass moves them to 44 */
+  --sheet-menu-item-h: 44px;                          /* one item in a phone popup menu, 15px text */
+  --mobile-row-2line-h: 64px;                         /* a home list row with a title and a meta line */
+  --sheet-row-text-x: 48px;                           /* where the text starts on a row with a grip and an icon */
+  --sheet-row-title: 500 14px/18px var(--sheet-font);
+  --sheet-row-title-strong: 600 14px/18px var(--sheet-font); /* the open / current row */
+  --sheet-row-text: 400 14px/18px var(--sheet-font);   /* running text in a row: a search hit, a nested name */
+  --sheet-row-meta: 500 12px/14px var(--sheet-font);   /* --text-3 */
+  --sheet-action: 600 13px/1 var(--sheet-font);        /* Add, Edit, Done, Exit, Cancel */
+  --sheet-chip-h: 28px;
+  --sheet-chip: 600 12px/1 var(--sheet-font);          /* + Place, Y / N / N/A */
+  --sheet-empty: 500 13px/18px var(--sheet-font);      /* --text-3 */
+  --sheet-pad-x: 16px;
+  --sheet-gap: 8px;
+  --sheet-icon: 16px;
+  --sheet-icon-sm: 14px;
+  --sheet-divider: 1px solid var(--border);
+}
+
+/* A button with no font of its own takes its parent's (the one interface
+   font) instead of the browser's default, which is Arial on Windows and
+   Linux (owner 2026-10-02, UI consistency audit). Any rule that names a
+   font outranks this one. */
+button {
+  font-family: inherit;
 }

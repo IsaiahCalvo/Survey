@@ -8,6 +8,7 @@
  * lives here so it can be tested without a browser. The phone page counter
  * reads the same page state, so both surfaces follow these rules.
  */
+import { resolveBandCentreScrollLeft } from './viewerSideOverlay.js';
 
 /**
  * Which page counts as "the page you are looking at".
@@ -125,4 +126,56 @@ export function computeFitScale({
   if (mode === 'fitWidth') return fitW;
   if (mode === 'fitHeight') return fitH;
   return Math.min(fitW, fitH);
+}
+
+/**
+ * Typed page jump — Drawboard parity (measured 2026-10-04 in Drawboard PDF's
+ * web app, desktop 1440x900 and a 700px-wide touch layout; the 390px phone
+ * layout has no page box). Typing a page number and pressing Enter does NOT
+ * keep the zoom: Drawboard zooms to "Zoom to page" for THAT page (each page of
+ * a mixed-size set gets its own fit), then:
+ *   - the page sits in the middle of the visible band left-to-right;
+ *   - its top lands at the top of the visible band (a page that fits the
+ *     width but not the height is NOT centred up-and-down — it hangs from the
+ *     top with the next page showing below);
+ *   - page 1 therefore sits at the very start of the document, and the last
+ *     page cannot rise past the end of the scroll range: when it is shorter
+ *     than the view it rests lower, against the document's end.
+ * The Previous / Next page buttons keep the zoom (also measured), so only the
+ * typed field uses this rule. Set TYPED_PAGE_JUMP_FITS_PAGE to false to keep
+ * the zoom on a typed jump instead (the page then lands top-first at the
+ * current zoom, as before 2026-10-04).
+ */
+export const TYPED_PAGE_JUMP_FITS_PAGE = true;
+
+/**
+ * Where a fitted page lands (Fit page / Fit height / the typed page jump), in
+ * scroll offsets. All inputs are measured at the TARGET scale:
+ *   pageTop / pageLeft — the page's edges in scroll-content coordinates;
+ *   gap                — the page's own (zoom-scaled) gap, shown above it;
+ *   topInset           — tool strips over the top of the viewer;
+ *   viewportWidth, insets — the viewer width and the side panels over it.
+ * The top is clamped into [0, maxScrollTop] (page 1 / last page rest against
+ * the document's ends); the left centres the page between the side panels.
+ */
+export function resolveFitPageLanding({
+  pageTop = 0,
+  pageLeft = 0,
+  pageWidth = 0,
+  gap = 0,
+  topInset = 0,
+  viewportWidth = 0,
+  insets = null,
+  maxScrollTop = Infinity,
+  maxScrollLeft = Infinity,
+} = {}) {
+  const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const wantTop = num(pageTop) - num(gap) - num(topInset);
+  const maxTop = Number.isFinite(Number(maxScrollTop)) ? Math.max(0, Number(maxScrollTop)) : Infinity;
+  return {
+    scrollTop: Math.min(maxTop, Math.max(0, wantTop)),
+    scrollLeft: resolveBandCentreScrollLeft({
+      pageLeft, pageWidth, viewportWidth, insets: insets || undefined, maxScrollLeft,
+    }),
+  };
 }

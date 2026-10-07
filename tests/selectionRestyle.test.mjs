@@ -395,18 +395,21 @@ test('PDFViewer: a picked pen stroke writes its FILL, and every bar handler trie
     assert.match(source, new RegExp(`applyRestyleToGroup\\(\\{\\s*kind: '${kind}'`), `${kind} reaches the group`);
   }
   // The tool's defaults are only written when a drawing tool is armed.
-  assert.match(source, /if \(pdfId && activeTool !== 'select' && paintPhaseRef\.current !== 'preview'\) updateToolPreference\(paintPreferenceKey\(activeTool\), \{ strokeColor: color \}\);/);
+  assert.match(source, /if \(pdfId && pickBarTool !== 'select' && paintPhaseRef\.current !== 'preview'\) updateToolPreference\(paintPreferenceKey\(pickBarTool\), \{ strokeColor: color \}\);/);
   // A drag's release always reaches the save path (its one undo step), and
   // the viewer writes through the same pure planner the tests below drive.
   assert.match(source, /release: phase === 'commit',/);
   assert.match(source, /const write = resolveGroupWrite\(\{/);
   assert.match(source, /resolveGroupPaintWrite\(kind, value, previous, paintPhaseRef\.current\)/);
-  // Review 2026-09-25: a pick only makes a group under Select, and the bar
+  // Review 2026-09-25: a pick only makes a group under Select (owner
+  // 2026-10-04: or Pan / a group tool's own-group pick - pickBarTool), and the bar
   // reloads the group's values only when the pick or its values change.
-  assert.match(source, /const restyleGroup = useMemo\(\(\) => \{[\s\S]{0,400}if \(activeTool !== 'select'\) return null;/);
-  assert.match(source, /\}, \[restyleGroupLoadKey\]\);/);
+  assert.match(source, /const restyleGroup = useMemo\(\(\) => \{[\s\S]{0,600}if \(pickBarTool !== 'select'\) return null;/);
+  // Owner Test 45 (2026-10-06): one loader for single picks and groups alike
+  // (utils/pickBarValues.js), keyed on the settled pick and its values.
+  assert.match(source, /\}, \[pickBarLoadKey\]\);/);
   // An empty Width over a mixed pick changes nothing.
-  assert.match(source, /if \(rawValue === '' && activeTool === 'select' && restyleGroupRef\.current\?\.summary\?\.mixed\?\.width\) return;/);
+  assert.match(source, /if \(rawValue === '' && pickBarTool === 'select' && restyleGroupRef\.current\?\.summary\?\.mixed\?\.width\) return;/);
   // A group arrowhead change keeps each arrow's own ends.
   assert.match(source, /kind: 'arrowhead',[\s\S]{0,200}bothEnds: 'keep',/);
   // The whole pick reaches the viewer.

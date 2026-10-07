@@ -25,6 +25,10 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { mergeProjectDocumentOrder, orderDocumentsByProject } from './projectDocumentOrder.js';
 import { HubShell, Icon, Avatar, AvatarStack, Search, EmptyState } from './HubShell';
+import { presenceInitials } from '../components/presenceIdentity.js';
+import { userColorFill } from '../utils/userColors.js';
+import { countLabel } from './countLabel.js';
+import SectionIconButton, { SectionIconActions, SelectModeButtons } from '../components/SectionIconButton.jsx';
 import ManageTeamModal from './ManageTeamModal';
 import { listProjectCollaboratorsForProjects } from '../services/projectInviteService';
 import { MoveCopyModal } from './BulkModals';
@@ -73,9 +77,10 @@ const shortWhen = (d) => {
 };
 
 /* Two-letter initials from a display name — "Isaiah Calvo" -> "IC". Avatar
-   glyphs render this so the circle shows real initials, never a raw user id. */
-const initialsOf = (name) => (name || '')
-  .trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase() || '—';
+   glyphs render this so the circle shows real initials, never a raw user id.
+   The one app-wide rule (presenceIdentity.js, owner 2026-10-02); "—" when
+   there is no name at all. */
+const initialsOf = (name) => (String(name || '').trim() ? presenceInitials(name) : '—');
 
 /* Project rows use the same team summary on desktop and mobile. Keeping this
    shared prevents mobile from substituting file or activity metadata. */
@@ -87,9 +92,10 @@ const ProjectTeamSummary = ({ memberIds, lookupMember }) => (
   >
     <AvatarStack
       members={memberIds.slice(0, 3).map((id) => initialsOf(lookupMember(id)?.name))}
+      ids={memberIds.slice(0, 3)}
       size={14}
     />
-    <span className="mono meta" style={{ fontSize: 9.5 }}>{memberIds.length}</span>
+    <span className="mono meta" style={{ fontSize: 11 }}>{memberIds.length}</span>
   </div>
 );
 
@@ -113,16 +119,22 @@ function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160
 
   if (!anchorRect) return null;
 
-  // Hang below the trigger; flip up if it would run off the bottom.
-  const estHeight = items.length * 34 + 8;
+  // Hang below the trigger; flip up if it would run off the bottom. The items
+  // are the shared home menu's (hub.css .hub-menu__item, owner 2026-10-02):
+  // 28px on desktop, 44px at 15px on the phone, where the menu is a little
+  // wider so the bigger words fit. The word "Delete" is --danger-text (the
+  // label red); it used to be --danger, the fill red.
+  const phone = typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 720px)').matches;
+  const menuWidth = phone ? Math.max(minWidth, 200) : minWidth;
+  const estHeight = items.length * (phone ? 44 : 28) + 10;
   let top = anchorRect.bottom + 4;
   if (top + estHeight > window.innerHeight - 8) {
     top = Math.max(8, anchorRect.top - estHeight - 4);
   }
   let left = align === 'right'
-    ? anchorRect.right - minWidth
+    ? anchorRect.right - menuWidth
     : anchorRect.left;
-  left = Math.max(8, Math.min(left, window.innerWidth - minWidth - 8));
+  left = Math.max(8, Math.min(left, window.innerWidth - menuWidth - 8));
 
   return createPortal(
     <>
@@ -130,27 +142,17 @@ function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160
       <div
         ref={ref}
         role="menu"
-        style={{
-          position: 'fixed', top, left, zIndex: 4000,
-          background: HEX.card, border: `1px solid ${HEX.rule}`, borderRadius: 8,
-          padding: 4, minWidth, boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
-        }}
+        className="hub-menu"
+        style={{ top, left, minWidth: menuWidth }}
       >
         {items.map((it) => (
           <button
             key={it.label}
+            type="button"
             role="menuitem"
+            className={`hub-menu__item${it.danger ? ' is-danger' : ''}`}
             disabled={it.disabled}
             onClick={() => { if (it.disabled) return; onClose(); it.onClick && it.onClick(); }}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left',
-              background: 'transparent', border: 0,
-              color: it.disabled ? HEX.muted : (it.danger ? HEX.danger : HEX.ink),
-              padding: '7px 10px', fontSize: 12, borderRadius: 4,
-              cursor: it.disabled ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-            }}
-            onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = HEX.rule; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
           >
             {it.iconNode
               ? it.iconNode
@@ -218,11 +220,19 @@ export default function ProjectsFolderTree({
   // Paste clones it into the open project.
   const [clipboard, setClipboard] = useState(null);
 
-  // Move/Copy picker — opened by the file select-mode "Move/Copy" button.
-  // Holds the document ids of the files to move or copy. Ids (never indices)
-  // so the picks survive a list reorder/rebuild while the modal is open.
+  // Move / Copy picker — opened by the file select-mode Move or Copy button,
+  // already set to that mode. Holds the document ids of the files to move or
+  // copy. Ids (never indices) so the picks survive a list reorder/rebuild
+  // while the modal is open.
   const [moveOpen, setMoveOpen] = useState(false);
+  const [moveMode, setMoveMode] = useState('move');
   const [moveIds, setMoveIds] = useState([]);
+  const openMoveCopy = (files, mode) => {
+    if (!files.length) return;
+    setMoveIds(files.map((f) => f.id));
+    setMoveMode(mode);
+    setMoveOpen(true);
+  };
 
   // Open-menu state: each holds { id, rect } so the portalled PopupMenu knows
   // what to anchor to. `null` when closed.
@@ -384,27 +394,21 @@ export default function ProjectsFolderTree({
           name: user.name || user.email?.split('@')[0] || 'You',
           email: user.email || '',
           role: 'Owner',
-          // Literal gold (not a CSS var): the Manage Team modal renders
-          // outside the `.survey-hub` root where CSS vars are not in scope.
-          color: 'var(--accent)',
+          // Your own pastel (utils/userColors.js, owner 2026-10-07): the
+          // same face as the account button and the viewer - not gold.
+          color: userColorFill(user.id),
           online: true,
         }
       : null
   ), [user]);
 
-  // Deterministic avatar colors for real collaborators (owner keeps gold).
-  const COLLAB_COLORS = ['#5fbf83', '#7aa2f7', '#b48ead', '#8fbcbb', '#cf9f6f'];
-  const collabColor = (seed) => {
-    const s = String(seed || '');
-    let h = 0;
-    for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-    return COLLAB_COLORS[h % COLLAB_COLORS.length];
-  };
+  // Every member's face is their own pastel from their user id
+  // (utils/userColors.js), the same colour they wear everywhere else.
 
   const memberById = useMemo(() => {
     const map = new Map();
     if (ownerMember) map.set(ownerMember.id, ownerMember);
-    members.forEach((m) => { if (m && m.id != null) map.set(m.id, m); });
+    members.forEach((m) => { if (m && m.id != null) map.set(m.id, { ...m, color: userColorFill(m.id) }); });
     // Real collaborator rows → directory records (name from the stored email
     // prefix; role capitalized). Owner/host records take precedence.
     collabByProject.forEach((rows) => {
@@ -417,7 +421,7 @@ export default function ProjectsFolderTree({
           name,
           email: r.email || '',
           role: role.charAt(0).toUpperCase() + role.slice(1),
-          color: collabColor(r.user_id),
+          color: userColorFill(r.user_id),
           online: false,
         });
       });
@@ -466,7 +470,7 @@ export default function ProjectsFolderTree({
         initials: m ? initialsOf(m.name) : '—',
         email: m?.email || '',
         role: m?.role || 'Member',
-        color: m?.color || 'var(--accent)',
+        color: m?.color || userColorFill(id),
         added,
       };
     });
@@ -736,7 +740,9 @@ export default function ProjectsFolderTree({
             className="projects-mobile-back-button"
             onClick={closeMobileProject}
           >
-            <span className="projects-mobile-back-icon"><Icon name="arrow-r" size={13} /></span>Projects
+            {/* Owner 2026-10-02: back is chevronLeft, as everywhere else. This
+                one was still a right arrow turned round by CSS. */}
+            <span style={{ display: 'inline-flex' }}><Icon name="chevronLeft" size={13} /></span>Projects
           </button>
         ) : null}
         <Search
@@ -762,39 +768,31 @@ export default function ProjectsFolderTree({
   );
   const mobileProjectActions = (
     <div className="projects-mobile-select-row mobile-header-select-row">
-      <button
+      <SectionIconButton
         data-testid="project-select-toggle"
-        className="mobile-header-select-button hub-btn hub-btn--tertiary"
+        action="select"
+        label={jobsEdit ? 'Done' : 'Select'}
+        nothingToSelect={filtered.length === 0}
+        active={jobsEdit}
+        className="mobile-header-select-button"
         onClick={() => { const next = !jobsEdit; setJobsEdit(next); if (!next) setSelProj(new Set()); }}
-      >
-        {jobsEdit ? 'Done' : 'Select'}
-      </button>
+      />
       {jobsEdit && (() => {
         const allSel = selCount === filtered.length && filtered.length > 0;
         return (
           <span className="documents-select-actions projects-mobile-select-actions mobile-header-select-actions">
-            <button
-              onClick={() => setSelProj(allSel ? new Set() : new Set(filtered.map((p) => p.id)))}
-              className="hub-btn hub-btn--bare"
-            >{allSel ? 'None' : 'All'}</button>
-            <button
-              disabled={!selCount}
-              onClick={() => { duplicateProjects([...selProj]); setSelProj(new Set()); }}
-              className="hub-btn hub-btn--bare"
-            >Duplicate</button>
-            <button
-              disabled={!selCount}
-              onClick={() => { const first = filtered.find((p) => selProj.has(p.id)); if (first) onShare && onShare(first); }}
-              className="hub-btn hub-btn--icon"
-              title="Share" aria-label="Share"
-            ><Icon name="share" size={12} /></button>
-            <button
-              data-testid="delete-selected-projects"
-              disabled={!selCount}
-              onClick={() => { void deleteProjects([...selProj]); }}
-              className="hub-btn hub-btn--icon is-danger"
-              title="Delete" aria-label="Delete"
-            ><Icon name="trash" size={12} /></button>
+            <SelectModeButtons
+              phone
+              count={selCount}
+              allSelected={allSel}
+              total={filtered.length}
+              can={{ share: selCount > 1 ? 'Share one project at a time' : true }}
+              onToggleAll={() => setSelProj(allSel ? new Set() : new Set(filtered.map((p) => p.id)))}
+              onDuplicate={() => { duplicateProjects([...selProj]); setSelProj(new Set()); }}
+              onShare={() => { const first = filtered.find((p) => selProj.has(p.id)); if (first) onShare && onShare(first); }}
+              onDelete={() => { void deleteProjects([...selProj]); }}
+              deleteProps={{ 'data-testid': 'delete-selected-projects' }}
+            />
           </span>
         );
       })()}
@@ -802,48 +800,32 @@ export default function ProjectsFolderTree({
   );
   const mobileFileSelectRow = mobileDrillProject ? (
     <div className="projects-mobile-select-row mobile-header-select-row">
-      <button
-        className="mobile-header-select-button hub-btn hub-btn--tertiary"
+      <SectionIconButton
+        action="select"
+        label={fileSelect ? 'Done' : 'Select'}
+        nothingToSelect={mobileDrillFiles.length === 0}
+        active={fileSelect}
+        className="mobile-header-select-button"
         onClick={() => { const next = !fileSelect; setFileSelect(next); if (!next) setSelFiles(new Set()); }}
-      >
-        {fileSelect ? 'Done' : 'Select'}
-      </button>
+      />
       {fileSelect && (() => {
         const selectedFiles = mobileDrillFiles.filter((f) => selFiles.has(f.id));
         const c = selectedFiles.length;
         const allSel = c === mobileDrillFiles.length && mobileDrillFiles.length > 0;
         return (
           <span className="documents-select-actions projects-mobile-select-actions mobile-header-select-actions">
-            <button
-              onClick={() => setSelFiles(allSel ? new Set() : new Set(mobileDrillFiles.map((f) => f.id)))}
-              className="hub-btn hub-btn--bare"
-            >{allSel ? 'None' : 'All'}</button>
-            <button
-              disabled={!c}
-              onClick={() => { duplicateFiles(selectedFiles.map((f) => f.id)); setSelFiles(new Set()); }}
-              className="hub-btn hub-btn--bare"
-            >Duplicate</button>
-            <button
-              disabled={!c}
-              onClick={() => {
-                if (!c) return;
-                setMoveIds(selectedFiles.map((f) => f.id));
-                setMoveOpen(true);
-              }}
-              className="hub-btn hub-btn--bare"
-            >Move/Copy</button>
-            <button
-              disabled={!c}
-              onClick={() => onShare && onShare(mobileDrillProject)}
-              className="hub-btn hub-btn--icon"
-              title="Share" aria-label="Share"
-            ><Icon name="share" size={12} /></button>
-            <button
-              disabled={!c}
-              onClick={() => deleteFiles(selectedFiles.map((f) => f.id))}
-              className="hub-btn hub-btn--icon is-danger"
-              title="Delete" aria-label="Delete"
-            ><Icon name="trash" size={12} /></button>
+            <SelectModeButtons
+              phone
+              count={c}
+              allSelected={allSel}
+              total={mobileDrillFiles.length}
+              onToggleAll={() => setSelFiles(allSel ? new Set() : new Set(mobileDrillFiles.map((f) => f.id)))}
+              onDuplicate={() => { duplicateFiles(selectedFiles.map((f) => f.id)); setSelFiles(new Set()); }}
+              onMove={() => openMoveCopy(selectedFiles, 'move')}
+              onCopy={() => openMoveCopy(selectedFiles, 'copy')}
+              onShare={() => onShare && onShare(mobileDrillProject)}
+              onDelete={() => deleteFiles(selectedFiles.map((f) => f.id))}
+            />
           </span>
         );
       })()}
@@ -861,7 +843,10 @@ export default function ProjectsFolderTree({
       {/* The count first, then Cancel / Save when a project name is being
           edited — the same order and the same 8px gap as Templates. */}
       <span className="projects-desktop-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-        <span><b>{filtered.length}</b> projects · expand any to see its files and team</span>
+        {/* Polish round 2 (2026-10-04): just the count, as on the phone and on
+            Templates. The old tail ("expand any to see its files and team")
+            described the retired tree; desktop is a list + detail now. */}
+        <span><b>{filtered.length}</b> {filtered.length === 1 ? 'project' : 'projects'}</span>
         {projectSaveRow('hub-desktop-save-row')}
       </span>
       <span className="projects-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
@@ -889,7 +874,7 @@ export default function ProjectsFolderTree({
         onClick={() => { if (fileSelect) { toggleFileSel(f.id); return; } onOpenDocument && onOpenDocument(f); }}
       >
         {dragHandle}
-        <span className="projects-mobile-file-icon"><Icon name="doc" size={15} /></span>
+        <span className="projects-mobile-file-icon"><Icon name="doc" size={15} contentType="document" /></span>
         <div className="projects-mobile-file-copy">
           <div>{f.name}</div>
           <span>{[projectNameForFile(f), owner?.name?.split(' ')[0], shortWhen(f)].filter(Boolean).join(' · ')}</span>
@@ -903,6 +888,7 @@ export default function ProjectsFolderTree({
           </span>
         ) : (
           <button
+            aria-haspopup="menu"
             onClick={(e) => {
               e.stopPropagation();
               const rect = e.currentTarget.getBoundingClientRect();
@@ -932,62 +918,55 @@ export default function ProjectsFolderTree({
       <div className="projects-desktop-layout" style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 8, height: '100%', minHeight: 0 }}>
         {/* LEFT — tree */}
         <div className="card" style={{ padding: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '4px 6px 6px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <button
-              className="btn primary"
-              style={{ alignSelf: 'flex-start' }}
-              onClick={handleNewProject}
-            >
-              <Icon name="plus" size={11} />New project
-            </button>
-            <div className="hub-select-actions" style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'nowrap', height: 22, overflow: 'hidden' }}>
+          {/* Owner 2026-10-01: one header line - the page's one gold action
+              on the left, the quiet Select on the right. In select mode the
+              bulk actions take the gold button's place and Done stays where
+              Select was, so the list under it never moves. */}
+          <div className="hub-section-head hub-panel-head">
+            {!jobsEdit ? (
               <button
-                data-testid="project-select-toggle"
-                onClick={() => { const next = !jobsEdit; setJobsEdit(next); if (!next) setSelProj(new Set()); }}
-                className="hub-btn hub-btn--tertiary"
+                className="btn primary"
+                onClick={handleNewProject}
               >
-                {jobsEdit ? 'Done' : 'Select'}
+                <Icon name="plus" size={11} />New project
               </button>
+            ) : null}
+            <div className="hub-select-actions hub-section-actions">
+              {/* Duplicate clones each selected project into the local list;
+                  Share opens the share flow for the first selected project;
+                  Delete removes each selected project and lets the host
+                  persist it when wired. */}
               {jobsEdit && (
-                <>
-                  {(() => {
-                    const allSel = selCount === filtered.length && filtered.length > 0;
-                    return (
-                      <button
-                        onClick={() => setSelProj(allSel ? new Set() : new Set(filtered.map((p) => p.id)))}
-                        className="hub-btn hub-btn--bare"
-                      >{allSel ? 'None' : 'All'}</button>
-                    );
-                  })()}
-                  {/* Duplicate — clones each selected project into the local list. */}
-                  <button
-                    disabled={!selCount}
-                    onClick={() => { duplicateProjects([...selProj]); setSelProj(new Set()); }}
-                    className="hub-btn hub-btn--bare"
-                  >Duplicate</button>
-                  {/* Share — opens the share flow for the first selected project. */}
-                  <button
-                    disabled={!selCount}
-                    onClick={() => { const first = filtered.find((p) => selProj.has(p.id)); if (first) onShare && onShare(first); }}
-                    className="hub-btn hub-btn--icon"
-                    title="Share" aria-label="Share"
-                  ><Icon name="share" size={11} /></button>
-                  {/* Delete — removes each selected project and lets the host persist it when wired. */}
-                  <button
-                    data-testid="delete-selected-projects"
-                    disabled={!selCount}
-                    onClick={() => { void deleteProjects([...selProj]); }}
-                    className="hub-btn hub-btn--icon is-danger"
-                    title="Delete" aria-label="Delete"
-                  ><Icon name="trash" size={11} /></button>
-                </>
+                <SelectModeButtons
+                  count={selCount}
+                  allSelected={selCount === filtered.length && filtered.length > 0}
+                  total={filtered.length}
+                  can={{ share: selCount > 1 ? 'Share one project at a time' : true }}
+                  onToggleAll={() => setSelProj(selCount === filtered.length && filtered.length > 0 ? new Set() : new Set(filtered.map((p) => p.id)))}
+                  onDuplicate={() => { duplicateProjects([...selProj]); setSelProj(new Set()); }}
+                  onShare={() => { const first = filtered.find((p) => selProj.has(p.id)); if (first) onShare && onShare(first); }}
+                  onDelete={() => { void deleteProjects([...selProj]); }}
+                  deleteProps={{ 'data-testid': 'delete-selected-projects' }}
+                />
               )}
+              <SectionIconButton
+                data-testid="project-select-toggle"
+                action="select"
+                label={jobsEdit ? 'Done' : 'Select'}
+                nothingToSelect={filtered.length === 0}
+                active={jobsEdit}
+                onClick={() => { const next = !jobsEdit; setJobsEdit(next); if (!next) setSelProj(new Set()); }}
+              />
             </div>
           </div>
           <div className="slim-scroll hub-side-list" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
-            {filtered.length === 0 && (
-              <div className="meta" style={{ fontSize: 11.5, padding: '14px 8px' }}>
-                {localProjects.length === 0 ? 'No projects yet.' : 'No projects match your search.'}
+            {/* Polish round 2 (2026-10-04): with no projects at all the
+                detail pane's empty state already says "No projects yet", so
+                the list stays quiet (as on the phone); it still says when a
+                search matches nothing. */}
+            {filtered.length === 0 && localProjects.length > 0 && (
+              <div className="meta" style={{ fontSize: 12, padding: '14px 8px' }}>
+                No projects match your search.
               </div>
             )}
             <SortableRearrangeList ids={filtered.map((p) => p.id)} onReorder={reorderProjects}>
@@ -1038,7 +1017,7 @@ export default function ProjectsFolderTree({
                     )}
                     <div style={{ minWidth: 0 }}>
                       {/* lineHeight 1.2 so the stack centres on its ink (2026-09-23). */}
-                      <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{p.name}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{p.name}</div>
                       {/* Owner-avatar stack (first 3 team members) + member
                           count. Every project shows at least the owner glyph —
                           ids are resolved to real initials, never shown raw. */}
@@ -1053,12 +1032,13 @@ export default function ProjectsFolderTree({
                          checked stays gold and 1.4px is unchanged. */
                       <span
                         onClick={(e) => { e.stopPropagation(); toggleProjSel(p.id); }}
-                        style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--gold)' : 'var(--border-strong)'}`, background: isSel ? 'var(--gold)' : 'transparent', borderRadius: 2, padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 4 }}
+                        data-drag-keep-fill style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--gold)' : 'var(--border-strong)'}`, background: isSel ? 'var(--gold)' : 'transparent', borderRadius: 2, padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 4 }}
                       >
                         {isSel && <Icon name="check" size={10} color="var(--accent-text)" />}
                       </span>
                     ) : (
                       <button
+                        aria-haspopup="menu"
                         onClick={(e) => {
                           e.stopPropagation();
                           // Toggle the portalled popup; snapshot the trigger's
@@ -1068,7 +1048,7 @@ export default function ProjectsFolderTree({
                           setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
                         }}
                         className="hub-icon-btn"
-                        title="More"
+                        title="More" aria-label="More"
                       ><Icon name="more" size={14} /></button>
                     )}
                   </div>
@@ -1089,22 +1069,24 @@ export default function ProjectsFolderTree({
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {/* Inline rename field. Typing raises Cancel / Save in the
                       header's subtitle row; Enter saves, Escape backs out. */}
+                  {/* Text-width field (owner 2026-10-01): the rename target
+                      is the name itself, not the whole header line. */}
+                  <span className="hub-autowidth hub-title-field" data-value={projectNameField(open).value} style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.015em' }}>
                   <input
+                    size={1}
                     key={open.id}
                     {...projectNameField(open)}
                     title="Click to rename"
                     onDoubleClick={(e) => e.currentTarget.select()}
+                    /* Same dotted rename line as the Templates editor
+                       (.hub-rename); it used to turn gold while typing. */
+                    className="hub-rename"
                     style={{
-                      background: 'transparent', color: 'var(--bone-100)',
-                      border: 0, borderBottom: '1px dashed transparent',
-                      padding: '2px 0', fontSize: 22, fontWeight: 700, letterSpacing: '-0.015em',
-                      outline: 'none', width: '100%', cursor: 'text', fontFamily: 'inherit',
+                      color: 'var(--bone-100)',
+                      padding: '2px 0', cursor: 'text',
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.borderBottomColor = 'var(--ink-500)'; }}
-                    onMouseLeave={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.style.borderBottomColor = 'transparent'; }}
-                    onFocus={(e) => { e.currentTarget.style.borderBottom = '1px solid var(--gold)'; }}
-                    onBlur={(e) => { e.currentTarget.style.borderBottom = '1px dashed transparent'; }}
                   />
+                  </span>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flex: 'none' }}>
                   {/* Add files — opens the OS file picker; picked PDFs are
@@ -1119,8 +1101,8 @@ export default function ProjectsFolderTree({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 148px', gap: 0, flex: 1, overflow: 'hidden' }}>
                 {/* Files */}
                 <div className="slim-scroll" style={{ padding: '10px 14px', overflow: 'auto', position: 'relative' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, height: 22, marginBottom: 4, overflow: 'hidden', flexWrap: 'nowrap', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 10.5, letterSpacing: 0.06, textTransform: 'uppercase', color: 'var(--ink-200)', fontWeight: 700 }}>Files</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, height: 28, marginBottom: 4, overflow: 'hidden', flexWrap: 'nowrap', justifyContent: 'space-between' }}>
+                    <span className="hub-section-label" style={{ fontSize: 11, letterSpacing: 0, color: 'var(--ink-200)', fontWeight: 600 }}>Files<span className="hub-section-count">{openFiles.length}</span></span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 'none' }}>
                       {fileSelect && (() => {
                         // Effective selection is DERIVED from the current rows
@@ -1129,60 +1111,39 @@ export default function ProjectsFolderTree({
                         const selectedFiles = openFiles.filter((f) => selFiles.has(f.id));
                         const c = selectedFiles.length;
                         const allSel = c === openFiles.length && openFiles.length > 0;
+                        /* Duplicate clones each selected file in place;
+                           Move / Copy open the picker already set to that
+                           mode, so the user only chooses the destination
+                           project; Share opens this project's share flow;
+                           Delete removes each selected file locally. */
                         return (
-                          <>
-                            <button
-                              onClick={() => setSelFiles(allSel ? new Set() : new Set(openFiles.map((f) => f.id)))}
-                              className="hub-btn hub-btn--bare"
-                            >{allSel ? 'None' : 'All'}</button>
-                            {/* Duplicate — clones each selected file in place. */}
-                            <button
-                              disabled={!c}
-                              onClick={() => { duplicateFiles(selectedFiles.map((f) => f.id)); setSelFiles(new Set()); }}
-                              className="hub-btn hub-btn--bare"
-                            >Duplicate</button>
-                            {/* Move/Copy — opens the Move/Copy picker so the
-                                user chooses a destination project and moves or
-                                copies the selected files there. */}
-                            <button
-                              disabled={!c}
-                              onClick={() => {
-                                if (!c) return;
-                                setMoveIds(selectedFiles.map((f) => f.id));
-                                setMoveOpen(true);
-                              }}
-                              className="hub-btn hub-btn--bare"
-                            >Move/Copy</button>
-                            {/* Share — opens the share flow for this project. */}
-                            <button
-                              disabled={!c}
-                              onClick={() => onShare && onShare(open)}
-                              className="hub-btn hub-btn--icon"
-                              title="Share"
-                            ><Icon name="share" size={11} /></button>
-                            {/* Delete — removes each selected file locally. */}
-                            <button
-                              disabled={!c}
-                              onClick={() => deleteFiles(selectedFiles.map((f) => f.id))}
-                              className="hub-btn hub-btn--icon is-danger"
-                              title="Delete"
-                            ><Icon name="trash" size={11} /></button>
-                          </>
+                          <SelectModeButtons
+                            count={c}
+                            allSelected={allSel}
+                            total={openFiles.length}
+                            onToggleAll={() => setSelFiles(allSel ? new Set() : new Set(openFiles.map((f) => f.id)))}
+                            onDuplicate={() => { duplicateFiles(selectedFiles.map((f) => f.id)); setSelFiles(new Set()); }}
+                            onMove={() => openMoveCopy(selectedFiles, 'move')}
+                            onCopy={() => openMoveCopy(selectedFiles, 'copy')}
+                            onShare={() => onShare && onShare(open)}
+                            onDelete={() => deleteFiles(selectedFiles.map((f) => f.id))}
+                          />
                         );
                       })()}
-                      <button
+                      <SectionIconButton
+                        action="select"
+                        label={fileSelect ? 'Done' : 'Select'}
+                        nothingToSelect={openFiles.length === 0}
+                        active={fileSelect}
                         onClick={() => { const next = !fileSelect; setFileSelect(next); if (!next) setSelFiles(new Set()); }}
-                        className="hub-btn hub-btn--tertiary"
-                      >
-                        {fileSelect ? 'Done' : 'Select'}
-                      </button>
+                      />
                     </div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 90px 90px 28px', gap: 12, padding: '0 10px 6px', fontSize: 10, color: 'var(--ink-200)', letterSpacing: 0.06, textTransform: 'uppercase' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 90px 90px 28px', gap: 12, padding: '0 10px 6px', fontSize: 11, color: 'var(--ink-200)', letterSpacing: 0 }}>
                     <span></span><span>Name</span><span>Last edited by</span><span>Edited</span><span></span>
                   </div>
                   {openFiles.length === 0 ? (
-                    <div className="meta" style={{ fontSize: 11.5, padding: '12px 10px' }}>No files in this project yet.</div>
+                    <div className="meta" style={{ fontSize: 12, padding: '12px 10px' }}>No files in this project yet.</div>
                   ) : (
                     <SortableRearrangeList ids={openFiles.map((f) => f.id)} onReorder={reorderFiles}>
                     <div style={{ display: 'grid', gap: 1 }}>
@@ -1233,7 +1194,7 @@ export default function ProjectsFolderTree({
                             {/* "Last edited by" — file's owner resolved against
                                 the member directory: avatar + first name. */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                              <Avatar initials={ownerInitials} size={18} color={owner?.color} />
+                              <Avatar initials={ownerInitials} size={18} id={ownerId} />
                               <span className="meta" style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ownerFirst}</span>
                             </div>
                             {/* 16px line: the mono glyph box is 14px, so an even
@@ -1249,6 +1210,7 @@ export default function ProjectsFolderTree({
                               </span>
                             ) : (
                               <button
+                                aria-haspopup="menu"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   // Toggle the portalled file menu, anchored to
@@ -1258,7 +1220,7 @@ export default function ProjectsFolderTree({
                                   setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
                                 }}
                                 className="hub-icon-btn"
-                                title="More"
+                                title="More" aria-label="More"
                               ><Icon name="more" size={14} /></button>
                             )}
                           </div>
@@ -1282,7 +1244,7 @@ export default function ProjectsFolderTree({
                     const team = projectTeam(open);
                     if (team.length === 0) {
                       return (
-                        <div className="meta" style={{ fontSize: 10.5, lineHeight: 1.5 }}>
+                        <div className="meta" style={{ fontSize: 11, lineHeight: 1.5 }}>
                           Sign in to see this project's owner.
                         </div>
                       );
@@ -1294,9 +1256,9 @@ export default function ProjectsFolderTree({
                           const memName = mem?.name || 'Teammate';
                           return (
                             <div key={m} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <Avatar initials={mem ? initialsOf(mem.name) : '—'} size={22} color={mem?.color} />
+                              <Avatar initials={mem ? initialsOf(mem.name) : '—'} size={22} id={m} />
                               <div style={{ minWidth: 0, flex: 1 }}>
-                                <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{memName}</div>
+                                <div style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{memName}</div>
                                 <div className="meta" style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                   <span style={{ width: 5, height: 5, borderRadius: '50%', background: mem?.online ? 'var(--success)' : 'var(--text-disabled)', flex: 'none' }}></span>
                                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{mem?.role || 'Member'}</span>
@@ -1345,31 +1307,36 @@ export default function ProjectsFolderTree({
                     drilled-in project is ONE panel, the same lighter blue-grey
                     box as the other phone lists. The name block sits on top, a
                     hairline runs edge to edge, then a "Files" heading carries
-                    Add files and Team as quiet gold words (not outlined boxes),
+                    Add files and Team as quiet words (not outlined boxes),
                     and the file rows are lines in the same panel. The panel
                     hugs its rows instead of stretching to the foot of the
                     screen. Matches the Templates editor's layout B mock. */}
                 <div className="projects-mobile-project-card">
                   <div className="projects-mobile-project-head">
-                    <input
-                      key={`mobile-project-name-${mobileDrillProject.id}`}
-                      className="projects-mobile-title-input"
-                      {...projectNameField(mobileDrillProject)}
-                      title="Tap to rename"
-                    />
+                    <span className="hub-autowidth projects-mobile-title-field" data-value={projectNameField(mobileDrillProject).value}>
+                      <input
+                        size={1}
+                        key={`mobile-project-name-${mobileDrillProject.id}`}
+                        className="projects-mobile-title-input hub-rename"
+                        {...projectNameField(mobileDrillProject)}
+                        title="Tap to rename"
+                      />
+                    </span>
                     <span>{mobileDrillAllFiles.length} {mobileDrillAllFiles.length === 1 ? 'file' : 'files'} · {projectLastEditedLabel(mobileDrillProject.id)}</span>
                   </div>
                   <div className="projects-mobile-project-files-head">
-                    <span>Files</span>
-                    <span className="projects-mobile-project-files-actions">
-                      <button type="button" className="hub-btn hub-btn--tertiary" onClick={() => addFiles(mobileDrillProject)}><Icon name="upload" size={12} />Add files</button>
-                      <button type="button" className="hub-btn hub-btn--tertiary" aria-label="Manage team" onClick={() => setTeamModalProject(mobileDrillProject)}><Icon name="users" size={12} />Team</button>
-                    </span>
+                    <span>Files<b className="hub-section-count">{mobileDrillFiles.length}</b></span>
+                    {/* Icons (owner 2026-10-02), Add last like every header:
+                        [Team] [Add files]. */}
+                    <SectionIconActions phone className="projects-mobile-project-files-actions">
+                      <SectionIconButton phone action="team" icon="users" label="Manage team" onClick={() => setTeamModalProject(mobileDrillProject)} />
+                      <SectionIconButton phone action="add" label="Add files" onClick={() => addFiles(mobileDrillProject)} />
+                    </SectionIconActions>
                   </div>
                   <div className="projects-mobile-file-list">
                     {mobileDrillFiles.length === 0 ? (
                       <div className="projects-mobile-empty-card">
-                        <Icon name="doc" size={18} />
+                        <Icon name="doc" size={18} contentType="document" />
                         <span>{mobileDrillAllFiles.length === 0 ? 'No files in this project yet.' : 'No files match your search.'}</span>
                         {mobileDrillAllFiles.length === 0 ? (
                           <button type="button" onClick={() => addFiles(mobileDrillProject)}>Add files</button>
@@ -1454,6 +1421,7 @@ export default function ProjectsFolderTree({
                               <span className={`projects-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? <Icon name="check" size={11} color="var(--accent-text)" /> : null}</span>
                             ) : (
                               <button
+                                aria-haspopup="menu"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   const rect = e.currentTarget.getBoundingClientRect();
@@ -1461,7 +1429,7 @@ export default function ProjectsFolderTree({
                                   setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
                                 }}
                                 className="hub-icon-btn"
-                                title="More"
+                                title="More" aria-label="More"
                               ><Icon name="more" size={14} /></button>
                             )}
                           </div>
@@ -1483,7 +1451,7 @@ export default function ProjectsFolderTree({
               </button>
               <div>
                 <strong>{open.name}</strong>
-                <span>{openFiles.length} files · {projectLastEditedLabel(open.id)}</span>
+                <span>{countLabel(openFiles.length, 'file')} · {projectLastEditedLabel(open.id)}</span>
               </div>
             </div>
             {mobileFileActions}
@@ -1622,7 +1590,7 @@ export default function ProjectsFolderTree({
                 <span className="projects-mobile-folder-glyph"><Icon name="folder" size={17} /></span>
                 <span className="projects-mobile-folder-copy">
                   <strong>{p.name}</strong>
-                  <small>{projectFileCount(p.id)} files · {projectTeam(p).length} members</small>
+                  <small>{countLabel(projectFileCount(p.id), 'file')} · {countLabel(projectTeam(p).length, 'member')}</small>
                 </span>
                 <span className="projects-mobile-chevron">›</span>
               </button>
@@ -1663,7 +1631,7 @@ export default function ProjectsFolderTree({
                 <div className="projects-mobile-tile-grid files">
                   {openFiles.map((f) => (
                     <button key={`grid-file-${f.id}`} type="button" onClick={() => onOpenDocument && onOpenDocument(f)}>
-                      <span className="projects-mobile-file-thumb"><Icon name="doc" size={20} /></span>
+                      <span className="projects-mobile-file-thumb"><Icon name="doc" size={20} contentType="document" /></span>
                       <strong>{f.name}</strong>
                       <small>{shortWhen(f)}</small>
                     </button>
@@ -1714,6 +1682,7 @@ export default function ProjectsFolderTree({
                 <div className="mobile-card-meta" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                   <AvatarStack
                     members={projMembers.slice(0, 3).map((id) => initialsOf(lookupMember(id)?.name))}
+                    ids={projMembers.slice(0, 3)}
                     size={14}
                   />
                   <span>{projectFileCount(p.id)} files · {projectLastEditedLabel(p.id)}</span>
@@ -1728,6 +1697,7 @@ export default function ProjectsFolderTree({
                 </span>
               ) : (
                 <button
+                  aria-haspopup="menu"
                   onClick={(e) => {
                     e.stopPropagation();
                     const rect = e.currentTarget.getBoundingClientRect();
@@ -1735,7 +1705,7 @@ export default function ProjectsFolderTree({
                     setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
                   }}
                   className="hub-icon-btn"
-                  title="More"
+                  title="More" aria-label="More"
                 ><Icon name="more" size={14} /></button>
               )}
             </div>
@@ -1756,7 +1726,7 @@ export default function ProjectsFolderTree({
                 >
                   <span className="projects-mobile-compact-title">{p.name}</span>
                   <span>{projectFileCount(p.id)} files</span>
-                  <AvatarStack members={projMembers.slice(0, 3).map((id) => initialsOf(lookupMember(id)?.name))} size={14} />
+                  <AvatarStack members={projMembers.slice(0, 3).map((id) => initialsOf(lookupMember(id)?.name))} ids={projMembers.slice(0, 3)} size={14} />
                 </button>
               );
             })}
@@ -1777,8 +1747,8 @@ export default function ProjectsFolderTree({
               }}
             />
             <div className="projects-mobile-focus-stats">
-              <span>{openFiles.length} files</span>
-              <span>{projectTeam(open).length} members</span>
+              <span>{countLabel(openFiles.length, 'file')}</span>
+              <span>{countLabel(projectTeam(open).length, 'member')}</span>
               <span>{projectLastEditedLabel(open.id)}</span>
             </div>
             {mobileFileActions}
@@ -1813,8 +1783,8 @@ export default function ProjectsFolderTree({
                   onClick={() => setOpenId(p.id)}
                 >
                   <span className="projects-mobile-team-name">{p.name}</span>
-                  <AvatarStack members={team.slice(0, 4).map((id) => initialsOf(lookupMember(id)?.name))} size={16} />
-                  <span>{team.length} members · {projectFileCount(p.id)} files</span>
+                  <AvatarStack members={team.slice(0, 4).map((id) => initialsOf(lookupMember(id)?.name))} ids={team.slice(0, 4)} size={16} />
+                  <span>{countLabel(team.length, 'member')} · {countLabel(projectFileCount(p.id), 'file')}</span>
                 </button>
               );
             })}
@@ -1873,7 +1843,7 @@ export default function ProjectsFolderTree({
                     }}
                   >
                     <div style={{ minWidth: 0 }}>
-                      <div className="mobile-card-title" style={{ fontSize: 12.5 }}>{f.name}</div>
+                      <div className="mobile-card-title" style={{ fontSize: 13 }}>{f.name}</div>
                       <div className="mobile-card-meta">
                         {[owner?.name?.split(' ')[0], shortWhen(f)].filter(Boolean).join(' · ')}
                       </div>
@@ -1887,6 +1857,7 @@ export default function ProjectsFolderTree({
                       </span>
                     ) : (
                       <button
+                        aria-haspopup="menu"
                         onClick={(e) => {
                           e.stopPropagation();
                           const rect = e.currentTarget.getBoundingClientRect();
@@ -1894,7 +1865,7 @@ export default function ProjectsFolderTree({
                           setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
                         }}
                         className="hub-icon-btn"
-                        title="More"
+                        title="More" aria-label="More"
                       ><Icon name="more" size={14} /></button>
                     )}
                   </div>
@@ -1909,10 +1880,10 @@ export default function ProjectsFolderTree({
                 const memName = mem?.name || 'Teammate';
                 return (
                   <div key={`mobile-team-${m}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Avatar initials={mem ? initialsOf(mem.name) : '—'} size={22} color={mem?.color} />
+                    <Avatar initials={mem ? initialsOf(mem.name) : '—'} size={22} id={m} />
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 12, fontWeight: 600 }}>{memName}</div>
-                      <div className="meta" style={{ fontSize: 10.5 }}>{mem?.role || 'Member'}</div>
+                      <div className="meta" style={{ fontSize: 11 }}>{mem?.role || 'Member'}</div>
                     </div>
                   </div>
                 );
@@ -1945,7 +1916,7 @@ export default function ProjectsFolderTree({
                 const memName = mem?.name || 'Teammate';
                 return (
                   <div key={`team-layout-${m}`} className="projects-mobile-member-row">
-                    <Avatar initials={mem ? initialsOf(mem.name) : '—'} size={24} color={mem?.color} />
+                    <Avatar initials={mem ? initialsOf(mem.name) : '—'} size={24} id={m} />
                     <div>
                       <div>{memName}</div>
                       <span>{mem?.role || 'Member'}</span>
@@ -2052,11 +2023,13 @@ export default function ProjectsFolderTree({
         onChange={(e) => { handleFilesPicked(e.target.files); e.target.value = ''; }}
       />
 
-      {/* Move/Copy picker — opened by the file select-mode "Move/Copy" button.
-          On confirm it moves or copies the chosen files into the destination
-          project, mutating local document state. */}
+      {/* Move / Copy picker — opened by the file select-mode Move or Copy
+          button, already set to that mode. On confirm it moves or copies the
+          chosen files into the destination project, mutating local document
+          state. */}
       <MoveCopyModal
         open={moveOpen}
+        initialMode={moveMode}
         onClose={() => setMoveOpen(false)}
         projects={localProjects}
         count={pickByIds(openFiles, moveIds).length}

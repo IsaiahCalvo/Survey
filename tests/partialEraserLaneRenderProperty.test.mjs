@@ -8,8 +8,10 @@
 //     sharing edges: painted-back dabs, dropped blocks, slivers, hairlines);
 //   * the same spot erased twice (identical eraser circles) stays exact;
 //   * a stroked authored curve (imported/legacy ink) is painted by the canvas
-//     painter with the same clip the SVG layer uses (the canvas clipped with
-//     bounds-minus-cuts, a second boolean that painted slivers into holes).
+//     painter as the same survivor rings the SVG layer fills (the canvas once
+//     clipped with bounds-minus-cuts, a second boolean that painted slivers
+//     into holes; 2026-10-06 both fill the survivor instead of clipping the
+//     source with it, which anti-aliased thin lines twice and lightened them).
 //
 // Invariants checked on every case:
 //   1. no ink outside the original stroke;
@@ -18,7 +20,7 @@
 //   3. no ink lost outside the eraser (grid over the whole stroke);
 //   4. shown area <= original area;
 //   5. every screen converges byte-for-byte;
-//   6. canvas and SVG clip the source with the same rings (the survivor).
+//   6. canvas and SVG fill the same rings (the survivor).
 import assert from 'node:assert/strict';
 import test, { after, before } from 'node:test';
 import React from 'react';
@@ -490,14 +492,15 @@ function recordingContext() {
   return context;
 }
 
-// Rings traced before the painter's first clip() call.
-function canvasClipRings(calls) {
-  const clipIndex = calls.findIndex(([name]) => name === 'clip');
-  assert.ok(clipIndex >= 0, 'the canvas painter clips an erased authored curve');
-  assert.deepEqual(calls[clipIndex], ['clip', 'evenodd']);
+// Rings traced before the painter's first fill() call (no clip at all).
+function canvasFillRings(calls) {
+  assert.equal(calls.some(([name]) => name === 'clip'), false, 'the canvas painter fills, never clips, an erased authored curve');
+  const fillIndex = calls.findIndex(([name]) => name === 'fill');
+  assert.ok(fillIndex >= 0, 'the canvas painter fills an erased authored curve');
+  assert.deepEqual(calls[fillIndex], ['fill', 'evenodd']);
   const out = [];
   let current = null;
-  for (const [name, ...args] of calls.slice(0, clipIndex)) {
+  for (const [name, ...args] of calls.slice(0, fillIndex)) {
     if (name === 'beginPath') { out.length = 0; current = null; }
     if (name === 'moveTo') { current = [[args[0], args[1]]]; out.push(current); }
     if (name === 'lineTo') current.push([args[0], args[1]]);
@@ -506,9 +509,10 @@ function canvasClipRings(calls) {
   return out;
 }
 
-function svgClipRings(markup) {
-  const clip = markup.match(/<clipPath[^>]*>\s*<path d="([^"]+)"[^>]*clip-rule="evenodd"/);
-  assert.ok(clip, 'the SVG layer clips an erased authored curve (even-odd)');
+function svgFillRings(markup) {
+  assert.doesNotMatch(markup, /clipPath|clip-path/, 'the SVG layer fills, never clips, an erased authored curve');
+  const clip = markup.match(/<path d="([^"]+)"[^>]*fill-rule="evenodd"/);
+  assert.ok(clip, 'the SVG layer fills an erased authored curve (even-odd)');
   const out = [];
   let current = null;
   for (const [, op, x, y] of clip[1].matchAll(/([MLZ])\s*(-?[\d.e+-]+)?\s*(-?[\d.e+-]+)?/g)) {
@@ -524,7 +528,7 @@ const withoutClosingPoint = (ring) => (
     : ring
 );
 
-test('a partially erased stroked curve paints the same clip on canvas and in SVG, and it is exact', () => {
+test('a partially erased stroked curve paints the same survivor fill on canvas and in SVG, and it is exact', () => {
   const random = mulberry32(0xc0ffee);
   for (let n = 0; n < Math.ceil(CASES / 2); n += 1) {
     const width = 3 + random() * 18;
@@ -561,25 +565,26 @@ test('a partially erased stroked curve paints the same clip on canvas and in SVG
 
     const context = recordingContext();
     drawAnnotationObject(context, survivor, 1);
-    const canvasRings = canvasClipRings(context.calls);
+    const canvasRings = canvasFillRings(context.calls);
     assert.equal(canvasRings.some((ring) => ring[0] === 'rect'), false, `curve ${n}: no bounds-minus-cuts clip`);
     const svgMarkup = renderToStaticMarkup(
       React.createElement(React.Fragment, null, svgRenderers.renderPath(survivor, 0)),
     );
-    const svgRings = svgClipRings(svgMarkup);
+    const svgRings = svgFillRings(svgMarkup);
     assert.deepEqual(
       canvasRings.map(withoutClosingPoint),
       svgRings.map(withoutClosingPoint),
-      `curve ${n}: canvas and SVG clip the source with different geometry`,
+      `curve ${n}: canvas and SVG fill different geometry`,
     );
     assert.deepEqual(
       canvasRings.map(withoutClosingPoint),
       rings(survivor.polygons).map(withoutClosingPoint),
-      `curve ${n}: the clip is the survivor itself`,
+      `curve ${n}: the fill is the survivor itself`,
     );
-    // What both renderers paint = the true round stroke of the source curve
-    // inside that clip. Nothing inside the eraser; nothing lost outside it
-    // (beyond the outline polygon's own curve tolerance).
+    // What both renderers paint = the survivor, which must match the true
+    // round stroke of the source curve: nothing inside the eraser, nothing
+    // lost outside it and nothing beyond the stroke (within the outline
+    // polygon's own curve tolerance).
     const centerline = [{ x: 60, y: 60 }];
     for (let i = 1; i < path.length; i += 1) {
       const p0 = centerline.at(-1);
@@ -607,7 +612,12 @@ test('a partially erased stroked curve paints the same clip on canvas and in SVG
     for (let py = hit.y - reach; py <= hit.y + reach; py += step) {
       for (let px = hit.x - reach; px <= hit.x + reach; px += step) {
         const inStroke = strokeDistance({ x: px, y: py });
-        if (inStroke > 0) continue;
+        if (inStroke > 0) {
+          if (inStroke > GRID_TOLERANCE) {
+            assert.ok(!evenOdd(clipRings, px, py), `curve ${n}: ink painted outside the stroke at (${px}, ${py})`);
+          }
+          continue;
+        }
         const painted = evenOdd(clipRings, px, py);
         const eraser = eraserDistance({ x: px, y: py }, [gesture]);
         if (painted) {

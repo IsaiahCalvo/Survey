@@ -17,22 +17,26 @@ import Dashboard from './Dashboard';
 import DocumentLockBanner from './components/DocumentLockBanner.jsx';
 import Icon from './Icons';
 import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
-import PDFSidebar from './PDFSidebar';
 import SaveLogBanner from './components/SaveLogBanner';
-import Spinner from './components/Spinner';
+import QuietLoading, { openingLabel } from './components/QuietLoading';
 import ToastHost from './components/ToastHost';
 import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from './components/AnnotationSizeControl';
 import AnnotationDropdown from './components/AnnotationDropdown';
 import { QuickColourDots, QuickPaintSwatch } from './components/QuickStyleControls';
+import { isPaintSelectionMixed } from './utils/selectionRestyle.js';
 import BodyPortal from './components/BodyPortal.js';
 import AnchoredPopover from './components/AnchoredPopover';
 import ToolbarOverflowMenu from './components/ToolbarOverflowMenu';
 import useResponsiveToolbar from './hooks/useResponsiveToolbar.js';
 import useLoadoutTransition, { useDropInRow, useLeavingRow, useRowCrossfade } from './hooks/useLoadoutTransition.js';
-import { placeUnderOpenerAvoiding, slotDefinition, TEXT_ROW_CAPTION_ROOM, TIGHT_SPACING } from './utils/responsiveToolbar.js';
+import { PHONE_LAYOUT_MAX_WIDTH, placeUnderOpenerAvoiding, slotDefinition, TEXT_ROW_CAPTION_ROOM, TEXT_ROW_PARTS, textRowLook, TIGHT_SPACING } from './utils/responsiveToolbar.js';
 import { recentPressedControl, registerLightPopover } from './components/dismissRules.js';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from './utils/annotationSize';
-import SurveySpacesRail from './SurveySpacesRail';
+// The two document rails (PDFSidebar, SurveySpacesRail) load with the viewer,
+// not with the home screen - see loadPDFViewerModule below. Their stylesheets
+// stay here, in the same place in the cascade they always had.
+import './surveyRailStyles.js';
+import ActiveSpaceChip from './sidebar/ActiveSpaceChip';
 import TabBar from './TabBar';
 import {
   MobilePdfViewerDock,
@@ -52,12 +56,14 @@ import { showToast } from './utils/toast';
 import { randomUUID } from './utils/randomUUIDPolyfill';
 import { getDocumentOpenKey, isSameDocumentTab } from './utils/documentTabIdentity.js';
 import { schedulePdfViewerPrefetch } from './utils/pdfViewerPrefetch';
+import { preloadedComponent, retryingLazy } from './utils/preloadedComponent.js';
 import { shouldWarnBeforeUnloadForTab } from './utils/beforeUnloadGuard.js';
-import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectModeIconName, isSelectFamilyTool, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
+import { getSelectFamilyLabel, getSelectModeIconName, isSelectFamilyTool, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
 import { computeTextMarkupPickerPosition } from './utils/pdfTextMarkup.js';
 import { getLiveZoomViewerId, isLiveZoomEventForViewer, LIVE_ZOOM_EVENT } from './utils/liveZoomEvents.js';
 import { useAuth } from './contexts/AuthContext';
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import useStableHandler from './hooks/useStableHandler.js';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { useOptionalAuth } from './components/OptionalAuthPrompt';
 import { useStorage, useTemplates } from './hooks/useDatabase';
@@ -71,7 +77,7 @@ import { useViewerTopOverlayRef } from './utils/viewerTopOverlay.js';
 import DismissBarrier from './components/DismissBarrier.jsx';
 import { sanitizeZoomInput } from './utils/pageNavigationMath.js';
 import { showsColourRule, showsPaintSwatch, showsQuickColourDots } from './utils/toolbarColourGroup.js';
-import { resolveToolBarGroup, showsFormatRow } from './utils/toolbarRows.js';
+import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, showsFormatRow } from './utils/toolbarRows.js';
 
 // The dot between the current page and the page total in the right-rail
 // footer: a drawn 2px circle in the total's grey (see the rail audit note at
@@ -105,11 +111,100 @@ function RailLiveZoomText({ fallback, viewerId }) {
   return <>{livePercentage ?? fallback}%</>;
 }
 
+// Owner 2026-10-02 (footer lock: "these numbers need to be able to add digits
+// and decrease digits without shifting anything around"): every number in the
+// rail footer sits in a box as wide as its widest real value, so a value
+// gaining or losing a digit never moves the buttons beside it. The widest
+// value is laid down invisibly in the same grid cell as the real one - the box
+// is then exactly that wide in whatever font the platform draws, with
+// tabular figures so every digit is the same width. The value is centred in
+// it. An edit field passed as `field` fills the same box, so opening it does
+// not move anything either.
+// Desktop zoom tops out at 4000% (PdfjsViewerContainer MAX_SCALE 40).
+const FOOTER_ZOOM_WIDEST = '4000%';
+function FooterSlot({ widest, field = null, children = null }) {
+  return (
+    <span data-footer-slot style={{ position: 'relative', display: 'inline-grid', flexShrink: 0, alignSelf: 'stretch', alignItems: 'center', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+      {[].concat(widest).map((text) => (
+        <span key={text} aria-hidden="true" style={{ gridArea: '1 / 1', visibility: 'hidden' }}>{text}</span>
+      ))}
+      {field || <span style={{ gridArea: '1 / 1', justifySelf: 'center' }}>{children}</span>}
+    </span>
+  );
+}
+const footerSlotFieldStyle = { position: 'absolute', inset: 0, width: '100%', boxSizing: 'border-box' };
+
 // Lazy boundary: the dashboard paints without pulling in the viewer (and its
 // fabric / annotation / Excel weight). The viewer chunk fetches the first time
-// a PDF tab is opened.
-const loadPDFViewerModule = () => import('./PDFViewer');
-const PDFViewer = lazy(() => loadPDFViewerModule().then((m) => ({ default: m.PDFViewer })));
+// a PDF tab is opened (or earlier, from the idle prefetch).
+// The left and right document rails only appear once the viewer has published
+// their APIs, so they travel with it: the viewer resolves only after both rail
+// chunks are in memory, and the rails then render without an empty frame.
+const PDFSidebarChunk = preloadedComponent(() => import('./PDFSidebar'));
+const PDFSidebar = PDFSidebarChunk.Component;
+const SurveySpacesRailChunk = preloadedComponent(() => import('./SurveySpacesRail'));
+// Memoised: its props come from the published rightRailApi plus a few stable
+// values, so a page change while scrolling no longer re-renders the Survey rail.
+const SurveySpacesRail = memo(SurveySpacesRailChunk.Component);
+// The hidden home screen and the desktop tab strip skip re-rendering when App
+// re-renders for viewer reasons (page number, zoom, tool state): their props
+// are kept stable below with useStableHandler. Before this, every page change
+// while scrolling re-rendered the whole (hidden) home screen.
+const MemoDashboard = memo(Dashboard);
+const MemoTabBar = memo(TabBar);
+// No props: these only change from their own state and window events.
+const MemoSaveLogBanner = memo(SaveLogBanner);
+const MemoToastHost = memo(ToastHost);
+// A rail chunk that fails to download (offline, stale deploy) must not stop the
+// viewer opening: its area just stays empty (and asks again when it next mounts).
+const loadPDFViewerModule = () => Promise.all([
+  import('./PDFViewer'),
+  PDFSidebarChunk.load().catch(() => null),
+  SurveySpacesRailChunk.load().catch(() => null),
+]).then(([viewerModule]) => viewerModule);
+// If the viewer chunk itself fails, one quiet line sits where the document
+// would be instead of the app's crash screen (plain React.lazy kept the
+// failure and rethrew it on every open). Tapping it reloads the page: Chromium
+// and WebKit both remember a failed module download for the life of the page
+// and never ask the network again (checked 2026-10-06), so retrying in place
+// cannot succeed there. In a production build main.jsx's vite:preloadError
+// handler usually reloads once on its own before this is even seen.
+const viewerLoadFailedStyle = {
+  position: 'absolute', inset: 0, width: '100%', border: 0, margin: 0, padding: 16,
+  background: 'var(--surface-0)', color: 'var(--text-3)', font: 'inherit',
+  fontSize: 13, lineHeight: '18px', cursor: 'pointer',
+};
+function ViewerLoadFailed() {
+  // 2026-10-07 (phone loading): the page reloads by itself instead of waiting
+  // for the tap - at once when the device is online (shares main.jsx's
+  // once-per-20 s guard, so it can never loop), otherwise as soon as the
+  // connection comes back.
+  useEffect(() => {
+    const reload = () => {
+      try {
+        const last = Number(window.sessionStorage.getItem('__vite_preload_reloaded_at') || 0);
+        if (Number.isFinite(last) && Date.now() - last < 20000) return;
+        window.sessionStorage.setItem('__vite_preload_reloaded_at', String(Date.now()));
+      } catch { /* storage unavailable: still reload once */ }
+      window.location.reload();
+    };
+    if (window.navigator?.onLine !== false) {
+      reload();
+      return undefined;
+    }
+    window.addEventListener('online', reload);
+    return () => window.removeEventListener('online', reload);
+  }, []);
+  return (
+    <button type="button" onClick={() => window.location.reload()} style={viewerLoadFailedStyle}>
+      Couldn&rsquo;t open this file. Tap to try again.
+    </button>
+  );
+}
+const PDFViewer = retryingLazy(
+  () => loadPDFViewerModule().then((m) => ({ default: m.PDFViewer })),
+  ViewerLoadFailed,
+);
 // Lazy boundary: the compact color picker only renders deep inside the bottom
 // toolbar when a rich-text or annotation color picker is explicitly opened.
 const CompactColorPicker = lazy(() => import('./components/CompactColorPicker'));
@@ -272,6 +367,10 @@ const resolveTextFormatting = (api) => {
  * shows. The drawing is the same glyph in the pill and in the menu row, at two
  * sizes, so what the row promises is what the pill reports back.
  */
+/* Owner Test 41 (2026-10-04): a folded alignment pill shows its group's
+   current choice, so the bar still says how the text is aligned. */
+const TEXT_ALIGN_GLYPH = Object.freeze({ left: 'alignLeft', center: 'alignCenter', right: 'alignRight' });
+const TEXT_VALIGN_GLYPH = Object.freeze({ top: 'alignTop', middle: 'alignMiddle', bottom: 'alignBottom' });
 const LINE_STYLE_OPTIONS = Object.freeze([
   Object.freeze({ value: 'solid', label: 'Solid' }),
   Object.freeze({ value: 'dashed', label: 'Dashed' }),
@@ -616,7 +715,6 @@ export default function App({ devPreviewReturnTab = null }) {
 
   const [currentView, setCurrentView] = useState('dashboard');
   const [selectedPDF, setSelectedPDF] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [documents, setDocuments] = useState(() => {
     if (
       import.meta.env.DEV
@@ -660,14 +758,6 @@ export default function App({ devPreviewReturnTab = null }) {
   // input. Typing is clamped to 1-4000 (the PDF engine's zoom range).
   const [isEditingRailZoom, setIsEditingRailZoom] = useState(false);
 
-  // UX 2026-07-14 (rail-footer redesign): mirrors the survey panel's
-  // collapsed/expanded state (SurveySpacesRail owns it and publishes via
-  // onCollapseChange). The rail footer below switches between a vertical
-  // stack (collapsed 48px rail) and a horizontal row overlaying the
-  // expanded 320px panel — the Walkthru reference behavior. Starts true
-  // to match SurveySpacesRail's useState(true) default.
-  const [rightRailCollapsed, setRightRailCollapsed] = useState(true);
-
   // UX 2026-07-08 (mobile design pass): on narrow viewports (Capacitor phones,
   // narrow browser windows) the top toolbar's absolutely-pinned clusters
   // (undo/redo left, pan/select and tool-properties flanking the centered
@@ -677,12 +767,17 @@ export default function App({ devPreviewReturnTab = null }) {
   // ("Adapting Other Surfaces").
   const [isNarrowShell, setIsNarrowShell] = useState(() => (
     typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? window.matchMedia('(max-width: 720px)').matches
+      ? window.matchMedia(`(max-width: ${PHONE_LAYOUT_MAX_WIDTH}px)`).matches
       : false
   ));
+  // Owner Test 41 (2026-10-04): the desktop rows now give ground step by step
+  // and fit every width above this switch (down to 554px with no side panel),
+  // so there is no width where the rails cover a control. The switch stays at
+  // 720px with the viewer's own touch surface (PdfjsViewerContainer) and the
+  // stylesheets' 720px phone rules; see PHONE_LAYOUT_MAX_WIDTH.
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
-    const mq = window.matchMedia('(max-width: 720px)');
+    const mq = window.matchMedia(`(max-width: ${PHONE_LAYOUT_MAX_WIDTH}px)`);
     const onChange = () => setIsNarrowShell(mq.matches);
     if (mq.addEventListener) mq.addEventListener('change', onChange);
     else mq.addListener(onChange);
@@ -769,6 +864,15 @@ export default function App({ devPreviewReturnTab = null }) {
   // carries (PDFSidebar.jsx). Applied here, at the one place all three Fit call
   // sites share, so the menu rows and the right-edge strip cannot pick it up
   // later either.
+  // A pressed B / I / U / S or alignment toggle (see the text format row): the
+  // phone's filled segment, a --surface-3 plate under --text-1 ink. The plate
+  // is a background IMAGE because states.css section 5 wipes every chrome
+  // glyph button's background-COLOR on hover and press (!important), which
+  // would flash the plate away under the pointer.
+  const textToggleStyle = (on) => (on
+    ? { color: 'var(--text-1)', backgroundImage: 'linear-gradient(var(--surface-3), var(--surface-3))' }
+    : { color: 'var(--text-2)' });
+
   const renderFitIcon = (m, size = 15) => {
     const squared = { width: `${size}px`, height: `${size}px`, minWidth: `${size}px`, flexShrink: 0 };
     if (m === ZOOM_MODES.FIT_WIDTH) {
@@ -905,7 +1009,10 @@ export default function App({ devPreviewReturnTab = null }) {
   // pin's colour IS its fill), every other tool takes the border. Only that
   // switch resets it: a user who reaches for the Fill tab on a rectangle keeps
   // Fill while they stay on shapes.
-  const quickPaintTab = annotationPaint?.quick?.tab;
+  // Owner 2026-10-02 (Test 16): the picker always OPENS on its left tab —
+  // Fill for a shape — because people read left to right. The quick dots
+  // still act on quick.tab (the border); only the opening tab changed.
+  const quickPaintTab = annotationPaint?.isShape ? 'fill' : annotationPaint?.quick?.tab;
   useEffect(() => {
     if (quickPaintTab) setColorPickerTab(quickPaintTab);
   }, [quickPaintTab]);
@@ -1140,6 +1247,11 @@ export default function App({ devPreviewReturnTab = null }) {
   const [documentLockedByTab, setDocumentLockedByTab] = useState({});
   // Track PDFs that are currently being opened to prevent duplicate opens
   const openingPdfsRef = useRef(new Set());
+  // 2026-10-07 (phone loading): a document tapped on the home whose PDF is
+  // still downloading ({ name } while it does). The screen shows the one quiet
+  // "Opening <file>…" from the tap on, and the viewer's own opening state takes
+  // over the same words without a blink (QuietLoading keeps one clock).
+  const [pendingDocumentOpen, setPendingDocumentOpen] = useState(null);
 
   // Template management state
   const [appTemplates, setAppTemplates] = useState(() => (
@@ -1160,7 +1272,9 @@ export default function App({ devPreviewReturnTab = null }) {
     { id: `entity-${Date.now()}-2`, name: 'Subcontractor', color: '#FFF5C3' },
     { id: `entity-${Date.now()}-3`, name: 'My Company', color: '#CBDCFF' },
     { id: `entity-${Date.now()}-4`, name: '100% Complete', color: '#B2FFB2' },
-    { id: `entity-${Date.now()}-5`, name: 'Removed', color: 'var(--text-3)' }
+    // A real hex grey: a CSS variable cannot be read by hexToRgba, the page's
+    // marker fill or the Excel export (survey audit 2026-10-01).
+    { id: `entity-${Date.now()}-5`, name: 'Removed', color: '#959eae' }
   ].map(entity => ({
     ...entity,
     color: hexToRgba(entity.color, 0.2)
@@ -1198,6 +1312,7 @@ export default function App({ devPreviewReturnTab = null }) {
   const generateTabId = () => `tab-${randomUUID()}`;
 
   const handleDocumentSelect = (file, filePath = null) => {
+    setPendingDocumentOpen(null);
     if (!file) {
       console.error('No file provided to handleDocumentSelect');
       return;
@@ -1258,13 +1373,11 @@ export default function App({ devPreviewReturnTab = null }) {
     setActiveTabId(newTab.id);
     setSelectedPDF(file);
     setCurrentView('viewer');
-    setIsLoading(true);
 
     // Clear the opening flag after a short delay to allow the tab to be created
     // This ensures that if the same PDF is clicked again, it will find the existing tab
     setTimeout(() => {
       openingPdfsRef.current.delete(pdfKey);
-      setIsLoading(false);
     }, 100);
   };
 
@@ -1548,6 +1661,23 @@ export default function App({ devPreviewReturnTab = null }) {
     }
   };
 
+  // Stable identities for the memoised home screen and tab strip.
+  const stableDocumentSelect = useStableHandler(handleDocumentSelect);
+  const stableDocumentOpenStart = useStableHandler((doc) => {
+    setPendingDocumentOpen({ name: doc?.name || '' });
+  });
+  const stableDocumentOpenEnd = useStableHandler(() => setPendingDocumentOpen(null));
+  const stableBack = useStableHandler(handleBack);
+  const stableShowAuthModal = useCallback(() => setShowAuthModal(true), [setShowAuthModal]);
+  const stableTabClick = useStableHandler(handleTabClick);
+  const stableTabClose = useStableHandler(handleTabClose);
+  const stableTabReorder = useStableHandler(handleTabReorder);
+  const stablePageDrop = useStableHandler(handlePageDrop);
+  const handleRightRailCollapseChange = useStableHandler((collapsed) => {
+    setMobileSurveyPanelOpen(!collapsed);
+    rightRailApi?.onCollapseChange?.(collapsed);
+  });
+
   // Determine what to render based on active tab. Keep this before any
   // conditional return because hooks below depend on it.
   const activeTab = tabs.find(t => t.id === activeTabId);
@@ -1641,9 +1771,70 @@ export default function App({ devPreviewReturnTab = null }) {
   // moving anything; it no longer glides sideways (useDropInRow).
   const textFormatRowLeft = toolbarPlan.textRowLeft
     ?? ((toolbarPlan.formatUsableLeft ?? 0) + 10 + TEXT_ROW_CAPTION_ROOM);
+  // Owner Test 41 (2026-10-04): how far row 3 has given ground in a narrow row
+  // (tighter gutters, folded alignment / style groups, a shorter font pill).
+  const textRowLookNow = textRowLook(toolbarPlan.textRowStep || 'full');
+  // A row-3 toggle group, or — folded — one compact pill showing `glyph`
+  // whose card holds the very same toggle buttons (same look, same
+  // keep-the-caret mousedown). A pick in a one-of-three group (alignment)
+  // closes the card; B / I / U / S stay open so several can be set at once.
+  // `buttons` false (no vertical alignment for callout text) draws nothing.
+  const renderTextRowFold = (folded, menuKey, label, glyph, glyphSize, closeOnPick, buttons) => {
+    if (!buttons) return null;
+    if (!folded) return buttons;
+    return (
+      <AnnotationDropdown
+        open={openAnnotationDropdown === menuKey}
+        onOpenChange={(next) => setDropdownOpen(menuKey, next)}
+        label={label}
+        preview={<Icon name={glyph} size={glyphSize} color="currentColor" />}
+        compact
+        contentWidth="0px"
+        dataMarker="data-text-row-fold"
+        preserveFocus
+        // A toggle hands focus back to the text being edited; that must not
+        // count as leaving the card (a press anywhere else still closes it —
+        // the formatting popovers' shared mousedown handler).
+        outsideBoundarySelector="[contenteditable], [data-rich-text-toolbar]"
+      >
+        <div
+          role="toolbar"
+          aria-label={label}
+          style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+          onClick={closeOnPick ? () => setDropdownOpen(menuKey, false) : undefined}
+        >
+          {buttons}
+        </div>
+      </AnnotationDropdown>
+    );
+  };
   useDropInRow(textBarEl, textFormatRowEl, chromeMotion);
   const selectArmed = !!bottomToolbarApi && isSelectFamilyTool(bottomToolbarApi.activeTool);
   const selectModesInToolBar = selectArmed && toolBarGroup === 'select';
+  // Owner 2026-10-01 (Spaces toolbar): "it shouldn't be in a floating toolbar
+  // ... make it into a sub-toolbar option." While a Space's areas are being
+  // edited the tool bar is in AREAS mode: the area shapes and the Add /
+  // Subtract mode stand where a group's tools go (the loadout, so they morph
+  // in like any group switch), the app's own Select picks areas (one Select,
+  // V as always), Pan and zoom stay, and row 2 holds the actions (Delete area,
+  // Full page, Cancel, Done). The drawing groups wait, dimmed, until Done or
+  // Cancel. RegionSelectionTool publishes the state; PDFViewer forwards it.
+  // The tool publishes its state a render after the viewer enters the mode;
+  // until then the bar draws the tool's opening state (Rectangle, Add), so
+  // the Areas tools take over in the same frame as the mode and morph in as
+  // one change instead of the old set leaving first.
+  const regionApi = !isMobileViewer && isAreaEditing(bottomToolbarApi)
+    ? (bottomToolbarApi.regionToolbarApi || REGION_TOOLBAR_OPENING_STATE)
+    : null;
+  const areasMode = Boolean(regionApi);
+  const areasPanArmed = areasMode && bottomToolbarApi?.activeTool === 'pan';
+  // A group left open from before (Draw's row) must not draw its tools beside
+  // the Areas tools.
+  useEffect(() => {
+    if (areasMode && bottomToolbarApi?.activeCategoryDropdown) {
+      bottomToolbarApi.setActiveCategoryDropdown?.(null);
+    }
+  }, [areasMode, bottomToolbarApi]);
   // A popover whose opener sits in row 2 closes when the row goes away (Pan,
   // Survey Marker placement, closing the document): its anchor has no box left
   // to open under. Desktop only — the phone draws its own pickers.
@@ -1653,14 +1844,15 @@ export default function App({ devPreviewReturnTab = null }) {
     setShowFontColorPicker(false);
     if (bottomToolbarApi?.showAnnotationColorPicker) bottomToolbarApi.setShowAnnotationColorPicker?.(false);
   }, [formatRowShown, isMobileViewer, bottomToolbarApi]);
-  const mobileViewerPanelOpen = Boolean(
-    mobileDocumentPanelState.isOpen
-    || mobileSurveyPanelOpen
-    || mobileAuxPanel
-  );
+  // 2026-10-01: the dock stays usable under an open sheet, so a dock button can
+  // now be pressed while the Active users sheet (the tool rail's own state) is
+  // up. Opening another panel asks the rail to slide that sheet away, keeping
+  // one phone sheet at a time.
+  const [mobileAuxCloseRequestKey, setMobileAuxCloseRequestKey] = useState(0);
 
   const openMobileDocumentPanel = useCallback((panelId) => {
     setMobileSurveyCollapseRequestKey((key) => key + 1);
+    setMobileAuxCloseRequestKey((key) => key + 1);
     leftRailApi?.ref?.current?.togglePanel?.(panelId);
   }, [leftRailApi]);
 
@@ -1672,7 +1864,12 @@ export default function App({ devPreviewReturnTab = null }) {
   }, [mobileDocumentPanelState.activePanel, openMobileDocumentPanel]);
 
   const openMobileSurveyPanel = useCallback(() => {
-    leftRailApi?.ref?.current?.closePanel?.();
+    // Opening Survey over an open Pages / Spaces sheet: that sheet holds still
+    // until Survey takes its place (a dock switch keeps the sheet standing and
+    // fades the content, see useMobileSheetMotion PANEL TO PANEL). Survey opens
+    // a render or two later, through the right rail's API.
+    leftRailApi?.ref?.current?.closePanel?.(mobileSurveyPanelOpen ? undefined : { handover: true });
+    setMobileAuxCloseRequestKey((key) => key + 1);
     if (mobileSurveyPanelOpen) {
       setMobileSurveyCollapseRequestKey((key) => key + 1);
       return;
@@ -1682,6 +1879,32 @@ export default function App({ devPreviewReturnTab = null }) {
       rightRailApi?.handleSurveyToggle?.();
     }
   }, [leftRailApi, mobileSurveyPanelOpen, rightRailApi]);
+
+  // Spaces chunk B: the active space, named outside the Spaces panel - a chip
+  // in the desktop tool bar and under the phone's top bar. Its words open the
+  // Spaces panel, its x turns the space off (the panel switch's handler).
+  const activeSpaceForChip = useMemo(() => {
+    const id = leftRailApi?.activeSpaceId;
+    if (!id) return null;
+    const space = (leftRailApi?.spaces || []).find((entry) => entry?.id === id);
+    if (!space) return null;
+    return { id, name: space.name || 'Space', pageCount: space.assignedPages?.length || 0 };
+  }, [leftRailApi?.activeSpaceId, leftRailApi?.spaces]);
+  const openSpacesFromChip = useCallback(() => {
+    if (isMobileViewer) {
+      if (mobileDocumentPanelState.isOpen && mobileDocumentPanelState.activePanel === 'spaces') return;
+      openMobileDocumentPanel('spaces');
+      return;
+    }
+    leftRailApi?.ref?.current?.openPanel?.('spaces');
+  }, [isMobileViewer, leftRailApi, mobileDocumentPanelState, openMobileDocumentPanel]);
+  const turnOffSpaceFromChip = useCallback(() => {
+    leftRailApi?.onExitSpaceMode?.();
+  }, [leftRailApi]);
+
+  // (Owner 2026-10-07, survey bar round: Survey has no floating chip. The
+  // survey bar names the template as its first item and ends with "Done" -
+  // PDFViewer draws the desktop bar, MobileToolProperties the phone strip.)
 
   useEffect(() => {
     if (isViewerVisible) return;
@@ -1797,27 +2020,6 @@ export default function App({ devPreviewReturnTab = null }) {
     isMobileViewer,
   ]);
 
-  if (isLoading) {
-    // Full-screen document loading state — warm-dark surface + the ONE shared
-    // spinner per docs/design/design.md (master plan decision 3).
-    return (
-      <div style={{
-        height: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--surface-0)', // --ink-900 page background
-        fontFamily: FONT_FAMILY
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ marginBottom: '12px', display: 'flex', justifyContent: 'center' }}>
-            <Spinner size={22} thickness={2} />
-          </div>
-          <div style={{ fontSize: '13px', color: 'var(--text-3)', letterSpacing: 0 }}>Loading document...</div>
-        </div>
-      </div>
-    );
-  }
 
   // Find the tab associated with the selected PDF to pass the correct tabId
   // This ensures that even if we are on Home tab, the PDFViewer still gets the correct tabId prop
@@ -1865,6 +2067,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           aria-pressed={selected}
                           // w49: the glyph, so a group switch can morph it.
                           data-morph-icon={getSelectModeIconName(opt.mode)}
+                          data-tool-switch="true"
                           onClick={() => {
                             bottomToolbarApi.setSelectionMode?.(opt.mode);
                             bottomToolbarApi.setActiveTool(opt.tool);
@@ -1878,6 +2081,92 @@ export default function App({ devPreviewReturnTab = null }) {
                     })}
                   </div>
   );
+
+  // Areas mode (owner 2026-10-01, see regionApi above). The shapes and the
+  // mode toggle are the loadout's 28px .chrome-subcontrol buttons with the
+  // gold-glyph armed state, like pen / highlighter / eraser; a rule between
+  // the two pairs. While Pan or Select is armed no shape is lit, but Add /
+  // Subtract still say which way the next shape will go.
+  const renderAreaTools = () => {
+    const drawing = regionApi.toolType !== 'move' && !areasPanArmed;
+    const tool = (key, label, icon, active, onClick) => (
+      <button
+        key={key}
+        type="button"
+        className={`btn chrome-subcontrol ${active ? 'btn-active' : 'btn-ghost'}`}
+        aria-pressed={active}
+        data-morph-icon={icon}
+        data-area-tool={key}
+        onClick={onClick}
+        {...chromeTip(label, 'below')}
+        aria-label={label}
+      >
+        <Icon name={icon} size={CHROME_GLYPH} />
+      </button>
+    );
+    return (
+      <div
+        data-area-tools="true"
+        role="group"
+        aria-label="Area tools"
+        style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-tool-gap)' }}
+      >
+        {tool('rectangle', 'Rectangle area', 'areaRect', drawing && regionApi.toolType === 'rectangular', () => regionApi.setToolType?.('rectangular'))}
+        {tool('freehand', 'Freehand area', 'areaFreehand', drawing && regionApi.toolType === 'freehand', () => regionApi.setToolType?.('freehand'))}
+        <div className="chrome-divider" />
+        {tool('add', 'Add to area', 'plus', regionApi.selectionMode === 'add', () => regionApi.setSelectionMode?.('add'))}
+        {tool('subtract', 'Subtract from area', 'minus', regionApi.selectionMode === 'subtract', () => regionApi.setSelectionMode?.('subtract'))}
+      </div>
+    );
+  };
+  // Row 2 in Areas mode: what can be done to the areas, then how to leave -
+  // Cancel a ghost, Done a quiet neutral plate (owner: no gold outside a
+  // dialog's primary button - this was the one gold button on any tool row).
+  // Full page asks first (inline, in this row) when it would replace areas
+  // already drawn.
+  const AREA_CONFIRM_STYLE = { color: 'var(--text-1)', fontWeight: 600 };
+  const renderAreaActions = () => {
+    if (regionApi.fullPageConfirmPending) {
+      return (
+        <div data-area-actions="confirm-full-page" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-gap)' }}>
+          <span style={{ color: 'var(--text-2)', fontSize: '12px' }}>Replace these areas with the full page?</span>
+          <button type="button" className="btn btn-sm btn-default" onClick={regionApi.cancelFullPage}>Keep areas</button>
+          <button type="button" className="btn btn-sm btn-secondary" style={AREA_CONFIRM_STYLE} onClick={regionApi.confirmFullPage}>Use full page</button>
+        </div>
+      );
+    }
+    return (
+      <div data-area-actions="true" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-gap)' }}>
+        <span style={{ color: 'var(--text-2)', fontSize: '12px', fontWeight: 600, marginRight: '4px' }}>Areas</span>
+        <button
+          type="button"
+          className="btn btn-sm btn-default"
+          disabled={!regionApi.canDelete}
+          onClick={regionApi.deleteSelected}
+          {...chromeTip(regionApi.canDelete ? 'Delete the picked areas' : 'Pick an area with Select to delete it', 'below')}
+        >
+          Delete area
+        </button>
+        {regionApi.canSetFullPage && (
+          <button
+            type="button"
+            className="btn btn-sm btn-default"
+            onClick={regionApi.setFullPage}
+            {...chromeTip('Use the whole page as the area', 'below')}
+          >
+            Full page
+          </button>
+        )}
+        <div className="chrome-divider" />
+        <button type="button" className="btn btn-sm btn-default" onClick={regionApi.cancel} {...chromeTip('Leave without saving', 'below')}>
+          Cancel
+        </button>
+        <button type="button" className="btn btn-sm btn-secondary" style={AREA_CONFIRM_STYLE} onClick={regionApi.confirm} {...chromeTip('Save the areas (Enter)', 'below')}>
+          Done
+        </button>
+      </div>
+    );
+  };
 
   const toolbarOverflowItems = [];
   toolbarOverflowSlotsRef.current = [];
@@ -1915,17 +2204,17 @@ export default function App({ devPreviewReturnTab = null }) {
           it's visible on the dashboard / templates / auth / any view, not
           only inside the PDF viewer. Listens for a window event the Save
           Log handler dispatches. */}
-      <SaveLogBanner />
-      <ToastHost />
+      <MemoSaveLogBanner />
+      <MemoToastHost />
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
         {tabs.length > 0 && !isNarrowShell && ( // Desktop-only: mobile navigation lives inside the home/viewer chrome.
-          <TabBar
+          <MemoTabBar
             tabs={tabs}
             activeTabId={activeTabId}
-            onTabClick={handleTabClick}
-            onTabClose={handleTabClose}
-            onTabReorder={handleTabReorder}
-            onPageDrop={handlePageDrop}
+            onTabClick={stableTabClick}
+            onTabClose={stableTabClose}
+            onTabReorder={stableTabReorder}
+            onPageDrop={stablePageDrop}
           />
         )}
         {/* UX 2026-05-14: App-level top toolbar consolidating Undo/Redo plus
@@ -1944,6 +2233,13 @@ export default function App({ devPreviewReturnTab = null }) {
             onBack={handleBack}
             topToolbarApi={topToolbarApi}
             bottomToolbarApi={bottomToolbarApi}
+            // The header layer sits above the sheets' layer, so the chip
+            // would float over a tall or keyboard-lifted sheet: it steps
+            // aside while any phone sheet is up (the Spaces sheet names the
+            // space itself, the dock's layers button stays gold).
+            activeSpace={(mobileDocumentPanelState.isOpen || mobileSurveyPanelOpen || mobileAuxPanel) ? null : activeSpaceForChip}
+            onOpenSpaces={openSpacesFromChip}
+            onTurnOffSpace={turnOffSpaceFromChip}
           />
         ) : (
         <div
@@ -2001,10 +2297,22 @@ export default function App({ devPreviewReturnTab = null }) {
               padding: 0,
               zIndex: 1
             }}>
+              {/* Spaces chunk B: the active space, left of Export. While it
+                  shows, IT carries data-toolbar-export, so the tool bar's plan
+                  (useResponsiveToolbar) keeps the tools clear of the chip. */}
+              {activeSpaceForChip && (
+                <ActiveSpaceChip
+                  data-toolbar-export="true"
+                  name={activeSpaceForChip.name}
+                  pageCount={activeSpaceForChip.pageCount}
+                  onOpen={openSpacesFromChip}
+                  onTurnOff={turnOffSpaceFromChip}
+                />
+              )}
               {/* Export annotated PDF — browser-visible entry point for the
                   same handler the desktop File menu drives. */}
               <button
-                data-toolbar-export="true"
+                data-toolbar-export={activeSpaceForChip ? undefined : 'true'}
                 onClick={bottomToolbarApi.exportAnnotatedPdf}
                 {...chromeTip('Export annotated PDF', 'below')}
                 aria-label="Export annotated PDF"
@@ -2040,7 +2348,7 @@ export default function App({ devPreviewReturnTab = null }) {
             alignItems: 'center',
             gap: 'var(--chrome-tool-gap)'
           }}>
-            <span {...chromeTip('Undo', 'below')} style={{ display: 'inline-flex' }}>
+            <span {...chromeTip(topToolbarApi.canUndo ? 'Undo' : 'Nothing to undo', 'below')} style={{ display: 'inline-flex' }}>
               <button
                 onClick={topToolbarApi.onUndo || (() => {})}
                 disabled={!topToolbarApi.canUndo}
@@ -2054,7 +2362,6 @@ export default function App({ devPreviewReturnTab = null }) {
                 className="btn chrome-control chrome-history"
                 aria-label="Undo"
                 style={{
-                  opacity: topToolbarApi.canUndo ? 1 : 0.4,
                   cursor: topToolbarApi.canUndo ? 'pointer' : 'not-allowed',
                   pointerEvents: topToolbarApi.canUndo ? 'auto' : 'none'
                 }}
@@ -2062,7 +2369,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 <Icon name="undo" size={HISTORY_GLYPH} />
               </button>
             </span>
-            <span {...chromeTip('Redo', 'below')} style={{ display: 'inline-flex' }}>
+            <span {...chromeTip(topToolbarApi.canRedo ? 'Redo' : 'Nothing to redo', 'below')} style={{ display: 'inline-flex' }}>
               <button
                 onClick={topToolbarApi.onRedo || (() => {})}
                 disabled={!topToolbarApi.canRedo}
@@ -2070,7 +2377,6 @@ export default function App({ devPreviewReturnTab = null }) {
                 className="btn chrome-control chrome-history"
                 aria-label="Redo"
                 style={{
-                  opacity: topToolbarApi.canRedo ? 1 : 0.4,
                   cursor: topToolbarApi.canRedo ? 'pointer' : 'not-allowed',
                   pointerEvents: topToolbarApi.canRedo ? 'auto' : 'none'
                   // UX 2026-09-16: the old -0.591158px ink-centre nudge is
@@ -2102,13 +2408,13 @@ export default function App({ devPreviewReturnTab = null }) {
                 position: 'relative',
                 // RULED 2026-09-26 owner: fixed centred groups + animated
                 // loadouts (w47). The plan's `shift` centres THESE icons
-                // (Draw / Shapes / Text) on the canvas between the rails (or
-                // between an open side panel and the far rail), keeping room
-                // on their right for the widest loadout and on their left for
-                // Pan / Select, clear of Undo/Redo (useResponsiveToolbar). It
-                // depends on the window and panels only — never on the tool,
-                // the pick or the loadout — so the icons never move as you
-                // work. Negative = right of the bar centre.
+                // (Draw / Shapes / Text) on the canvas between the rails,
+                // keeping room on their right for the widest loadout and on
+                // their left for Pan / Select, clear of Undo/Redo
+                // (useResponsiveToolbar). It depends on the window only —
+                // never on the tool, the pick, the loadout or (owner
+                // 2026-10-01) an open side panel — so the icons never move as
+                // you work. Negative = right of the bar centre.
                 left: toolbarPlan.shift ? `${-toolbarPlan.shift}px` : undefined,
                 display: 'flex',
                 alignItems: 'center',
@@ -2147,7 +2453,7 @@ export default function App({ devPreviewReturnTab = null }) {
               }}>
               {[
                 { id: 'pan', label: 'Pan', iconName: 'pan' },
-                { id: 'select', label: 'Select', iconName: 'selectCursor' }
+                { id: 'select', label: 'Select', iconName: 'selectGroup' }
               ].map(t => {
                 // Select-family modes share one compact Drawboard-style button.
                 // PASS 7 (boards 8-14, owner ruling): the button ARMS the family
@@ -2160,7 +2466,9 @@ export default function App({ devPreviewReturnTab = null }) {
                 const isSelect = t.id === 'select';
                 const isTextSelect = bottomToolbarApi.activeTool === 'text-select';
                 const isActive = isSelect
-                  ? (bottomToolbarApi.activeTool === 'select' || isTextSelect)
+                  ? (areasMode
+                    ? (regionApi.toolType === 'move' && !areasPanArmed)
+                    : (bottomToolbarApi.activeTool === 'select' || isTextSelect))
                   : bottomToolbarApi.activeTool === t.id;
                 const label = isSelect
                   ? getSelectFamilyLabel(bottomToolbarApi.activeTool, bottomToolbarApi.selectionMode)
@@ -2173,9 +2481,15 @@ export default function App({ devPreviewReturnTab = null }) {
                 <button
                   type="button"
                   data-tool-group="true"
+                  data-tool-switch="true"
                   data-select-tool={isSelect ? 'true' : undefined}
                   aria-label={label}
                   onClick={() => {
+                    if (isSelect && areasMode) {
+                      // Areas mode: the same Select picks and moves areas.
+                      regionApi.setToolType?.('move');
+                      return;
+                    }
                     if (isSelect) {
                       bottomToolbarApi.setActiveTool(
                         isTextSelect || bottomToolbarApi.selectionMode === 'text'
@@ -2197,12 +2511,12 @@ export default function App({ devPreviewReturnTab = null }) {
                   style={isSelect ? { position: 'relative' } : undefined}
                 >
                   {/* PASS 7 (boards 8-14): ONE glyph size for the whole tool
-                      cluster — CHROME_GLYPH (16) inside the 28px button. Select
-                      draws the live mode's own glyph (Box / Lasso / Text) so the
-                      button says which mode it will arm, and it is centred now
-                      that the caret beside it is gone. */}
+                      cluster — CHROME_GLYPH (16) inside the 28px button.
+                      2026-10-04 (owner, Test 34): Select draws its own GROUP
+                      glyph, the plain rounded cursor, like Draw / Shapes / Text
+                      do; the live mode shows in the Box / Lasso / Text row. */}
                   <Icon
-                    name={isSelect ? getSelectFamilyIconName(bottomToolbarApi.activeTool, bottomToolbarApi.selectionMode) : t.iconName}
+                    name={t.iconName}
                     size={CHROME_GLYPH}
                   />
                 </button>
@@ -2237,13 +2551,15 @@ export default function App({ devPreviewReturnTab = null }) {
                   if (bottomToolbarApi.activeCategoryDropdown === 'draw') return;
                   bottomToolbarApi.setActiveCategoryDropdown('draw');
                   if (!['pen', 'highlighter', 'text-highlight', 'eraser'].includes(bottomToolbarApi.activeTool)) {
-                    bottomToolbarApi.setActiveTool(bottomToolbarApi.lastDrawTool);
+                    bottomToolbarApi.setActiveTool(bottomToolbarApi.lastDrawTool, { source: 'category-tab' });
                   }
                 }}
                 {...chromeTip('Draw', 'below')}
                 className={`btn chrome-control ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'draw' || ['pen', 'highlighter', 'text-highlight', 'eraser'].includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
                 data-tool-group="true"
+                data-tool-switch="true"
                 aria-label="Draw"
+                disabled={areasMode}
               >
                 <Icon name="drawGroup" size={CHROME_GLYPH} />
               </button>
@@ -2257,13 +2573,15 @@ export default function App({ devPreviewReturnTab = null }) {
                   if (bottomToolbarApi.activeCategoryDropdown === 'shape') return;
                   bottomToolbarApi.setActiveCategoryDropdown('shape');
                   if (!['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'].includes(bottomToolbarApi.activeTool)) {
-                    bottomToolbarApi.setActiveTool(bottomToolbarApi.lastShapeTool);
+                    bottomToolbarApi.setActiveTool(bottomToolbarApi.lastShapeTool, { source: 'category-tab' });
                   }
                 }}
                 {...chromeTip('Shapes', 'below')}
                 className={`btn chrome-control ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'shape' || ['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'].includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
                 data-tool-group="true"
+                data-tool-switch="true"
                 aria-label="Shapes"
+                disabled={areasMode}
               >
                 <Icon name="shapes" size={CHROME_GLYPH} />
               </button>
@@ -2276,13 +2594,15 @@ export default function App({ devPreviewReturnTab = null }) {
                   if (bottomToolbarApi.activeCategoryDropdown === 'review') return;
                   bottomToolbarApi.setActiveCategoryDropdown('review');
                   if (!REVIEW_TOOL_IDS.includes(bottomToolbarApi.activeTool)) {
-                    bottomToolbarApi.setActiveTool(bottomToolbarApi.lastReviewTool);
+                    bottomToolbarApi.setActiveTool(bottomToolbarApi.lastReviewTool, { source: 'category-tab' });
                   }
                 }}
                 {...chromeTip('Text', 'below')}
                 className={`btn chrome-control ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'review' || REVIEW_TOOL_IDS.includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
                 data-tool-group="true"
+                data-tool-switch="true"
                 aria-label="Text"
+                disabled={areasMode}
               >
                 <Icon name="textGroup" size={CHROME_GLYPH} />
               </button>
@@ -2366,9 +2686,10 @@ export default function App({ devPreviewReturnTab = null }) {
                 {/* The rule between the group icons and the group's tools —
                     the same shared rule, same 8px inset, as the one on the
                     cluster's other edge. Only there when tools follow it. */}
-                {((toolBarGroup && toolBarGroup !== 'select') || selectModesInToolBar) && (
+                {((toolBarGroup && toolBarGroup !== 'select') || selectModesInToolBar || areasMode) && (
                   <div className="chrome-divider" />
                 )}
+                {areasMode && renderAreaTools()}
                 {/* RULED 2026-09-26 owner: select modes in top bar (w46).
                     Select's Box / Lasso / Text modes stand where a group's
                     tools go — with nothing picked, or a pick no drawing group
@@ -2475,6 +2796,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   prototype-context-toolbar.html. Other tools keep the
                   rectangle swatch until they migrate. */}
               <div data-toolbar-settings-row="true" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-settings-gap, var(--chrome-gap))', position: 'relative' }}>
+                {areasMode && renderAreaActions()}
                 {showTextFormatting && textFormatRowEl && createPortal(
                   /* 2026-05-26: the formatting controls drop into the sub-row
                      beneath the top strip (mirrors the Draw / Shape category
@@ -2504,7 +2826,21 @@ export default function App({ devPreviewReturnTab = null }) {
                      live editor or the tool's own defaults. Armed, it sits UNDER
                      the Text category row, which is board 12's third bar; in
                      edit mode that category row is closed, so there are two. */
-                  <div data-rich-text-toolbar ref={setTextBarEl} style={{ width: '100%', height: 'var(--chrome-bar-h)', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', borderTop: 'none', cursor: 'default', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', paddingLeft: `${textFormatRowLeft}px`, gap: 'var(--chrome-gap)', zIndex: 10, boxSizing: 'border-box' }}>
+                  /* Owner Test 41 (2026-10-04): in a narrow row the bar gives
+                     ground in steps (textRowLook, planned by
+                     useResponsiveToolbar); the first one tightens its gutters
+                     and rules the way row 2 does. */
+                  <div data-rich-text-toolbar ref={setTextBarEl}
+                    data-text-row-step={textRowLookNow.step}
+                    data-text-row-valign={bottomToolbarApi?.textVerticalAlignSupported !== false ? 'true' : 'false'}
+                    style={{
+                      width: '100%', height: 'var(--chrome-bar-h)', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', borderTop: 'none', cursor: 'default', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', paddingLeft: `${textFormatRowLeft}px`, gap: 'var(--chrome-row-gap)', zIndex: 10, boxSizing: 'border-box',
+                      ...(textRowLookNow.tight ? {
+                        '--chrome-row-gap': `${TIGHT_SPACING.gap}px`,
+                        '--chrome-divider-inset': `${TIGHT_SPACING.inset}px`,
+                      } : {}),
+                    }}
+                  >
                     {/* PASS 7 (board 12): the order is colour, then font and
                         size, then B / I / U / S, then the two alignments —
                         appearance, then shape, then position, each pair behind
@@ -2535,7 +2871,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         centres the CONTROLS, which is what the eye reads and
                         what bars 1 and 2 centre. */}
                     <div ref={fontColorGroupRef} data-font-color-picker style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-                      <span
+                      {textRowLookNow.caption && <span
                         data-text-colour-label
                         style={{
                           position: 'absolute',
@@ -2551,12 +2887,25 @@ export default function App({ devPreviewReturnTab = null }) {
                         }}
                       >
                         Text
-                      </span>
-                      <QuickColourDots
-                        value={textColorParts.hex}
-                        onPick={(hex) => textFormatSource?.api?.setFontColor?.(composeTextColor(hex, textColorParts.opacity))}
-                        onOpenPicker={() => setShowFontColorPicker((v) => !v)}
-                      />
+                      </span>}
+                      {/* Owner Test 41 (2026-10-04): beside a side panel in a
+                          narrow window the four discs become ONE disc in the
+                          current colour, opening the same picker (whose
+                          presets hold the three). */}
+                      {textRowLookNow.oneColour ? (
+                        <QuickPaintSwatch
+                          ring={textColorParts.hex}
+                          center={textColorParts.hex}
+                          label="Text color"
+                          onOpen={() => setShowFontColorPicker((v) => !v)}
+                        />
+                      ) : (
+                        <QuickColourDots
+                          value={textColorParts.hex}
+                          onPick={(hex) => textFormatSource?.api?.setFontColor?.(composeTextColor(hex, textColorParts.opacity))}
+                          onOpenPicker={() => setShowFontColorPicker((v) => !v)}
+                        />
+                      )}
                       {showFontColorPicker && (
                         /* UX 2026-09-16: same 140ms fade-and-slide as every
                            other popover (Drawboard's 100ms fade+grow in).
@@ -2629,8 +2978,11 @@ export default function App({ devPreviewReturnTab = null }) {
                           onSelect={(family) => textFormatSource?.api?.setFontFamily?.(family)}
                           /* Board 12: 104px — the widest font name the list
                              offers ("Times New Roman") has to fit without the
-                             pill resizing as the user changes font. */
-                          width="var(--chrome-field-w-font)"
+                             pill resizing as the user changes font. Owner
+                             Test 41: a narrow row shortens it (a long name
+                             ends in "..."); the list keeps its full width. */
+                          width={textRowLookNow.shortFont ? `${TEXT_ROW_PARTS.shortFont}px` : 'var(--chrome-field-w-font)'}
+                          className={textRowLookNow.shortFont ? 'text-row-font--short' : ''}
                           contentWidth="var(--chrome-field-w-font)"
                           dataMarker="data-font-family-menu"
                           preserveFocus
@@ -2668,8 +3020,12 @@ export default function App({ devPreviewReturnTab = null }) {
                     {/* Board 12: the rule between the font pair and the four
                         style toggles. */}
                     <div className="chrome-divider" />
-                    {/* Bold / Italic / Underline / Strikethrough toggles. */}
-                    {[
+                    {/* Bold / Italic / Underline / Strikethrough toggles. Owner
+                        Test 41 (2026-10-04): in a narrow row each group below
+                        can fold into ONE pill whose card holds the very same
+                        toggles (renderTextRowFold; the order they fold in is
+                        TEXT_ROW_STEPS). */}
+                    {renderTextRowFold(textRowLookNow.foldStyle, 'text-style', 'Text style', 'formatBold', 13, false, [
                       ['formatBold', 'bold', 'toggleBold', 'Bold'],
                       ['formatItalic', 'italic', 'toggleItalic', 'Italic'],
                       ['formatUnderline', 'underline', 'toggleUnderline', 'Underline'],
@@ -2689,12 +3045,13 @@ export default function App({ devPreviewReturnTab = null }) {
                           }}
                           onClick={() => textFormatSource?.api?.[apiKey]?.()}
                           className="chrome-text-toggle"
-                          // PASS 7 (board 12, owner ruling): 22x20 with a 13px
-                          // glyph, on no fill at all. A pressed toggle turns its
-                          // GLYPH gold and changes nothing else — the resting
-                          // chip fill these carried made four filled boxes in a
-                          // row that already had two filled pills in it.
-                          style={{ color: isOn ? 'var(--accent)' : 'var(--text-2)' }}
+                          // PASS 7 (board 12): 22x20 with a 13px glyph, on no
+                          // fill at rest. Owner 2026-10-02 (phone/desktop
+                          // consistency): a pressed toggle is the phone's
+                          // filled segment - a --surface-3 plate and --text-1
+                          // ink - not a gold glyph; these are settings, not
+                          // the active tool.
+                          style={textToggleStyle(isOn)}
                           {...chromeTip(title, 'below')}
                           aria-label={title}
                           aria-pressed={isOn}
@@ -2702,7 +3059,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           <Icon name={iconName} size={13} />
                         </button>
                       );
-                    })}
+                    }))}
                     {/* PASS 7 (board 12, owner ruling): alignment is SIX
                         buttons in two groups — left / centre / right, then top /
                         middle / bottom — behind their own rules. It used to be
@@ -2711,7 +3068,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         axis meant re-picking the other. Both axes are now
                         visible and independent. */}
                     <div className="chrome-divider" />
-                    {[
+                    {renderTextRowFold(textRowLookNow.foldAlign, 'text-align', 'Text alignment', TEXT_ALIGN_GLYPH[textFormatSource?.state?.textAlign] || 'alignLeft', 14, true, [
                       ['alignLeft', 'left', 'Align left'],
                       /* US spelling, app-wide ruling (owner 2026-09-22): the UI
                          says "Color" and "center", never the British form. */
@@ -2725,7 +3082,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           className="chrome-text-toggle"
                           onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
                           onClick={() => textFormatSource?.api?.setTextAlign?.(value)}
-                          style={{ color: on ? 'var(--accent)' : 'var(--text-2)' }}
+                          style={textToggleStyle(on)}
                           {...chromeTip(title, 'below')}
                           aria-label={title}
                           aria-pressed={on}
@@ -2733,12 +3090,12 @@ export default function App({ devPreviewReturnTab = null }) {
                           <Icon name={iconName} size={14} color="currentColor" />
                         </button>
                       );
-                    })}
+                    }))}
                     {/* Review 2026-09-23: hidden for callout text, which is
                         always vertically centred (PDFViewer
                         textVerticalAlignSupported). */}
                     {bottomToolbarApi?.textVerticalAlignSupported !== false && <div className="chrome-divider" />}
-                    {bottomToolbarApi?.textVerticalAlignSupported !== false && [
+                    {renderTextRowFold(textRowLookNow.foldVertical, 'text-valign', 'Vertical alignment', TEXT_VALIGN_GLYPH[textFormatSource?.state?.verticalAlign] || 'alignTop', 14, true, bottomToolbarApi?.textVerticalAlignSupported !== false && [
                       ['alignTop', 'top', 'Align to the top'],
                       ['alignMiddle', 'middle', 'Align to the middle'],
                       ['alignBottom', 'bottom', 'Align to the bottom'],
@@ -2750,7 +3107,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           className="chrome-text-toggle"
                           onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
                           onClick={() => textFormatSource?.api?.setVerticalAlign?.(value)}
-                          style={{ color: on ? 'var(--accent)' : 'var(--text-2)' }}
+                          style={textToggleStyle(on)}
                           {...chromeTip(title, 'below')}
                           aria-label={title}
                           aria-pressed={on}
@@ -2758,7 +3115,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           <Icon name={iconName} size={14} color="currentColor" />
                         </button>
                       );
-                    })}
+                    }))}
                   </div>,
                   textFormatRowEl
                 )}
@@ -2834,7 +3191,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     customActive={bottomToolbarApi.selectionMixed?.strokeColor ? false : undefined}
                     onPick={(hex) => annotationPaint.quick.apply(hex, annotationPaint.quick.opacity)}
                     onOpenPicker={() => {
-                      setColorPickerTab(annotationPaint.quick.tab);
+                      setColorPickerTab(annotationPaint.isShape ? 'fill' : annotationPaint.quick.tab);
                       bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);
                     }}
                   />
@@ -2865,8 +3222,9 @@ export default function App({ devPreviewReturnTab = null }) {
                         variant={isCounter ? 'counter' : 'shape'}
                         ring={isCounter ? pinColour : borderColour}
                         center={isCounter ? numberColour : fillColour}
+                        mixed={isPaintSelectionMixed(bottomToolbarApi.selectionMixed)}
                         onOpen={() => {
-                          setColorPickerTab(annotationPaint.quick.tab);
+                          setColorPickerTab(annotationPaint.isShape ? 'fill' : annotationPaint.quick.tab);
                           bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);
                         }}
                       />
@@ -3021,8 +3379,8 @@ export default function App({ devPreviewReturnTab = null }) {
                               padding: '3px',
                               background: 'var(--surface-1)',
                               border: '1px solid var(--border)',
-                              borderRadius: '6px',
-                              boxShadow: '0 8px 18px rgba(0,0,0,0.42)',
+                              borderRadius: 'var(--radius-md)',
+                              boxShadow: 'var(--shadow-popover)',
                               zIndex: 5700,
                             }}
                           >
@@ -3710,7 +4068,7 @@ export default function App({ devPreviewReturnTab = null }) {
               flexShrink: 0,
               minWidth: isMobileViewer ? 'var(--mobile-rail-w)' : '48px',
               alignSelf: 'stretch',
-              background: isMobileViewer ? 'var(--surface-2)' : 'var(--surface-1)',
+              background: 'var(--panel-bg)',
               color: 'var(--text-2)',
               fontFamily: FONT_FAMILY,
               overflow: 'visible',
@@ -3722,8 +4080,10 @@ export default function App({ devPreviewReturnTab = null }) {
               <MobilePdfViewerToolRail
                 bottomToolbarApi={bottomToolbarApi}
                 leftRailApi={leftRailApi}
+                signedInUser={user}
                 onOpenPanel={openMobileDocumentPanel}
                 onAuxPanelStateChange={setMobileAuxPanel}
+                auxCloseRequestKey={mobileAuxCloseRequestKey}
               />
             )}
             {leftRailApi && (
@@ -3767,6 +4127,9 @@ export default function App({ devPreviewReturnTab = null }) {
                   || bottomToolbarApi?.contextTool === 'text-markup'
                 ) ? 5800 : 5400
               }}
+              // Owner 2026-10-07: the rows under the tool bar draw a 1px edge
+              // where they meet each rail (styles.css), desktop only.
+              data-row-edges={isMobileViewer ? undefined : 'true'}
             >
               {/* RULED 2026-09-26 owner: flip rows (w44). Desktop only: the
                   FORMATTING ROW (row 2 — the armed tool's or picked mark's
@@ -3827,18 +4190,29 @@ export default function App({ devPreviewReturnTab = null }) {
               <div ref={setTextFormatRowEl} data-chrome-text-format-row="true" />
             </div>
             <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative' }}>
-            <Dashboard
+            {/* Polish 3 (2026-10-04): the home screen stays mounted under an
+                open document (the viewer layer covers it), but it was still in
+                the Tab order - a keyboard user tabbed from the tool bar into
+                Documents, Projects, Upload and the account menu they could not
+                see. While a document is on screen the home is inert: no focus,
+                no clicks, not read out. display: contents, so the wrapper adds
+                no box and the layout is untouched. */}
+            <div inert={isViewerVisible ? '' : undefined} style={{ display: 'contents' }}>
+            <MemoDashboard
               ref={dashboardRef}
-              onDocumentSelect={handleDocumentSelect}
-              onBack={handleBack}
+              onDocumentSelect={stableDocumentSelect}
+              onBack={stableBack}
+              onDocumentOpenStart={stableDocumentOpenStart}
+              onDocumentOpenEnd={stableDocumentOpenEnd}
               documents={documents}
               setDocuments={setDocuments}
               templates={appTemplates}
               onTemplatesChange={handleTemplatesChange}
-              onShowAuthModal={() => setShowAuthModal(true)}
+              onShowAuthModal={stableShowAuthModal}
               entities={entities}
               setEntities={setEntities}
             />
+            </div>
             {tabs.map(tab => {
               if (tab.isHome) return null;
 
@@ -3873,7 +4247,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         ));
                       }}
                     />
-                    <Suspense fallback={null}>
+                    <Suspense fallback={<QuietLoading label={openingLabel(tab.file?.name)} background="var(--surface-0)" />}>
                     <PDFViewer
                       pdfFile={tab.file}
                       pdfFilePath={tab.filePath}
@@ -3913,11 +4287,23 @@ export default function App({ devPreviewReturnTab = null }) {
                 </div>
               );
             })}
+            {pendingDocumentOpen && currentView !== 'viewer' && (
+              // Covers the home (and takes its taps) while the PDF downloads;
+              // the same quiet line, place and background as the viewer's own
+              // opening state, which replaces it.
+              <div style={{ position: 'absolute', inset: 0, zIndex: 5000, background: 'var(--surface-0)' }}>
+                <QuietLoading label={openingLabel(pendingDocumentOpen.name)} background="var(--surface-0)" />
+              </div>
+            )}
           </div>
           </div>
           {/* UX 2026-05-14/29: chrome-right-host — slim always-visible right rail.
               Pinned to the viewport's right edge. Survey owns this rail; page
-              and zoom controls now live in the top-right toolbar pill. */}
+              and zoom controls now live in the top-right toolbar pill.
+              Polish 3 (2026-10-04): both rail hosts paint --panel-bg, the one
+              docked-chrome colour (tokens.css, ONE SURFACE RULE). This one was
+              --surface-1, which showed under the zoom / page stack as a darker
+              band at the bottom of the rail. */}
           <div
             id="chrome-right-host"
             style={{
@@ -3929,7 +4315,7 @@ export default function App({ devPreviewReturnTab = null }) {
               minWidth: isMobileViewer ? '0px' : '48px',
               overflow: 'visible',
               alignSelf: 'stretch',
-              background: isMobileViewer ? 'transparent' : 'var(--surface-1)',
+              background: isMobileViewer ? 'transparent' : 'var(--panel-bg)',
               color: 'var(--text-2)',
               fontFamily: FONT_FAMILY,
               flexDirection: 'column',
@@ -3946,12 +4332,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 mobileMode={isMobileViewer}
                 expandRequestKey={(rightRailApi.expandRequestKey || 0) + mobileSurveyRequestKey}
                 collapseRequestKey={mobileSurveyCollapseRequestKey}
-                onCollapseChange={(collapsed) => {
-                  setMobileSurveyPanelOpen(!collapsed);
-                  // Rail footer (below) flips vertical/horizontal off this.
-                  setRightRailCollapsed(collapsed);
-                  rightRailApi.onCollapseChange?.(collapsed);
-                }}
+                onCollapseChange={handleRightRailCollapseChange}
               />
             )}
             {/* Spacer pushes the bottom slot to the bottom of the rail. */}
@@ -4009,12 +4390,23 @@ export default function App({ devPreviewReturnTab = null }) {
                 color: disabled ? 'var(--text-disabled)' : 'var(--text-2)',
                 cursor: disabled ? 'not-allowed' : 'pointer'
               });
+              // Footer lock (owner 2026-10-02): the zoom and page values and
+              // their edit fields share one box style, so opening a field puts
+              // it exactly where the value was. The zoom reads 11px in the
+              // open panel's row (the rail's smallest text) and 10px in the
+              // collapsed 48px stack. The page box is as wide as this
+              // document's page count ("120" -> 3 digits) for as long as the
+              // document is open, so paging 9 -> 10 -> 100 moves nothing.
+              const footerFieldBoxStyle = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxSizing: 'content-box', height: 'var(--chrome-field-h)', padding: '0 2px', borderRadius: 'var(--chrome-radius)', lineHeight: 1, fontSize: '10px', fontVariantNumeric: 'tabular-nums' };
+              const pageSlotWidest = '0'.repeat(String(Math.max(1, Number(api.numPages) || 0)).length);
               // Editable zoom % — Walkthru-style: plain "100%" by default,
               // click swaps to an input (it only mounts while editing so the
               // resting layout stays a single centered value). The handlers
               // clamp to 1-4000, the PDF engine's actual zoom range.
               const zoomValue = isEditingRailZoom ? (
                 <>
+                <span style={{ ...footerFieldBoxStyle, fontFamily: FONT_FAMILY, fontWeight: '500' }}>
+                <FooterSlot widest={FOOTER_ZOOM_WIDEST} field={(
                 <input
                   ref={api.zoomInputRef}
                   type="text"
@@ -4050,8 +4442,10 @@ export default function App({ devPreviewReturnTab = null }) {
                   /* UX 2026-09-22: while you type, the box is the same height
                      and the same ink as the value it replaced, so the rail does
                      not twitch when it swaps in. */
-                  style={{ width: '36px', background: 'transparent', color: 'var(--text-2)', border: 'none', padding: 0, margin: 0, fontSize: '10px', fontFamily: FONT_FAMILY, fontWeight: '500', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', textAlign: 'center', outline: 'none', lineHeight: 1 }}
+                  style={{ ...footerSlotFieldStyle, background: 'transparent', color: 'var(--text-2)', border: 'none', padding: 0, margin: 0, fontSize: 'inherit', fontFamily: FONT_FAMILY, fontWeight: '500', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', textAlign: 'center', outline: 'none', lineHeight: 1 }}
                 />
+                )} />
+                </span>
                 <DismissBarrier active insideRefs={railFieldRefs} mode="typing" onDismiss={dismissRailFields} dismissOnEscape={false} />
                 </>
               ) : (
@@ -4066,18 +4460,22 @@ export default function App({ devPreviewReturnTab = null }) {
                      and the house radius (6). It measured 12px tall with a 3px
                      corner — a hit target half the size of every other field in
                      the app, in a column that also held a 13px one. */
-                  style={{ background: 'transparent', border: 'none', color: 'var(--text-2)', fontSize: '10px', fontFamily: FONT_FAMILY, fontWeight: '500', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', padding: '0 4px', borderRadius: 'var(--chrome-radius)', cursor: 'pointer', lineHeight: 1, textAlign: 'center' }}
+                  style={{ ...footerFieldBoxStyle, background: 'transparent', border: 'none', color: 'var(--text-2)', fontFamily: FONT_FAMILY, fontWeight: '500', cursor: 'pointer', textAlign: 'center' }}
                 >
-                  <RailLiveZoomText
-                    fallback={api.zoomInputValue || Math.round((api.manualZoomScale || 1) * 100)}
-                    viewerId={getLiveZoomViewerId(activeTabId)}
-                  />
+                  <FooterSlot widest={FOOTER_ZOOM_WIDEST}>
+                    <RailLiveZoomText
+                      fallback={api.zoomInputValue || Math.round((api.manualZoomScale || 1) * 100)}
+                      viewerId={getLiveZoomViewerId(activeTabId)}
+                    />
+                  </FooterSlot>
                 </button>
               );
               // Editable current page — plain accent-colored number by
               // default (Walkthru style), click or double-click to jump.
               const pageValue = isEditingRailPage ? (
                 <>
+                <span style={{ ...footerFieldBoxStyle, fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600' }}>
+                <FooterSlot widest={pageSlotWidest} field={(
                 <input
                   ref={api.pageInputRef}
                   type="text"
@@ -4102,8 +4500,10 @@ export default function App({ devPreviewReturnTab = null }) {
                   inputMode="numeric"
                   pattern="[0-9]*"
                   aria-label="Current page"
-                  style={{ width: '28px', padding: 0, background: 'transparent', color: 'var(--accent)', border: 'none', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', textAlign: 'center', outline: 'none', lineHeight: 1 }}
+                  style={{ ...footerSlotFieldStyle, padding: 0, background: 'transparent', color: 'var(--text-1)', border: 'none', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', textAlign: 'center', outline: 'none', lineHeight: 1 }}
                 />
+                )} />
+                </span>
                 <DismissBarrier active insideRefs={railFieldRefs} mode="typing" onDismiss={dismissRailFields} dismissOnEscape={false} />
                 </>
               ) : (
@@ -4114,10 +4514,12 @@ export default function App({ devPreviewReturnTab = null }) {
                   aria-label="Edit page number"
                   {...chromeTip('Page — click to jump', 'left')}
                   /* UX 2026-09-22: the page number is the zoom field's twin —
-                     same field height, same house radius. */
-                  style={{ background: 'transparent', border: 'none', color: 'var(--accent)', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', padding: '0 4px', borderRadius: 'var(--chrome-radius)', cursor: 'pointer', lineHeight: 1 }}
+                     same field height, same house radius.
+                     Owner 2026-10-02: --text-1, as on the phone's page pill -
+                     gold is for the active tool and the primary button only. */
+                  style={{ ...footerFieldBoxStyle, background: 'transparent', border: 'none', color: 'var(--text-1)', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', cursor: 'pointer' }}
                 >
-                  {api.pageNum}
+                  <FooterSlot widest={pageSlotWidest}>{api.activeSpaceHasNoPages ? 0 : api.pageNum}</FooterSlot>
                 </button>
               );
               // Fit-mode popup — one list for both variants; only the anchor
@@ -4130,8 +4532,11 @@ export default function App({ devPreviewReturnTab = null }) {
               // (pad 6px 8px) against their 34, a literal 16px glyph against
               // --rail-control-glyph 14, and a 2px radius against
               // --chrome-radius 6 — it met neither token.
+              // Polish 3 (2026-10-04): corner and shadow are now the shared
+              // popup tokens (--radius-md / --shadow-popover) that
+              // AnnotationDropdown's popover uses.
               const fitMenu = (anchorStyle) => (
-                <div style={{ position: 'absolute', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--chrome-radius)', boxShadow: '0 10px 24px rgba(0,0,0,0.45)', minWidth: '140px', zIndex: 6000, padding: '2px', ...anchorStyle }}>
+                <div style={{ position: 'absolute', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-popover)', minWidth: '140px', zIndex: 6000, padding: '2px', ...anchorStyle }}>
                   <DismissBarrier active insideRefs={railFitMenuRefs} onDismiss={dismissRailFitMenu} />
                   {ZOOM_MODE_OPTIONS.map((option) => {
                     if (option.id === ZOOM_MODES.MANUAL) return null;
@@ -4141,24 +4546,30 @@ export default function App({ devPreviewReturnTab = null }) {
                         key={option.id}
                         onClick={() => api.handleZoomModeSelect(option.id)}
                         data-active={isActive}
-                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '6px', minHeight: 'var(--chrome-menu-row-h)', padding: '4px 9px', background: 'transparent', border: 'none', borderRadius: '4px', textAlign: 'left', cursor: 'pointer', color: isActive ? 'var(--text-2)' : 'var(--text-3)', fontSize: '11px', fontFamily: FONT_FAMILY }}
+                        /* Owner 2026-10-02 (phone/desktop consistency): the
+                           phone's menu - a label, and a check on the chosen
+                           row (which steps up to --text-1). No fit glyphs on
+                           either platform; 28px rows here. */
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', minHeight: '28px', padding: '4px 9px', background: 'transparent', border: 'none', borderRadius: '4px', textAlign: 'left', cursor: 'pointer', color: isActive ? 'var(--text-1)' : 'var(--text-2)', fontSize: '11px', fontFamily: FONT_FAMILY }}
                       >
-                        {renderFitIcon(option.id, RAIL_CONTROL_GLYPH)}
                         <span>{option.label}</span>
+                        {isActive && <Icon name="check" size={RAIL_CONTROL_GLYPH} color="currentColor" />}
                       </button>
                     );
                   })}
                 </div>
               );
 
-              if (rightRailCollapsed) {
-                // Collapsed 48px rail — vertical stack. position:relative +
-                // zIndex 2 keeps it above (and clickable over) the collapsed
-                // survey overlay, which is absolute at the rail's full
-                // height with zIndex 1; transparent background lets the
-                // host/panel color (#12151c) show through.
+              // Owner 2026-10-07 (Drawboard rail): the Survey rail never
+              // widens now - its open panel stands BESIDE it - so the footer
+              // is always this vertical stack at the foot of the 48px rail
+              // (the 320px one-row footer portalled into the open panel is
+              // gone). position:relative + zIndex 2 keeps it above (and
+              // clickable over) the Survey rail strip, which is absolute at the
+              // rail's full height; a transparent background lets the strip's
+              // --panel-bg show through.
                 return (
-                  <div style={{ position: 'relative', zIndex: 2, width: '100%', borderTop: '1px solid var(--border)', padding: '8px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: 'transparent' }}>
+                  <div data-chrome-rail="true" style={{ position: 'relative', zIndex: 2, width: '100%', borderTop: '1px solid var(--border)', padding: '8px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: 'transparent' }}>
                     <button
                       onClick={api.zoomIn}
                       {...chromeTip('Zoom in', 'left')}
@@ -4180,7 +4591,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     <div style={{ width: '24px', height: '1px', background: 'var(--surface-3)', margin: '4px 0' }} />
 
                     {/* Page nav — chevron up/down because vertical layout. */}
-                    <span {...chromeTip('Previous page', 'left')} style={{ display: 'inline-flex' }}>
+                    <span {...chromeTip(atFirstPage ? 'Already on the first page' : 'Previous page', 'left')} style={{ display: 'inline-flex' }}>
                       <button
                         onClick={api.goToPreviousPage}
                         disabled={atFirstPage}
@@ -4205,9 +4616,9 @@ export default function App({ devPreviewReturnTab = null }) {
                         midpoint of the two numbers by construction. */}
                     <span aria-hidden="true" data-rail-page-dot style={RAIL_PAGE_DOT_STYLE} />
                     <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 'var(--chrome-field-h)', color: 'var(--text-3)', fontSize: '10px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-                      {api.numPages}
+                      {api.activeSpaceHasNoPages ? 0 : api.numPages}
                     </span>
-                    <span {...chromeTip('Next page', 'left')} style={{ display: 'inline-flex' }}>
+                    <span {...chromeTip(atLastPage ? 'Already on the last page' : 'Next page', 'left')} style={{ display: 'inline-flex' }}>
                       <button
                         onClick={api.goToNextPage}
                         disabled={atLastPage}
@@ -4234,10 +4645,14 @@ export default function App({ devPreviewReturnTab = null }) {
                         {...chromeTip(`Page fit: ${api.zoomDropdownLabel}`, 'left')}
                         /* UX 2026-09-22 (desktop critic round): Fit keeps the
                            shared footer corner (6) — its own 2px was the third
-                           radius in this column. An engaged fit mode is GOLD,
-                           the app's one active colour, because both greys it
-                           used to switch between are now the same --text-2. */
-                        style={{ ...footerBtn(), position: 'relative', width: `${RAIL_SPLIT_CONTROL_W}px`, color: fitMode !== ZOOM_MODES.MANUAL ? 'var(--accent)' : 'var(--text-2)' }}
+                           radius in this column.
+                           Polish 3 (2026-10-04): no gold. Gold is for the active
+                           tool and the primary button only (owner 2026-10-02),
+                           and a fit mode is on almost all the time, so the rail
+                           always carried a gold mark. Same inks as the open
+                           panel's Fit button: --text-2 when a fit mode is on,
+                           --text-3 on a manual zoom. */
+                        style={{ ...footerBtn(), position: 'relative', width: `${RAIL_SPLIT_CONTROL_W}px`, color: fitMode !== ZOOM_MODES.MANUAL ? 'var(--text-2)' : 'var(--text-3)' }}
                       >
                         {/* UX 2026-09-16 (desktop sweep): the shared <Icon>, not a
                             hand-written <svg>. This caret was drawn inline at
@@ -4268,110 +4683,37 @@ export default function App({ devPreviewReturnTab = null }) {
                     </div>
                   </div>
                 );
-              }
-
-              // Expanded 320px survey panel — horizontal row pinned to the
-              // panel bottom: [ − % + ] | [ ‹ n · N › ] | [ Fit ▴ ]. The
-              // host column stays 48px wide; this overlay reaches leftward
-              // exactly like the panel itself does.
-              return (
-                <div style={{ position: 'absolute', right: 0, bottom: 0, width: '320px', boxSizing: 'border-box', zIndex: 2, background: 'var(--surface-1)', borderTop: '1px solid var(--border)', padding: '6px 8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                  <button
-                    onClick={api.zoomOut}
-                    {...chromeTip('Zoom out', 'above')}
-                    aria-label="Zoom out"
-                    style={footerBtn()}
-                  >
-                    <Icon name="minus" size={RAIL_CONTROL_GLYPH} />
-                  </button>
-                  {zoomValue}
-                  <button
-                    onClick={api.zoomIn}
-                    {...chromeTip('Zoom in', 'above')}
-                    aria-label="Zoom in"
-                    style={footerBtn()}
-                  >
-                    <Icon name="plus" size={RAIL_CONTROL_GLYPH} />
-                  </button>
-
-                  <div style={{ width: '1px', height: '20px', background: 'var(--surface-3)' }} />
-
-                  {/* Page nav — left/right chevrons because horizontal row. */}
-                  <span {...chromeTip('Previous page', 'above')} style={{ display: 'inline-flex' }}>
-                    <button
-                      onClick={api.goToPreviousPage}
-                      disabled={atFirstPage}
-                      aria-label="Previous page"
-                      style={{ ...footerBtn(atFirstPage), pointerEvents: atFirstPage ? 'none' : 'auto' }}
-                    >
-                      <Icon name="chevronLeft" size={RAIL_CONTROL_GLYPH} />
-                    </button>
-                  </span>
-                  {/* UX 2026-09-23 (rail audit): the same drawn dot as the
-                      vertical stack, and the total takes the page field's 4px
-                      side padding, so the dot sits the same distance from both
-                      numbers (it was 7px from the page, 3px from the total). */}
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums' }}>
-                    {pageValue}
-                    <span aria-hidden="true" data-rail-page-dot style={RAIL_PAGE_DOT_STYLE} />
-                    <span style={{ color: 'var(--text-3)', padding: '0 4px' }}>{api.numPages}</span>
-                  </span>
-                  <span {...chromeTip('Next page', 'above')} style={{ display: 'inline-flex' }}>
-                    <button
-                      onClick={api.goToNextPage}
-                      disabled={atLastPage}
-                      aria-label="Next page"
-                      style={{ ...footerBtn(atLastPage), pointerEvents: atLastPage ? 'none' : 'auto' }}
-                    >
-                      <Icon name="chevronRight" size={RAIL_CONTROL_GLYPH} />
-                    </button>
-                  </span>
-
-                  <div style={{ width: '1px', height: '20px', background: 'var(--surface-3)' }} />
-
-                  {/* Page-fit trigger — icon + current-mode label + chevron
-                      pointing UP because the popup opens upward here. */}
-                  <div ref={api.zoomMenuRef} style={{ position: 'relative' }}>
-                    <button
-                      onClick={api.toggleZoomMenu}
-                      aria-haspopup="listbox"
-                      aria-expanded={api.isZoomMenuOpen}
-                      aria-label="Fit options"
-                      data-active={fitMode !== ZOOM_MODES.MANUAL}
-                      {...chromeTip(`Page fit: ${api.zoomDropdownLabel}`, 'above')}
-                      style={{ ...footerBtn(), width: 'auto', height: `${RAIL_CONTROL}px`, gap: '6px', padding: '0 8px', color: fitMode !== ZOOM_MODES.MANUAL ? 'var(--text-2)' : 'var(--text-3)', fontSize: '11px', fontFamily: FONT_FAMILY }}
-                    >
-                      {renderFitIcon(fitIconMode, RAIL_CONTROL_GLYPH)}
-                      <span>{api.zoomDropdownLabel}</span>
-                      {/* UX 2026-09-16 (desktop sweep): the shared <Icon>, not a
-                          hand-written <svg>. This caret was drawn inline at stroke
-                          1.8 in an 11px box — 3.6 units on the house 24 grid, 140%
-                          over the house 1.5 — so it read heavier than every glyph
-                          beside it in the same footer. It keeps flipping with the
-                          menu: the popup opens upward here, so the resting state
-                          points up and the open state points down. */}
-                      <Icon
-                        name={api.isZoomMenuOpen ? 'chevronDown' : 'chevronUp'}
-                        size={RAIL_CARET}
-                        color="currentColor"
-                      />
-                    </button>
-                    {api.isZoomMenuOpen && fitMenu({ right: 0, bottom: '100%', marginBottom: '6px' })}
-                  </div>
-                </div>
-              );
             })()}
           </div>
         </div>
-        {isMobileViewer && !mobileViewerPanelOpen && (
+        {/* Owner 2026-10-01 ("once it's collapsed, its collapsed version
+            refreshes"): the dock used to unmount the moment a phone panel
+            opened and mount again only after the panel had finished sliding
+            down, so it vanished under a rising sheet and popped back in, in one
+            frame, as the sheet landed. It stays mounted, and it keeps its
+            resting look - a highlight lit only while a panel is open would
+            switch off on the frame the sheet lands, the same pop in miniature.
+            Owner 2026-10-01 (iPhone: "the panel needs to show over the bottom
+            bar ... and I should be able to see the bottom bar"): every sheet
+            now stands ON the dock (mobilePdfViewer.css, SHEETS STAND ON THE
+            DOCK), so the dock is never covered and stays usable while a panel
+            is open - its buttons switch panels (each handler closes the one
+            that is open) - and a closing sheet tucks away behind it. */}
+        {isMobileViewer && (
           <MobilePdfViewerDock
             onOpenPanel={openMobileDocumentPanel}
             onToggleHub={toggleMobileDocumentHub}
             onOpenSurvey={openMobileSurveyPanel}
             hubMode={['pages', 'search', 'bookmarks'].includes(mobileDocumentPanelState.activePanel) ? mobileDocumentPanelState.activePanel : 'pages'}
-            hubOpen={mobileDocumentPanelState.isOpen && ['pages', 'search', 'bookmarks'].includes(mobileDocumentPanelState.activePanel)}
-            spacesActive={Boolean(leftRailApi?.activeSpaceId) || (mobileDocumentPanelState.isOpen && mobileDocumentPanelState.activePanel === 'spaces')}
+            spacesActive={Boolean(leftRailApi?.activeSpaceId)}
             surveyActive={Boolean(rightRailApi?.showSurveyPanel)}
+            openPanel={mobileSurveyPanelOpen
+              ? 'survey'
+              : (mobileDocumentPanelState.isOpen
+                ? (mobileDocumentPanelState.activePanel === 'spaces'
+                  ? 'spaces'
+                  : (['pages', 'search', 'bookmarks'].includes(mobileDocumentPanelState.activePanel) ? 'hub' : null))
+                : null)}
           />
         )}
         {/* UX 2026-05-14: chrome-bottom-host deleted. Every tool that lived

@@ -57,7 +57,9 @@ test('the Escape commit is synchronous so it beats the editor unmounting', () =>
   // first; it can null editingAnnotation in the same event. flushSync puts the
   // annotation into the page JSON before React tears the overlay down, which is
   // what makes the note survive a reload rather than only look committed.
-  assert.match(escapeHandlerBody(), /commitRef\.current\(\{\s*flush:\s*true\s*\}\)/);
+  // 2026-10-02: the commit also says it came from Escape, so the viewer keeps
+  // the box selected (Drawboard rule 10).
+  assert.match(escapeHandlerBody(), /commitRef\.current\(\{\s*flush:\s*true,\s*via:\s*'escape'\s*\}\)/);
 });
 
 test('an empty new box leaves nothing behind when Escape closes it', () => {
@@ -99,9 +101,9 @@ test('the app-level Escape listener stands down while an editor is open', () => 
 });
 
 test('the open editor shows a tick that commits and a cross that discards', () => {
-  const start = overlaySrc.indexOf('data-text-edit-actions');
+  const start = overlaySrc.indexOf('data-text-edit-actions\n');
   assert.ok(start > -1, 'the tick/cross pair must be rendered');
-  const region = overlaySrc.slice(start, start + 2600);
+  const region = overlaySrc.slice(start, start + 5000);
 
   const cross = region.slice(region.indexOf('Discard changes'));
   assert.match(
@@ -123,35 +125,43 @@ test('the tick/cross pair is a finger-sized target at every zoom', () => {
   assert.match(overlaySrc, /const ACTION_BUTTON_VISUAL = 20;/, 'visible disc');
   assert.match(overlaySrc, /const ACTION_TOUCH_TARGET = 44;/, "Apple's minimum tap target");
   // Screen-constant, not page units: these are controls, like handles and the
-  // marquee, so they must not grow and shrink with the document zoom.
-  assert.match(overlaySrc, /position: 'fixed',\s*\n\s*left: actionAnchor\.left/);
+  // marquee, so they must not grow and shrink with the document zoom. Since
+  // 2026-10-04 (owner: "they lag behind a little bit") the pair lives in the
+  // page, in the overlay's UNSCALED wrapper (page CSS px), not in a fixed body
+  // portal: the browser moves it with the page and it keeps its pixel size.
+  assert.match(overlaySrc, /data-text-edit-actions-lane[\s\S]{0,200}position: 'absolute',\s*\n\s*left: actionAnchor\.left/);
+  assert.doesNotMatch(overlaySrc, /position: 'fixed'/);
 });
 
-test('the pair is clamped to the visual viewport so the keyboard cannot bury it', () => {
-  const start = overlaySrc.indexOf('const vv = typeof window !== \'undefined\' ? window.visualViewport : null;');
-  assert.ok(start > -1, 'placement must read visualViewport, not window.innerHeight');
-  const region = overlaySrc.slice(start, start + 1600);
+test('the pair is placed inside what the user can see, so the keyboard cannot bury it', () => {
+  // The visible area is the visual viewport (the phone keyboard shrinks it)
+  // clipped by the PDF scroller and the page - utils/pageAnchoredControls.js.
+  // (Behaviour: tests/pageAnchoredControls.test.mjs.)
+  const shared = readFileSync(new URL('../src/utils/pageAnchoredControls.js', import.meta.url), 'utf8');
+  const start = shared.indexOf('export function visibleAreaInHost(');
+  assert.ok(start > -1);
+  const region = shared.slice(start, start + 1800);
+  assert.match(region, /window\.visualViewport/);
   assert.match(region, /vv\?\.height/);
   assert.match(region, /vv\?\.offsetTop/);
-  // Prefer under the box, flip above it when the keyboard owns that space.
-  assert.match(region, /const lowestAllowed = vTop \+ vHeight - ACTION_TOUCH_TARGET - ACTION_EDGE_MARGIN;/);
-  assert.match(region, /const above = rect\.top - ACTION_BOX_GAP - ACTION_TOUCH_TARGET;/);
-  // Flipping above the box is only allowed when "above" is itself on screen —
-  // a box low on a phone page has the keyboard on both sides of it, and the
-  // pair then pins to the last visible row rather than vanishing under it.
-  assert.match(region, /top = \(above >= highestAllowed && above <= lowestAllowed\) \? above : lowestAllowed;/);
-  assert.match(region, /top = Math\.max\(highestAllowed, Math\.min\(lowestAllowed, top\)\);/);
-  // And the pair re-measures when the keyboard opens or the page scrolls.
+  // Prefer under the box, flip above it near the bottom of what is visible.
+  assert.match(overlaySrc, /area: visibleAreaInHost\(host, ACTION_EDGE_MARGIN\)/);
+  // And the side is re-picked when the keyboard opens or the page scrolls.
   assert.match(overlaySrc, /window\.visualViewport\?\.addEventListener\?\.\('resize', schedule\)/);
 });
 
+// 2026-09-30: the editor's own reveal moved into the ONE shared keyboard
+// mechanism (src/mobile/keyboardViewport.js), which every field now uses. The
+// guarantees are the same: a URL-bar collapse is not a keyboard, and the scroll
+// is the measured overflow, nothing more. (Behaviour: tests/mobileKeyboardViewport.)
 test('opening the keyboard scrolls the box back into view by the minimum', () => {
   const start = overlaySrc.indexOf('// On-screen keyboard reveal.');
   assert.ok(start > -1, 'the keyboard reveal must exist');
-  const region = overlaySrc.slice(start, start + 2400);
-  assert.match(region, /const keyboardInset = window\.innerHeight - \(vv\.height \+ vv\.offsetTop\);/);
-  assert.match(region, /if \(keyboardInset < 80\) return;/, 'a URL-bar collapse must not count as a keyboard');
-  assert.match(region, /scroller\.scrollTop \+= overflow;/, 'scroll by the measured overflow, nothing more');
+  assert.match(overlaySrc, /data-keyboard-reveal-target=""/);
+  const shared = readFileSync(new URL('../src/mobile/keyboardViewport.js', import.meta.url), 'utf8');
+  assert.match(shared, /covered < KEYBOARD_MIN_INSET_PX\) return 0;/, 'a URL-bar collapse must not count as a keyboard');
+  assert.match(shared, /export const KEYBOARD_MIN_INSET_PX = 80;/);
+  assert.match(shared, /delta = Math\.max\(0, Math\.min\(rect\.bottom - bottom, rect\.top - top\)\);/, 'scroll by the measured overflow, nothing more');
 });
 
 test('the caret and preventScroll focus behaviour from the edit-modes work is intact', () => {

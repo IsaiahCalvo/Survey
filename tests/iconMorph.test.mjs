@@ -56,7 +56,14 @@ test('the morph data is the icon set\'s own geometry, verbatim — redraw an ico
       } else {
         assert.ok(source.includes(squash(path.d)), `${name}: path ${path.d.slice(0, 40)}… is in ${icon.source}`);
       }
-      if (path.dash) assert.ok(source.includes(`stroke-dasharray="${path.dash.join(' ')}"`), `${name}: dash`);
+      // An SVG asset spells its dash as an attribute; the Areas tool glyphs
+      // (utils/areaToolGlyphs.js, owner 2026-10-02) keep theirs as data.
+      if (path.dash) {
+        assert.ok(
+          source.includes(`stroke-dasharray="${path.dash.join(' ')}"`) || source.includes(`dasharray: '${path.dash.join(' ')}'`),
+          `${name}: dash`,
+        );
+      }
     }
   }
   // The transforms the morph bakes in that come from elsewhere.
@@ -103,12 +110,17 @@ test('the glyphs sit on the 24-unit box the icons are drawn in', () => {
     const pts = iconPolylines(name).flatMap((p) => p.pts);
     const xs = pts.map((p) => p[0]); const ys = pts.map((p) => p[1]);
     assert.ok(Math.min(...xs) >= 1.5 && Math.max(...xs) <= 22.5, `${name} x`);
-    // textSelect draws 2px (3 units at 16px) low, as the icon does.
-    assert.ok(Math.min(...ys) >= 1.5 && Math.max(...ys) <= (name === 'textSelect' ? 25 : 22.5), `${name} y`);
+    assert.ok(Math.min(...ys) >= 1.5 && Math.max(...ys) <= 22.5, `${name} y`);
   }
-  const low = iconPolylines('textSelect', { glyphPx: 16 }).flatMap((p) => p.pts);
-  const plain = iconPolylines('textSelect', { glyphPx: 1e9 }).flatMap((p) => p.pts);
-  assert.ok(Math.abs(low[0][1] - plain[0][1] - 3) < 1e-6, 'the 2px nudge is 3 units on a 16px glyph');
+  // DELIBERATE ASSERTION CHANGE (2026-10-02, Select-trio optical balance):
+  // textSelect used to carry a fixed CSS translateY(2px), so its morph copy was
+  // drawn 3 units low on a 16px glyph and this test pinned that. The drop is
+  // now part of the asset's own drawing (it scales with the glyph instead of
+  // being 4 units at the 12px phone strip), so the copy sits on the 24 box at
+  // every size, like every other glyph.
+  const at16 = iconPolylines('textSelect', { glyphPx: 16 }).flatMap((p) => p.pts);
+  const at12 = iconPolylines('textSelect', { glyphPx: 12 }).flatMap((p) => p.pts);
+  assert.deepEqual(at16, at12, 'textSelect sits in the same place at every glyph size');
 });
 
 test('the lasso\'s dashes open from nothing and close to nothing — never pop', () => {

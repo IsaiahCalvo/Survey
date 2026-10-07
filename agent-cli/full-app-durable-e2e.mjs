@@ -350,7 +350,7 @@ function redactRequestUrl(value) {
 
 async function waitForHub(page, title) {
   await page.getByRole('heading', { name: title, exact: true }).waitFor({ state: 'visible', timeout: 60_000 });
-  await page.waitForFunction(() => ![...document.querySelectorAll('.hub-skeleton-block')]
+  await page.waitForFunction(() => ![...document.querySelectorAll('.hub-loading-region, [data-quiet-loading]')]
     .some((node) => node.getClientRects().length > 0), null, { timeout: 60_000 });
 }
 

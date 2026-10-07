@@ -46,6 +46,7 @@ import { COLORS } from './theme.js';
 // Phase 21: cloud sync for all annotation types — see
 // .planning/phases/21-cloud-sync-all-annotations/CONTEXT.md
 import { normalizePageRegions } from './utils/annotationVisibilityRules.js';
+import { getRegionOutlineCoordinates } from './utils/regionOutline.js';
 import { coercePageNumber } from './utils/bookmarkPageIds.js';
 import { getMarkLockedBy } from './lib/collab/permissionScope.js';
 export { coercePageNumber, normalizeBookmarkPageIds } from './utils/bookmarkPageIds.js';
@@ -301,10 +302,14 @@ export const hasPdfjsPdfSurface = (host) => !!host?.querySelector?.(PDFJS_PDF_SU
 
 export const hasVisiblePdfjsSpinner = (host) => {
   if (!host?.querySelectorAll) return false;
-  const spinners = Array.from(host.querySelectorAll([
-    '.survey-pdfjs-spinner-pane:not(.survey-pdfjs-spin-hide)',
-    '.survey-pdfjs-spinner-pane[aria-hidden="false"]'
-  ].join(',')));
+  // Perf (owner 2026-10-06, smooth zoom): called for every mounted page on
+  // every viewer render, and no spinner pane exists under the pdf.js engine,
+  // so the selector query walked every annotation node of every page each
+  // time. The class collection is cached by the browser between DOM changes;
+  // the checks below reject hidden panes exactly as the old selector did.
+  const spinners = typeof host.getElementsByClassName === 'function'
+    ? Array.from(host.getElementsByClassName('survey-pdfjs-spinner-pane'))
+    : Array.from(host.querySelectorAll('.survey-pdfjs-spinner-pane'));
   return spinners.some((spinner) => {
     if (!spinner?.isConnected) return false;
     if (spinner.classList?.contains?.('survey-pdfjs-spin-hide')) return false;
@@ -328,7 +333,10 @@ export const hasVisiblePdfjsSpinner = (host) => {
 // stays out of the first-paint bundle). Verbosity stays at the pdf.js default.
 
 // Consistent font stack for the entire application
-export const FONT_FAMILY = '"Helvetica Neue", Helvetica, Arial, sans-serif'; // design.md primary stack (DOM CSS only — never feed into Fabric)
+// Owner 2026-10-02: the chrome's one UI font, --font-ui (tokens.css). Every
+// user is a DOM style (fontFamily / font shorthand), never Fabric, canvas or
+// annotation text - those keep their single-name fonts (CLAUDE.md).
+export const FONT_FAMILY = 'var(--font-ui)'; // DOM CSS only — never feed into Fabric
 export const REGION_EDIT_TOOL = 'region-edit';
 
 // UX 2026-09-16 (desktop sizing pass): the glyph sizes for the document
@@ -377,17 +385,33 @@ export const RAIL_CONTROL_GLYPH = CHROME_FIELD_GLYPH;
 export const RAIL_SPLIT_CONTROL_W = 36;
 export const RAIL_CARET = 10;
 
+// Survey audit (2026-10-01): entity colours are user data and may hold a
+// value that is not a colour this code can read - the old default "Removed"
+// entity was saved as 'var(--text-3)', which turned into rgba(NaN, NaN, NaN).
+// Read #rgb / #rrggbb / #rrggbbaa (with or without '#') and rgb()/rgba();
+// anything else falls back to ENTITY_FALLBACK_HEX, a plain grey, so a marker
+// and the Excel export always get a real colour. Saved data is not rewritten.
+export const ENTITY_FALLBACK_HEX = '#959eae';
+const ENTITY_FALLBACK_RGB = [149, 158, 174];
+export const parseColorRgb = (value) => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  const rgbMatch = trimmed.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*[\d.]+\s*)?\)$/i);
+  if (rgbMatch) {
+    const rgb = rgbMatch.slice(1, 4).map(Number);
+    return rgb.every((n) => n <= 255) ? rgb : null;
+  }
+  const hexMatch = trimmed.match(/^#?([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+  if (!hexMatch) return null;
+  let digits = hexMatch[1];
+  if (digits.length === 3) digits = digits.split('').map((d) => d + d).join('');
+  return [0, 2, 4].map((i) => parseInt(digits.substring(i, i + 2), 16));
+};
+
 // Convert hex color to rgba with default opacity (default 0.2, but surveyMarkers use 1.0)
 export const hexToRgba = (hex, opacity = 0.2) => {
-  // Remove # if present
-  hex = hex.replace('#', '');
-
-  // Parse RGB values
-  const r = parseInt(hex.substring(0, 2), 16);
-  const g = parseInt(hex.substring(2, 4), 16);
-  const b = parseInt(hex.substring(4, 6), 16);
-
-  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+  const rgb = parseColorRgb(hex) || ENTITY_FALLBACK_RGB;
+  return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${opacity})`;
 };
 
 // Ensure color is in rgba format with specified opacity (default 0.2, but surveyMarkers use 1.0)
@@ -446,7 +470,9 @@ const PDFJS_WHEEL_ZOOM_MAX_STEP_PERCENT = 24;
 export const PDFJS_WHEEL_ZOOM_BATCH_MS = 3;
 export const PDFJS_WHEEL_ZOOM_STALE_DROP_MS = 260;
 export const PDFJS_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX = 420;
-export const TOOLBAR_ZOOM_STEP_FACTOR = 1.25;
+// Zoom +/- buttons and Ctrl/Cmd +/-: x1.2 per step, Walkthu's button step
+// (owner 2026-10-02, "zoom speed like my app"; was 1.25).
+export const TOOLBAR_ZOOM_STEP_FACTOR = 1.2;
 export const PDFJS_INTERACTION_FORCE_PROXY_ALL_PAGES = true;
 export const ZOOM_ONLY_INTERACTION_REASONS = new Set([
   'wheel-zoom', 'pdfjs-wheel-zoom', 'pdfjs-zoom-change', 'overlay-wheel-zoom'
@@ -1266,11 +1292,10 @@ export const normalizeSurveyMarkerColor = (color, fallbackOpacity = DEFAULT_SURV
     return `rgba(${r}, ${g}, ${b}, ${fallbackOpacity})`;
   }
 
-  if (trimmed.startsWith('#')) {
-    return hexToRgba(trimmed, fallbackOpacity);
-  }
-
-  return trimmed;
+  // Hex, or anything unreadable (a saved 'var(--text-3)', 'rgba(NaN, ...)'):
+  // hexToRgba falls back to the grey ENTITY_FALLBACK_HEX (survey audit
+  // 2026-10-01) instead of handing the page an invalid fill.
+  return hexToRgba(trimmed, fallbackOpacity);
 };
 
 export const getCategoryGlyphLabel = (name) => {
@@ -1575,7 +1600,8 @@ const traceRegionPath = (ctx, region, scaleFactor = 1) => {
     return false;
   }
 
-  const coords = region.coordinates;
+  // Curved (freehand) areas export the same smooth outline the editor draws.
+  const coords = getRegionOutlineCoordinates(region);
   ctx.moveTo(coords[0] * scaleFactor, coords[1] * scaleFactor);
   for (let i = 2; i < coords.length; i += 2) {
     ctx.lineTo(coords[i] * scaleFactor, coords[i + 1] * scaleFactor);
@@ -1752,25 +1778,94 @@ export const savePDFData = (pdfId, items, annotations) => {
   }
 };
 
-export const saveSurveyMarkers = (pdfId, surveyMarkers) => {
-  if (!pdfId) return;
-  try {
-    const key = `surveyMarkers_${pdfId}`;
-    const data = JSON.stringify(surveyMarkers);
-    localStorage.setItem(key, data);
-  } catch (e) {
-    console.error('Error saving survey marker annotations:', e);
-  }
+// Inline (base64) note photos/videos are what push this cache past the ~5MB
+// localStorage quota, and one failed setItem used to stop caching EVERY marker
+// of the document. When the full map does not fit, drop the bytes of the
+// largest inline media first (the item keeps its name, marked cacheOmitted —
+// see normalizeNoteMedia in services/surveyMediaService.js) until it fits, so
+// every marker's other fields keep caching. Warns once per document.
+const surveyMarkerCacheWarned = new Set();
+const warnSurveyMarkerCacheOnce = (pdfId, message, error) => {
+  if (surveyMarkerCacheWarned.has(pdfId)) return;
+  surveyMarkerCacheWarned.add(pdfId);
+  console.warn(`[surveyMarkers cache] ${message}`, error || '');
 };
+const SURVEY_MARKER_CACHE_MAX_TRIES = 8;
+
+export const saveSurveyMarkers = (pdfId, surveyMarkers) => {
+  if (!pdfId) return false;
+  const key = `surveyMarkers_${pdfId}`;
+  let fullError = null;
+  try {
+    localStorage.setItem(key, JSON.stringify(surveyMarkers));
+    return true;
+  } catch (e) {
+    fullError = e;
+  }
+  const heavy = [];
+  for (const [id, marker] of Object.entries(surveyMarkers || {})) {
+    for (const noteKey of ['note', 'notes']) {
+      const note = marker?.[noteKey];
+      if (!note || typeof note !== 'object') continue;
+      for (const field of ['photos', 'videos']) {
+        (Array.isArray(note[field]) ? note[field] : []).forEach((item, index) => {
+          const url = item && typeof item === 'object' ? item.dataUrl : null;
+          if (typeof url === 'string' && url) heavy.push({ id, noteKey, field, index, bytes: url.length });
+        });
+      }
+    }
+  }
+  heavy.sort((a, b) => b.bytes - a.bytes);
+  const reduced = { ...surveyMarkers };
+  for (let i = 0; i < heavy.length; i += 1) {
+    const { id, noteKey, field, index } = heavy[i];
+    const marker = reduced[id];
+    const list = marker[noteKey][field].slice();
+    list[index] = { name: list[index]?.name, dataUrl: null, cacheOmitted: true };
+    reduced[id] = { ...marker, [noteKey]: { ...marker[noteKey], [field]: list } };
+    // Try after each of the largest few, then only once everything is dropped.
+    if (i < SURVEY_MARKER_CACHE_MAX_TRIES - 1 || i === heavy.length - 1) {
+      try {
+        localStorage.setItem(key, JSON.stringify(reduced));
+        warnSurveyMarkerCacheOnce(pdfId, `Too large for this device's cache; cached ${pdfId} without ${i + 1} inline photo/video file(s).`, fullError);
+        return true;
+      } catch { /* drop the next one */ }
+    }
+  }
+  // The previous snapshot stays (setItem is atomic on failure).
+  warnSurveyMarkerCacheOnce(pdfId, `Could not cache survey markers for ${pdfId} on this device.`, fullError);
+  return false;
+};
+
+// 2026-10-07 (owner: page drops lag): a document whose marks are far bigger
+// than any browser's storage quota (the IC package: 22.5 M characters of
+// imported markup) spent ~270 ms on JSON.stringify for a setItem that could
+// only fail - twice per page move, inside the drop frame. Once a map that big
+// did not fit, skip it until it has fewer objects than that one. Only maps
+// past every quota (browsers keep ~5 M characters per site) are remembered:
+// a smaller one that did not fit is always tried again (a Save after the
+// user trimmed it must still land).
+const ANNOTATION_BACKUP_NEVER_FITS_CHARS = 8000000;
+const annotationsByPageTooLarge = new Map(); // pdfId -> object count that did not fit
 
 export const saveAnnotationsByPage = (pdfId, annotationsByPage) => {
   if (!pdfId) return false;
+  const tooLargeAt = annotationsByPageTooLarge.get(pdfId);
+  if (tooLargeAt != null && countAnnotationPageObjects(annotationsByPage) >= tooLargeAt) return false;
+  let data = null;
   try {
-    const data = JSON.stringify(annotationsByPage);
+    data = JSON.stringify(annotationsByPage);
     if (typeof data !== 'string') return false;
     localStorage.setItem(`annotationsByPage_${pdfId}`, data);
+    annotationsByPageTooLarge.delete(pdfId);
     return true;
-  } catch {
+  } catch (e) {
+    const objectCount = countAnnotationPageObjects(annotationsByPage);
+    if ((e?.name === 'QuotaExceededError' || e?.code === 22)
+      && objectCount > 0
+      && typeof data === 'string' && data.length > ANNOTATION_BACKUP_NEVER_FITS_CHARS) {
+      annotationsByPageTooLarge.set(pdfId, objectCount);
+    }
     // These entries may be the only copy of local/offline edits, not a cache.
     // Never evict another document to make room or claim this backup succeeded.
     // setItem is atomic on failure, so the prior saved snapshot remains intact.
@@ -1890,6 +1985,10 @@ const shouldStampPdfImportedEditStateForSource = (source, previousObject, nextOb
   if (!previousObject) {
     return normalizedSource === 'object:modified' || normalizedSource.includes('paste');
   }
+  // The same object on both sides is unchanged (the erase commit plan shares
+  // untouched objects between its before and after page): skip two
+  // JSON.stringify calls per imported mark.
+  if (previousObject === nextObject) return false;
   return getPdfImportedEditComparable(previousObject) !== getPdfImportedEditComparable(nextObject);
 };
 

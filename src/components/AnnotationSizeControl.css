@@ -17,11 +17,13 @@
   border: 1px solid transparent;
   border-radius: 5px;
   box-sizing: border-box;
-  font-family: Helvetica, Arial, sans-serif;
+  font-family: var(--font-ui);
 }
 
 .annotation-size-control:focus-within {
-  border-color: var(--accent);
+  /* A field in focus takes the calm grey edge, like every other text
+     field (owner 2026-09-23: no gold on a text field). */
+  border-color: var(--text-3);
 }
 
 .annotation-size-control > input {
@@ -37,7 +39,7 @@
   background: transparent;
   border: 0;
   outline: 0;
-  font: 600 12px/22px Helvetica, Arial, sans-serif;
+  font: 600 12px/22px var(--font-ui);
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
@@ -98,10 +100,10 @@
      so it separates from whatever is behind it. */
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
-  /* Board 15: 9px on the menu card, against the 10px pill it opens from. */
-  border-radius: 9px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.48);
-  font-family: Helvetica, Arial, sans-serif;
+  /* The one popup corner and shadow (tokens.css --radius-md / --shadow-popover). */
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
+  font-family: var(--font-ui);
   z-index: 6500;
   /* UX 2026-09-16: 140ms fade + 5px slide, the app-wide popover motion
      (styles.css surveySurfaceIn). Reference = Drawboard's 100ms fade-and-grow
@@ -130,7 +132,7 @@
   background: transparent;
   border: 0;
   border-radius: 6px;
-  font: 500 11.5px/1 Helvetica, Arial, sans-serif;
+  font: 500 11.5px/1 var(--font-ui);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
   white-space: nowrap;

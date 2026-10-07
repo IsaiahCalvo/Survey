@@ -337,6 +337,11 @@ export function useAnnotationDoc({
   // the module's job; this just avoids re-running on unrelated re-renders).
   const migrationDoneRef = useRef(null);
   const inkRepairDoneRef = useRef(null);
+  // 2026-10-07 (first-open save): ids of the PDF's own marks being imported
+  // (beginBulkImport). The capture hands them to the store as a bulk import:
+  // saved as one checkpoint, never ahead of (or in the way of) the user's
+  // own edits. Each id leaves the set once the store has it.
+  const bulkImportKeysRef = useRef(new Set());
   // w29 preview: what the viewer held before the first early paint for this
   // document (byPage null = no preview shown since the last successful
   // hydrate). Kept across failed-open retries of the same document, so marks
@@ -381,6 +386,7 @@ export function useAnnotationDoc({
     metaFallbackIdsRef.current = new Set();
     migrationDoneRef.current = null;
     inkRepairDoneRef.current = null;
+    bulkImportKeysRef.current = new Set();
     if (prePreviewRef.current.documentId !== documentId) {
       prePreviewRef.current = { documentId, byPage: null };
     }
@@ -803,7 +809,9 @@ export function useAnnotationDoc({
     const hasEraserMutation = Object.values(capturedByPage || {}).some(
       (page) => page?.eraserMutation?.id,
     );
-    const result = h.applyByPage(capturedByPage);
+    const bulkKeys = bulkImportKeysRef.current.size > 0 ? bulkImportKeysRef.current : null;
+    const result = h.applyByPage(capturedByPage, bulkKeys ? { bulkKeys } : undefined);
+    if (bulkKeys) for (const key of result?.bulkWritten || []) bulkKeys.delete(key);
     setDeletedPdfAnnotations(h.getDeletedPdfAnnotations?.() || []);
     if (hasEraserMutation) {
       // eraserMutation is a one-render transport envelope, not page content.
@@ -960,10 +968,15 @@ export function useAnnotationDoc({
     let finished = false;
     let timer = null;
     let unsubscribeStatus = null;
+    // Only unobserve what begin() observed: stop() runs again on unmount after
+    // run() already stopped (or before begin), and Yjs logs an error for an
+    // unknown handler ("[yjs] Tried to remove event handler that doesn't exist").
+    let observing = false;
     const meta = h.doc.getMap(META_MAP);
     const stop = () => {
       finished = true;
-      meta.unobserve(onMeta);
+      if (observing) meta.unobserve(onMeta);
+      observing = false;
       unsubscribeStatus?.();
       unsubscribeStatus = null;
       if (timer) clearTimeout(timer);
@@ -1001,6 +1014,7 @@ export function useAnnotationDoc({
       unsubscribeStatus?.();
       unsubscribeStatus = null;
       meta.observe(onMeta);
+      observing = true;
       schedule(STORE_COMPACTION_DELAY_MS + Math.floor(Math.random() * STORE_COMPACTION_JITTER_MS));
     };
     if (typeof h.isRealtimeReady !== 'function' || h.isRealtimeReady()) {
@@ -1079,6 +1093,23 @@ export function useAnnotationDoc({
     const h = handleRef.current;
     if (!h || !h.doc) return false;
     return setMetaValueOnDoc(h.doc, key, value, origin);
+  }, []);
+
+  // 2026-10-07: the embedded import names its marks before saving them (see
+  // bulkImportKeysRef), then waits for them to be stored in the cloud before
+  // writing its once-only marker: true once they are, false if this screen
+  // could not store them (the next open tries again; ids are stable).
+  const beginBulkImport = useCallback((keys) => {
+    for (const key of keys || []) if (key != null) bulkImportKeysRef.current.add(String(key));
+  }, []);
+  const whenBulkImportSaved = useCallback(async () => {
+    const h = handleRef.current;
+    if (!h || typeof h.whenBulkSaved !== 'function') return true;
+    try {
+      return await h.whenBulkSaved();
+    } finally {
+      if (handleRef.current === h) bulkImportKeysRef.current.clear();
+    }
   }, []);
 
   // True when every key is stored in the durable mark map (the embedded
@@ -1220,6 +1251,8 @@ export function useAnnotationDoc({
     metaGet,
     metaSet,
     hasStoredMarks,
+    beginBulkImport,
+    whenBulkImportSaved,
     status: syncStatus,
     queueSize: syncQueueSize,
     liveMarkerOverlay,

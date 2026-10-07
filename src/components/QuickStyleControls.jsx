@@ -248,6 +248,9 @@ export function isNoFillColour(colour) {
  * @param {() => void} onOpen    opens the shared picker on its Border tab
  * @param {'desktop'|'phone'} platform
  * @param {string} [label]  accessible-name override
+ * @param {boolean} [mixed] the picked marks disagree on a colour: draw the
+ *                          custom disc's rainbow ring with a plus instead of
+ *                          one mark's paint (owner 2026-10-04, Test 43)
  */
 export function QuickPaintSwatch({
   ring,
@@ -259,6 +262,7 @@ export function QuickPaintSwatch({
   onOpen,
   platform = 'desktop',
   label,
+  mixed = false,
 }) {
   const chromeTip = useTooltip();
   const isCounter = variant === 'counter';
@@ -273,12 +277,21 @@ export function QuickPaintSwatch({
       type="button"
       className={`quick-style__swatch quick-style--${platform}${isCounter ? ' quick-style__swatch--counter' : ''}`}
       data-quick-paint-swatch={variant}
-      {...chromeTip(name, 'below')}
-      aria-label={name}
+      data-quick-paint-mixed={mixed ? 'true' : undefined}
+      {...chromeTip(mixed ? 'Mixed colors' : name, 'below')}
+      aria-label={mixed ? `${name} (mixed)` : name}
       onMouseDown={(event) => event.stopPropagation()}
       onClick={() => onOpen?.()}
     >
-      {isCounter ? (
+      {mixed ? (
+        /* Several picked marks in different colours: no one mark's paint can
+           stand for the group, so the swatch wears the custom disc's rainbow
+           ring and plus — "pick a colour for all of them". */
+        <>
+          <span className="quick-style__rainbow" aria-hidden="true" />
+          <span className="quick-style__custom-glyph" aria-hidden="true"><CustomPlus /></span>
+        </>
+      ) : isCounter ? (
         <span className="quick-style__swatch-pin" aria-hidden="true">
           <CounterPin pin={ringColour} number={centreColour} count={count} />
         </span>

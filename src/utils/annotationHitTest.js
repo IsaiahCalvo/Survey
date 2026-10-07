@@ -22,7 +22,14 @@
  * The unified SVG renderer remains the intended architecture.
  */
 
-export function resolveAnnotationAt(e) {
+/**
+ * `acceptMark` (optional, owner 2026-10-04): ({ pageNumber, annotationIndex,
+ * calloutId }) => boolean. A mark it turns down is not there: the walk goes on
+ * to the mark beneath it, so a Shapes / Text tool's press or hover over another
+ * group's mark lying on top of one of its own reaches its own (the same
+ * ink-accurate geometry, top-most first). Omitted: every mark counts.
+ */
+export function resolveAnnotationAt(e, { acceptMark = null } = {}) {
   let pageNumber = null;
   let annotationIndex = null;
   let calloutId = null;
@@ -89,6 +96,16 @@ export function resolveAnnotationAt(e) {
 
   for (const el of path) readFrom(el);
 
+  // A mark the caller turns down (acceptMark) is dropped and the walk goes on.
+  const rejectsMark = () => typeof acceptMark === 'function'
+    && (annotationIndex != null || calloutId != null)
+    && !acceptMark({ pageNumber, annotationIndex, calloutId });
+  const dropMark = () => {
+    annotationIndex = null;
+    calloutId = null;
+    editEntryKind = null;
+  };
+
   if (pageNumber == null && typeof document.elementsFromPoint === 'function') {
     const stack = document.elementsFromPoint(e.clientX, e.clientY);
     for (const el of stack) {
@@ -96,6 +113,7 @@ export function resolveAnnotationAt(e) {
       if (pageNumber != null) break;
     }
   }
+  if (rejectsMark()) dropMark();
 
   // 2026-04-25 — Reject pageNumber matches that came purely from a
   // Pdfjs `_pageDiv_N` id when the cursor isn't actually within
@@ -244,6 +262,7 @@ export function resolveAnnotationAt(e) {
     for (const link of page?.querySelectorAll('[data-text-markup-link-index]') || []) {
       if (rectContainsPoint(link)) {
         annotationIndex = Number(link.getAttribute('data-text-markup-link-index'));
+        if (rejectsMark()) { dropMark(); continue; }
         break;
       }
     }
@@ -280,6 +299,7 @@ export function resolveAnnotationAt(e) {
         inspected += 1;
         if (!svgGeometryContainsPoint(el)) continue;
         readHitCarrier(el);
+        if (rejectsMark()) { dropMark(); continue; }
         if (annotationIndex != null || calloutId || isCounter) break;
       }
       if (annotationIndex != null || calloutId || isCounter) break;
@@ -297,6 +317,7 @@ export function resolveAnnotationAt(e) {
         }
         if (!calloutCarrierContainsPoint(el)) continue;
         readHitCarrier(el);
+        if (rejectsMark()) { dropMark(); continue; }
         if (annotationIndex != null || calloutId || isCounter) break;
       }
       if (annotationIndex != null || calloutId || isCounter) break;

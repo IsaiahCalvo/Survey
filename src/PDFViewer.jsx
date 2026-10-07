@@ -17,9 +17,11 @@ import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
 import { jsonEqual } from './utils/jsonEqual.js';
 import { mergeEditOntoCurrent } from './utils/dragCommitMerge.js';
+import { countSpaceCascadeImpact, isSpaceScopedEntry, resolveSpaceCascadeScope } from './utils/spaceCascadeImpact.js';
 import { EMBEDDED_IMPORT_INCOMPLETE_KEY, EMBEDDED_IMPORT_MARKER_KEY, embeddedImportDecision, embeddedImportFailedPages, embeddedImportMarkerDecision, selectEmbeddedImportObjects } from './utils/embeddedImportGate.js';
 import { READ_ONLY_BLOCKED_KEYS } from './utils/toolShortcuts.js';
 import { sanitizeTemplateConfig } from './utils/templateConfig.js';
+import useSharedDocumentTemplates from './hooks/useSharedDocumentTemplates.js';
 import { migrateSidebarData } from './utils/sidebarPersistence.js';
 import { resolveMarkerEntityFromName } from './utils/surveyMarkerEntityResolver.js';
 import {
@@ -27,6 +29,7 @@ import {
   deletePendingSurveyMarkerUi,
 } from './utils/pendingSurveyMarkerHistory.js';
 import { buildSpaceCSVContent } from './utils/spaceCSVExporter.js';
+import { createPageSizeCommitBatcher } from './utils/pageSizeCommitBatcher.js';
 import { renderPdfPageForExport } from './utils/spacePdfPageRender.js';
 import { eraserDiameterToScreenRadius } from './utils/eraserSizing.js';
 // UX 2026-09-09: arming a click-to-place shape tool (polygon / polyline) hands
@@ -58,10 +61,16 @@ import { openExternalDestination } from './utils/accountPlatform.js';
 // below — see `await import('exceljs')` — so it stays out of the main viewer chunk.
 import ExcelLockedModal from './components/ExcelLockedModal';
 import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
+import SpaceSelectionDialog from './components/SpaceSelectionDialog';
 import TextEditOverlay from './components/TextEditOverlay';
+import { resolveNewMarkStyle, resolvePickBarTool, resolveToolbarCallout } from './utils/toolbarCalloutTarget.js';
+import { resolvePickBarValues } from './utils/pickBarValues.js';
 import FabricEraserCanvas from './components/FabricEraserCanvas';
 import FormFieldPropertiesPanel from './components/FormFieldPropertiesPanel';
 import AnnotationDropdown from './components/AnnotationDropdown';
+import ToolbarOverflowMenu from './components/ToolbarOverflowMenu';
+import useSurveyBarFit from './hooks/useSurveyBarFit';
+import { surveyBarLook } from './utils/responsiveToolbar.js';
 import Icon from './Icons';
 import LightweightAnnotationOverlay from './components/LightweightAnnotationOverlay';
 import { useDocumentThumbnailCapture } from './hooks/useDocumentThumbnailCapture';
@@ -76,6 +85,7 @@ import RegionSelectionTool from './RegionSelectionTool';
 import SVGAnnotationLayer from './components/SVGAnnotationLayer';
 import SaveLogBanner from './components/SaveLogBanner';
 import Spinner from './components/Spinner';
+import QuietLoading, { openingLabel } from './components/QuietLoading';
 import SearchHighlightLayer from './components/SearchHighlightLayer';
 import {
   SEARCH_READABLE_TEXT_PX,
@@ -100,7 +110,7 @@ import { ANNOTATION_HYDRATION_PENDING, ANNOTATION_HYDRATION_READY_LOCAL, isFirst
 import { BORDERS, COLORS, SHADOWS, TYPOGRAPHY } from './theme';
 import { ConfirmDeleteModal } from './components/collab/ConfirmDeleteModal.jsx';
 import { DEFAULT_ZOOM_PREFERENCES, ZOOM_MODES, clampScale, createZoomController, loadZoomPreferences, saveZoomPreferences } from './utils/zoomController';
-import { parseZoomPercentInput, resolvePageInput, sanitizeZoomInput } from './utils/pageNavigationMath.js';
+import { TYPED_PAGE_JUMP_FITS_PAGE, parseZoomPercentInput, resolvePageInput, sanitizeZoomInput } from './utils/pageNavigationMath.js';
 import { FORM_TOOLS as FORM_DESIGNER_TOOLS, getFormFieldTypeForTool, isFormTool } from './components/formDesignerTools';
 // PERF (KAL-384): pdf-lib is the PDF *export/write* library, not the renderer.
 // It is only needed when the user exports an annotated PDF, exports a space to
@@ -114,6 +124,7 @@ import { FORM_TOOLS as FORM_DESIGNER_TOOLS, getFormFieldTypeForTool, isFormTool 
 import { PageRenderCache } from './utils/pdfCache';
 import { UndoToast } from './components/collab/UndoToast.jsx';
 import { applyAnnotationGroupId, findGroupMembers, generateGroupId, getAnnotationGroupId, getCalloutGroupId } from './utils/annotationGroups';
+import { buildCrossPageMovePlan } from './utils/crossPageMove.js';
 import { applyAnnotationHistoryAction, dropAlreadyPresentRestoreTargets, getAnnotationHistoryId, buildAnnotationHistoryAction, buildPreciseAnnotationHistoryAction, createGestureTouchRecord, endPagePreviewGesture, filterAnnotationHistoryActionByOwner, invertAnnotationHistoryAction, recordGestureTouchesFromAction, restrictAnnotationHistoryActionFields } from './utils/annotationLocalHistory';
 import { normalizeMergedHistoryObject } from './utils/historyMergeNormalize';
 import {
@@ -139,6 +150,7 @@ import {
   patchCanReflowText,
   readCalloutTextStyle,
   readTextboxTextStyle,
+  placeCalloutEditBox,
   refitCalloutToText,
   refitTextboxToText,
   resolveTextStyleWrite,
@@ -149,7 +161,6 @@ import {
   calloutRestylePatch,
   isFilledInkPath,
   planGroupUpdate,
-  readRestyleStyle,
   resolveGroupWrite,
   resolveGroupPaintWrite,
   resolvePickedMembers,
@@ -216,6 +227,7 @@ import { deferUntilEraseCommitsFinish } from './utils/pendingEraseCommits.js';
 
 import { debugMark } from './utils/debugBridge';
 import { deleteAnnotations, removeDocumentPresence, subscribeToDocumentAnnotations, syncAnnotationsToSupabase, updateDocumentPresence } from './services/documentAnnotationService';
+import { createPresenceActivityBump, PRESENCE_ACTIVITY_EVENTS } from './utils/presenceActivity.js';
 import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
 import { getActivePageRegionId, getPageAnnotationVisibilityState, isAnnotationVisibleInSurveyMode, isSurveyVisibilityContext, normalizePageRegions, normalizeRegionVisibility, shouldStampActiveRegionId } from './utils/annotationVisibilityRules';
 // KAL-88 — shared creation scope stamp (Decision 11 companion); used by the
@@ -283,6 +295,7 @@ import { readPendingChangeset, writePendingChangeset, clearPendingChangeset } fr
 import { buildCounterSeriesDeletionUpdates, getCounterSeriesList, pickNextSeriesColor, renumberCounters, resolveCounterSeriesPaint } from './utils/counterNumbering';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS, normalizeAnnotationSize, sanitizeAnnotationSizeDraft } from './utils/annotationSize';
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
+import { pageOperationCheckpoint, pageOperationStepId } from './utils/pageOperationHistory.js';
 import { eraseTransitionChangedScreen as eraseTransitionChangedScreenWith, foldIntoCreateStep, getHistoryOrder, historyActionChangedPages, isTransientEraseHistoryFailure, legacyRestoreChangesState, runHistoryPress, scopeLegacyRestoreToOwnSlices, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
 import { countUnsupportedAnnotations, importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
 import { withoutUnstoredFieldsByPage } from './services/annotationMarkCodec.js';
@@ -301,7 +314,6 @@ import { isLiveFormWidgetTarget } from './utils/formWidgetPointerTargets.js';
 import { resolveSafeSnapshot } from './utils/safeSnapshot';
 import { canManageCollaborativeSpaces } from './utils/collaborativeSpaceAccess';
 import { combineCollaborationSyncStatus } from './utils/collaborationSyncStatus';
-import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt';
 import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
 import { scopeHistoryStateForCalloutRestore } from './utils/calloutHistoryScope';
 import { shouldRunSurveyMarkerSync } from './utils/surveyMarkerSyncSafety';
@@ -318,10 +330,16 @@ import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
-import { getSelectFamilyTransition, loadSelectMode, saveSelectMode } from './utils/selectModes.js';
+import { usePageViewDocument } from './hooks/usePageViewDocument.js';
+import { getPageViewBase } from './utils/pageViewDocument.js';
+import { getSelectFamilyTransition, getToolSwitchSelectionClearReason, isSelectFamilyTool, loadSelectMode, resolveEscape, resolveTextDoubleClick, resolveToolPress, saveSelectMode, shouldBackdropPressDeselect, shouldEscapeDeselect, shouldShowHoverHalo } from './utils/selectModes.js';
+import { classifyPagePress, ownGroupMarkFilter } from './utils/toolPressRouting.js';
+import { CALLOUT_MARK_GROUP, getMarkGroup } from './utils/markToolGroup.js';
+import { dropStashedSelection, hasAnyPageSelection, isItemSelected, pageHasSelection } from './utils/pageSelectionPresence.js';
+import { isSelectionGrabPress, noteOverlayTapPick } from './hooks/useSelectionGrabHandoff.js';
 import { resolveToolBarGroup, TOOL_BAR_GROUPS } from './utils/toolbarRows.js';
 import { cycleLassoMode } from './utils/lassoSelection.js';
-import { pageNumberAfterOperation } from './utils/pageAnnotationReindex.js';
+import { pageCountChange, pageNumberAfterOperation } from './utils/pageAnnotationReindex.js';
 import { usePdfjsFormFieldPersistence } from './hooks/usePdfjsFormFieldPersistence.js';
 import { useRegionOverlayVisibility } from './hooks/useRegionOverlayVisibility.js';
 import { userRedo, userUndo } from './lib/collab/crdtUndoManager.js';
@@ -473,6 +491,7 @@ import { renderAnnotationHydrationPageCover } from './components/annotationHydra
 import { getExportErrorMessage, isFileLocked } from './utils/exportHelpers';
 import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } from './utils/overlayDebug';
 import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './utils/excelWritebackGate';
+import { rememberLastSurveyTemplate, resolveLastSurveyTemplate, surveyMemoryDocumentKey } from './utils/surveyLastTemplate.js';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
 import { createTextMarkupAnnotation, getExcludedPdfTextMarkupIds, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection, TEXT_MARKUP_DEFAULT_PAINT } from './utils/pdfTextMarkup.js';
 import {
@@ -1035,6 +1054,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const pendingRendererRestoreRef = useRef(null);
   const [pdfjsPageContainers, setPdfjsPageContainers] = useState({});
   const [pdfjsMountedPages, setPdfjsMountedPages] = useState(new Set());
+  // Read by the annotation-overlay watchdog (an interval, so it needs the
+  // live window, not a stale closure).
+  const pdfjsMountedPagesRef = useRef(pdfjsMountedPages);
+  pdfjsMountedPagesRef.current = pdfjsMountedPages;
   const pageInputRef = useRef(null);
   const zoomInputRef = useRef(null);
   const pageRenderCacheRef = useRef(new PageRenderCache(100)); // Cache up to 100 pages
@@ -1192,6 +1215,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     byteSizeBucket: 'unknown',
     reported: true,
   });
+  // Page 1 of the open document has been drawn (work that can wait starts then).
+  const firstPageDrawnRef = useRef({ drawn: false, resolve: null });
   // KAL-46 / sleep-wake: bounds how many times the load watchdog will silently
   // auto-retry a hung download (dead socket after display sleep/wake) before it
   // gives up and surfaces the retryable error screen. Reset whenever a fresh
@@ -3282,7 +3307,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // viewer was still gated (input-while-gated) when the request arrived. The
   // matching RESPONSE is logged in the activeToolRef sync effect above; an
   // intent with no following tool-changed line means the switch was a no-op.
-  const setActiveToolLogged = useCallback((next) => {
+  // Drawboard rule 12 (utils/selectModes.js): HOW a switch was asked for
+  // decides whether the selection survives it. { tool, source } of the latest
+  // request; read once by the tool-switch effect below.
+  const toolSwitchRequestRef = useRef(null);
+  const setActiveToolLogged = useCallback((next, { source } = {}) => {
+    toolSwitchRequestRef.current = source && typeof next === 'string' ? { tool: next, source } : null;
     try {
       const requested = typeof next === 'function' ? '(updater-fn)' : String(next);
       const from = activeToolRef.current;
@@ -3366,13 +3396,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         if (prev && indices.length > 0) return null;
         return prev;
       }
+      // justDrawn (owner Test 15, 2026-10-02): the mark just drawn and
+      // auto-selected while its tool stays armed - the paint handlers restyle
+      // it (see isJustDrawnMarkSelected).
+      const justDrawn = payload.justDrawn === true;
       if (prev
         && prev.pageNumber === pageNumber
         && prev.annotationIndex === annotationIndex
-        && prev.annotation === annotation) {
+        && prev.annotation === annotation
+        && Boolean(prev.justDrawn) === justDrawn) {
         return prev;
       }
-      return { pageNumber, annotationIndex, annotation };
+      return { pageNumber, annotationIndex, annotation, justDrawn };
     });
   }, []);
   const selectedToolbarAnnotationRef = useRef(selectedToolbarAnnotation);
@@ -3996,6 +4031,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // changes, which matches our needs.
   const [pendingSvgHover, setPendingSvgHover] = useState(null);
   const clearAnnotationSelectionForContextChange = useCallback((reason = 'annotation-context-change') => {
+    dropStashedSelection(); // also a far page's kept pick (Drawboard rule 12)
     setAnnotationSelectionClearToken((token) => token + 1);
     setSelectedCalloutId(null);
     setSelectedCalloutIds((prev) => {
@@ -4022,11 +4058,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, []);
 
-  // UX: pan-mode quick-click → select annotation + auto-switch to Select tool.
+  // UX: pan-mode quick-click → select annotation; Pan stays armed (Drawboard rule 2, 2026-10-02).
   // Records pointer position on pointerdown; on pointerup, if the cursor moved
   // less than QUICK_CLICK_PX and we're in pan mode and an annotation (any
-  // type, callouts included) sits under the cursor, auto-switch to the Select
-  // tool and broadcast a selection command to the matching SVGAnnotationLayer.
+  // type, callouts included) sits under the cursor, broadcast a selection
+  // command to the matching SVGAnnotationLayer (the tool stays Pan).
   // Reference behavior (Drawboard): click on an annotation in pan mode
   // selects it; a drag pans.
   //
@@ -4087,28 +4123,41 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const dx = e.clientX - start.x;
       const dy = e.clientY - start.y;
       if (Math.hypot(dx, dy) > QUICK_CLICK_PX) return; // real pan, not a tap
+      // A press on the selection itself was handed to its move machinery
+      // (hooks/useSelectionGrabHandoff.js) — it is not a pick.
+      if (isSelectionGrabPress(e)) return;
       const hit = resolveAnnotationAt(e);
       if (!hit) return;
+      // Drawboard rules 2 / 8 / 12 (owner 2026-10-02, utils/selectModes.js):
+      // a click picks the mark and Pan STAYS armed (the selection still moves
+      // and resizes under Pan); Shift adds; a click on empty page only drops
+      // the pick.
       // UX: Phase 15 UAT-3 — pan-mode quick-click also picks up callouts,
-      // matching how every other annotation type behaves in pan mode. Same
-      // tool-switch to Select as the plain-annotation branch so followup
-      // drags / edits work naturally.
+      // matching how every other annotation type behaves in pan mode.
       if (hit.kind === 'callout' && hit.calloutId) {
         panQuickClickAutoSelectAtRef.current = Date.now();
-        activateSelectFamilyMode('rectangle');
         // w41: the callout REPLACES any mark still picked, or the two would
         // form a restyle group the user never made (review 2026-09-25).
-        setAnnotationSelectionClearToken((token) => token + 1);
-        setSelectedCalloutIds(new Set([hit.calloutId]));
+        if (!e.shiftKey) setAnnotationSelectionClearToken((token) => token + 1);
+        setSelectedCalloutIds((previous) => {
+          const next = new Set(e.shiftKey && previous ? previous : []);
+          next.add(hit.calloutId);
+          return next;
+        });
+        return;
+      }
+      if (hit.kind === 'page') {
+        if (!e.shiftKey && hasAnyPageSelection()) clearAnnotationSelectionForContextChange('pan-empty-click');
         return;
       }
       if (hit.kind !== 'annotation') return;
       if (typeof hit.annotationIndex !== 'number' || hit.pageNumber == null) return;
       panQuickClickAutoSelectAtRef.current = Date.now();
-      activateSelectFamilyMode('rectangle');
+      if (!e.shiftKey) setSelectedCalloutIds((previous) => (previous instanceof Set && previous.size === 0 ? previous : new Set()));
       setPendingSvgSelection({
         pageNumber: hit.pageNumber,
         annotationIndex: hit.annotationIndex,
+        addToSelection: e.shiftKey,
         tick: Date.now(),
       });
     };
@@ -4118,11 +4167,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       window.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('pointerup', onUp, true);
     };
-  }, [activeTool, activateSelectFamilyMode]);
+  }, [activeTool, clearAnnotationSelectionForContextChange]);
 
   // UX: Escape and grey-page backdrop clicks clear every selection mode alike.
+  // UX 2026-10-02 (owner): which tools listen comes from the selection
+  // dismiss rules in utils/selectModes.js (Escape: every tool; backdrop
+  // press: Select family, and a click under the Shapes / Text tools).
   useEffect(() => {
-    if (!['select', 'text-select'].includes(activeTool)) return undefined;
+    const escapeDeselects = shouldEscapeDeselect(activeTool);
+    const backdropDeselects = shouldBackdropPressDeselect(activeTool);
+    if (!escapeDeselects && !backdropDeselects) return undefined;
     const clear = (event) => {
       // UX 2026-09-16 — the text editor owns Escape while it is open.
       //
@@ -4143,12 +4197,52 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (event.type === 'pointerdown' && (event.button !== 0 || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey
         || !event.target?.closest?.('[data-mobile-pdf-surface]')
         || event.target?.closest?.('.survey-pdfjs-page-div'))) return;
+      // Owner 2026-10-04: a Shapes / Text tool holding a pick of its own
+      // group drops it on a CLICK on the grey area too — on release, so a
+      // drag there (a finger scrolling the view) keeps it (rule 12).
+      if (event.type === 'pointerdown' && !isSelectFamilyTool(activeTool)) {
+        const start = { id: event.pointerId, x: event.clientX, y: event.clientY };
+        const slop = event.pointerType === 'touch' ? 12 : 6;
+        // A press that ends without a pointerup (the touch became a scroll,
+        // or the window lost focus) must not leave this behind to drop a
+        // pick on some later release.
+        const stop = () => {
+          window.removeEventListener('pointerup', onUp, true);
+          window.removeEventListener('pointercancel', onPressCancel, true);
+          window.removeEventListener('blur', stop);
+        };
+        const onPressCancel = (cancel) => { if (cancel.pointerId === start.id) stop(); };
+        const onUp = (up) => {
+          if (up.pointerId !== start.id) return;
+          stop();
+          if (Math.hypot(up.clientX - start.x, up.clientY - start.y) <= slop) clearAnnotationSelectionForContextChange('backdrop-click');
+        };
+        window.addEventListener('pointerup', onUp, true);
+        window.addEventListener('pointercancel', onPressCancel, true);
+        window.addEventListener('blur', stop);
+        return;
+      }
       // UX: Phase 19 — first Escape cancels a live selection drag only;
       // a second Escape (or one at rest) clears the prior selection.
       if (event.key === 'Escape') {
         const detail = { cancelled: false };
         window.dispatchEvent(new CustomEvent('survey-cancel-selection-gesture', { detail }));
         if (detail.cancelled) { event.preventDefault(); return; }
+        // Drawboard rule 10 (utils/selectModes.js resolveEscape): with
+        // nothing left to close, commit, cancel or deselect, Escape puts the
+        // tool down (Pan). A popover or a text edit consumed the key before
+        // this listener; a shape / polygon draft cancels itself on this same
+        // key (it marks it handled), so wait for the dispatch to finish.
+        const escapeAction = resolveEscape({
+          hasSelection: hasAnyPageSelection() || !!editingAnnotation,
+          tool: activeTool,
+        });
+        if (escapeAction === 'switch-to-pan') {
+          window.setTimeout(() => {
+            if (!event.defaultPrevented) setActiveToolLogged('pan', { source: 'escape' });
+          }, 0);
+          return;
+        }
       }
       if (event.key === 'Escape' && activeTool === 'text-select') {
         clearAnnotationSelectionForContextChange('text-select-escape');
@@ -4156,13 +4250,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         clearAnnotationSelectionForContextChange('select-family-dismiss');
       }
     };
-    window.addEventListener('keydown', clear, true);
-    window.addEventListener('pointerdown', clear, true);
+    if (escapeDeselects) window.addEventListener('keydown', clear, true);
+    if (backdropDeselects) window.addEventListener('pointerdown', clear, true);
     return () => {
-      window.removeEventListener('keydown', clear, true);
-      window.removeEventListener('pointerdown', clear, true);
+      if (escapeDeselects) window.removeEventListener('keydown', clear, true);
+      if (backdropDeselects) window.removeEventListener('pointerdown', clear, true);
     };
-  }, [activeTool, clearAnnotationSelectionForContextChange]);
+  }, [activeTool, clearAnnotationSelectionForContextChange, editingAnnotation, setActiveToolLogged]);
 
   const textSelectGestureActiveRef = useRef(false);
 
@@ -4261,13 +4355,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
   }, [activeTool, clearAnnotationSelectionForContextChange, resolveAnnotationAt]);
 
+  // UX 2026-10-02 (owner): switching tool drops the selection — the ONE place
+  // that rule lives, so every way of switching (toolbar, phone bar, keyboard
+  // shortcut, programmatic) behaves the same. Rule + reasons:
+  // getToolSwitchSelectionClearReason (utils/selectModes.js). Pan, Select and
+  // Text Select keep it. Changing a property of the selected mark is not a
+  // tool switch and never reaches this effect.
+  // Owner 2026-10-04: every switch drops it except Select <-> Pan, however it
+  // was asked for (the source only reaches the rule for its logs).
   const previousSelectionToolRef = useRef(activeTool);
   useEffect(() => {
     const previousTool = previousSelectionToolRef.current;
     previousSelectionToolRef.current = activeTool;
-    if (previousTool === 'text-select' && activeTool !== 'text-select') {
-      clearAnnotationSelectionForContextChange('text-select-tool-change');
-    }
+    const request = toolSwitchRequestRef.current;
+    toolSwitchRequestRef.current = null;
+    const source = request && request.tool === activeTool ? request.source : 'toolbar';
+    const reason = getToolSwitchSelectionClearReason(previousTool, activeTool, { source });
+    if (reason) clearAnnotationSelectionForContextChange(reason);
   }, [activeTool, clearAnnotationSelectionForContextChange]);
 
   // UX: pan-mode hover — when the cursor is over an annotation in pan mode,
@@ -4288,8 +4392,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Throttled via requestAnimationFrame so resolveAnnotationAt (composedPath
   // + elementsFromPoint + querySelectorAll fallback) runs at most once per
   // frame, not per mousemove event.
+  // Drawboard rule 2 (owner 2026-10-02, utils/selectModes.js): the tools that
+  // pick marks (Shapes, Text, Counter — own group only since 2026-10-04) show
+  // the same blue halo over a mark a click would pick, with their own cursor
+  // kept (no pointer hand).
+  const eraserWholeModeRef = useRef(false);
   useEffect(() => {
-    if (activeTool !== 'pan') {
+    const haloByPosition = activeTool === 'pan' || activeTool === 'eraser'
+      || (shouldShowHoverHalo(activeTool) && activeTool !== 'select' && activeTool !== 'text-select');
+    const pointerCursor = activeTool === 'pan';
+    if (!haloByPosition) {
       // Tool changed away from pan — clear any lingering hover state + cursor.
       setPendingSvgHover((prev) => (prev == null ? prev : null));
       if (document.body.style.cursor === 'pointer') {
@@ -4305,6 +4417,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const e = latestEvent;
       latestEvent = null;
       if (!e) return;
+      // A drawing tool mid-stroke shows no halo; the eraser previews only in
+      // Whole mode (Partial carves, it does not delete the mark).
+      if ((!pointerCursor && e.buttons !== 0) || (activeTool === 'eraser' && !eraserWholeModeRef.current)) {
+        if (lastKey !== '') {
+          lastKey = '';
+          setPendingSvgHover((prev) => (prev == null ? prev : null));
+        }
+        return;
+      }
       // UX 2026-09-15 — over a live form field the control owns the affordance:
       // its own caret / checkbox cursor, no annotation glow and no `pointer`
       // override, matching the click rule above (a widget click never selects).
@@ -4316,16 +4437,28 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         if (document.body.style.cursor === 'pointer') document.body.style.cursor = '';
         return;
       }
-      const hit = resolveAnnotationAt(e);
+      // Owner 2026-10-04: a Shapes / Text tool looks past another group's mark
+      // to its own group's mark beneath (the same rule as its press).
+      const hit = resolveAnnotationAt(e, {
+        acceptMark: ownGroupMarkFilter(activeTool, (page) => annotationsByPageRef.current?.[page]?.objects),
+      });
+      // Owner 2026-10-04 (own tool group only): a tool's halo shows only over
+      // a mark it may pick — any mark under Pan, its own group's under the
+      // Shapes / Text tools, none while a polygon is under way. The eraser's
+      // Whole-mode preview is its own and shows over every mark.
+      const haloAllowed = activeTool === 'eraser' || (!document.querySelector('[data-poly-draft-action]')
+        && shouldShowHoverHalo(activeTool, hit?.kind === 'callout'
+          ? CALLOUT_MARK_GROUP
+          : getMarkGroup(annotationsByPageRef.current?.[hit?.pageNumber]?.objects?.[hit?.annotationIndex])));
       // UX 2026-07-17 — pan-mode hover parity: annotations AND callouts both
       // glow under the pan tool (same affordance the Select tool shows).
       // Counters flow through their own hover path (or none).
       const isAnnotation = hit && hit.kind === 'annotation'
         && typeof hit.annotationIndex === 'number'
-        && hit.pageNumber != null;
+        && hit.pageNumber != null && haloAllowed;
       const isCallout = hit && hit.kind === 'callout'
         && hit.calloutId != null
-        && hit.pageNumber != null;
+        && hit.pageNumber != null && haloAllowed;
       const nextKey = isAnnotation
         ? `${hit.pageNumber}:${hit.annotationIndex}`
         : isCallout
@@ -4340,7 +4473,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // UX: pointer cursor over annotations in pan mode. document.body is
         // the lowest-priority target so Pdfjs-level pan cursor wins
         // everywhere else. Cleared on no-hit and on tool-change cleanup.
-        if (document.body.style.cursor !== 'pointer') {
+        if (pointerCursor && document.body.style.cursor !== 'pointer') {
           document.body.style.cursor = 'pointer';
         }
       } else {
@@ -4410,15 +4543,39 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     lightweightCalloutCountByPageRef.current = lightweightCalloutCountByPage || {};
   }, [lightweightCalloutCountByPage]);
 
-  const selectedToolbarCallout = useMemo(() => {
-    if (!(selectedCalloutIds instanceof Set) || selectedCalloutIds.size !== 1) return null;
-    const id = Array.from(selectedCalloutIds)[0];
-    const callout = (callouts || []).find((c) => c && c.id === id);
-    if (!callout) return null;
-    return { id, pageNumber: callout.pageNumber, callout };
-  }, [selectedCalloutIds, callouts]);
+  // Owner 2026-10-04: with nothing else picked, a callout open for typing is
+  // the callout row 2 shows and edits (utils/toolbarCalloutTarget.js).
+  const editingCalloutIdForToolbar = editingAnnotation?.reactCalloutId || null;
+  const selectedToolbarCallout = useMemo(() => resolveToolbarCallout({
+    selectedCalloutIds,
+    callouts,
+    editingCalloutId: editingCalloutIdForToolbar,
+  }), [selectedCalloutIds, callouts, editingCalloutIdForToolbar]);
   const selectedToolbarCalloutRef = useRef(selectedToolbarCallout);
   useEffect(() => { selectedToolbarCalloutRef.current = selectedToolbarCallout; }, [selectedToolbarCallout]);
+  // Owner 2026-10-04: the tool the bar works for. 'select' while it shows and
+  // edits the PICKED mark(s) - under Select, under Pan, and under a Shapes /
+  // Text tool holding a pick of its own group - else the armed tool, whose
+  // settings are for the next mark (utils/toolbarCalloutTarget.js).
+  const pickBarTool = useMemo(() => {
+    const groups = [];
+    if (selectedToolbarIndices?.indices?.length) {
+      const objects = annotationsByPage?.[selectedToolbarIndices.pageNumber]?.objects || [];
+      selectedToolbarIndices.indices.forEach((index) => groups.push(getMarkGroup(objects[index])));
+    } else if (selectedToolbarAnnotation?.annotation) {
+      groups.push(getMarkGroup(selectedToolbarAnnotation.annotation));
+    }
+    if (selectedToolbarCallout || (selectedCalloutIds instanceof Set && selectedCalloutIds.size > 0)) {
+      groups.push(CALLOUT_MARK_GROUP);
+    }
+    return resolvePickBarTool({
+      activeTool,
+      pickedGroups: groups,
+      justDrawn: selectedToolbarAnnotation?.justDrawn === true,
+    });
+  }, [activeTool, selectedToolbarIndices, selectedToolbarAnnotation, selectedToolbarCallout, selectedCalloutIds, annotationsByPage]);
+  const pickBarToolRef = useRef(pickBarTool);
+  pickBarToolRef.current = pickBarTool;
 
   // w41 (owner 2026-09-25: "I should be able to select things and then change
   // their color, their width, their line type"): two or more marks picked -
@@ -4429,10 +4586,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Drawboard / Bluebeam / Acrobat multi-selection formatting.
   const restyleGroupCacheRef = useRef(null);
   const restyleGroup = useMemo(() => {
-    // Only under Select. With a drawing tool armed, the bar is that tool's
-    // defaults for the next mark, and a pick left behind must never load its
-    // values into them nor take the tool's changes (review 2026-09-25).
-    if (activeTool !== 'select') return null;
+    // Only while the bar edits the pick (pickBarTool: Select, Pan, a Shapes /
+    // Text tool's own-group pick). With a drawing tool armed otherwise, the
+    // bar is that tool's defaults for the next mark, and a pick left behind
+    // must never load its values into them nor take the tool's changes
+    // (review 2026-09-25).
+    if (pickBarTool !== 'select') return null;
     const annotationMembers = [];
     let annotationSelection = null;
     if (selectedToolbarIndices && selectedToolbarIndices.indices.length > 0) {
@@ -4485,7 +4644,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       result,
     };
     return result;
-  }, [activeTool, selectedToolbarIndices, annotationsByPage, selectedCalloutIds, callouts]);
+  }, [pickBarTool, selectedToolbarIndices, annotationsByPage, selectedCalloutIds, callouts]);
   const restyleGroupRef = useRef(restyleGroup);
   restyleGroupRef.current = restyleGroup;
 
@@ -4507,155 +4666,45 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     commitCalloutMutation(pageNumber, (prev) => prev.map((c) => {
       if (!c || c.id !== sel.id) return c;
       const patched = { ...c, style: { ...(c.style || {}), ...stylePatch } };
-      return typeof refit === 'function' ? (refit(patched, pageNumber) || patched) : patched;
+      return typeof refit === 'function' ? (refit(patched, pageNumber, c) || patched) : patched;
     }), { source: 'callout:style', action: 'callout-style-patch' });
   }, [commitCalloutMutation, resolveCalloutPageNumber]);
 
-  useEffect(() => {
+  // Owner Test 45 (2026-10-06): the bar shows the PICKED mark(s) - one page
+  // mark, one callout (picked or open for typing) or a multi-pick group - and
+  // reloads whenever the settled pick or any of its values changes
+  // (utils/pickBarValues.js). This replaces three loaders keyed on object
+  // identity: a pick switch passes through one render holding both the old
+  // and the new pick, the group loader loaded the OLD mark's values there, and
+  // nothing reloaded afterwards - a solid callout picked after a cloud read
+  // "Cloud". Only while the bar works for the pick (pickBarTool 'select'):
+  // otherwise it is the armed tool's settings and a pick left behind never
+  // loads into them (review 2026-09-25). Under Select these states are only
+  // what the bar shows; the tool defaults reload when a drawing tool is armed.
+  const pickBarLoad = useMemo(() => {
+    if (pickBarTool !== 'select') return null;
     const sel = selectedToolbarAnnotation;
-    if (!sel || !sel.annotation) return;
-    const type = String(sel.annotation.type || '').toLowerCase();
-    const annot = sel.annotation;
-    const isCounter = type === 'circle' && annot?.data?.type === 'counter';
-    if (type !== 'rect' && type !== 'ellipse' && type !== 'path'
-      && type !== 'line' && type !== 'textbox'
-      && type !== 'polygon' && type !== 'polyline'
-      && !isCounter) return;
-    // w41: a pen / highlighter stroke (and imported pressure ink) is a filled
-    // outline - its colour is its FILL and its width is sourceWidth, so the
-    // bar reads those (utils/selectionRestyle).
-    if (isFilledInkPath(annot)) {
-      const inkStyle = readRestyleStyle(annot);
-      if (inkStyle.strokeColor) {
-        setStrokeColor(inkStyle.strokeColor);
-        setStrokeOpacity(inkStyle.strokeOpacity ?? 100);
-      }
-      if (Number.isFinite(inkStyle.width) && inkStyle.width > 0) {
-        const nextWidthInputValue = String(Number.isInteger(inkStyle.width)
-          ? inkStyle.width
-          : Math.round(inkStyle.width * 10) / 10);
-        setStrokeWidth(inkStyle.width);
-        strokeWidthInputValueRef.current = nextWidthInputValue;
-        setStrokeWidthInputValue(nextWidthInputValue);
-      }
-      return;
+    let annotation = null;
+    let annotationKey = '';
+    if (sel?.annotation) {
+      const pageObjects = annotationsByPage?.[sel.pageNumber]?.objects || [];
+      const liveIndex = findSelectedAnnotationIndex(pageObjects, sel);
+      annotation = (liveIndex >= 0 ? pageObjects[liveIndex] : null) || sel.annotation;
+      annotationKey = `${sel.pageNumber}:${liveIndex >= 0 ? liveIndex : sel.annotationIndex}:${getAnnotationRenderIdentity(annotation).annotationId || ''}`;
     }
-    const isFillable = type === 'rect' || type === 'ellipse' || type === 'textbox'
-      || type === 'polygon' || isCounter;
-    const fillSource = type === 'textbox' ? annot.backgroundColor : annot.fill;
-    const strokeSource = isCounter ? annot.data?.numberColor : annot.stroke;
-    const strokeHex = strokeSource ? getHexFromColor(strokeSource) : null;
-    const strokeOp = strokeSource ? getOpacityFromEntityColor(strokeSource) : 100;
-    const fillHex = fillSource && fillSource !== 'transparent' ? getHexFromColor(fillSource) : null;
-    const fillOp = fillSource && fillSource !== 'transparent' ? getOpacityFromEntityColor(fillSource) : 0;
-    if (strokeHex) {
-      setStrokeColor(strokeHex);
-      setStrokeOpacity(strokeOp);
-    }
-    if (isFillable) {
-      if (fillHex) {
-        setFillColor(fillHex);
-        setFillOpacity(fillOp);
-      } else if (fillSource === 'transparent' || !fillSource) {
-        setFillOpacity(0);
-      }
-    }
-    const sizeValue = isCounter ? Number(annot.radius) : Number(annot.strokeWidth);
-    if (Number.isFinite(sizeValue) && sizeValue > 0) {
-      // A cloud's studio-default 2.5 line must read as "2.5", not round to 3.
-      const nextWidthInputValue = String(Number.isInteger(sizeValue)
-        ? sizeValue
-        : Math.round(sizeValue * 10) / 10);
-      setStrokeWidth(sizeValue);
-      strokeWidthInputValueRef.current = nextWidthInputValue;
-      setStrokeWidthInputValue(nextWidthInputValue);
-    }
-    const dash = Array.isArray(annot.strokeDashArray) ? annot.strokeDashArray : null;
-    // UX 2026-09-09: selecting ANY cloud shape (rect, ellipse/circle, polygon,
-    // polyline) puts the Style picker on Cloud and loads its bump size, so the
-    // toolbar always reflects what is selected. Counters are circles internally
-    // but are never clouds, hence the isCounter guard.
-    // w43: a clouded text box border loads Cloud + its bump size the same way.
-    if (!isCounter && toolOffersCloudLineStyle(type) && annot.data?.pdfCloudIntensity != null) {
-      setLineBorderStyle('cloud');
-      setCloudIntensity(Number(annot.data.pdfCloudIntensity) || 2);
-    } else if (dash && dash.length >= 2) {
-      if (dash[0] === 6) setLineBorderStyle('dashed');
-      else if (dash[0] === 2) setLineBorderStyle('dotted');
-      else setLineBorderStyle('solid');
-    } else {
-      setLineBorderStyle('solid');
-    }
-    if (type === 'line' && annot.data?.arrowheadStyle) {
-      setArrowheadStyle(annot.data.arrowheadStyle);
-    }
-    if (type === 'line' && (annot.tool === 'arrow' || annot.data?.arrowheadStyle)) {
-      // Reflect the selected arrow: "both ends" is on only when its start
-      // ending explicitly matches its end ending. An imported line with two
-      // different endings therefore shows the toggle OFF and keeps both.
-      const startStyle = annot.data?.startArrowheadStyle ?? null;
-      const endStyle = annot.data?.arrowheadStyle ?? null;
-      setArrowBothEnds(Boolean(startStyle && startStyle !== ARROWHEAD_STYLES.NONE && startStyle === endStyle));
-    }
-  }, [selectedToolbarAnnotation]);
-
+    return resolvePickBarValues({
+      pickBarTool,
+      group: restyleGroup,
+      callout: selectedToolbarCallout,
+      annotation,
+      annotationKey,
+    });
+  }, [pickBarTool, restyleGroup, selectedToolbarCallout, selectedToolbarAnnotation, annotationsByPage]);
+  const pickBarLoadRef = useRef(pickBarLoad);
+  pickBarLoadRef.current = pickBarLoad;
+  const pickBarLoadKey = pickBarLoad ? pickBarLoad.key : '';
   useEffect(() => {
-    const sel = selectedToolbarCallout;
-    if (!sel || !sel.callout) return;
-    const style = sel.callout.style || {};
-    const border = style.borderColor || style.lineColor;
-    if (border) {
-      const borderHex = getHexFromColor(border);
-      if (borderHex) setStrokeColor(borderHex);
-    }
-    if (Number.isFinite(Number(style.borderOpacity))) {
-      setStrokeOpacity(Math.round(Math.max(0, Math.min(1, Number(style.borderOpacity))) * 100));
-    } else {
-      setStrokeOpacity(100);
-    }
-    if (style.fillColor && style.fillColor !== 'transparent') {
-      const fillHex = getHexFromColor(style.fillColor);
-      if (fillHex) setFillColor(fillHex);
-      const fo = Number(style.fillOpacity);
-      if (Number.isFinite(fo)) setFillOpacity(Math.round(Math.max(0, Math.min(1, fo)) * 100));
-      else setFillOpacity(100);
-    } else {
-      setFillOpacity(0);
-    }
-    const thickness = Number(style.lineThickness);
-    if (Number.isFinite(thickness) && thickness > 0) {
-      const nextWidthInputValue = String(Math.round(thickness));
-      setStrokeWidth(thickness);
-      strokeWidthInputValueRef.current = nextWidthInputValue;
-      setStrokeWidthInputValue(nextWidthInputValue);
-    }
-    if (style.arrowheadStyle) {
-      setArrowheadStyle(style.arrowheadStyle);
-    }
-    // UX (2026-07-17, callout line style): reflect the selected callout's
-    // leader style in the Style picker (absent field = legacy solid callout).
-    // w43: a callout whose text box is clouded shows Cloud and its bump size.
-    setLineBorderStyle(
-      style.lineStyle === 'dashed' || style.lineStyle === 'dotted' || style.lineStyle === 'cloud'
-        ? style.lineStyle
-        : 'solid',
-    );
-    if (style.lineStyle === 'cloud') setCloudIntensity(Number(style.cloudIntensity) || 2);
-  }, [selectedToolbarCallout]);
-
-  // w41: a restyle group loads ITS values into the bar (the first member that
-  // has each property; mixed properties are flagged in the published API).
-  // Runs after the single-pick loaders above, so a group always wins. Under
-  // Select these states are only what the bar shows - the tool defaults are
-  // reloaded from the saved preferences when a drawing tool is armed.
-  // Keyed by the pick and its values, not the memo's identity: every save
-  // (any page) rebuilds the memo, and reloading then would stomp a value the
-  // user is part-way through setting.
-  const restyleGroupLoadKey = restyleGroup
-    ? `${restyleGroup.key}|${JSON.stringify(restyleGroup.summary.values)}`
-    : '';
-  useEffect(() => {
-    const values = restyleGroupRef.current?.summary?.values;
+    const values = pickBarLoadRef.current?.values;
     if (!values) return;
     if (values.strokeColor) {
       strokeColorStateRef.current = values.strokeColor;
@@ -4675,6 +4724,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     if (Number.isFinite(Number(values.width)) && Number(values.width) > 0) {
       const width = Number(values.width);
+      // A cloud's studio-default 2.5 line must read as "2.5", not round to 3.
       const nextWidthInputValue = String(Number.isInteger(width) ? width : Math.round(width * 10) / 10);
       setStrokeWidth(width);
       if (!isStrokeWidthFocusedRef.current) {
@@ -4687,7 +4737,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (values.arrowheadStyle) setArrowheadStyle(values.arrowheadStyle);
     if (values.arrowBothEnds != null) setArrowBothEnds(Boolean(values.arrowBothEnds));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [restyleGroupLoadKey]);
+  }, [pickBarLoadKey]);
 
   // Clipboard handlers for callouts
   // w52: (pageNumber) => paste scope; assigned next to pasteAnnotationAt.
@@ -5062,6 +5112,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return 'partial';
     }
   }); // 'partial' | 'entire'
+  // Drawboard rule 5 (owner 2026-10-02): in Whole mode the eraser previews
+  // what a press would delete with the hover halo (read by the hover effect).
+  eraserWholeModeRef.current = eraserMode === 'entire';
+  // Drawboard rule 5: an eraser press drops the selection. Owner 2026-10-04
+  // (Draw group always uses the tool): the eraser no longer grabs the picked
+  // mark nor spares it — it erases whatever it touches, picked or not.
+  useEffect(() => {
+    if (activeTool !== 'eraser') return undefined;
+    const onDown = (event) => {
+      if (!event.isTrusted || event.defaultPrevented) return;
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      if (!event.target?.closest?.('[data-page-number]')) return;
+      if (!hasAnyPageSelection()) return;
+      window.setTimeout(() => {
+        if (!isSelectionGrabPress(event)) clearAnnotationSelectionForContextChange('eraser-press');
+      }, 0);
+    };
+    window.addEventListener('pointerdown', onDown, true);
+    return () => window.removeEventListener('pointerdown', onDown, true);
+  }, [activeTool, clearAnnotationSelectionForContextChange]);
   const [eraserSize, setEraserSize] = useState(20); // Diameter in page pixels
   const [eraserCursorPos, setEraserCursorPos] = useState({ visible: false });
   const eraserCursorRef = useRef(null);
@@ -5130,9 +5200,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // commit, because AppShell creates it in the same commit it first renders us.
   const [subToolContextTool, setSubToolContextTool] = useState(null);
   const [subToolsHostEl, setSubToolsHostEl] = useState(null);
+  // Test plan 63 (2026-10-06): only call the setter when the host really
+  // changed. A functional no-op update still schedules a render whenever this
+  // component has other work pending, and this effect runs after EVERY commit:
+  // after a Delete in one window while another window had just deleted a mark,
+  // that fed itself until React threw "Maximum update depth exceeded" and the
+  // viewer was torn down.
+  const subToolsHostElRef = useRef(null);
   useLayoutEffect(() => {
     const el = typeof document !== 'undefined' ? document.getElementById('chrome-subtools-host') : null;
-    setSubToolsHostEl((prev) => (prev === el ? prev : el));
+    if (subToolsHostElRef.current === el) return;
+    subToolsHostElRef.current = el;
+    setSubToolsHostEl(el);
   });
   const [showSurveyPanel, setShowSurveyPanel] = useState(false);
   const [rightRailCollapsed, setRightRailCollapsed] = useState(true);
@@ -5931,20 +6010,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setActiveTool('select');
   }, []);
 
-  // UX 2026-05-29: Survey entry now belongs to the always-visible right rail.
-  // The handler stays in PDFViewer because it owns the survey/template state.
-  const handleSurveyToggle = useCallback(() => {
-    if (!features?.advancedSurvey) {
-      showToast('Survey templates are a Pro feature. Please upgrade to use this tool.', 'warn');
-      return;
-    }
-    if (!showSurveyPanel) {
-      setShowSurveyPanel(true);
-    } else {
-      handleCloseSurveyMode();
-    }
-  }, [features, handleCloseSurveyMode, showSurveyPanel]);
-
   // UX 2026-05-13: top-toolbar publish effect was here but moved further down,
   // past where handleUndo / handleRedo are declared — those are const arrow
   // useCallbacks defined much later in the function body, so referencing them
@@ -5966,6 +6031,55 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setActiveTool('survey-marker');
     setShowSurveyPanel(true);
   }, []);
+
+  // UX 2026-05-29: Survey entry now belongs to the always-visible right rail.
+  // The handler stays in PDFViewer because it owns the survey/template state.
+  // Owner 2026-10-07 (survey bar round): turning Survey on goes straight back
+  // into the template last used on this document (remembered on this device,
+  // utils/surveyLastTemplate.js); the picker only shows the first time, or
+  // when that template is gone.
+  const surveyMemoryDocKey = surveyMemoryDocumentKey(pdfFile, pdfFilePath);
+  const handleSurveyToggle = useCallback(() => {
+    if (!features?.advancedSurvey) {
+      showToast('Survey templates are a Pro feature. Please upgrade to use this tool.', 'warn');
+      return;
+    }
+    if (!showSurveyPanel) {
+      const remembered = resolveLastSurveyTemplate(surveyMemoryDocKey, appTemplates);
+      if (remembered) {
+        handleSelectSurveyTemplate(remembered);
+      } else {
+        setShowSurveyPanel(true);
+      }
+    } else {
+      handleCloseSurveyMode();
+    }
+  }, [features, handleCloseSurveyMode, handleSelectSurveyTemplate, showSurveyPanel, surveyMemoryDocKey, appTemplates]);
+
+  // Remember the template in use for this document (any way it was chosen:
+  // the picker, the panel's or the survey bar's template menu, an Undo).
+  useEffect(() => {
+    if (!showSurveyPanel || !selectedTemplate?.id) return;
+    rememberLastSurveyTemplate(surveyMemoryDocKey, selectedTemplate.id);
+  }, [showSurveyPanel, selectedTemplate?.id, surveyMemoryDocKey]);
+
+  // The survey bar's template menu (desktop and phone): switch template in
+  // place; the current one is a no-op.
+  // The published tool-bar / rail APIs keep a callback's first identity while
+  // only functions change, so the bar's handlers read Survey's live state here.
+  // (Filled in below, once selectedCategoryId is declared.)
+  const surveyBarLiveRef = useRef(null);
+  const handleSwitchSurveyTemplateById = useCallback((templateId) => {
+    const live = surveyBarLiveRef.current;
+    if (!templateId || templateId === live.selectedTemplate?.id) return;
+    const template = (live.appTemplates || []).find((entry) => entry?.id === templateId);
+    if (template) handleSelectSurveyTemplate(template);
+  }, [handleSelectSurveyTemplate]);
+
+  // An Undo of "Left Survey" re-enters with the panel the way it was: when it
+  // was closed, this tells the expand effect below and the rail to leave it
+  // closed this once (the rail clears it).
+  const surveyReenterCollapsedRef = useRef(false);
 
   // Restore scroll position when PDF loads or tab/document context changes.
   useEffect(() => {
@@ -6884,7 +6998,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         scrollTop: viewerContainer.scrollTop,
         tMs: (typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now()
       };
-      recordTrackpadInteractionEvent('pointer-down', {
+      // Perf: readTrackpadDebugState forces style + layout (getComputedStyle,
+      // elementFromPoint); only pay for it while the recorder is on.
+      if (trackpadInteractionDebugRef.current?.enabled) recordTrackpadInteractionEvent('pointer-down', {
         family: 'pan',
         direction: 'start',
         button: event.button,
@@ -6907,7 +7023,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       lastDragEventAt = now;
       const start = trackpadInteractionDebugRef.current.pointerPanStart || null;
       trackpadInteractionDebugRef.current.totals.pointerPanMoves += 1;
-      recordTrackpadInteractionEvent('pointer-pan-move', {
+      if (trackpadInteractionDebugRef.current.enabled) recordTrackpadInteractionEvent('pointer-pan-move', {
         family: 'pan',
         direction: 'drag',
         processed: true,
@@ -6957,7 +7073,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
       } catch (_e) { /* swallow */ }
       pointerDown = false;
-      recordTrackpadInteractionEvent('pointer-up', {
+      if (trackpadInteractionDebugRef.current?.enabled) recordTrackpadInteractionEvent('pointer-up', {
         family: 'pan',
         direction: 'end',
         after: readTrackpadDebugState(viewerContainer)
@@ -7687,7 +7803,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const readPdfjsPageVisitState = useCallback((pageNumber) => {
     const pageContainerMap = pdfjsPageContainersStateRef.current || pageContainersRef.current || {};
     const directHost = pageContainerMap[pageNumber] || pageContainersRef.current?.[pageNumber] || null;
-    const domHost = typeof document !== 'undefined'
+    // Only search the document when the known host is gone: this runs for
+    // every mounted page on every render, and the search walked every mark of
+    // the pages before it (owner 2026-10-06, smooth zoom).
+    const domHost = !directHost?.isConnected && typeof document !== 'undefined'
       ? document.querySelector(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`)
       : null;
     const host = directHost?.isConnected ? directHost : domHost;
@@ -7974,6 +8093,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handlePdfjsPageRenderComplete = useCallback((payload) => {
     reconcilePdfjsScaleFromRenderedPage('page-render-complete');
     scheduleTextSearchHighlightRefresh('page-render-complete', 80);
+    if (payload?.pageNumber === 1 && !firstPageDrawnRef.current.drawn) {
+      firstPageDrawnRef.current.drawn = true;
+      firstPageDrawnRef.current.resolve?.();
+    }
     const paintState = firstPagePaintAnalyticsRef.current;
     if (payload?.pageNumber !== 1 || paintState.reported || !paintState.startedAt) return;
     paintState.reported = true;
@@ -8060,8 +8183,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Legacy state (to be migrated)
   const [surveyResponses, setSurveyResponses] = useState({}); // { [itemId]: { selection: 'Y'|'N'|'N/A', note: { text, photos, videos } } }
-  const [noteDialogOpen, setNoteDialogOpen] = useState(null); // null or itemId
-  const [noteDialogContent, setNoteDialogContent] = useState({ text: '', photos: [], videos: [] });
   const [pendingSurveyMarker, setPendingSurveyMarker] = useState(null); // { pageNumber, x, y, width, height, id }
   const [showSpaceSelection, setShowSpaceSelection] = useState(false);
   const [surveyMarkers, setSurveyMarkers] = useState({}); // { [annotationId]: { pageNumber, bounds, categoryId, spaceId, checklistResponses: { [itemId]: { selection, note } } } }
@@ -8139,10 +8260,35 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [surveyKeepCategoryActive, setSurveyKeepCategoryActive] = useState(false);
   // Desktop survey sub-row: whether the Survey module menu is open.
   const [surveyModuleMenuOpen, setSurveyModuleMenuOpen] = useState(false);
+  // ...and its template menu (owner 2026-10-07, the bar's first item).
+  const [surveyTemplateMenuOpen, setSurveyTemplateMenuOpen] = useState(false);
+  surveyBarLiveRef.current = { selectedTemplate, selectedModuleId, selectedCategoryId, rightRailCollapsed, appTemplates };
+  // 2026-10-07 (survey bar, narrow windows): how far the survey bar gives
+  // ground so nothing in it overlaps (hooks/useSurveyBarFit.js).
+  const surveyBarModules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
+  const surveyBarFit = useSurveyBarFit({
+    enabled: Boolean(showSurveyPanel && selectedTemplate),
+    insetLeft: isLeftSidebarCollapsed ? 0 : 272,
+    insetRight: rightRailCollapsed ? 0 : 320,
+    templateName: selectedTemplate?.name || 'Survey',
+    moduleNames: surveyBarModules.length ? surveyBarModules.map((module) => module.name || 'Untitled module') : ['No modules'],
+    categoriesKey: ((surveyBarModules.find((module) => module.id === selectedModuleId) || surveyBarModules[0])?.categories || [])
+      .map((category) => `${category.id}:${category.name}`).join('|'),
+  });
   const [selectedSpaceId, setSelectedSpaceId] = useState(null); // Currently selected space for survey interactions
   const [pendingSurveyMarkerName, setPendingSurveyMarkerName] = useState(null); // { surveyMarker, categoryId } when prompting for name
   const [surveyMarkerNameInput, setSurveyMarkerNameInput] = useState(null); // Name prompt input; null = untouched (show category-derived default), any string ('' included) = user's text
   const [pendingEntitySelection, setPendingEntitySelection] = useState(null); // { surveyMarker, categoryId } when prompting for Entity
+  // Owner 2026-10-01 ("Yes, inline like phone"): a Survey Marker placed on
+  // desktop opens in the Survey rail with its name field focused - no Entity /
+  // Name pop-ups. { id, tick } asks the rail to focus that marker's name.
+  const [surveyMarkerNameFocusRequest, setSurveyMarkerNameFocusRequest] = useState(null);
+  // The entity last picked for a Survey Marker on desktop (the rail's Entity
+  // menu); a new desktop marker starts with it, like the phone's entity disc.
+  const lastSurveyEntityIdRef = useRef(null);
+  const rememberSurveyEntity = useCallback((entityId) => {
+    lastSurveyEntityIdRef.current = entityId || null;
+  }, []);
   const [mobileSurveyEntityId, setMobileSurveyEntityId] = useState(null);
   // Pending Survey Marker deletion participates in legacy Undo/Redo. Keep the
   // entire transient prompt/preview slice together so restoring the marker
@@ -8160,8 +8306,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // NEW: Item and Annotation system state
   const [pdfId, setPdfId] = useState(null);
   const pdfSearchDocumentKey = useMemo(
-    () => `${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}:${numPages || 0}`,
-    [pdfFile?.id, pdfFile?.name, pdfId, numPages]
+    // A page operation (move/rotate/...) changes what text sits on which page
+    // even when the count stays the same: the page view version keys it.
+    () => `${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}:${numPages || 0}:${pdfDoc?.__pageViewVersion || 0}`,
+    [pdfFile?.id, pdfFile?.name, pdfId, numPages, pdfDoc]
   );
   const previousPdfSelectionContextRef = useRef(null);
   useLayoutEffect(() => {
@@ -8224,7 +8372,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Sync tool properties when activeTool or pdfId changes (load per-tool preferences)
   useEffect(() => {
     if (!pdfId) return;
-    if (activeTool === 'select') return;
+    if (pickBarTool === 'select') return;
     const toolPrefs = getToolPreference(activeTool);
     if (activeTool === 'text-select') {
       const paint = textMarkupPaintByType[focusedTextMarkupPaint]
@@ -8258,7 +8406,65 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setStrokeWidthInputValue(nextValue);
       }
     }
-  }, [activeTool, focusedTextMarkupPaint, lineBorderStyle, pdfId, textMarkupPaintByType, toolPreferences]);
+  }, [activeTool, pickBarTool, focusedTextMarkupPaint, lineBorderStyle, pdfId, textMarkupPaintByType, toolPreferences]);
+
+  // Owner 2026-10-04: a Shapes / Text tool that picks a mark of its own group
+  // shows that mark's values in the bar; when the pick goes (empty click,
+  // Escape) the bar is the tool's own settings again, as they were before the
+  // pick. A tool switch is not a pick ending here: the switch loads the new
+  // tool's settings (above).
+  const toolSettingsBeforePickRef = useRef(null);
+  const toolSettingsPickToolRef = useRef(activeTool);
+  useEffect(() => {
+    const toolChanged = toolSettingsPickToolRef.current !== activeTool;
+    toolSettingsPickToolRef.current = activeTool;
+    if (toolChanged) {
+      toolSettingsBeforePickRef.current = null;
+      return;
+    }
+    if (pickBarTool === 'select') {
+      if (activeTool !== 'select' && activeTool !== 'pan' && !toolSettingsBeforePickRef.current) {
+        toolSettingsBeforePickRef.current = {
+          strokeColor, strokeOpacity, fillColor, fillOpacity, strokeWidth,
+          lineBorderStyle, cloudIntensity, arrowheadStyle, arrowBothEnds,
+        };
+      }
+      return;
+    }
+    const saved = toolSettingsBeforePickRef.current;
+    toolSettingsBeforePickRef.current = null;
+    if (!saved) return;
+    strokeColorStateRef.current = saved.strokeColor;
+    strokeOpacityStateRef.current = saved.strokeOpacity;
+    fillColorStateRef.current = saved.fillColor;
+    fillOpacityStateRef.current = saved.fillOpacity;
+    setStrokeColor(saved.strokeColor);
+    setStrokeOpacity(saved.strokeOpacity);
+    setFillColor(saved.fillColor);
+    setFillOpacity(saved.fillOpacity);
+    setStrokeWidth(saved.strokeWidth);
+    if (!isStrokeWidthFocusedRef.current) {
+      strokeWidthInputValueRef.current = String(saved.strokeWidth);
+      setStrokeWidthInputValue(String(saved.strokeWidth));
+    }
+    setLineBorderStyle(saved.lineBorderStyle);
+    setCloudIntensity(saved.cloudIntensity);
+    setArrowheadStyle(saved.arrowheadStyle);
+    setArrowBothEnds(saved.arrowBothEnds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTool, pickBarTool]);
+  // Review round 9: while that pick is held the bar holds the PICKED mark's
+  // values; a drag that draws a new mark meanwhile still draws it with the
+  // tool's own settings (it used to take the picked mark's width and colours).
+  const newMarkStyle = resolveNewMarkStyle({
+    activeTool,
+    pickBarTool,
+    savedToolSettings: toolSettingsBeforePickRef.current,
+    live: {
+      strokeColor, strokeOpacity, fillColor, fillOpacity, strokeWidth,
+      lineBorderStyle, cloudIntensity, arrowheadStyle, arrowBothEnds,
+    },
+  });
 
   // Sync strokeWidthInputValue when strokeWidth changes (but not while focused)
   useEffect(() => {
@@ -8288,13 +8494,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => { fillColorStateRef.current = fillColor; }, [fillColor]);
   useEffect(() => { fillOpacityStateRef.current = fillOpacity; }, [fillOpacity]);
   useEffect(() => {
-    if (activeTool !== 'select' || selectedToolbarAnnotation?.annotation?.data?.type !== 'text-markup') return;
+    if (pickBarTool !== 'select' || selectedToolbarAnnotation?.annotation?.data?.type !== 'text-markup') return;
     const paint = resolveTextMarkupEditPaint(selectedToolbarAnnotation.annotation, strokeColorStateRef.current);
     strokeColorStateRef.current = paint.color;
     strokeOpacityStateRef.current = paint.opacity;
     setStrokeColor(paint.color);
     setStrokeOpacity(paint.opacity);
-  }, [activeTool, selectedToolbarAnnotation]);
+  }, [pickBarTool, selectedToolbarAnnotation]);
   const getSelectedShapeMeta = () => {
     const sel = selectedToolbarAnnotationRef.current;
     const annotation = sel?.annotation;
@@ -8317,6 +8523,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return isCounter;
   };
   const isCalloutSelected = () => !!selectedToolbarCalloutRef.current;
+  // Owner Test 15 (2026-10-02): a shape comes up selected the moment it is
+  // drawn, with its tool still armed. The paint handlers below only restyled
+  // a selection under Select, so the first colour / opacity / fill change on
+  // the new shape went to the tool alone and the shape stayed as drawn until
+  // it was clicked away and picked again. That mark (and only that mark - a
+  // pick left behind under a drawing tool still never takes the tool's
+  // changes) now takes the change too, along with the tool for the next one.
+  const isJustDrawnMarkSelected = () => selectedToolbarAnnotationRef.current?.justDrawn === true;
   const patchSelectedFill = (rgba) => {
     const { type, isCounter, annotation } = getSelectedShapeMeta();
     if (isCounter && annotation?.data?.seriesId) {
@@ -8436,10 +8650,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const normalized = mode === 'uniform' ? 'uniform' : 'layered';
     setTextMarkupOverlapMode(normalized);
     const annotation = selectedToolbarAnnotationRef.current?.annotation;
-    if (activeTool === 'select' && annotation?.data?.type === 'text-markup') {
+    if (pickBarTool === 'select' && annotation?.data?.type === 'text-markup') {
       handlePatchSelectedAnnotation({ data: { overlapMode: normalized } });
     }
-  }, [activeTool, handlePatchSelectedAnnotation]);
+  }, [pickBarTool, handlePatchSelectedAnnotation]);
 
   const handleSelectedCounterSeriesStartChange = useCallback((value) => {
     const sel = selectedToolbarAnnotationRef.current;
@@ -8475,7 +8689,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     strokeColorStateRef.current = color;
     setStrokeColor(color);
     const nextNumberColor = composeColorForPatch(color, strokeOpacityStateRef.current);
-    if (activeTool === 'counter') {
+    if (pickBarTool === 'counter') {
       activeCounterSeriesNumberColorRef.current = nextNumberColor;
       const activeSeriesId = activeCounterSeriesIdRef.current;
       const activeSeriesHasPins = activeSeriesId
@@ -8488,9 +8702,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setCounterUITick((tick) => tick + 1);
       }
     }
-    if (pdfId && activeTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(paintPreferenceKey(activeTool), { strokeColor: color });
-    if (activeTool === 'counter') return;
-    if (activeTool !== 'select') return;
+    if (pdfId && pickBarTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(paintPreferenceKey(pickBarTool), { strokeColor: color });
+    if (pickBarTool === 'counter') return;
+    if (pickBarTool !== 'select') {
+      if (isJustDrawnMarkSelected() && isEditableShapeSelected()) patchSelectedStroke(nextNumberColor);
+      return;
+    }
     if (writeGroupPaint('strokeColor', color, previousStrokeColor)) return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ borderColor: color });
@@ -8499,7 +8716,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } else if (isEditableShapeSelected()) {
       patchSelectedStroke(nextNumberColor);
     }
-  }, [activeTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
+  }, [pickBarTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleTextMarkupPaintChange = useCallback((color, opacity) => {
     const normalizedOpacity = Math.max(5, Math.min(100, Number(opacity)
@@ -8522,8 +8739,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         ? { ...current, [focusedTextMarkupPaint]: { color, opacity: normalizedOpacity } }
         : current
     ));
-    if (pdfId && activeTool !== 'select' && paintPhaseRef.current !== 'preview') {
-      updateToolPreference(activeTool, { strokeColor: color, strokeOpacity: normalizedOpacity });
+    if (pdfId && pickBarTool !== 'select' && paintPhaseRef.current !== 'preview') {
+      updateToolPreference(pickBarTool, { strokeColor: color, strokeOpacity: normalizedOpacity });
     }
     if (selectedToolbarAnnotationRef.current?.annotation?.data?.type === 'text-markup') {
       handlePatchSelectedAnnotation({
@@ -8532,14 +8749,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         opacity: normalizedOpacity / 100,
       });
     }
-  }, [activeTool, focusedTextMarkupPaint, handlePatchSelectedAnnotation, pdfId, updateToolPreference]);
+  }, [pickBarTool, focusedTextMarkupPaint, handlePatchSelectedAnnotation, pdfId, updateToolPreference]);
 
   const handleStrokeOpacityChange = useCallback((opacity) => {
     const previousStrokeOpacity = strokeOpacityStateRef.current;
     strokeOpacityStateRef.current = opacity;
     setStrokeOpacity(opacity);
     const nextNumberColor = composeColorForPatch(strokeColorStateRef.current, opacity);
-    if (activeTool === 'counter') {
+    if (pickBarTool === 'counter') {
       activeCounterSeriesNumberColorRef.current = nextNumberColor;
       const activeSeriesId = activeCounterSeriesIdRef.current;
       const activeSeriesHasPins = activeSeriesId
@@ -8550,9 +8767,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setCounterUITick((tick) => tick + 1);
       }
     }
-    if (pdfId && activeTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(paintPreferenceKey(activeTool), { strokeOpacity: opacity });
-    if (activeTool === 'counter') return;
-    if (activeTool !== 'select') return;
+    if (pdfId && pickBarTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(paintPreferenceKey(pickBarTool), { strokeOpacity: opacity });
+    if (pickBarTool === 'counter') return;
+    if (pickBarTool !== 'select') {
+      if (isJustDrawnMarkSelected() && isEditableShapeSelected()) patchSelectedStroke(nextNumberColor);
+      return;
+    }
     if (writeGroupPaint('strokeOpacity', opacity, previousStrokeOpacity)) return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ borderOpacity: Math.max(0, Math.min(1, (Number(opacity) || 0) / 100)) });
@@ -8568,14 +8788,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } else if (isEditableShapeSelected()) {
       patchSelectedStroke(nextNumberColor);
     }
-  }, [activeTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
+  }, [pickBarTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleFillColorChange = useCallback((color) => {
     const previousFillColor = fillColorStateRef.current;
     fillColorStateRef.current = color;
     setFillColor(color);
     const nextFillColor = composeColorForPatch(color, fillOpacityStateRef.current);
-    if (activeTool === 'counter') {
+    if (pickBarTool === 'counter') {
       activeCounterSeriesColorRef.current = nextFillColor;
       const activeSeriesId = activeCounterSeriesIdRef.current;
       const activeSeriesHasPins = activeSeriesId
@@ -8586,23 +8806,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setCounterUITick((tick) => tick + 1);
       }
     }
-    if (pdfId && activeTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(activeTool, { fillColor: color });
-    if (activeTool === 'counter') return;
-    if (activeTool !== 'select') return;
+    if (pdfId && pickBarTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(pickBarTool, { fillColor: color });
+    if (pickBarTool === 'counter') return;
+    if (pickBarTool !== 'select') {
+      if (isJustDrawnMarkSelected() && isFillableShapeSelected()) patchSelectedFill(nextFillColor);
+      return;
+    }
     if (writeGroupPaint('fillColor', color, previousFillColor)) return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ fillColor: color });
     } else if (isFillableShapeSelected()) {
       patchSelectedFill(nextFillColor);
     }
-  }, [activeTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
+  }, [pickBarTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleFillOpacityChange = useCallback((opacity) => {
     const previousFillOpacity = fillOpacityStateRef.current;
     fillOpacityStateRef.current = opacity;
     setFillOpacity(opacity);
     const nextFillColor = composeColorForPatch(fillColorStateRef.current, opacity);
-    if (activeTool === 'counter') {
+    if (pickBarTool === 'counter') {
       activeCounterSeriesColorRef.current = nextFillColor;
       const activeSeriesId = activeCounterSeriesIdRef.current;
       const activeSeriesHasPins = activeSeriesId
@@ -8613,16 +8836,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setCounterUITick((tick) => tick + 1);
       }
     }
-    if (pdfId && activeTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(activeTool, { fillOpacity: opacity });
-    if (activeTool === 'counter') return;
-    if (activeTool !== 'select') return;
+    if (pdfId && pickBarTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(pickBarTool, { fillOpacity: opacity });
+    if (pickBarTool === 'counter') return;
+    if (pickBarTool !== 'select') {
+      if (isJustDrawnMarkSelected() && isFillableShapeSelected()) patchSelectedFill(nextFillColor);
+      return;
+    }
     if (writeGroupPaint('fillOpacity', opacity, previousFillOpacity)) return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ fillOpacity: Math.max(0, Math.min(1, (Number(opacity) || 0) / 100)) });
     } else if (isFillableShapeSelected()) {
       patchSelectedFill(nextFillColor);
     }
-  }, [activeTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
+  }, [pickBarTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   // The paint handlers as the toolbars see them: the same writes, plus the
   // colour picker's optional drag phase (see paintPhaseRef). The phase is set
@@ -8741,11 +8967,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           calloutStyle: (callout) => buildSelectedTextStylePatch(
             'callout', readCalloutTextStyle(callout), fields, { forceColor: inDrag },
           ),
-          calloutRefit: (callout, pageNumber, stylePatch) => (patchCanReflowText('callout', stylePatch)
+          calloutRefit: (callout, pageNumber, stylePatch, before) => (patchCanReflowText('callout', stylePatch)
             ? refitCalloutToText(
               callout,
               pageSizesRef.current?.[pageNumber] || pageSizesRef.current?.[String(pageNumber)],
               measureTextLayoutHeight,
+              { before },
             )
             : callout),
         });
@@ -8759,7 +8986,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         changed,
         phase: options?.phase,
         target,
-        activeTool,
+        activeTool: pickBarTool,
         dragRecord: textStyleDragTargetKeyRef.current,
       });
       textStyleDragTargetKeyRef.current = write.dragRecord;
@@ -8770,10 +8997,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (write.action !== 'patch') return;
       if (target.kind === 'callout') {
         handlePatchSelectedCallout(write.patch, write.reflows
-          ? (callout, pageNumber) => refitCalloutToText(
+          ? (callout, pageNumber, before) => refitCalloutToText(
             callout,
             pageSizesRef.current?.[pageNumber] || pageSizesRef.current?.[String(pageNumber)],
             measureTextLayoutHeight,
+            { before },
           )
           : null);
       } else {
@@ -8782,12 +9010,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           : null);
       }
     });
-  }, [activeTool, handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
+  }, [pickBarTool, handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
 
   const handleStrokeWidthChange = useCallback((width) => {
     setStrokeWidth(width);
-    if (pdfId && activeTool !== 'select') updateToolPreference(paintPreferenceKey(activeTool), { strokeWidth: width });
-    if (activeTool === 'select' && applyRestyleToGroup({ kind: 'width', width })) return;
+    if (pdfId && pickBarTool !== 'select') updateToolPreference(paintPreferenceKey(pickBarTool), { strokeWidth: width });
+    if (pickBarTool === 'select' && applyRestyleToGroup({ kind: 'width', width })) return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ lineThickness: Math.max(1, Number(width) || 2) });
       return;
@@ -8823,7 +9051,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } else {
       handlePatchSelectedAnnotation({ strokeWidth: width });
     }
-  }, [activeTool, pdfId, updateToolPreference, handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
+  }, [pickBarTool, pdfId, updateToolPreference, handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
 
   const handleLineBorderStyleChange = useCallback((next) => {
     setLineBorderStyle(next);
@@ -8831,7 +9059,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // picker too — patch style.lineStyle through the undoable callout patch
     // path (same route as the arrowhead picker). 'cloud' is never offered for
     // the callout context (rect-only option), but guard anyway.
-    if (activeToolRef.current === 'select' && applyRestyleToGroup({
+    if (pickBarToolRef.current === 'select' && applyRestyleToGroup({
       kind: 'lineStyle',
       style: next,
       cloudIntensity: Math.max(1, Number(cloudIntensity) || 2),
@@ -8863,7 +9091,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleCloudIntensityChange = useCallback((next) => {
     setCloudIntensity(next);
-    if (activeToolRef.current === 'select' && applyRestyleToGroup({
+    if (pickBarToolRef.current === 'select' && applyRestyleToGroup({
       kind: 'cloudIntensity',
       cloudIntensity: Math.max(1, Number(next) || 2),
     })) return;
@@ -8881,7 +9109,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleArrowheadStyleChange = useCallback((next) => {
     setArrowheadStyle(next);
-    if (activeToolRef.current === 'select' && applyRestyleToGroup({
+    if (pickBarToolRef.current === 'select' && applyRestyleToGroup({
       kind: 'arrowhead',
       style: next,
       // Each picked arrow keeps its own ends (the bar's both-ends state may
@@ -8906,7 +9134,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [handlePatchSelectedAnnotation, handlePatchSelectedCallout, arrowBothEnds]);
 
   const handleGroupArrowEndsChange = useCallback((ends) => {
-    if (activeToolRef.current !== 'select') return;
+    if (pickBarToolRef.current !== 'select') return;
     applyRestyleToGroup({ kind: 'arrowEnds', ends });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -8914,7 +9142,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const on = Boolean(next);
     setArrowBothEnds(on);
     try { localStorage.setItem('arrowBothEnds', on ? '1' : '0'); } catch {}
-    if (activeToolRef.current === 'select' && applyRestyleToGroup({ kind: 'arrowBothEnds', on })) return;
+    if (pickBarToolRef.current === 'select' && applyRestyleToGroup({ kind: 'arrowBothEnds', on })) return;
     const sel = selectedToolbarAnnotationRef.current;
     const type = String(sel?.annotation?.type || '').toLowerCase();
     const isArrow = type === 'line' && (sel?.annotation?.tool === 'arrow'
@@ -8931,7 +9159,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // UX 2026-09-09: line widths keep one decimal place (the Cloud style's
     // approved 2.5-unit default must type, read back and draw as 2.5);
     // counter sizes stay whole numbers. A trailing "2." is a legal draft.
-    const isCounterSize = activeTool === 'counter' || getSelectedShapeMeta().isCounter;
+    const isCounterSize = pickBarTool === 'counter' || getSelectedShapeMeta().isCounter;
     const widthDecimals = isCounterSize ? 0 : ANNOTATION_WIDTH_DECIMALS;
     // Allow empty string or valid numbers
     if (sanitizeAnnotationSizeDraft(value, widthDecimals) !== null) {
@@ -8948,20 +9176,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
       publishToolbarDraft('strokeWidthInputValue', value);
     }
-  }, [activeTool, publishToolbarDraft]);
+  }, [pickBarTool, publishToolbarDraft]);
 
   // Commit width value on blur (clamp to valid range)
   const handleStrokeWidthInputBlur = useCallback((event) => {
     handleStrokeWidthFocusChange(false);
     // AppShell receives this handler through an effect-published API. Read the
     // blur-time DOM value so a fast edit cannot recommit a stale closure value.
-    const isCounterSize = activeTool === 'counter' || getSelectedShapeMeta().isCounter;
+    const isCounterSize = pickBarTool === 'counter' || getSelectedShapeMeta().isCounter;
     const minWidth = isCounterSize ? COUNTER_SIZE_MIN : 1;
     const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : 50;
     const rawValue = String(event?.currentTarget?.value ?? strokeWidthInputValueRef.current ?? '').trim();
     // w41: an empty Width over picked marks of different widths means "leave
     // them" - never "set all of them to the minimum".
-    if (rawValue === '' && activeTool === 'select' && restyleGroupRef.current?.summary?.mixed?.width) return;
+    if (rawValue === '' && pickBarTool === 'select' && restyleGroupRef.current?.summary?.mixed?.width) return;
     const parsed = rawValue === ''
       ? NaN
       : normalizeAnnotationSize(rawValue, -Infinity, Infinity, isCounterSize ? 0 : ANNOTATION_WIDTH_DECIMALS);
@@ -8980,7 +9208,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       publishToolbarDraft('strokeWidthInputValue', clamped);
       handleStrokeWidthChange(clamped);
     }
-  }, [activeTool, handleStrokeWidthChange, handleStrokeWidthFocusChange, publishToolbarDraft]);
+  }, [pickBarTool, handleStrokeWidthChange, handleStrokeWidthFocusChange, publishToolbarDraft]);
 
   // Handle eraser size input changes (allows empty string while typing)
   const handleEraserSizeInputChange = useCallback((e) => {
@@ -9112,6 +9340,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   };
   const spacePageNavigationTimersRef = useRef([]);
   const pageSizesRef = useRef({});
+  // Owner 2026-10-01 (instant page operations): page operations swap in an
+  // in-memory page view over the loaded document; see the hook.
+  const {
+    applyPageView: applyPageViewOperationToViewer,
+    restorePageView: restorePageViewDocument,
+    markFileCurrent: markPageViewFileCurrent,
+    isFileCurrent: isPageViewFileCurrent,
+    isViewOver: isPageViewOver,
+  } = usePageViewDocument({
+    pdfDoc,
+    pageObjects,
+    pageSizesRef,
+    pageRenderCacheRef,
+    setPdfDoc,
+    setNumPages,
+    setPageSizes,
+    setPageHeights,
+  });
   const manualZoomScaleRef = useRef(initialZoomPreferences.manualScale);
   // Bug #2.6 calibration: Pdfjs's page div at 100% is pdfPageSize.width * electronFactor
   // CSS pixels (Electron/browser zoom factor). Calibrated on first known-good measurement
@@ -11142,7 +11388,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return;
     }
 
-    if (activeTool === 'pan' && isPanningRef.current) {
+    // Owner 2026-10-01 (Spaces toolbar): the Pan tool itself (tool bar, rail,
+    // M) stays armed too, not only a held Space; an area tool hands back.
+    if (activeTool === 'pan') {
       return;
     }
 
@@ -11232,6 +11480,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     isDocShared: yjsIsDocShared,
     accessRevoked: yjsAccessRevoked,
   } = useYDoc();
+  // Owner 2026-10-07: a shared document carries its survey templates to the
+  // people it is shared with (all logic in hooks/useSharedDocumentTemplates).
+  useSharedDocumentTemplates({ documentId: pdfFile?.id ?? null, user, docRole: yjsDocRole, isDocShared: yjsIsDocShared, surveyMarkers, templates: appTemplates, selectedTemplateId: selectedTemplate?.id ?? null });
   const [devAccessRevoked, setDevAccessRevoked] = useState(false);
   useEffect(() => {
     if (
@@ -11308,6 +11559,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const redoHistoryMetaRef = useRef([]);
   const localAnnotationUndoRef = useRef([]);
   const localAnnotationRedoRef = useRef([]);
+  // Page changes' Undo / Redo ({ undo(id), redo(id) } from usePageOperations,
+  // declared further down; utils/pageOperationHistory.js).
+  const pageOperationHistoryRef = useRef(null);
   const historyDebugTraceRef = useRef([]);
   const historyDebugSeqRef = useRef(0);
   const historyCheckpointSeqRef = useRef(0);
@@ -11341,14 +11595,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
 
     const intervalId = window.setInterval(() => {
+      // Never mid-gesture: its style read forced a whole-document style pass
+      // in the middle of a pinch or glide (owner 2026-10-06, smooth zoom).
+      if (document.querySelector('[data-pdfjs-moving="true"]')) return;
       const pages = annotationsByPageRef.current || {};
       const currentPageNumber = Number(pageNumRef.current) || Number(pageNum) || 1;
       const currentPageObjects = pages[currentPageNumber]?.objects || [];
+      // Only a page inside the engine's mounted window is supposed to have a
+      // live layer. Checking a marked page that was scrolled out of that
+      // window always found "no layer", called the overlay broken, and
+      // remounted EVERY page's layer every 5 s — wiping a shape mid-draw
+      // (owner 2026-10-02: hold the mouse still and the shape vanishes).
+      const mountedPages = pdfjsMountedPagesRef.current;
+      const isLivePage = (n) => !(mountedPages?.size > 0) || mountedPages.has(n) || n === currentPageNumber;
       let pageNumber = currentPageObjects.length > 0 ? currentPageNumber : null;
       if (!pageNumber) {
         pageNumber = Number(Object.keys(pages).find((key) => {
           const objects = pages[key]?.objects;
-          return Array.isArray(objects) && objects.length > 0;
+          return Array.isArray(objects) && objects.length > 0 && isLivePage(Number(key));
         })) || null;
       }
       if (!pageNumber) {
@@ -11380,6 +11644,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         annotationOverlayWatchdogRef.current.consecutiveMismatch = 0;
         return;
       }
+
+      // A recovery remounts every layer, so never run it under a mark that is
+      // being drawn; wait until it is committed or cancelled.
+      if (document.querySelector('.shape-creation-preview, .poly-creation-preview, .freehand-creation-preview')) return;
 
       const state = annotationOverlayWatchdogRef.current;
       state.consecutiveMismatch += 1;
@@ -11887,6 +12155,38 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       redoDepth: 0,
     });
   }, [pushHistoryDebugEvent]);
+
+  // A page change is one step on the timeline (utils/pageOperationHistory.js).
+  const recordPageOperationStep = useCallback((id, operation) => {
+    const checkpointId = historyCheckpointSeqRef.current + 1;
+    historyCheckpointSeqRef.current = checkpointId;
+    const { state, meta } = pageOperationCheckpoint(id, operation, checkpointId);
+    undoHistoryRef.current = [...undoHistoryRef.current, state].slice(-50);
+    undoHistoryMetaRef.current = [...undoHistoryMetaRef.current, meta].slice(-50);
+    setUndoHistory(undoHistoryRef.current);
+    redoHistoryRef.current = [];
+    redoHistoryMetaRef.current = [];
+    setRedoHistory([]);
+    clearLocalRedoForNewStep(meta.reason);
+    lastCheckpointHashRef.current = null;
+    pushHistoryDebugEvent('checkpoint_added_page_operation', { reason: meta.reason, checkpointId, pageOperationId: id });
+  }, [clearLocalRedoForNewStep, pushHistoryDebugEvent]);
+
+  // A page change that can no longer be taken back (its save failed and was
+  // rolled back, or another version of the document was opened): every older
+  // step names pages by the old numbers, so the whole timeline goes.
+  const dropHistoryAfterPageChange = useCallback(() => {
+    undoHistoryRef.current = [];
+    undoHistoryMetaRef.current = [];
+    redoHistoryRef.current = [];
+    redoHistoryMetaRef.current = [];
+    localAnnotationUndoRef.current = [];
+    localAnnotationRedoRef.current = [];
+    setUndoHistory([]);
+    setRedoHistory([]);
+    setLocalAnnotationHistoryVersion((prev) => prev + 1);
+    lastCheckpointHashRef.current = null;
+  }, []);
 
   const createHistoryMeta = useCallback((snapshot, reason, context = null, previousSnapshot = null) => {
     const snapshotFingerprint = getHistoryFingerprint(snapshot);
@@ -12463,20 +12763,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         : {}),
       style: {
         ...rawCallout.style,
-        borderColor: strokeColor,
-        borderOpacity: (strokeOpacity ?? 100) / 100,
-        fillColor,
-        fillOpacity: (fillOpacity ?? 100) / 100,
-        lineThickness: Math.max(1, Number(strokeWidth) || 2),
+        // Review round 9: the tool's own settings even while a picked text
+        // box's values fill the bar (resolveNewMarkStyle).
+        borderColor: newMarkStyle.strokeColor,
+        borderOpacity: (newMarkStyle.strokeOpacity ?? 100) / 100,
+        fillColor: newMarkStyle.fillColor,
+        fillOpacity: (newMarkStyle.fillOpacity ?? 100) / 100,
+        lineThickness: Math.max(1, Number(newMarkStyle.strokeWidth) || 2),
         // UX (2026-07-17, callout line style): new callouts honor the Style
         // picker's current choice, exactly like new shapes do (applyBorderStyle
         // at shape creation). w43 (2026-09-26): 'cloud' clouds the new
         // callout's TEXT BOX at the bar's bump size; its leader stays straight.
-        lineStyle: (lineBorderStyle === 'dashed' || lineBorderStyle === 'dotted' || lineBorderStyle === 'cloud')
-          ? lineBorderStyle
+        lineStyle: (newMarkStyle.lineBorderStyle === 'dashed' || newMarkStyle.lineBorderStyle === 'dotted' || newMarkStyle.lineBorderStyle === 'cloud')
+          ? newMarkStyle.lineBorderStyle
           : 'solid',
-        ...(lineBorderStyle === 'cloud'
-          ? { cloudIntensity: Math.max(1, Number(cloudIntensity) || 2) }
+        ...(newMarkStyle.lineBorderStyle === 'cloud'
+          ? { cloudIntensity: Math.max(1, Number(newMarkStyle.cloudIntensity) || 2) }
           : {}),
         ...(mobileMode ? {
           fontColor: textStyleDefaults.fontColor,
@@ -12511,7 +12813,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       source: 'callout:create',
       action: 'callout-create',
     });
-  }, [commitCalloutMutation, strokeColor, strokeOpacity, fillColor, fillOpacity, mobileMode, strokeWidth, lineBorderStyle, cloudIntensity, textStyleDefaults, user?.id]);
+  }, [commitCalloutMutation, newMarkStyle.strokeColor, newMarkStyle.strokeOpacity, newMarkStyle.fillColor, newMarkStyle.fillOpacity, mobileMode, newMarkStyle.strokeWidth, newMarkStyle.lineBorderStyle, newMarkStyle.cloudIntensity, textStyleDefaults, user?.id]);
 
   // UX: Phase 14 CALL-10 (drag MVP) — pointerup commit for a callout drag.
   // Called from useSVGInteraction's 'callout-part' drag mode on pointerup
@@ -12816,8 +13118,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // landing while the second still rested started a fresh tap candidate —
     // two of those opened an editor in the middle of a pinch.
     const downPointers = createMultiTouchTapGate();
+    // Drawboard rule 7: was the mark under this press ALREADY selected? Read
+    // before the press itself can pick it.
+    const isHitSelected = (hit) => {
+      if (!hit || hit.pageNumber == null) return false;
+      if (hit.kind === 'callout') return isItemSelected(hit.pageNumber, hit.calloutId);
+      if (hit.kind !== 'annotation') return false;
+      const object = annotationsByPageRef.current?.[hit.pageNumber]?.objects?.[hit.annotationIndex];
+      return object ? isItemSelected(hit.pageNumber, getAnnotationRenderIdentity(object).annotationId) : false;
+    };
+    const pickedAtPress = new Map(); // pointerId -> was the mark under it already selected
     const onDown = (event) => {
       if (event.button != null && event.button !== 0) return;
+      let wasSelected = false;
+      if (pageHasSelection(Number(event.target?.closest?.('[data-page-number]')?.getAttribute?.('data-page-number')))) {
+        try { wasSelected = isHitSelected(resolveAnnotationAt(event)); } catch (_) { wasSelected = false; }
+      }
+      pickedAtPress.set(event.pointerId, wasSelected);
       downPointers.press(event.pointerId, { x: event.clientX, y: event.clientY });
       if (downPointers.size > 1) {
         // A second finger arrived: this gesture is a pinch (or a stray palm),
@@ -12857,6 +13174,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const slop = event.pointerType === 'touch' ? 12 : 6;
       if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > slop) { tracker.reset(); return; }
       const hit = resolveAnnotationAt(event);
+      hit.wasSelected = pickedAtPress.get(event.pointerId) === true;
+      pickedAtPress.delete(event.pointerId);
       const key = editEntryKeyForHit(hit);
       const { isDoubleTap, firstTapTool, target } = tracker.register({
         key,
@@ -12871,6 +13190,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       appDebug(`[EditEntryGesture] tool=${tool} pointer=${event.pointerType} page=${hit.pageNumber} kind=${hit.kind} editEntryKind=${hit.editEntryKind} key=${key} double=${isDoubleTap} firstTapTool=${firstTapTool} firstTapTarget=${editEntryKeyForHit(target)} firstTapEditEntryKind=${target?.editEntryKind ?? null}`);
       if (!isDoubleTap) return;
       if (!shouldHandleDoubleTapEntry({ firstTapTool, pointerType: event.pointerType })) return;
+      // Drawboard rule 7 (utils/selectModes.js resolveTextDoubleClick): a
+      // mouse double-click on text that was not selected before it began only
+      // picks it; selected text, or a double-tap, opens the editor.
+      if (target && (target.kind === 'callout' || target.editEntryKind === 'text')
+        && resolveTextDoubleClick({ tool: firstTapTool, wasSelected: target.wasSelected, pointerType: event.pointerType }) !== 'edit') return;
       // Where annotations OVERLAP, the two taps can resolve different things:
       // under Pan the hit test hand-walks SVG geometry (the layer is
       // pointer-events:none) while under Select it reads the real hit targets,
@@ -13399,6 +13723,27 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     }
 
+    // A page change (utils/pageOperationHistory.js): its inverse runs through
+    // the page operations (instant view + one background save), never a
+    // snapshot restore.
+    const pageStepId = pageOperationStepId(legacyUndoMeta);
+    if (pageStepId != null) {
+      if (!pageOperationHistoryRef.current?.undo?.(pageStepId)) {
+        dropHistoryAfterPageChange();
+        showToast('That page change can no longer be undone.', 'info');
+        return 'none';
+      }
+      undoHistoryRef.current = undoHistoryRef.current.slice(0, -1);
+      undoHistoryMetaRef.current = undoHistoryMetaRef.current.slice(0, -1);
+      setUndoHistory(undoHistoryRef.current);
+      redoHistoryRef.current = [{ pageOperationStep: pageStepId }, ...redoHistoryRef.current].slice(0, 50);
+      redoHistoryMetaRef.current = [legacyUndoMeta, ...redoHistoryMetaRef.current].slice(0, 50);
+      setRedoHistory(redoHistoryRef.current);
+      lastCheckpointHashRef.current = null;
+      pushHistoryDebugEvent('page_operation_undo_applied', { reason: legacyUndoMeta.reason, pageOperationId: pageStepId });
+      return 'applied';
+    }
+
     if (isLegacyAnnotationHistoryMeta(legacyUndoMeta)) {
       const stateToRestore = undoHistoryRef.current[undoHistoryRef.current.length - 1] || null;
       if (stateToRestore) {
@@ -13758,6 +14103,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     }
 
+    // A page change: run it again (utils/pageOperationHistory.js).
+    const pageRedoId = pageOperationStepId(legacyRedoMeta);
+    if (legacyRedoState && pageRedoId != null) {
+      if (!pageOperationHistoryRef.current?.redo?.(pageRedoId)) {
+        dropHistoryAfterPageChange();
+        showToast('That page change can no longer be redone.', 'info');
+        return 'none';
+      }
+      redoHistoryRef.current = redoHistoryRef.current.slice(1);
+      redoHistoryMetaRef.current = redoHistoryMetaRef.current.slice(1);
+      setRedoHistory(redoHistoryRef.current);
+      undoHistoryRef.current = [...undoHistoryRef.current, legacyRedoState].slice(-50);
+      undoHistoryMetaRef.current = [...undoHistoryMetaRef.current, legacyRedoMeta].slice(-50);
+      setUndoHistory(undoHistoryRef.current);
+      lastCheckpointHashRef.current = null;
+      pushHistoryDebugEvent('page_operation_redo_applied', { reason: legacyRedoMeta.reason, pageOperationId: pageRedoId });
+      return 'applied';
+    }
+
     if (legacyRedoState && isLegacyAnnotationHistoryMeta(legacyRedoMeta)) {
       const eraseHistoryTransition = legacyRedoMeta?.context?.eraseHistoryTransition;
       if (eraseHistoryTransition) {
@@ -14080,6 +14444,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // remapped annotation/sidebar stores together. `_surveyPdfId` stays stable,
   // so the same-document reload path cannot hydrate the pre-mutation keys.
   const pageStructureStateRef = useRef(null);
+  // The marks a page change already wrote at its commit: the mirror effect
+  // below skips that same object (one stringify per page change, not two).
+  const pageChangeBackedUpMarksRef = useRef(null);
   pageStructureStateRef.current = {
     annotationsByPage: annotationsByPageRef.current || {},
     surveyMarkers: surveyMarkersRef.current || {},
@@ -14091,10 +14458,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     regionOverlayDisabled: regionOverlayDisabled || new Map(),
   };
   const getPageStructureState = useCallback(() => pageStructureStateRef.current, []);
-  const persistPageMutationFile = useCallback((file) => (
-    onUpdatePDFFile?.(file, tabId)
-  ), [onUpdatePDFFile, tabId]);
-  const commitPageStructureState = useCallback((next, operation) => {
+  const persistPageMutationFile = useCallback((file) => {
+    // The background save of a page operation: these bytes are already on
+    // screen as a page view, so the load effect must not re-open them.
+    markPageViewFileCurrent(file);
+    return onUpdatePDFFile?.(file, tabId);
+  }, [markPageViewFileCurrent, onUpdatePDFFile, tabId]);
+  const commitPageStructureState = useCallback((next, operation, step = null) => {
     pageStructureStateRef.current = next;
     annotationsByPageRef.current = next.annotationsByPage;
     surveyMarkersRef.current = next.surveyMarkers;
@@ -14107,8 +14477,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setBookmarks(next.bookmarks);
     setSpaces(next.spaces);
     setRegionOverlayDisabled(next.regionOverlayDisabled);
-    setUndoHistory([]);
-    setRedoHistory([]);
+    // A page change is one Undo step; Undo / Redo of it move that step
+    // between the stacks themselves. Anything else (a rollback) clears.
+    if (step?.phase === 'do') recordPageOperationStep(step.id, operation);
+    else if (!step) dropHistoryAfterPageChange();
     clearAnnotationSelectionForContextChange('page-structure-change');
 
     // Persist synchronously at the commit boundary. React effects retain their
@@ -14116,6 +14488,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // the transformed graph rather than racing a later effect.
     if (pdfId) {
       saveAnnotationsByPage(pdfId, next.annotationsByPage);
+      pageChangeBackedUpMarksRef.current = next.annotationsByPage;
       saveSurveyMarkers(pdfId, next.surveyMarkers);
       try {
         localStorage.setItem(`pdfSidebar_${pdfId}`, JSON.stringify({
@@ -14134,9 +14507,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     }
 
-    const pageCountDelta = operation?.type === 'delete'
-      ? -1
-      : ['insert', 'duplicate', 'copy'].includes(operation?.type) ? 1 : 0;
+    const pageCountDelta = pageCountChange(operation);
     setPageNum((current) => pageNumberAfterOperation(
       current,
       operation,
@@ -14145,8 +14516,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [
     activeSpaceId,
     clearAnnotationSelectionForContextChange,
+    dropHistoryAfterPageChange,
     numPages,
     pdfId,
+    recordPageOperationStep,
     setRegionOverlayDisabled,
   ]);
 
@@ -14169,11 +14542,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleRotatePageCW,
     handleRotatePageCCW,
     handleInsertBlankPage,
+    undoPageOperation,
+    redoPageOperation,
+    flushPageOperations,
   } = usePageOperations({
     pdfFile,
     onUpdatePDFFile: persistPageMutationFile,
     getPageState: getPageStructureState,
     commitPageState: commitPageStructureState,
+    applyPageView: applyPageViewOperationToViewer,
+    restorePageView: restorePageViewDocument,
     setPageNames,
     setPageTransformations,
     clipboardPage,
@@ -14181,6 +14559,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     clipboardType,
     setClipboardType,
   });
+  pageOperationHistoryRef.current = { undo: undoPageOperation, redo: redoPageOperation };
 
   const importPdfBookmarksIntoSidebar = useCallback((incomingBookmarks = []) => {
     if (!Array.isArray(incomingBookmarks) || incomingBookmarks.length === 0) {
@@ -14676,36 +15055,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const cascadeDeleteScopedAppState = useCallback(({ spaceId, pageIds = null, regionIds = null, reason = 'space-scope-delete' }) => {
     if (!spaceId) return;
-    const pageSet = Array.isArray(pageIds) && pageIds.length > 0
-      ? new Set(pageIds.map(Number).filter(Number.isFinite))
-      : null;
-    const sourceSpace = spacesRef.current.find((space) => space?.id === spaceId);
-    const hasExplicitRegionIds = Array.isArray(regionIds) && regionIds.length > 0;
-    const collectedRegionIds = new Set(
-      hasExplicitRegionIds
-        ? regionIds.filter(Boolean)
-        : []
-    );
-    if (!hasExplicitRegionIds) {
-      (sourceSpace?.assignedPages || []).forEach((page) => {
-        const pageNumber = Number(page?.pageId);
-        if (pageSet && !pageSet.has(pageNumber)) return;
-        (page?.regions || []).forEach((region) => {
-          if (region?.regionId) collectedRegionIds.add(region.regionId);
-        });
-      });
-    }
-
-    const shouldDeleteScopedEntry = (entry) => {
-      if (!entry) return false;
-      const pageNumber = Number(entry.pageNumber ?? entry.page ?? entry.pageId);
-      if (pageSet && Number.isFinite(pageNumber) && !pageSet.has(pageNumber)) return false;
-      if (entry.regionId && collectedRegionIds.has(entry.regionId)) return true;
-      if (hasExplicitRegionIds) return false;
-      if (entry.spaceId === spaceId) return true;
-      if (entry.moduleId === spaceId) return true;
-      return false;
-    };
+    // Spaces chunk A: one rule for this cascade and the confirm that counts it
+    // first (utils/spaceCascadeImpact.js).
+    const scope = resolveSpaceCascadeScope({
+      spaceId,
+      space: spacesRef.current.find((space) => space?.id === spaceId),
+      pageIds,
+      regionIds,
+    });
+    const { pageSet, regionIds: collectedRegionIds } = scope;
+    const shouldDeleteScopedEntry = (entry) => isSpaceScopedEntry(entry, scope);
 
     const cloudDeleteIds = new Set();
     Object.entries(annotationsByPageRef.current || {}).forEach(([pageKey, pageData]) => {
@@ -14825,12 +15184,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleSpaceRemovePage = useCallback((spaceId, pageId) => {
     if (!requireSpaceManagement()) return;
-    cascadeDeleteScopedAppState({
+    // Spaces chunk A: one Undo step — the space's page list plus exactly the
+    // marks the cascade removed (same shape as space:delete; see
+    // historyStacks.scopeLegacyRestoreToOwnSlices).
+    const removePageContext = { spaceId, pageId, updateKeys: ['assignedPages'] };
+    addHistoryCheckpoint('space:remove-page', removePageContext);
+    removePageContext.cascadeIds = cascadeDeleteScopedAppState({
       spaceId,
       pageIds: [pageId],
       reason: 'space-page-delete',
-    });
-    // No undo step records this cascade: it must not be claimed by a later one.
+    }) || [];
+    // The step above owns this cascade: it must not be claimed by a later one.
     pendingSpaceCascadeRef.current = null;
 
     // KAL-313 / history F1 (2026-06-11): the sidebar trash button on a region
@@ -14890,7 +15254,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       return nextSpaces;
     });
-  }, [activeSpaceId, cascadeDeleteScopedAppState, pdfFile?.id, requireSpaceManagement, user]);
+  }, [activeSpaceId, addHistoryCheckpoint, cascadeDeleteScopedAppState, pdfFile?.id, requireSpaceManagement, user]);
+
+  // Spaces chunk A: what removing these pages (null = the whole space) would
+  // delete, for the confirm in SpacesPanel. Reads the live refs the cascade
+  // reads, so the number shown is the number deleted.
+  const getSpaceRemovalImpact = useCallback((spaceId, pageIds = null) => countSpaceCascadeImpact({
+    spaceId,
+    space: (spacesRef.current || []).find((space) => space?.id === spaceId) || null,
+    pageIds,
+    annotationsByPage: annotationsByPageRef.current || {},
+    callouts: calloutsRef.current || [],
+    surveyMarkers: surveyMarkersRef.current || {},
+    getMarkId: getHistoryAnnotationId,
+  }), []);
 
   const handleSpaceRenamePage = useCallback((spaceId, pageId, newLabel) => {
     if (!requireSpaceManagement()) return;
@@ -20025,6 +20402,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
   }, [pdfFile?.id, user?.id, documentSyncEnabled]);
 
+  // A document viewer never writes this projection: the database refuses it
+  // (403 RLS on every open, seen on the real backend 2026-10-07, realCheck3)
+  // and the refusal switched document sync off for the session.
+  const surveySyncViewerRef = useRef(false);
+  surveySyncViewerRef.current = yjsDocRole === 'viewer';
   // Sync local annotation changes to Supabase (debounced)
   useEffect(() => {
     const documentId = pdfFile?.id;
@@ -20033,6 +20415,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       !documentId ||
       !user?.id ||
       !documentSyncEnabled ||
+      surveySyncViewerRef.current ||
       syncRLSErrorShownRef.current ||
       syncStructuralAutoDisabledRef.current
     ) return;
@@ -20076,7 +20459,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     let syncTimeout = null;
 
     const runSync = async () => {
-      if (cancelled || syncStructuralAutoDisabledRef.current) return;
+      if (cancelled || syncStructuralAutoDisabledRef.current || surveySyncViewerRef.current) return;
       // Bug 2 fix (2026-04-30): pass the last-synced state as priorSurveyMarker-
       // Annotations so the service can detect erases / removals and push DELETE
       // events to the cloud BEFORE the upsert. Without this, peers keep
@@ -20212,7 +20595,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         pendingSurveyMarkerSyncRef.current = null;
         try {
           // Upsert-only projection flush (see runSync) — no delete-diff baseline.
-          if (!syncStructuralAutoDisabledRef.current) {
+          if (!syncStructuralAutoDisabledRef.current && !surveySyncViewerRef.current) {
             appDebug('[DocumentSync] unmount flush — pushing pending highlight sync');
             Promise.resolve(
               syncAnnotationsToSupabase(documentId, user.id, surveyMarkers, {
@@ -20301,6 +20684,42 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     enqueue: enqueueUndoToast,
     dismiss: dismissUndoToast,
   } = useUndoToast();
+
+  // Owner 2026-10-07 (survey bar round): "Done" at the right end of the survey
+  // bar leaves Survey at once - no confirmation - and the app's undo toast
+  // offers it back: "Left Survey  Undo" re-enters the same template, module,
+  // category and panel (open or closed). Escape never leaves Survey.
+  const handleLeaveSurvey = useCallback(() => {
+    const live = surveyBarLiveRef.current;
+    const template = live.selectedTemplate;
+    if (!template) {
+      handleCloseSurveyMode();
+      return;
+    }
+    const snapshot = {
+      templateId: template.id,
+      moduleId: live.selectedModuleId,
+      categoryId: live.selectedCategoryId,
+      panelCollapsed: live.rightRailCollapsed,
+    };
+    const templatesAtLeave = live.appTemplates;
+    handleCloseSurveyMode();
+    enqueueUndoToast({
+      kind: 'single',
+      message: 'Left Survey',
+      onUndo: () => {
+        const again = (templatesAtLeave || []).find((entry) => entry?.id === snapshot.templateId) || template;
+        surveyReenterCollapsedRef.current = Boolean(snapshot.panelCollapsed);
+        handleSelectSurveyTemplate(again);
+        const modules = again.modules || again.spaces || [];
+        if (snapshot.moduleId && modules.some((module) => module?.id === snapshot.moduleId)) {
+          setSelectedModuleId(snapshot.moduleId);
+          if (snapshot.categoryId) setSelectedCategoryId(snapshot.categoryId);
+        }
+      },
+    });
+  }, [handleCloseSurveyMode, handleSelectSurveyTemplate, enqueueUndoToast]);
+
   const [pendingDeletePlan, setPendingDeletePlan] = useState(null);
   const pendingDeleteRunnerRef = useRef(null);
   const pendingDeleteCancelRef = useRef(null);
@@ -20779,6 +21198,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     metaGet: excelSyncMetaGet,
     metaSet: excelSyncMetaSet,
     hasStoredMarks: annotationDocHasStoredMarks,
+    beginBulkImport: annotationDocBeginBulkImport,
+    whenBulkImportSaved: annotationDocWhenBulkImportSaved,
     // w53: other screens' in-flight Survey Marker / spaces changes (draw only).
     liveMarkerOverlay,
   } = useAnnotationDoc({
@@ -21078,19 +21499,44 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       handlePresenceFailure(presenceResult, 'page-change');
     };
 
-    if (isInteractionPerfWindowActive()) {
-      const retryDelay = getInteractionPerfResumeDelay();
-      emitPdfDebugEvent('sync_gate_presence_deferred', { retryDelay });
-      deferredTimer = setTimeout(() => {
-        if (cancelled) return;
+    const schedulePresenceUpdate = () => {
+      if (deferredTimer) return;
+      if (isInteractionPerfWindowActive()) {
+        const retryDelay = getInteractionPerfResumeDelay();
+        emitPdfDebugEvent('sync_gate_presence_deferred', { retryDelay });
+        deferredTimer = setTimeout(() => {
+          deferredTimer = null;
+          if (cancelled) return;
+          runPresenceUpdate();
+        }, retryDelay);
+      } else {
         runPresenceUpdate();
-      }, retryDelay);
-    } else {
-      runPresenceUpdate();
+      }
+    };
+
+    schedulePresenceUpdate();
+
+    // 2026-10-06: also refresh while the person works on this page (throttled,
+    // input-driven, no timer), so other viewers keep showing them as here
+    // instead of dropping them after 2 minutes on one page.
+    // See utils/presenceActivity.js.
+    // Background tabs stay mounted: only the front tab's input counts
+    // (undoRedoKeyActiveRef mirrors this tab's isActive prop).
+    const activityBump = createPresenceActivityBump({
+      onBump: schedulePresenceUpdate,
+      isActive: () => undoRedoKeyActiveRef.current !== false,
+    });
+    activityBump.noteWrite();
+    const onPresenceActivity = () => { activityBump.onActivity(); };
+    for (const type of PRESENCE_ACTIVITY_EVENTS) {
+      window.addEventListener(type, onPresenceActivity, { capture: true, passive: true });
     }
 
     return () => {
       cancelled = true;
+      for (const type of PRESENCE_ACTIVITY_EVENTS) {
+        window.removeEventListener(type, onPresenceActivity, { capture: true });
+      }
       if (deferredTimer) {
         clearTimeout(deferredTimer);
       }
@@ -21284,6 +21730,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [addHistoryCheckpoint, activeSpaceId, selectedSpaceId, cascadeDeleteScopedAppState, pdfFile?.id, requireSpaceManagement, user]);
 
   const handleSetActiveSpace = useCallback((spaceId) => {
+    // Spaces chunk A: a space with no pages filters out every page and blanked
+    // the viewer. Refuse to turn it on; SpacesPanel also disables its switch.
+    const targetSpace = spaceId ? (spacesRef.current || []).find((s) => s.id === spaceId) : null;
+    if (targetSpace && (targetSpace.assignedPages || []).length === 0) {
+      showToast(`Add pages to ${targetSpace.name || 'this space'} first.`, 'warn');
+      return;
+    }
     debugLog('[SPACE TOGGLE] Activating space - regions enabled, annotations with regionId should be shown:', { spaceId, previousActiveSpaceId: activeSpaceId });
     clearAnnotationSelectionForContextChange('region-open');
     setActiveSpaceId(spaceId);
@@ -21357,6 +21810,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => {
     pdfjsActiveSpacePagesRef.current = Array.isArray(activeSpacePages) ? activeSpacePages : [];
   }, [activeSpacePages]);
+
+  // Spaces chunk A: the active space lost its pages (pages removed elsewhere,
+  // an Undo, a collaborator). The viewer then shows nothing, so it shows the
+  // "No pages in <space>" card instead and the page counters stop claiming a
+  // page that is not shown.
+  const activeSpaceHasNoPages = Boolean(activeSpaceId) && Array.isArray(activeSpacePages) && activeSpacePages.length === 0;
+  const activeSpaceName = activeSpaceHasNoPages
+    ? (spaces.find((s) => s.id === activeSpaceId)?.name || 'this space')
+    : null;
 
   const annotationSpaceId = activeSpaceId ?? selectedSpaceId ?? null;
 
@@ -22288,8 +22750,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setTransferState(null);
     setCopiedItemSelection({});
     setSurveyResponses({});
-    setNoteDialogOpen(null);
-    setNoteDialogContent({ text: '', photos: [], videos: [] });
     // UX 2026-07-17 — snap the tool back to Pan ONLY on a real document
     // change. This effect re-runs for the same open document on
     // zoom/scroll-driven callback identity churn (see the history-wipe gate
@@ -22625,6 +23085,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => {
     if (!pdfId) return;
     if (pdfFile?.id) return;
+    if (pageChangeBackedUpMarksRef.current === annotationsByPage) return;
     saveAnnotationsByPage(pdfId, annotationsByPage);
   }, [pdfId, pdfFile?.id, annotationsByPage]);
 
@@ -22687,15 +23148,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [pdfFile, pdfId, annotationsByPage, callouts, entities, scale, pageNum, uploadDataFile, updateSupabaseDocument]);
 
   // Load survey data from Supabase Storage
-  const loadSurveyDataFromSupabase = useCallback(async (doc) => {
+  const loadSurveyDataFromSupabase = useCallback(async (doc, prefetchedDataBlob) => {
     if (!doc || !doc.projectId) return;
 
     try {
       const filePath = `${doc.projectId}/${doc.id}_data.json`;
 
       // Check if file exists by trying to get URL (or just try download and catch error)
-      // We'll just try to download
-      const dataBlob = await downloadFromStorage(filePath);
+      // We'll just try to download. Open speed (2026-10-04): the PDF load starts
+      // this same download alongside the PDF's own and hands its promise in,
+      // so it no longer adds a round trip before the first page.
+      const dataBlob = prefetchedDataBlob !== undefined
+        ? await prefetchedDataBlob
+        : await downloadFromStorage(filePath);
       if (!dataBlob) return;
 
       const text = await dataBlob.text();
@@ -22810,7 +23275,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         embeddedPdfNativeAnnotationHandling: 'preserve-unedited-native-annots-skip-unedited-imported-copies-export-edited-imported-copies',
         note: 'Explicit export generates a PDF copy from original PDF bytes. Unedited imported PDF-native app copies are skipped to avoid duplication; edited imported copies are exported from app state.'
       }));
-      const sourcePdfForExport = pdfFile;
+      // Page operations save in the background; export the bytes that match
+      // the pages on screen.
+      const sourcePdfForExport = (await flushPageOperations()) || pdfFile;
       if (typeof pdfjsViewerRef.current?.saveAsBlob === 'function') {
         console.log('[PDFSaveExport] source PDF selection ' + JSON.stringify({
           actionType: 'pdf-export',
@@ -22911,6 +23378,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     annotationsByPage,
     callouts,
     deletedPdfAnnotations,
+    flushPageOperations,
     pageSizes,
     pdfFile,
     spaces,
@@ -22943,7 +23411,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         import('./utils/permanentPdfRedaction.js'),
       ]);
       const annotatedBytes = await savePDFWithAnnotationsPdfLib(
-        pdfFile,
+        (await flushPageOperations()) || pdfFile,
         redactionAnnotationsByPage,
         pageSizes,
         null,
@@ -23001,6 +23469,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     applyRedactionsBusy,
     callouts,
     deletedPdfAnnotations,
+    flushPageOperations,
     numPages,
     pageSizes,
     pdfFile,
@@ -23193,30 +23662,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return removeListener;
   }, [hasUnsavedAnnotations, handleSaveDocument]);
 
-  // Load note content when note dialog opens
-  useEffect(() => {
-    if (!noteDialogOpen) {
-      return;
-    }
-
-    // For item-level notes, noteDialogOpen is just the annotationId
-    const annotationId = noteDialogOpen;
-
-
-    const existingNote = surveyMarkers[annotationId]?.note;
-
-
-    if (existingNote) {
-      setNoteDialogContent({
-        text: existingNote.text || '',
-        photos: existingNote.photos || [],
-        videos: existingNote.videos || []
-      });
-    } else {
-      setNoteDialogContent({ text: '', photos: [], videos: [] });
-    }
-  }, [noteDialogOpen, surveyMarkers]);
-
   // Migrate legacy surveyMarkers to new system (one-time, when template is selected)
   useEffect(() => {
     if (!selectedTemplate || !pdfId || Object.keys(surveyMarkers).length === 0) return;
@@ -23305,16 +23750,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
   }, [bookmarks.length, pdfOutlinePageLookup]);
 
+  // Page operations (usePageViewDocument): the load token of the last real
+  // load, and the latest file/token for the effect cleanup below.
+  const pageViewLoadTokenRef = useRef(null);
+  const latestPdfFileRef = useRef(pdfFile);
+  latestPdfFileRef.current = pdfFile;
+  const latestLoadRetryTokenRef = useRef(loadRetryToken);
+  latestLoadRetryTokenRef.current = loadRetryToken;
   // Load PDF
   useEffect(() => {
     if (!pdfFile) {
       return;
     }
+    // Background save of a page operation: these bytes are already on screen.
+    // (A retry — new loadRetryToken — always loads.)
+    if (isPageViewFileCurrent(pdfFile) && pageViewLoadTokenRef.current === loadRetryToken) {
+      return;
+    }
+    pageViewLoadTokenRef.current = loadRetryToken;
     let isCancelled = false;
 
     const loadPDF = async () => {
       const docName = pdfFile.name || 'unknown';
       const analyticsLoadStartedAt = performance.now();
+      firstPageDrawnRef.current = { drawn: false, resolve: null };
       firstPagePaintAnalyticsRef.current = {
         startedAt: analyticsLoadStartedAt,
         byteSizeBucket: 'unknown',
@@ -23332,6 +23791,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // PDF.js will use default verbosity level
 
         setIsLoadingPDF(true);
+
+        // Open speed (2026-10-04): the project sidecar read below used to start
+        // only after the PDF was downloaded and parsed, holding the first page
+        // back by one more round trip. Start it now, alongside the PDF download
+        // (the same one read, just earlier); it is still applied at the same
+        // point as before.
+        const surveyDataBlobPromise = pdfFile.projectId
+          ? Promise.resolve()
+            .then(() => downloadFromStorage(`${pdfFile.projectId}/${pdfFile.id}_data.json`))
+            .catch(() => null)
+          : undefined;
 
         // UX: the unsupported-annotations toast is once-per-document-open —
         // clear both pieces on every load so a document without unsupported
@@ -23470,7 +23940,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
         // Load project data from Supabase if available
         if (pdfFile.projectId) {
-          await loadSurveyDataFromSupabase(pdfFile);
+          await loadSurveyDataFromSupabase(pdfFile, surveyDataBlobPromise);
         }
         if (isCancelled) return;
 
@@ -23515,6 +23985,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           remainingPages.push(i);
         }
 
+        // Commit the sizes a few times, not once per batch (WebKit warned
+        // "Maximum update depth exceeded" on open) — utils/pageSizeCommitBatcher.
+        const pageSizeCommits = createPageSizeCommitBatcher({
+          commit: ({ heights, sizes, pages }) => {
+            setPageHeights((prev) => ({ ...prev, ...heights }));
+            setPageSizes((prev) => ({ ...prev, ...sizes }));
+            setPageObjects((prev) => ({ ...prev, ...pages }));
+          },
+        });
         for (let start = 0; start < remainingPages.length; start += maxWorkers) {
           const batch = remainingPages.slice(start, start + maxWorkers);
           const batchResults = await Promise.all(batch.map(async (pageNumber) => {
@@ -23539,10 +24018,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             loadedPageSizes[pageNumber] = { width: viewport.width, height: viewport.height };
           });
 
-          setPageHeights((prev) => ({ ...prev, ...batchHeights }));
-          setPageSizes((prev) => ({ ...prev, ...batchSizes }));
-          setPageObjects((prev) => ({ ...prev, ...batchPages }));
+          // A page operation during this sizing loop switched the viewer to a
+          // page view whose numbering differs from this document's; the view
+          // measures its own pages (usePageViewDocument).
+          if (isPageViewOver(pdf)) continue;
+          pageSizeCommits.add(batchHeights, batchSizes, batchPages);
         }
+        if (!isPageViewOver(pdf)) pageSizeCommits.flush();
 
         perfLoad.mark(docName, `Page sizes calculated (${pdf.numPages} pages)`);
 
@@ -23574,8 +24056,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             // in the file and exports. Unlike the skipped diagnostics pass
             // above, this is a cheap subtype-count scan (getAnnotations only —
             // no pdf-lib raw-bytes parse, no conversion) and it is fire-and-
-            // forget so it never delays first paint.
-            countUnsupportedAnnotations(pdf).then((counts) => {
+            // forget so it never delays first paint. Open speed (2026-10-04):
+            // it reads every page's annotations on the one pdf.js worker, which
+            // held back page 1's own drawing on a large set, so it now starts
+            // once page 1 is drawn (4 s at the latest).
+            new Promise((resolve) => {
+              if (firstPageDrawnRef.current.drawn) { resolve(); return; }
+              firstPageDrawnRef.current.resolve = resolve;
+              setTimeout(resolve, 4000);
+            }).then(() => (isCancelled ? null : countUnsupportedAnnotations(pdf))).then((counts) => {
               if (isCancelled) return;
               if (counts && Object.keys(counts).length > 0) {
                 setUnsupportedAnnotationCounts(counts);
@@ -23887,16 +24376,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setPdfLoadError(null);
     loadPDF();
     return () => {
+      // A page operation's background save swaps pdfFile while this load may
+      // still be sizing pages; those bytes are already on screen, so the load
+      // keeps running.
+      if (isPageViewFileCurrent(latestPdfFileRef.current)
+        && pageViewLoadTokenRef.current === latestLoadRetryTokenRef.current) return;
       isCancelled = true;
     };
   }, [pdfFile, loadRetryToken]);
 
   // PDFViewer owns the single pdf.js document proxy. The mobile renderer reuses
   // it instead of parsing and retaining a second copy of the same PDF.
+  // A page view (instant page operations) shares its base document, so only a
+  // different base is destroyed.
+  const pdfBaseDoc = getPageViewBase(pdfDoc);
   useEffect(() => () => {
-    if (!pdfDoc) return;
-    try { pdfDoc.destroy(); } catch { /* noop */ }
-  }, [pdfDoc]);
+    if (!pdfBaseDoc) return;
+    try { pdfBaseDoc.destroy(); } catch { /* noop */ }
+  }, [pdfBaseDoc]);
 
   // KAL-46 / sleep-wake recovery watchdog.
   //
@@ -24027,7 +24524,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     if (usePdfjsRenderer) {
       const viewer = pdfjsViewerRef.current;
-      if (Math.abs(safeScale - previousScale) > 0.0001 && viewer?.magnificationModule) {
+      // options.animate (zoom buttons / Ctrl+-): the engine glides there. It may
+      // be gliding away from previousScale, so a step back to it still counts.
+      if ((Math.abs(safeScale - previousScale) > 0.0001 || options.animate) && viewer?.magnificationModule) {
         const zoomPercent = safeScale * 100;
         const zoomSource = options.mode || pdfjsZoomSourceRef.current || ZOOM_MODES.MANUAL;
         pdfjsZoomSourceRef.current = zoomSource;
@@ -24043,7 +24542,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             : containerRect.top + anchor.y;
           viewer.magnificationModule.initiateMouseZoom(zoomClientX, zoomClientY, zoomPercent);
         } else if (viewer.magnificationModule.zoomTo) {
-          viewer.magnificationModule.zoomTo(zoomPercent);
+          viewer.magnificationModule.zoomTo(zoomPercent, options.animate ? { animate: true } : undefined);
         }
       }
       return;
@@ -24866,9 +25365,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } catch (_e) { /* swallow */ }
     if (!controller) return;
     const measuredScale = reconcilePdfjsScaleFromRenderedPage('manual-zoom');
-    const basisScale = measuredScale || scaleRef.current || manualZoomScaleRef.current || 1.0;
+    // Owner 2026-10-07 (smooth zoom): mid-glide, step from where it is heading.
+    const glideTarget = Number(pdfjsViewerRef.current?.getZoomGlideTarget?.()) || null;
+    const basisScale = glideTarget || measuredScale || scaleRef.current || manualZoomScaleRef.current || 1.0;
     const nextScale = clampScale(basisScale * TOOLBAR_ZOOM_STEP_FACTOR);
-    controller.setScale(nextScale);
+    controller.setScale(nextScale, { animate: true });
     try { console.log(`[InteractionDiag] zoom-applied @ ${Math.round(performance.now())}ms dir=in from=${basisScale.toFixed(3)} to=${nextScale.toFixed(3)}`); } catch (_e) { /* swallow */ }
   }, [reconcilePdfjsScaleFromRenderedPage]);
 
@@ -24880,9 +25381,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } catch (_e) { /* swallow */ }
     if (!controller) return;
     const measuredScale = reconcilePdfjsScaleFromRenderedPage('manual-zoom');
-    const basisScale = measuredScale || scaleRef.current || manualZoomScaleRef.current || 1.0;
+    // Owner 2026-10-07 (smooth zoom): mid-glide, step from where it is heading.
+    const glideTarget = Number(pdfjsViewerRef.current?.getZoomGlideTarget?.()) || null;
+    const basisScale = glideTarget || measuredScale || scaleRef.current || manualZoomScaleRef.current || 1.0;
     const nextScale = clampScale(basisScale / TOOLBAR_ZOOM_STEP_FACTOR);
-    controller.setScale(nextScale);
+    controller.setScale(nextScale, { animate: true });
     try { console.log(`[InteractionDiag] zoom-applied @ ${Math.round(performance.now())}ms dir=out from=${basisScale.toFixed(3)} to=${nextScale.toFixed(3)}`); } catch (_e) { /* swallow */ }
   }, [reconcilePdfjsScaleFromRenderedPage]);
 
@@ -24985,6 +25488,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (value !== null) {
       // Navigate first, then update input value will be synced by useEffect when pageNum updates
       goToPage(value);
+      // Drawboard parity (measured 2026-10-04): a typed jump zooms to Fit page
+      // for that page — top at the top of the view, centred across, page 1 and
+      // the last page resting against the document ends. See pageNavigationMath.
+      if (TYPED_PAGE_JUMP_FITS_PAGE) handleZoomModeSelect(ZOOM_MODES.FIT_PAGE);
       // Also set it immediately for visual feedback, but useEffect will ensure it's correct
       setPageInputValue(String(value));
       setIsPageInputDirty(false);
@@ -24993,7 +25500,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setPageInputValue(String(pageNum));
       setIsPageInputDirty(false);
     }
-  }, [pageInputValue, numPages, goToPage, pageNum]);
+  }, [pageInputValue, numPages, goToPage, pageNum, handleZoomModeSelect]);
 
   const handlePageInputKeyDown = useCallback((e) => {
     if (e.key === 'Enter') {
@@ -25140,14 +25647,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setMobileSurveyEntityId(null);
     setActiveToolLogged('survey-marker');
   }, [setActiveToolLogged]);
+  // Survey audit P1-3 (2026-10-01): the category and the entity are two
+  // independent picks for the next Survey Marker. Picking one keeps the other
+  // (an entity tap used to disarm the category, so the next drag opened a
+  // surprise "Categorize" dialog).
   const handleMobileSurveyCategorySelect = useCallback((categoryId) => {
     setSelectedCategoryId(categoryId || null);
-    setMobileSurveyEntityId(null);
     setActiveToolLogged('survey-marker');
   }, [setActiveToolLogged]);
   const handleMobileSurveyEntitySelect = useCallback((entityId) => {
     setMobileSurveyEntityId(entityId || null);
-    setSelectedCategoryId(null);
     setActiveToolLogged('survey-marker');
   }, [setActiveToolLogged]);
 
@@ -25227,12 +25736,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     ) {
       selectionMappedTool = 'arrow';
     }
+    // Owner 2026-10-04: pickBarTool is 'select' while the bar shows and edits
+    // the pick - under Select, Pan, or a Shapes / Text tool's own-group pick
+    // (utils/toolbarCalloutTarget.js) - so all three read the pick alike.
     // w41: two or more marks picked -> the bar shows the group's layout
     // (utils/selectionRestyle summarizeSelectionRestyle), not the Select
     // mode toggle, so the picked marks can be restyled together.
-    const groupSummary = activeTool === 'select' ? (restyleGroup?.summary || null) : null;
+    const groupSummary = pickBarTool === 'select' ? (restyleGroup?.summary || null) : null;
     if (groupSummary) selectionMappedTool = groupSummary.contextTool;
-    const contextTool = (activeTool === 'select' && selectionMappedTool)
+    const contextTool = (pickBarTool === 'select' && selectionMappedTool)
       ? selectionMappedTool
       : activeTool;
     // w44 (rows flipped): the tool bar shows the picked mark's group's tools.
@@ -25245,7 +25757,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // member has. Null while nothing is picked (the tool's own controls).
     const selectionCapabilities = groupSummary
       ? groupSummary.capabilities
-      : (activeTool === 'select' && !selectedToolbarCallout && isFilledInkPath(selectedAnnot)
+      : (pickBarTool === 'select' && !selectedToolbarCallout && isFilledInkPath(selectedAnnot)
         ? restyleCapabilities(selectedAnnot)
         : null);
     const textMarkupSelectionRect = (() => {
@@ -25288,7 +25800,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return composeColorForPatch(hex, effectiveAlpha * 100);
     };
     const selectedPreviewColors = (() => {
-      if (activeTool === 'counter') {
+      if (pickBarTool === 'counter') {
         return {
           fill: effectivePreviewColor(activeCounterSeriesPaint.fill),
           stroke: effectivePreviewColor(activeCounterSeriesPaint.numberColor),
@@ -25297,7 +25809,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // A selection can remain cached after the user arms a drawing tool. In
       // that state the toolbar must preview the drawing tool defaults, not the
       // stale selected object's paint.
-      if (activeTool !== 'select') return { fill: null, stroke: null };
+      if (pickBarTool !== 'select') return { fill: null, stroke: null };
       // w41: a group previews the values the bar loaded for it (the states).
       if (groupSummary) return { fill: null, stroke: null };
       if (selectedToolbarCallout?.callout) {
@@ -25356,19 +25868,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         stroke: effectivePreviewColor(currentSelectedAnnot.stroke || 'transparent', objectOpacity),
       };
     })();
-    const counterToolStrokeColor = activeTool === 'counter'
+    const counterToolStrokeColor = pickBarTool === 'counter'
       ? (getHexFromColor(activeCounterSeriesPaint.numberColor) || strokeColor)
       : strokeColor;
-    const counterToolStrokeOpacity = activeTool === 'counter'
+    const counterToolStrokeOpacity = pickBarTool === 'counter'
       ? getOpacityFromEntityColor(activeCounterSeriesPaint.numberColor)
       : strokeOpacity;
-    const counterToolFillColor = activeTool === 'counter'
+    const counterToolFillColor = pickBarTool === 'counter'
       ? (getHexFromColor(activeCounterSeriesPaint.fill) || fillColor)
       : fillColor;
-    const counterToolFillOpacity = activeTool === 'counter'
+    const counterToolFillOpacity = pickBarTool === 'counter'
       ? getOpacityFromEntityColor(activeCounterSeriesPaint.fill)
       : fillOpacity;
-    const selectedTextMarkupPaint = activeTool === 'select' && selectedAnnot?.data?.type === 'text-markup'
+    const selectedTextMarkupPaint = pickBarTool === 'select' && selectedAnnot?.data?.type === 'text-markup'
       ? resolveTextMarkupEditPaint(selectedAnnot, strokeColor)
       : null;
     // UX 2026-09-23: with one callout or text box selected (and no live
@@ -25386,7 +25898,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         style: restyleGroup.firstTextStyle,
       }
       : null;
-    const selectedTextTarget = (activeTool === 'select' && !richTextEditor)
+    const selectedTextTarget = (pickBarTool === 'select' && !richTextEditor)
       ? (groupTextTarget || (groupSummary ? null : selectedToolbarCallout?.callout
         ? {
           kind: 'callout',
@@ -25448,6 +25960,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         onSelectEntity: handleMobileSurveyEntitySelect,
         keepCategoryActive: surveyKeepCategoryActive,
         onKeepCategoryActiveChange: setSurveyKeepCategoryActive,
+        // Owner 2026-10-07 (survey bar round): the strip opens with the
+        // template's name (a menu to switch template) and ends with "Done",
+        // which leaves Survey with an Undo toast.
+        templateId: selectedTemplate.id,
+        templateName: selectedTemplate.name || 'Survey',
+        templates: (appTemplates || []).map((template) => ({ id: template.id, name: template.name || 'Untitled template' })),
+        onSelectTemplate: handleSwitchSurveyTemplateById,
+        onExit: handleLeaveSurvey,
       } : null,
       regionEditing: showRegionSelection,
       regionToolbarApi: mobileRegionToolbarApi,
@@ -25513,7 +26033,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // the menu matches what will actually render.
       supportsCloudStyle: groupSummary
         ? groupSummary.capabilities.cloud
-        : selectionMappedTool && activeTool === 'select'
+        : selectionMappedTool && pickBarTool === 'select'
         ? (selectedToolbarCallout
           ? true
           : (selectedAnnot?.data?.type !== 'counter' && toolOffersCloudLineStyle(selectedType)))
@@ -25548,6 +26068,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageNum,
       pageInputValue,
       numPages,
+      activeSpaceHasNoPages,
       // [InteractionDiag] route toolbar tool selection through the logged
       // wrapper so every tool-button click emits a tool-intent marker.
       setActiveTool: setActiveToolLogged,
@@ -25588,6 +26109,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     zoomMenuRef,
     pageInputRef,
     activeTool,
+    pickBarTool,
     liveTextSelection,
     selectionMode,
     lassoTouchOperation,
@@ -25613,6 +26135,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleMobileSurveyCategorySelect,
     handleMobileSurveyEntitySelect,
     surveyKeepCategoryActive,
+    appTemplates,
+    handleSwitchSurveyTemplateById,
+    handleLeaveSurvey,
     showRegionSelection,
     mobileRegionToolbarApi,
     showAnnotationColorPicker,
@@ -25654,6 +26179,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     pageNum,
     pageInputValue,
     numPages,
+    activeSpaceHasNoPages,
     setTooltip,
     handleStrokeColorChangePhased,
     handleStrokeOpacityChangePhased,
@@ -25703,6 +26229,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Rule 12 (utils/selectModes.js): every tool letter below switches
+      // through this and says so (a switch other than Select <-> Pan drops
+      // the selection, owner 2026-10-04).
+      const setActiveTool = (tool) => setActiveToolLogged(tool, { source: 'shortcut-key' });
       const activeElement = document.activeElement;
       const isFormField =
         activeElement &&
@@ -26743,10 +27273,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       );
       gestureFieldTouchesByPageRef.current.set(interactionPageKey, touches);
     }
+    let localStepCoversGesture = false;
     if (!shouldSkipCheckpointByPolicy && !shouldSkipCheckpointByInteraction) {
       // w37: a new callout's first commit folds into its create step (read
       // and cleared by the push below).
       historyFoldIntoCreateRef.current = normalizedSaveContext?.foldIntoCreateOf || null;
+      const coversWholeGesture = Boolean(surveyMarkerFamilyCompanionRef.current)
+        || Boolean(previewBaseline && !isEraserCommit);
+      const localTopBefore = localAnnotationUndoRef.current[localAnnotationUndoRef.current.length - 1];
       if (previewBaseline && !isEraserCommit) {
         pushLocalAnnotationHistoryAction(restrictAnnotationHistoryActionFields(
           finalLocalHistoryAction,
@@ -26757,6 +27291,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // commit whose precise builder already names exactly what it changed.
         pushLocalAnnotationHistoryAction(finalLocalHistoryAction);
       }
+      // TEST-PLAN item 55 (2026-10-06): this step is the whole gesture — a
+      // live-preview release (diffed against the pre-gesture baseline) or a
+      // family action carrying Survey Markers. The legacy snapshot below
+      // would be taken mid-gesture and without the markers, so on a document
+      // without the CRDT layer one Undo put back only part of the selection.
+      localStepCoversGesture = coversWholeGesture
+        && localAnnotationUndoRef.current[localAnnotationUndoRef.current.length - 1] !== localTopBefore;
       historyFoldIntoCreateRef.current = null;
     }
     if (!shouldSkipCheckpointByPolicy) {
@@ -26833,6 +27374,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         changedObjectsCount: finalPageTransition.changedObjectsCount,
         previousPageHash: previousPageFingerprint.hash,
         nextPageHash: finalNextPageFingerprint.hash,
+        undoDepth: undoHistoryRef.current.length,
+        redoDepth: redoHistoryRef.current.length,
+        saveContext: normalizedSaveContext
+      });
+    } else if (localStepCoversGesture) {
+      // The local step pushed above already holds the whole gesture (see
+      // localStepCoversGesture); a legacy snapshot would split it in two.
+      pushHistoryDebugEvent('annotations_checkpoint_skipped_local_gesture_step', {
+        reason: 'annotations:save',
+        source,
+        pageNumber,
         undoDepth: undoHistoryRef.current.length,
         redoDepth: redoHistoryRef.current.length,
         saveContext: normalizedSaveContext
@@ -27105,6 +27657,34 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     yjsUndoCtx?.userId,
   ]);
   commitTextMarkupDocumentTransactionRef.current = commitTextMarkupDocumentTransaction;
+
+  // Owner after Test 46 (2026-10-06): a picked mark dragged onto another page
+  // moves there. Both pages change in ONE state update (the mark keeps its
+  // id, so collaborators see one move, never a copy) and ONE undo step; the
+  // lock check and owner scoping are the document transaction's own.
+  const handleMoveMarksToPage = useCallback((fromPage, { toPage, marks } = {}) => {
+    const from = Number(fromPage);
+    const to = Number(toPage);
+    if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return false;
+    const pagesNow = annotationsByPageRef.current || {};
+    const plan = buildCrossPageMovePlan({ fromPage: pagesNow[from], toPage: pagesNow[to], marks });
+    if (!plan) return false;
+    const action = {
+      type: 'fabric:document-batch',
+      actions: [
+        buildAnnotationHistoryAction({ pageNumber: from, previousPage: pagesNow[from], nextPage: plan.fromPage }),
+        buildAnnotationHistoryAction({ pageNumber: to, previousPage: pagesNow[to] || { objects: [] }, nextPage: plan.toPage }),
+      ].filter(Boolean),
+    };
+    const moved = commitTextMarkupDocumentTransaction(
+      { action, nextByPage: { ...pagesNow, [from]: plan.fromPage, [to]: plan.toPage } },
+      { source: 'annotation:move-to-page', action: 'move-to-page', applyWithoutOwnedStep: true },
+    );
+    if (!moved) return false;
+    // The moved marks stay picked, now on their new page.
+    setPendingSvgSelection({ pageNumber: to, annotationIndices: plan.toIndices, surveyMarkerIds: [], exclusive: true, tick: Date.now() });
+    return true;
+  }, [commitTextMarkupDocumentTransaction]);
 
   const handleSaveAnnotationsWithTextMarkupAtomicity = useCallback((pageNumber, json, saveContext = null) => {
     const transaction = buildAtomicTextMarkupPageMutation({
@@ -27728,6 +28308,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             });
             if (stamped.length === 0) return;
             stamped.forEach((object) => importedIds.push(object.id));
+            // 2026-10-07: saved as one checkpoint, apart from the user's edits.
+            annotationDocBeginBulkImport(stamped.map((object) => object.id));
             handleSaveAnnotations(pageNumber, { ...current, objects: [...currentObjects, ...stamped] }, {
               source: 'embedded-import-once',
               action: 'import-pdf-annotations',
@@ -27756,6 +28338,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         if (importedIds.length > 0 && !annotationDocHasStoredMarks(importedIds)) {
           throw new Error('embedded import did not reach the store yet');
         }
+        // ...and the cloud (one checkpoint; also one a closed tab left to
+        // this open): the marker must never be read where the marks cannot.
+        if (!(await annotationDocWhenBulkImportSaved())) {
+          throw new Error('embedded import was not stored yet');
+        }
+        if (cancelled) return;
         // w27: a page with markup that pdf.js could not read was skipped; no
         // marker yet (it would hide that page's markup for good). Record the
         // attempt and retry on the next open — the per-mount guard stays set,
@@ -27803,7 +28391,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     })();
 
     return () => { cancelled = true; };
-  }, [normalAnnotationHydration, pdfFile, pdfDoc, handleSaveAnnotations, yjsDocRole, documentOwnerId, user?.id, excelSyncMetaGet, excelSyncMetaSet, annotationDocHasStoredMarks]);
+  }, [normalAnnotationHydration, pdfFile, pdfDoc, handleSaveAnnotations, yjsDocRole, documentOwnerId, user?.id, excelSyncMetaGet, excelSyncMetaSet, annotationDocHasStoredMarks, annotationDocBeginBulkImport, annotationDocWhenBulkImportSaved]);
 
   // Keep this document's list thumbnail current (page 1 with its markup),
   // debounced after edits settle and never while drawing — see the hook.
@@ -29573,6 +30161,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }, 300);
   }, [surveyMarkers, selectedTemplate, showSurveyPanel, rightRailCollapsed, requestRightRailExpand, mobileMode]);
 
+  // Survey audit P1-5 (phone "Locate on page"): newest locate wins.
+  const surveyLocateTokenRef = useRef(0);
+
   // Locate item on PDF (Forward Navigation)
   const handleLocateItemOnPDF = useCallback((surveyMarker) => {
     if (!surveyMarker) return;
@@ -29594,6 +30185,87 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         annotationId,
         tick: Date.now(),
       });
+    }
+
+    // Survey audit P1-5 (phone): the Survey sheet has just been lowered to
+    // its standard height (SurveySpacesRail). Once it has settled, fit the
+    // marker in the page you can still see - above the sheet, beside the tool
+    // rail - with drawing around it: the box takes at most ~40% of that area's
+    // width and height (it used to fill the width, under a full-screen sheet).
+    // The zoom goes through the normal viewer zoom, so zoomGeneration and the
+    // pdf.js commit run exactly as for the zoom buttons.
+    if (mobileMode && typeof window !== 'undefined' && typeof document !== 'undefined') {
+      const token = surveyLocateTokenRef.current + 1;
+      surveyLocateTokenRef.current = token;
+      const isCurrent = () => surveyLocateTokenRef.current === token;
+      const readInsets = () => {
+        const container = containerRef.current;
+        if (!container) return { left: 0, right: 0, top: 0, bottom: 0 };
+        const occluders = Array.from(document.querySelectorAll('[data-viewer-occluder], .mobile-pdf-tools, .mobile-pdf-properties'))
+          .filter((node) => node.getClientRects().length > 0)
+          .map((node) => node.getBoundingClientRect());
+        return resolveViewerOcclusionInsets(container.getBoundingClientRect(), occluders);
+      };
+      const readRenderedScale = () => {
+        const pageContainer =
+          pageContainersRef.current?.[pageNumber] ||
+          pdfjsPageContainersStateRef.current?.[pageNumber] ||
+          pdfjsViewerRef.current?.getPageContainer?.(pageNumber) ||
+          null;
+        const pageElement = resolvePageContentElement(pageContainer) || pageContainer;
+        const pageRect = pageElement?.getBoundingClientRect?.();
+        const pageSize = pageSizesRef.current?.[pageNumber] || {};
+        if (!pageRect || !(pageRect.width > 0) || !(Number(pageSize.width) > 0)) return null;
+        return pageRect.width / Number(pageSize.width);
+      };
+      const centerInVisibleArea = () => {
+        const insets = readInsets();
+        return centerPageBoundsInViewer(pageNumber, bounds, {
+          behavior: 'auto',
+          retryBehavior: 'auto',
+          maxRetries: 18,
+          retryDelay: 60,
+          navigateFirst: true,
+          leftInset: insets.left,
+          rightInset: insets.right,
+          topInset: insets.top,
+          bottomInset: insets.bottom,
+        });
+      };
+      window.setTimeout(() => {
+        if (!isCurrent()) return;
+        const container = containerRef.current;
+        if (!container) return;
+        const insets = readInsets();
+        const visibleWidth = Math.max(80, container.clientWidth - insets.left - insets.right);
+        const visibleHeight = Math.max(80, container.clientHeight - insets.top - insets.bottom);
+        const boxWidth = Math.max(1, Number(bounds.width) || 1);
+        const boxHeight = Math.max(1, Number(bounds.height) || 1);
+        const fitScale = Math.min((visibleWidth * 0.4) / boxWidth, (visibleHeight * 0.4) / boxHeight);
+        const targetScale = Math.min(3, Math.max(0.35, fitScale));
+        const currentScale = readRenderedScale() || Math.max(0.01, Number(scaleRef.current) || 1);
+        debugMark('survey_locate_phone', { pageNumber, annotationId, insets, visibleWidth, visibleHeight, currentScale, targetScale });
+        if (Math.abs(targetScale - currentScale) / currentScale < 0.04) {
+          centerInVisibleArea();
+          return;
+        }
+        centerPageBoundsInViewer(pageNumber, bounds, { behavior: 'auto', navigateFirst: true, maxRetries: 18, retryDelay: 60 });
+        setScaleWithViewportPreservation(targetScale, { preserveCenter: false, mode: ZOOM_MODES.MANUAL });
+        const startedAt = Date.now();
+        const waitForZoom = () => {
+          if (!isCurrent()) return;
+          const rendered = readRenderedScale();
+          if ((rendered && Math.abs(rendered - targetScale) / targetScale < 0.015) || Date.now() - startedAt > 1500) {
+            centerInVisibleArea();
+            // The viewer re-anchors its scroll a layout pass after the commit.
+            window.setTimeout(() => { if (isCurrent()) centerInVisibleArea(); }, 120);
+            return;
+          }
+          window.setTimeout(waitForZoom, 30);
+        };
+        window.setTimeout(waitForZoom, 30);
+      }, 320);
+      return;
     }
 
     const currentScale = Math.max(0.01, Number(scaleRef.current) || Number(scale) || 1);
@@ -29776,6 +30448,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     centerSurveyMarkerElementInViewer,
     centerPageBoundsInViewer,
     goToPage,
+    mobileMode,
     resolvePageContentElement,
     scale,
     setActiveTool,
@@ -30530,6 +31203,55 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setPendingSurveyMarkerName(nextPendingUi.pendingSurveyMarkerName);
     setSurveyMarkerNameInput(nextPendingUi.surveyMarkerNameInput);
   }, [addHistoryCheckpoint, handleSurveyMarkerDeleted, surveyMarkers]);
+
+  // Survey audit P1-2 (2026-10-01): taking back a Survey Marker that was just
+  // drawn is ONE Undo step. When the newest Undo step is this marker's own
+  // placement ('highlight:create'), the history engine undoes it - the page,
+  // the marker and any open placement UI go back to how they were before the
+  // drag - and this returns true. Otherwise it changes nothing and returns
+  // false (something else happened since, so a blind Undo would undo that).
+  const undoSurveyMarkerPlacement = useCallback((annotationId) => {
+    if (!annotationId) return false;
+    const undoMeta = undoHistoryMetaRef.current;
+    const topMeta = undoMeta[undoMeta.length - 1] || null;
+    if (topMeta?.reason !== 'highlight:create' || String(topMeta?.context?.annotationId ?? '') !== String(annotationId)) {
+      return false;
+    }
+    handleUndo();
+    return true;
+  }, [handleUndo]);
+
+  // The Categorize dialog (a marker drawn with no category armed): Escape,
+  // its X and a click off it take the marker back. Falls back to dropping the
+  // pending marker locally, as that dialog always did.
+  const cancelSurveyMarkerPlacement = useCallback((annotationId) => {
+    if (!annotationId) return;
+    if (undoSurveyMarkerPlacement(annotationId)) return;
+    const nextPendingUi = deletePendingSurveyMarkerUi(
+      pendingSurveyMarkerUiRef.current,
+      annotationId,
+    );
+    pendingSurveyMarkerUiRef.current = nextPendingUi;
+    setNewSurveyMarkersByPage(nextPendingUi.newSurveyMarkersByPage);
+    setPendingSurveyMarker(nextPendingUi.pendingSurveyMarker);
+    setPendingSurveyMarkerSelection(nextPendingUi.pendingSurveyMarkerSelection);
+    setPendingEntitySelection(nextPendingUi.pendingEntitySelection);
+    setPendingSurveyMarkerName(nextPendingUi.pendingSurveyMarkerName);
+    setSurveyMarkerNameInput(nextPendingUi.surveyMarkerNameInput);
+  }, [undoSurveyMarkerPlacement]);
+
+  const categorizeDialogMarkerId = mobileMode ? null : (pendingSurveyMarker?.id || null);
+  useEffect(() => {
+    if (!categorizeDialogMarkerId || typeof window === 'undefined') return undefined;
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      event.preventDefault();
+      event.stopPropagation();
+      cancelSurveyMarkerPlacement(categorizeDialogMarkerId);
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [categorizeDialogMarkerId, cancelSurveyMarkerPlacement]);
 
   // UX: w53 — Delete with several Survey Markers selected (a family
   // selection of markers only) deletes them as ONE undo step. Each marker
@@ -31386,29 +32108,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const entities = selectedTemplate?.entities || [];
 
       if (!hasEntity && entities.length > 0) {
-        if (mobileMode) {
-          // UX: on mobile the entity is assigned in the Survey Marker detail
-          // sheet (which has the entity picker), never the desktop centered
-          // modal — open the detail view for the just-located marker instead
-          // (same sequence as commitMobileSurveyMarker; adversarial review
-          // defect 2, 2026-07-12).
-          setExpandedCategories({ [pendingLocationItem.categoryId]: true });
-          setExpandedSurveyMarkers({ [annotationId]: true });
-          setShowSurveyPanel(true);
-          requestRightRailExpand();
-        } else {
-          // Prompt for Entity since it wasn't set in Excel
-          setPendingEntitySelection({
-            surveyMarker: {
-              id: annotationId,
-              pageNumber,
-              bounds,
-              moduleId: effectiveModuleId,
-              regionId: pageRegionId
-            },
-            categoryId: pendingLocationItem.categoryId
-          });
-        }
+        // UX: the entity is assigned in the open Survey Marker (it has the
+        // entity menu), never a centred modal - open the just-located marker
+        // in the panel (same sequence as commitMobileSurveyMarker; adversarial
+        // review defect 2, 2026-07-12). Owner 2026-10-01 ("Yes, inline like
+        // phone"): desktop too - the desktop Entity pop-up is gone.
+        setExpandedCategories({ [pendingLocationItem.categoryId]: true });
+        setExpandedSurveyMarkers({ [annotationId]: true });
+        setShowSurveyPanel(true);
+        requestRightRailExpand();
       }
 
       setPendingLocationItem(null);
@@ -31464,74 +32172,40 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       };
     });
 
-    // If a category is already selected, show Entity dialog first
+    // If a category is already selected, place the Survey Marker straight
+    // away with its default name and open it in the Survey panel.
     if (selectedCategoryId) {
-      // Check if template has Entities
-      const entities = selectedTemplate?.entities || [];
-      if (mobileMode) {
-        // UX (mobile demo parity): commit instantly with the default name and
-        // open the marker detail sheet (demo App.tsx:1155) — the desktop
-        // Entity/Name modal chain below stays desktop-only.
-        commitMobileSurveyMarker({
-          id: annotationId,
-          // Owner ruling 2026-09-28: the creator stamp (lock rights).
-          ...(user?.id ? { userId: user.id } : {}),
-          pageNumber,
-          bounds,
-          moduleId: effectiveModuleId,
-          regionId: pageRegionId,
-          ...(mobileSelectedEntity ? {
-            entityId: mobileSelectedEntity.id,
-            entityName: mobileSelectedEntity.name,
-            entityColor: mobileSelectedEntityColor,
-          } : {})
-        }, selectedCategoryId);
-      } else if (mobileSelectedEntity) {
-        setPendingSurveyMarkerName({
-          surveyMarker: {
-            id: annotationId,
-            // Owner ruling 2026-09-28: the creator stamp (lock rights).
-            ...(user?.id ? { userId: user.id } : {}),
-            pageNumber,
-            bounds,
-            moduleId: effectiveModuleId,
-            regionId: pageRegionId,
-            entityId: mobileSelectedEntity.id,
-            entityName: mobileSelectedEntity.name,
-            entityColor: mobileSelectedEntityColor,
-          },
-          categoryId: selectedCategoryId
-        });
-        setSurveyMarkerNameInput(null);
-      } else if (entities.length > 0) {
-        // Show Entity selection dialog
-        setPendingEntitySelection({
-          surveyMarker: {
-            id: annotationId,
-            // Owner ruling 2026-09-28: the creator stamp (lock rights).
-            ...(user?.id ? { userId: user.id } : {}),
-            pageNumber,
-            bounds,
-            moduleId: effectiveModuleId,
-            regionId: pageRegionId
-          },
-          categoryId: selectedCategoryId
-        });
-      } else {
-        // No Entities, go directly to name prompt
-        setPendingSurveyMarkerName({
-          surveyMarker: {
-            id: annotationId,
-            // Owner ruling 2026-09-28: the creator stamp (lock rights).
-            ...(user?.id ? { userId: user.id } : {}),
-            pageNumber,
-            bounds,
-            moduleId: effectiveModuleId,
-            regionId: pageRegionId
-          },
-          categoryId: selectedCategoryId
-        });
-        setSurveyMarkerNameInput(null); // Reset input
+      // UX (mobile demo parity): commit instantly with the default name and
+      // open the marker (demo App.tsx:1155). Owner 2026-10-01 ("Yes, inline
+      // like phone"): desktop too - the Entity and Name pop-ups are gone; the
+      // new marker opens in the rail with its name field focused and its
+      // Entity menu right there. Escape on that untouched name takes the
+      // placement back (one Undo step, SurveySpacesRail). The entity it starts
+      // with: the phone's entity disc, else (desktop) the last one picked.
+      const placementEntity = mobileSelectedEntity || (!mobileMode
+        ? (selectedTemplate?.entities || []).find((entity) => entity.id === lastSurveyEntityIdRef.current) || null
+        : null);
+      const placementEntityColor = placementEntity
+        ? (normalizeSurveyMarkerColor(placementEntity.color)
+          || placementEntity.color
+          || hexToRgba('#E3D1FB', DEFAULT_SURVEY_MARKER_OPACITY))
+        : null;
+      commitMobileSurveyMarker({
+        id: annotationId,
+        // Owner ruling 2026-09-28: the creator stamp (lock rights).
+        ...(user?.id ? { userId: user.id } : {}),
+        pageNumber,
+        bounds,
+        moduleId: effectiveModuleId,
+        regionId: pageRegionId,
+        ...(placementEntity ? {
+          entityId: placementEntity.id,
+          entityName: placementEntity.name,
+          entityColor: placementEntityColor,
+        } : {})
+      }, selectedCategoryId);
+      if (!mobileMode) {
+        setSurveyMarkerNameFocusRequest({ id: annotationId, tick: Date.now() });
       }
 
       if (!surveyKeepCategoryActive) {
@@ -31564,6 +32238,50 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     }
   }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, surveyKeepCategoryActive, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyMarkerPreview, mobileSurveyEntityId, normalizeSurveyMarkerColor, hexToRgba, DEFAULT_SURVEY_MARKER_OPACITY, mobileMode, commitMobileSurveyMarker, requestRightRailExpand, user?.id]);
+
+  // Perf (2026-09-30): SVGAnnotationLayer is memo()'d, but it was handed
+  // per-render inline lambdas and survey-marker delete callbacks whose deps
+  // churn, so every PDFViewer render (page change, scroll, zoom commit)
+  // re-rendered every page's whole SVG layer. One identity per page, always
+  // calling the latest handler.
+  const svgLayerHandlerSourceRef = useRef(null);
+  svgLayerHandlerSourceRef.current = {
+    handleSaveAnnotationsWithTextMarkupAtomicity,
+    requestAnnotationEditEntry,
+    handleDeleteSurveyMarker,
+    handleDeleteSurveyMarkers,
+    handleSurveyMarkerCreated,
+    handleMoveMarksToPage,
+  };
+  const svgLayerPageHandlersRef = useRef(new Map());
+  const getSvgLayerPageHandlers = (pageNumber) => {
+    let handlers = svgLayerPageHandlersRef.current.get(pageNumber);
+    if (handlers) return handlers;
+    const latest = () => svgLayerHandlerSourceRef.current;
+    handlers = {
+      onSaveAnnotations: (updatedJSON, saveContext) => (
+        latest().handleSaveAnnotationsWithTextMarkupAtomicity(pageNumber, updatedJSON, saveContext)
+      ),
+      // UX: one dispatcher for every edit entry — this native double-click
+      // (Select family, mouse) and the window-capture double-tap recogniser
+      // that covers Pan, Text Select and touch. Routing (which type opens
+      // which editor) lives in utils/annotationEditRoute so the two entries
+      // cannot drift.
+      onRequestEditMode: (annotationIndex, annotationType, editOptions) => latest().requestAnnotationEditEntry({
+        pageNumber,
+        annotationIndex,
+        annotationType,
+        caretAnchor: editOptions?.caretAnchor || null,
+      }),
+      onRequestExitEdit: () => setEditingAnnotation(null),
+      onSurveyMarkerCreated: (bounds) => latest().handleSurveyMarkerCreated(pageNumber, bounds),
+      onDeleteSurveyMarker: (annotationId) => latest().handleDeleteSurveyMarker(annotationId),
+      onDeleteSurveyMarkers: (annotationIds) => latest().handleDeleteSurveyMarkers(annotationIds),
+      onMoveMarksToPage: (move) => latest().handleMoveMarksToPage(pageNumber, move),
+    };
+    svgLayerPageHandlersRef.current.set(pageNumber, handlers);
+    return handlers;
+  };
 
   // Auto-switch to surveyMarker tool when template is selected in survey mode (only on initial entry)
   useEffect(() => {
@@ -31630,9 +32348,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
   }, [applyLayoutDrivenZoom, isLeftSidebarCollapsed]);
 
-  // Ensure survey panel always opens in expanded state
+  // Ensure survey panel always opens in expanded state (except an Undo of
+  // "Left Survey" that left it closed - surveyReenterCollapsedRef).
   useEffect(() => {
-    if (showSurveyPanel) {
+    if (showSurveyPanel && !surveyReenterCollapsedRef.current) {
       requestRightRailExpand();
     }
   }, [showSurveyPanel, requestRightRailExpand]);
@@ -31783,6 +32502,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   useEffect(() => {
     if (activeTool !== 'text-select') {
+      // Owner 2026-10-02: a just-drawn callout opens its text editor and the
+      // tool flips back to Select in the same pass, so this ran right after
+      // the editor took focus and wiped its caret - the box looked dead until
+      // clicked. A caret inside an open editor is not a PDF text selection;
+      // leave it alone.
+      if (typeof document !== 'undefined' && document.activeElement?.isContentEditable) {
+        liveTextSelectionRef.current = null;
+        setLiveTextSelection(null);
+        return undefined;
+      }
       clearLiveTextSelection();
       return undefined;
     }
@@ -33398,7 +34127,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 spaces,
               });
               const annotatedBytes = await savePDFWithFlattenedRegularAnnotationsForPrint(
-                pdfFile,
+                (await flushPageOperations()) || pdfFile,
                 printableRegularPayload.annotationsByPage,
                 pageSizes,
                 {
@@ -34064,6 +34793,7 @@ ${pageBlocks}
       onSpaceAssignPages: handleSpaceAssignPages,
       onSpaceRenamePage: handleSpaceRenamePage,
       onSpaceRemovePage: handleSpaceRemovePage,
+      getSpaceRemovalImpact,
       onNavigateToSpacePage: handleNavigateToSpacePage,
       onReorderSpaces: handleReorderSpaces,
       onExportSpaceCSV: handleExportSpaceToCSV,
@@ -34169,6 +34899,7 @@ ${pageBlocks}
     handleSpaceAssignPages,
     handleSpaceRenamePage,
     handleSpaceRemovePage,
+    getSpaceRemovalImpact,
     handleNavigateToSpacePage,
     handleReorderSpaces,
     handleExportSpaceToCSV,
@@ -34282,12 +35013,23 @@ ${pageBlocks}
       // Slice 4: the read-only guided "Verify Live Sync" probe.
       onVerifyLiveSync: handleVerifyLiveSync,
       onCloseSurveyMode: handleCloseSurveyMode,
+      // Owner 2026-10-07: an Undo of "Left Survey" that leaves the panel shut.
+      surveyReenterCollapsedRef,
       onRequestCreateTemplate,
       onSelectSurveyTemplate: handleSelectSurveyTemplate,
       pdfFile,
       scale,
       selectedCategories,
       selectedCategoryId,
+      // Survey calm gold (2026-10-01): the rail paints the chosen category
+      // gold only while a touch on the page would place it.
+      surveyPlacementArmed: activeTool === 'survey-marker',
+      // Owner 2026-10-01 (desktop placing inline): focus a new marker's name;
+      // Escape on it untouched takes the placement back; the rail reports the
+      // entity a user picks so the next marker starts with it.
+      surveyMarkerNameFocusRequest,
+      undoSurveyMarkerPlacement,
+      rememberSurveyEntity,
       selectedItemsInCategory,
       selectedModuleId,
       selectedSpaceId,
@@ -34308,8 +35050,6 @@ ${pageBlocks}
       setItemSelectModeActive,
       setItems,
       setNewSurveyMarkersByPage,
-      setNoteDialogContent,
-      setNoteDialogOpen,
       setPendingLocationItem,
       setSelectedCategories,
       setSelectedCategoryId,
@@ -34332,6 +35072,8 @@ ${pageBlocks}
       onDismissUnplacedRow: handleDismissUnplacedRow,
       onDismissAllUnplacedRows: handleDismissAllUnplacedRows,
       onResolveExcelConflict: handleResolveExcelConflict,
+      // Survey media: owner or editor (same rule as Restore in History).
+      canEditSurveyMarkers: canRestoreFromHistory,
       user,
       expandRequestKey: rightRailExpandRequestKey,
       onCollapseChange: handleRightRailCollapseChange,
@@ -34425,6 +35167,10 @@ ${pageBlocks}
     scale,
     selectedCategories,
     selectedCategoryId,
+    activeTool,
+    surveyMarkerNameFocusRequest,
+    undoSurveyMarkerPlacement,
+    rememberSurveyEntity,
     selectedItemsInCategory,
     selectedModuleId,
     selectedSpaceId,
@@ -34443,8 +35189,6 @@ ${pageBlocks}
     setItemSelectModeActive,
     setItems,
     setNewSurveyMarkersByPage,
-    setNoteDialogContent,
-    setNoteDialogOpen,
     setPendingLocationItem,
     setSelectedCategories,
     setSelectedCategoryId,
@@ -34467,6 +35211,7 @@ ${pageBlocks}
     handleDismissUnplacedRow,
     handleDismissAllUnplacedRows,
     handleResolveExcelConflict,
+    canRestoreFromHistory,
     user,
     rightRailExpandRequestKey,
     handleRightRailCollapseChange,
@@ -34603,38 +35348,15 @@ ${pageBlocks}
   if (!pdfDoc || isLoadingPDF) {
     return (
       <>
+      {/* Owner 2026-10-04: the one quiet loading state (QuietLoading), on the
+          viewer's own surround, so the pages simply appear on it. */}
       <div style={{
+        position: 'relative',
         height: '100vh',
-        display: 'flex',
-        flexDirection: 'row',
-        background: 'var(--surface-2)',
-        color: 'var(--text-2)',
+        background: 'var(--surface-0)',
         fontFamily: FONT_FAMILY
       }}>
-        {/* Loading content */}
-        <div style={{
-          flex: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: 'var(--text-3)',
-          fontSize: '15px',
-          letterSpacing: '-0.2px'
-        }}>
-          {isLoadingPDF ? (
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'center' }}>
-                <Icon name="document" size={48} />
-              </div>
-              <div style={{ fontSize: '18px', color: 'var(--text-3)' }}>Loading PDF...</div>
-              <div style={{ fontSize: '14px', color: 'var(--text-3)', marginTop: '10px' }}>
-                {pdfFile?.name || 'document.pdf'}
-              </div>
-            </div>
-          ) : (
-            'Loading PDF...'
-          )}
-        </div>
+        <QuietLoading label={openingLabel(pdfFile?.name)} />
       </div>
       {browserPrintDocument}
       </>
@@ -34716,6 +35438,26 @@ ${pageBlocks}
         viewerId: user?.id ?? null,
         documentOwnerId,
         selectedCalloutIds,
+        // Owner 2026-10-07: right-click / long-press a bare page under Pan or
+        // Select = the Pages tab's page menu (sidebar/pageMenuItems.js).
+        pageMenu: {
+          activeTool,
+          pageCount: numPages,
+          clipboardPage,
+          clipboardType,
+          pageTransformations,
+          handlers: {
+            cut: handleCutPage,
+            copy: handleCopyPage,
+            paste: (page, position) => { if (clipboardPage) handlePastePage(page, clipboardPage, clipboardType, position); },
+            duplicate: handleDuplicatePage,
+            insertBlank: handleInsertBlankPage,
+            rotate: handleRotatePage,
+            mirror: handleMirrorPage,
+            reset: handleResetPage,
+            delete: (page) => { if (window.confirm(`Delete page ${page}?`)) handleDeletePage(page); },
+          },
+        },
       })}
 
       {/* Unsupported Annotations Notice — see UnsupportedAnnotationsNotice.jsx
@@ -34801,6 +35543,7 @@ ${pageBlocks}
             active={showRegionSelection}
             mobileMode={mobileMode}
             onMobileToolbarApiChange={setMobileRegionToolbarApi}
+            onRequestRegionTool={() => setActiveTool(REGION_EDIT_TOOL)}
             activeTool={activeTool}
             onRegionComplete={handleRegionComplete}
             onCancel={handleCancelRegionEdit}
@@ -34977,6 +35720,40 @@ ${pageBlocks}
                 </div>
               );
             })()}
+            {/* Spaces chunk A: an active space with no pages hides every page;
+                say so instead of leaving a blank viewer. */}
+            {activeSpaceHasNoPages && (
+              <div
+                style={{ position: 'absolute', inset: 0, zIndex: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, pointerEvents: 'none' }}
+              >
+                <div
+                  role="status"
+                  data-space-empty-card
+                  style={{ pointerEvents: 'auto', width: '100%', maxWidth: 320, boxSizing: 'border-box', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 16px 14px', color: 'var(--text-1)', fontFamily: FONT_FAMILY, textAlign: 'center' }}
+                >
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>No pages in {activeSpaceName}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 6, lineHeight: 1.45 }}>
+                    Add pages to this space, or turn it off to see the whole document.
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 14 }}>
+                    <button
+                      type="button"
+                      onClick={handleExitSpaceMode}
+                      style={{ minHeight: 36, padding: '0 14px', background: 'transparent', border: '1px solid var(--border-strong)', borderRadius: 6, color: 'var(--text-2)', fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}
+                    >
+                      Turn off space
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => pdfSidebarRef.current?.openPanel?.('spaces')}
+                      style={{ minHeight: 36, padding: '0 14px', background: 'var(--accent)', border: 0, borderRadius: 6, color: 'var(--accent-text)', fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}
+                    >
+                      Add pages
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             {(
               <>
                 <div
@@ -35176,6 +35953,11 @@ ${pageBlocks}
                       const layerScale = zoomOverlayTransformActiveRef.current && hasCommittedPageScale
                         ? committedPageScale
                         : resolvedMeasuredPageScale;
+                      // Owner 2026-10-07 (far zoom): a page this small on screen
+                      // has no tappable links or fillable fields; skipping those
+                      // layers keeps a zoomed-out document (dozens of pages in
+                      // view) light. Marks and redactions always render.
+                      const pageTinyOnScreen = resolvedPageSize.width * layerScale < 96;
 
                       // [DEBUG] Log props being passed to PAL
                       // 2026-04-29: silenced — fires on every frame and floods
@@ -35233,9 +36015,6 @@ ${pageBlocks}
                       const nativePdfAnnotationPolicy = pdfNativeAnnotationLayerPolicyByPage?.[pageNumber] ||
                         pdfNativeAnnotationLayerPolicyByPage?.[String(pageNumber)] ||
                         null;
-                      const appImportedPdfAnnotationIds = pageAnnotationObjects
-                        .filter((obj) => obj?.isPdfImported && obj?.pdfAnnotationId)
-                        .map((obj) => obj.pdfAnnotationId);
                       const importedTextMarkupIdsByType = pageAnnotationObjects.reduce((result, obj) => {
                         if (obj?.isPdfImported && obj?.data?.type === 'text-markup' && obj?.pdfAnnotationId) {
                           const subtype = String(obj.pdfAnnotationType || '');
@@ -35253,11 +36032,10 @@ ${pageBlocks}
                           deletedPdfAnnotations,
                         });
                       }
-                      const requiredImportedPdfAnnotationIds = Array.isArray(nativePdfAnnotationPolicy?.importedIds)
-                        ? nativePdfAnnotationPolicy.importedIds
-                        : [];
-                      const importedPdfCopiesAvailable = requiredImportedPdfAnnotationIds.length > 0 &&
-                        requiredImportedPdfAnnotationIds.every((id) => appImportedPdfAnnotationIds.includes(id));
+                      // (An unused "imported copies available" check stood here: an
+                      // every x includes over all of a page's imported marks on every
+                      // render — ~1M comparisons per large drawing per frame of a
+                      // zoom gesture. Removed 2026-10-06, smooth zoom.)
                       const shouldHideNativePdfAnnotationLayer = Boolean(
                         nativePdfAnnotationPolicy?.hideNativeLayer
                       );
@@ -35392,7 +36170,7 @@ ${pageBlocks}
                               fillContainer
                             />
                           )}
-                          {pdfDoc && (
+                          {pdfDoc && !pageTinyOnScreen && (
                             <PdfjsLinkLayer
                               pdf={pdfDoc}
                               pageNumber={pageNumber}
@@ -35408,7 +36186,7 @@ ${pageBlocks}
                               excludedAnnotationIds={importedTextMarkupIdsByType.Redact || []}
                             />
                           )}
-                          <TextMarkupLinkLayer
+                          {!pageTinyOnScreen && <TextMarkupLinkLayer
                             annotations={pageAnnotationObjects}
                             pageSize={resolvedPageSize}
                             interactionMode={activeTool === 'pan' ? 'open' : activeTool === 'select' || activeTool === 'text-select' ? 'select' : 'disabled'}
@@ -35422,8 +36200,8 @@ ${pageBlocks}
                               setSelectedToolbarAnnotation(nextSelection);
                               setPendingSvgSelection({ pageNumber, annotationIndex: region.annotationIndex, tick: Date.now() });
                             }}
-                          />
-                          {true && pdfDoc && (
+                          />}
+                          {true && pdfDoc && !pageTinyOnScreen && (
                             <PdfjsFormLayer
                               pdf={pdfDoc}
                               pageNumber={pageNumber}
@@ -35751,6 +36529,11 @@ ${pageBlocks}
                                   height: '100%',
                                   pointerEvents: 'none',
                                   visibility: pdfjsZoomPreviewActive ? 'hidden' : undefined,
+                                  // Owner 2026-10-04: the page shows as soon as it is drawn
+                                  // and its marks fade in quietly when hydration is ready
+                                  // (no grey cover). Only the gate flip changes opacity.
+                                  opacity: annotationHydrationGated ? 0 : undefined,
+                                  transition: 'opacity 180ms ease-out',
                                 }}
                               >
                               {!annotationHydrationGated && (
@@ -35785,6 +36568,10 @@ ${pageBlocks}
                                   // hole showed intact ink through it ("partial erase does
                                   // nothing" regression, 2026-07-14).
                                   visible={suspendFullSvgForProxy}
+                                  // Perf: only paint the hidden bitmap while it can be shown
+                                  // (an erase can only start on a page in the render window).
+                                  paintEnabled={suspendFullSvgForProxy || (isEraserTool
+                                    && (pdfjsMountedPages.has(pageNumber) || Math.abs(pageNumber - pageNum) <= 1))}
                                 />
                               )}
                               {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {
@@ -35844,7 +36631,9 @@ ${pageBlocks}
                                     width: '100%',
                                     height: '100%',
                                     pointerEvents: 'none',
-                                    zIndex: 99
+                                    // Above the SVG annotation layer (100): the Spaces
+                                    // area editor now renders inside this target.
+                                    zIndex: 101
                                   }}
                                 >
                                   <div
@@ -35910,16 +36699,19 @@ ${pageBlocks}
                                   key={`svg-layer-${pageNumber}-${annotationOverlayRecoveryTick}`}
                                   documentId={pdfFile?.id || null}
                                   pageNumber={pageNumber}
-                                  isPageInRenderWindow={visiblePagesSet.has(pageNumber) || Math.abs(pageNumber - pageNum) <= 1}
+                                  // visiblePagesSet is never updated past page 1, so a pinch-out
+                                  // left newly visible pages with no marks until the current page
+                                  // changed; the engine's mounted window is the real one.
+                                  isPageInRenderWindow={pdfjsMountedPages.has(pageNumber) || Math.abs(pageNumber - pageNum) <= 1}
                                   width={resolvedPageSize.width}
                                   height={resolvedPageSize.height}
                                   annotations={pageAnnotations}
                                   callouts={callouts}
                                   surveyMarkers={displaySurveyMarkersByPage[pageNumber]}
                                   onUpdateSurveyMarkerBounds={handleSurveyMarkerBoundsChange}
-                                  onDeleteSurveyMarker={handleDeleteSurveyMarker}
+                                  onDeleteSurveyMarker={getSvgLayerPageHandlers(pageNumber).onDeleteSurveyMarker}
                                   isSurveyMarkerFamilyMember={isSurveyMarkerFamilyMember}
-                                  onDeleteSurveyMarkers={handleDeleteSurveyMarkers}
+                                  onDeleteSurveyMarkers={getSvgLayerPageHandlers(pageNumber).onDeleteSurveyMarkers}
                                   onReorderFamily={handleReorderFamily}
                                   onCopyFamily={copyFamilySelection}
                                   onDuplicateFamily={duplicateFamilySelection}
@@ -35937,22 +36729,9 @@ ${pageBlocks}
                                   getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
                                   isRegionOverlayEnabled={isRegionOverlayEnabled}
                                   layerVisibility={annotationLayerVisibility}
-                                  onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotationsWithTextMarkupAtomicity(pageNumber, updatedJSON, saveContext)}
-                                  onRequestEditMode={(annotationIndex, annotationType, editOptions) => {
-                                    // UX: one dispatcher for every edit entry —
-                                    // this native double-click (Select family,
-                                    // mouse) and the window-capture double-tap
-                                    // recogniser that covers Pan, Text Select
-                                    // and touch. Routing (which type opens which
-                                    // editor) lives in utils/annotationEditRoute
-                                    // so the two entries cannot drift.
-                                    requestAnnotationEditEntry({
-                                      pageNumber,
-                                      annotationIndex,
-                                      annotationType,
-                                      caretAnchor: editOptions?.caretAnchor || null,
-                                    });
-                                  }}
+                                  onSaveAnnotations={getSvgLayerPageHandlers(pageNumber).onSaveAnnotations}
+                                  onMoveMarksToPage={getSvgLayerPageHandlers(pageNumber).onMoveMarksToPage}
+                                  onRequestEditMode={getSvgLayerPageHandlers(pageNumber).onRequestEditMode}
                                   activeTool={activeTool}
                                   // UX 2026-09-15 (Drawboard parity — Pan is a selection
                                   // mode): mount the edit-entry HIT LAYER under Pan.
@@ -35962,12 +36741,14 @@ ${pageBlocks}
                                   // one only stamps data attributes inside the layer, so
                                   // Pan keeps owning every drag.
                                   panEditEntryEnabled={activeTool === 'pan'}
+                                  // Drawboard rule 12: the pick survives this page layer unmounting.
+                                  keepSelectionAcrossRemount
                                   selectionMode={selectionMode}
                                   lassoTouchOperation={lassoTouchOperation}
                                   lassoTouchMode={lassoTouchMode}
                                   editingAnnotationIndex={isEditMode && !editingAnnotation.reactCalloutId ? editingAnnotation.index : null}
                                   editingAnnotationEditType={isEditMode ? editingAnnotation.editType : null}
-                                  onRequestExitEdit={() => setEditingAnnotation(null)}
+                                  onRequestExitEdit={getSvgLayerPageHandlers(pageNumber).onRequestExitEdit}
                                   // UX: Phase 14 CALL-10 + KBD-01 + CREATE-01 — new props
                                   // for the unified callout render + selection + delete +
                                   // create pipeline. Wave 2 Plan 14-03 wires these so the
@@ -36047,18 +36828,20 @@ ${pageBlocks}
                                   // survey-marker) — FabricDrawingCanvas is retired, so
                                   // the in-progress drawing and the committed shape are
                                   // the same renderer in the same coordinate space.
-                                  strokeColor={strokeColor}
-                                  strokeOpacity={strokeOpacity}
-                                  fillColor={fillColor}
-                                  fillOpacity={fillOpacity}
+                                  // Review round 9: the tool's settings, not a held
+                                  // own-group pick's (resolveNewMarkStyle).
+                                  strokeColor={newMarkStyle.strokeColor}
+                                  strokeOpacity={newMarkStyle.strokeOpacity}
+                                  fillColor={newMarkStyle.fillColor}
+                                  fillOpacity={newMarkStyle.fillOpacity}
                                   highlightColor="rgba(255, 193, 7, 0.3)"
-                                  strokeWidth={strokeWidth}
-                                  arrowheadStyle={arrowheadStyle}
-                                arrowStartStyle={arrowBothEnds ? arrowheadStyle : null}
-                                  lineBorderStyle={lineBorderStyle}
-                                  cloudIntensity={cloudIntensity}
+                                  strokeWidth={newMarkStyle.strokeWidth}
+                                  arrowheadStyle={newMarkStyle.arrowheadStyle}
+                                arrowStartStyle={newMarkStyle.arrowBothEnds ? newMarkStyle.arrowheadStyle : null}
+                                  lineBorderStyle={newMarkStyle.lineBorderStyle}
+                                  cloudIntensity={newMarkStyle.cloudIntensity}
                                   zoomGeneration={zoomGeneration}
-                                  onSurveyMarkerCreated={(bounds) => handleSurveyMarkerCreated(pageNumber, bounds)}
+                                  onSurveyMarkerCreated={getSvgLayerPageHandlers(pageNumber).onSurveyMarkerCreated}
                                 />
                               </div>
                               )}
@@ -36143,6 +36926,34 @@ ${pageBlocks}
                                   }}
                                   onPointerDown={(e) => {
                                     if (Date.now() - editModeCooldownRef.current < 300) return;
+                                    // Rule 6 (owner 2026-10-04, utils/selectModes.js): a press on
+                                    // a text box or callout picks it (a second press on the picked
+                                    // text edits it, through the selection grab); any other mark
+                                    // is not there for the Text tool. With something selected a
+                                    // press elsewhere only drops the pick (the next makes a box).
+                                    // A press on the selection itself never reaches here: it is
+                                    // handed to the selection (hooks/useSelectionGrabHandoff).
+                                    const where = classifyPagePress(e.nativeEvent, { pageNumber, objects: pageAnnotations?.objects, tool: 'text' });
+                                    const press = resolveToolPress({
+                                      tool: 'text', target: where.target, markGroup: where.markGroup, hasSelection: hasAnyPageSelection(),
+                                    });
+                                    if (press.click === 'select' || press.click === 'deselect') {
+                                      e.stopPropagation();
+                                      e.preventDefault();
+                                      const tapAt = { x: e.clientX, y: e.clientY, pointerType: e.pointerType };
+                                      if (press.click === 'select' && where.calloutId != null) {
+                                        setAnnotationSelectionClearToken((token) => token + 1);
+                                        setSelectedCalloutIds(new Set([where.calloutId]));
+                                        noteOverlayTapPick(`c:${where.calloutId}`, tapAt);
+                                      } else if (press.click === 'select' && Number.isInteger(where.index)) {
+                                        setSelectedCalloutIds((previous) => (previous instanceof Set && previous.size === 0 ? previous : new Set()));
+                                        setPendingSvgSelection({ pageNumber, annotationIndex: where.index, tick: Date.now() });
+                                        noteOverlayTapPick(`a:${where.index}`, tapAt);
+                                      } else {
+                                        clearAnnotationSelectionForContextChange('text-tool-empty-click');
+                                      }
+                                      return;
+                                    }
                                     e.stopPropagation();
                                     e.currentTarget.setPointerCapture(e.pointerId);
                                     const rect = e.currentTarget.getBoundingClientRect();
@@ -36182,28 +36993,10 @@ ${pageBlocks}
                                     const x = (Math.min(startX, e.clientX) - rect.left) / effectiveScale;
                                     const y = (Math.min(startY, e.clientY) - rect.top) / effectiveScale;
                                     const isDrag = dx > 10 || dy > 10;
-                                    // Click (not drag): check if an existing text annotation was hit
-                                    if (!isDrag && pageAnnotations?.objects) {
-                                      const hitIdx = pageAnnotations.objects.findIndex((obj) => {
-                                        const t = String(obj.type || '').toLowerCase();
-                                        if (t !== 'textbox' && t !== 'i-text' && t !== 'text') return false;
-                                        const l = obj.left || 0, tp = obj.top || 0;
-                                        const w = (obj.width || 0) * Math.abs(obj.scaleX ?? 1);
-                                        const h = (obj.height || 0) * Math.abs(obj.scaleY ?? 1);
-                                        return x >= l && x <= l + w && y >= tp && y <= tp + h;
-                                      });
-                                      if (hitIdx >= 0) {
-                                        const hitObj = pageAnnotations.objects[hitIdx];
-                                        setEditingAnnotation({
-                                          pageNumber,
-                                          index: hitIdx,
-                                          type: hitObj.type,
-                                          editType: 'text',
-                                          data: hitObj,
-                                        });
-                                        return;
-                                      }
-                                    }
+                                    // Drawboard rule 6: with nothing selected a click makes a NEW
+                                    // box in edit mode, even on top of existing text (editing
+                                    // that text is a double-click, or a click once something is
+                                    // selected — see onPointerDown).
                                     setEditingAnnotation({
                                       pageNumber,
                                       index: null,
@@ -36262,6 +37055,26 @@ ${pageBlocks}
                                     if (e.target?.closest?.('[data-counter-caret-popup]')) {
                                       appDebug('[CSeries popup] counter overlay #1 pointerdown bailed — target inside caret popup');
                                       return;
+                                    }
+                                    // Owner 2026-10-02 (Drawboard rules, utils/selectModes.js
+                                    // 'place' tools): a press on an existing Shapes-group mark
+                                    // (the Counter's own group, owner 2026-10-04) picks it; any
+                                    // other mark or empty page drops a pin.
+                                    {
+                                      const where = classifyPagePress(e.nativeEvent, { pageNumber, objects: pageAnnotations?.objects, tool: 'counter' });
+                                      const press = resolveToolPress({ tool: 'counter', target: where.target, markGroup: where.markGroup, hasSelection: hasAnyPageSelection() });
+                                      if (press.click === 'select') {
+                                        e.stopPropagation();
+                                        e.preventDefault();
+                                        if (where.calloutId != null) {
+                                          setAnnotationSelectionClearToken((token) => token + 1);
+                                          setSelectedCalloutIds(new Set([where.calloutId]));
+                                        } else if (Number.isInteger(where.index)) {
+                                          setSelectedCalloutIds((previous) => (previous instanceof Set && previous.size === 0 ? previous : new Set()));
+                                          setPendingSvgSelection({ pageNumber, annotationIndex: where.index, tick: Date.now() });
+                                        }
+                                        return;
+                                      }
                                     }
                                     // UX 2026-05-01 — runaway-pin guard. See ref decl
                                     // for full rationale. 200ms cooldown + immediate
@@ -36535,9 +37348,17 @@ ${pageBlocks}
                                   onLiveTextGrow={editingAnnotation?.reactCalloutId
                                     ? setLiveCalloutEditBounds
                                     : setLiveTextEditBounds}
+                                  // Owner Test 44: a callout's box grows away from its leader.
+                                  placeCalloutBox={editingAnnotation?.reactCalloutId
+                                    ? (live) => placeCalloutEditBox(
+                                      editingAnnotation.originalReactCallout,
+                                      editingAnnotation.pageSize || resolvedPageSize,
+                                      live,
+                                    )
+                                    : null}
                                   onRichTextEditorChange={setRichTextEditor}
                                   onCalloutTextStyleChange={handleCalloutTextStyleChange}
-                                  onEditCommit={(updatedJSON) => {
+                                  onEditCommit={(updatedJSON, commitMeta) => {
                                     // UX: Phase 15 UAT-1 restructure — reactCalloutId
                                     // routes callout commit through fromFabricGroup.
                                     // updatedJSON.objects[0] is the edited textbox in
@@ -36637,6 +37458,8 @@ ${pageBlocks}
                                       editModeCooldownRef.current = Date.now();
                                       newlyCreatedCalloutIdsRef.current.delete(editingAnnotation.reactCalloutId);
                                       setEditingAnnotation(null);
+                                      // Drawboard rule 10: Escape commits and keeps it selected.
+                                      if (commitMeta?.via === 'escape') setSelectedCalloutIds(new Set([editingAnnotation.reactCalloutId]));
                                       return;
                                     }
                                     handleSaveAnnotations(pageNumber, updatedJSON, {
@@ -36646,6 +37469,17 @@ ${pageBlocks}
                                     });
                                     editModeCooldownRef.current = Date.now();
                                     setEditingAnnotation(null);
+                                    // Drawboard rule 10 (utils/selectModes.js): Escape commits
+                                    // the text and keeps the box selected (the tool stays);
+                                    // the next Escape deselects, the one after puts the tool down.
+                                    if (commitMeta?.via === 'escape') {
+                                      const committedIndex = editingAnnotation.isNewText
+                                        ? (updatedJSON?.objects?.length ?? 0) - 1
+                                        : editingAnnotation.index;
+                                      if (Number.isInteger(committedIndex) && committedIndex >= 0) {
+                                        setPendingSvgSelection({ pageNumber, annotationIndex: committedIndex, tick: Date.now() });
+                                      }
+                                    }
                                   }}
                                   onEditCancel={() => {
                                     // UX 2026-04-25 — Esc on a brand-new callout removes
@@ -36813,6 +37647,7 @@ ${pageBlocks}
                       data-highlighter-caret-button={isHighlighterSplitMenu ? 'true' : undefined}
                       // w49: which glyph this tool shows, so a group switch can morph it (utils/loadoutTransition.js).
                       data-morph-icon={t.iconName}
+                      data-tool-switch="true"
                       onClick={(e) => {
                         if (isHighlighter) {
                           e.stopPropagation();
@@ -37033,6 +37868,7 @@ ${pageBlocks}
                       data-counter-caret-button={isCounter ? 'true' : undefined}
                       // w49: which glyph this tool shows, so a group switch can morph it (utils/loadoutTransition.js).
                       data-morph-icon={t.iconName}
+                      data-tool-switch="true"
                       onClick={(e) => {
                         setActiveTool(t.id);
                         // UX 2026-09-09: Polygon and Polyline are click-to-place
@@ -37471,6 +38307,7 @@ ${pageBlocks}
                       {...((isUnderlineMenu || isStrikeMenu) ? { [caretAttr]: 'true' } : {})}
                       // w49: which glyph this tool shows, so a group switch can morph it (utils/loadoutTransition.js).
                       data-morph-icon={t.iconName}
+                      data-tool-switch="true"
                       onClick={onMainClick}
                       {...chromeTip(isUnderlineMenu ? (activeTool === 'squiggly' ? 'Wavy underline' : 'Underline') : isStrikeMenu ? 'Strike through' : t.label, 'below')}
                       // UX 2026-09-16 (desktop sizing pass): shared
@@ -37651,30 +38488,125 @@ ${pageBlocks}
                  The category chips stay on the bar's centre and the two side groups
                  hang off them, as before, so the chips never move when the module
                  name changes. Rules are the shared .chrome-divider. */
+              /* 2026-10-07 (survey bar, narrow windows): the bar gives ground in
+                 a fixed order so nothing ever overlaps or runs under an open
+                 panel - the template name shortens, then goes (glyph stays);
+                 the module name shortens; then Reuse, the module menu and the
+                 template menu move, in that order, into a "..." menu before
+                 Done. The chips and Done always stay (planSurveyBarStep in
+                 utils/responsiveToolbar.js; measured by useSurveyBarFit). */
+              const look = surveyBarLook(surveyBarFit.step);
+              const templateMenu = (inMore) => (
+                <AnnotationDropdown
+                  open={surveyTemplateMenuOpen}
+                  onOpenChange={setSurveyTemplateMenuOpen}
+                  label={`Survey template: ${selectedTemplate?.name || 'Survey'}. Switch template`}
+                  className={inMore ? 'survey-more__pill' : 'survey-subrow__template'}
+                  value={selectedTemplate?.id || ''}
+                  preview={<Icon name="survey" size={14} color="var(--accent)" />}
+                  triggerContent={selectedTemplate?.name || 'Survey'}
+                  options={(appTemplates || []).map((template) => ({
+                    value: template.id,
+                    label: template.name || 'Untitled template'
+                  }))}
+                  onSelect={handleSwitchSurveyTemplateById}
+                  width="auto"
+                  compact={!inMore && look.template === 'glyph'}
+                  dataMarker="data-survey-template-menu"
+                />
+              );
+              const moduleMenu = (inMore) => (
+                <AnnotationDropdown
+                  open={surveyModuleMenuOpen}
+                  onOpenChange={setSurveyModuleMenuOpen}
+                  label="Survey module"
+                  className={inMore ? 'survey-more__pill' : ''}
+                  value={selectedModule?.id || ''}
+                  /* Owner 2026-09-30: the pill is exactly as wide as its
+                     LONGEST module name (every name stacked in one grid
+                     cell, only the current one visible), capped at 220px
+                     (styles.css .survey-subrow__fit). */
+                  triggerContent={modules.length === 0 ? 'No modules' : (
+                    <span className="survey-subrow__fit">
+                      {modules.map((module) => (
+                        <span
+                          key={module.id}
+                          aria-hidden={module.id === selectedModule?.id ? undefined : 'true'}
+                          className={module.id === selectedModule?.id ? undefined : 'is-ghost'}
+                        >
+                          {module.name || 'Untitled module'}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                  options={modules.map((module) => ({
+                    value: module.id,
+                    label: module.name || 'Untitled module'
+                  }))}
+                  onSelect={(moduleId) => {
+                    setSelectedModuleId(moduleId || null);
+                    setSelectedCategoryId(null);
+                    setActiveTool('survey-marker');
+                  }}
+                  disabled={modules.length === 0}
+                  width="auto"
+                  contentWidth="var(--radix-popover-trigger-width)"
+                  dataMarker="data-survey-module-menu"
+                />
+              );
+              const reuseSwitch = (inMore) => (
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={surveyKeepCategoryActive}
+                  aria-label="Reuse category"
+                  className="survey-subrow__keep tertiary"
+                  onClick={() => setSurveyKeepCategoryActive((on) => !on)}
+                  {...chromeTip('Reuse the category: keep it armed after placing a Survey Marker', 'below')}
+                >
+                  <span className="survey-subrow__track" aria-hidden="true" />
+                  {/* Owner 2026-09-30: "Keep active" -> "Repeat"; 2026-10-01:
+                      "Repeat" -> "Reuse" (it keeps the CATEGORY armed), same
+                      word as the phone bar. In More the row names it. */}
+                  {inMore ? null : <span>Reuse</span>}
+                </button>
+              );
+              const moreItems = [
+                look.template === 'more' && { id: 'survey-template', label: 'Template', node: templateMenu(true) },
+                look.module === 'more' && { id: 'survey-module', label: 'Module', node: moduleMenu(true) },
+                look.reuse === 'more' && { id: 'survey-reuse', label: 'Reuse category', node: reuseSwitch(true) },
+              ].filter(Boolean);
+
               return (
-                <div className="survey-subrow">
+                <div
+                  ref={surveyBarFit.ref}
+                  className="survey-subrow"
+                  data-survey-bar-step={look.step}
+                  // The left rail's open panel (272px) and the Survey panel
+                  // (320px) are drawn OVER this row, so the bar keeps its
+                  // template name and Done clear of whichever is open.
+                  style={{
+                    '--survey-bar-inset-l': isLeftSidebarCollapsed ? '0px' : '272px',
+                    '--survey-bar-inset-r': rightRailCollapsed ? '0px' : '320px',
+                  }}
+                >
+                  {/* Owner 2026-10-07 (survey bar round, after a debate): the
+                      bar names the mode itself - the floating Survey chip is
+                      gone. FIRST item: [gold survey glyph] <template> v, a
+                      menu that switches template (ellipsis when long). LAST
+                      item, at the right end: "Done" (Leave Survey), with an
+                      Undo toast. The bar only shows in Survey, so the bar IS
+                      the "you are in Survey" signal. */}
                   <div className="survey-subrow__side survey-subrow__side--start">
-                    <AnnotationDropdown
-                      open={surveyModuleMenuOpen}
-                      onOpenChange={setSurveyModuleMenuOpen}
-                      label="Survey module"
-                      value={selectedModule?.id || ''}
-                      triggerContent={modules.length === 0 ? 'No modules' : undefined}
-                      options={modules.map((module) => ({
-                        value: module.id,
-                        label: module.name || 'Untitled module'
-                      }))}
-                      onSelect={(moduleId) => {
-                        setSelectedModuleId(moduleId || null);
-                        setSelectedCategoryId(null);
-                        setActiveTool('survey-marker');
-                      }}
-                      disabled={modules.length === 0}
-                      width="var(--chrome-field-w-module)"
-                      contentWidth="var(--chrome-field-w-module)"
-                      dataMarker="data-survey-module-menu"
-                    />
-                    <div className="chrome-divider" aria-hidden="true" />
+                    {look.template !== 'more' && templateMenu(false)}
+                    {look.module !== 'more' ? (
+                      <div className="survey-subrow__module">
+                        {moduleMenu(false)}
+                        <div className="chrome-divider" aria-hidden="true" />
+                      </div>
+                    ) : look.template !== 'more' && (
+                      <div className="chrome-divider" aria-hidden="true" />
+                    )}
                   </div>
 
                   <div className="survey-subrow__cats">
@@ -37708,17 +38640,25 @@ ${pageBlocks}
                   </div>
 
                   <div className="survey-subrow__side survey-subrow__side--end">
-                    <div className="chrome-divider" aria-hidden="true" />
+                    {look.reuse === 'bar' ? (
+                      <div className="survey-subrow__reuse">
+                        <div className="chrome-divider" aria-hidden="true" />
+                        {reuseSwitch(false)}
+                      </div>
+                    ) : (
+                      <div className="survey-subrow__more">
+                        {look.template !== 'more' && <div className="chrome-divider" aria-hidden="true" />}
+                        <ToolbarOverflowMenu items={moreItems} tooltip={chromeTip('More', 'below')} />
+                      </div>
+                    )}
                     <button
                       type="button"
-                      role="switch"
-                      aria-checked={surveyKeepCategoryActive}
-                      className="survey-subrow__keep tertiary"
-                      onClick={() => setSurveyKeepCategoryActive((on) => !on)}
-                      {...chromeTip('Keep the category armed after placing a Survey Marker', 'below')}
+                      className="survey-subrow__done"
+                      aria-label="Leave Survey"
+                      onClick={handleLeaveSurvey}
+                      {...chromeTip('Leave Survey', 'below')}
                     >
-                      <span className="survey-subrow__track" aria-hidden="true" />
-                      <span>Keep active</span>
+                      Done
                     </button>
                   </div>
                 </div>
@@ -37763,8 +38703,16 @@ ${pageBlocks}
           if (TOOL_BAR_GROUPS.includes(toolBarGroup) && subToolsHostEl) {
             rows.push(renderSubRow(toolBarGroup, subToolsHostEl, true));
           }
-          if (activeCategoryDropdown && !TOOL_BAR_GROUPS.includes(activeCategoryDropdown) && subRowHost) {
-            rows.push(renderSubRow(activeCategoryDropdown, subRowHost, false));
+          // Survey audit P1-1 (2026-10-01): the Survey row shows whenever survey
+          // mode is on with a template chosen. It used to follow
+          // activeCategoryDropdown === 'survey', which Select / Pan / "Jump to
+          // marker" cleared and nothing restored, so a rail category could arm
+          // placement with no bar on screen.
+          const subRowGroup = (showSurveyPanel && selectedTemplate)
+            ? 'survey'
+            : (activeCategoryDropdown && !TOOL_BAR_GROUPS.includes(activeCategoryDropdown) ? activeCategoryDropdown : null);
+          if (subRowGroup && subRowHost) {
+            rows.push(renderSubRow(subRowGroup, subRowHost, false));
           }
           return rows;
         })()}
@@ -37774,69 +38722,9 @@ ${pageBlocks}
             without surfacing actionable info. */}
 
         {/* Space Selection Modal */}
-        {showSpaceSelection && (
-          <>
-            <div
-              onClick={() => setShowSpaceSelection(false)}
-              style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                background: COLORS.modal.overlay,
-                backdropFilter: 'blur(8px)',
-                WebkitBackdropFilter: 'blur(8px)',
-                zIndex: 10000,
-                animation: 'fadeIn 0.2s ease-out',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              <div
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  background: COLORS.modal.surface,
-                  border: `1px solid ${COLORS.modal.border}`,
-                  borderRadius: '8px',
-                  padding: '24px',
-                  width: '500px',
-                  maxWidth: '90vw',
-                  maxHeight: '80vh',
-                  overflow: 'auto',
-                  boxShadow: SHADOWS.xl,
-                  animation: 'fadeIn 0.2s ease-out'
-                }}
-              >
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: '20px'
-                }}>
-                  <h2 style={{
-                    margin: 0,
-                    fontSize: '18px',
-                    fontWeight: '600',
-                    color: COLORS.modal.textPrimary,
-                    fontFamily: FONT_FAMILY
-                  }}>
-                    Select space
-                  </h2>
-                  <button
-                    onClick={() => setShowSpaceSelection(false)}
-                    className="btn btn-icon btn-icon-sm"
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--text-3)'
-                    }}
-                  >
-                    <Icon name="close" size={18} />
-                  </button>
-                </div>
-
+        {/* Portalled to document.body by SpaceSelectionDialog so it sits above
+            both rails and the toolbars instead of under them. */}
+        {showSpaceSelection && (<SpaceSelectionDialog open onClose={() => setShowSpaceSelection(false)}>
                 {appTemplates.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '40px', color: COLORS.modal.textMuted }}>
                     <p>No templates available. Please create a template first.</p>
@@ -37845,7 +38733,7 @@ ${pageBlocks}
                   // Aggregate all spaces from all templates
                   const allSpaces = [];
                   appTemplates.forEach(template => {
-                    (template.spaces || []).forEach(space => {
+                    (template.modules || template.spaces || []).forEach(space => {
                       allSpaces.push({ ...space, templateId: template.id, templateName: template.name });
                     });
                   });
@@ -38423,10 +39311,7 @@ ${pageBlocks}
                     </div>
                   );
                 })()}
-              </div>
-            </div>
-          </>
-        )}
+        </SpaceSelectionDialog>)}
 
         {/* Category Selection Modal (after highlighting) */}
         {
@@ -38434,36 +39319,17 @@ ${pageBlocks}
             <>
               <div
                 onClick={() => {
-                  // Remove the pending surveyMarker from the canvas
-                  const surveyMarkerToRemove = pendingSurveyMarker;
-                  setNewSurveyMarkersByPage(prev => {
-                    const updated = { ...prev };
-                    if (updated[surveyMarkerToRemove.pageNumber]) {
-                      updated[surveyMarkerToRemove.pageNumber] = updated[surveyMarkerToRemove.pageNumber].filter(
-                        h => h.annotationId !== surveyMarkerToRemove.id
-                      );
-                      // Clean up empty arrays
-                      if (updated[surveyMarkerToRemove.pageNumber].length === 0) {
-                        delete updated[surveyMarkerToRemove.pageNumber];
-                      }
-                    }
-                    return updated;
-                  });
-
-                  // Add to removal list to ensure canvas cleanup
-                  if (surveyMarkerToRemove.bounds) {
-                    setSurveyMarkersToRemoveByPage(prev => ({
-                      ...prev,
-                      [surveyMarkerToRemove.pageNumber]: [...(prev[surveyMarkerToRemove.pageNumber] || []), surveyMarkerToRemove.bounds]
-                    }));
-                  }
-
-                  setPendingSurveyMarker(null);
+                  // Survey audit P1-2: a click off the dialog takes the marker
+                  // back as one Undo step.
+                  cancelSurveyMarkerPlacement(pendingSurveyMarker.id);
                 }}
                 style={{
                   position: 'fixed',
                   top: 0,
-                  left: 0,
+                  // Survey audit P1-3: on the phone the tool rail lies over the
+                  // left edge of the page, so the dialog centres in the area
+                  // beside it instead of sliding under it.
+                  left: mobileMode ? 'var(--mobile-rail-w, 36px)' : 0,
                   right: 0,
                   bottom: 0,
                   background: COLORS.modal.overlay,
@@ -38477,6 +39343,9 @@ ${pageBlocks}
                 }}
               >
                 <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="survey-marker-categorize-dialog-title"
                   onClick={(e) => e.stopPropagation()}
                   style={{
                     background: COLORS.modal.surface,
@@ -38484,7 +39353,7 @@ ${pageBlocks}
                     borderRadius: '8px',
                     padding: '24px',
                     width: '500px',
-                    maxWidth: '90vw',
+                    maxWidth: mobileMode ? 'calc(100% - 24px)' : '90vw',
                     maxHeight: '80vh',
                     overflow: 'auto',
                     boxShadow: SHADOWS.xl,
@@ -38497,7 +39366,7 @@ ${pageBlocks}
                     justifyContent: 'space-between',
                     marginBottom: '20px'
                   }}>
-                    <h3 style={{
+                    <h3 id="survey-marker-categorize-dialog-title" style={{
                       margin: 0,
                       fontSize: '18px',
                       fontWeight: '600',
@@ -38509,32 +39378,12 @@ ${pageBlocks}
                       Categorize Survey Marker
                     </h3>
                     <button
+                      type="button"
+                      aria-label="Cancel Survey Marker"
                       onClick={() => {
-                        // Remove the pending surveyMarker from the canvas
-                        const surveyMarkerToRemove = pendingSurveyMarker;
-                        setNewSurveyMarkersByPage(prev => {
-                          const updated = { ...prev };
-                          if (updated[surveyMarkerToRemove.pageNumber]) {
-                            updated[surveyMarkerToRemove.pageNumber] = updated[surveyMarkerToRemove.pageNumber].filter(
-                              h => h.annotationId !== surveyMarkerToRemove.id
-                            );
-                            // Clean up empty arrays
-                            if (updated[surveyMarkerToRemove.pageNumber].length === 0) {
-                              delete updated[surveyMarkerToRemove.pageNumber];
-                            }
-                          }
-                          return updated;
-                        });
-
-                        // Add to removal list to ensure canvas cleanup
-                        if (surveyMarkerToRemove.bounds) {
-                          setSurveyMarkersToRemoveByPage(prev => ({
-                            ...prev,
-                            [surveyMarkerToRemove.pageNumber]: [...(prev[surveyMarkerToRemove.pageNumber] || []), surveyMarkerToRemove.bounds]
-                          }));
-                        }
-
-                        setPendingSurveyMarker(null);
+                        // Survey audit P1-2: X takes the marker back as one
+                        // Undo step.
+                        cancelSurveyMarkerPlacement(pendingSurveyMarker.id);
                       }}
                       className="btn btn-icon btn-icon-sm"
                       style={{
@@ -38567,38 +39416,23 @@ ${pageBlocks}
                           <button
                             key={category.id}
                             onClick={() => {
-                              if (mobileMode) {
-                                // UX (mobile demo parity): once categorized on mobile,
-                                // commit with the default name and open the marker
-                                // detail sheet instead of chaining the desktop
-                                // Entity/Name modals (demo App.tsx:1155).
-                                commitMobileSurveyMarker(pendingSurveyMarker, category.id);
-                                setPendingSurveyMarker(null);
-                                return;
+                              // UX (mobile demo parity): once categorized, commit
+                              // with the default name and open the marker in the
+                              // panel (demo App.tsx:1155). Owner 2026-10-01
+                              // ("Yes, inline like phone"): desktop too - no
+                              // Entity / Name pop-ups; desktop focuses the name.
+                              const placementEntity = (pendingSurveyMarker.entityId || mobileMode)
+                                ? null
+                                : (selectedTemplate?.entities || []).find((entity) => entity.id === lastSurveyEntityIdRef.current) || null;
+                              commitMobileSurveyMarker(placementEntity ? {
+                                ...pendingSurveyMarker,
+                                entityId: placementEntity.id,
+                                entityName: placementEntity.name,
+                                entityColor: normalizeSurveyMarkerColor(placementEntity.color) || placementEntity.color,
+                              } : pendingSurveyMarker, category.id);
+                              if (!mobileMode) {
+                                setSurveyMarkerNameFocusRequest({ id: pendingSurveyMarker.id, tick: Date.now() });
                               }
-                              // Check if template has Entities
-                              const entities = selectedTemplate?.entities || [];
-                              if (pendingSurveyMarker.entityId || pendingSurveyMarker.entityColor) {
-                                setPendingSurveyMarkerName({
-                                  surveyMarker: pendingSurveyMarker,
-                                  categoryId: category.id
-                                });
-                                setSurveyMarkerNameInput(null);
-                              } else if (entities.length > 0) {
-                                // Show Entity selection dialog first
-                                setPendingEntitySelection({
-                                  surveyMarker: pendingSurveyMarker,
-                                  categoryId: category.id
-                                });
-                              } else {
-                                // No Entities, go directly to name prompt
-                                setPendingSurveyMarkerName({
-                                  surveyMarker: pendingSurveyMarker,
-                                  categoryId: category.id
-                                });
-                                setSurveyMarkerNameInput(null); // Reset input
-                              }
-                              // Clear pending surveyMarker modal
                               setPendingSurveyMarker(null);
                             }}
                             className="btn btn-default btn-md"
@@ -38639,1146 +39473,10 @@ ${pageBlocks}
           )
         }
 
-        {/* Entity Selection Dialog */}
-        {
-          pendingEntitySelection && selectedTemplate && selectedModuleId && (() => {
-            const entities = selectedTemplate.entities || [];
-
-            return (
-              <>
-                <div
-                  onClick={() => {
-                    // Cancel - proceed without entity selection
-                    setPendingSurveyMarkerName({
-                      surveyMarker: pendingEntitySelection.surveyMarker,
-                      categoryId: pendingEntitySelection.categoryId
-                    });
-                    setPendingEntitySelection(null);
-                    setSurveyMarkerNameInput(null);
-                  }}
-                  style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    background: COLORS.modal.overlay,
-                    backdropFilter: 'blur(8px)',
-                    WebkitBackdropFilter: 'blur(8px)',
-                    zIndex: 10003,
-                    animation: 'fadeIn 0.2s ease-out',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                >
-                  <div
-                    onClick={(e) => e.stopPropagation()}
-                    style={{
-                      background: COLORS.modal.surface,
-                      border: `1px solid ${COLORS.modal.border}`,
-                      borderRadius: '8px',
-                      padding: '24px',
-                      width: '500px',
-                      maxWidth: '90vw',
-                      boxShadow: SHADOWS.xl,
-                      animation: 'fadeIn 0.2s ease-out'
-                    }}
-                  >
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      marginBottom: '20px'
-                    }}>
-                      <h3 style={{
-                        margin: 0,
-                        fontSize: '18px',
-                        fontWeight: '600',
-                        color: COLORS.modal.textPrimary,
-                        fontFamily: FONT_FAMILY
-                      }}>
-                        Entity
-                      </h3>
-                      <button
-                        onClick={() => {
-                          // Cancel - proceed without entity selection
-                          setPendingSurveyMarkerName({
-                            surveyMarker: pendingEntitySelection.surveyMarker,
-                            categoryId: pendingEntitySelection.categoryId
-                          });
-                          setPendingEntitySelection(null);
-                          setSurveyMarkerNameInput(null);
-                        }}
-                        className="btn btn-icon btn-icon-sm"
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: 'var(--text-3)'
-                        }}
-                      >
-                        <Icon name="close" size={18} />
-                      </button>
-                    </div>
-
-                    <div style={{
-                      fontSize: '14px',
-                      color: COLORS.modal.textMuted,
-                      marginBottom: '16px'
-                    }}>
-                      Select the entity responsible for this highlight:
-                    </div>
-
-                    <div style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '8px',
-                      maxHeight: '400px',
-                      overflowY: 'auto'
-                    }}>
-                      {entities.map(entity => (
-                        <button
-                          key={entity.id}
-                          onClick={() => {
-                            // Apply entity color and proceed to name prompt
-                            // Use the entity's saved opacity for surveyMarkers
-                            const entityColor = normalizeSurveyMarkerColor(entity.color) || entity.color || hexToRgba('#E3D1FB', DEFAULT_SURVEY_MARKER_OPACITY);
-
-                            // Store surveyMarker with entity info
-                            setSurveyMarkers(prev => ({
-                              ...prev,
-                              [pendingEntitySelection.surveyMarker.id]: {
-                                ...pendingEntitySelection.surveyMarker,
-                                categoryId: pendingEntitySelection.categoryId,
-                                entityId: entity.id,
-                                entityName: entity.name,
-                                entityColor: entityColor,
-                                checklistResponses: {}
-                              }
-                            }));
-
-                            // Update existing surveyMarker on page with entity color (rgba with 100% opacity)
-                            // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
-                            setNewSurveyMarkersByPage(prev => {
-                              const pageSurveyMarkers = prev[pendingEntitySelection.surveyMarker.pageNumber] || [];
-                              // Remove existing surveyMarker with this annotationId (if it exists)
-                              const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingEntitySelection.surveyMarker.id);
-                              // Add the new surveyMarker with color
-                              return {
-                                ...prev,
-                                [pendingEntitySelection.surveyMarker.pageNumber]: [
-                                  ...filtered,
-                                  buildSurveyMarkerPreview(
-                                    pendingEntitySelection.surveyMarker,
-                                    { color: entityColor }
-                                  )
-                                ]
-                              };
-                            });
-
-                            // Proceed to name prompt
-                            setPendingSurveyMarkerName({
-                              surveyMarker: {
-                                ...pendingEntitySelection.surveyMarker,
-                                entityId: entity.id,
-                                entityName: entity.name,
-                                entityColor: entityColor
-                              },
-                              categoryId: pendingEntitySelection.categoryId
-                            });
-                            setPendingEntitySelection(null);
-                            setSurveyMarkerNameInput(null);
-                          }}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '12px',
-                            padding: '12px 16px',
-                            background: COLORS.modal.panel,
-                            border: `1px solid ${COLORS.modal.borderStrong}`,
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                            transition: 'background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease',
-                            textAlign: 'left'
-                          }}
-                          onMouseEnter={handleModalOptionMouseEnter}
-                          onMouseLeave={handleModalOptionMouseLeave}
-                        >
-                          <div
-                            style={{
-                              width: '24px',
-                              height: '24px',
-                              borderRadius: '4px',
-                              background: entity.color,
-                              // UX: an entity swatch filled with the USER's
-                              // chosen colour — the shared ink ring, same as
-                              // every other colour swatch in the app.
-                              border: '1px solid var(--ink-ring)',
-                              flexShrink: 0
-                            }}
-                          />
-                          <span style={{
-                            color: COLORS.modal.textPrimary,
-                            fontSize: '14px',
-                            fontWeight: '500',
-                            fontFamily: FONT_FAMILY
-                          }}>
-                            {entity.name}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </>
-            );
-          })()
-        }
-
-        {/* Name Prompt Modal (after categorizing surveyMarker) */}
-        {
-          pendingSurveyMarkerName && selectedTemplate && selectedModuleId && (() => {
-            const module = ((selectedTemplate.modules || selectedTemplate.spaces) || [])?.find(m => m.id === selectedModuleId);
-            const category = module?.categories?.find(c => c.id === pendingSurveyMarkerName.categoryId);
-            const categoryName = category?.name?.trim() || 'Untitled Category';
-            const existingSurveyMarkers = Object.values(surveyMarkers).filter(h => h.categoryId === pendingSurveyMarkerName.categoryId);
-            const defaultName = generateDefaultSurveyMarkerName(categoryName, existingSurveyMarkers);
-
-            return (
-              <>
-                <div
-                  onClick={() => {
-                    // Cancel - save with default name
-                    // Compute color first so it can be saved with surveyMarkerData
-                    const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
-                      ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
-                      : null; // No Entity yet — render as needs-Entity (blue dashed)
-                    const surveyMarkerData = {
-                      ...pendingSurveyMarkerName.surveyMarker,
-                      categoryId: pendingSurveyMarkerName.categoryId,
-                      name: defaultName,
-                      checklistResponses: {},
-                      color: highlightColor
-                    };
-                    setSurveyMarkers(prev => ({
-                      ...prev,
-                      [pendingSurveyMarkerName.surveyMarker.id]: surveyMarkerData
-                    }));
-
-                    // Update existing surveyMarker with color if Entity was selected (ensure 100% opacity)
-                    // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
-                    setNewSurveyMarkersByPage(prev => {
-                      const pageSurveyMarkers = prev[pendingSurveyMarkerName.surveyMarker.pageNumber] || [];
-                      // Remove existing surveyMarker with this annotationId (if it exists)
-                      const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingSurveyMarkerName.surveyMarker.id);
-                      // Add the new surveyMarker with color
-                      return {
-                        ...prev,
-                        [pendingSurveyMarkerName.surveyMarker.pageNumber]: [
-                          ...filtered,
-                          buildSurveyMarkerPreview(
-                            pendingSurveyMarkerName.surveyMarker,
-                            (highlightColor ? { color: highlightColor } : { needsEntity: true })
-                          )
-                        ]
-                      };
-                    });
-
-                    setPendingSurveyMarkerName(null);
-                    setSurveyMarkerNameInput(null);
-                    setShowSurveyPanel(true);
-                  }}
-                  style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    background: COLORS.modal.overlay,
-                    backdropFilter: 'blur(8px)',
-                    WebkitBackdropFilter: 'blur(8px)',
-                    zIndex: 10002,
-                    animation: 'fadeIn 0.2s ease-out',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                >
-                  <div
-                    onClick={(e) => e.stopPropagation()}
-                    style={{
-                      background: COLORS.modal.surface,
-                      border: `1px solid ${COLORS.modal.border}`,
-                      borderRadius: '8px',
-                      padding: '24px',
-                      width: '500px',
-                      maxWidth: '90vw',
-                      boxShadow: SHADOWS.xl,
-                      animation: 'fadeIn 0.2s ease-out'
-                    }}
-                  >
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      marginBottom: '20px'
-                    }}>
-                      <h3 style={{
-                        margin: 0,
-                        fontSize: '18px',
-                        fontWeight: '600',
-                        color: COLORS.modal.textPrimary,
-                        fontFamily: FONT_FAMILY
-                      }}>
-                        Name highlight
-                      </h3>
-                      <button
-                        onClick={() => {
-                          // Cancel - save with default name
-                          // Compute color first so it can be saved with surveyMarkerData
-                          const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
-                            ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
-                            : null; // No Entity yet — render as needs-Entity (blue dashed)
-                          const surveyMarkerData = {
-                            ...pendingSurveyMarkerName.surveyMarker,
-                            categoryId: pendingSurveyMarkerName.categoryId,
-                            name: defaultName,
-                            checklistResponses: {},
-                            color: highlightColor
-                          };
-                          setSurveyMarkers(prev => ({
-                            ...prev,
-                            [pendingSurveyMarkerName.surveyMarker.id]: surveyMarkerData
-                          }));
-
-                          // If entity was selected, also store it in the item's module-specific data
-                          if (surveyMarkerData.entityId && selectedTemplate && selectedModuleId) {
-                            // Find or create item for this surveyMarker
-                            const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingSurveyMarkerName.categoryId);
-                            const moduleName = getModuleName(selectedTemplate, selectedModuleId);
-                            const dataKey = getModuleDataKey(moduleName);
-
-                            // Find existing item by name and category
-                            const existingItem = Object.values(items).find(item =>
-                              item.name === defaultName &&
-                              item.itemType === categoryName
-                            );
-
-                            if (existingItem) {
-                              // Update existing item's module-specific data with entity
-                              const moduleData = existingItem[dataKey] || {};
-                              const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
-
-                              if (entity) {
-                                setItems(prev => ({
-                                  ...prev,
-                                  [existingItem.itemId]: {
-                                    ...existingItem,
-                                    [dataKey]: {
-                                      ...moduleData,
-                                      entityId: entity.id,
-                                      entityName: entity.name,
-                                      entityColor: entity.color
-                                    }
-                                  }
-                                }));
-                              }
-                            } else {
-                              // Create new item with entity in module-specific data
-                              const newItem = createItem(
-                                selectedTemplate,
-                                selectedModuleId,
-                                pendingSurveyMarkerName.categoryId,
-                                defaultName,
-                                1
-                              );
-
-                              const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
-                              if (entity) {
-                                newItem[dataKey] = {
-                                  entityId: entity.id,
-                                  entityName: entity.name,
-                                  entityColor: entity.color
-                                };
-                              }
-
-                              setItems(prev => ({
-                                ...prev,
-                                [newItem.itemId]: newItem
-                              }));
-
-                              // Also create annotation for this item
-                              const annotation = createAnnotation(
-                                pendingSurveyMarkerName.surveyMarker.bounds,
-                                'highlight',
-                                selectedTemplate,
-                                selectedSpaceId,
-                                newItem.itemId,
-                                categoryName
-                              );
-
-                              // Set entity on annotation
-                              if (entity) {
-                                annotation.entityId = entity.id;
-                                annotation.entityName = entity.name;
-                                annotation.entityColor = entity.color;
-                              }
-
-                              setAnnotations(prev => ({
-                                ...prev,
-                                [annotation.annotationId]: annotation
-                              }));
-                            }
-                          }
-
-                          // Update existing surveyMarker with color if Entity was selected (ensure 100% opacity)
-                          // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
-                          setNewSurveyMarkersByPage(prev => {
-                            const pageSurveyMarkers = prev[pendingSurveyMarkerName.surveyMarker.pageNumber] || [];
-                            // Remove existing surveyMarker with this annotationId (if it exists)
-                            const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingSurveyMarkerName.surveyMarker.id);
-                            // Add the new surveyMarker with color
-                            return {
-                              ...prev,
-                              [pendingSurveyMarkerName.surveyMarker.pageNumber]: [
-                                ...filtered,
-                                buildSurveyMarkerPreview(
-                                  pendingSurveyMarkerName.surveyMarker,
-                                  (highlightColor ? { color: highlightColor } : { needsEntity: true })
-                                )
-                              ]
-                            };
-                          });
-
-                          setPendingSurveyMarkerName(null);
-                          setSurveyMarkerNameInput(null);
-                          setShowSurveyPanel(true);
-                        }}
-                        className="btn btn-icon btn-icon-sm"
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: 'var(--text-3)'
-                        }}
-                      >
-                        <Icon name="close" size={18} />
-                      </button>
-                    </div>
-
-                    <p style={{ color: COLORS.modal.textMuted, fontSize: '14px', marginBottom: '16px' }}>
-                      Category: <strong style={{ color: COLORS.modal.textPrimary }}>{category?.name || 'Untitled category'}</strong>
-                    </p>
-
-                    <input
-                      type="text"
-                      autoFocus
-                      value={surveyMarkerNameInput ?? defaultName}
-                      onChange={(e) => setSurveyMarkerNameInput(e.target.value)}
-                      onFocus={(e) => { if (surveyMarkerNameInput === null) e.target.select(); }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          const name = resolveSurveyMarkerPromptName(surveyMarkerNameInput, defaultName);
-                          // Compute color first so it can be saved with surveyMarkerData
-                          const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
-                            ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
-                            : null; // No Entity yet — render as needs-Entity (blue dashed)
-                          const surveyMarkerData = {
-                            ...pendingSurveyMarkerName.surveyMarker,
-                            categoryId: pendingSurveyMarkerName.categoryId,
-                            name: name,
-                            checklistResponses: {},
-                            color: highlightColor
-                          };
-                          setSurveyMarkers(prev => ({
-                            ...prev,
-                            [pendingSurveyMarkerName.surveyMarker.id]: surveyMarkerData
-                          }));
-
-                          // Update existing surveyMarker with color if Entity was selected (ensure 100% opacity)
-                          // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
-                          setNewSurveyMarkersByPage(prev => {
-                            const pageSurveyMarkers = prev[pendingSurveyMarkerName.surveyMarker.pageNumber] || [];
-                            // Remove existing surveyMarker with this annotationId (if it exists)
-                            const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingSurveyMarkerName.surveyMarker.id);
-                            // Add the new surveyMarker with color
-                            return {
-                              ...prev,
-                              [pendingSurveyMarkerName.surveyMarker.pageNumber]: [
-                                ...filtered,
-                                buildSurveyMarkerPreview(
-                                  pendingSurveyMarkerName.surveyMarker,
-                                  (highlightColor ? { color: highlightColor } : { needsEntity: true })
-                                )
-                              ]
-                            };
-                          });
-
-                          setPendingSurveyMarkerName(null);
-                          setSurveyMarkerNameInput(null);
-                          setShowSurveyPanel(true);
-                        } else if (e.key === 'Escape') {
-                          // Cancel - save with default name
-                          // Compute color first so it can be saved with surveyMarkerData
-                          const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
-                            ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
-                            : null; // No Entity yet — render as needs-Entity (blue dashed)
-                          const surveyMarkerData = {
-                            ...pendingSurveyMarkerName.surveyMarker,
-                            categoryId: pendingSurveyMarkerName.categoryId,
-                            name: defaultName,
-                            checklistResponses: {},
-                            color: highlightColor
-                          };
-                          setSurveyMarkers(prev => ({
-                            ...prev,
-                            [pendingSurveyMarkerName.surveyMarker.id]: surveyMarkerData
-                          }));
-
-                          // Update existing surveyMarker with color if Entity was selected (ensure 100% opacity)
-                          // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
-                          setNewSurveyMarkersByPage(prev => {
-                            const pageSurveyMarkers = prev[pendingSurveyMarkerName.surveyMarker.pageNumber] || [];
-                            // Remove existing surveyMarker with this annotationId (if it exists)
-                            const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingSurveyMarkerName.surveyMarker.id);
-                            // Add the new surveyMarker with color
-                            return {
-                              ...prev,
-                              [pendingSurveyMarkerName.surveyMarker.pageNumber]: [
-                                ...filtered,
-                                buildSurveyMarkerPreview(
-                                  pendingSurveyMarkerName.surveyMarker,
-                                  (highlightColor ? { color: highlightColor } : { needsEntity: true })
-                                )
-                              ]
-                            };
-                          });
-
-                          setPendingSurveyMarkerName(null);
-                          setSurveyMarkerNameInput(null);
-                          setShowSurveyPanel(true);
-                        }
-                      }}
-                      style={{
-                        width: '100%',
-                        padding: '12px 16px',
-                        background: 'var(--surface-0)',
-                        border: `1px solid ${COLORS.modal.borderStrong}`,
-                        borderRadius: '6px',
-                        color: COLORS.modal.textPrimary,
-                        fontSize: '14px',
-                        fontFamily: FONT_FAMILY,
-                        outline: 'none',
-                        marginBottom: '16px'
-                      }}
-                      placeholder="Enter name"
-                    />
-
-                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                      <button
-                        onClick={() => {
-                          // Cancel - save with default name
-                          // Compute color first so it can be saved with surveyMarkerData
-                          const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
-                            ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
-                            : null; // No Entity yet — render as needs-Entity (blue dashed)
-                          const surveyMarkerData = {
-                            ...pendingSurveyMarkerName.surveyMarker,
-                            categoryId: pendingSurveyMarkerName.categoryId,
-                            name: defaultName,
-                            checklistResponses: {},
-                            color: highlightColor
-                          };
-                          setSurveyMarkers(prev => ({
-                            ...prev,
-                            [pendingSurveyMarkerName.surveyMarker.id]: surveyMarkerData
-                          }));
-
-                          // If entity was selected, also store it in the item's module-specific data
-                          if (surveyMarkerData.entityId && selectedTemplate && selectedModuleId) {
-                            // Find or create item for this surveyMarker
-                            const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingSurveyMarkerName.categoryId);
-                            const moduleName = getModuleName(selectedTemplate, selectedModuleId);
-                            const dataKey = getModuleDataKey(moduleName);
-
-                            // Find existing item by name and category
-                            const existingItem = Object.values(items).find(item =>
-                              item.name === defaultName &&
-                              item.itemType === categoryName
-                            );
-
-                            if (existingItem) {
-                              // Update existing item's module-specific data with entity
-                              const moduleData = existingItem[dataKey] || {};
-                              const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
-
-                              if (entity) {
-                                setItems(prev => ({
-                                  ...prev,
-                                  [existingItem.itemId]: {
-                                    ...existingItem,
-                                    [dataKey]: {
-                                      ...moduleData,
-                                      entityId: entity.id,
-                                      entityName: entity.name,
-                                      entityColor: entity.color
-                                    }
-                                  }
-                                }));
-                              }
-                            } else {
-                              // Create new item with entity in module-specific data
-                              const newItem = createItem(
-                                selectedTemplate,
-                                selectedModuleId,
-                                pendingSurveyMarkerName.categoryId,
-                                defaultName,
-                                1
-                              );
-
-                              const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
-                              if (entity) {
-                                newItem[dataKey] = {
-                                  entityId: entity.id,
-                                  entityName: entity.name,
-                                  entityColor: entity.color
-                                };
-                              }
-
-                              setItems(prev => ({
-                                ...prev,
-                                [newItem.itemId]: newItem
-                              }));
-
-                              // Also create annotation for this item
-                              const annotation = createAnnotation(
-                                pendingSurveyMarkerName.surveyMarker.bounds,
-                                'highlight',
-                                selectedTemplate,
-                                selectedSpaceId,
-                                newItem.itemId,
-                                categoryName
-                              );
-
-                              // Set entity on annotation
-                              if (entity) {
-                                annotation.entityId = entity.id;
-                                annotation.entityName = entity.name;
-                                annotation.entityColor = entity.color;
-                              }
-
-                              setAnnotations(prev => ({
-                                ...prev,
-                                [annotation.annotationId]: annotation
-                              }));
-                            }
-                          }
-
-                          // Update existing surveyMarker with color if Entity was selected (ensure 100% opacity)
-                          // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
-                          setNewSurveyMarkersByPage(prev => {
-                            const pageSurveyMarkers = prev[pendingSurveyMarkerName.surveyMarker.pageNumber] || [];
-                            // Remove existing surveyMarker with this annotationId (if it exists)
-                            const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingSurveyMarkerName.surveyMarker.id);
-                            // Add the new surveyMarker with color
-                            return {
-                              ...prev,
-                              [pendingSurveyMarkerName.surveyMarker.pageNumber]: [
-                                ...filtered,
-                                buildSurveyMarkerPreview(
-                                  pendingSurveyMarkerName.surveyMarker,
-                                  (highlightColor ? { color: highlightColor } : { needsEntity: true })
-                                )
-                              ]
-                            };
-                          });
-
-                          setPendingSurveyMarkerName(null);
-                          setSurveyMarkerNameInput(null);
-                          setShowSurveyPanel(true);
-                        }}
-                        className="btn btn-default btn-md"
-                        style={{
-                          padding: '10px 20px',
-                          background: COLORS.modal.secondaryButton,
-                          border: `1px solid ${COLORS.modal.borderStrong}`,
-                          color: COLORS.modal.textPrimary
-                        }}
-                        onMouseEnter={handleModalSecondaryButtonMouseEnter}
-                        onMouseLeave={handleModalSecondaryButtonMouseLeave}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={() => {
-                          const name = resolveSurveyMarkerPromptName(surveyMarkerNameInput, defaultName);
-                          // Compute color first so it can be saved with surveyMarkerData
-                          const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
-                            ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
-                            : null; // No Entity yet — render as needs-Entity (blue dashed)
-                          const surveyMarkerData = {
-                            ...pendingSurveyMarkerName.surveyMarker,
-                            categoryId: pendingSurveyMarkerName.categoryId,
-                            name: name,
-                            checklistResponses: {},
-                            color: highlightColor
-                          };
-                          setSurveyMarkers(prev => ({
-                            ...prev,
-                            [pendingSurveyMarkerName.surveyMarker.id]: surveyMarkerData
-                          }));
-
-                          // If entity was selected, also store it in the item's module-specific data
-                          if (surveyMarkerData.entityId && selectedTemplate && selectedModuleId) {
-                            // Find or create item for this surveyMarker
-                            const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingSurveyMarkerName.categoryId);
-                            const moduleName = getModuleName(selectedTemplate, selectedModuleId);
-                            const dataKey = getModuleDataKey(moduleName);
-
-                            // Find existing item by name and category
-                            const existingItem = Object.values(items).find(item =>
-                              item.name === name &&
-                              item.itemType === categoryName
-                            );
-
-                            if (existingItem) {
-                              // Update existing item's module-specific data with entity
-                              const moduleData = existingItem[dataKey] || {};
-                              const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
-
-                              if (entity) {
-                                setItems(prev => ({
-                                  ...prev,
-                                  [existingItem.itemId]: {
-                                    ...existingItem,
-                                    [dataKey]: {
-                                      ...moduleData,
-                                      entityId: entity.id,
-                                      entityName: entity.name,
-                                      entityColor: entity.color
-                                    }
-                                  }
-                                }));
-                              }
-                            } else {
-                              // Create new item with entity in space-specific data
-                              const newItem = createItem(
-                                selectedTemplate,
-                                selectedSpaceId,
-                                pendingSurveyMarkerName.categoryId,
-                                name,
-                                1
-                              );
-
-                              const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
-                              if (entity) {
-                                newItem[dataKey] = {
-                                  entityId: entity.id,
-                                  entityName: entity.name,
-                                  entityColor: entity.color
-                                };
-                              }
-
-                              setItems(prev => ({
-                                ...prev,
-                                [newItem.itemId]: newItem
-                              }));
-
-                              // Also create annotation for this item
-                              const annotation = createAnnotation(
-                                pendingSurveyMarkerName.surveyMarker.bounds,
-                                'highlight',
-                                selectedTemplate,
-                                selectedSpaceId,
-                                newItem.itemId,
-                                categoryName
-                              );
-
-                              // Set entity on annotation
-                              if (entity) {
-                                annotation.entityId = entity.id;
-                                annotation.entityName = entity.name;
-                                annotation.entityColor = entity.color;
-                              }
-
-                              setAnnotations(prev => ({
-                                ...prev,
-                                [annotation.annotationId]: annotation
-                              }));
-                            }
-                          }
-
-                          // Update existing surveyMarker with color if Entity was selected (ensure 100% opacity)
-                          // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
-                          setNewSurveyMarkersByPage(prev => {
-                            const pageSurveyMarkers = prev[pendingSurveyMarkerName.surveyMarker.pageNumber] || [];
-                            // Remove existing surveyMarker with this annotationId (if it exists)
-                            const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingSurveyMarkerName.surveyMarker.id);
-                            // Add the new surveyMarker with color
-                            return {
-                              ...prev,
-                              [pendingSurveyMarkerName.surveyMarker.pageNumber]: [
-                                ...filtered,
-                                buildSurveyMarkerPreview(
-                                  pendingSurveyMarkerName.surveyMarker,
-                                  (highlightColor ? { color: highlightColor } : { needsEntity: true })
-                                )
-                              ]
-                            };
-                          });
-
-                          setPendingSurveyMarkerName(null);
-                          setSurveyMarkerNameInput(null);
-                          setShowSurveyPanel(true);
-                        }}
-                        className="btn btn-primary btn-md"
-                        style={{
-                          padding: '10px 20px',
-                          background: COLORS.modal.primaryButton,
-                          border: `1px solid ${COLORS.modal.borderStrong}`,
-                          color: COLORS.modal.textPrimary
-                        }}
-                        onMouseEnter={handleModalPrimaryButtonMouseEnter}
-                        onMouseLeave={handleModalPrimaryButtonMouseLeave}
-                      >
-                        Save
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </>
-            );
-          })()
-        }
-
-        {/* Note Dialog */}
-        {
-          noteDialogOpen && (
-            <>
-              <div
-                onClick={() => setNoteDialogOpen(null)}
-                style={{
-                  position: 'fixed',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  background: COLORS.modal.overlay,
-                  backdropFilter: 'blur(8px)',
-                  WebkitBackdropFilter: 'blur(8px)',
-                  zIndex: 10001,
-                  animation: 'fadeIn 0.2s ease-out',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    background: COLORS.modal.surface,
-                    border: `1px solid ${COLORS.modal.border}`,
-                    borderRadius: '8px',
-                    padding: '24px',
-                    width: '600px',
-                    maxWidth: '90vw',
-                    maxHeight: '80vh',
-                    overflow: 'auto',
-                    boxShadow: SHADOWS.xl,
-                    animation: 'fadeIn 0.2s ease-out'
-                  }}
-                >
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    marginBottom: '20px'
-                  }}>
-                    <h3 style={{
-                      margin: 0,
-                      fontSize: '18px',
-                      fontWeight: '600',
-                      color: COLORS.modal.textPrimary,
-                      fontFamily: FONT_FAMILY
-                    }}>
-                      Note
-                    </h3>
-                    <button
-                      onClick={() => setNoteDialogOpen(null)}
-                      className="btn btn-icon btn-icon-sm"
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--text-3)'
-                      }}
-                    >
-                      <Icon name="close" size={18} />
-                    </button>
-                  </div>
-
-                  <div style={{ marginBottom: '16px' }}>
-                    <label style={{
-                      display: 'block',
-                      marginBottom: '8px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      color: COLORS.modal.textPrimary
-                    }}>
-                      Notes
-                    </label>
-                    <textarea
-                      value={noteDialogContent.text}
-                      onChange={(e) => setNoteDialogContent(prev => ({ ...prev, text: e.target.value }))}
-                      rows={6}
-                      style={{
-                        width: '100%',
-                        padding: '10px',
-                        background: COLORS.modal.panel,
-                        color: COLORS.modal.textPrimary,
-                        border: `1px solid ${COLORS.modal.borderStrong}`,
-                        borderRadius: '5px',
-                        fontSize: '14px',
-                        fontFamily: FONT_FAMILY,
-                        resize: 'vertical'
-                      }}
-                      placeholder="Enter your notes..."
-                    />
-                  </div>
-
-                  <div style={{ marginBottom: '16px' }}>
-                    <label style={{
-                      display: 'block',
-                      marginBottom: '8px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      color: COLORS.modal.textPrimary
-                    }}>
-                      Photos
-                    </label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={(e) => {
-                        const files = Array.from(e.target.files || []);
-                        const photoPromises = files.map(file => {
-                          return new Promise((resolve) => {
-                            const reader = new FileReader();
-                            reader.onload = (event) => {
-                              resolve({ name: file.name, dataUrl: event.target.result });
-                            };
-                            reader.readAsDataURL(file);
-                          });
-                        });
-                        Promise.all(photoPromises).then(photos => {
-                          setNoteDialogContent(prev => ({
-                            ...prev,
-                            photos: [...prev.photos, ...photos]
-                          }));
-                        });
-                      }}
-                      style={{ display: 'none' }}
-                      id={`photo-upload-${noteDialogOpen}`}
-                    />
-                    <label
-                      htmlFor={`photo-upload-${noteDialogOpen}`}
-                      className="btn btn-secondary btn-md"
-                      style={{ cursor: 'pointer', display: 'inline-block' }}
-                    >
-                      Upload photos
-                    </label>
-                    {noteDialogContent.photos.length > 0 && (
-                      <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {noteDialogContent.photos.map((photo, idx) => (
-                          <div key={idx} style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            padding: '8px',
-                            background: COLORS.modal.panel,
-                            borderRadius: '4px'
-                          }}>
-                            <img src={photo.dataUrl} alt={photo.name} style={{
-                              width: '60px',
-                              height: '60px',
-                              objectFit: 'cover',
-                              borderRadius: '4px'
-                            }} />
-                            <span style={{ flex: 1, color: COLORS.modal.textPrimary, fontSize: '13px' }}>{photo.name}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setNoteDialogContent(prev => ({
-                                  ...prev,
-                                  photos: prev.photos.filter((_, i) => i !== idx)
-                                }));
-                              }}
-                              className="btn btn-icon btn-icon-sm"
-                              style={{ background: COLORS.modal.secondaryButton, border: `1px solid ${COLORS.modal.borderStrong}` }}
-                              onMouseEnter={handleModalSecondaryButtonMouseEnter}
-                              onMouseLeave={handleModalSecondaryButtonMouseLeave}
-                            >
-                              <Icon name="close" size={14} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div style={{ marginBottom: '20px' }}>
-                    <label style={{
-                      display: 'block',
-                      marginBottom: '8px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      color: COLORS.modal.textPrimary
-                    }}>
-                      Videos
-                    </label>
-                    <input
-                      type="file"
-                      accept="video/*"
-                      multiple
-                      onChange={(e) => {
-                        const files = Array.from(e.target.files || []);
-                        const videoPromises = files.map(file => {
-                          return new Promise((resolve) => {
-                            const reader = new FileReader();
-                            reader.onload = (event) => {
-                              resolve({ name: file.name, dataUrl: event.target.result });
-                            };
-                            reader.readAsDataURL(file);
-                          });
-                        });
-                        Promise.all(videoPromises).then(videos => {
-                          setNoteDialogContent(prev => ({
-                            ...prev,
-                            videos: [...prev.videos, ...videos]
-                          }));
-                        });
-                      }}
-                      style={{ display: 'none' }}
-                      id={`video-upload-${noteDialogOpen}`}
-                    />
-                    <label
-                      htmlFor={`video-upload-${noteDialogOpen}`}
-                      className="btn btn-secondary btn-md"
-                      style={{ cursor: 'pointer', display: 'inline-block' }}
-                    >
-                      Upload videos
-                    </label>
-                    {noteDialogContent.videos.length > 0 && (
-                      <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {noteDialogContent.videos.map((video, idx) => (
-                          <div key={idx} style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            padding: '8px',
-                            background: COLORS.modal.panel,
-                            borderRadius: '4px'
-                          }}>
-                            <video src={video.dataUrl} style={{
-                              width: '60px',
-                              height: '60px',
-                              objectFit: 'cover',
-                              borderRadius: '4px'
-                            }} />
-                            <span style={{ flex: 1, color: COLORS.modal.textPrimary, fontSize: '13px' }}>{video.name}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setNoteDialogContent(prev => ({
-                                  ...prev,
-                                  videos: prev.videos.filter((_, i) => i !== idx)
-                                }));
-                              }}
-                              className="btn btn-icon btn-icon-sm"
-                              style={{ background: COLORS.modal.secondaryButton, border: `1px solid ${COLORS.modal.borderStrong}` }}
-                              onMouseEnter={handleModalSecondaryButtonMouseEnter}
-                              onMouseLeave={handleModalSecondaryButtonMouseLeave}
-                            >
-                              <Icon name="close" size={14} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-                    <button
-                      type="button"
-                      onClick={() => setNoteDialogOpen(null)}
-                      className="btn btn-default btn-md"
-                      style={{
-                        background: COLORS.modal.secondaryButton,
-                        border: `1px solid ${COLORS.modal.borderStrong}`,
-                        color: COLORS.modal.textPrimary
-                      }}
-                      onMouseEnter={handleModalSecondaryButtonMouseEnter}
-                      onMouseLeave={handleModalSecondaryButtonMouseLeave}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-
-                        // For item-level notes, noteDialogOpen is just the annotationId
-                        const annotationId = noteDialogOpen;
-
-
-                        // Update survey marker annotation with item-level note
-                        setSurveyMarkers(prev => {
-
-                          const existingSurveyMarker = prev[annotationId] || {};
-
-                          const newNote = {
-                            text: noteDialogContent.text,
-                            photos: noteDialogContent.photos,
-                            videos: noteDialogContent.videos
-                          };
-
-                          const updated = {
-                            ...prev,
-                            [annotationId]: {
-                              ...existingSurveyMarker, // Preserve all existing data
-                              note: newNote  // Save note at surveyMarker level
-                            }
-                          };
-
-
-                          // Save to localStorage immediately
-                          if (pdfId) {
-                            saveSurveyMarkers(pdfId, updated);
-                          } else {
-                            console.warn('Cannot save to localStorage: pdfId is null');
-                          }
-
-                          return updated;
-                        });
-
-                        setNoteDialogOpen(null);
-                        setNoteDialogContent({ text: '', photos: [], videos: [] }); // Clear dialog content
-                      }}
-                      className="btn btn-primary btn-md"
-                      style={{
-                        background: COLORS.modal.primaryButton,
-                        border: `1px solid ${COLORS.modal.borderStrong}`,
-                        color: COLORS.modal.textPrimary
-                      }}
-                      onMouseEnter={handleModalPrimaryButtonMouseEnter}
-                      onMouseLeave={handleModalPrimaryButtonMouseLeave}
-                    >
-                      Save
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </>
-          )
-        }
+        {/* Owner 2026-10-01 ("Yes, inline like phone"): the desktop Entity and
+            Name placement pop-ups that stood here are gone. A new Survey
+            Marker opens in the Survey rail with its name focused and its Entity
+            menu beside it (handleSurveyMarkerCreated / commitMobileSurveyMarker). */}
 
         {/* Item Transfer - Destination Selection Modal */}
         {

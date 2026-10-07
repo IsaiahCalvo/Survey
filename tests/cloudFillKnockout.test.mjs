@@ -24,6 +24,7 @@ import { join } from 'node:path';
 import { PDFDocument, PDFName, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
 import { PNG } from 'pngjs';
 import { PATHOLOGICAL_CLOUD_SHAPES } from './fixtures/pathologicalCloudShapes.mjs';
+import { withCloudBandBudgetHeld } from './helpers/cloudBandBudgetClock.mjs';
 
 const {
   buildCloudRenderPaths,
@@ -216,8 +217,19 @@ test('source guards: CloudOutline renders the shared model, the painter knocks o
 // band is exactly half a stroke width from the outline centreline, and the
 // inward tail's end - the place the old rings had to prove they excluded - is
 // INSIDE the band.
+//
+// 2026-10-04 — the union runs under the app's 250ms wall-clock budget, past
+// which it falls back to 'pieces' (same picture, longer stream; that fallback
+// is covered in cloudStrokeBandFuzz). This call is the FIRST band in the file,
+// so it pays the JIT warm-up (~190ms cold vs ~30ms warm, measured) and on a
+// busy machine it overran the budget and failed 2 runs in 5 with 'pieces'.
+// "Unions cleanly" is a claim about the clipper on this input, not about the
+// clock, so the budget is lifted out of the way here; the release-time budget
+// lives in the perf lane (cloudStrokeBandPathologicalBudget). A hang is still
+// caught by the runner's 120s per-file limit.
+const UNTIMED = { budgetMs: 60_000 };
 test('stroke band: half a stroke width around every run, tails included, and it never hangs', () => {
-  const band = cloudStrokeBandRings(geometry);
+  const band = cloudStrokeBandRings(geometry, UNTIMED);
   assert.ok(band && Array.isArray(band.rings) && band.rings.length >= 1);
   assert.equal(band.mode, 'union', 'a plain rect cloud unions cleanly');
   const distanceToOutline = (point) => {
@@ -322,9 +334,12 @@ const streamText = (doc, ref) => {
 
 let annotatedBytes = null;
 let flattenedBytes = null;
+// 2026-10-04 (test-reliability pass): the /AP test compares these two exports
+// byte for byte, and each builds the filled cloud's stroke band under a
+// wall-clock budget; see tests/helpers/cloudBandBudgetClock.mjs.
 const exports = async () => {
-  annotatedBytes ||= await exportAnnotated();
-  flattenedBytes ||= await exportFlattened();
+  annotatedBytes ||= await withCloudBandBudgetHeld(exportAnnotated);
+  flattenedBytes ||= await withCloudBandBudgetHeld(exportFlattened);
   return { annotatedBytes, flattenedBytes };
 };
 

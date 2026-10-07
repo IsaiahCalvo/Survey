@@ -210,7 +210,7 @@ export function loadoutSignature(root) {
 
 // Boxes that only group the controls in a row: looked through, so each
 // control inside animates (or stays) on its own.
-const WRAPPER = /^(data-toolbar-settings-row|data-chrome-subtools-host|data-chrome-strip|data-select-mode-toggle)$/;
+const WRAPPER = /^(data-toolbar-settings-row|data-chrome-subtools-host|data-chrome-strip|data-select-mode-toggle|data-area-tools)$/;
 const isWrapper = (element) => [...(element.attributes || [])].some((a) => WRAPPER.test(a.name));
 
 /** The slot's controls as the eye reads them, left to right: its children,
@@ -230,13 +230,6 @@ export function loadoutUnits(slot) {
 }
 
 const unitSignature = (unit) => `${isControl(unit) ? token(unit) : unit.tagName}>${loadoutSignature(unit)}`;
-
-/** How many controls at the front of the row are unchanged. */
-export function sharedPrefix(before, after) {
-  let k = 0;
-  while (k < before.length && k < after.length && unitSignature(before[k]) === unitSignature(after[k])) k += 1;
-  return k;
-}
 
 /**
  * Turn a copy of the slot into a lifeless ghost: no ids, data hooks, roles or

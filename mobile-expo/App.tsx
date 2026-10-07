@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, AppState, BackHandler, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as AuthSession from 'expo-auth-session';
 import { discovery as googleDiscovery } from 'expo-auth-session/providers/google';
@@ -56,7 +56,42 @@ function withLaunchCacheBust(surveyUrl: string, launchId: string) {
 
 const SURVEY_URL = resolveSurveyUrl();
 const SURVEY_ORIGIN = new URL(SURVEY_URL).origin;
+// No sign of progress for this long (and no app on screen) counts as a failed
+// load. A slow connection that is still downloading keeps the clock reset.
 const SHELL_LOAD_TIMEOUT_MS = 15_000;
+// "Survey could not connect" tries again by itself on this widening schedule,
+// and whenever the app comes back to the front.
+const SHELL_AUTO_RETRY_DELAYS_MS = [4_000, 8_000, 15_000, 30_000];
+// The one calm loading look (owner 2026-10-04, same as the web app's
+// QuietLoading): nothing for the first moment, so a quick start shows no
+// loading screen at all, then one quiet line fades in. Never a spinner.
+const QUIET_LOADING_SHOW_AFTER_MS = 300;
+
+// The line sits where the web app's own loading line sits on a phone (see
+// QuietLoading.jsx): the middle of the area between the viewer's 34px header
+// and its dock, so "Opening Survey…" hands over to "Loading documents…" in
+// the same spot.
+function QuietShellLoading({ topInset, bottomInset }: { topInset: number; bottomInset: number }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const fade = Animated.timing(opacity, {
+      toValue: 1,
+      duration: 220,
+      delay: QUIET_LOADING_SHOW_AFTER_MS,
+      useNativeDriver: true,
+    });
+    fade.start();
+    return () => fade.stop();
+  }, [opacity]);
+  return (
+    <View
+      pointerEvents="none"
+      style={[styles.quietLoading, { top: topInset, paddingTop: 34, paddingBottom: 36 + bottomInset }]}
+    >
+      <Animated.Text style={[styles.quietLoadingText, { opacity }]}>Opening Survey…</Animated.Text>
+    </View>
+  );
+}
 console.info('[Survey shell]', { runtime: 'expo', url: SURVEY_URL });
 
 function isExternalNavigationUrl(url: string) {
@@ -85,8 +120,15 @@ function SurveyApp() {
   const surveyLaunchUrlRef = useRef(withLaunchCacheBust(SURVEY_URL, shellSessionIdRef.current));
   const googleAuthInFlightRef = useRef(false);
   const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastLoadProgressAtRef = useRef(0);
+  const autoRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoRetryAttemptRef = useRef(0);
   const [canGoBack, setCanGoBack] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  // An automatic retry keeps "Survey could not connect" on screen until it
+  // works, so a phone that stays offline does not blink between that and the
+  // loading line every few seconds.
+  const [quietRetry, setQuietRetry] = useState(false);
   const [shellReady, setShellReady] = useState(false);
   const [webViewKey, setWebViewKey] = useState(0);
   const [externalNavigationActive, setExternalNavigationActive] = useState(false);
@@ -175,6 +217,7 @@ function SurveyApp() {
   useEffect(() => () => {
     if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
     if (nativeAnalyticsRetryTimerRef.current) clearTimeout(nativeAnalyticsRetryTimerRef.current);
+    if (autoRetryTimerRef.current) clearTimeout(autoRetryTimerRef.current);
   }, []);
 
   const persistNativeDiagnosticState = () => {
@@ -218,6 +261,7 @@ function SurveyApp() {
       surveyLaunchUrlRef.current = withLaunchCacheBust(target, launchId);
       setExternalNavigationActive(false);
       setCanGoBack(false);
+      setQuietRetry(false);
       beginShellLoad();
       setWebViewKey((value) => value + 1);
     };
@@ -226,24 +270,40 @@ function SurveyApp() {
     return () => subscription.remove();
   }, []);
 
-  const beginShellLoad = () => {
+  const armShellLoadTimeout = (delayMs: number) => {
     if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+    loadTimeoutRef.current = setTimeout(() => {
+      loadTimeoutRef.current = null;
+      // 2026-10-07 (phone loading): a slow phone connection that is still
+      // downloading the app is not a failure. Before, the 15 s clock ran
+      // from the start of the load, so a slow start showed "Survey could not
+      // connect" and then the app popped up over it a moment later.
+      const quietFor = Date.now() - lastLoadProgressAtRef.current;
+      if (quietFor < SHELL_LOAD_TIMEOUT_MS) {
+        armShellLoadTimeout(SHELL_LOAD_TIMEOUT_MS - quietFor);
+        return;
+      }
+      setShellReady(false);
+      shellReadyRef.current = false;
+      setLoadError(true);
+    }, delayMs);
+  };
+
+  const beginShellLoad = () => {
     setLoadError(false);
     setShellReady(false);
     shellReadyRef.current = false;
     shellReadyMessageHandledRef.current = false;
     nativeAnalyticsInFlightRef.current.clear();
-    loadTimeoutRef.current = setTimeout(() => {
-      loadTimeoutRef.current = null;
-      setShellReady(false);
-      shellReadyRef.current = false;
-      setLoadError(true);
-    }, SHELL_LOAD_TIMEOUT_MS);
+    lastLoadProgressAtRef.current = Date.now();
+    armShellLoadTimeout(SHELL_LOAD_TIMEOUT_MS);
   };
 
   const finishShellLoad = () => {
     if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
     loadTimeoutRef.current = null;
+    autoRetryAttemptRef.current = 0;
+    setQuietRetry(false);
     setLoadError(false);
     setShellReady(true);
     shellReadyRef.current = true;
@@ -265,12 +325,41 @@ function SurveyApp() {
   };
 
   const retry = () => {
+    if (autoRetryTimerRef.current) clearTimeout(autoRetryTimerRef.current);
+    autoRetryTimerRef.current = null;
     processRecoveryRef.current = [];
     persistNativeDiagnosticState();
     surveyLaunchUrlRef.current = withLaunchCacheBust(SURVEY_URL, `${shellSessionIdRef.current}-retry-${Date.now()}`);
     beginShellLoad();
     setWebViewKey((value) => value + 1);
   };
+
+  // 2026-10-07 (phone loading): "Survey could not connect" no longer waits
+  // for its button. It tries again by itself on a widening schedule and the
+  // moment the app comes back to the front (the usual way a phone gets its
+  // signal back), so the app loads without a tap once it can.
+  useEffect(() => {
+    if (!loadError) return undefined;
+    const attempt = autoRetryAttemptRef.current;
+    const delay = SHELL_AUTO_RETRY_DELAYS_MS[Math.min(attempt, SHELL_AUTO_RETRY_DELAYS_MS.length - 1)];
+    autoRetryTimerRef.current = setTimeout(() => {
+      autoRetryTimerRef.current = null;
+      autoRetryAttemptRef.current = attempt + 1;
+      setQuietRetry(true);
+      retry();
+    }, delay);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      autoRetryAttemptRef.current = attempt + 1;
+      setQuietRetry(true);
+      retry();
+    });
+    return () => {
+      subscription.remove();
+      if (autoRetryTimerRef.current) clearTimeout(autoRetryTimerRef.current);
+      autoRetryTimerRef.current = null;
+    };
+  }, [loadError]);
 
   const dismissExternalNavigation = () => {
     setExternalNavigationActive(false);
@@ -485,19 +574,19 @@ function SurveyApp() {
         setBuiltInZoomControls={false}
         allowsBackForwardNavigationGestures
         allowsInlineMediaPlayback
+        // Survey media (owner 2026-10-01): the in-app audio recorder calls
+        // getUserMedia. Grant the camera / microphone to the Survey site
+        // itself without a second web prompt (iOS still asks once, with the
+        // app.json usage strings); any other page in this view is asked.
+        mediaCapturePermissionGrantType="grantIfSameHostElsePrompt"
         setSupportMultipleWindows={false}
         automaticallyAdjustContentInsets={false}
         automaticallyAdjustsScrollIndicatorInsets={false}
         contentInsetAdjustmentBehavior="never"
         contentInset={{ top: 0, right: 0, bottom: 0, left: 0 }}
         injectedJavaScriptBeforeContentLoaded={nativeSafeAreaScript}
-        startInLoadingState
-        renderLoading={() => (
-          <View style={styles.centered}>
-            <ActivityIndicator color={PALETTE.accent} />
-          </View>
-        )}
         onLoadStart={handleLoadStart}
+        onLoadProgress={() => { lastLoadProgressAtRef.current = Date.now(); }}
         onNavigationStateChange={handleNavigationStateChange}
         onMessage={handleWebMessage}
         onLoadEnd={() => {
@@ -511,10 +600,8 @@ function SurveyApp() {
           return true;
         }}
       />
-      {!shellReady && !loadError ? (
-        <View pointerEvents="none" style={styles.centered}>
-          <ActivityIndicator color={PALETTE.accent} />
-        </View>
+      {!shellReady && !loadError && !quietRetry ? (
+        <QuietShellLoading key={webViewKey} topInset={insets.top} bottomInset={nativeBottomInset} />
       ) : null}
       {externalNavigationActive ? (
         <Pressable
@@ -527,11 +614,15 @@ function SurveyApp() {
           <Text style={styles.externalNavigationCloseText}>×</Text>
         </Pressable>
       ) : null}
-      {loadError ? (
+      {loadError || quietRetry ? (
         <View style={styles.centered}>
           <Text style={styles.errorTitle}>Survey could not connect</Text>
-          <Text style={styles.errorBody}>Check this phone's connection and make sure the selected Survey server is online.</Text>
-          <Pressable accessibilityRole="button" onPress={retry} style={styles.retryButton}>
+          <Text style={styles.errorBody}>Check this phone's connection. Survey keeps trying by itself.</Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => { setQuietRetry(false); retry(); }}
+            style={styles.retryButton}
+          >
             <Text style={styles.retryButtonText}>Try again</Text>
           </Pressable>
         </View>
@@ -598,6 +689,20 @@ const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: PALETTE.surface0,
     padding: 24,
+  },
+  quietLoading: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: PALETTE.surface0,
+  },
+  quietLoadingText: {
+    color: PALETTE.text3,
+    fontSize: 13,
+    lineHeight: 18,
   },
   errorTitle: {
     color: PALETTE.text1,

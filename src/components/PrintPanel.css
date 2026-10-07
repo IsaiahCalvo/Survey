@@ -65,7 +65,7 @@
   --pp-paper-thumb: #f0f0ec;
   --pp-paper-ink: #222222;
   --pp-paper-ink-2: #5f6b7a;
-  --pp-radius: 12px;
+  --pp-radius: var(--radius-dialog);
   --pp-radius-sm: 6px;
   --pp-font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif;
   color-scheme: dark;
@@ -258,7 +258,7 @@
 .pp-thumb-cell > .pp-thumb { display: block; }
 .pp-thumb-cell:hover { transform: translateY(-1px); }
 .pp-thumb-cell:focus-visible { outline: none; }
-.pp-thumb-cell:focus-visible .pp-thumb { border-color: var(--pp-accent); }
+.pp-thumb-cell:focus-visible .pp-thumb { border-color: var(--text-2); }
 
 /* UX 2026-04-24: every thumb occupies the same vertical footprint so
    the page number labels below them stay on a single horizontal line.
@@ -486,7 +486,7 @@
 }
 .pp-pager-dot:hover { background: var(--pp-hover); color: var(--text-1); transform: translateY(-1px); }
 .pp-pager-dot:active { background: var(--pp-pressed); }
-.pp-pager-dot:focus-visible { outline: none; border-color: var(--pp-accent); }
+.pp-pager-dot:focus-visible { outline: none; border-color: var(--text-2); }
 .pp-pager-dot.is-landscape { min-width: 26px; }
 /* The page you are on: the number turns gold on the pager's own plate. The
    1px border is already transparent at rest, so nothing moves. */
@@ -658,7 +658,8 @@
   font-family: inherit; outline: none; text-align: center;
 }
 .pp-custom-dim:focus {
-  border-color: var(--pp-accent); box-shadow: var(--pp-accent-glow);
+  /* Grey field edge, never gold (owner 2026-09-23). */
+  border-color: var(--text-3); box-shadow: var(--pp-accent-glow);
 }
 /* UX 2026-04-24: round icon-only rotate buttons — a tight pair that
    sits next to the orientation dropdown and spins the selected pages
@@ -996,4 +997,32 @@
 .pp-seg button:not(.is-active):active,
 .pp-tog:active {
   background: var(--pp-pressed);
+}
+
+/* Reduced motion: the panel, its backdrop and the big preview appear without
+   the fade/pop, flips and zooms of the preview sheet snap instead of turning,
+   the 1px hover lifts no longer glide and the press shrink is dropped. Colour
+   changes stay - they are not motion. */
+@media (prefers-reduced-motion: reduce) {
+  .pp-backdrop,
+  .pp-root,
+  .pp-bigprev {
+    animation: none;
+  }
+  .pp-preview-sheet {
+    transition: filter 180ms;
+  }
+  .pp-bigprev-sheet {
+    transition: none;
+  }
+  .pp-thumb-cell {
+    transition: none;
+  }
+  .pp-pager-dot,
+  .pp-rbtn {
+    transition: background 120ms, border-color 120ms, color 120ms;
+  }
+  .pp-rbtn:active {
+    transform: none;
+  }
 }

@@ -8,26 +8,38 @@
 
    Intended UX, every state of the phone Survey sheet:
    - HEADER: one slim 44px line. A one-line title (or the chosen template's
-     name, which is its own switcher), then Exit Survey as a quiet red WORD,
-     the export glyph and the standard close glyph. No eyebrow, no round
-     plated buttons, and Exit Survey no longer eats a full-width footer band.
-   - BODY: ONE rounded lighter blue-grey panel (--surface-2, a --border edge,
-     radius 10 - the home lists' panel, see src/home/hub.css "ONE PANEL PER
-     LIST" and "TEMPLATE DETAIL — LAYOUT B"). Inside it, rows are lines parted
-     by 1px hairlines that reach both edges. No card per row.
+     name, which is its own switcher: a tap shows the templates in place of
+     the category list), and the red "Exit Survey" word on the right - in
+     every state, the picker, the template view and "< Categories" alike
+     (owner 2026-10-01, after a debate: one Exit, always in the same spot; the
+     survey bar above the page has none). No eyebrow, no round plated buttons.
+     While anything in the accordion is open the sheet is Full screen and the
+     line holds "< Categories", the way back, and Exit.
+   - BODY: flat on the sheet colour (--sheet-bg), like Pages, Bookmarks and
+     Spaces (owner 2026-10-01: "Go ahead and remove the box" - it was an
+     inset rounded --surface-2 card on a --surface-1 sheet). Rows are
+     full-width lines, 16px from each side, parted by 1px hairlines that
+     reach both edges. No card per row.
        * template picker: one line per template (name, module count, chevron);
        * chosen template: module TABS pinned on top (active = bright ink with a
          2px ink bar, like the home template editor's tabs - never gold), the
          "Categories" head line, then the categories as 40px lines; expanding
          one lists its Survey Markers as indented lines under it;
-       * Survey Marker detail: "Category" + value on one line, the Survey
-         Marker's own line (entity dot, name field, locate, notes), the
-         "Checklist" head line, then 40px checklist lines;
-       * notes: the text field, the attachments and Cancel / Save as sections
-         of the same panel.
-   - Gold stays a minimal accent: the selected thing is gold INK (the active
-     category name, the chosen checklist answer, a note that exists), never a
-     gold box, ring or underline.
+       * ONE ACCORDION (owner 2026-10-01, the desktop's tree): a tap on a
+         category opens it ("+ Place" at the end of its line places one); a
+         tap on a Survey Marker opens it inline: its line stays put (only the
+         entity chevron and the name's field well appear) and the whole
+         checklist, then the notes slot, slide open under it;
+       * notes: the note edited in place and the media strip, inside the
+         open Survey Marker's notes slot (src/components/SurveyMarkerNotes.jsx).
+   - No gold in the sheet (owner 2026-10-02, survey panel polish: "calm,
+     uniform, no gold accents"; it was gold ink on the armed category's
+     name). The armed category - what a touch on the page will do now - has
+     no look of its own at rest (owner, after bf3888e): arming plays its
+     row's press, disarming plays it backwards, as on desktop. A current
+     item in a list or menu (the template in the switcher, the entity in the
+     detail menu) is bright --text-1 ink with a --text-2 check; an open
+     menu's trigger is neutral. Never a gold box, ring or underline.
    - Glyph buttons have invisible hit areas: no hover or press plate; the
      glyph shrinks to 0.88 while pressed. A full-width ROW still takes the
      house --pressed fill while the finger is down, as the home rows do.
@@ -40,9 +52,28 @@
    it without depending on stylesheet load order.
    ========================================================================== */
 
+/* Type and row sizes come from the shared PHONE SHEET SCALE in
+   src/styles/tokens.css (owner 2026-10-01: "consistency across all bottom
+   panels"), so this sheet, Spaces, Bookmarks, Search, History and Active
+   users read as one family. */
 .mobile-survey-sheet {
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  font-family: var(--sheet-font);
+  /* A category's Survey Markers, and an open Survey Marker's lines, start one
+     12px step in from the sheet's 16px edge. */
+  --survey-indent: calc(var(--sheet-pad-x) + 12px);
+  /* The reorder grip's gutter (owner 2026-10-02: grips on both platforms);
+     a Survey Marker's entity dot sits after it. */
+  --survey-grip-w: 32px;
+  /* An open Survey Marker's content (checklist, Y/N/N/A, note, media) starts
+     on the sheet's text gutter, not under the entity dot (owner 2026-10-02,
+     "all the way to the left"; desktop's rule). */
+  --survey-detail-x: var(--sheet-pad-x);
 }
+
+/* Flat on the sheet colour like Pages, Bookmarks, Spaces and Search (owner
+   2026-10-01: "Go ahead and remove the box"). The sheet and its handle row
+   take --panel-bg inline, the desktop rail's colour, which is --sheet-bg, so
+   no override is needed here any more (owner 2026-10-02). */
 
 /* ---------- HEADER ------------------------------------------------------- */
 
@@ -73,29 +104,89 @@
 .mobile-survey-sheet h2.mobile-survey-head-title {
   margin: 0;
   color: var(--text-1);
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 20px;
+  font: var(--sheet-title);
   letter-spacing: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* The chosen template's name IS the template switcher. */
-.mobile-survey-sheet .mobile-survey-template-button {
-  max-width: 100%;
-  height: 32px;
-  padding: 0;
-  display: flex;
+/* The template picker's prompt is centred on the sheet at 600, like the
+   desktop rail's (owner 2026-10-02). Three columns keep it on the sheet's
+   true centre line with Exit Survey on the right. */
+.mobile-survey-sheet .mobile-survey-head--picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
+}
+
+.mobile-survey-sheet .mobile-survey-head--picker > h2.mobile-survey-head-title {
+  grid-column: 2;
+  text-align: center;
+  font-weight: 600;
+}
+
+.mobile-survey-sheet .mobile-survey-head--picker > .mobile-survey-head-actions {
+  grid-column: 3;
+  justify-self: end;
+}
+
+/* Full screen: "< Categories" stands ALONE on the line (owner 2026-10-01:
+   "the back button must not be inline with the template dropdown") and
+   closes the whole accordion (the sheet then returns to Standard). The
+   template name is not shown at this level; the module tabs and the open
+   category carry the context. A real 44px pad, at the sheet title's size. */
+.mobile-survey-sheet .mobile-survey-back,
+.mobile-survey-sheet .mobile-survey-back:active {
+  flex: 0 0 auto;
+  height: 44px;
+  margin-left: -10px;
+  padding: 0 14px 0 4px;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   color: var(--text-1);
   background: transparent;
   border: 0;
-  font: inherit;
-  font-size: 15px;
-  font-weight: 600;
+  /* The sheet title, 700 16px/20px, like every other sheet's title (it was
+     600 here only). */
+  font: var(--sheet-title);
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-survey-sheet .mobile-survey-back > svg {
+  flex: 0 0 auto;
+}
+
+.mobile-survey-sheet .mobile-survey-back:active {
+  opacity: 0.6;
+}
+
+/* The back line's own "Categories" says where it goes, so the panel's
+   "Categories" head line steps aside while a category is open. */
+.mobile-survey-sheet .mobile-survey-head.is-drilled ~ .mobile-survey-card .mobile-survey-categories-heading {
+  display: none;
+}
+
+/* The chosen template's name IS the template switcher: the sheet title
+   (700 16px/20px, the shared sheet scale) with a bare 14px chevron after it -
+   no disc or plate behind it. The whole 44px line is its hit area. While the
+   templates are showing (.is-switching) the chevron turns up, so the same
+   control opens and closes the list. */
+.mobile-survey-sheet .mobile-survey-template-button {
+  max-width: 100%;
+  height: 44px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-1);
+  background: transparent;
+  border: 0;
+  font: var(--sheet-title);
+  text-align: left;
+  cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -108,48 +199,40 @@
 
 .mobile-survey-sheet .mobile-survey-template-button > svg {
   flex: 0 0 auto;
-  color: var(--text-3);
+  color: var(--text-2);
+  transition: transform 150ms cubic-bezier(0.33, 1, 0.68, 1);
 }
 
-.mobile-survey-sheet .mobile-survey-template-menu {
-  position: absolute;
-  left: 0;
-  top: calc(100% + 2px);
-  z-index: 40;
-  width: min(286px, calc(100vw - 82px));
-  padding: 4px;
-  display: grid;
-  gap: 0;
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+.mobile-survey-sheet .mobile-survey-template-button[aria-expanded="true"] > svg {
+  transform: rotate(180deg);
 }
 
-.mobile-survey-sheet .mobile-survey-template-menu > button {
-  min-height: 40px;
+.mobile-survey-sheet .mobile-survey-template-button:active > span {
+  opacity: 0.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-survey-sheet .mobile-survey-template-button > svg { transition: none; }
+}
+
+/* Choosing a template: a quiet Cancel takes Export's place (the Spaces
+   sheet's action word, 600 13px, --text-1 - never gold). */
+.mobile-survey-sheet .mobile-survey-cancel {
+  flex: 0 0 auto;
+  height: 44px;
+  min-width: 44px;
   padding: 0 10px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
   color: var(--text-1);
   background: transparent;
   border: 0;
-  border-radius: 6px;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  text-align: left;
+  font: var(--sheet-action);
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.mobile-survey-sheet .mobile-survey-template-menu > button:active {
-  background: var(--pressed);
-}
-
-/* Selected = gold ink and the check glyph. No fill, no gold edge. */
-.mobile-survey-sheet .mobile-survey-template-menu > button.is-active {
-  color: var(--accent);
+.mobile-survey-sheet .mobile-survey-cancel:active {
+  opacity: 0.6;
 }
 
 .mobile-survey-sheet .mobile-survey-head-actions {
@@ -159,32 +242,26 @@
   gap: 0;
 }
 
-/* Exit Survey: a quiet red word, not an outlined block in its own band. */
-.mobile-survey-sheet .mobile-survey-exit {
-  height: 32px;
-  padding: 0 8px;
-  color: var(--danger-text);
-  background: transparent;
-  border: 0;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-  -webkit-tap-highlight-color: transparent;
-  transition: opacity 90ms ease-out;
-}
+/* Owner 2026-10-07 (scratchpad railDrawboard/DEBATE.md): the red "Exit Survey"
+   word left this header - Survey is left with "Done" at the end of the
+   survey strip under the top bar (owner 2026-10-07, survey bar round). */
 
-.mobile-survey-sheet .mobile-survey-exit:active {
-  opacity: 0.6;
-}
-
-/* Export and close: bare glyphs, invisible 32px hit areas. */
+/* Close: a bare glyph, an invisible 32px hit area. The export menu's anchor
+   (now in the footer) keeps its wrap. */
 .mobile-survey-sheet .mobile-survey-sheet-export-wrap {
   position: relative;
   flex: 0 0 auto;
 }
 
-.mobile-survey-sheet .mobile-survey-sheet-export,
+.mobile-survey-sheet .mobile-survey-foot > .mobile-survey-sheet-export-wrap {
+  position: absolute;
+  top: 0;
+  right: 6px;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+}
+
 .mobile-survey-sheet .mobile-survey-close {
   width: 32px;
   height: 32px;
@@ -200,28 +277,20 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-.mobile-survey-sheet .mobile-survey-sheet-export.is-open {
-  color: var(--accent);
-}
-
-.mobile-survey-sheet .mobile-survey-sheet-export:disabled {
-  color: var(--text-disabled);
-  cursor: not-allowed;
-}
-
 .mobile-survey-sheet .mobile-survey-sheet-export-menu {
   position: absolute;
   right: 0;
-  top: 36px;
+  bottom: calc(100% + 4px);
   z-index: 80;
   width: 232px;
   padding: 4px;
   display: grid;
   gap: 0;
-  background: var(--surface-2);
+  /* --surface-3, a menu raised over the --surface-2 sheet. */
+  background: var(--surface-3);
   border: 1px solid var(--border-strong);
   border-radius: 8px;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow-popover);
 }
 
 .mobile-survey-sheet .mobile-survey-sheet-export-menu > button {
@@ -239,26 +308,111 @@
 }
 
 .mobile-survey-sheet .mobile-survey-sheet-export-menu > button:active { background: var(--pressed); }
-.mobile-survey-sheet .mobile-survey-sheet-export-menu > button:disabled { opacity: 0.38; cursor: not-allowed; }
+/* Off: the one --text-disabled ink (tokens.css), on the words and the meta
+   line alike, never a fade. */
+.mobile-survey-sheet .mobile-survey-sheet-export-menu > button:disabled,
+.mobile-survey-sheet .mobile-survey-sheet-export-menu > button:disabled > span { color: var(--text-disabled); cursor: not-allowed; }
 .mobile-survey-sheet .mobile-survey-sheet-export-menu > button > strong { font-size: 13px; font-weight: 600; }
 .mobile-survey-sheet .mobile-survey-sheet-export-menu > button > span { color: var(--text-3); font-size: 11px; font-weight: 400; }
 
-/* ---------- THE ONE PANEL ------------------------------------------------ */
+/* ---------- FOOTER: Export (owner 2026-10-01) ---------------------------- */
+/* "The export button being so close to the X ... is just weird": Export is
+   the sheet's last line, as on desktop - "Export to Excel" (the sheet's action
+   type), and a "..." with the linked workbook's Sync when there is one. It
+   steps aside while you type (a field in the sheet has focus), so the
+   keyboard never has to make room for it. */
+.mobile-survey-sheet .mobile-survey-foot {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 48px;
+  box-sizing: border-box;
+  margin-top: auto;
+  padding: 0 calc(var(--sheet-pad-x) - 8px);
+  display: flex;
+  align-items: center;
+  /* Owner 2026-10-02: "Export to Excel" - glyph and word together - is
+     centred in the line, as on desktop; the linked workbook's "..." keeps
+     the right end without pushing it aside. */
+  justify-content: center;
+  border-top: var(--sheet-divider);
+}
 
+.mobile-survey-sheet:has(input:focus, textarea:focus) .mobile-survey-foot {
+  display: none;
+}
+
+.mobile-survey-sheet .mobile-survey-foot__export,
+.mobile-survey-sheet .mobile-survey-foot__more {
+  height: 44px;
+  min-width: 44px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  /* --text-2, the desktop rail's Export (owner 2026-10-02). */
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  font: var(--sheet-action);
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-survey-sheet .mobile-survey-foot__more {
+  width: 44px;
+  padding: 0;
+  justify-content: center;
+  color: var(--text-2);
+}
+
+.mobile-survey-sheet .mobile-survey-foot__more.is-open {
+  color: var(--text-1);
+}
+
+.mobile-survey-sheet .mobile-survey-foot__export:disabled,
+.mobile-survey-sheet .mobile-survey-foot__more:disabled {
+  color: var(--text-disabled);
+}
+
+.mobile-survey-sheet .mobile-survey-foot__export:not(:disabled):active {
+  opacity: 0.6;
+}
+
+.mobile-survey-sheet .mobile-survey-foot__more > svg {
+  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.mobile-survey-sheet .mobile-survey-foot__more:not(:disabled):active > svg {
+  transform: scale(0.88);
+}
+
+/* ---------- THE BODY ----------------------------------------------------- */
+
+/* No inset card any more (owner 2026-10-01, "remove the box"): the tabs,
+   the categories and the open Survey Marker are full-width rows on the sheet
+   itself, 16px (--sheet-pad-x) from each side and parted by hairlines that
+   reach both edges - the Pages / Bookmarks / Spaces sheets' build. The
+   wrapper keeps only its layout job: hug the rows and, when they outgrow the
+   sheet, stop at the sheet's foot so the list inside scrolls under the
+   pinned module tabs. */
 .mobile-survey-sheet .mobile-survey-card {
-  /* Hugs its rows; when the rows outgrow the sheet it stops at the sheet's
-     foot and the list inside it scrolls, so the module tabs stay put. */
   flex: 0 1 auto;
   min-height: 0;
-  margin: 2px 12px 0;
+  margin: 0;
   display: flex;
   flex-direction: column;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  /* Visible, so the Survey Marker detail's dropdowns can reach past the
-     panel's edge. The scrolling list below clips itself to the corners. */
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  /* Visible, so the open Survey Marker's entity menu is never clipped. */
   overflow: visible;
+}
+
+/* Hidden while the template list takes its place (the [hidden] attribute
+   loses to the display above without this). */
+.mobile-survey-sheet .mobile-survey-card[hidden] {
+  display: none;
 }
 
 /* Template picker: the panel is the list of templates. */
@@ -266,7 +420,7 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 2px 12px 12px;
+  padding: 2px 0 12px;
 }
 
 .mobile-survey-sheet .mobile-survey-card.mobile-survey-template-list {
@@ -279,7 +433,7 @@
   width: 100%;
   min-height: 44px;
   box-sizing: border-box;
-  padding: 0 10px 0 12px;
+  padding: 0 var(--sheet-pad-x);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -307,8 +461,8 @@
   flex: 1;
   min-width: 0;
   color: var(--text-1);
-  font-size: 13px;
-  font-weight: 500;
+  font: var(--sheet-row-title);
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -317,20 +471,136 @@
 .mobile-survey-sheet .mobile-survey-template-meta {
   flex: 0 0 auto;
   color: var(--text-3);
-  font-size: 12px;
+  font: var(--sheet-row-meta);
   font-variant-numeric: tabular-nums;
+}
+
+/* ---------- TEMPLATE SWITCH LIST ----------------------------------------- */
+/* The entry picker's panel and rows, shown in place of the category list
+   (owner 2026-10-01, "hybrid"). Sized on the shared sheet scale: 44px rows,
+   names 500 14px/18px (a long one wraps to two lines), meta 500 12px/14px in
+   --text-3, and a 16px check column on every row so the names line up. The
+   current template is gold ink with a check - no fill. */
+.mobile-survey-sheet .mobile-survey-switch-list .mobile-survey-template-row {
+  padding-block: 6px;
+}
+
+.mobile-survey-sheet .mobile-survey-switch-list .mobile-survey-template-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.mobile-survey-sheet .mobile-survey-switch-list .mobile-survey-template-meta {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 14px;
+}
+
+.mobile-survey-sheet .mobile-survey-switch-check {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+}
+
+.mobile-survey-sheet .mobile-survey-switch-list .mobile-survey-template-row[aria-current="true"] .mobile-survey-template-name {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.mobile-survey-sheet .mobile-survey-switch-empty {
+  min-height: 44px;
+  padding: 0 var(--sheet-pad-x);
+  display: flex;
+  align-items: center;
+  color: var(--text-3);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* A filter field, only from 15 templates. 16px text so iOS does not zoom. */
+.mobile-survey-sheet .mobile-survey-switch-search {
+  position: relative;
+  display: block;
+  margin: 0 var(--sheet-pad-x) 8px;
+}
+
+.mobile-survey-sheet .mobile-survey-switch-search > input {
+  width: 100%;
+  height: 36px;
+  box-sizing: border-box;
+  padding: 0 12px 0 32px;
+  color: var(--text-1);
+  /* A field is a --panel-well on the --panel-bg sheet (the Search
+     sheet's field). */
+  background: var(--panel-well);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 400;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* The engine's own clear glyph is a loud white X; the field is short-lived. */
+.mobile-survey-sheet .mobile-survey-switch-search > input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.mobile-survey-sheet .mobile-survey-switch-search > input::placeholder {
+  color: var(--text-3);
+}
+
+.mobile-survey-sheet .mobile-survey-switch-search > svg {
+  position: absolute;
+  left: 11px;
+  top: 11px;
+  color: var(--text-3);
+  pointer-events: none;
 }
 
 /* ---------- MODULE TABS -------------------------------------------------- */
 
+/* Owner 2026-10-01 (iPhone, "elements are colliding"): the tab row was painted
+   over the "Categories" head line and the first category row, leaving its own
+   slot empty. Headless Chromium and WebKit both lay it out correctly, so the
+   row is now built so nothing about it can drift on the device:
+   - it scrolls SIDEWAYS ONLY. `overflow-x: auto` alone computes overflow-y to
+     auto too, and the active bar's -1px margin made the content 1px taller
+     than the box, so the row was also a 1px VERTICAL scroller - one the sheet's
+     swipe-down hand-over and iOS's own scrolling both act on. overflow-y is
+     hidden and nothing overflows downward any more: the hairline and the 2px
+     active bar are inset shadows inside the row's own 40px.
+   - it is its own stacking context (isolation), so WebKit composites the
+     scrolling row as an ordinary child layer of the sheet and repositions it
+     with the sheet's slide/height steps, instead of tracking it as a detached
+     scroll layer. Same for the category list below it.
+   Many or long module names still scroll sideways (min 76 / max 160px tabs,
+   ellipsis inside). */
 .mobile-survey-sheet .mobile-survey-module-tabs {
   flex: 0 0 auto;
+  position: relative;
+  isolation: isolate;
   display: flex;
   justify-content: flex-start;
   overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
   scrollbar-width: none;
-  padding: 0 4px;
-  border-bottom: 1px solid var(--border);
+  /* With the tabs' own 8px padding the first name starts at the sheet's 16px
+     edge, like every row below it. */
+  padding: 0 8px;
+  box-shadow: inset 0 -1px 0 var(--border);
 }
 
 .mobile-survey-sheet .mobile-survey-module-tabs::-webkit-scrollbar {
@@ -338,8 +608,12 @@
 }
 
 .mobile-survey-sheet .mobile-survey-module-tabs > button {
-  flex: 1 1 0;
-  min-width: 76px;
+  /* Equal shares of the row while every name fits; a tab never shrinks below
+     its own name (up to the 160px cap, where the name ellipsises), so with
+     many modules the row scrolls instead of cutting each name to "Exi...".
+     The 76px floor is the label's own min-width below. */
+  flex: 1 0 0;
+  min-width: fit-content;
   max-width: 160px;
   height: 40px;
   box-sizing: border-box;
@@ -350,9 +624,6 @@
   color: var(--text-3);
   background: transparent;
   border: 0;
-  /* The bar sits ON the hairline under the tabs, not 1px above it. */
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
   border-radius: 0;
   font: inherit;
   font-size: 13px;
@@ -362,16 +633,19 @@
 }
 
 .mobile-survey-sheet .mobile-survey-module-tabs > button > span {
-  min-width: 0;
+  min-width: 60px;
+  max-width: 144px;
+  text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* The 2px bar sits ON the row's hairline (both are the row's bottom pixels). */
 .mobile-survey-sheet .mobile-survey-module-tabs > button.is-active {
   color: var(--text-1);
   font-weight: 600;
-  border-bottom-color: var(--text-1);
+  box-shadow: inset 0 -2px 0 var(--text-1);
 }
 
 .mobile-survey-sheet .mobile-survey-module-tabs > button:active > span {
@@ -383,23 +657,23 @@
 .mobile-survey-sheet .mobile-survey-list {
   flex: 0 1 auto;
   min-height: 0;
+  /* Its own stacking context, like the tab row above (see there). */
+  position: relative;
+  isolation: isolate;
   overflow-y: auto;
-  /* Clip a pressed last row to the panel's rounded corner. */
-  border-radius: 0 0 9px 9px;
 }
 
 .mobile-survey-sheet .mobile-survey-categories-heading {
   min-height: 36px;
   box-sizing: border-box;
   margin: 0;
-  padding: 0 12px;
+  padding: 0 var(--sheet-pad-x);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  color: var(--text-2);
-  font-size: 12px;
-  font-weight: 600;
+  color: var(--text-3);
+  font: var(--sheet-section);
   text-transform: none;
 }
 
@@ -419,8 +693,10 @@
 
 /* A category is a line in the panel: a hairline above it (the first one
    parts the rows from the "Categories" head line), no edge, corner or fill
-   of its own. The active category shows as gold INK on its name (inline),
-   so its line stays the ordinary hairline - no gold edge. */
+   of its own. The armed category looks like any other row at rest (its
+   press plays when it is armed, backwards when it is not). The hairline sits
+   INSIDE the 44px line (owner 2026-10-02; it was 44 + 1), so the row below
+   it is 43. */
 .mobile-survey-sheet .survey-marker-category-card,
 .mobile-survey-sheet .survey-marker-category-card.is-active {
   padding: 0;
@@ -431,7 +707,7 @@
 }
 
 .mobile-survey-sheet .survey-marker-category-row {
-  min-height: 40px;
+  min-height: calc(var(--sheet-row-h) - 1px);
   gap: 0;
 }
 
@@ -439,28 +715,37 @@
   border-radius: 0;
 }
 
-.mobile-survey-sheet .survey-marker-category-main {
-  min-height: 40px;
-  padding: 0 12px;
-  gap: 8px;
-  font-size: 13px;
-  -webkit-tap-highlight-color: transparent;
+/* The reorder grip, as on desktop (owner 2026-10-02): a 32px gutter at the
+   sheet's edge, the name on the sheet's text line (x 48). */
+.mobile-survey-sheet .survey-marker-category-row > [data-drag-rearrange-handle] {
+  flex: 0 0 var(--survey-grip-w);
+  width: var(--survey-grip-w) !important;
+  height: auto !important;
+  align-self: stretch;
+  margin: 0;
+  padding-left: 12px;
+  box-sizing: border-box;
+  justify-content: flex-start;
+  color: var(--text-3);
 }
 
-/* No chevron (no Survey Markers yet): the count keeps the column it has on
-   rows that do have a chevron, so the counts line up down the list. */
-.mobile-survey-sheet .survey-marker-category-body > .survey-marker-category-main:only-child {
-  padding-right: 52px;
+.mobile-survey-sheet .survey-marker-category-main {
+  min-height: calc(var(--sheet-row-h) - 1px);
+  padding: 0 12px 0 calc(var(--sheet-row-text-x) - var(--survey-grip-w));
+  gap: 8px;
+  font: var(--sheet-row-title);
+  -webkit-tap-highlight-color: transparent;
 }
 
 .mobile-survey-sheet .survey-marker-category-main-label {
   flex: 1;
-  font-weight: 500;
+  /* 600, the desktop rail's category name (owner 2026-10-02). */
+  font-weight: 600;
 }
 
 .mobile-survey-sheet .survey-marker-category-main-count {
   margin: 0;
-  font-size: 12px;
+  font: var(--sheet-row-meta);
   opacity: 1;
   font-variant-numeric: tabular-nums;
 }
@@ -473,11 +758,23 @@
   background: var(--pressed);
 }
 
+/* The WHOLE row presses (owner 2026-10-02: "pressing a category row darkens
+   only part of it"): while the finger is on the category's line, the row -
+   the strip behind "+ Place" included - takes the house --pressed fill; the
+   pill presses on its own. */
+.mobile-survey-sheet .survey-marker-category-card .survey-marker-category-row:has(.survey-marker-category-main:active) {
+  background: var(--pressed);
+}
+
+/* The armed category has no look of its own at rest (owner, after bf3888e):
+   arming plays the row's press, disarming plays it backwards
+   (SurveySpacesRail.jsx playCategoryArmPress), as on desktop. */
+
 .mobile-survey-sheet .survey-marker-category-arrow,
 .mobile-survey-sheet .survey-marker-category-arrow:hover,
 .mobile-survey-sheet .survey-marker-category-arrow:active {
   width: 40px;
-  min-height: 40px;
+  min-height: calc(var(--sheet-row-h) - 1px);
   flex: 0 0 40px;
   padding: 0;
   display: grid;
@@ -491,78 +788,402 @@
   height: 16px !important;
 }
 
+/* The category's chevron sits in its open button, right of the count, so the
+   whole line (bar "+ Place") is one target. */
+.mobile-survey-sheet .mobile-survey-category-chevron {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+  transition: transform 0.2s ease;
+}
+
+.mobile-survey-sheet .survey-marker-category-main[aria-expanded='true'] .mobile-survey-category-chevron {
+  color: var(--text-1);
+}
+
+/* "+ Place": a small quiet pill at the end of the category line (the rail's
+   discs still place too). The pill is 28px; a transparent pad below makes the
+   finger target the line's full 44px (it measured 28 - a tap 9px above or
+   below the pill fell on the category line and opened it instead). */
+.mobile-survey-sheet .mobile-survey-place,
+.mobile-survey-sheet .mobile-survey-place:active {
+  position: relative;
+  flex: 0 0 auto;
+  align-self: center;
+  height: var(--sheet-chip-h);
+  margin: 0 var(--sheet-pad-x) 0 2px;
+  padding: 0 10px 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-1);
+  background: var(--panel-well);
+  border: 0;
+  border-radius: 14px;
+  font: var(--sheet-chip);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.mobile-survey-sheet .mobile-survey-place:active {
+  transform: scale(0.94);
+  background: var(--pressed);
+}
+
+.mobile-survey-sheet .mobile-survey-place::after {
+  content: '';
+  position: absolute;
+  inset-block: calc((var(--sheet-chip-h) - var(--sheet-row-h)) / 2);
+  inset-inline: -2px;
+}
+
+.mobile-survey-sheet .mobile-survey-item-empty {
+  min-height: var(--sheet-row-h-sub);
+  box-sizing: border-box;
+  padding: 0 var(--sheet-pad-x) 0 var(--survey-indent);
+  display: flex;
+  align-items: center;
+  color: var(--text-3);
+  font: var(--sheet-empty);
+  border-top: 1px solid var(--border);
+}
+
 /* A category's Survey Markers: indented lines under it, each with its own
    full-width hairline above. */
 .mobile-survey-sheet .mobile-survey-item-list [data-sortable-rearrange-item] {
   border-top: 1px solid var(--border);
 }
 
-.mobile-survey-sheet .mobile-survey-item-row {
-  width: 100%;
-  min-height: 38px;
-  box-sizing: border-box;
-  padding: 0 14px 0 24px;
-  display: flex;
+/* Badges: a note glyph, a media count, and the checklist's answered/total.
+   Quiet --text-3 ink; a fully answered checklist reads in the success ink. */
+.mobile-survey-sheet .mobile-survey-item-badges {
+  flex: 0 0 auto;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  color: var(--text-1);
+  gap: 8px;
+  color: var(--text-3);
+  font: var(--sheet-row-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+.mobile-survey-sheet .survey-marker-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.mobile-survey-sheet .survey-marker-progress.is-done {
+  color: var(--success-text);
+}
+
+.mobile-survey-sheet .survey-marker-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.mobile-survey-sheet .survey-marker-progress.is-no {
+  color: var(--danger-text);
+}
+
+/* ---------- A SURVEY MARKER: ONE LINE, CLOSED OR OPEN ------------------- */
+/* Owner 2026-10-01 ("Expanding 'Camera 1' changes too much: rows change
+   height and width, and the text changes. Make it calm"). Closed and open
+   are the SAME 44px line (--sheet-row-h):
+     [dot + entity chevron] [name] [Locate] [3/3] [chevron]
+   - x 28: the entity dot. Open, the entity menu's small chevron fades in
+     beside it (its room is kept while closed, so nothing moves).
+   - The name: one field, read-only closed and editable open - same x, size,
+     weight and baseline (it is the same element) - and only the field's
+     well appears behind it when open. The well ends 6px before Locate.
+   - Locate (the magnifier, blue on the page / orange not placed), the
+     answered count and the chevron sit in fixed columns in both states.
+   - Closed, the whole line opens the marker (an invisible cover button
+     behind the controls); Locate is its own button above it.
+   Every control keeps a 44px-tall hit area. */
+.mobile-survey-sheet .mobile-survey-marker-line {
+  position: relative;
+  box-sizing: border-box;
+  height: var(--sheet-row-h);
+  padding: 0 4px 0 0;
+  display: grid;
+  /* [grip] [dot] [name] [Locate] [count] [chevron]: the grip takes the
+     category grips' gutter and the name starts one 12px step in from the
+     category's (x 60). */
+  grid-template-columns: var(--survey-grip-w) 28px minmax(0, 1fr) 36px auto 36px;
+  align-items: center;
+  column-gap: 0;
+  /* Its hairline is the list row's own (the sortable wrapper draws it). */
+  border-top: 0;
+}
+
+.mobile-survey-sheet .mobile-survey-marker-cover,
+.mobile-survey-sheet .mobile-survey-marker-cover:active {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
   background: transparent;
   border: 0;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 400;
-  text-align: left;
+  border-radius: 0;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 
-.mobile-survey-sheet .mobile-survey-item-row:active {
+/* A full-width ROW takes the house pressed fill while the finger is down. */
+.mobile-survey-sheet .mobile-survey-marker-cover:active {
   background: var(--pressed);
   transition: background 90ms ease-out;
 }
 
-.mobile-survey-sheet .mobile-survey-item-dot {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 8px;
-  border-radius: 50%;
+/* Closed, the dot, the name and the badges let a tap through to the cover. */
+.mobile-survey-sheet .mobile-survey-marker:not(.is-open) .mobile-survey-marker-lead,
+.mobile-survey-sheet .mobile-survey-marker:not(.is-open) .mobile-survey-marker-field,
+.mobile-survey-sheet .mobile-survey-marker .mobile-survey-item-badges {
+  pointer-events: none;
 }
 
-.mobile-survey-sheet .mobile-survey-item-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.mobile-survey-sheet .mobile-survey-marker-line > :not(.mobile-survey-marker-cover):not(.mobile-survey-detail-menu) {
+  position: relative;
+  z-index: 1;
 }
 
-/* ---------- SURVEY MARKER DETAIL ----------------------------------------- */
-
-.mobile-survey-sheet .mobile-survey-detail {
-  flex: 0 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  padding: 0;
-  overflow: visible;
+/* The lead: the entity dot (x 28), then the entity menu's chevron. Open, it
+   is the entity button, its hit area reaching back to the sheet's edge. */
+.mobile-survey-sheet .mobile-survey-marker-line > [data-drag-rearrange-handle] {
+  width: var(--survey-grip-w) !important;
+  height: 44px !important;
+  margin: 0;
+  padding-left: 12px;
+  box-sizing: border-box;
+  justify-content: flex-start;
+  color: var(--text-3);
 }
 
-/* "Category" and its value on one line. */
-.mobile-survey-sheet .mobile-survey-detail-field {
-  min-height: 40px;
+.mobile-survey-sheet .mobile-survey-marker-lead,
+.mobile-survey-sheet .mobile-survey-marker-lead:active {
+  width: 28px;
+  height: 44px;
   box-sizing: border-box;
   margin: 0;
-  padding: 0 12px;
+  padding: 0 0 0 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--text-3);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-survey-sheet .mobile-survey-marker-lead > .mobile-survey-marker-dot {
+  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.mobile-survey-sheet .mobile-survey-marker-lead.is-empty > .mobile-survey-marker-dot {
+  border-style: dashed !important;
+}
+
+.mobile-survey-sheet .mobile-survey-marker-entity-chev {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transition: opacity 180ms ease-out, transform 150ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.mobile-survey-sheet .mobile-survey-marker.is-open .mobile-survey-marker-entity-chev {
+  opacity: 1;
+}
+
+.mobile-survey-sheet .mobile-survey-marker-lead:active > .mobile-survey-marker-dot {
+  transform: scale(0.88);
+}
+
+.mobile-survey-sheet .mobile-survey-marker-lead[aria-expanded='true'] {
+  color: var(--text-1);
+}
+
+.mobile-survey-sheet .mobile-survey-marker-lead[aria-expanded='true'] > .mobile-survey-marker-entity-chev {
+  transform: rotate(180deg);
+}
+
+/* The name's box. Closed it is clear; open it is a field, so a grey well
+   fades in behind the same text - no edge, no gold. The text is 400 14px
+   (the sheet's row text) in both states, 8px into the box. */
+.mobile-survey-sheet .mobile-survey-marker-field {
+  min-width: 0;
+  height: 32px;
+  margin-right: 6px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  overflow: hidden;
+  color: var(--text-1);
+  background: transparent;
+  border-radius: 6px;
+  font: var(--sheet-row-text);
+  transition: background-color 200ms ease-out;
+}
+
+.mobile-survey-sheet .mobile-survey-marker.is-open .mobile-survey-marker-field {
+  background: var(--panel-well);
+}
+
+/* The name field, the same element closed (read-only) and open. Every phone
+   field is held at 16px so iOS never zooms the page on focus (index.html,
+   data-mobile-viewport="locked"), so it keeps 16px type and is drawn at
+   14/16 scale: 14px on screen, the sheet's row text. Its box is 16/14 of the
+   well so the scaled field fills it; the text sits 8px into the well. */
+.mobile-survey-sheet input.mobile-survey-marker-name {
+  --name-scale: 0.875;
+  flex: 0 0 auto;
+  width: calc(100% / var(--name-scale));
+  min-width: 0;
+  height: calc(32px / var(--name-scale));
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 calc(4px / var(--name-scale)) 0 calc(8px / var(--name-scale));
   color: var(--text-1);
   background: transparent;
   border: 0;
   border-radius: 0;
-  font-size: 13px;
-  font-weight: 500;
+  outline: none;
+  font: inherit;
+  font-size: 16px;
+  line-height: calc(18 / 14);
+  text-overflow: ellipsis;
+  transform: scale(var(--name-scale));
+  transform-origin: left center;
 }
+
+.mobile-survey-sheet .mobile-survey-marker:not(.is-open) input.mobile-survey-marker-name {
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.mobile-survey-sheet .mobile-survey-locate,
+.mobile-survey-sheet .mobile-survey-locate:active,
+.mobile-survey-sheet .mobile-survey-marker-toggle,
+.mobile-survey-sheet .mobile-survey-marker-toggle:active {
+  width: 36px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Locate, restored (owner 2026-10-01: "its look changed without being
+   asked. Restore the original"): the magnifier the Survey panel always had
+   (git: 7699981 and before), blue #4a90e2 when the Survey Marker is on the
+   page - a tap goes to it - and orange #f5a623 when it is not - a tap places
+   it. The same two colours as the desktop rail. */
+.mobile-survey-sheet .mobile-survey-locate,
+.mobile-survey-sheet .mobile-survey-locate:active {
+  color: #4a90e2;
+}
+
+.mobile-survey-sheet .mobile-survey-locate.is-unplaced,
+.mobile-survey-sheet .mobile-survey-locate.is-unplaced:active {
+  color: #f5a623;
+}
+
+.mobile-survey-sheet .mobile-survey-locate > svg {
+  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.mobile-survey-sheet .mobile-survey-locate:active > svg {
+  transform: scale(0.88);
+}
+
+/* The answered count sits between Locate and the chevron in both states. */
+.mobile-survey-sheet .mobile-survey-marker .mobile-survey-item-badges {
+  padding: 0 4px;
+}
+
+.mobile-survey-sheet .mobile-survey-marker-toggle,
+.mobile-survey-sheet .mobile-survey-marker-toggle:active {
+  color: var(--text-3);
+}
+
+.mobile-survey-sheet .mobile-survey-marker.is-open .mobile-survey-marker-toggle {
+  color: var(--text-1);
+}
+
+.mobile-survey-sheet .mobile-survey-marker-toggle > svg {
+  transition: transform 200ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.mobile-survey-sheet .mobile-survey-marker.is-open .mobile-survey-marker-toggle > svg {
+  transform: rotate(180deg);
+}
+
+/* The checklist and the note slide open under the line: its height eases
+   from 0 to the content's own height (and back; MobileSurveyMarkerCollapse
+   in SurveySpacesRail.jsx sets the heights), clipped while it moves. */
+.mobile-survey-sheet .mobile-survey-marker-body {
+  height: 0;
+  overflow: hidden;
+  transition: height 220ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-survey-sheet .mobile-survey-marker-body,
+  .mobile-survey-sheet .mobile-survey-marker-field,
+  .mobile-survey-sheet .mobile-survey-marker-entity-chev,
+  .mobile-survey-sheet .mobile-survey-marker-toggle > svg {
+    transition: none;
+  }
+}
+
+/* Owner 2026-10-02 ("all the way to the left ... I don't need it aligned
+   with the entity swatch"): an open marker's checklist and Y/N/N/A rows, its
+   note and its media start on the sheet's 16px text gutter - the line the
+   sheet's titles and the category grip use - not under the entity dot. The
+   marker line itself (grip, dot, name, badges) is unchanged. */
+.mobile-survey-sheet .mobile-survey-marker .mobile-survey-check-item {
+  padding-left: var(--survey-detail-x);
+}
+
+.mobile-survey-sheet .mobile-survey-marker .mobile-survey-detail-empty {
+  min-height: 40px;
+  /* The sheet scale's empty state: 500 13px/18px in --text-3. */
+  font-weight: 500;
+  line-height: 18px;
+}
+
+/* The notes slot: SurveyMarkerNotes (src/components/surveyMarkerNotes.css)
+   draws the rule above it. Its sides follow this sheet's lines: its well
+   starts and ends on the 16px edges. */
+.mobile-survey-sheet .mobile-survey-open-notes {
+  border-top: 0;
+}
+
+.mobile-survey-sheet .mobile-survey-open-notes .survey-marker-notes {
+  padding-left: var(--survey-detail-x);
+  padding-right: var(--sheet-pad-x);
+}
+
+/* ---------- THE OPEN SURVEY MARKER'S CONTROLS ---------------------------- */
+/* (Shared names from the retired detail view: the name field, the entity
+   menu, the checklist rows.) */
 
 .mobile-survey-sheet .mobile-survey-detail-label {
   margin: 0;
@@ -571,114 +1192,6 @@
   font-size: 13px;
   font-weight: 400;
   text-transform: none;
-}
-
-.mobile-survey-sheet .mobile-survey-detail-field-value {
-  flex: 1;
-  min-width: 0;
-  text-align: right;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mobile-survey-sheet .mobile-survey-detail-field-meta {
-  flex: none;
-  min-width: 16px;
-  color: var(--text-3);
-  font-size: 12px;
-  font-weight: 400;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-/* The Survey Marker's own line: entity dot, name field, locate, notes. */
-.mobile-survey-sheet .mobile-survey-detail-tools {
-  position: relative;
-  min-height: 44px;
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0 4px 0 6px;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  border-top: 1px solid var(--border);
-}
-
-.mobile-survey-sheet .mobile-survey-detail-swatch-btn,
-.mobile-survey-sheet .mobile-survey-detail-icon-btn,
-.mobile-survey-sheet .mobile-survey-detail-swatch-btn:active,
-.mobile-survey-sheet .mobile-survey-detail-icon-btn:active {
-  width: 32px;
-  height: 32px;
-  flex: 0 0 32px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  color: var(--text-2);
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-/* A Survey Marker that already has a note shows its notes glyph in gold -
-   the selected-state ink, nothing more. */
-.mobile-survey-sheet .mobile-survey-detail-icon-btn.has-note {
-  color: var(--accent);
-}
-
-.mobile-survey-sheet .mobile-survey-detail-swatch {
-  width: 14px;
-  height: 14px;
-  box-sizing: border-box;
-  border-radius: 50%;
-  border: 1px solid var(--text-3);
-}
-
-/* The name is a field, so it keeps a grey well - no edge, no gold. */
-.mobile-survey-sheet .mobile-survey-detail-name-wrap {
-  flex: 1;
-  min-width: 0;
-  position: relative;
-  height: 30px;
-  margin: 0 4px;
-  display: flex;
-  align-items: center;
-  overflow: visible;
-  background: var(--surface-1);
-  border: 0;
-  border-radius: 6px;
-}
-
-.mobile-survey-sheet .mobile-survey-detail-name {
-  flex: 1;
-  min-width: 0;
-  height: 30px;
-  padding: 0 4px 0 10px;
-  color: var(--text-1);
-  background: transparent;
-  border: 0;
-  outline: none;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.mobile-survey-sheet .mobile-survey-detail-name-dd,
-.mobile-survey-sheet .mobile-survey-detail-name-dd:active {
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  color: var(--text-3);
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
 }
 
 .mobile-survey-sheet .mobile-survey-detail-menu {
@@ -692,18 +1205,41 @@
   padding: 4px;
   display: grid;
   gap: 0;
-  background: var(--surface-2);
+  /* --surface-3, a menu raised over the --surface-2 sheet. */
+  background: var(--surface-3);
   border: 1px solid var(--border-strong);
   border-radius: 8px;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow-popover);
 }
 
 .mobile-survey-sheet .mobile-survey-detail-entity-menu {
-  top: 40px;
-  left: 6px;
-  right: auto;
-  width: 230px;
-  max-width: calc(100vw - 64px);
+  /* Opens under the open line, from its dot to the sheet's edge, so a long
+     entity name shows whole (it wraps). 44px rows. */
+  top: calc(100% - 2px);
+  left: var(--sheet-pad-x);
+  right: var(--sheet-pad-x);
+  width: auto;
+  max-height: 264px;
+}
+
+.mobile-survey-sheet .mobile-survey-detail-entity-menu > button {
+  min-height: 44px;
+  padding: 6px 10px;
+  font: var(--sheet-row-title);
+}
+
+.mobile-survey-sheet .mobile-survey-detail-entity-menu > button > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.mobile-survey-sheet .mobile-survey-detail-check {
+  flex: 0 0 14px;
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
 }
 
 .mobile-survey-sheet .mobile-survey-detail-menu > button {
@@ -725,24 +1261,15 @@
 
 .mobile-survey-sheet .mobile-survey-detail-menu > button:active { background: var(--pressed); }
 
-/* Selected = gold ink, no fill. */
-.mobile-survey-sheet .mobile-survey-detail-menu > button.is-active { color: var(--accent); }
+/* Selected = bright ink, no fill (survey calm gold, 2026-10-01). */
+.mobile-survey-sheet .mobile-survey-detail-menu > button.is-active { color: var(--text-1); font-weight: 600; }
 
-.mobile-survey-sheet .mobile-survey-detail-menu > button > span:last-child {
+.mobile-survey-sheet .mobile-survey-detail-menu:not(.mobile-survey-detail-entity-menu) > button > span:last-child {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.mobile-survey-sheet .mobile-survey-detail-menu-empty {
-  min-height: 36px;
-  padding: 0 10px;
-  display: flex;
-  align-items: center;
-  color: var(--text-3);
-  font-size: 12px;
 }
 
 .mobile-survey-sheet .mobile-survey-detail-entity-dot {
@@ -754,60 +1281,35 @@
   border: 1px solid transparent;
 }
 
-/* "Checklist" head line, with the entity on the right. */
-.mobile-survey-sheet .mobile-survey-detail-check-header {
-  min-height: 36px;
-  box-sizing: border-box;
-  padding: 0 12px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  border-top: 1px solid var(--border);
-}
-
-.mobile-survey-sheet .mobile-survey-detail-check-header .mobile-survey-detail-label {
-  color: var(--text-2);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.mobile-survey-sheet .mobile-survey-detail-assigned {
-  min-width: 0;
-  color: var(--text-3);
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .mobile-survey-sheet .mobile-survey-detail-checklist {
   flex: 0 0 auto;
   margin: 0;
   display: block;
-  overflow-y: auto;
-  border-radius: 0 0 9px 9px;
+  /* The whole checklist, every row (owner 2026-10-01): no inner scroll. */
+  overflow: visible;
 }
 
 .mobile-survey-sheet .mobile-survey-check-item {
-  height: 40px;
+  height: var(--sheet-row-h);
   box-sizing: border-box;
-  padding: 0 6px 0 12px;
+  padding: 0 var(--sheet-pad-x) 0 12px;
   display: flex;
   align-items: center;
   gap: 8px;
   background: transparent;
+  /* No hairlines between checklist rows, as on desktop (owner 2026-10-02). */
   border: 0;
-  border-top: 1px solid var(--border);
   border-radius: 0;
 }
 
 .mobile-survey-sheet .mobile-survey-check-text {
   flex: 1;
   min-width: 0;
-  color: var(--text-1);
-  font-size: 13px;
+  /* The desktop's checklist line (400, --text-2) at the phone's 14px. */
+  color: var(--text-2);
+  font-size: 14px;
   font-weight: 400;
+  line-height: 18px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -817,19 +1319,20 @@
    answers are words with invisible hit areas and the chosen one is lit ink. */
 .mobile-survey-sheet .mobile-survey-check-group {
   flex-shrink: 0;
-  height: 28px;
+  height: 32px;
   padding: 0 2px;
   display: flex;
   align-items: center;
   gap: 0;
-  background: var(--surface-1);
+  /* The recessed well, the same token as the desktop's track. */
+  background: var(--panel-well);
   border-radius: 6px;
 }
 
 .mobile-survey-sheet .mobile-survey-check-btn,
 .mobile-survey-sheet .mobile-survey-check-btn:active {
-  min-width: 34px;
-  height: 28px;
+  min-width: 40px;
+  height: 32px;
   padding: 0 6px;
   display: grid;
   place-items: center;
@@ -837,9 +1340,8 @@
   background: transparent;
   border: 0;
   border-radius: 0;
-  font: inherit;
-  font-size: 11px;
-  font-weight: 600;
+  /* The sheet scale's chip type: 600 12px. */
+  font: var(--sheet-chip);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
@@ -849,10 +1351,37 @@
   transform: scale(0.88);
 }
 
-.mobile-survey-sheet .mobile-survey-check-btn.is-active { font-weight: 700; }
-.mobile-survey-sheet .mobile-survey-check-btn.is-yes { color: var(--accent); }
-.mobile-survey-sheet .mobile-survey-check-btn.is-no { color: var(--danger-text); }
-.mobile-survey-sheet .mobile-survey-check-btn.is-na { color: var(--text-1); }
+/* The answers are 32px words (26px once chosen) in a 44px checklist line: a
+   transparent pad gives each the line's full 44px height, so a thumb that lands
+   just above or below the well still answers (it measured 32). Sideways the
+   three words already tile the well, so the pad stays inside each one. */
+.mobile-survey-sheet .mobile-survey-check-btn {
+  position: relative;
+}
+
+.mobile-survey-sheet .mobile-survey-check-btn::after {
+  content: '';
+  position: absolute;
+  inset-block: calc((32px - var(--sheet-row-h)) / 2);
+  inset-inline: 0;
+}
+
+.mobile-survey-sheet .mobile-survey-check-btn.is-active::after {
+  inset-block: calc((26px - var(--sheet-row-h)) / 2);
+}
+
+/* The chosen answer (owner 2026-10-01): a small solid chip - Y green, N red,
+   N/A neutral grey - each a near-white word on an opaque plate of its hue
+   (7:1), so chosen vs not reads at a glance; the others stay --text-3 with
+   no plate. Gold stays the selection accent only. The same three chips as
+   the desktop rail (surveyRailPanel.css) and the archived-answer badge. */
+.mobile-survey-sheet .mobile-survey-check-btn.is-active {
+  height: 26px;
+  border-radius: 4px;
+}
+.mobile-survey-sheet .mobile-survey-check-btn.is-yes { color: var(--on-success-plate); background: var(--success-plate); }
+.mobile-survey-sheet .mobile-survey-check-btn.is-no { color: var(--on-danger-plate); background: var(--danger-plate); }
+.mobile-survey-sheet .mobile-survey-check-btn.is-na { color: var(--text-1); background: var(--border); }
 
 .mobile-survey-sheet .mobile-survey-detail-empty {
   box-sizing: border-box;
@@ -868,223 +1397,28 @@
   font-weight: 400;
 }
 
-/* ---------- SURVEY MARKER NOTES ------------------------------------------ */
-
-.mobile-survey-sheet .mobile-survey-notes-title {
-  min-height: 44px;
-  box-sizing: border-box;
-  padding: 6px 12px;
-  margin: 0;
-  display: grid;
-  align-content: center;
-  gap: 1px;
-}
-
-.mobile-survey-sheet .mobile-survey-notes-title .mobile-survey-detail-label {
-  font-size: 11px;
-}
-
-.mobile-survey-sheet .mobile-survey-notes-name {
-  color: var(--text-1);
-  font-size: 14px;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mobile-survey-sheet .mobile-survey-notes-scroll {
-  flex: 1 1 auto;
-  min-height: 0;
-  margin: 0;
-  padding: 0;
-  display: block;
-  overflow-y: auto;
-}
-
-/* The note and the attachments are sections of the one panel. */
-.mobile-survey-sheet .mobile-survey-notes-card {
-  padding: 10px 12px;
-  display: grid;
-  gap: 8px;
-  background: transparent;
-  border: 0;
-  border-top: 1px solid var(--border);
-  border-radius: 0;
-}
-
-.mobile-survey-sheet .mobile-survey-notes-card textarea {
-  min-height: 88px;
-  box-sizing: border-box;
-  padding: 9px 10px;
-  color: var(--text-1);
-  background: var(--surface-1);
-  border: 0;
-  border-radius: 6px;
-  outline: none;
-  resize: vertical;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 400;
-}
-
-.mobile-survey-sheet .mobile-survey-notes-attach-header {
-  min-height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.mobile-survey-sheet .mobile-survey-notes-attach-header .mobile-survey-detail-label {
-  color: var(--text-2);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.mobile-survey-sheet .mobile-survey-notes-upload-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-/* Photo / Video: quiet gold words with their glyph - no box. */
-.mobile-survey-sheet .mobile-survey-notes-upload,
-.mobile-survey-sheet .mobile-survey-notes-upload:active {
-  min-height: 28px;
-  padding: 0 2px;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--accent);
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.mobile-survey-sheet .mobile-survey-notes-upload:active {
-  opacity: 0.6;
-}
-
-.mobile-survey-sheet .mobile-survey-notes-attachment {
-  min-height: 40px;
-  margin: 0 -12px;
-  padding: 0 6px 0 12px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: transparent;
-  border-top: 1px solid var(--border);
-  border-radius: 0;
-}
-
-.mobile-survey-sheet .mobile-survey-notes-thumb {
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
-  display: grid;
-  place-items: center;
-  color: var(--text-2);
-  background: var(--surface-1);
-  border: 0;
-  border-radius: 6px;
-}
-
-.mobile-survey-sheet .mobile-survey-notes-attachment-name {
-  flex: 1;
-  min-width: 0;
-  color: var(--text-1);
-  font-size: 13px;
-  font-weight: 400;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mobile-survey-sheet .mobile-survey-notes-attachment > button,
-.mobile-survey-sheet .mobile-survey-notes-attachment > button:active {
-  width: 32px;
-  height: 32px;
-  flex: 0 0 32px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  color: var(--text-3);
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.mobile-survey-sheet .mobile-survey-notes-empty {
-  color: var(--text-3);
-  font-size: 12px;
-  font-weight: 400;
-}
-
-.mobile-survey-sheet .mobile-survey-notes-footer {
-  flex: 0 0 auto;
-  padding: 8px 12px;
-  display: flex;
-  gap: 10px;
-  border-top: 1px solid var(--border);
-}
-
-.mobile-survey-sheet .mobile-survey-notes-cancel,
-.mobile-survey-sheet .mobile-survey-notes-save {
-  flex: 1;
-  height: 36px;
-  border: 0;
-  border-radius: 8px;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.mobile-survey-sheet .mobile-survey-notes-cancel {
-  color: var(--text-1);
-  background: var(--surface-1);
-}
-
-/* Save is the panel's one primary action, the one gold fill (as the home
-   editors' Save is). */
-.mobile-survey-sheet .mobile-survey-notes-save {
-  color: var(--accent-text);
-  background: var(--accent);
-}
-
-.mobile-survey-sheet .mobile-survey-notes-cancel:active {
-  background: var(--pressed);
-}
-
-.mobile-survey-sheet .mobile-survey-notes-save:active {
-  background: var(--accent-press, var(--accent));
-}
-
 /* ---------- THE GLYPH PRESS ---------------------------------------------- */
 /* Invisible hit areas: the glyph itself shrinks while pressed. */
-.mobile-survey-sheet .mobile-survey-sheet-export > svg,
 .mobile-survey-sheet .mobile-survey-close > svg,
-.mobile-survey-sheet .survey-marker-category-arrow svg,
-.mobile-survey-sheet .mobile-survey-detail-swatch-btn > span,
-.mobile-survey-sheet .mobile-survey-detail-icon-btn > svg,
-.mobile-survey-sheet .mobile-survey-detail-name-dd > svg,
-.mobile-survey-sheet .mobile-survey-notes-attachment > button > svg {
+.mobile-survey-sheet .survey-marker-category-arrow svg {
   transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
 }
 
-.mobile-survey-sheet .mobile-survey-sheet-export:not(:disabled):active > svg,
 .mobile-survey-sheet .mobile-survey-close:active > svg,
-.mobile-survey-sheet .survey-marker-category-arrow:active svg,
-.mobile-survey-sheet .mobile-survey-detail-swatch-btn:active > span,
-.mobile-survey-sheet .mobile-survey-detail-icon-btn:active > svg,
-.mobile-survey-sheet .mobile-survey-detail-name-dd:active > svg,
-.mobile-survey-sheet .mobile-survey-notes-attachment > button:active > svg {
+.mobile-survey-sheet .survey-marker-category-arrow:active svg {
   transform: scale(0.88);
+}
+
+/* Survey audit P1-5 (2026-10-01, phone "Locate on page"): while the Survey
+   sheet is up it covers the bottom half of the page, and a Survey Marker near
+   the end of the last page could never be scrolled up above it - the viewer
+   ran out of page. Give the viewer that much extra room to scroll below the
+   last page while the sheet is open (like an iOS sheet's content inset), so
+   Locate can land the marker in the page you can still see. The page itself
+   does not move when the sheet opens; the room goes when the sheet closes. */
+body:has(.mobile-survey-sheet:not(.is-collapsed)) .survey-pdfjs-viewer.survey-pdfjs-mobile-surface::after {
+  content: '';
+  display: block;
+  height: var(--mobile-panel-standard, 50vh);
+  pointer-events: none;
 }

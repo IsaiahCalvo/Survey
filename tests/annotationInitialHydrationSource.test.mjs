@@ -93,7 +93,7 @@ test('cloud callouts hydrate from the annotations map inside byPage, never the c
     ANNOTATION_DOC_HOOK_SOURCE,
     /capturedByPage\s*=\s*stripMetaFallbackCallouts\(\s*annotationsByPage/,
   );
-  assert.match(ANNOTATION_DOC_HOOK_SOURCE, /applyByPage\(capturedByPage\)/);
+  assert.match(ANNOTATION_DOC_HOOK_SOURCE, /applyByPage\(capturedByPage[,)]/);
   // PDFViewer's seam no longer feeds the legacy callouts/setCallouts pair (or
   // the retired BLOCKER-2 pageSizesReady signal) into the hook — callouts
   // arrive via annotationsByPage alone.

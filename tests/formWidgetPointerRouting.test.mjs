@@ -199,14 +199,17 @@ test('a mobile tap on a widget is not preventDefaulted into a pan', () => {
   assert.match(guard, /isLiveFormWidgetTarget\(nativeTarget\)/);
   // The bail must happen before ANY preventDefault: preventing the touch
   // sequence on a widget kills its focus/click/change chain outright.
+  // (flickPan 2026-10-07: the head now also stops a running glide first -
+  // `cancelPanInertia()` no longer marks its end, the first preventDefault does.)
   const touchStartHead = containerSource.slice(
     containerSource.indexOf('const onTouchStart = (event) => {'),
-    containerSource.indexOf('cancelPanInertia();',
+    containerSource.indexOf('event.preventDefault();',
       containerSource.indexOf('const onTouchStart = (event) => {')),
   );
-  assert.match(touchStartHead, /if \(isNativeInteractionTarget\(event\.target\)\) \{/);
-  assert.doesNotMatch(touchStartHead, /preventDefault/,
+  assert.match(touchStartHead, /if \(isNativeInteractionTarget\(event\.target\)\) \{/,
     'a touch on a widget must reach the control, never be cancelled into a pan');
+  assert.match(touchStartHead, /if \(isNativeInteractionTarget\(event\.target\)\) \{[\s\S]*?return;\s*\}/,
+    'the widget bail returns before the first preventDefault');
 });
 
 test('a drag that starts on a widget still pans the page on touch', () => {
@@ -242,7 +245,10 @@ test('a pan click on a widget fills the field and selects nothing', () => {
   assert.ok(bail > 0, 'the pan quick-click must consult isLiveFormWidgetTarget');
   assert.ok(bail < hitTest,
     'the bail-out must precede the hit test, or an annotation merely overlapping the widget box switches tool mid-typing');
-  assert.ok(effect.includes('activateSelectFamilyMode'), 'sanity: this is the effect that switches tool');
+  // Owner 2026-10-02 (Drawboard rule 2): a Pan click picks the mark and Pan
+  // stays armed, so this effect no longer switches tool; it is still the one
+  // that picks.
+  assert.ok(effect.includes('setPendingSvgSelection'), 'sanity: this is the pan quick-pick effect');
 });
 
 test('the pan hover glow leaves a form control its own affordance', () => {
@@ -251,7 +257,7 @@ test('the pan hover glow leaves a form control its own affordance', () => {
     viewerSource.indexOf("document.body.style.cursor = 'pointer'"),
   );
   const bail = applyHover.indexOf('isLiveFormWidgetTarget(e.target)');
-  const hitTest = applyHover.indexOf('const hit = resolveAnnotationAt(e);');
+  const hitTest = applyHover.indexOf('const hit = resolveAnnotationAt(e, {');
   assert.ok(bail > 0 && bail < hitTest, 'the hover glow must bail on widgets before hit-testing');
   // Bailing has to clear whatever the previous frame left behind, or the glow
   // and the `pointer` cursor stick while the pointer sits inside the field.

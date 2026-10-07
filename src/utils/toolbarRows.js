@@ -22,26 +22,37 @@
 // tools) and PDFViewer (which draws the group tools themselves), so the two
 // always agree on which group is showing.
 import { isSelectFamilyTool } from './selectModes.js';
+import { TOOL_GROUP_BY_TOOL } from './markToolGroup.js';
+
+/**
+ * What the Areas tools show for the one render between the viewer entering
+ * area editing and RegionSelectionTool publishing its own state: the tool's
+ * opening state (Rectangle, Add), with nothing to press yet.
+ */
+export const REGION_TOOLBAR_OPENING_STATE = Object.freeze({
+  toolType: 'rectangular',
+  selectionMode: 'add',
+  canDelete: false,
+  canSetFullPage: false,
+  fullPageConfirmPending: false,
+});
+
+/**
+ * Whether the viewer is editing a Space's areas. The viewer publishes its
+ * armed tool a frame ahead of the rest of its state (a layout effect), so the
+ * area-edit tool (viewerShared REGION_EDIT_TOOL) counts as well as the
+ * regionEditing flag: the bar then switches to the Areas tools in one frame.
+ */
+export function isAreaEditing(api) {
+  return Boolean(api && (api.regionEditing || api.activeTool === 'region-edit'));
+}
 
 /** The tool groups whose tools sit in the tool bar. */
 export const TOOL_BAR_GROUPS = Object.freeze(['draw', 'shape', 'review', 'forms']);
 
-/** The group each drawing tool (or picked mark's tool) belongs to. */
-export const TOOL_GROUP_BY_TOOL = Object.freeze({
-  pen: 'draw',
-  highlighter: 'draw',
-  'text-highlight': 'draw',
-  eraser: 'draw',
-  rect: 'shape',
-  ellipse: 'shape',
-  polygon: 'shape',
-  polyline: 'shape',
-  line: 'shape',
-  arrow: 'shape',
-  counter: 'shape',
-  text: 'review',
-  callout: 'review',
-});
+/** The group each drawing tool (or picked mark's tool) belongs to — kept in
+ * utils/markToolGroup.js, the one tool / mark -> group table. */
+export { TOOL_GROUP_BY_TOOL };
 
 /**
  * Which group's tools the tool bar shows right of the group icons.
@@ -49,13 +60,19 @@ export const TOOL_GROUP_BY_TOOL = Object.freeze({
  *   'select' — Select's Box / Lasso / Text modes (Select armed, and nothing
  *              picked or a picked mark no drawing group makes, such as a
  *              text highlight);
- *   null      — nothing (Pan, Survey Marker placement).
- * `contextTool` is the picked mark's own tool while Select is armed (see
- * PDFViewer's toolbar publish), else the armed tool.
+ *   null      — nothing (Pan with nothing picked, Survey Marker placement).
+ * `contextTool` is the picked mark's own tool while Select or Pan holds a
+ * pick (see PDFViewer's toolbar publish), else the armed tool.
  */
-export function resolveToolBarGroup({ activeTool, activeCategoryDropdown, contextTool } = {}) {
+export function resolveToolBarGroup({ activeTool, activeCategoryDropdown, contextTool, regionEditing } = {}) {
+  // Editing a Space's areas: the tool bar shows the Areas tools instead
+  // (AppShell), never a drawing group's.
+  if (regionEditing || activeTool === 'region-edit') return null;
   if (TOOL_BAR_GROUPS.includes(activeCategoryDropdown)) return activeCategoryDropdown;
   if (isSelectFamilyTool(activeTool)) return TOOL_GROUP_BY_TOOL[contextTool] || 'select';
+  // Owner 2026-10-04: a Pan pick brings up the picked mark's group as a
+  // Select pick does (contextTool is then the mark's tool); Pan alone has none.
+  if (activeTool === 'pan') return TOOL_GROUP_BY_TOOL[contextTool] || null;
   return TOOL_GROUP_BY_TOOL[activeTool] || null;
 }
 
@@ -76,7 +93,9 @@ export const FORMAT_ROW_TOOLS = Object.freeze([
  * picked has nothing for row 2 and it is hidden; picking a mark brings it
  * back. The row lies over the page (utils/viewerTopOverlay.js), so the page
  * does not move when it comes and goes.
- * Pan and Survey Marker placement have no settings: no row.
+ * Pan (with nothing picked) and Survey Marker placement have no settings: no
+ * row. A Pan pick shows the picked mark's row, as under Select (owner
+ * 2026-10-04: contextTool is then the mark's tool).
  * w47 (2026-09-26): an ARMED drawing tool always has settings, even for the
  * one render where the viewer has published the new tool but not yet its
  * settings context (Eraser → Pen reported contextTool 'eraser' with
@@ -84,6 +103,9 @@ export const FORMAT_ROW_TOOLS = Object.freeze([
  */
 export function showsFormatRow(api) {
   if (!api) return false;
+  // Owner 2026-10-01 (Spaces toolbar): while a Space's areas are being edited
+  // row 2 holds the Areas actions (Delete area, Full page, Cancel, Done).
+  if (isAreaEditing(api)) return true;
   if (api.activeTool === 'eraser' || api.richTextEditor) return true;
   return FORMAT_ROW_TOOLS.includes(api.contextTool) || FORMAT_ROW_TOOLS.includes(api.activeTool);
 }

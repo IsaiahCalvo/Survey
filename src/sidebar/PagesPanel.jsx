@@ -6,21 +6,174 @@
  * click-to-navigate, drag reorder (onReorderPages), and a right-click context menu
  * for cut/copy/paste/duplicate/rotate/mirror/reset/delete. Honors pageTransformations.
  */
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  MeasuringStrategy,
+  MouseSensor,
+  TouchSensor,
+  closestCenter,
+  defaultDropAnimationSideEffects,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { CALM_LIST_AUTO_SCROLL } from '../reorder/dragAutoScroll.js';
+import { pageHasTransform } from '../utils/disabledActions.js';
 import Icon from '../Icons';
 import Spinner from '../components/Spinner';
 import { useTooltip } from '../components/Tooltip';
 import { watchLightPopover } from '../components/dismissRules.js';
+import { placeAnchoredMenu } from '../utils/floatingUiGeometry.js';
+import { PageMenuList } from './PageActionsMenu.jsx';
+import { availableActions, buildPageMenuItems, runPageMenuAction } from './pageMenuItems.js';
+import { copyPagesAfter, duplicatePages, movePagesNextTo, movePagesToIndex } from '../utils/pageSelectionOperations.js';
+import { thumbnailBoxStyle } from './pageThumbnailBox.js';
+import { getPageViewBase, pageViewKey, pageViewUprightKey } from '../utils/pageViewDocument.js';
+import {
+  getCachedPageThumbnails,
+  rememberPageThumbnails,
+  encodeCanvasToDataUrl,
+  predecodeImage,
+  takePriorityJob,
+} from './pagesPanelThumbnailCache.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const FAST_THUMBNAIL_SCALE = 0.15; // Ultra-fast, low-res (was 0.2)
 const CRISP_THUMBNAIL_SCALE = 0.5; // Slower, high-res
 const THUMBNAIL_DPR_CAP = 1;
-const CRISP_DPR_CAP = 2;
+// The crisp pass draws at the card's on-screen width x devicePixelRatio (up
+// to 3), never larger than the old fixed 0.5 x 2 = 1.0 page scale. A phone
+// card is ~155px wide, so a letter page is ~465px, not 612px: ~40% fewer
+// pixels to draw and encode for the same sharpness on screen.
+const CRISP_DPR_CAP = 3;
+const CRISP_MAX_PIXEL_SCALE = 1;
 const THUMBNAIL_JPEG_QUALITY = 0.72;
 const EAGER_PRELOAD_COUNT = 6;
-const CONCURRENCY_LIMIT = 4;
+// pdf.js paints a page on the main thread in ~15ms slices, one slice per task
+// per frame: four at once could take a whole 60ms frame (2026-10-01 profile).
+const CONCURRENCY_LIMIT = 2;
+// While the list is moving, only the cheap low-res pass runs; crisp redraws
+// wait until it has been still this long.
+const SCROLL_SETTLE_MS = 180;
+// Once the list is still, low-res images for pages just off screen (this many
+// cards either side) are drawn one at a time, so scrolling to them shows a
+// picture instead of an empty box.
+const IDLE_PREFILL_DELAY_MS = 400;
+const IDLE_PREFILL_SPAN = 16;
+// The page menu's layer: above the phone dock (6750), sheets and popovers
+// (up to 7400), below modals (10000+), the tooltip and toasts.
+const PAGE_MENU_Z = 9000;
+// Phone: how long a still finger on a card takes to lift the page for a drag
+// (a swipe that starts sooner scrolls the list). Owner 2026-10-07: a hold is
+// ALWAYS a drag - let go without moving and the page just goes back.
+const PAGE_DRAG_TOUCH_DELAY_MS = 300;
+// Phone: a second tap on the same card this soon after the first opens the
+// page menu (owner 2026-10-07: "if I double-tap on a page thumbnail ... the
+// context menu"). The first tap goes to the page at once, never waiting.
+const PAGE_DOUBLE_TAP_MS = 320;
+// The lifted page rides above the sheets (7400) and below the page menu.
+const PAGE_DRAG_OVERLAY_Z = 8500;
+const PAGE_SLIDE = { duration: 180, easing: 'cubic-bezier(0.2, 0, 0, 1)' };
+// The slots are measured all through a drag, not once at pick-up: pages
+// further down draw their pictures (and take their real shape) while the list
+// scrolls under a carried page, and a slot measured before that would send
+// the drop to the wrong place ("dragging during a thumbnail load").
+const PAGE_DRAG_MEASURING = { droppable: { strategy: MeasuringStrategy.WhileDragging, frequency: 100 } };
 
+// Desktop: the strip is one column, so a carried page only moves up / down.
+const restrictToVerticalAxis = ({ transform }) => ({ ...transform, x: 0 });
+
+function usePrefersReducedMotion() {
+  const query = '(prefers-reduced-motion: reduce)';
+  const [reduced, setReduced] = useState(() => (
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(query).matches
+  ));
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const list = window.matchMedia(query);
+    const onChange = () => setReduced(list.matches);
+    list.addEventListener?.('change', onChange);
+    return () => list.removeEventListener?.('change', onChange);
+  }, []);
+  return reduced;
+}
+
+// One card of the strip as a dnd-kit sortable item; the card itself is drawn
+// by the render prop (the whole card is the drag target, no handle).
+function SortablePageCard({ id, reducedMotion, children }) {
+  const sortable = useSortable({
+    id,
+    // Not "sortable": the phone sheet's swipe-to-close treats a touch on a
+    // [aria-roledescription="sortable"] as someone else's gesture, and the
+    // sheet must still close from a swipe on the cards (it stands aside once
+    // a drag is live - useMobileSheetMotion).
+    attributes: { roleDescription: 'page' },
+    transition: reducedMotion ? null : PAGE_SLIDE,
+    // A drop lands at once (owner 2026-10-07: "super smooth and instant"):
+    // the cards are already in their new order in the drop's own render, so
+    // no card glides in from where it used to be.
+    animateLayoutChanges: () => false,
+  });
+  return children(sortable);
+}
+
+// The page menu's rows and list: sidebar/PageActionsMenu.jsx and
+// sidebar/pageMenuItems.js (one list, shared with the viewer's page menu).
+
+// The drawn width of a card's thumbnail (its page box, not the whole card):
+// thumbnails are drawn at the size they are shown.
+const thumbnailBoxWidth = (card) => (
+  card?.querySelector?.('[data-page-preview]')?.clientWidth || card?.clientWidth || 0
+);
+
+// Thumbnails drawn for `previousDoc`, re-addressed to the pages of `nextDoc`
+// (a page view over the same document). null when the documents differ.
+function remapThumbnailsToView(previousDoc, nextDoc, previousThumbs) {
+  if (!previousDoc || !nextDoc || previousDoc === nextDoc) return null;
+  if (getPageViewBase(previousDoc) !== getPageViewBase(nextDoc)) return null;
+  const byKey = new Map();
+  const byUpright = new Map();
+  for (let page = 1; page <= (previousDoc.numPages || 0); page += 1) {
+    const thumb = previousThumbs?.[page];
+    if (!thumb || thumb.quality === 'stale') continue;
+    byKey.set(pageViewKey(previousDoc, page - 1), thumb);
+    const upright = pageViewUprightKey(previousDoc, page - 1);
+    byUpright.set(upright ? upright.key : pageViewKey(previousDoc, page - 1), { thumb, rotation: upright?.rotation || 0 });
+  }
+  const thumbnails = {};
+  const ratios = {};
+  for (let page = 1; page <= (nextDoc.numPages || 0); page += 1) {
+    const exact = byKey.get(pageViewKey(nextDoc, page - 1));
+    if (exact) {
+      thumbnails[page] = exact;
+      if (exact.width && exact.height) ratios[page] = (exact.height / exact.width) * 100;
+      continue;
+    }
+    const upright = pageViewUprightKey(nextDoc, page - 1);
+    const source = byUpright.get(upright ? upright.key : pageViewKey(nextDoc, page - 1));
+    if (!source) continue;
+    const turn = (((upright?.rotation || 0) - source.rotation) % 360 + 360) % 360;
+    thumbnails[page] = { ...source.thumb, quality: 'stale', cssRotate: turn };
+    if (source.thumb.width && source.thumb.height) {
+      ratios[page] = turn % 180 !== 0
+        ? (source.thumb.width / source.thumb.height) * 100
+        : (source.thumb.height / source.thumb.width) * 100;
+    }
+  }
+  return { thumbnails, ratios };
+}
 
 const PagesPanel = ({
   pdfDoc,
@@ -44,28 +197,30 @@ const PagesPanel = ({
   shouldShowPage,
   activeSpacePages,
   scale,
-  onPageDragStart,
-  tabId,
   mobileMode = false,
 }) => {
   // KAL-65: sidebar controls use the app's instant shared tooltip, never a
   // native title= (the OS tooltip takes ~1.5s and is OS-styled, so mixing the
   // two showed users two different tooltips on the same control).
   const tip = useTooltip();
-  const [thumbnails, setThumbnails] = useState({});
-  const [pageAspectRatios, setPageAspectRatios] = useState({});
+  // A reopened panel starts with everything it drew for this document
+  // (pagesPanelThumbnailCache.js): a drawn thumbnail never goes blank again.
+  const [thumbnails, setThumbnails] = useState(() => getCachedPageThumbnails(pdfDoc)?.thumbnails || {});
+  const [pageAspectRatios, setPageAspectRatios] = useState(() => getCachedPageThumbnails(pdfDoc)?.ratios || {});
   const [contextMenu, setContextMenu] = useState(null);
-  const [selectedPage, setSelectedPage] = useState(pageNum);
   const [mobileSelectMode, setMobileSelectMode] = useState(false);
-  const [mobileSelectedPages, setMobileSelectedPages] = useState(() => new Set());
-  const [draggedPage, setDraggedPage] = useState(null);
-  const [dragOverPage, setDragOverPage] = useState(null);
   const contextMenuRef = useRef(null);
   const thumbnailRefs = useRef({});
   const observerRef = useRef(null);
   const containerRef = useRef(null);
   const isMountedRef = useRef(true);
-  const thumbnailsRef = useRef({});
+  const thumbnailsRef = useRef(thumbnails);
+  const lastScrollAtRef = useRef(0);
+  const settleTimerRef = useRef(null);
+  const pendingResultsRef = useRef(new Map());
+  const flushFrameRef = useRef(0);
+  const idleFillTimerRef = useRef(null);
+  const idleFillRef = useRef(() => {});
 
   // Queue State
   const queueRef = useRef({
@@ -76,9 +231,17 @@ const PagesPanel = ({
   const runningWorkersRef = useRef(0);
   const pendingRequestsRef = useRef(new Set()); // Track pages currently in queue or running
 
+  // thumbnailsRef is written wherever thumbnails change (a finished image in
+  // applyThumbnailResult, a document change below) and is never copied back
+  // from state: a render that commits after a batched flush but before that
+  // flush's own render would otherwise drop the newest images from the ref,
+  // and their pages were queued and drawn a second time.
+
+  // Write-through: whatever is on screen for this document survives the
+  // panel closing (the phone sheet unmounts it).
   useEffect(() => {
-    thumbnailsRef.current = thumbnails;
-  }, [thumbnails]);
+    rememberPageThumbnails(pdfDoc, thumbnails, pageAspectRatios);
+  }, [pdfDoc, thumbnails, pageAspectRatios]);
 
   const getRotationDelta = useCallback((pageNumber) => {
     const transform = pageTransformations?.[pageNumber];
@@ -196,6 +359,9 @@ const PagesPanel = ({
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
+      if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+      if (idleFillTimerRef.current) clearTimeout(idleFillTimerRef.current);
+      if (flushFrameRef.current) cancelAnimationFrame(flushFrameRef.current);
       // Cancel all running tasks
       activeTasksRef.current.forEach(task => task.cancel());
       activeTasksRef.current.clear();
@@ -231,16 +397,51 @@ const PagesPanel = ({
     return Array.from({ length: numPages }, (_, i) => i + 1);
   }, [activeSpacePages, shouldShowPage, numPages]);
 
-  // Update selected page when pageNum prop changes
-  useEffect(() => {
-    if (allowedPages.includes(pageNum)) {
-      setSelectedPage(pageNum);
-    } else if (allowedPages.length > 0) {
-      setSelectedPage(allowedPages[0]);
-    } else {
-      setSelectedPage(null);
+  // A card is keyed by what it shows (pageViewDocument), not its number, so
+  // a moved page keeps its DOM node and already-decoded image. Its turn is
+  // left out: a rotated page is still the same card (and stays selected).
+  const cardKeys = useMemo(() => {
+    const keys = {};
+    const seen = new Map();
+    allowedPages.forEach((pageNumber) => {
+      const upright = pageViewUprightKey(pdfDoc, pageNumber - 1);
+      const key = upright ? upright.key : pageViewKey(pdfDoc, pageNumber - 1);
+      const count = seen.get(key) || 0;
+      seen.set(key, count + 1);
+      keys[pageNumber] = `${key}#${count}`;
+    });
+    return keys;
+  }, [allowedPages, pdfDoc]);
+
+  // The current page (the gold outline on the phone, the lone selection on
+  // desktop), kept by WHAT it shows as well as its number. Owner 2026-10-07
+  // (iPhone): after a drop the outline flickered between the moved page and
+  // the page that took its old slot - the strip got the new page order a
+  // render before it re-read the current page number (an effect), so for a
+  // frame or two the old number pointed at the other page. Now it is worked
+  // out in the render itself: a new page order with the same current-page
+  // number follows the page (its card key) to its new number; a new number
+  // from the viewer is taken as it comes. Zero frames on the wrong card.
+  const [currentPage, setCurrentPage] = useState(() => {
+    const page = allowedPages.includes(pageNum) ? pageNum : (allowedPages[0] ?? null);
+    return { doc: pdfDoc, pageNum, allowed: allowedPages, page, key: page ? cardKeys[page] : null };
+  });
+  let selectedPage = currentPage.page;
+  if (currentPage.doc !== pdfDoc || currentPage.pageNum !== pageNum || currentPage.allowed !== allowedPages) {
+    let page = null;
+    if (currentPage.pageNum === pageNum && currentPage.key) {
+      page = allowedPages.find((p) => cardKeys[p] === currentPage.key) ?? null;
     }
-  }, [pageNum, allowedPages]);
+    if (page == null) page = allowedPages.includes(pageNum) ? pageNum : (allowedPages[0] ?? null);
+    selectedPage = page;
+    setCurrentPage({ doc: pdfDoc, pageNum, allowed: allowedPages, page, key: page ? cardKeys[page] : null });
+  }
+  // A tap / click on a card: that page at once (the viewer's page follows).
+  const cardKeysRef = useRef(cardKeys);
+  cardKeysRef.current = cardKeys;
+  const setSelectedPage = useCallback((page) => {
+    setCurrentPage((prev) => ({ ...prev, page, key: page ? cardKeysRef.current[page] : null }));
+  }, []);
 
   // Generate aspect ratios for all pages (lightweight, runs once)
   useEffect(() => {
@@ -264,10 +465,32 @@ const PagesPanel = ({
     getAspectRatios();
   }, [pdfDoc, numPages, getThumbnail]);
 
+  // Owner 2026-10-01 (instant page operations): a page operation swaps in a
+  // page view over the same loaded document (utils/pageViewDocument.js). Keep
+  // every thumbnail already drawn, moved to its page's new slot, in the SAME
+  // render that shows the new page order (derived state, no blank frame); a
+  // just-rotated page shows its old image turned until the new one is drawn.
+  const [thumbnailDoc, setThumbnailDoc] = useState(pdfDoc);
+  if (thumbnailDoc !== pdfDoc) {
+    setThumbnailDoc(pdfDoc);
+    const remapped = remapThumbnailsToView(thumbnailDoc, pdfDoc, thumbnailsRef.current);
+    if (remapped) {
+      thumbnailsRef.current = remapped.thumbnails;
+      setThumbnails(remapped.thumbnails);
+      setPageAspectRatios(remapped.ratios);
+    } else {
+      // A different document: start from what was drawn for IT (if it was
+      // open before), never from the previous document's images.
+      const cached = getCachedPageThumbnails(pdfDoc);
+      thumbnailsRef.current = cached?.thumbnails || {};
+      setThumbnails(cached?.thumbnails || {});
+      setPageAspectRatios(cached?.ratios || {});
+    }
+    pendingResultsRef.current.clear();
+  }
+  // The images themselves follow the document in the render above (derived
+  // state); this only drops the previous document's queued work.
   useEffect(() => {
-    setThumbnails({});
-    setPageAspectRatios({});
-
     // Reset Queue
     activeTasksRef.current.forEach(task => task.cancel());
     activeTasksRef.current.clear();
@@ -283,16 +506,7 @@ const PagesPanel = ({
     const ratioWidth = normalized.width || normalized.containerWidth;
     const ratioHeight = normalized.height || normalized.containerHeight;
     if (ratioWidth && ratioHeight) {
-      setPageAspectRatios((prev) => {
-        const ratioValue = (ratioHeight / ratioWidth) * 100;
-        if (prev[pageNumber] && Math.abs(prev[pageNumber] - ratioValue) < 0.5) {
-          return prev;
-        }
-        return {
-          ...prev,
-          [pageNumber]: ratioValue
-        };
-      });
+      // Applied with the image itself in the batched flush below.
     } else if (normalized.src) {
       const img = new Image();
       img.onload = () => {
@@ -314,25 +528,56 @@ const PagesPanel = ({
       img.src = normalized.src;
     }
 
-    setThumbnails((prev) => ({
-      ...prev,
-      [pageNumber]: normalized
-    }));
+    // Several thumbnails finishing close together land in ONE render of the
+    // list (one per frame at most), not one full-list render each.
+    pendingResultsRef.current.set(pageNumber, normalized);
+    thumbnailsRef.current = { ...thumbnailsRef.current, [pageNumber]: normalized };
+    if (!flushFrameRef.current) {
+      flushFrameRef.current = requestAnimationFrame(() => {
+        flushFrameRef.current = 0;
+        if (!isMountedRef.current || pendingResultsRef.current.size === 0) return;
+        const batch = Object.fromEntries(pendingResultsRef.current);
+        pendingResultsRef.current.clear();
+        setThumbnails((prev) => ({ ...prev, ...batch }));
+        setPageAspectRatios((prev) => {
+          let next = prev;
+          Object.entries(batch).forEach(([page, thumb]) => {
+            const w = thumb.width || thumb.containerWidth;
+            const h = thumb.height || thumb.containerHeight;
+            if (!w || !h) return;
+            const ratioValue = (h / w) * 100;
+            if (prev[page] && Math.abs(prev[page] - ratioValue) < 0.5) return;
+            if (next === prev) next = { ...prev };
+            next[page] = ratioValue;
+          });
+          return next;
+        });
+      });
+    }
   }, []);
 
   const renderPdfJsThumbnail = useCallback(async (pageNumber, quality = 'fast', onCancel) => {
     if (!pdfDoc) return null;
     const page = await pdfDoc.getPage(pageNumber);
 
-    const scale = quality === 'crisp' ? CRISP_THUMBNAIL_SCALE : FAST_THUMBNAIL_SCALE;
     const dprCap = quality === 'crisp' ? CRISP_DPR_CAP : THUMBNAIL_DPR_CAP;
+    const dpr = Math.min(window.devicePixelRatio || 1, dprCap);
+    let scale = quality === 'crisp' ? CRISP_THUMBNAIL_SCALE : FAST_THUMBNAIL_SCALE;
+    if (quality === 'crisp') {
+      const cardWidth = thumbnailBoxWidth(thumbnailRefs.current[pageNumber]);
+      const base = page.getViewport({ scale: 1 });
+      const sideways = getRotationDelta(pageNumber) % 180 !== 0;
+      const pageWidth = sideways ? base.height : base.width;
+      if (cardWidth > 0 && pageWidth > 0) {
+        scale = Math.min(cardWidth / pageWidth, CRISP_MAX_PIXEL_SCALE / dpr);
+      }
+    }
 
     const viewport = page.getViewport({ scale });
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d', { alpha: false });
     if (!context) return null;
 
-    const dpr = Math.min(window.devicePixelRatio || 1, dprCap);
     canvas.width = viewport.width * dpr;
     canvas.height = viewport.height * dpr;
     canvas.style.width = `${viewport.width}px`;
@@ -360,29 +605,96 @@ const PagesPanel = ({
       throw error;
     }
 
+    const src = await encodeCanvasToDataUrl(canvas, 'image/jpeg', THUMBNAIL_JPEG_QUALITY);
+    // Free the bitmap now: iOS caps total canvas memory and collects
+    // detached canvases late.
+    canvas.width = 0;
+    canvas.height = 0;
+    if (!src) return null;
     return {
-      src: canvas.toDataURL('image/jpeg', THUMBNAIL_JPEG_QUALITY),
+      src,
       width: viewport.width,
       height: viewport.height,
       source: 'pdfjs',
       quality
     };
+  }, [pdfDoc, getRotationDelta]);
+
+  // The page the viewer has already drawn is the quickest first image there
+  // is: one downscale copy of its finished raster (no pdf.js work, a few ms),
+  // the same idea as pdf.js's own viewer thumbnails. Only a visible viewer
+  // canvas of the same shape counts (inactive tabs are display:none). It stays
+  // quality 'fast', so the pdf.js crisp pass still replaces it once the list
+  // is still (that pass also draws PDF-native annotations, which the viewer
+  // raster leaves to the app's own layers).
+  const seedThumbnailFromViewer = useCallback(async (pageNumber) => {
+    if (!pdfDoc || typeof document === 'undefined') return null;
+    const source = [...document.querySelectorAll(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"] > canvas`)]
+      .find((c) => c.width > 0 && c.height > 0 && !(c.width === 300 && c.height === 150) && c.getClientRects().length > 0);
+    if (!source) return null;
+    const page = await pdfDoc.getPage(pageNumber);
+    const base = page.getViewport({ scale: 1 });
+    const pageRatio = base.width / base.height;
+    if (Math.abs((source.width / source.height) - pageRatio) > pageRatio * 0.02) return null;
+    // One CSS pixel per card pixel: a quick, small first image (encoded in a
+    // millisecond or two); the crisp pass sharpens it.
+    const dpr = 1;
+    const cardWidth = thumbnailBoxWidth(thumbnailRefs.current[pageNumber]) || 160;
+    const width = Math.max(1, Math.min(source.width, Math.round(cardWidth * dpr)));
+    const height = Math.max(1, Math.round(width / pageRatio));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { alpha: false });
+    if (!context) return null;
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(source, 0, 0, width, height);
+    const src = await encodeCanvasToDataUrl(canvas, 'image/jpeg', THUMBNAIL_JPEG_QUALITY);
+    canvas.width = 0;
+    canvas.height = 0;
+    if (!src) return null;
+    return { src, width: base.width, height: base.height, source: 'viewer', quality: 'fast' };
   }, [pdfDoc]);
+
+  const isPageOnScreen = useCallback((pageNumber) => {
+    const container = containerRef.current;
+    const card = thumbnailRefs.current[pageNumber];
+    if (!container || !card) return false;
+    const box = container.getBoundingClientRect();
+    const rect = card.getBoundingClientRect();
+    return rect.bottom > box.top && rect.top < box.bottom;
+  }, []);
 
   const processQueue = useCallback(async () => {
     if (runningWorkersRef.current >= CONCURRENCY_LIMIT) return;
 
-    // LIFO Strategy: Pop from end of array
-    // Prioritize FAST (initial load) over CRISP (enhancement)
-    let job = queueRef.current.fast.pop(); // Try fast first
+    // LIFO, on-screen pages first. FAST (first image) always before CRISP.
+    let job = takePriorityJob(queueRef.current.fast, isPageOnScreen);
     let type = 'fast';
 
-    if (!job) {
-      job = queueRef.current.crisp.pop(); // Then crisp
+    if (!job && queueRef.current.crisp.length > 0) {
+      // Crisp redraws wait for the list to stop moving, so a fling only
+      // pays for the cheap low-res pass.
+      const sinceScroll = Date.now() - lastScrollAtRef.current;
+      if (sinceScroll < SCROLL_SETTLE_MS) {
+        if (!settleTimerRef.current) {
+          settleTimerRef.current = setTimeout(() => {
+            settleTimerRef.current = null;
+            if (!isMountedRef.current) return;
+            for (let i = 0; i < CONCURRENCY_LIMIT; i += 1) processQueue();
+          }, SCROLL_SETTLE_MS - sinceScroll + 10);
+        }
+        return;
+      }
+      job = takePriorityJob(queueRef.current.crisp, isPageOnScreen);
       type = 'crisp';
     }
 
-    if (!job) return; // No jobs
+    if (!job) {
+      if (runningWorkersRef.current === 0) idleFillRef.current();
+      return; // No jobs
+    }
 
     const { pageNumber } = job;
     runningWorkersRef.current++;
@@ -397,9 +709,8 @@ const PagesPanel = ({
     try {
       let thumbnailResult = null;
 
-      // For fast thumbnails, we check if Pdfjs provided one (unlikely given previous issues, but safe optimization)
-      if (type === 'fast' && typeof getThumbnail === 'function') {
-        // ... (existing logic for external provider if needed, mostly unused now)
+      if (type === 'fast') {
+        thumbnailResult = await seedThumbnailFromViewer(pageNumber).catch(() => null);
       }
 
       if (!thumbnailResult && pdfDoc) {
@@ -410,11 +721,14 @@ const PagesPanel = ({
 
       if (isMountedRef.current && thumbnailResult) {
         let normalized = normalizeThumbnailResult(thumbnailResult);
+        // Decoded before it is shown: the swap never paints an empty box.
+        if (normalized?.src) await predecodeImage(normalized.src);
 
         applyThumbnailResult(pageNumber, normalized);
 
-        // Schedule upgrade if fast
-        if (type === 'fast') {
+        // Schedule upgrade if fast (an idle prefill of an off-screen page
+        // stops at low-res; it is upgraded when it scrolls into view).
+        if (type === 'fast' && !job.prefill) {
           // Add to crisp queue
           queueRef.current.crisp.push({ pageNumber });
           // Trigger queue check
@@ -435,7 +749,7 @@ const PagesPanel = ({
         processQueue(); // Loop
       }
     }
-  }, [pdfDoc, getThumbnail, applyThumbnailResult, renderPdfJsThumbnail, normalizeThumbnailResult]);
+  }, [pdfDoc, applyThumbnailResult, renderPdfJsThumbnail, normalizeThumbnailResult, isPageOnScreen, seedThumbnailFromViewer]);
 
   const scheduleThumbnail = useCallback((pageNumber, priority = 'fast') => {
     if (!Number.isFinite(pageNumber) || pageNumber < 1) return;
@@ -443,6 +757,7 @@ const PagesPanel = ({
     // Check if already has a better or equal thumbnail
     const existing = thumbnailsRef.current[pageNumber];
     if (existing?.quality === 'crisp') return;
+    // 'stale' (a moved/rotated stand-in) is redrawn like a missing thumbnail.
     if (priority === 'fast' && existing?.quality === 'fast') {
       if (queueRef.current.crisp.find(j => j.pageNumber === pageNumber)) return;
       queueRef.current.crisp.push({ pageNumber });
@@ -489,11 +804,52 @@ const PagesPanel = ({
     pendingRequestsRef.current.delete(pageNumber);
   }, []);
 
+  // Idle prefill: while the list is still and nothing else is queued, draw the
+  // low-res image of the nearest undrawn page within IDLE_PREFILL_SPAN cards
+  // of the screen, one at a time. Any scroll pushes it back.
+  idleFillRef.current = () => {
+    if (idleFillTimerRef.current || !isMountedRef.current) return;
+    idleFillTimerRef.current = setTimeout(() => {
+      idleFillTimerRef.current = null;
+      if (!isMountedRef.current) return;
+      if (runningWorkersRef.current > 0 || queueRef.current.fast.length > 0 || queueRef.current.crisp.length > 0) return;
+      if (Date.now() - lastScrollAtRef.current < IDLE_PREFILL_DELAY_MS) { idleFillRef.current(); return; }
+      const container = containerRef.current;
+      if (!container || container.getClientRects().length === 0) return;
+      let first = -1;
+      let last = -1;
+      allowedPages.forEach((pageNumber, index) => {
+        if (!isPageOnScreen(pageNumber)) return;
+        if (first === -1) first = index;
+        last = index;
+      });
+      if (first === -1) return;
+      let next = null;
+      for (let step = 1; step <= IDLE_PREFILL_SPAN && next == null; step += 1) {
+        for (const index of [last + step, first - step]) {
+          const pageNumber = allowedPages[index];
+          if (pageNumber && !thumbnailsRef.current[pageNumber] && !activeTasksRef.current.has(pageNumber)) {
+            next = pageNumber;
+            break;
+          }
+        }
+      }
+      if (next == null) return;
+      queueRef.current.fast.unshift({ pageNumber: next, prefill: true });
+      processQueue();
+    }, IDLE_PREFILL_DELAY_MS);
+  };
+
+  // Only "do we know any page shapes yet" gates the observer. It used to
+  // depend on the whole ratio map, so every new thumbnail tore the observer
+  // down and rebuilt it (and re-queued the first pages) mid-scroll.
+  const hasAspectRatios = Object.keys(pageAspectRatios).length > 0;
+
   // Set up Intersection Observer for lazy loading thumbnails
   useEffect(() => {
     const hasProvider = typeof getThumbnail === 'function';
     if (!hasProvider && !pdfDoc) return;
-    if (!hasProvider && Object.keys(pageAspectRatios).length === 0) return;
+    if (!hasProvider && !hasAspectRatios) return;
     if (allowedPages.length === 0) return;
 
     // Clean up existing observer
@@ -546,7 +902,16 @@ const PagesPanel = ({
         observerRef.current = null;
       }
     };
-  }, [allowedPages, generateThumbnail, cancelThumbnail, getThumbnail, pageAspectRatios, pdfDoc]);
+  }, [allowedPages, generateThumbnail, cancelThumbnail, getThumbnail, hasAspectRatios, pdfDoc]);
+
+  // Remember when the list last moved (crisp redraws wait for it to settle).
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return undefined;
+    const onScroll = () => { lastScrollAtRef.current = Date.now(); };
+    container.addEventListener('scroll', onScroll, { passive: true });
+    return () => container.removeEventListener('scroll', onScroll);
+  }, []);
 
   useEffect(() => {
     if (allowedPages.length === 0) return;
@@ -580,27 +945,72 @@ const PagesPanel = ({
     });
   }, [contextMenu]);
 
-  // Scroll to selected page
+  // The current page's card scrolls into view when it is off screen (the
+  // viewer moved to another page). A card already in view stays put, and a
+  // page change that follows a drop (the viewer's current page moved with
+  // the pages) never scrolls the strip away from where the pages were put.
+  const lastDropAtRef = useRef(0);
   useEffect(() => {
-    if (selectedPage && thumbnailRefs.current[selectedPage]) {
-      thumbnailRefs.current[selectedPage].scrollIntoView({
-        behavior: 'smooth',
-        block: 'center'
-      });
-    }
+    const card = selectedPage ? thumbnailRefs.current[selectedPage] : null;
+    const container = containerRef.current;
+    if (!card || !container) return;
+    if (Date.now() - lastDropAtRef.current < 2500) return;
+    const box = container.getBoundingClientRect();
+    const rect = card.getBoundingClientRect();
+    if (rect.top >= box.top - 1 && rect.bottom <= box.bottom + 1) return;
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [selectedPage]);
 
-  const handleContextMenu = useCallback((e, pageNumber) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1000;
-    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
-    setContextMenu({
-      pageNumber,
-      x: Math.max(8, Math.min(e.clientX, viewportWidth - 196)),
-      y: Math.max(8, Math.min(e.clientY, viewportHeight - 420))
+  // Owner 2026-10-01 (iPhone): the page menu was drawn inside the Pages sheet,
+  // so the dock painted over its last rows (Delete sat under the dock) and it
+  // opened on top of the very thumbnail it acts on. It now renders in a
+  // portal on <body> above the dock and sheets (below modals), and is placed
+  // from its measured size before paint:
+  //   - phone: beside the page's "..." button, inside the band between the
+  //     top bar and the dock, covering as little of that thumbnail as the
+  //     width allows (placeAnchoredMenu), scrolling if taller than the band;
+  //   - desktop: at the right-click point, flipped to stay in the window.
+  const placeContextMenu = useCallback(() => {
+    const el = contextMenuRef.current;
+    if (!el || !contextMenu || typeof window === 'undefined') return;
+    el.style.maxHeight = 'none';
+    const rect = el.getBoundingClientRect();
+    const vv = window.visualViewport;
+    let top = 0;
+    let bottom = vv ? Math.min(window.innerHeight, vv.offsetTop + vv.height) : window.innerHeight;
+    if (mobileMode) {
+      const header = document.querySelector('[data-mobile-pdf-header]')?.getBoundingClientRect();
+      if (header && header.height > 0) top = Math.max(top, header.bottom);
+      const dock = document.querySelector('.mobile-pdf-dock')?.getBoundingClientRect();
+      if (dock && dock.height > 0 && dock.top < bottom) bottom = dock.top;
+    }
+    // The phone bar's More button passes its own box (anchorRect).
+    const card = !contextMenu.anchorRect && (mobileMode || contextMenu.fromButton) ? thumbnailRefs.current[contextMenu.pageNumber] : null;
+    const anchorEl = card?.querySelector('[data-page-menu-anchor]');
+    const position = placeAnchoredMenu({
+      anchor: anchorEl ? anchorEl.getBoundingClientRect() : (contextMenu.anchorRect || { left: contextMenu.x, top: contextMenu.y }),
+      avoid: anchorEl ? card.getBoundingClientRect() : null,
+      width: rect.width,
+      height: rect.height,
+      bounds: { left: 0, top, right: window.innerWidth, bottom },
     });
-  }, []);
+    el.style.left = `${position.left}px`;
+    el.style.top = `${position.top}px`;
+    el.style.maxHeight = position.maxHeight == null ? '' : `${position.maxHeight}px`;
+  }, [contextMenu, mobileMode]);
+
+  useLayoutEffect(() => {
+    if (!contextMenu) return undefined;
+    placeContextMenu();
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    window.addEventListener('resize', placeContextMenu);
+    vv?.addEventListener('resize', placeContextMenu);
+    return () => {
+      window.removeEventListener('resize', placeContextMenu);
+      vv?.removeEventListener('resize', placeContextMenu);
+    };
+  }, [contextMenu, placeContextMenu]);
+
 
   const movePageByOffset = useCallback((pageNumber, offset) => {
     const index = allowedPages.indexOf(pageNumber);
@@ -610,21 +1020,163 @@ const PagesPanel = ({
     setContextMenu(null);
   }, [allowedPages, onReorderPages]);
 
-  const handlePageClick = useCallback((pageNumber) => {
-    if (mobileMode && mobileSelectMode) {
-      setMobileSelectedPages((current) => {
-        const next = new Set(current);
-        if (next.has(pageNumber)) next.delete(pageNumber);
-        else next.add(pageNumber);
-        return next;
-      });
+  // A click that ends a drag (or a phone press that opened the menu) does
+  // nothing else.
+  const suppressClickRef = useRef(false);
+
+  const pageByCardKey = useMemo(() => {
+    const map = new Map();
+    allowedPages.forEach((pageNumber) => map.set(cardKeys[pageNumber], pageNumber));
+    return map;
+  }, [allowedPages, cardKeys]);
+
+  // ---- A drop lands in the very next frame (owner 2026-10-07: "there's some
+  // lag when I let go ... super smooth and instant"). The strip shows the new
+  // order at once (dropOrder, this panel only), and the page change itself -
+  // the viewer, the marks, the background save - runs right after that frame
+  // is painted. dropOrder belongs to the document it was made on: the change
+  // swaps in a new page view, and from then on the real order is shown.
+  const [dropOrder, setDropOrder] = useState(null);
+  // The panel hears of the new page view a render or two after the viewer
+  // (through the app shell), so the drop order stays until then; a different
+  // document (the change landed, or failed and was rolled back) ends it.
+  if (dropOrder && dropOrder.doc !== pdfDoc) setDropOrder(null);
+  const visiblePages = dropOrder && dropOrder.doc === pdfDoc && dropOrder.pages.length === allowedPages.length
+    ? dropOrder.pages
+    : allowedPages;
+  const pendingDropRef = useRef(null);
+  const flushPendingDrop = useCallback(() => {
+    const run = pendingDropRef.current;
+    if (run) run();
+  }, []);
+  useEffect(() => flushPendingDrop, [flushPendingDrop]);
+
+  // ---- Selection (owner 2026-10-07: "Pages should also have a select feature
+  // so that you can copy multiple, delete multiple, rearrange multiple, and
+  // drag multiple"), like Finder / Drawboard:
+  //   - desktop: click = that page only (and go to it); Ctrl/Cmd+click adds or
+  //     removes a page; Shift+click selects the run from the last clicked
+  //     page; Ctrl/Cmd+A (after a click in the strip) selects every page;
+  //     Escape goes back to the current page;
+  //   - phone: "Select" in the Pages sheet; a tap ticks / unticks a page and
+  //     the bar below acts on the ticked pages.
+  // Kept by card key (what a card shows), so it follows its pages through a
+  // move or a turn. With one page or none picked it follows the current page.
+  const [selection, setSelection] = useState({ keys: [], anchor: null });
+  const selectMode = mobileMode && mobileSelectMode;
+  // Pages an action picked for the new selection (the copies of a
+  // duplicate, a pasted block), applied once its new page order is shown.
+  const pendingSelectionRef = useRef(null);
+  if (pendingSelectionRef.current && pendingSelectionRef.current.doc !== pdfDoc) {
+    const { pages } = pendingSelectionRef.current;
+    pendingSelectionRef.current = null;
+    const keys = (pages || []).map((pageNumber) => cardKeys[pageNumber]).filter(Boolean);
+    if (keys.length > 0) setSelection({ keys, anchor: keys[keys.length - 1] });
+  }
+  const selectedKeySet = useMemo(
+    () => new Set(selection.keys.filter((key) => pageByCardKey.has(key))),
+    [selection.keys, pageByCardKey],
+  );
+  const selectedPages = useMemo(
+    () => allowedPages.filter((pageNumber) => selectedKeySet.has(cardKeys[pageNumber])),
+    [allowedPages, cardKeys, selectedKeySet],
+  );
+  const multiSelected = selectedPages.length > 1;
+
+  // A lone selection follows the current page when the current page CHANGES
+  // (a click, the viewer scrolled to another page) - not when a page change
+  // only renumbers it: a page just dragged on desktop stays selected after
+  // its drop (it used to jump back to the current page a frame later).
+  const currentKey = selectedPage ? cardKeys[selectedPage] : null;
+  const followedKeyRef = useRef(undefined);
+  useEffect(() => {
+    if (selectMode) return;
+    const key = currentKey;
+    const changed = key !== followedKeyRef.current;
+    followedKeyRef.current = key;
+    setSelection((prev) => {
+      const live = prev.keys.filter((k) => pageByCardKey.has(k));
+      const pruned = live.length === prev.keys.length ? prev : { ...prev, keys: live };
+      if (live.length > 1) return pruned;
+      if (!key) return pruned;
+      if (!changed && live.length === 1) return pruned;
+      if (live.length === 1 && live[0] === key && prev.keys.length === 1) return prev;
+      return { keys: [key], anchor: key };
+    });
+  }, [currentKey, pageByCardKey, selectMode]);
+
+  // The latest values for the window listeners and the drag handlers.
+  const liveRef = useRef({});
+  liveRef.current = { selectedPages, selectedKeySet, visiblePages, cardKeys, selectedPage, selectMode, contextMenu };
+
+  const selectRange = useCallback((pageNumber, { add = false } = {}) => {
+    const { visiblePages: pages, cardKeys: keysOf, selectedPage: current } = liveRef.current;
+    setSelection((prev) => {
+      const anchorKey = prev.anchor && pageByCardKey.has(prev.anchor) ? prev.anchor : keysOf[current];
+      const from = pages.findIndex((p) => keysOf[p] === anchorKey);
+      const to = pages.indexOf(pageNumber);
+      if (to < 0) return prev;
+      const start = from < 0 ? to : Math.min(from, to);
+      const end = from < 0 ? to : Math.max(from, to);
+      const run = pages.slice(start, end + 1).map((p) => keysOf[p]);
+      const keys = add ? [...new Set([...prev.keys.filter((k) => pageByCardKey.has(k)), ...run])] : run;
+      return { keys, anchor: anchorKey || keysOf[pageNumber] };
+    });
+  }, [pageByCardKey]);
+
+  const togglePage = useCallback((pageNumber) => {
+    const { cardKeys: keysOf, selectedPage: current, selectMode: picking } = liveRef.current;
+    const key = keysOf[pageNumber];
+    setSelection((prev) => {
+      let live = prev.keys.filter((k) => pageByCardKey.has(k));
+      // Desktop: a lone selection is the current page; Ctrl+click adds to it.
+      if (!picking && live.length === 0 && keysOf[current]) live = [keysOf[current]];
+      const keys = live.includes(key) ? live.filter((k) => k !== key) : [...live, key];
+      return { keys, anchor: key };
+    });
+  }, [pageByCardKey]);
+
+  // Phone double-tap: the first tap navigates at once; a second tap on the
+  // same card within PAGE_DOUBLE_TAP_MS opens its page menu (beside the
+  // card's "..." button, like that button does).
+  const lastTapRef = useRef(null);
+  const handlePageClick = useCallback((pageNumber, event) => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
       return;
     }
+    flushPendingDrop();
+    if (mobileMode && !selectMode) {
+      const now = Date.now();
+      const last = lastTapRef.current;
+      const near = !last || !event || Math.hypot((event.clientX || 0) - last.x, (event.clientY || 0) - last.y) < 40;
+      if (last && last.page === pageNumber && now - last.at <= PAGE_DOUBLE_TAP_MS && near) {
+        lastTapRef.current = null;
+        const anchor = thumbnailRefs.current[pageNumber]?.querySelector('[data-page-menu-anchor]')?.getBoundingClientRect();
+        setContextMenu({ pageNumber, pages: null, x: anchor?.left ?? 0, y: anchor?.top ?? 0, fromButton: true });
+        return;
+      }
+      lastTapRef.current = { page: pageNumber, at: now, x: event?.clientX || 0, y: event?.clientY || 0 };
+    }
+    if (selectMode) {
+      togglePage(pageNumber);
+      return;
+    }
+    if (!mobileMode && event && (event.metaKey || event.ctrlKey)) {
+      togglePage(pageNumber);
+      return;
+    }
+    if (!mobileMode && event?.shiftKey) {
+      selectRange(pageNumber);
+      return;
+    }
+    const key = cardKeys[pageNumber];
+    setSelection({ keys: key ? [key] : [], anchor: key || null });
     setSelectedPage(pageNumber);
     if (onNavigateToPage) {
       onNavigateToPage(pageNumber);
     }
-  }, [mobileMode, mobileSelectMode, onNavigateToPage]);
+  }, [cardKeys, flushPendingDrop, mobileMode, onNavigateToPage, selectMode, selectRange, togglePage]);
 
   const handlePageDoubleClick = useCallback((pageNumber) => {
     if (onNavigateToPage) {
@@ -632,152 +1184,411 @@ const PagesPanel = ({
     }
   }, [onNavigateToPage]);
 
-  const handleDuplicate = useCallback((pageNumber) => {
-    if (onDuplicatePage) {
-      onDuplicatePage(pageNumber);
+  // Desktop keys while the strip is in use (its last press was in it):
+  // Ctrl/Cmd+A selects every page, Escape drops back to the current page.
+  const panelRootRef = useRef(null);
+  const panelActiveRef = useRef(false);
+  const dragLiveRef = useRef(false);
+  useEffect(() => {
+    if (mobileMode || typeof window === 'undefined') return undefined;
+    const onPointerDown = (event) => {
+      panelActiveRef.current = Boolean(panelRootRef.current?.contains(event.target));
+    };
+    const onKeyDown = (event) => {
+      const root = panelRootRef.current;
+      if (!root || root.getClientRects().length === 0) return;
+      if (!panelActiveRef.current && !root.contains(document.activeElement)) return;
+      const target = event.target;
+      if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName || ''))) return;
+      const { visiblePages: pages, cardKeys: keysOf, selectedPages: picked, selectedPage: current, contextMenu: menu } = liveRef.current;
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && String(event.key).toLowerCase() === 'a') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const all = pages.map((p) => keysOf[p]);
+        setSelection({ keys: all, anchor: all[0] || null });
+        return;
+      }
+      if (event.key === 'Escape' && !dragLiveRef.current && !menu && picked.length > 1) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const key = keysOf[current];
+        setSelection({ keys: key ? [key] : [], anchor: key || null });
+      }
+    };
+    window.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('keydown', onKeyDown, true);
+    };
+  }, [mobileMode]);
+
+  // A right-click anywhere on a card, or its "..." button (fromButton: the
+  // menu then sits beside the button, as on the phone). On a card that is part
+  // of a selection of several pages the menu acts on all of them ("3 pages");
+  // on any other card it acts on that page, which becomes the selection.
+  const handleContextMenu = useCallback((e, pageNumber, { fromButton = false } = {}) => {
+    e.preventDefault();
+    e.stopPropagation();
+    flushPendingDrop();
+    const { selectedKeySet: picked, selectedPages: pages, cardKeys: keysOf, selectMode: picking } = liveRef.current;
+    const key = keysOf[pageNumber];
+    const onSelection = picked.has(key) && pages.length > 1;
+    if (!onSelection && !picking && key) setSelection({ keys: [key], anchor: key });
+    // The press point only; the menu is placed once it has been measured
+    // (placeContextMenu above).
+    setContextMenu({ pageNumber, pages: onSelection ? pages : null, x: e.clientX, y: e.clientY, fromButton });
+  }, [flushPendingDrop]);
+
+  const clipboardHasPages = Array.isArray(clipboardPage) ? clipboardPage.length > 0 : Boolean(clipboardPage);
+
+  // Run a change to several pages; `nextPages` (if any) become the selection
+  // once the change is on screen.
+  const actOnPages = useCallback((run, nextPages = null) => {
+    if (nextPages) pendingSelectionRef.current = { doc: pdfDoc, pages: nextPages };
+    Promise.resolve(run()).then((ok) => {
+      if (!ok && pendingSelectionRef.current?.doc === pdfDoc) pendingSelectionRef.current = null;
+    }, () => { pendingSelectionRef.current = null; });
+  }, [pdfDoc]);
+
+  // Paste the clipboard (one page or several) above / below a page. A
+  // pasted block becomes the selection.
+  const pasteAt = useCallback((anchor, position = 'below') => {
+    if (!onPastePage || !clipboardHasPages) return;
+    if (Array.isArray(clipboardPage)) {
+      const count = Math.max(anchor, ...clipboardPage);
+      const plan = clipboardType === 'cut'
+        ? movePagesNextTo(count, clipboardPage, anchor, position)
+        : copyPagesAfter(count, clipboardPage, position === 'above' ? anchor - 1 : anchor);
+      actOnPages(() => onPastePage(anchor, clipboardPage, clipboardType, position), plan.selection);
+      return;
     }
-    setContextMenu(null);
-  }, [onDuplicatePage]);
+    onPastePage(anchor, clipboardPage, clipboardType, position);
+  }, [actOnPages, clipboardHasPages, clipboardPage, clipboardType, onPastePage]);
 
-
-  const handleDelete = useCallback((pageNumber) => {
-    if (onDeletePage && window.confirm(`Delete page ${pageNumber}?`)) {
-      onDeletePage(pageNumber);
-    }
-    setContextMenu(null);
-  }, [onDeletePage]);
-
-  const handleCut = useCallback((pageNumber) => {
-    if (onCutPage) {
-      onCutPage(pageNumber);
-    }
-    setContextMenu(null);
-  }, [onCutPage]);
-
-  const handleCopy = useCallback((pageNumber) => {
-    if (onCopyPage) {
-      onCopyPage(pageNumber);
-    }
-    setContextMenu(null);
-  }, [onCopyPage]);
-
+  // The phone action bar's Paste: below the current page.
   const handlePaste = useCallback((pageNumber) => {
-    if (onPastePage && clipboardPage) {
-      onPastePage(pageNumber, clipboardPage, clipboardType);
-    }
+    pasteAt(pageNumber, 'below');
     setContextMenu(null);
-  }, [onPastePage, clipboardPage, clipboardType]);
+  }, [pasteAt]);
 
-  const handleRotate = useCallback((pageNumber) => {
-    if (onRotatePage) {
-      onRotatePage(pageNumber);
-    }
+  // The page menu: the one shared list (sidebar/pageMenuItems.js), run
+  // through these page operations. The viewer's page menu runs the same list.
+  const pageMenuHandlers = useMemo(() => ({
+    select: mobileMode ? (pageNumber) => {
+      const key = cardKeys[pageNumber];
+      setMobileSelectMode(true);
+      setSelection({ keys: key ? [key] : [], anchor: key || null });
+    } : undefined,
+    move: onReorderPages ? movePageByOffset : undefined,
+    cut: onCutPage,
+    copy: onCopyPage,
+    paste: onPastePage ? (pageNumber, position) => pasteAt(pageNumber, position) : undefined,
+    duplicate: onDuplicatePage,
+    insertBlank: onInsertBlankPage,
+    rotate: onRotatePage,
+    mirror: onMirrorPage,
+    reset: onResetPage,
+    delete: onDeletePage
+      ? (pageNumber) => { if (window.confirm(`Delete page ${pageNumber}?`)) onDeletePage(pageNumber); }
+      : undefined,
+  }), [cardKeys, mobileMode, movePageByOffset, onReorderPages, onCutPage, onCopyPage, onPastePage, pasteAt, onDuplicatePage, onInsertBlankPage, onRotatePage, onMirrorPage, onResetPage, onDeletePage]);
+
+  // The same items on a selection of several pages: each is ONE change and
+  // ONE Undo step for all of them (hooks/usePageOperations.js).
+  const selectionHandlers = useMemo(() => ({
+    cut: onCutPage ? (pages) => onCutPage(pages) : undefined,
+    copy: onCopyPage ? (pages) => onCopyPage(pages) : undefined,
+    paste: onPastePage
+      ? (pages, position) => pasteAt(position === 'above' ? pages[0] : pages[pages.length - 1], position)
+      : undefined,
+    duplicate: onDuplicatePage
+      ? (pages) => actOnPages(() => onDuplicatePage(pages), duplicatePages(numPages, pages).selection)
+      : undefined,
+    rotate: onRotatePage ? (pages, delta) => actOnPages(() => onRotatePage(pages, delta)) : undefined,
+    delete: onDeletePage
+      ? (pages) => { if (window.confirm(`Delete ${pages.length} pages?`)) actOnPages(() => onDeletePage(pages)); }
+      : undefined,
+  }), [actOnPages, numPages, onCutPage, onCopyPage, onPastePage, pasteAt, onDuplicatePage, onRotatePage, onDeletePage]);
+
+  const pickPageMenuItem = useCallback((key) => {
+    const menu = contextMenu;
+    // Closed first: Delete asks a question, and the menu must not sit over it.
     setContextMenu(null);
-  }, [onRotatePage]);
+    if (!menu) return;
+    if (menu.pages && menu.pages.length > 1) runPageMenuAction(key, menu.pages, selectionHandlers);
+    else if (menu.pageNumber) runPageMenuAction(key, menu.pageNumber, pageMenuHandlers);
+  }, [contextMenu, pageMenuHandlers, selectionHandlers]);
 
-  const handleMirrorHorizontal = useCallback((pageNumber) => {
-    if (onMirrorPage) {
-      onMirrorPage(pageNumber, 'horizontal');
-    }
-    setContextMenu(null);
-  }, [onMirrorPage]);
+  // The phone select bar: an item on the ticked pages.
+  const runOnSelection = useCallback((key) => {
+    const pages = liveRef.current.selectedPages;
+    if (pages.length > 1) runPageMenuAction(key, pages, selectionHandlers);
+    else if (pages.length === 1) runPageMenuAction(key, pages[0], pageMenuHandlers);
+  }, [pageMenuHandlers, selectionHandlers]);
 
-  const handleMirrorVertical = useCallback((pageNumber) => {
-    if (onMirrorPage) {
-      onMirrorPage(pageNumber, 'vertical');
-    }
-    setContextMenu(null);
-  }, [onMirrorPage]);
-
-  const handleReset = useCallback((pageNumber) => {
-    if (onResetPage) {
-      onResetPage(pageNumber);
-    }
-    setContextMenu(null);
-  }, [onResetPage]);
-
-  // Handle drag start for internal reordering
-  const handleDragStart = useCallback((e, pageNumber) => {
-    setDraggedPage(pageNumber);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('application/pdf-page-internal', pageNumber.toString());
-
-    // Also set data for external drag (to tabs)
-    if (onPageDragStart && tabId) {
-      e.dataTransfer.setData('application/pdf-page', JSON.stringify({
-        tabId,
-        pageNumber,
-        pdfDoc: null
-      }));
-    }
-  }, [onPageDragStart, tabId]);
-
-  // Handle drag over for internal reordering
-  const handleDragOver = useCallback((e, targetPageNumber) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    // Check if this is an internal drag
-    const types = Array.from(e.dataTransfer.types || []);
-    if (types.includes('application/pdf-page-internal')) {
-      e.dataTransfer.dropEffect = 'move';
-      if (draggedPage !== null && draggedPage !== targetPageNumber) {
-        setDragOverPage(targetPageNumber);
-      }
-    } else if (types.includes('application/pdf-page')) {
-      // External drag to tab - allow it
-      e.dataTransfer.dropEffect = 'move';
-    }
-  }, [draggedPage]);
-
-  // Handle drag leave
-  const handleDragLeave = useCallback((e) => {
-    const relatedTarget = e.relatedTarget;
-    if (!relatedTarget || !e.currentTarget.contains(relatedTarget)) {
-      setDragOverPage(null);
-    }
+  const leaveSelectMode = useCallback(() => {
+    setMobileSelectMode(false);
+    setSelection({ keys: [], anchor: null });
   }, []);
 
-  // Handle drop for internal reordering
-  const handleDrop = useCallback((e, targetPageNumber) => {
-    e.preventDefault();
-    e.stopPropagation();
+  // ---- Drag to reorder (owner 2026-10-07: "I don't need a handle ... click
+  // and drag on it", desktop and phone; @dnd-kit like the bookmark and tab
+  // lists). The whole card is the drag target:
+  //   - desktop: the mouse moves 5px with the button down -> drag (a click,
+  //     a right-click and the "..." button stay what they were);
+  //   - phone: a finger held still 300ms lifts the page (a swipe before that
+  //     scrolls the list) and it follows the finger; let go without moving
+  //     and it goes back. A hold never opens a menu (owner 2026-10-07) - the
+  //     page menu is a double-tap on the card or its "..." button;
+  //   - keyboard: Space / Enter on a focused card picks it up, arrows move,
+  //     Space / Enter drops, Escape cancels.
+  // Dragging a page of a selection of several carries them all (owner: "I
+  // should be able to drag and drop multiple things"): they land as one block,
+  // in their order, where the carried page lands. One Undo step either way.
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: PAGE_DRAG_TOUCH_DELAY_MS, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const [dragActiveId, setDragActiveId] = useState(null);
+  // The pages riding along ({ keys, pages }) when several are carried.
+  const [dragBlock, setDragBlock] = useState(null);
+  const dragStartRef = useRef(null);
+  // A drop that moves pages lands at once: the overlay goes in the drop's
+  // own frame and the page is already in its slot (owner 2026-10-07: "super
+  // smooth and instant"). Only a cancelled drag glides back to where it was.
+  const [dropGlide, setDropGlide] = useState(true);
+  const reducedMotion = usePrefersReducedMotion();
+  const sortableIds = useMemo(() => visiblePages.map((pageNumber) => cardKeys[pageNumber]), [visiblePages, cardKeys]);
 
-    const types = Array.from(e.dataTransfer.types || []);
-
-    // Check if this is an internal reorder
-    if (types.includes('application/pdf-page-internal')) {
-      const sourcePageNumber = parseInt(e.dataTransfer.getData('application/pdf-page-internal'));
-      if (sourcePageNumber && sourcePageNumber !== targetPageNumber && onReorderPages) {
-        onReorderPages(sourcePageNumber, targetPageNumber);
-      }
-    }
-
-    setDraggedPage(null);
-    setDragOverPage(null);
-  }, [onReorderPages]);
-
-  // Handle drag end to reset state if drag is cancelled
-  const handleDragEnd = useCallback(() => {
-    setDraggedPage(null);
-    setDragOverPage(null);
+  const endDrag = useCallback(() => {
+    setDragActiveId(null);
+    setDragBlock(null);
+    dragLiveRef.current = false;
+    if (typeof document !== 'undefined') document.body.classList.remove('drag-rearrange-dragging');
   }, []);
+  useEffect(() => endDrag, [endDrag]);
+
+  const handleDndStart = useCallback(({ active, activatorEvent }) => {
+    // A drop still on its way to the viewer goes first: this drag starts
+    // from the real order.
+    flushPendingDrop();
+    setContextMenu(null);
+    setDropGlide(true);
+    const { selectedKeySet: picked, selectedPages: pages, selectMode: picking } = liveRef.current;
+    const carriesSelection = picked.has(active.id) && pages.length > 1 && (!mobileMode || picking);
+    const block = carriesSelection ? { keys: new Set(picked), pages } : null;
+    dragStartRef.current = { touch: activatorEvent?.type === 'touchstart', block };
+    // Desktop: picking up a page outside the selection selects just it.
+    if (!carriesSelection && !mobileMode) setSelection({ keys: [active.id], anchor: active.id });
+    setDragBlock(block);
+    setDragActiveId(active.id);
+    dragLiveRef.current = true;
+    // Sheets and other gestures leave a live reorder alone (useMobileSheetMotion).
+    document.body.classList.add('drag-rearrange-dragging');
+  }, [flushPendingDrop, mobileMode]);
+
+  // Show `finalPages` now; run the page change once that frame is painted.
+  const landDrop = useCallback((finalPages, run, nextSelection = null) => {
+    const doc = pdfDoc;
+    lastDropAtRef.current = Date.now();
+    setDropOrder({ doc, pages: finalPages });
+    const dispatch = () => {
+      if (pendingDropRef.current !== dispatch) return;
+      pendingDropRef.current = null;
+      if (nextSelection) pendingSelectionRef.current = { doc, pages: nextSelection };
+      let result;
+      try { result = run(); } catch (error) { result = false; console.error('Page drop failed:', error); }
+      Promise.resolve(result).then((ok) => {
+        if (ok) return;
+        // Nothing changed: back to the real order.
+        if (pendingSelectionRef.current?.doc === doc) pendingSelectionRef.current = null;
+        setDropOrder((current) => (current && current.doc === doc ? null : current));
+      }, () => setDropOrder(null));
+    };
+    pendingDropRef.current = dispatch;
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => setTimeout(dispatch, 0));
+    // A hidden tab runs no frames.
+    setTimeout(dispatch, 120);
+  }, [pdfDoc]);
+
+  const handleDndEnd = useCallback(({ active, over }) => {
+    const start = dragStartRef.current;
+    endDrag();
+    suppressClickRef.current = true;
+    requestAnimationFrame(() => { suppressClickRef.current = false; });
+    const source = pageByCardKey.get(active.id);
+    const target = over ? pageByCardKey.get(over.id) : null;
+    const block = start?.block;
+    if (import.meta.env?.DEV && typeof window !== 'undefined') {
+      // Dev-only probe for the drag harness (scratch Playwright checks).
+      window.__surveyLastPageDrop = { source, target, carried: block ? block.pages.length : 1 };
+    }
+    if (source && target && source !== target && onReorderPages) {
+      const ids = sortableIds;
+      const moved = arrayMove(ids, ids.indexOf(active.id), ids.indexOf(over.id));
+      if (block && block.pages.length > 1) {
+        // The carried page's new slot, with the other selected pages lifted
+        // out of the list: the whole block goes there, in page order.
+        const riders = new Set([...block.keys].filter((key) => key !== active.id));
+        const rest = moved.filter((key) => !riders.has(key));
+        const at = rest.indexOf(active.id);
+        const blockKeys = block.pages.map((pageNumber) => cardKeys[pageNumber]);
+        const finalPages = [...rest.slice(0, at), ...blockKeys, ...rest.slice(at + 1)].map((key) => pageByCardKey.get(key));
+        // As a slot among ALL the document's pages that stay (the strip may
+        // show only the pages of the active space).
+        const lifted = new Set(block.pages);
+        const stay = [];
+        for (let page = 1; page <= numPages; page += 1) if (!lifted.has(page)) stay.push(page);
+        const above = at > 0 ? pageByCardKey.get(rest[at - 1]) : null;
+        const below = at + 1 < rest.length ? pageByCardKey.get(rest[at + 1]) : null;
+        let index = 0;
+        if (above != null) index = stay.indexOf(above) + 1;
+        else if (below != null) index = Math.max(0, stay.indexOf(below));
+        if (finalPages.every((pageNumber, i) => pageNumber === visiblePages[i])) return;
+        setDropGlide(false);
+        landDrop(
+          finalPages,
+          () => onReorderPages(block.pages, { index, pageCount: numPages }),
+          movePagesToIndex(numPages, block.pages, index).selection,
+        );
+        return;
+      }
+      setDropGlide(false);
+      landDrop(moved.map((key) => pageByCardKey.get(key)), () => onReorderPages(source, target));
+      return;
+    }
+    // Phone: held and let go in place = the page goes back (owner
+    // 2026-10-07: a hold is only ever a drag; the menu is a double-tap or
+    // the "..." button).
+  }, [cardKeys, endDrag, landDrop, numPages, onReorderPages, pageByCardKey, sortableIds, visiblePages]);
+
+  const dropAnimation = useMemo(() => (reducedMotion || !dropGlide ? null : {
+    duration: 180,
+    easing: 'cubic-bezier(0.2, 0, 0, 1)',
+    sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0' } } }),
+  }), [reducedMotion, dropGlide]);
+
+  const dragModifiers = useMemo(() => (mobileMode ? [] : [restrictToVerticalAxis]), [mobileMode]);
+
+  // Let go outside the strip (over the page, the toolbar, off the sheet):
+  // no slot, so the drag cancels and the page glides back.
+  const pageCollisions = useCallback((args) => {
+    const box = containerRef.current?.getBoundingClientRect();
+    const rect = args.collisionRect;
+    const point = args.pointerCoordinates
+      || (rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null);
+    if (box && point && (point.x < box.left || point.x > box.right || point.y < box.top || point.y > box.bottom)) {
+      return [];
+    }
+    return closestCenter(args);
+  }, []);
+
+  // The lifted page carried by a drag (DragOverlay; owner 2026-10-07: "I just
+  // want to be picking up and moving that page"): the page itself - its
+  // picture in its own box, raised on the app's lift shadow - placed exactly
+  // over the card's picture, with no card box around it. Several pages ride
+  // as a small stack with their count.
+  const renderLiftedPage = (pageNumber, count = 1) => {
+    const meta = thumbnails[pageNumber];
+    const src = typeof meta === 'string' ? meta : meta?.src;
+    const ratio = getDisplayAspectRatio(pageNumber, pageAspectRatios[pageNumber] || 129);
+    const state = pageTransformations[pageNumber] || {};
+    const turn = (getRotationDelta(pageNumber) + (Number(meta?.cssRotate) || 0)) % 360;
+    const imageTransform = [
+      turn ? `rotate(${turn}deg)` : '',
+      state.mirrorH ? 'scaleX(-1)' : '',
+      state.mirrorV ? 'scaleY(-1)' : '',
+    ].filter(Boolean).join(' ') || 'none';
+    const sheet = {
+      position: 'absolute',
+      inset: 0,
+      background: '#ffffff',
+      borderRadius: 2,
+      boxShadow: 'var(--drag-lift-shadow)',
+    };
+    return (
+      <div
+        data-page-drag-overlay={pageNumber}
+        data-page-drag-count={count}
+        style={{
+          width: '100%',
+          height: '100%',
+          boxSizing: 'border-box',
+          // The card's padding + border: the page sits where it sat.
+          padding: mobileMode ? 9 : 5,
+          display: 'grid',
+          placeItems: mobileMode ? 'center' : 'start center',
+          cursor: 'grabbing',
+        }}
+      >
+        <div style={{ position: 'relative', ...thumbnailBoxStyle(ratio / 100) }}>
+          {count > 2 ? <div aria-hidden="true" style={{ ...sheet, transform: 'translate(6px, 6px)' }} /> : null}
+          {count > 1 ? <div aria-hidden="true" style={{ ...sheet, transform: 'translate(3px, 3px)' }} /> : null}
+          <div data-page-drag-sheet="" style={{ ...sheet, overflow: 'hidden' }}>
+            {src ? (
+              <img
+                src={src}
+                alt=""
+                draggable={false}
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', display: 'block', transform: imageTransform, transformOrigin: 'center center', pointerEvents: 'none', WebkitTouchCallout: 'none', WebkitUserDrag: 'none' }}
+              />
+            ) : null}
+          </div>
+          {count > 1 ? <span className="pages-drag-count" aria-label={`${count} pages`}>{count}</span> : null}
+        </div>
+      </div>
+    );
+  };
+
+  const allPicked = selectedPages.length > 0 && selectedPages.length === allowedPages.length;
 
   return (
-    <div className={mobileMode ? 'mobile-pages-panel' : undefined} style={{
+    <div
+      ref={panelRootRef}
+      className={mobileMode ? 'mobile-pages-panel' : 'pages-panel'}
+      data-pages-panel=""
+      data-pages-selecting={selectMode ? '' : undefined}
+      style={{
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
       fontFamily: FONT_FAMILY,
-      background: 'var(--surface-1)'
+      background: 'var(--panel-bg)'
     }}>
-      {mobileMode && (
+      {mobileMode && (selectMode ? (
+        <div className="mobile-pages-counter is-selecting">
+          <button
+            type="button"
+            onClick={() => {
+              if (allPicked) setSelection({ keys: [], anchor: null });
+              else setSelection({ keys: allowedPages.map((p) => cardKeys[p]), anchor: null });
+            }}
+          >
+            {allPicked ? 'Select none' : 'Select all'}
+          </button>
+          <strong aria-live="polite">{selectedPages.length} selected</strong>
+          <button type="button" onClick={leaveSelectMode}>Done</button>
+        </div>
+      ) : (
         <div className="mobile-pages-counter">
           <span>{pageNum}</span>
           <strong>/ {numPages} pages</strong>
         </div>
-      )}
+      ))}
       {/* Thumbnail List */}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={pageCollisions}
+        modifiers={dragModifiers}
+        autoScroll={CALM_LIST_AUTO_SCROLL}
+        measuring={PAGE_DRAG_MEASURING}
+        onDragStart={handleDndStart}
+        onDragEnd={handleDndEnd}
+        onDragCancel={endDrag}
+      >
+      <SortableContext items={sortableIds} strategy={mobileMode ? rectSortingStrategy : verticalListSortingStrategy}>
       <div
         ref={containerRef}
         className={mobileMode ? 'mobile-pages-track' : undefined}
@@ -790,22 +1601,28 @@ const PagesPanel = ({
           gap: '4px'
         }}
       >
-        {allowedPages.map(pageNumber => {
-          const isSelected = pageNumber === selectedPage;
-          const isMobileSelected = mobileSelectedPages.has(pageNumber);
+        {visiblePages.map((pageNumber, slotIndex) => {
+          const cardKey = cardKeys[pageNumber];
+          const isCurrent = pageNumber === selectedPage;
+          // Selected: a ticked page in the phone's Select mode; on desktop the
+          // selection (one page = the current page).
+          const isPicked = selectMode
+            ? selectedKeySet.has(cardKey)
+            : (!mobileMode && (selectedKeySet.size > 0 ? selectedKeySet.has(cardKey) : isCurrent));
+          const isRider = Boolean(dragBlock && dragBlock.keys.has(cardKey) && cardKey !== dragActiveId);
+          // The number this slot shows (a dropped page shows its new number
+          // in the drop's own frame).
+          const shownNumber = visiblePages === allowedPages ? pageNumber : allowedPages[slotIndex];
           const thumbnailMeta = thumbnails[pageNumber];
           const thumbnailSrc = typeof thumbnailMeta === 'string' ? thumbnailMeta : thumbnailMeta?.src;
           const rawRatio = pageAspectRatios[pageNumber] || 129;
           const displayRatio = getDisplayAspectRatio(pageNumber, rawRatio);
-          // Off-screen thumbnail rows skip layout/paint; estimate each row's
-          // height from the same per-page aspect ratio that drives the live
-          // thumbnail box so the scrollbar geometry stays stable.
-          const estimatedRowHeight = Math.round(8 + (150 * displayRatio) / 100);
           const transformState = pageTransformations[pageNumber] || { rotation: 0, mirrorH: false, mirrorV: false };
           const rotationDelta = getRotationDelta(pageNumber);
           const transforms = [];
-          if (rotationDelta) {
-            transforms.push(`rotate(${rotationDelta}deg)`);
+          const thumbnailTurn = (rotationDelta + (Number(thumbnailMeta?.cssRotate) || 0)) % 360;
+          if (thumbnailTurn) {
+            transforms.push(`rotate(${thumbnailTurn}deg)`);
           }
           if (transformState.mirrorH) {
             transforms.push('scaleX(-1)');
@@ -814,26 +1631,38 @@ const PagesPanel = ({
             transforms.push('scaleY(-1)');
           }
           const thumbnailTransform = transforms.length > 0 ? transforms.join(' ') : 'none';
+          const menuOpen = contextMenu && (contextMenu.pages ? contextMenu.pages.includes(pageNumber) : contextMenu.pageNumber === pageNumber);
 
           return (
+            <SortablePageCard key={cardKey} id={cardKey} reducedMotion={reducedMotion}>
+            {({ setNodeRef, attributes, listeners, transform, transition, isDragging }) => (
             <div
-              key={pageNumber}
-              className={mobileMode ? `mobile-page-card${isSelected ? ' is-active' : ''}${isMobileSelected ? ' is-selected' : ''}` : undefined}
-              ref={el => { thumbnailRefs.current[pageNumber] = el; }}
-              data-page-number={pageNumber}
-              draggable={!mobileMode}
-              onDragStart={(e) => {
-                handleDragStart(e, pageNumber);
-                if (onPageDragStart && tabId) {
-                  onPageDragStart(tabId, pageNumber);
-                }
+              {...attributes}
+              {...listeners}
+              // A mouse press never moves focus onto the card (it would take
+              // the viewer's keys - hold Space to pan, Delete - with it, and
+              // the browser would start its own image drag). Keyboard users
+              // reach a card with Tab; Enter picks it up (Space stays the
+              // viewer's pan key), arrows move it, Enter drops, Escape cancels.
+              onMouseDown={(event) => {
+                listeners?.onMouseDown?.(event);
+                if (event.button === 0) event.preventDefault();
               }}
-              onDragOver={(e) => handleDragOver(e, pageNumber)}
-              onDragLeave={handleDragLeave}
-              onDragEnd={handleDragEnd}
-              onDrop={(e) => handleDrop(e, pageNumber)}
-              onContextMenu={(e) => handleContextMenu(e, pageNumber)}
-              onClick={() => handlePageClick(pageNumber)}
+              className={mobileMode
+                ? `mobile-page-card${isCurrent && !selectMode ? ' is-active' : ''}${selectMode && isPicked ? ' is-selected' : ''}`
+                : `pages-panel-card${isCurrent ? ' is-active' : ''}${isPicked ? ' is-selected' : ''}${menuOpen ? ' is-menu-open' : ''}`}
+              ref={el => { thumbnailRefs.current[pageNumber] = el; setNodeRef(el); }}
+              data-page-number={pageNumber}
+              data-page-key={cardKey}
+              data-page-card=""
+              data-drag-placeholder={isDragging ? '' : undefined}
+              data-drag-rider={isRider ? '' : undefined}
+              aria-label={`Page ${shownNumber}`}
+              data-selected={isPicked ? '' : undefined}
+              // Phone: a hold is a drag, so the browser's own long-press
+              // (Android's contextmenu) does nothing here.
+              onContextMenu={(e) => (mobileMode ? e.preventDefault() : handleContextMenu(e, pageNumber))}
+              onClick={(event) => handlePageClick(pageNumber, event)}
               onDoubleClick={() => handlePageDoubleClick(pageNumber)}
               style={{
                 position: 'relative',
@@ -841,115 +1670,85 @@ const PagesPanel = ({
                 /* Phone: the card takes its grid cell (two columns, see
                    .mobile-pages-track in mobilePdfViewer.css); no fixed box. */
                 boxSizing: 'border-box',
-                background: isSelected ? 'var(--surface-3)' : (dragOverPage === pageNumber ? 'var(--surface-3)' : 'transparent'),
-                border: isSelected ? '1px solid var(--accent)' : (dragOverPage === pageNumber ? '1px solid var(--accent)' : '1px solid transparent'),
+                // Owner 2026-10-07 ("a gold box bigger than the page ... I
+                // want that gold box just to outline the page"): the card
+                // itself has no selected fill or border; the selected outline
+                // and the drop slot hug the page picture (styles.css
+                // .pages-panel-card.is-selected [data-page-preview]).
+                border: '1px solid transparent',
                 borderRadius: '4px',
-                cursor: mobileMode ? 'pointer' : (draggedPage === pageNumber ? 'grabbing' : 'grab'),
+                cursor: mobileMode ? 'pointer' : (isDragging ? 'grabbing' : 'grab'),
+                transform: CSS.Translate.toString(transform),
                 touchAction: mobileMode ? 'pan-y' : undefined,
-                opacity: draggedPage === pageNumber ? 0.82 : 1,
-                zIndex: draggedPage === pageNumber ? 1 : 'auto',
-                transition: draggedPage === pageNumber ? 'none' : 'background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease',
-                contentVisibility: mobileMode ? 'visible' : 'auto',
-                containIntrinsicSize: `0 ${estimatedRowHeight}px`
-              }}
-              onMouseEnter={(e) => {
-                if (!isSelected) {
-                  e.currentTarget.style.background = 'var(--hover)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isSelected) {
-                  e.currentTarget.style.background = 'transparent';
-                }
+                // No iOS image callout / text selection on a long-press (the
+                // picture itself takes no touches either: see its <img>).
+                WebkitTouchCallout: mobileMode ? 'none' : undefined,
+                WebkitUserSelect: mobileMode ? 'none' : undefined,
+                userSelect: mobileMode ? 'none' : undefined,
+                transition: [transition, 'background 0.15s ease, opacity 0.15s ease'].filter(Boolean).join(', '),
+                // Every card is laid out (2026-10-07): with content-visibility
+                // auto, a card the drop moved in the DOM was skipped for a
+                // frame and drawn at its guessed height - the strip jumped.
+                contentVisibility: 'visible',
               }}
             >
-              {/* Page Number Badge */}
-              <div style={{
-                position: 'absolute',
-                top: '6px',
-                right: '6px',
-                width: '20px',
-                height: '20px',
-                borderRadius: '50%',
-                background: 'var(--surface-3)',
-                color: 'var(--text-1)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '10px',
-                fontWeight: '600',
-                fontFamily: FONT_FAMILY,
-                zIndex: 1,
-                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)'
-              }}>
-                {pageNumber}
-              </div>
-
-              {/* UX 2026-07-12 — Mobile clipboard indicator: when this page is the
-                  cut/copy source, surface a green-bordered badge at the top-left of
-                  the card so the user can see which page is on the clipboard before
-                  pasting. Demo parity: PageThumb clipboard badge (styles.ts:1174-1187).
-                  Desktop cards never show this (mobileMode-gated). */}
-              {mobileMode && clipboardPage === pageNumber && (
-                <div
-                  className="mobile-page-clipboard-badge"
-                  aria-label={clipboardType === 'cut' ? `Page ${pageNumber} cut to clipboard` : `Page ${pageNumber} copied to clipboard`}
-                  {...tip(clipboardType === 'cut' ? 'Cut — ready to paste' : 'Copied — ready to paste', 'below')}
-                >
-                  <Icon name="copy" size={12} color="var(--accent)" />
-                </div>
-              )}
-
-              {mobileMode && (
-                <button
-                  type="button"
-                  aria-label={`Page ${pageNumber} actions`}
-                  {...tip(`Page ${pageNumber} actions`, 'below')}
-                  onClick={(event) => handleContextMenu(event, pageNumber)}
-                  style={{
-                    position: 'absolute',
-                    right: 6,
-                    bottom: 6,
-                    width: 30,
-                    height: 30,
-                    padding: 0,
-                    display: 'grid',
-                    placeItems: 'center',
-                    color: 'var(--text-2)',
-                    /* UX: the overflow button sits ON a page thumbnail, so it needs a
-                       plate it can be read against without hiding the page. --surface-1 at
-                       the same 84% it always had; the channels used to be the retired
-                       ramp's #12151c typed out as rgba(), which the hex sweep never saw. */
-                    background: 'color-mix(in srgb, var(--surface-1) 84%, transparent)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 6,
-                    zIndex: 2,
-                  }}
-                >
-                  <Icon name="more" size={16} color="currentColor" />
-                </button>
-              )}
-
-              {mobileMode && mobileSelectMode && (
-                <span className={`mobile-page-select-indicator${isMobileSelected ? ' is-selected' : ''}`} aria-hidden="true">
-                  {isMobileSelected ? <Icon name="check" size={13} color="currentColor" /> : null}
+              {/* Owner 2026-10-07: no clipboard badge on copied/cut pages ("I
+                  don't think we need that"); Paste in the page menu is enough. */}
+              {selectMode && (
+                <span className={`mobile-page-select-indicator${isPicked ? ' is-selected' : ''}`} aria-hidden="true">
+                  {isPicked ? <Icon name="check" size={13} color="currentColor" /> : null}
                 </span>
               )}
 
               {/* Thumbnail */}
-              <div className={mobileMode ? 'mobile-page-preview' : undefined} style={{
+              {/* Owner 2026-10-07 ("the pages are being shown too big"):
+                  the thumbnail fits one square box, keeping the page's shape
+                  (sidebar/pageThumbnailBox.js), centred in its card. A sheet
+                  turned on its side is no taller than a letter page. */}
+              <div className={mobileMode ? 'mobile-page-preview' : 'pages-panel-preview'} data-drag-keep-fill data-page-preview="" style={{
                 position: 'relative',
-                width: '100%',
-                paddingBottom: `${displayRatio}%`,
+                ...thumbnailBoxStyle(displayRatio / 100),
+                margin: '0 auto',
                 background: '#ffffff',
                 borderRadius: '2px',
                 overflow: 'hidden'
               }}>
+                {/* Page number: on the page's top-right corner. */}
+                <div style={{
+                  position: 'absolute',
+                  top: '6px',
+                  right: '6px',
+                  width: '20px',
+                  height: '20px',
+                  borderRadius: '50%',
+                  background: 'var(--surface-3)',
+                  color: 'var(--text-1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '10px',
+                  fontWeight: '600',
+                  fontFamily: FONT_FAMILY,
+                  zIndex: 1,
+                  pointerEvents: 'none',
+                  boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)'
+                }}>
+                  {shownNumber}
+                </div>
                 {thumbnailSrc ? (
                   <img
                     src={thumbnailSrc}
-                    alt={`Page ${pageNumber}`}
+                    alt={`Page ${shownNumber}`}
+                    draggable={false}
                     style={{
+                      // Owner 2026-10-07 (iPhone): holding a thumbnail raised
+                      // iOS's image preview (Share / Save to Photos / Copy).
+                      // The picture never takes a touch or a press: the card
+                      // under it does (tap, double-tap, hold-to-drag).
+                      pointerEvents: 'none',
+                      WebkitTouchCallout: 'none',
+                      WebkitUserDrag: 'none',
+                      userSelect: 'none',
                       position: 'absolute',
                       top: 0,
                       left: 0,
@@ -961,20 +1760,86 @@ const PagesPanel = ({
                       transformOrigin: 'center center'
                     }}
                   />
-                ) : (
-                  <div style={{
-                    position: 'absolute',
-                    top: '50%',
-                    left: '50%',
-                    transform: 'translate(-50%, -50%)',
-                    color: 'var(--text-3)',
-                    fontSize: '10px'
-                  }}>
-                    Loading...
-                  </div>
-                )}
+                ) : null}
+                {/* Owner 2026-10-01: no "Loading..." text. A page not drawn
+                    yet is the plain paper box above, in the page's own shape;
+                    its low-res image lands in it a moment later. */}
+                {/* The page's "..." menu button, bottom-right on the page.
+                    Owner 2026-10-07 ("the three dots ... should be visible on
+                    all pages, whether it's selected or not"): always shown,
+                    desktop and phone; on desktop a calm small dot at rest
+                    (.pages-panel-more in styles.css). It opens the same menu
+                    as a right-click. */}
+                <button
+                    type="button"
+                    className={mobileMode ? undefined : 'pages-panel-more'}
+                    aria-label={`Page ${shownNumber} actions`}
+                    aria-haspopup="menu"
+                    aria-expanded={Boolean(menuOpen)}
+                    {...tip(`Page ${shownNumber} actions`, 'below')}
+                    onClick={(event) => handleContextMenu(event, pageNumber, { fromButton: true })}
+                    onDoubleClick={(event) => event.stopPropagation()}
+                    // A press on the button is the button's, never a drag.
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onTouchStart={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => event.stopPropagation()}
+                    style={mobileMode ? {
+                      /* Owner 2026-10-01 (iPhone): the old control was a see-through
+                         bordered square straddling the thumbnail's corner, so the card
+                         border, the paper edge, its own border and the page lines all
+                         stacked up in one corner ("a layered bun"). Now: a 44px
+                         invisible touch area holding ONE solid 28px circle. It lives
+                         inside the paper box, so the circle always sits on the page,
+                         8px in from its corner, even on a landscape page whose paper
+                         is shorter than the card. Styled like the page-number badge
+                         (top right), with the level ⋯ glyph. */
+                      position: 'absolute',
+                      right: 0,
+                      bottom: 0,
+                      width: 44,
+                      height: 44,
+                      padding: 0,
+                      display: 'grid',
+                      placeItems: 'center',
+                      color: 'var(--text-1)',
+                      background: 'transparent',
+                      border: 0,
+                      zIndex: 2,
+                    } : {
+                      position: 'absolute',
+                      right: 0,
+                      bottom: 0,
+                      width: 32,
+                      height: 32,
+                      padding: 0,
+                      display: 'grid',
+                      placeItems: 'center',
+                      background: 'transparent',
+                      border: 0,
+                      cursor: 'pointer',
+                      zIndex: 2,
+                    }}
+                  >
+                    <span
+                      data-page-menu-anchor="true"
+                      aria-hidden="true"
+                      style={mobileMode ? {
+                        width: 28,
+                        height: 28,
+                        display: 'grid',
+                        placeItems: 'center',
+                        borderRadius: '50%',
+                        background: 'var(--surface-3)',
+                        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
+                      } : undefined}
+                    >
+                      <Icon name="moreHorizontal" size={mobileMode ? 18 : 14} color="currentColor" />
+                    </span>
+                  </button>
               </div>
             </div>
+            )}
+            </SortablePageCard>
           );
         })}
         {/* UX (KAL-73): two distinct empty-looking states, deliberately kept apart.
@@ -1007,8 +1872,20 @@ const PagesPanel = ({
           </div>
         )}
       </div>
+      </SortableContext>
+      {/* The lifted page (portalled: the phone sheet is transformed, which
+          would offset a fixed overlay inside it). */}
+      {typeof document !== 'undefined' && createPortal(
+        <DragOverlay dropAnimation={dropAnimation} zIndex={PAGE_DRAG_OVERLAY_Z}>
+          {dragActiveId != null && pageByCardKey.has(dragActiveId)
+            ? renderLiftedPage(pageByCardKey.get(dragActiveId), dragBlock ? dragBlock.pages.length : 1)
+            : null}
+        </DragOverlay>,
+        document.body,
+      )}
+      </DndContext>
 
-      {mobileMode && (
+      {mobileMode && !selectMode && (
         <div className="mobile-pages-actions" role="toolbar" aria-label="Page actions">
           <button
             type="button"
@@ -1022,30 +1899,73 @@ const PagesPanel = ({
           <button
             type="button"
             onClick={() => handlePaste(pageNum)}
-            disabled={!clipboardPage}
+            disabled={!clipboardHasPages}
           >
-            <Icon name="copy" size={15} color="currentColor" />
+            <Icon name="paste" size={15} color="currentColor" />
             <span>Paste</span>
           </button>
           <i />
           <button
             type="button"
-            aria-pressed={mobileSelectMode}
+            aria-pressed={false}
             onClick={() => {
-              setMobileSelectMode((active) => {
-                if (active) setMobileSelectedPages(new Set());
-                return !active;
+              setMobileSelectMode(true);
+              setSelection({ keys: [], anchor: null });
+            }}
+          >
+            {/* listChecks: the desktop's Select glyph (owner 2026-10-02). */}
+            <Icon name="listChecks" size={16} color="currentColor" />
+            <span>Select</span>
+          </button>
+        </div>
+      )}
+      {/* Phone Select mode: the bar acts on the ticked pages (More holds the
+          rest of the page menu: cut, paste, rotate). */}
+      {mobileMode && selectMode && (
+        <div className="mobile-pages-actions" role="toolbar" aria-label="Selected pages actions">
+          <button type="button" disabled={selectedPages.length === 0 || !onCopyPage} onClick={() => runOnSelection('copy')}>
+            <Icon name="copy" size={15} color="currentColor" />
+            <span>Copy</span>
+          </button>
+          <i />
+          <button type="button" disabled={selectedPages.length === 0 || !onDuplicatePage} onClick={() => runOnSelection('duplicate')}>
+            <Icon name="duplicate" size={15} color="currentColor" />
+            <span>Duplicate</span>
+          </button>
+          <i />
+          <button
+            type="button"
+            disabled={selectedPages.length === 0 || selectedPages.length >= numPages || !onDeletePage}
+            onClick={() => runOnSelection('delete')}
+          >
+            <Icon name="trash" size={15} color="currentColor" />
+            <span>Delete</span>
+          </button>
+          <i />
+          <button
+            type="button"
+            aria-haspopup="menu"
+            disabled={selectedPages.length === 0}
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              setContextMenu({
+                pageNumber: selectedPages[0],
+                pages: selectedPages.length > 1 ? selectedPages : null,
+                x: rect.left,
+                y: rect.top,
+                anchorRect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height },
+                fromButton: true,
               });
             }}
           >
-            <Icon name="check" size={16} color="currentColor" />
-            <span>{mobileSelectMode ? 'Done' : 'Select'}</span>
+            <Icon name="moreHorizontal" size={16} color="currentColor" />
+            <span>More</span>
           </button>
         </div>
       )}
 
-      {/* Context Menu */}
-      {contextMenu && (
+      {/* Context Menu — portalled to <body> (see placeContextMenu). */}
+      {contextMenu && typeof document !== 'undefined' && createPortal(
         <>
           {/* UX: mobile parity (Phase D) — demo's near-invisible dismiss layer
               (rgba(0,0,0,0.01); never dims the page — styles.ts:856-860). Tap
@@ -1054,24 +1974,34 @@ const PagesPanel = ({
           {mobileMode && (
             <div
               onPointerDown={() => setContextMenu(null)}
-              style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.01)' }}
+              style={{ position: 'fixed', inset: 0, zIndex: PAGE_MENU_Z - 1, background: 'rgba(0,0,0,0.01)' }}
             />
           )}
         <div
           ref={contextMenuRef}
+          role="menu"
+          aria-label={contextMenu.pages && contextMenu.pages.length > 1
+            ? `${contextMenu.pages.length} pages actions`
+            : `Page ${contextMenu.pageNumber} actions`}
+          // Polish 3 (2026-10-04): the one popup corner and shadow
+          // (--radius-md / --shadow-popover, as AnnotationDropdown and the
+          // phone More menu). The fills are unchanged (menu shades: owner
+          // decision pending).
           style={mobileMode ? {
-            // UX: demo page context-menu chrome (188px, radius 9, #181B20 /
-            // #3C424D, 6px pad, no shadow) — styles.ts:861-871, App.tsx:817.
             position: 'fixed',
             left: contextMenu.x,
             top: contextMenu.y,
             background: 'var(--surface-1)',
             border: '1px solid var(--border)',
-            borderRadius: '9px',
+            borderRadius: 'var(--radius-md)',
+            boxShadow: 'var(--shadow-popover)',
             padding: '6px',
-            zIndex: 10000,
-            width: '188px',
-            maxHeight: 'calc(100dvh - 16px)',
+            zIndex: PAGE_MENU_Z,
+            // As wide as its longest row ("Mirror horizontally"), at least
+            // the old 188px.
+            width: 'max-content',
+            minWidth: '188px',
+            maxWidth: 'calc(100vw - 32px)',
             overflowY: 'auto',
             fontFamily: FONT_FAMILY
           } : {
@@ -1080,261 +2010,48 @@ const PagesPanel = ({
             top: contextMenu.y,
             background: 'var(--surface-3)',
             border: '1px solid var(--border)',
-            borderRadius: '6px',
+            borderRadius: 'var(--radius-md)',
             padding: '4px',
-            zIndex: 10000,
+            zIndex: PAGE_MENU_Z,
             minWidth: '180px',
-            maxHeight: 'calc(100dvh - 16px)',
             overflowY: 'auto',
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+            boxShadow: 'var(--shadow-popover)',
             fontFamily: FONT_FAMILY
           }}
         >
-          {mobileMode && (
-            <>
-              {/* UX: demo menus lead with a muted title row + divider
-                  (FloatingContextMenu, styles.ts:872-889). */}
-              <div style={{ color: 'var(--text-3)', fontSize: 11, fontWeight: 800, padding: '4px 6px' }}>{`Page ${contextMenu.pageNumber}`}</div>
-              <div style={{ height: 1, margin: '3px 0', background: 'var(--surface-3)' }} />
-              <button
-                type="button"
-                disabled={allowedPages.indexOf(contextMenu.pageNumber) <= 0}
-                onClick={() => movePageByOffset(contextMenu.pageNumber, -1)}
-                style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: 0, borderRadius: 4, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', opacity: allowedPages.indexOf(contextMenu.pageNumber) <= 0 ? 0.4 : 1 }}
-              >
-                <Icon name="chevronUp" size={14} color="currentColor" />
-                Move up
-              </button>
-              <button
-                type="button"
-                disabled={allowedPages.indexOf(contextMenu.pageNumber) >= allowedPages.length - 1}
-                onClick={() => movePageByOffset(contextMenu.pageNumber, 1)}
-                style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: 0, borderRadius: 4, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', opacity: allowedPages.indexOf(contextMenu.pageNumber) >= allowedPages.length - 1 ? 0.4 : 1 }}
-              >
-                <Icon name="chevronDown" size={14} color="currentColor" />
-                Move down
-              </button>
-              <div style={{ height: 1, margin: '3px 5px', background: 'var(--surface-3)' }} />
-            </>
-          )}
-          <button
-            onClick={() => handleCut(contextMenu.pageNumber)}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              background: 'transparent',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '13px',
-              textAlign: 'left',
-              cursor: 'pointer',
-              color: 'var(--text-2)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <Icon name="scissors" size={14} color="var(--text-3)" />
-            Cut
-          </button>
-          <button
-            onClick={() => handleCopy(contextMenu.pageNumber)}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              background: 'transparent',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '13px',
-              textAlign: 'left',
-              cursor: 'pointer',
-              color: 'var(--text-2)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <Icon name="copy" size={14} color="var(--text-3)" />
-            Copy
-          </button>
-          <button
-            onClick={() => handlePaste(contextMenu.pageNumber)}
-            disabled={!clipboardPage}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              background: 'transparent',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '13px',
-              textAlign: 'left',
-              cursor: clipboardPage ? 'pointer' : 'not-allowed',
-              color: clipboardPage ? 'var(--text-2)' : 'var(--text-disabled)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              opacity: clipboardPage ? 1 : 0.5
-            }}
-            onMouseEnter={(e) => {
-              if (clipboardPage) {
-                e.currentTarget.style.background = 'var(--hover)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
-            }}
-          >
-            <Icon name="paste" size={14} color={clipboardPage ? "var(--text-3)" : "var(--text-disabled)"} />
-            Paste
-          </button>
-          <button
-            onClick={() => handleDuplicate(contextMenu.pageNumber)}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              background: 'transparent',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '13px',
-              textAlign: 'left',
-              cursor: 'pointer',
-              color: 'var(--text-2)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <Icon name="duplicate" size={14} color="var(--text-3)" />
-            Duplicate
-          </button>
-          <div style={{
-            height: '1px',
-            background: 'var(--surface-3)',
-            margin: '4px 0'
-          }} />
-          <button
-            onClick={() => handleRotate(contextMenu.pageNumber)}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              background: 'transparent',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '13px',
-              textAlign: 'left',
-              cursor: 'pointer',
-              color: 'var(--text-2)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <Icon name="rotate" size={14} color="var(--text-3)" />
-            Rotate
-          </button>
-          <button
-            onClick={() => handleMirrorHorizontal(contextMenu.pageNumber)}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              background: 'transparent',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '13px',
-              textAlign: 'left',
-              cursor: 'pointer',
-              color: 'var(--text-2)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <Icon name="flipHorizontal" size={14} color="var(--text-3)" />
-            Mirror horizontally
-          </button>
-          <button
-            onClick={() => handleMirrorVertical(contextMenu.pageNumber)}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              background: 'transparent',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '13px',
-              textAlign: 'left',
-              cursor: 'pointer',
-              color: 'var(--text-2)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <Icon name="flipVertical" size={14} color="var(--text-3)" />
-            Mirror vertically
-          </button>
-          <button
-            onClick={() => handleReset(contextMenu.pageNumber)}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              background: 'transparent',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '13px',
-              textAlign: 'left',
-              cursor: 'pointer',
-              color: 'var(--text-2)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <Icon name="reset" size={14} color="var(--text-3)" />
-            Reset
-          </button>
-          <div style={{
-            height: '1px',
-            background: 'var(--surface-3)',
-            margin: '4px 0'
-          }} />
-          <button
-            onClick={() => handleDelete(contextMenu.pageNumber)}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              background: 'transparent',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '13px',
-              textAlign: 'left',
-              cursor: 'pointer',
-              color: mobileMode ? 'var(--danger-text)' : 'var(--danger-text)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = mobileMode ? 'var(--surface-2)' : 'var(--surface-3)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <Icon name="trash" size={14} color={mobileMode ? 'var(--danger)' : 'var(--danger)'} />
-            Delete
-          </button>
+          {/* The one page menu list (sidebar/pageMenuItems.js), shared
+              with the viewer's page menu. The phone adds Move up / down and
+              Select. On a selection of several pages: "3 pages" and the
+              actions that apply to them all. Owner 2026-10-06: an item with
+              nothing to act on is disabled (Paste with an empty clipboard,
+              Reset with nothing to undo, Delete on the only page). */}
+          <PageMenuList
+            key={`${contextMenu.pageNumber}:${contextMenu.pages ? contextMenu.pages.join(',') : ''}:${contextMenu.x}:${contextMenu.y}`}
+            mobile={mobileMode}
+            onPick={pickPageMenuItem}
+            onLayout={placeContextMenu}
+            dangerHoverBg={mobileMode ? 'var(--surface-2)' : 'var(--surface-3)'}
+            items={buildPageMenuItems({
+              pageNumber: contextMenu.pageNumber,
+              pageNumbers: contextMenu.pages,
+              pageCount: numPages,
+              clipboardPage,
+              clipboardType,
+              hasTransform: pageHasTransform(pageTransformations?.[contextMenu.pageNumber]),
+              select: mobileMode && !selectMode,
+              move: mobileMode ? {
+                canUp: allowedPages.indexOf(contextMenu.pageNumber) > 0,
+                canDown: allowedPages.indexOf(contextMenu.pageNumber) < allowedPages.length - 1,
+              } : null,
+              available: availableActions(pageMenuHandlers),
+              // Phone: fits an iPhone SE without scrolling ("More" holds
+              // blank pages, mirror, reset and move up / down).
+              compact: mobileMode,
+            })}
+          />
         </div>
-        </>
+        </>,
+        document.body,
       )}
     </div>
   );

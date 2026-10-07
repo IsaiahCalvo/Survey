@@ -1,4 +1,14 @@
 import { getCompactSyncStatusMessage, getSyncStatusViewModel } from '../utils/syncStatusViewModel.js';
+import {
+  PRESENCE_STATE_LABEL,
+  assignPresenceTints,
+  presenceFaceColors,
+  presenceInitials,
+  presenceLabel,
+  presenceRowForUser,
+  presenceSelfRow,
+  presenceState,
+} from '../components/presenceIdentity.js';
 
 // UX 2026-09-17 (revision-2 palette, owner amendment b): the sync status dot
 // keeps green / yellow / red. Everything else green in the chrome went gold,
@@ -10,21 +20,13 @@ const SYNC_COLORS = {
   offline: 'var(--danger)',
 };
 
-const initialsOf = (value) => {
-  const name = String(value || 'User').trim();
-  const source = name.includes('@') ? name.slice(0, name.indexOf('@')) : name;
-  const parts = source.split(/[\s._-]+/).filter(Boolean);
-  if (parts.length > 1) return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase();
-  return source.slice(0, 2).toUpperCase() || 'U';
-};
-
 export const getMobileSyncPresentation = (status, queueSize = 0, enabled = true) => {
-  if (!enabled) return { state: 'unavailable', label: 'Cloud sync unavailable', color: '#687180' };
+  if (!enabled) return { state: 'unavailable', label: 'Cloud sync unavailable', color: 'var(--text-disabled)' };
   const view = getSyncStatusViewModel(status, queueSize, false);
   return {
     ...view,
     compactMessage: getCompactSyncStatusMessage(status, queueSize),
-    color: SYNC_COLORS[view.state] || '#687180',
+    color: SYNC_COLORS[view.state] || 'var(--text-disabled)',
   };
 };
 
@@ -33,6 +35,7 @@ export const normalizeMobilePresence = ({
   currentUserId = null,
   currentUserEmail = null,
   currentUserDisplayName = null,
+  now = Date.now(),
 } = {}) => {
   const unique = new Map();
   for (const row of Array.isArray(presence) ? presence : []) {
@@ -42,13 +45,15 @@ export const normalizeMobilePresence = ({
     const lastSeen = row?.last_seen || row?.lastSeen || '';
     const previousLastSeen = previous?.lastSeen || '';
     if (!previous || lastSeen > previousLastSeen) {
-      const label = row?.display_name || row?.displayName || row?.name || row?.email || id;
+      // The shared rule (presenceIdentity.js): name, else email - the same
+      // label and initials the desktop footer draws for this person.
+      const label = presenceLabel(presenceRowForUser({ ...row, user_id: id }, { currentUserId, currentUserDisplayName }));
       unique.set(id, {
         id,
         label,
         lastSeen,
         isCurrent: id === currentUserId,
-        initials: initialsOf(label),
+        initials: presenceInitials(label),
         role: row?.role || row?.user_role || null,
         status: row?.status || row?.activity || null,
       });
@@ -56,14 +61,17 @@ export const normalizeMobilePresence = ({
   }
 
   let users = Array.from(unique.values());
-  if (users.length === 0 && (currentUserId || currentUserEmail || currentUserDisplayName)) {
-    const label = currentUserDisplayName || currentUserEmail || 'You';
-    users = [{
+  // You are always on your own list - also when your own row has aged out
+  // (2 min without activity) while other people's rows are still fresh.
+  const selfMissing = currentUserId ? !unique.has(currentUserId) : users.length === 0;
+  if (selfMissing && (currentUserId || currentUserEmail || currentUserDisplayName)) {
+    const label = presenceLabel(presenceSelfRow({ currentUserId, currentUserEmail, currentUserDisplayName }));
+    users = [...users, {
       id: currentUserId || 'current-user',
       label,
       lastSeen: '',
       isCurrent: true,
-      initials: initialsOf(label),
+      initials: presenceInitials(label),
       role: null,
       status: null,
     }];
@@ -73,7 +81,16 @@ export const normalizeMobilePresence = ({
     if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
     return String(b.lastSeen).localeCompare(String(a.lastSeen));
   });
-  return users;
+  // Same face as the desktop footer (components/presenceIdentity.js): each
+  // person's own pastel (yours too), grey only while idle, and here-now / idle
+  // from last_seen — no gold, which means "selected".
+  const selfId = users.find((user) => user.isCurrent)?.id || currentUserId;
+  const tints = assignPresenceTints(users.map((user) => user.id), selfId);
+  return users.map((user) => {
+    const state = presenceState({ last_seen: user.lastSeen }, { now, isCurrent: user.isCurrent });
+    const tint = tints.get(user.id);
+    return { ...user, tint, face: presenceFaceColors(tint, state), state, stateLabel: PRESENCE_STATE_LABEL[state] };
+  });
 };
 
 const colorAlpha = (value) => {

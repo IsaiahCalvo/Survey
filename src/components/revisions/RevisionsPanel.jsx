@@ -37,6 +37,7 @@
 // documents meanwhile. Named versions stay hidden until rebuilt (w55 defect 3).
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../../supabaseClient';
 import Icon from '../../Icons';
 import {
@@ -101,18 +102,18 @@ function ensureHistoryPanelStyle() {
   const style = document.createElement('style');
   style.id = HISTORY_PANEL_STYLE_ID;
   style.textContent = `
-    .dh-panel { --dh-edge: 12px; --dh-row-pad: 9px; --dh-type: 13px; --dh-meta: 11.5px; --dh-glyph: 18px;
+    .dh-panel { --dh-edge: 12px; --dh-row-pad: 9px; --dh-type: 13px; --dh-meta: 12px; --dh-glyph: 18px;
       /* Status colors (RULED 2026-09-29 owner): added blue, edited green,
          deleted red, restored a light teal (lighter than the blue, so the two
          read apart). Dots only; the verb gets a light tint. */
       --dh-c-created: #4a90e2; --dh-c-edited: var(--success, #548c71); --dh-c-deleted: var(--danger, #d95a56);
       --dh-c-restored: #6fd3d8; --dh-c-other: var(--text-3);
-      display: flex; flex-direction: column; min-height: 0; height: 100%; background: var(--surface-1); color: var(--text-2); }
-    .dh-panel--phone { --dh-edge: 16px; --dh-row-pad: 11px; --dh-type: 14px; --dh-meta: 12.5px; --dh-glyph: 20px; background: var(--surface-2); }
+      display: flex; flex-direction: column; min-height: 0; height: 100%; background: var(--panel-bg, var(--surface-2)); color: var(--text-2); }
+    .dh-panel--phone { --dh-edge: var(--sheet-pad-x, 16px); --dh-row-pad: 11px; --dh-type: 14px; --dh-meta: 12px; --dh-glyph: 20px; background: var(--sheet-bg, var(--surface-2)); font-family: var(--sheet-font, inherit); }
     .dh-head { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 8px var(--dh-edge) 10px; border-bottom: 1px solid var(--border); }
     .dh-headrow { display: flex; align-items: center; gap: 8px; min-height: 28px; }
     .dh-count { flex: 1; display: flex; align-items: baseline; gap: 8px; color: var(--text-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .dh-title { color: var(--text-1); font-size: 13px; font-weight: 650; }
+    .dh-title { color: var(--text-1); font-size: 13px; font-weight: 600; }
     .dh-ib { width: 28px; height: 28px; display: grid; place-items: center; flex: none; padding: 0; border: 0; background: none; color: var(--text-3); cursor: pointer; }
     .dh-ib:hover { color: var(--text-1); }
     .dh-ib > * { transition: transform .08s; }
@@ -140,9 +141,9 @@ function ensureHistoryPanelStyle() {
     .dh-markchip button { width: 22px; height: 22px; flex: none; display: grid; place-items: center; padding: 0; border: 0; background: none; color: var(--text-3); cursor: pointer; }
     .dh-markchip button:hover { color: var(--text-1); }
     .dh-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; outline: none; }
-    .dh-day { position: sticky; top: 0; z-index: 2; padding: 12px var(--dh-edge) 6px; font-size: 11px; font-weight: 650; letter-spacing: .05em;
-      text-transform: uppercase; color: var(--text-3); background: inherit; border-bottom: 1px solid var(--border); }
-    .dh-panel .dh-day { background: var(--surface-1); }
+    .dh-day { position: sticky; top: 0; z-index: 2; padding: 12px var(--dh-edge) 6px; font-size: 11px; font-weight: 600; letter-spacing: 0;
+      color: var(--text-3); background: inherit; border-bottom: 1px solid var(--border); }
+    .dh-panel .dh-day { background: var(--panel-bg, var(--surface-2)); }
     .dh-panel--phone .dh-day { background: var(--surface-2); }
     .dh-row { position: relative; display: grid; grid-template-columns: 7px var(--dh-glyph) minmax(0, 1fr); column-gap: 9px; align-items: start;
       padding: var(--dh-row-pad) var(--dh-edge); border-bottom: 1px solid var(--border); cursor: pointer; }
@@ -171,23 +172,31 @@ function ensureHistoryPanelStyle() {
     .dh-detail { margin-top: 6px; }
     .dh-act { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
     .dh-restore { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: none; color: var(--text-1);
-      font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+      font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
     .dh-restore:hover { color: #4a90e2; }
     .dh-restore:disabled { color: var(--text-3); cursor: wait; }
     .dh-restore > span:first-child { display: inline-grid; transition: transform .08s; }
     .dh-restore:active > span:first-child { transform: scale(.86); }
     .dh-peek { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border-radius: 7px; background: var(--surface-0); }
     .dh-peek > span { padding: 0 6px 0 4px; color: var(--text-3); font-size: 11px; }
-    .dh-peek button { border: 0; background: none; color: var(--text-3); font: inherit; font-size: 11.5px; padding: 3px 8px; border-radius: 5px; cursor: pointer; }
+    .dh-peek button { border: 0; background: none; color: var(--text-3); font: inherit; font-size: 12px; padding: 3px 8px; border-radius: 5px; cursor: pointer; }
     .dh-peek button.on { background: var(--surface-3); color: var(--text-1); }
-    .dh-empty { padding: 24px var(--dh-edge); color: var(--text-3); font-size: 12.5px; line-height: 1.5; }
+    .dh-empty { padding: 24px var(--dh-edge); color: var(--text-3); font-size: 13px; line-height: 1.5; }
     .dh-more { display: block; margin: 6px auto 10px; padding: 6px 10px; border: 0; background: none; color: var(--text-3);
       font: inherit; font-size: 12px; cursor: pointer; }
     .dh-more:hover { color: var(--text-1); }
     .dh-more:disabled { cursor: wait; }
-    .dh-foot { flex: none; padding: 9px var(--dh-edge); border-top: 1px solid var(--border); color: var(--text-3); font-size: 11.5px; }
-    .dh-link { padding: 0; border: 0; background: none; color: var(--text-2); font: inherit; font-size: 11.5px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+    .dh-foot { flex: none; padding: 9px var(--dh-edge); border-top: 1px solid var(--border); color: var(--text-3); font-size: 12px; }
+    .dh-link { padding: 0; border: 0; background: none; color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
     .dh-link:hover { color: var(--text-1); }
+    /* Phone: the shared PHONE SHEET SCALE (src/styles/tokens.css, owner
+       2026-10-01 "consistency across all bottom panels") - a 16/700 title,
+       12/600 day labels in sentence case (no caps or tracking on the phone),
+       12px meta and the sheet's empty-state line. */
+    .dh-panel--phone .dh-title { font: var(--sheet-title); }
+    .dh-panel--phone .dh-day { font: var(--sheet-section); letter-spacing: 0; text-transform: none; }
+    .dh-panel--phone .dh-empty { font: var(--sheet-empty); }
+    .dh-panel--phone .dh-row .dh-m { font: var(--sheet-row-meta); }
     .dh-panel--phone .dh-row { min-height: 44px; }
     .dh-panel--phone .dh-chip { padding: 8px 6px; font-size: 13px; }
     .dh-panel--phone .dh-legend { font-size: 12px; }
@@ -250,6 +259,10 @@ export default function RevisionsPanel({
   embedded = false,
   // The phone History sheet: the same feed, sized for touch.
   mobileMode = false,
+  // Desktop rail (owner 2026-10-07, rail headers round): the rail's title row
+  // slot. The count and the search toggle are drawn there, in line with the
+  // "History" title, instead of on a line of their own under it.
+  headActionsHost = null,
   // History-audit P1: when embedded, the sidebar keeps this panel mounted
   // behind display:none. isActive=false means the History tab is deselected
   // or the rail is collapsed — preview/highlight state must be torn down so
@@ -1474,6 +1487,8 @@ export default function RevisionsPanel({
       {/* Header (layout B: no title — the tab names the panel): how many
           lines, search on the right; the filters under it. */}
       <div className="dh-head">
+        {(() => {
+        const headRow = (
         <div className="dh-headrow">
           {searchOpen ? (
             <input
@@ -1501,7 +1516,7 @@ export default function RevisionsPanel({
             />
           ) : (
             <span className="dh-count">
-              <span className="dh-title">History</span>
+              {!headActionsHost && <span className="dh-title">History</span>}
               <span data-testid="document-history-count">{feed.groupCount === 1 ? '1 entry' : `${feed.groupCount} entries`}</span>
             </span>
           )}
@@ -1510,6 +1525,9 @@ export default function RevisionsPanel({
             className="dh-ib"
             data-glyph-only=""
             aria-label={searchOpen ? 'Close search' : 'Search history'}
+            // In the rail's title row the close glyph would sit beside the
+            // panel's own close, so there it stays the search glyph, pressed.
+            aria-pressed={headActionsHost ? searchOpen : undefined}
             onClick={() => {
               if (searchOpen) { setQuery(''); setSearchOpen(false); } else {
                 setSearchOpen(true);
@@ -1517,7 +1535,7 @@ export default function RevisionsPanel({
               }
             }}
           >
-            <span><Icon name={searchOpen ? 'close' : 'search'} size={mobileMode ? 20 : 17} /></span>
+            <span><Icon name={searchOpen && !headActionsHost ? 'close' : 'search'} size={mobileMode ? 20 : 17} /></span>
           </button>
           {!embedded && (
             <button
@@ -1534,6 +1552,9 @@ export default function RevisionsPanel({
             </button>
           )}
         </div>
+        );
+        return headActionsHost ? createPortal(headRow, headActionsHost) : headRow;
+        })()}
         <div className="dh-chips" role="group" aria-label="Show">
           {HISTORY_FILTERS.map((option) => (
             <button
@@ -1663,7 +1684,7 @@ export default function RevisionsPanel({
         // UX (KAL-62): the app's one modal scrim — warm-dark dim plus an 8px
         // blur, so a cascade-restore confirm carries the same weight as every
         // other dialog rather than a flat black dim.
-        background: 'rgba(13, 15, 20, 0.55)',
+        background: 'var(--overlay-scrim)',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
         display: 'flex',
@@ -1676,8 +1697,8 @@ export default function RevisionsPanel({
         style={{
           background: 'var(--surface-1)',
           border: '1px solid var(--border)',
-          borderRadius: 8,
-          boxShadow: 'var(--shadow-lg, 0 8px 24px rgba(0,0,0,0.5))',
+          borderRadius: 'var(--radius-dialog)',
+          boxShadow: 'var(--shadow-dialog)',
           width: '100%',
           maxWidth: 480,
           margin: '0 16px',

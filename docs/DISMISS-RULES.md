@@ -37,6 +37,10 @@ only ends the typing (the text editor commits, as it always did; a field
 blurs) and does nothing else. Exceptions that work at once: controls that act
 on the text (the formatting bar, the mini toolbar, the font colour picker, the
 phone text sheet), other popover openers, and other text/title fields.
+Owner 2026-10-04: the tool buttons too (Pan, Select and its modes, the group
+buttons and every tool in a group, desktop bar and phone rail — they carry
+`data-tool-switch`): one press commits the text box or callout AND arms that
+tool.
 
 **R4 Blocking windows block.** Modal dialogs and sheets with a backdrop
 (confirm delete, share, settings and account windows, phone bottom sheets, the

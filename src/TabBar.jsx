@@ -25,6 +25,7 @@ import {
   sortableKeyboardCoordinates,
   useSortable,
 } from '@dnd-kit/sortable';
+import { CALM_STRIP_AUTO_SCROLL } from './reorder/dragAutoScroll.js';
 import { CSS } from '@dnd-kit/utilities';
 import Icon from './Icons';
 // Phase 30 — per-tab subscription to the dual-write retry queue. Each tab
@@ -136,6 +137,10 @@ function TabItem({
       {...sortableAttributes}
       {...sortableListeners}
       data-pdf-tab-id={!isHome ? tab.id : undefined}
+      // Owner 2026-10-01: the held tab takes the app's one picked-up look
+      // (states.css [data-drag-lifted]): solid raised surface, soft shadow,
+      // no gold edge, fully opaque so no neighbour shows through.
+      data-drag-lifted={isDragging ? '' : undefined}
       onClick={() => onTabClick(tab.id)}
       onDragOver={(e) => !isHome && onPageDragOver(e, tab.id)}
       onDragLeave={(e) => !isHome && onPageDragLeave(e, tab.id)}
@@ -155,7 +160,6 @@ function TabItem({
         borderTop: isActive ? `2px solid ${TAB_ACCENT}` : (dragOverTabId === tab.id ? `2px solid ${TAB_ACCENT}` : '2px solid transparent'),
         cursor: isHome ? 'pointer' : (isDragging ? 'grabbing' : 'grab'),
         userSelect: 'none',
-        opacity: isDragging ? 0.92 : 1,
         transition: isDragging
           ? 'background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease'
           : [sortableStyle.transition, 'background 0.15s ease', 'border-color 0.15s ease', 'box-shadow 0.15s ease'].filter(Boolean).join(', '),
@@ -163,7 +167,7 @@ function TabItem({
         fontSize: '12px',
         color: isActive ? TAB_TEXT_ACTIVE : TAB_TEXT,
         zIndex: isDragging ? 5 : undefined,
-        boxShadow: isDragging ? '0 10px 26px rgba(0,0,0,0.35), inset 0 0 0 1px var(--accent-press)' : 'none',
+        boxShadow: 'none',
         touchAction: isHome ? undefined : 'none',
       }}
       onMouseEnter={(e) => {
@@ -179,8 +183,12 @@ function TabItem({
       /* A tab is a draggable div, not a <button>, so the app-wide :active rule
          in src/styles/states.css cannot reach it — it needs the press painted
          by hand. Pressing the ACTIVE tab still darkens, because pressing the
-         tab you are already on should still feel like a press. */
+         tab you are already on should still feel like a press.
+         It must also forward to the sortable's own onMouseDown (spread above):
+         this prop replaced it, so the MouseSensor never saw a press and
+         document tabs could not be dragged with a mouse (fix 2026-09-30). */
       onMouseDown={(e) => {
+        sortableListeners.onMouseDown?.(e);
         if (!isSorting) {
           e.currentTarget.style.background = TAB_PRESSED_BG;
         }
@@ -209,6 +217,7 @@ function TabItem({
             flexShrink: 0
           }}
           title="Unsaved changes (Cmd/Ctrl+S to save)"
+          data-drag-keep-fill
         />
       ) : (
         <div style={{ width: '12px', marginRight: '7px', flexShrink: 0 }} />
@@ -232,6 +241,7 @@ function TabItem({
           role="status"
           aria-label="This document has unsaved changes"
           title="This document has unsaved changes"
+          data-drag-keep-fill
           style={{
             width: '6px',
             height: '6px',
@@ -247,7 +257,14 @@ function TabItem({
       {!isHome && (
         <button
           onClick={handleTabCloseClick}
+          // Polish round 2 (2026-10-04): the X had no name ("button").
+          aria-label={`Close ${tab.name}`}
           onPointerDown={(e) => e.stopPropagation()}
+          // Pressing the X must not also paint the whole tab's pressed fill
+          // (the tab's own onMouseDown) - that read as a grey box behind the X
+          // (owner 2026-10-02, test plan U2). It never started a drag anyway:
+          // the pointerdown above already stops the sortable.
+          onMouseDown={(e) => e.stopPropagation()}
           style={{
             marginLeft: '7px',
             padding: '3px',
@@ -262,12 +279,13 @@ function TabItem({
             transition: 'all 0.15s ease',
             flexShrink: 0
           }}
+          // Owner 2026-10-02 (test plan U2, "an X ... a grey box shows behind
+          // it"): the close X paints no hover plate. Its glyph brightens and
+          // grows, and presses, like every chrome icon (states.css section 5).
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = TAB_HOVER_BG;
             e.currentTarget.style.color = TAB_TEXT_ACTIVE;
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'transparent';
             e.currentTarget.style.color = TAB_TEXT;
           }}
         >
@@ -445,6 +463,7 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onPag
           sensors={sensors}
           collisionDetection={closestCenter}
           modifiers={tabModifiers}
+          autoScroll={CALM_STRIP_AUTO_SCROLL}
           onDragEnd={handleTabDragEnd}
         >
           <SortableContext items={pdfTabs.map((tab) => tab.id)} strategy={horizontalListSortingStrategy}>

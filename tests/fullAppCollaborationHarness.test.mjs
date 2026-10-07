@@ -130,7 +130,9 @@ test('mobile collaboration opens the real project row, team surface, and rename 
      when the project is picked in Select mode — so the class names are matched
      without the closing quote that a fixed attribute used to have. */
   assert.match(projects, /data-project-id=\{p\.id\}[\s\S]*?role="button"[\s\S]*?className=\{`projects-mobile-folder-row drill reorderable/);
-  assert.match(projects, /aria-label="Manage team"[\s\S]*?setTeamModalProject\(mobileDrillProject\)/);
+  // The phone's Team action is a SectionIconButton now (owner 2026-10-02:
+  // header actions are icons); its `label` is the accessible name.
+  assert.match(projects, /label="Manage team"[\s\S]*?setTeamModalProject\(mobileDrillProject\)/);
   assert.match(runtime, /getByRole\('button', \{ name: 'Manage team', exact: true \}\)/);
   assert.match(runtime, /input\[title="Click to rename"\], input\[title="Tap to rename"\]/);
 });

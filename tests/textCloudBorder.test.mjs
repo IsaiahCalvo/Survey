@@ -29,6 +29,7 @@ import {
   calloutToAnnotationObject,
 } from '../src/utils/calloutAnnotationBridge.js';
 import { buildNewTextCommitJSON } from '../src/utils/textEditCommit.js';
+import { withCloudBandBudgetHeld } from './helpers/cloudBandBudgetClock.mjs';
 import {
   applyRestyleChange,
   calloutRestylePatch,
@@ -296,6 +297,9 @@ test('print: a clouded callout clouds the box only; its leader prints as straigh
   assert.equal(plain.forms.length, 0);
 });
 
+// 2026-10-04 (test-reliability pass): both exports below build a FILLED
+// cloud, whose stroke band runs under a wall-clock budget; see
+// tests/helpers/cloudBandBudgetClock.mjs for why the clock is held still.
 test('print: the callout box cloud is the one the SCREEN draws (same box, width, fill and bump)', async () => {
   const callout = makeCallout({ lineStyle: 'cloud', cloudIntensity: 3, fillColor: '#fde68a', fillOpacity: 0.5 });
   const W = 600; const H = 800;
@@ -313,12 +317,12 @@ test('print: the callout box cloud is the one the SCREEN draws (same box, width,
     fill: colorWithAlpha(callout.style.fillColor, callout.style.fillOpacity),
     opacity: 1,
   });
-  const printed = await printedCloudForms(await savePDFWithFlattenedRegularAnnotationsForPrint(
+  const printed = await printedCloudForms(await withCloudBandBudgetHeld(async () => savePDFWithFlattenedRegularAnnotationsForPrint(
     await pdfFile(), {}, PAGE_SIZES, { returnBytes: true, callouts: [callout] },
-  ));
-  const twin = await printedCloudForms(await savePDFWithFlattenedRegularAnnotationsForPrint(
+  )));
+  const twin = await printedCloudForms(await withCloudBandBudgetHeld(async () => savePDFWithFlattenedRegularAnnotationsForPrint(
     await pdfFile(), { 1: { objects: [screen] } }, PAGE_SIZES, { returnBytes: true },
-  ));
+  )));
   assert.equal(printed.forms.length, 1);
   assert.equal(printed.forms[0], twin.forms[0], 'print clouds the same box the screen clouds');
 });

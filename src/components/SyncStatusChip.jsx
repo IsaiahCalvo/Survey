@@ -160,11 +160,11 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
             transform: compact || row ? undefined : 'translateX(-50%)',
             width: 'min(320px, calc(100vw - 32px))',
             padding: '7px 8px 7px 10px',
-            borderRadius: '10px',
+            borderRadius: 'var(--radius-md)',
             border: '1px solid var(--border)',
             background: 'var(--surface-1)',
             color: 'var(--text-1)',
-            boxShadow: '0 10px 30px rgba(0,0,0,0.45)',
+            boxShadow: 'var(--shadow-popover)',
             zIndex: 3000,
             fontSize: '12px',
             display: 'flex',
@@ -213,6 +213,11 @@ function CompactSyncStatusChip({ state, label, accessibleLabel, dotColor, detail
   return (
     <div
       role="button"
+      // Owner 2026-10-02: a chrome icon - it hovers and presses like every
+      // rail icon (src/styles/states.css section 5), never with a plate. The
+      // class (not data-glyph-only) marks it, because the hover hint below is
+      // drawn inside the chip and its words would un-mark it mid-hover.
+      className="chrome-icon-btn"
       aria-live="polite"
       aria-label={accessibleLabel}
       aria-expanded={detailsOpen}

@@ -21,6 +21,7 @@ import { retryCompensatingCleanup, runCompensatingBatch } from './home/compensat
 import { readPdfPageCount, mapUploadsBounded } from './home/pdfUploadWork.js';
 import { moveOrCopyDocumentsAtomically, parseDocumentBatchRecovery } from './home/documentBatchOperations.js';
 import { mapAuthoritativeTemplateRows, persistTemplateSnapshot } from './home/templatePersistence.js';
+import { ownerDisplayName, sameTemplateConfig, sharedFromRow, splitTemplatesForSave, stripSharedFields } from './services/sharedTemplates.js';
 import { useAuth } from './contexts/AuthContext';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { useDocuments, useProjects, useStorage, useTemplates } from './hooks/useDatabase';
@@ -38,25 +39,11 @@ import { archiveItems } from './services/archiveService';
 import { notifyLibraryChanged } from './hooks/libraryChangeBus';
 import { useConfirmDialog, usePromptDialog } from './components/dialogPrompts';
 import { readBlobAsArrayBuffer } from './utils/blobArrayBuffer.js';
+import { FONT_FAMILY, hexToRgba, hasNameConflict } from './viewerShared.js';
 
-// --- helpers (shared small utilities; FONT_FAMILY/hexToRgba/normalizeName/
-//     hasNameConflict also live in App.jsx for the viewer) ---
-
-// Consistent font stack for the entire application
-const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
-
-// Convert hex color to rgba with default opacity (default 0.2, but surveyMarkers use 1.0)
-const hexToRgba = (hex, opacity = 0.2) => {
-  // Remove # if present
-  hex = hex.replace('#', '');
-
-  // Parse RGB values
-  const r = parseInt(hex.substring(0, 2), 16);
-  const g = parseInt(hex.substring(2, 4), 16);
-  const b = parseInt(hex.substring(4, 6), 16);
-
-  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-};
+// --- helpers --------------------------------------------------------------
+// FONT_FAMILY (the one UI font), hexToRgba and hasNameConflict come from
+// viewerShared.js; this file used to keep its own copies of all three.
 
 const serializeError = (error) => {
   if (!error) return null;
@@ -70,38 +57,7 @@ const serializeError = (error) => {
   };
 };
 
-const normalizeName = (value) => {
-  if (typeof value !== 'string') return '';
-  return value.trim().toLowerCase();
-};
-
-const hasNameConflict = (
-  items,
-  candidateName,
-  {
-    getName = (item) => item?.name,
-    getId = (item) => item?.id,
-    ignoreId,
-    predicate
-  } = {}
-) => {
-  if (!Array.isArray(items)) return false;
-  const normalizedCandidate = normalizeName(candidateName);
-  if (!normalizedCandidate) return false;
-
-  const shouldIgnore = typeof ignoreId !== 'undefined';
-
-  return items.some((item) => {
-    if (!item) return false;
-    if (predicate && !predicate(item)) return false;
-    if (shouldIgnore && getId(item) === ignoreId) return false;
-    const existingName = normalizeName(getName(item));
-    return existingName && existingName === normalizedCandidate;
-  });
-};
-
-
-const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, documents, setDocuments, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal, entities, setEntities }, ref) {
+const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOpenStart, onDocumentOpenEnd, onBack, documents, setDocuments, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal, entities, setEntities }, ref) {
   const fileInputRef = useRef();
   const projectFileInputRef = useRef();
   // Destination project for the next browser-input upload. The browser file
@@ -133,7 +89,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const [askConfirm, confirmDialogElement] = useConfirmDialog();
   const [askPrompt, promptDialogElement] = usePromptDialog();
   // Auth state and user dropdown menu
-  const { user, isAuthenticated, signOut, signInWithGoogle, features } = useAuth();
+  const { user, isAuthenticated, signOut, signInWithGoogle, features, loading: authLoading } = useAuth();
   const { isAuthenticated: isMSAuthenticated, login: msLogin, logout: msLogout, account: msAccount, needsReconnect: msNeedsReconnect } = useMSGraph();
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
@@ -262,8 +218,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         ? templateRow.config
         : {};
       const templateId = config.id || templateRow.id;
+      const { sharedFrom: _storedSharedFrom, ...storedConfig } = config;
+      // A template shared with me (through a document or a template invite)
+      // carries its owner and my role; it saves through its own row.
+      const sharedFrom = sharedFromRow(templateRow);
       return {
-        ...config,
+        ...storedConfig,
+        ...(sharedFrom ? { sharedFrom } : {}),
         id: templateId,
         supabaseId: templateRow.id,
         name: config.name || templateRow.name || 'Untitled Template',
@@ -307,7 +268,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
   const sanitizeTemplateConfig = (template) => {
     if (!template || typeof template !== 'object') return template;
-    const { supabaseId, ...rest } = template;
+    const { supabaseId, sharedFrom, ...rest } = template;
     return rest;
   };
 
@@ -483,6 +444,25 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       }, 0);
     }
   }, [templates, supabaseTemplates, onTemplatesChange]);
+
+  // 2026-10-07 (phone loading): coming back to the app after a while (the
+  // phone was in a pocket, another app was in front) reads the lists again, so
+  // a document added from another device shows up by itself instead of only
+  // after a reload. Rows on screen stay put while the read runs.
+  useEffect(() => {
+    if (!user || typeof document === 'undefined') return undefined;
+    let hiddenAt = document.visibilityState === 'hidden' ? Date.now() : null;
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now();
+        return;
+      }
+      if (hiddenAt !== null && Date.now() - hiddenAt >= 60_000) notifyLibraryChanged();
+      hiddenAt = null;
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [user]);
 
   // Sync Supabase documents with parent component state
   useEffect(() => {
@@ -1204,6 +1184,37 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const exitSelectionMode = useCallback(() => {}, []);
 
 
+  // Save the changes made to templates shared with me, each to its own row
+  // (the database lets an editor collaborator update it; useTemplates keeps
+  // the saved row marked as shared).
+  const persistSharedTemplateEdits = async (sharedTemplates) => {
+    const viewOnlyChanged = [];
+    for (const template of sharedTemplates || []) {
+      const row = (supabaseRowsRef.current || []).find((r) => r?.id === template.supabaseId);
+      if (!row) continue;
+      const storedConfig = row.config && typeof row.config === 'object' ? row.config : {};
+      const nextConfig = { ...storedConfig, ...stripSharedFields(template) };
+      if (sameTemplateConfig(storedConfig, nextConfig)) continue;
+      if (!template.sharedFrom?.canEdit) {
+        viewOnlyChanged.push(template.name || 'A shared template');
+        continue;
+      }
+      await updateSupabaseTemplate(row.id, {
+        name: template.name || row.name,
+        config: nextConfig,
+        updated_at: new Date().toISOString(),
+      });
+    }
+    if (viewOnlyChanged.length) {
+      showToast(
+        viewOnlyChanged.length === 1
+          ? `${viewOnlyChanged[0]} is shared with you to use only, so your changes to it were not saved.`
+          : `${viewOnlyChanged.length} templates are shared with you to use only, so your changes to them were not saved.`,
+        'warn'
+      );
+    }
+  };
+
   // Persist templates to Supabase
   const persistTemplates = async (templatesToSave) => {
     if (!user) {
@@ -1211,8 +1222,19 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     }
 
     try {
-      const withResolvedRows = templatesToSave.map((template) => ({
+      // Owner 2026-10-07 (shared templates): a template shared with me never
+      // goes into MY snapshot (the snapshot function refuses another
+      // person's row). An editor's changes to it save to its own row; a
+      // use-only template's changes are not saved (and say so).
+      // The snapshot's answer keeps the shared rows (useTemplates), with any
+      // edit saved just above already in them.
+      const { own, shared } = splitTemplatesForSave(templatesToSave);
+      await persistSharedTemplateEdits(shared);
+      // The people I share a template with see my name on it.
+      const ownerName = ownerDisplayName(user);
+      const withResolvedRows = own.map((template) => ({
         ...template,
+        ...(ownerName ? { ownerName } : {}),
         supabaseId: template.supabaseId || resolveSupabaseTemplateId(template) || undefined,
       }));
       const freshRows = await persistTemplateSnapshot({
@@ -1449,6 +1471,11 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         // So we'll proceed with download. Optimization: Check tabs by name/size if possible?
         // For now, let's download. The browser cache might help.
 
+        // 2026-10-07 (phone loading): the screen answers the tap at once with
+        // the one quiet "Opening <file>…" while the PDF downloads. Before, the
+        // home sat unchanged for the whole download (seconds on a phone
+        // connection, ~30 s for a large drawing set), so a tap looked ignored.
+        onDocumentOpenStart?.(doc);
         const blob = await downloadFromStorage(filePath);
         const file = new File([blob], doc.name, { type: 'application/pdf' });
 
@@ -1481,6 +1508,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         throw new Error('Document has no filePath, file_path, or dataUrl');
       }
     } catch (error) {
+      onDocumentOpenEnd?.();
       console.error('Error opening document:', error);
 
       // Check if file no longer exists in storage
@@ -1577,7 +1605,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       { id: `entity-${Date.now()}-2`, name: 'Subcontractor', color: hexToRgba('#FFF5C3', 0.2) },
       { id: `entity-${Date.now()}-3`, name: 'My Company', color: hexToRgba('#CBDCFF', 0.2) },
       { id: `entity-${Date.now()}-4`, name: '100% Complete', color: hexToRgba('#B2FFB2', 0.2) },
-      { id: `entity-${Date.now()}-5`, name: 'Removed', color: hexToRgba('var(--text-3)', 0.2) }
+      { id: `entity-${Date.now()}-5`, name: 'Removed', color: hexToRgba('#959eae', 0.2) }
     ]);
   };
 
@@ -1594,7 +1622,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       { id: `entity-${Date.now()}-2`, name: 'Subcontractor', color: hexToRgba('#FFF5C3', 0.2) },
       { id: `entity-${Date.now()}-3`, name: 'My Company', color: hexToRgba('#CBDCFF', 0.2) },
       { id: `entity-${Date.now()}-4`, name: '100% Complete', color: hexToRgba('#B2FFB2', 0.2) },
-      { id: `entity-${Date.now()}-5`, name: 'Removed', color: hexToRgba('var(--text-3)', 0.2) }
+      { id: `entity-${Date.now()}-5`, name: 'Removed', color: hexToRgba('#959eae', 0.2) }
     ];
     const loadedEntities = template.entities || defaultEntities;
     // Ensure all loaded entities have rgba format with 20% opacity
@@ -1681,7 +1709,19 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     const selection = Array.from(templateIds || [])
       .map((entry) => (typeof entry === 'string' ? { id: entry, name: null } : entry))
       .filter((entry) => entry && entry.id);
-    const ids = selection.map((entry) => entry.id);
+    // A template shared with me stays until its owner archives it.
+    const sharedSelected = selection.filter((entry) => (templatesRef.current || [])
+      .some((t) => t && t.id === entry.id && t.sharedFrom));
+    if (sharedSelected.length) {
+      showToast(
+        sharedSelected.length === 1
+          ? 'A template shared with you can only be archived by its owner.'
+          : `${sharedSelected.length} templates are shared with you; only their owners can archive them.`,
+        'warn'
+      );
+    }
+    const sharedIds = new Set(sharedSelected.map((entry) => entry.id));
+    const ids = selection.filter((entry) => !sharedIds.has(entry.id)).map((entry) => entry.id);
     if (ids.length === 0) return false;
     if (!user) { showToast('Please sign in to archive templates', 'warn'); return false; }
     const confirmed = await askConfirm({
@@ -1696,7 +1736,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     // display name comes from the same lookup so Archive names the template
     // instead of showing a generic label.
     const known = templatesRef.current || [];
-    const rows = selection.map((entry) => {
+    const rows = selection.filter((entry) => !sharedIds.has(entry.id)).map((entry) => {
       const match = known.find((t) => t && t.id === entry.id);
       return {
         id: entry.id,
@@ -2243,6 +2283,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     documentsInitialLoading,
     projectsInitialLoading,
     templatesInitialLoading,
+    authLoading,
+    documentsAwaitingSync: (supabaseDocuments?.length || 0) > 0 && (documents?.length || 0) === 0,
   });
 
   return (

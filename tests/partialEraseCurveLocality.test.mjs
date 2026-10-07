@@ -1,3 +1,9 @@
+// 2026-10-04 (test-reliability pass): geometry only. This file used to also
+// hold one wall-clock budget ("multi-cubic first erase stays inside the
+// interaction release budget"), which put ALL fourteen geometry tests below in
+// the non-blocking perf lane with it. The budget moved to
+// tests/partialEraseCurveLocalityBudget.test.mjs (perf lane, unchanged
+// budget); these checks are blocking again.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -6,7 +12,6 @@ import {
   commandsToPolygonSet,
   normalizeMultiPolygon,
 } from '../src/utils/paperAnnotationGeometry.js';
-import { perfBudgetMs } from '../scripts/ci-perf-tests.mjs';
 
 const fixtures = {
   quadratic: {
@@ -457,33 +462,5 @@ test('relative authored SVG arc remains byte-exact while its operational copy us
       (command) => String(command[0]).toUpperCase() === 'A',
     ),
     false,
-  );
-});
-
-test('multi-cubic first erase stays inside the interaction release budget', {
-  timeout: 10_000,
-}, () => {
-  const path = [['M', 0, 100]];
-  for (let index = 0; index < 20; index += 1) {
-    const x = index * 30;
-    path.push(['C', x + 8, 20, x + 22, 180, x + 30, 100]);
-  }
-  const started = performance.now();
-  const result = erasePageAnnotations({
-    pageAnnotations: { objects: [makeLegacyInk('multi-cubic', path, 12)] },
-    eraserPoints: [{ x: 315, y: 100 }],
-    eraserRadius: 3,
-    mode: 'partial',
-  });
-  const elapsed = performance.now() - started;
-
-  assert.equal(result.didChange, true);
-  // Single-sample on purpose: this measures the FIRST erase, JIT warm-up
-  // included, because that is what the user feels on pointer release. Best-of-N
-  // would measure a different thing. perfBudgetMs() only relaxes it inside the
-  // non-blocking CI perf lane.
-  assert.ok(
-    elapsed < perfBudgetMs(750),
-    `first erase took ${elapsed.toFixed(1)}ms, budget ${perfBudgetMs(750)}ms`,
   );
 });

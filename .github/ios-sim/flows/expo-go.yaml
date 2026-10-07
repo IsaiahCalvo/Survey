@@ -1,0 +1,85 @@
+# The owner's real path: Expo Go -> the Survey shell (a WKWebView) -> /mobile.
+# EXPO_URL comes from .github/ios-sim/config.json (expoGo.url). The default
+# branch link loads https://surveytool.app/mobile (the shell's built-in URL).
+appId: host.exp.Exponent
+name: expo-go
+---
+- openLink: ${EXPO_URL}
+# First deep link into an app: iOS may ask "Open in Expo Go?".
+- runFlow:
+    when:
+      visible: "Open"
+    commands:
+      - tapOn: "Open"
+- extendedWaitUntil:
+    visible: "Welcome back|Documents|Sign in|Continue"
+    timeout: 120000
+    optional: true
+- takeScreenshot: expo-01-first-screen
+# Expo Go shows its developer-menu tip on a project's first launch.
+- tapOn:
+    text: "Continue"
+    optional: true
+- tapOn:
+    text: "Close"
+    optional: true
+- extendedWaitUntil:
+    visible: "Welcome back|Documents"
+    timeout: 60000
+    optional: true
+# On a slow runner Expo Go can sit on its splash while it fetches the update
+# (run 37535055895). Open the link once more before giving up.
+- runFlow:
+    when:
+      notVisible: "Welcome back|Documents"
+    commands:
+      - openLink: ${EXPO_URL}
+      - extendedWaitUntil:
+          visible: "Welcome back|Documents"
+          timeout: 90000
+          optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: expo-02-survey-home
+# Keyboard inside the WKWebView.
+- tapOn:
+    text: "you@example.com"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: expo-03-keyboard
+- inputText: "ios-sim@example.com"
+- takeScreenshot: expo-04-keyboard-typed
+- tapOn:
+    text: "Welcome back"
+    optional: true
+- tapOn:
+    text: "Continue without an account"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: expo-05-home-guest
+- tapOn:
+    text: "Projects"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: expo-06-projects-tab
+# Pull down past the top and push past the bottom (rubber-band, see the video).
+- swipe:
+    start: 50%, 30%
+    end: 50%, 85%
+    duration: 300
+- swipe:
+    start: 50%, 85%
+    end: 50%, 15%
+    duration: 200
+- takeScreenshot: expo-07-after-scroll
+- setOrientation: LANDSCAPE_LEFT
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: expo-08-landscape
+- setOrientation: PORTRAIT
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: expo-09-portrait-again

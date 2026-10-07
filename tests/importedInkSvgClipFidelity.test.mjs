@@ -15,7 +15,12 @@ const fixturePath = join(
   'clickable-link-test.pdf',
 );
 
-test('real imported Ink 67R keeps its exact curve visibly clipped to partial-erase survivors', async (t) => {
+// 2026-10-06 (test plan 68): the SVG layer FILLS the survivor polygons of a
+// partially erased authored curve. It used to paint the authored curve under a
+// clipPath of those polygons; the clip edge lay on the curve's own edge, so
+// each edge pixel was anti-aliased twice and thin imported lines drew 10-30%
+// lighter than untouched ones. The authored curve stays stored unchanged.
+test('real imported Ink 67R keeps its authored curve stored and is drawn as its filled partial-erase survivors', async (t) => {
   const bytes = readFileSync(fixturePath);
   const loadingTask = pdfjsLib.getDocument({
     data: Uint8Array.from(bytes),
@@ -60,32 +65,25 @@ test('real imported Ink 67R keeps its exact curve visibly clipped to partial-era
   assert.match(
     rendererSource,
     /const paperSurvivorD = paperCutsToSvgD\(obj\?\.polygons\);/,
-    'SVG presentation must clip the authored curve to survivor geometry',
+    'SVG presentation must draw the survivor geometry',
   );
   assert.doesNotMatch(
     rendererSource,
     /const paperCutD = paperCutsToSvgD\(obj\?\.paperEraserCuts\);/,
     'the renderer cannot reconstruct an inverted page-space clip from cuts',
   );
-  const clippedWrapperIndex = rendererSource.indexOf(
-    '<g clipPath={`url(#${clipId})`}>',
-  );
-  const transformedSourceIndex = rendererSource.indexOf(
-    'd={sourceD}',
-    clippedWrapperIndex,
-  );
-  assert.ok(
-    clippedWrapperIndex >= 0 && transformedSourceIndex > clippedWrapperIndex,
-    'the page-space clip must wrap the transformed local source path',
-  );
-  const transformedSourceEnd = rendererSource.indexOf('/>', transformedSourceIndex);
-  const transformedSourceMarkup = rendererSource.slice(
-    transformedSourceIndex,
-    transformedSourceEnd,
-  );
   assert.doesNotMatch(
-    transformedSourceMarkup,
-    /clipPath=/,
-    'the page-space clip cannot be attached directly to the transformed local path',
+    rendererSource,
+    /<clipPath/,
+    'no clipPath: a clip on the line\'s own edge anti-aliases it twice',
   );
+  const survivorPathIndex = rendererSource.indexOf('d={paperSurvivorD}');
+  assert.ok(survivorPathIndex >= 0, 'the survivor rings are the painted path');
+  const survivorMarkup = rendererSource.slice(
+    survivorPathIndex,
+    rendererSource.indexOf('/>', survivorPathIndex),
+  );
+  assert.match(survivorMarkup, /fillRule="evenodd"/);
+  assert.match(survivorMarkup, /transform=\{transform\}/, 'same local-to-page transform as the mark');
+  assert.match(survivorMarkup, /stroke="none"/);
 });
