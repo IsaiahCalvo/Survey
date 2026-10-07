@@ -20385,6 +20385,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
   }, [pdfFile?.id, user?.id, documentSyncEnabled]);
 
+  // A document viewer never writes this projection: the database refuses it
+  // (403 RLS on every open, seen on the real backend 2026-10-07, realCheck3)
+  // and the refusal switched document sync off for the session.
+  const surveySyncViewerRef = useRef(false);
+  surveySyncViewerRef.current = yjsDocRole === 'viewer';
   // Sync local annotation changes to Supabase (debounced)
   useEffect(() => {
     const documentId = pdfFile?.id;
@@ -20393,6 +20398,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       !documentId ||
       !user?.id ||
       !documentSyncEnabled ||
+      surveySyncViewerRef.current ||
       syncRLSErrorShownRef.current ||
       syncStructuralAutoDisabledRef.current
     ) return;
@@ -20436,7 +20442,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     let syncTimeout = null;
 
     const runSync = async () => {
-      if (cancelled || syncStructuralAutoDisabledRef.current) return;
+      if (cancelled || syncStructuralAutoDisabledRef.current || surveySyncViewerRef.current) return;
       // Bug 2 fix (2026-04-30): pass the last-synced state as priorSurveyMarker-
       // Annotations so the service can detect erases / removals and push DELETE
       // events to the cloud BEFORE the upsert. Without this, peers keep
@@ -20572,7 +20578,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         pendingSurveyMarkerSyncRef.current = null;
         try {
           // Upsert-only projection flush (see runSync) — no delete-diff baseline.
-          if (!syncStructuralAutoDisabledRef.current) {
+          if (!syncStructuralAutoDisabledRef.current && !surveySyncViewerRef.current) {
             appDebug('[DocumentSync] unmount flush — pushing pending highlight sync');
             Promise.resolve(
               syncAnnotationsToSupabase(documentId, user.id, surveyMarkers, {

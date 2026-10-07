@@ -13,8 +13,12 @@
 // document open (and right after they share one from Home), every member of
 // the document gets a row for each of the owner's templates the document's
 // survey uses. Editors (and co-owners) of the document get "editor" on the
-// template, viewers get "viewer" (use only). A row is never downgraded and a
-// row someone switched off (status other than active) is left alone.
+// template, viewers get "viewer" (use only). When the owner switches a member
+// to viewer, the template row the document gave them goes back to "viewer"
+// too (realCheck3, 2026-10-07: on the real backend a document viewer could
+// still change the template). A row the person got by accepting a template
+// invite of its own is never lowered, and a row someone switched off (status
+// other than active) is left alone.
 //
 // The collaborator's own app cannot ask for the template (no policy allows
 // it); it just re-reads its templates when a document it opens has markers
@@ -270,12 +274,16 @@ export function documentMembers({ me, documentOwnerId = null, documentRows = [],
 }
 
 /**
- * The rows to add and the roles to raise so every member has each template.
- * `existing` are the template_collaborators rows already there.
+ * The rows to add and the roles to change so every member has each template
+ * with the role their document role gives. `existing` are the
+ * template_collaborators rows already there. A role is raised to match, and
+ * lowered from editor to viewer only for a row that did not come from a
+ * template invite (`invitedKeys`: "templateId|userId" of accepted invites).
  */
-export function planTemplateGrants({ templateRowIds = [], templateOwners = new Map(), members = [], existing = [], grantedBy = null } = {}) {
+export function planTemplateGrants({ templateRowIds = [], templateOwners = new Map(), members = [], existing = [], grantedBy = null, invitedKeys = new Set() } = {}) {
   const inserts = [];
   const upgrades = [];
+  const downgrades = [];
   const byKey = new Map((existing || []).map((row) => [`${row.template_id}|${row.user_id}`, row]));
   for (const templateId of templateRowIds) {
     const ownerId = templateOwners.get?.(templateId) ?? null;
@@ -293,20 +301,26 @@ export function planTemplateGrants({ templateRowIds = [], templateOwners = new M
           status: 'active',
           invited_by: grantedBy,
         });
-      } else if ((row.status ?? 'active') === 'active' && roleRank(role) > roleRank(row.role)) {
+      } else if ((row.status ?? 'active') !== 'active') {
+        // switched off: leave it
+      } else if (roleRank(role) > roleRank(row.role)) {
         upgrades.push({ id: row.id, template_id: templateId, user_id: member.userId, role });
+      } else if (role === 'viewer' && String(row.role || '').toLowerCase() === 'editor'
+        && !invitedKeys.has(`${templateId}|${member.userId}`)) {
+        downgrades.push({ id: row.id, template_id: templateId, user_id: member.userId, role });
       }
     }
   }
-  return { inserts, upgrades };
+  return { inserts, upgrades, downgrades };
 }
 
 const inFlight = new Map();
 
 /**
  * Give every member of `documentId` the templates in `templateRowIds` that I
- * own. Safe to call often: it reads first and writes only what is missing.
- * Returns { granted, upgraded, skipped } (skipped: a reason, nothing written).
+ * own, with the role their document role gives. Safe to call often: it reads
+ * first and writes only what is missing or different.
+ * Returns { granted, upgraded, downgraded, skipped } (skipped: a reason).
  */
 export function grantDocumentTemplates(args) {
   const key = `${args?.documentId}|${[...(args?.templateRowIds || [])].sort().join(',')}`;
@@ -368,16 +382,29 @@ async function runGrant({ client, documentId, userId, ownerName = null, template
     .from('template_collaborators').select('id, template_id, user_id, role, status').in('template_id', mineIds);
   if (existingError) return { granted: 0, upgraded: 0, skipped: existingError.message };
 
-  const plan = planTemplateGrants({
+  const planArgs = {
     templateRowIds: mineIds,
     templateOwners: new Map(mine.map((row) => [row.id, row.user_id])),
     members,
     existing: existing || [],
     grantedBy: userId,
-  });
+  };
+  let plan = planTemplateGrants(planArgs);
+  if (plan.downgrades.length) {
+    // Someone may hold the template through its own invite; only the
+    // owner can read those (one read, only when a role would go down).
+    const { data: invites, error: invitesError } = await client
+      .from('template_invites').select('template_id, accepted_by').in('template_id', mineIds);
+    const invitedKeys = new Set((invites || [])
+      .filter((row) => row?.accepted_by)
+      .map((row) => `${row.template_id}|${row.accepted_by}`));
+    // Unknown (read failed): lower nothing.
+    plan = invitesError ? { ...plan, downgrades: [] } : planTemplateGrants({ ...planArgs, invitedKeys });
+  }
 
   let granted = 0;
   let upgraded = 0;
+  let downgraded = 0;
   if (plan.inserts.length) {
     const { error } = await client.from('template_collaborators').insert(plan.inserts);
     if (error) return { granted: 0, upgraded: 0, skipped: error.message };
@@ -386,6 +413,10 @@ async function runGrant({ client, documentId, userId, ownerName = null, template
   for (const up of plan.upgrades) {
     const { error } = await client.from('template_collaborators').update({ role: up.role }).eq('id', up.id);
     if (!error) upgraded += 1;
+  }
+  for (const down of plan.downgrades) {
+    const { error } = await client.from('template_collaborators').update({ role: down.role }).eq('id', down.id);
+    if (!error) downgraded += 1;
   }
 
   // The people I share with see my name on the template (initials + colour).
@@ -396,12 +427,13 @@ async function runGrant({ client, documentId, userId, ownerName = null, template
       await client.from('templates').update({ config: { ...config, ownerName } }).eq('id', row.id).eq('user_id', userId);
     }
   }
-  return { granted, upgraded, skipped: null };
+  return { granted, upgraded, downgraded, skipped: null };
 }
 
 /**
- * After a document was shared from Home: grant the templates this device saw
- * the document use. Fire-and-forget; never throws.
+ * After a document was shared from Home, or a member's role on it changed in
+ * Manage access: grant (or re-role) the templates this device saw the
+ * document use. Fire-and-forget; never throws.
  */
 export async function grantRememberedDocumentTemplates({ client, documentId, user, storage } = {}) {
   try {

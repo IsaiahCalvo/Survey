@@ -32,6 +32,8 @@ import {
   sendAccessRemovedEmail,
 } from '../services/shareEmailService';
 import { copyTextToClipboard } from '../utils/clipboard';
+import { grantRememberedDocumentTemplates } from '../services/sharedTemplates.js';
+import { supabase } from '../supabaseClient';
 import { accessInviteRows } from './accessRows';
 import { presenceInitials } from '../components/presenceIdentity.js';
 import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
@@ -154,6 +156,9 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
       return;
     }
     setStatus(`Updated ${member.email || 'collaborator'} to ${roleLabel(next)}.`);
+    // Their survey template role follows (editor edits, viewer uses only);
+    // the templates this device saw the document use. Fire-and-forget.
+    void grantRememberedDocumentTemplates({ client: supabase, documentId, user: currentUser });
 
     // Email best-effort.
     if (member.email) {
