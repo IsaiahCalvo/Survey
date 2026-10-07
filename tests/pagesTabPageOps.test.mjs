@@ -193,6 +193,20 @@ test('each menu item runs the right page operation', () => {
   assert.equal(runPageMenuAction('cut', 1, {}), false);
 });
 
+// Owner 2026-10-07: drag a page anywhere on its card to move it (no handle),
+// desktop and phone, with @dnd-kit; the drop is the ordinary page move.
+test('the Pages tab drags whole cards with dnd-kit: mouse 5px, finger held 300ms, keyboard', () => {
+  const panel = readFileSync(new URL('../src/sidebar/PagesPanel.jsx', import.meta.url), 'utf8');
+  assert.match(panel, /useSensor\(MouseSensor, \{ activationConstraint: \{ distance: 5 \} \}\)/);
+  assert.match(panel, /useSensor\(TouchSensor, \{ activationConstraint: \{ delay: PAGE_DRAG_TOUCH_DELAY_MS, tolerance: 5 \} \}\)/);
+  assert.match(panel, /const PAGE_DRAG_TOUCH_DELAY_MS = 300;/);
+  assert.match(panel, /useSensor\(KeyboardSensor/);
+  assert.match(panel, /<DragOverlay dropAnimation=\{dropAnimation\}/);
+  assert.match(panel, /onReorderPages\?\.\(source, target\)/);
+  assert.doesNotMatch(panel, /draggable=\{!mobileMode\}/, 'no native HTML5 drag any more');
+  assert.doesNotMatch(panel, /data-drag-handle/, 'no handle: the card is the target');
+});
+
 test('the Pages tab and the viewer page menu draw the same list', () => {
   const panel = readFileSync(new URL('../src/sidebar/PagesPanel.jsx', import.meta.url), 'utf8');
   const viewer = readFileSync(new URL('../src/hooks/useAnnotationContextMenu.jsx', import.meta.url), 'utf8');
