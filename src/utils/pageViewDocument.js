@@ -62,6 +62,24 @@ export function getPageViewSizes(doc) {
 
 const swapSize = (size) => (size ? { width: size.height, height: size.width } : null);
 
+// What page `pageNumber` of `doc` shows: { src, rot, blank, size, media,
+// baseRotate } (a copy). For a base document (no operation yet) page n is
+// its own page n, unturned. Undo of a page delete puts exactly this back
+// (the 'restore' operation below and in utils/pdfPageMutation.js).
+export function pageViewEntry(doc, pageNumber) {
+  const entries = doc?.[VIEW]?.entries;
+  const n = Number(pageNumber);
+  if (!entries) return Number.isInteger(n) && n >= 1 ? { src: n, rot: 0, blank: null } : null;
+  const entry = entries[n - 1];
+  if (!entry) return null;
+  return {
+    ...entry,
+    blank: entry.blank ? { ...entry.blank } : null,
+    size: entry.size ? { ...entry.size } : null,
+    media: entry.media ? { ...entry.media } : null,
+  };
+}
+
 function makeBlankPage(entry, pageNumber, getViewportImpl) {
   const { width, height } = entry.blank;
   const page = {
@@ -264,6 +282,19 @@ export function applyPageViewOperation(doc, operation, options = {}) {
     else if (reference.size) blank = { width: reference.size.width, height: reference.size.height };
     else blank = blankPageSize({ ...(media || {}), rotation: reference.rot || 0 });
     entries.splice(after + 1, 0, { src: null, rot: 0, blank, size: { ...blank }, media: { ...blank }, baseRotate: 0 });
+  } else if (type === 'restore') {
+    // Undo of a delete: the removed page goes back as it was (pageViewEntry).
+    const after = slotIndexOf(operation.afterPage, count, 'afterPage');
+    const entry = operation.entry;
+    if (!entry || (!entry.blank && !Number.isInteger(entry.src))) throw new Error('restore requires the removed page');
+    entries.splice(after + 1, 0, {
+      src: entry.blank ? null : entry.src,
+      rot: normRotation(entry.rot || 0),
+      blank: entry.blank ? { ...entry.blank } : null,
+      size: entry.size ? { ...entry.size } : null,
+      media: entry.media ? { ...entry.media } : null,
+      baseRotate: entry.baseRotate ?? null,
+    });
   } else if (type === 'duplicate' || type === 'copy') {
     const source = pageIndexOf(operation.page ?? operation.source, count, 'source');
     const after = slotIndexOf(operation.afterPage ?? operation.page ?? operation.target, count, 'afterPage');

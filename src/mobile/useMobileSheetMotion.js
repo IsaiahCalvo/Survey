@@ -820,6 +820,12 @@ export function useMobileSheetMotion(onClose, options = {}) {
 
     const onTouchMove = (event) => {
       if (!g.mode || g.mode === 'ignore') return;
+      // A press held on a page card became a reorder (Pages sheet: the card
+      // lifts after a still hold): from here on the finger is the drag's.
+      if (g.mode !== 'drag' && sheet.ownerDocument?.body?.classList?.contains('drag-rearrange-dragging')) {
+        g.mode = 'ignore';
+        return;
+      }
       const touch = event.touches?.[0];
       if (!touch) return;
       const live = liveRef.current;

@@ -3145,3 +3145,19 @@ textarea:focus-visible,
 @media (prefers-reduced-motion: reduce) {
   .pages-panel-more { transition: none; }
 }
+
+/* Pages tab drag (owner 2026-10-07): the card a page was lifted from is the
+   app's one drag slot - the quiet dashed outline where the page will land -
+   with its picture hidden (the lifted copy rides above). */
+[data-page-card][data-drag-placeholder] > * {
+  visibility: hidden;
+}
+.mobile-page-card[data-drag-placeholder] {
+  background: var(--drag-slot-bg) !important;
+  border: var(--drag-slot-border) !important;
+}
+/* Keyboard: a focused card shows where focus is (it is the drag target). */
+[data-page-card]:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: -2px;
+}

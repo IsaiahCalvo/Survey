@@ -8,6 +8,26 @@
  */
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  closestCenter,
+  defaultDropAnimationSideEffects,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { CALM_LIST_AUTO_SCROLL } from '../reorder/dragAutoScroll.js';
 import { pageHasTransform } from '../utils/disabledActions.js';
 import Icon from '../Icons';
 import Spinner from '../components/Spinner';
@@ -52,10 +72,46 @@ const IDLE_PREFILL_SPAN = 16;
 // The page menu's layer: above the phone dock (6750), sheets and popovers
 // (up to 7400), below modals (10000+), the tooltip and toasts.
 const PAGE_MENU_Z = 9000;
-// Phone: how long a still finger on a card takes to open its page menu (the
-// viewer's own long-press menu uses 380ms; a list that scrolls wants a touch
-// longer so a slow scroll start never opens it).
-const MOBILE_LONG_PRESS_MS = 450;
+// Phone: how long a still finger on a card takes to lift the page for a drag
+// (a swipe that starts sooner scrolls the list). Let go without moving and
+// the page menu opens instead (the long-press).
+const PAGE_DRAG_TOUCH_DELAY_MS = 300;
+// The lifted page rides above the sheets (7400) and below the page menu.
+const PAGE_DRAG_OVERLAY_Z = 8500;
+const PAGE_SLIDE = { duration: 180, easing: 'cubic-bezier(0.2, 0, 0, 1)' };
+
+// Desktop: the strip is one column, so a carried page only moves up / down.
+const restrictToVerticalAxis = ({ transform }) => ({ ...transform, x: 0 });
+
+function usePrefersReducedMotion() {
+  const query = '(prefers-reduced-motion: reduce)';
+  const [reduced, setReduced] = useState(() => (
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(query).matches
+  ));
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const list = window.matchMedia(query);
+    const onChange = () => setReduced(list.matches);
+    list.addEventListener?.('change', onChange);
+    return () => list.removeEventListener?.('change', onChange);
+  }, []);
+  return reduced;
+}
+
+// One card of the strip as a dnd-kit sortable item; the card itself is drawn
+// by the render prop (the whole card is the drag target, no handle).
+function SortablePageCard({ id, reducedMotion, children }) {
+  const sortable = useSortable({
+    id,
+    // Not "sortable": the phone sheet's swipe-to-close treats a touch on a
+    // [aria-roledescription="sortable"] as someone else's gesture, and the
+    // sheet must still close from a swipe on the cards (it stands aside once
+    // a drag is live - useMobileSheetMotion).
+    attributes: { roleDescription: 'page' },
+    transition: reducedMotion ? null : PAGE_SLIDE,
+  });
+  return children(sortable);
+}
 
 // The page menu's rows and list: sidebar/PageActionsMenu.jsx and
 // sidebar/pageMenuItems.js (one list, shared with the viewer's page menu).
@@ -125,8 +181,6 @@ const PagesPanel = ({
   shouldShowPage,
   activeSpacePages,
   scale,
-  onPageDragStart,
-  tabId,
   mobileMode = false,
 }) => {
   // KAL-65: sidebar controls use the app's instant shared tooltip, never a
@@ -141,8 +195,6 @@ const PagesPanel = ({
   const [selectedPage, setSelectedPage] = useState(pageNum);
   const [mobileSelectMode, setMobileSelectMode] = useState(false);
   const [mobileSelectedPages, setMobileSelectedPages] = useState(() => new Set());
-  const [draggedPage, setDraggedPage] = useState(null);
-  const [dragOverPage, setDragOverPage] = useState(null);
   const contextMenuRef = useRef(null);
   const thumbnailRefs = useRef({});
   const observerRef = useRef(null);
@@ -935,40 +987,13 @@ const PagesPanel = ({
     setContextMenu(null);
   }, [allowedPages, onReorderPages]);
 
-  // Phone: a finger held still on a card opens its page menu (the touch
-  // right-click; iOS fires no contextmenu event, and showed its own image
-  // callout instead). The tap that ends the press does nothing else.
-  const longPressRef = useRef({ timer: 0, x: 0, y: 0, fired: false });
-  const clearLongPress = useCallback(() => {
-    if (longPressRef.current.timer) clearTimeout(longPressRef.current.timer);
-    longPressRef.current.timer = 0;
-  }, []);
-  useEffect(() => clearLongPress, [clearLongPress]);
-  const handleCardPointerDown = useCallback((event, pageNumber) => {
-    if (!mobileMode || event.pointerType === 'mouse') return;
-    if (event.target?.closest?.('button')) return;
-    clearLongPress();
-    const state = longPressRef.current;
-    state.x = event.clientX;
-    state.y = event.clientY;
-    state.fired = false;
-    const card = event.currentTarget;
-    state.timer = setTimeout(() => {
-      state.timer = 0;
-      state.fired = true;
-      const anchor = card?.querySelector?.('[data-page-menu-anchor]')?.getBoundingClientRect();
-      setContextMenu({ pageNumber, x: anchor?.left ?? state.x, y: anchor?.top ?? state.y, fromButton: true });
-    }, MOBILE_LONG_PRESS_MS);
-  }, [clearLongPress, mobileMode]);
-  const handleCardPointerMove = useCallback((event) => {
-    const state = longPressRef.current;
-    if (!state.timer) return;
-    if (Math.abs(event.clientX - state.x) > 8 || Math.abs(event.clientY - state.y) > 8) clearLongPress();
-  }, [clearLongPress]);
+  // A click that ends a drag (or a phone press that opened the menu) does
+  // nothing else.
+  const suppressClickRef = useRef(false);
 
   const handlePageClick = useCallback((pageNumber) => {
-    if (longPressRef.current.fired) {
-      longPressRef.current.fired = false;
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
       return;
     }
     if (mobileMode && mobileSelectMode) {
@@ -1026,81 +1051,126 @@ const PagesPanel = ({
     if (pageNumber) runPageMenuAction(key, pageNumber, pageMenuHandlers);
   }, [contextMenu, pageMenuHandlers]);
 
-  // Handle drag start for internal reordering
-  const handleDragStart = useCallback((e, pageNumber) => {
-    // The browser draws the dragged picture from the card as it looks right
-    // now, so for that one moment it wears the app's one picked-up look
-    // (states.css [data-drag-lifted], owner 2026-10-01); a frame later the card
-    // left behind goes back to its own (dimmed) look.
-    const card = e.currentTarget;
-    if (card?.setAttribute) {
-      card.setAttribute('data-drag-lifted', '');
-      requestAnimationFrame(() => card.removeAttribute('data-drag-lifted'));
-    }
-    setDraggedPage(pageNumber);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('application/pdf-page-internal', pageNumber.toString());
+  // ---- Drag to reorder (owner 2026-10-07: "I don't need a handle ... click
+  // and drag on it", desktop and phone; @dnd-kit like the bookmark and tab
+  // lists). The whole card is the drag target:
+  //   - desktop: the mouse moves 5px with the button down -> drag (a click,
+  //     a right-click and the "..." button stay what they were);
+  //   - phone: a finger held still 300ms lifts the page (a swipe before that
+  //     scrolls the list). Then, like an iPhone home-screen icon: move ->
+  //     drag; let go without moving -> the page menu opens (the long-press);
+  //   - keyboard: Space / Enter on a focused card picks it up, arrows move,
+  //     Space / Enter drops, Escape cancels.
+  // The drop runs the same page move as everything else (one Undo step).
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: PAGE_DRAG_TOUCH_DELAY_MS, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const [dragActiveId, setDragActiveId] = useState(null);
+  const dragStartRef = useRef(null);
+  const reducedMotion = usePrefersReducedMotion();
+  const sortableIds = useMemo(() => allowedPages.map((pageNumber) => cardKeys[pageNumber]), [allowedPages, cardKeys]);
+  const pageByCardKey = useMemo(() => {
+    const map = new Map();
+    allowedPages.forEach((pageNumber) => map.set(cardKeys[pageNumber], pageNumber));
+    return map;
+  }, [allowedPages, cardKeys]);
 
-    // Also set data for external drag (to tabs)
-    if (onPageDragStart && tabId) {
-      e.dataTransfer.setData('application/pdf-page', JSON.stringify({
-        tabId,
-        pageNumber,
-        pdfDoc: null
-      }));
-    }
-  }, [onPageDragStart, tabId]);
+  const endDrag = useCallback(() => {
+    setDragActiveId(null);
+    dragStartRef.current = null;
+    if (typeof document !== 'undefined') document.body.classList.remove('drag-rearrange-dragging');
+  }, []);
+  useEffect(() => endDrag, [endDrag]);
 
-  // Handle drag over for internal reordering
-  const handleDragOver = useCallback((e, targetPageNumber) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    // Check if this is an internal drag
-    const types = Array.from(e.dataTransfer.types || []);
-    if (types.includes('application/pdf-page-internal')) {
-      e.dataTransfer.dropEffect = 'move';
-      if (draggedPage !== null && draggedPage !== targetPageNumber) {
-        setDragOverPage(targetPageNumber);
-      }
-    } else if (types.includes('application/pdf-page')) {
-      // External drag to tab - allow it
-      e.dataTransfer.dropEffect = 'move';
-    }
-  }, [draggedPage]);
-
-  // Handle drag leave
-  const handleDragLeave = useCallback((e) => {
-    const relatedTarget = e.relatedTarget;
-    if (!relatedTarget || !e.currentTarget.contains(relatedTarget)) {
-      setDragOverPage(null);
-    }
+  const handleDndStart = useCallback(({ active, activatorEvent }) => {
+    setContextMenu(null);
+    dragStartRef.current = { touch: activatorEvent?.type === 'touchstart' };
+    setDragActiveId(active.id);
+    // Sheets and other gestures leave a live reorder alone (useMobileSheetMotion).
+    document.body.classList.add('drag-rearrange-dragging');
   }, []);
 
-  // Handle drop for internal reordering
-  const handleDrop = useCallback((e, targetPageNumber) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const types = Array.from(e.dataTransfer.types || []);
-
-    // Check if this is an internal reorder
-    if (types.includes('application/pdf-page-internal')) {
-      const sourcePageNumber = parseInt(e.dataTransfer.getData('application/pdf-page-internal'));
-      if (sourcePageNumber && sourcePageNumber !== targetPageNumber && onReorderPages) {
-        onReorderPages(sourcePageNumber, targetPageNumber);
-      }
+  const handleDndEnd = useCallback(({ active, over, delta }) => {
+    const start = dragStartRef.current;
+    endDrag();
+    suppressClickRef.current = true;
+    requestAnimationFrame(() => { suppressClickRef.current = false; });
+    const source = pageByCardKey.get(active.id);
+    const target = over ? pageByCardKey.get(over.id) : null;
+    if (source && target && source !== target) {
+      onReorderPages?.(source, target);
+      return;
     }
+    // Phone: held, lifted and let go in place = the long-press page menu.
+    if (start?.touch && source && Math.hypot(delta?.x || 0, delta?.y || 0) < 8) {
+      const anchor = thumbnailRefs.current[source]?.querySelector('[data-page-menu-anchor]')?.getBoundingClientRect();
+      setContextMenu({ pageNumber: source, x: anchor?.left ?? 0, y: anchor?.top ?? 0, fromButton: true });
+    }
+  }, [endDrag, onReorderPages, pageByCardKey]);
 
-    setDraggedPage(null);
-    setDragOverPage(null);
-  }, [onReorderPages]);
+  const dropAnimation = useMemo(() => (reducedMotion ? null : {
+    duration: 180,
+    easing: 'cubic-bezier(0.2, 0, 0, 1)',
+    sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0' } } }),
+  }), [reducedMotion]);
 
-  // Handle drag end to reset state if drag is cancelled
-  const handleDragEnd = useCallback(() => {
-    setDraggedPage(null);
-    setDragOverPage(null);
+  const dragModifiers = useMemo(() => (mobileMode ? [] : [restrictToVerticalAxis]), [mobileMode]);
+
+  // Let go outside the strip (over the page, the toolbar, off the sheet):
+  // no slot, so the drag cancels and the page glides back.
+  const pageCollisions = useCallback((args) => {
+    const box = containerRef.current?.getBoundingClientRect();
+    const rect = args.collisionRect;
+    const point = args.pointerCoordinates
+      || (rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null);
+    if (box && point && (point.x < box.left || point.x > box.right || point.y < box.top || point.y > box.bottom)) {
+      return [];
+    }
+    return closestCenter(args);
   }, []);
+
+  // The lifted copy of a page carried by a drag (DragOverlay): the same
+  // picture in the same box, on the app's one picked-up surface
+  // ([data-drag-lifted], states.css).
+  const renderLiftedPage = (pageNumber) => {
+    const meta = thumbnails[pageNumber];
+    const src = typeof meta === 'string' ? meta : meta?.src;
+    const ratio = getDisplayAspectRatio(pageNumber, pageAspectRatios[pageNumber] || 129);
+    const state = pageTransformations[pageNumber] || {};
+    const turn = (getRotationDelta(pageNumber) + (Number(meta?.cssRotate) || 0)) % 360;
+    const imageTransform = [
+      turn ? `rotate(${turn}deg)` : '',
+      state.mirrorH ? 'scaleX(-1)' : '',
+      state.mirrorV ? 'scaleY(-1)' : '',
+    ].filter(Boolean).join(' ') || 'none';
+    return (
+      <div
+        data-drag-lifted=""
+        data-page-drag-overlay={pageNumber}
+        style={{
+          width: '100%',
+          height: '100%',
+          boxSizing: 'border-box',
+          padding: mobileMode ? 8 : 4,
+          display: 'grid',
+          placeItems: 'center',
+          cursor: 'grabbing',
+        }}
+      >
+        <div data-drag-keep-fill style={{ position: 'relative', ...thumbnailBoxStyle(ratio / 100), background: '#ffffff', borderRadius: 2, overflow: 'hidden' }}>
+          {src ? (
+            <img
+              src={src}
+              alt=""
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', display: 'block', transform: imageTransform, transformOrigin: 'center center' }}
+            />
+          ) : null}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div
@@ -1120,6 +1190,16 @@ const PagesPanel = ({
         </div>
       )}
       {/* Thumbnail List */}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={pageCollisions}
+        modifiers={dragModifiers}
+        autoScroll={CALM_LIST_AUTO_SCROLL}
+        onDragStart={handleDndStart}
+        onDragEnd={handleDndEnd}
+        onDragCancel={endDrag}
+      >
+      <SortableContext items={sortableIds} strategy={mobileMode ? rectSortingStrategy : verticalListSortingStrategy}>
       <div
         ref={containerRef}
         className={mobileMode ? 'mobile-pages-track' : undefined}
@@ -1159,31 +1239,30 @@ const PagesPanel = ({
           const thumbnailTransform = transforms.length > 0 ? transforms.join(' ') : 'none';
 
           return (
+            <SortablePageCard key={cardKeys[pageNumber]} id={cardKeys[pageNumber]} reducedMotion={reducedMotion}>
+            {({ setNodeRef, attributes, listeners, transform, transition, isDragging }) => (
             <div
-              key={cardKeys[pageNumber]}
+              {...attributes}
+              {...listeners}
+              // A mouse press never moves focus onto the card (it would take
+              // the viewer's keys - hold Space to pan, Delete - with it, and
+              // the browser would start its own image drag). Keyboard users
+              // reach a card with Tab; Enter picks it up (Space stays the
+              // viewer's pan key), arrows move it, Enter drops, Escape cancels.
+              onMouseDown={(event) => {
+                listeners?.onMouseDown?.(event);
+                if (event.button === 0) event.preventDefault();
+              }}
               className={mobileMode
                 ? `mobile-page-card${isSelected ? ' is-active' : ''}${isMobileSelected ? ' is-selected' : ''}`
                 : `pages-panel-card${isSelected ? ' is-active' : ''}${contextMenu?.pageNumber === pageNumber ? ' is-menu-open' : ''}`}
-              ref={el => { thumbnailRefs.current[pageNumber] = el; }}
+              ref={el => { thumbnailRefs.current[pageNumber] = el; setNodeRef(el); }}
               data-page-number={pageNumber}
               data-page-card=""
-              draggable={!mobileMode}
-              onDragStart={(e) => {
-                handleDragStart(e, pageNumber);
-                if (onPageDragStart && tabId) {
-                  onPageDragStart(tabId, pageNumber);
-                }
-              }}
-              onDragOver={(e) => handleDragOver(e, pageNumber)}
-              onDragLeave={handleDragLeave}
-              onDragEnd={handleDragEnd}
-              onDrop={(e) => handleDrop(e, pageNumber)}
+              data-drag-placeholder={isDragging ? '' : undefined}
+              aria-label={`Page ${pageNumber}`}
               onContextMenu={(e) => handleContextMenu(e, pageNumber)}
               onClick={() => handlePageClick(pageNumber)}
-              onPointerDown={mobileMode ? (e) => handleCardPointerDown(e, pageNumber) : undefined}
-              onPointerMove={mobileMode ? handleCardPointerMove : undefined}
-              onPointerUp={mobileMode ? clearLongPress : undefined}
-              onPointerCancel={mobileMode ? clearLongPress : undefined}
               onDoubleClick={() => handlePageDoubleClick(pageNumber)}
               style={{
                 position: 'relative',
@@ -1191,21 +1270,20 @@ const PagesPanel = ({
                 /* Phone: the card takes its grid cell (two columns, see
                    .mobile-pages-track in mobilePdfViewer.css); no fixed box. */
                 boxSizing: 'border-box',
-                // The page a drag will land on shows the app's one drag slot
-                // (a quiet dashed outline, no gold - owner 2026-10-01).
-                background: dragOverPage === pageNumber ? 'var(--drag-slot-bg)' : (isSelected ? 'var(--surface-3)' : 'transparent'),
-                border: dragOverPage === pageNumber ? 'var(--drag-slot-border)' : (isSelected ? '1px solid var(--accent)' : '1px solid transparent'),
+                // The carried page leaves the app's one drag slot where it
+                // will land (a quiet dashed outline, no gold - owner
+                // 2026-10-01); the others slide out of its way.
+                background: isDragging ? 'var(--drag-slot-bg)' : (isSelected ? 'var(--surface-3)' : 'transparent'),
+                border: isDragging ? 'var(--drag-slot-border)' : (isSelected ? '1px solid var(--accent)' : '1px solid transparent'),
                 borderRadius: '4px',
-                cursor: mobileMode ? 'pointer' : (draggedPage === pageNumber ? 'grabbing' : 'grab'),
+                cursor: mobileMode ? 'pointer' : (isDragging ? 'grabbing' : 'grab'),
+                transform: CSS.Translate.toString(transform),
                 touchAction: mobileMode ? 'pan-y' : undefined,
                 // No iOS image callout / text selection on a long-press.
                 WebkitTouchCallout: mobileMode ? 'none' : undefined,
                 WebkitUserSelect: mobileMode ? 'none' : undefined,
                 userSelect: mobileMode ? 'none' : undefined,
-                // The card left behind while its page is carried.
-                opacity: draggedPage === pageNumber ? 0.45 : 1,
-                zIndex: draggedPage === pageNumber ? 1 : 'auto',
-                transition: draggedPage === pageNumber ? 'none' : 'background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease',
+                transition: [transition, 'background 0.15s ease, border-color 0.15s ease'].filter(Boolean).join(', '),
                 contentVisibility: mobileMode ? 'visible' : 'auto',
                 containIntrinsicSize: `0 ${estimatedRowHeight}px`
               }}
@@ -1310,8 +1388,10 @@ const PagesPanel = ({
                     {...tip(`Page ${pageNumber} actions`, 'below')}
                     onClick={(event) => handleContextMenu(event, pageNumber, { fromButton: true })}
                     onDoubleClick={(event) => event.stopPropagation()}
-                    draggable={false}
-                    onDragStart={(event) => { event.preventDefault(); event.stopPropagation(); }}
+                    // A press on the button is the button's, never a drag.
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onTouchStart={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => event.stopPropagation()}
                     style={mobileMode ? {
                       /* Owner 2026-10-01 (iPhone): the old control was a see-through
                          bordered square straddling the thumbnail's corner, so the card
@@ -1368,6 +1448,8 @@ const PagesPanel = ({
                   </button>
               </div>
             </div>
+            )}
+            </SortablePageCard>
           );
         })}
         {/* UX (KAL-73): two distinct empty-looking states, deliberately kept apart.
@@ -1400,6 +1482,18 @@ const PagesPanel = ({
           </div>
         )}
       </div>
+      </SortableContext>
+      {/* The lifted page (portalled: the phone sheet is transformed, which
+          would offset a fixed overlay inside it). */}
+      {typeof document !== 'undefined' && createPortal(
+        <DragOverlay dropAnimation={dropAnimation} zIndex={PAGE_DRAG_OVERLAY_Z}>
+          {dragActiveId != null && pageByCardKey.has(dragActiveId)
+            ? renderLiftedPage(pageByCardKey.get(dragActiveId))
+            : null}
+        </DragOverlay>,
+        document.body,
+      )}
+      </DndContext>
 
       {mobileMode && (
         <div className="mobile-pages-actions" role="toolbar" aria-label="Page actions">

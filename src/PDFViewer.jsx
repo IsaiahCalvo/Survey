@@ -291,6 +291,7 @@ import { readPendingChangeset, writePendingChangeset, clearPendingChangeset } fr
 import { buildCounterSeriesDeletionUpdates, getCounterSeriesList, pickNextSeriesColor, renumberCounters, resolveCounterSeriesPaint } from './utils/counterNumbering';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS, normalizeAnnotationSize, sanitizeAnnotationSizeDraft } from './utils/annotationSize';
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
+import { pageOperationCheckpoint, pageOperationStepId } from './utils/pageOperationHistory.js';
 import { eraseTransitionChangedScreen as eraseTransitionChangedScreenWith, foldIntoCreateStep, getHistoryOrder, historyActionChangedPages, isTransientEraseHistoryFailure, legacyRestoreChangesState, runHistoryPress, scopeLegacyRestoreToOwnSlices, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
 import { countUnsupportedAnnotations, importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
 import { withoutUnstoredFieldsByPage } from './services/annotationMarkCodec.js';
@@ -11500,6 +11501,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const redoHistoryMetaRef = useRef([]);
   const localAnnotationUndoRef = useRef([]);
   const localAnnotationRedoRef = useRef([]);
+  // Page changes' Undo / Redo ({ undo(id), redo(id) } from usePageOperations,
+  // declared further down; utils/pageOperationHistory.js).
+  const pageOperationHistoryRef = useRef(null);
   const historyDebugTraceRef = useRef([]);
   const historyDebugSeqRef = useRef(0);
   const historyCheckpointSeqRef = useRef(0);
@@ -12093,6 +12097,38 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       redoDepth: 0,
     });
   }, [pushHistoryDebugEvent]);
+
+  // A page change is one step on the timeline (utils/pageOperationHistory.js).
+  const recordPageOperationStep = useCallback((id, operation) => {
+    const checkpointId = historyCheckpointSeqRef.current + 1;
+    historyCheckpointSeqRef.current = checkpointId;
+    const { state, meta } = pageOperationCheckpoint(id, operation, checkpointId);
+    undoHistoryRef.current = [...undoHistoryRef.current, state].slice(-50);
+    undoHistoryMetaRef.current = [...undoHistoryMetaRef.current, meta].slice(-50);
+    setUndoHistory(undoHistoryRef.current);
+    redoHistoryRef.current = [];
+    redoHistoryMetaRef.current = [];
+    setRedoHistory([]);
+    clearLocalRedoForNewStep(meta.reason);
+    lastCheckpointHashRef.current = null;
+    pushHistoryDebugEvent('checkpoint_added_page_operation', { reason: meta.reason, checkpointId, pageOperationId: id });
+  }, [clearLocalRedoForNewStep, pushHistoryDebugEvent]);
+
+  // A page change that can no longer be taken back (its save failed and was
+  // rolled back, or another version of the document was opened): every older
+  // step names pages by the old numbers, so the whole timeline goes.
+  const dropHistoryAfterPageChange = useCallback(() => {
+    undoHistoryRef.current = [];
+    undoHistoryMetaRef.current = [];
+    redoHistoryRef.current = [];
+    redoHistoryMetaRef.current = [];
+    localAnnotationUndoRef.current = [];
+    localAnnotationRedoRef.current = [];
+    setUndoHistory([]);
+    setRedoHistory([]);
+    setLocalAnnotationHistoryVersion((prev) => prev + 1);
+    lastCheckpointHashRef.current = null;
+  }, []);
 
   const createHistoryMeta = useCallback((snapshot, reason, context = null, previousSnapshot = null) => {
     const snapshotFingerprint = getHistoryFingerprint(snapshot);
@@ -13629,6 +13665,27 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     }
 
+    // A page change (utils/pageOperationHistory.js): its inverse runs through
+    // the page operations (instant view + one background save), never a
+    // snapshot restore.
+    const pageStepId = pageOperationStepId(legacyUndoMeta);
+    if (pageStepId != null) {
+      if (!pageOperationHistoryRef.current?.undo?.(pageStepId)) {
+        dropHistoryAfterPageChange();
+        showToast('That page change can no longer be undone.', 'info');
+        return 'none';
+      }
+      undoHistoryRef.current = undoHistoryRef.current.slice(0, -1);
+      undoHistoryMetaRef.current = undoHistoryMetaRef.current.slice(0, -1);
+      setUndoHistory(undoHistoryRef.current);
+      redoHistoryRef.current = [{ pageOperationStep: pageStepId }, ...redoHistoryRef.current].slice(0, 50);
+      redoHistoryMetaRef.current = [legacyUndoMeta, ...redoHistoryMetaRef.current].slice(0, 50);
+      setRedoHistory(redoHistoryRef.current);
+      lastCheckpointHashRef.current = null;
+      pushHistoryDebugEvent('page_operation_undo_applied', { reason: legacyUndoMeta.reason, pageOperationId: pageStepId });
+      return 'applied';
+    }
+
     if (isLegacyAnnotationHistoryMeta(legacyUndoMeta)) {
       const stateToRestore = undoHistoryRef.current[undoHistoryRef.current.length - 1] || null;
       if (stateToRestore) {
@@ -13988,6 +14045,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     }
 
+    // A page change: run it again (utils/pageOperationHistory.js).
+    const pageRedoId = pageOperationStepId(legacyRedoMeta);
+    if (legacyRedoState && pageRedoId != null) {
+      if (!pageOperationHistoryRef.current?.redo?.(pageRedoId)) {
+        dropHistoryAfterPageChange();
+        showToast('That page change can no longer be redone.', 'info');
+        return 'none';
+      }
+      redoHistoryRef.current = redoHistoryRef.current.slice(1);
+      redoHistoryMetaRef.current = redoHistoryMetaRef.current.slice(1);
+      setRedoHistory(redoHistoryRef.current);
+      undoHistoryRef.current = [...undoHistoryRef.current, legacyRedoState].slice(-50);
+      undoHistoryMetaRef.current = [...undoHistoryMetaRef.current, legacyRedoMeta].slice(-50);
+      setUndoHistory(undoHistoryRef.current);
+      lastCheckpointHashRef.current = null;
+      pushHistoryDebugEvent('page_operation_redo_applied', { reason: legacyRedoMeta.reason, pageOperationId: pageRedoId });
+      return 'applied';
+    }
+
     if (legacyRedoState && isLegacyAnnotationHistoryMeta(legacyRedoMeta)) {
       const eraseHistoryTransition = legacyRedoMeta?.context?.eraseHistoryTransition;
       if (eraseHistoryTransition) {
@@ -14327,7 +14403,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     markPageViewFileCurrent(file);
     return onUpdatePDFFile?.(file, tabId);
   }, [markPageViewFileCurrent, onUpdatePDFFile, tabId]);
-  const commitPageStructureState = useCallback((next, operation) => {
+  const commitPageStructureState = useCallback((next, operation, step = null) => {
     pageStructureStateRef.current = next;
     annotationsByPageRef.current = next.annotationsByPage;
     surveyMarkersRef.current = next.surveyMarkers;
@@ -14340,8 +14416,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setBookmarks(next.bookmarks);
     setSpaces(next.spaces);
     setRegionOverlayDisabled(next.regionOverlayDisabled);
-    setUndoHistory([]);
-    setRedoHistory([]);
+    // A page change is one Undo step; Undo / Redo of it move that step
+    // between the stacks themselves. Anything else (a rollback) clears.
+    if (step?.phase === 'do') recordPageOperationStep(step.id, operation);
+    else if (!step) dropHistoryAfterPageChange();
     clearAnnotationSelectionForContextChange('page-structure-change');
 
     // Persist synchronously at the commit boundary. React effects retain their
@@ -14369,7 +14447,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     const pageCountDelta = operation?.type === 'delete'
       ? -1
-      : ['insert', 'duplicate', 'copy'].includes(operation?.type) ? 1 : 0;
+      : ['insert', 'duplicate', 'copy', 'restore'].includes(operation?.type) ? 1 : 0;
     setPageNum((current) => pageNumberAfterOperation(
       current,
       operation,
@@ -14378,8 +14456,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [
     activeSpaceId,
     clearAnnotationSelectionForContextChange,
+    dropHistoryAfterPageChange,
     numPages,
     pdfId,
+    recordPageOperationStep,
     setRegionOverlayDisabled,
   ]);
 
@@ -14402,6 +14482,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleRotatePageCW,
     handleRotatePageCCW,
     handleInsertBlankPage,
+    undoPageOperation,
+    redoPageOperation,
     flushPageOperations,
   } = usePageOperations({
     pdfFile,
@@ -14417,6 +14499,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     clipboardType,
     setClipboardType,
   });
+  pageOperationHistoryRef.current = { undo: undoPageOperation, redo: redoPageOperation };
 
   const importPdfBookmarksIntoSidebar = useCallback((incomingBookmarks = []) => {
     if (!Array.isArray(incomingBookmarks) || incomingBookmarks.length === 0) {
