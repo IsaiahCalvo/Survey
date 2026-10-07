@@ -138,7 +138,13 @@ function installRecorder() {
   // touches[i].clientX/Y, target, preventDefault and stopPropagation.
   R.touch = (type, pts) => {
     const sc = document.querySelector('[data-mobile-pdf-surface="true"]');
-    const target = document.elementFromPoint(pts[0]?.x ?? 1, pts[0]?.y ?? 1) || sc;
+    // A real touch keeps the target it started on; a touchend has no points,
+    // so it goes to that same target (elementFromPoint(1, 1) was the app
+    // header, outside the viewer: the pinch never ended).
+    const target = type === 'touchstart' || !R.touchTarget?.isConnected
+      ? (document.elementFromPoint(pts[0]?.x ?? 1, pts[0]?.y ?? 1) || sc)
+      : R.touchTarget;
+    R.touchTarget = target;
     const list = pts.map((p, i) => ({ identifier: i + 1, clientX: p.x, clientY: p.y, pageX: p.x, pageY: p.y, screenX: p.x, screenY: p.y, target }));
     const ev = new Event(type, { bubbles: true, cancelable: true, composed: true });
     Object.defineProperty(ev, 'touches', { value: type === 'touchend' ? [] : list });

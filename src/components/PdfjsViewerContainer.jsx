@@ -4332,6 +4332,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       getPdf: () => pdfRef.current,
       rasterCacheBytes: () => pageRasterCacheBytes,
       thumbs: () => ({ count: PAGE_THUMBS.size, bytes: pageThumbBytesTotal }),
+      // Why page draws are held right now (a stuck flag keeps pages soft).
+      holdState: () => ({
+        zoom: Boolean(zoomInteractionRef.current),
+        touch: mobileTouchRef.current?.mode || null,
+        pan: Boolean(panInteractionRef.current),
+        elastic: Boolean(elasticRef.current?.anim),
+        sinceScroll: Math.round(performance.now() - lastScrollAtRef.current),
+      }),
     };
     window.__pdfjsViewerPerf = api;
     return () => { if (window.__pdfjsViewerPerf === api) delete window.__pdfjsViewerPerf; };
