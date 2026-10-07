@@ -917,6 +917,8 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           clipboardType: pageMenu.clipboardType,
           hasTransform: pageHasTransform(pageMenu.pageTransformations?.[ctx.pageNumber]),
           available: availableActions(pageMenu.handlers),
+          // Phone: the same compact rows as the Pages tab's menu.
+          compact: Boolean(mobileMode),
         }),
       ]
       : null;
