@@ -222,6 +222,7 @@ import { deferUntilEraseCommitsFinish } from './utils/pendingEraseCommits.js';
 
 import { debugMark } from './utils/debugBridge';
 import { deleteAnnotations, removeDocumentPresence, subscribeToDocumentAnnotations, syncAnnotationsToSupabase, updateDocumentPresence } from './services/documentAnnotationService';
+import { createPresenceActivityBump, PRESENCE_ACTIVITY_EVENTS } from './utils/presenceActivity.js';
 import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
 import { getActivePageRegionId, getPageAnnotationVisibilityState, isAnnotationVisibleInSurveyMode, isSurveyVisibilityContext, normalizePageRegions, normalizeRegionVisibility, shouldStampActiveRegionId } from './utils/annotationVisibilityRules';
 // KAL-88 — shared creation scope stamp (Decision 11 companion); used by the
@@ -21304,19 +21305,44 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       handlePresenceFailure(presenceResult, 'page-change');
     };
 
-    if (isInteractionPerfWindowActive()) {
-      const retryDelay = getInteractionPerfResumeDelay();
-      emitPdfDebugEvent('sync_gate_presence_deferred', { retryDelay });
-      deferredTimer = setTimeout(() => {
-        if (cancelled) return;
+    const schedulePresenceUpdate = () => {
+      if (deferredTimer) return;
+      if (isInteractionPerfWindowActive()) {
+        const retryDelay = getInteractionPerfResumeDelay();
+        emitPdfDebugEvent('sync_gate_presence_deferred', { retryDelay });
+        deferredTimer = setTimeout(() => {
+          deferredTimer = null;
+          if (cancelled) return;
+          runPresenceUpdate();
+        }, retryDelay);
+      } else {
         runPresenceUpdate();
-      }, retryDelay);
-    } else {
-      runPresenceUpdate();
+      }
+    };
+
+    schedulePresenceUpdate();
+
+    // 2026-10-06: also refresh while the person works on this page (throttled,
+    // input-driven, no timer), so other viewers keep showing them as here
+    // instead of dropping them after 2 minutes on one page.
+    // See utils/presenceActivity.js.
+    // Background tabs stay mounted: only the front tab's input counts
+    // (undoRedoKeyActiveRef mirrors this tab's isActive prop).
+    const activityBump = createPresenceActivityBump({
+      onBump: schedulePresenceUpdate,
+      isActive: () => undoRedoKeyActiveRef.current !== false,
+    });
+    activityBump.noteWrite();
+    const onPresenceActivity = () => { activityBump.onActivity(); };
+    for (const type of PRESENCE_ACTIVITY_EVENTS) {
+      window.addEventListener(type, onPresenceActivity, { capture: true, passive: true });
     }
 
     return () => {
       cancelled = true;
+      for (const type of PRESENCE_ACTIVITY_EVENTS) {
+        window.removeEventListener(type, onPresenceActivity, { capture: true });
+      }
       if (deferredTimer) {
         clearTimeout(deferredTimer);
       }

@@ -960,10 +960,15 @@ export function useAnnotationDoc({
     let finished = false;
     let timer = null;
     let unsubscribeStatus = null;
+    // Only unobserve what begin() observed: stop() runs again on unmount after
+    // run() already stopped (or before begin), and Yjs logs an error for an
+    // unknown handler ("[yjs] Tried to remove event handler that doesn't exist").
+    let observing = false;
     const meta = h.doc.getMap(META_MAP);
     const stop = () => {
       finished = true;
-      meta.unobserve(onMeta);
+      if (observing) meta.unobserve(onMeta);
+      observing = false;
       unsubscribeStatus?.();
       unsubscribeStatus = null;
       if (timer) clearTimeout(timer);
@@ -1001,6 +1006,7 @@ export function useAnnotationDoc({
       unsubscribeStatus?.();
       unsubscribeStatus = null;
       meta.observe(onMeta);
+      observing = true;
       schedule(STORE_COMPACTION_DELAY_MS + Math.floor(Math.random() * STORE_COMPACTION_JITTER_MS));
     };
     if (typeof h.isRealtimeReady !== 'function' || h.isRealtimeReady()) {
