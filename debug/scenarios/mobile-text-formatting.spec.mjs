@@ -36,7 +36,7 @@ test('mobile live text formatting drives every control through app-styled menus'
 
   await page.getByRole('button', { name: 'Font color' }).click();
   await expect(page.getByRole('dialog', { name: 'Font color picker' })).toBeVisible();
-  await page.getByRole('button', { name: 'Color spectrum' }).click();
+  await page.getByRole('tab', { name: 'Color spectrum' }).click();
   await expect(page.locator('[data-color-picker-spectrum="true"]')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog', { name: 'Font color picker' })).toHaveCount(0);

@@ -308,6 +308,9 @@ const CompactColorPicker = ({
     // desktop the thumb is wider than the thin track, so its travel is inset
     // by exactly half the thumb: flush with the ends at 0% and 100%.
     const THUMB_INSET = isDesktop ? 6 : (dense ? 8 : 10);
+    // The spectrum handle (16px circle) keeps its centre this far from each
+    // edge so it never hangs outside the panel.
+    const SV_HANDLE_INSET = 8;
     const columns = isPhone ? 12 : 8;
     const presets = PRESET_COLORS;
     const grid = useMemo(() => buildGrid(columns), [columns]);
@@ -640,12 +643,18 @@ const CompactColorPicker = ({
 
     // Handle SV Change
     const handleSVChange = (e) => {
+        // Owner 2026-10-07: the cross and the circle must be one. The handle's
+        // centre travels the inset box (SV_HANDLE_INSET from each edge), so the
+        // pointer is read over that same box: the circle's centre then sits
+        // exactly on the cursor anywhere inside it, and pins at the edge past it.
         const rect = svRef.current.getBoundingClientRect();
-        const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-        const y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
+        const travelX = Math.max(1, rect.width - 2 * SV_HANDLE_INSET);
+        const travelY = Math.max(1, rect.height - 2 * SV_HANDLE_INSET);
+        const fx = clamp((e.clientX - rect.left - SV_HANDLE_INSET) / travelX, 0, 1);
+        const fy = clamp((e.clientY - rect.top - SV_HANDLE_INSET) / travelY, 0, 1);
 
-        const newSat = (x / rect.width) * 100;
-        const newVal = 100 - ((y / rect.height) * 100);
+        const newSat = fx * 100;
+        const newVal = 100 - (fy * 100);
 
         setSaturation(newSat);
         setValue(newVal);
@@ -1147,12 +1156,15 @@ const CompactColorPicker = ({
                 {/* Inset by half the handle, for the same reason as the track
                     thumbs: at full saturation the handle would otherwise hang
                     8px outside the panel. */}
-                <span style={{
+                <span data-color-picker-spectrum-handle="true" style={{
                     position: 'absolute',
-                    left: `calc(8px + (100% - 16px) * ${clamp(saturation, 0, 100) / 100})`,
-                    top: `calc(8px + (100% - 16px) * ${clamp(100 - value, 0, 100) / 100})`,
+                    left: `calc(${SV_HANDLE_INSET}px + (100% - ${2 * SV_HANDLE_INSET}px) * ${clamp(saturation, 0, 100) / 100})`,
+                    top: `calc(${SV_HANDLE_INSET}px + (100% - ${2 * SV_HANDLE_INSET}px) * ${clamp(100 - value, 0, 100) / 100})`,
                     width: '16px',
                     height: '16px',
+                    // Centred on its point (left/top is the CENTRE, like the
+                    // track thumbs), so it sits on the crosshair, not below-right.
+                    margin: '-8px 0 0 -8px',
                     borderRadius: '50%',
                     border: '2.5px solid #fff',
                     boxShadow: '0 0 0 1px rgba(0,0,0,0.45)',
