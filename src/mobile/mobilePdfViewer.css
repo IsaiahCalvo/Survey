@@ -3929,26 +3929,10 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
 
 /* ============================================================================
    Phase D stage 1 — de-desktop the sheet-embedded panels (2026-07-12)
-   Bookmarks / Version history / Spaces touch metrics / Pages clipboard badge.
+   Bookmarks / Version history / Spaces touch metrics.
    All rules are mobile-scoped (mobileMode class hooks); desktop is untouched.
    Layout reference = old demo (mobile-expo-go); color reference = app gold.
    ============================================================================ */
-
-/* --- Pages: clipboard (cut/copy) badge (demo styles.ts:1174-1187) --- */
-.mobile-page-clipboard-badge {
-  position: absolute;
-  left: 8px;
-  top: 8px;
-  z-index: 2;
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  box-sizing: border-box;
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-press);
-  border-radius: 50%;
-}
 
 /* UX 2026-09-17 (revision-2 palette, owner approved): green is not a colour
    in this app. Gold already marks the active/selected thing, so the phone's

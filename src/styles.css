@@ -10,6 +10,20 @@
   box-sizing: border-box;
 }
 
+/* Owner 2026-10-07 (iPhone): holding the active-users glyph raised iOS's
+   Copy / Look Up / Translate menu and selected its initials. A control's
+   label is never text to select: no button can be text-selected or raise
+   the long-press callout. Fields and real text are untouched. */
+button,
+[role="button"],
+[role="tab"],
+[role="menuitem"],
+[role="option"] {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
 /* The app's global SIZE tokens. The COLOUR tokens moved out to
    src/styles/tokens.css (imported at the top of this file) on 2026-09-17 when
    the owner approved the revision-2 palette — one file decides every colour on

@@ -1193,9 +1193,6 @@ const PagesPanel = ({
   }, [flushPendingDrop]);
 
   const clipboardHasPages = Array.isArray(clipboardPage) ? clipboardPage.length > 0 : Boolean(clipboardPage);
-  const onClipboard = useCallback((pageNumber) => (
-    Array.isArray(clipboardPage) ? clipboardPage.includes(pageNumber) : clipboardPage === pageNumber
-  ), [clipboardPage]);
 
   // Run a change to several pages; `nextPages` (if any) become the selection
   // once the change is on screen.
@@ -1650,21 +1647,8 @@ const PagesPanel = ({
                 contentVisibility: 'visible',
               }}
             >
-              {/* UX 2026-07-12 — Mobile clipboard indicator: when this page is the
-                  cut/copy source, surface a green-bordered badge at the top-left of
-                  the card so the user can see which page is on the clipboard before
-                  pasting. Demo parity: PageThumb clipboard badge (styles.ts:1174-1187).
-                  Desktop cards never show this (mobileMode-gated). */}
-              {mobileMode && !selectMode && onClipboard(pageNumber) && (
-                <div
-                  className="mobile-page-clipboard-badge"
-                  aria-label={clipboardType === 'cut' ? `Page ${pageNumber} cut to clipboard` : `Page ${pageNumber} copied to clipboard`}
-                  {...tip(clipboardType === 'cut' ? 'Cut — ready to paste' : 'Copied — ready to paste', 'below')}
-                >
-                  <Icon name={clipboardType === 'cut' ? 'scissors' : 'copy'} size={12} color="var(--accent)" />
-                </div>
-              )}
-
+              {/* Owner 2026-10-07: no clipboard badge on copied/cut pages ("I
+                  don't think we need that"); Paste in the page menu is enough. */}
               {selectMode && (
                 <span className={`mobile-page-select-indicator${isPicked ? ' is-selected' : ''}`} aria-hidden="true">
                   {isPicked ? <Icon name="check" size={13} color="currentColor" /> : null}
