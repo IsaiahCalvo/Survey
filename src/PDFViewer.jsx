@@ -487,6 +487,7 @@ import { renderAnnotationHydrationPageCover } from './components/annotationHydra
 import { getExportErrorMessage, isFileLocked } from './utils/exportHelpers';
 import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } from './utils/overlayDebug';
 import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './utils/excelWritebackGate';
+import { rememberLastSurveyTemplate, resolveLastSurveyTemplate, surveyMemoryDocumentKey } from './utils/surveyLastTemplate.js';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
 import { createTextMarkupAnnotation, getExcludedPdfTextMarkupIds, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection, TEXT_MARKUP_DEFAULT_PAINT } from './utils/pdfTextMarkup.js';
 import {
@@ -6005,20 +6006,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setActiveTool('select');
   }, []);
 
-  // UX 2026-05-29: Survey entry now belongs to the always-visible right rail.
-  // The handler stays in PDFViewer because it owns the survey/template state.
-  const handleSurveyToggle = useCallback(() => {
-    if (!features?.advancedSurvey) {
-      showToast('Survey templates are a Pro feature. Please upgrade to use this tool.', 'warn');
-      return;
-    }
-    if (!showSurveyPanel) {
-      setShowSurveyPanel(true);
-    } else {
-      handleCloseSurveyMode();
-    }
-  }, [features, handleCloseSurveyMode, showSurveyPanel]);
-
   // UX 2026-05-13: top-toolbar publish effect was here but moved further down,
   // past where handleUndo / handleRedo are declared — those are const arrow
   // useCallbacks defined much later in the function body, so referencing them
@@ -6040,6 +6027,55 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setActiveTool('survey-marker');
     setShowSurveyPanel(true);
   }, []);
+
+  // UX 2026-05-29: Survey entry now belongs to the always-visible right rail.
+  // The handler stays in PDFViewer because it owns the survey/template state.
+  // Owner 2026-10-07 (survey bar round): turning Survey on goes straight back
+  // into the template last used on this document (remembered on this device,
+  // utils/surveyLastTemplate.js); the picker only shows the first time, or
+  // when that template is gone.
+  const surveyMemoryDocKey = surveyMemoryDocumentKey(pdfFile, pdfFilePath);
+  const handleSurveyToggle = useCallback(() => {
+    if (!features?.advancedSurvey) {
+      showToast('Survey templates are a Pro feature. Please upgrade to use this tool.', 'warn');
+      return;
+    }
+    if (!showSurveyPanel) {
+      const remembered = resolveLastSurveyTemplate(surveyMemoryDocKey, appTemplates);
+      if (remembered) {
+        handleSelectSurveyTemplate(remembered);
+      } else {
+        setShowSurveyPanel(true);
+      }
+    } else {
+      handleCloseSurveyMode();
+    }
+  }, [features, handleCloseSurveyMode, handleSelectSurveyTemplate, showSurveyPanel, surveyMemoryDocKey, appTemplates]);
+
+  // Remember the template in use for this document (any way it was chosen:
+  // the picker, the panel's or the survey bar's template menu, an Undo).
+  useEffect(() => {
+    if (!showSurveyPanel || !selectedTemplate?.id) return;
+    rememberLastSurveyTemplate(surveyMemoryDocKey, selectedTemplate.id);
+  }, [showSurveyPanel, selectedTemplate?.id, surveyMemoryDocKey]);
+
+  // The survey bar's template menu (desktop and phone): switch template in
+  // place; the current one is a no-op.
+  // The published tool-bar / rail APIs keep a callback's first identity while
+  // only functions change, so the bar's handlers read Survey's live state here.
+  // (Filled in below, once selectedCategoryId is declared.)
+  const surveyBarLiveRef = useRef(null);
+  const handleSwitchSurveyTemplateById = useCallback((templateId) => {
+    const live = surveyBarLiveRef.current;
+    if (!templateId || templateId === live.selectedTemplate?.id) return;
+    const template = (live.appTemplates || []).find((entry) => entry?.id === templateId);
+    if (template) handleSelectSurveyTemplate(template);
+  }, [handleSelectSurveyTemplate]);
+
+  // An Undo of "Left Survey" re-enters with the panel the way it was: when it
+  // was closed, this tells the expand effect below and the rail to leave it
+  // closed this once (the rail clears it).
+  const surveyReenterCollapsedRef = useRef(false);
 
   // Restore scroll position when PDF loads or tab/document context changes.
   useEffect(() => {
@@ -8220,6 +8256,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [surveyKeepCategoryActive, setSurveyKeepCategoryActive] = useState(false);
   // Desktop survey sub-row: whether the Survey module menu is open.
   const [surveyModuleMenuOpen, setSurveyModuleMenuOpen] = useState(false);
+  // ...and its template menu (owner 2026-10-07, the bar's first item).
+  const [surveyTemplateMenuOpen, setSurveyTemplateMenuOpen] = useState(false);
+  surveyBarLiveRef.current = { selectedTemplate, selectedModuleId, selectedCategoryId, rightRailCollapsed, appTemplates };
   const [selectedSpaceId, setSelectedSpaceId] = useState(null); // Currently selected space for survey interactions
   const [pendingSurveyMarkerName, setPendingSurveyMarkerName] = useState(null); // { surveyMarker, categoryId } when prompting for name
   const [surveyMarkerNameInput, setSurveyMarkerNameInput] = useState(null); // Name prompt input; null = untouched (show category-derived default), any string ('' included) = user's text
@@ -20618,6 +20657,42 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     enqueue: enqueueUndoToast,
     dismiss: dismissUndoToast,
   } = useUndoToast();
+
+  // Owner 2026-10-07 (survey bar round): "Done" at the right end of the survey
+  // bar leaves Survey at once - no confirmation - and the app's undo toast
+  // offers it back: "Left Survey  Undo" re-enters the same template, module,
+  // category and panel (open or closed). Escape never leaves Survey.
+  const handleLeaveSurvey = useCallback(() => {
+    const live = surveyBarLiveRef.current;
+    const template = live.selectedTemplate;
+    if (!template) {
+      handleCloseSurveyMode();
+      return;
+    }
+    const snapshot = {
+      templateId: template.id,
+      moduleId: live.selectedModuleId,
+      categoryId: live.selectedCategoryId,
+      panelCollapsed: live.rightRailCollapsed,
+    };
+    const templatesAtLeave = live.appTemplates;
+    handleCloseSurveyMode();
+    enqueueUndoToast({
+      kind: 'single',
+      message: 'Left Survey',
+      onUndo: () => {
+        const again = (templatesAtLeave || []).find((entry) => entry?.id === snapshot.templateId) || template;
+        surveyReenterCollapsedRef.current = Boolean(snapshot.panelCollapsed);
+        handleSelectSurveyTemplate(again);
+        const modules = again.modules || again.spaces || [];
+        if (snapshot.moduleId && modules.some((module) => module?.id === snapshot.moduleId)) {
+          setSelectedModuleId(snapshot.moduleId);
+          if (snapshot.categoryId) setSelectedCategoryId(snapshot.categoryId);
+        }
+      },
+    });
+  }, [handleCloseSurveyMode, handleSelectSurveyTemplate, enqueueUndoToast]);
+
   const [pendingDeletePlan, setPendingDeletePlan] = useState(null);
   const pendingDeleteRunnerRef = useRef(null);
   const pendingDeleteCancelRef = useRef(null);
@@ -25857,9 +25932,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         onSelectEntity: handleMobileSurveyEntitySelect,
         keepCategoryActive: surveyKeepCategoryActive,
         onKeepCategoryActiveChange: setSurveyKeepCategoryActive,
-        // Owner 2026-09-30: the phone survey strip's Exit (same handler as the
-        // Survey panel's "Exit Survey").
-        onExit: handleCloseSurveyMode,
+        // Owner 2026-10-07 (survey bar round): the strip opens with the
+        // template's name (a menu to switch template) and ends with "Done",
+        // which leaves Survey with an Undo toast.
+        templateId: selectedTemplate.id,
+        templateName: selectedTemplate.name || 'Survey',
+        templates: (appTemplates || []).map((template) => ({ id: template.id, name: template.name || 'Untitled template' })),
+        onSelectTemplate: handleSwitchSurveyTemplateById,
+        onExit: handleLeaveSurvey,
       } : null,
       regionEditing: showRegionSelection,
       regionToolbarApi: mobileRegionToolbarApi,
@@ -26027,7 +26107,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleMobileSurveyCategorySelect,
     handleMobileSurveyEntitySelect,
     surveyKeepCategoryActive,
-    handleCloseSurveyMode,
+    appTemplates,
+    handleSwitchSurveyTemplateById,
+    handleLeaveSurvey,
     showRegionSelection,
     mobileRegionToolbarApi,
     showAnnotationColorPicker,
@@ -32238,9 +32320,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
   }, [applyLayoutDrivenZoom, isLeftSidebarCollapsed]);
 
-  // Ensure survey panel always opens in expanded state
+  // Ensure survey panel always opens in expanded state (except an Undo of
+  // "Left Survey" that left it closed - surveyReenterCollapsedRef).
   useEffect(() => {
-    if (showSurveyPanel) {
+    if (showSurveyPanel && !surveyReenterCollapsedRef.current) {
       requestRightRailExpand();
     }
   }, [showSurveyPanel, requestRightRailExpand]);
@@ -34902,6 +34985,8 @@ ${pageBlocks}
       // Slice 4: the read-only guided "Verify Live Sync" probe.
       onVerifyLiveSync: handleVerifyLiveSync,
       onCloseSurveyMode: handleCloseSurveyMode,
+      // Owner 2026-10-07: an Undo of "Left Survey" that leaves the panel shut.
+      surveyReenterCollapsedRef,
       onRequestCreateTemplate,
       onSelectSurveyTemplate: handleSelectSurveyTemplate,
       pdfFile,
@@ -38376,8 +38461,41 @@ ${pageBlocks}
                  hang off them, as before, so the chips never move when the module
                  name changes. Rules are the shared .chrome-divider. */
               return (
-                <div className="survey-subrow">
+                <div
+                  className="survey-subrow"
+                  // The left rail's open panel (272px) and the Survey panel
+                  // (320px) are drawn OVER this row, so the bar keeps its
+                  // template name and Done clear of whichever is open.
+                  style={{
+                    '--survey-bar-inset-l': isLeftSidebarCollapsed ? '0px' : '272px',
+                    '--survey-bar-inset-r': rightRailCollapsed ? '0px' : '320px',
+                  }}
+                >
+                  {/* Owner 2026-10-07 (survey bar round, after a debate): the
+                      bar names the mode itself - the floating Survey chip is
+                      gone. FIRST item: [gold survey glyph] <template> v, a
+                      menu that switches template (ellipsis when long). LAST
+                      item, at the right end: "Done" (Leave Survey), with an
+                      Undo toast. The bar only shows in Survey, so the bar IS
+                      the "you are in Survey" signal. */}
                   <div className="survey-subrow__side survey-subrow__side--start">
+                    <AnnotationDropdown
+                      open={surveyTemplateMenuOpen}
+                      onOpenChange={setSurveyTemplateMenuOpen}
+                      label={`Survey template: ${selectedTemplate?.name || 'Survey'}. Switch template`}
+                      className="survey-subrow__template"
+                      value={selectedTemplate?.id || ''}
+                      preview={<Icon name="survey" size={14} color="var(--accent)" />}
+                      triggerContent={selectedTemplate?.name || 'Survey'}
+                      options={(appTemplates || []).map((template) => ({
+                        value: template.id,
+                        label: template.name || 'Untitled template'
+                      }))}
+                      onSelect={handleSwitchSurveyTemplateById}
+                      width="auto"
+                      dataMarker="data-survey-template-menu"
+                    />
+                    <div className="survey-subrow__module">
                     <AnnotationDropdown
                       open={surveyModuleMenuOpen}
                       onOpenChange={setSurveyModuleMenuOpen}
@@ -38415,6 +38533,7 @@ ${pageBlocks}
                       dataMarker="data-survey-module-menu"
                     />
                     <div className="chrome-divider" aria-hidden="true" />
+                    </div>
                   </div>
 
                   <div className="survey-subrow__cats">
@@ -38448,6 +38567,7 @@ ${pageBlocks}
                   </div>
 
                   <div className="survey-subrow__side survey-subrow__side--end">
+                    <div className="survey-subrow__reuse">
                     <div className="chrome-divider" aria-hidden="true" />
                     <button
                       type="button"
@@ -38463,6 +38583,16 @@ ${pageBlocks}
                           "Repeat" -> "Reuse" (it keeps the CATEGORY armed), same
                           word as the phone bar. */}
                       <span>Reuse</span>
+                    </button>
+                    </div>
+                    <button
+                      type="button"
+                      className="survey-subrow__done"
+                      aria-label="Leave Survey"
+                      onClick={handleLeaveSurvey}
+                      {...chromeTip('Leave Survey', 'below')}
+                    >
+                      Done
                     </button>
                   </div>
                 </div>

@@ -1823,6 +1823,67 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   text-align: center;
 }
 
+/* Owner 2026-10-07 (survey bar round): the strip runs edge to edge -
+     [glyph template v]   [ Module v ] (switch) Reuse   Done
+   The template opens the strip on the left, "Done" closes it on the right,
+   and the module pill + Reuse sit centred between them (auto margins). The
+   template name gives way FIRST when the strip runs short (a far larger
+   shrink factor than the module pill's), down to the glyph, a letter or two
+   and its chevron; Reuse and Done never shrink. Checked at 375 and 390. */
+.mobile-pdf-properties--survey > .mobile-pdf-properties__survey-template {
+  flex: 0 50 auto;
+  min-width: 52px;
+}
+
+.mobile-pdf-properties--survey > .mobile-pdf-properties__survey-template .mobile-styled-select__trigger {
+  /* A title, not a setting: no plate, bright ink, the gold Survey glyph. */
+  padding-inline: 2px 4px;
+  background: transparent;
+  color: var(--text-1);
+}
+
+.mobile-pdf-properties--survey > .mobile-pdf-properties__survey-template .mobile-styled-select__trigger.is-open {
+  background: var(--surface-3);
+}
+
+.mobile-pdf-properties--survey > .mobile-pdf-properties__survey-module {
+  margin-inline-start: auto;
+}
+
+/* "Done" leaves Survey (an Undo toast offers it back). A plain word in
+   neutral ink - never red, never gold. Painted at the strip's 20px, HIT at
+   44 x 48 through the strip's shared pad (-5 / -19 from y=37, see above). */
+.mobile-pdf-properties--survey > .mobile-pdf-properties__done-rule {
+  margin-inline-start: auto;
+}
+
+.mobile-pdf-properties__done {
+  position: relative;
+  height: var(--mobile-strip-control-h);
+  min-width: 44px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-1);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font: 600 12px/1 var(--font-ui);
+  white-space: nowrap;
+}
+
+.mobile-pdf-properties__done::after {
+  content: '';
+  position: absolute;
+  inset-block: -5px -19px;
+  inset-inline: -2px;
+}
+
+.mobile-pdf-properties__done:active {
+  background: var(--pressed);
+}
+
 /* "Reuse" (was "Keep active", then "Repeat"; it keeps the CATEGORY armed
    after a marker is placed): the desktop survey row's switch (.survey-subrow__keep in
    src/styles.css) at the strip's scale - a 24x14 track with a 10px knob, then
@@ -4414,7 +4475,8 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   max-width: calc(100vw - 44px - 24px);
   z-index: 1;
   transition: top 140ms ease-out;
-  /* Owner 2026-10-07: the Survey chip and the Space chip share the line. */
+  /* One chip on this line now (the Survey chip that joined it on 2026-10-07
+     left again the same day: the survey strip names Survey itself). */
   display: flex;
   gap: 6px;
 }

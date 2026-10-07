@@ -139,9 +139,21 @@ const zoomText = (page) => page.evaluate(() => (
   || ''
 ).replace(/^.*?(\d+%)$/, '$1'));
 
+// One local survey template, so the walk can go into Survey and press the
+// survey bar's own controls (owner 2026-10-07: template menu first, Done last).
+const SURVEY_TEMPLATE = {
+  id: 'walk-template',
+  name: 'Walk Template',
+  entities: [],
+  modules: [{ id: 'walk-mod', name: 'Existing', categories: [{ id: 'walk-cat', name: 'Doors', color: '#5ba1f0', checklist: [] }] }],
+};
+
 async function prepare(context) {
   // Only the local dev server; nothing reaches a real backend.
   await context.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, (route) => route.abort());
+  await context.addInitScript((t) => {
+    try { localStorage.setItem('mobileWorkflowTemplates', JSON.stringify([t])); } catch { /* private mode */ }
+  }, SURVEY_TEMPLATE);
 }
 
 async function openViewer(page, phone) {
@@ -302,6 +314,23 @@ test.describe('desktop 1440x900', () => {
     await step('right rail: Survey tab closes the panel', () => button(page, 'Survey').click({ timeout: 5000 }),
       () => hidden(page, '.survey-rail:not(.is-collapsed)'));
     await page.waitForTimeout(300);
+
+    // The survey bar (owner 2026-10-07): in with a template, its template
+    // menu, "Done" out with a toast, Undo back in, Done again.
+    await button(page, 'Survey').click({ timeout: 5000 }).catch(() => {});
+    await step('Survey: pick a template', () => page.getByRole('button', { name: /Walk Template/ }).filter({ visible: true }).first().click({ timeout: 5000 }),
+      () => shown(page, '.survey-subrow'));
+    await step('survey bar: template menu', () => page.getByRole('button', { name: /^Survey template: / }).filter({ visible: true }).first().click({ timeout: 5000 }),
+      () => shown(page, '[data-survey-template-menu] [role="option"]'));
+    await step('survey bar: template menu closes (Escape stays in Survey)', () => page.keyboard.press('Escape'),
+      async () => (await hidden(page, '[data-survey-template-menu] [role="option"]')) && shown(page, '.survey-subrow'));
+    await step('survey bar: Done leaves Survey', () => button(page, 'Leave Survey').click({ timeout: 5000 }),
+      async () => (await hidden(page, '.survey-subrow')) && shown(page, '.undo-toast'));
+    await step('toast: Undo goes back into Survey', () => page.locator('.undo-toast').getByRole('button', { name: 'Undo' }).click({ timeout: 5000 }),
+      () => shown(page, '.survey-subrow'));
+    await step('survey bar: Done again', () => button(page, 'Leave Survey').click({ timeout: 5000 }),
+      () => hidden(page, '.survey-subrow'));
+    await page.locator('.undo-toast').waitFor({ state: 'detached', timeout: 8000 }).catch(() => {});
 
     // Zoom.
     for (const [name, act] of [
@@ -474,6 +503,27 @@ test.describe('phone 390x844 touch', () => {
     await step('Spaces sheet closes', () => closeSheet('.mobile-spaces-panel'), () => hidden(page, '.mobile-spaces-panel'));
     await step('dock: Survey', () => button(page, 'Open survey').tap({ timeout: 5000 }), () => shown(page, '.mobile-survey-sheet'));
     await step('Survey sheet closes', () => closeSheet('.mobile-survey-sheet'), () => hidden(page, '.mobile-survey-sheet'));
+
+    // The survey strip (owner 2026-10-07): template menu first, Done last.
+    await page.waitForTimeout(400);
+    await button(page, 'Open survey').tap({ timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(600);
+    await step('Survey: pick a template', () => page.getByRole('button', { name: /Walk Template/ }).filter({ visible: true }).first().tap({ timeout: 5000 }),
+      () => shown(page, '.mobile-pdf-properties--survey'));
+    await page.waitForTimeout(400);
+    await closeSheet('.mobile-survey-sheet').catch(() => {});
+    const surveyTemplateButton = () => page.locator('.mobile-pdf-properties--survey').getByRole('button', { name: /^Survey template: / }).first();
+    await step('survey strip: template menu', () => surveyTemplateButton().tap({ timeout: 5000 }),
+      () => shown(page, '.mobile-styled-select__menu'));
+    await step('survey strip: template menu closes', () => surveyTemplateButton().tap({ timeout: 5000 }),
+      () => hidden(page, '.mobile-styled-select__menu'));
+    await step('survey strip: Done leaves Survey', () => button(page, 'Leave Survey').tap({ timeout: 5000 }),
+      async () => (await hidden(page, '.mobile-pdf-properties--survey')) && shown(page, '.undo-toast'));
+    await step('toast: Undo goes back into Survey', () => page.locator('.undo-toast').getByRole('button', { name: 'Undo' }).tap({ timeout: 5000 }),
+      () => shown(page, '.mobile-pdf-properties--survey'));
+    await step('survey strip: Done again', () => button(page, 'Leave Survey').tap({ timeout: 5000 }),
+      () => hidden(page, '.mobile-pdf-properties--survey'));
+    await page.locator('.undo-toast').waitFor({ state: 'detached', timeout: 8000 }).catch(() => {});
 
     // Tool rail.
     for (const name of ['Rectangle Select', 'Draw', 'Shapes', 'Text', 'Pan']) {

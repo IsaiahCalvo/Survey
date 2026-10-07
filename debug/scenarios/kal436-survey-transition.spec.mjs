@@ -45,7 +45,8 @@ test('KAL-436: selecting a real template preserves the PDF and isolates Survey a
 
   // Owner 2026-10-07 (Drawboard rail + Survey chip): no "Expand / Close Survey
   // panel" chevrons and no "Exit Survey" any more. The Survey tab opens and
-  // closes the panel; the Survey chip's "Leave Survey" leaves Survey.
+  // closes the panel; "Done" (Leave Survey) at the end of the survey bar
+  // leaves Survey (the floating Survey chip is gone, survey bar round).
   await expect(page.getByRole('button', { name: 'Leave Survey' })).toBeVisible();
   await expect(pdfPage).toHaveAttribute('data-kal436-identity', 'same-mounted-pdf');
 

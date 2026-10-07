@@ -37,7 +37,6 @@ import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from '.
 // stay here, in the same place in the cascade they always had.
 import './surveyRailStyles.js';
 import ActiveSpaceChip from './sidebar/ActiveSpaceChip';
-import SurveyModeChip from './components/SurveyModeChip';
 import TabBar from './TabBar';
 import {
   MobilePdfViewerDock,
@@ -1903,24 +1902,9 @@ export default function App({ devPreviewReturnTab = null }) {
     leftRailApi?.onExitSpaceMode?.();
   }, [leftRailApi]);
 
-  // Owner 2026-10-07 (scratchpad railDrawboard/DEBATE.md): while Survey is on
-  // (a template chosen), a chip names it outside the Survey panel, beside the
-  // Space chip. Its words open the Survey panel; its x leaves Survey - the
-  // job the red "Exit Survey" inside the panel used to do.
-  const surveyForChip = rightRailApi?.showSurveyPanel && rightRailApi?.selectedTemplate
-    ? { name: rightRailApi.selectedTemplate.name || 'Survey' }
-    : null;
-  const openSurveyFromChip = useCallback(() => {
-    if (mobileSurveyPanelOpen) return;
-    if (isMobileViewer) {
-      openMobileSurveyPanel();
-      return;
-    }
-    setMobileSurveyRequestKey((key) => key + 1);
-  }, [isMobileViewer, mobileSurveyPanelOpen, openMobileSurveyPanel]);
-  const leaveSurveyFromChip = useCallback(() => {
-    rightRailApi?.onCloseSurveyMode?.();
-  }, [rightRailApi]);
+  // (Owner 2026-10-07, survey bar round: Survey has no floating chip. The
+  // survey bar names the template as its first item and ends with "Done" -
+  // PDFViewer draws the desktop bar, MobileToolProperties the phone strip.)
 
   useEffect(() => {
     if (isViewerVisible) return;
@@ -2256,12 +2240,6 @@ export default function App({ devPreviewReturnTab = null }) {
             activeSpace={(mobileDocumentPanelState.isOpen || mobileSurveyPanelOpen || mobileAuxPanel) ? null : activeSpaceForChip}
             onOpenSpaces={openSpacesFromChip}
             onTurnOffSpace={turnOffSpaceFromChip}
-            // Owner 2026-10-07: the Survey chip, beside the Space chip, by the
-            // same rule (it steps aside while a sheet is up - the Survey sheet
-            // names its template itself).
-            activeSurvey={(mobileDocumentPanelState.isOpen || mobileSurveyPanelOpen || mobileAuxPanel) ? null : surveyForChip}
-            onOpenSurvey={openSurveyFromChip}
-            onLeaveSurvey={leaveSurveyFromChip}
           />
         ) : (
         <div
@@ -2321,20 +2299,10 @@ export default function App({ devPreviewReturnTab = null }) {
             }}>
               {/* Spaces chunk B: the active space, left of Export. While it
                   shows, IT carries data-toolbar-export, so the tool bar's plan
-                  (useResponsiveToolbar) keeps the tools clear of the chip.
-                  Owner 2026-10-07: the Survey chip sits first when Survey is
-                  on, and then it is the one marked. */}
-              {surveyForChip && (
-                <SurveyModeChip
-                  data-toolbar-export="true"
-                  templateName={surveyForChip.name}
-                  onOpen={openSurveyFromChip}
-                  onLeave={leaveSurveyFromChip}
-                />
-              )}
+                  (useResponsiveToolbar) keeps the tools clear of the chip. */}
               {activeSpaceForChip && (
                 <ActiveSpaceChip
-                  data-toolbar-export={surveyForChip ? undefined : 'true'}
+                  data-toolbar-export="true"
                   name={activeSpaceForChip.name}
                   pageCount={activeSpaceForChip.pageCount}
                   onOpen={openSpacesFromChip}
@@ -2344,7 +2312,7 @@ export default function App({ devPreviewReturnTab = null }) {
               {/* Export annotated PDF — browser-visible entry point for the
                   same handler the desktop File menu drives. */}
               <button
-                data-toolbar-export={(activeSpaceForChip || surveyForChip) ? undefined : 'true'}
+                data-toolbar-export={activeSpaceForChip ? undefined : 'true'}
                 onClick={bottomToolbarApi.exportAnnotatedPdf}
                 {...chromeTip('Export annotated PDF', 'below')}
                 aria-label="Export annotated PDF"

@@ -243,8 +243,8 @@
 }
 
 /* Owner 2026-10-07 (scratchpad railDrawboard/DEBATE.md): the red "Exit Survey"
-   word left this header - Survey is left with the x on the Survey chip under
-   the top bar (src/components/SurveyModeChip.jsx). */
+   word left this header - Survey is left with "Done" at the end of the
+   survey strip under the top bar (owner 2026-10-07, survey bar round). */
 
 /* Close: a bare glyph, an invisible 32px hit area. The export menu's anchor
    (now in the footer) keeps its wrap. */
