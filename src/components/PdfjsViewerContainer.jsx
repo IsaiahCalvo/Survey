@@ -39,7 +39,7 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { extractPdfOutlineBookmarks } from '../utils/bookmarkOutline';
 import { resolvePinchCommitCursor, resolvePinchEndTransition } from '../utils/mobilePinchGesture';
-import { createPanMomentumRunner, createPanVelocityTracker, isGlideSlowEnoughToSharpen, PAN_MOMENTUM_DEFAULTS, TOUCH_PAN_MOMENTUM } from '../utils/panMomentum';
+import { createPanMomentumRunner, createPanVelocityTracker, isGlideSlowEnoughToSharpen, PAN_MOMENTUM_DEFAULTS, panEventTime } from '../utils/panMomentum';
 import {
   ELASTIC_ZOOM_EASE_MS,
   WHEEL_OVERSCROLL_IDLE_MS,
@@ -72,6 +72,7 @@ import { computeDetailTileBox, resolveDetailTileStyle } from '../utils/pdfDetail
 import { LIVE_ZOOM_EVENT } from '../utils/liveZoomEvents.js';
 import { createZoomGlide, retargetZoomGlide, stepZoomGlide } from '../utils/zoomGlide.js';
 import { isLiveFormWidgetTarget } from '../utils/formWidgetPointerTargets.js';
+import { isSelectionGrabPress } from '../hooks/useSelectionGrabHandoff.js';
 import {
   compensateScrollTopForRoom,
   computeTopOverlayInset,
@@ -3342,7 +3343,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // start with. An axis pulled past an edge carries its speed on
   // (resolveEdgeRelease) instead of dropping it - the old dead stop in the
   // release frame was the "stuck in the middle" (owner 2026-10-07).
-  const releaseElasticPan = useCallback((vx, vy, { touch = false } = {}) => {
+  const releaseElasticPan = useCallback((vx, vy) => {
     const elasticPan = touchPanElasticRef.current;
     const pulled = panExcessRef.current;
     const overEase = touchPanOverEaseRef.current;
@@ -3359,7 +3360,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         velocity,
         dimension,
         room: shownPx > 0 ? max - scroll > 1 : scroll > 1,
-        glideTauMs: (touch ? TOUCH_PAN_MOMENTUM : PAN_MOMENTUM_DEFAULTS).decayTauMs,
+        glideTauMs: PAN_MOMENTUM_DEFAULTS.decayTauMs,
       })
       : { glide: velocity, spring: 0 });
     const rx = decide(pulled.x, shown.x, vx, containerWRef.current, el?.scrollLeft || 0, getHorizontalScrollMax(scaleRef.current));
@@ -3539,9 +3540,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const el = scrollerRef.current;
     panCoastOriginRef.current = { left: el?.scrollLeft || 0, top: el?.scrollTop || 0 };
     markPanCoast(panCoastOriginRef.current.left, panCoastOriginRef.current.top);
-    // A finger flick glides like iOS (TOUCH_PAN_MOMENTUM); a mouse drag keeps
-    // the desktop glide.
-    const started = getPanMomentumRunner().start(fingerVelocityX, fingerVelocityY, touch ? TOUCH_PAN_MOMENTUM : undefined);
+    // Finger and mouse share one glide (utils/panMomentum.js).
+    const started = getPanMomentumRunner().start(fingerVelocityX, fingerVelocityY);
     if (started) setPanInteraction(true);
     else restorePanInteraction();
     return started;
@@ -3560,7 +3560,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       try { el.releasePointerCapture(pointer.id); } catch { /* already released */ }
     }
     updatePanPresentation();
-    const release = glide && pointer ? panVelocityRef.current.release(performance.now()) : null;
+    const release = glide && pointer ? panVelocityRef.current.release(options?.at ?? performance.now()) : null;
     panVelocityRef.current.reset();
     // A mouse drag past an edge springs home like a finger (any release; a
     // stop-dead one from rest), and its glide bounces off the far edge.
@@ -3635,10 +3635,19 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       // anything that must eat the gesture instead of panning. It is NOT on
       // annotation carriers — Drawboard pans from an unselected annotation, so
       // that drag has to keep reaching this scroller.
-      if (isEditableTarget(event.target)
+      // Owner 2026-10-07 ("it's panning and dragging it at the same time"):
+      // a press the selection grab claimed (hooks/useSelectionGrabHandoff —
+      // it runs first, on window capture) drags only the mark. Any press still
+      // catches a glide in flight: the page must not keep coasting under a
+      // mark being dragged.
+      if (isSelectionGrabPress(event)
+        || isEditableTarget(event.target)
         || isLiveFormWidgetTarget(event.target)
         || event.target?.closest?.('a[href], .linkAnnotation, [data-element-id="link"], [data-text-markup-link]')
-        || event.target?.closest?.('[data-pan-interactive="true"]')) return;
+        || event.target?.closest?.('[data-pan-interactive="true"]')) {
+        if (panMomentumRef.current?.isRunning()) cancelPanInertia();
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       // A new grab always beats an in-flight glide.
@@ -3650,7 +3659,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       };
       // Same rubber band as the phone: catches a page still springing home.
       beginElasticPan();
-      panVelocityRef.current.start(event.clientX, event.clientY, performance.now());
+      panVelocityRef.current.start(event.clientX, event.clientY, panEventTime(event));
       try { el.setPointerCapture(event.pointerId); } catch { /* not capturable */ }
       setPanInteraction(true);
       updatePanPresentation();
@@ -3664,7 +3673,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const dy = event.clientY - pointer.y;
       pointer.x = event.clientX;
       pointer.y = event.clientY;
-      panVelocityRef.current.move(event.clientX, event.clientY, performance.now());
+      panVelocityRef.current.move(event.clientX, event.clientY, panEventTime(event));
       schedulePan(dx, dy);
     };
     const onPointerUp = (event) => {
@@ -3672,7 +3681,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       if (!pointer || pointer.id !== event.pointerId) return;
       event.preventDefault();
       event.stopPropagation();
-      finishPan({ glide: true });
+      finishPan({ glide: true, at: panEventTime(event) });
     };
     const onPointerAbort = (event) => {
       const pointer = panPointerRef.current;
@@ -3832,10 +3841,33 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     let widgetTapCandidate = null;
     let widgetTapPromotedToPan = false;
 
+    // A one-finger pan ends: glide with the release velocity (zero = stop).
+    const endTouchPan = (velocityX, velocityY) => {
+      mobileTouchRef.current = null;
+      suppressMobileTouchUntilRef.current = performance.now() + 180;
+      setMobileTouchMode(null);
+      flushPan();
+      // Let go while pulled past an edge: that axis carries its speed on
+      // (glide back in, or the edge spring) - see releaseElasticPan.
+      const release = releaseElasticPan(velocityX, velocityY);
+      releaseLayoutShift();
+      startPanInertia(release.vx, release.vy, { elastic: release.elastic, touch: true });
+    };
+
     const onTouchStart = (event) => {
       widgetTapCandidate = null;
       widgetTapPromotedToPan = false;
+      // Owner 2026-10-07 ("it's panning and dragging it at the same time"): a
+      // finger on the selected mark or its handles belongs to the selection
+      // grab (hooks/useSelectionGrabHandoff claims it on pointerdown) - it
+      // drags only the mark. Every press catches a glide still in flight.
+      // (Two fingers keep the pinch path below.)
+      if (event.touches.length === 1 && isSelectionGrabPress(event)) {
+        if (panMomentumRef.current?.isRunning()) cancelPanInertia();
+        return;
+      }
       if (isNativeInteractionTarget(event.target)) {
+        if (panMomentumRef.current?.isRunning()) cancelPanInertia();
         const nativeTarget = event.target?.nodeType === 3 ? event.target.parentElement : event.target;
         // Same for a link (Appetize iOS run 2026-10-06: a pull past the top
         // edge that started on the page's link did nothing at all; Chromium
@@ -3864,7 +3896,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         const touch = event.touches[0];
         // Velocity sampling lives in the shared flick tracker so touch and
         // mouse panning release with identical numbers.
-        panVelocityRef.current.start(touch.clientX, touch.clientY, performance.now());
+        panVelocityRef.current.start(touch.clientX, touch.clientY, panEventTime(event));
         mobileTouchRef.current = { mode: 'pan' };
         beginElasticPan();
         setPanInteraction(true);
@@ -3901,12 +3933,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         try { window.getSelection?.()?.removeAllRanges?.(); } catch { /* ignore */ }
         event.preventDefault();
         event.stopPropagation();
-        panVelocityRef.current.start(startX, startY, performance.now());
+        panVelocityRef.current.start(startX, startY, panEventTime(event));
         mobileTouchRef.current = { mode: 'pan' };
         beginElasticPan();
         setPanInteraction(true);
         setMobileTouchMode('pan');
-        const { dx, dy } = panVelocityRef.current.move(touch.clientX, touch.clientY, performance.now());
+        const { dx, dy } = panVelocityRef.current.move(touch.clientX, touch.clientY, panEventTime(event));
         schedulePan(dx, dy);
         return;
       }
@@ -3997,10 +4029,18 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         event.stopPropagation();
         return;
       }
+      // Whatever the engine's touch / pointer event order, once the selection
+      // grab owns this finger the page stops: the pan ends where it is, with
+      // no glide, and the mark alone follows the finger.
+      if (touchState?.mode === 'pan' && isSelectionGrabPress(event)) {
+        panVelocityRef.current.reset();
+        endTouchPan(0, 0);
+        return;
+      }
       if (touchState?.mode === 'pan' && event.touches.length === 1) {
         event.stopPropagation();
         const touch = event.touches[0];
-        const { dx, dy } = panVelocityRef.current.move(touch.clientX, touch.clientY, performance.now());
+        const { dx, dy } = panVelocityRef.current.move(touch.clientX, touch.clientY, panEventTime(event));
         schedulePan(dx, dy);
         return;
       }
@@ -4040,20 +4080,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       }
 
       if (touchState.mode === 'pan' && event.touches.length === 0) {
-        mobileTouchRef.current = null;
-        suppressMobileTouchUntilRef.current = performance.now() + 180;
-        setMobileTouchMode(null);
-        flushPan();
-        // UX: a finger lift always carries a few ms of gap before touchend, so
-        // the mouse-oriented idle taper would shave every phone flick. Touch
-        // keeps its original, untapered release — the feel the desktop copy
-        // was matched to.
-        const { vx: velocityX, vy: velocityY } = panVelocityRef.current.release(performance.now(), { idleTaper: false });
-        // Let go while pulled past an edge: that axis carries its speed on
-        // (glide back in, or the edge spring) - see releaseElasticPan.
-        const release = releaseElasticPan(velocityX, velocityY, { touch: true });
-        releaseLayoutShift();
-        startPanInertia(release.vx, release.vy, { elastic: release.elastic, touch: true });
+        const { vx: velocityX, vy: velocityY } = panVelocityRef.current.release(panEventTime(event));
+        endTouchPan(velocityX, velocityY);
       }
     };
 

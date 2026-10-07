@@ -199,14 +199,17 @@ test('a mobile tap on a widget is not preventDefaulted into a pan', () => {
   assert.match(guard, /isLiveFormWidgetTarget\(nativeTarget\)/);
   // The bail must happen before ANY preventDefault: preventing the touch
   // sequence on a widget kills its focus/click/change chain outright.
+  // (flickPan 2026-10-07: the head now also stops a running glide first -
+  // `cancelPanInertia()` no longer marks its end, the first preventDefault does.)
   const touchStartHead = containerSource.slice(
     containerSource.indexOf('const onTouchStart = (event) => {'),
-    containerSource.indexOf('cancelPanInertia();',
+    containerSource.indexOf('event.preventDefault();',
       containerSource.indexOf('const onTouchStart = (event) => {')),
   );
-  assert.match(touchStartHead, /if \(isNativeInteractionTarget\(event\.target\)\) \{/);
-  assert.doesNotMatch(touchStartHead, /preventDefault/,
+  assert.match(touchStartHead, /if \(isNativeInteractionTarget\(event\.target\)\) \{/,
     'a touch on a widget must reach the control, never be cancelled into a pan');
+  assert.match(touchStartHead, /if \(isNativeInteractionTarget\(event\.target\)\) \{[\s\S]*?return;\s*\}/,
+    'the widget bail returns before the first preventDefault');
 });
 
 test('a drag that starts on a widget still pans the page on touch', () => {

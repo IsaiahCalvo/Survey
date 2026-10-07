@@ -422,25 +422,26 @@ test('mobile deep zoom-out rebases before WebKit composites an unsafe downscale'
 // The flick physics moved out of PdfjsViewerContainer into the shared
 // src/utils/panMomentum.js so desktop pointer panning reuses the very same
 // curve. These assertions are relocated, not relaxed: every invariant the
-// mobile coast relied on (EMA + sample push, two-axis velocity, the release
-// call site, the coast marker, the hypot rest test, the 325ms exponential
-// decay) is still asserted, now against the module that owns it.
+// mobile coast relied on (sample push, two-axis velocity, the release call
+// site, the coast marker, the hypot rest test, the exponential decay) is
+// still asserted, now against the module that owns it.
 test('mobile pan keeps two-axis velocity and coasts after release', () => {
   assert.match(PDFJS_VIEWER_SOURCE, /velocityX/);
   assert.match(PDFJS_VIEWER_SOURCE, /velocityY/);
   // 2026-10-02: an axis let go while pulled past an edge springs home
   // instead of gliding; the other axis still coasts with its own velocity.
-  // 2026-10-07: a finger flick says it is touch, so it glides like iOS
-  // (panMomentum TOUCH_PAN_MOMENTUM); the desktop pointer glide is unchanged.
   // 2026-10-07 (side to side): the pulled axis no longer drops its speed - it
   // carries on into the glide or the edge spring (resolveEdgeRelease).
-  assert.match(PDFJS_VIEWER_SOURCE, /const release = releaseElasticPan\(velocityX, velocityY, \{ touch: true \}\);\s*releaseLayoutShift\(\);\s*startPanInertia\(release\.vx, release\.vy, \{ elastic: release\.elastic, touch: true \}\);/);
+  // 2026-10-07 (flickPan): finger and mouse share ONE glide (iOS 0.998/ms
+  // decay, Drawboard-matched release); the finger lift reads its velocity at
+  // the touchend's own event time.
+  assert.match(PDFJS_VIEWER_SOURCE, /const release = releaseElasticPan\(velocityX, velocityY\);\s*releaseLayoutShift\(\);\s*startPanInertia\(release\.vx, release\.vy, \{ elastic: release\.elastic, touch: true \}\);/);
   assert.match(PDFJS_VIEWER_SOURCE, /resolveEdgeRelease\(\{/);
-  assert.match(PDFJS_VIEWER_SOURCE, /panVelocityRef\.current\.release\(performance\.now\(\)\)/);
+  assert.match(PDFJS_VIEWER_SOURCE, /panVelocityRef\.current\.release\(panEventTime\(event\)\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /PDF pan coast distance/);
-  assert.match(PAN_MOMENTUM_SOURCE, /state\.samples\.push/);
+  assert.match(PAN_MOMENTUM_SOURCE, /samples\.push\(\{ x, y, at \}\)/);
   assert.match(PAN_MOMENTUM_SOURCE, /Math\.hypot\(x, y\)/);
-  assert.match(PAN_MOMENTUM_SOURCE, /decayTauMs: 325/);
+  assert.match(PAN_MOMENTUM_SOURCE, /decayTauMs: IOS_DECELERATION_TAU_MS/);
   assert.match(PAN_MOMENTUM_SOURCE, /Math\.exp\(-dt \/ tau\)/);
 });
 
@@ -448,9 +449,10 @@ test('desktop pointer panning reuses the mobile flick physics', () => {
   // One physics, two surfaces: the desktop pointer path must call the same
   // tracker and the same runner, and must stop a glide on a new grab or wheel.
   assert.match(PDFJS_VIEWER_SOURCE, /import \{ createPanMomentumRunner, createPanVelocityTracker[^}]*\} from '\.\.\/utils\/panMomentum'/);
-  assert.match(PDFJS_VIEWER_SOURCE, /panVelocityRef\.current\.start\(event\.clientX, event\.clientY, performance\.now\(\)\)/);
-  assert.match(PDFJS_VIEWER_SOURCE, /panVelocityRef\.current\.move\(event\.clientX, event\.clientY, performance\.now\(\)\)/);
-  assert.match(PDFJS_VIEWER_SOURCE, /finishPan\(\{ glide: true \}\)/);
+  // Samples are timed by the event (panEventTime), not by when the handler ran.
+  assert.match(PDFJS_VIEWER_SOURCE, /panVelocityRef\.current\.start\(event\.clientX, event\.clientY, panEventTime\(event\)\)/);
+  assert.match(PDFJS_VIEWER_SOURCE, /panVelocityRef\.current\.move\(event\.clientX, event\.clientY, panEventTime\(event\)\)/);
+  assert.match(PDFJS_VIEWER_SOURCE, /finishPan\(\{ glide: true, at: panEventTime\(event\) \}\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /const onWheelStopGlide = \(\) => \{ cancelPanInertia\(\); \}/);
   // A new grab always beats an in-flight glide.
   assert.match(PDFJS_VIEWER_SOURCE, /cancelPanInertia\(\);[\s\S]{0,120}panPointerRef\.current = \{/);

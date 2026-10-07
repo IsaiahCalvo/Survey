@@ -10,16 +10,19 @@ import {
   createPanVelocityTracker,
   decayFactor,
   isPanMomentumAtRest,
-  pickDominantVelocity,
   releaseIdleScale,
   shouldStartPanMomentum,
   GLIDE_SHARPEN_SPEED,
   IOS_DECELERATION_RATE,
   IOS_DECELERATION_TAU_MS,
-  TOUCH_PAN_MOMENTUM,
+  flickLaunchSpeed,
   glideDistance,
   isGlideSlowEnoughToSharpen,
+  panEventTime,
 } from '../src/utils/panMomentum.js';
+
+const TAU = PAN_MOMENTUM_DEFAULTS.decayTauMs;
+const REST = PAN_MOMENTUM_DEFAULTS.minRestSpeed;
 
 // A deterministic rAF + clock so the coast can be integrated frame by frame
 // without any wall-clock flakiness.
@@ -64,10 +67,10 @@ function makeRunner(surface, extra = {}) {
   });
 }
 
-test('decay is exponential with the mobile 325ms time constant', () => {
-  assert.equal(PAN_MOMENTUM_DEFAULTS.decayTauMs, 325);
+test('decay is exponential with the iOS time constant', () => {
+  assert.equal(PAN_MOMENTUM_DEFAULTS.decayTauMs, IOS_DECELERATION_TAU_MS);
   assert.equal(decayFactor(0), 1);
-  assert.ok(Math.abs(decayFactor(325) - Math.exp(-1)) < 1e-12);
+  assert.ok(Math.abs(decayFactor(TAU) - Math.exp(-1)) < 1e-12);
   // Two 8ms frames must decay exactly as much as one 16ms frame: the feel is
   // identical at 60Hz and 120Hz.
   const twoShort = decayFactor(8) * decayFactor(8);
@@ -87,18 +90,13 @@ test('frame deltas clamp into the safe integration window', () => {
 test('start and rest thresholds separate a flick from a drop', () => {
   assert.equal(shouldStartPanMomentum(0, 0), false);
   assert.equal(shouldStartPanMomentum(0.05, 0), false);
+  // Drawboard: a careful 0.2 px/ms placement never glides.
+  assert.equal(shouldStartPanMomentum(0.2, 0), false);
   assert.equal(shouldStartPanMomentum(1.2, 0), true);
   // Diagonals are measured as a magnitude, not per axis.
-  assert.equal(shouldStartPanMomentum(0.06, 0.06), true);
+  assert.equal(shouldStartPanMomentum(0.25, 0.25), true);
   assert.equal(isPanMomentumAtRest(0.01, 0.005), true);
   assert.equal(isPanMomentumAtRest(0.2, 0), false);
-});
-
-test('pickDominantVelocity keeps the fastest honest estimate and its sign', () => {
-  assert.equal(pickDominantVelocity([0.2, -0.9, 0.4]), -0.9);
-  assert.equal(pickDominantVelocity([]), 0);
-  assert.equal(pickDominantVelocity([NaN, Infinity, 0.3]), 0.3);
-  assert.equal(pickDominantVelocity(null), 0);
 });
 
 test('clampScrollTarget respects both scroll bounds', () => {
@@ -114,8 +112,9 @@ test('velocity tracker averages the last samples of a flick', () => {
   for (let i = 1; i <= 10; i += 1) tracker.move(500, 500 - i * 20, i * 16);
   const { vx, vy } = tracker.release(10 * 16 + 4);
   assert.equal(Math.round(vx * 1000) / 1000, 0);
-  // Finger moved up 20px per 16ms frame -> -1.25 px/ms in finger direction.
-  assert.ok(vy < -1.0 && vy > -1.5, `vy=${vy}`);
+  // Finger moved up 20px per 16ms frame -> -1.25 px/ms in finger direction,
+  // launched as a flick of that speed.
+  assert.ok(Math.abs(vy + flickLaunchSpeed(1.25)) < 1e-9, `vy=${vy}`);
   assert.equal(shouldStartPanMomentum(vx, vy), true);
   assert.equal(tracker.active, false, 'release consumes the gesture');
 });
@@ -182,9 +181,8 @@ test('a flick coasts for many frames and decays to rest', () => {
   assert.deepEqual(settled, ['settled']);
 
   const distance = surface.state.top - 4000;
-  // Analytic glide distance for v0=1.2px/ms, tau=325ms is v0*tau = 390px;
-  // discrete integration lands just under that.
-  assert.ok(distance > 330 && distance < 400, `distance=${distance}`);
+  // Analytic glide distance: (v0 - rest speed) * tau.
+  assert.ok(Math.abs(distance - (1.2 - REST) * TAU) < 15, `distance=${distance}`);
 
   // Each successive frame must travel less than the one before it.
   assert.ok(afterFourFrames - 4000 > distance * 0.1);
@@ -201,8 +199,9 @@ test('faster flicks glide further, on the same curve', () => {
   const slow = measure(0.4);
   const fast = measure(1.6);
   assert.ok(fast > slow * 3, `slow=${slow} fast=${fast}`);
-  // Distance is linear in release speed for exponential friction.
-  assert.ok(Math.abs(fast / slow - 4) < 0.35, `ratio=${fast / slow}`);
+  // Exponential friction: distance is linear in launch speed above the rest speed.
+  const expected = (1.6 - REST) / (0.4 - REST);
+  assert.ok(Math.abs(fast / slow - expected) < 0.35, `ratio=${fast / slow} expected ${expected}`);
 });
 
 test('a slow release does not start a coast at all', () => {
@@ -325,19 +324,25 @@ test('releaseIdleScale tapers continuously instead of flipping at the cutoff', (
   assert.equal(releaseIdleScale(PAN_MOMENTUM_DEFAULTS.releaseIdleMs), 0);
   assert.equal(releaseIdleScale(500), 0);
 
-  const holds = [0, 20, 60, 100, 120, 139, 140, 200];
+  // A lift always trails the last move by a frame or two: full speed through
+  // the grace period, for finger and mouse alike (flickPan 2026-10-07: one
+  // rule for both; Drawboard still throws the page after a 50 ms pause).
+  const grace = PAN_MOMENTUM_DEFAULTS.releaseGraceMs;
+  assert.equal(releaseIdleScale(16), 1);
+  assert.equal(releaseIdleScale(grace), 1);
+  const holds = [0, grace, 70, 90, 110, 130, 139, 140, 200];
   const scales = holds.map((hold) => releaseIdleScale(hold));
   for (let i = 1; i < scales.length; i += 1) {
     assert.ok(scales[i] <= scales[i - 1], `scale must never rise: ${holds[i]}ms -> ${scales[i]}`);
   }
-  // Strictly shrinking while the taper is live - no flat "full speed" plateau.
-  for (let i = 1; i < scales.length - 1; i += 1) {
+  // Strictly shrinking once the taper is live - no second plateau.
+  for (let i = 2; i < scales.length - 1; i += 1) {
     assert.ok(scales[i] < scales[i - 1], `${holds[i]}ms must be slower than ${holds[i - 1]}ms`);
   }
   // No cliff: the last live value is already tiny by the time it reaches zero.
   assert.ok(releaseIdleScale(139) < 0.02, `139ms -> ${releaseIdleScale(139)}`);
-  // A brief hesitation must cost real speed, not be waved through.
-  assert.ok(releaseIdleScale(60) > 0.3 && releaseIdleScale(60) < 0.6, `60ms -> ${releaseIdleScale(60)}`);
+  // A real hesitation must cost real speed, not be waved through.
+  assert.ok(releaseIdleScale(100) > 0.3 && releaseIdleScale(100) < 0.6, `100ms -> ${releaseIdleScale(100)}`);
 });
 
 test('a pause before release shortens the glide in proportion to the pause', () => {
@@ -357,7 +362,7 @@ test('a pause before release shortens the glide in proportion to the pause', () 
     return surface.state.top - 5000;
   };
 
-  const holds = [0, 60, 100, 140, 200];
+  const holds = [0, 80, 110, 140, 200];
   const distances = holds.map(glideDistance);
   for (let i = 1; i < distances.length; i += 1) {
     assert.ok(
@@ -367,8 +372,8 @@ test('a pause before release shortens the glide in proportion to the pause', () 
   }
   // The live band is continuous, not binary: each of these is a real, shorter glide.
   assert.ok(distances[0] > 300, `0ms hold still throws the page: ${distances[0]}`);
-  assert.ok(distances[1] > 20 && distances[1] < distances[0] * 0.7, `60ms hold: ${distances[1]}`);
-  assert.ok(distances[2] > 10 && distances[2] < distances[1], `100ms hold: ${distances[2]}`);
+  assert.ok(distances[1] > 20 && distances[1] < distances[0] * 0.7, `80ms hold: ${distances[1]}`);
+  assert.ok(distances[2] > 10 && distances[2] < distances[1], `110ms hold: ${distances[2]}`);
   // A real hold still stops dead, so a press-hold-release never throws the page.
   assert.equal(distances[3], 0, '140ms hold glides nothing');
   assert.equal(distances[4], 0, '200ms hold glides nothing');
@@ -488,17 +493,17 @@ test('stopping a glide that was not running never fires a pan end', async () => 
   assert.ok(tail.includes('return wasRunning'), 'callers can tell whether a glide was actually stopped');
 });
 
-test('touch release with idleTaper:false keeps full velocity after a short lift gap', () => {
-  const tracker = createPanVelocityTracker();
-  tracker.start(0, 0, 0);
-  for (let i = 1; i <= 6; i += 1) tracker.move(i * 16, 0, i * 16);
-  const tapered = createPanVelocityTracker();
-  tapered.start(0, 0, 0);
-  for (let i = 1; i <= 6; i += 1) tapered.move(i * 16, 0, i * 16);
-  const touch = tracker.release(96 + 100, { idleTaper: false });
-  const mouse = tapered.release(96 + 100);
-  assert.ok(touch.vx > 0.9, `touch keeps its velocity (${touch.vx})`);
-  assert.ok(mouse.vx < touch.vx * 0.5, `mouse release tapers (${mouse.vx} vs ${touch.vx})`);
+test('finger and mouse share one release rule: a quick lift keeps full speed, a rest fades it', () => {
+  const release = (gapMs) => {
+    const tracker = createPanVelocityTracker();
+    tracker.start(0, 0, 0);
+    for (let i = 1; i <= 6; i += 1) tracker.move(i * 16, 0, i * 16);
+    return tracker.release(96 + gapMs).vx;
+  };
+  // A finger lifts ~8-20 ms after its last move: no speed lost.
+  assert.equal(release(12), release(0));
+  assert.ok(release(100) < release(0) * 0.5, `a 100 ms rest fades the glide (${release(100)} vs ${release(0)})`);
+  assert.equal(release(160), 0);
 });
 
 // ---------------------------------------------------------------------------
@@ -506,18 +511,16 @@ test('touch release with idleTaper:false keeps full velocity after a short lift 
 // slow down
 // ---------------------------------------------------------------------------
 
-test('touch glides use the iOS deceleration rate (0.998 per ms)', () => {
+test('every glide uses the iOS deceleration rate (0.998 per ms)', () => {
   assert.equal(IOS_DECELERATION_RATE, 0.998);
   // Speed kept after 1 ms is exactly the iOS rate.
-  assert.ok(Math.abs(decayFactor(1, TOUCH_PAN_MOMENTUM.decayTauMs) - 0.998) < 1e-12);
+  assert.ok(Math.abs(decayFactor(1) - 0.998) < 1e-12);
   assert.ok(Math.abs(IOS_DECELERATION_TAU_MS - 499.5) < 0.1);
-  // The desktop pointer glide is unchanged.
-  assert.equal(PAN_MOMENTUM_DEFAULTS.decayTauMs, 325);
-  assert.equal(PAN_MOMENTUM_DEFAULTS.maxFrameMs, 32);
+  assert.equal(PAN_MOMENTUM_DEFAULTS.maxFrameMs, 500);
 });
 
 test('glideDistance is the exact integral, so the path does not depend on frame rate', () => {
-  const tau = TOUCH_PAN_MOMENTUM.decayTauMs;
+  const tau = TAU;
   assert.equal(glideDistance(0, 16, tau), 0);
   // One 32 ms step travels exactly as far as two 16 ms steps.
   const one = glideDistance(2, 32, tau);
@@ -527,51 +530,34 @@ test('glideDistance is the exact integral, so the path does not depend on frame 
   assert.ok(glideDistance(2, 1e9, tau) <= 2 * tau + 1e-9);
 });
 
-function glideRun(speed, frameMs, config) {
+function glideRun(speed, frameMs) {
   const surface = createFakeSurface({ top: 100000, maxTop: 400000 });
   surface.state.frameMs = frameMs;
   const runner = makeRunner(surface);
-  runner.start(0, -speed, config);
+  runner.start(0, -speed);
   const frames = surface.pump(100000);
   return { distance: surface.state.top - 100000, ms: frames * frameMs };
 }
 
 test('a finger glide lasts ~0.5-2 s depending on speed, like iOS', () => {
-  const gentle = glideRun(0.2, 16, TOUCH_PAN_MOMENTUM);
-  const medium = glideRun(1.5, 16, TOUCH_PAN_MOMENTUM);
-  const hard = glideRun(4, 16, TOUCH_PAN_MOMENTUM);
-  assert.ok(gentle.ms >= 350 && gentle.ms <= 700, `gentle ${gentle.ms} ms`);
+  const gentle = glideRun(0.3, 16);
+  const medium = glideRun(1.5, 16);
+  const hard = glideRun(4, 16);
+  assert.ok(gentle.ms >= 450 && gentle.ms <= 750, `gentle ${gentle.ms} ms`);
   assert.ok(medium.ms >= 1300 && medium.ms <= 1800, `medium ${medium.ms} ms`);
   assert.ok(hard.ms >= 1800 && hard.ms <= 2300, `hard ${hard.ms} ms`);
   // Distance is v * tau less the tail cut at the rest speed.
-  const tau = TOUCH_PAN_MOMENTUM.decayTauMs;
-  assert.ok(Math.abs(medium.distance - (1.5 - 0.06) * tau) < 15, `medium ${medium.distance}`);
+  assert.ok(Math.abs(medium.distance - (1.5 - REST) * TAU) < 15, `medium ${medium.distance}`);
 });
 
 test('dropped frames do not slow the glide down (WebKit paints pages mid-glide)', () => {
   // 60 Hz vs a browser managing one frame every 200 ms: same length, same distance.
-  const smooth = glideRun(1.5, 16, TOUCH_PAN_MOMENTUM);
-  const choppy = glideRun(1.5, 200, TOUCH_PAN_MOMENTUM);
+  const smooth = glideRun(1.5, 16);
+  const choppy = glideRun(1.5, 200);
   assert.ok(Math.abs(choppy.ms - smooth.ms) <= 200, `smooth ${smooth.ms} ms, choppy ${choppy.ms} ms`);
   assert.ok(Math.abs(choppy.distance - smooth.distance) < 40, `smooth ${smooth.distance}, choppy ${choppy.distance}`);
-  // The desktop glide keeps its 32 ms frame cap.
-  assert.equal(clampFrameDelta(200), 32);
-  assert.equal(clampFrameDelta(200, TOUCH_PAN_MOMENTUM), 200);
-  assert.equal(clampFrameDelta(4000, TOUCH_PAN_MOMENTUM), 500);
-});
-
-test('per-glide settings apply to that glide only', () => {
-  const surface = createFakeSurface({ top: 100000, maxTop: 400000 });
-  const runner = makeRunner(surface);
-  runner.start(0, -1.5, TOUCH_PAN_MOMENTUM);
-  surface.pump(100000);
-  const touchDistance = surface.state.top - 100000;
-  const before = surface.state.top;
-  runner.start(0, -1.5);
-  surface.pump(100000);
-  const mouseDistance = surface.state.top - before;
-  assert.ok(touchDistance > mouseDistance * 1.4, `touch ${touchDistance} mouse ${mouseDistance}`);
-  assert.ok(Math.abs(mouseDistance - (1.5 - 0.015) * 325) < 15, `mouse ${mouseDistance}`);
+  assert.equal(clampFrameDelta(200), 200);
+  assert.equal(clampFrameDelta(4000), 500);
 });
 
 test('pages may sharpen once a glide is under GLIDE_SHARPEN_SPEED', () => {
@@ -580,15 +566,14 @@ test('pages may sharpen once a glide is under GLIDE_SHARPEN_SPEED', () => {
   assert.equal(isGlideSlowEnoughToSharpen(0.2, 0.2), false); // 0.28 px/ms diagonal
   assert.equal(isGlideSlowEnoughToSharpen(0, -0.2), true);
   assert.equal(isGlideSlowEnoughToSharpen(0, 0), true);
-  // A hard flick spends its last ~0.7 s under the threshold.
-  const tau = TOUCH_PAN_MOMENTUM.decayTauMs;
-  const slowFor = tau * Math.log(GLIDE_SHARPEN_SPEED / TOUCH_PAN_MOMENTUM.minRestSpeed);
-  assert.ok(slowFor > 600 && slowFor < 800, `slow tail ${slowFor} ms`);
+  // A hard flick spends its last ~0.5 s under the threshold.
+  const slowFor = TAU * Math.log(GLIDE_SHARPEN_SPEED / REST);
+  assert.ok(slowFor > 450 && slowFor < 650, `slow tail ${slowFor} ms`);
 });
 
-test('the viewer gives finger flicks the touch glide and lets a slowing glide sharpen', async () => {
+test('the viewer gives finger and mouse the same glide and lets a slowing finger glide sharpen', async () => {
   const source = await readFile(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
-  assert.match(source, /getPanMomentumRunner\(\)\.start\(fingerVelocityX, fingerVelocityY, touch \? TOUCH_PAN_MOMENTUM : undefined\)/);
+  assert.match(source, /getPanMomentumRunner\(\)\.start\(fingerVelocityX, fingerVelocityY\)/);
   assert.match(source, /\{ elastic: release\.elastic, touch: true \}/);
   assert.match(source, /return !\(kind === 'sharpen' && glideSettlingRef\.current\);/);
   // The quiet pump (which clears data-pdfjs-moving) still waits for the page to be still.
@@ -614,4 +599,127 @@ test('the first glide frame moves a whole frame even when the release lands just
   const before = surface.state.left;
   surface.pump(1);
   assert.ok(before - surface.state.left < glideDistance(1, 16) + 1e-9);
+});
+
+// ---------------------------------------------------------------------------
+// 2026-10-07 (flickPan) - the flick matches Drawboard PDF, measured frame by
+// frame with identical scripted drags (owner: "the flick just seems too
+// aggressive ... compare the Drawboard and get it right, dial it in").
+// ---------------------------------------------------------------------------
+
+// A whole drag at a steady `speed` px/ms on a 120 Hz (8 ms) clock, then a lift
+// `liftMs` after the last move; returns the glide the runner then plays.
+function flick({ speed, ms = 150, liftMs = 8, ease = false, frameMs = 16 }) {
+  const tracker = createPanVelocityTracker();
+  tracker.start(0, 0, 0);
+  let t = 0;
+  for (; t < ms; t += 8) {
+    const u = Math.min(1, (t + 8) / ms);
+    const k = ease ? 1 - (1 - u) ** 3 : u;
+    tracker.move(0, -speed * ms * k, t + 8);
+  }
+  const { vx, vy } = tracker.release(t + liftMs);
+  const surface = createFakeSurface({ top: 200000, maxTop: 900000 });
+  surface.state.frameMs = frameMs;
+  const runner = makeRunner(surface);
+  const started = runner.start(vx, vy);
+  const frames = started ? surface.pump(100000) : 0;
+  return { distance: surface.state.top - 200000, ms: frames * frameMs, vy };
+}
+
+test('flick glide distance and duration land within 15% of Drawboard for every flick size', () => {
+  // Drawboard PDF web, Chromium, 60 fps: [finger px/ms, glide px, glide ms]
+  // (medians of the scratchpad flickPan runs, phone + desktop).
+  const drawboard = [
+    [0.95, 550, 1225],
+    [1.5, 1060, 1475],
+    [2.08, 1790, 1735],
+    [2.5, 2520, 1880],
+    [3.7, 4900, 2200],
+  ];
+  for (const [speed, px, ms] of drawboard) {
+    const g = flick({ speed });
+    assert.ok(Math.abs(g.distance / px - 1) <= 0.15, `${speed} px/ms: ${Math.round(g.distance)} px vs Drawboard ${px}`);
+    assert.ok(Math.abs(g.ms / ms - 1) <= 0.15, `${speed} px/ms: ${g.ms} ms vs Drawboard ${ms}`);
+  }
+});
+
+test('a drag that slows to a stop, a slow placement or a rest before lifting does not glide', () => {
+  // The old tracker took the fastest of three estimates (incl. the whole-drag
+  // average), so all three of these threw the page (420 / 100 / 600 px).
+  assert.equal(flick({ speed: 1, ms: 300, ease: true }).distance, 0, 'finger slowed to a stop');
+  assert.equal(flick({ speed: 0.2, ms: 1000 }).distance, 0, 'slow 0.2 px/ms placement');
+  assert.equal(flick({ speed: 1.6, ms: 120, liftMs: 150 }).distance, 0, 'rested 150 ms before lifting');
+  // ...while the same drag lifted at once is a real flick.
+  assert.ok(flick({ speed: 1.6, ms: 120 }).distance > 600);
+});
+
+test('the release reads only the last moments of the drag, never a faster earlier stretch', () => {
+  const tracker = createPanVelocityTracker();
+  tracker.start(0, 0, 0);
+  // 200 ms fast (2 px/ms), then 100 ms at 0.5 px/ms, lifted at once.
+  let y = 0;
+  for (let t = 8; t <= 200; t += 8) { y -= 16; tracker.move(0, y, t); }
+  for (let t = 208; t <= 300; t += 8) { y -= 4; tracker.move(0, y, t); }
+  const { vy } = tracker.release(304);
+  assert.ok(Math.abs(vy + 0.5) < 0.02, `release speed is the last 50 ms (${vy})`);
+});
+
+test('fast flicks are carried further, slow ones are not, and the boost is capped', () => {
+  const knee = PAN_MOMENTUM_DEFAULTS.flickBoostKnee;
+  assert.equal(flickLaunchSpeed(0.5), 0.5);
+  assert.equal(flickLaunchSpeed(knee), knee);
+  assert.equal(flickLaunchSpeed(-0.5), 0.5, 'a speed, never a direction');
+  let previous = 0;
+  for (const v of [0.9, 1.2, 2, 3, 4, 6]) {
+    const launch = flickLaunchSpeed(v);
+    assert.ok(launch > v && launch > previous, `${v} -> ${launch}`);
+    previous = launch;
+  }
+  assert.ok(Math.abs(flickLaunchSpeed(2.08) / 2.08 - 1.92) < 0.05);
+  assert.equal(flickLaunchSpeed(50), PAN_MOMENTUM_DEFAULTS.flickMaxSpeed);
+});
+
+test('a frame-rate change does not change the flick (8 ms vs 16 ms vs 33 ms frames)', () => {
+  const a = flick({ speed: 2, frameMs: 8 });
+  const b = flick({ speed: 2, frameMs: 16 });
+  const c = flick({ speed: 2, frameMs: 33 });
+  assert.ok(Math.abs(a.distance - b.distance) < 20 && Math.abs(c.distance - b.distance) < 30, `${a.distance} ${b.distance} ${c.distance}`);
+});
+
+test('velocity uses the time the input happened, not when the handler ran', () => {
+  assert.equal(panEventTime({ timeStamp: 1234.5 }, 1240), 1234.5);
+  // Missing, epoch-based (old Safari), future or stale stamps fall back to now.
+  assert.equal(panEventTime({}, 500), 500);
+  assert.equal(panEventTime({ timeStamp: 1791403381464 }, 500), 500);
+  assert.equal(panEventTime({ timeStamp: 900 }, 500), 500);
+  assert.equal(panEventTime({ timeStamp: 10 }, 5000), 5000);
+  assert.equal(panEventTime(null, 42), 42);
+  // Two queued moves handled 1 ms apart keep their real 16 ms spacing.
+  const tracker = createPanVelocityTracker();
+  tracker.start(0, 0, panEventTime({ timeStamp: 100 }, 140));
+  tracker.move(0, -16, panEventTime({ timeStamp: 116 }, 140));
+  tracker.move(0, -32, panEventTime({ timeStamp: 132 }, 141));
+  const { vy } = tracker.release(panEventTime({ timeStamp: 140 }, 142));
+  assert.ok(Math.abs(vy + flickLaunchSpeed(1)) < 1e-9, `vy=${vy}`);
+});
+
+test('Pan tool: a press the selection grab claimed drags only the mark, and any press stops a glide', async () => {
+  const source = await readContainerSource();
+  assert.match(source, /import \{ isSelectionGrabPress \} from '\.\.\/hooks\/useSelectionGrabHandoff\.js';/);
+  // Desktop: the scroller's pointerdown leaves a claimed press alone, but
+  // still catches a glide in flight (the page must not coast under the mark).
+  const down = source.slice(source.indexOf('const onPointerDown = (event) => {'));
+  const bail = down.indexOf('if (isSelectionGrabPress(event)');
+  const stopGlide = down.indexOf('if (panMomentumRef.current?.isRunning()) cancelPanInertia();');
+  const panStart = down.indexOf('panPointerRef.current = {');
+  assert.ok(bail > 0 && stopGlide > bail && stopGlide < panStart, 'claimed press bails before a pan starts, after stopping the glide');
+  // Phone: one finger on the selection never starts a pan; a pan that the
+  // grab claims later (any engine's event order) ends on the spot, no glide.
+  const touchStart = source.slice(source.indexOf('const onTouchStart = (event) => {'));
+  assert.ok(touchStart.indexOf('event.touches.length === 1 && isSelectionGrabPress(event)') > 0);
+  assert.ok(touchStart.indexOf('event.touches.length === 1 && isSelectionGrabPress(event)') < touchStart.indexOf("mobileTouchRef.current = { mode: 'pan' };"));
+  assert.match(source, /if \(touchState\?\.mode === 'pan' && isSelectionGrabPress\(event\)\) \{\s*panVelocityRef\.current\.reset\(\);\s*endTouchPan\(0, 0\);/);
+  // Pinch is untouched: two fingers still reach startPinch.
+  assert.match(touchStart, /if \(event\.touches\.length >= 2\) \{\s*event\.stopPropagation\(\);\s*startPinch\(event\.touches\);/);
 });
