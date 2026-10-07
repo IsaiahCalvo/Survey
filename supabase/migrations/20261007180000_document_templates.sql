@@ -88,5 +88,7 @@ $$;
 
 REVOKE ALL ON FUNCTION public.claim_document_templates(UUID) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.claim_document_templates(UUID) TO authenticated;
+-- Supabase's default privileges also grant anon; signed-in users only.
+REVOKE EXECUTE ON FUNCTION public.claim_document_templates(UUID) FROM anon;
 
 COMMIT;
