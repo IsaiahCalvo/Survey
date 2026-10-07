@@ -24336,7 +24336,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     if (usePdfjsRenderer) {
       const viewer = pdfjsViewerRef.current;
-      if (Math.abs(safeScale - previousScale) > 0.0001 && viewer?.magnificationModule) {
+      // options.animate (zoom buttons / Ctrl+-): the engine glides there. It may
+      // be gliding away from previousScale, so a step back to it still counts.
+      if ((Math.abs(safeScale - previousScale) > 0.0001 || options.animate) && viewer?.magnificationModule) {
         const zoomPercent = safeScale * 100;
         const zoomSource = options.mode || pdfjsZoomSourceRef.current || ZOOM_MODES.MANUAL;
         pdfjsZoomSourceRef.current = zoomSource;
@@ -24352,7 +24354,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             : containerRect.top + anchor.y;
           viewer.magnificationModule.initiateMouseZoom(zoomClientX, zoomClientY, zoomPercent);
         } else if (viewer.magnificationModule.zoomTo) {
-          viewer.magnificationModule.zoomTo(zoomPercent);
+          viewer.magnificationModule.zoomTo(zoomPercent, options.animate ? { animate: true } : undefined);
         }
       }
       return;
@@ -25175,9 +25177,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } catch (_e) { /* swallow */ }
     if (!controller) return;
     const measuredScale = reconcilePdfjsScaleFromRenderedPage('manual-zoom');
-    const basisScale = measuredScale || scaleRef.current || manualZoomScaleRef.current || 1.0;
+    // Owner 2026-10-07 (smooth zoom): mid-glide, step from where it is heading.
+    const glideTarget = Number(pdfjsViewerRef.current?.getZoomGlideTarget?.()) || null;
+    const basisScale = glideTarget || measuredScale || scaleRef.current || manualZoomScaleRef.current || 1.0;
     const nextScale = clampScale(basisScale * TOOLBAR_ZOOM_STEP_FACTOR);
-    controller.setScale(nextScale);
+    controller.setScale(nextScale, { animate: true });
     try { console.log(`[InteractionDiag] zoom-applied @ ${Math.round(performance.now())}ms dir=in from=${basisScale.toFixed(3)} to=${nextScale.toFixed(3)}`); } catch (_e) { /* swallow */ }
   }, [reconcilePdfjsScaleFromRenderedPage]);
 
@@ -25189,9 +25193,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } catch (_e) { /* swallow */ }
     if (!controller) return;
     const measuredScale = reconcilePdfjsScaleFromRenderedPage('manual-zoom');
-    const basisScale = measuredScale || scaleRef.current || manualZoomScaleRef.current || 1.0;
+    // Owner 2026-10-07 (smooth zoom): mid-glide, step from where it is heading.
+    const glideTarget = Number(pdfjsViewerRef.current?.getZoomGlideTarget?.()) || null;
+    const basisScale = glideTarget || measuredScale || scaleRef.current || manualZoomScaleRef.current || 1.0;
     const nextScale = clampScale(basisScale / TOOLBAR_ZOOM_STEP_FACTOR);
-    controller.setScale(nextScale);
+    controller.setScale(nextScale, { animate: true });
     try { console.log(`[InteractionDiag] zoom-applied @ ${Math.round(performance.now())}ms dir=out from=${basisScale.toFixed(3)} to=${nextScale.toFixed(3)}`); } catch (_e) { /* swallow */ }
   }, [reconcilePdfjsScaleFromRenderedPage]);
 
