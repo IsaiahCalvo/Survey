@@ -41,6 +41,7 @@ import { availableActions, buildPageMenuItems, runPageMenuAction } from './pageM
 import { copyPagesAfter, duplicatePages, movePagesNextTo, movePagesToIndex } from '../utils/pageSelectionOperations.js';
 import { thumbnailBoxStyle } from './pageThumbnailBox.js';
 import { getPageViewBase, pageViewKey, pageViewUprightKey } from '../utils/pageViewDocument.js';
+import { notePageDrawn, PAGE_CACHE_KEEP_DESKTOP, PAGE_CACHE_KEEP_MOBILE } from '../utils/pdfPageCacheTrim.js';
 import {
   getCachedPageThumbnails,
   rememberPageThumbnails,
@@ -605,6 +606,9 @@ const PagesPanel = ({
       throw error;
     }
 
+    // The panel draws every page: let pdf.js forget the ones drawn long ago
+    // (utils/pdfPageCacheTrim.js; pages on the viewer's screen are kept).
+    notePageDrawn(pdfDoc, pageNumber - 1, mobileMode ? PAGE_CACHE_KEEP_MOBILE : PAGE_CACHE_KEEP_DESKTOP);
     const src = await encodeCanvasToDataUrl(canvas, 'image/jpeg', THUMBNAIL_JPEG_QUALITY);
     // Free the bitmap now: iOS caps total canvas memory and collects
     // detached canvases late.
@@ -618,7 +622,7 @@ const PagesPanel = ({
       source: 'pdfjs',
       quality
     };
-  }, [pdfDoc, getRotationDelta]);
+  }, [pdfDoc, getRotationDelta, mobileMode]);
 
   // The page the viewer has already drawn is the quickest first image there
   // is: one downscale copy of its finished raster (no pdf.js work, a few ms),

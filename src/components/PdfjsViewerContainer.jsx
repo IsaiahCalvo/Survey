@@ -89,6 +89,7 @@ import {
   classifyRaster, pickRasterSource, planThumbPrefetch, resolveWantedRasterScale, thumbRasterScale,
 } from '../utils/pageRasterLod.js';
 import QuietLoading from './QuietLoading.jsx';
+import { notePageDrawn, pageMounted, pageUnmounted, PAGE_CACHE_KEEP_MOBILE, PAGE_CACHE_KEEP_DESKTOP } from '../utils/pdfPageCacheTrim';
 import {
   compensateScrollLeftForColumnWidth,
   resolveCentredPageLeft,
@@ -240,6 +241,9 @@ function getMinimumScaleForLayout(dims, containerHeight, metrics, containerWidth
     maximumScale: MAX_SCALE,
   });
 }
+
+// How many pages off screen keep their pdf.js data (utils/pdfPageCacheTrim.js).
+const pageCacheKeep = (isMobileSurface) => (isMobileSurface ? PAGE_CACHE_KEEP_MOBILE : PAGE_CACHE_KEEP_DESKTOP);
 
 // --- rendered-page raster cache (Figma-style: draw once, paint back instantly) -
 // When a page scrolls out of the mount window its React component unmounts and the
@@ -638,6 +642,8 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
         pageThumbOffer(pageId, target, drawScale, thumbScale, pageThumbsMaxBytes(isMobileSurface));
         pageRasterCacheSet(rasterCacheKey(pageId, drawScale), target, maxBytes, drawScale);
         targetRetained = true;
+        // Let pdf.js forget pages drawn long ago (utils/pdfPageCacheTrim.js).
+        notePageDrawn(pdf, pageIndex, pageCacheKeep(isMobileSurface));
         onRaster?.(pageIndex, { ms: Math.round(performance.now() - t0), clamped: tiled });
       } catch (error) {
         postNativePdfDiagnostic('raster-error', {
@@ -658,7 +664,20 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
     };
   }, [pdf, pageIndex, pageW, pageH, want, rotation, tiled, onRaster, isMobileSurface, rasterQueue]);
 
-  useEffect(() => () => releaseRasterCanvas(canvasRef.current), []);
+  // Hand the page bitmap back when the page leaves the mount window. React
+  // clears canvasRef BEFORE this cleanup runs, so the element is captured at
+  // mount: reading canvasRef.current here released nothing, and every page
+  // that scrolled away kept its full bitmap until a garbage collection (iOS
+  // collects canvases late and caps their total memory). Crash hunt 2026-10-07.
+  useEffect(() => {
+    const el = canvasRef.current;
+    return () => releaseRasterCanvas(el);
+  }, []);
+  // A page on screen keeps its pdf.js data (utils/pdfPageCacheTrim.js).
+  useEffect(() => {
+    pageMounted(pdf, pageIndex);
+    return () => pageUnmounted(pdf, pageIndex, pageCacheKeep(isMobileSurface));
+  }, [pdf, pageIndex, isMobileSurface]);
 
   return (
     // The class names this canvas as the page surface for the shared page
@@ -899,11 +918,16 @@ const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, l
     };
   }, [render]);
 
-  useEffect(() => () => {
-    if (progressiveTimerRef.current) clearTimeout(progressiveTimerRef.current);
-    if (taskRef.current) { try { taskRef.current.cancel(); } catch { /* noop */ } }
-    releaseRasterCanvas(canvasRef.current);
-    releaseRasterCanvas(offRef.current);
+  useEffect(() => {
+    // Captured at mount: React clears canvasRef before this cleanup runs
+    // (see PdfPageCanvas).
+    const el = canvasRef.current;
+    return () => {
+      if (progressiveTimerRef.current) clearTimeout(progressiveTimerRef.current);
+      if (taskRef.current) { try { taskRef.current.cancel(); } catch { /* noop */ } }
+      releaseRasterCanvas(el);
+      releaseRasterCanvas(offRef.current);
+    };
   }, []);
 
   // No staleness cutoff. The old gate hid the tile whenever liveZoom drifted
@@ -4697,6 +4721,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
           task = null;
           if (cancelled) return;
           pageThumbOffer(pageId, target, thumbScale, thumbScale, maxBytes);
+          notePageDrawn(pdf, index, pageCacheKeep(isMobileSurface));
           at += 1;
         } catch (error) {
           task = null;

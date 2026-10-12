@@ -3,8 +3,16 @@ import './utils/randomUUIDPolyfill';
 import './utils/blobArrayBuffer';
 import { sanitizeConsoleLogText, shouldCaptureConsoleLine } from './utils/consoleLogFilter';
 import { installSurveyAnalytics } from './utils/surveyAnalytics';
+import { installCrashLog, setCrashLogBuild } from './utils/crashLog';
 
 installSurveyAnalytics();
+// Crash reports (Settings -> Crash reports): kept on this device only.
+installCrashLog({
+  build: [
+    typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'unknown',
+    typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STAMP__ ? __BUILD_STAMP__ : null,
+  ].filter(Boolean).join(' '),
+});
 
 // Stale-deploy recovery: when a lazy-loaded code chunk fails to load (usually a
 // new version deployed while this tab was open, so the old hashed chunk is
@@ -138,7 +146,10 @@ if (typeof window !== 'undefined') {
   const releaseUrl = new URL('release.json', document.baseURI).href;
   fetch(releaseUrl, { cache: 'no-store' })
     .then((response) => (response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`))))
-    .then((release) => console.log('[Survey build]', { version, runtime: 'release', ...release }))
+    .then((release) => {
+      console.log('[Survey build]', { version, runtime: 'release', ...release });
+      setCrashLogBuild([version, release?.commit || release?.sha || release?.build || release?.marker].filter(Boolean).join(' '));
+    })
     .catch((error) => console.log('[Survey build]', { version, runtime: 'release', marker: 'unavailable', error: error.message }));
 })();
 

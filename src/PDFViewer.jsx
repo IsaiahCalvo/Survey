@@ -296,6 +296,7 @@ import { buildCounterSeriesDeletionUpdates, getCounterSeriesList, pickNextSeries
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS, normalizeAnnotationSize, sanitizeAnnotationSizeDraft } from './utils/annotationSize';
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
 import { pageOperationCheckpoint, pageOperationStepId } from './utils/pageOperationHistory.js';
+import { snapshotAnnotationPages } from './utils/historySnapshotShare';
 import { eraseTransitionChangedScreen as eraseTransitionChangedScreenWith, foldIntoCreateStep, getHistoryOrder, historyActionChangedPages, isTransientEraseHistoryFailure, legacyRestoreChangesState, runHistoryPress, scopeLegacyRestoreToOwnSlices, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
 import { countUnsupportedAnnotations, importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
 import { withoutUnstoredFieldsByPage } from './services/annotationMarkCodec.js';
@@ -12016,7 +12017,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getHistorySnapshot = useCallback(() => ({
-    annotationsByPage: deepClone(annotationsByPageRef.current || {}),
+    // Unchanged pages share one copy across snapshots (crash hunt 2026-10-07:
+    // full copies of a big drawing set ran the phone out of memory).
+    annotationsByPage: snapshotAnnotationPages(annotationsByPageRef.current || {}, deepClone),
     surveyMarkers: deepClone(surveyMarkersRef.current || {}),
     spaces: deepClone(spacesRef.current || []),
     // UX 2026-04-21: callouts were previously left out of the undo snapshot,

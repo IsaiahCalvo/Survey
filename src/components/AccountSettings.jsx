@@ -20,6 +20,7 @@ import Spinner from './Spinner';
 import { passwordMeetsRequirements } from './authFlow';
 import TurnstileWidget, { TURNSTILE_ENABLED } from './TurnstileWidget';
 import Icon from '../Icons';
+import CrashReportsPanel from './CrashReportsPanel';
 import {
   buildBillingReturnUrl,
   canUnlinkProvider,
@@ -450,6 +451,15 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                   tab still opens the same Manage subscription content, which keeps
                   its own longer label on the sub-tab inside. */}
               Subscription
+            </button>
+            {/* Crash hunt 2026-10-07: this device's crash notes, to copy to us. */}
+            <button
+              onClick={() => setActiveTab('crash-reports')}
+              className={`account-sidebar-btn ${activeTab === 'crash-reports' ? 'active' : ''}`}
+              role="tab"
+              aria-selected={activeTab === 'crash-reports'}
+            >
+              Crash reports
             </button>
           </div>
 
@@ -1017,6 +1027,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                 </section>
               </>
             )}
+
+            {activeTab === 'crash-reports' && <CrashReportsPanel />}
 
             {activeTab === 'connected-services' && (
               <section className="account-section">

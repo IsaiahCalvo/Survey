@@ -123,8 +123,17 @@ function SurveyApp() {
   const lastLoadProgressAtRef = useRef(0);
   const autoRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoRetryAttemptRef = useRef(0);
+  // Crash hunt 2026-10-07: where the page last was (the web app reports it,
+  // see src/utils/crashLog.js), so a reload after iOS kills the page's
+  // process comes back to the same place; and the notes of those reloads,
+  // handed to the page once it is up again (Settings -> Crash reports).
+  const lastSurveyUrlRef = useRef<string | null>(null);
+  const pendingCrashNotesRef = useRef<Array<Record<string, unknown>>>([]);
   const [canGoBack, setCanGoBack] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  // 'crash': the page died again right after a reload — say so (not "could
+  // not connect") and do not keep reloading it by itself.
+  const [loadErrorKind, setLoadErrorKind] = useState<'connect' | 'crash'>('connect');
   // An automatic retry keeps "Survey could not connect" on screen until it
   // works, so a phone that stays offline does not blink between that and the
   // loading line every few seconds.
@@ -291,6 +300,7 @@ function SurveyApp() {
 
   const beginShellLoad = () => {
     setLoadError(false);
+    setLoadErrorKind('connect');
     setShellReady(false);
     shellReadyRef.current = false;
     shellReadyMessageHandledRef.current = false;
@@ -339,7 +349,7 @@ function SurveyApp() {
   // moment the app comes back to the front (the usual way a phone gets its
   // signal back), so the app loads without a tap once it can.
   useEffect(() => {
-    if (!loadError) return undefined;
+    if (!loadError || loadErrorKind === 'crash') return undefined;
     const attempt = autoRetryAttemptRef.current;
     const delay = SHELL_AUTO_RETRY_DELAYS_MS[Math.min(attempt, SHELL_AUTO_RETRY_DELAYS_MS.length - 1)];
     autoRetryTimerRef.current = setTimeout(() => {
@@ -359,7 +369,7 @@ function SurveyApp() {
       if (autoRetryTimerRef.current) clearTimeout(autoRetryTimerRef.current);
       autoRetryTimerRef.current = null;
     };
-  }, [loadError]);
+  }, [loadError, loadErrorKind]);
 
   const dismissExternalNavigation = () => {
     setExternalNavigationActive(false);
@@ -488,6 +498,9 @@ function SurveyApp() {
         shellReadyMessageHandledRef.current = true;
         finishShellLoad();
         flushNativeAnalyticsEvents();
+        flushCrashNotes();
+      } else if (message?.type === 'survey:location' && typeof message.url === 'string') {
+        if (new URL(message.url).origin === SURVEY_ORIGIN) lastSurveyUrlRef.current = message.url;
       } else if (message?.type === 'survey:native-analytics-ack' && Array.isArray(message.ids)) {
         for (const id of message.ids) nativeAnalyticsInFlightRef.current.delete(String(id));
         pendingNativeAnalyticsRef.current = acknowledgeNativeAnalyticsEvents(
@@ -521,7 +534,25 @@ function SurveyApp() {
   const handleNavigationStateChange = (state: { canGoBack: boolean; url: string }) => {
     setCanGoBack(state.canGoBack);
     setExternalNavigationActive(isExternalNavigationUrl(state.url));
+    try {
+      if (new URL(state.url).origin === SURVEY_ORIGIN) lastSurveyUrlRef.current = state.url;
+    } catch { /* not a URL */ }
   };
+
+  function flushCrashNotes() {
+    const notes = pendingCrashNotesRef.current;
+    if (!notes.length) return;
+    pendingCrashNotesRef.current = [];
+    const serialized = JSON.stringify(notes)
+      .replace(/</g, '\\u003c')
+      .replace(/\u2028/g, '\\u2028')
+      .replace(/\u2029/g, '\\u2029');
+    webViewRef.current?.injectJavaScript(`
+      window.__surveyNativeCrashNotes = (window.__surveyNativeCrashNotes || []).concat(${serialized});
+      window.dispatchEvent(new CustomEvent('survey-native-crash-note'));
+      true;
+    `);
+  }
 
   const recoverTerminatedProcess = (source: string) => {
     const now = Date.now();
@@ -548,15 +579,27 @@ function SurveyApp() {
       recoveriesInLastMinute: recent.length,
       lastPdfDiagnostics: pdfDiagnosticRef.current,
     });
+    pendingCrashNotesRef.current = [...pendingCrashNotesRef.current, {
+      source,
+      at: new Date(now).toISOString(),
+      url: lastSurveyUrlRef.current,
+      recoveriesInLastMinute: recent.length,
+    }].slice(-5);
     if (recent.length >= 2) {
       processRecoveryRef.current = recent;
       persistNativeDiagnosticState();
+      setLoadErrorKind('crash');
       setLoadError(true);
       return;
     }
     processRecoveryRef.current = [...recent, now];
     persistNativeDiagnosticState();
-    setLoadError(false);
+    // Quietly back to the same place (not the start of the app).
+    surveyLaunchUrlRef.current = withLaunchCacheBust(
+      lastSurveyUrlRef.current || SURVEY_URL,
+      `${shellSessionIdRef.current}-recover-${now}`,
+    );
+    beginShellLoad();
     setWebViewKey((value) => value + 1);
   };
 
@@ -616,14 +659,23 @@ function SurveyApp() {
       ) : null}
       {loadError || quietRetry ? (
         <View style={styles.centered}>
-          <Text style={styles.errorTitle}>Survey could not connect</Text>
-          <Text style={styles.errorBody}>Check this phone's connection. Survey keeps trying by itself.</Text>
+          {loadErrorKind === 'crash' ? (
+            <>
+              <Text style={styles.errorTitle}>Survey had to close</Text>
+              <Text style={styles.errorBody}>The page used more memory than this phone allows. Survey opens again at the start.</Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.errorTitle}>Survey could not connect</Text>
+              <Text style={styles.errorBody}>Check this phone's connection. Survey keeps trying by itself.</Text>
+            </>
+          )}
           <Pressable
             accessibilityRole="button"
             onPress={() => { setQuietRetry(false); retry(); }}
             style={styles.retryButton}
           >
-            <Text style={styles.retryButtonText}>Try again</Text>
+            <Text style={styles.retryButtonText}>{loadErrorKind === 'crash' ? 'Open Survey' : 'Try again'}</Text>
           </Pressable>
         </View>
       ) : null}
