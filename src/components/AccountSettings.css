@@ -820,18 +820,22 @@
     gap: 0;
   }
 
+  /* Four tabs since Crash reports (2026-10-07): each a quarter, and a long
+     name ("Connected services") takes two short lines instead of running
+     off the strip. */
   .account-sidebar-btn {
     flex: 1 1 0;
-    width: 33.333%;
+    width: 25%;
     min-width: 0;
     max-width: none;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0 8px;
+    padding: 0 6px;
     text-align: center;
     border-radius: 0;
-    white-space: nowrap;
+    white-space: normal;
+    line-height: 1.15;
   }
 
   .account-sidebar-btn.active {
@@ -865,5 +869,76 @@
   .account-connected-account,
   .account-subscription-card {
     background: var(--panel-well);
+  }
+}
+
+/* Crash reports (crash hunt 2026-10-07): a calm list, newest first. */
+.crash-reports-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.crash-reports-note {
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.crash-reports-empty {
+  font-size: 12.5px;
+  color: var(--text-3);
+  margin: 0;
+}
+.crash-reports-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.crash-reports-item details {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.crash-reports-item summary {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 8px;
+  align-items: baseline;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--text-1);
+  min-width: 0;
+}
+.crash-reports-when,
+.crash-reports-kind {
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.crash-reports-what {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.crash-reports-text {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+  -webkit-user-select: text;
+}
+@media (max-width: 768px) {
+  .crash-reports-item summary {
+    grid-template-columns: auto 1fr;
+  }
+  .crash-reports-what {
+    grid-column: 1 / -1;
+    white-space: normal;
   }
 }

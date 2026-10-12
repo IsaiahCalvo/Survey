@@ -41,7 +41,8 @@ const ARCHIVE_BY_TYPE = {
  * document belonging to an archived project never also appears at top level.
  */
 export async function loadArchive(userId, { now = Date.now() } = {}) {
-  if (!userId) return { data: [], error: null };
+  // No cloud configured (local test route): nothing archived, not a crash.
+  if (!userId || !supabase) return { data: [], error: null };
 
   const [documentsRes, projectsRes, templatesRes, projectNamesRes] = await Promise.all([
     supabase

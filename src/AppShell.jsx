@@ -1673,6 +1673,19 @@ export default function App({ devPreviewReturnTab = null }) {
   const stableTabClose = useStableHandler(handleTabClose);
   const stableTabReorder = useStableHandler(handleTabReorder);
   const stablePageDrop = useStableHandler(handlePageDrop);
+  // Crash hunt 2026-10-07 (phone memory): every callback handed to PDFViewer
+  // must keep one identity. PDFViewer folds some of them into the rail / tool
+  // bar API objects it publishes back into this component's state, so a fresh
+  // closure per render chained each published API to the one before it
+  // (closure -> this render's scope -> the previous API -> its PDFViewer render
+  // -> that render's undo snapshots -> ...). Nothing was ever freed: on a big
+  // drawing set a few dozen undo / redo presses held over 1 GB.
+  const stableCreateTemplateRequest = useStableHandler(handleCreateTemplateRequest);
+  const stableUpdatePDFFile = useStableHandler(handleUpdatePDFFile);
+  const stableUnsavedAnnotationsChange = useStableHandler(handleUnsavedAnnotationsChange);
+  const stableAnnotationsExistChange = useStableHandler(handleAnnotationsExistChange);
+  const stableViewStateChange = useStableHandler(handleViewStateChange);
+  const stableTemplatesChange = useStableHandler(handleTemplatesChange);
   const handleRightRailCollapseChange = useStableHandler((collapsed) => {
     setMobileSurveyPanelOpen(!collapsed);
     rightRailApi?.onCollapseChange?.(collapsed);
@@ -4251,7 +4264,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     <PDFViewer
                       pdfFile={tab.file}
                       pdfFilePath={tab.filePath}
-                      onBack={handleBack}
+                      onBack={stableBack}
                       tabId={tab.id}
                       isActive={isVisible}
                       documentLocked={documentLockedByTab[tab.id] === true}
@@ -4260,16 +4273,16 @@ export default function App({ devPreviewReturnTab = null }) {
                       onBottomToolbarApiChange={setBottomToolbarApi}
                       onLeftRailApiChange={setLeftRailApi}
                       onRightRailApiChange={setRightRailApi}
-                      onPageDrop={handlePageDrop}
-                      onUpdatePDFFile={handleUpdatePDFFile}
-                      onCloseAfterFailure={handleTabClose}
-                      onUnsavedAnnotationsChange={handleUnsavedAnnotationsChange}
-                      onAnnotationsExistChange={handleAnnotationsExistChange}
-                      onRequestCreateTemplate={handleCreateTemplateRequest}
+                      onPageDrop={stablePageDrop}
+                      onUpdatePDFFile={stableUpdatePDFFile}
+                      onCloseAfterFailure={stableTabClose}
+                      onUnsavedAnnotationsChange={stableUnsavedAnnotationsChange}
+                      onAnnotationsExistChange={stableAnnotationsExistChange}
+                      onRequestCreateTemplate={stableCreateTemplateRequest}
                       initialViewState={tabViewState}
-                      onViewStateChange={handleViewStateChange}
+                      onViewStateChange={stableViewStateChange}
                       templates={appTemplates}
-                      onTemplatesChange={handleTemplatesChange}
+                      onTemplatesChange={stableTemplatesChange}
                       onRefetchTemplates={refetchTemplates}
                       user={user}
                       isMSAuthenticated={isMSAuthenticated}

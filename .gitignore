@@ -103,3 +103,6 @@ debug/content-hash/
 
 # Vercel CLI project link — local machine metadata only
 .vercel/
+
+# crash hunt harness output
+debug/crash-hunt/runs/
