@@ -95,9 +95,19 @@ export function indexKey(userId, projectId, sha) {
  * excluded and reported: a pre-immutability-trigger doctored row could
  * otherwise make the script copy/delete ANOTHER user's object (see the
  * 2026-07-03 IDOR migration).
+ *
+ * Re-keying must never make two rows read one object (#812: a page edit forks
+ * a shared object onto the row's own <user>/<document id>.pdf copy, and moving
+ * that row back onto <user>/<sha>.pdf would undo the fork). So these rows are
+ * left where they are and reported in `sharedSkips`:
+ *   - 'own-copy': the row already sits on its own <user>/<row id>.pdf;
+ *   - 'shared-target': after the move the target would be read by more than
+ *     one row (a row already reads it, or several rows would move onto it).
+ * A legacy path still works for reading; skipping only leaves a longer name.
  */
 export function planRekey(rows) {
-  const moves = [];
+  const candidates = [];
+  const sharedSkips = [];
   const foreignPrefix = [];
   const oldPathRefs = new Map(); // path -> count of ALL rows referencing it
   for (const r of rows) {
@@ -111,9 +121,27 @@ export function planRekey(rows) {
     }
     const target = contentPath(r.user_id, r.content_sha256);
     if (r.file_path === target) continue;
-    moves.push({ id: r.id, from: r.file_path, to: target, sha: r.content_sha256 });
+    if (r.file_path === `${r.user_id}/${r.id}.pdf`) {
+      sharedSkips.push({ id: r.id, file_path: r.file_path, to: target, reason: 'own-copy' });
+      continue;
+    }
+    candidates.push({ id: r.id, from: r.file_path, to: target, sha: r.content_sha256 });
   }
-  return { moves, oldPathRefs, foreignPrefix };
+  // Readers of each target once every candidate moved: rows already on it
+  // plus candidates headed there.
+  const targetReaders = new Map();
+  for (const m of candidates) {
+    targetReaders.set(m.to, (targetReaders.get(m.to) ?? (oldPathRefs.get(m.to) || 0)) + 1);
+  }
+  const moves = [];
+  for (const m of candidates) {
+    if (targetReaders.get(m.to) > 1) {
+      sharedSkips.push({ id: m.id, file_path: m.from, to: m.to, reason: 'shared-target' });
+    } else {
+      moves.push(m);
+    }
+  }
+  return { moves, oldPathRefs, foreignPrefix, sharedSkips };
 }
 
 /** Orphans in both directions. Only PDF-ish objects can be orphans we care about. */
@@ -282,7 +310,7 @@ async function gather(client) {
 async function runAudit(client) {
   const { rows, objects, byClass } = await gather(client);
   const { needHash, noPath } = planBackfill(rows);
-  const { moves, foreignPrefix } = planRekey(rows);
+  const { moves, foreignPrefix, sharedSkips } = planRekey(rows);
   const { orphanRows, orphanObjects } = findOrphans(rows, objects);
   const collisions = findShaCollisions(rows);
   const active = rows.filter((r) => !r.archived);
@@ -308,6 +336,7 @@ READ-ONLY. Nothing was modified.
 ## Planned work
 - backfill writes (after hashing): up to ${needHash.length} rows
 - re-key moves: ${moves.length} rows across ${new Set(moves.map((m) => m.from)).size} distinct old objects
+- rows rekey will SKIP so no two documents read one file (own copy / shared target): ${sharedSkips.length}
 - rows with a file_path outside their own user folder (doctored/foreign — rekey will SKIP, manual review): ${foreignPrefix.length}
 ${foreignPrefix.map((f) => `  - ${f.id} -> ${f.file_path}`).join('\n') || '  - none'}
 
@@ -389,8 +418,8 @@ ${results.errors.map((e) => `  - ${e.id}: ${e.error}`).join('\n') || '  - none'}
 
 async function runRekey(client, apply) {
   const { rows } = await gather(client);
-  const { moves, oldPathRefs, foreignPrefix } = planRekey(rows);
-  const results = { moved: [], deletedOld: [], skippedMissing: [], foreignPrefix, errors: [], aborted: false, notAttempted: [] };
+  const { moves, oldPathRefs, foreignPrefix, sharedSkips } = planRekey(rows);
+  const results = { moved: [], deletedOld: [], skippedMissing: [], foreignPrefix, sharedSkips, errors: [], aborted: false, notAttempted: [] };
   // Counts references from ALL rows (planRekey) — a path shared with a
   // non-moving row (e.g. null-sha awaiting backfill) never reaches zero here.
   const remainingRefs = new Map(oldPathRefs);
@@ -461,6 +490,8 @@ ${results.moved.slice(0, 50).map((m) => `  - ${m.from} -> ${m.to}`).join('\n') |
 - old objects KEPT because a non-moving row still references them: ${[...movesPerPath.keys()].filter((p) => (oldPathRefs.get(p) || 0) > (movesPerPath.get(p) || 0)).length}
 - rows SKIPPED — file_path outside own user folder (doctored/foreign, manual review): ${foreignPrefix.length}
 ${foreignPrefix.map((f) => `  - ${f.id} -> ${f.file_path}`).join('\n') || '  - none'}
+- rows SKIPPED — moving them would make two documents read one file (own copy from a page edit, or a target another row reads): ${sharedSkips.length}
+${sharedSkips.slice(0, 50).map((f) => `  - ${f.id} ${f.file_path} (${f.reason})`).join('\n') || '  - none'}
 - source object missing (skipped; see audit orphans): ${results.skippedMissing.length}
 - moves not attempted because the run aborted: ${results.notAttempted.length}
 - errors: ${results.errors.length}
