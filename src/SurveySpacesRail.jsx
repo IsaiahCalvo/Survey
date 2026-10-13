@@ -23,6 +23,7 @@ import reviewWarningIcon from './assets/review-warning.svg';
 import { SYNC_TONE_COLORS, liveSyncGateStatus, liveSyncVerifyStatus, syncMessagePresentation } from './services/excelSyncStatus';
 import { compareSurveyMarkersForOrder } from './utils/surveyMarkerOrdering';
 import { showToast } from './utils/toast';
+import { reportAnnotationDeleteOutcome } from './services/annotationDeleteOutcome.js';
 import { watchLightPopover } from './components/dismissRules.js';
 import { useConfirmDialog } from './components/dialogPrompts';
 import SurveyMarkerNotes from './components/SurveyMarkerNotes';
@@ -2491,9 +2492,11 @@ const SurveySpacesRail = ({
                                 const documentId = pdfFile?.id;
                                 const surveyMarkerIdsToDelete = surveyMarkersInCategory.map(([id]) => id);
                                 if (documentId && user?.id && documentSyncEnabled && surveyMarkerIdsToDelete.length > 0) {
-                                  deleteAnnotations(documentId, surveyMarkerIdsToDelete).catch(err => {
-                                    console.error('[App] Error deleting annotations from Supabase:', err);
-                                  });
+                                  deleteAnnotations(documentId, surveyMarkerIdsToDelete)
+                                    .then((result) => reportAnnotationDeleteOutcome(result, { showToast, source: 'rail-category-delete', onceKey: documentId }))
+                                    .catch(err => {
+                                      console.error('[App] Error deleting annotations from Supabase:', err);
+                                    });
                                 }
 
                                 deleteCategory(selectedModuleId, catId);
@@ -2853,9 +2856,11 @@ const SurveySpacesRail = ({
                                   // Delete from Supabase document_annotations table
                                   const documentId = pdfFile?.id;
                                   if (documentId && user?.id && documentSyncEnabled) {
-                                    deleteAnnotations(documentId, selectedIds).catch(err => {
-                                      console.error('[App] Error deleting annotations from Supabase:', err);
-                                    });
+                                    deleteAnnotations(documentId, selectedIds)
+                                      .then((result) => reportAnnotationDeleteOutcome(result, { showToast, source: 'rail-selected-delete', onceKey: documentId }))
+                                      .catch(err => {
+                                        console.error('[App] Error deleting annotations from Supabase:', err);
+                                      });
                                   }
 
                                   // Clear selection (copy mode will be automatically exited if all items in space are deleted)
