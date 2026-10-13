@@ -15,9 +15,10 @@
  * removed or is already gone, and when storage says this user may not remove
  * it ('forbidden': only the uploader or the document's owner may - see the
  * survey_media_delete policy). A forbidden file is left for its uploader or
- * the document owner: "delete forever" removes every media file of the
- * document while the owner still owns it (documentArchiveService), and the
- * server's orphan sweep handles what is left after a document is gone.
+ * the document owner; once a document is gone, the server's orphan sweep
+ * (archive-purge-sweep -> list_orphaned_survey_media) removes whatever media
+ * is left. "Delete forever" only queues the caller's own uploads
+ * (surveyMediaPurge.js).
  *
  * localStorage can be missing or throw (private mode, quota, previews); every
  * access is guarded, and without it this degrades to the old log-only
