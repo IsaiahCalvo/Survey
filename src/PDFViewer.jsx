@@ -25705,6 +25705,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setMobileSurveyEntityId(entityId || null);
     setActiveToolLogged('survey-marker');
   }, [setActiveToolLogged]);
+  // Phone survey round (2026-10-13), the desktop bars' twins on the rail:
+  // a category picked from the "All" sheet may be in another module (switch
+  // to it, keep the entity - as the desktop chips do); an entity disc tapped
+  // while Survey Markers are selected changes theirs through the entity bar's
+  // write (save / sync / undo) and is the next marker's entity too; the
+  // marker-shape menu arms the tool.
+  const handleMobileSurveyCategoryPick = useCallback((categoryId, moduleId) => {
+    if (moduleId) setSelectedModuleId(moduleId);
+    setSelectedCategoryId(categoryId || null);
+    setActiveToolLogged('survey-marker');
+  }, [setActiveToolLogged]);
+  const handleMobileSurveyEntityApply = useCallback((entityId, markerIds = []) => {
+    setMobileSurveyEntityId(entityId || null);
+    handleSurveyEntityBarPick(entityId, markerIds);
+  }, [handleSurveyEntityBarPick]);
+  const handleMobileSurveyArmMarker = useCallback(() => {
+    setActiveToolLogged('survey-marker');
+  }, [setActiveToolLogged]);
 
   useEffect(() => {
     if (!mobileSurveyEntityId) return;
@@ -26004,6 +26022,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         onSelectModule: handleMobileSurveyModuleSelect,
         onSelectCategory: handleMobileSurveyCategorySelect,
         onSelectEntity: handleMobileSurveyEntitySelect,
+        onPickCategory: handleMobileSurveyCategoryPick,
+        onApplyEntity: handleMobileSurveyEntityApply,
+        onArmMarker: handleMobileSurveyArmMarker,
+        surveyMarkers,
         keepCategoryActive: surveyKeepCategoryActive,
         onKeepCategoryActiveChange: setSurveyKeepCategoryActive,
         // Owner 2026-10-07 (survey bar round): the strip opens with the
@@ -26180,6 +26202,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleMobileSurveyModuleSelect,
     handleMobileSurveyCategorySelect,
     handleMobileSurveyEntitySelect,
+    handleMobileSurveyCategoryPick,
+    handleMobileSurveyEntityApply,
+    handleMobileSurveyArmMarker,
+    surveyMarkers,
     surveyKeepCategoryActive,
     appTemplates,
     handleSwitchSurveyTemplateById,

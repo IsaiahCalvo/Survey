@@ -2422,7 +2422,11 @@ export default function App({ devPreviewReturnTab = null }) {
           Rename document dialog - the home's own dialogs. */}
       {/* Their own layer: they open over an open document, whose viewer
           sits at z-index 5000 (the home's dialogs only ever cover the home). */}
-      <div data-tab-strip-dialogs="" style={{ position: 'relative', zIndex: 6500 }}>
+      {/* Out of the page flow (absolute, no width): the phone frame rule
+          `#root.survey-hub-native-root > div { height: 100% }` (hub.css) made
+          this empty in-flow host a full screen tall and pushed the whole phone
+          viewer below the screen (found 2026-10-13, phone survey round). */}
+      <div data-tab-strip-dialogs="" style={{ position: 'absolute', top: 0, left: 0, width: 0, zIndex: 6500 }}>
         {tabConfirmDialog}
         <RenameModal
           open={!!renameTab}

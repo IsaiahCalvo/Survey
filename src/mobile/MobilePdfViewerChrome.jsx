@@ -24,6 +24,14 @@ import { commitPanelTyping } from './keyboardViewport.js';
 import useRailGroupMotion from './useRailGroupMotion.js';
 import { useViewerTopOverlayRef } from '../utils/viewerTopOverlay.js';
 import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE } from '../utils/toolbarRows.js';
+import { SURVEY_LIST_SEARCH_FROM, planPhoneSurveyRail } from '../utils/surveyPickLists.js';
+import {
+  MobileMarkerShapeChip,
+  MobileSurveyAllSheet,
+  MobileSurveyCategoryColumn,
+  MobileSurveyEntityColumn,
+  useMobileSurveyRailSlots,
+} from './MobileSurveyRail.jsx';
 import './mobilePdfViewer.css';
 
 // UX 2026-09-16 (phone sweep, owner ruling "everything reads a little big").
@@ -1225,7 +1233,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
   );
 }
 
-export function MobileToolProperties({ api }) {
+export function MobileToolProperties({ api, onOpenSurveyList }) {
   // 2026-07-12 (Phase E, demo parity): which colour control has the shared
   // CompactColorPicker takeover open. null | 'textColor' | 'fill' | 'stroke'
   // | 'fontColorLive'. Replaces the old OS <input type=color> swatches so
@@ -1336,15 +1344,36 @@ export function MobileToolProperties({ api }) {
             The template is a menu (switch template); it is the one item
             that gives way when the strip runs out of room (ellipsis). "Done"
             leaves Survey with an Undo toast; 44px finger target. */}
-        <MobileStyledSelect
-          className="mobile-pdf-properties__survey-template"
-          ariaLabel="Survey template"
-          leading={<Icon name="survey" size={14} color="var(--accent)" />}
-          value={survey.templateId || ''}
-          placeholder={survey.templateName || 'Survey'}
-          options={(survey.templates || []).map((template) => ({ value: template.id, label: template.name }))}
-          onChange={(value) => survey.onSelectTemplate?.(value)}
-        />
+        {/* From 15 templates (lead decision 2026-10-13, long lists) the menu
+            is the phone's list sheet - "Find a template" and the 3 most
+            recently used on top - like the desktop template menu; the trigger
+            looks the same. */}
+        {onOpenSurveyList && (survey.templates || []).length >= SURVEY_LIST_SEARCH_FROM ? (
+          <div className="mobile-styled-select mobile-pdf-properties__survey-template">
+            <button
+              type="button"
+              className="mobile-styled-select__trigger"
+              aria-haspopup="dialog"
+              aria-label={`Survey template: ${survey.templateName || 'Survey'}`}
+              data-survey-template-menu="sheet"
+              onClick={() => onOpenSurveyList('templates')}
+            >
+              <span className="mobile-styled-select__preview" aria-hidden="true"><Icon name="survey" size={14} color="var(--accent)" /></span>
+              <span>{survey.templateName || 'Survey'}</span>
+              <Icon name="chevronDown" size={9} color="currentColor" />
+            </button>
+          </div>
+        ) : (
+          <MobileStyledSelect
+            className="mobile-pdf-properties__survey-template"
+            ariaLabel="Survey template"
+            leading={<Icon name="survey" size={14} color="var(--accent)" />}
+            value={survey.templateId || ''}
+            placeholder={survey.templateName || 'Survey'}
+            options={(survey.templates || []).map((template) => ({ value: template.id, label: template.name }))}
+            onChange={(value) => survey.onSelectTemplate?.(value)}
+          />
+        )}
         <MobileStyledSelect
           className="mobile-pdf-properties__survey-module"
           ariaLabel="Survey module"
@@ -2603,6 +2632,9 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
   const [openCategory, setOpenCategory] = useState(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [presenceOpen, setPresenceOpen] = useState(false);
+  // Phone survey round (2026-10-13): the long-list sheet ('categories' |
+  // 'entities' | 'templates') - MobileSurveyRail.jsx.
+  const [surveyListKind, setSurveyListKind] = useState(null);
   const [syncDetailsOpen, setSyncDetailsOpen] = useState(false);
   const [syncDetailsPosition, setSyncDetailsPosition] = useState(null);
   const [hasTouchPointer, setHasTouchPointer] = useState(false);
@@ -2687,9 +2719,9 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
   const presenceCount = Math.max(presenceUsers.length, 1);
 
   useEffect(() => {
-    onAuxPanelStateChange?.(presenceOpen ? 'users' : null);
+    onAuxPanelStateChange?.(presenceOpen ? 'users' : (surveyListKind ? 'survey-list' : null));
     return () => onAuxPanelStateChange?.(null);
-  }, [onAuxPanelStateChange, presenceOpen]);
+  }, [onAuxPanelStateChange, presenceOpen, surveyListKind]);
 
   // Another panel was opened (the dock stays usable under this sheet since
   // 2026-10-01): slide the Active users sheet away so only one sheet is up.
@@ -2715,6 +2747,29 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
   useRailGroupMotion({
     wrap: groupToolsEl, box: groupBoxEl, slot: groupSlotEl, layer: groupGhostLayerEl, groupKey: railGroupKey, glyphPx: SUBTOOL_GLYPH,
   });
+
+  // Phone survey round (2026-10-13): the survey block of the rail - the
+  // marker-shape chip, then the category and entity disc columns, each long
+  // one ending in an "All" disc (MobileSurveyRail.jsx). How many discs each
+  // column draws is the desktop count rule, fitted to the rail's height.
+  const surveyToolbar = bottomToolbarApi?.surveyToolbar || null;
+  const surveyRailOn = Boolean(bottomToolbarApi?.showSurveyPanel && surveyToolbar && !bottomToolbarApi?.regionEditing);
+  const surveyCategories = surveyRailOn ? (surveyToolbar.categories || []) : [];
+  const surveyEntities = surveyRailOn ? (surveyToolbar.entities || []) : [];
+  const [railMainEl, setRailMainEl] = useState(null);
+  const [surveyAnchorEl, setSurveyAnchorEl] = useState(null);
+  const surveySlots = useMobileSurveyRailSlots({
+    mainEl: railMainEl,
+    anchorEl: surveyAnchorEl,
+    groupOpen: Boolean(railGroupKey),
+    bothColumns: surveyCategories.length > 0 && surveyEntities.length > 0,
+  });
+  const surveyPlan = planPhoneSurveyRail({
+    categoryCount: surveyCategories.length,
+    entityCount: surveyEntities.length,
+    slots: surveySlots,
+  });
+  const markerArmed = activeTool === 'survey-marker';
 
   const selectTool = (toolId) => {
     bottomToolbarApi?.setActiveTool?.(toolId);
@@ -2774,7 +2829,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
         }}
       />
       <aside className="mobile-pdf-tools" aria-label="Document tools">
-        <div className="mobile-pdf-tools__main">
+        <div ref={setRailMainEl} className="mobile-pdf-tools__main">
           <RailButton active={activeTool === 'pan'} icon="pan" label="Pan" data-tool-switch="true" onClick={() => { setOpenCategory(null); selectTool('pan'); }} />
           {/* PASS 7 (board 7, owner ruling 2026-09-22): Select is a PLAIN rail
               chip, the same 28px square as Pan and the group buttons. Tapping it
@@ -2884,58 +2939,47 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
               <div ref={setGroupGhostLayerEl} className="mobile-pdf-tools__group-ghosts" data-loadout-ghost-layer="true" aria-hidden="true" />
             </div>
           </div>
-          {bottomToolbarApi?.showSurveyPanel
-            && bottomToolbarApi?.surveyToolbar
-            && !bottomToolbarApi?.regionEditing
-            && !!bottomToolbarApi.surveyToolbar.categories?.length && (
+          {surveyRailOn && (
             <>
               <div className="mobile-pdf-tools__divider is-short" />
-              <div className="mobile-pdf-tools__survey-categories" aria-label="Survey categories">
-                {bottomToolbarApi.surveyToolbar.categories.map((category) => (
-                  <button
-                    type="button"
-                    key={category.id}
-                    className={bottomToolbarApi.surveyToolbar.selectedCategoryId === category.id && activeTool === 'survey-marker' ? 'is-active' : ''}
-                    aria-label={`Survey category ${category.name || 'Untitled Category'}`}
-                    title={category.name || 'Untitled Category'}
-                    onClick={() => toggleSurveyPick(bottomToolbarApi.surveyToolbar.selectedCategoryId === category.id, () => bottomToolbarApi.surveyToolbar.onSelectCategory?.(category.id))}
-                  >
-                    {categoryGlyph(category.name)}
-                  </button>
-                ))}
-              </div>
+              <MobileMarkerShapeChip armed={markerArmed} onArm={() => surveyToolbar.onArmMarker?.()} glyph={RAIL_GLYPH} />
             </>
           )}
-          {bottomToolbarApi?.showSurveyPanel
-            && bottomToolbarApi?.surveyToolbar
-            && !bottomToolbarApi?.regionEditing
-            && !!bottomToolbarApi.surveyToolbar.entities?.length && (
+          {surveyRailOn && surveyCategories.length > 0 && (
+            <MobileSurveyCategoryColumn
+              toolbar={surveyToolbar}
+              armed={markerArmed}
+              max={surveyPlan.categoryMax}
+              columnRef={setSurveyAnchorEl}
+              allOpen={surveyListKind === 'categories'}
+              onOpenAll={() => { setPresenceOpen(false); setMoreOpen(false); setSurveyListKind('categories'); }}
+              onTapCategory={(category) => toggleSurveyPick(
+                surveyToolbar.selectedCategoryId === category.id,
+                () => surveyToolbar.onSelectCategory?.(category.id),
+              )}
+            />
+          )}
+          {surveyRailOn && surveyEntities.length > 0 && (
             <>
-              <div className="mobile-pdf-tools__divider is-short" />
-              <div className="mobile-pdf-tools__survey-entities" aria-label="Survey entities">
-                {bottomToolbarApi.surveyToolbar.entities.map((entity) => (
-                  <button
-                    type="button"
-                    key={entity.id}
-                    className={bottomToolbarApi.surveyToolbar.selectedEntityId === entity.id && activeTool === 'survey-marker' ? 'is-active' : ''}
-                    aria-label={`Survey entity ${entity.name || 'Untitled Entity'}`}
-                    title={entity.name || 'Untitled Entity'}
-                    onClick={() => {
-                      // Survey audit P1-3: a second tap on the picked entity
-                      // drops just the entity while a category is armed (it
-                      // used to disarm the whole tool).
-                      const toolbar = bottomToolbarApi.surveyToolbar;
-                      if (toolbar.selectedEntityId === entity.id && toolbar.selectedCategoryId && activeTool === 'survey-marker') {
-                        toolbar.onSelectEntity?.(null);
-                        return;
-                      }
-                      toggleSurveyPick(toolbar.selectedEntityId === entity.id, () => toolbar.onSelectEntity?.(entity.id));
-                    }}
-                  >
-                    <span style={{ background: entity.color || 'var(--border-strong)' }} />
-                  </button>
-                ))}
-              </div>
+              {surveyCategories.length > 0 && <div className="mobile-pdf-tools__divider is-short" />}
+              <MobileSurveyEntityColumn
+                toolbar={surveyToolbar}
+                armed={markerArmed}
+                max={surveyPlan.entityMax}
+                columnRef={surveyCategories.length > 0 ? undefined : setSurveyAnchorEl}
+                allOpen={surveyListKind === 'entities'}
+                onOpenAll={() => { setPresenceOpen(false); setMoreOpen(false); setSurveyListKind('entities'); }}
+                onTapEntity={(entity) => {
+                  // Survey audit P1-3: a second tap on the picked entity
+                  // drops just the entity while a category is armed (it
+                  // used to disarm the whole tool).
+                  if (surveyToolbar.selectedEntityId === entity.id && surveyToolbar.selectedCategoryId && markerArmed) {
+                    surveyToolbar.onSelectEntity?.(null);
+                    return;
+                  }
+                  toggleSurveyPick(surveyToolbar.selectedEntityId === entity.id, () => surveyToolbar.onSelectEntity?.(entity.id));
+                }}
+              />
             </>
           )}
         </div>
@@ -3150,7 +3194,17 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
           </section>
         </>
       )}
-      <MobileToolProperties api={bottomToolbarApi} />
+      <MobileSurveyAllSheet
+        kind={surveyRailOn ? surveyListKind : null}
+        toolbar={surveyToolbar}
+        armed={markerArmed}
+        closeKey={auxCloseRequestKey}
+        onClose={() => setSurveyListKind(null)}
+      />
+      <MobileToolProperties
+        api={bottomToolbarApi}
+        onOpenSurveyList={(kind) => { setPresenceOpen(false); setMoreOpen(false); setSurveyListKind(kind); }}
+      />
     </>
   );
 }

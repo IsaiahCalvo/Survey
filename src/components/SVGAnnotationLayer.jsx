@@ -2272,7 +2272,9 @@ const SVGAnnotationLayerBody = memo(({
         // A freehand Survey Marker: its box plus the stroke it was drawn with
         // (src/survey/markerShapes.js). A press that never moved draws
         // nothing — and, like the rectangle, picks the mark it landed on.
-        const markerBounds = buildStrokeMarkerBounds(points, { width: MARKER_STROKE_DEFAULT_WIDTH });
+        const markerBounds = state.passed === false
+          ? null // never passed the drag threshold: a tap
+          : buildStrokeMarkerBounds(points, { width: MARKER_STROKE_DEFAULT_WIDTH });
         if (markerBounds && typeof onSurveyMarkerCreated === 'function') {
           recordAnnotationCommit({
             surface: 'SVGAnnotationLayer',
@@ -2650,9 +2652,15 @@ const SVGAnnotationLayerBody = memo(({
       }
       markAnnotationPreviewFrame(shapeCreation.gestureId, { action });
       if (isFreehand) {
+        // A freehand Survey Marker counts as drawn once it passes the shape
+        // drag threshold (set on the ref at once, so a release in the same
+        // task sees it, and on the state so the mirror keeps it).
+        const passedNow = Boolean(draft && draft.passed === false && draft.startClient
+          && hasPassedShapeDragThreshold(draft.startClient, { x: e.clientX, y: e.clientY }, draft.pointerType));
+        if (passedNow) shapeCreationRef.current = { ...draft, passed: true };
         appendCoalescedPagePoints(e);
         liveStrokeRef.current?.push(freehandPointsRef.current);
-        setShapeCreation((prev) => (prev ? { ...prev, tick: (prev.tick || 0) + 1 } : prev));
+        setShapeCreation((prev) => (prev ? { ...prev, tick: (prev.tick || 0) + 1, ...(passedNow ? { passed: true } : {}) } : prev));
       } else {
         const point = screenToSVG(svgRef.current, e.clientX, e.clientY);
         setShapeCreation((prev) => (prev ? {
@@ -7081,8 +7089,12 @@ const SVGAnnotationLayerBody = memo(({
               });
               freehandPointsRef.current = [];
               appendCoalescedPagePoints(e.nativeEvent);
+              // A marker is an object, not ink (docs/GESTURE-CONTRACT.md D2):
+              // the press must travel past the shape drag threshold (10 px
+              // finger, 6 px mouse / pen) or it is a tap - no marker.
               setShapeCreation({
                 tool: 'survey-marker-freehand', gestureId, pointerId: e.pointerId, tick: 0, pressFallback,
+                startClient: { x: e.clientX, y: e.clientY }, pointerType: e.pointerType, passed: false,
               });
             } else if (point && markerDrawMode === 'smartFill') {
               startSmartFill(point);
