@@ -942,3 +942,59 @@
     white-space: normal;
   }
 }
+
+/* KAL-397: Settings -> Annotations. One row per setting: name and a hint on
+   the left, the switch on the right (the phone Settings pattern). */
+.annotation-prefs-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.annotation-prefs-text {
+  min-width: 0;
+}
+.annotation-prefs-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+.annotation-prefs-switch {
+  flex: 0 0 auto;
+  position: relative;
+  width: 36px;
+  height: 20px;
+  margin-top: 1px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-3, var(--panel-well));
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.annotation-prefs-switch.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.annotation-prefs-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-1);
+  transition: transform 0.15s ease;
+}
+.annotation-prefs-switch.is-on .annotation-prefs-switch-knob {
+  transform: translateX(16px);
+  background: var(--accent-text, #fff);
+}
+.annotation-prefs-switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

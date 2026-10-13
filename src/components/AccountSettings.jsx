@@ -21,6 +21,7 @@ import { passwordMeetsRequirements } from './authFlow';
 import TurnstileWidget, { TURNSTILE_ENABLED } from './TurnstileWidget';
 import Icon from '../Icons';
 import CrashReportsPanel from './CrashReportsPanel';
+import AnnotationPreferencesPanel from './AnnotationPreferencesPanel';
 import {
   buildBillingReturnUrl,
   canUnlinkProvider,
@@ -451,6 +452,15 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                   tab still opens the same Manage subscription content, which keeps
                   its own longer label on the sub-tab inside. */}
               Subscription
+            </button>
+            {/* KAL-397 (F19): Acrobat's Preferences -> Annotations. */}
+            <button
+              onClick={() => setActiveTab('annotations')}
+              className={`account-sidebar-btn ${activeTab === 'annotations' ? 'active' : ''}`}
+              role="tab"
+              aria-selected={activeTab === 'annotations'}
+            >
+              Annotations
             </button>
             {/* Crash hunt 2026-10-07: this device's crash notes, to copy to us. */}
             <button
@@ -1027,6 +1037,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                 </section>
               </>
             )}
+
+            {activeTab === 'annotations' && <AnnotationPreferencesPanel />}
 
             {activeTab === 'crash-reports' && <CrashReportsPanel />}
 
