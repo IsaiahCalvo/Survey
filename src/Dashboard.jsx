@@ -515,6 +515,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     onLibraryUserChange?.(selectedProjectId ? null : (user?.id || null));
   }, [supabaseDocuments]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // An EMPTY library is a loaded library too (Codex, #817): the list above
+  // does not change when the signed-in user's load returns no documents, so
+  // stamp when that user's first load finishes. initialLoading is keyed by
+  // user, so when it is false the list is the current user's.
+  useEffect(() => {
+    if (documentsInitialLoading || selectedProjectId) return;
+    onLibraryUserChange?.(user?.id || null);
+  }, [documentsInitialLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     try { localStorage.setItem('dashboardViewMode', viewMode); } catch { }
   }, [viewMode]);

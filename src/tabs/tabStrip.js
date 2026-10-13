@@ -239,7 +239,10 @@ export function createTabSessionController(getStorage) {
     restore({ enabled = true, userId, documents, documentsUserId, tabs, onRestore }) {
       noteUser(userId, tabs);
       if (!enabled || !userId || restoredFor === userId) return null;
-      if (documentsUserId !== userId || !libraryHasLoaded(documents)) return null;
+      // The stamp proves this user's library load finished, even when it
+      // returned no documents (Codex, #817: an empty library must still
+      // restore - skipping everything - so the stale session is cleared).
+      if (documentsUserId !== userId) return null;
       restoredFor = userId;
       lastWritten = null;
       skipWrite = false;

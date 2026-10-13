@@ -193,7 +193,8 @@ test('account switch without a reload: restore waits for the new library and nev
 
   // A signs in; A's library lands; A's tab comes back.
   let tabs = [home];
-  session.restore({ userId: 'user-a', documents: [], documentsUserId: 'user-a', tabs, onRestore });
+  // (Before A's load finishes the library carries no owner stamp.)
+  session.restore({ userId: 'user-a', documents: [], documentsUserId: null, tabs, onRestore });
   assert.equal(session.save({ userId: 'user-a', tabs, activeTabId: HOME }), false, 'nothing written before the restore');
   session.restore({ userId: 'user-a', documents: libraryA, documentsUserId: 'user-a', tabs, onRestore });
   assert.deepEqual(restores, [['doc-1']]);
@@ -245,4 +246,22 @@ test('the open-tabs restore only runs against the whole library, never one proje
   // and the next save overwrote the session with the shortened set.
   const dashboard = readFileSync(new URL('../src/Dashboard.jsx', import.meta.url), 'utf8');
   assert.match(dashboard, /onLibraryUserChange\?\.\(selectedProjectId \? null : \(user\?\.id \|\| null\)\)/);
+});
+
+test('an empty library that finished loading still restores (skipping all) and clears the stale session', () => {
+  // Codex (#817): after archiving the last document the load returns zero
+  // rows; restore must still complete so the old session is not replayed later.
+  const storage = memoryStorage();
+  writeTabSession(storage, 'user-a', serializeTabSession([home, cloud(1)], 't1'));
+  const session = createTabSessionController(() => storage);
+  const restores = [];
+  const plan = session.restore({ userId: 'user-a', documents: [], documentsUserId: 'user-a', tabs: [home], onRestore: (p) => restores.push(p) });
+  assert.ok(plan, 'restore completed');
+  assert.deepEqual(plan.rows, []);
+  assert.deepEqual(restores, []);
+  assert.equal(session.save({ userId: 'user-a', tabs: [home], activeTabId: HOME }), true, 'save runs again');
+  assert.deepEqual(readTabSession(storage, 'user-a')?.tabs ?? [], []);
+  // The document coming back later does not reopen a tab.
+  assert.equal(session.restore({ userId: 'user-a', documents: [{ id: 'doc-1', name: 'Doc 1.pdf' }], documentsUserId: 'user-a', tabs: [home], onRestore: (p) => restores.push(p) }), null);
+  assert.deepEqual(restores, []);
 });
