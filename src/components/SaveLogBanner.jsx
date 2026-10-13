@@ -4,6 +4,7 @@ import { buildLogPreamble } from '../utils/logPreamble';
 import { sanitizeConsoleLogText } from '../utils/consoleLogFilter';
 import Spinner from './Spinner';
 import Icon from '../Icons';
+import { keyboardControlProps } from '../utils/keyboardActivation.js';
 
 // UX 2026-04-22: Evolution of the old Save Log toast. When the user triggers
 // Save Log, a banner slides in from the LEFT with a 5-second progress bar
@@ -581,6 +582,7 @@ export default function SaveLogBanner() {
               cursor: result.url ? 'pointer' : 'default'
             }}
             title={result.url ? 'Click to open on GitHub' : ''}
+            {...(result.url ? keyboardControlProps(null, { role: 'link' }) : {})}
           >
             <span aria-hidden="true" style={{ color: colors.accent, display: 'inline-flex' }}>
               {isError ? (

@@ -28,6 +28,7 @@ import PdfPageThumb from './PdfPageThumb';
 import QuietLoading from '../components/QuietLoading';
 import { useStorage } from '../hooks/useDatabase';
 import { showToast } from '../utils/toast';
+import { keyboardControlProps } from '../utils/keyboardActivation.js';
 import { DELETE_FOREVER_COPY } from '../services/archiveContract';
 import {
   ARCHIVE_FILTERS,
@@ -196,6 +197,7 @@ export default function ArchiveScreen({
   const headerCell = (key, label, extra = {}) => (
     <span
       onClick={() => onHeaderClick(key)}
+      {...keyboardControlProps()}
       style={{
         cursor: 'pointer', userSelect: 'none',
         color: sortKey === key ? 'var(--bone-100)' : 'inherit',

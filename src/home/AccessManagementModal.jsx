@@ -16,6 +16,7 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import ShareModal from './ShareModal';
+import useModalFocusTrap from './useModalFocusTrap';
 import {
   getDocumentCollaborators,
   updateCollaboratorRole,
@@ -88,28 +89,20 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [linksOpen, setLinksOpen] = useState(false);
-  const previouslyFocusedRef = useRef(null);
+  const cardRef = useRef(null);
+  const closeRef = useRef(null);
 
-  // Accessibility: Escape closes the modal, and focus returns to whatever
-  // triggered it once it closes (minimal per-modal patch, no shared modal
-  // primitive/focus trap). Skipped while the nested ShareModal (invite
-  // popup) is open so Escape closes that one first.
-  useEffect(() => {
-    if (!open) return undefined;
-    previouslyFocusedRef.current = document.activeElement;
-    const handleKey = (e) => {
-      if (e.key === 'Escape' && !inviteOpen) {
-        e.stopPropagation();
-        onClose?.();
-      }
-    };
-    window.addEventListener('keydown', handleKey, true);
-    return () => {
-      window.removeEventListener('keydown', handleKey, true);
-      previouslyFocusedRef.current?.focus?.();
-      previouslyFocusedRef.current = null;
-    };
-  }, [open, onClose, inviteOpen]);
+  // Accessibility (KAL-66): the same trap the nested Invite dialog
+  // (ShareModal) uses, so the two stack. Tab and Shift+Tab stay inside this
+  // dialog, Escape closes it, focus starts on Close (as in ShareModal) and
+  // returns to whatever opened it. While the Invite dialog is open it sits on
+  // top: it owns Tab and Escape, and Escape closes only it.
+  useModalFocusTrap({
+    active: open,
+    containerRef: cardRef,
+    initialFocusRef: closeRef,
+    onClose,
+  });
 
   const refresh = useCallback(async () => {
     if (!documentId) { setMembers([]); setInvites([]); return; }
@@ -239,7 +232,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
   return (
     <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: C.scrim, backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1300, fontFamily: 'var(--font-ui)' }}>
-        <div onClick={(e) => e.stopPropagation()} style={{ width: 620, maxWidth: '94vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '88vh' }}>
+        <div ref={cardRef} role="dialog" aria-modal="true" aria-label={labelForKind(kind)} tabIndex={-1} onClick={(e) => e.stopPropagation()} style={{ width: 620, maxWidth: '94vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '88vh' }}>
           <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${C.rule}`, display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ width: 3, height: 30, background: C.gold, borderRadius: 2, flex: 'none', marginRight: 10 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -247,7 +240,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
               <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{documentName}</div>
             </div>
             <button onClick={() => setInviteOpen(true)} data-kal31-invite-btn="true" className="hub-btn hub-btn--primary">Invite</button>
-            <button onClick={onClose} aria-label="Close" {...tip('Close')} className="hub-icon-btn"><Icon name="close" size={13} /></button>
+            <button ref={closeRef} onClick={onClose} aria-label="Close" {...tip('Close')} className="hub-icon-btn"><Icon name="close" size={13} /></button>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 18px 6px', borderBottom: `1px solid ${C.rule}`, fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600 }}>

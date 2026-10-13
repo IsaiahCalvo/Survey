@@ -34,6 +34,7 @@ import {
   selectAllCheckState,
   selectionModeFromEvent,
 } from './documentSelection.js';
+import { keyboardControlProps } from '../utils/keyboardActivation.js';
 
 const ledgerHeader = {
   background: 'var(--ink-700)',
@@ -729,10 +730,10 @@ export default function DocumentsLedger({
                   )}
                 </span>
                 <span></span>
-                <span onClick={() => onHeaderClick('name')} style={{ padding: '0 14px', display: 'flex', alignItems: 'center', cursor: 'pointer', userSelect: 'none', color: sortKey === 'name' ? 'var(--bone-100)' : 'inherit' }}>File{arrow('name')}</span>
-                <span onClick={() => onHeaderClick('project')} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'project' ? 'var(--bone-100)' : 'inherit' }}>Project{arrow('project')}</span>
-                <span onClick={() => onHeaderClick('edited')} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'edited' ? 'var(--bone-100)' : 'inherit' }}>Last edited{arrow('edited')}</span>
-                <span onClick={() => onHeaderClick('size')} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'size' ? 'var(--bone-100)' : 'inherit' }}>Size{arrow('size')}</span>
+                <span onClick={() => onHeaderClick('name')} {...keyboardControlProps()} style={{ padding: '0 14px', display: 'flex', alignItems: 'center', cursor: 'pointer', userSelect: 'none', color: sortKey === 'name' ? 'var(--bone-100)' : 'inherit' }}>File{arrow('name')}</span>
+                <span onClick={() => onHeaderClick('project')} {...keyboardControlProps()} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'project' ? 'var(--bone-100)' : 'inherit' }}>Project{arrow('project')}</span>
+                <span onClick={() => onHeaderClick('edited')} {...keyboardControlProps()} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'edited' ? 'var(--bone-100)' : 'inherit' }}>Last edited{arrow('edited')}</span>
+                <span onClick={() => onHeaderClick('size')} {...keyboardControlProps()} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'size' ? 'var(--bone-100)' : 'inherit' }}>Size{arrow('size')}</span>
                 <span></span>
               </div>
               {docs.length === 0 && (
@@ -771,6 +772,7 @@ export default function DocumentsLedger({
                     // Shift/Ctrl-click must not paint a text selection across rows.
                     onMouseDown={(event) => { if (event.shiftKey || event.metaKey || event.ctrlKey) event.preventDefault(); }}
                     onClick={(event) => onDesktopRowClick(event, d)}
+                    {...keyboardControlProps()}
                     onContextMenu={(event) => onDesktopRowContextMenu(event, d)}
                     onDoubleClick={(event) => {
                       if (docSelectMode || event.shiftKey || event.metaKey || event.ctrlKey) return;

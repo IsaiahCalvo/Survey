@@ -37,6 +37,7 @@ import {
 import { CALM_LIST_AUTO_SCROLL } from '../reorder/dragAutoScroll.js';
 import { useTooltip } from '../components/Tooltip';
 import SectionIconButton, { SectionIconActions } from '../components/SectionIconButton.jsx';
+import { keyboardControlProps } from '../utils/keyboardActivation.js';
 
 // The one interface font (tokens.css --font-ui, owner 2026-10-02).
 const FONT_FAMILY = 'var(--font-ui)';
@@ -295,6 +296,7 @@ const BookmarkTreeRow = ({
         // The app's one picked-up look (states.css [data-drag-lifted], owner
         // 2026-10-01): solid raised surface, soft shadow, no inner block.
         data-drag-lifted={isClone || isActiveRow ? '' : undefined}
+        {...(isClone ? {} : keyboardControlProps(null, { enterOnly: true }))}
         onClick={() => {
           if (isClone || isEditMode) return;
           onSelect?.(item.id);

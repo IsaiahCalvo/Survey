@@ -42,6 +42,7 @@ import { isPhoneLayout } from '../utils/layoutMode.js';
 import useFileDropZone from '../hooks/useFileDropZone';
 import FileDropOverlay from '../components/FileDropOverlay';
 import { resolveProjectDropTarget } from '../utils/fileDrop.js';
+import { keyboardControlProps } from '../utils/keyboardActivation.js';
 
 /* Literal palette — used by the portal popups, which render outside the
    `.survey-hub` root and therefore cannot inherit its CSS variables. */
@@ -902,6 +903,7 @@ export default function ProjectsFolderTree({
         data-document-id={f.id}
         className={`projects-mobile-file-row ${dragHandle ? 'reorderable' : ''}${fileSelect && isChecked ? ' is-selected' : ''}`}
         onClick={() => { if (fileSelect) { toggleFileSel(f.id); return; } onOpenDocument && onOpenDocument(f); }}
+        {...keyboardControlProps()}
       >
         {dragHandle}
         <span className="projects-mobile-file-icon"><Icon name="doc" size={15} contentType="document" /></span>
@@ -912,6 +914,8 @@ export default function ProjectsFolderTree({
         {fileSelect ? (
           <span
             onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}
+            {...keyboardControlProps(null, { role: 'checkbox', checked: isChecked })}
+            aria-label={`Select ${f.name}`}
             className={`projects-mobile-check ${isChecked ? 'checked' : ''}`}
           >
             {isChecked ? <Icon name="check" size={11} color="var(--accent-text)" /> : null}
@@ -1016,6 +1020,7 @@ export default function ProjectsFolderTree({
                     data-drag-rearrange-row
                     data-project-id={p.id}
                     onClick={() => { if (jobsEdit) toggleProjSel(p.id); else setOpenId(p.id); }}
+                    {...keyboardControlProps()}
                     style={{
                       display: 'grid',
                       gridTemplateColumns: '28px 1fr auto',
@@ -1063,6 +1068,8 @@ export default function ProjectsFolderTree({
                          checked stays gold and 1.4px is unchanged. */
                       <span
                         onClick={(e) => { e.stopPropagation(); toggleProjSel(p.id); }}
+                        {...keyboardControlProps(null, { role: 'checkbox', checked: isSel })}
+                        aria-label={`Select ${p.name}`}
                         data-drag-keep-fill style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--gold)' : 'var(--border-strong)'}`, background: isSel ? 'var(--gold)' : 'transparent', borderRadius: 2, padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 4 }}
                       >
                         {isSel && <Icon name="check" size={10} color="var(--accent-text)" />}
@@ -1198,6 +1205,7 @@ export default function ProjectsFolderTree({
                             data-drag-rearrange-row
                             data-document-id={f.id}
                             onClick={() => { if (fileSelect) { toggleFileSel(f.id); return; } onOpenDocument && onOpenDocument(f); }}
+                            {...keyboardControlProps()}
                             style={{
                               // UX 2026-09-17 (owner ruling): a ticked row lifts a
                               // surface step, never a warm gold wash.
@@ -1236,6 +1244,8 @@ export default function ProjectsFolderTree({
                             {fileSelect ? (
                               <span
                                 onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}
+                                {...keyboardControlProps(null, { role: 'checkbox', checked: isChecked })}
+                                aria-label={`Select ${f.name}`}
                                 style={{ width: 14, height: 14, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--border-strong)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
                               >
                                 {isChecked && <Icon name="check" size={10} color="var(--accent-text)" />}
@@ -1709,6 +1719,7 @@ export default function ProjectsFolderTree({
               key={`mobile-project-${p.id}`}
               className={`mobile-project-card${jobsEdit && isSel ? ' is-selected' : ''}${isOpen ? ' is-open' : ''}`}
               onClick={() => { if (jobsEdit) toggleProjSel(p.id); else setOpenId(p.id); }}
+              {...keyboardControlProps()}
             >
               <div style={{ minWidth: 0 }}>
                 <div className="mobile-card-title">{p.name}</div>
@@ -1724,6 +1735,8 @@ export default function ProjectsFolderTree({
               {jobsEdit ? (
                 <span
                   onClick={(e) => { e.stopPropagation(); toggleProjSel(p.id); }}
+                  {...keyboardControlProps(null, { role: 'checkbox', checked: isSel })}
+                  aria-label={`Select ${p.name}`}
                   style={{ width: 16, height: 16, border: `1.4px solid ${isSel ? 'var(--gold)' : 'var(--border-strong)'}`, background: isSel ? 'var(--gold)' : 'transparent', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
                   {isSel && <Icon name="check" size={10} color="var(--accent-text)" />}
@@ -1864,6 +1877,7 @@ export default function ProjectsFolderTree({
                   <div
                     key={`mobile-file-${f.id}`}
                     onClick={() => { if (fileSelect) { toggleFileSel(f.id); return; } onOpenDocument && onOpenDocument(f); }}
+                    {...keyboardControlProps()}
                     style={{
                       display: 'grid',
                       gridTemplateColumns: '1fr 28px',
@@ -1885,6 +1899,8 @@ export default function ProjectsFolderTree({
                     {fileSelect ? (
                       <span
                         onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}
+                        {...keyboardControlProps(null, { role: 'checkbox', checked: isChecked })}
+                        aria-label={`Select ${f.name}`}
                         style={{ width: 16, height: 16, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--border-strong)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
                       >
                         {isChecked && <Icon name="check" size={10} color="var(--accent-text)" />}
