@@ -183,6 +183,7 @@ import { buildAnnotationSelectionContextKey, didAnnotationSelectionContextChange
 import { buildBulkDeletePlan } from './lib/collab/bulkDeletePlan.js';
 import { guardLockedMarksOnSave, withCalloutLock, withMarkLock, withSurveyMarkerLock } from './utils/markLock.js';
 import { calloutToAnnotationObject, projectCalloutsIntoByPage, deriveCalloutsFromByPage, applyCalloutListToByPage } from './utils/calloutAnnotationBridge';
+import { DISCARD_LOCAL_DRAFT_EVENT } from './tabs/tabStrip.js';
 import { buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent, recordAndNotifyDocumentHistoryEvent, buildPartialEraseHistoryRow } from './services/documentHistoryService.js';
 import { buildTextSearchDiagLogSection, emitTextSearchDiag } from './utils/textSearchDiag';
 import {
@@ -319,7 +320,6 @@ import { resolveEditTypeForAnnotation } from './utils/annotationEditRoute';
 import { buildCaretAnchor, createDoubleTapTracker, editEntryKeyForHit, shouldHandleDoubleTapEntry } from './utils/doubleTapEditEntry';
 import { createMultiTouchTapGate } from './utils/multiTouchTapGate';
 import { isLiveFormWidgetTarget } from './utils/formWidgetPointerTargets.js';
-import { resolveSafeSnapshot } from './utils/safeSnapshot';
 import { canManageCollaborativeSpaces } from './utils/collaborativeSpaceAccess';
 import { combineCollaborationSyncStatus } from './utils/collaborationSyncStatus';
 import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
@@ -23125,10 +23125,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     onAnnotationsExistChange(hasAny, tabId);
   }, [annotationsByPage, onAnnotationsExistChange, tabId]);
 
+  // Set by a tab "Close without saving" (below): the local copy stays at the
+  // last Save.
+  const localDraftDiscardedRef = useRef(false);
   // Save callouts to localStorage when they change
   useEffect(() => {
     if (!pdfId) return;
     if (pdfFile?.id) return;
+    if (localDraftDiscardedRef.current) return;
     const fingerprint = getCalloutSyncFingerprint(callouts);
     if (fingerprint === lastSavedCalloutsFingerprintRef.current) return;
     lastSavedCalloutsFingerprintRef.current = fingerprint;
@@ -23147,8 +23151,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!pdfId) return;
     if (pdfFile?.id) return;
     if (pageChangeBackedUpMarksRef.current === annotationsByPage) return;
+    if (localDraftDiscardedRef.current) return;
     saveAnnotationsByPage(pdfId, annotationsByPage);
   }, [pdfId, pdfFile?.id, annotationsByPage]);
+
+  // Tab "Close without saving" (AppShell, tabs/tabStrip.js): the mirror above
+  // kept the unsaved marks in this browser, so a reload brought them back.
+  // Put the local copy back to the last Save (or what this open loaded) and
+  // stop mirroring; the tab is closing.
+  useEffect(() => {
+    if (!tabId || !pdfId || pdfFile?.id) return undefined;
+    const onDiscard = (event) => {
+      if (event?.detail?.tabId !== tabId) return;
+      localDraftDiscardedRef.current = true;
+      const saved = savedAnnotationsByPageRef.current || {};
+      saveAnnotationsByPage(pdfId, saved);
+      saveCallouts(pdfId, deriveCalloutsFromByPage(saved));
+    };
+    window.addEventListener(DISCARD_LOCAL_DRAFT_EVENT, onDiscard);
+    return () => window.removeEventListener(DISCARD_LOCAL_DRAFT_EVENT, onDiscard);
+  }, [tabId, pdfId, pdfFile?.id]);
 
   // Cloud docs still need an instant first paint on refresh. This cache is
   // display-only: Y.Doc/Supabase remains authoritative and replaces it after
@@ -23239,22 +23261,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // sidecar would let a stale blob fight the authoritative copy, so this only
       // runs for local-only documents (no cloud id), mirroring the spaces +
       // annotations guards below.
+      // KAL-275: no empty-snapshot guard here. The old one only acted for a
+      // cloud document, which never reaches this line (gated on !doc.id).
       if (data.annotations && !doc.id) {
-        const safeSurveySnapshot = resolveSafeSnapshot({
-          current: surveyMarkersRef.current || {},
-          incoming: data.annotations || {},
-          cloudBacked: !!doc.id,
-          kind: 'object-map',
-          context: 'supabase-storage-survey-markers',
-        });
-        if (safeSurveySnapshot.preserved) {
-          console.warn('[SafeSnapshot] preserved survey markers instead of applying empty storage sidecar ' + JSON.stringify({
-            documentId: doc.id || null,
-            currentCount: safeSurveySnapshot.currentCount,
-            incomingCount: safeSurveySnapshot.incomingCount,
-          }));
-        }
-        setSurveyMarkers(safeSurveySnapshot.value);
+        setSurveyMarkers(data.annotations);
       }
       // Cloud-sync documents source editable annotations from Y.Doc/Supabase
       // rows, not this older Supabase Storage survey-data JSON blob. That
@@ -23275,23 +23285,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // authoritative durable copy — same hazard the annotationsByPage/callouts
       // restores above already guard against via shouldRestoreLegacyAnnotationBlob.
       if (data.spaces && shouldRestoreLegacyAnnotationBlob) {
-        setSpaces((prev) => {
-          const safeSpacesSnapshot = resolveSafeSnapshot({
-            current: prev || [],
-            incoming: Array.isArray(data.spaces) ? data.spaces : [],
-            cloudBacked: !!doc.id,
-            kind: 'array',
-            context: 'supabase-storage-spaces',
-          });
-          if (safeSpacesSnapshot.preserved) {
-            console.warn('[SafeSnapshot] preserved spaces instead of applying empty storage sidecar ' + JSON.stringify({
-              documentId: doc.id || null,
-              currentCount: safeSpacesSnapshot.currentCount,
-              incomingCount: safeSpacesSnapshot.incomingCount,
-            }));
-          }
-          return safeSpacesSnapshot.value;
-        });
+        setSpaces(Array.isArray(data.spaces) ? data.spaces : []);
       }
       if (data.entities) setEntities(data.entities);
 
@@ -37124,6 +37118,7 @@ ${pageBlocks}
                                       isNewText: true,
                                       clickPosition: { x, y },
                                       textBoxWidth: isDrag ? dx / effectiveScale : undefined,
+                                      textBoxHeight: isDrag ? dy / effectiveScale : undefined,
                                     });
                                   }}
                                 >
@@ -37440,6 +37435,7 @@ ${pageBlocks}
                                   // selecting the whole string (Drawboard parity).
                                   caretAnchor={editingAnnotation.caretAnchor || null}
                                   textBoxWidth={editingAnnotation.textBoxWidth}
+                                  textBoxHeight={editingAnnotation.textBoxHeight}
                                   newTextStyle={mobileMode ? textStyleDefaults : null}
                                   newTextCloudIntensity={lineBorderStyle === 'cloud' ? Math.max(1, Number(cloudIntensity) || 2) : null}
                                   authorId={user?.id ?? null}

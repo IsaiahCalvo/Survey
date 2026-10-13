@@ -22,6 +22,11 @@ import TurnstileWidget, { TURNSTILE_ENABLED } from './TurnstileWidget';
 import Icon from '../Icons';
 import CrashReportsPanel from './CrashReportsPanel';
 import {
+  readTextboxAutoFit,
+  writeTextboxAutoFit,
+  subscribeAnnotationPreferences,
+} from '../utils/annotationPreferences';
+import {
   buildBillingReturnUrl,
   canUnlinkProvider,
   openDeferredExternalDestination,
@@ -53,6 +58,15 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState('general');
   const [subscriptionViewTab, setSubscriptionViewTab] = useState('manage'); // 'manage' or 'usage'
   const dialogRef = useRef(null);
+  // KAL-397 — Annotations tab. This device's setting (localStorage), read on
+  // open and kept in step with other windows; an open document reads it at
+  // the next text edit, so a change applies without a reload.
+  const [textboxAutoFit, setTextboxAutoFit] = useState(() => readTextboxAutoFit());
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    setTextboxAutoFit(readTextboxAutoFit());
+    return subscribeAnnotationPreferences(() => setTextboxAutoFit(readTextboxAutoFit()));
+  }, [isOpen]);
 
   // Accessibility: the shared focus trap keeps Tab inside the dialog, closes
   // it on Escape, and returns focus to whatever opened it.
@@ -430,6 +444,14 @@ export const AccountSettings = ({ isOpen, onClose }) => {
               aria-selected={activeTab === 'general'}
             >
               General
+            </button>
+            <button
+              onClick={() => setActiveTab('annotations')}
+              className={`account-sidebar-btn ${activeTab === 'annotations' ? 'active' : ''}`}
+              role="tab"
+              aria-selected={activeTab === 'annotations'}
+            >
+              Annotations
             </button>
             <button
               onClick={() => setActiveTab('connected-services')}
@@ -1029,6 +1051,34 @@ export const AccountSettings = ({ isOpen, onClose }) => {
             )}
 
             {activeTab === 'crash-reports' && <CrashReportsPanel />}
+
+            {/* KAL-397 — Settings -> Annotations (Acrobat's name for it). */}
+            {activeTab === 'annotations' && (
+              <section className="account-section" aria-labelledby="account-annotations-text-boxes">
+                <h3 id="account-annotations-text-boxes">Text boxes</h3>
+                <div className="account-pref-row">
+                  <div className="account-pref-copy">
+                    <div className="account-pref-title" id="account-pref-textbox-autofit">Fit text boxes to their text</div>
+                    <p className="account-pref-description">
+                      {textboxAutoFit
+                        ? 'A new box shrinks to fit what you type. Once you resize a box yourself, it keeps your size.'
+                        : 'Boxes keep the size you draw them. They only grow when the text needs more room.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="account-switch"
+                    role="switch"
+                    aria-checked={textboxAutoFit}
+                    aria-labelledby="account-pref-textbox-autofit"
+                    data-pref="textbox-auto-fit"
+                    onClick={() => setTextboxAutoFit(writeTextboxAutoFit(!textboxAutoFit))}
+                  >
+                    <span className="account-switch-track" aria-hidden="true" />
+                  </button>
+                </div>
+              </section>
+            )}
 
             {activeTab === 'connected-services' && (
               <section className="account-section">

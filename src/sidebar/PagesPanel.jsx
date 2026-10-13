@@ -31,6 +31,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { CALM_LIST_AUTO_SCROLL } from '../reorder/dragAutoScroll.js';
+import { restrictToVerticalAxis } from '../reorder/axisLock.js';
 import { pageHasTransform } from '../utils/disabledActions.js';
 import Icon from '../Icons';
 import Spinner from '../components/Spinner';
@@ -93,9 +94,6 @@ const PAGE_SLIDE = { duration: 180, easing: 'cubic-bezier(0.2, 0, 0, 1)' };
 // scrolls under a carried page, and a slot measured before that would send
 // the drop to the wrong place ("dragging during a thumbnail load").
 const PAGE_DRAG_MEASURING = { droppable: { strategy: MeasuringStrategy.WhileDragging, frequency: 100 } };
-
-// Desktop: the strip is one column, so a carried page only moves up / down.
-const restrictToVerticalAxis = ({ transform }) => ({ ...transform, x: 0 });
 
 function usePrefersReducedMotion() {
   const query = '(prefers-reduced-motion: reduce)';
@@ -1481,6 +1479,7 @@ const PagesPanel = ({
     sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0' } } }),
   }), [reducedMotion, dropGlide]);
 
+  // Desktop: the strip is one column, so a carried page only moves up / down.
   const dragModifiers = useMemo(() => (mobileMode ? [] : [restrictToVerticalAxis]), [mobileMode]);
 
   // Let go outside the strip (over the page, the toolbar, off the sheet):
