@@ -151,9 +151,13 @@ test('#812: picker upload, drag-and-drop upload and copy each land on <user>/<ro
 
   // 1) File picker (the browser file input behind the Upload button), into North block.
   await openProject(page, 'North block');
-  await page.locator('input[type="file"][accept="application/pdf"]:not([multiple])').first()
-    .setInputFiles({ name: 'landscape-sheets.pdf', mimeType: 'application/pdf', buffer: SHEETS });
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser'),
+    page.getByRole('button', { name: 'Add files', exact: true }).first().click(),
+  ]);
+  await chooser.setFiles({ name: 'landscape-sheets.pdf', mimeType: 'application/pdf', buffer: SHEETS });
   const picked = await waitFor(() => { const r = rowsNamed('landscape-sheets.pdf')[0]; return onOwnObject(r, SHEETS) ? r : null; }, { timeout: 30_000 });
+  expect(picked, 'picker upload row on its own object').toBeTruthy();
 
   // 2) Drag-and-drop onto the Documents list.
   await goHome(page, 'Documents');
@@ -162,6 +166,7 @@ test('#812: picker upload, drag-and-drop upload and copy each land on <user>/<ro
     const rows = [rowsNamed('order-pages.pdf').find((r) => r.id !== DEV_DOC), rowsNamed('mixed.pdf')[0]];
     return onOwnObject(rows[0], ORDER) && onOwnObject(rows[1], MIXED) ? rows : null;
   }, { timeout: 30_000 });
+  expect(dropped, 'dropped uploads on their own objects').toBeTruthy();
 
   // Dedupe unchanged: the same bytes dropped again land on the existing row.
   const rowsBefore = backend.table('documents').length;

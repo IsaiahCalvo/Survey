@@ -1,63 +1,9 @@
--- fork_document_file: a page edit never rewrites a stored PDF another
--- document shares (PR #812).
---
 -- Owner-approved 2026-10-13 ("Yes, use #812"). Applied to production
--- 2026-10-13 as version 20261013211724 (name fork_document_file), so
--- `supabase db push` (deploy-production.yml) never runs this file there; it is
--- the exact applied SQL, kept so a database that replays the migrations gets
--- the same function. It supersedes the owner-repoint rule of 20261013150748
--- (enforce_documents_file_path_immutable is replaced again below: a client
--- UPDATE of file_path is refused once more; only this function may move a
--- row, onto `<owner>/<document id>.pdf`).
--- Rollback: supabase/rollbacks/20261013_fork_document_file.down.sql
--- Tested against a local Postgres: tests/forkDocumentFilePostgres.test.mjs
---
--- THE PROBLEM
--- -----------
--- Uploads used to be stored at `<user>/<sha256>.pdf`. The same file uploaded
--- into two projects gives two documents rows on ONE storage object, and a page
--- edit (duplicate / delete / paste / reorder) overwrites the open document's
--- object in place, so every other document on that object silently gets the
--- edited pages. New uploads now get their own object (`<user>/<document id>.pdf`,
--- client change in the same branch), but rows already sharing an object stay
--- shared, and documents.file_path is immutable for clients
--- (20260703020000_documents_file_path_immutable.sql), so the client cannot move
--- a row onto a new object by itself.
---
--- WHAT THIS DOES
--- --------------
---   1. public.fork_document_file(p_document_id, p_content_sha256): the
---      document's OWNER moves the row onto its own object
---      `<owner id>/<document id>.pdf` (which the client has just uploaded) and
---      records the new bytes' fingerprint. The client calls it only when another
---      row still reads the old object (src/services/documentFileReplace.js).
---   2. enforce_documents_file_path_immutable() lets file_path change inside
---      that function only, via a transaction-local flag naming the one row.
---
--- WHY IT IS SAFE (the 20260703020000 IDOR stays closed)
--- ------------------------------------------------------
---   * The caller cannot choose the path. It is always
---     `<auth.uid()>/<p_document_id>.pdf`, and the caller must own the row, so
---     the row can only ever point INTO THE CALLER'S OWN storage folder — never
---     at another user's object, which was the attack 20260703020000 closed.
---   * The object must already exist in the documents bucket (the caller's
---     upload, which the storage policies only allow in their own folder), and
---     no other documents row may use that path.
---   * The flag is set with set_config(..., is_local => true) inside this
---     SECURITY DEFINER function and cleared right after its one UPDATE.
---     PostgREST gives clients no way to set arbitrary settings, so a plain
---     client UPDATE of file_path is still refused.
---   * The fingerprint must look like a SHA-256 hex digest (or be null). The
---     server cannot hash the bytes (SQL cannot read Storage), same as the
---     content_sha256 the client already sends on INSERT.
---   * If the fingerprint is already another document's in the same project
---     (unique index documents_user_project_sha_uidx) it is stored as NULL
---     instead of failing the save.
---
--- What it does not do: copy bytes (SQL cannot). Rows that share an object stay
--- shared until one of them is page-edited; that edit forks it. The old object
--- stays: the other rows still read it, and the delete flow / purge sweep
--- already remove an object only once no row points at it.
+-- 2026-10-13 as version 20261013211724, from PR #812
+-- (supabase/proposed/20261013_fork_document_file.sql there). Replaces the looser
+-- owner-repoint rule of 20261013150748: documents.file_path changes only inside
+-- fork_document_file, which picks the path itself (<owner>/<document id>.pdf).
+-- The app code that calls it arrives with #812; until then nothing calls it.
 
 CREATE OR REPLACE FUNCTION public.enforce_documents_file_path_immutable()
 RETURNS TRIGGER
