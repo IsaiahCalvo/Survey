@@ -43,12 +43,12 @@
 --     its media stays readable to the owner and comes back on restore. Nothing
 --     to do.
 --   * "Delete forever" in the app (deleteDocumentForever /
---     deleteProjectForever) now removes the purged documents' media right after
---     the purge RPC succeeds (best-effort, like the PDF unlink). Once the row is
---     gone the "document owner" half of survey_media_delete no longer matches,
---     so that client pass removes the media the purging user uploaded
---     (survey_media_read/delete let an uploader see and remove their own
---     objects); a collaborator's media in that document is left for the sweep.
+--     deleteProjectForever) removes ALL of the document's media BEFORE the
+--     purge RPC, while the purging user still owns the row (the "document
+--     owner" half of survey_media_delete stops matching once the row is gone),
+--     then purges (src/services/surveyMediaPurge.js, 2026-10-13). Paths that
+--     could not be removed are queued for a client retry; the ones only the
+--     owner could have removed then fall to the sweep.
 --   * The nightly sweep (sweep_expired_archives via the archive-purge-sweep
 --     Edge Function), account deletion (delete-account cascades documents) and
 --     any other row delete leave media behind as orphans. list_orphaned_survey_media()
