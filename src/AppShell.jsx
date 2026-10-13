@@ -185,7 +185,11 @@ function ViewerLoadFailed() {
         const last = Number(window.sessionStorage.getItem('__vite_preload_reloaded_at') || 0);
         if (Number.isFinite(last) && Date.now() - last < 20000) return;
         window.sessionStorage.setItem('__vite_preload_reloaded_at', String(Date.now()));
-      } catch { /* storage unavailable: still reload once */ }
+      } catch {
+        // Storage unavailable: the guard can't be recorded, so an automatic
+        // reload could loop. Leave it to the tap below.
+        return;
+      }
       window.location.reload();
     };
     if (window.navigator?.onLine !== false) {
@@ -1286,6 +1290,26 @@ export default function App({ devPreviewReturnTab = null }) {
 
   // Template refetch for PDFViewer
   const { refetch: refetchTemplates } = useTemplates();
+
+  // Survey media files whose removal failed earlier (offline, storage hiccup)
+  // are retried at start and whenever the device comes back online
+  // (services/surveyMediaDeleteQueue.js). Loaded lazily: it is only needed
+  // once someone is signed in.
+  const signedInUserId = user?.id || null;
+  useEffect(() => {
+    if (!signedInUserId) return undefined;
+    let stop = null;
+    let cancelled = false;
+    import('./services/surveyMediaDeleteQueue')
+      .then(({ startSurveyMediaDeleteRetry }) => {
+        if (!cancelled) stop = startSurveyMediaDeleteRetry(signedInUserId);
+      })
+      .catch(() => { /* retried on a later start */ });
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
+  }, [signedInUserId]);
 
   // Clean up any old localStorage data that might be causing issues
   useEffect(() => {
