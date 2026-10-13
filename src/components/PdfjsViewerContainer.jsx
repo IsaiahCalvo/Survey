@@ -3677,8 +3677,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       });
       if (route !== 'pan') return;
       // A finger only arrives here from the pencil gate on the pointer-driven
-      // surface; the phone/tablet surface pans fingers in its touch handlers.
-      if (event.pointerType === 'touch' && el.getAttribute('data-mobile-pdf-surface') === 'true') return;
+      // surface; a touch surface (phone, tablet, touch laptop - the touch
+      // handlers below, which also reject palms) pans fingers itself. Not
+      // data-mobile-pdf-surface: since layout detection that is the phone
+      // LAYOUT only, and an iPad's palm in Pencil-only mode panned here.
+      if (event.pointerType === 'touch' && el.getAttribute('data-touch-pdf-surface') === 'true') return;
       const middle = isMiddlePress(event);
       // Pan owns blank document space, never native controls layered over it.
       // Preventing pointerdown on a PDF form widget/link suppresses its focus,

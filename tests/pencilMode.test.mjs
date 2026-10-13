@@ -201,6 +201,14 @@ test('the viewer wires the rules in (source contract)', async () => {
   assert.match(src, /addEventListener\('auxclick', stopMiddleDefault/, 'no middle-click link open');
   assert.match(src, /resolveTouchStartRoute\(\{/, 'phone touchstart routes through the shared rule');
   assert.match(src, /mode: 'ignore'/, 'a resting finger is set aside while the pen writes');
+  // Batch-5 merge (layout detection x Pencil-only): the pointer pan leaves
+  // fingers to the touch handlers on EVERY touch surface (iPad, touch laptop
+  // in the desktop layout too), keyed on the attribute the touch handlers
+  // follow - not the phone-layout one, or a tablet palm pans in Pencil-only.
+  assert.match(src, /event\.pointerType === 'touch' && el\.getAttribute\('data-touch-pdf-surface'\) === 'true'\) return;/,
+    'gated fingers on a touch surface are left to the touch handlers');
+  assert.match(src, /data-touch-pdf-surface=\{touchSurface \? 'true' : 'false'\}/);
+  assert.match(src, /if \(!el \|\| !touchSurface\) return undefined;/, 'the touch handlers follow touchSurface');
   const shell = await readFile(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
   const phone = await readFile(new URL('../src/mobile/MobilePdfViewerChrome.jsx', import.meta.url), 'utf8');
   assert.match(shell, /<PencilModeControl\s+surface="desktop"/);

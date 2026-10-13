@@ -67,11 +67,11 @@ async function openViewer(browser, { kind, pdf = SPIKE, penSeen = false }) {
   const page = await context.newPage();
   const cdp = await context.newCDPSession(page);
   await page.goto(`/${phone ? 'mobile' : ''}?testPdf=${encodeURIComponent(pdf)}&surveyTemplateWorkflowE2E=1${phone ? PHONE_QS : ''}`);
-  await expect(page.locator(`[data-mobile-pdf-surface="${touch}"] .survey-pdfjs-page-div`).first()).toBeVisible({ timeout: 600_000 });
+  await expect(page.locator(`[data-touch-pdf-surface="${touch}"] .survey-pdfjs-page-div`).first()).toBeVisible({ timeout: 600_000 });
   await sleep(2500);
   await page.evaluate((surf) => {
     window.__gc = {
-      sc: () => document.querySelector(`[data-mobile-pdf-surface="${surf}"]`),
+      sc: () => document.querySelector(`[data-touch-pdf-surface="${surf}"]`),
       pos: () => { const sc = window.__gc.sc(); return { x: sc.scrollLeft, y: sc.scrollTop }; },
       marks: () => document.querySelectorAll('svg[data-svg-annotation-layer] [data-annotation-id], [data-survey-marker-id]').length,
       tool: () => {
