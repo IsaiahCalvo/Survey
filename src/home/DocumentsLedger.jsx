@@ -21,6 +21,7 @@ import { useStorage } from '../hooks/useDatabase';
 import Spinner from '../components/Spinner';
 import DismissBarrier from '../components/DismissBarrier';
 import useModalFocusTrap from './useModalFocusTrap';
+import { isPhoneLayout } from '../utils/layoutMode.js';
 
 const ledgerHeader = {
   background: 'var(--ink-700)',
@@ -37,9 +38,7 @@ const ledgerHeader = {
 const RIBBON = ['#f0883e', '#7ab7e6', '#a6e07a', '#c293e6', '#e69a7a', '#9aa3b2'];
 /* The row menu wears the shared home menu (hub.css .hub-menu / .hub-menu__item,
    owner 2026-10-02): 28px items at 12px on desktop, 44px at 15px on the phone. */
-const isPhoneWidth = () => typeof window !== 'undefined'
-  && typeof window.matchMedia === 'function'
-  && window.matchMedia('(max-width: 720px)').matches;
+const isPhoneWidth = () => isPhoneLayout();
 
 function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168 }) {
   const ref = useRef(null);
@@ -231,7 +230,7 @@ export default function DocumentsLedger({
   const selectedRaw = () => docs.filter((d) => selDocs.has(d.id)).map((d) => d.raw);
   const clearSel = () => setSelDocs(new Set());
   const showDocumentDetails = (doc) => {
-    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 720px)').matches) {
+    if (isPhoneLayout()) {
       mobileDetailOpenerRef.current = docMenu?.trigger || document.activeElement;
       setMobileDetailId(doc.id);
       return;

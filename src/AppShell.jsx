@@ -28,8 +28,9 @@ import BodyPortal from './components/BodyPortal.js';
 import AnchoredPopover from './components/AnchoredPopover';
 import ToolbarOverflowMenu from './components/ToolbarOverflowMenu';
 import useResponsiveToolbar from './hooks/useResponsiveToolbar.js';
+import usePhoneLayout from './hooks/usePhoneLayout.js';
 import useLoadoutTransition, { useDropInRow, useLeavingRow, useRowCrossfade } from './hooks/useLoadoutTransition.js';
-import { PHONE_LAYOUT_MAX_WIDTH, placeUnderOpenerAvoiding, slotDefinition, TEXT_ROW_CAPTION_ROOM, TEXT_ROW_PARTS, textRowLook, TIGHT_SPACING } from './utils/responsiveToolbar.js';
+import { placeUnderOpenerAvoiding, slotDefinition, TEXT_ROW_CAPTION_ROOM, TEXT_ROW_PARTS, textRowLook, TIGHT_SPACING } from './utils/responsiveToolbar.js';
 import { recentPressedControl, registerLightPopover } from './components/dismissRules.js';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from './utils/annotationSize';
 // The two document rails (PDFSidebar, SurveySpacesRail) load with the viewer,
@@ -758,34 +759,12 @@ export default function App({ devPreviewReturnTab = null }) {
   // input. Typing is clamped to 1-4000 (the PDF engine's zoom range).
   const [isEditingRailZoom, setIsEditingRailZoom] = useState(false);
 
-  // UX 2026-07-08 (mobile design pass): on narrow viewports (Capacitor phones,
-  // narrow browser windows) the top toolbar's absolutely-pinned clusters
-  // (undo/redo left, pan/select and tool-properties flanking the centered
-  // icons, zoom/page/fit/export right) collide and overlap. Below 720px the
-  // clusters flow inline instead and the zoom pill wraps onto its own row —
-  // same controls, stacked mobile layout per docs/design/design.md
-  // ("Adapting Other Surfaces").
-  const [isNarrowShell, setIsNarrowShell] = useState(() => (
-    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? window.matchMedia(`(max-width: ${PHONE_LAYOUT_MAX_WIDTH}px)`).matches
-      : false
-  ));
-  // Owner Test 41 (2026-10-04): the desktop rows now give ground step by step
-  // and fit every width above this switch (down to 554px with no side panel),
-  // so there is no width where the rails cover a control. The switch stays at
-  // 720px with the viewer's own touch surface (PdfjsViewerContainer) and the
-  // stylesheets' 720px phone rules; see PHONE_LAYOUT_MAX_WIDTH.
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
-    const mq = window.matchMedia(`(max-width: ${PHONE_LAYOUT_MAX_WIDTH}px)`);
-    const onChange = () => setIsNarrowShell(mq.matches);
-    if (mq.addEventListener) mq.addEventListener('change', onChange);
-    else mq.addListener(onChange);
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener('change', onChange);
-      else mq.removeListener(onChange);
-    };
-  }, []);
+  // Phone layout or desktop layout (owner 2026-10-13): the SCREEN decides —
+  // its short side under 600 CSS px is a phone, upright or sideways. Touch
+  // never decides (an iPad or a touchscreen laptop gets the desktop layout),
+  // and a desktop window dragged narrow stays desktop. One rule for the code
+  // and the stylesheets: utils/layoutMode.js.
+  const isNarrowShell = usePhoneLayout();
 
   // UX 2026-05-13: App-level bottom toolbar state. The chrome-bottom host
   // mounts with final rail dimensions as soon as a PDF tab is active; the active

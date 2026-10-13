@@ -64,8 +64,8 @@
  *   caption hangs off to the left of it. In a narrow row it gives ground in
  *   its own steps (planTextRowStep, owner Test 41).
  *
- * Below the phone breakpoint (PHONE_LAYOUT_MAX_WIDTH, 720px) the phone layout
- * takes over, as before.
+ * The phone layout is chosen by the screen, not the window (owner 2026-10-13,
+ * utils/layoutMode.js), so a desktop window keeps these rows at any width.
  * The hook that measures the DOM and applies both plans is useResponsiveToolbar.
  */
 
@@ -584,17 +584,14 @@ export function planSurveyBarStep(room, sizes = {}) {
 /** The desktop rails either side of rows 2 and 3 (48px each). */
 export const DESKTOP_RAIL_WIDTH = 48;
 
-/**
- * The phone layout takes over at or below this window width (AppShell's
- * isNarrowShell and the viewer's own mobile surface, PdfjsViewerContainer).
- * Owner Test 41 (2026-10-04): the desktop rows must never be covered above it.
- * With every step above, the narrowest desktop window whose rows still fit
- * (no side panel open) is minDesktopWindowWidth() = 554px (the tool bar sets it), well under this,
- * so there is no width at which the rails cover a control. The switch itself
- * stays at 720: below it the viewer switches to its touch surface (page gaps,
- * pinch, no trackpad overscroll), which is phone behaviour, not chrome.
+/* Owner Test 41 (2026-10-04): the desktop rows must never be covered. With
+ * every step above they fit every window from 720px up even beside an open
+ * side panel, and with no side panel down to minDesktopWindowWidth() = 554px.
+ * 720px used to be where the phone layout took over; since 2026-10-13 the
+ * screen picks the layout (utils/layoutMode.js), so a desktop window dragged
+ * narrower than 554px keeps the desktop layout and its rows can run into each
+ * other there (the owner's call: never switch a desktop to the phone layout).
  */
-export const PHONE_LAYOUT_MAX_WIDTH = 720;
 
 /**
  * The narrowest window (no side panel open) at which every desktop row fits in

@@ -37,6 +37,7 @@ import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/Sortable
 import { pickByIds } from './selectionById';
 import useMobileEdgeSwipeBack from './useMobileEdgeSwipeBack';
 import DismissBarrier from '../components/DismissBarrier';
+import { isPhoneLayout } from '../utils/layoutMode.js';
 
 /* Literal palette — used by the portal popups, which render outside the
    `.survey-hub` root and therefore cannot inherit its CSS variables. */
@@ -124,7 +125,7 @@ function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160
   // 28px on desktop, 44px at 15px on the phone, where the menu is a little
   // wider so the bigger words fit. The word "Delete" is --danger-text (the
   // label red); it used to be --danger, the fill red.
-  const phone = typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 720px)').matches;
+  const phone = isPhoneLayout();
   const menuWidth = phone ? Math.max(minWidth, 200) : minWidth;
   const estHeight = items.length * (phone ? 44 : 28) + 10;
   let top = anchorRect.bottom + 4;
