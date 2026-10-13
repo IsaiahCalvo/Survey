@@ -717,9 +717,12 @@ test('Pan tool: a press the selection grab claimed drags only the mark, and any 
   // Phone: one finger on the selection never starts a pan; a pan that the
   // grab claims later (any engine's event order) ends on the spot, no glide.
   const touchStart = source.slice(source.indexOf('const onTouchStart = (event) => {'));
-  assert.ok(touchStart.indexOf('event.touches.length === 1 && isSelectionGrabPress(event)') > 0);
-  assert.ok(touchStart.indexOf('event.touches.length === 1 && isSelectionGrabPress(event)') < touchStart.indexOf("mobileTouchRef.current = { mode: 'pan' };"));
+  // (2026-10-13, Drawboard audit C1) finger counts leave palm-sized contacts
+  // out: `touches` is withoutPalmTouches(event.touches).
+  assert.ok(touchStart.indexOf('touches.length === 1 && isSelectionGrabPress(event)') > 0);
+  assert.ok(touchStart.indexOf('touches.length === 1 && isSelectionGrabPress(event)') < touchStart.indexOf("mobileTouchRef.current = { mode: 'pan' };"));
   assert.match(source, /if \(touchState\?\.mode === 'pan' && isSelectionGrabPress\(event\)\) \{\s*panVelocityRef\.current\.reset\(\);\s*endTouchPan\(0, 0\);/);
   // Pinch is untouched: two fingers still reach startPinch.
-  assert.match(touchStart, /if \(event\.touches\.length >= 2\) \{\s*event\.stopPropagation\(\);\s*startPinch\(event\.touches\);/);
+  assert.match(touchStart, /const touches = withoutPalmTouches\(event\.touches\);/);
+  assert.match(touchStart, /if \(touches\.length >= 2\) \{\s*event\.stopPropagation\(\);\s*startPinch\(touches\);/);
 });

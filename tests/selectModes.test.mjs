@@ -399,7 +399,11 @@ test('rule 2: Select / Pan pick any mark; group tools pick their own group; the 
   for (const tool of ['polygon', 'polyline', 'text', 'counter']) assert.equal(rules.shouldShowHoverHalo(tool), true, tool);
   // the drawing surface asks the table on every press that is not on the selection
   assert.match(SVG_LAYER_SOURCE, /const press = resolvePagePress\(e\.nativeEvent, \{/);
-  assert.match(SVG_LAYER_SOURCE, /state\.pressFallback && state\.startClient[\s\S]{0,200}< CLICK_PLACE_MAX_TRAVEL_PX\)[\s\S]{0,300}applyPressFallbackRef\.current\?\.\(state\.pressFallback\)/);
+  // (2026-10-13, Drawboard audit C4) "a click" is now a press that never
+  // passed the shape drag threshold (6 px mouse/pen, 10 px touch) instead of
+  // one that travelled under 4 px.
+  assert.match(SVG_LAYER_SOURCE, /const clicked = Boolean\(state && state\.mode === 'drag' && !state\.dragging\s*&& !hasPassedShapeDragThreshold\(state\.startClient/);
+  assert.match(SVG_LAYER_SOURCE, /if \(clicked && state\.pressFallback\) \{[\s\S]{0,300}applyPressFallbackRef\.current\?\.\(state\.pressFallback\)/);
   // Pan picks and STAYS Pan; the group tools' halo comes from the same hover
   // effect, filtered by the hovered mark's group
   assert.match(PDF_VIEWER_SOURCE, /const haloByPosition = activeTool === 'pan' \|\| activeTool === 'eraser'/);

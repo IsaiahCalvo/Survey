@@ -201,10 +201,17 @@ test('a mobile tap on a widget is not preventDefaulted into a pan', () => {
   // sequence on a widget kills its focus/click/change chain outright.
   // (flickPan 2026-10-07: the head now also stops a running glide first -
   // `cancelPanInertia()` no longer marks its end, the first preventDefault does.)
+  // (2026-10-13, Drawboard audit C1) the head starts after the palm bail: a
+  // palm-sized contact is deliberately swallowed everywhere, widgets included
+  // (a resting hand must not toggle a checkbox). Fingers are what this pins.
+  const touchStartAt = containerSource.indexOf('const onTouchStart = (event) => {');
+  const palmBail = containerSource.indexOf('const touches = withoutPalmTouches(event.touches);', touchStartAt);
+  assert.ok(palmBail > touchStartAt
+    && /^\s*if \(isPalmOnlyChange\(event\)\) \{\s*event\.preventDefault\(\);\s*return;\s*\}\s*$/.test(containerSource.slice(touchStartAt + 'const onTouchStart = (event) => {'.length, palmBail)),
+    'only the palm bail may run before the widget check');
   const touchStartHead = containerSource.slice(
-    containerSource.indexOf('const onTouchStart = (event) => {'),
-    containerSource.indexOf('event.preventDefault();',
-      containerSource.indexOf('const onTouchStart = (event) => {')),
+    palmBail,
+    containerSource.indexOf('event.preventDefault();', palmBail),
   );
   assert.match(touchStartHead, /if \(isNativeInteractionTarget\(event\.target\)\) \{/,
     'a touch on a widget must reach the control, never be cancelled into a pan');

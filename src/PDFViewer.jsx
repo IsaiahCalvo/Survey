@@ -20,6 +20,7 @@ import { mergeEditOntoCurrent } from './utils/dragCommitMerge.js';
 import { countSpaceCascadeImpact, isSpaceScopedEntry, resolveSpaceCascadeScope } from './utils/spaceCascadeImpact.js';
 import { EMBEDDED_IMPORT_INCOMPLETE_KEY, EMBEDDED_IMPORT_MARKER_KEY, embeddedImportDecision, embeddedImportFailedPages, embeddedImportMarkerDecision, selectEmbeddedImportObjects } from './utils/embeddedImportGate.js';
 import { READ_ONLY_BLOCKED_KEYS } from './utils/toolShortcuts.js';
+import { resolveSpaceTap } from './utils/spaceTapToggle.js';
 import { sanitizeTemplateConfig } from './utils/templateConfig.js';
 import useSharedDocumentTemplates from './hooks/useSharedDocumentTemplates.js';
 import { migrateSidebarData } from './utils/sidebarPersistence.js';
@@ -3321,6 +3322,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       console.log(`[InteractionDiag] tool-intent @ ${Math.round(performance.now())}ms requested=${requested} from=${from}` + (gated ? ' [BLOCKED? viewer still gated: isLoadingPDF=true]' : ''));
     } catch (_e) { /* swallow */ }
     setActiveTool(next);
+  }, []);
+
+  // Drawboard audit C6: a quick Space tap (PdfjsViewerContainer -> onSpaceTap)
+  // toggles Pan and back to the tool you had; a Space hold still pans only
+  // while held. The saved tool is forgotten once another tool is picked.
+  const spaceTapSavedToolRef = useRef(null);
+  useEffect(() => {
+    if (activeTool !== 'pan') spaceTapSavedToolRef.current = null;
+  }, [activeTool]);
+  const handleSpaceTap = useCallback(() => {
+    const { nextTool, savedTool } = resolveSpaceTap({ tool: activeToolRef.current, savedTool: spaceTapSavedToolRef.current });
+    if (!nextTool) return;
+    setActiveTool(nextTool);
+    spaceTapSavedToolRef.current = savedTool;
   }, []);
 
   const [strokeColor, setStrokeColor] = useState('#ff0000');
@@ -35775,6 +35790,7 @@ ${pageBlocks}
                     initialRenderPages={PDFJS_INITIAL_RENDER_PAGES}
                     scrollDelayMs={PDFJS_SCROLL_DELAY_MS}
                     interactionMode={activeTool === 'pan' ? 'Pan' : 'TextSelection'}
+                    onSpaceTap={handleSpaceTap}
                     /* UX: mobile parity (Phase D) — a still-finger long-press on
                        the PDF surface opens the touch context menu, but ONLY
                        under the pan or select tool (demo App.tsx:1555/1579 gate
