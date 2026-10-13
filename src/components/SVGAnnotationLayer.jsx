@@ -79,7 +79,7 @@ import { HANDLE_FILL, HANDLE_RING, HANDLE_RING_INVALID, HANDLE_RADIUS, HANDLE_RA
 import { getMarkHitBandWidth, getSvgMatrixMaxScale, resolveHandleHitPadPageSize } from '../utils/handleHitPad.js';
 import { clampResizeScale } from '../utils/resizeMinimum.js';
 import { shouldAutoSelectAfterCommit } from '../utils/autoSelectAfterCommit.js';
-import { canToolGrabSelection, isSelectFamilyTool, shouldHideSelectionChrome } from '../utils/selectModes.js';
+import { canToolGrabSelection, isSelectFamilyTool, isSelectionGestureActive } from '../utils/selectModes.js';
 import { classifySelectionGrabTarget, isPageCalloutSelected, pageSelectionMarkGroups, resolvePagePress } from '../utils/toolPressRouting.js';
 import { dropStashedSelection, peekStashedSelection, stashPageSelection } from '../utils/pageSelectionPresence.js';
 import { useSelectionGrabHandoff } from '../hooks/useSelectionGrabHandoff.js';
@@ -4281,7 +4281,8 @@ const SVGAnnotationLayerBody = memo(({
       startPoint,
       originalBounds,
     };
-    setSurveyMarkerPreviewBounds(null);
+    // dragMode: the marker's own drag is a selection gesture (rule 11).
+    setSurveyMarkerPreviewBounds({ annotationId, bounds: originalBounds, dragMode: 'move' });
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (_) {}
   }, [deselectAll, isSelectTool, normalizeSurveyMarkerBounds, onSelectedCalloutIdsChange, onSurveyMarkerDoubleClick, isSurveyMarkerFamilyMember, selectedSurveyMarkerIds, familySelectionSize, startFamilyGroupMove, setSelectedSurveyMarkerId]);
 
@@ -4321,7 +4322,7 @@ const SVGAnnotationLayerBody = memo(({
         ? normalizeAngle(Math.atan2(startPoint.y - centerY, startPoint.x - centerX))
         : 0,
     };
-    setSurveyMarkerPreviewBounds({ annotationId: entry.surveyMarker.annotationId, bounds: originalBounds });
+    setSurveyMarkerPreviewBounds({ annotationId: entry.surveyMarker.annotationId, bounds: originalBounds, dragMode: surveyMarkerDragRef.current.mode });
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (_) {}
   }, [isSelectTool, normalizeSurveyMarkerBounds]);
 
@@ -4387,7 +4388,7 @@ const SVGAnnotationLayerBody = memo(({
         });
       }
     } else {
-      setSurveyMarkerPreviewBounds({ annotationId: drag.annotationId, bounds: nextBounds });
+      setSurveyMarkerPreviewBounds({ annotationId: drag.annotationId, bounds: nextBounds, dragMode: drag.mode });
     }
     return true;
   }, [onUpdateSurveyMarkerBounds, pageNumber, resizeSurveyMarkerBoundsRotated, collectSnapTargets, setSnapGuides, inverseScale]);
@@ -6803,7 +6804,11 @@ const SVGAnnotationLayerBody = memo(({
         angle: entry.bbox.angle,
       }),
     };
-    setSurveyMarkerPreviewBounds(null);
+    setSurveyMarkerPreviewBounds({
+      annotationId: entry.surveyMarker.annotationId,
+      bounds: surveyMarkerDragRef.current.originalBounds,
+      dragMode: 'move',
+    });
     try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
   };
 
@@ -6887,7 +6892,8 @@ const SVGAnnotationLayerBody = memo(({
       data-pan-interactive={selectionGrabArmed ? 'true' : undefined}
       // Drawboard rule 11: handles hide while the selection is moved,
       // resized or rotated (styles.css), and come back on release.
-      data-selection-gesture={shouldHideSelectionChrome(interactionState) ? 'true' : undefined}
+      // A Survey Marker's own drag counts too (its preview carries dragMode).
+      data-selection-gesture={isSelectionGestureActive(interactionState, surveyMarkerPreviewBounds?.dragMode) ? 'true' : undefined}
       // Owner 2026-10-04: a tool that may not grab the pick presses through
       // its handles (styles.css).
       data-selection-chrome-inert={pageHasSelection && !isSelectTool && !selectionGrabbableByTool ? 'true' : undefined}

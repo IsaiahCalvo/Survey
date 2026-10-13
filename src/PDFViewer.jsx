@@ -183,6 +183,7 @@ import { buildAnnotationSelectionContextKey, didAnnotationSelectionContextChange
 import { buildBulkDeletePlan } from './lib/collab/bulkDeletePlan.js';
 import { guardLockedMarksOnSave, withCalloutLock, withMarkLock, withSurveyMarkerLock } from './utils/markLock.js';
 import { calloutToAnnotationObject, projectCalloutsIntoByPage, deriveCalloutsFromByPage, applyCalloutListToByPage } from './utils/calloutAnnotationBridge';
+import { DISCARD_LOCAL_DRAFT_EVENT } from './tabs/tabStrip.js';
 import { buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent, recordAndNotifyDocumentHistoryEvent, buildPartialEraseHistoryRow } from './services/documentHistoryService.js';
 import { buildTextSearchDiagLogSection, emitTextSearchDiag } from './utils/textSearchDiag';
 import {
@@ -23124,10 +23125,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     onAnnotationsExistChange(hasAny, tabId);
   }, [annotationsByPage, onAnnotationsExistChange, tabId]);
 
+  // Set by a tab "Close without saving" (below): the local copy stays at the
+  // last Save.
+  const localDraftDiscardedRef = useRef(false);
   // Save callouts to localStorage when they change
   useEffect(() => {
     if (!pdfId) return;
     if (pdfFile?.id) return;
+    if (localDraftDiscardedRef.current) return;
     const fingerprint = getCalloutSyncFingerprint(callouts);
     if (fingerprint === lastSavedCalloutsFingerprintRef.current) return;
     lastSavedCalloutsFingerprintRef.current = fingerprint;
@@ -23146,8 +23151,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!pdfId) return;
     if (pdfFile?.id) return;
     if (pageChangeBackedUpMarksRef.current === annotationsByPage) return;
+    if (localDraftDiscardedRef.current) return;
     saveAnnotationsByPage(pdfId, annotationsByPage);
   }, [pdfId, pdfFile?.id, annotationsByPage]);
+
+  // Tab "Close without saving" (AppShell, tabs/tabStrip.js): the mirror above
+  // kept the unsaved marks in this browser, so a reload brought them back.
+  // Put the local copy back to the last Save (or what this open loaded) and
+  // stop mirroring; the tab is closing.
+  useEffect(() => {
+    if (!tabId || !pdfId || pdfFile?.id) return undefined;
+    const onDiscard = (event) => {
+      if (event?.detail?.tabId !== tabId) return;
+      localDraftDiscardedRef.current = true;
+      const saved = savedAnnotationsByPageRef.current || {};
+      saveAnnotationsByPage(pdfId, saved);
+      saveCallouts(pdfId, deriveCalloutsFromByPage(saved));
+    };
+    window.addEventListener(DISCARD_LOCAL_DRAFT_EVENT, onDiscard);
+    return () => window.removeEventListener(DISCARD_LOCAL_DRAFT_EVENT, onDiscard);
+  }, [tabId, pdfId, pdfFile?.id]);
 
   // Cloud docs still need an instant first paint on refresh. This cache is
   // display-only: Y.Doc/Supabase remains authoritative and replaces it after
