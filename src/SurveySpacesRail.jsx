@@ -604,6 +604,19 @@ const SurveySpacesRail = ({
     return () => window.clearTimeout(timer);
   }, [isSurveyPanelCollapsed, mobileMode]);
   const desktopSurveyPanelShown = !isSurveyPanelCollapsed || railPanelLeaving;
+  // KAL-420 follow-up (2026-10-13): publish what this rail covers on the
+  // right, as PDFSidebar publishes --app-sidebar-width on the left, so the
+  // storage / clean-up notice (StorageFailureBanner.css) ends at the rail
+  // instead of running under it with its × out of reach. Desktop: the 48px
+  // rail, plus the 320px panel while it is drawn. Phone: nothing (the
+  // Survey sheet comes up from the bottom).
+  useEffect(() => {
+    if (typeof document === 'undefined' || !document.documentElement) return;
+    document.documentElement.style.setProperty(
+      '--app-right-rail-width',
+      mobileMode ? '0px' : `${desktopSurveyPanelShown ? 48 + 320 : 48}px`,
+    );
+  }, [mobileMode, desktopSurveyPanelShown]);
   const [openEntityDropdownId, setOpenEntityDropdownId] = useState(null);
   // The template switcher (owner 2026-10-01, "hybrid" design): the template
   // name in the panel header is a button. Phone: it swaps the category list
