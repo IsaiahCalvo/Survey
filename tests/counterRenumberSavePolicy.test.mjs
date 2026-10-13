@@ -5,6 +5,7 @@ import { renumberCounters } from '../src/utils/counterNumbering.js';
 import {
   preserveExistingCountersOnPage,
   shouldRenumberCountersForSave,
+  summarizeCounterRenumberEffect,
 } from '../src/utils/counterRenumberSavePolicy.js';
 import {
   buildFabricSyncDelta,
@@ -310,4 +311,49 @@ test('counter delete renumbering and undo/redo restore numbering', () => {
   const afterRedo = applyAnnotationHistoryAction(afterUndo, redoAction);
   renumberCounters(afterRedo);
   assert.deepEqual(afterRedo[1].objects.map((obj) => obj.data.displayNumber), [1, 2]);
+});
+
+test('shouldRenumberCountersForSave honors explicit counter source strings', () => {
+  const decision = shouldRenumberCountersForSave({
+    source: 'counter:create',
+    action: 'save',
+  });
+  assert.equal(decision.shouldRenumber, true);
+  assert.equal(decision.reason, 'counter-source-create-delete');
+
+  const unknown = shouldRenumberCountersForSave({});
+  assert.equal(unknown.shouldRenumber, false);
+  assert.equal(unknown.reason, 'unknown-save-without-counter-numbering-action');
+});
+
+test('summarizeCounterRenumberEffect reports changed and deleted counters', () => {
+  const before = {
+    1: page([counter('c1', 1, 1), counter('c2', 2, 2)]),
+  };
+  const after = {
+    1: page([
+      { ...counter('c1', 1, 9) },
+    ]),
+  };
+  const summary = summarizeCounterRenumberEffect(before, after);
+  assert.ok(summary.affectedCounterIds.includes('c1'));
+  assert.ok(summary.affectedCounterIds.includes('c2'));
+  assert.equal(summary.affectedCount, 2);
+});
+
+test('preserveExistingCountersOnPage keeps numbering for intentional counter edits', () => {
+  assert.equal(preserveExistingCountersOnPage(null, page([])), null);
+  const empty = page([]);
+  assert.equal(preserveExistingCountersOnPage(empty, null), empty);
+
+  const previousPage = page([counter('c1', 1, 1)]);
+  const nextPage = page([
+    { ...counter('c1', 1, 99), left: 50 },
+  ]);
+  const preserved = preserveExistingCountersOnPage(nextPage, previousPage, {
+    intentionalCounterChangeIds: ['c1'],
+  });
+  assert.equal(preserved.objects[0].left, 50);
+  assert.equal(preserved.objects[0].data.displayNumber, 1);
+  assert.equal(preserved.objects[0].data.seriesStart, 1);
 });

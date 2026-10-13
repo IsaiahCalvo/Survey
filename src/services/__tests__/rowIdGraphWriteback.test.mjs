@@ -538,3 +538,11 @@ test('queue storage round-trip sanity: drain mutations live under the documented
   assert.equal(queueKey(DOC), `rowIdWritebackQueue:${DOC}`);
   assert.equal(JSON.parse(storage.getItem(queueKey(DOC))).m1.newToken, TOKEN_1);
 });
+
+test('readRowIdCell and writeRowIdCellVerified reject missing required args', async () => {
+  await assert.rejects(() => readRowIdCell(null, { fileId: FILE, sheetName: 'Sheet1', rowNumber: 1 }), /missing/);
+  await assert.rejects(
+    () => writeRowIdCellVerified({}, { fileId: FILE, sheetName: 'Sheet1', rowNumber: 1, token: '' }),
+    /missing/,
+  );
+});

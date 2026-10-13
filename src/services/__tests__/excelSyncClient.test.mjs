@@ -734,4 +734,208 @@ test('readMarkerField + readExcelField map the changedFieldKey convention correc
   assert.equal(__test.readExcelField(fields, 'entity'), 'F');
   assert.equal(__test.readExcelField(fields, 'notes'), 'NT2');
   assert.equal(__test.readExcelField(fields, 'answer:c1'), 'S2');
+  assert.equal(__test.readExcelField(fields, 'unknown'), undefined);
+  assert.equal(__test.readExcelField(null, 'item'), undefined);
+});
+
+test('rpc wrappers throw without rpc and map rpc errors', async () => {
+  await assert.rejects(() => fetchSince({ supabaseClient: {} }), /rpc is required/);
+  await assert.rejects(() => ackMaterialization({ supabaseClient: {} }), /rpc is required/);
+  await assert.rejects(() => resolveMaterializationConflict({ supabaseClient: {} }), /rpc is required/);
+  await assert.rejects(() => seedSyncState({ supabaseClient: {} }), /rpc is required/);
+
+  assert.deepEqual(
+    await fetchSince({
+      supabaseClient: makeSupabaseMock({ rpcResult: { data: null, error: { message: 'fetch-down' } } }),
+      documentId: 'd',
+      templateId: 't',
+    }),
+    { ops: [], error: 'fetch-down' },
+  );
+  assert.deepEqual(
+    await resolveMaterializationConflict({
+      supabaseClient: makeSupabaseMock({ rpcResult: { data: null, error: { message: 'resolve-down' } } }),
+      documentId: 'd',
+      templateId: 't',
+      opUuid: 'op',
+      resolution: 'keep_app',
+    }),
+    { ok: false, error: 'resolve-down' },
+  );
+  assert.deepEqual(
+    await seedSyncState({
+      supabaseClient: makeSupabaseMock({ rpcResult: { data: null, error: { message: 'seed-down' } } }),
+      documentId: 'd',
+      templateId: 't',
+      workbookId: 'w',
+    }),
+    { count: 0, error: 'seed-down' },
+  );
+});
+
+test('materializeAcceptedOps validates deps; overlay creates checklistResponses; crypto UUID fallback', async () => {
+  await assert.rejects(
+    () => materializeAcceptedOps({ ops: [], getMarkers: null, writeMarker: () => {}, getMeta: () => 0, setMeta: () => {} }),
+    /getMarkers and writeMarker/,
+  );
+  await assert.rejects(
+    () => materializeAcceptedOps({
+      ops: [],
+      getMarkers: () => ({}),
+      writeMarker: () => {},
+      getMeta: null,
+      setMeta: () => {},
+    }),
+    /getMeta and setMeta/,
+  );
+
+  const marker = { name: 'Door' };
+  const next = __test.overlayChangedFields(marker, {
+    changedFieldKeys: ['answer:c9'],
+    fields: { answers: { c9: 'Y' } },
+  });
+  assert.equal(next.checklistResponses.c9.selection, 'Y');
+
+  const savedCrypto = globalThis.crypto;
+  Object.defineProperty(globalThis, 'crypto', { configurable: true, value: {} });
+  try {
+    const supabase = {
+      functions: {
+        invoke: async (_name, { body }) => ({
+          data: {
+            excelRevision: 1,
+            outcomes: [],
+            writebackJobs: [],
+            replayed: false,
+            clientChangeSetId: body.changeSet.clientChangeSetId,
+          },
+          error: null,
+        }),
+      },
+    };
+    const res = await submitChangeSet({
+      supabaseClient: supabase,
+      documentId: 'd',
+      templateId: 't',
+      workbookId: 'w',
+      syncToken: 'tok',
+    });
+    assert.match(res.clientChangeSetId || '', /^[0-9a-f-]{36}$/i);
+  } finally {
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: savedCrypto });
+  }
+});
+
+test('submitChangeSet and setRegistrationSigningId validate required deps', async () => {
+  await assert.rejects(
+    () => submitChangeSet({
+      supabaseClient: { functions: { invoke: async () => ({ data: {}, error: null }) } },
+      documentId: '',
+      templateId: 't',
+      workbookId: 'w',
+      syncToken: 'tok',
+    }),
+    /documentId, templateId, workbookId, syncToken are required/,
+  );
+  await assert.rejects(
+    () => setRegistrationSigningId({
+      supabaseClient: {},
+      documentId: 'd',
+      templateId: 't',
+      workbookId: 'w',
+      signingDocId: 's',
+    }),
+    /rpc is required/,
+  );
+});
+
+test('materializeAcceptedOps retries merge when marker mutates mid-write', async () => {
+  const markerId = 'm-race';
+  const markers = {
+    [markerId]: { name: 'Door', entityName: 'E1', note: 'n', checklistResponses: {} },
+  };
+  let reads = 0;
+  const stores = makeStores(markers);
+  const getMarkers = () => {
+    reads += 1;
+    // Second read is the post-overlay re-check — simulate a concurrent local edit.
+    if (reads === 2) {
+      return { [markerId]: { ...markers[markerId], name: 'Door-local' } };
+    }
+    return markers;
+  };
+
+  const op = opRow({
+    opUuid: 'op-race',
+    revision: 1,
+    markerId,
+    changedFieldKeys: ['entity'],
+    fields: { entity: 'E2' },
+  });
+
+  const result = await materializeAcceptedOps({
+    ops: [op],
+    getMarkers,
+    writeMarker: stores.writeMarker,
+    getMeta: stores.getMeta,
+    setMeta: stores.setMeta,
+  });
+  assert.deepEqual(result.materialized, ['op-race']);
+  assert.equal(reads >= 3, true);
+  assert.equal(stores.markers[markerId].entityName, 'E2');
+});
+
+test('detectAppVsExcelConflict falls back when fingerprinting throws; structuredCloneSafe JSON path', async () => {
+  const marker = {
+    name: 'Door',
+    entityName: 'App',
+    note: 'n',
+    checklistResponses: {},
+  };
+  const base = await baseFingerprintsFor({ item: 'Door', entity: 'Base', notes: 'n', answers: {} });
+  const op = {
+    opType: 'apply',
+    markerAnnotationId: 'm1',
+    changedFieldKeys: ['entity'],
+    fields: { entity: 'Excel' },
+    baseFingerprints: base,
+  };
+
+  const savedCrypto = globalThis.crypto;
+  Object.defineProperty(globalThis, 'crypto', {
+    configurable: true,
+    value: { ...(savedCrypto || {}), subtle: undefined },
+  });
+  try {
+    assert.equal(await __test.detectAppVsExcelConflict(marker, op), true);
+  } finally {
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: savedCrypto });
+  }
+
+  const savedClone = globalThis.structuredClone;
+  globalThis.structuredClone = () => {
+    throw new Error('clone-boom');
+  };
+  try {
+    const stores = makeStores({
+      m1: { name: 'Door', entityName: 'E1', note: 'n', checklistResponses: {} },
+    });
+    const result = await materializeAcceptedOps({
+      ops: [opRow({
+        opUuid: 'op-clone',
+        revision: 1,
+        markerId: 'm1',
+        changedFieldKeys: ['entity'],
+        fields: { entity: 'E2' },
+      })],
+      getMarkers: stores.getMarkers,
+      writeMarker: stores.writeMarker,
+      getMeta: stores.getMeta,
+      setMeta: stores.setMeta,
+    });
+    assert.deepEqual(result.materialized, ['op-clone']);
+    assert.equal(stores.markers.m1.entityName, 'E2');
+  } finally {
+    globalThis.structuredClone = savedClone;
+  }
 });

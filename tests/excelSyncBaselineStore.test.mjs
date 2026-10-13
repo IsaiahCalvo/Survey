@@ -59,3 +59,28 @@ test('save is a no-op without a usable key or hash (never throws)', () => {
   saveBaseline('doc1', 'tpl1', '', s);
   assert.equal(s._map.size, 0);
 });
+
+test('baseline store tolerates throwing storage and missing global localStorage', () => {
+  const boom = {
+    getItem() { throw new Error('denied'); },
+    setItem() { throw new Error('denied'); },
+    removeItem() { throw new Error('denied'); },
+  };
+  assert.equal(loadBaseline('doc1', 'tpl1', boom), null);
+  assert.doesNotThrow(() => saveBaseline('doc1', 'tpl1', 'h', boom));
+  assert.doesNotThrow(() => clearBaseline('doc1', 'tpl1', boom));
+
+  const original = globalThis.localStorage;
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    get() { throw new Error('blocked'); },
+  });
+  try {
+    assert.equal(loadBaseline('doc1', 'tpl1'), null);
+    assert.doesNotThrow(() => saveBaseline('doc1', 'tpl1', 'h'));
+    assert.doesNotThrow(() => clearBaseline('doc1', 'tpl1'));
+  } finally {
+    if (original === undefined) delete globalThis.localStorage;
+    else Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: original });
+  }
+});

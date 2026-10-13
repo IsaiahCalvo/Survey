@@ -102,4 +102,9 @@ test.describe('renderArrowhead (Plan 15-02 target)', async () => {
     const firstY4 = Number(s4.polygon.points.split(' ')[0].split(',')[1]);
     assert.ok(Math.abs(Math.abs(firstY4) * 2 - 12) < 1e-9, `at sw=4 expected headSize 12, derived ${Math.abs(firstY4) * 2}`);
   });
+
+  test('unknown style falls through to kind:none', () => {
+    const s = buildArrowheadRenderSpec('not-a-real-style', 10, 20, 0, '#000', 2);
+    assert.equal(s.kind, 'none');
+  });
 });

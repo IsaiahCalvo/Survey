@@ -10,6 +10,17 @@ test('counts annotation page snapshots by object count', () => {
   }, 'annotation-pages'), 3);
 });
 
+test('countSnapshotItems returns 0 for non-object non-array values', () => {
+  assert.equal(countSnapshotItems('not-a-snapshot'), 0);
+  assert.equal(countSnapshotItems(42), 0);
+  assert.equal(countSnapshotItems(null), 0);
+});
+
+test('countSnapshotItems counts array length and object keys', () => {
+  assert.equal(countSnapshotItems(['a', 'b']), 2);
+  assert.equal(countSnapshotItems({ a: 1, b: 2 }), 2);
+});
+
 test('cloud snapshots preserve last known good view when incoming data is empty and not confirmed', () => {
   const current = { a: { id: 'a' } };
   const result = resolveSafeSnapshot({

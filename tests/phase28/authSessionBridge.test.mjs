@@ -13,7 +13,7 @@
 // (Plan 28-02 owns it). Once landed, this scaffold flips automatically from skip → green.
 
 import { test } from 'node:test';
-import { strictEqual, ok, deepStrictEqual } from 'node:assert';
+import { strictEqual, ok, deepStrictEqual, throws } from 'node:assert';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -156,4 +156,30 @@ test(
       'authSessionBridge must NOT schedule any setTimeout for refresh — Supabase client owns the timer'
     );
   }
+);
+test(
+  'authSessionBridge: rejects missing auth/realtime hooks; detach swallows unsubscribe errors',
+  { skip: !existsSync(TARGET) ? 'src/lib/collab/authSessionBridge.js not yet present (Plan 28-02)' : false },
+  async () => {
+    const { attachAuthSessionBridge } = await import(TARGET);
+    throws(() => attachAuthSessionBridge({}), /onAuthStateChange unavailable/);
+    throws(
+      () => attachAuthSessionBridge({ supabase: { auth: { onAuthStateChange() {} } } }),
+      /setAuth method unavailable/,
+    );
+
+    const supabase = buildFakeSupabase();
+    supabase.auth.onAuthStateChange = (cb) => {
+      supabase.fire = (event, session) => cb(event, session);
+      return {
+        data: {
+          subscription: {
+            unsubscribe: () => { throw new Error('unsubscribe boom'); },
+          },
+        },
+      };
+    };
+    const { detach } = attachAuthSessionBridge({ supabase });
+    detach(); // must not throw
+  },
 );

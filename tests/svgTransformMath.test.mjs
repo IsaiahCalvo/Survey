@@ -4,8 +4,65 @@ import {
   snapAngleToNearest45,
   clampInverseScale,
   MAX_VISUAL_INVERSE_SCALE,
+  normalizeAngle,
+  constrainToPage,
+  getInverseScale,
+  getCursorForHandle,
+  screenToSVG,
 } from '../src/utils/svgTransformMath.js';
 
+test('normalizeAngle maps atan2 radians to Fabric degrees', () => {
+  assert.equal(normalizeAngle(0), 90);
+  assert.equal(normalizeAngle(Math.PI / 2), 180);
+  assert.equal(normalizeAngle(-Math.PI / 2), 0);
+});
+
+test('constrainToPage clamps into page bounds', () => {
+  assert.deepEqual(constrainToPage(-10, -5, 20, 10, 100, 50), { left: 0, top: 0 });
+  assert.deepEqual(constrainToPage(200, 80, 20, 10, 100, 50), { left: 80, top: 40 });
+});
+
+test('getInverseScale uses clientWidth and falls back when zero', () => {
+  assert.equal(getInverseScale({ clientWidth: 0 }, 100), 1);
+  assert.equal(getInverseScale({ clientWidth: 200 }, 100), 0.5);
+});
+
+test('getCursorForHandle rotates resize cursors and handles mtr/unknown', () => {
+  assert.equal(getCursorForHandle('mtr', 0), 'crosshair');
+  assert.equal(getCursorForHandle('unknown', 0), 'default');
+  assert.equal(getCursorForHandle('tl', 0), 'nwse-resize');
+  assert.equal(getCursorForHandle('tl', 90), 'nesw-resize');
+  assert.equal(getCursorForHandle('mr', 45), 'nwse-resize');
+});
+
+test('screenToSVG returns origin when CTM is missing and transforms with DOMPoint', () => {
+  assert.deepEqual(screenToSVG({ getScreenCTM: () => null }, 10, 20), { x: 0, y: 0 });
+
+  if (typeof globalThis.DOMPoint !== 'function') {
+    globalThis.DOMPoint = class DOMPoint {
+      constructor(x = 0, y = 0) {
+        this.x = x;
+        this.y = y;
+      }
+      matrixTransform(matrix) {
+        return { x: this.x * matrix.a + matrix.e, y: this.y * matrix.d + matrix.f };
+      }
+    };
+  }
+
+  const svg = {
+    getScreenCTM: () => ({
+      a: 2,
+      d: 2,
+      e: 10,
+      f: 20,
+      inverse() {
+        return { a: 0.5, d: 0.5, e: -5, f: -10 };
+      },
+    }),
+  };
+  assert.deepEqual(screenToSVG(svg, 30, 50), { x: 10, y: 15 });
+});
 test('snapAngleToNearest45 snaps 44° to 45° within 3° threshold', () => {
   assert.equal(snapAngleToNearest45(44, 3), 45);
 });
