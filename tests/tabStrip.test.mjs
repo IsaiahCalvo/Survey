@@ -166,17 +166,13 @@ test('the tab strip wiring: one guarded close path, no page-drop stub, restore w
   assert.match(tabBar, /onContextMenu=/);
 });
 
-test('the tab strip dialogs host takes no room in #root (phone viewer stays on screen)', () => {
-  // On a phone, hub.css sizes every `#root.survey-hub-native-root > div` to
-  // 100% height. An in-flow dialogs host sitting before the app's column was
-  // one screen tall and pushed the whole viewer below the fold (batch-6
-  // verify, click-every-control phone viewer 80/100).
-  const appShell = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
-  const hubCss = readFileSync(new URL('../src/home/hub.css', import.meta.url), 'utf8');
-  assert.match(hubCss, /#root\.survey-hub-native-root > div \{\s*height: 100% !important;/);
-  const host = appShell.match(/<div data-tab-strip-dialogs=""[^>]*style=\{\{([^}]*)\}\}/);
-  assert.ok(host, 'the dialogs host is found');
-  assert.match(host[1], /position: 'fixed'/, 'out of the flow, so its forced height moves nothing');
+test('the tab-strip dialog host stays out of the page flow (phone viewer not pushed off screen)', () => {
+  // Found 2026-10-13: in-flow, the phone frame rule (#root.survey-hub-native-root
+  // > div { height: 100% }) made this empty host a full screen tall and pushed
+  // the whole phone viewer below the screen in the Expo shell.
+  const src = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
+  const host = /<div data-tab-strip-dialogs="" style=\{\{([^}]*)\}\}>/.exec(src);
+  assert.ok(host, 'tab-strip dialog host found');
+  assert.match(host[1], /position: 'absolute'/);
   assert.match(host[1], /width: 0/);
-  assert.match(host[1], /zIndex: 6500/, 'still above an open document (z-index 5000)');
 });

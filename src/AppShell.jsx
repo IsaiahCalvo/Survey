@@ -2421,12 +2421,12 @@ export default function App({ devPreviewReturnTab = null }) {
       {/* The tab strip's confirm (closing unsaved work, Close all) and its
           Rename document dialog - the home's own dialogs. */}
       {/* Their own layer: they open over an open document, whose viewer
-          sits at z-index 5000 (the home's dialogs only ever cover the home).
-          Fixed and zero-size, so it never takes room in #root: on a phone
-          hub.css makes every `#root > div` 100% tall, and an in-flow host
-          pushed the whole viewer one screen down (batch-6 verify). The
-          dialogs inside are position: fixed themselves. */}
-      <div data-tab-strip-dialogs="" style={{ position: 'fixed', top: 0, left: 0, width: 0, height: 0, zIndex: 6500 }}>
+          sits at z-index 5000 (the home's dialogs only ever cover the home). */}
+      {/* Out of the page flow (absolute, no width): the phone frame rule
+          `#root.survey-hub-native-root > div { height: 100% }` (hub.css) made
+          this empty in-flow host a full screen tall and pushed the whole phone
+          viewer below the screen (found 2026-10-13, phone survey round). */}
+      <div data-tab-strip-dialogs="" style={{ position: 'absolute', top: 0, left: 0, width: 0, zIndex: 6500 }}>
         {tabConfirmDialog}
         <RenameModal
           open={!!renameTab}
