@@ -23,7 +23,7 @@ import {
 import rotateIconSvg from '../assets/rotate-icon.svg';
 import { HANDLE_FILL, HANDLE_RING } from '../utils/handleStyle';
 import { resolveHandleHitPadPageSize } from '../utils/handleHitPad.js';
-import useCoarsePointer from '../hooks/useCoarsePointer.js';
+import useInputModality from '../hooks/useInputModality.js';
 
 const SVGSelectionOverlay = memo(({
   bbox,             // { left, top, width, height, angle }
@@ -88,9 +88,12 @@ const SVGSelectionOverlay = memo(({
   delegateHandlePress = false,
 }) => {
   // UX 2026-09-16: hit pads grow on a finger (44 pt) and stay tight on a mouse
-  // (the grabber + 4 px, min 20 px - w63). Read before the bbox early-return
-  // because hooks cannot run conditionally.
-  const isCoarsePointer = useCoarsePointer();
+  // (the grabber + 4 px, min 20 px - w63); a pen gets 32 (touch audit
+  // 2026-10-13). Sized from the input IN USE (last press / hover), not the
+  // device's primary pointer, so a touch laptop's finger gets 44 and an iPad's
+  // mouse gets 20. Read before the bbox early-return because hooks cannot run
+  // conditionally.
+  const inputKind = useInputModality();
   if (!bbox) return null;
   const partAttrs = (id) => (typeof handlePartAttributes === 'function' ? (handlePartAttributes(id) || {}) : {});
   const pressHandler = (id) => (delegateHandlePress ? undefined : (e) => {
@@ -249,7 +252,7 @@ const SVGSelectionOverlay = memo(({
     return undefined; // lone 'br' grabber has no neighbour to crowd
   })();
   const resizeHitPad = resolveHandleHitPadPageSize({
-    isCoarsePointer,
+    inputKind,
     inverseScale: visualInverseScale,
     neighbourSpacingPageUnits: resizeHandleSpacing,
     minPadPageUnits: handleMetrics.cornerR * 2,
@@ -257,7 +260,7 @@ const SVGSelectionOverlay = memo(({
   // The rotation grabber sits `rotationOffset` clear of the top edge, so its
   // only close neighbour is whatever grabber is on that edge.
   const rotationHitPad = resolveHandleHitPadPageSize({
-    isCoarsePointer,
+    inputKind,
     inverseScale: visualInverseScale,
     neighbourSpacingPageUnits: handleSpec.rotationOffset,
     minPadPageUnits: handleMetrics.rotationR * 2,

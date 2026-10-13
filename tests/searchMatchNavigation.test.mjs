@@ -180,7 +180,9 @@ test('icon buttons have invisible hit areas (no hover or press plate)', () => {
 
 test('picking a result on the phone closes the sheet; the query survives it', () => {
   assert.match(sidebar, /onRequestSheetClose=\{mobileMode \? requestSheetClose : undefined\}/);
-  assert.match(sidebar, /data-viewer-occluder=\{isCollapsed \? undefined : \(mobileMode \? 'sheet' : 'side'\)\}/);
+  // Chunk D (2026-10-13): on desktop the panel covers the page until its
+  // closing slide ends, so it stays an occluder while it is laid out.
+  assert.match(sidebar, /data-viewer-occluder=\{mobileMode \? \(isCollapsed \? undefined : 'sheet'\) : \(layoutOpen \? 'side' : undefined\)\}/);
   assert.match(panel, /navigateToMatch\(index, dismissSheet \? \{ dismissingSheet: true \} : undefined\)/);
   assert.match(panel, /const lastQueryByDocument = new Map\(\);/);
 });

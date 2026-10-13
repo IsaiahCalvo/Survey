@@ -17,6 +17,8 @@ import {
   tabIdsForCloseAction,
   tabSessionStorageKey,
   tabsWithUnsavedWork,
+  tabIdsToDiscardOnClose,
+  DISCARD_LOCAL_DRAFT_EVENT,
   writeTabSession,
 } from '../src/tabs/tabStrip.js';
 
@@ -264,4 +266,33 @@ test('an empty library that finished loading still restores (skipping all) and c
   // The document coming back later does not reopen a tab.
   assert.equal(session.restore({ userId: 'user-a', documents: [{ id: 'doc-1', name: 'Doc 1.pdf' }], documentsUserId: 'user-a', tabs: [home], onRestore: (p) => restores.push(p) }), null);
   assert.deepEqual(restores, []);
+});
+
+test('Close without saving drops the local copy of exactly the unsaved local tabs (batch-6 follow-up)', () => {
+  const tabs = [
+    home,
+    local(1, { hasUnsavedAnnotations: true }),
+    local(2, { hasUnsavedAnnotations: false }),
+    cloud(3, { hasUnsavedAnnotations: true }),
+    local(4, { hasUnsavedAnnotations: true }),
+  ];
+  assert.deepEqual(tabIdsToDiscardOnClose(tabs, ['t1']), ['t1']);
+  assert.deepEqual(tabIdsToDiscardOnClose(tabs, ['t2']), [], 'a saved local file keeps its copy');
+  assert.deepEqual(tabIdsToDiscardOnClose(tabs, ['t3']), [], 'a cloud document never asks and keeps its synced changes');
+  assert.deepEqual(tabIdsToDiscardOnClose(tabs, ['t1', 't2', 't3', 't4']), ['t1', 't4']);
+  assert.deepEqual(tabIdsToDiscardOnClose(tabs, [HOME]), []);
+  // The same tabs the confirm names: never drop what the person was not warned about.
+  const confirm = closeConfirmFor({ tabs, closingIds: ['t1', 't4'], action: 'closeOthers' });
+  assert.match(confirm.message, /^2 documents have changes that are not saved\. Closing loses them\.$/);
+
+  const appShell = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
+  const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  // Only after the confirm said yes, and before the viewers unmount.
+  assert.match(appShell, /if \(confirm && !\(await askTabConfirm\(confirm\)\)\) return;\s*(\/\/[^\n]*\n\s*)*for \(const tabId of tabIdsToDiscardOnClose\(tabsRef\.current, ids\)\) \{\s*window\.dispatchEvent\(new CustomEvent\(DISCARD_LOCAL_DRAFT_EVENT, \{ detail: \{ tabId \} \}\)\);\s*\}\s*closeTabsNow\(ids\);/);
+  // The viewer puts the local copy back to the last Save and stops mirroring.
+  assert.equal(DISCARD_LOCAL_DRAFT_EVENT, 'survey:discard-local-draft');
+  assert.match(viewer, /window\.addEventListener\(DISCARD_LOCAL_DRAFT_EVENT, onDiscard\)/);
+  assert.match(viewer, /const saved = savedAnnotationsByPageRef\.current \|\| \{\};\s*saveAnnotationsByPage\(pdfId, saved\);\s*saveCallouts\(pdfId, deriveCalloutsFromByPage\(saved\)\);/);
+  assert.match(viewer, /if \(localDraftDiscardedRef\.current\) return;\s*saveAnnotationsByPage\(pdfId, annotationsByPage\);/);
+  assert.match(viewer, /if \(!tabId \|\| !pdfId \|\| pdfFile\?\.id\) return undefined;/, 'cloud documents are left alone');
 });

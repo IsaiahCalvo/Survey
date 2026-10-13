@@ -168,6 +168,7 @@ import {
 import { resolveTextDoubleClick } from '../utils/selectModes.js';
 import { useCrossPageMove } from './useCrossPageMove.js';
 import { isTextLikeAnnotation } from '../utils/toolPressRouting.js';
+import { lockTextboxSizeAfterResize } from '../utils/annotationPreferences.js';
 
 const cloneAnnotations = (annotations) => deepClone(annotations);
 
@@ -4584,6 +4585,10 @@ export function useSVGInteraction({
         : null;
       if (merged) {
         roundCommittedAnnotationsGeometry(merged.annotations, merged.indexes);
+        // KAL-397: a text box resized with the group keeps its new size.
+        if (ds.mode === 'group-resize') {
+          for (const i of merged.indexes || []) lockTextboxSizeAfterResize(merged.annotations?.objects?.[i]);
+        }
         onSaveAnnotations(merged.annotations, {
           source: 'object:modified',
           action: ds.mode,
@@ -4926,9 +4931,9 @@ export function useSVGInteraction({
         } else if (objType === 'textbox' || objType === 'i-text' || objType === 'text') {
           // Text: absorb scale into width/height so text reflows instead of stretching.
           // Honor the user's chosen size — do NOT re-tighten to fit current text.
-          // If the user resized the box oversized, that was deliberate. A future
-          // per-annotation "auto-fit on commit" setting will reintroduce tightening
-          // as an opt-in behavior (see FEATURE-BACKLOG.md).
+          // If the user resized the box oversized, that was deliberate. KAL-397:
+          // the box's auto-fit mark (Settings -> Annotations -> "Fit text boxes
+          // to their text") is cleared here, so a later re-edit keeps this size.
           // Note: text does not support flip (scale is clamped positive upstream)
           // so the ratio below is always positive.
           obj.width = (obj.width || 100) * (newScaleX / (ds.originalProps.scaleX || 1));
@@ -4939,6 +4944,7 @@ export function useSVGInteraction({
           obj.scaleY = 1;
           obj.left = newLeft;
           obj.top = newTop;
+          lockTextboxSizeAfterResize(obj);
         } else if (ds.originalProps.isPointsShape) {
           // UX: polygon/polyline. `newLeft`/`newTop` are in visible-bbox space
           // (the resize formula used bbox.left/top as the reference). Convert

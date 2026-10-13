@@ -1,6 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { isPhoneLayout } from '../utils/layoutMode.js';
+import { exitMs } from '../utils/motion.js';
+import { createToastStore } from '../utils/toastQueue.js';
+import './ToastHost.css';
 
 // KAL-57 — single mounted host for the in-app toast bus (see utils/toast.js).
 // Listens for 'app-toast' events, stacks them bottom-center, auto-dismisses
@@ -20,14 +23,22 @@ import { isPhoneLayout } from '../utils/layoutMode.js';
 // edge all the way round, on the opaque panel surface. It used to be a 3px
 // coloured bar down the left side, gold for news. Now news is the plain
 // surface and hairline (no gold); only trouble and caution carry a colour.
+//
+// Drawboard shell audit, Chunk A (2026-10-13), the timing and motion
+// (src/utils/toastQueue.js holds the clock):
+//   - info / success stay 3 s, error / warn 9 s (it was 4.5 s for all). A
+//     caller can pass its own duration (showToast's third argument).
+//   - Hovering a toast (or tabbing to its button) pauses its clock.
+//   - It slides 8px and fades in over 150 ms (--motion-toast) and back out in
+//     120 ms (--motion-toast-exit); under reduced motion it just appears and
+//     goes. Up from the bottom on desktop, down from the top bar on a phone.
+//   - An optional action button ({ label, onClick }, e.g. Undo) runs once and
+//     closes the toast. The viewer / Home "Undo" toasts (UndoToast +
+//     useUndoToast) keep their own 5 s / 6 s clock and their own place; while
+//     one is up on desktop this stack moves up above it (ToastHost.css).
+//   - 'app-toast-dismiss' ({ id }) takes a toast down early (dismissToast()).
 
-const TYPE_ALERT = {
-  info: { tint: null, border: 'var(--alert-neutral-border)' },
-  success: { tint: null, border: 'var(--alert-neutral-border)' },
-  error: { tint: 'var(--alert-danger-bg)', border: 'var(--alert-danger-border)' },
-  warn: { tint: 'var(--alert-warning-bg)', border: 'var(--alert-warning-border)' },
-};
-const AUTO_DISMISS_MS = 4500; // UX: long enough to read a short error, short enough not to nag.
+const TYPE_CLASS = { info: 'info', success: 'success', error: 'error', warn: 'warn' };
 // The phone's top bars (viewer header, home header) and the banners hung under
 // the viewer header ("Document locked", the storage / sync-failure banner, which
 // sits above this stack at z 100020). Their measured bottom edge feeds
@@ -36,31 +47,36 @@ const AUTO_DISMISS_MS = 4500; // UX: long enough to read a short error, short en
 const PHONE_TOP_CHROME_SELECTORS = ['.mobile-pdf-header', '.survey-hub .header', '.document-lock-banner', '.storage-banner'];
 
 export default function ToastHost() {
-  const [toasts, setToasts] = useState([]);
+  const storeRef = useRef(null);
+  if (storeRef.current === null) {
+    storeRef.current = createToastStore({ exitMs: () => exitMs('toast') });
+  }
+  const [toasts, setToasts] = useState(() => storeRef.current.getToasts());
   const hostRef = useRef(null);
 
-  const remove = useCallback((id) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, []);
-
   useEffect(() => {
+    const store = storeRef.current;
+    const off = store.subscribe(setToasts);
     const onToast = (event) => {
       const detail = event?.detail || {};
       if (!detail.message) return;
-      const id = detail.id || `${Math.round(performance.now())}-${Math.random().toString(36).slice(2, 8)}`;
-      const type = TYPE_ALERT[detail.type] ? detail.type : 'info';
-      setToasts((prev) => {
-        // De-dupe an identical message already on screen (rapid repeat clicks).
-        if (prev.some((t) => t.message === detail.message)) return prev;
-        // Cap the stack so a runaway loop can't paper over the whole screen.
-        const next = [...prev, { id, message: String(detail.message), type }];
-        return next.slice(-4);
-      });
-      setTimeout(() => remove(id), AUTO_DISMISS_MS);
+      store.add(detail);
+    };
+    const onDismiss = (event) => {
+      const id = event?.detail?.id;
+      if (id != null) store.dismiss(String(id));
     };
     window.addEventListener('app-toast', onToast);
-    return () => window.removeEventListener('app-toast', onToast);
-  }, [remove]);
+    window.addEventListener('app-toast-dismiss', onDismiss);
+    return () => {
+      window.removeEventListener('app-toast', onToast);
+      window.removeEventListener('app-toast-dismiss', onDismiss);
+      off();
+    };
+  }, []);
+
+  // The store lives as long as the host; clear its timers when it unmounts.
+  useEffect(() => () => storeRef.current?.dispose(), []);
 
   useLayoutEffect(() => {
     const host = hostRef.current;
@@ -80,58 +96,44 @@ export default function ToastHost() {
   }, [toasts]);
 
   if (!toasts.length) return null;
+  const store = storeRef.current;
 
   return createPortal(
-    <div
-      ref={hostRef}
-      className="app-toast-host"
-      style={{
-        position: 'fixed',
-        bottom: 24, // design decision 3: the ONE toast lives at the bottom
-        left: '50%',
-        transform: 'translateX(-50%)',
-        zIndex: 100000, // UX: above floating chrome so an error is never hidden.
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: 8,
-        maxWidth: 'min(92vw, 420px)',
-        pointerEvents: 'none',
-      }}
-    >
-      {toasts.map((t) => {
-        const alert = TYPE_ALERT[t.type] || TYPE_ALERT.info;
-        return (
-          <div
-            key={t.id}
-            role="status"
-            aria-live="polite"
-            onClick={() => remove(t.id)}
-            title="Dismiss"
-            style={{
-              pointerEvents: 'auto',
-              cursor: 'pointer',
-              // The tint over the opaque panel surface, so the page under a
-              // floating toast never shows through it.
-              background: alert.tint
-                ? `linear-gradient(${alert.tint}, ${alert.tint}), var(--surface-2)`
-                : 'var(--surface-2)',
-              color: 'var(--text-1)', // --bone-100 primary text
-              border: alert.border,
-              padding: '9px 14px',
-              borderRadius: 'var(--alert-radius)',
-              boxShadow: '0 12px 30px rgba(0,0,0,0.5)',
-              fontFamily: 'var(--font-ui)',
-              fontSize: 13,
-              fontWeight: 500,
-              lineHeight: 1.45,
-              letterSpacing: 0,
-            }}
-          >
-            {t.message}
-          </div>
-        );
-      })}
+    // Placement (bottom-centre on desktop, under the top bar on a phone) and
+    // the look are in ToastHost.css / styles.css (.app-toast-host).
+    <div ref={hostRef} className="app-toast-host">
+      {toasts.map((t) => (
+        <div
+          key={t.id}
+          className={`app-toast app-toast--${TYPE_CLASS[t.type] || 'info'}${t.action ? ' app-toast--has-action' : ''}`}
+          data-state={t.leaving ? 'closing' : 'open'}
+          data-toast-id={t.id}
+          role="status"
+          aria-live="polite"
+          aria-hidden={t.leaving ? 'true' : undefined}
+          onClick={() => store.dismiss(t.id)}
+          onMouseEnter={() => store.pause(t.id)}
+          onMouseLeave={() => store.resume(t.id)}
+          onFocus={() => store.pause(t.id)}
+          onBlur={() => store.resume(t.id)}
+          title="Dismiss"
+        >
+          <span className="app-toast__message">{t.message}</span>
+          {t.action ? (
+            <button
+              type="button"
+              className="app-toast__action"
+              disabled={t.leaving}
+              onClick={(event) => {
+                event.stopPropagation();
+                store.runAction(t.id);
+              }}
+            >
+              {t.action.label}
+            </button>
+          ) : null}
+        </div>
+      ))}
     </div>,
     document.body
   );

@@ -40,7 +40,7 @@ export default function SpaceSelectionDialog({ open, onClose, title = 'Select sp
           backdropFilter: 'blur(8px)',
           WebkitBackdropFilter: 'blur(8px)',
           zIndex: Z_INDEX.modalOverlay,
-          animation: 'fadeIn 0.2s ease-out',
+          // Scrim and card fade in on the shared dialog motion (motion.css).
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -64,7 +64,6 @@ export default function SpaceSelectionDialog({ open, onClose, title = 'Select sp
             overflow: 'auto',
             boxSizing: 'border-box',
             boxShadow: SHADOWS.xl,
-            animation: 'fadeIn 0.2s ease-out',
           }}
         >
           <div style={{

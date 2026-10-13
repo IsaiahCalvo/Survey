@@ -73,11 +73,13 @@ import { getViewportScrollbarAxis } from '../utils/pdfViewportScrollbar';
 import { computeDetailTileBox, resolveDetailTileStyle } from '../utils/pdfDetailTileGeometry.js';
 import { LIVE_ZOOM_EVENT } from '../utils/liveZoomEvents.js';
 import { createZoomGlide, retargetZoomGlide, stepZoomGlide } from '../utils/zoomGlide.js';
+import { startPageGlide } from '../utils/pageScrollGlide.js';
 import { isLiveFormWidgetTarget } from '../utils/formWidgetPointerTargets.js';
 import { isSelectionGrabPress } from '../hooks/useSelectionGrabHandoff.js';
 import {
-  hasStylusTouch, isPenDown, isPencilOnly, resolveTouchStartRoute, resolveViewerPressRoute, subscribeGatedPointers,
+  DRAW_MODES, hasStylusTouch, isPenDown, isPencilOnly, resolveTouchStartRoute, resolveViewerPressRoute, subscribeGatedPointers,
 } from '../utils/pencilMode.js';
+import { createLongPressTracker, longPressMayArm, markLongPressEvent } from '../utils/touchLongPress.js';
 import {
   compensateScrollTopForRoom,
   computeTopOverlayInset,
@@ -1260,7 +1262,11 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false, onS
     <>
       {vertical.maxScroll > 0 && <div
         ref={verticalRailRef}
+        // KAL-66: a pointer-only drawing of the scroll position; the page
+        // itself scrolls from the keyboard. Hidden from assistive tech (its
+        // labels stay for the debug specs that find it by them).
         aria-label="Viewport vertical scroll bar"
+        aria-hidden="true"
         onTransitionEnd={finishFade}
         onPointerDown={takeScrollerFromGlide}
         onPointerEnter={() => hoverRail('vertical')}
@@ -1290,6 +1296,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false, onS
       {horizontal.maxScroll > 0 && <div
         ref={horizontalRailRef}
         aria-label="Viewport horizontal scroll bar"
+        aria-hidden="true"
         onTransitionEnd={finishFade}
         onPointerDown={takeScrollerFromGlide}
         onPointerEnter={() => hoverRail('horizontal')}
@@ -1485,6 +1492,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const zoomGlideCancelRef = useRef(null);
   const zoomGlideFinishRef = useRef(null);
   const zoomGlideScheduleRef = useRef(null);
+  // Smooth page moves (Drawboard canvas audit chunk 6, utils/pageScrollGlide.js):
+  // the running glide's controller, and whether it is a page jump (the page you
+  // asked for stays the current page while it glides, so the page number never
+  // flickers through the pages it passes).
+  const pageGlideRef = useRef(null);
+  const pageGlideHoldsPageRef = useRef(false);
   const dimsPtRef = useRef([]);
   // Widest page in PDF points (rotation applied): sizes the shared column.
   const widestPagePtRef = useRef(0);
@@ -1999,6 +2012,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       currentPage: currentPageRef.current,
     });
     clampHorizontalScroll();
+    // A page jump still gliding keeps the page it is heading to (set by goToPage).
+    if (pageGlideHoldsPageRef.current) return;
     if (page !== currentPageRef.current) {
       const prev = currentPageRef.current;
       currentPageRef.current = page;
@@ -4346,15 +4361,23 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
   }, [applyWheelZoom, beginElasticPan, cancelPanInertia, catchElastic, checkpointPinchGesture, commitGesture, flushPan, isMobileSurface, releaseElastic, releaseElasticPan, releaseLayoutShift, schedulePan, setPanInteraction, setZoomInteraction, startPanInertia, stopElastic, touchSurface]);
 
-  // Mobile long-press → context menu (Phase D parity). Isolated, additive,
-  // and passive: this effect only OBSERVES touches (it never preventDefaults or
-  // stops propagation), so it cannot disturb the pan/pinch/tool contract above.
-  // A single finger held still for ~380ms synthesizes a `contextmenu` MouseEvent
-  // at the touch point; the app-wide right-click dispatcher
+  // Long-press → context menu (Phase D parity; docs/GESTURE-CONTRACT.md L1).
+  // Isolated, additive and passive: this effect only OBSERVES touches and pen
+  // pointers (it never preventDefaults or stops propagation), so it cannot
+  // disturb the pan/pinch/tool contract above.
+  // A finger or pen held still for 380ms synthesizes a `contextmenu` MouseEvent
+  // at the press point; the app-wide right-click dispatcher
   // (utils/contextMenuDiagnostics.js) then resolves the target and opens the
   // annotation / paste / region menu — reusing the exact desktop handlers, so
   // sync/CRDT sees identical operations. Movement beyond 10px, a second finger,
-  // or lift-off before the timer cancels the press.
+  // or lift-off before the timer cancels the press (utils/touchLongPress.js).
+  //
+  // Every touch screen, not only the phone (Drawboard touch audit 2026-10-13,
+  // T1): iPads and touch laptops use the desktop layout, where a finger had no
+  // other way to reach Delete / Duplicate / Lock / Arrange. Pencil only: a
+  // finger navigates (P2), so only the pen's long press opens the menu. A pen
+  // that sends no touch events (Windows / Surface pens) is heard through its
+  // pointer events; an Apple Pencil sends both and simply re-arms the same press.
   //
   // Demo reference: mobile-expo-go/App.tsx wires per-target long-press —
   // annotation 320ms (866-895), canvas paste 360ms (897-915), region 420ms
@@ -4363,83 +4386,93 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // all three rather than three separate delays.
   useEffect(() => {
     const el = scrollerRef.current;
-    if (!el || !isMobileSurface || !mobileLongPressContextMenu) return undefined;
+    if (!el || !touchSurface || !mobileLongPressContextMenu) return undefined;
 
-    const LONG_PRESS_MS = 380;
-    const MOVE_CANCEL_PX = 10;
-    let timer = null;
-    let startX = 0;
-    let startY = 0;
+    // Synthesize a right-click at the held point on whatever element is
+    // topmost there. The dispatcher reads clientX/clientY + composedPath /
+    // elementsFromPoint, so a real MouseEvent on the hit element resolves
+    // the page + annotation/region exactly as a desktop right-click would.
+    // The event carries the input so the menu takes its 44px touch rows.
+    const press = createLongPressTracker({
+      onFire: ({ x, y, input }) => {
+        const target = document.elementFromPoint(x, y) || el;
+        const ev = new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          clientX: x,
+          clientY: y,
+          button: 2,
+        });
+        target.dispatchEvent(markLongPressEvent(ev, input));
+      },
+    });
+    const drawMode = () => (isPencilOnly() ? DRAW_MODES.PEN : DRAW_MODES.TOUCH);
 
-    const clear = () => {
-      if (timer) { clearTimeout(timer); timer = null; }
-    };
-
-    const fire = () => {
-      timer = null;
-      // Synthesize a right-click at the held point on whatever element is
-      // topmost there. The dispatcher reads clientX/clientY + composedPath /
-      // elementsFromPoint, so a real MouseEvent on the hit element resolves
-      // the page + annotation/region exactly as a desktop right-click would.
-      const target = document.elementFromPoint(startX, startY) || el;
-      const ev = new MouseEvent('contextmenu', {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-        clientX: startX,
-        clientY: startY,
-        button: 2,
-      });
-      target.dispatchEvent(ev);
-    };
+    // Resize/rotation handles own the entire touch sequence. Never arm the
+    // annotation long-press menu beneath them; WebKit otherwise may surface
+    // its native Page/Paste callout during a deliberate slow transform.
+    // UX 2026-09-16: the invisible 44 pt pad behind each grabber counts as
+    // the grabber for this rule. Without it a finger that landed on the pad
+    // (which is the normal way to grab a handle by touch) armed the
+    // long-press menu underneath instead of starting the transform.
+    const onHandle = (target) => Boolean(target?.closest?.('[data-resize-handle], [data-rotation-handle], [data-handle-hit-pad]'));
 
     const onStart = (event) => {
-      if (event.touches.length !== 1) { clear(); return; }
-      // Resize/rotation handles own the entire touch sequence. Never arm the
-      // annotation long-press menu beneath them; WebKit otherwise may surface
-      // its native Page/Paste callout during a deliberate slow transform.
-      if (event.target?.closest?.('[data-resize-handle], [data-rotation-handle]')) {
-        clear();
-        return;
-      }
-      // UX 2026-09-16: the invisible 44 pt pad behind each grabber counts as
-      // the grabber for this rule. Without it a finger that landed on the pad
-      // (which is the normal way to grab a handle by touch) armed the
-      // long-press menu underneath instead of starting the transform.
-      if (event.target?.closest?.('[data-handle-hit-pad]')) {
-        clear();
-        return;
-      }
+      if (event.touches.length !== 1) { press.cancel(); return; }
+      if (onHandle(event.target)) { press.cancel(); return; }
       const t = event.touches[0];
       // A resting palm never opens the page menu (Drawboard audit C1).
-      if (isPalmContact(t)) { clear(); return; }
-      startX = t.clientX;
-      startY = t.clientY;
-      clear();
-      timer = window.setTimeout(fire, LONG_PRESS_MS);
+      if (isPalmContact(t)) { press.cancel(); return; }
+      const input = hasStylusTouch(event.touches) ? 'pen' : 'touch';
+      if (!longPressMayArm(input, drawMode())) { press.cancel(); return; }
+      press.start(t.clientX, t.clientY, input);
     };
     const onMove = (event) => {
-      if (!timer) return;
-      if (event.touches.length !== 1) { clear(); return; }
+      if (event.touches.length !== 1) { press.cancel(); return; }
       const t = event.touches[0];
-      if (Math.abs(t.clientX - startX) > MOVE_CANCEL_PX || Math.abs(t.clientY - startY) > MOVE_CANCEL_PX) {
-        clear();
-      }
+      press.move(t.clientX, t.clientY);
+    };
+    const cancel = () => press.cancel();
+    // Pen pointers (a pen that sends no touch events). Fingers stay on the
+    // touch stream above; a mouse never arms (it has the right button).
+    let penId = null;
+    const onPenDown = (event) => {
+      if (event.pointerType !== 'pen') return;
+      if (event.button !== 0 || onHandle(event.target)) { penId = null; press.cancel(); return; }
+      penId = event.pointerId;
+      press.start(event.clientX, event.clientY, 'pen');
+    };
+    const onPenMove = (event) => {
+      if (event.pointerType === 'pen' && event.pointerId === penId) press.move(event.clientX, event.clientY);
+    };
+    const onPenEnd = (event) => {
+      if (event.pointerType !== 'pen' || event.pointerId !== penId) return;
+      penId = null;
+      press.cancel();
     };
 
     // passive:true — guarantees we never interfere with the active touch contract.
     el.addEventListener('touchstart', onStart, { capture: true, passive: true });
     el.addEventListener('touchmove', onMove, { capture: true, passive: true });
-    el.addEventListener('touchend', clear, { capture: true, passive: true });
-    el.addEventListener('touchcancel', clear, { capture: true, passive: true });
+    el.addEventListener('touchend', cancel, { capture: true, passive: true });
+    el.addEventListener('touchcancel', cancel, { capture: true, passive: true });
+    el.addEventListener('pointerdown', onPenDown, { capture: true, passive: true });
+    el.addEventListener('pointermove', onPenMove, { capture: true, passive: true });
+    el.addEventListener('pointerup', onPenEnd, { capture: true, passive: true });
+    el.addEventListener('pointercancel', onPenEnd, { capture: true, passive: true });
     return () => {
-      clear();
+      press.cancel();
       el.removeEventListener('touchstart', onStart, true);
       el.removeEventListener('touchmove', onMove, true);
-      el.removeEventListener('touchend', clear, true);
-      el.removeEventListener('touchcancel', clear, true);
+      el.removeEventListener('touchend', cancel, true);
+      el.removeEventListener('touchcancel', cancel, true);
+      el.removeEventListener('pointerdown', onPenDown, true);
+      el.removeEventListener('pointermove', onPenMove, true);
+      el.removeEventListener('pointerup', onPenEnd, true);
+      el.removeEventListener('pointercancel', onPenEnd, true);
     };
-  }, [isMobileSurface, mobileLongPressContextMenu]);
+  }, [touchSurface, mobileLongPressContextMenu]);
 
   // ---- imperative zoom / nav -----------------------------------------------
   const zoomToScale = useCallback((target, options = {}) => {
@@ -4534,7 +4567,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         pageIndex,
       };
     } else {
-      if (landTop != null) el.scrollTop = Math.max(0, landTop);
+      // Chunk 6: the typed page jump glides; the Fit page it asks for right
+      // after (same zoom) moves where that glide ends instead of jumping.
+      if (landTop != null) {
+        if (pageGlideRef.current?.isRunning()) pageGlideRef.current.retarget(Math.max(0, landTop));
+        else el.scrollTop = Math.max(0, landTop);
+      }
       el.scrollLeft = landLeft;
     }
   }, [applyAnchoredScale, getPageLeftAtScale, getHorizontalScrollMax]);
@@ -4603,13 +4641,58 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     return true;
   }, [applyAnchoredScale, cancelPanInertia, getPageLeftAtScale, getHorizontalScrollMax, isMobileSurface]);
 
-  const goToPage = useCallback((n) => {
+  // Drawboard canvas audit chunk 6: glide scrollTop to `top` over 250 ms
+  // (utils/pageScrollGlide.js has the rules), or point a glide already running
+  // at it. `holdsPage`: a page jump, whose target page stays the current page
+  // while it glides. Stops by itself on a wheel, press, touch, zoom or any
+  // other scroll write; reduced motion lands at once.
+  const glideScrollTopTo = useCallback((top, { holdsPage = false } = {}) => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const running = pageGlideRef.current;
+    if (running?.isRunning()) {
+      pageGlideHoldsPageRef.current = holdsPage;
+      if (running.retarget(top)) return;
+    }
+    const startScale = scaleRef.current;
+    const startAnchor = pendingAnchorRef.current;
+    let controller = null;
+    pageGlideHoldsPageRef.current = holdsPage;
+    controller = startPageGlide({
+      el,
+      to: top,
+      // The part of the view below any tool strips.
+      screen: Math.max(1, el.clientHeight - Math.min(topInsetRef.current, el.clientHeight)),
+      // A zoom took over (its anchor or its glide now owns the scroll position).
+      shouldStop: () => Math.abs(scaleRef.current - startScale) > 1e-4
+        || Boolean(zoomGlideRef.current)
+        || Boolean(pendingAnchorRef.current && pendingAnchorRef.current !== startAnchor),
+      onEnd: () => {
+        if (pageGlideRef.current === controller) pageGlideRef.current = null;
+        pageGlideHoldsPageRef.current = false;
+        detectCurrentPage();
+      },
+    });
+    pageGlideRef.current = controller;
+  }, [detectCurrentPage]);
+
+  const cancelPageGlide = useCallback(() => {
+    pageGlideRef.current?.cancel('cancel');
+    pageGlideRef.current = null;
+    pageGlideHoldsPageRef.current = false;
+  }, []);
+
+  // `options.smooth`: glide there (Previous / Next page, the typed page jump, a
+  // page thumbnail, PageUp / PageDown). Everything else lands at once, as before.
+  const goToPage = useCallback((n, options) => {
     // A zoom glide still playing lands first (where it is shown), so the jump
     // is measured on the laid-out page and the glide's commit cannot undo it.
     zoomGlideFinishRef.current?.();
     const el = scrollerRef.current;
     const tops = topsRef.current;
     if (!el || !tops.length) return false;
+    const smooth = options?.smooth === true;
+    if (!smooth) cancelPageGlide();
     // UX: Previous/Next page, the page-number field, a sidebar thumbnail, a
     // bookmark jump and a search hit all land here. A coast still writing
     // scrollTop every frame would drag the page straight back off the target,
@@ -4622,12 +4705,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // UX 2026-09-23: the page lands with its own (zoom-proportional) top gap
     // showing (owner: right rail audit), just BELOW any tool strips over the
     // viewer (owner: scroll the page out from under toolbars).
-    el.scrollTop = resolvePageLandingScrollTop({
+    const landingTop = resolvePageLandingScrollTop({
       padTop: padTopRef.current,
       pageTop: (tops[i] - layoutMetricsRef.current.gap * scaleRef.current),
       fixedTopInset: layoutMetricsRef.current.padTop,
       overlayInset: topInsetRef.current,
     });
+    if (!smooth) el.scrollTop = landingTop;
     el.scrollLeft = Math.min(el.scrollLeft, getHorizontalScrollMax(scaleRef.current));
     // The page you asked for IS the current page (the scroll event that
     // follows keeps it while it stays fully visible), so the rail never shows
@@ -4643,8 +4727,46 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         raw: { scrollTop: el.scrollTop },
       });
     }
+    if (smooth) glideScrollTopTo(landingTop, { holdsPage: true });
     return true;
-  }, [cancelPanInertia, getHorizontalScrollMax]);
+  }, [cancelPanInertia, cancelPageGlide, getHorizontalScrollMax, glideScrollTopTo]);
+
+  // Chunk 6: PageUp / PageDown move one view (the part below the tool strips)
+  // on the same 250 ms glide, wherever the focus is - unless it is in a field,
+  // a menu or another scrolling list, which keep the key. Drawboard does the
+  // same; before this the key did nothing once a toolbar button had focus.
+  // Presses while gliding add up (each counts from where the glide is going).
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key !== 'PageDown' && event.key !== 'PageUp') return;
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+      const el = scrollerRef.current;
+      if (!el || !el.isConnected || el.clientHeight <= 0 || el.getClientRects().length === 0) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target && target !== document.body && target !== document.documentElement && !el.contains(target)) {
+        if (isEditableTarget(target)) return;
+        if (target.closest('[role="menu"], [role="listbox"], [role="slider"], [role="dialog"], [role="tree"], [role="grid"]')) return;
+        for (let node = target; node && node !== document.body; node = node.parentElement) {
+          const overflowY = window.getComputedStyle(node).overflowY;
+          if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight + 1) return;
+        }
+      }
+      event.preventDefault();
+      zoomGlideFinishRef.current?.();
+      cancelPanInertia(false);
+      const screen = Math.max(1, el.clientHeight - Math.min(topInsetRef.current, el.clientHeight));
+      const running = pageGlideRef.current;
+      const from = running?.isRunning() ? running.target : el.scrollTop;
+      const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+      const to = Math.min(maxTop, Math.max(0, from + (event.key === 'PageDown' ? screen : -screen)));
+      glideScrollTopTo(to, { holdsPage: false });
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [cancelPanInertia, glideScrollTopTo]);
+
+  // A glide never outlives the viewer.
+  useEffect(() => () => { pageGlideRef.current?.cancel('cancel'); }, []);
 
   // ---- onZoomChanged (settle only — scale changes only on commit) ----------
   useLayoutEffect(() => {

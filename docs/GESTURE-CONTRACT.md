@@ -156,12 +156,24 @@ leaves a dot. *(Thresholds: dbInputA's part of this round.)*
 `width`/`height` or touch `radiusX`/`radiusY`) is never a tool press: no ink,
 no shape. *(dbInputA's part of this round.)*
 
-**L1 Long press** (phone and tablet, Pan and Select tools only): a finger
+**L1 Long press** (every touch screen — phone, iPad, Android tablet, touch
+laptop — in either layout; Pan and Select tools only): a finger or a pen
 held still 380 ms opens the context menu for what is under it (page, mark,
-region). Moving more than 10 px first cancels it, so **a long press never
-fires while a drag or a stroke is under way.** With a drawing tool a held
-finger is part of the stroke, never a menu. A press on a resize / rotate
-handle or its hit pad never arms it.
+region), the same menu a right-click opens. Moving more than 10 px first, a
+second finger, or lifting cancels it, so **a long press never fires while a
+pan, a pinch, a drag or a stroke is under way.** With a drawing tool a held
+finger or pen is part of the stroke, never a menu. A press on a resize /
+rotate handle or its hit pad never arms it, nor does a palm (D3) or a mouse
+(it has the right button).
+*Pencil only:* a finger always navigates (P2), so a finger's long press
+opens nothing; the pen's long press still opens the menu (only the pen
+selects). *Pencil or Touch:* finger and pen alike.
+*Rows:* a menu opened by a finger or a pen has rows at least 44 px tall (the
+phone's menus always do); a mouse right-click keeps the compact desktop
+rows. Drawboard opens the same menu after 666 ms with zero slop — we keep
+380 ms / 10 px because a fingertip always wobbles a little.
+(`utils/touchLongPress.js`; the effect in `PdfjsViewerContainer.jsx`; the
+rows in `hooks/useAnnotationContextMenu.jsx` + `styles/touchTargets.css`.)
 
 **L2 Double tap / double click** on a text mark opens its editor; on the bare
 page it does nothing (no zoom).
@@ -187,6 +199,14 @@ The page never claims a gesture that starts outside the viewer.
   Text Select still selects. Each tool first proves it is armed (one finger
   makes a mark) so a "nothing was added" result means something.
 - `tests/selectModes.test.mjs` — Pan has no hover halo (P7).
+- `tests/touchLongPress.test.mjs` — L1: the timer and slop, who may arm it
+  (finger / pen / mouse, Pencil only), the input carried to the menu, and the
+  viewer wiring (every touch surface, not the phone flag).
+- `debug/scenarios/touch-long-press-menu.spec.mjs` — Playwright: tablet
+  1024x1366 finger and pen long press per tool (menu under Pan / Select with
+  44 px rows, none under a drawing tool), none during a pan, a pinch or a
+  stroke, Pencil only (finger: no menu, pen: menu), desktop right-click rows
+  unchanged, phone long press unchanged.
 - Existing: `tests/panMomentum.test.mjs`, `tests/dismissRules.test.mjs`,
   `tests/doubleTapMultiTouchGuard.test.mjs`, `tests/pdfjsTextLayerTouchContract.test.mjs`.
 

@@ -28,6 +28,7 @@ import { useConfirmDialog } from './components/dialogPrompts';
 import SurveyMarkerNotes from './components/SurveyMarkerNotes';
 import { normalizeNoteMedia } from './services/surveyMediaService';
 import { SHEET_DETENT_STANDARD, endSheetReveal, revealInSheet, useMobileSheetMotion } from './mobile/useMobileSheetMotion';
+import { useSheetFocus } from './mobile/useSheetFocus';
 // Phone Survey panel look (layout B, one card divided). Every rule in it is
 // scoped to .mobile-survey-sheet, which only the phone sheet carries.
 import './mobile/mobileSurveyPanel.css';
@@ -41,6 +42,9 @@ import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt.js
 import { captureMorph, playMorph, prefersReducedMotion } from './surveyRailMorph.js';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from './components/SectionIconButton.jsx';
 import SharedTemplateBadge from './components/SharedTemplateBadge.jsx';
+import useSurveyRecents from './hooks/useSurveyRecents';
+import { SURVEY_LIST_SEARCH_FROM, surveyTemplateSections } from './utils/surveyPickLists.js';
+import { publishSideRoom } from './sidebar/panelLayoutStore.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -601,6 +605,22 @@ const SurveySpacesRail = ({
     return () => window.clearTimeout(timer);
   }, [isSurveyPanelCollapsed, mobileMode]);
   const desktopSurveyPanelShown = !isSurveyPanelCollapsed || railPanelLeaving;
+  // KAL-420 follow-up (2026-10-13): publish what this rail covers on the
+  // right, as PDFSidebar publishes --app-sidebar-width on the left, so the
+  // storage / clean-up notice (StorageFailureBanner.css) ends at the rail
+  // instead of running under it with its × out of reach. Desktop: the 48px
+  // rail, plus the 320px panel while it is drawn. Phone: nothing (the
+  // Survey sheet comes up from the bottom).
+  useEffect(() => {
+    if (typeof document === 'undefined' || !document.documentElement) return;
+    document.documentElement.style.setProperty(
+      '--app-right-rail-width',
+      mobileMode ? '0px' : `${desktopSurveyPanelShown ? 48 + 320 : 48}px`,
+    );
+    // The left panel's width limit reads the same cover (panelLayoutStore.js).
+    publishSideRoom({ rightCover: mobileMode ? 0 : (desktopSurveyPanelShown ? 48 + 320 : 48) });
+  }, [mobileMode, desktopSurveyPanelShown]);
+  useEffect(() => () => { publishSideRoom({ rightCover: 48 }); }, []);
   const [openEntityDropdownId, setOpenEntityDropdownId] = useState(null);
   // The template switcher (owner 2026-10-01, "hybrid" design): the template
   // name in the panel header is a button. Phone: it swaps the category list
@@ -629,6 +649,9 @@ const SurveySpacesRail = ({
   const mobileExportMenuRef = useRef(null);
   const surveyMarkerDragRestoreRef = useRef(null);
   const availableSurveyTemplates = Array.isArray(surveyTemplates) ? surveyTemplates : [];
+  // The templates used most recently on this device (the desktop template
+  // menu's own list - same storage key), for the phone switch list's "Recent".
+  const recentTemplateIds = useSurveyRecents('template', 'all', selectedTemplate?.id ?? null);
   const surveyModuleOptions = selectedTemplate ? ((selectedTemplate.modules || selectedTemplate.spaces) || []) : [];
   const selectedModuleIndex = surveyModuleOptions.findIndex((module) => module.id === selectedModuleId);
   const activeSurveyModule = selectedModuleIndex >= 0 ? surveyModuleOptions[selectedModuleIndex] : null;
@@ -704,6 +727,15 @@ const SurveySpacesRail = ({
     expandable: mobileMode,
     fullscreenable: mobileMode,
   });
+  // KAL-66 / KAL-460: the phone sheet is modal (dimmed page behind it) -
+  // focus goes in, Tab stays in, and Escape slides the sheet away first (it is
+  // the topmost thing, dismiss rule R5); the next Escape puts an armed Survey
+  // Marker tool down. Focus comes back after.
+  const surveySheetFocusRef = useSheetFocus(
+    mobileMode && !isSurveyPanelCollapsed,
+    requestSurveySheetClose,
+    surveySheetProps.ref,
+  );
 
   // Close everything in the phone accordion (the "Categories" back button).
   const collapseMobileAccordion = () => {
@@ -1968,10 +2000,16 @@ const SurveySpacesRail = ({
               // Survey audit P1-5: the phone sheet is a bottom occluder (as the
               // phone Pages sheet is), so "Locate on page" fits the marker in
               // the page left above it.
-              ref={mobileMode ? undefined : sideOccluderRef}
               data-viewer-occluder={isSurveyPanelCollapsed ? undefined : (mobileMode ? 'sheet' : 'side')}
               // Phone: swipe down anywhere + the keyboard lift (owner 2026-09-30).
               {...(mobileMode ? surveySheetProps : null)}
+              ref={mobileMode ? surveySheetFocusRef : sideOccluderRef}
+              tabIndex={mobileMode && !isSurveyPanelCollapsed ? -1 : undefined}
+              // KAL-66: the phone Survey sheet is a named region (not a
+              // dialog: the viewer's key rules treat [role="dialog"] as a
+              // modal that owns every key).
+              role={mobileMode && !isSurveyPanelCollapsed ? 'region' : undefined}
+              aria-label={mobileMode && !isSurveyPanelCollapsed ? 'Survey' : undefined}
               className={`${mobileMode ? 'mobile-pdf-sheet mobile-survey-sheet ' : 'survey-rail '}${mobileMode && surveySheetExpanded ? 'is-expanded ' : ''}${mobileMode && surveySheetFullscreen ? 'is-fullscreen ' : ''}${isSurveyPanelCollapsed ? 'is-collapsed' : ''}`}
               style={{
                 // PASS 7 (DESIGN-SYSTEM.md, owner): every phone panel opens at
@@ -2264,12 +2302,47 @@ const SurveySpacesRail = ({
                       one is gold ink with a check. A tap switches and lands on
                       the new template's category list. A filter field only from
                       15 templates. The sheet keeps its height. */}
+                  {/* Phone survey round (2026-10-13): from 15 templates the 3
+                      used most recently sit on top under "Recent" (they stay
+                      in "All templates" too), like the desktop template menu
+                      (utils/surveyPickLists surveyTemplateSections). Typing in
+                      the field lists the matches only. */}
                   {isMobileTemplateSwitching && (() => {
                     const query = templateSwitchQuery.trim().toLowerCase();
-                    const showSearch = availableSurveyTemplates.length >= 15;
+                    const showSearch = availableSurveyTemplates.length >= SURVEY_LIST_SEARCH_FROM;
                     const shown = showSearch && query
                       ? availableSurveyTemplates.filter((template) => (template.name || 'Untitled template').toLowerCase().includes(query))
                       : availableSurveyTemplates;
+                    const byId = new Map(availableSurveyTemplates.map((template) => [String(template.id), template]));
+                    const groups = showSearch && !query
+                      ? surveyTemplateSections(availableSurveyTemplates, recentTemplateIds).map((section) => ({
+                        id: section.id,
+                        label: section.label,
+                        templates: section.items.map((item) => byId.get(String(item.id))).filter(Boolean),
+                      }))
+                      : [{ id: 'all', label: null, templates: shown }];
+                    const renderRow = (template, groupId) => {
+                      const isCurrent = template.id === selectedTemplate.id;
+                      const moduleCount = ((template.modules || template.spaces) || []).length;
+                      return (
+                        <button
+                          key={`${groupId}:${template.id}`}
+                          type="button"
+                          className="mobile-survey-template-row"
+                          aria-current={isCurrent ? 'true' : undefined}
+                          onClick={() => switchSurveyTemplate(template)}
+                        >
+                          <span className="mobile-survey-template-name">{template.name || 'Untitled template'}</span>
+                          {template.sharedFrom ? <SharedTemplateBadge sharedFrom={template.sharedFrom} size={18} /> : null}
+                          <span className="mobile-survey-template-meta">
+                            {moduleCount} module{moduleCount === 1 ? '' : 's'}
+                          </span>
+                          <span className="mobile-survey-switch-check" aria-hidden="true">
+                            {isCurrent ? <Icon name="check" size={16} color="currentColor" /> : null}
+                          </span>
+                        </button>
+                      );
+                    };
                     return (
                       <div className="mobile-survey-picker-body mobile-survey-switch">
                         {showSearch && (
@@ -2293,28 +2366,14 @@ const SurveySpacesRail = ({
                         >
                           {shown.length === 0 ? (
                             <div className="mobile-survey-switch-empty">No templates match</div>
-                          ) : shown.map((template) => {
-                            const isCurrent = template.id === selectedTemplate.id;
-                            const moduleCount = ((template.modules || template.spaces) || []).length;
-                            return (
-                              <button
-                                key={template.id}
-                                type="button"
-                                className="mobile-survey-template-row"
-                                aria-current={isCurrent ? 'true' : undefined}
-                                onClick={() => switchSurveyTemplate(template)}
-                              >
-                                <span className="mobile-survey-template-name">{template.name || 'Untitled template'}</span>
-                                {template.sharedFrom ? <SharedTemplateBadge sharedFrom={template.sharedFrom} size={18} /> : null}
-                                <span className="mobile-survey-template-meta">
-                                  {moduleCount} module{moduleCount === 1 ? '' : 's'}
-                                </span>
-                                <span className="mobile-survey-switch-check" aria-hidden="true">
-                                  {isCurrent ? <Icon name="check" size={16} color="currentColor" /> : null}
-                                </span>
-                              </button>
-                            );
-                          })}
+                          ) : groups.map((group) => (
+                            group.label ? (
+                              <div key={group.id} className="mobile-survey-switch-group" role="group" aria-label={group.label} data-template-group={group.id}>
+                                <div className="mobile-survey-switch-heading" aria-hidden="true">{group.label}</div>
+                                {group.templates.map((template) => renderRow(template, group.id))}
+                              </div>
+                            ) : group.templates.map((template) => renderRow(template, group.id))
+                          ))}
                         </div>
                       </div>
                     );

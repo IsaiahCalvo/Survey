@@ -12,6 +12,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState, useSyncExternalSto
 import { createPortal } from 'react-dom';
 import Icon from '../Icons.jsx';
 import { watchLightPopover } from './dismissRules.js';
+import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import {
   DRAW_MODE_OPTIONS, getPencilModeState, setDrawMode, subscribePencilMode,
 } from '../utils/pencilMode.js';
@@ -33,6 +34,9 @@ export default function PencilModeControl({ surface = 'desktop', className, styl
   const buttonRef = useRef(null);
   const menuRef = useRef(null);
 
+  // KAL-66: opened from a keyboard, focus goes to the mode in use, Up / Down
+  // move, and focus returns to the button when it closes.
+  useMenuFocus(menuRef, open && Boolean(place));
   useEffect(() => {
     if (!open) return undefined;
     return watchLightPopover({

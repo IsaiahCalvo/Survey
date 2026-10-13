@@ -183,6 +183,7 @@ import { buildAnnotationSelectionContextKey, didAnnotationSelectionContextChange
 import { buildBulkDeletePlan } from './lib/collab/bulkDeletePlan.js';
 import { guardLockedMarksOnSave, withCalloutLock, withMarkLock, withSurveyMarkerLock } from './utils/markLock.js';
 import { calloutToAnnotationObject, projectCalloutsIntoByPage, deriveCalloutsFromByPage, applyCalloutListToByPage } from './utils/calloutAnnotationBridge';
+import { DISCARD_LOCAL_DRAFT_EVENT } from './tabs/tabStrip.js';
 import { buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent, recordAndNotifyDocumentHistoryEvent, buildPartialEraseHistoryRow } from './services/documentHistoryService.js';
 import { buildTextSearchDiagLogSection, emitTextSearchDiag } from './utils/textSearchDiag';
 import {
@@ -319,7 +320,6 @@ import { resolveEditTypeForAnnotation } from './utils/annotationEditRoute';
 import { buildCaretAnchor, createDoubleTapTracker, editEntryKeyForHit, shouldHandleDoubleTapEntry } from './utils/doubleTapEditEntry';
 import { createMultiTouchTapGate } from './utils/multiTouchTapGate';
 import { isLiveFormWidgetTarget } from './utils/formWidgetPointerTargets.js';
-import { resolveSafeSnapshot } from './utils/safeSnapshot';
 import { canManageCollaborativeSpaces } from './utils/collaborativeSpaceAccess';
 import { combineCollaborationSyncStatus } from './utils/collaborationSyncStatus';
 import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
@@ -332,6 +332,8 @@ import { useAnnotationDoc } from './hooks/useAnnotationDoc.js';
 import { useAuth } from './contexts/AuthContext';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useDocumentPresenceList } from './hooks/useDocumentPresenceList.js';
+import { useLiveCursorBroadcast } from './hooks/useLiveCursorBroadcast.js';
+import RemoteCursorLayer from './components/collab/RemoteCursorLayer.jsx';
 import { useDocumentToolPreferences, useDocuments, useStorage, useTemplates } from './hooks/useDatabase';
 import { useUndoToast } from './hooks/useUndoToast.js';
 import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBookmarks } from './utils/bookmarkDeleteUndo.js';
@@ -5243,6 +5245,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setRightRailCollapsed(isCollapsed);
   }, []);
   const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(true);
+  // Chunk D (2026-10-13): the open left panel's width (each panel has its
+  // own, resizable - PDFSidebar), for the survey bar to keep clear of.
+  const [leftRailPanelWidth, setLeftRailPanelWidth] = useState(272);
 
   // Region annotation visibility state
   const [activeRegionId, setActiveRegionId] = useState(null);
@@ -8289,7 +8294,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const surveyBarCategories = (surveyBarModules.find((module) => module.id === selectedModuleId) || surveyBarModules[0])?.categories || [];
   const surveyBarFit = useSurveyBarFit({
     enabled: Boolean(showSurveyPanel && selectedTemplate),
-    insetLeft: isLeftSidebarCollapsed ? 0 : 272,
+    insetLeft: isLeftSidebarCollapsed ? 0 : leftRailPanelWidth,
     insetRight: rightRailCollapsed ? 0 : 320,
     templateName: selectedTemplate?.name || 'Survey',
     moduleNames: surveyBarModules.length ? surveyBarModules.map((module) => module.name || 'Untitled module') : ['No modules'],
@@ -21458,7 +21463,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   useEffect(() => {
     const documentId = pdfFile?.id || null;
-    if (!documentId || !user?.id || !cloudSyncEnabled) return undefined;
+    // !supabase: offline mode (no credentials) has no channel to listen on.
+    if (!documentId || !user?.id || !cloudSyncEnabled || !supabase) return undefined;
     let cancelled = false;
     let backoff = 1000;
     const MAX_BACKOFF = 30000;
@@ -21501,6 +21507,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // above) resolves modal author names from this render's roster. Same
   // render-time-assignment pattern as requestBulkDeleteRef.
   documentPresenceListRef.current = documentPresenceList;
+  // KAL-399: live cursors — where this screen points goes to the others on
+  // the document's live channel; theirs show in RemoteCursorLayer per page.
+  useLiveCursorBroadcast({
+    documentId: pdfFile?.id || null,
+    enabled: isActive && cloudSyncEnabled && !!pdfFile?.id && !!user?.id,
+    userId: user?.id || null,
+    name: user?.user_metadata?.full_name || user?.email || null,
+    presence: documentPresenceList,
+  });
 
   // Update presence when page changes
   useEffect(() => {
@@ -22122,7 +22137,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       preferBookmarkSource = false,
       bookmarkSourceId = null,
       bookmarkDest = null,
-      bookmarkFallbackPage = null
+      bookmarkFallbackPage = null,
+      // Drawboard canvas audit chunk 6: glide there (~250 ms) instead of jumping.
+      smooth = false
     } = options;
     const viewerPageCount = usePdfjsRenderer
       ? coercePageNumber(
@@ -22250,15 +22267,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         );
       };
 
+      const navOptions = { smooth };
       const navigateWithPrimary = () => {
-        if (invokeNavigation(viewer, viewer?.goToPage, desiredPage)) return true;
-        if (invokeNavigation(viewer?.navigationModule, viewer?.navigationModule?.goToPage, desiredPage)) return true;
+        if (invokeNavigation(viewer, viewer?.goToPage, desiredPage, navOptions)) return true;
+        if (invokeNavigation(viewer?.navigationModule, viewer?.navigationModule?.goToPage, desiredPage, navOptions)) return true;
         return tryBookmarkNavigation();
       };
 
       const navigateWithSecondary = () => {
-        if (invokeNavigation(viewer?.navigationModule, viewer?.navigationModule?.goToPage, desiredPage)) return true;
-        if (invokeNavigation(viewer, viewer?.goToPage, desiredPage)) return true;
+        if (invokeNavigation(viewer?.navigationModule, viewer?.navigationModule?.goToPage, desiredPage, navOptions)) return true;
+        if (invokeNavigation(viewer, viewer?.goToPage, desiredPage, navOptions)) return true;
         return tryBookmarkNavigation();
       };
 
@@ -23107,10 +23125,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     onAnnotationsExistChange(hasAny, tabId);
   }, [annotationsByPage, onAnnotationsExistChange, tabId]);
 
+  // Set by a tab "Close without saving" (below): the local copy stays at the
+  // last Save.
+  const localDraftDiscardedRef = useRef(false);
   // Save callouts to localStorage when they change
   useEffect(() => {
     if (!pdfId) return;
     if (pdfFile?.id) return;
+    if (localDraftDiscardedRef.current) return;
     const fingerprint = getCalloutSyncFingerprint(callouts);
     if (fingerprint === lastSavedCalloutsFingerprintRef.current) return;
     lastSavedCalloutsFingerprintRef.current = fingerprint;
@@ -23129,8 +23151,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!pdfId) return;
     if (pdfFile?.id) return;
     if (pageChangeBackedUpMarksRef.current === annotationsByPage) return;
+    if (localDraftDiscardedRef.current) return;
     saveAnnotationsByPage(pdfId, annotationsByPage);
   }, [pdfId, pdfFile?.id, annotationsByPage]);
+
+  // Tab "Close without saving" (AppShell, tabs/tabStrip.js): the mirror above
+  // kept the unsaved marks in this browser, so a reload brought them back.
+  // Put the local copy back to the last Save (or what this open loaded) and
+  // stop mirroring; the tab is closing.
+  useEffect(() => {
+    if (!tabId || !pdfId || pdfFile?.id) return undefined;
+    const onDiscard = (event) => {
+      if (event?.detail?.tabId !== tabId) return;
+      localDraftDiscardedRef.current = true;
+      const saved = savedAnnotationsByPageRef.current || {};
+      saveAnnotationsByPage(pdfId, saved);
+      saveCallouts(pdfId, deriveCalloutsFromByPage(saved));
+    };
+    window.addEventListener(DISCARD_LOCAL_DRAFT_EVENT, onDiscard);
+    return () => window.removeEventListener(DISCARD_LOCAL_DRAFT_EVENT, onDiscard);
+  }, [tabId, pdfId, pdfFile?.id]);
 
   // Cloud docs still need an instant first paint on refresh. This cache is
   // display-only: Y.Doc/Supabase remains authoritative and replaces it after
@@ -23221,22 +23261,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // sidecar would let a stale blob fight the authoritative copy, so this only
       // runs for local-only documents (no cloud id), mirroring the spaces +
       // annotations guards below.
+      // KAL-275: no empty-snapshot guard here. The old one only acted for a
+      // cloud document, which never reaches this line (gated on !doc.id).
       if (data.annotations && !doc.id) {
-        const safeSurveySnapshot = resolveSafeSnapshot({
-          current: surveyMarkersRef.current || {},
-          incoming: data.annotations || {},
-          cloudBacked: !!doc.id,
-          kind: 'object-map',
-          context: 'supabase-storage-survey-markers',
-        });
-        if (safeSurveySnapshot.preserved) {
-          console.warn('[SafeSnapshot] preserved survey markers instead of applying empty storage sidecar ' + JSON.stringify({
-            documentId: doc.id || null,
-            currentCount: safeSurveySnapshot.currentCount,
-            incomingCount: safeSurveySnapshot.incomingCount,
-          }));
-        }
-        setSurveyMarkers(safeSurveySnapshot.value);
+        setSurveyMarkers(data.annotations);
       }
       // Cloud-sync documents source editable annotations from Y.Doc/Supabase
       // rows, not this older Supabase Storage survey-data JSON blob. That
@@ -23257,23 +23285,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // authoritative durable copy — same hazard the annotationsByPage/callouts
       // restores above already guard against via shouldRestoreLegacyAnnotationBlob.
       if (data.spaces && shouldRestoreLegacyAnnotationBlob) {
-        setSpaces((prev) => {
-          const safeSpacesSnapshot = resolveSafeSnapshot({
-            current: prev || [],
-            incoming: Array.isArray(data.spaces) ? data.spaces : [],
-            cloudBacked: !!doc.id,
-            kind: 'array',
-            context: 'supabase-storage-spaces',
-          });
-          if (safeSpacesSnapshot.preserved) {
-            console.warn('[SafeSnapshot] preserved spaces instead of applying empty storage sidecar ' + JSON.stringify({
-              documentId: doc.id || null,
-              currentCount: safeSpacesSnapshot.currentCount,
-              incomingCount: safeSpacesSnapshot.incomingCount,
-            }));
-          }
-          return safeSpacesSnapshot.value;
-        });
+        setSpaces(Array.isArray(data.spaces) ? data.spaces : []);
       }
       if (data.entities) setEntities(data.entities);
 
@@ -24539,11 +24551,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const zoomDataRef = useRef(null);
 
   const goToPreviousPage = useCallback(() => {
-    goToPage(pageNum - 1, { fallback: 'previous' });
+    goToPage(pageNum - 1, { fallback: 'previous', smooth: true });
   }, [goToPage, pageNum]);
 
   const goToNextPage = useCallback(() => {
-    goToPage(pageNum + 1, { fallback: 'next' });
+    goToPage(pageNum + 1, { fallback: 'next', smooth: true });
   }, [goToPage, pageNum]);
 
   /**
@@ -25533,7 +25545,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const value = resolvePageInput(typeof typed === 'string' ? typed : pageInputValue, numPages);
     if (value !== null) {
       // Navigate first, then update input value will be synced by useEffect when pageNum updates
-      goToPage(value);
+      goToPage(value, { smooth: true });
       // Drawboard parity (measured 2026-10-04): a typed jump zooms to Fit page
       // for that page — top at the top of the view, centred across, page 1 and
       // the last page resting against the document ends. See pageNavigationMath.
@@ -25703,6 +25715,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [setActiveToolLogged]);
   const handleMobileSurveyEntitySelect = useCallback((entityId) => {
     setMobileSurveyEntityId(entityId || null);
+    setActiveToolLogged('survey-marker');
+  }, [setActiveToolLogged]);
+  // Phone survey round (2026-10-13), the desktop bars' twins on the rail:
+  // a category picked from the "All" sheet may be in another module (switch
+  // to it, keep the entity - as the desktop chips do); an entity disc tapped
+  // while Survey Markers are selected changes theirs through the entity bar's
+  // write (save / sync / undo) and is the next marker's entity too; the
+  // marker-shape menu arms the tool.
+  const handleMobileSurveyCategoryPick = useCallback((categoryId, moduleId) => {
+    if (moduleId) setSelectedModuleId(moduleId);
+    setSelectedCategoryId(categoryId || null);
+    setActiveToolLogged('survey-marker');
+  }, [setActiveToolLogged]);
+  const handleMobileSurveyEntityApply = useCallback((entityId, markerIds = []) => {
+    setMobileSurveyEntityId(entityId || null);
+    handleSurveyEntityBarPick(entityId, markerIds);
+  }, [handleSurveyEntityBarPick]);
+  const handleMobileSurveyArmMarker = useCallback(() => {
     setActiveToolLogged('survey-marker');
   }, [setActiveToolLogged]);
 
@@ -26004,6 +26034,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         onSelectModule: handleMobileSurveyModuleSelect,
         onSelectCategory: handleMobileSurveyCategorySelect,
         onSelectEntity: handleMobileSurveyEntitySelect,
+        onPickCategory: handleMobileSurveyCategoryPick,
+        onApplyEntity: handleMobileSurveyEntityApply,
+        onArmMarker: handleMobileSurveyArmMarker,
+        surveyMarkers,
         keepCategoryActive: surveyKeepCategoryActive,
         onKeepCategoryActiveChange: setSurveyKeepCategoryActive,
         // Owner 2026-10-07 (survey bar round): the strip opens with the
@@ -26180,6 +26214,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleMobileSurveyModuleSelect,
     handleMobileSurveyCategorySelect,
     handleMobileSurveyEntitySelect,
+    handleMobileSurveyCategoryPick,
+    handleMobileSurveyEntityApply,
+    handleMobileSurveyArmMarker,
+    surveyMarkers,
     surveyKeepCategoryActive,
     appTemplates,
     handleSwitchSurveyTemplateById,
@@ -34795,7 +34833,8 @@ ${pageBlocks}
     setPrintPanelOpen(false);
   }, [printPanelGetThumbnail]);
 
-  const handleLeftRailToggleCollapse = useCallback((isCollapsed) => {
+  const handleLeftRailToggleCollapse = useCallback((isCollapsed, panelWidth) => {
+    if (Number.isFinite(panelWidth) && panelWidth > 0) setLeftRailPanelWidth(Math.round(panelWidth));
     let didChange = false;
     setIsLeftSidebarCollapsed((prev) => {
       if (prev === isCollapsed) return prev;
@@ -35847,8 +35886,10 @@ ${pageBlocks}
                        the PDF surface opens the touch context menu, but ONLY
                        under the pan or select tool (demo App.tsx:1555/1579 gate
                        long-press to activeTool pan|select). Drawing tools keep
-                       the finger for their own strokes. */
-                    mobileLongPressContextMenu={mobileMode && (activeTool === 'pan' || activeTool === 'select')}
+                       the finger for their own strokes. Every touch screen, not
+                       only the phone layout (touch audit 2026-10-13, T1): the
+                       viewer arms it only where touch exists. */
+                    mobileLongPressContextMenu={activeTool === 'pan' || activeTool === 'select'}
                     textHighlightModeActive={activeTool === 'text-highlight'}
                     textHighlightColor={strokeColor}
                     textHighlightOpacity={Math.max(0, Math.min(1, Number(strokeOpacity) / 100 || 0.5))}
@@ -37078,6 +37119,7 @@ ${pageBlocks}
                                       isNewText: true,
                                       clickPosition: { x, y },
                                       textBoxWidth: isDrag ? dx / effectiveScale : undefined,
+                                      textBoxHeight: isDrag ? dy / effectiveScale : undefined,
                                     });
                                   }}
                                 >
@@ -37394,6 +37436,7 @@ ${pageBlocks}
                                   // selecting the whole string (Drawboard parity).
                                   caretAnchor={editingAnnotation.caretAnchor || null}
                                   textBoxWidth={editingAnnotation.textBoxWidth}
+                                  textBoxHeight={editingAnnotation.textBoxHeight}
                                   newTextStyle={mobileMode ? textStyleDefaults : null}
                                   newTextCloudIntensity={lineBorderStyle === 'cloud' ? Math.max(1, Number(cloudIntensity) || 2) : null}
                                   authorId={user?.id ?? null}
@@ -37613,6 +37656,9 @@ ${pageBlocks}
                               aria-busy="true"
                               style={{ position: 'absolute', inset: 0, zIndex: 1000, pointerEvents: 'auto', cursor: 'progress' }}
                             />
+                          )}
+                          {cloudSyncEnabled && pdfFile?.id && (
+                            <RemoteCursorLayer documentId={pdfFile.id} pageNumber={pageNumber} pageSize={resolvedPageSize} presence={documentPresenceList} selfId={user?.id || null} />
                           )}
                         </div>,
                         portalTarget,
@@ -38645,7 +38691,7 @@ ${pageBlocks}
                   // (320px) are drawn OVER this row: the end pieces keep clear
                   // of whichever is open; the centre group does not move.
                   style={{
-                    '--survey-bar-inset-l': isLeftSidebarCollapsed ? '0px' : '272px',
+                    '--survey-bar-inset-l': isLeftSidebarCollapsed ? '0px' : `${leftRailPanelWidth}px`,
                     '--survey-bar-inset-r': rightRailCollapsed ? '0px' : '320px',
                   }}
                 >

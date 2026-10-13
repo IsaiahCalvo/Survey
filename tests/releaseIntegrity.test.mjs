@@ -75,8 +75,16 @@ test('Enterprise price secret is deliberately NOT required (KAL-414 contact-us t
 });
 
 test('Node test gate isolates files and bounds hangs', () => {
+  // 2026-10-13 (KAL-446): the per-file bound moved into
+  // scripts/test-file-guard.mjs and is now judged on the file's own CPU time
+  // and progress, not raw wall-clock time; its behaviour is tested in
+  // tests/testFileGuard.test.mjs. This keeps the wiring honest.
   const runner = readFileSync('scripts/run-node-tests.mjs', 'utf8');
-  assert.match(runner, /spawn\(process\.execPath, \['--test', file\]/);
-  assert.match(runner, /timeoutMs = 120_000/);
-  assert.match(runner, /exceeded its \$\{timeoutMs\}ms file timeout/);
+  const guard = readFileSync('scripts/test-file-guard.mjs', 'utf8');
+  assert.match(runner, /import \{ runGuardedTestFile \} from '\.\/test-file-guard\.mjs'/);
+  assert.match(runner, /await runGuardedTestFile\(file\)/);
+  assert.match(guard, /spawn\(process\.execPath, \['--test', file\]/);
+  assert.match(guard, /WALL_GRACE_MS = 120_000/);
+  assert.match(guard, /CPU_BUDGET_MS = 120_000/);
+  assert.match(guard, /HARD_CAP_MS = 3_600_000/);
 });

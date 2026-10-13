@@ -215,7 +215,9 @@ html.survey-viewer-open #root {
   html.survey-viewer-open,
   html.survey-viewer-open body,
   html.survey-viewer-open #root,
-  html.survey-viewer-open #root > div {
+  /* Not the tab strip's empty dialog layer (AppShell [data-tab-strip-dialogs]):
+     at full height it pushed the viewer off the phone screen (hub.css too). */
+  html.survey-viewer-open #root > div:not([data-tab-strip-dialogs]) {
     height: 100dvh !important;
     min-height: 0 !important;
     overflow: hidden !important;
@@ -1012,7 +1014,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      transition. It now fades and slides in 6px from the rail it hangs off
      over 150ms, matching the zoom menu's in-motion (Drawboard: 100ms fade +
      grow in). It unmounts on close, so only the "in" half exists. */
-  animation: mobilePdfStripIn 150ms cubic-bezier(0.33, 1, 0.68, 1);
+  animation: mobilePdfStripIn 150ms var(--ease-out);
   width: var(--mobile-rail-sub-w);
   padding: var(--rail-sub-pad, 3px) 0;
   display: flex;
@@ -1156,6 +1158,97 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      the entity's own colour reads as a clean dot. It was a #0c0f13 literal. */
   border: 1px solid var(--surface-0);
   border-radius: 50%;
+}
+
+/* Phone survey round (2026-10-13): the entity of the selected Survey
+   Marker(s) - what a tap now changes - is ringed in bright ink, calm; the
+   gold ring above stays the armed pick for the NEXT marker (owner exception
+   2026-09-17). The desktop entity bar rings the same entity. */
+.mobile-pdf-tools__survey-entities button.is-current {
+  border-color: var(--text-1);
+}
+
+/* The "All" disc that ends a long category / entity column (lead decision
+   2026-10-13, long lists): a disc-sized rounded square with the word, so it
+   never reads as a category's initials or an entity's colour. Opens the list
+   sheet; while it is up the word is bright. */
+.mobile-pdf-tools__survey-categories .mobile-pdf-tools__survey-all,
+.mobile-pdf-tools__survey-entities .mobile-pdf-tools__survey-all {
+  width: var(--mobile-rail-disc);
+  height: var(--mobile-rail-disc);
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  font: 700 9px/1 var(--font-ui);
+  letter-spacing: -0.01em;
+}
+
+.mobile-pdf-tools__survey-categories .mobile-pdf-tools__survey-all.is-open,
+.mobile-pdf-tools__survey-entities .mobile-pdf-tools__survey-all.is-open {
+  color: var(--text-1);
+}
+
+.mobile-pdf-tools__survey-categories .mobile-pdf-tools__survey-all:active,
+.mobile-pdf-tools__survey-entities .mobile-pdf-tools__survey-all:active {
+  background: var(--pressed);
+}
+
+/* The Survey Marker shape menu beside the rail (the desktop tool bar's marker
+   group): the rail popover, its top set at the chip by MobileMarkerShapeChip. */
+.mobile-pdf-tools__popover.is-marker-shape {
+  width: min(210px, calc(100vw - var(--mobile-rail-w) - 14px));
+}
+
+.mobile-pdf-tools__popover.is-marker-shape button > span:first-of-type {
+  flex: 1 1 auto;
+}
+
+.mobile-pdf-tools__popover-check {
+  width: 14px;
+  display: inline-flex;
+  color: var(--text-1);
+}
+
+/* The long-list sheet (categories / entities / templates): the Active users
+   sheet's frame, the shared phone sheet scale, SurveyPickList inside it. */
+.mobile-survey-all-sheet {
+  --mobile-sheet-height: var(--mobile-panel-standard);
+  padding: 0 var(--sheet-pad-x) 12px;
+  display: flex;
+  flex-direction: column;
+  color: var(--text-1);
+  font-family: var(--sheet-font);
+}
+
+.mobile-survey-all-sheet > .mobile-pdf-sheet__handle {
+  display: flex;
+  align-items: center;
+}
+
+.mobile-survey-all-sheet > header {
+  min-height: var(--sheet-head-h);
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mobile-survey-all-sheet > header > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.mobile-survey-all-sheet > header strong { font: var(--sheet-title); }
+.mobile-survey-all-sheet > header span { color: var(--text-3); font: var(--sheet-subtitle); }
+
+.mobile-survey-all-sheet .survey-pick {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 /* UX 2026-09-16: the footer column is the same rail chip as the column above it
@@ -3341,6 +3434,37 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   pointer-events: none;
 }
 
+/* THE DESKTOP LAYOUT ON A TOUCH DEVICE (owner 2026-10-13, Drawboard touch
+   audit K1): an iPad or a touch laptop shows the desktop layout, and its
+   on-screen keyboard is handled by the same controller (keyboardViewport.js,
+   mounted by AppShell with `desktop: true` - never on a mouse-only desktop or
+   in Electron). Its two pieces of room, both inert at rest because the
+   controller sets their attributes only while a real keyboard is up:
+   - the page area gets the keyboard's scroll room below the last page, so a
+     text box low on the page can be scrolled above the keyboard (the same
+     content-box padding as the phone's, above);
+   - a list holding the field (the right rail's Survey list, a side panel)
+     gets room at its end, as a phone browse panel's lists do. */
+@media screen and (min-device-width: 600px) and (min-device-height: 600px) {
+  html.survey-viewer-open[data-keyboard-scroll-room] [data-mobile-pdf-surface='false'] [data-pdfjs-content='true'] {
+    box-sizing: content-box;
+    padding-bottom: var(--keyboard-scroll-room, 0px);
+  }
+
+  html.survey-viewer-open [data-keyboard-room] {
+    max-height: var(--keyboard-room-hold, none) !important;
+  }
+
+  html.survey-viewer-open [data-keyboard-room]::after {
+    content: '';
+    display: block;
+    flex: none;
+    grid-column: 1 / -1;
+    height: var(--keyboard-room, 0px);
+    pointer-events: none;
+  }
+}
+
 /* While a list carries the field you are typing in to its place (a compositor
    glide, keyboardViewport.js), the iOS caret - drawn by WebKit from the
    field's laid-out box, not from the animated one - would stand still beside
@@ -3420,11 +3544,11 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
    SHEET_SWAP_MS). The grab handle stays put, so the frame reads as one sheet.
    Two identical keyframes so a second switch inside the fade restarts it. */
 [data-mobile-sheet][data-sheet-swap='a'] > :not(.mobile-pdf-sheet__handle) {
-  animation: mobileSheetSwapInA 200ms cubic-bezier(0.33, 1, 0.68, 1) both;
+  animation: mobileSheetSwapInA 200ms var(--ease-out) both;
 }
 
 [data-mobile-sheet][data-sheet-swap='b'] > :not(.mobile-pdf-sheet__handle) {
-  animation: mobileSheetSwapInB 200ms cubic-bezier(0.33, 1, 0.68, 1) both;
+  animation: mobileSheetSwapInB 200ms var(--ease-out) both;
 }
 
 @keyframes mobileSheetSwapInA {

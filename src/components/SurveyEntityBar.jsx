@@ -123,8 +123,9 @@ export function SurveyEntitySwatch({ entity, current = false, tip, tipSide = 'be
  * The Survey Markers selected on the page now. Every page layer announces its
  * pick on the window (HISTORY_PAGE_SELECTION_EVENT, the History panel's and
  * pageSelectionPresence's source), and an empty pick when it clears or goes.
+ * Shared with the phone rail's entity discs (mobile/MobileSurveyRail.jsx).
  */
-function useSelectedSurveyMarkerIds() {
+export function useSelectedSurveyMarkerIds() {
   const [byPage, setByPage] = useState(() => new Map());
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;

@@ -135,7 +135,8 @@ test('Dashboard: document Delete archives without a confirm and offers Undo thro
   assert.doesNotMatch(hub, /\.hub-undo-toast \.undo-toast/);
   assert.match(hub, /\.undo-toast\.hub-undo-toast \{\s*width: max-content;/);
   assert.match(hub, /\.undo-toast\.hub-undo-toast \{\s*bottom: calc\(/);
-  assert.match(read('src/components/collab/UndoToast.jsx'), /className=\{className \? `undo-toast \$\{className\}` : 'undo-toast'\}/);
+  // The host's class lands on the toast itself (it is portalled to <body>).
+  assert.match(read('src/components/collab/UndoToast.jsx'), /className=\{`undo-toast\$\{className \? ` \$\{className\}` : ''\}/);
   // Projects still confirm (a project archives with all its documents).
   const projects = src.slice(end, src.indexOf('const hubRenameProject'));
   assert.match(projects, /askConfirm\(/);
