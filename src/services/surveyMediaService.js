@@ -779,10 +779,11 @@ export async function listSurveyMediaForDocument(documentId) {
 
 /**
  * Best-effort clean-up of a document's media: removes every object this user
- * may remove - all of them while the document row exists and they own it
- * (so "delete forever" runs this BEFORE the purge), only their own uploads
- * after that. Never throws. `leftover` names the paths that are still stored
- * (failed, or not allowed) so the caller can queue them for a retry.
+ * may remove - all of them while the document row exists and they own it,
+ * only their own uploads after that ("delete forever" runs this AFTER the
+ * purge, so only the caller's own uploads). Never throws. `leftover` names the
+ * paths that are still stored (failed, or not allowed); `outcome.failed` is
+ * the retryable subset.
  */
 export async function removeSurveyMediaForDocument(documentId) {
   if (!documentId) return { removed: 0, leftover: [] };
