@@ -193,3 +193,84 @@ export function libraryHasLoaded(documents) {
 export function canRenameTab(tab, signedIn) {
   return Boolean(signedIn) && persistableDocumentId(tab) !== null;
 }
+
+/**
+ * The restore / save rules of useTabSession, without React. One per AppShell.
+ *
+ * Account switch without a reload (Codex on #817): a session can expire and a
+ * different person sign in while the strip still holds the first person's
+ * tabs, and `documents` still holds the first person's library until the new
+ * one arrives. So:
+ *  - restore waits for a library that belongs to the signed-in user
+ *    (`documentsUserId`, stamped where the library is loaded);
+ *  - every tab belongs to the account that was signed in when it was opened,
+ *    and only the signed-in user's own tabs are ever matched or written under
+ *    that user's key. Another account's tab ids are never saved.
+ */
+export function createTabSessionController(getStorage) {
+  let restoredFor = null;
+  let lastWritten = null;
+  // The commit that restores still holds the old strip; its write would
+  // replace the saved list with it, so that one write is skipped.
+  let skipWrite = false;
+  let lastSignedIn = null;
+  let tabOwner = new Map(); // tab id -> the user it was opened under
+
+  const claim = (list, userId) => {
+    const next = new Map();
+    for (const tab of list) if (tab?.id != null) next.set(tab.id, tabOwner.get(tab.id) ?? userId);
+    tabOwner = next;
+  };
+  const noteUser = (userId, tabs) => {
+    const list = Array.isArray(tabs) ? tabs : [];
+    // Tabs opened before a switch (or while signed out after it) stay with the
+    // account that was signed in before.
+    if (userId && lastSignedIn && userId !== lastSignedIn) claim(list, lastSignedIn);
+    if (userId) {
+      lastSignedIn = userId;
+      claim(list, userId);
+    }
+  };
+  const ownTabs = (tabs, userId) => (Array.isArray(tabs) ? tabs : [])
+    .filter((tab) => tabOwner.get(tab?.id) === userId);
+
+  return {
+    /** Reopens the saved tabs once per signed-in user; returns the plan or null. */
+    restore({ enabled = true, userId, documents, documentsUserId, tabs, onRestore }) {
+      noteUser(userId, tabs);
+      if (!enabled || !userId || restoredFor === userId) return null;
+      // The stamp proves this user's library load finished, even when it
+      // returned no documents (Codex, #817: an empty library must still
+      // restore - skipping everything - so the stale session is cleared).
+      if (documentsUserId !== userId) return null;
+      restoredFor = userId;
+      lastWritten = null;
+      skipWrite = false;
+      const plan = planTabRestore(readTabSession(getStorage(), userId), documents, ownTabs(tabs, userId));
+      if (plan.skipped.length) {
+        console.info('[TabSession] skipped documents that are no longer available:', plan.skipped.length);
+      }
+      if (plan.rows.length) {
+        skipWrite = true;
+        try {
+          onRestore?.(plan);
+        } catch (error) {
+          console.warn('[TabSession] restore failed', error);
+        }
+      }
+      return plan;
+    },
+    /** Saves the signed-in user's own tabs; true when something was written. */
+    save({ enabled = true, userId, tabs, activeTabId }) {
+      noteUser(userId, tabs);
+      if (!enabled || !userId || restoredFor !== userId) return false;
+      if (skipWrite) { skipWrite = false; return false; }
+      const session = serializeTabSession(ownTabs(tabs, userId), activeTabId);
+      const text = JSON.stringify(session);
+      if (text === lastWritten) return false;
+      if (!writeTabSession(getStorage(), userId, session)) return false;
+      lastWritten = text;
+      return true;
+    },
+  };
+}

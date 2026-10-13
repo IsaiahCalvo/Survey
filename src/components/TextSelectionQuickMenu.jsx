@@ -57,8 +57,24 @@ function liveSelectionRect() {
   }
 }
 
+// Every opened document tab keeps its viewer mounted (AppShell hides the
+// others with display: none), so a plain querySelector can return a hidden
+// tab's zero-sized viewer and the menu never showed on later tabs (Codex,
+// #817). Use the viewer that holds the selection, else the one on screen.
+function selectionViewer() {
+  try {
+    const node = window.getSelection?.()?.anchorNode;
+    const element = node?.nodeType === 1 ? node : node?.parentElement;
+    const owner = element?.closest?.('[data-testid="pdf-container"]');
+    if (owner) return owner;
+  } catch { /* fall through */ }
+  const all = document.querySelectorAll('[data-testid="pdf-container"]');
+  for (const element of all) if (element.getClientRects().length > 0) return element;
+  return all[0] || null;
+}
+
 function viewerBounds() {
-  const container = document.querySelector('[data-testid="pdf-container"]');
+  const container = selectionViewer();
   const rect = container?.getBoundingClientRect?.();
   const viewport = window.visualViewport;
   const viewportTop = viewport ? viewport.offsetTop : 0;

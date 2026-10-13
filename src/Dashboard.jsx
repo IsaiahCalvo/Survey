@@ -62,7 +62,7 @@ const serializeError = (error) => {
   };
 };
 
-const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOpenStart, onDocumentOpenEnd, onBack, documents, setDocuments, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal, entities, setEntities }, ref) {
+const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOpenStart, onDocumentOpenEnd, onBack, documents, setDocuments, onLibraryUserChange = null, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal, entities, setEntities }, ref) {
   const fileInputRef = useRef();
   const projectFileInputRef = useRef();
   // Destination project for the next browser-input upload. The browser file
@@ -504,7 +504,25 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       );
       return [...tempDocs, ...formattedDocs];
     });
-  }, [supabaseDocuments]);
+    // Whose library this is (the open-tabs restore waits for the signed-in
+    // user's own). Runs only when a new list lands - never on the render where
+    // `user` changes but the old account's list is still here - so `user` is
+    // deliberately not a dependency.
+    // Only the WHOLE library counts: inside a project this list is that
+    // project's documents alone, and restoring against it would skip saved
+    // tabs from other projects and then save the shortened set over the
+    // user's session (Bugbot, #817). Report "not the full library" instead.
+    onLibraryUserChange?.(selectedProjectId ? null : (user?.id || null));
+  }, [supabaseDocuments]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // An EMPTY library is a loaded library too (Codex, #817): the list above
+  // does not change when the signed-in user's load returns no documents, so
+  // stamp when that user's first load finishes. initialLoading is keyed by
+  // user, so when it is false the list is the current user's.
+  useEffect(() => {
+    if (documentsInitialLoading || selectedProjectId) return;
+    onLibraryUserChange?.(user?.id || null);
+  }, [documentsInitialLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     try { localStorage.setItem('dashboardViewMode', viewMode); } catch { }

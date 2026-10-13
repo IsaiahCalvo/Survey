@@ -280,3 +280,67 @@ test('copy names and the plain-English note', () => {
     '2 of these files are already in “P”, so no second copies were made.',
   );
 });
+
+// Bugbot on #817: a dedupe hit on a row the person moved to Archive
+// (user_archived_at) must bring that document back to Documents, not land
+// silently on the hidden row. The unique content-hash index covers archived
+// rows too, so a second row cannot be made beside it; restore is the answer.
+const archiveRow = (row, extra = {}) => Object.assign(row, {
+  user_archived_at: '2026-10-10T00:00:00.000Z',
+  user_archive_expires_at: '2026-11-09T00:00:00.000Z',
+  user_archived_by: row.user_id,
+  archive_group_id: null,
+  ...extra,
+});
+
+test('an upload of a PDF that sits in Archive restores that document to Documents', async () => {
+  const backend = new FakeBackend({ documentId: 'unused-doc', ownerId: OWNER, storage: true });
+  const source = seedSource(backend);
+  archiveRow(source);
+  const app = appFor(backend, OWNER);
+
+  const uploaded = await createOrReuseDocumentRow({
+    supabase: app.client,
+    userId: OWNER,
+    documentData: { name: 'Site plan.pdf', file_path: source.file_path, project_id: PROJECT_1, content_sha256: sha(PDF) },
+  });
+  assert.equal(uploaded.reused, true);
+  assert.equal(uploaded.row.id, source.id, 'still one document per file per project');
+  assert.equal(uploaded.row.user_archived_at, null, 'the returned row is live');
+  const stored = backend.table('documents').find((d) => d.id === source.id);
+  assert.equal(stored.user_archived_at, null, 'out of Archive in the database');
+  assert.equal(stored.user_archive_expires_at, null, 'and off the purge schedule');
+  assert.equal(rowsIn(backend, PROJECT_1).length, 1);
+});
+
+test('a copy onto a PDF that sits in Archive in the destination restores it there', async () => {
+  const backend = new FakeBackend({ documentId: 'unused-doc', ownerId: OWNER, storage: true });
+  const source = seedSource(backend);
+  const app = appFor(backend, OWNER);
+  const first = await app.copy(source, PROJECT_2);
+  archiveRow(backend.table('documents').find((d) => d.id === first.id));
+
+  const second = await app.copy(source, PROJECT_2);
+  assert.equal(second.id, first.id);
+  assert.equal(isReusedCopy(second), true);
+  assert.equal(second.user_archived_at, null);
+  assert.equal(backend.table('documents').find((d) => d.id === first.id).user_archived_at, null,
+    'the copy shows up in the project again');
+  assert.equal(rowsIn(backend, PROJECT_2).length, 1);
+});
+
+test('a dedupe hit inside an archived project is refused, never landed on silently', async () => {
+  const backend = new FakeBackend({ documentId: 'unused-doc', ownerId: OWNER, storage: true });
+  const source = seedSource(backend);
+  archiveRow(source, { archive_group_id: 'group-1' });
+  const app = appFor(backend, OWNER);
+  await assert.rejects(
+    createOrReuseDocumentRow({
+      supabase: app.client,
+      userId: OWNER,
+      documentData: { name: 'Site plan.pdf', file_path: source.file_path, project_id: PROJECT_1, content_sha256: sha(PDF) },
+    }),
+    (error) => error.reason === 'project_child',
+  );
+  assert.ok(backend.table('documents').find((d) => d.id === source.id).user_archived_at, 'left in Archive');
+});

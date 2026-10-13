@@ -184,7 +184,7 @@ import { crossPageGhostFor, crossPageGhostKind, subscribeCrossPageGhost } from '
 // Owner 2026-10-13: Survey Marker draw modes — Rectangle / Freehand / Smart fill.
 import { buildPolygonMarkerBounds, buildStrokeMarkerBounds, MARKER_STROKE_DEFAULT_WIDTH } from '../survey/markerShapes.js';
 import { useEffectiveMarkerDrawMode } from '../survey/markerDrawMode.js';
-import { runMarkerShapeProvider } from '../survey/markerShapeProviders.js';
+import { isSmartFillPressLive, runMarkerShapeProvider } from '../survey/markerShapeProviders.js';
 import {
   MARKER_FREEHAND_PREVIEW_COLOR,
   projectSurveyMarkerEntryShape,
@@ -502,6 +502,9 @@ const SVGAnnotationLayerBody = memo(({
   // w32: the open document's id — live ink (in-progress strokes) is sent on,
   // and shown from, this document's channel only.
   documentId = null,
+  // False while this document's tab is behind another one (a pending Smart
+  // fill press is then dropped).
+  isTabActive = true,
   selectionMode = 'rectangle', // 'rectangle' | 'lasso'; text uses activeTool='text-select'
   // UX 2026-09-15 (Drawboard parity — Pan is a selection mode):
   // panEditEntryEnabled is set by PDFViewer when the PAN tool is armed. It does
@@ -2355,9 +2358,14 @@ const SVGAnnotationLayerBody = memo(({
   const [smartFillPending, setSmartFillPending] = useState(null);
   const smartFillAbortRef = useRef(null);
   useEffect(() => () => smartFillAbortRef.current?.abort?.(), []);
+  // A pending answer is dropped once the press no longer applies: another
+  // tool, Rectangle / Freehand picked, or this document's tab sent behind.
+  const smartFillLive = isSmartFillPressLive({ activeTool, markerDrawMode, isTabActive });
+  const smartFillLiveRef = useRef(smartFillLive);
+  smartFillLiveRef.current = smartFillLive;
   useEffect(() => {
-    if (activeTool !== 'survey-marker') smartFillAbortRef.current?.abort?.();
-  }, [activeTool]);
+    if (!smartFillLive) smartFillAbortRef.current?.abort?.();
+  }, [smartFillLive]);
   const startSmartFill = useCallback((point) => {
     smartFillAbortRef.current?.abort?.();
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -2372,7 +2380,7 @@ const SVGAnnotationLayerBody = memo(({
       pageCanvas,
       signal: controller?.signal || null,
     }).then((result) => {
-      if (controller?.signal?.aborted) return;
+      if (controller?.signal?.aborted || !smartFillLiveRef.current) return;
       const markerBounds = result ? buildPolygonMarkerBounds(result) : null;
       if (markerBounds && typeof onSurveyMarkerCreated === 'function') {
         recordAnnotationCommit({
