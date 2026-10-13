@@ -277,6 +277,16 @@ const ICON_RENDERERS = {
         <rect x="3" y="18" width="4" height="4" rx="1" stroke={color} strokeWidth="1.5" data-icon-source="hugeicons" />
       </svg>
     ),
+    // Owner 2026-10-13: the Survey Marker group's Smart fill (shown only while
+    // a provider is registered, src/survey/markerShapeProviders.js). Lucide
+    // paint-bucket (ISC) at the house 1.5 stroke.
+    paintBucket: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M19 11L11 3L2.4 11.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M5 2L10 7M2 13H17" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
     listChecks: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <path d="M3 7L5 9L9 5M3 17L5 19L9 15" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
