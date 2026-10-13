@@ -70,7 +70,9 @@ async function openViewer(browser, kind) {
         return {
           label: m.getAttribute('aria-label'),
           touchRows: m.getAttribute('data-touch-rows'),
-          rows: rows.map((r) => r.textContent.trim()),
+          // Canvas 6+7: the mark menu's first row is icon buttons (Cut, Copy,
+          // Paste, Duplicate, Delete) named by aria-label, not by text.
+          rows: rows.map((r) => r.textContent.trim() || r.getAttribute('aria-label') || ''),
           minRow: Math.round(Math.min(...rows.map((r) => r.getBoundingClientRect().height))),
         };
       },
@@ -172,7 +174,7 @@ test.describe('tablet 1024x1366 (desktop layout): finger + pen long press', () =
     // A row works by finger: Delete removes the mark.
     const m0 = await H.marks();
     await H.fhold(mark.x, mark.y);
-    const del = H.page.locator('[data-annotation-context-menu] [role="menuitem"]', { hasText: 'Delete' }).first();
+    const del = H.page.locator('[data-annotation-context-menu] [role="menuitem"][aria-label="Delete"], [data-annotation-context-menu] [role="menuitem"]:text-is("Delete")').first();
     await del.tap();
     await sleep(600);
     record('tablet.finger.delete.marks', [m0, await H.marks()]);
