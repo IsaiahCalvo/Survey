@@ -507,6 +507,9 @@ const SurveySpacesRail = ({
   surveyMarkerNameFocusRequest = null,
   undoSurveyMarkerPlacement,
   rememberSurveyEntity,
+  // 2026-10-13 (desktop entity bar): a ref this panel fills with its Entity
+  // menu's write, so the bar can change a selected marker's entity the same way.
+  surveyEntityApplyRef = null,
   selectedItemsInCategory,
   selectedModuleId,
   selectedSpaceId,
@@ -1324,6 +1327,20 @@ const SurveySpacesRail = ({
       });
     }
   };
+
+  // The desktop entity bar (PDFViewer) changes a selected Survey Marker's
+  // entity through this same write - the marker's own module and category.
+  if (surveyEntityApplyRef) {
+    surveyEntityApplyRef.current = (annotationId, entityId) => {
+      const marker = surveyMarkers?.[annotationId];
+      if (!marker) return false;
+      const markerModuleId = marker.moduleId || selectedModuleId;
+      const markerModule = (selectedTemplate?.modules || selectedTemplate?.spaces || []).find((module) => module.id === markerModuleId);
+      const category = (markerModule?.categories || []).find((c) => c.id === marker.categoryId) || null;
+      applyEntitySelectionForMarker(annotationId, markerModuleId, category, entityId);
+      return true;
+    };
+  }
 
   // The checklist Y/N/N-A click handler, shared by the desktop row and the
   // phone's open Survey Marker. Owner ruling 2026-10-01 (auto entity): "When

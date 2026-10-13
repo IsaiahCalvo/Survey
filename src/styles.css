@@ -818,78 +818,67 @@ button,
 /* ==========================================================================
    SURVEY SUB-ROW (desktop, owner 2026-09-23: "doesn't look like the rest of
    the dropdowns ... make it look more aesthetic and intentional")
-   [ Module pill ▾ ] | (C) (D) ... | [switch] Keep active
-   The category chips sit on the bar's centre; the two side groups hang off
-   them (absolute), so a longer or shorter module name never moves the chips.
-   Every size is a chrome token: the pill is .chrome-pill (AnnotationDropdown),
+   [glyph template v] ...... [Module v] | (C)(D)(AC) | Reuse ...... Done
+   Every size is a chrome token: the pills are .chrome-pill (AnnotationDropdown),
    the chips are .chrome-subcontrol, the rules are .chrome-divider.
    ========================================================================== */
 .survey-subrow {
-  /* Owner 2026-10-07 (survey bar round): the bar now runs edge to edge -
-     [glyph template v] ...... [Module v] | (C)(D) | Reuse ...... Done.
-     Three columns: the two sides are equal (1fr each), so the category chips
-     stay exactly on the bar's centre whatever the names are, as before. Each
-     side packs to its edge: the template name hugs the left end and Done the
-     right end; the module pill and Reuse stay against the chips. When room
-     runs out the bar gives ground in a fixed order (2026-10-07, narrow
-     windows; planSurveyBarStep in utils/responsiveToolbar.js): the template
-     name shortens, then goes (glyph stays); the module name shortens; then
-     Reuse, the module menu and the template menu move into a "..." menu.
-     The chips and Done always stay, at full size.
-     The left panel and the Survey panel are drawn OVER this row, so the bar
-     is inset by whichever is open (PDFViewer sets the two insets) and centres
-     in what stays visible; it eases across as a panel opens or closes. */
+  /* Owner 2026-10-13 ("the panel pushes the sub-toolbar out of place ... The
+     things in the center should stay in the center. The peripherals on the
+     left and right ... can move in and out"; "It should sit centered, just
+     like the other annotation tools sit centered"):
+     - the CENTRE group (module menu, chips, Reuse) is pinned to the tool
+       bar's centre (--survey-centre-x, the Draw / Shapes / Text icons' centre,
+       set by useSurveyBarFit on the row slot) and never moves when a side
+       panel opens or closes;
+     - the END pieces (template menu, Done) sit at the ends of what the open
+       panels leave visible: the bar is inset by whichever panel is open (the
+       panels are drawn OVER this row) and eases across as one opens or closes.
+     When room runs out the end pieces give ground first (the template name
+     ellipsises to --survey-template-room, then only its glyph is left; Done
+     becomes its check), then the centre, in place (planSurveyBar in
+     utils/responsiveToolbar.js). */
   position: relative;
   width: 100%;
   height: 100%;
   box-sizing: border-box;
   padding: 0 calc(8px + var(--survey-bar-inset-r, 0px)) 0 calc(8px + var(--survey-bar-inset-l, 0px));
   transition: padding 180ms ease-out;
-  display: grid;
-  /* 2026-10-07 (narrow windows): each side is at least as wide as its
-     contents, so when one side needs more than half the chips slide off the
-     centre just enough instead of running under it. The bar only draws this
-     look while everything fits at full width (planSurveyBarStep). */
-  grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr);
-  align-items: center;
-}
-
-/* Past full width (useSurveyBarFit sets data-survey-bar-step): the start side
-   takes what the chips and the end side leave, and gives ground inside it -
-   the template name, then the module name, each down to the minimum the plan
-   allows (--survey-template-min / --survey-module-min). */
-.survey-subrow:not([data-survey-bar-step='full']) {
-  grid-template-columns: minmax(0, 1fr) max-content max-content;
-}
-
-/* Last resort (many categories in a tiny span): the chips scroll sideways
-   rather than being cut or covered. */
-.survey-subrow[data-survey-bar-step='scroll-categories'] {
-  grid-template-columns: 0 minmax(0, 1fr) max-content;
-}
-
-.survey-subrow[data-survey-bar-step='scroll-categories'] .survey-subrow__cats {
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.survey-subrow[data-survey-bar-step='scroll-categories'] .survey-subrow__cats::-webkit-scrollbar {
-  display: none;
-}
-
-/* The More (...) menu that takes Reuse, then the module and template menus,
-   in a narrow bar. With nothing before the chips it sits a gutter after
-   them, without a rule. */
-.survey-subrow__more {
-  flex: 0 0 auto;
   display: flex;
   align-items: center;
+  justify-content: space-between;
 }
 
-.survey-subrow[data-survey-bar-step='fold-template'] .survey-subrow__more,
-.survey-subrow[data-survey-bar-step='scroll-categories'] .survey-subrow__more {
-  margin-left: 8px;
+/* The centre group: centred on the tool bar's centre, whatever is drawn in it
+   (so a shorter module name or another chip count never moves its middle). */
+.survey-subrow__centre {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--survey-centre-x, 50%);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  /* The group is not a gap row, so each rule keeps its full 8px inset. */
+  --chrome-row-gap: 0px;
+}
+
+/* A narrow window: the chips' gutters tighten (planSurveyBar 'tight', and
+   'fewer', which then draws fewer chips before "All N" - never a hidden
+   sideways scroll: lead decision 2026-10-13). */
+.survey-subrow[data-survey-bar-step='tight'] .survey-subrow__cats,
+.survey-subrow[data-survey-bar-step='fewer'] .survey-subrow__cats {
+  gap: 4px;
+}
+
+/* The More (...) menu that takes the module menu and Reuse in a narrow bar:
+   it joins the template menu at the left end, so the centre is the chips. */
+.survey-subrow__more {
+  flex: 0 0 auto;
+  margin-left: 4px;
+  display: flex;
+  align-items: center;
 }
 
 /* The template and module menus inside More: ordinary setting pills, as wide
@@ -909,11 +898,19 @@ button,
   height: 100%;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
   white-space: nowrap;
-  /* The side groups are not gap rows, so each rule keeps its full 8px inset. */
-  --chrome-row-gap: 0px;
+}
+
+/* The template menu never reaches the centre group: it gets the room the plan
+   leaves it, and its name ellipsises inside that. */
+.survey-subrow__side--start {
+  flex: 0 1 auto;
+  max-width: var(--survey-template-room, 260px);
+}
+
+.survey-subrow__side--end {
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .survey-subrow__reuse {
@@ -923,7 +920,7 @@ button,
 }
 
 .survey-subrow__module {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -937,7 +934,12 @@ button,
 
 .survey-subrow__module .chrome-pill {
   flex: 0 1 auto;
-  min-width: var(--survey-module-min, 0px);
+  min-width: 0;
+}
+
+/* Centre step 1+: the module name ends in "..." (down to a few letters). */
+.survey-subrow:not([data-survey-bar-step='full']) .survey-subrow__module > .annotation-dropdown .chrome-pill {
+  max-width: var(--survey-module-short, 82px);
 }
 
 /* The mode's name: a plateless menu trigger (a title, not a setting) - the
@@ -945,15 +947,15 @@ button,
    chevron. Hover gives it the pill's surface step. It is the first item to
    give ground: the name ellipsises down to a few letters, then goes. */
 .survey-subrow__template {
-  flex: 0 1000 auto;
-  min-width: var(--survey-template-min, 0px);
+  flex: 0 1 auto;
+  min-width: 0;
   display: flex;
 }
 
 .survey-subrow__template .chrome-pill {
   flex: 0 1 auto;
   width: auto;
-  min-width: var(--survey-template-min, 0px);
+  min-width: 0;
   max-width: 260px;
   padding: 0 6px;
   color: var(--text-1);
@@ -966,7 +968,10 @@ button,
   background: var(--hover);
 }
 
+/* Block, not the trigger's flex: text-overflow does not reach a flex box's
+   text, so a long name was cut mid-letter instead of ending in "...". */
 .survey-subrow__template .chrome-pill__label {
+  display: block;
   text-overflow: ellipsis;
 }
 
@@ -1002,10 +1007,87 @@ button,
   outline-offset: 2px;
 }
 
+/* Narrow: Done is its check glyph (its tooltip and name still say "Leave
+   Survey"), a 32px square. */
+.survey-subrow[data-survey-done='glyph'] .survey-subrow__done {
+  min-width: 32px;
+  padding: 0;
+}
+
 .survey-subrow__cats {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: var(--chrome-tool-gap);
+}
+
+/* Lead decision 2026-10-13 (long lists): above 8 categories or entities a row
+   draws 7 and this plain "All N" chip, which opens the whole list
+   (SurveyOverflowRow). A word on the chip's 28px height, no plate; open =
+   bright ink (an open menu is not a picked tool, so never gold). */
+.survey-row-all {
+  flex: 0 0 auto;
+  height: 28px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: var(--chrome-radius);
+  font: 600 11px/1 var(--font-ui);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.survey-row-all:hover,
+.survey-row-all.is-open {
+  color: var(--text-1);
+  background: var(--hover);
+}
+
+.survey-row-all:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.survey-pick-popover {
+  max-width: min(300px, calc(100vw - 24px));
+}
+
+/* THE ENTITY BAR (desktop, owner 2026-10-13: "Display entities as swatches in
+   a separate bar, matching the current mobile layout"). The third 36px bar,
+   under the survey bar: the template's entities as the tool bar's own colour
+   discs (QuickColourDots - the colour's own ring and a check, no gold),
+   centred on the same spot as the survey bar's centre group, so it never moves
+   when a side panel opens either. Swatch names show on hover. */
+.survey-entitybar {
+  position: relative;
+  width: 100%;
+  height: var(--chrome-bar-h);
+  box-sizing: border-box;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  cursor: default;
+}
+
+.survey-entitybar .survey-entitybar__centre {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--survey-centre-x, 50%);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  /* Planned with the swatches' 6px gutter (SURVEY_BAR_PARTS.swatchGap); a
+     narrow window draws fewer swatches before "All N", never a scroll. */
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.survey-entitybar__swatch {
+  flex: 0 0 auto;
 }
 
 /* A category's glyph: its initials in a 16px ring drawn in the chip's own ink
