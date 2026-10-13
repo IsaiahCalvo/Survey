@@ -30,6 +30,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { CALM_LIST_AUTO_SCROLL } from '../reorder/dragAutoScroll.js';
+import { restrictToVerticalAxis } from '../reorder/flatReorderUtils.js';
 import { pageHasTransform } from '../utils/disabledActions.js';
 import Icon from '../Icons';
 import Spinner from '../components/Spinner';
@@ -93,8 +94,8 @@ const PAGE_SLIDE = { duration: 180, easing: 'cubic-bezier(0.2, 0, 0, 1)' };
 // the drop to the wrong place ("dragging during a thumbnail load").
 const PAGE_DRAG_MEASURING = { droppable: { strategy: MeasuringStrategy.WhileDragging, frequency: 100 } };
 
-// Desktop: the strip is one column, so a carried page only moves up / down.
-const restrictToVerticalAxis = ({ transform }) => ({ ...transform, x: 0 });
+// Desktop: the strip is one column, so a carried page only moves up / down
+// (restrictToVerticalAxis, the shared lock in reorder/flatReorderUtils.js).
 
 function usePrefersReducedMotion() {
   const query = '(prefers-reduced-motion: reduce)';

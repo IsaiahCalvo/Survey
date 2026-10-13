@@ -5,8 +5,18 @@
  * and moveScopedItem — immutable functions that translate dnd-kit active/over
  * ids into reordered arrays, including filtered-subset reordering that splices
  * results back into the full source list. Consumed by SortableRearrangeList
- * onReorder handlers.
+ * onReorder handlers, the document tab strip and the template module tabs.
+ *
+ * Also the two dnd-kit axis locks (restrictToHorizontalAxis /
+ * restrictToVerticalAxis). KAL-84: every reorder surface used to carry its own
+ * copy of these; there is now one of each.
  */
+/** dnd-kit modifier: a carried item moves only side to side (tab strips). */
+export const restrictToHorizontalAxis = ({ transform }) => ({ ...transform, y: 0 });
+
+/** dnd-kit modifier: a carried item moves only up and down (lists). */
+export const restrictToVerticalAxis = ({ transform }) => ({ ...transform, x: 0 });
+
 export const moveItem = (items, fromIndex, toIndex) => {
   if (!Array.isArray(items)) return items;
   if (
