@@ -87,6 +87,8 @@ import PencilModeControl, { usePencilMode } from './components/PencilModeControl
 import { sanitizeZoomInput } from './utils/pageNavigationMath.js';
 import { showsColourRule, showsPaintSwatch, showsQuickColourDots } from './utils/toolbarColourGroup.js';
 import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, showsFormatRow } from './utils/toolbarRows.js';
+import { LINE_STYLE_OPTIONS, LINE_STYLE_SAMPLE_ICONS } from './utils/lineStyleOptions.js';
+import SelectionQuickBar from './components/SelectionQuickBar.jsx';
 
 // The dot between the current page and the page total in the right-rail
 // footer: a drawn 2px circle in the total's grey (see the rail audit note at
@@ -328,6 +330,33 @@ const resolveAnnotationPaint = (bottomToolbarApi, colorPickerTab) => {
 };
 
 /**
+ * The two colours the ONE combined swatch shows (the tool bar's, and the
+ * selection quick bar's). The swatch previews the paint the next mark will
+ * carry, or the selected mark's own paint when one is picked — the same two
+ * sources every other preview in the bar reads, with the same per-tool
+ * fallbacks the hand-drawn swatches used. A counter rings in its PIN colour and
+ * centres its NUMBER colour; every other shape rings in its BORDER and centres
+ * its FILL.
+ */
+const resolvePaintSwatch = (bottomToolbarApi) => {
+  const isCounter = bottomToolbarApi.contextTool === 'counter';
+  const pinColour = bottomToolbarApi.selectedFillColor ?? ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ef4444', (bottomToolbarApi.fillOpacity ?? 100) / 100);
+  const numberColour = bottomToolbarApi.selectedStrokeColor ?? ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#ffffff', (bottomToolbarApi.strokeOpacity ?? 100) / 100);
+  const borderColour = bottomToolbarApi.selectedStrokeColor ?? ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#000000', (bottomToolbarApi.strokeOpacity ?? 100) / 100);
+  const fillColour = bottomToolbarApi.selectedFillColor ?? ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ffffff', (bottomToolbarApi.fillOpacity ?? 100) / 100);
+  return {
+    isCounter,
+    pinColour,
+    numberColour,
+    borderColour,
+    fillColour,
+    variant: isCounter ? 'counter' : 'shape',
+    ring: isCounter ? pinColour : borderColour,
+    center: isCounter ? numberColour : fillColour,
+  };
+};
+
+/**
  * PASS 7 (board 12): the ONE source the text-formatting bar reads and writes.
  *
  * The bar has two jobs, and they are the same job: while a text box is open for
@@ -375,28 +404,12 @@ const resolveTextFormatting = (api) => {
   };
 };
 
-/*
- * PASS 7 (boards 9-12 + 15): the four LINE STYLES and the drawing each one
- * shows. The drawing is the same glyph in the pill and in the menu row, at two
- * sizes, so what the row promises is what the pill reports back.
- */
 /* Owner Test 41 (2026-10-04): a folded alignment pill shows its group's
    current choice, so the bar still says how the text is aligned. */
 const TEXT_ALIGN_GLYPH = Object.freeze({ left: 'alignLeft', center: 'alignCenter', right: 'alignRight' });
 const TEXT_VALIGN_GLYPH = Object.freeze({ top: 'alignTop', middle: 'alignMiddle', bottom: 'alignBottom' });
-const LINE_STYLE_OPTIONS = Object.freeze([
-  Object.freeze({ value: 'solid', label: 'Solid' }),
-  Object.freeze({ value: 'dashed', label: 'Dashed' }),
-  Object.freeze({ value: 'dotted', label: 'Dotted' }),
-  Object.freeze({ value: 'cloud', label: 'Cloud' }),
-]);
-
-const LINE_STYLE_SAMPLE_ICONS = Object.freeze({
-  solid: 'lineSampleSolid',
-  dashed: 'lineSampleDashed',
-  dotted: 'lineSampleDotted',
-  cloud: 'lineSampleCloud',
-});
+// The four LINE STYLES and their drawings live in utils/lineStyleOptions.js,
+// shared with the selection quick bar's Line popover.
 
 /*
  * PASS 7 (board 15): the six ARROWHEADS the boards offer, in board order, each
@@ -930,7 +943,8 @@ export default function App({ devPreviewReturnTab = null }) {
   const getAnnotationColourAnchor = useCallback(() => {
     if (!colourPickerOpenerRef.current?.isConnected) {
       const pressed = recentPressedControl();
-      colourPickerOpenerRef.current = pressed?.closest?.('#chrome-top-host, #chrome-sub-toolbar-host') ? pressed : null;
+      // The selection quick bar's colour controls open this same picker.
+      colourPickerOpenerRef.current = pressed?.closest?.('#chrome-top-host, #chrome-sub-toolbar-host, [data-selection-quick-bar]') ? pressed : null;
     }
     if (colourPickerOpenerRef.current?.isConnected) return colourPickerOpenerRef.current;
     // w44: the colours live in the formatting row (row 2) now.
@@ -970,6 +984,13 @@ export default function App({ devPreviewReturnTab = null }) {
   // read and write: the quick colour dots, the swatch's ring, and the picker
   // itself. See resolveAnnotationPaint above.
   const annotationPaint = resolveAnnotationPaint(bottomToolbarApi, colorPickerTab);
+  // The custom colour disc and the combined swatch (tool bar and selection
+  // quick bar alike) open the picker on the channel they show, or close it.
+  const toggleAnnotationColourPicker = () => {
+    if (!annotationPaint || !bottomToolbarApi) return;
+    setColorPickerTab(annotationPaint.isShape ? 'fill' : annotationPaint.quick.tab);
+    bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);
+  };
   // PASS 7 (board 12): the THIRD BAR is shown while the text box or callout tool
   // is merely ARMED, not only once a text box is open for editing. Board 12 is
   // the text-box tool's board and it draws three bars; the formatting a mark is
@@ -3403,25 +3424,13 @@ export default function App({ devPreviewReturnTab = null }) {
                     value={bottomToolbarApi.selectionMixed?.strokeColor ? null : annotationPaint.quick.color}
                     customActive={bottomToolbarApi.selectionMixed?.strokeColor ? false : undefined}
                     onPick={(hex) => annotationPaint.quick.apply(hex, annotationPaint.quick.opacity)}
-                    onOpenPicker={() => {
-                      setColorPickerTab(annotationPaint.isShape ? 'fill' : annotationPaint.quick.tab);
-                      bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);
-                    }}
+                    onOpenPicker={toggleAnnotationColourPicker}
                   />
                 )}
                 {showsPaintSwatch(bottomToolbarApi) && annotationPaint && (() => {
-                  const isCounter = bottomToolbarApi.contextTool === 'counter';
-                  /* The swatch previews the paint the next mark will carry, or
-                     the selected mark's own paint when one is picked — the same
-                     two sources every other preview in the bar reads, with the
-                     same per-tool fallbacks the hand-drawn swatches used.
-                     A counter rings in its PIN colour and centres its NUMBER
-                     colour; every other shape rings in its BORDER and centres
-                     its FILL. */
-                  const pinColour = bottomToolbarApi.selectedFillColor ?? ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ef4444', (bottomToolbarApi.fillOpacity ?? 100) / 100);
-                  const numberColour = bottomToolbarApi.selectedStrokeColor ?? ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#ffffff', (bottomToolbarApi.strokeOpacity ?? 100) / 100);
-                  const borderColour = bottomToolbarApi.selectedStrokeColor ?? ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#000000', (bottomToolbarApi.strokeOpacity ?? 100) / 100);
-                  const fillColour = bottomToolbarApi.selectedFillColor ?? ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ffffff', (bottomToolbarApi.fillOpacity ?? 100) / 100);
+                  // The swatch's two colours: resolvePaintSwatch (shared with
+                  // the selection quick bar).
+                  const { isCounter, pinColour, numberColour, borderColour, fillColour } = resolvePaintSwatch(bottomToolbarApi);
                   return (
                     /* data-annotation-color-trigger: the shared dismiss boundary
                        (the capture-phase effect above) has to count a press on a
@@ -3436,10 +3445,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         ring={isCounter ? pinColour : borderColour}
                         center={isCounter ? numberColour : fillColour}
                         mixed={isPaintSelectionMixed(bottomToolbarApi.selectionMixed)}
-                        onOpen={() => {
-                          setColorPickerTab(annotationPaint.isShape ? 'fill' : annotationPaint.quick.tab);
-                          bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);
-                        }}
+                        onOpen={toggleAnnotationColourPicker}
                       />
                     </span>
                   );
@@ -4960,6 +4966,28 @@ export default function App({ devPreviewReturnTab = null }) {
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
         onDismiss={!authPromptDismissed ? handleDismiss : null}
+      />
+
+      {/* Drawboard canvas audit, chunk 4: the floating quick bar over a
+          selection (desktop layout; the phone has its own selection strip).
+          Its colour controls are the tool bar's own (same paint, same picker),
+          and a Survey Marker's entity changes through the entity bar's write. */}
+      <SelectionQuickBar
+        enabled={Boolean(isViewerVisible && !isMobileViewer && bottomToolbarApi)}
+        api={bottomToolbarApi}
+        paint={annotationPaint}
+        swatch={bottomToolbarApi && showsPaintSwatch(bottomToolbarApi) ? {
+          ...resolvePaintSwatch(bottomToolbarApi),
+          mixed: isPaintSelectionMixed(bottomToolbarApi.selectionMixed),
+        } : null}
+        onOpenColourPicker={toggleAnnotationColourPicker}
+        entities={rightRailApi?.selectedTemplate?.entities || null}
+        surveyMarkers={rightRailApi?.surveyMarkers || null}
+        onPickEntity={(entityId, markerIds) => {
+          rightRailApi?.rememberSurveyEntity?.(entityId);
+          (markerIds || []).forEach((markerId) => rightRailApi?.surveyEntityApplyRef?.current?.(markerId, entityId));
+        }}
+        tip={chromeTip}
       />
 
       {/* KAL-444: one shortcuts sheet for Home AND the viewer — inside a

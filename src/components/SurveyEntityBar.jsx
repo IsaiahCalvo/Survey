@@ -67,41 +67,55 @@ export default function SurveyEntityBar({ templateId, entities, nextEntityId, su
         tip={tip}
         max={max}
         onPickFromList={(item) => onPick?.(item.id, markerIds)}
-        renderItem={(entity) => {
-          const colour = entity.color || 'transparent';
-          const isCurrent = entity.id === currentId;
-          const name = entity.name || 'Untitled entity';
-          return (
-            <button
-              key={entity.id}
-              type="button"
-              className={`quick-style__dot hero-swatch survey-entitybar__swatch${isCurrent ? ' is-current' : ''}`}
-              data-selected={isCurrent ? 'true' : 'false'}
-              data-survey-entity-id={entity.id}
-              style={{
-                '--quick-style-dot': colour,
-                '--quick-style-ring': swatchRingColour(colour),
-                '--hero-swatch-ring': swatchRingColour(colour),
-                borderRadius: '50%',
-              }}
-              {...(tip ? tip(name, 'below') : {})}
-              aria-label={`Entity ${name}`}
-              aria-pressed={isCurrent}
-              onMouseDown={(event) => event.stopPropagation()}
-              onClick={() => onPick?.(entity.id, markerIds)}
-            >
-              <span className={`quick-style__dot-fill hero-swatch__fill${needsSwatchHairline(colour) ? ' has-hairline' : ''}`}>
-                {isCurrent && (
-                  <span className="quick-style__check hero-swatch__check" style={{ color: swatchCheckInk(colour) }} aria-hidden="true">
-                    <ChosenCheck />
-                  </span>
-                )}
-              </span>
-            </button>
-          );
-        }}
+        renderItem={(entity) => (
+          <SurveyEntitySwatch
+            key={entity.id}
+            entity={entity}
+            current={entity.id === currentId}
+            tip={tip}
+            onPick={() => onPick?.(entity.id, markerIds)}
+          />
+        )}
       />
     </div>
+  );
+}
+
+/**
+ * One entity swatch: the tool bar's colour disc (the colour's own ring and a
+ * check when it is the current one, no gold), named on hover. Shared by this
+ * bar and the selection quick bar (components/SelectionQuickBar.jsx), which
+ * shows a picked Survey Marker's entities the same way.
+ */
+export function SurveyEntitySwatch({ entity, current = false, tip, tipSide = 'below', onPick }) {
+  const colour = entity?.color || 'transparent';
+  const name = entity?.name || 'Untitled entity';
+  return (
+    <button
+      type="button"
+      className={`quick-style__dot hero-swatch survey-entitybar__swatch${current ? ' is-current' : ''}`}
+      data-selected={current ? 'true' : 'false'}
+      data-survey-entity-id={entity?.id}
+      style={{
+        '--quick-style-dot': colour,
+        '--quick-style-ring': swatchRingColour(colour),
+        '--hero-swatch-ring': swatchRingColour(colour),
+        borderRadius: '50%',
+      }}
+      {...(tip ? tip(name, tipSide) : {})}
+      aria-label={`Entity ${name}`}
+      aria-pressed={current}
+      onMouseDown={(event) => event.stopPropagation()}
+      onClick={() => onPick?.()}
+    >
+      <span className={`quick-style__dot-fill hero-swatch__fill${needsSwatchHairline(colour) ? ' has-hairline' : ''}`}>
+        {current && (
+          <span className="quick-style__check hero-swatch__check" style={{ color: swatchCheckInk(colour) }} aria-hidden="true">
+            <ChosenCheck />
+          </span>
+        )}
+      </span>
+    </button>
   );
 }
 
