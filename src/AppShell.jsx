@@ -753,6 +753,10 @@ export default function App({ devPreviewReturnTab = null }) {
     }
     return [];
   });
+  // Whose library `documents` holds (the Dashboard stamps it with each load).
+  // After an account switch without a reload the old library lingers until
+  // the new one arrives; the tab restore waits for the signed-in user's own.
+  const [documentsUserId, setDocumentsUserId] = useState(null);
   const deepLinkDocumentIdRef = useRef(
     typeof window === 'undefined'
       ? null
@@ -1785,6 +1789,7 @@ export default function App({ devPreviewReturnTab = null }) {
   useTabSession({
     userId: user?.id || null,
     documents,
+    documentsUserId,
     tabs,
     activeTabId,
     onRestore: handleTabSessionRestore,
@@ -4432,6 +4437,7 @@ export default function App({ devPreviewReturnTab = null }) {
               onDocumentOpenEnd={stableDocumentOpenEnd}
               documents={documents}
               setDocuments={setDocuments}
+              onLibraryUserChange={setDocumentsUserId}
               templates={appTemplates}
               onTemplatesChange={handleTemplatesChange}
               onShowAuthModal={stableShowAuthModal}
