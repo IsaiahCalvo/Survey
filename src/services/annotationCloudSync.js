@@ -14,6 +14,7 @@
 
 import { supabase } from '../supabaseClient.js';
 import { collectKeysetRows } from './annotationReadPagination.js';
+import { deleteAnnotationRowsVerified, isRefusedAnnotationDelete } from './annotationDeleteOutcome.js';
 import { resolveDocumentMetadata } from './documentMetadataResolver.js';
 import {
   serializeFabricObjectToRow,
@@ -243,54 +244,42 @@ export async function upsertFabricAnnotation(fabricObj, opts = {}) {
 
 /**
  * Delete a single annotation row by client-side annotation_id.
+ * KAL-440: a refused delete (zero rows matched, row still there) is a failure
+ * with `refusedIds`, never a success (services/annotationDeleteOutcome.js).
  */
 export async function deleteAnnotation(documentId, annotationId) {
   if (!supabase) return { success: false, error: new Error('Supabase unavailable') };
-  const { error } = await supabase
-    .from('document_annotations')
-    .delete()
-    .eq('document_id', documentId)
-    .eq('annotation_id', annotationId);
-  if (error) {
-    console.error('[CloudSync] deleteAnnotation failed:', error);
-    return { success: false, error };
-  }
-  return { success: true, error: null };
+  const outcome = await deleteAnnotationRowsVerified({ supabase, documentId, annotationIds: [annotationId] });
+  if (!outcome.success) console.error('[CloudSync] deleteAnnotation failed:', outcome.error);
+  return outcome;
 }
 
 /**
- * Delete many annotation rows by client-side annotation_ids.
+ * Delete many annotation rows by client-side annotation_ids (chunked).
+ * KAL-440: same refusal reporting as deleteAnnotation.
  */
 export async function deleteAnnotations(documentId, annotationIds) {
   if (!supabase) return { success: false, error: new Error('Supabase unavailable') };
   if (!Array.isArray(annotationIds) || annotationIds.length === 0) {
     return { success: true, error: null };
   }
-  const uniqueIds = [...new Set(annotationIds.filter(Boolean))];
-  const chunkSize = 200;
-  for (let start = 0; start < uniqueIds.length; start += chunkSize) {
-    const chunk = uniqueIds.slice(start, start + chunkSize);
-    const { error } = await supabase
-      .from('document_annotations')
-      .delete()
-      .eq('document_id', documentId)
-      .in('annotation_id', chunk);
-    if (error) {
-      console.error('[CloudSync] deleteAnnotations failed:', {
-        error,
-        chunkStart: start,
-        chunkCount: chunk.length,
-        totalCount: uniqueIds.length,
-      });
-      return { success: false, error };
-    }
+  const outcome = await deleteAnnotationRowsVerified({ supabase, documentId, annotationIds, chunkSize: 200 });
+  if (!outcome.success) {
+    console.error('[CloudSync] deleteAnnotations failed:', {
+      error: outcome.error,
+      chunkStart: outcome.failedChunkStart ?? null,
+      refusedIds: outcome.refusedIds,
+      totalCount: outcome.requestedIds.length,
+    });
+    return outcome;
   }
   cloudSyncDebug('[CloudSync] deleteAnnotations ok ' + JSON.stringify({
     documentId,
-    count: uniqueIds.length,
-    chunks: Math.ceil(uniqueIds.length / chunkSize),
+    count: outcome.requestedIds.length,
+    deleted: outcome.deletedIds.length,
+    alreadyGone: outcome.alreadyGoneIds.length,
   }));
-  return { success: true, error: null };
+  return outcome;
 }
 
 /**
@@ -733,7 +722,9 @@ export async function dualWriteFabricDelete(documentId, annoId, opts = {}) {
   } else {
     try {
       legacyResult = await deleteAnnotation(documentId, annoId);
-      if (legacyResult && legacyResult.error) {
+      // A refusal is permanent (the server's permission rule, not the
+      // network): retrying it from the queue can never succeed.
+      if (legacyResult && legacyResult.error && !isRefusedAnnotationDelete(legacyResult)) {
         if (opts.userId && annoId) {
           enqueueDualWrite({
             userId: opts.userId,

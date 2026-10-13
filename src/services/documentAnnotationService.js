@@ -6,7 +6,8 @@
 
 import { supabase } from '../supabaseClient';
 import { collectKeysetRows } from './annotationReadPagination.js';
-import { diffDeletedSurveyMarkerIds } from './surveyMarkerSyncDiff.js';
+import { diffDeletedSurveyMarkerIds, surveyMarkersSavedBy } from './surveyMarkerSyncDiff.js';
+import { deleteAnnotationRowsVerified } from './annotationDeleteOutcome.js';
 import { surveyMarkerSyncDiag } from './surveyMarkerSyncDiag.js';
 import { chunkRowsForAnnotationUpsert } from '../utils/annotationBatching.js';
 import {
@@ -320,25 +321,22 @@ async function countSurveyMarkersReferencingChecklistItemFallback(itemId) {
 
 
 /**
- * Delete multiple annotations by annotation_ids
+ * Delete multiple annotations by annotation_ids.
+ *
+ * KAL-440: a delete the server refuses (row-level security matches zero rows
+ * without an error) comes back as `success: false` with `refusedIds` — see
+ * services/annotationDeleteOutcome.js.
  */
 export async function deleteAnnotations(documentId, annotationIds) {
   if (!annotationIds || annotationIds.length === 0) {
     return { success: true, error: null };
   }
 
-  const { error } = await supabase
-    .from('document_annotations')
-    .delete()
-    .eq('document_id', documentId)
-    .in('annotation_id', annotationIds);
-
-  if (error) {
-    console.error('[AnnotationSync] Error deleting annotations:', error);
-    return { success: false, error };
+  const outcome = await deleteAnnotationRowsVerified({ supabase, documentId, annotationIds });
+  if (!outcome.success) {
+    console.error('[AnnotationSync] Error deleting annotations:', outcome.error, outcome.refusedIds);
   }
-
-  return { success: true, error: null };
+  return outcome;
 }
 
 // ============================================
@@ -398,7 +396,9 @@ export async function syncAnnotationsToSupabase(documentId, userId, surveyMarker
     }
   }
 
-  const annotations = Object.entries(surveyMarkers || {}).map(([annotationId, annotation]) =>
+  // KAL-440: only this person's own markers (and unattributed ones) — a
+  // teammate's marker is saved by the teammate's app (surveyMarkersSavedBy).
+  const annotations = Object.entries(surveyMarkersSavedBy(surveyMarkers, userId)).map(([annotationId, annotation]) =>
     buildSurveyMarkerRow({
       documentId,
       userId,
