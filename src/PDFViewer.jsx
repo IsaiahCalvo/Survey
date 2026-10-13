@@ -320,7 +320,6 @@ import { resolveEditTypeForAnnotation } from './utils/annotationEditRoute';
 import { buildCaretAnchor, createDoubleTapTracker, editEntryKeyForHit, shouldHandleDoubleTapEntry } from './utils/doubleTapEditEntry';
 import { createMultiTouchTapGate } from './utils/multiTouchTapGate';
 import { isLiveFormWidgetTarget } from './utils/formWidgetPointerTargets.js';
-import { resolveSafeSnapshot } from './utils/safeSnapshot';
 import { canManageCollaborativeSpaces } from './utils/collaborativeSpaceAccess';
 import { combineCollaborationSyncStatus } from './utils/collaborationSyncStatus';
 import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
@@ -23261,22 +23260,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // sidecar would let a stale blob fight the authoritative copy, so this only
       // runs for local-only documents (no cloud id), mirroring the spaces +
       // annotations guards below.
+      // KAL-275: no empty-snapshot guard here. The old one only acted for a
+      // cloud document, which never reaches this line (gated on !doc.id).
       if (data.annotations && !doc.id) {
-        const safeSurveySnapshot = resolveSafeSnapshot({
-          current: surveyMarkersRef.current || {},
-          incoming: data.annotations || {},
-          cloudBacked: !!doc.id,
-          kind: 'object-map',
-          context: 'supabase-storage-survey-markers',
-        });
-        if (safeSurveySnapshot.preserved) {
-          console.warn('[SafeSnapshot] preserved survey markers instead of applying empty storage sidecar ' + JSON.stringify({
-            documentId: doc.id || null,
-            currentCount: safeSurveySnapshot.currentCount,
-            incomingCount: safeSurveySnapshot.incomingCount,
-          }));
-        }
-        setSurveyMarkers(safeSurveySnapshot.value);
+        setSurveyMarkers(data.annotations);
       }
       // Cloud-sync documents source editable annotations from Y.Doc/Supabase
       // rows, not this older Supabase Storage survey-data JSON blob. That
@@ -23297,23 +23284,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // authoritative durable copy — same hazard the annotationsByPage/callouts
       // restores above already guard against via shouldRestoreLegacyAnnotationBlob.
       if (data.spaces && shouldRestoreLegacyAnnotationBlob) {
-        setSpaces((prev) => {
-          const safeSpacesSnapshot = resolveSafeSnapshot({
-            current: prev || [],
-            incoming: Array.isArray(data.spaces) ? data.spaces : [],
-            cloudBacked: !!doc.id,
-            kind: 'array',
-            context: 'supabase-storage-spaces',
-          });
-          if (safeSpacesSnapshot.preserved) {
-            console.warn('[SafeSnapshot] preserved spaces instead of applying empty storage sidecar ' + JSON.stringify({
-              documentId: doc.id || null,
-              currentCount: safeSpacesSnapshot.currentCount,
-              incomingCount: safeSpacesSnapshot.incomingCount,
-            }));
-          }
-          return safeSpacesSnapshot.value;
-        });
+        setSpaces(Array.isArray(data.spaces) ? data.spaces : []);
       }
       if (data.entities) setEntities(data.entities);
 
@@ -37146,6 +37117,7 @@ ${pageBlocks}
                                       isNewText: true,
                                       clickPosition: { x, y },
                                       textBoxWidth: isDrag ? dx / effectiveScale : undefined,
+                                      textBoxHeight: isDrag ? dy / effectiveScale : undefined,
                                     });
                                   }}
                                 >
@@ -37462,6 +37434,7 @@ ${pageBlocks}
                                   // selecting the whole string (Drawboard parity).
                                   caretAnchor={editingAnnotation.caretAnchor || null}
                                   textBoxWidth={editingAnnotation.textBoxWidth}
+                                  textBoxHeight={editingAnnotation.textBoxHeight}
                                   newTextStyle={mobileMode ? textStyleDefaults : null}
                                   newTextCloudIntensity={lineBorderStyle === 'cloud' ? Math.max(1, Number(cloudIntensity) || 2) : null}
                                   authorId={user?.id ?? null}

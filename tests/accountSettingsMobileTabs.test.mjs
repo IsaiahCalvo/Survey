@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 const css = readFileSync(new URL('../src/components/AccountSettings.css', import.meta.url), 'utf8');
 const jsx = readFileSync(new URL('../src/components/AccountSettings.jsx', import.meta.url), 'utf8');
 
-test('mobile account settings uses a compact full-width four-column tab row', () => {
+test('mobile account settings uses a compact full-width five-column tab row', () => {
   const mobile = css.slice(css.indexOf('@media (max-width: 768px)'));
   const sidebar = mobile.slice(
     mobile.indexOf('.account-settings-sidebar'),
@@ -27,7 +27,7 @@ test('mobile account settings uses a compact full-width four-column tab row', ()
   assert.match(button, /align-items:\s*center/);
   assert.match(button, /justify-content:\s*center/);
   assert.match(button, /text-align:\s*center/);
-  assert.match(button, /width:\s*25%/);
+  assert.match(button, /width:\s*20%/); // five tabs since Annotations (KAL-397)
   assert.match(button, /max-width:\s*none/);
 });
 
@@ -54,6 +54,7 @@ test('phone settings: page is --panel-bg, fields and cards are --panel-well', ()
 
 test('account settings nav exposes tab semantics', () => {
   assert.match(jsx, /className="account-settings-sidebar"[\s\S]{0,120}role="tablist"/);
-  assert.equal((jsx.match(/role="tab"/g) || []).length, 4); // + Crash reports (crash hunt 2026-10-07)
-  assert.equal((jsx.match(/aria-selected=\{/g) || []).length, 4);
+  // + Crash reports (crash hunt 2026-10-07), + Annotations (KAL-397)
+  assert.equal((jsx.match(/role="tab"/g) || []).length, 5);
+  assert.equal((jsx.match(/aria-selected=\{/g) || []).length, 5);
 });
