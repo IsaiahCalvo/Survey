@@ -2012,6 +2012,24 @@ export default function TemplatesEditor({
      is in the payload and the save can still clear the Save bar. */
   const saveRowVisible = dirty || titleDirty;
   const handleSaveAll = () => { handleSaveTemplates(commitTitleDraft()); };
+  /* KAL-461: edits are never dropped by leaving. Going to another tab or
+     opening a document unmounts the editor, and iOS may close the app in the
+     background - either way the unsaved working copy used to vanish. Leaving
+     with the Save bar up now saves (the same as pressing Save); Cancel is
+     still how you throw edits away. Autosave rather than an "unsaved
+     changes" question: the edits were made on purpose, and a question at
+     every tab switch would slow normal work. */
+  const saveOnLeaveRef = useRef(null);
+  saveOnLeaveRef.current = saveRowVisible ? handleSaveAll : null;
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const onHide = () => { if (document.visibilityState === 'hidden') saveOnLeaveRef.current?.(); };
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      saveOnLeaveRef.current?.();
+    };
+  }, []);
   const handleCancelAll = async () => {
     cancelTitleDraft();
     if (dirty) await handleCancelEdits();

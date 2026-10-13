@@ -19,6 +19,7 @@ import { withDevFakePresence } from '../components/presenceIdentity.js';
 import { getSelectFamilyLabel, getSelectFamilyTransition, getSelectModeIconName, SELECT_MODE_OPTIONS } from '../utils/selectModes.js';
 import { tooltipForLabel } from '../utils/toolShortcuts.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
+import { commitPanelTyping } from './keyboardViewport.js';
 import useRailGroupMotion from './useRailGroupMotion.js';
 import { useViewerTopOverlayRef } from '../utils/viewerTopOverlay.js';
 import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE } from '../utils/toolbarRows.js';
@@ -1024,7 +1025,11 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
             controls to its right. The zoom disclosure caret stays smaller on
             purpose: it reads as a caret beside a label, not as an action
             icon. */}
-        <button type="button" className="mobile-pdf-header__icon" aria-label="Back to documents" onClick={onBack}>
+        <button type="button" className="mobile-pdf-header__icon" aria-label="Back to documents" onClick={(event) => {
+          // KAL-461: what you were typing in a panel is saved before you leave.
+          commitPanelTyping();
+          onBack?.(event);
+        }}>
           <Icon name="chevronLeft" size={HEADER_GLYPH} color="currentColor" />
         </button>
       </div>
