@@ -38,6 +38,9 @@ import { pickByIds } from './selectionById';
 import useMobileEdgeSwipeBack from './useMobileEdgeSwipeBack';
 import DismissBarrier from '../components/DismissBarrier';
 import { isPhoneLayout } from '../utils/layoutMode.js';
+import useFileDropZone from '../hooks/useFileDropZone';
+import FileDropOverlay from '../components/FileDropOverlay';
+import { resolveProjectDropTarget } from '../utils/fileDrop.js';
 
 /* Literal palette — used by the portal popups, which render outside the
    `.survey-hub` root and therefore cannot inherit its CSS variables. */
@@ -179,6 +182,7 @@ export default function ProjectsFolderTree({
   onCreateProject,
   onRenameProject,
   onUpload,
+  onDropFiles,
   onDeleteProjects,
   onDuplicateProjects,
   onDuplicateDocuments,
@@ -305,6 +309,29 @@ export default function ProjectsFolderTree({
   }, [filtered, mobileDrillOpenId]);
 
   const open = filtered.find((p) => p.id === openId) || filtered[0] || null;
+
+  // PDFs dragged in from the computer (owner request 2026-10-13, as in
+  // Drawboard): over a project row they go into that project (the row gets
+  // the outline); anywhere else on the tab they go into the open project.
+  const openPaneRef = useRef(null);
+  const { dropProps, overlay: dropOverlay } = useFileDropZone({
+    enabled: Boolean(onDropFiles),
+    resolveTarget: (event) => {
+      const row = event.target?.closest?.('[data-project-id]') || null;
+      const target = resolveProjectDropTarget({
+        rowProjectId: row?.getAttribute('data-project-id') ?? null,
+        openProject: open,
+        projects: localProjects,
+      });
+      if (!target) return null;
+      const pane = openPaneRef.current;
+      const el = target.kind === 'project-row'
+        ? row
+        : (pane && pane.getClientRects().length > 0 ? pane : event.currentTarget.querySelector?.('main') || event.currentTarget);
+      return { ...target, el };
+    },
+    onDropFiles: (files, target) => onDropFiles?.(files, { projectId: target.projectId, projectName: target.projectName }),
+  });
   const openFiles = useMemo(
     () => (open ? localDocs.filter((d) => d.project_id === open.id) : []),
     [localDocs, open],
@@ -914,6 +941,7 @@ export default function ProjectsFolderTree({
       userName={user?.name || user?.email?.split('@')[0] || 'You'}
       templatesLocked={templatesLocked}
       mobileSwipeSurfaceRef={mobileSwipeSurfaceRef}
+      dropProps={dropProps}
     >
       <div className="projects-tab-body" style={{ padding: '0 8px 8px 8px', flex: 1, minHeight: 0, overflow: 'hidden' }}>
       <div className="projects-desktop-layout" style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 8, height: '100%', minHeight: 0 }}>
@@ -1062,7 +1090,7 @@ export default function ProjectsFolderTree({
         </div>
 
         {/* RIGHT — open project */}
-        <div className="card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div ref={openPaneRef} data-project-drop-pane className="card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           {open && (
             <>
               <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--ink-500)', display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -2036,6 +2064,7 @@ export default function ProjectsFolderTree({
         count={pickByIds(openFiles, moveIds).length}
         onConfirm={(destId, mode) => moveCopyFiles(moveIds, destId, mode)}
       />
+      <FileDropOverlay overlay={dropOverlay} />
     </HubShell>
   );
 }

@@ -52,6 +52,9 @@ export default function SurveyHub({
   initialMobileDetailOpen = false,
   onOpenDocument,
   onUpload,
+  /* PDFs dragged in from the computer: (files, { projectId, projectName }).
+     Without it the home screen takes no drops (the dev preview). */
+  onDropFiles,
   uploadBusy = false,
   onCreateProject,
   onRenameProject,
@@ -178,6 +181,7 @@ export default function SurveyHub({
           projects={projects}
           onOpenDocument={(document) => onOpenDocument?.(document, 'documents')}
           onUpload={onUpload}
+          onDropFiles={onDropFiles}
           uploadBusy={uploadBusy}
           onShare={shareDocuments}
           onDuplicate={onDuplicateDocuments}
@@ -204,6 +208,7 @@ export default function SurveyHub({
             onCreateProject={onCreateProject}
             onRenameProject={onRenameProject}
             onUpload={onUpload}
+            onDropFiles={onDropFiles}
             onDeleteProjects={onDeleteProjects}
             onDuplicateProjects={onDuplicateProjects}
             onDuplicateDocuments={onDuplicateDocuments}

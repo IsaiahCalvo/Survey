@@ -388,6 +388,10 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onPag
   };
 
   const handlePageDrop = (e, targetTabId) => {
+    // Only a page dragged between tabs is ours. A PDF dropped from the
+    // computer onto a tab must reach the viewer's drop zone (AppShell), which
+    // opens it in a new tab; swallowing it here lost the file silently.
+    if (!Array.from(e.dataTransfer?.types || []).includes('application/pdf-page')) return;
     e.preventDefault();
     e.stopPropagation();
     setDragOverTabId(null);
