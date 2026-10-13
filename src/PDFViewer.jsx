@@ -332,6 +332,8 @@ import { useAnnotationDoc } from './hooks/useAnnotationDoc.js';
 import { useAuth } from './contexts/AuthContext';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useDocumentPresenceList } from './hooks/useDocumentPresenceList.js';
+import { useLiveCursorBroadcast } from './hooks/useLiveCursorBroadcast.js';
+import RemoteCursorLayer from './components/collab/RemoteCursorLayer.jsx';
 import { useDocumentToolPreferences, useDocuments, useStorage, useTemplates } from './hooks/useDatabase';
 import { useUndoToast } from './hooks/useUndoToast.js';
 import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBookmarks } from './utils/bookmarkDeleteUndo.js';
@@ -21504,6 +21506,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // above) resolves modal author names from this render's roster. Same
   // render-time-assignment pattern as requestBulkDeleteRef.
   documentPresenceListRef.current = documentPresenceList;
+  // KAL-399: live cursors — where this screen points goes to the others on
+  // the document's live channel; theirs show in RemoteCursorLayer per page.
+  useLiveCursorBroadcast({
+    documentId: pdfFile?.id || null,
+    enabled: isActive && cloudSyncEnabled && !!pdfFile?.id && !!user?.id,
+    userId: user?.id || null,
+    name: user?.user_metadata?.full_name || user?.email || null,
+    presence: documentPresenceList,
+  });
 
   // Update presence when page changes
   useEffect(() => {
@@ -37644,6 +37655,9 @@ ${pageBlocks}
                               aria-busy="true"
                               style={{ position: 'absolute', inset: 0, zIndex: 1000, pointerEvents: 'auto', cursor: 'progress' }}
                             />
+                          )}
+                          {cloudSyncEnabled && pdfFile?.id && (
+                            <RemoteCursorLayer documentId={pdfFile.id} pageNumber={pageNumber} pageSize={resolvedPageSize} presence={documentPresenceList} selfId={user?.id || null} />
                           )}
                         </div>,
                         portalTarget,
