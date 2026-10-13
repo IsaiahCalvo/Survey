@@ -200,7 +200,7 @@
 .mobile-survey-sheet .mobile-survey-template-button > svg {
   flex: 0 0 auto;
   color: var(--text-2);
-  transition: transform 150ms cubic-bezier(0.33, 1, 0.68, 1);
+  transition: transform 150ms var(--ease-out);
 }
 
 .mobile-survey-sheet .mobile-survey-template-button[aria-expanded="true"] > svg {
@@ -380,7 +380,7 @@
 }
 
 .mobile-survey-sheet .mobile-survey-foot__more > svg {
-  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+  transition: transform 100ms var(--ease-out);
 }
 
 .mobile-survey-sheet .mobile-survey-foot__more:not(:disabled):active > svg {
@@ -841,7 +841,7 @@
   font: var(--sheet-chip);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+  transition: transform 100ms var(--ease-out);
 }
 
 .mobile-survey-sheet .mobile-survey-place:active {
@@ -1001,7 +1001,7 @@
 }
 
 .mobile-survey-sheet .mobile-survey-marker-lead > .mobile-survey-marker-dot {
-  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+  transition: transform 100ms var(--ease-out);
 }
 
 .mobile-survey-sheet .mobile-survey-marker-lead.is-empty > .mobile-survey-marker-dot {
@@ -1015,7 +1015,7 @@
   display: grid;
   place-items: center;
   opacity: 0;
-  transition: opacity 180ms ease-out, transform 150ms cubic-bezier(0.33, 1, 0.68, 1);
+  transition: opacity 180ms ease-out, transform 150ms var(--ease-out);
 }
 
 .mobile-survey-sheet .mobile-survey-marker.is-open .mobile-survey-marker-entity-chev {
@@ -1121,7 +1121,7 @@
 }
 
 .mobile-survey-sheet .mobile-survey-locate > svg {
-  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+  transition: transform 100ms var(--ease-out);
 }
 
 .mobile-survey-sheet .mobile-survey-locate:active > svg {
@@ -1143,7 +1143,7 @@
 }
 
 .mobile-survey-sheet .mobile-survey-marker-toggle > svg {
-  transition: transform 200ms cubic-bezier(0.33, 1, 0.68, 1);
+  transition: transform 200ms var(--ease-out);
 }
 
 .mobile-survey-sheet .mobile-survey-marker.is-open .mobile-survey-marker-toggle > svg {
@@ -1156,7 +1156,7 @@
 .mobile-survey-sheet .mobile-survey-marker-body {
   height: 0;
   overflow: hidden;
-  transition: height 220ms cubic-bezier(0.33, 1, 0.68, 1);
+  transition: height 220ms var(--ease-out);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1359,7 +1359,7 @@
   font: var(--sheet-chip);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+  transition: transform 100ms var(--ease-out);
 }
 
 .mobile-survey-sheet .mobile-survey-check-btn:active {
@@ -1416,7 +1416,7 @@
 /* Invisible hit areas: the glyph itself shrinks while pressed. */
 .mobile-survey-sheet .mobile-survey-close > svg,
 .mobile-survey-sheet .survey-marker-category-arrow svg {
-  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+  transition: transform 100ms var(--ease-out);
 }
 
 .mobile-survey-sheet .mobile-survey-close:active > svg,

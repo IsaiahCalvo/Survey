@@ -1012,7 +1012,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      transition. It now fades and slides in 6px from the rail it hangs off
      over 150ms, matching the zoom menu's in-motion (Drawboard: 100ms fade +
      grow in). It unmounts on close, so only the "in" half exists. */
-  animation: mobilePdfStripIn 150ms cubic-bezier(0.33, 1, 0.68, 1);
+  animation: mobilePdfStripIn 150ms var(--ease-out);
   width: var(--mobile-rail-sub-w);
   padding: var(--rail-sub-pad, 3px) 0;
   display: flex;
@@ -3511,11 +3511,11 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
    SHEET_SWAP_MS). The grab handle stays put, so the frame reads as one sheet.
    Two identical keyframes so a second switch inside the fade restarts it. */
 [data-mobile-sheet][data-sheet-swap='a'] > :not(.mobile-pdf-sheet__handle) {
-  animation: mobileSheetSwapInA 200ms cubic-bezier(0.33, 1, 0.68, 1) both;
+  animation: mobileSheetSwapInA 200ms var(--ease-out) both;
 }
 
 [data-mobile-sheet][data-sheet-swap='b'] > :not(.mobile-pdf-sheet__handle) {
-  animation: mobileSheetSwapInB 200ms cubic-bezier(0.33, 1, 0.68, 1) both;
+  animation: mobileSheetSwapInB 200ms var(--ease-out) both;
 }
 
 @keyframes mobileSheetSwapInA {

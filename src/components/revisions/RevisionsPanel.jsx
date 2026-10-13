@@ -1690,7 +1690,7 @@ export default function RevisionsPanel({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        animation: 'confirm-delete-modal-fade-in 120ms cubic-bezier(0,0,0.2,1)',
+        animation: 'confirm-delete-modal-fade-in var(--motion-dialog) var(--ease-out)',
       }}
     >
       <div
