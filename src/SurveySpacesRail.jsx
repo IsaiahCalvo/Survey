@@ -507,6 +507,9 @@ const SurveySpacesRail = ({
   surveyMarkerNameFocusRequest = null,
   undoSurveyMarkerPlacement,
   rememberSurveyEntity,
+  // 2026-10-13 (desktop entity bar): a ref this panel fills with its Entity
+  // menu's write, so the bar can change a selected marker's entity the same way.
+  surveyEntityApplyRef = null,
   selectedItemsInCategory,
   selectedModuleId,
   selectedSpaceId,
@@ -1324,6 +1327,20 @@ const SurveySpacesRail = ({
       });
     }
   };
+
+  // The desktop entity bar (PDFViewer) changes a selected Survey Marker's
+  // entity through this same write - the marker's own module and category.
+  if (surveyEntityApplyRef) {
+    surveyEntityApplyRef.current = (annotationId, entityId) => {
+      const marker = surveyMarkers?.[annotationId];
+      if (!marker) return false;
+      const markerModuleId = marker.moduleId || selectedModuleId;
+      const markerModule = (selectedTemplate?.modules || selectedTemplate?.spaces || []).find((module) => module.id === markerModuleId);
+      const category = (markerModule?.categories || []).find((c) => c.id === marker.categoryId) || null;
+      applyEntitySelectionForMarker(annotationId, markerModuleId, category, entityId);
+      return true;
+    };
+  }
 
   // The checklist Y/N/N-A click handler, shared by the desktop row and the
   // phone's open Survey Marker. Owner ruling 2026-10-01 (auto entity): "When
@@ -3542,7 +3559,7 @@ const SurveySpacesRail = ({
                                                           data-survey-marker-name-input={annotationId}
                                                           defaultValue={surveyMarkerName}
                                                           key={`${annotationId}:${surveyMarkerName}`}
-                                                          {...(({ onFocus, onMouseEnter, ...renameTip }) => ({
+                                                          {...(({ onFocus, onMouseEnter, onPointerEnter, ...renameTip }) => ({
                                                             // Owner 2026-10-01: a just-placed marker's name field is
                                                             // focused, and its "Rename" chip sat over the Entity
                                                             // control (onBlur below never hid it). No chip while
@@ -3551,6 +3568,11 @@ const SurveySpacesRail = ({
                                                             onFocus: renameTip.onMouseLeave,
                                                             onMouseEnter: (e) => {
                                                               if (e.currentTarget !== e.currentTarget.ownerDocument.activeElement) onMouseEnter?.(e);
+                                                            },
+                                                            // KAL-65: the chip now also follows the mouse pointer;
+                                                            // same rule - nothing while the field has the caret.
+                                                            onPointerEnter: (e) => {
+                                                              if (e.currentTarget !== e.currentTarget.ownerDocument.activeElement) onPointerEnter?.(e);
                                                             },
                                                           }))(tip('Rename Survey Marker', 'below'))}
                                                           aria-label={`Rename ${surveyMarkerName}`}

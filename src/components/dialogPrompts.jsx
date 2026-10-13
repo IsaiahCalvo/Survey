@@ -89,8 +89,13 @@ export function PromptModal({
 
   const submit = () => { onSubmit?.(value); };
 
+  // KAL-461: a tap on the scrim cancels only while nothing has been typed;
+  // with a changed answer it does nothing (Cancel, x and Escape still cancel),
+  // so a stray tap never throws the typing away.
+  const onScrim = () => { if (value === defaultValue) onCancel?.(); };
+
   return (
-    <div onClick={onCancel} style={overlay}>
+    <div onClick={onScrim} style={overlay}>
       <div
         ref={cardRef}
         onClick={(e) => e.stopPropagation()}

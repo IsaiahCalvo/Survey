@@ -64,7 +64,7 @@ const QUIET_LOADING_CSS = `
    apart, so the same words jumped twice on the way in. The page area itself
    is a containing box for fixed children (contain: strict), so inside it the
    middle is simply 50%. */
-@media (max-width: 720px) {
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   .quiet-loading-text {
     --quiet-phone-header-h: calc(34px + env(safe-area-inset-top, 0px));
     --quiet-phone-dock-h: calc(36px + max(10px, var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px))));

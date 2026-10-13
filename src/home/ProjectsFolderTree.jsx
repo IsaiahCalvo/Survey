@@ -22,6 +22,7 @@
    `.survey-hub` root, those popups use literal hex colors, not CSS vars.
 */
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { hoverOnly, useTooltip } from '../components/Tooltip';
 import { createPortal } from 'react-dom';
 import { mergeProjectDocumentOrder, orderDocumentsByProject } from './projectDocumentOrder.js';
 import { HubShell, Icon, Avatar, AvatarStack, Search, EmptyState } from './HubShell';
@@ -37,6 +38,10 @@ import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/Sortable
 import { pickByIds } from './selectionById';
 import useMobileEdgeSwipeBack from './useMobileEdgeSwipeBack';
 import DismissBarrier from '../components/DismissBarrier';
+import { isPhoneLayout } from '../utils/layoutMode.js';
+import useFileDropZone from '../hooks/useFileDropZone';
+import FileDropOverlay from '../components/FileDropOverlay';
+import { resolveProjectDropTarget } from '../utils/fileDrop.js';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
 
 /* Literal palette — used by the portal popups, which render outside the
@@ -125,7 +130,7 @@ function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160
   // 28px on desktop, 44px at 15px on the phone, where the menu is a little
   // wider so the bigger words fit. The word "Delete" is --danger-text (the
   // label red); it used to be --danger, the fill red.
-  const phone = typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 720px)').matches;
+  const phone = isPhoneLayout();
   const menuWidth = phone ? Math.max(minWidth, 200) : minWidth;
   const estHeight = items.length * (phone ? 44 : 28) + 10;
   let top = anchorRect.bottom + 4;
@@ -179,6 +184,7 @@ export default function ProjectsFolderTree({
   onCreateProject,
   onRenameProject,
   onUpload,
+  onDropFiles,
   onDeleteProjects,
   onDuplicateProjects,
   onDuplicateDocuments,
@@ -190,6 +196,7 @@ export default function ProjectsFolderTree({
   onShare,
   onShareDocument,
 }) {
+  const tip = useTooltip();
   const [search, setSearch] = useState('');
   const [fileSearch, setFileSearch] = useState('');
 
@@ -305,6 +312,29 @@ export default function ProjectsFolderTree({
   }, [filtered, mobileDrillOpenId]);
 
   const open = filtered.find((p) => p.id === openId) || filtered[0] || null;
+
+  // PDFs dragged in from the computer (owner request 2026-10-13, as in
+  // Drawboard): over a project row they go into that project (the row gets
+  // the outline); anywhere else on the tab they go into the open project.
+  const openPaneRef = useRef(null);
+  const { dropProps, overlay: dropOverlay } = useFileDropZone({
+    enabled: Boolean(onDropFiles),
+    resolveTarget: (event) => {
+      const row = event.target?.closest?.('[data-project-id]') || null;
+      const target = resolveProjectDropTarget({
+        rowProjectId: row?.getAttribute('data-project-id') ?? null,
+        openProject: open,
+        projects: localProjects,
+      });
+      if (!target) return null;
+      const pane = openPaneRef.current;
+      const el = target.kind === 'project-row'
+        ? row
+        : (pane && pane.getClientRects().length > 0 ? pane : event.currentTarget.querySelector?.('main') || event.currentTarget);
+      return { ...target, el };
+    },
+    onDropFiles: (files, target) => onDropFiles?.(files, { projectId: target.projectId, projectName: target.projectName }),
+  });
   const openFiles = useMemo(
     () => (open ? localDocs.filter((d) => d.project_id === open.id) : []),
     [localDocs, open],
@@ -900,7 +930,7 @@ export default function ProjectsFolderTree({
               setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
             }}
             className="hub-icon-btn"
-            title="More" aria-label="More"
+            aria-label="More" {...tip('More')}
           ><Icon name="more" size={14} /></button>
         )}
       </div>
@@ -917,6 +947,7 @@ export default function ProjectsFolderTree({
       userName={user?.name || user?.email?.split('@')[0] || 'You'}
       templatesLocked={templatesLocked}
       mobileSwipeSurfaceRef={mobileSwipeSurfaceRef}
+      dropProps={dropProps}
     >
       <div className="projects-tab-body" style={{ padding: '0 8px 8px 8px', flex: 1, minHeight: 0, overflow: 'hidden' }}>
       <div className="projects-desktop-layout" style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 8, height: '100%', minHeight: 0 }}>
@@ -1010,7 +1041,7 @@ export default function ProjectsFolderTree({
                         or select-mode selection. When the project is pinned,
                         the grabber is replaced by a gold pin icon. */}
                     {isPinned ? (
-                      <span title="Pinned" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                      <span role="img" aria-label="Pinned" {...tip('Pinned')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
                         <PinIcon size={12} color="var(--gold)" />
                       </span>
                     ) : (
@@ -1055,7 +1086,7 @@ export default function ProjectsFolderTree({
                           setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
                         }}
                         className="hub-icon-btn"
-                        title="More" aria-label="More"
+                        aria-label="More" {...tip('More')}
                       ><Icon name="more" size={14} /></button>
                     )}
                   </div>
@@ -1068,7 +1099,7 @@ export default function ProjectsFolderTree({
         </div>
 
         {/* RIGHT — open project */}
-        <div className="card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div ref={openPaneRef} data-project-drop-pane className="card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           {open && (
             <>
               <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--ink-500)', display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -1083,7 +1114,8 @@ export default function ProjectsFolderTree({
                     size={1}
                     key={open.id}
                     {...projectNameField(open)}
-                    title="Click to rename"
+                    aria-label="Click to rename"
+                    {...hoverOnly(tip('Click to rename'))}
                     onDoubleClick={(e) => e.currentTarget.select()}
                     /* Same dotted rename line as the Templates editor
                        (.hub-rename); it used to turn gold while typing. */
@@ -1230,7 +1262,7 @@ export default function ProjectsFolderTree({
                                   setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
                                 }}
                                 className="hub-icon-btn"
-                                title="More" aria-label="More"
+                                aria-label="More" {...tip('More')}
                               ><Icon name="more" size={14} /></button>
                             )}
                           </div>
@@ -1329,7 +1361,8 @@ export default function ProjectsFolderTree({
                         key={`mobile-project-name-${mobileDrillProject.id}`}
                         className="projects-mobile-title-input hub-rename"
                         {...projectNameField(mobileDrillProject)}
-                        title="Tap to rename"
+                        aria-label="Tap to rename"
+                        {...hoverOnly(tip('Tap to rename'))}
                       />
                     </span>
                     <span>{mobileDrillAllFiles.length} {mobileDrillAllFiles.length === 1 ? 'file' : 'files'} · {projectLastEditedLabel(mobileDrillProject.id)}</span>
@@ -1412,7 +1445,7 @@ export default function ProjectsFolderTree({
                             }}
                           >
                             {isPinned ? (
-                              <span title="Pinned" className="projects-mobile-drag-slot">
+                              <span role="img" aria-label="Pinned" {...tip('Pinned')} className="projects-mobile-drag-slot">
                                 <PinIcon size={12} color="var(--gold)" />
                               </span>
                             ) : (
@@ -1439,7 +1472,7 @@ export default function ProjectsFolderTree({
                                   setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
                                 }}
                                 className="hub-icon-btn"
-                                title="More" aria-label="More"
+                                aria-label="More" {...tip('More')}
                               ><Icon name="more" size={14} /></button>
                             )}
                           </div>
@@ -1718,7 +1751,7 @@ export default function ProjectsFolderTree({
                     setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
                   }}
                   className="hub-icon-btn"
-                  title="More" aria-label="More"
+                  aria-label="More" {...tip('More')}
                 ><Icon name="more" size={14} /></button>
               )}
             </div>
@@ -1811,7 +1844,8 @@ export default function ProjectsFolderTree({
               <input
                 key={`mobile-${open.id}`}
                 {...projectNameField(open)}
-                title="Click to rename"
+                aria-label="Click to rename"
+                {...hoverOnly(tip('Click to rename'))}
                 style={{
                   background: 'transparent',
                   color: 'var(--bone-100)',
@@ -1881,7 +1915,7 @@ export default function ProjectsFolderTree({
                           setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
                         }}
                         className="hub-icon-btn"
-                        title="More" aria-label="More"
+                        aria-label="More" {...tip('More')}
                       ><Icon name="more" size={14} /></button>
                     )}
                   </div>
@@ -2051,6 +2085,7 @@ export default function ProjectsFolderTree({
         count={pickByIds(openFiles, moveIds).length}
         onConfirm={(destId, mode) => moveCopyFiles(moveIds, destId, mode)}
       />
+      <FileDropOverlay overlay={dropOverlay} />
     </HubShell>
   );
 }

@@ -16,6 +16,7 @@
 //     onDismiss to clear the toast (matches Plan 35-01 test #3 — onUndo
 //     fires exactly once and the toast clears).
 
+import { createPortal } from 'react-dom';
 import './UndoToast.css';
 
 export function UndoToast({ toast, onDismiss }) {
@@ -33,7 +34,11 @@ export function UndoToast({ toast, onDismiss }) {
     }
   };
 
-  return (
+  // KAL-461 (owner 2026-09-30: "toasts must never be hidden"): portalled to
+  // <body>. Rendered in place it sat inside the viewer's own layer (a z 5000
+  // stacking context), so its z-index could never lift it over a phone bottom
+  // sheet: a delete made in an open sheet showed its Undo behind the sheet.
+  const node = (
     <div className="undo-toast" role="alert" aria-live="polite">
       <span className="undo-toast__message">{toast.message}</span>
       <button
@@ -45,5 +50,6 @@ export function UndoToast({ toast, onDismiss }) {
       </button>
     </div>
   );
+  return typeof document !== 'undefined' && document.body ? createPortal(node, document.body) : node;
 }
 

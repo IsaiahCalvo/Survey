@@ -10,7 +10,7 @@
  */
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, startTransition } from 'react';
 import { flushSync } from 'react-dom';
-import { screenToSVG, normalizeAngle, getInverseScale, snapAngleToNearest45, clampInverseScale } from '../utils/svgTransformMath';
+import { screenToSVG, normalizeAngle, getInverseScale, clampInverseScale } from '../utils/svgTransformMath';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, getLineEndpoints, computeLineBboxCenter, isImportedPath, isAbsoluteCoordPath } from '../utils/svgBoundingBox';
 import {
   applyPageAffineToInkObject,
@@ -55,6 +55,24 @@ import { cloudPolyEnginePoints } from '../utils/cloudAnnotationGeometry.js';
 // box the resize math writes to, so a cloud resize/rotate must preserve the
 // grab-time pointer offset instead of snapping the edge to the cursor.
 import { resizeGrabOffset, rotationGrabOffsetDeg } from '../utils/offsetPreservingResize.js';
+import {
+  isSnapFreeModifier,
+  snapThreshold,
+  shiftBox,
+  unionBox,
+  boxesTouch,
+  snapFeatures,
+  findSnapOffset,
+  buildSnapGuides,
+  snapMoveBox,
+  sameSnapGuides,
+  isSnappableMark,
+  snapBoxForMark,
+  snapRotationDegrees,
+  lockAspectToBiggerMove,
+  keepsProportions,
+  calloutSnapBox,
+} from '../utils/snapGuides.js';
 // UX: 2026-04-20 — Group / Ungroup. Auto-expand-on-click reads each clicked
 // annotation's / callout's groupId and, if present, expands selection to
 // every member of that group on the page. Same helper module powers App's
@@ -202,6 +220,18 @@ function ensureMoveStart(ds, objects) {
   const startObject = objects?.[ds.annotationIndex];
   if (ds.markId === undefined) ds.markId = markIdOf(startObject);
   if (!ds.moveBoxes) ds.moveBoxes = startObject ? [getAnnotationBBox(startObject)] : [];
+}
+
+// Canvas audit chunk 2 — snap facts (ds.snapBox / snapTargets /
+// resizeSnapTargets) are cached per drag. Some drag starts spread the old drag
+// state, so the cache is keyed by the drag's own start point object and
+// dropped when a new drag begins.
+function resetSnapIfNewDrag(ds) {
+  if (ds.snapKey === ds.startSVGPoint) return;
+  ds.snapKey = ds.startSVGPoint;
+  ds.snapBox = undefined;
+  ds.snapTargets = undefined;
+  ds.resizeSnapTargets = undefined;
 }
 
 // w59 — the same for a group move: every movable member's id and the boxes
@@ -354,6 +384,17 @@ export function useSVGInteraction({
 
   // Visual-only transform during drag (Plan 02 populates)
   const [visualTransform, setVisualTransform] = useState(null);
+
+  // Canvas audit chunk 2: Drawboard-style alignment guides while a drag snaps
+  // ({ lines, points } in page units, or null). Only set when it changes.
+  const [snapGuides, setSnapGuidesState] = useState(null);
+  const snapGuidesRef = useRef(null);
+  const applySnapGuides = useCallback((next) => {
+    const value = next || null;
+    if (sameSnapGuides(snapGuidesRef.current, value)) return;
+    snapGuidesRef.current = value;
+    setSnapGuidesState(value);
+  }, []);
 
   // Mutable refs for drag state
   const dragStateRef = useRef({
@@ -794,6 +835,121 @@ export function useSVGInteraction({
       .filter((member) => !(options?.movableOnly && member.locked))
       .map((member) => String(member.id));
   }, [selectedSurveyMarkerIds, getSurveyMarkerMembers]);
+
+  // ---------------------------------------------------------------------------
+  // Canvas audit chunk 2 — snapping. The latest page facts live in a ref so
+  // the helpers below stay stable (pointer handlers read them per frame).
+  // ---------------------------------------------------------------------------
+  const snapEnvRef = useRef(null);
+  snapEnvRef.current = {
+    annotations, callouts, isCalloutSelectable, getSelectableAnnotationIndices,
+    getSurveyMarkerMembers, pageWidth, pageHeight, inverseScale,
+  };
+  // The part of the page on screen (page units). Like Drawboard, only marks
+  // you can see pull a drag, so nothing snaps to a mark scrolled out of view.
+  const getVisiblePageArea = useCallback(() => {
+    const svg = svgRef.current;
+    if (!svg?.getBoundingClientRect || typeof window === 'undefined') return null;
+    const r = svg.getBoundingClientRect();
+    const l = Math.max(r.left, 0);
+    const t = Math.max(r.top, 0);
+    const rr = Math.min(r.right, window.innerWidth || r.right);
+    const b = Math.min(r.bottom, window.innerHeight || r.bottom);
+    if (!(rr > l && b > t)) return null;
+    const a = screenToSVG(svg, l, t);
+    const z = screenToSVG(svg, rr, b);
+    return { left: Math.min(a.x, z.x), top: Math.min(a.y, z.y), width: Math.abs(z.x - a.x), height: Math.abs(z.y - a.y) };
+  }, [svgRef]);
+  // The other marks a drag can snap to (boxes in page units), gathered once
+  // per drag. `indices` / `calloutIds` / `markerIds` = what is being dragged.
+  const collectSnapTargets = useCallback(({ indices = [], calloutIds = [], markerIds = [] } = {}) => {
+    const env = snapEnvRef.current || {};
+    const skipIdx = new Set((indices || []).map(Number));
+    const skipCallouts = new Set((calloutIds || []).map(String));
+    const skipMarkers = new Set((markerIds || []).map(String));
+    const visible = getVisiblePageArea();
+    const targets = [];
+    const push = (box) => {
+      if (box && (!visible || boxesTouch(box, visible))) targets.push(box);
+    };
+    const objects = env.annotations?.objects || [];
+    const indexList = typeof env.getSelectableAnnotationIndices === 'function'
+      ? env.getSelectableAnnotationIndices()
+      : objects.map((_, i) => i);
+    for (const idx of indexList || []) {
+      if (skipIdx.has(Number(idx))) continue;
+      const obj = objects[idx];
+      if (!isSnappableMark(obj)) continue;
+      push(snapBoxForMark(obj, getAnnotationWorldAABB(obj)));
+    }
+    for (const callout of filterSelectableCallouts(env.callouts, env.isCalloutSelectable)) {
+      if (skipCallouts.has(String(callout.id))) continue;
+      push(calloutSnapBox(callout, env.pageWidth, env.pageHeight));
+    }
+    for (const member of env.getSurveyMarkerMembers?.() || []) {
+      if (!member || skipMarkers.has(String(member.id))) continue;
+      push(boxWorldBounds(member.box));
+    }
+    return targets;
+  }, [getVisiblePageArea]);
+  // A move of `box` by (dx, dy): the snapped delta, and the guides to show
+  // for the delta that is really shown (`shownDelta`, after the page clamp).
+  // `ds.snapBox` / `ds.snapTargets` are filled once per drag by the caller.
+  const snapMoveDelta = useCallback((ds, dx, dy, e) => {
+    if (!ds?.snapBox || isSnapFreeModifier(e)) return { dx, dy };
+    const env = snapEnvRef.current || {};
+    const off = snapMoveBox(shiftBox(ds.snapBox, dx, dy), ds.snapTargets, snapThreshold(env.inverseScale));
+    return { dx: dx + off.dx, dy: dy + off.dy };
+  }, []);
+  const showMoveGuides = useCallback((ds, shownDx, shownDy, e) => {
+    if (!ds?.snapBox || isSnapFreeModifier(e)) {
+      applySnapGuides(null);
+      return;
+    }
+    const box = shiftBox(ds.snapBox, shownDx, shownDy);
+    applySnapGuides(buildSnapGuides(box, snapFeatures(box), ds.snapTargets));
+  }, [applySnapGuides]);
+  // Fill ds.snapBox / ds.snapTargets for a single-mark move (once per drag).
+  // Ink, highlighter and text highlights never snap (snapGuides.js).
+  const ensureSingleMoveSnap = useCallback((ds) => {
+    resetSnapIfNewDrag(ds);
+    if (ds.snapBox !== undefined) return;
+    const obj = snapEnvRef.current?.annotations?.objects?.[ds.annotationIndex];
+    ds.snapBox = isSnappableMark(obj) ? snapBoxForMark(obj, getAnnotationWorldAABB(obj)) : null;
+    ds.snapTargets = ds.snapBox ? collectSnapTargets({ indices: [ds.annotationIndex] }) : [];
+  }, [collectSnapTargets]);
+  // The same for a group move: the selection snaps by its combined frame
+  // (every member's on-page box, callouts and Survey Markers included).
+  const ensureGroupMoveSnap = useCallback((ds) => {
+    resetSnapIfNewDrag(ds);
+    if (ds.snapBox !== undefined) return;
+    const env = snapEnvRef.current || {};
+    const objects = env.annotations?.objects || [];
+    const boxes = [];
+    const indices = Object.keys(ds.groupOriginals || {});
+    for (const idxStr of indices) {
+      const obj = objects[Number(idxStr)];
+      if (obj) boxes.push(getAnnotationWorldAABB(obj));
+    }
+    const calloutIds = Object.keys(ds.groupCalloutOriginals || {});
+    for (const cid of calloutIds) {
+      const callout = (env.callouts || []).find((c) => c && String(c.id) === String(cid));
+      const box = callout ? getCalloutPageBox(callout, env.pageWidth || 1, env.pageHeight || 1) : null;
+      if (box) boxes.push(box);
+    }
+    const markerIds = Array.isArray(ds.groupMarkerIds) ? ds.groupMarkerIds : [];
+    if (markerIds.length) {
+      const ids = new Set(markerIds.map(String));
+      for (const member of env.getSurveyMarkerMembers?.() || []) {
+        if (member && ids.has(String(member.id))) {
+          const box = boxWorldBounds(member.box);
+          if (box) boxes.push(box);
+        }
+      }
+    }
+    ds.snapBox = unionBox(boxes);
+    ds.snapTargets = ds.snapBox ? collectSnapTargets({ indices, calloutIds, markerIds }) : [];
+  }, [collectSnapTargets]);
 
   // UX: 2026-04-20 — multi-index selection setter. Used by App.jsx via the
   // pendingSvgSelection.annotationIndices broadcast after Ungroup so the
@@ -2208,13 +2364,27 @@ export function useSVGInteraction({
       // w59: the preview shows the SAME page-clamped delta the release saves
       // (utils/moveCommit.js), so the mark never jumps when it is let go.
       ensureMoveStart(ds, annotations?.objects);
+      // Canvas audit chunk 2: edges / centres pull to other marks within
+      // 6 screen px (Alt = free); the release saves the same snapped delta.
+      ensureSingleMoveSnap(ds);
       // Owner after Test 46: a mark that may change pages follows the pointer
       // off its page (clipped) and jumps to the next page once fully off.
-      if (crossPageMove.preview(ds, e, annotations?.objects)) {
+      if (crossPageMove.preview(ds, e, annotations?.objects, ds.orbitBase ? null : (pdx, pdy, away) => {
+        if (away) {
+          applySnapGuides(null);
+          return { dx: pdx, dy: pdy };
+        }
+        const snapped = snapMoveDelta(ds, pdx, pdy, e);
+        showMoveGuides(ds, snapped.dx, snapped.dy, e);
+        return snapped;
+      })) {
         setInteractionState('dragging');
         return;
       }
-      const shown = clampMoveDelta(ds.moveBoxes, dx, dy, pageWidth, pageHeight);
+      const snappedMove = ds.orbitBase ? { dx, dy } : snapMoveDelta(ds, dx, dy, e);
+      const shown = clampMoveDelta(ds.moveBoxes, snappedMove.dx, snappedMove.dy, pageWidth, pageHeight);
+      if (ds.orbitBase) applySnapGuides(null);
+      else showMoveGuides(ds, shown.dx, shown.dy, e);
       if (ds.orbitBase) {
         // After a Shift-orbit the stored counter is still the pre-orbit one:
         // draw the orbited pose moved by the same delta the release saves.
@@ -2302,17 +2472,29 @@ export function useSVGInteraction({
         pageHeight,
         markerBoxes: getGroupMarkerBoxes(ds.groupMarkerIds),
       });
-      if (crossPageMove.preview(ds, e, annotations?.objects)) {
+      // Canvas audit chunk 2: the selection snaps as one by its combined frame.
+      ensureGroupMoveSnap(ds);
+      if (crossPageMove.preview(ds, e, annotations?.objects, (pdx, pdy, away) => {
+        if (away) {
+          applySnapGuides(null);
+          return { dx: pdx, dy: pdy };
+        }
+        const snapped = snapMoveDelta(ds, pdx, pdy, e);
+        showMoveGuides(ds, snapped.dx, snapped.dy, e);
+        return snapped;
+      })) {
         setInteractionState('dragging');
         return;
       }
+      const snappedGroup = snapMoveDelta(ds, svgPoint.x - ds.startSVGPoint.x, svgPoint.y - ds.startSVGPoint.y, e);
       const { dx, dy } = clampMoveDelta(
         ds.groupBoxes,
-        svgPoint.x - ds.startSVGPoint.x,
-        svgPoint.y - ds.startSVGPoint.y,
+        snappedGroup.dx,
+        snappedGroup.dy,
         pageWidth,
         pageHeight,
       );
+      showMoveGuides(ds, dx, dy, e);
       // UX: 2026-04-20 v2 — callouts now ride the same render-time
       // translate as annotations via affectedCalloutIds. This kills the
       // visible lag where callouts trailed behind shapes because their
@@ -2364,12 +2546,10 @@ export function useSVGInteraction({
       // rotated around the same pivot.
       const cur = normalizeAngle(Math.atan2(svgPoint.y - ds.centerY, svgPoint.x - ds.centerX));
       let delta = cur - (ds.groupStartAngle || 0);
-      // Soft Shift snap to nearest 15° within 3° threshold (gentler than
-      // single-shape's 45° because group rotations are usually finer).
-      if (e.shiftKey) {
-        const snapped = Math.round(delta / 15) * 15;
-        if (Math.abs(delta - snapped) <= 3) delta = snapped;
-      }
+      // Canvas audit chunk 3: the same feel as one mark — the group's turn
+      // (from where the drag began) pulls to quarter turns within 4°; Shift
+      // = hard 15° steps; Alt = free.
+      delta = snapRotationDegrees(delta, { shift: e.shiftKey, free: e.altKey });
       const rad = (delta * Math.PI) / 180;
       const cos = Math.cos(rad);
       const sin = Math.sin(rad);
@@ -2598,8 +2778,23 @@ export function useSVGInteraction({
       const affectsX = !['mt', 'mb'].includes(ds.handleId);
       const affectsY = !['ml', 'mr'].includes(ds.handleId);
       // Live pointer offsets in LOCAL coords (sign preserves drag direction).
-      const liveDx = pointerLocal.x - anchorLocal.x;
-      const liveDy = pointerLocal.y - anchorLocal.y;
+      let liveDx = pointerLocal.x - anchorLocal.x;
+      let liveDy = pointerLocal.y - anchorLocal.y;
+      // Canvas audit chunk 2: an upright group's dragged edge(s) pull to
+      // other marks' edges within 6 screen px (not with Shift or Alt).
+      const groupResizeSnapOn = !hasPersistRot && !e.shiftKey && !e.altKey;
+      if (groupResizeSnapOn) {
+        resetSnapIfNewDrag(ds);
+        if (ds.resizeSnapTargets === undefined) {
+          ds.resizeSnapTargets = collectSnapTargets({ indices: Object.keys(ds.groupMemberOriginals) });
+        }
+        const off = findSnapOffset({
+          x: affectsX ? [{ kind: 'edge', value: anchorLocal.x + liveDx }] : [],
+          y: affectsY ? [{ kind: 'edge', value: anchorLocal.y + liveDy }] : [],
+        }, ds.resizeSnapTargets, snapThreshold(inverseScale));
+        liveDx += off.dx;
+        liveDy += off.dy;
+      }
       // Compute scale factors. For uniform corners, optionally Shift-lock
       // to uniform scale by averaging |sx| and |sy|.
       let sx = affectsX ? (origDx === 0 ? 1 : liveDx / origDx) : 1;
@@ -2614,11 +2809,12 @@ export function useSVGInteraction({
         if (Math.abs(sx) < 0.05) sx = (sx < 0 ? -0.05 : 0.05);
         if (Math.abs(sy) < 0.05) sy = (sy < 0 ? -0.05 : 0.05);
       }
-      // Shift = uniform scale on corner handles.
+      // Shift = uniform scale on corner handles, following the BIGGER move
+      // (canvas audit chunk 3, Drawboard) so the corner stays under the pointer.
       if (e.shiftKey && affectsX && affectsY) {
-        const avg = (Math.abs(sx) + Math.abs(sy)) / 2;
-        sx = avg * (sx < 0 ? -1 : 1);
-        sy = avg * (sy < 0 ? -1 : 1);
+        const locked = lockAspectToBiggerMove(sx, sy, 1, 1);
+        sx = locked.scaleX;
+        sy = locked.scaleY;
       }
       if (groupContainsPath) {
         if (sx === 0) sx = Number.MIN_VALUE;
@@ -2776,6 +2972,22 @@ export function useSVGInteraction({
           dy: 0,
           previewObjects: buildPreviewObjects(updatedAnnotations, ds.groupMemberOriginals),
         });
+      }
+      if (groupResizeSnapOn) {
+        const edgeX = anchorLocal.x + origDx * sx;
+        const edgeY = anchorLocal.y + origDy * sy;
+        const xs = affectsX ? [anchorLocal.x, edgeX] : [u.left, u.right];
+        const ys = affectsY ? [anchorLocal.y, edgeY] : [u.top, u.bottom];
+        const box = {
+          left: Math.min(...xs), top: Math.min(...ys),
+          width: Math.abs(xs[1] - xs[0]), height: Math.abs(ys[1] - ys[0]),
+        };
+        applySnapGuides(buildSnapGuides(box, {
+          x: affectsX ? [{ kind: 'edge', value: edgeX }] : [],
+          y: affectsY ? [{ kind: 'edge', value: edgeY }] : [],
+        }, ds.resizeSnapTargets));
+      } else {
+        applySnapGuides(null);
       }
 
       setInteractionState('resizing');
@@ -3217,15 +3429,46 @@ export function useSVGInteraction({
       const origAngleRad = (origAngleDeg * Math.PI) / 180;
       const cosA = Math.cos(origAngleRad);
       const sinA = Math.sin(origAngleRad);
+      // Canvas audit chunk 3 (Drawboard): Alt grows the mark from its centre
+      // — the opposite side moves out by the same amount. A counter keeps its
+      // own uniform, anchored resize.
+      const resizeObj = annotations?.objects?.[ds.annotationIndex];
+      const resizeIsCounter = !!(ds.originalProps?.isCounterPin || resizeObj?.data?.type === 'counter');
+      const fromCentre = !!e.altKey && !resizeIsCounter;
       // World anchor: stored anchor is in local (un-rotated) frame; rotate it
       // around the shape's center by angle to get its rendered position.
-      const anchorLocalDx = ds.anchorX - ds.centerX;
-      const anchorLocalDy = ds.anchorY - ds.centerY;
+      const anchorLocalDx = fromCentre ? 0 : ds.anchorX - ds.centerX;
+      const anchorLocalDy = fromCentre ? 0 : ds.anchorY - ds.centerY;
       const worldAnchorX = ds.centerX + anchorLocalDx * cosA - anchorLocalDy * sinA;
       const worldAnchorY = ds.centerY + anchorLocalDx * sinA + anchorLocalDy * cosA;
+      // Canvas audit chunk 2 (Drawboard): the dragged edge(s) of an upright
+      // mark pull to other marks' edges within 6 screen px. Not with Shift
+      // (proportions win), Alt (free), a counter, a tilted mark, ink, or a
+      // photo's corner (it keeps its proportions).
+      const resizeAngleMod = ((origAngleDeg % 360) + 360) % 360;
+      const resizeSnapOn = !e.shiftKey && !e.altKey && !resizeIsCounter
+        && (resizeAngleMod < 0.01 || resizeAngleMod > 359.99)
+        && isSnappableMark(resizeObj)
+        && !(keepsProportions(resizeObj) && affectsX && affectsY);
+      let resizePtrX = svgPoint.x;
+      let resizePtrY = svgPoint.y;
+      if (resizeSnapOn) {
+        resetSnapIfNewDrag(ds);
+        if (ds.resizeSnapTargets === undefined) {
+          ds.resizeSnapTargets = collectSnapTargets({ indices: [ds.annotationIndex] });
+        }
+        const gox = ds.resizeGrabOffset?.dx || 0;
+        const goy = ds.resizeGrabOffset?.dy || 0;
+        const off = findSnapOffset({
+          x: affectsX ? [{ kind: 'edge', value: svgPoint.x + (isLeftHandle ? gox : -gox) }] : [],
+          y: affectsY ? [{ kind: 'edge', value: svgPoint.y + (isTopHandle ? goy : -goy) }] : [],
+        }, ds.resizeSnapTargets, snapThreshold(inverseScale));
+        resizePtrX += off.dx;
+        resizePtrY += off.dy;
+      }
       // Un-rotate pointer relative to world anchor, into shape's local frame.
-      const ptrDxWorld = svgPoint.x - worldAnchorX;
-      const ptrDyWorld = svgPoint.y - worldAnchorY;
+      const ptrDxWorld = resizePtrX - worldAnchorX;
+      const ptrDyWorld = resizePtrY - worldAnchorY;
       const ptrDxLocal = ptrDxWorld * cosA + ptrDyWorld * sinA;
       const ptrDyLocal = -ptrDxWorld * sinA + ptrDyWorld * cosA;
 
@@ -3241,22 +3484,28 @@ export function useSVGInteraction({
       // cloud never snaps outward on grab.
       const grabOffsetDx = ds.resizeGrabOffset?.dx || 0;
       const grabOffsetDy = ds.resizeGrabOffset?.dy || 0;
+      // From the centre the pointer sets HALF the size, so the size doubles.
+      const centreFactor = fromCentre ? 2 : 1;
       if (affectsX && ds.originalProps.width !== 0) {
         const signedLocalDx = (isLeftHandle ? -ptrDxLocal : ptrDxLocal) - grabOffsetDx;
-        newScaleX = signedLocalDx / ds.originalProps.width;
+        newScaleX = (centreFactor * signedLocalDx) / ds.originalProps.width;
       }
       if (affectsY && ds.originalProps.height !== 0) {
         const signedLocalDy = (isTopHandle ? -ptrDyLocal : ptrDyLocal) - grabOffsetDy;
-        newScaleY = signedLocalDy / ds.originalProps.height;
+        newScaleY = (centreFactor * signedLocalDy) / ds.originalProps.height;
       }
 
       // Shift-lock aspect ratio (per CONTEXT.md: free resize default, Shift
-      // locks). Preserve per-axis sign so diagonal drags through the anchor
-      // still flip on the axis that crossed — `sign * average magnitude`.
-      if (e.shiftKey) {
-        const avgMag = (Math.abs(newScaleX) + Math.abs(newScaleY)) / 2;
-        newScaleX = (newScaleX < 0 ? -1 : 1) * avgMag;
-        newScaleY = (newScaleY < 0 ? -1 : 1) * avgMag;
+      // locks). Canvas audit chunk 3 (Drawboard): follow the BIGGER of the two
+      // moves so the corner stays under the pointer on that axis (the old
+      // average let it slide away). Per-axis sign is kept so a diagonal drag
+      // through the anchor still flips on the axis that crossed (an edge
+      // grabber scales the other axis with it). Photos and stamps keep their
+      // proportions on a corner drag even without Shift.
+      if (e.shiftKey || (keepsProportions(resizeObj) && affectsX && affectsY)) {
+        const locked = lockAspectToBiggerMove(newScaleX, newScaleY, ds.originalProps.scaleX, ds.originalProps.scaleY);
+        newScaleX = locked.scaleX;
+        newScaleY = locked.scaleY;
       }
 
       const objForFlip = annotations?.objects?.[ds.annotationIndex];
@@ -3336,7 +3585,7 @@ export function useSVGInteraction({
       const newHeight = ds.originalProps.height * Math.abs(newScaleY);
       let offsetFromAnchorX = 0;
       let offsetFromAnchorY = 0;
-      if (affectsX) {
+      if (affectsX && !fromCentre) {
         // Left-handle drag: right edge is the anchor, so the center sits to
         // the LEFT of the anchor in local frame (-newWidth/2). Right-handle
         // drag: left edge is the anchor, center sits to the RIGHT (+newWidth/2).
@@ -3345,7 +3594,7 @@ export function useSVGInteraction({
         // jumps to the other side.
         if (newScaleX < 0) offsetFromAnchorX = -offsetFromAnchorX;
       }
-      if (affectsY) {
+      if (affectsY && !fromCentre) {
         offsetFromAnchorY = isTopHandle ? -newHeight / 2 : +newHeight / 2;
         if (newScaleY < 0) offsetFromAnchorY = -offsetFromAnchorY;
       }
@@ -3377,7 +3626,10 @@ export function useSVGInteraction({
         resizeCommitTop = newTop + counterTipExtension;
       }
 
-      // Store resize state for commit on pointerup
+      // Store resize state for commit on pointerup. `anchorX/Y` = the point
+      // the mark scales about in its local frame (its centre for Alt).
+      const resizeAnchorX = fromCentre ? ds.centerX : ds.anchorX;
+      const resizeAnchorY = fromCentre ? ds.centerY : ds.anchorY;
       dragStateRef.current.currentResize = {
         newScaleX,
         newScaleY,
@@ -3385,8 +3637,23 @@ export function useSVGInteraction({
         newTop: resizeCommitTop,
         counterNewRadius,
         pathResizePageMatrix,
+        anchorX: resizeAnchorX,
+        anchorY: resizeAnchorY,
       };
       setInteractionState('resizing');
+      if (resizeSnapOn) {
+        // Guides for the edge(s) really being dragged (upright mark, so the
+        // fixed side sits on the world anchor).
+        const finalBox = { left: newLeft, top: newTop, width: newWidth, height: newHeight };
+        const movingX = Math.abs(newLeft - worldAnchorX) < 1e-6 ? newLeft + newWidth : newLeft;
+        const movingY = Math.abs(newTop - worldAnchorY) < 1e-6 ? newTop + newHeight : newTop;
+        applySnapGuides(buildSnapGuides(finalBox, {
+          x: affectsX ? [{ kind: 'edge', value: movingX }] : [],
+          y: affectsY ? [{ kind: 'edge', value: movingY }] : [],
+        }, ds.resizeSnapTargets));
+      } else {
+        applySnapGuides(null);
+      }
 
       // UX 2026-04-19 diag: throttle-logged pointermove during resize so
       // future-Claude can see scale deltas vs pointer position over time
@@ -3466,8 +3733,8 @@ export function useSVGInteraction({
           scaleY: newScaleY,
           left: visualLeft,
           top: visualTop,
-          anchorX: ds.anchorX,
-          anchorY: ds.anchorY,
+          anchorX: resizeAnchorX,
+          anchorY: resizeAnchorY,
           pageMatrix: pathResizePageMatrix,
         },
       });
@@ -3485,10 +3752,11 @@ export function useSVGInteraction({
       let newAngle = normalizeAngle(radians) - (ds.rotateGrabOffsetDeg || 0);
       newAngle = ((newAngle % 360) + 360) % 360;
 
-      // EDIT-11: soft Shift-snap to nearest 45° within 3° threshold (CONTEXT.md locked decision)
-      if (e.shiftKey) {
-        newAngle = snapAngleToNearest45(newAngle, 3);
-      }
+      // Canvas audit chunk 3 (Drawboard): whole degrees, pulled to 0 / 90 /
+      // 180 / 270 within 4°; Shift = hard 15° steps (was a soft 45° snap
+      // that only caught within 3°); Alt = free.
+      newAngle = snapRotationDegrees(newAngle, { shift: e.shiftKey, free: e.altKey });
+      newAngle = ((newAngle % 360) + 360) % 360;
 
       // UX 2026-04-20: counters don't rotate their bubble or number — the
       // rotation handle and angle pill drive the nub direction only. Map
@@ -3562,12 +3830,27 @@ export function useSVGInteraction({
       // conversion. Delta math is integer-clean: capture the original
       // normalized coords at pointerdown, apply delta-in-page-coords /
       // pageSize each frame. See 14-CONTEXT.md Area 3 drag MVP.
-      const dxPage = svgPoint.x - ds.startSVGPoint.x;
-      const dyPage = svgPoint.y - ds.startSVGPoint.y;
+      let dxPage = svgPoint.x - ds.startSVGPoint.x;
+      let dyPage = svgPoint.y - ds.startSVGPoint.y;
       // UX: normalize delta by page dimensions so the callout's stored
       // 0-1 coords stay in page-relative space regardless of zoom level.
       const W = pageWidth || 1;
       const H = pageHeight || 1;
+      // Canvas audit chunk 2: moving a callout (its text box, or the whole
+      // thing) snaps its text box to other marks. The arrow tip and the knee
+      // point at the drawing, so they follow the pointer freely.
+      if (ds.partType === 'textBox' || ds.partType === 'whole') {
+        resetSnapIfNewDrag(ds);
+        if (ds.snapBox === undefined) {
+          ds.snapBox = ds.originalCalloutPositions
+            ? calloutSnapBox(ds.originalCalloutPositions, W, H)
+            : null;
+          ds.snapTargets = ds.snapBox ? collectSnapTargets({ calloutIds: [ds.calloutId] }) : [];
+        }
+        const snappedCallout = snapMoveDelta(ds, dxPage, dyPage, e);
+        dxPage = snappedCallout.dx;
+        dyPage = snappedCallout.dy;
+      }
       const dxNorm = dxPage / W;
       const dyNorm = dyPage / H;
 
@@ -3657,6 +3940,12 @@ export function useSVGInteraction({
         default:
           return;
       }
+      if ((ds.partType === 'textBox' || ds.partType === 'whole') && ds.snapBox && !isSnapFreeModifier(e)) {
+        const shownBox = calloutSnapBox({ ...original, textBoxPosition: proposed.textBoxPosition }, W, H);
+        applySnapGuides(shownBox ? buildSnapGuides(shownBox, snapFeatures(shownBox), ds.snapTargets) : null);
+      } else {
+        applySnapGuides(null);
+      }
 
       // UX: Phase 15 UAT-3 (2026-04-17) — free-drag model. During a drag
       // the user sees raw pointer-follow on the handle they grabbed — no
@@ -3723,11 +4012,11 @@ export function useSVGInteraction({
       };
 
       // Collision distances must match the handle the user actually sees.
-      // Handles render at HANDLE_RADIUS * sqrt(clampInverseScale(inverseScale))
+      // Handles render at HANDLE_RADIUS * clampInverseScale(inverseScale)
       // in page units (the clamp is the zoom-out balloon fix), so the rule uses
       // that same clamped effective radius — a static radius only lines up at
       // 100% zoom and otherwise leaves a gap that can never be closed.
-      const effHandleR = HANDLE_RADIUS * Math.sqrt(clampInverseScale(inverseScale));
+      const effHandleR = HANDLE_RADIUS * clampInverseScale(inverseScale);
       const minHandleToBox = effHandleR;        // handle edge meets the border
       const minHandleToHandle = effHandleR * 2; // two handle circles edge-to-edge
       // Knee / arrow handles must also clear the four textbox CORNER handles.
@@ -3820,12 +4109,13 @@ export function useSVGInteraction({
       }
       setInteractionState('dragging');
     }
-  }, [svgRef, annotations, onSaveAnnotations, pageWidth, pageHeight, onUpdateCalloutLive, applyMarqueeState, applyLassoState, inverseScale, clampMarkerGroupDelta, callouts, getGroupMarkerBoxes]);
+  }, [svgRef, annotations, onSaveAnnotations, pageWidth, pageHeight, onUpdateCalloutLive, applyMarqueeState, applyLassoState, inverseScale, clampMarkerGroupDelta, callouts, getGroupMarkerBoxes, applySnapGuides, collectSnapTargets, snapMoveDelta, showMoveGuides, ensureSingleMoveSnap, ensureGroupMoveSnap]);
 
   /**
    * Pointer up on root SVG: commit drag changes to annotation data.
    */
   const handlePointerUp = useCallback((e) => {
+    applySnapGuides(null);
     const lasso = lassoStateRef.current;
     if (lasso) {
       if (e.pointerId !== lasso.pointerId) return;
@@ -4086,7 +4376,10 @@ export function useSVGInteraction({
         // already hangs over an edge is never yanked back in). The old
         // per-release constrainToPage disagreed with the unclamped preview,
         // so a mark let go past the edge visibly snapped back.
-        const { dx: actualDx, dy: actualDy } = clampMoveDelta(ds.moveBoxes, dx, dy, pageWidth, pageHeight);
+        // Canvas audit chunk 2: the same snapped delta the preview showed.
+        ensureSingleMoveSnap(ds);
+        const snappedRelease = ds.orbitBase ? { dx, dy } : snapMoveDelta(ds, dx, dy, e);
+        const { dx: actualDx, dy: actualDy } = clampMoveDelta(ds.moveBoxes, snappedRelease.dx, snappedRelease.dy, pageWidth, pageHeight);
         if (!obj) {
           reportDroppedMove({ reason: 'mark-gone', mode: 'move', id: ds.markId, dx, dy, pageNumber });
         } else if (actualDx === 0 && actualDy === 0 && !ds.orbitBase) {
@@ -4358,8 +4651,11 @@ export function useSVGInteraction({
         markerBoxes: getGroupMarkerBoxes(ds.groupMarkerIds),
       });
       const groupBeyond = isBeyondMoveThreshold(rawGroupDx, rawGroupDy, inverseScale, e.pointerType);
+      // Canvas audit chunk 2: the same snapped delta the preview showed.
+      ensureGroupMoveSnap(ds);
+      const snappedGroupRelease = groupBeyond ? snapMoveDelta(ds, rawGroupDx, rawGroupDy, e) : null;
       const { dx, dy } = groupBeyond
-        ? clampMoveDelta(ds.groupBoxes, rawGroupDx, rawGroupDy, pageWidth, pageHeight)
+        ? clampMoveDelta(ds.groupBoxes, snappedGroupRelease.dx, snappedGroupRelease.dy, pageWidth, pageHeight)
         : { dx: 0, dy: 0 };
       if (groupBeyond && dx === 0 && dy === 0) {
         reportDroppedMove({ reason: 'held-at-page-edge', mode: 'group-move', dx: rawGroupDx, dy: rawGroupDy, pageNumber });
@@ -4572,11 +4868,15 @@ export function useSVGInteraction({
           const ep = getLineEndpoints(obj);
           const sx = Math.max(0.01, Math.abs(newScaleX));
           const sy = Math.max(0.01, Math.abs(newScaleY));
-          const naiveP1 = { x: ds.anchorX + (ep.x1 - ds.anchorX) * sx, y: ds.anchorY + (ep.y1 - ds.anchorY) * sy };
-          const naiveP2 = { x: ds.anchorX + (ep.x2 - ds.anchorX) * sx, y: ds.anchorY + (ep.y2 - ds.anchorY) * sy };
+          // Canvas audit chunk 3: the scale origin the preview used (the
+          // mark's centre for an Alt resize).
+          const lax = ds.currentResize.anchorX ?? ds.anchorX;
+          const lay = ds.currentResize.anchorY ?? ds.anchorY;
+          const naiveP1 = { x: lax + (ep.x1 - lax) * sx, y: lay + (ep.y1 - lay) * sy };
+          const naiveP2 = { x: lax + (ep.x2 - lax) * sx, y: lay + (ep.y2 - lay) * sy };
           const oldMidR = obj?.data?.midpoint || null;
           const naiveMidR = oldMidR
-            ? { x: ds.anchorX + (oldMidR.x - ds.anchorX) * sx, y: ds.anchorY + (oldMidR.y - ds.anchorY) * sy }
+            ? { x: lax + (oldMidR.x - lax) * sx, y: lay + (oldMidR.y - lay) * sy }
             : null;
           const pivotOldR = computeLineBboxCenter(
             { x1: ep.x1, y1: ep.y1, x2: ep.x2, y2: ep.y2 },
@@ -4858,7 +5158,7 @@ export function useSVGInteraction({
           };
 
           // Same zoom-aware (clamped) effective handle radius the live drag check uses.
-          const effHandleR = HANDLE_RADIUS * Math.sqrt(clampInverseScale(inverseScale));
+          const effHandleR = HANDLE_RADIUS * clampInverseScale(inverseScale);
           const minHandleToBox = effHandleR;
           const minHandleToHandle = effHandleR * 2;
           // Knee / arrow handles must also clear the four textbox corner
@@ -5010,9 +5310,10 @@ export function useSVGInteraction({
     };
     setVisualTransform(null);
     setInteractionState('idle');
-  }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, cancelLasso, deselectAll, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, viewerId, documentOwnerId, pageNumber, getSelectableAnnotationIndices, inverseScale, isCalloutSelectable, getSurveyMarkerMembers, updateSelectedMarkers, clearSelectedMarkers, clampMarkerGroupDelta, getGroupMarkerBoxes]);
+  }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, cancelLasso, deselectAll, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, viewerId, documentOwnerId, pageNumber, getSelectableAnnotationIndices, inverseScale, isCalloutSelectable, getSurveyMarkerMembers, updateSelectedMarkers, clearSelectedMarkers, clampMarkerGroupDelta, getGroupMarkerBoxes, applySnapGuides, snapMoveDelta, ensureSingleMoveSnap, ensureGroupMoveSnap]);
 
   const handlePointerCancel = useCallback((e) => {
+    applySnapGuides(null);
     const ds = dragStateRef.current;
     if (!ds.active || ds.mode !== 'text-markup-horizontal') return;
     if (ds.pointerId != null && e.pointerId != null && ds.pointerId !== e.pointerId) return;
@@ -5027,7 +5328,13 @@ export function useSVGInteraction({
     };
     setVisualTransform(null);
     setInteractionState('idle');
-  }, []);
+  }, [applySnapGuides]);
+
+  // Canvas audit chunk 2: a guide never outlives its drag (Escape, a lost
+  // pointer, a cross-page hand-off all end in 'idle').
+  useEffect(() => {
+    if (interactionState === 'idle') applySnapGuides(null);
+  }, [interactionState, applySnapGuides]);
 
   // Owner after Test 46 (2026-10-06): Escape mid-drag puts a moving mark back
   // where it started (nothing is saved, the pick stays). And a mark carried
@@ -6207,6 +6514,12 @@ export function useSVGInteraction({
     activeCalloutDrag,
     visualTransform,
     dragState: dragStateRef,
+    // Canvas audit chunk 2: alignment guides for the drag in progress
+    // ({ lines, points } in page units, or null), and the helpers the layer
+    // uses to snap a single Survey Marker drag the same way.
+    snapGuides,
+    setSnapGuides: applySnapGuides,
+    collectSnapTargets,
 
     // Event handlers
     handleAnnotationPointerDown,

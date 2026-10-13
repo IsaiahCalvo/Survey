@@ -12,6 +12,8 @@ import { Icon } from './HubShell';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import Spinner from '../components/Spinner';
 import { C } from '../uiPalette';
+import { useTooltip } from '../components/Tooltip';
+import { renameSelectionRange } from './documentSelection.js';
 
 
 const overlay = {
@@ -22,6 +24,7 @@ const overlay = {
 };
 
 export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfirm, initialMode = 'move' }) {
+  const tip = useTooltip();
   const [mode, setMode] = useState(initialMode); // 'move' | 'copy'
   const [destId, setDestId] = useState(null);
   const cardRef = useRef(null);
@@ -78,7 +81,7 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
             <div style={{ fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600 }}>Move or copy</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.015em', marginTop: 4 }}>{count} {count === 1 ? 'document' : 'documents'}</div>
           </div>
-          <button disabled={submitting} onClick={onClose} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={13} /></button>
+          <button disabled={submitting} onClick={onClose} aria-label="Close" {...tip('Close')} className="hub-icon-btn"><Icon name="close" size={13} /></button>
         </div>
         <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ display: 'flex', gap: 6 }}>
@@ -137,6 +140,7 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
 }
 
 export function ConfirmModal({ open, onClose, title = 'Are you sure?', message = '', confirmLabel = 'Confirm', busyLabel = null, danger = false, onConfirm }) {
+  const tip = useTooltip();
   const cardRef = useRef(null);
   // KAL-73: when onConfirm returns a promise (bulk delete etc.), the modal
   // stays up with a ring + participle label until it settles. Synchronous
@@ -173,7 +177,7 @@ export function ConfirmModal({ open, onClose, title = 'Are you sure?', message =
             <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.015em' }}>{title}</div>
             {message && <div style={{ fontSize: 12, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>{message}</div>}
           </div>
-          <button disabled={submitting} onClick={onClose} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={13} /></button>
+          <button disabled={submitting} onClick={onClose} aria-label="Close" {...tip('Close')} className="hub-icon-btn"><Icon name="close" size={13} /></button>
         </div>
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button disabled={submitting} onClick={onClose} className="hub-btn">Cancel</button>
@@ -195,22 +199,44 @@ export function ConfirmModal({ open, onClose, title = 'Are you sure?', message =
 }
 
 export function RenameModal({ open, onClose, title = 'Rename', initialName = '', onConfirm }) {
+  const tip = useTooltip();
   const [name, setName] = useState(initialName);
   const inputRef = useRef(null);
   const previouslyFocusedRef = useRef(null);
+  // Callers pass a fresh onClose each render; reading it through a ref keeps
+  // the open effect below from re-running (it used to reset the typed name
+  // and lose the preselection on any parent render).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  // The field gets the name in the SAME render that opens the dialog. It
+  // used to be set from the effect below, one render late: the preselection
+  // was made on the empty field and React then wrote the name in, which puts
+  // the caret at the end (measured: 15,15 on "Sheet A-103.pdf").
+  const [openedWith, setOpenedWith] = useState(null);
+  if (open && openedWith !== initialName) {
+    setOpenedWith(initialName);
+    setName(initialName);
+  } else if (!open && openedWith !== null) {
+    setOpenedWith(null);
+  }
 
   useEffect(() => {
     if (!open) return undefined;
-    setName(initialName);
     previouslyFocusedRef.current = document.activeElement;
+    // Shell audit 2026-10-13 (Drawboard, Finder): the name is preselected
+    // WITHOUT its ".pdf", so typing replaces the name and keeps the type.
+    const [start, end] = renameSelectionRange(initialName);
     const frame = requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      inputRef.current?.select();
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus();
+      try { input.setSelectionRange(start, end); } catch { input.select(); }
     });
     const handleKey = (event) => {
       if (event.key === 'Escape') {
         event.stopPropagation();
-        onClose?.();
+        onCloseRef.current?.();
       }
     };
     window.addEventListener('keydown', handleKey, true);
@@ -220,7 +246,7 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
       previouslyFocusedRef.current?.focus?.();
       previouslyFocusedRef.current = null;
     };
-  }, [initialName, onClose, open]);
+  }, [initialName, open]);
 
   if (!open) return null;
   const trimmed = name.trim();
@@ -261,7 +287,7 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
               />
             </label>
           </div>
-          <button type="button" onClick={onClose} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={16} /></button>
+          <button type="button" onClick={onClose} aria-label="Close" {...tip('Close')} className="hub-icon-btn"><Icon name="close" size={16} /></button>
         </div>
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onClose} className="hub-btn" style={{ minHeight: 44 }}>Cancel</button>

@@ -211,7 +211,7 @@ html.survey-viewer-open #root {
 /* Screen-only: the html/body/#root pin below must never apply while the
    browser paginates for paper (printable width < 720px clipped every print
    to one sheet). */
-@media screen and (max-width: 720px) {
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   html.survey-viewer-open,
   html.survey-viewer-open body,
   html.survey-viewer-open #root,
@@ -238,7 +238,7 @@ html.survey-viewer-open #root {
      the same box, because a fixed body establishes no transform/filter/
      containment context.
 
-     Scoped to <=720px and to an open viewer, exactly like the pin it extends,
+     Scoped to the phone layout and to an open viewer, exactly like the pin it extends,
      so desktop, iPad and the hub are untouched. Guarded by
      tests/mobileKeyboardViewport.test.mjs. */
   html.survey-viewer-open body {
@@ -318,7 +318,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    scroller box (container-aware rule), so fit-to-width fits the new, shorter
    area on its own. The inset is constant (it does not drop while a panel hides
    the dock) so opening a panel never resizes the page area and re-fits it.
-   `.mobile-pdf-work-area` exists only in the phone shell (<=720px), so the
+   `.mobile-pdf-work-area` exists only in the phone shell (phone screens), so the
    tablet and desktop viewers are untouched. `!important` beats the host's
    inline `inset: 0` in PDFViewer.jsx without editing that file. Guarded by
    tests/mobileCanvasInsideBars.test.mjs. */

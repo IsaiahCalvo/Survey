@@ -39,6 +39,8 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { extractPdfOutlineBookmarks } from '../utils/bookmarkOutline';
 import { resolvePinchCommitCursor, resolvePinchEndTransition } from '../utils/mobilePinchGesture';
+import { isPalmContact, withoutPalmTouches } from '../utils/touchContact';
+import { isSpaceTap, isSpaceTapBlockedTarget } from '../utils/spaceTapToggle';
 import { createPanMomentumRunner, createPanVelocityTracker, isGlideSlowEnoughToSharpen, PAN_MOMENTUM_DEFAULTS, panEventTime } from '../utils/panMomentum';
 import {
   ELASTIC_ZOOM_EASE_MS,
@@ -74,6 +76,9 @@ import { createZoomGlide, retargetZoomGlide, stepZoomGlide } from '../utils/zoom
 import { isLiveFormWidgetTarget } from '../utils/formWidgetPointerTargets.js';
 import { isSelectionGrabPress } from '../hooks/useSelectionGrabHandoff.js';
 import {
+  hasStylusTouch, isPenDown, isPencilOnly, resolveTouchStartRoute, resolveViewerPressRoute, subscribeGatedPointers,
+} from '../utils/pencilMode.js';
+import {
   compensateScrollTopForRoom,
   computeTopOverlayInset,
   getViewerTopOverlays,
@@ -89,6 +94,9 @@ import {
   classifyRaster, pickRasterSource, planThumbPrefetch, resolveWantedRasterScale, thumbRasterScale,
 } from '../utils/pageRasterLod.js';
 import QuietLoading from './QuietLoading.jsx';
+import usePhoneLayout from '../hooks/usePhoneLayout.js';
+import useCoarsePointer from '../hooks/useCoarsePointer.js';
+import { hasTouchInput } from '../utils/layoutMode.js';
 import { notePageDrawn, pageMounted, pageUnmounted, PAGE_CACHE_KEEP_MOBILE, PAGE_CACHE_KEEP_DESKTOP } from '../utils/pdfPageCacheTrim';
 import {
   compensateScrollLeftForColumnWidth,
@@ -203,10 +211,6 @@ const DESKTOP_MAX_OVERSCAN_PAGES = 3;
 // MOBILE_MAX_CANVAS_AREA-clamped raster (~12 MiB), and the deep-zoom window
 // still tops out at three pages.
 const MOBILE_MAX_OVERSCAN_PAGES = 2;
-function isMobilePdfSurfaceViewport() {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
-  return window.matchMedia('(max-width: 720px), (pointer: coarse)').matches;
-}
 function resolveLayoutMetrics(isMobileSurface) {
   return isMobileSurface
     ? {
@@ -1365,6 +1369,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   onZoomChanged,
   onZoomPhase, // Stage 3: 'gesture-start' | 'settle' — lets PDFViewer bump the zoomGeneration signal
   onPanStateChange,
+  // Drawboard audit C6: a quick Space tap (not a hold) — the tool owner
+  // toggles Pan / the previous tool (utils/spaceTapToggle.js).
+  onSpaceTap,
   onPageRendered,
   // eslint-disable-next-line no-unused-vars
   onTextSelectionEnd,
@@ -1425,7 +1432,20 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const [range, setRange] = useState([0, -1]);
   const [containerW, setContainerW] = useState(800);
   const [containerH, setContainerH] = useState(600);
-  const [isMobileSurface, setIsMobileSurface] = useState(() => isMobilePdfSurfaceViewport());
+  // Three separate questions (owner 2026-10-13: touch must never pick the
+  // phone layout):
+  //  - phoneLayout: the phone's page layout (narrow gaps, the 390px page cap,
+  //    the page shadow). The screen decides, utils/layoutMode.js.
+  //  - isMobileSurface: a phone or a touch-first device (iPad, Android
+  //    tablet): the tight raster/memory budgets, the 8x zoom ceiling and the
+  //    iOS callout/selection guards those devices always had.
+  //  - touchSurface: any touch screen, a touchscreen laptop's too: one finger
+  //    runs the tool, two fingers pan and pinch the PDF (not the page).
+  const phoneLayout = usePhoneLayout();
+  const coarsePointer = useCoarsePointer();
+  const isMobileSurface = phoneLayout || coarsePointer;
+  const [touchInput] = useState(() => hasTouchInput());
+  const touchSurface = isMobileSurface || touchInput;
   // imperative document source (prop-driven, overridable via load())
   const [activeSource, setActiveSource] = useState(documentSource);
   const [activePassword, setActivePassword] = useState('');
@@ -1445,7 +1465,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const cb = useRef({});
   cb.current = {
     onDocumentLoaded, onDocumentLoadFailed, onPageChanged, onZoomChanged, onZoomPhase,
-    onPanStateChange, onPageRendered, onPDFBookmarksAvailable, onPageContainersChange,
+    onPanStateChange, onSpaceTap, onPageRendered, onPDFBookmarksAvailable, onPageContainersChange,
     onMountedPagesChange, onDocumentUnload,
   };
 
@@ -1523,6 +1543,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const interactionModeRef = useRef(interactionMode);
   interactionModeRef.current = interactionMode;
   const spacePanRef = useRef(false);
+  // The Space press in progress: { at, dragged, blocked } (Space tap toggle).
+  const spacePressRef = useRef(null);
   const panInteractionRef = useRef(false);
   const panPointerRef = useRef(null);
   const panDeltaRef = useRef({ x: 0, y: 0 });
@@ -1606,7 +1628,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     scheduleRasterQuietPump();
   }, [scheduleRasterQuietPump]);
   useEffect(() => () => { if (rasterQuietTimerRef.current) clearTimeout(rasterQuietTimerRef.current); }, []);
-  const layoutMetrics = useMemo(() => resolveLayoutMetrics(isMobileSurface), [isMobileSurface]);
+  const layoutMetrics = useMemo(() => resolveLayoutMetrics(phoneLayout), [phoneLayout]);
   const layoutMetricsRef = useRef(layoutMetrics);
   layoutMetricsRef.current = layoutMetrics;
 
@@ -1648,28 +1670,6 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const nextLeft = Math.min(Math.max(0, el.scrollLeft), maxLeft);
     if (Math.abs(el.scrollLeft - nextLeft) > 0.5) el.scrollLeft = nextLeft;
   }, [getHorizontalScrollMax]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
-    const mediaQueries = [
-      window.matchMedia('(max-width: 720px)'),
-      window.matchMedia('(pointer: coarse)'),
-    ];
-    const updateMobileSurface = () => {
-      setIsMobileSurface(mediaQueries.some((mq) => mq.matches));
-    };
-    updateMobileSurface();
-    mediaQueries.forEach((mq) => {
-      if (mq.addEventListener) mq.addEventListener('change', updateMobileSurface);
-      else mq.addListener(updateMobileSurface);
-    });
-    return () => {
-      mediaQueries.forEach((mq) => {
-        if (mq.removeEventListener) mq.removeEventListener('change', updateMobileSurface);
-        else mq.removeListener(updateMobileSurface);
-      });
-    };
-  }, []);
 
   // ---- load document --------------------------------------------------------
   // Owner 2026-10-01 (instant page operations): when the new source is a page
@@ -3273,6 +3273,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     el.dataset.spacePan = dragging ? 'dragging' : (armed ? 'armed' : 'off');
     el.style.cursor = dragging ? 'grabbing' : (armed ? 'grab' : '');
     el.style.userSelect = armed ? 'none' : '';
+    // Owner 2026-10-13: Safari / iPad WebKit only honour the prefixed form.
+    el.style.webkitUserSelect = armed ? 'none' : '';
   }, []);
 
   // Phone one-finger pan past an edge (owner 2026-10-02, Drawboard parity):
@@ -3606,6 +3608,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       event.stopPropagation();
       if (spacePanRef.current) return;
       spacePanRef.current = true;
+      // Drawboard audit C6: remember when Space went down, so a quick tap
+      // (no drag) can toggle Pan on release. A hold behaves as before.
+      spacePressRef.current = {
+        at: performance.now(),
+        dragged: false,
+        blocked: isSpaceTapBlockedTarget(event.target) || isSpaceTapBlockedTarget(document.activeElement),
+      };
       setPanInteraction(true);
       updatePanPresentation();
     };
@@ -3615,10 +3624,15 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         event.preventDefault();
         event.stopPropagation();
       }
+      const press = spacePressRef.current;
+      spacePressRef.current = null;
       if (!spacePanRef.current && !panPointerRef.current) return;
+      const tapped = event?.type === 'keyup' && spacePanRef.current && press && !press.blocked
+        && isSpaceTap({ downAt: press.at, upAt: performance.now(), dragged: press.dragged || Boolean(panPointerRef.current) });
       spacePanRef.current = false;
       finishPan();
       setPanInteraction(false);
+      if (tapped) cb.current.onSpaceTap?.();
     };
     const onVisibilityChange = () => {
       if (document.hidden) releaseSpacePan();
@@ -3644,9 +3658,31 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const el = scrollerRef.current;
     if (!el) return undefined;
 
+    // drawboardAudit C3/C5 (docs/GESTURE-CONTRACT.md): besides the Pan tool and
+    // a held Space, a press in the grey margin around the pages (the scroller
+    // or the content node itself - never a page, a mark or a control) and a
+    // middle-button drag pan with ANY tool, without changing it. A finger in
+    // Pencil-only mode on this pointer-driven surface pans too (it reaches us
+    // through the pencil gate, which kept it from the tools).
+    const isGutterPress = (event) => event.target === el
+      || (event.target === contentRef.current && contentRef.current != null);
+    const isMiddlePress = (event) => event.pointerType === 'mouse' && event.button === 1;
     const onPointerDown = (event) => {
       const armed = spacePanRef.current || interactionModeRef.current === 'Pan';
-      if (!armed || event.button !== 0 || event.pointerType === 'touch') return;
+      const route = resolveViewerPressRoute({
+        pointerType: event.pointerType,
+        button: event.button,
+        panArmed: armed,
+        onGutter: isGutterPress(event),
+      });
+      if (route !== 'pan') return;
+      // A finger only arrives here from the pencil gate on the pointer-driven
+      // surface; a touch surface (phone, tablet, touch laptop - the touch
+      // handlers below, which also reject palms) pans fingers itself. Not
+      // data-mobile-pdf-surface: since layout detection that is the phone
+      // LAYOUT only, and an iPad's palm in Pencil-only mode panned here.
+      if (event.pointerType === 'touch' && el.getAttribute('data-touch-pdf-surface') === 'true') return;
+      const middle = isMiddlePress(event);
       // Pan owns blank document space, never native controls layered over it.
       // Preventing pointerdown on a PDF form widget/link suppresses its focus,
       // click, and change sequence entirely on desktop.
@@ -3664,14 +3700,17 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       // it runs first, on window capture) drags only the mark. Any press still
       // catches a glide in flight: the page must not keep coasting under a
       // mark being dragged.
-      if (isSelectionGrabPress(event)
+      // The middle button pans from anywhere (marks, links, widgets): it never
+      // means "use this control" here, and it must never draw.
+      if (!middle && (isSelectionGrabPress(event)
         || isEditableTarget(event.target)
         || isLiveFormWidgetTarget(event.target)
         || event.target?.closest?.('a[href], .linkAnnotation, [data-element-id="link"], [data-text-markup-link]')
-        || event.target?.closest?.('[data-pan-interactive="true"]')) {
+        || event.target?.closest?.('[data-pan-interactive="true"]'))) {
         if (panMomentumRef.current?.isRunning()) cancelPanInertia();
         return;
       }
+      if (middle && isEditableTarget(event.target)) return;
       event.preventDefault();
       event.stopPropagation();
       // A new grab always beats an in-flight glide.
@@ -3681,6 +3720,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         x: event.clientX,
         y: event.clientY,
       };
+      // A drag while Space is down makes that press a hold, never a tap.
+      if (spacePressRef.current) spacePressRef.current.dragged = true;
       // Same rubber band as the phone: catches a page still springing home.
       beginElasticPan();
       panVelocityRef.current.start(event.clientX, event.clientY, panEventTime(event));
@@ -3718,6 +3759,20 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // scrolling must never fight a coast. Passive, so native scrolling and the
     // ctrl+wheel zoom path are both left exactly as they were.
     const onWheelStopGlide = () => { cancelPanInertia(); };
+    // C5: no browser autoscroll circle and no middle-click "open link in a
+    // new tab" inside the viewer - the middle button is a pan here.
+    const stopMiddleDefault = (event) => {
+      if (event.button !== 1 || isEditableTarget(event.target)) return;
+      event.preventDefault();
+    };
+    // Pencil-only fingers on this surface (see utils/pencilMode.js).
+    const unsubscribeGated = subscribeGatedPointers((event, kind) => {
+      if (kind !== 'finger' || !el.contains(event.target)) return;
+      if (event.type === 'pointerdown') onPointerDown(event);
+      else if (event.type === 'pointermove') onPointerMove(event);
+      else if (event.type === 'pointerup') onPointerUp(event);
+      else if (event.type === 'pointercancel') onPointerAbort(event);
+    });
 
     el.addEventListener('pointerdown', onPointerDown, { capture: true, passive: false });
     el.addEventListener('pointermove', onPointerMove, { capture: true, passive: false });
@@ -3725,7 +3780,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     el.addEventListener('pointercancel', onPointerAbort, { capture: true, passive: false });
     el.addEventListener('lostpointercapture', onPointerAbort, { capture: true, passive: false });
     el.addEventListener('wheel', onWheelStopGlide, { capture: true, passive: true });
+    el.addEventListener('mousedown', stopMiddleDefault, { capture: true, passive: false });
+    el.addEventListener('auxclick', stopMiddleDefault, { capture: true, passive: false });
     return () => {
+      unsubscribeGated();
+      el.removeEventListener('mousedown', stopMiddleDefault, true);
+      el.removeEventListener('auxclick', stopMiddleDefault, true);
       el.removeEventListener('pointerdown', onPointerDown, true);
       el.removeEventListener('pointermove', onPointerMove, true);
       el.removeEventListener('pointerup', onPointerUp, true);
@@ -3750,7 +3810,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // callouts are cancelled only inside this viewer surface.
   useEffect(() => {
     const el = scrollerRef.current;
-    if (!el || !isMobileSurface) return undefined;
+    if (!el || !touchSurface) return undefined;
 
     const setMobileTouchMode = (mode) => {
       if (mode) el.dataset.mobileTouchMode = mode;
@@ -3826,7 +3886,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       setMobileTouchMode('pinch');
     };
 
-    const isNativeInteractionTarget = (target) => {
+    // drawboardAudit C2 (docs/GESTURE-CONTRACT.md): in Pencil-only mode a
+    // finger never runs the tool - it pans/pinches exactly as under the Pan
+    // tool - while an Apple Pencil (a touch with touchType 'stylus') keeps
+    // the tool. Its pointer events never reach the tools (utils/pencilMode.js).
+    const fingerActsAsPan = (event) => isPencilOnly() && Boolean(event?.touches)
+      && !hasStylusTouch(event.touches) && !hasStylusTouch(event.changedTouches);
+    const isNativeInteractionTarget = (target, event) => {
       const nativeTarget = target?.nodeType === 3 ? target.parentElement : target;
       if (isEditableTarget(nativeTarget)) return true;
       // A tap that lands in a widget's own box but beside its control (the
@@ -3842,6 +3908,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       // panning. Never on an annotation carrier — Drawboard pans from an
       // unselected annotation, so that drag has to reach the scroller.
       if (nativeTarget?.closest?.('[data-pan-interactive="true"]')) return true;
+      // Pencil-only mode: a finger is the Pan tool, so the Text Select layer
+      // is not its native target (an Apple Pencil still selects text).
+      if (fingerActsAsPan(event)) return false;
       return interactionModeRef.current === 'TextSelection'
         && Boolean(nativeTarget?.closest?.('.textLayer, .pdfjsTextLayer, .annotationLayer, [data-shape-kind^="text-markup-"]'));
     };
@@ -3878,7 +3947,22 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       startPanInertia(release.vx, release.vy, { elastic: release.elastic, touch: true });
     };
 
+    // Drawboard audit C1 (palm rejection): a contact wider than 120 px is a
+    // resting hand, not a finger (utils/touchContact.js). A touch event that
+    // only reports palms changes nothing - no stroke, no pan, no pinch, and a
+    // stroke or pinch already under way carries on. Every finger count below
+    // leaves palms out, so a palm beside a pen or a finger is not a 2nd finger.
+    const isPalmOnlyChange = (event) => {
+      const changed = event.changedTouches;
+      return Boolean(changed && changed.length > 0 && withoutPalmTouches(changed).length === 0);
+    };
+
     const onTouchStart = (event) => {
+      if (isPalmOnlyChange(event)) {
+        event.preventDefault();
+        return;
+      }
+      const touches = withoutPalmTouches(event.touches);
       widgetTapCandidate = null;
       widgetTapPromotedToPan = false;
       // Owner 2026-10-07 ("it's panning and dragging it at the same time"): a
@@ -3886,11 +3970,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       // grab (hooks/useSelectionGrabHandoff claims it on pointerdown) - it
       // drags only the mark. Every press catches a glide still in flight.
       // (Two fingers keep the pinch path below.)
-      if (event.touches.length === 1 && isSelectionGrabPress(event)) {
+      if (touches.length === 1 && isSelectionGrabPress(event)) {
         if (panMomentumRef.current?.isRunning()) cancelPanInertia();
         return;
       }
-      if (isNativeInteractionTarget(event.target)) {
+      if (isNativeInteractionTarget(event.target, event)) {
         if (panMomentumRef.current?.isRunning()) cancelPanInertia();
         const nativeTarget = event.target?.nodeType === 3 ? event.target.parentElement : event.target;
         // Same for a link (Appetize iOS run 2026-10-06: a pull past the top
@@ -3898,26 +3982,58 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         // even opened the link at the end of the drag). Only a tap is the
         // link's; the click after a promoted drag is eaten by
         // stopPostGestureClick below.
-        if (event.touches.length === 1
+        if (touches.length === 1
           && interactionModeRef.current === 'Pan'
           && (isLiveFormWidgetTarget(nativeTarget) || nativeTarget?.closest?.(PAN_THROUGH_LINK_SELECTOR))) {
-          const touch = event.touches[0];
+          const touch = touches[0];
           widgetTapCandidate = { startX: touch.clientX, startY: touch.clientY };
         }
         return;
+      }
+      if (isPencilOnly()) {
+        const route = resolveTouchStartRoute({
+          touches: event.touches,
+          changedTouches: event.changedTouches,
+          penDown: isPenDown(),
+          toolIsPan: interactionModeRef.current === 'Pan',
+        });
+        if (route === 'ignore' || route === 'pen-tool') {
+          event.preventDefault();
+          const mode = mobileTouchRef.current?.mode;
+          // A pinch already under way keeps going; the pen waits.
+          if (mode === 'pinch' || mode === 'pinch-release') return;
+          // The pen owns the glass: a finger pan stops where it is (no glide).
+          if (mode === 'pan') { panVelocityRef.current.reset(); endTouchPan(0, 0); }
+          if (route === 'pen-tool') {
+            mobileTouchRef.current = { mode: 'tool' };
+            setMobileTouchMode('tool');
+          } else if (mobileTouchRef.current?.mode !== 'tool') {
+            // A finger resting while the pen writes: no pan, no pinch, no tool.
+            mobileTouchRef.current = { mode: 'ignore' };
+            setMobileTouchMode('ignore');
+          }
+          return;
+        }
       }
       cancelPanInertia();
       // Required by Safari to stop native page zoom / Tab Expose and the
       // long-press loupe before either recognizer claims the sequence.
       event.preventDefault();
-      if (event.touches.length >= 2) {
+      if (touches.length >= 2) {
         event.stopPropagation();
-        startPinch(event.touches);
+        startPinch(touches);
         return;
       }
-      if (event.touches.length === 1 && interactionModeRef.current === 'Pan') {
+      // A pen drag the pointer path already pans (Pan tool, the grey margin)
+      // is not panned a second time by the pen's own touch stream (iOS).
+      if (touches.length === 1 && panPointerRef.current && hasStylusTouch(touches)) return;
+      // C3: a finger that lands in the grey margin around the pages pans with
+      // any tool, like the Pan tool (the tools have nothing to do there).
+      const onGutter = event.target === el || (contentRef.current != null && event.target === contentRef.current);
+      if (touches.length === 1
+        && (interactionModeRef.current === 'Pan' || fingerActsAsPan(event) || (onGutter && !hasStylusTouch(touches)))) {
         event.stopPropagation();
-        const touch = event.touches[0];
+        const touch = touches[0];
         // Velocity sampling lives in the shared flick tracker so touch and
         // mouse panning release with identical numbers.
         panVelocityRef.current.start(touch.clientX, touch.clientY, panEventTime(event));
@@ -3928,7 +4044,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         return;
       }
 
-      if (event.touches.length === 1) {
+      if (touches.length === 1) {
         // A pull left held past an edge with no gesture driving it (its touch
         // end was lost) springs home now instead of staying there.
         if (elasticRef.current && !elasticRef.current.anim && !gestureRef.current) releaseElastic();
@@ -3938,9 +4054,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
 
     const onTouchMove = (event) => {
+      if (isPalmOnlyChange(event)) {
+        event.preventDefault();
+        return;
+      }
+      const touches = withoutPalmTouches(event.touches);
       if (widgetTapCandidate) {
-        if (event.touches.length !== 1) { widgetTapCandidate = null; return; }
-        const touch = event.touches[0];
+        if (touches.length !== 1) { widgetTapCandidate = null; return; }
+        const touch = touches[0];
         const travelled = Math.hypot(
           touch.clientX - widgetTapCandidate.startX,
           touch.clientY - widgetTapCandidate.startY,
@@ -3966,19 +4087,24 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         schedulePan(dx, dy);
         return;
       }
-      if (isNativeInteractionTarget(event.target) && !widgetTapPromotedToPan) return;
+      if (isNativeInteractionTarget(event.target, event) && !widgetTapPromotedToPan) return;
       event.preventDefault();
-      if (event.touches.length >= 2) {
+      // Pencil-only: while the pen is on the glass (or a resting finger was
+      // set aside) no finger pans or pinches - the pen's own contact keeps
+      // going to the tool below.
+      if (isPencilOnly() && mobileTouchRef.current?.mode !== 'pinch'
+        && (mobileTouchRef.current?.mode === 'ignore' || hasStylusTouch(touches))) return;
+      if (touches.length >= 2) {
         event.stopPropagation();
-        if (mobileTouchRef.current?.mode !== 'pinch') startPinch(event.touches);
+        if (mobileTouchRef.current?.mode !== 'pinch') startPinch(touches);
         const touchState = mobileTouchRef.current;
         if (!touchState || touchState.mode !== 'pinch') return;
 
         const rect = el.getBoundingClientRect();
-        const center = getTouchCenter(event.touches, rect);
+        const center = getTouchCenter(touches, rect);
         const committedScale = scaleRef.current;
         const maxScale = isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE;
-        const distance = Math.max(1, getTouchDistance(event.touches));
+        const distance = Math.max(1, getTouchDistance(touches));
         const minimumScale = getMinimumScaleForLayout(
           dimsPtRef.current,
           containerHRef.current,
@@ -4061,9 +4187,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         endTouchPan(0, 0);
         return;
       }
-      if (touchState?.mode === 'pan' && event.touches.length === 1) {
+      if (touchState?.mode === 'pan' && touches.length === 1) {
         event.stopPropagation();
-        const touch = event.touches[0];
+        const touch = touches[0];
         const { dx, dy } = panVelocityRef.current.move(touch.clientX, touch.clientY, panEventTime(event));
         schedulePan(dx, dy);
         return;
@@ -4072,14 +4198,21 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
 
     const onTouchEnd = (event) => {
+      const touches = withoutPalmTouches(event.touches);
+      // A palm lifting changes nothing - unless it was the last contact of a
+      // gesture (a finger that spread into palm size): that gesture still ends.
+      if (isPalmOnlyChange(event) && (touches.length > 0 || !mobileTouchRef.current)) {
+        event.preventDefault();
+        return;
+      }
       if (widgetTapCandidate) {
         // A tap that never travelled: hands off, so the browser's own click
         // focuses the text field or toggles the checkbox.
         widgetTapCandidate = null;
         return;
       }
-      if (isNativeInteractionTarget(event.target) && !widgetTapPromotedToPan) return;
-      if (event.touches.length === 0) widgetTapPromotedToPan = false;
+      if (isNativeInteractionTarget(event.target, event) && !widgetTapPromotedToPan) return;
+      if (touches.length === 0) widgetTapPromotedToPan = false;
       event.preventDefault();
       const touchState = mobileTouchRef.current;
       if (!touchState) return;
@@ -4089,11 +4222,20 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         setMobileTouchMode(null);
         return;
       }
+      // Pencil-only: a finger set aside while the pen wrote stays ignored
+      // until every finger has lifted.
+      if (touchState.mode === 'ignore') {
+        if (touches.length === 0) {
+          mobileTouchRef.current = null;
+          setMobileTouchMode(null);
+        }
+        return;
+      }
 
       event.stopPropagation();
       if (touchState.mode === 'pinch' || touchState.mode === 'pinch-release') {
         panVelocityRef.current.reset();
-        const transition = resolvePinchEndTransition(touchState.mode, event.touches.length);
+        const transition = resolvePinchEndTransition(touchState.mode, touches.length);
         mobileTouchRef.current = transition.nextMode ? { mode: transition.nextMode } : null;
         suppressMobileTouchUntilRef.current = performance.now() + 450;
         setMobileTouchMode(transition.nextMode);
@@ -4103,7 +4245,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         return;
       }
 
-      if (touchState.mode === 'pan' && event.touches.length === 0) {
+      if (touchState.mode === 'pan' && touches.length === 0) {
         const { vx: velocityX, vy: velocityY } = panVelocityRef.current.release(panEventTime(event));
         endTouchPan(velocityX, velocityY);
       }
@@ -4141,6 +4283,16 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     window.addEventListener('blur', abortTouch);
     window.addEventListener('pagehide', abortTouch);
     document.addEventListener('visibilitychange', onVisibilityAbort);
+    // Pencil-only: a pen landing while a finger pans (a pen that sends no
+    // stylus touches - Android, Windows, tests) stops the pan where it is and
+    // sets that finger aside, so the page never slides under the pen.
+    const unsubscribePenDown = subscribeGatedPointers((_event, kind) => {
+      if (kind !== 'pen-down' || !isPencilOnly() || mobileTouchRef.current?.mode !== 'pan') return;
+      panVelocityRef.current.reset();
+      endTouchPan(0, 0);
+      mobileTouchRef.current = { mode: 'ignore' };
+      setMobileTouchMode('ignore');
+    });
 
     const eventTargets = [el, nativePinchSurfaceRef.current].filter(Boolean);
     eventTargets.forEach((target) => {
@@ -4151,9 +4303,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       target.addEventListener('gesturestart', stopNativeGesture, { capture: true, passive: false });
       target.addEventListener('gesturechange', stopNativeGesture, { capture: true, passive: false });
       target.addEventListener('gestureend', stopNativeGesture, { capture: true, passive: false });
-      target.addEventListener('selectstart', stopNativeSelection, true);
-      target.addEventListener('contextmenu', stopNativeSelection, true);
-      target.addEventListener('dragstart', stopNativeSelection, true);
+      // A touchscreen laptop's mouse keeps its own selection, right-click
+      // and drag; these guards are for touch-first devices.
+      if (isMobileSurface) {
+        target.addEventListener('selectstart', stopNativeSelection, true);
+        target.addEventListener('contextmenu', stopNativeSelection, true);
+        target.addEventListener('dragstart', stopNativeSelection, true);
+      }
       target.addEventListener('click', stopPostGestureClick, true);
       target.addEventListener('pointermove', stopPinchPointer, true);
       target.addEventListener('pointerup', stopPinchPointer, true);
@@ -4161,6 +4317,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     });
 
     return () => {
+      unsubscribePenDown();
       window.removeEventListener('blur', abortTouch);
       window.removeEventListener('pagehide', abortTouch);
       document.removeEventListener('visibilitychange', onVisibilityAbort);
@@ -4187,7 +4344,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       setMobileTouchMode(null);
       cancelPanInertia();
     };
-  }, [applyWheelZoom, beginElasticPan, cancelPanInertia, catchElastic, checkpointPinchGesture, commitGesture, flushPan, isMobileSurface, releaseElastic, releaseElasticPan, releaseLayoutShift, schedulePan, setPanInteraction, setZoomInteraction, startPanInertia, stopElastic]);
+  }, [applyWheelZoom, beginElasticPan, cancelPanInertia, catchElastic, checkpointPinchGesture, commitGesture, flushPan, isMobileSurface, releaseElastic, releaseElasticPan, releaseLayoutShift, schedulePan, setPanInteraction, setZoomInteraction, startPanInertia, stopElastic, touchSurface]);
 
   // Mobile long-press → context menu (Phase D parity). Isolated, additive,
   // and passive: this effect only OBSERVES touches (it never preventDefaults or
@@ -4254,6 +4411,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         return;
       }
       const t = event.touches[0];
+      // A resting palm never opens the page menu (Drawboard audit C1).
+      if (isPalmContact(t)) { clear(); return; }
       startX = t.clientX;
       startY = t.clientY;
       clear();
@@ -4869,7 +5028,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
           width: dim.w * scale,
           height: dim.h * scale,
           background: '#fff',
-          boxShadow: isMobileSurface
+          boxShadow: phoneLayout
             ? '0 0 0 1px var(--text-2), 0 10px 28px rgba(0,0,0,0.35)'
             : undefined,
         }}
@@ -4926,7 +5085,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         />
       </div>
     );
-  }), [pageSizes, layout, scale, range, viewerId, isMobileSurface, onRaster, rotation,
+  }), [pageSizes, layout, scale, range, viewerId, isMobileSurface, phoneLayout, onRaster, rotation,
     textSelectionLayerActive, textSelectionLayerInteractive, onTextAvailability, tileLiveZoomSignal,
     getPageLeftAtScale]);
 
@@ -4966,7 +5125,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       ref={scrollerRef}
       id={viewerId}
       className={`${className}${isMobileSurface ? ' survey-pdfjs-mobile-surface' : ''}`}
-      data-mobile-pdf-surface={isMobileSurface ? 'true' : 'false'}
+      data-mobile-pdf-surface={phoneLayout ? 'true' : 'false'}
+      data-touch-pdf-surface={touchSurface ? 'true' : 'false'}
       data-text-selection={interactionMode === 'TextSelection' ? 'true' : 'false'}
       // Read by the shared dismiss rules (src/components/dismissRules.js, R2):
       // with a popover open, a press on the bare page only closes it — except
@@ -4984,7 +5144,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         // the browser's own (Safari) rubber band is off to avoid a double one.
         overscrollBehavior: finePointer && !isMobileSurface ? 'none' : 'contain',
         WebkitOverflowScrolling: 'touch',
-        touchAction: isMobileSurface ? 'none' : 'pan-x pan-y pinch-zoom',
+        touchAction: touchSurface ? 'none' : 'pan-x pan-y pinch-zoom',
         WebkitTouchCallout: isMobileSurface ? 'none' : undefined,
         WebkitUserSelect: isMobileSurface && interactionMode !== 'TextSelection' ? 'none' : undefined,
         WebkitUserDrag: isMobileSurface ? 'none' : undefined,
@@ -5038,8 +5198,20 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         </>
       )}
       <style>{`
+        [data-mobile-pdf-surface]:not([data-space-pan='dragging']),
+        [data-mobile-pdf-surface]:not([data-space-pan='dragging']) > [data-pdfjs-content] { cursor: grab; }
+        :where([data-mobile-pdf-surface] .survey-pdfjs-page-div) { cursor: auto; }
         [data-space-pan='armed'], [data-space-pan='armed'] * { cursor: grab !important; }
+        /* Pan opens links on a click, so a link shows the hand (utils/linkClickPolicy.js). */
+        [data-space-pan='armed'] :is([data-text-markup-link], [data-pdfjs-link-layer] a) { cursor: pointer !important; }
         [data-space-pan='dragging'], [data-space-pan='dragging'] * { cursor: grabbing !important; }
+        /* Owner 2026-10-13 (docs/GESTURE-CONTRACT.md P7): with Pan (or Space)
+           nothing on the page is selectable text - a press-drag always pans.
+           Fields and the text editor keep their own caret. */
+        :is([data-space-pan='armed'], [data-space-pan='dragging']) :not(input, textarea, select, [contenteditable='true'], [contenteditable='true'] *) {
+          -webkit-user-select: none !important;
+          user-select: none !important;
+        }
         html[data-survey-pdfjs-pan-active='true'] [data-eraser-cursor] { display: none !important; }
         .survey-pdfjs-mobile-surface,
         .survey-pdfjs-mobile-surface canvas,

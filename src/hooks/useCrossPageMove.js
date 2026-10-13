@@ -88,7 +88,9 @@ export function useCrossPageMove({
 
     return {
       /** pointermove of a move / group-move. true = this hook drew the frame. */
-      preview(ds, event, objects) {
+      // `adjust(dx, dy, away)` (optional) may change the delta drawn on the
+      // mark's own page — the canvas-audit snapping (useSVGInteraction).
+      preview(ds, event, objects, adjust = null) {
         const state = begin(ds, objects);
         if (!state) return false;
         const L = latestRef.current;
@@ -103,8 +105,9 @@ export function useCrossPageMove({
         // On its own page the mark is drawn where the pointer puts it (no
         // page clamp — the page clips it). Away, it is hidden there.
         const at = clientToPagePoint(origin.matrix, event.clientX, event.clientY);
-        const dx = at.x - ds.startSVGPoint.x;
-        const dy = at.y - ds.startSVGPoint.y;
+        let dx = at.x - ds.startSVGPoint.x;
+        let dy = at.y - ds.startSVGPoint.y;
+        if (typeof adjust === 'function') ({ dx, dy } = adjust(dx, dy, away));
         L.setVisualTransform(ds.mode === 'group-move'
           ? { id: 'group', dx, dy, affectedIds: new Set(state.indices), crossPageAway: away }
           : { id: ds.annotationIndex, dx, dy, crossPageAway: away });

@@ -20,6 +20,7 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { showToast } from '../utils/toast';
+import { readMobileBookmarkDraft, writeMobileBookmarkDraft } from './bookmarkDrafts.js';
 import Icon from '../Icons';
 import DismissBarrier from '../components/DismissBarrier';
 import { prepareAtomicBookmarkEdit } from './bookmarkEditUtils.js';
@@ -119,6 +120,7 @@ const glideBookmarkLayoutShift = (row, shift) => {
 // only ~315px wide; the drag PROJECTION still uses the desktop width so the
 // nesting maths is identical on both.
 const MOBILE_BOOKMARK_INDENT_PX = 14;
+
 
 /*
  * UX 2026-09-30 — owner: on the phone a bookmark "won't even pick up" when
@@ -529,9 +531,9 @@ const BookmarkTreeRow = ({
           <button
             onClick={(event) => {
               event.stopPropagation();
-              if (window.confirm(`Delete ${isFolder ? 'group' : 'bookmark'} "${item.name}"?`)) {
-                onDelete?.(item.id);
-              }
+              // KAL-461: no browser confirm - the delete is undoable (the
+              // Undo toast), the same on desktop and phone.
+              onDelete?.(item.id);
             }}
             {...tip('Delete', 'below')}
             aria-label="Delete"
@@ -796,21 +798,37 @@ const BookmarksPanel = ({
   mobileMode = false,
   // Desktop (owner 2026-10-07, rail headers round): the rail's title row slot
   // the header actions are drawn into, in line with the "Bookmarks" title.
-  headActionsHost = null
+  headActionsHost = null,
+  // Phone: which document's half-typed line to keep (mobileBookmarkDrafts).
+  draftKey = null
 }) => {
   const tip = useTooltip();
+  // KAL-461: the phone's half-typed line from before the sheet closed.
+  const [draftSeed] = useState(() => (mobileMode ? readMobileBookmarkDraft(draftKey) : null));
   const [expandedFolders, setExpandedFolders] = useState(() => new Set(initialExpandedFolders));
   const [selectedBookmarkId, setSelectedBookmarkId] = useState(null);
-  const [showCreateMenu, setShowCreateMenu] = useState(false);
-  const [isEditMode, setIsEditMode] = useState(initialEditMode);
-  const [newBookmarkName, setNewBookmarkName] = useState('');
-  const [newBookmarkPages, setNewBookmarkPages] = useState('');
+  const [showCreateMenu, setShowCreateMenu] = useState(draftSeed?.showCreateMenu ?? false);
+  const [isEditMode, setIsEditMode] = useState(initialEditMode || Boolean(draftSeed?.mobileEditingBookmarkId));
+  const [newBookmarkName, setNewBookmarkName] = useState(draftSeed?.newBookmarkName ?? '');
+  const [newBookmarkPages, setNewBookmarkPages] = useState(draftSeed?.newBookmarkPages ?? '');
   // Phone-only "New folder" inline editor (owner ruling 2026-09-22).
-  const [showMobileFolderEditor, setShowMobileFolderEditor] = useState(false);
-  const [newFolderName, setNewFolderName] = useState('');
-  const [mobileEditingBookmarkId, setMobileEditingBookmarkId] = useState(null);
-  const [mobileEditName, setMobileEditName] = useState('');
-  const [mobileEditPage, setMobileEditPage] = useState('');
+  const [showMobileFolderEditor, setShowMobileFolderEditor] = useState(draftSeed?.showMobileFolderEditor ?? false);
+  const [newFolderName, setNewFolderName] = useState(draftSeed?.newFolderName ?? '');
+  const [mobileEditingBookmarkId, setMobileEditingBookmarkId] = useState(draftSeed?.mobileEditingBookmarkId ?? null);
+  const [mobileEditName, setMobileEditName] = useState(draftSeed?.mobileEditName ?? '');
+  const [mobileEditPage, setMobileEditPage] = useState(draftSeed?.mobileEditPage ?? '');
+  // A restored line does not grab the focus (no keyboard springing up as the
+  // panel opens); a line you open afterwards does, as before.
+  const restoringDraftRef = useRef(Boolean(draftSeed));
+  useEffect(() => { restoringDraftRef.current = false; }, []);
+  useEffect(() => {
+    if (!mobileMode) return;
+    writeMobileBookmarkDraft(draftKey, {
+      showCreateMenu, newBookmarkName, newBookmarkPages, showMobileFolderEditor,
+      newFolderName, mobileEditingBookmarkId, mobileEditName, mobileEditPage,
+    });
+  }, [mobileMode, draftKey, showCreateMenu, newBookmarkName, newBookmarkPages, showMobileFolderEditor,
+    newFolderName, mobileEditingBookmarkId, mobileEditName, mobileEditPage]);
   const [showBookmarkGroupModal, setShowBookmarkGroupModal] = useState(false);
   const [groupName, setGroupName] = useState('');
   const [groupBookmarks, setGroupBookmarks] = useState([]);
@@ -1987,7 +2005,7 @@ const BookmarksPanel = ({
               aria-label="Folder name"
               value={newFolderName}
               placeholder="Folder name"
-              autoFocus
+              autoFocus={!restoringDraftRef.current}
               onChange={(event) => setNewFolderName(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') handleCreateMobileFolder();
@@ -2007,7 +2025,7 @@ const BookmarksPanel = ({
               aria-label="Bookmark name"
               value={newBookmarkName}
               placeholder="Bookmark name"
-              autoFocus
+              autoFocus={!restoringDraftRef.current}
               onChange={(event) => setNewBookmarkName(event.target.value)}
             />
             <input
