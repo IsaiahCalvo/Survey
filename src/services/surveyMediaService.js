@@ -630,61 +630,174 @@ export async function getSurveyMediaUrl(ref) {
   }
 }
 
-/** Remove a stored media object. No-op (true) for legacy inline items. */
+/** The signed-in user's id (from the local session; no network), or null. */
+export async function getSurveyMediaUserId() {
+  const client = getClient();
+  if (!client?.auth) return null;
+  return currentUserId(client);
+}
+
+const parentFolder = (path) => {
+  const slash = String(path).lastIndexOf('/');
+  return slash > 0 ? String(path).slice(0, slash) : '';
+};
+const baseName = (path) => String(path).slice(String(path).lastIndexOf('/') + 1);
+
+// Every entry of one folder (Storage lists at most `limit` per call).
+const LIST_PAGE = 1000;
+async function listAll(bucket, prefix) {
+  const entries = [];
+  for (let offset = 0; ; offset += LIST_PAGE) {
+    const { data, error } = await bucket.list(prefix, { limit: LIST_PAGE, offset });
+    if (error) throw error;
+    const page = Array.isArray(data) ? data : [];
+    entries.push(...page);
+    if (page.length < LIST_PAGE) return entries;
+  }
+}
+
+/**
+ * Remove stored media objects and say what happened to each path:
+ *   deleted   - removed now;
+ *   gone      - not in storage (already removed, or no longer visible to this
+ *               user - e.g. another editor's upload once its document was
+ *               purged; the server-side orphan sweep owns those);
+ *   forbidden - still there, and this user may not remove it (the
+ *               survey_media_delete policy allows only the uploader or the
+ *               document's owner);
+ *   failed    - storage could not be reached / unexpected error: retry later.
+ * Storage answers a delete that row-level security refuses with an empty
+ * success, not a 403, so a path the delete did not confirm is looked up in
+ * its folder to tell "gone" from "forbidden". Never throws.
+ */
+export async function deleteSurveyMediaPaths(paths) {
+  const result = { deleted: [], gone: [], forbidden: [], failed: [] };
+  const unique = [...new Set((paths || []).filter((path) => typeof path === 'string' && path))];
+  if (unique.length === 0) return result;
+  unique.forEach((path) => signedUrlCache.delete(path));
+  const client = getClient();
+  if (!client?.storage) {
+    unique.forEach((path) => result.failed.push({ path, code: 'offline' }));
+    return result;
+  }
+  const bucket = client.storage.from(SURVEY_MEDIA_BUCKET);
+  const unconfirmed = [];
+  for (let i = 0; i < unique.length; i += REMOVE_CHUNK) {
+    const chunk = unique.slice(i, i + REMOVE_CHUNK);
+    let response;
+    try {
+      response = await bucket.remove(chunk);
+    } catch (err) {
+      const { code } = describeSurveyMediaStorageError(err, { action: 'delete' });
+      chunk.forEach((path) => result.failed.push({ path, code }));
+      continue;
+    }
+    if (response?.error) {
+      const { code } = describeSurveyMediaStorageError(response.error, { action: 'delete' });
+      if (code !== 'not-found' && code !== 'forbidden') {
+        chunk.forEach((path) => result.failed.push({ path, code }));
+        continue;
+      }
+    }
+    const removedNames = new Set((Array.isArray(response?.data) ? response.data : [])
+      .map((entry) => entry?.name).filter(Boolean));
+    for (const path of chunk) {
+      if (removedNames.has(path)) result.deleted.push(path);
+      else unconfirmed.push(path);
+    }
+  }
+  const byFolder = new Map();
+  for (const path of unconfirmed) {
+    const folder = parentFolder(path);
+    if (!byFolder.has(folder)) byFolder.set(folder, []);
+    byFolder.get(folder).push(path);
+  }
+  for (const [folder, folderPaths] of byFolder) {
+    let present;
+    try {
+      present = new Set((await listAll(bucket, folder)).map((entry) => entry?.name).filter(Boolean));
+    } catch (err) {
+      const { code } = describeSurveyMediaStorageError(err, { action: 'read' });
+      folderPaths.forEach((path) => result.failed.push({ path, code }));
+      continue;
+    }
+    for (const path of folderPaths) {
+      if (present.has(baseName(path))) result.forbidden.push(path);
+      else result.gone.push(path);
+    }
+  }
+  return result;
+}
+
+/**
+ * Remove one stored media object. No-op (true) for legacy inline items.
+ * Throws SurveyMediaError: code 'forbidden' when the object stays because this
+ * user may not remove it; any other code is worth retrying (network ...).
+ */
 export async function deleteSurveyMedia(ref) {
   if (!ref?.path) return true;
-  signedUrlCache.delete(ref.path);
   const client = getClient();
   if (!client?.storage) throw new SurveyMediaError('Media needs a connection to your account.', 'offline');
-  let response;
-  try {
-    response = await client.storage.from(SURVEY_MEDIA_BUCKET).remove([ref.path]);
-  } catch (err) {
-    throw describeSurveyMediaStorageError(err, { action: 'delete', name: ref.name });
+  const outcome = await deleteSurveyMediaPaths([ref.path]);
+  if (outcome.failed.length > 0) {
+    const code = outcome.failed[0].code || 'delete-failed';
+    throw new SurveyMediaError(
+      code === 'network'
+        ? "Couldn't reach media storage. Check your connection and try again."
+        : `Couldn't remove ${ref.name ? `"${ref.name}"` : 'this file'}.`,
+      code,
+    );
   }
-  if (response?.error) {
-    const described = describeSurveyMediaStorageError(response.error, { action: 'delete', name: ref.name });
-    if (described.code !== 'not-found') throw described;
+  if (outcome.forbidden.length > 0) {
+    throw new SurveyMediaError("You don't have permission to remove this file.", 'forbidden');
   }
   return true;
 }
 
 /**
- * Best-effort clean-up for "delete forever": remove every media object of the
- * document that this user may delete (their own uploads; all of it while the
- * document row still exists and they own it). Never throws. Media other
- * people uploaded to an already-purged document is left for the server-side
- * orphan sweep (public.list_orphaned_survey_media).
+ * Every stored media path of a document that this user can see (its owner
+ * sees all of them while the document row exists). Throws on a storage error,
+ * so "could not list" is never mistaken for "no media".
+ */
+export async function listSurveyMediaForDocument(documentId) {
+  const client = getClient();
+  if (!client?.storage || !documentId) return [];
+  const bucket = client.storage.from(SURVEY_MEDIA_BUCKET);
+  const paths = [];
+  for (const folder of await listAll(bucket, String(documentId))) {
+    if (!folder?.name) continue;
+    // Folders come back with id null; files directly under the document (none expected) have an id.
+    const prefix = `${documentId}/${folder.name}`;
+    if (folder.id) {
+      paths.push(prefix);
+      continue;
+    }
+    for (const file of await listAll(bucket, prefix)) if (file?.name) paths.push(`${prefix}/${file.name}`);
+  }
+  return paths;
+}
+
+/**
+ * Best-effort clean-up of a document's media: removes every object this user
+ * may remove - all of them while the document row exists and they own it
+ * (so "delete forever" runs this BEFORE the purge), only their own uploads
+ * after that. Never throws. `leftover` names the paths that are still stored
+ * (failed, or not allowed) so the caller can queue them for a retry.
  */
 export async function removeSurveyMediaForDocument(documentId) {
-  const client = getClient();
-  if (!client?.storage || !documentId) return { removed: 0 };
-  const bucket = client.storage.from(SURVEY_MEDIA_BUCKET);
+  if (!documentId) return { removed: 0, leftover: [] };
+  let paths;
   try {
-    const paths = [];
-    const { data: folders, error } = await bucket.list(String(documentId), { limit: 1000 });
-    if (error) return { removed: 0, error };
-    for (const folder of folders || []) {
-      // Folders come back with id null; files directly under the document (none expected) have an id.
-      const prefix = `${documentId}/${folder.name}`;
-      if (folder.id) {
-        paths.push(prefix);
-        continue;
-      }
-      const { data: files } = await bucket.list(prefix, { limit: 1000 });
-      for (const file of files || []) if (file?.name) paths.push(`${prefix}/${file.name}`);
-    }
-    let removed = 0;
-    for (let i = 0; i < paths.length; i += REMOVE_CHUNK) {
-      const chunk = paths.slice(i, i + REMOVE_CHUNK);
-      const { data, error: removeError } = await bucket.remove(chunk);
-      if (!removeError) removed += Array.isArray(data) ? data.length : 0;
-      chunk.forEach((path) => signedUrlCache.delete(path));
-    }
-    return { removed };
+    paths = await listSurveyMediaForDocument(documentId);
   } catch (error) {
-    return { removed: 0, error };
+    return { removed: 0, leftover: [], error };
   }
+  const outcome = await deleteSurveyMediaPaths(paths);
+  return {
+    removed: outcome.deleted.length,
+    leftover: [...outcome.failed.map((entry) => entry.path), ...outcome.forbidden],
+    outcome,
+  };
 }
 
 // ---------------------------------------------------------------------------

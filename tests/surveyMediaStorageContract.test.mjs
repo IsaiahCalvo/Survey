@@ -21,12 +21,45 @@ const policy = (name) => {
 };
 
 describe('proposed survey-media migration (static)', () => {
-  it('stays out of supabase/migrations so `db push` cannot apply it', () => {
-    assert.equal(existsSync(new URL('../supabase/migrations/20261001_survey_media_bucket.sql', import.meta.url)), false);
-    // Applied to prod by hand on 2026-10-01; the header records that, and the
-    // file stays out of migrations/ so `db push` never re-runs it.
+  // Codex review 2026-10-13: the versioned migration (the version prod
+  // recorded when this was applied by hand on 2026-10-01) used to be a no-op
+  // placeholder, so databases that replay migrations had no bucket. It now
+  // carries the proposal's statements; prod skips it (version recorded).
+  const VERSIONED = read('../supabase/migrations/20261001131413_survey_media_bucket_20261001.sql');
+  const VERSIONED_SQL = sqlOnly(VERSIONED);
+  const statementsFromBegin = (sql) => sql.slice(sql.search(/^BEGIN;/m)).replace(/[ \t]+$/gm, '').trim();
+
+  it('the proposal records it was applied by hand; only the versioned copy lives in migrations/', () => {
     assert.match(MIGRATION, /^-- APPLIED to prod 2026-10-01/);
     assert.match(MIGRATION, /VERIFY AFTER APPLYING/);
+    // The un-versioned proposal name would be an invalid migration file.
+    assert.equal(existsSync(new URL('../supabase/migrations/20261001_survey_media_bucket.sql', import.meta.url)), false);
+  });
+
+  it('the versioned migration runs the same schema SQL as the proposal (not a placeholder)', () => {
+    assert.doesNotMatch(VERSIONED_SQL, /^\s*SELECT 1;\s*$/m);
+    assert.equal(statementsFromBegin(VERSIONED_SQL), statementsFromBegin(SQL));
+    assert.match(VERSIONED_SQL, /^\s*BEGIN;/m);
+    assert.match(VERSIONED_SQL, /^\s*COMMIT;\s*$/m);
+  });
+
+  it('the versioned migration is idempotent (safe on a database that already has it)', () => {
+    const body = VERSIONED_SQL;
+    // Every policy is dropped (IF EXISTS) right before it is created.
+    const created = [...body.matchAll(/CREATE POLICY (\w+) ON storage\.objects/g)].map((m) => m[1]);
+    assert.equal(created.length, 3);
+    for (const name of created) {
+      const drop = body.indexOf(`DROP POLICY IF EXISTS ${name} ON storage.objects;`);
+      assert.ok(drop >= 0 && drop < body.indexOf(`CREATE POLICY ${name} ON storage.objects`), name);
+    }
+    // Functions are only ever CREATE OR REPLACE; the bucket insert upserts.
+    assert.doesNotMatch(body, /CREATE\s+FUNCTION/i);
+    assert.match(body, /INSERT INTO storage\.buckets[\s\S]*?ON CONFLICT \(id\) DO UPDATE/);
+    assert.equal((body.match(/INSERT INTO/gi) || []).length, 1);
+    // Nothing that fails the second time round.
+    assert.doesNotMatch(body, /CREATE\s+(TABLE|INDEX|UNIQUE INDEX|TRIGGER|TYPE|SCHEMA|ROLE|EXTENSION)\b(?!\s+IF NOT EXISTS)/i);
+    assert.doesNotMatch(body, /\bDROP\s+(?!POLICY IF EXISTS)\w+/i);
+    assert.doesNotMatch(body, /ALTER\s+TABLE/i);
   });
 
   it('creates a private 50 MiB bucket with exactly the app MIME list', () => {
