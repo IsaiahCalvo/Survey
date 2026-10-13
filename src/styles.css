@@ -3254,7 +3254,8 @@ input[type="text"].spaces-region__name-input:focus-visible {
 [data-drag-rearrange-handle]:focus-visible,
 .survey-subrow__done:focus-visible,
 .mobile-pdf-header__icon:focus-visible,
-.mobile-doc-card:focus-visible {
+.mobile-doc-card:focus-visible,
+.documents-row-check:focus-visible {
   outline-offset: -2px;
 }
 

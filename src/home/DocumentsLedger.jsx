@@ -766,7 +766,10 @@ export default function DocumentsLedger({
                     key={d.id}
                     data-document-id={d.id}
                     className={`documents-ledger-row${isFilled ? ' is-selected' : ''}${isDragging ? ' is-dragging' : ''}`}
-                    aria-selected={isChecked}
+                    // KAL-66: data-, not aria-selected - a plain div may not
+                    // carry aria-selected (axe aria-allowed-attr); the row's
+                    // checkbox is what announces the state.
+                    data-selected={isChecked ? 'true' : 'false'}
                     draggable={Boolean(onMoveCopy) && !docSelectMode}
                     onDragStart={(event) => onRowDragStart(event, d)}
                     onDragEnd={onRowDragEnd}

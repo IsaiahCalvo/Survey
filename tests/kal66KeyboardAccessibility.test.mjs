@@ -205,3 +205,82 @@ test('keyActivate: Enter and Space act like a click, only on the element itself'
   assert.deepEqual({ role: box.role, checked: box['aria-checked'], label: box['aria-label'], tab: box.tabIndex }, { role: 'checkbox', checked: true, label: 'Select A', tab: 0 });
   assert.equal(box.onClick, undefined, 'the click path stays with the caller');
 });
+
+test('useSheetFocus: a phone sheet takes focus (never a text field), keeps Tab, Escape closes, focus returns', async () => {
+  const restore = installDom();
+  const { useSheetFocus } = await import('../src/mobile/useSheetFocus.js');
+  const seen = [];
+  function Sheet({ withButton }) {
+    const [open, setOpen] = useState(false);
+    // Stands in for useMobileSheetMotion's callback ref: it must keep getting
+    // the element, and must not be re-called on every render.
+    const motionRef = React.useCallback((el) => { seen.push(el ? 'el' : 'null'); }, []);
+    const ref = useSheetFocus(open, () => setOpen(false), motionRef);
+    return React.createElement(React.Fragment, null,
+      React.createElement('button', { id: 'opener', onClick: () => setOpen(true) }, 'Open'),
+      open && React.createElement('section', { id: 'sheet', ref, tabIndex: -1, 'data-mobile-sheet': 'true' },
+        React.createElement('input', { id: 'find', type: 'search' }),
+        withButton && React.createElement('button', { id: 'row' }, 'Row'),
+      ),
+    );
+  }
+  const root = createRoot(document.getElementById('root'));
+  try {
+    await act(async () => root.render(React.createElement(Sheet, { withButton: true })));
+    const opener = document.getElementById('opener');
+    opener.focus();
+    await act(async () => opener.click());
+    await act(nextFrame);
+    assert.equal(document.activeElement.id, 'row', 'lands on the first button, skipping the find field');
+    await act(async () => key(document.activeElement, 'Tab'));
+    await act(async () => key(document.activeElement, 'Tab'));
+    assert.ok(document.getElementById('sheet').contains(document.activeElement) || document.activeElement.id === 'row');
+    await act(async () => key(document.activeElement, 'Escape'));
+    await act(nextFrame);
+    assert.equal(document.getElementById('sheet'), null, 'Escape closes the sheet');
+    assert.equal(document.activeElement.id, 'opener', 'focus comes back to the opener');
+    assert.deepEqual(seen, ['el', 'null'], 'the motion ref saw the sheet once, not on every render');
+
+    // No button inside: the sheet itself takes focus (it has tabIndex -1).
+    await act(async () => root.render(React.createElement(Sheet, { withButton: false })));
+    await act(async () => opener.click());
+    await act(nextFrame);
+    assert.equal(document.activeElement.id, 'sheet');
+  } finally {
+    await act(async () => root.unmount());
+    restore();
+  }
+});
+
+test('the floating tooltip chip goes away on Escape without taking the key (WCAG 1.4.13)', async () => {
+  // Tooltip.jsx is JSX (no loader in node --test), so its contract is pinned
+  // in source; the real-browser walk (scratchpad kal66/verify2.mjs) checks it
+  // live: focus Pan, chip shows, Escape, chip gone, focus still on Pan.
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/components/Tooltip.jsx', import.meta.url), 'utf8');
+  assert.match(src, /if \(event\.key === 'Escape'\) setDismissedKey\(shownKey\)/);
+  assert.match(src, /window\.addEventListener\('keydown', onKeyDown, true\)/);
+  // Not consumed: no preventDefault / stopPropagation in that listener.
+  const listener = src.slice(src.indexOf('const onKeyDown = (event) =>'), src.indexOf("window.addEventListener('keydown', onKeyDown, true)"));
+  assert.doesNotMatch(listener, /preventDefault|stopPropagation/);
+  assert.match(src, /if \(!tooltip\?\.visible \|\| shownKey === dismissedKey/);
+});
+
+test('KAL-66 round 2 wiring: phone sheets, new menus and popovers use the shared helpers', async () => {
+  const { readFileSync } = await import('node:fs');
+  const read = (p) => readFileSync(new URL(`../src/${p}`, import.meta.url), 'utf8');
+  const sidebar = read('PDFSidebar.jsx');
+  assert.match(sidebar, /useSheetFocus\(\s*mobileMode && !isCollapsed && activeTab !== 'history'/);
+  assert.match(sidebar, /ref=\{mobileMode \? sheetFocusRef : setRailEl\}/);
+  assert.match(read('SurveySpacesRail.jsx'), /ref=\{mobileMode \? surveySheetFocusRef : sideOccluderRef\}/);
+  const chrome = read('mobile/MobilePdfViewerChrome.jsx');
+  assert.match(chrome, /mobile-pdf-users-sheet" role="dialog" aria-modal="true"[^>]*ref=\{usersSheetFocusRef\} tabIndex=\{-1\}/);
+  const rail = read('mobile/MobileSurveyRail.jsx');
+  assert.match(rail, /useSheetFocus\(open, requestClose, sheetProps\.ref\)/);
+  assert.match(rail, /onDismiss=\{\(\) => setOpen\(false\)\} menu \/>/);
+  assert.match(read('components/PencilModeControl.jsx'), /useMenuFocus\(menuRef, open && Boolean\(place\)\)/);
+  assert.match(read('components/SelectionQuickBar.jsx'), /useMenuFocus\(linePopoverRef, lineOpen && visible\)/);
+  assert.match(read('components/SurveyPickList.jsx'), /data-autofocus=\{variant === 'sheet' && current/);
+  // The sheet itself never wears a ring when it holds focus.
+  assert.match(read('styles.css'), /\[data-mobile-sheet\]\[tabindex="-1"\]:focus-visible \{\s*outline: none !important;/);
+});
