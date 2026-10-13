@@ -92,6 +92,15 @@ What it can delete on each run:
   one group.
 - Archived **templates** past their expiry — and their collaborators/invites.
 - The **stored PDF files** left unreferenced by the above.
+- **Survey media** (`survey-media` bucket: photos, videos, recordings) whose
+  document row no longer exists, as listed by
+  `public.list_orphaned_survey_media` (up to 500 objects per run; added
+  2026-10-13 for release PR #811 - see
+  `supabase/functions/archive-purge-sweep/surveyMediaSweep.js`). Each path's
+  document is re-checked just before removal; a dry run only counts them. This
+  takes effect only once the updated function is deployed
+  (`supabase functions deploy archive-purge-sweep`); the production deploy
+  workflow does not deploy this function.
 
 What it will **never** touch:
 
