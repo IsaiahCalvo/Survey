@@ -5513,17 +5513,18 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 }
 
 /* Home's "Moved to Archive · Undo" toast (Dashboard renders the viewer's
-   UndoToast inside .hub-undo-toast). It sizes to its words instead of the
+   UndoToast with className="hub-undo-toast"; it is portalled to <body>, so
+   the class sits on the toast itself, not on a wrapper). It sizes to its words instead of the
    half-screen a left:50% box gets, and on the phone it floats just above the
    bottom tab bar (56px + the home-indicator inset), over the dock like the
    viewer's own Undo toast. */
-.hub-undo-toast .undo-toast {
+.undo-toast.hub-undo-toast {
   width: max-content;
   max-width: calc(100vw - 32px);
   box-sizing: border-box;
 }
 @media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
-  .hub-undo-toast .undo-toast {
+  .undo-toast.hub-undo-toast {
     bottom: calc(max(var(--native-safe-area-bottom, 10px), env(safe-area-inset-bottom, 0px)) + 56px + 10px);
     z-index: 100000;
   }

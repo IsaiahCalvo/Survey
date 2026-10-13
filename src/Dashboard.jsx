@@ -2512,10 +2512,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           above the hub chrome. Both are inert until a handler awaits them. */}
       {confirmDialogElement}
       {promptDialogElement}
-      {/* hub.css places it above the phone's bottom tab bar. */}
-      <div className="hub-undo-toast">
-        <UndoToast toast={archiveUndoToast} onDismiss={dismissArchiveUndo} />
-      </div>
+      {/* hub.css places it above the phone's bottom tab bar. The toast is
+          portalled to <body> (KAL-461), so the class goes on the toast itself. */}
+      <UndoToast toast={archiveUndoToast} onDismiss={dismissArchiveUndo} className="hub-undo-toast" />
     </>
   );
 });
