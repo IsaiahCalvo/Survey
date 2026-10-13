@@ -17,6 +17,7 @@ import { isScopedRequestCurrent } from './scopedRequestGuard.js';
 import { subscribeLibraryChange, subscribeTemplatesChange } from './libraryChangeBus.js';
 import { mergeOwnAndSharedTemplateRows, isSharedTemplateRow } from '../services/sharedTemplates.js';
 import { storageDownloads } from '../services/storageDownloads.js';
+import { replaceDocumentFile } from '../services/documentFileReplace.js';
 import { pdfByteCache, readPdfThroughCache, bindPdfCacheToAuth, seedPdfCacheFromUpload } from '../services/pdfByteCache.js';
 import { readLibraryRows, readLibraryIdChunks, sortLibraryRows } from './libraryPagination.js';
 
@@ -831,17 +832,23 @@ export async function getOtherSurveysUsingTemplate(templateId, currentSurveyId) 
 export const useStorage = () => {
   const { user } = useAuth();
 
-  const uploadDocument = useCallback(async (file, projectId, onProgress, contentSha = null) => {
+  const uploadDocument = useCallback(async (file, projectId, onProgress, contentSha = null, { filePath: targetPath = null } = {}) => {
     if (!user || !isSupabaseAvailable()) {
       throw new Error('User not authenticated or Supabase not available');
     }
 
-    // Content-addressed path when we know the file's fingerprint: re-uploading
-    // identical bytes overwrites the same object (idempotent, no duplicate).
-    // Falls back to the legacy timestamp path when no hash is provided.
+    // `targetPath`: the documents row's own file_path (an upload whose row
+    // already exists). Otherwise `<user>/<contentSha>.pdf` — callers now pass a
+    // row id there, so each document gets its own object (two rows sharing
+    // one object let a page edit on one rewrite the other); the name is a hash
+    // only for rows uploaded before that. Re-uploading the same bytes to the
+    // same path is idempotent. Falls back to a timestamp path with neither.
     let filePath;
     let upsert = false;
-    if (contentSha) {
+    if (targetPath) {
+      filePath = targetPath;
+      upsert = true;
+    } else if (contentSha) {
       filePath = `${user.id}/${contentSha}.pdf`;
       upsert = true;
     } else {
@@ -897,22 +904,24 @@ export const useStorage = () => {
     return filePath;
   }, [user]);
 
-  const replaceDocument = useCallback(async (file, filePath, onProgress) => {
+  // Page edits: never overwrite an object another document still reads, and
+  // keep the row's content_sha256 equal to its bytes (documentFileReplace.js).
+  // Returns { filePath, contentSha256, forked }.
+  const replaceDocument = useCallback(async (file, filePath, { documentId = null, onProgress } = {}) => {
     if (!user || !isSupabaseAvailable()) {
       throw new Error('User not authenticated or Supabase not available');
     }
-    if (!filePath) throw new Error('Document storage path is required');
-    const { error } = await supabase.storage
-      .from('documents')
-      .upload(filePath, file, {
-        upsert: true,
-        contentType: 'application/pdf',
-        onUploadProgress: onProgress,
-      });
-    if (error) throw error;
-    storageDownloads(supabase).invalidate(filePath);
-    void pdfByteCache().removePath(filePath);
-    return filePath;
+    const saved = await replaceDocumentFile({
+      client: supabase,
+      userId: user.id,
+      documentId,
+      filePath,
+      file,
+      onProgress,
+    });
+    storageDownloads(supabase).invalidate(saved.filePath);
+    void pdfByteCache().removePath(saved.filePath);
+    return saved;
   }, [user]);
 
   const downloadDocument = useCallback(async (filePath) => {

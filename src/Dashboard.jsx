@@ -600,9 +600,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
 
         let resolvedDoc;
         try {
+          // Own object per row, named by the row id: a page edit on this
+          // document must never rewrite another document's bytes.
+          const newDocId = crypto.randomUUID();
           resolvedDoc = await createSupabaseDocument({
+            id: newDocId,
             name: file.name,
-            file_path: `${user.id}/${contentSha}.pdf`,
+            file_path: `${user.id}/${newDocId}.pdf`,
             file_size: file.size,
             page_count: 1, // placeholder; corrected in the background after parse
             project_id: projectId || null,
@@ -674,14 +678,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         };
         setDocuments(prev => [tempDoc, ...prev.filter(d => d.id !== tempDoc.id)]);
 
-        // Background: store the bytes (content-addressed, idempotent — a re-upload
-        // of the same file overwrites the same object) and correct the page count
+        // Background: store the bytes at the row's own file_path (idempotent — a
+        // re-upload of the same file into this project dedups to this row and
+        // overwrites its object with the same bytes) and correct the page count
         // once parsed. The marks' durability is the annotation store's job now.
         (async () => {
           setActiveUploads((count) => count + 1);
           try {
             perfUpload.mark(file.name, 'Starting cloud upload');
-            const uploadPromise = uploadToStorage(file, projectId || 'general', undefined, contentSha);
+            const uploadPromise = uploadToStorage(file, projectId || 'general', undefined, contentSha, { filePath: resolvedDoc.file_path });
             const pageCountPromise = readPdfPageCount(file, { readBlobAsArrayBuffer, loadPdfjs });
 
             // A page-count parse failure must not reject the join — the archive
@@ -782,9 +787,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
 
       let resolvedDoc;
       try {
+        // Own object per row (see the picker upload above).
+        const newDocId = crypto.randomUUID();
         resolvedDoc = await createSupabaseDocument({
+          id: newDocId,
           name: file.name,
-          file_path: `${user.id}/${contentSha}.pdf`,
+          file_path: `${user.id}/${newDocId}.pdf`,
           file_size: file.size,
           page_count: 1,
           project_id: projectId || null,
@@ -851,12 +859,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       };
       setDocuments(prev => [tempDoc, ...prev.filter(d => d.id !== tempDoc.id)]);
 
-      // Background: store the bytes (content-addressed, idempotent) and correct
-      // the page count once parsed.
+      // Background: store the bytes at the row's own file_path (idempotent) and
+      // correct the page count once parsed.
       (async () => {
         setActiveUploads((count) => count + 1);
         try {
-          const uploadPromise = uploadToStorage(file, projectId || 'general', undefined, contentSha);
+          const uploadPromise = uploadToStorage(file, projectId || 'general', undefined, contentSha, { filePath: resolvedDoc.file_path });
           const pageCountPromise = readPdfPageCount(file, { readBlobAsArrayBuffer, loadPdfjs })
             .catch((err) => {
               console.error('Error getting page count:', err);
@@ -993,12 +1001,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     const settledFiles = await mapUploadsBounded(batchEntries, async ({ file, name }) => {
       let pageCountPromise;
       try {
-        // Content-address these uploads too (decision 6): hash first so the
-        // stored object lands at {user}/{sha}.pdf, never a new time-named file.
+        // Fingerprint for dedup (decision 6). The bytes go to the row's own
+        // object, {user}/{row id}.pdf, never one shared with another document.
         const contentSha = await computeContentSha256(new Uint8Array(await file.arrayBuffer()));
+        const newDocId = crypto.randomUUID();
 
         // Start upload and page count in parallel
-        const uploadPromise = uploadToStorage(file, newProject.id, undefined, contentSha);
+        const uploadPromise = uploadToStorage(file, newProject.id, undefined, newDocId);
         pageCountPromise = readPdfPageCount(file, { readBlobAsArrayBuffer, loadPdfjs })
           .catch((err) => {
             console.error(`Error getting page count for ${file.name}:`, err);
@@ -1011,6 +1020,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         // Create document record immediately after upload
         // Use null for page_count initially, will update in background
         const doc = await createSupabaseDocument({
+          id: newDocId,
           name,
           file_path: filePath,
           file_size: file.size,
@@ -1018,6 +1028,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           project_id: newProject.id,
           content_sha256: contentSha,
         });
+
+        // Deduped to another picked file's row: nothing reads the object we
+        // just stored, so remove it (best effort).
+        if (doc && doc.file_path !== filePath) {
+          deleteFromStorage(filePath).catch((err) => console.warn(`Could not remove unused upload ${filePath}:`, err?.message));
+        }
 
         // Two picked files with identical bytes dedup to ONE row — keep the
         // second file's name as an alias automatically (decision 6; bulk flow

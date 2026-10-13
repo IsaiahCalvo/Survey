@@ -34,6 +34,16 @@
 // get_my_document_role answers per person (the document's owner, else their
 // document_collaborators row). Without a userId everything acts as the owner,
 // exactly as before.
+//
+// Storage (2026-10-13, shared-object page edits): `new FakeBackend({ storage: true })`
+// keeps the documents bucket in memory instead of answering {}: upload (POST /
+// PUT, x-upsert, owner-folder rule), download, info, HEAD and remove, as
+// supabase-js calls them. It also turns on the documents-row rules those tests
+// lean on: file_path immutable for clients (20260703020000), the unique
+// (user, project, content_sha256) index (20260606120000), and the proposed
+// fork_document_file function (supabase/proposed/20261013_fork_document_file.sql;
+// `forkDocumentFile: false` answers it as missing, PGRST202, like a server
+// without the proposal). Drive it from Node with tp-node-client.mjs.
 
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -185,8 +195,11 @@ function applyFilters(rows, params) {
 }
 
 export class FakeBackend {
-  constructor({ documentId, ownerId = 'dev-test-user', role = 'owner', latencyMs = 0 } = {}) {
+  constructor({ documentId, ownerId = 'dev-test-user', role = 'owner', latencyMs = 0, storage = false, forkDocumentFile = true } = {}) {
     this.documentId = documentId;
+    // In-memory documents bucket: "<bucket>/<name>" -> { bytes, contentType, updatedAt }.
+    this.storage = storage ? new Map() : null;
+    this.forkDocumentFile = forkDocumentFile;
     this.ownerId = ownerId;
     this.role = role;
     this.latencyMs = latencyMs;
@@ -370,6 +383,7 @@ export class FakeBackend {
     if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: cors, body: '' });
 
     if (path.startsWith('/auth/')) { this.count(`${method} ${path}`); return reply(401, { message: 'no session (fake backend)' }); }
+    if (path.startsWith('/storage/') && this.storage) { this.count(`${method} ${path}`); return this.handleStorage(route, caller, reply); }
     if (path.startsWith('/storage/') || path.startsWith('/functions/')) { this.count(`${method} ${path}`); return reply(200, {}); }
 
     const rpc = path.match(/^\/rest\/v1\/rpc\/(.+)$/);
@@ -387,7 +401,7 @@ export class FakeBackend {
         }
       }
       const answer = this.rpc(rpc[1], args, caller);
-      if (answer && answer.__rpcError) return reply(400, { code: 'P0001', message: answer.__rpcError });
+      if (answer && answer.__rpcError) return reply(answer.__rpcStatus || 400, { code: answer.__rpcCode || 'P0001', message: answer.__rpcError });
       return reply(200, answer);
     }
     const tableMatch = path.match(/^\/rest\/v1\/([^/]+)$/);
@@ -416,6 +430,10 @@ export class FakeBackend {
         this.count(`refused INSERT ${name} (row-level security)`);
         return reply(403, { code: '42501', message: `new row violates row-level security policy for table "${name}"` });
       }
+      if (name === 'documents' && this.storage) {
+        const clash = incoming.find((raw) => this.documentShaClash({ ...raw }, null));
+        if (clash) return reply(409, { code: '23505', message: 'duplicate key value violates unique constraint "documents_user_project_sha_uidx"' });
+      }
       for (const raw of incoming) {
         const row = { id: raw.id ?? fakeUuid(), created_at: raw.created_at ?? nowIso(), ...raw };
         if (name === 'document_history_events') row.created_at = nowIso();
@@ -441,6 +459,14 @@ export class FakeBackend {
     if (method === 'PATCH') {
       const matched = applyFilters(rows.filter((r) => this.canSee(caller, name, r) && this.canUpdate(caller, name, r)), params);
       if (wantsObject && matched.length === 0) return reply(406, { code: 'PGRST116', message: 'JSON object requested, multiple (or no) rows returned' });
+      if (name === 'documents' && this.storage) {
+        if (body && 'file_path' in body && matched.some((row) => row.file_path !== body.file_path)) {
+          return reply(400, { code: 'P0001', message: 'documents.file_path is immutable (set once at upload)' });
+        }
+        if (matched.some((row) => this.documentShaClash({ ...row, ...(body || {}) }, row.id))) {
+          return reply(409, { code: '23505', message: 'duplicate key value violates unique constraint "documents_user_project_sha_uidx"' });
+        }
+      }
       for (const row of matched) {
         const old = { ...row };
         Object.assign(row, body || {});
@@ -525,7 +551,109 @@ export class FakeBackend {
     if (name === 'store_annotation_snapshot') return this.storeSnapshot(args);
     if (name === 'get_my_document_role') return this.documentRoleFor(caller);
     if (name === 'replace_my_templates') return this.replaceMyTemplates(args.p_templates, caller);
+    if (name === 'fork_document_file' && this.storage) return this.forkDocumentFileRpc(args, caller);
     return null;
+  }
+
+  // ------------------------------------------------ documents bucket (storage: true)
+
+  /** documents_user_project_sha_uidx: another row with this user + project + fingerprint? */
+  documentShaClash(row, selfId) {
+    if (!row.content_sha256) return false;
+    return this.table('documents').some((other) => other.id !== selfId
+      && other.id !== row.id
+      && other.user_id === row.user_id
+      && (other.project_id ?? null) === (row.project_id ?? null)
+      && other.content_sha256 === row.content_sha256);
+  }
+
+  /** public.fork_document_file (supabase/proposed/20261013_fork_document_file.sql), in memory. */
+  forkDocumentFileRpc(args, caller) {
+    if (!this.forkDocumentFile) {
+      return { __rpcError: 'Could not find the function public.fork_document_file(p_content_sha256, p_document_id) in the schema cache', __rpcStatus: 404, __rpcCode: 'PGRST202' };
+    }
+    const sha = args.p_content_sha256 ? String(args.p_content_sha256).trim().toLowerCase() : null;
+    if (sha && !/^[0-9a-f]{64}$/.test(sha)) return { __rpcError: 'content_sha256 must be a SHA-256 hex digest', __rpcCode: '22023' };
+    const doc = this.table('documents').find((r) => r.id === args.p_document_id);
+    if (!doc || doc.user_id !== caller) return { __rpcError: 'Document not found', __rpcStatus: 403, __rpcCode: '42501' };
+    const path = `${caller}/${doc.id}.pdf`;
+    if (!this.storage.has(`documents/${path}`)) return { __rpcError: "Upload the document's own copy before moving it", __rpcCode: '22023' };
+    if (this.table('documents').some((r) => r.file_path === path && r.id !== doc.id)) {
+      return { __rpcError: 'That storage object belongs to another document', __rpcStatus: 403, __rpcCode: '42501' };
+    }
+    const old = { ...doc };
+    doc.file_path = path;
+    doc.content_sha256 = this.documentShaClash({ ...doc, content_sha256: sha }, doc.id) ? null : sha;
+    this.emitChange('documents', 'UPDATE', doc, old);
+    return doc;
+  }
+
+  /** Put an object in the bucket directly (a seed: what an earlier upload left). */
+  putObject(path, bytes, { bucket = 'documents', contentType = 'application/pdf' } = {}) {
+    this.storage.set(`${bucket}/${path}`, { bytes: Buffer.from(bytes), contentType, updatedAt: nowIso() });
+  }
+
+  /** The object's bytes as a Buffer, or null. */
+  objectBytes(path, { bucket = 'documents' } = {}) {
+    return this.storage.get(`${bucket}/${path}`)?.bytes ?? null;
+  }
+
+  async handleStorage(route, caller, reply) {
+    const req = route.request();
+    const method = req.method();
+    const rest = decodeURIComponent(new URL(req.url()).pathname.replace(/^\/storage\/v1\/object\//, ''));
+    // Storage answers its errors as 400 with the real status in the body.
+    const fail = (statusCode, error, message) => reply(400, { statusCode: String(statusCode), error, message });
+    const objectReply = (key) => {
+      const obj = this.storage.get(key);
+      if (!obj) return fail(404, 'not_found', 'Object not found');
+      return route.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*' }, contentType: obj.contentType, body: obj.bytes });
+    };
+    if (method === 'GET' && rest.startsWith('authenticated/')) return objectReply(rest.slice('authenticated/'.length));
+    if (method === 'GET' && rest.startsWith('info/')) {
+      const key = rest.slice('info/'.length);
+      const obj = this.storage.get(key);
+      if (!obj) return fail(404, 'not_found', 'Object not found');
+      return reply(200, {
+        id: key, name: key.split('/').slice(1).join('/'), bucket_id: key.split('/')[0],
+        size: obj.bytes.length, content_type: obj.contentType, updated_at: obj.updatedAt, etag: `"${obj.updatedAt}"`,
+      });
+    }
+    if (method === 'GET' || method === 'HEAD') return objectReply(rest);
+    if (method === 'DELETE') {
+      let body = null;
+      try { body = JSON.parse(req.postData() || 'null'); } catch { body = null; }
+      const removed = [];
+      for (const name of body?.prefixes || []) {
+        const key = `${rest}/${name}`;
+        if (name.split('/')[0] !== caller || !this.storage.has(key)) continue;
+        this.storage.delete(key);
+        removed.push({ name, bucket_id: rest });
+      }
+      return reply(200, removed);
+    }
+    if (method === 'POST' || method === 'PUT') {
+      const [bucket, ...nameParts] = rest.split('/');
+      const name = nameParts.join('/');
+      const key = `${bucket}/${name}`;
+      // documents bucket write policies (20260703030000): own folder only.
+      if (name.split('/')[0] !== caller) return fail(403, 'Unauthorized', 'new row violates row-level security policy');
+      const upsert = method === 'PUT' || String(req.headers()['x-upsert']) === 'true';
+      if (this.storage.has(key) && !upsert) return fail(409, 'Duplicate', 'The resource already exists');
+      const contentType = req.headers()['content-type'] || 'application/octet-stream';
+      const raw = req.postDataBuffer() || Buffer.alloc(0);
+      let bytes = raw;
+      let storedType = contentType;
+      if (contentType.startsWith('multipart/form-data')) {
+        const form = await new Response(raw, { headers: { 'content-type': contentType } }).formData();
+        const file = [...form.values()].find((value) => typeof value === 'object' && typeof value.arrayBuffer === 'function');
+        bytes = Buffer.from(await file.arrayBuffer());
+        storedType = file.type || 'application/octet-stream';
+      }
+      this.storage.set(key, { bytes, contentType: storedType, updatedAt: nowIso() });
+      return reply(200, { Id: key, Key: key });
+    }
+    return fail(405, 'method', 'Method not allowed');
   }
 
   /**

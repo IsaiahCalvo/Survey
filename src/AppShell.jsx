@@ -1548,8 +1548,14 @@ export default function App({ devPreviewReturnTab = null }) {
   // Memoized callback to update PDF file
   const handleUpdatePDFFile = useCallback(async (newFile, targetTabId) => {
     const durablePath = newFile?.supabaseFilePath || newFile?.filePath || null;
+    let saved = null;
     if (newFile?.id && durablePath) {
-      await replaceDocument(newFile, durablePath);
+      saved = await replaceDocument(newFile, durablePath, { documentId: newFile.id });
+      // The row may now read its own object (its old one is shared with
+      // another document) and has a new fingerprint. Carry both, so the next
+      // page edit writes there and thumbnails key on the new bytes.
+      if (saved.filePath !== durablePath) newFile.supabaseFilePath = saved.filePath;
+      newFile.contentSha256 = saved.contentSha256;
     }
     setTabs(prev => {
       if (targetTabId) {
@@ -1574,6 +1580,7 @@ export default function App({ devPreviewReturnTab = null }) {
           ...document,
           size: newFile.size,
           file_size: newFile.size,
+          ...(saved ? { file_path: saved.filePath, content_sha256: saved.contentSha256 } : {}),
           updated_at: new Date().toISOString(),
         }
         : document
