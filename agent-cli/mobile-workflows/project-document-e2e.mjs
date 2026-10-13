@@ -186,7 +186,7 @@ async function runDevice(device, baseUrl) {
 
     await artifacts.time(`${device}:project-pin-reorder-reload`, async () => {
       const projectTwo = page.locator('[data-project-id="p2"]:visible').first();
-      await activate(projectTwo.getByTitle('More'), touch, device);
+      await activate(projectTwo.getByLabel('More', { exact: true }), touch, device);
       await activate(page.getByRole('menuitem', { name: 'Pin project', exact: true }), touch, device);
       await waitForPreferences((preferences) => preferences.pinnedIds?.includes('p2'));
       await page.reload({ waitUntil: 'domcontentloaded' });
@@ -196,8 +196,8 @@ async function runDevice(device, baseUrl) {
         `${device}: pinned project remains first after reload`,
       );
       const pinned = page.locator('[data-project-id="p2"]:visible').first();
-      assert.equal(await pinned.getByTitle('Pinned').count(), 1, `${device}: pinned marker survives reload`);
-      await activate(pinned.getByTitle('More'), touch, device);
+      assert.equal(await pinned.getByRole('img', { name: 'Pinned', exact: true }).count(), 1, `${device}: pinned marker survives reload`);
+      await activate(pinned.getByLabel('More', { exact: true }), touch, device);
       await activate(page.getByRole('menuitem', { name: 'Unpin project', exact: true }), touch, device);
       await waitForPreferences((preferences) => !preferences.pinnedIds?.includes('p2'));
 
@@ -235,9 +235,9 @@ async function runDevice(device, baseUrl) {
       await activate(fileSelectScope.getByRole('button', { name: 'Done', exact: true }), touch, device);
 
       const originalRow = page.locator('[data-document-id="d1"]:visible').first();
-      await activate(originalRow.getByTitle('More'), touch, device);
+      await activate(originalRow.getByLabel('More', { exact: true }), touch, device);
       await activate(page.getByRole('menuitem', { name: 'Copy', exact: true }), touch, device);
-      await activate(originalRow.getByTitle('More'), touch, device);
+      await activate(originalRow.getByLabel('More', { exact: true }), touch, device);
       const paste = page.getByRole('menuitem', { name: 'Paste', exact: true });
       assert.equal(await paste.isEnabled(), true, `${device}: Paste enables after Copy`);
       await activate(paste, touch, device);
@@ -334,7 +334,7 @@ async function runDevice(device, baseUrl) {
     assert.equal(primary.mime_type, 'application/pdf', `${device}: uploaded MIME`);
 
     await openProject(page, touch, device, project.id);
-    const title = page.getByTitle(device === 'mobile' ? 'Tap to rename' : 'Click to rename');
+    const title = page.locator('input[aria-label="Project name"]:visible');
     await title.fill(renamedProject);
     await title.press('Enter');
     model = await waitForWorkflowModel(page, '(state, id) => state.projects.some((project) => project.id === id && project.name.endsWith(" renamed"))', project.id);

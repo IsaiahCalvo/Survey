@@ -442,7 +442,7 @@ async function testTemplateDisclosureIconParity(page, baseUrl, touch, device) {
     await activate(page.locator('.templates-mobile-row:visible').first(), touch, device);
     toggle = page.locator('.templates-mobile-category-toggle:visible').first();
   } else {
-    toggle = page.locator('button[title="Expand"]:visible').first();
+    toggle = page.locator('button.tpl-cat-chevron[aria-label^="Expand"]:visible').first();
   }
   await toggle.waitFor({ state: 'visible' });
   const rendered = await toggle.evaluate((element) => ({
@@ -461,7 +461,7 @@ async function testTemplateDisclosureIconParity(page, baseUrl, touch, device) {
     await expandedToggle.waitFor({ state: 'visible' });
     assert.match(await expandedToggle.getAttribute('aria-label'), /^Collapse /, 'mobile: shared disclosure control expands the category');
   } else {
-    const expandedToggle = page.locator('button[title="Collapse"]:visible').first();
+    const expandedToggle = page.locator('button.tpl-cat-chevron[aria-label^="Collapse"]:visible').first();
     await expandedToggle.waitFor({ state: 'visible' });
     assert.equal(await expandedToggle.getAttribute('title'), 'Collapse', 'desktop: shared disclosure control expands the category');
   }

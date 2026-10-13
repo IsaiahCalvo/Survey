@@ -459,8 +459,8 @@ async function findNamedContainer(page, name, descendantSelector) {
 
 async function renameDocument(page, oldName, newName) {
   await navigateHub(page, 'Documents');
-  const row = await findNamedContainer(page, oldName, 'button[title="More"]');
-  await clickVisible(row.locator('button[title="More"]'), `${oldName} More`);
+  const row = await findNamedContainer(page, oldName, 'button[aria-label="More"]');
+  await clickVisible(row.locator('button[aria-label="More"]'), `${oldName} More`);
   await clickVisible(page.getByRole('menuitem', { name: 'Rename', exact: true }), 'Rename document menu item');
   const dialog = page.getByRole('dialog', { name: 'Rename document', exact: true });
   await dialog.waitFor({ state: 'visible', timeout: 10_000 });
@@ -505,7 +505,7 @@ async function moveDocument(page, documentName, targetProject, manifest) {
 
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
   await waitForHub(page, 'Documents');
-  const row = await findNamedContainer(page, documentName, 'button[title="More"]');
+  const row = await findNamedContainer(page, documentName, 'button[aria-label="More"]');
   invariant((await row.innerText()).includes(targetProject), `Moved document did not persist target project ${targetProject}`);
 }
 
@@ -572,8 +572,8 @@ async function deleteDocumentByName({ page, name, dialogs, manifest, tracker }) 
     createdDocumentForCleanup(manifest, name),
     `Could not resolve exact created document row for cleanup name ${name}`,
   );
-  const row = await findNamedContainer(page, name, 'button[title="More"]');
-  await clickVisible(row.locator('button[title="More"]'), `${name} cleanup More`);
+  const row = await findNamedContainer(page, name, 'button[aria-label="More"]');
+  await clickVisible(row.locator('button[aria-label="More"]'), `${name} cleanup More`);
   // The hub removes the card optimistically. Wait for the product's terminal
   // verification log before any reload/navigation, otherwise navigation can
   // abort the storage removal or even the next document's initial row lookup.
@@ -616,7 +616,7 @@ async function deleteProjectsByName({ page, names, dialogs, manifest, tracker })
     await clickVisible(page.getByRole('button', { name: 'Select', exact: true }), 'Projects Select');
     for (const name of existing) await (await waitForExactText(page, name)).click();
     dialogs.expect(/Delete (?:this project|these 2 projects) and (?:its|their) documents\?/i);
-    await clickVisible(page.getByTitle('Delete'), 'Delete selected projects');
+    await clickVisible(page.getByLabel('Delete', { exact: true }), 'Delete selected projects');
     for (const [index, responsePromise] of completedDeletes.entries()) {
       const response = await responsePromise;
       const completionError = await response.finished();

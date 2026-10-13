@@ -72,7 +72,7 @@ import { composeTextColor, splitTextColor } from './utils/textColorOpacity';
 import { CHROME_GLYPH, FONT_FAMILY, RAIL_CARET, RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_SPLIT_CONTROL_W, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
 // Owner 2026-09-22: undo/redo draw at 14 (the phone's HISTORY_GLYPH) - see MobilePdfViewerChrome.
 const HISTORY_GLYPH = 14;
-import { TooltipContext, makeTooltipBinding } from './components/Tooltip';
+import { FloatingTooltip, TOOLTIP_HIDDEN, TooltipContext, makeTooltipBinding, useTooltipDismissal } from './components/Tooltip';
 import { useViewerTopOverlayRef } from './utils/viewerTopOverlay.js';
 import DismissBarrier from './components/DismissBarrier.jsx';
 import { sanitizeZoomInput } from './utils/pageNavigationMath.js';
@@ -846,10 +846,8 @@ export default function App({ devPreviewReturnTab = null }) {
   // (placement geometry, styling and focus handling all live there), and
   // published to the whole viewer tree via TooltipContext below so rails and
   // sidebar panels can opt in without prop-drilling a setter.
-  const chromeTip = useMemo(
-    () => makeTooltipBinding(bottomToolbarApi?.setTooltip),
-    [bottomToolbarApi?.setTooltip],
-  );
+  // (chromeTip itself is built below, next to isViewerVisible, which picks
+  // whose chip it writes to.)
 
   // UX 2026-07-14 (rail-footer redesign): page-fit mode glyphs shared by the
   // rail footer's fit trigger and its popup options. Hoisted to component
@@ -1719,6 +1717,22 @@ export default function App({ devPreviewReturnTab = null }) {
   // conditional return because hooks below depend on it.
   const activeTab = tabs.find(t => t.id === activeTabId);
   const isViewerVisible = activeTab && !activeTab.isHome && selectedPDF && currentView === 'viewer';
+  // KAL-65 (hub): the shell owns a chip of its own for every screen with no
+  // viewer on it - the home hub, its dialogs, and the tab bar over the hub.
+  // Before this the binder wrote to the viewer's setter, which does not exist
+  // on the hub, so hub controls bound to it showed no tooltip at all. While a
+  // document is on screen the viewer's own chip is used, exactly as before.
+  const [shellTooltip, setShellTooltip] = useState(TOOLTIP_HIDDEN);
+  useTooltipDismissal(shellTooltip.visible, setShellTooltip);
+  const viewerSetTooltip = isViewerVisible ? bottomToolbarApi?.setTooltip : null;
+  const chromeTip = useMemo(
+    () => makeTooltipBinding(viewerSetTooltip || setShellTooltip),
+    [viewerSetTooltip],
+  );
+  // Switching to a document while a hub chip is up must not strand it.
+  useEffect(() => {
+    if (viewerSetTooltip) setShellTooltip((t) => (t.visible ? { ...TOOLTIP_HIDDEN } : t));
+  }, [viewerSetTooltip]);
   const isMobileViewer = Boolean(isNarrowShell && isViewerVisible);
 
   // w42 (2026-09-26, owner report from an 840px split view): the desktop tool
@@ -2232,11 +2246,12 @@ export default function App({ devPreviewReturnTab = null }) {
   };
 
   return (
-    // KAL-65: one tooltip surface for the whole viewer. Rails and sidebar
-    // panels call useTooltip() to opt a control in; the chip itself is
-    // rendered once by PDFViewer (<FloatingTooltip>) from the state this
-    // binding writes to.
+    // KAL-65: one tooltip surface for the whole app. Rails, sidebar panels,
+    // the tab bar and the hub call useTooltip() to opt a control in. With a
+    // document on screen the chip is PDFViewer's (<FloatingTooltip>); on the
+    // hub it is the shell's own, rendered just below.
     <TooltipContext.Provider value={chromeTip}>
+      <FloatingTooltip tooltip={shellTooltip} />
       {/* UX 2026-04-22: Save Log banner mounts at the outermost App level so
           it's visible on the dashboard / templates / auth / any view, not
           only inside the PDF viewer. Listens for a window event the Save

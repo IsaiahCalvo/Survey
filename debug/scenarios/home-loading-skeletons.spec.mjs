@@ -113,7 +113,7 @@ test('mobile document More menu consumes the first outside document tap', async 
 
   const rows = page.locator('.mobile-doc-card');
   const target = rows.nth(1);
-  await rows.first().getByTitle('More').click();
+  await rows.first().getByLabel('More', { exact: true }).click();
   await expect(page.locator('body > [role="menu"]')).toBeVisible();
 
   await target.click();
@@ -132,7 +132,7 @@ test('mobile project More menu consumes the first outside project tap', async ({
   const rows = page.locator('.projects-mobile-folder-row.drill.reorderable');
   const initialCount = await rows.count();
   const target = rows.first();
-  await rows.last().getByTitle('More').click();
+  await rows.last().getByLabel('More', { exact: true }).click();
   await expect(page.locator('body > [role="menu"]')).toBeVisible();
 
   await target.click();
@@ -151,7 +151,7 @@ test('mobile template More menu consumes the first outside template tap', async 
   const rows = page.locator('.templates-mobile-row.reorderable');
   const initialCount = await rows.count();
   const target = rows.first();
-  await rows.last().getByTitle('More').click();
+  await rows.last().getByLabel('More', { exact: true }).click();
   await expect(page.locator('body > [role="menu"]')).toBeVisible();
 
   await target.click();
@@ -211,12 +211,12 @@ test('mobile document details trap focus, close on Escape, and restore More', as
   await page.setViewportSize({ width: 390, height: 844 });
   await openHub(page, 'documents', false, true);
 
-  const opener = page.locator('.mobile-doc-card').first().getByTitle('More');
+  const opener = page.locator('.mobile-doc-card').first().getByLabel('More', { exact: true });
   await opener.click();
   await page.getByRole('menuitem', { name: 'Preview & details' }).click();
 
   const dialog = page.getByRole('dialog', { name: /details$/ });
-  const close = dialog.getByTitle('Close details');
+  const close = dialog.getByLabel('Close details', { exact: true });
   await expect(dialog).toBeVisible();
   await expect(close).toBeFocused();
 
@@ -259,10 +259,10 @@ test('Entities yields focus and Escape to real Share, Move/Copy, and color layer
   await entities.getByRole('button', { name: 'Select' }).click();
   await entities.getByRole('button', { name: 'All' }).click();
 
-  const shareOpener = entities.getByTitle('Share');
+  const shareOpener = entities.getByLabel('Share', { exact: true });
   await shareOpener.click();
   const share = page.getByRole('dialog', { name: 'Share template' });
-  await expect(share.getByTitle('Close')).toBeFocused();
+  await expect(share.getByLabel('Close', { exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(share).toHaveCount(0);
   await expect(entities).toBeVisible();
@@ -270,13 +270,13 @@ test('Entities yields focus and Escape to real Share, Move/Copy, and color layer
 
   await entities.getByRole('button', { name: 'Move/Copy' }).click();
   const move = page.getByRole('dialog', { name: 'Move or copy items' });
-  await expect(move.getByTitle('Close')).toBeFocused();
+  await expect(move.getByLabel('Close', { exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(move).toHaveCount(0);
   await expect(entities).toBeVisible();
 
   await entities.getByRole('button', { name: 'Done' }).click();
-  await entities.getByTitle('Edit color').first().click();
+  await entities.getByLabel('Edit color', { exact: true }).first().click();
   const visibleColorPicker = page.locator('[data-testid="compact-color-picker"]:visible');
   await expect(visibleColorPicker).toBeVisible();
   await page.keyboard.press('Escape');
@@ -341,7 +341,7 @@ test('named mobile controls provide at least 44px hit geometry', async ({ page }
     page.locator('.mobile-header-select-button'),
     page.locator('.documents-mobile-filter'),
     page.getByRole('button', { name: 'Open account menu' }),
-    page.locator('.mobile-doc-card').first().getByTitle('More'),
+    page.locator('.mobile-doc-card').first().getByLabel('More', { exact: true }),
   ]) {
     const hit = await effectiveHitBox(control);
     expect(hit.width).toBeGreaterThanOrEqual(44);
@@ -351,14 +351,14 @@ test('named mobile controls provide at least 44px hit geometry', async ({ page }
   }
   await expectLeadControlAligned(
     page.locator('.mobile-doc-card').first(),
-    page.locator('.mobile-doc-card').first().getByTitle('More'),
+    page.locator('.mobile-doc-card').first().getByLabel('More', { exact: true }),
   );
 
   await openHub(page, 'projects', false, true);
   for (const control of [
     page.getByRole('button', { name: 'New project' }),
     page.locator('.mobile-header-select-button'),
-    page.locator('.projects-mobile-folder-row.drill.reorderable').first().getByTitle('More'),
+    page.locator('.projects-mobile-folder-row.drill.reorderable').first().getByLabel('More', { exact: true }),
   ]) {
     const hit = await effectiveHitBox(control);
     expect(hit.width).toBeGreaterThanOrEqual(44);
@@ -375,7 +375,7 @@ test('named mobile controls provide at least 44px hit geometry', async ({ page }
   for (const control of [
     page.getByRole('button', { name: 'New template' }),
     page.locator('.mobile-header-select-button'),
-    page.locator('.templates-mobile-row.reorderable').first().getByTitle('More'),
+    page.locator('.templates-mobile-row.reorderable').first().getByLabel('More', { exact: true }),
   ]) {
     const listHit = await effectiveHitBox(control);
     expect(listHit.width).toBeGreaterThanOrEqual(44);
@@ -403,7 +403,7 @@ test('named mobile controls provide at least 44px hit geometry', async ({ page }
   const entitiesDialog = page.getByRole('dialog', { name: 'Entities' });
   for (const control of [
     entitiesDialog.locator('[data-drag-rearrange-handle]').first(),
-    entitiesDialog.getByTitle('Edit color').first(),
+    entitiesDialog.getByLabel('Edit color', { exact: true }).first(),
     entitiesDialog.locator('.templates-mobile-more').first(),
   ]) {
     const entityHit = await effectiveHitBox(control);
@@ -456,11 +456,11 @@ test('completed edge swipe navigates once while a second gesture is ignored duri
 test('desktop and mobile document Share controls preserve document semantics', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openHub(page, 'documents');
-  const previewAside = page.locator('aside').filter({ has: page.getByTitle('Share') });
+  const previewAside = page.locator('aside').filter({ has: page.getByLabel('Share', { exact: true }) });
   const selectedName = await previewAside.locator(':scope > div').nth(1).textContent();
-  await previewAside.getByTitle('Share').click();
+  await previewAside.getByLabel('Share', { exact: true }).click();
   await expect(page.getByText('Share document', { exact: true })).toBeVisible();
-  const desktopShareClose = page.getByTitle('Close').last();
+  const desktopShareClose = page.getByLabel('Close', { exact: true }).last();
   await expect(desktopShareClose.locator('..').getByText(selectedName, { exact: true })).toBeVisible();
   await desktopShareClose.click();
 
@@ -468,9 +468,9 @@ test('desktop and mobile document Share controls preserve document semantics', a
   await openHub(page, 'documents', false, true);
   const mobileRow = page.locator('.mobile-doc-card').first();
   const mobileName = await mobileRow.locator('.mobile-card-title').textContent();
-  await mobileRow.getByTitle('More').click();
+  await mobileRow.getByLabel('More', { exact: true }).click();
   await page.getByRole('menuitem', { name: 'Share' }).click();
   await expect(page.getByText('Share document', { exact: true })).toBeVisible();
-  const mobileShareClose = page.getByTitle('Close').last();
+  const mobileShareClose = page.getByLabel('Close', { exact: true }).last();
   await expect(mobileShareClose.locator('..').getByText(mobileName, { exact: true })).toBeVisible();
 });

@@ -138,7 +138,9 @@ test('tooltip text is the name, then the badge', () => {
 
 test('the shared tooltip binder appends the badge, so no call site can forget it', () => {
   const tooltipSource = read('../src/components/Tooltip.jsx');
-  assert.match(tooltipSource, /const text = tooltipForLabel\(rawText\);/);
+  // Only text the user typed (a tab or template name, `{ name: true }`)
+  // skips it, so a document called "Line" never grows an L.
+  assert.match(tooltipSource, /const text = name \? rawText : tooltipForLabel\(rawText\);/);
   // The mobile rail uses a native title=, so it asks for the badge itself.
   const mobileSource = read('../src/mobile/MobilePdfViewerChrome.jsx');
   assert.match(mobileSource, /title=\{tooltipForLabel\(label\)\}/);

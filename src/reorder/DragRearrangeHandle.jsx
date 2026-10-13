@@ -7,6 +7,7 @@
  * click/dragstart propagation. Used as the drag affordance in reorder lists.
  */
 import Icon, { CHEVRON_DOWN_PATH } from '../Icons';
+import { useTooltip } from '../components/Tooltip';
 
 /*
  * MORPH GRIP (owner 2026-09-23, after morphicons.com). A row whose panel is
@@ -78,6 +79,13 @@ const handleStyle = (isDragging, style = {}) => ({
   ...style,
 });
 
+/** Run both handlers (either may be missing); the caller's runs last. */
+const chainHandlers = (first, second) => {
+  if (!first) return second;
+  if (!second) return first;
+  return (event) => { first(event); second(event); };
+};
+
 export default function DragRearrangeHandle({
   isDragging = false,
   title = 'Drag to rearrange',
@@ -90,9 +98,16 @@ export default function DragRearrangeHandle({
   // tap calls onCollapse instead of starting anything. Undefined = plain grip.
   collapseOpen,
   onCollapse,
+  tooltipPlacement = 'below',
   ...props
 }) {
   const morphs = typeof collapseOpen === 'boolean';
+  const hint = morphs && collapseOpen ? 'Collapse' : title;
+  // KAL-65: the shared tooltip chip, not the native title. The grip's own
+  // hover colour and dnd-kit's pointer listener (in `props`) both still run:
+  // each handler the chip needs is chained, never replaced.
+  const tipProps = useTooltip()(hint, tooltipPlacement);
+  const { onPointerDown, onMouseDown, onFocus, onBlur } = props;
   return (
     <span
       draggable={nativeDraggable}
@@ -101,12 +116,13 @@ export default function DragRearrangeHandle({
       // ancestor gesture recognisers (phone sheet swipe-down) ignore touches
       // that start inside [data-drag-handle].
       data-drag-handle=""
-      title={morphs && collapseOpen ? 'Collapse' : title}
+      // Native title only when no tooltip host is above (isolated harness).
+      {...(tipProps.title ? { title: tipProps.title } : null)}
       // Polish 3 (2026-10-04): a sortable grip gets role="button" and a tab
       // stop from dnd-kit's attributes, but a title is not a name - screen
       // readers and keyboard users met an unnamed button. The name is the
       // hint itself; a caller's own aria-label (spread below) still wins.
-      aria-label={morphs && collapseOpen ? 'Collapse' : title}
+      aria-label={hint}
       aria-expanded={morphs ? collapseOpen : undefined}
       onClick={(event) => {
         event.stopPropagation();
@@ -131,12 +147,18 @@ export default function DragRearrangeHandle({
       onDragEnd={onDragEnd}
       onMouseEnter={(event) => {
         event.currentTarget.style.color = HOVER_HANDLE_COLOR;
+        tipProps.onMouseEnter?.(event);
       }}
       onMouseLeave={(event) => {
         event.currentTarget.style.color = style?.color || DEFAULT_HANDLE_COLOR;
+        tipProps.onMouseLeave?.(event);
       }}
       style={handleStyle(isDragging, style)}
       {...props}
+      onPointerDown={chainHandlers(tipProps.onPointerDown, onPointerDown)}
+      onMouseDown={chainHandlers(tipProps.onMouseDown, onMouseDown)}
+      onFocus={chainHandlers(tipProps.onFocus, onFocus)}
+      onBlur={chainHandlers(tipProps.onBlur, onBlur)}
     >
       {morphs ? <MorphGrip open={collapseOpen} /> : <Icon name="grip" size={11} />}
     </span>

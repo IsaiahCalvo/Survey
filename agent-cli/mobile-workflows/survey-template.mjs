@@ -376,7 +376,7 @@ async function verifyTreeAfterReload({ page, touch, baseUrl, ids }) {
 async function openEntityColorPanel(touch, modal, row, label) {
   const colorPanel = modal.locator('.templates-mobile-color-panel').first();
   for (let attempt = 0; attempt < 3 && !await colorPanel.isVisible().catch(() => false); attempt += 1) {
-    await tapLocator(touch, row.getByTitle('Edit color'), `Open ${label} color picker`);
+    await tapLocator(touch, row.getByLabel('Edit color', { exact: true }), `Open ${label} color picker`);
     if (!await colorPanel.isVisible().catch(() => false)) {
       // Renaming blurs the input and closes the picker. DismissBarrier keeps a
       // short trailing shield so that blur gesture cannot activate underlying
@@ -409,7 +409,7 @@ async function coverEntitiesAndReload({ page, touch, baseUrl, ids, artifacts }) 
   await tapEntityColorControl(touch, colorPanel.getByTitle('#00FF00'), 'Inspector fill green');
   await tapEntityColorControl(touch, colorPanel.getByRole('button', { name: 'Border', exact: true }), 'Inspector border tab');
   await tapEntityColorControl(touch, colorPanel.getByTitle('#0000FF'), 'Inspector border blue');
-  await tapLocator(touch, inspectorRow.getByTitle('Edit color'), 'Close Inspector color picker');
+  await tapLocator(touch, inspectorRow.getByLabel('Edit color', { exact: true }), 'Close Inspector color picker');
   await colorPanel.waitFor({ state: 'hidden', timeout: 10_000 });
   await page.waitForTimeout(950);
 
@@ -435,7 +435,7 @@ async function coverEntitiesAndReload({ page, touch, baseUrl, ids, artifacts }) 
   const matchFill = colorPanel.getByRole('checkbox');
   await tapEntityColorControl(touch, matchFill, 'Owner match fill');
   invariant(await matchFill.isChecked(), 'Owner Match fill did not enable');
-  await tapLocator(touch, ownerRow.getByTitle('Edit color'), 'Close Owner color picker');
+  await tapLocator(touch, ownerRow.getByLabel('Edit color', { exact: true }), 'Close Owner color picker');
   await colorPanel.waitFor({ state: 'hidden', timeout: 10_000 });
   // DismissBarrier deliberately retains its trailing click shield briefly after
   // the picker unmounts so the same physical tap cannot activate the surface
@@ -461,7 +461,7 @@ async function coverEntitiesAndReload({ page, touch, baseUrl, ids, artifacts }) 
   await page.locator('.templates-mobile-back-button').click();
   const sourceRow = page.locator('.templates-mobile-row', { hasText: ids.templateName });
   await sourceRow.waitFor({ state: 'visible', timeout: 10_000 });
-  await tapLocator(touch, sourceRow.getByTitle('More'), 'Source template More before save');
+  await tapLocator(touch, sourceRow.getByLabel('More', { exact: true }), 'Source template More before save');
   const copyBeforeSave = await waitForFirstVisible(
     page.getByRole('menuitem', { name: 'Copy', exact: true }),
     'Copy template before save',
@@ -533,7 +533,7 @@ async function coverEntitiesAndReload({ page, touch, baseUrl, ids, artifacts }) 
 
   const unsavedCopyRow = page.locator('.templates-mobile-row', { hasText: unsavedCopyName });
   await unsavedCopyRow.scrollIntoViewIfNeeded();
-  await tapLocator(touch, unsavedCopyRow.getByTitle('More'), 'Unsaved-styled template copy More');
+  await tapLocator(touch, unsavedCopyRow.getByLabel('More', { exact: true }), 'Unsaved-styled template copy More');
   const deleteUnsavedCopy = await waitForFirstVisible(
     page.getByRole('menuitem', { name: 'Delete', exact: true }),
     'Delete unsaved-styled template copy',
@@ -574,7 +574,7 @@ async function coverTemplateDuplicateReload({ page, touch, baseUrl, ids }) {
   await page.goto(`${baseUrl}${TEMPLATE_WORKFLOW_ROUTE}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
   const sourceRow = page.locator('.templates-mobile-row', { hasText: ids.templateName });
   await sourceRow.waitFor({ state: 'visible', timeout: 30_000 });
-  await tapLocator(touch, sourceRow.getByTitle('More'), 'Source template More');
+  await tapLocator(touch, sourceRow.getByLabel('More', { exact: true }), 'Source template More');
   const copyAction = await waitForFirstVisible(page.getByRole('menuitem', { name: 'Copy', exact: true }), 'Copy template');
   await tapLocator(touch, copyAction, 'Copy template');
   const copyName = `${ids.templateName} copy`;
@@ -599,7 +599,7 @@ async function coverTemplateDuplicateReload({ page, touch, baseUrl, ids }) {
   const copyRow = page.locator('.templates-mobile-row', { hasText: copyName });
   await copyRow.scrollIntoViewIfNeeded();
   await copyRow.waitFor({ state: 'visible', timeout: 10_000 });
-  await tapLocator(touch, copyRow.getByTitle('More'), 'Copied template More');
+  await tapLocator(touch, copyRow.getByLabel('More', { exact: true }), 'Copied template More');
   const deleteCopy = await waitForFirstVisible(
     page.getByRole('menuitem', { name: 'Delete', exact: true }),
     'Delete copied template',
@@ -632,7 +632,7 @@ async function coverDeletes({ page, touch, ids }) {
   await tapLocator(touch, categoriesSection.getByRole('button', { name: 'Select', exact: true }), 'Select categories');
   await tapExposedLocator(touch, disposableCategoryNamed.locator('.templates-mobile-check'), 'Disposable category checkbox');
   await disposableCategoryNamed.locator('.templates-mobile-check.checked').waitFor({ state: 'visible' });
-  await tapLocator(touch, categoriesSection.getByTitle('Delete'), 'Delete category');
+  await tapLocator(touch, categoriesSection.getByLabel('Delete', { exact: true }), 'Delete category');
   await page.waitForFunction(() => ![...document.querySelectorAll('.templates-mobile-category-card input')]
     .some((input) => input.value === 'Disposable mobile category'));
   await tapLocator(touch, categoriesSection.getByRole('button', { name: 'Done', exact: true }), 'Finish category selection');
@@ -650,7 +650,7 @@ async function coverDeletes({ page, touch, ids }) {
   // Row grid: 8px inset + 24px grip + 10px gap + 14px checkbox. Tap the
   // checkbox center; it intentionally has no semantic label in product UI.
   await touch.tap({ x: disposableModuleBox.x + 49, y: disposableModuleBox.y + disposableModuleBox.height / 2 });
-  await tapLocator(touch, modal.getByTitle('Delete'), 'Delete module');
+  await tapLocator(touch, modal.getByLabel('Delete', { exact: true }), 'Delete module');
   await disposableModuleRow.waitFor({ state: 'detached', timeout: 10_000 });
   await tapLocator(touch, modal.getByRole('button', { name: 'Done', exact: true }), 'Finish module selection');
 
@@ -825,7 +825,7 @@ async function deleteTemplateAndVerify({ page, touch, baseUrl, ids }) {
   await page.goto(`${baseUrl}${TEMPLATE_WORKFLOW_ROUTE}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
   const row = page.locator('.templates-mobile-row', { hasText: ids.templateName });
   await row.waitFor({ state: 'visible', timeout: 30_000 });
-  await tapLocator(touch, row.getByTitle('More'), 'Template More menu');
+  await tapLocator(touch, row.getByLabel('More', { exact: true }), 'Template More menu');
   const deleteTemplate = await waitForFirstVisible(
     page.getByRole('menuitem', { name: 'Delete', exact: true }),
     'Delete template',
