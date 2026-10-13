@@ -1154,6 +1154,15 @@ const ICON_RENDERERS = {
         <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.5" /><circle cx="12" cy="8" r="1" fill={color} /><path d="M12 11V16" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
+    // KAL-444: the viewer rail's "Keyboard shortcuts" button. Lucide's keyboard
+    // redrawn on the house grid: an 18 x 13 box (ink 19.5 wide, like Rect) at
+    // the house corner ratio, two rows of keys as dots and a space bar.
+    keyboard: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <rect x="3" y="5.5" width="18" height="13" rx={iconCornerRadius(13)} stroke={color} strokeWidth={ICON_STROKE_WIDTH} />
+        <path d="M7 9.5h.01M10.33 9.5h.01M13.67 9.5h.01M17 9.5h.01M8.5 12.5h.01M12 12.5h.01M15.5 12.5h.01M8.5 15.5h7" stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" />
+      </svg>
+    ),
     lightbulbOn: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
         <path d="M14.5 19.5H9.5M14.5 19.5C14.5 18.7865 14.5 18.4297 14.5381 18.193C14.6609 17.4296 14.6824 17.3815 15.1692 16.7807C15.3201 16.5945 15.8805 16.0927 17.0012 15.0892C18.5349 13.7159 19.5 11.7206 19.5 9.5C19.5 5.35786 16.1421 2 12 2C7.85786 2 4.5 5.35786 4.5 9.5C4.5 11.7206 5.4651 13.7159 6.99876 15.0892C8.11945 16.0927 8.67987 16.5945 8.83082 16.7807C9.31762 17.3815 9.3391 17.4296 9.46192 18.193C9.5 18.4297 9.5 18.7865 9.5 19.5M14.5 19.5C14.5 20.4346 14.5 20.9019 14.299 21.25C14.1674 21.478 13.978 21.6674 13.75 21.799C13.4019 22 12.9346 22 12 22C11.0654 22 10.5981 22 10.25 21.799C10.022 21.6674 9.83261 21.478 9.70096 21.25C9.5 20.9019 9.5 20.4346 9.5 19.5" stroke={color} strokeWidth="1.5" />

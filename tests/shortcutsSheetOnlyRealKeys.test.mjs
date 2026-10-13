@@ -36,3 +36,33 @@ test('the dev test route does not mount a second shortcuts sheet', () => {
 test('the sheet close button has a name (it was an unlabeled X)', () => {
   assert.match(overlay, /aria-label="Close keyboard shortcuts"/);
 });
+
+// KAL-444 (2026-10-13): every row was pressed in the viewer. These did nothing
+// there, so they left the sheet (adding real tab keys is an owner call).
+test('the sheet does not promise tab keys nothing handles', () => {
+  assert.doesNotMatch(overlay, /description: 'Close tab'/);
+  assert.doesNotMatch(overlay, /description: 'Next tab'/);
+  assert.doesNotMatch(overlay, /description: 'Previous tab'/);
+  const handlesCtrlTab = (file) => /ctrlKey[^\n]*['"]Tab['"]|['"]Tab['"][^\n]*ctrlKey/.test(file);
+  const viewer = readFileSync(path.join(root, 'src/PDFViewer.jsx'), 'utf8');
+  const shell = readFileSync(path.join(root, 'src/AppShell.jsx'), 'utf8');
+  assert.equal(handlesCtrlTab(viewer) || handlesCtrlTab(shell), false, 'a Ctrl+Tab handler exists now: put the rows back');
+});
+
+test('arrows are not sold as page turns while the viewer is always continuous', () => {
+  assert.doesNotMatch(overlay, /keys: \['←', '→'\]/);
+  const viewer = readFileSync(path.join(root, 'src/PDFViewer.jsx'), 'utf8');
+  assert.match(viewer, /if \(scrollMode !== 'continuous'\) \{\s*setScrollMode\('continuous'\)/);
+});
+
+test('lasso Space is described as the two modes it flips', () => {
+  assert.match(overlay, /Switch between Window and Crossing/);
+  const hook = readFileSync(path.join(root, 'src/hooks/useSVGInteraction.js'), 'utf8');
+  assert.match(hook, /const nextMode = activeMode === 'window' \? 'crossing' : 'window';/);
+});
+
+test('Open document shows only where the desktop menu wires Ctrl/Cmd+O', () => {
+  assert.match(overlay, /hasDesktopOpenKey \? \[\{ keys: \[mod, 'O'\]/);
+  const main = readFileSync(path.join(root, 'src/electron-main.js'), 'utf8');
+  assert.match(main, /accelerator: 'CmdOrCtrl\+O'/);
+});

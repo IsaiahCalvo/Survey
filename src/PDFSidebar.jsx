@@ -19,6 +19,7 @@ import BookmarksPanel from './sidebar/BookmarksPanel';
 import SpacesPanel from './sidebar/SpacesPanel';
 import SyncStatusChip from './components/SyncStatusChip';
 import PresenceAvatars from './components/PresenceAvatars';
+import { openKeyboardShortcuts } from './utils/keyboardShortcutsSheet';
 import { withDevFakePresence } from './components/presenceIdentity.js';
 import RevisionsPanel from './components/revisions/RevisionsPanel';
 import { useMobileSheetMotion } from './mobile/useMobileSheetMotion';
@@ -646,6 +647,41 @@ const PDFSidebar = React.forwardRef(({
             </div>
             );
           })}
+          {/* KAL-444: the visible way into the keyboard shortcuts sheet, for
+              people who do not know "?" opens it. Pinned to the bottom of the
+              tab column (marginTop auto), apart from the panel tabs because it
+              opens a sheet, not a panel. Same plain chrome glyph as the tabs. */}
+          <button
+            type="button"
+            {...tip('Keyboard shortcuts  ?', 'right')}
+            aria-label="Keyboard shortcuts"
+            aria-haspopup="dialog"
+            data-keyboard-shortcuts-button="true"
+            className="chrome-icon-btn"
+            onClick={() => openKeyboardShortcuts()}
+            style={{
+              marginTop: 'auto',
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-2)',
+              borderRadius: 'var(--chrome-radius, 6px)',
+              padding: '11px 6px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minWidth: '28px',
+              minHeight: '28px',
+              width: '100%'
+            }}
+          >
+            <Icon
+              name="keyboard"
+              size={RAIL_GLYPH}
+              color="currentColor"
+              style={{ width: `${RAIL_GLYPH}px`, height: `${RAIL_GLYPH}px`, flexShrink: 0 }}
+            />
+          </button>
         </div>
 
         {/* 2026-04-25 — Collaboration footer (sync chip, History, presence)
