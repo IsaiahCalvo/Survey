@@ -23,6 +23,7 @@ import SectionIconButton from '../components/SectionIconButton.jsx';
 import AppIcon from '../Icons';
 import { ConfirmModal } from './BulkModals';
 import DismissBarrier from '../components/DismissBarrier';
+import { clickableProps } from '../utils/keyActivate';
 import PdfPageThumb from './PdfPageThumb';
 import QuietLoading from '../components/QuietLoading';
 import { useStorage } from '../hooks/useDatabase';
@@ -193,7 +194,7 @@ export default function ArchiveScreen({
   const arrow = (key) => (sortKey === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '');
   const headerCell = (key, label, extra = {}) => (
     <span
-      onClick={() => onHeaderClick(key)}
+      {...clickableProps(() => onHeaderClick(key))}
       style={{
         cursor: 'pointer', userSelect: 'none',
         color: sortKey === key ? 'var(--bone-100)' : 'inherit',
@@ -1018,6 +1019,7 @@ export default function ArchiveScreen({
         active={menuOpen}
         insideRefs={[menuRef, desktopMenuRef]}
         onDismiss={() => setMenuOpen(false)}
+        menu
       />
       <HubShell
         tab="archive"

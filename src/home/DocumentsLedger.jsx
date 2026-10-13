@@ -20,6 +20,7 @@ import { useThumbnailBackfill } from '../hooks/useThumbnailBackfill';
 import { useStorage } from '../hooks/useDatabase';
 import Spinner from '../components/Spinner';
 import DismissBarrier from '../components/DismissBarrier';
+import { checkboxProps, clickableProps } from '../utils/keyActivate';
 import useModalFocusTrap from './useModalFocusTrap';
 
 const ledgerHeader = {
@@ -55,7 +56,7 @@ function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168 }) {
 
   return createPortal(
     <>
-      <DismissBarrier insideRefs={[ref]} onDismiss={onClose} />
+      <DismissBarrier insideRefs={[ref]} onDismiss={onClose} menu />
       <div
         ref={ref}
         role="menu"
@@ -254,6 +255,7 @@ export default function DocumentsLedger({
       active={mobileSortOpen}
       insideRefs={[mobileSortRef]}
       onDismiss={() => setMobileSortOpen(false)}
+      menu
     />
     <span className="documents-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
       <span className="documents-file-count"><b>{docs.length}</b> {docs.length === 1 ? 'file' : 'files'}</span>
@@ -450,10 +452,10 @@ export default function DocumentsLedger({
               <div style={{ ...ledgerHeader, display: 'grid', gridTemplateColumns: grid, position: 'sticky', top: 0, zIndex: 3 }}>
                 <span></span>
                 <span></span>
-                <span onClick={() => onHeaderClick('name')} style={{ padding: '0 14px', display: 'flex', alignItems: 'center', cursor: 'pointer', userSelect: 'none', color: sortKey === 'name' ? 'var(--bone-100)' : 'inherit' }}>File{arrow('name')}</span>
-                <span onClick={() => onHeaderClick('project')} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'project' ? 'var(--bone-100)' : 'inherit' }}>Project{arrow('project')}</span>
-                <span onClick={() => onHeaderClick('edited')} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'edited' ? 'var(--bone-100)' : 'inherit' }}>Last edited{arrow('edited')}</span>
-                <span onClick={() => onHeaderClick('size')} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'size' ? 'var(--bone-100)' : 'inherit' }}>Size{arrow('size')}</span>
+                <span {...clickableProps(() => onHeaderClick('name'))} style={{ padding: '0 14px', display: 'flex', alignItems: 'center', cursor: 'pointer', userSelect: 'none', color: sortKey === 'name' ? 'var(--bone-100)' : 'inherit' }}>File{arrow('name')}</span>
+                <span {...clickableProps(() => onHeaderClick('project'))} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'project' ? 'var(--bone-100)' : 'inherit' }}>Project{arrow('project')}</span>
+                <span {...clickableProps(() => onHeaderClick('edited'))} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'edited' ? 'var(--bone-100)' : 'inherit' }}>Last edited{arrow('edited')}</span>
+                <span {...clickableProps(() => onHeaderClick('size'))} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'size' ? 'var(--bone-100)' : 'inherit' }}>Size{arrow('size')}</span>
               </div>
               {docs.length === 0 && (
                 mapped.length === 0 ? (
@@ -499,7 +501,7 @@ export default function DocumentsLedger({
                   >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 8px' }}>
                       {docSelectMode ? (
-                        <span style={{ width: 14, height: 14, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--border-strong)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span {...checkboxProps(isChecked, () => toggleDocSel(d.id), `Select ${d.name}`)} style={{ width: 14, height: 14, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--border-strong)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           {isChecked && <Icon name="check" size={10} color="var(--accent-text)" />}
                         </span>
                       ) : (

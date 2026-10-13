@@ -16,6 +16,7 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import ShareModal from './ShareModal';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import {
   getDocumentCollaborators,
   updateCollaboratorRole,
@@ -86,28 +87,14 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [linksOpen, setLinksOpen] = useState(false);
-  const previouslyFocusedRef = useRef(null);
+  const cardRef = useRef(null);
 
-  // Accessibility: Escape closes the modal, and focus returns to whatever
-  // triggered it once it closes (minimal per-modal patch, no shared modal
-  // primitive/focus trap). Skipped while the nested ShareModal (invite
-  // popup) is open so Escape closes that one first.
-  useEffect(() => {
-    if (!open) return undefined;
-    previouslyFocusedRef.current = document.activeElement;
-    const handleKey = (e) => {
-      if (e.key === 'Escape' && !inviteOpen) {
-        e.stopPropagation();
-        onClose?.();
-      }
-    };
-    window.addEventListener('keydown', handleKey, true);
-    return () => {
-      window.removeEventListener('keydown', handleKey, true);
-      previouslyFocusedRef.current?.focus?.();
-      previouslyFocusedRef.current = null;
-    };
-  }, [open, onClose, inviteOpen]);
+  // Accessibility (KAL-66): the shared modal primitive — Tab stays inside the
+  // dialog, Escape closes it, focus moves in on open and returns to the opener
+  // on close. The nested ShareModal (Invite) registers on the same open-dialog
+  // stack (src/hooks/modalStack.js), so while it is open Tab and Escape belong
+  // to it and this dialog waits underneath.
+  useFocusTrap(cardRef, Boolean(open), { onEscape: onClose });
 
   const refresh = useCallback(async () => {
     if (!documentId) { setMembers([]); setInvites([]); return; }
@@ -237,7 +224,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
   return (
     <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: C.scrim, backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1300, fontFamily: 'var(--font-ui)' }}>
-        <div onClick={(e) => e.stopPropagation()} style={{ width: 620, maxWidth: '94vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '88vh' }}>
+        <div ref={cardRef} role="dialog" aria-modal="true" aria-label={`${labelForKind(kind)}: ${documentName}`} onClick={(e) => e.stopPropagation()} style={{ width: 620, maxWidth: '94vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '88vh' }}>
           <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${C.rule}`, display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ width: 3, height: 30, background: C.gold, borderRadius: 2, flex: 'none', marginRight: 10 }} />
             <div style={{ flex: 1, minWidth: 0 }}>

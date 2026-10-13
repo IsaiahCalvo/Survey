@@ -142,6 +142,21 @@ function TabItem({
       // no gold edge, fully opaque so no neighbour shows through.
       data-drag-lifted={isDragging ? '' : undefined}
       onClick={() => onTabClick(tab.id)}
+      // KAL-66: a keyboard user can reach and open every tab. The Home tab
+      // has no sortable attributes, so it gets its own role and tab stop.
+      // Enter opens a tab; Space stays the keyboard "pick up to reorder" key
+      // (the KeyboardSensor below starts a drag on Space only).
+      role={isHome ? 'button' : sortableAttributes.role}
+      tabIndex={isHome ? 0 : sortableAttributes.tabIndex}
+      aria-current={isActive ? 'page' : undefined}
+      onKeyDown={(e) => {
+        sortableListeners.onKeyDown?.(e);
+        if (e.defaultPrevented || e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || (isHome && e.key === ' ')) {
+          e.preventDefault();
+          onTabClick(tab.id);
+        }
+      }}
       onDragOver={(e) => !isHome && onPageDragOver(e, tab.id)}
       onDragLeave={(e) => !isHome && onPageDragLeave(e, tab.id)}
       onDrop={(e) => !isHome && onPageDrop(e, tab.id)}
@@ -341,7 +356,11 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onPag
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 160, tolerance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    // Space picks a tab up to reorder it; Enter is left free to open the tab.
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+      keyboardCodes: { start: ['Space'], cancel: ['Escape'], end: ['Space', 'Enter'] },
+    })
   );
   const tabModifiers = useMemo(() => [
     restrictTabsToHorizontalAxis,

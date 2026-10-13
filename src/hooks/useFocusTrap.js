@@ -22,6 +22,7 @@
  * focusable element of any kind (close buttons included, as a last resort).
  */
 import { useEffect, useRef } from 'react';
+import { openModalStack } from './modalStack.js';
 
 const FOCUSABLE_SELECTOR = [
   'a[href]',
@@ -49,11 +50,12 @@ const focusableWithin = (container) => (
 // src/components/dismissRules.js): Escape closes only the TOPMOST window, so
 // only the last-opened trap answers Escape and Tab. Before this, every open
 // trap listened on window/capture and two stacked dialogs closed together.
-const openTraps = [];
+// The list is shared with src/home/useModalFocusTrap.js (see modalStack.js).
+const openTraps = openModalStack;
 
 export const useFocusTrap = (containerRef, isOpen, { onEscape, autoFocus = true } = {}) => {
   const trapTokenRef = useRef(null);
-  if (!trapTokenRef.current) trapTokenRef.current = {};
+  if (!trapTokenRef.current) trapTokenRef.current = { containerRef };
   // Callers commonly pass an inline arrow for onEscape, so the key effect below
   // re-runs on most renders. Opener capture and the initial focus move live in
   // their own isOpen-only effect so neither repeats mid-dialog.

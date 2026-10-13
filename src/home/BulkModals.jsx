@@ -167,7 +167,7 @@ export function ConfirmModal({ open, onClose, title = 'Are you sure?', message =
 
   return (
     <div onClick={submitting ? undefined : onClose} style={overlay}>
-      <div ref={cardRef} role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()} style={{ width: 380, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden' }}>
+      <div ref={cardRef} role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : undefined} onClick={(e) => e.stopPropagation()} style={{ width: 380, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden' }}>
         <div style={{ padding: '18px 18px 14px', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.015em' }}>{title}</div>
@@ -197,30 +197,24 @@ export function ConfirmModal({ open, onClose, title = 'Are you sure?', message =
 export function RenameModal({ open, onClose, title = 'Rename', initialName = '', onConfirm }) {
   const [name, setName] = useState(initialName);
   const inputRef = useRef(null);
-  const previouslyFocusedRef = useRef(null);
+  const cardRef = useRef(null);
+
+  // KAL-66: the shared modal primitive, like ConfirmModal and MoveCopyModal
+  // above. Before, Rename only handled Escape, so Tab walked out of the
+  // dialog onto the page behind it.
+  useFocusTrap(cardRef, open, { onEscape: onClose });
 
   useEffect(() => {
     if (!open) return undefined;
     setName(initialName);
-    previouslyFocusedRef.current = document.activeElement;
+    // The hook puts the cursor in the field; select the old name so typing
+    // replaces it.
     const frame = requestAnimationFrame(() => {
       inputRef.current?.focus();
       inputRef.current?.select();
     });
-    const handleKey = (event) => {
-      if (event.key === 'Escape') {
-        event.stopPropagation();
-        onClose?.();
-      }
-    };
-    window.addEventListener('keydown', handleKey, true);
-    return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener('keydown', handleKey, true);
-      previouslyFocusedRef.current?.focus?.();
-      previouslyFocusedRef.current = null;
-    };
-  }, [initialName, onClose, open]);
+    return () => cancelAnimationFrame(frame);
+  }, [initialName, open]);
 
   if (!open) return null;
   const trimmed = name.trim();
@@ -235,6 +229,7 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
   return (
     <div onClick={onClose} style={overlay}>
       <div
+        ref={cardRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}

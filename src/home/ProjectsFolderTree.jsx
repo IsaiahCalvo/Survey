@@ -37,6 +37,7 @@ import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/Sortable
 import { pickByIds } from './selectionById';
 import useMobileEdgeSwipeBack from './useMobileEdgeSwipeBack';
 import DismissBarrier from '../components/DismissBarrier';
+import { checkboxProps } from '../utils/keyActivate';
 
 /* Literal palette — used by the portal popups, which render outside the
    `.survey-hub` root and therefore cannot inherit its CSS variables. */
@@ -138,7 +139,7 @@ function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160
 
   return createPortal(
     <>
-      <DismissBarrier insideRefs={[ref]} onDismiss={onClose} />
+      <DismissBarrier insideRefs={[ref]} onDismiss={onClose} menu />
       <div
         ref={ref}
         role="menu"
@@ -881,7 +882,8 @@ export default function ProjectsFolderTree({
         </div>
         {fileSelect ? (
           <span
-            onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}
+            {...checkboxProps(isChecked, () => toggleFileSel(f.id), `Select ${f.name}`)}
+                        onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}
             className={`projects-mobile-check ${isChecked ? 'checked' : ''}`}
           >
             {isChecked ? <Icon name="check" size={11} color="var(--accent-text)" /> : null}
@@ -1031,6 +1033,7 @@ export default function ProjectsFolderTree({
                          disabled one. All four checkboxes in this file changed;
                          checked stays gold and 1.4px is unchanged. */
                       <span
+                        {...checkboxProps(isSel, () => toggleProjSel(p.id), `Select ${p.name}`)}
                         onClick={(e) => { e.stopPropagation(); toggleProjSel(p.id); }}
                         data-drag-keep-fill style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--gold)' : 'var(--border-strong)'}`, background: isSel ? 'var(--gold)' : 'transparent', borderRadius: 2, padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 4 }}
                       >
@@ -1077,6 +1080,7 @@ export default function ProjectsFolderTree({
                     key={open.id}
                     {...projectNameField(open)}
                     title="Click to rename"
+                    aria-label="Project name"
                     onDoubleClick={(e) => e.currentTarget.select()}
                     /* Same dotted rename line as the Templates editor
                        (.hub-rename); it used to turn gold while typing. */
@@ -1203,7 +1207,8 @@ export default function ProjectsFolderTree({
                             <span className="mono meta" style={{ fontSize: 11, lineHeight: '16px' }}>{shortWhen(f)}</span>
                             {fileSelect ? (
                               <span
-                                onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}
+                                {...checkboxProps(isChecked, () => toggleFileSel(f.id), `Select ${f.name}`)}
+                        onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}
                                 style={{ width: 14, height: 14, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--border-strong)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
                               >
                                 {isChecked && <Icon name="check" size={10} color="var(--accent-text)" />}
@@ -1690,7 +1695,8 @@ export default function ProjectsFolderTree({
               </div>
               {jobsEdit ? (
                 <span
-                  onClick={(e) => { e.stopPropagation(); toggleProjSel(p.id); }}
+                  {...checkboxProps(isSel, () => toggleProjSel(p.id), `Select ${p.name}`)}
+                        onClick={(e) => { e.stopPropagation(); toggleProjSel(p.id); }}
                   style={{ width: 16, height: 16, border: `1.4px solid ${isSel ? 'var(--gold)' : 'var(--border-strong)'}`, background: isSel ? 'var(--gold)' : 'transparent', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
                   {isSel && <Icon name="check" size={10} color="var(--accent-text)" />}
@@ -1799,6 +1805,7 @@ export default function ProjectsFolderTree({
                 key={`mobile-${open.id}`}
                 {...projectNameField(open)}
                 title="Click to rename"
+                aria-label="Project name"
                 style={{
                   background: 'transparent',
                   color: 'var(--bone-100)',
@@ -1850,6 +1857,7 @@ export default function ProjectsFolderTree({
                     </div>
                     {fileSelect ? (
                       <span
+                        {...checkboxProps(isChecked, () => toggleFileSel(f.id), `Select ${f.name}`)}
                         onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}
                         style={{ width: 16, height: 16, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--border-strong)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
                       >

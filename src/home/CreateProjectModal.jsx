@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import Spinner from '../components/Spinner';
 import Icon from '../Icons';
 import { C } from '../uiPalette';
@@ -17,25 +18,13 @@ export default function CreateProjectModal({
   open,
 }) {
   const inputRef = useRef(null);
-  const previousFocusRef = useRef(null);
+  const cardRef = useRef(null);
 
-  useEffect(() => {
-    if (!open) return undefined;
-    previousFocusRef.current = document.activeElement;
-    const frame = requestAnimationFrame(() => inputRef.current?.focus());
-    const onKeyDown = (event) => {
-      if (event.key !== 'Escape' || busy) return;
-      event.stopPropagation();
-      onCancel?.();
-    };
-    window.addEventListener('keydown', onKeyDown, true);
-    return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener('keydown', onKeyDown, true);
-      previousFocusRef.current?.focus?.();
-      previousFocusRef.current = null;
-    };
-  }, [busy, onCancel, open]);
+  // KAL-66: the shared modal primitive (src/hooks/useFocusTrap) — Tab stays
+  // inside the dialog, Escape cancels (not while creating), the name field
+  // takes focus on open, and focus returns to "New project" afterwards.
+  // Before, only Escape was handled and Tab walked out onto the page.
+  useFocusTrap(cardRef, open, { onEscape: busy ? undefined : onCancel });
 
   if (!open) return null;
   const canSubmit = !!name.trim() && !busy;
@@ -47,6 +36,7 @@ export default function CreateProjectModal({
       style={{ position: 'fixed', inset: 0, zIndex: 2100, display: 'grid', placeItems: 'center', padding: 16, background: COLORS.scrim, backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
     >
       <section
+        ref={cardRef}
         role="dialog"
         aria-modal="true"
         aria-label="Create project"

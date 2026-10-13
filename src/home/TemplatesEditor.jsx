@@ -98,6 +98,7 @@ import { countLabel } from './countLabel.js';
 import { flagRequiredInput, isBlank } from '../components/requiredInput';
 import './TemplatesEditor.css';
 import DismissBarrier from '../components/DismissBarrier';
+import { checkboxProps } from '../utils/keyActivate';
 import SharedTemplateBadge from '../components/SharedTemplateBadge.jsx';
 
 /* Desktop/web already use this quiet chevron for category disclosure. Keep
@@ -595,7 +596,7 @@ function MoreMenu({ anchorRect, items, onClose }) {
 
   return createPortal(
     <>
-      <DismissBarrier insideRefs={[ref]} onDismiss={onClose} />
+      <DismissBarrier insideRefs={[ref]} onDismiss={onClose} menu />
       <div
         ref={ref}
         className="ed-tpl-menu"
@@ -2317,6 +2318,7 @@ export default function TemplatesEditor({
                       </div>
                       {tplEdit ? (
                         <span
+                          {...checkboxProps(isSel, () => toggleTplSel(t.id), `Select ${t.name}`)}
                           onClick={(e) => { e.stopPropagation(); toggleTplSel(t.id); }}
                           data-drag-keep-fill style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--rule-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 4 }}
                         >
@@ -2378,6 +2380,7 @@ export default function TemplatesEditor({
                     data-template-title
                     {...templateTitleField(tpl)}
                     title="Click to rename"
+                    aria-label="Template name"
                     aria-label="Template name"
                     onDoubleClick={(e) => e.currentTarget.select()}
                   />
@@ -2500,7 +2503,6 @@ export default function TemplatesEditor({
                       <div
                         data-drag-rearrange-row
                         className={`tpl-cat-row${open ? ' is-open' : ''}${catEdit ? ' is-selecting' : ''}${catEdit && isSel ? ' is-selected' : ''}`}
-                        aria-expanded={catEdit ? undefined : open}
                         onClick={() => { if (catEdit) toggleCatSel(c.id); else setOpenCat(open ? -1 : i); }}
                       >
                         <DragRearrangeHandle
@@ -2514,6 +2516,9 @@ export default function TemplatesEditor({
                           className="tpl-cat-chevron"
                           title={open ? 'Collapse' : 'Expand'}
                           aria-label={`${open ? 'Collapse' : 'Expand'} ${c.name}`}
+                          // KAL-66: the open/closed state belongs on this
+                          // button (the keyboard's way in), not the plain row div.
+                          aria-expanded={catEdit ? undefined : open}
                         ><CategoryDisclosureGlyph /></button>
                         <span className="hub-autowidth tpl-cat-name" data-value={c.name}>
                           <input
@@ -2546,7 +2551,8 @@ export default function TemplatesEditor({
                         {catEdit ? (
                           <span
                             className="tpl-cat-check"
-                            onClick={(e) => { e.stopPropagation(); toggleCatSel(c.id); }}
+                            {...checkboxProps(isSel, () => toggleCatSel(c.id), `Select ${c.name}`)}
+                          onClick={(e) => { e.stopPropagation(); toggleCatSel(c.id); }}
                             data-drag-keep-fill style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--rule-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           >
                             {isSel && <Icon name="check" size={10} color="var(--paper)" />}
@@ -2822,7 +2828,8 @@ export default function TemplatesEditor({
                           entityEdit ? (
                             <span
                               className="tpl-entity-check"
-                              onClick={(e) => { e.stopPropagation(); toggleEntitySel(r.id); }}
+                              {...checkboxProps(isSel, () => toggleEntitySel(r.id), `Select ${r.role}`)}
+                          onClick={(e) => { e.stopPropagation(); toggleEntitySel(r.id); }}
                               data-drag-keep-fill style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--rule-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
                             >
                               {isSel && <Icon name="check" size={10} color="var(--paper)" />}
@@ -3741,7 +3748,7 @@ export default function TemplatesEditor({
                           {...listeners}
                           isDragging={isDragging}
                         />
-                        <span onClick={() => toggleModSel(mod.id)} data-drag-keep-fill style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--border-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span {...checkboxProps(isSel, () => toggleModSel(mod.id), `Select ${mod.name}`)} onClick={() => toggleModSel(mod.id)} data-drag-keep-fill style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--border-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           {isSel && <Icon name="check" size={10} color="var(--accent-text)" />}
                         </span>
                         <input
