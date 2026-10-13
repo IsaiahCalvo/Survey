@@ -207,7 +207,7 @@
 
 .svg-annotations--hydrated {
   opacity: 1;
-  transition: opacity 220ms cubic-bezier(0, 0, 0.2, 1);
+  transition: opacity 220ms var(--ease-out);
 }
 
 /* The banner's action had no hover and no press (UX 2026-09-22). */

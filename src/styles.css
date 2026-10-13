@@ -1,4 +1,6 @@
 @import './styles/tokens.css';
+/* Shared menu / dialog / toast enter + exit on the motion tokens. */
+@import './styles/motion.css';
 /* tokens.css decides what a state looks like; states.css is what applies it to
    every control. Imported second so its rules sit after the token block. */
 @import './styles/states.css';

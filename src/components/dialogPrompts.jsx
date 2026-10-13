@@ -32,6 +32,7 @@ import { ConfirmModal } from '../home/BulkModals';
 import { closeButtonStyle } from '../home/hubControls';
 import { Icon } from '../home/HubShell';
 import { C } from '../uiPalette';
+import MotionPresence from './MotionPresence.jsx';
 
 // Literal hex colors mirror src/home/BulkModals.jsx: these overlays render
 // outside the `.survey-hub` root where the palette CSS variables aren't in
@@ -99,7 +100,8 @@ export function PromptModal({
     };
   }, [open, onCancel]);
 
-  if (!open) return null;
+  // Closed: MotionPresence plays the exit of the last open card (motion.css).
+  if (!open) return <MotionPresence open={false} />;
 
   const submit = () => { onSubmit?.(value); };
 
@@ -109,6 +111,7 @@ export function PromptModal({
   const onScrim = () => { if (value === defaultValue) onCancel?.(); };
 
   return (
+    <MotionPresence open>
     <div onClick={onScrim} style={overlay}>
       <div
         onClick={(e) => e.stopPropagation()}
@@ -156,6 +159,7 @@ export function PromptModal({
         </div>
       </div>
     </div>
+    </MotionPresence>
   );
 }
 

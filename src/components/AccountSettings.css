@@ -24,7 +24,7 @@
   align-items: center;
   justify-content: center;
   z-index: 10000;
-  animation: fadeIn 0.2s ease-out;
+  animation: sv-fade-in var(--motion-dialog) var(--ease-out); /* shared dialog scrim (motion.css) */
   padding: 20px;
   font-family: var(--font-ui);
 }
@@ -45,7 +45,7 @@
   flex-direction: column;
   border: 1px solid var(--border);
   box-shadow: var(--shadow-dialog);
-  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: sv-dialog-in var(--motion-dialog) var(--ease-out); /* shared dialog enter (motion.css) */
 }
 
 @keyframes fadeIn {

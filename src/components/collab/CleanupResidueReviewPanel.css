@@ -35,7 +35,7 @@
   justify-content: center;
 
   /* UX: 120ms ease-out fade-in matches ConfirmDeleteModal cadence. */
-  animation: cleanup-residue-review-fade-in 120ms cubic-bezier(0, 0, 0.2, 1);
+  animation: cleanup-residue-review-fade-in var(--motion-dialog) var(--ease-out);
 }
 
 @keyframes cleanup-residue-review-fade-in {

@@ -13,7 +13,7 @@
   align-items: center;
   justify-content: center;
   font-family: var(--font-ui);
-  animation: confirm-delete-modal-fade-in 120ms cubic-bezier(0, 0, 0.2, 1);
+  animation: confirm-delete-modal-fade-in var(--motion-dialog) var(--ease-out);
 }
 
 /* PHONE (owner report 2026-09-30, "toasts must never be hidden"): 1300 sat
