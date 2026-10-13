@@ -378,6 +378,10 @@ import './styles.css';
 import { installGlyphOnlyButtons } from './utils/glyphOnlyButtons';
 // No grey press box on any glyph-only button (see the module's note).
 if (typeof document !== 'undefined') installGlyphOnlyButtons();
+import { installStrayFileDropGuard } from './utils/fileDrop.js';
+// A file dropped where the app does not take it must never make the browser
+// or the Electron window leave the app to show that file (2026-10-13).
+if (typeof window !== 'undefined') installStrayFileDropGuard(window);
 
 // Suppress PDF.js "TT: undefined function" warnings
 // Suppress PDF.js "TT: undefined function" warnings

@@ -64,6 +64,8 @@ import { getLiveZoomViewerId, isLiveZoomEventForViewer, LIVE_ZOOM_EVENT } from '
 import { useAuth } from './contexts/AuthContext';
 import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import useStableHandler from './hooks/useStableHandler.js';
+import useFileDropZone from './hooks/useFileDropZone.js';
+import FileDropOverlay from './components/FileDropOverlay.jsx';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { useOptionalAuth } from './components/OptionalAuthPrompt';
 import { useStorage, useTemplates } from './hooks/useDatabase';
@@ -1696,6 +1698,19 @@ export default function App({ devPreviewReturnTab = null }) {
   const activeTab = tabs.find(t => t.id === activeTabId);
   const isViewerVisible = activeTab && !activeTab.isHome && selectedPDF && currentView === 'viewer';
   const isMobileViewer = Boolean(isNarrowShell && isViewerVisible);
+  // PDFs dragged in from the computer onto an open document (owner request
+  // 2026-10-13, as in Drawboard): uploaded the same way as the Upload button
+  // and each opened in a new tab. Anywhere over the viewer counts, the pages
+  // rail included (there is no "insert pages from a file" to compete with);
+  // a survey note's own photo drop still wins over its block. Desktop only:
+  // a phone cannot drag files in. On Home the Documents / Projects screens
+  // have their own drop zones.
+  const viewerDropAreaRef = useRef(null);
+  const { dropProps: viewerDropProps, overlay: viewerDropOverlay } = useFileDropZone({
+    enabled: Boolean(isViewerVisible && !isNarrowShell),
+    resolveTarget: () => ({ key: 'viewer', kind: 'viewer', el: viewerDropAreaRef.current }),
+    onDropFiles: (files) => dashboardRef.current?.uploadDroppedFiles?.(files, { open: true }),
+  });
 
   // w42 (2026-09-26, owner report from an 840px split view): the desktop tool
   // bar adapts to narrow windows instead of letting its settings run into
@@ -2219,7 +2234,8 @@ export default function App({ devPreviewReturnTab = null }) {
           Log handler dispatches. */}
       <MemoSaveLogBanner />
       <MemoToastHost />
-      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <FileDropOverlay overlay={viewerDropOverlay} />
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }} {...viewerDropProps}>
         {tabs.length > 0 && !isNarrowShell && ( // Desktop-only: mobile navigation lives inside the home/viewer chrome.
           <MemoTabBar
             tabs={tabs}
@@ -4202,7 +4218,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 />
               <div ref={setTextFormatRowEl} data-chrome-text-format-row="true" />
             </div>
-            <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative' }}>
+            <div ref={viewerDropAreaRef} style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative' }}>
             {/* Polish 3 (2026-10-04): the home screen stays mounted under an
                 open document (the viewer layer covers it), but it was still in
                 the Tab order - a keyboard user tabbed from the tool bar into

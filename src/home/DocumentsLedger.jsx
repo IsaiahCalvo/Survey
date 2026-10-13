@@ -21,6 +21,8 @@ import { useStorage } from '../hooks/useDatabase';
 import Spinner from '../components/Spinner';
 import DismissBarrier from '../components/DismissBarrier';
 import useModalFocusTrap from './useModalFocusTrap';
+import useFileDropZone from '../hooks/useFileDropZone';
+import FileDropOverlay from '../components/FileDropOverlay';
 
 const ledgerHeader = {
   background: 'var(--ink-700)',
@@ -108,6 +110,7 @@ export default function DocumentsLedger({
   onNav,
   onOpenDocument,
   onUpload,
+  onDropFiles,
   uploadBusy = false,
   onShare,
   onDuplicate,
@@ -200,6 +203,21 @@ export default function DocumentsLedger({
      time, in the order shown, only while this list is on screen. The
      sentinel below is how it knows: hidden hub → no client rects → paused. */
   const backfillHostRef = useRef(null);
+
+  // PDFs dragged in from the computer land in Documents, like the Upload
+  // button (owner request 2026-10-13). The outline goes round the list card.
+  const dropCardRef = useRef(null);
+  const { dropProps, overlay: dropOverlay } = useFileDropZone({
+    enabled: Boolean(onDropFiles),
+    resolveTarget: (event) => {
+      const card = dropCardRef.current;
+      const el = card && card.getClientRects().length > 0
+        ? card
+        : event.currentTarget.querySelector?.('main') || event.currentTarget;
+      return { key: 'documents', kind: 'documents', el, projectId: null };
+    },
+    onDropFiles: (files) => onDropFiles?.(files, { projectId: null }),
+  });
   const backfillDocs = useMemo(() => docs.map((d) => d.raw), [docs]);
   useThumbnailBackfill(backfillDocs, { downloadDocument, hostRef: backfillHostRef });
 
@@ -442,9 +460,10 @@ export default function DocumentsLedger({
       actions={actions}
       userName={user?.name || user?.email?.split('@')[0] || 'You'}
       templatesLocked={templatesLocked}
+      dropProps={dropProps}
     >
       <div className="documents-ledger-body" style={{ padding: '0 8px 8px 8px', flex: 1, minHeight: 0 }}>
-        <div className="card documents-desktop-card" style={{ display: 'grid', gridTemplateColumns: showPreview ? '2.2fr 1fr' : '1fr', height: '100%', overflow: 'hidden' }}>
+        <div ref={dropCardRef} className="card documents-desktop-card" style={{ display: 'grid', gridTemplateColumns: showPreview ? '2.2fr 1fr' : '1fr', height: '100%', overflow: 'hidden' }}>
           <div className="slim-scroll" style={{ overflow: 'auto', borderRight: showPreview ? '1px solid var(--ink-500)' : 0 }}>
             <div>
               <div style={{ ...ledgerHeader, display: 'grid', gridTemplateColumns: grid, position: 'sticky', top: 0, zIndex: 3 }}>
@@ -692,6 +711,7 @@ export default function DocumentsLedger({
         ) : null}
       </div>
     </HubShell>
+    <FileDropOverlay overlay={dropOverlay} />
     <MoveCopyModal
       open={moveOpen}
       initialMode={moveMode}

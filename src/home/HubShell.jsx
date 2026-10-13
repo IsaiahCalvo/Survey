@@ -449,7 +449,10 @@ const MobileRailNav = ({ mode, title, tab, navItems, onNav }) => {
 
 /* Sidebar + header frame. SurveyHub swaps complete tab shells atomically, so
    this component owns the shared viewport and chrome contract for each tab. */
-export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userName = 'You', userMeta = undefined, templatesLocked = false, mobileSwipeSurfaceRef = undefined }) => {
+// dropProps (optional): drag-and-drop handlers for PDFs dragged in from the
+// computer (useFileDropZone). They go on the whole home screen, so a file let
+// go over the side bar still lands where the overlay says.
+export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userName = 'You', userMeta = undefined, templatesLocked = false, mobileSwipeSurfaceRef = undefined, dropProps = undefined }) => {
   const expoNativeShell = isExpoNativeShell();
 
   // These classes define the mobile viewport itself. A passive effect can run
@@ -513,7 +516,7 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
   return (
     // The hub-tab-* class lets mobile CSS size the fixed header per tab
     // (Documents carries an extra select/bulk row; the others don't).
-    <div className={`survey-hub hub-tab-${tab} ${mobileNavMode === 'rail' ? 'hub-mobile-nav-rail' : ''} ${expoNativeShell ? 'hub-native-shell-expo' : ''}`}>
+    <div className={`survey-hub hub-tab-${tab} ${mobileNavMode === 'rail' ? 'hub-mobile-nav-rail' : ''} ${expoNativeShell ? 'hub-native-shell-expo' : ''}`} {...dropProps}>
       <div className="shell">
         <aside className="side">
           <div className="brand"><span className="brand-dot"></span>Survey</div>

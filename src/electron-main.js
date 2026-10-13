@@ -356,7 +356,16 @@ function createWindow() {
   win.webContents.on('will-navigate', (event, navigationUrl) => {
     try {
       const parsedUrl = new URL(navigationUrl);
-      
+
+      // 2026-10-13 (drag-and-drop upload): a file dragged onto the window must
+      // never replace the app with that file. The renderer already refuses
+      // stray drops (src/utils/fileDrop.js); this is the backstop. Only the
+      // app's own index.html may be navigated to over file://.
+      if (parsedUrl.protocol === 'file:' && !/\/dist\/index\.html$/.test(decodeURIComponent(parsedUrl.pathname))) {
+        event.preventDefault();
+        return;
+      }
+
       // Check if this is an OAuth callback (contains hash with access_token or code)
       if (parsedUrl.hash && (parsedUrl.hash.includes('access_token') || parsedUrl.hash.includes('code') || parsedUrl.hash.includes('error'))) {
         event.preventDefault();
