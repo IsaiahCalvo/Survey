@@ -3029,6 +3029,18 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                 <Icon name="download" size={16} color="currentColor" />
                 Export markup (XFDF)
               </button>
+              {/* KAL-410: marks, change log and page pictures in one ZIP. */}
+              <button
+                type="button"
+                disabled={!bottomToolbarApi?.exportReviewBundle}
+                onClick={() => {
+                  setMoreOpen(false);
+                  bottomToolbarApi?.exportReviewBundle?.();
+                }}
+              >
+                <Icon name="download" size={16} color="currentColor" />
+                Export review package
+              </button>
               {/* RULED 2026-09-22 (owner): "More = Export + Save log". Save log
                   used to be gated on window.Capacitor.isNativePlatform(), so the
                   menu on web mobile held ONE row and the ruling's second item

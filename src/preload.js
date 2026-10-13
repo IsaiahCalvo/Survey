@@ -128,6 +128,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('menu:export-xfdf', subscription);
     return () => ipcRenderer.removeListener('menu:export-xfdf', subscription);
   },
+  // KAL-410: File → Export review package (ZIP).
+  onExportReviewBundleMenu: (callback) => {
+    const subscription = () => callback();
+    ipcRenderer.on('menu:export-review-bundle', subscription);
+    return () => ipcRenderer.removeListener('menu:export-review-bundle', subscription);
+  },
   // KAL-444: Help > Keyboard Shortcuts opens the in-app shortcuts sheet.
   onKeyboardShortcutsMenu: (callback) => {
     const subscription = () => callback();

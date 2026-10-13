@@ -57,7 +57,7 @@ export async function buildXfdfFromAnnotatedPdf({ sourceBytes, annotatedBytes, p
   const sourceDoc = await PDFDocument.load(await toUint8(sourceBytes), loadOptions);
   const annotatedDoc = await PDFDocument.load(await toUint8(annotatedBytes), loadOptions);
   const context = annotatedDoc.context;
-  const summary = { written: 0, byElement: {}, skipped: 0, skippedBySubtype: {} };
+  const summary = { written: 0, byElement: {}, skipped: 0, skippedBySubtype: {}, pages: [] };
   const annotLines = [];
 
   annotatedDoc.getPages().forEach((page, pageIndex) => {
@@ -71,6 +71,7 @@ export async function buildXfdfFromAnnotatedPdf({ sourceBytes, annotatedBytes, p
         annotLines.push(result.xml);
         summary.written += 1;
         summary.byElement[result.element] = (summary.byElement[result.element] || 0) + 1;
+        if (!summary.pages.includes(pageIndex)) summary.pages.push(pageIndex);
       } else if (result.subtype !== 'Popup' && result.subtype !== 'Widget') {
         summary.skipped += 1;
         summary.skippedBySubtype[result.subtype] = (summary.skippedBySubtype[result.subtype] || 0) + 1;
@@ -140,9 +141,11 @@ export async function exportAnnotationsAsXfdf(sourcePdf, annotationsByPage, page
     actionType: 'xfdf-export',
   });
   if (!annotatedBytes) return null;
-  return buildXfdfFromAnnotatedPdf({
+  const built = await buildXfdfFromAnnotatedPdf({
     sourceBytes,
     annotatedBytes,
     pdfFileName: options.pdfFileName || sourcePdf?.name || 'document.pdf',
   });
+  // KAL-410: the review bundle reuses both byte sets (fingerprint, thumbnails).
+  return { ...built, sourceBytes, annotatedBytes: new Uint8Array(annotatedBytes) };
 }
