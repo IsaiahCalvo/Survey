@@ -30,6 +30,7 @@ import { getSupabaseSession, supabase } from './supabaseClient';
 import { isStorageFileNotFoundError, isSupabaseRowNotFoundError } from './utils/storageErrors';
 import { countSurveyMarkersReferencingChecklistItem } from './services/documentAnnotationService';
 import { computeContentSha256 } from './services/contentHash';
+import { cloneDocumentIntoProject, describeReusedCopies, isReusedCopy } from './home/cloneDocument.js';
 import { purgeAnnotationDoc } from './services/annotationDocSync';
 import { lockDocument, unlockDocument } from './services/documentLockService.js';
 import { resolveDocumentMetadata } from './services/documentMetadataResolver.js';
@@ -1946,47 +1947,28 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     }
   };
 
+  // KAL-443: a copy carries the real fingerprint of its bytes and goes through
+  // the same duplicate check as an upload (home/cloneDocument.js).
   const cloneDocumentToProject = async (doc, projectId = null, operation = null) => {
     const actualDoc = (allDocuments || []).find((candidate) => candidate.id === doc?.id) || doc;
-    const filePath = actualDoc?.file_path || actualDoc?.filePath;
-    if (!filePath) throw new Error(`Document "${actualDoc?.name || 'Untitled'}" has no stored PDF.`);
-    const blob = await downloadFromStorage(filePath);
-    const sourceName = actualDoc.name || 'Untitled.pdf';
-    const dot = sourceName.toLowerCase().lastIndexOf('.pdf');
-    const copyName = dot >= 0
-      ? `${sourceName.slice(0, dot)} (Copy)${sourceName.slice(dot)}`
-      : `${sourceName} (Copy)`;
-    const copyFile = new File([blob], copyName, { type: blob.type || 'application/pdf' });
-    // A batch copy supplies a stable UUID. The same key makes both the storage
-    // upload and documents insert idempotent after a committed-but-lost reply.
-    const stableCopyId = operation?.operationId || crypto.randomUUID();
-    const uploadedPath = await uploadToStorage(
-      copyFile,
+    return cloneDocumentIntoProject({
+      source: actualDoc,
       projectId,
-      undefined,
-      stableCopyId,
-    );
-    try {
-      return await createSupabaseDocument({
-        id: stableCopyId,
-        name: copyName,
-        file_path: uploadedPath,
-        file_size: blob.size,
-        page_count: actualDoc.page_count ?? null,
-        project_id: projectId,
-        archived: false,
-      });
-    } catch (error) {
-      // The row may have committed even though the response was lost. The
-      // batch compensator reconciles this stable candidate by id; never remove
-      // its bytes here based on the response alone.
-      error.recoveryValue = { id: stableCopyId, file_path: uploadedPath };
-      throw error;
-    }
+      operationId: operation?.operationId || null,
+      userId: user?.id || null,
+      download: downloadFromStorage,
+      upload: (file, objectPath) => uploadToStorage(file, projectId, undefined, null, { objectPath }),
+      removeObject: deleteFromStorage,
+      createDocument: createSupabaseDocument,
+      computeSha: computeContentSha256,
+    });
   };
 
   const rollbackClonedDocument = async (created) => {
     if (!created?.id) return;
+    // A copy that landed on a document already in the destination did not
+    // create it — undoing the copy must never delete that document.
+    if (isReusedCopy(created)) return;
     await deleteDocumentEverywhere({
       docId: created.id,
       filePath: created.file_path || created.filePath || null,
@@ -2020,7 +2002,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           null,
         );
       }
-      await runCompensatingBatch(
+      const copies = await runCompensatingBatch(
         list,
         (doc) => cloneDocumentToProject(
           doc,
@@ -2028,6 +2010,11 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         ),
         rollbackClonedDocument,
       );
+      const duplicateDestination = targetProjectId === undefined ? (list[0]?.project_id ?? null) : targetProjectId;
+      const alreadyThere = describeReusedCopies(copies, {
+        projectName: (projects || []).find((p) => p.id === duplicateDestination)?.name || null,
+      });
+      if (alreadyThere) showToast(alreadyThere, 'info');
       await refetchDocuments();
       await refetchAllDocuments();
       return true;
@@ -2187,7 +2174,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           return true;
         }
       }
-      await moveOrCopyDocumentsAtomically({
+      const moveCopyResults = await moveOrCopyDocumentsAtomically({
         documents: actualDocuments,
         projectId,
         mode,
@@ -2200,6 +2187,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         readDocument,
         onRecoveryChange: persistDocumentMoveCopyRecovery,
       });
+      if (mode === 'copy') {
+        const alreadyThere = describeReusedCopies(moveCopyResults, { projectName: targetProj.name || null });
+        if (alreadyThere) showToast(alreadyThere, 'info');
+      }
       await refetchProjects();
       await refetchDocuments();
       await refetchAllDocuments();
