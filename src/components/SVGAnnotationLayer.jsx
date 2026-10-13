@@ -87,6 +87,7 @@ import { useRotateHandleClick } from '../hooks/useRotateHandleClick.js';
 import { useSelectionMoveCursor } from '../hooks/useSelectionMoveCursor.js';
 import { DRAWN_CENTERED_STROKE_CONTRACT } from '../utils/shapeCommitGeometry.js';
 import { useSVGInteraction } from '../hooks/useSVGInteraction';
+import useInputModality from '../hooks/useInputModality.js';
 // Plan 14-03 Task 3 (CREATE-01 callout half): factory for constructing a
 // new callout from the click-drag creation gesture. types.js is the
 // PRESERVED Plan 14-01 shim (ARROWHEAD_STYLES + defaultCalloutStyle +
@@ -455,11 +456,8 @@ const hoverGlowStrokeInset = (obj) => {
 // On a mouse: the grabber + 4 px, min 20 (w63); 44 pt on a finger. The
 // polygon vertex grabber pioneered this in 2026-09-09 with a touch-only 44 pt
 // disc; the mouse now gets one too. Sizes live in utils/handleHitPad.js.
-const hasCoarsePointer = () => (
-  typeof window !== 'undefined'
-  && typeof window.matchMedia === 'function'
-  && window.matchMedia('(pointer: coarse)').matches
-);
+// Touch audit 2026-10-13: sized from the input IN USE (useInputModality: last
+// press / hover), not the primary pointer media — pen 32, finger 44.
 
 // w53: shared empty selection (stable identity keeps memo deps quiet).
 const EMPTY_SURVEY_MARKER_IDS = new Set();
@@ -2489,7 +2487,8 @@ const SVGAnnotationLayerBody = memo(({
   // magnet grow (polyDraftHitRadii); the drawn chrome does not change. The
   // same coarse flag gives the committed polygon's vertex grabbers an
   // invisible finger-sized hit disc so "drag one corner" works by touch.
-  const [isCoarsePointer, setIsCoarsePointer] = useState(hasCoarsePointer);
+  const inputKind = useInputModality();
+  const isCoarsePointer = inputKind !== 'mouse';
   // UX 2026-09-16: the transparent band painted along a mark so it can be
   // picked by clicking NEAR its outline rather than exactly on it. 12 on a
   // mouse (unchanged), 24 on a finger — a fingertip covers roughly 9 mm, and
@@ -2502,15 +2501,7 @@ const SVGAnnotationLayerBody = memo(({
   // that stroke is drawn in — never widened by zoom or by an enlarged mark's
   // scale. Hover, click-select and the Pan / tool hit test
   // (annotationHitTest.js) all read these same elements, so they agree.
-  const markHitBand = (inkWidth, unitsPerPx = inverseScale) => getMarkHitBandWidth({ inkWidth, unitsPerPx, isCoarsePointer });
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
-    const coarseQuery = window.matchMedia('(pointer: coarse)');
-    const update = () => setIsCoarsePointer(coarseQuery.matches);
-    update();
-    coarseQuery.addEventListener?.('change', update);
-    return () => coarseQuery.removeEventListener?.('change', update);
-  }, []);
+  const markHitBand = (inkWidth, unitsPerPx = inverseScale) => getMarkHitBandWidth({ inkWidth, unitsPerPx, inputKind });
   const polyDraftRadii = polyDraftHitRadii({ coarsePointer: isCoarsePointer });
   // Touch hit surfaces use the UNdampened inverse scale so they are truly
   // screen-constant (the drawn chrome above now is too). A sqrt dampening,
@@ -4776,7 +4767,7 @@ const SVGAnnotationLayerBody = memo(({
     // full pad is the right target.
     const calloutHitPad = (isSelected && showHandles)
       ? resolveHandleHitPadPageSize({
-        isCoarsePointer: isCoarsePointer,
+        inputKind,
         inverseScale: clampInverseScale(inverseScale),
         minPadPageUnits: calloutHandleR * 2,
       })
@@ -5027,9 +5018,9 @@ const SVGAnnotationLayerBody = memo(({
         )}
       </g>
     );
-    // isCoarsePointer sizes the invisible grabber pads (grabber + 4 px mouse / 44 pt
-    // finger), so a pointer-kind change has to rebuild the hit targets.
-  }, [isCoarsePointer]);
+    // inputKind sizes the invisible grabber pads (grabber + 4 px mouse / 32 pen /
+    // 44 pt finger), so a pointer-kind change has to rebuild the hit targets.
+  }, [inputKind]);
 
   // ---------------------------------------------------------------------------
   // Filter and render callout annotations
@@ -7751,7 +7742,7 @@ const SVGAnnotationLayerBody = memo(({
           // pad and the visible dot because this grabber captures the pointer
           // on whichever element was pressed.
           const counterHitPad = resolveHandleHitPadPageSize({
-            isCoarsePointer,
+            inputKind,
             inverseScale: clampInverseScale(inverseScale),
             minPadPageUnits: handleR * 2,
           });
@@ -8052,7 +8043,7 @@ const SVGAnnotationLayerBody = memo(({
           // grabber never fight over the same press.
           const lineHandleSpan = Math.hypot(ep.x2 - ep.x1, ep.y2 - ep.y1);
           const lineHitPad = resolveHandleHitPadPageSize({
-            isCoarsePointer,
+            inputKind,
             inverseScale: clampInverseScale(inverseScale),
             // Endpoint -> midpoint grabber is half the run, and that is the
             // closest neighbour either end has.
@@ -8226,7 +8217,7 @@ const SVGAnnotationLayerBody = memo(({
             }, Infinity)
             : Infinity;
           const vTouchHitR = resolveHandleHitPadPageSize({
-            isCoarsePointer,
+            inputKind,
             inverseScale: clampInverseScale(inverseScale),
             neighbourSpacingPageUnits: Number.isFinite(vNeighbourSpacing) ? vNeighbourSpacing : undefined,
             minPadPageUnits: vHandleR * 2,
