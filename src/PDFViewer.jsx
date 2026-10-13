@@ -99,6 +99,8 @@ import PdfjsRedactionMarkLayer from './components/PdfjsRedactionMarkLayer';
 import TextMarkupLinkLayer from './components/TextMarkupLinkLayer';
 import PdfjsFormLayer from './components/PdfjsFormLayer';
 import TextSelectionActionBar from './components/TextSelectionActionBar';
+import TextSelectionQuickMenu from './components/TextSelectionQuickMenu';
+import { copyTextSelection } from './utils/textSelectionQuickMenu.js';
 import ApplyRedactionsModal from './components/ApplyRedactionsModal';
 import OcrTextLayer from './components/OcrTextLayer';
 import SpaceRegionOverlay from './SpaceRegionOverlay';
@@ -32527,7 +32529,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     let timer = 0;
     const captureSoon = (event) => {
       const target = event?.target instanceof Element ? event.target : null;
-      if (target?.closest?.('[data-text-selection-action-bar], [data-annotation-color-picker]')) return;
+      if (target?.closest?.('[data-text-selection-action-bar], [data-text-selection-quick-menu], [data-annotation-color-picker]')) return;
       window.clearTimeout(timer);
       timer = window.setTimeout(capturePdfjsTextSelection, 0);
     };
@@ -32947,7 +32949,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         action: 'text-markup-delete',
         selectionGroupIds: toggleOff.removedSelectionGroupIds,
       });
-      if (committed) {
+      // KAL-240: the floating quick menu lets go of the range once its action
+      // lands, so the result shows without the blue selection over it.
+      if (committed && options.keepSelection === false) {
+        clearLiveTextSelection();
+      } else if (committed) {
         window.requestAnimationFrame(() => {
           restorePdfjsTextSelection(selection);
           capturePdfjsTextSelection();
@@ -32972,13 +32978,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         action: 'text-markup-create',
         selectionGroupId,
       });
-    if (committed) {
+    if (committed && options.keepSelection === false) {
+      clearLiveTextSelection();
+    } else if (committed) {
       window.requestAnimationFrame(() => {
         restorePdfjsTextSelection(selection);
         capturePdfjsTextSelection();
       });
     }
-  }, [activeTool, capturePdfjsTextSelection, commitTextMarkupDocumentTransaction, liveTextSelectionActionSelection, numPages, queuePermanentRedactionConfirmation, selectedTextMarkupActionSelection, textMarkupOverlapMode, textMarkupPaintByType, user?.id, selectedModuleId, activeRegionId, annotationSpaceId, spaces, isRegionOverlayEnabled]);
+  }, [activeTool, capturePdfjsTextSelection, clearLiveTextSelection, commitTextMarkupDocumentTransaction, liveTextSelectionActionSelection, numPages, queuePermanentRedactionConfirmation, selectedTextMarkupActionSelection, textMarkupOverlapMode, textMarkupPaintByType, user?.id, selectedModuleId, activeRegionId, annotationSpaceId, spaces, isRegionOverlayEnabled]);
+
+  // KAL-240: the floating quick menu's two entry points. Its marks run the
+  // same handler as the docked bar; Copy copies the selected PDF text.
+  const handleTextSelectionQuickAction = useCallback((action) => (
+    handleTextSelectionAction(action, { keepSelection: false })
+  ), [handleTextSelectionAction]);
+  const handleTextSelectionCopy = useCallback(async (selection) => {
+    const copied = await copyTextSelection(selection?.text);
+    showToast(copied ? 'Copied' : 'Could not copy the text.', copied ? 'success' : 'error');
+  }, []);
 
   const isImportedSelectDeleteOnlyTextMarkupSelection = useCallback((pageNumber, selectedId, selectedType) => {
     if (!selectedId) return false;
@@ -40961,6 +40979,15 @@ ${pageBlocks}
         />,
         document.getElementById('chrome-sub-toolbar-host'),
       )}
+      <TextSelectionQuickMenu
+        selection={activeTool === 'text-select' && !selectedTextMarkupActionSelection && !showAnnotationColorPicker && !textLinkEditorOpen
+          ? liveTextSelectionActionSelection
+          : null}
+        activeMarkupTypes={liveTextSelectionActionSelection?.activeMarkupTypes || []}
+        paintByMark={textMarkupPaintByType}
+        onAction={handleTextSelectionQuickAction}
+        onCopy={handleTextSelectionCopy}
+      />
       <UndoToast toast={undoToast} onDismiss={dismissUndoToast} />
 
       {/* Renderer toggle badge (hidden dev tool — Ctrl+Shift+V to toggle, ?renderer=canvas to force) */}
