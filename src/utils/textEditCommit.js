@@ -113,6 +113,15 @@ const applyTextStyle = (json, style = {}) => {
  * Height is always naturalInnerHeight + 2*TEXT_PADDING (outer).
  * left/top are the OUTER border corner in page space.
  *
+ * KAL-397 ("Fit text boxes to their text", textboxAutoFitPreference.js):
+ *  - autoFit true (the setting's default, and the behavior above): the box
+ *    fits its text and carries data.autoFit so later edits keep fitting it
+ *    until a hand resize;
+ *  - autoFit false and the box was DRAGGED out (`drawn`): the box keeps the
+ *    width the user drew (no single-line hug) and at least the drawn height
+ *    (`drawnOuterHeight`, outer). A click-made box has no drawn size, so it
+ *    still fits its text.
+ *
  * Returns null for blank text — matching the fabric path's discard branch.
  */
 export function buildNewTextCommitJSON({
@@ -136,12 +145,20 @@ export function buildNewTextCommitJSON({
   // box is drawn - the new text box's border is then the house revision cloud
   // (data.pdfCloudIntensity, the field clouded shapes use). null = plain.
   cloudIntensity = null,
+  autoFit = true,
+  drawn = false,
+  drawnOuterHeight = null,
 }) {
   if (!text || String(text).trim() === '') return null;
   const pad = TEXT_PADDING;
-  const width = (lineCount <= 1 && maxLineWidth > 0)
+  const keepDrawnSize = !autoFit && drawn;
+  const width = (!keepDrawnSize && lineCount <= 1 && maxLineWidth > 0)
     ? Math.ceil(maxLineWidth + 2) + 2 * pad
     : (Number(innerWrapWidth) || 0) + 2 * pad;
+  const naturalOuterHeight = (Number(naturalInnerHeight) || 0) + 2 * pad;
+  const height = keepDrawnSize && Number(drawnOuterHeight) > naturalOuterHeight
+    ? Number(drawnOuterHeight)
+    : naturalOuterHeight;
 
   const json = {
     ...FABRIC_TEXTBOX_ENVELOPE,
@@ -149,7 +166,7 @@ export function buildNewTextCommitJSON({
     left: Number(left) || 0,
     top: Number(top) || 0,
     width,
-    height: (Number(naturalInnerHeight) || 0) + 2 * pad,
+    height,
     fill,
     stroke,
     strokeWidth,
@@ -167,6 +184,10 @@ export function buildNewTextCommitJSON({
   if (cloudIntensity != null && Number.isFinite(cloud)) {
     json.data = { ...(json.data || {}), pdfCloudIntensity: Math.max(1, cloud) };
   }
+  // autoFitWidth: the wrap width the box was typed at (outer). A later edit
+  // types at this width again, so a box that hugged one short word can grow
+  // back out to it instead of wrapping one letter per line.
+  if (autoFit) json.data = { ...(json.data || {}), autoFit: true, autoFitWidth: (Number(innerWrapWidth) || 0) + 2 * pad };
   applyScope(json, { selectedModuleId, stampRegionId, activeRegionId });
   ensureTextAnnotationId(json, 'Textbox');
   return json;
@@ -186,6 +207,16 @@ export function buildNewTextCommitJSON({
  *  - rotated boxes keep their ROTATED top-left corner fixed when height
  *    changes (same trig compensation the fabric path applied).
  *
+ * KAL-397: with the "Fit text boxes to their text" setting On, a plain text
+ * box that still carries data.autoFit (made while the setting was On and
+ * never resized by hand) fits its text again: the height follows the text
+ * (it may shrink), and an unrotated one-line box hugs its line like a new
+ * box does. The editor types such a box at its fit width (`wrapOuterWidth`,
+ * data.autoFitWidth — the width it was first typed at), so the width follows
+ * the same rule as a new box: one line hugs its text, wrapped text uses the
+ * fit width. A rotated box only re-fits its height. Callouts never re-fit
+ * (their box is laid out against the leader).
+ *
  * Returns null if `original` is missing.
  */
 export function buildExistingTextCommitJSON({
@@ -194,6 +225,10 @@ export function buildExistingTextCommitJSON({
   naturalInnerHeight,
   isCallout = false,
   style = {},
+  autoFit = false,
+  maxLineWidth = 0,
+  lineCount = 1,
+  wrapOuterWidth = null,
 }) {
   if (!original || typeof original !== 'object') return null;
   const pad = TEXT_PADDING;
@@ -208,6 +243,15 @@ export function buildExistingTextCommitJSON({
   json.text = String(text ?? '');
   json.width = origW;
   json.height = Math.max((Number(naturalInnerHeight) || 0) + 2 * padY, origH);
+  const refit = autoFit && !isCallout && original?.data?.autoFit === true && Number(naturalInnerHeight) > 0;
+  if (refit) {
+    json.height = (Number(naturalInnerHeight) || 0) + 2 * padY;
+    if ((Number(original.angle) || 0) === 0) {
+      const wrapW = Number(wrapOuterWidth) > 0 ? Number(wrapOuterWidth) : origW;
+      const hug = Math.ceil(Number(maxLineWidth) + 2) + 2 * pad;
+      json.width = (lineCount <= 1 && maxLineWidth > 0 && hug < wrapW) ? hug : wrapW;
+    }
+  }
   json.scaleX = 1;
   json.scaleY = 1;
   applyTextStyle(json, style);

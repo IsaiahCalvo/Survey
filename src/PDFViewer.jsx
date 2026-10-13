@@ -37009,6 +37009,8 @@ ${pageBlocks}
                                       isNewText: true,
                                       clickPosition: { x, y },
                                       textBoxWidth: isDrag ? dx / effectiveScale : undefined,
+                                      // KAL-397: kept when "Fit text boxes to their text" is Off.
+                                      textBoxHeight: isDrag ? dy / effectiveScale : undefined,
                                     });
                                   }}
                                 >
@@ -37325,6 +37327,7 @@ ${pageBlocks}
                                   // selecting the whole string (Drawboard parity).
                                   caretAnchor={editingAnnotation.caretAnchor || null}
                                   textBoxWidth={editingAnnotation.textBoxWidth}
+                                  textBoxHeight={editingAnnotation.textBoxHeight}
                                   newTextStyle={mobileMode ? textStyleDefaults : null}
                                   newTextCloudIntensity={lineBorderStyle === 'cloud' ? Math.max(1, Number(cloudIntensity) || 2) : null}
                                   authorId={user?.id ?? null}

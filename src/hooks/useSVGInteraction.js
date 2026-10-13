@@ -150,6 +150,7 @@ import {
 import { resolveTextDoubleClick } from '../utils/selectModes.js';
 import { useCrossPageMove } from './useCrossPageMove.js';
 import { isTextLikeAnnotation } from '../utils/toolPressRouting.js';
+import { clearAutoFitFlag } from '../utils/textboxAutoFitPreference.js';
 
 const cloneAnnotations = (annotations) => deepClone(annotations);
 
@@ -4290,6 +4291,11 @@ export function useSVGInteraction({
         ? mergeDraggedMarksOntoPage(annotations, ds.currentAnnotations, ds.startObjects)
         : null;
       if (merged) {
+        // KAL-397: a group resize is a hand resize too — each resized text
+        // box keeps its new size on later edits (only text carries the flag).
+        if (ds.mode === 'group-resize') {
+          for (const index of merged.indexes || []) clearAutoFitFlag(merged.annotations?.objects?.[index]);
+        }
         roundCommittedAnnotationsGeometry(merged.annotations, merged.indexes);
         onSaveAnnotations(merged.annotations, {
           source: 'object:modified',
@@ -4626,9 +4632,10 @@ export function useSVGInteraction({
         } else if (objType === 'textbox' || objType === 'i-text' || objType === 'text') {
           // Text: absorb scale into width/height so text reflows instead of stretching.
           // Honor the user's chosen size — do NOT re-tighten to fit current text.
-          // If the user resized the box oversized, that was deliberate. A future
-          // per-annotation "auto-fit on commit" setting will reintroduce tightening
-          // as an opt-in behavior (see FEATURE-BACKLOG.md).
+          // If the user resized the box oversized, that was deliberate.
+          // KAL-397: the hand resize also ends "Fit text boxes to their text"
+          // for this box (data.autoFit off), so later edits keep this size.
+          clearAutoFitFlag(obj);
           // Note: text does not support flip (scale is clamped positive upstream)
           // so the ratio below is always positive.
           obj.width = (obj.width || 100) * (newScaleX / (ds.originalProps.scaleX || 1));

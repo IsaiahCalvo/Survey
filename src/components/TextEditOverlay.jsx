@@ -48,6 +48,7 @@ import { resolveCaretAnchorPoint } from '../utils/doubleTapEditEntry.js';
 import Icon from '../Icons';
 import { registerLightPopover } from './dismissRules.js';
 import { mergeEditOntoCurrent } from '../utils/dragCommitMerge.js';
+import { readTextboxAutoFit, autoFitEditWidth } from '../utils/textboxAutoFitPreference.js';
 import {
   PAGE_CONTROL_GAP_PX,
   PAGE_CONTROL_EDGE_MARGIN_PX,
@@ -268,6 +269,9 @@ export default function TextEditOverlay({
   // button, new-text creation), which keeps the old select-all.
   caretAnchor = null,
   textBoxWidth,
+  // KAL-397: the height of a dragged-out new box (page units); kept when
+  // "Fit text boxes to their text" is Off. Undefined for a click.
+  textBoxHeight,
   newTextStyle = null,
   strokeColor,
   authorId = null,
@@ -305,6 +309,11 @@ export default function TextEditOverlay({
   // Read at the moment of drawing: the box keeps the style it was drawn with.
   const newTextCloudIntensityRef = useRef(isNewText ? newTextCloudIntensity : null);
   const geomRef = useRef(null);
+  // KAL-397: "Fit text boxes to their text", read once per edit so the box
+  // the user sees while typing and the box that is saved follow one setting.
+  const autoFitRef = useRef(null);
+  if (autoFitRef.current === null) autoFitRef.current = readTextboxAutoFit();
+  const drawnNewBox = isNewText && Number(textBoxWidth) > 0;
   if (styleRef.current === null) {
     const src = annotationData || {};
     originalRef.current = annotationData ? deepClone(annotationData) : null;
@@ -346,13 +355,19 @@ export default function TextEditOverlay({
         left: clickPosition?.x ?? 0,
         top: clickPosition?.y ?? 0,
         outerW: Math.max(8 + 2 * pad, textBoxWidth || 160),
-        outerH: (Number(newTextStyle?.fontSize) || 16) * 1.16 * 1.13 + 2 * pad,
+        // Off + dragged out: the box opens at the height that was drawn.
+        outerH: Math.max(
+          (Number(newTextStyle?.fontSize) || 16) * 1.16 * 1.13 + 2 * pad,
+          (!autoFitRef.current && drawnNewBox && Number(textBoxHeight) > 0) ? Number(textBoxHeight) : 0,
+        ),
         angle: 0,
       }
       : {
         left: Number(src.left) || 0,
         top: Number(src.top) || 0,
-        outerW: (Number(src.width) || 0) * scaleX,
+        // KAL-397: a box that still fits its text is typed at its fit width
+        // (like a new box), so it can widen again instead of wrapping.
+        outerW: (autoFitRef.current && !isCallout && autoFitEditWidth(src)) || (Number(src.width) || 0) * scaleX,
         outerH: (Number(src.height) || 0) * scaleY,
         angle: Number(src.angle) || 0,
       };
@@ -606,6 +621,9 @@ export default function TextEditOverlay({
         stroke: s.stroke || '#000000',
         strokeWidth: s.strokeWidth ?? 1,
         cloudIntensity: newTextCloudIntensityRef.current,
+        autoFit: autoFitRef.current,
+        drawn: drawnNewBox,
+        drawnOuterHeight: g.outerH,
         selectedModuleId,
         stampRegionId: shouldStampActiveRegionId({
           regionId: activeRegionId,
@@ -623,12 +641,17 @@ export default function TextEditOverlay({
       }
       json = stampAnnotationCreationIdentity(json, { authorId });
     } else {
+      const perLine = s.fontSize * s.lineHeight * 1.13;
       json = buildExistingTextCommitJSON({
         original: originalRef.current,
         text,
         naturalInnerHeight: naturalInnerH,
         isCallout,
         style: s,
+        autoFit: autoFitRef.current,
+        maxLineWidth: measureLineWidth(text, s),
+        lineCount: Math.max(text.split('\n').length, perLine > 0 ? Math.round(naturalInnerH / perLine) : 1),
+        wrapOuterWidth: g.outerW,
       });
       if (!json) {
         if (typeof onEditCancel === 'function') onEditCancel();
