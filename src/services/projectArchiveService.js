@@ -20,7 +20,7 @@ import { supabase } from '../supabaseClient';
 import { pdfByteCache } from './pdfByteCache.js';
 import { purgeAnnotationDoc } from './annotationDocSync';
 import { normalizeProjectItem } from './archiveContract';
-import { purgeWithSurveyMedia } from './surveyMediaPurge.js';
+import { purgeWithSurveyMedia, survivingDocumentsFinder } from './surveyMediaPurge.js';
 
 const PROJECT_ARCHIVE_COLUMNS =
   'id, user_id, name, user_archived_at, user_archive_expires_at, user_archived_by, archive_group_id';
@@ -93,11 +93,13 @@ export async function deleteProjectForever(projectId) {
     .not('user_archived_at', 'is', null);
   const childIds = (childRows || []).map((row) => row.id);
 
-  // Survey media of the documents this user owns goes FIRST, while the rows
-  // still exist (surveyMediaPurge.js); leftovers are queued for a retry.
+  // Survey media of the purged (archived) children is cleaned up only AFTER the
+  // purge has succeeded (surveyMediaPurge.js): this user's own uploads now,
+  // everyone else's by the server sweep (list_orphaned_survey_media).
   const result = await purgeWithSurveyMedia({
     documents: childRows || [],
     purge: () => callArchiveRpc('purge_archived_project', { p_project_id: projectId }),
+    findSurvivingDocuments: survivingDocumentsFinder(supabase),
   });
   if (!result.success) return result;
 
