@@ -20,6 +20,7 @@ import { mergeEditOntoCurrent } from './utils/dragCommitMerge.js';
 import { countSpaceCascadeImpact, isSpaceScopedEntry, resolveSpaceCascadeScope } from './utils/spaceCascadeImpact.js';
 import { EMBEDDED_IMPORT_INCOMPLETE_KEY, EMBEDDED_IMPORT_MARKER_KEY, embeddedImportDecision, embeddedImportFailedPages, embeddedImportMarkerDecision, selectEmbeddedImportObjects } from './utils/embeddedImportGate.js';
 import { READ_ONLY_BLOCKED_KEYS } from './utils/toolShortcuts.js';
+import { viewerPageKeyAction } from './utils/viewerPageKeys.js';
 import { sanitizeTemplateConfig } from './utils/templateConfig.js';
 import useSharedDocumentTemplates from './hooks/useSharedDocumentTemplates.js';
 import { migrateSidebarData } from './utils/sidebarPersistence.js';
@@ -26592,6 +26593,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
       }
 
+      // KAL-444: Home / End / Page Up / Page Down turn pages even when focus
+      // is not in the page scroller (fresh open, a toolbar button). Where the
+      // browser already scrolls the focused box, it keeps the key
+      // (src/utils/viewerPageKeys.js has the whole rule). Only the tab on
+      // screen acts: hidden tabs and Home keep their own keys.
+      const pageKeyAction = isActive !== false ? viewerPageKeyAction(e, activeElement) : null;
+      if (pageKeyAction) {
+        e.preventDefault();
+        if (pageKeyAction === 'first') goToPage(1, { fallback: 'next' });
+        else if (pageKeyAction === 'last') goToPage(numPages, { fallback: 'previous' });
+        else if (pageKeyAction === 'previous') goToPreviousPage();
+        else goToNextPage();
+        return;
+      }
+
       if (scrollMode === 'single') {
         if (e.key === 'ArrowLeft') {
           goToPreviousPage();
@@ -26603,7 +26619,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [goToNextPage, goToPreviousPage, scrollMode, zoomIn, zoomOut, handleSaveDocument, activeTool, setEraserMode, eraserMode, clipboardAnnotation, clipboardCallout, handlePasteCallout]);
+  }, [goToNextPage, goToPreviousPage, goToPage, numPages, isActive, scrollMode, zoomIn, zoomOut, handleSaveDocument, activeTool, setEraserMode, eraserMode, clipboardAnnotation, clipboardCallout, handlePasteCallout]);
 
   // Electron: listen for pdf-zoom custom events forwarded from main process
   // (Ctrl/Cmd+Plus/Minus are intercepted by electron-main.js to prevent UI zoom)

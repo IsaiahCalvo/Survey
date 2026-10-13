@@ -4766,11 +4766,12 @@ export default function App({ devPreviewReturnTab = null }) {
         onDismiss={!authPromptDismissed ? handleDismiss : null}
       />
 
-      {/* UX 2026-05-13: KeyboardShortcutsOverlay only renders on the home tab.
-          On the PDF viewer it was covering the zoom / page-fit controls in the
-          bottom-right after the status bar was removed. The '?' modal still
-          works on the home tab; on the viewer the screen stays clean. */}
-      {!isViewerVisible && <KeyboardShortcutsOverlay />}
+      {/* KAL-444: the shortcuts sheet renders on Home AND in the viewer, where
+          every key it lists acts. (UX 2026-05-13 kept it off the viewer because
+          its floating "Press ?" hint covered the zoom controls; that hint is
+          gone, and the sheet draws nothing until it is opened.) "?" is ignored
+          while typing in a text field; the viewer's left rail has a button. */}
+      <KeyboardShortcutsOverlay />
     </TooltipContext.Provider>
   );
 }

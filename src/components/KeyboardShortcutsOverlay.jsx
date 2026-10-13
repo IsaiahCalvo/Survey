@@ -2,7 +2,9 @@
  * KeyboardShortcutsOverlay.jsx — self-toggling keyboard-shortcuts reference modal.
  *
  * Default-exports the KeyboardShortcutsOverlay component: holds its own open state,
- * toggled by '?' and closed by Escape (via useKeyPress). When open, renders an
+ * toggled by '?' (never while typing in a text field — KAL-444) or opened by the
+ * OPEN_KEYBOARD_SHORTCUTS_EVENT a visible button sends, and closed by Escape
+ * (via the focus trap). Mounted on Home AND in the viewer. When open, renders an
  * overlay listing shortcuts grouped by Navigation/Actions/Interface, with the Find
  * modifier shown as ⌘ on Mac and Ctrl elsewhere. Stops wheel/touch events from
  * reaching the PDF handler so the list scrolls natively. Renders null when closed.
@@ -10,7 +12,7 @@
 import React from 'react';
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 import Icon from '../Icons';
-import { useKeyPress } from '../utils/hooks';
+import { OPEN_KEYBOARD_SHORTCUTS_EVENT, shouldToggleShortcutsSheet } from '../utils/keyboardShortcutsSheet';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { TOOL_SHORTCUTS } from '../utils/toolShortcuts';
 
@@ -22,9 +24,25 @@ const KeyboardShortcutsOverlay = () => {
   const [isOpen, setIsOpen] = React.useState(false);
   const modalContentRef = React.useRef(null);
 
-  useKeyPress('?', () => {
-    setIsOpen((prev) => !prev);
-  });
+  // KAL-444: '?' toggles the sheet only when the user is not typing. Inside a
+  // document a question mark typed into a text box, the Survey panel or search
+  // is text and must stay text. A button elsewhere (the viewer's left rail)
+  // opens the sheet through OPEN_KEYBOARD_SHORTCUTS_EVENT, for people who do
+  // not know the shortcut for the shortcuts.
+  React.useEffect(() => {
+    const onKeyDown = (event) => {
+      if (!shouldToggleShortcutsSheet(event, document.activeElement)) return;
+      event.preventDefault();
+      setIsOpen((prev) => !prev);
+    };
+    const onOpen = () => setIsOpen(true);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener(OPEN_KEYBOARD_SHORTCUTS_EVENT, onOpen);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener(OPEN_KEYBOARD_SHORTCUTS_EVENT, onOpen);
+    };
+  }, []);
 
   // Accessibility: Tab stays inside the overlay, Escape closes it (this replaces
   // the old useKeyPress('Escape') — the trap listens in the capture phase so it
@@ -39,23 +57,39 @@ const KeyboardShortcutsOverlay = () => {
   }
 
   const isMac = typeof navigator !== 'undefined' && /(Mac|iPhone|iPod|iPad)/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
-  const findShortcutModifier = isMac ? '⌘' : 'Ctrl';
+  const mod = isMac ? '⌘' : 'Ctrl';
+  // Ctrl/Cmd+O is wired only by the desktop app's File menu (Dashboard listens
+  // for it through electronAPI.onOpenPdfMenu).
+  const hasDesktopOpenKey = typeof window !== 'undefined' && typeof window.electronAPI?.onOpenPdfMenu === 'function';
 
   const shortcuts = [
+    // KAL-444 (2026-10-13): every row below was pressed in the viewer. Rows
+    // that did nothing there were dropped or reworded, the same rule as the
+    // "B" row (polish round 6): the sheet only lists keys that work.
+    //   - Left/Right arrows: they only turn pages in single-page scroll mode,
+    //     which the viewer never uses (continuous is enforced), and in the
+    //     viewer the arrows nudge a selected mark. Page Up/Down is listed.
+    //   - Home/End/PgUp/PgDn only worked once the page scroller had focus;
+    //     src/utils/viewerPageKeys.js now turns pages from anywhere.
+    //   - Ctrl+W / Ctrl+Tab / Ctrl+Shift+Tab: no handler exists anywhere, and
+    //     browsers keep these keys for their own tabs. Adding real tab keys is
+    //     an owner call.
+    //   - Zoom keys accept Cmd or Ctrl, so they show the platform's key, and
+    //     "Reset zoom" is really fit page (Ctrl+1 is fit width).
+    //   - Open document is a desktop-app menu key (electron-main.js); in a
+    //     browser Ctrl+O belongs to the browser, so the row shows only there.
     { category: 'Navigation', items: [
-      { keys: ['←', '→'], description: 'Previous/Next page' },
+      { keys: ['PgUp', 'PgDn'], joiner: '/', description: 'Previous/Next page' },
       { keys: ['Home'], description: 'First page' },
       { keys: ['End'], description: 'Last page' },
-      { keys: ['Ctrl', '+'], description: 'Zoom in' },
-      { keys: ['Ctrl', '-'], description: 'Zoom out' },
-      { keys: ['Ctrl', '0'], description: 'Reset zoom' },
+      { keys: [mod, '+'], description: 'Zoom in' },
+      { keys: [mod, '-'], description: 'Zoom out' },
+      { keys: [mod, '0'], description: 'Fit page' },
+      { keys: [mod, '1'], description: 'Fit width' },
     ]},
     { category: 'Actions', items: [
-      { keys: ['Ctrl', 'O'], description: 'Open document' },
-      { keys: ['Ctrl', 'W'], description: 'Close tab' },
-      { keys: ['Ctrl', 'Tab'], description: 'Next tab' },
-      { keys: ['Ctrl', 'Shift', 'Tab'], description: 'Previous tab' },
-      { keys: [findShortcutModifier, 'F'], description: 'Search text' },
+      ...(hasDesktopOpenKey ? [{ keys: [mod, 'O'], description: 'Open document' }] : []),
+      { keys: [mod, 'F'], description: 'Search text' },
     ]},
     // KAL-239: the tool keys were never listed here, so text selection (Shift+V)
     // would have been undiscoverable from the keyboard. Intended UX: every
@@ -82,7 +116,9 @@ const KeyboardShortcutsOverlay = () => {
     // UX: these keys act during a lasso, so list them by result instead of
     // hiding them under the main tool shortcut.
     { category: 'Lasso Select', items: [
-      { keys: ['Space'], description: 'Cycle Window, Crossing, and Fence' },
+      // Space flips Window and Crossing only (useSVGInteraction.js: "Space
+      // matches rectangle selection"); Fence is reached from the touch bar.
+      { keys: ['Space'], description: 'Switch between Window and Crossing' },
       { keys: ['Shift'], description: 'Add hits to the selection' },
       { keys: ['Alt'], description: 'Remove hits from the selection' },
     ]},
@@ -120,8 +156,9 @@ const KeyboardShortcutsOverlay = () => {
           background: COLORS.background.secondary,
           borderRadius: BORDERS.radius.dialog,
           padding: '32px',
-          maxWidth: '700px',
+          maxWidth: 'calc(100vw - 32px)',
           width: '420px',
+          boxSizing: 'border-box',
           maxHeight: '80vh',
           overflow: 'auto',
           boxShadow: SHADOWS.xl,
@@ -238,7 +275,7 @@ const KeyboardShortcutsOverlay = () => {
                                 margin: '0 2px',
                               }}
                             >
-                              +
+                              {item.joiner || '+'}
                             </span>
                           )}
                           <kbd
