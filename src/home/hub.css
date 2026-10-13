@@ -828,8 +828,12 @@
     overscroll-behavior: none;
   }
 
+  /* Not the tab strip's dialog layer (AppShell [data-tab-strip-dialogs]): it
+     is an empty wrapper beside the app, and at full height it pushed the
+     whole viewer below the phone screen and sat over it (found 2026-10-13
+     while checking the page glide on a 390x844 phone). */
   #root.survey-hub-native-root,
-  #root.survey-hub-native-root > div {
+  #root.survey-hub-native-root > div:not([data-tab-strip-dialogs]) {
     height: 100% !important;
     min-height: 0 !important;
     overflow: hidden !important;
@@ -858,7 +862,7 @@
   }
 
   #root.survey-hub-mobile-scroll-root,
-  #root.survey-hub-mobile-scroll-root > div {
+  #root.survey-hub-mobile-scroll-root > div:not([data-tab-strip-dialogs]) {
     height: 100% !important;
     min-height: 0 !important;
     overflow: hidden !important;

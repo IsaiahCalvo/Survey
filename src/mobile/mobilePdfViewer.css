@@ -215,7 +215,9 @@ html.survey-viewer-open #root {
   html.survey-viewer-open,
   html.survey-viewer-open body,
   html.survey-viewer-open #root,
-  html.survey-viewer-open #root > div {
+  /* Not the tab strip's empty dialog layer (AppShell [data-tab-strip-dialogs]):
+     at full height it pushed the viewer off the phone screen (hub.css too). */
+  html.survey-viewer-open #root > div:not([data-tab-strip-dialogs]) {
     height: 100dvh !important;
     min-height: 0 !important;
     overflow: hidden !important;
