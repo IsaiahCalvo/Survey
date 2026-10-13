@@ -165,3 +165,14 @@ test('the tab strip wiring: one guarded close path, no page-drop stub, restore w
   assert.match(tabBar, /onAuxClick=/);
   assert.match(tabBar, /onContextMenu=/);
 });
+
+test('the tab-strip dialog host stays out of the page flow (phone viewer not pushed off screen)', () => {
+  // Found 2026-10-13: in-flow, the phone frame rule (#root.survey-hub-native-root
+  // > div { height: 100% }) made this empty host a full screen tall and pushed
+  // the whole phone viewer below the screen in the Expo shell.
+  const src = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
+  const host = /<div data-tab-strip-dialogs="" style=\{\{([^}]*)\}\}>/.exec(src);
+  assert.ok(host, 'tab-strip dialog host found');
+  assert.match(host[1], /position: 'absolute'/);
+  assert.match(host[1], /width: 0/);
+});
