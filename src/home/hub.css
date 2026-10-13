@@ -829,7 +829,7 @@
   }
 
   #root.survey-hub-native-root,
-  #root.survey-hub-native-root > div {
+  #root.survey-hub-native-root > div:not([data-tab-strip-dialogs]) {
     height: 100% !important;
     min-height: 0 !important;
     overflow: hidden !important;
@@ -857,8 +857,11 @@
     overscroll-behavior: none;
   }
 
+  /* The App's frame is the full-height child. The tab strip's dialog layer
+     (data-tab-strip-dialogs, a sibling before the frame) must stay zero
+     height, or it pushes the open document a whole screen down on the phone. */
   #root.survey-hub-mobile-scroll-root,
-  #root.survey-hub-mobile-scroll-root > div {
+  #root.survey-hub-mobile-scroll-root > div:not([data-tab-strip-dialogs]) {
     height: 100% !important;
     min-height: 0 !important;
     overflow: hidden !important;
