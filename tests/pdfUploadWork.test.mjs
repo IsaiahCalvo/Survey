@@ -109,6 +109,10 @@ test('real dashboard batch keeps failed uploads in their slot until parser clean
       return `owner/${file.name}`;
     },
     newProject: { id: 'project-1' },
+    // #812: each file is stored at its row's own object, <user>/<row id>.pdf.
+    user: { id: 'owner' },
+    ownDocumentObjectPath: (userId, documentId) => `${userId}/${documentId}.pdf`,
+    deleteFromStorage: async () => {},
     createSupabaseDocument: async data => ({ id: data.name, ...data }),
     updateSupabaseDocument: async () => {},
     console: { error() {}, warn() {} },
