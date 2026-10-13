@@ -62,7 +62,7 @@ const serializeError = (error) => {
   };
 };
 
-const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOpenStart, onDocumentOpenEnd, onBack, documents, setDocuments, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal, entities, setEntities }, ref) {
+const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOpenStart, onDocumentOpenEnd, onBack, documents, setDocuments, onLibraryUserChange = null, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal, entities, setEntities }, ref) {
   const fileInputRef = useRef();
   const projectFileInputRef = useRef();
   // Destination project for the next browser-input upload. The browser file
@@ -504,7 +504,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       );
       return [...tempDocs, ...formattedDocs];
     });
-  }, [supabaseDocuments]);
+    // Whose library this is (the open-tabs restore waits for the signed-in
+    // user's own). Runs only when a new list lands - never on the render where
+    // `user` changes but the old account's list is still here - so `user` is
+    // deliberately not a dependency.
+    onLibraryUserChange?.(user?.id || null);
+  }, [supabaseDocuments]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     try { localStorage.setItem('dashboardViewMode', viewMode); } catch { }
