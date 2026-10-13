@@ -151,6 +151,16 @@ export async function runMarkerShapeProvider(id, { pageNumber, point, pageSize =
   }
 }
 
+/**
+ * True while a Smart fill press may still become a marker: the Survey Marker
+ * tool is armed, its draw mode is still Smart fill, and the page's document
+ * tab is the one in front. Anything else (Rectangle / Freehand picked, another
+ * tool, another tab) aborts the pending press and drops its answer.
+ */
+export function isSmartFillPressLive({ activeTool, markerDrawMode, isTabActive = true } = {}) {
+  return activeTool === 'survey-marker' && markerDrawMode === 'smartFill' && isTabActive !== false;
+}
+
 /** Test-only: forget every provider and the document. */
 export function resetMarkerShapeProvidersForTests() {
   providers.clear();

@@ -694,7 +694,21 @@ export class FakeBackend {
     if (name === 'store_annotation_snapshot') return this.storeSnapshot(args);
     if (name === 'get_my_document_role') return this.documentRoleFor(caller);
     if (name === 'replace_my_templates') return this.replaceMyTemplates(args.p_templates, caller);
+    if (name === 'restore_document') return this.restoreDocument(args.p_document_id, caller);
     return null;
+  }
+
+  /** public.restore_document (20260802000000_kal426_user_archive_foundation), in memory. */
+  restoreDocument(documentId, caller) {
+    const doc = this.table('documents').find((d) => d.id === documentId);
+    if (!doc || !doc.user_id) return { ok: false, reason: 'not_found' };
+    if (doc.user_id !== caller) return { ok: false, reason: 'not_owner' };
+    if (!doc.user_archived_at) return { ok: true, already: true, document_id: documentId };
+    if (doc.archive_group_id) return { ok: false, reason: 'project_child', archive_group_id: doc.archive_group_id };
+    Object.assign(doc, {
+      user_archived_at: null, user_archive_expires_at: null, user_archived_by: null, archive_group_id: null,
+    });
+    return { ok: true, already: false, document_id: documentId, project_id: doc.project_id ?? null };
   }
 
   /**
