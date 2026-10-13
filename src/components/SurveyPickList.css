@@ -210,8 +210,10 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-.survey-pick--sheet .survey-pick__row:hover {
-  background: transparent;
+@media (hover: hover) {
+  .survey-pick--sheet .survey-pick__row:hover {
+    background: transparent;
+  }
 }
 
 .survey-pick--sheet .survey-pick__row:active {
