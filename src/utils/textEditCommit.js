@@ -113,6 +113,13 @@ const applyTextStyle = (json, style = {}) => {
  * Height is always naturalInnerHeight + 2*TEXT_PADDING (outer).
  * left/top are the OUTER border corner in page space.
  *
+ * KAL-397 — `autoFit` is Settings -> Annotations -> "Fit text boxes to their
+ * text" (utils/annotationPreferences.js). On (default) is the contract above,
+ * and the box is marked data.textAutoFit = true so a later re-edit may fit it
+ * again until the user resizes it by hand. Off never tightens: the box keeps
+ * the wrap width it was drawn with, and its height is at least
+ * `minOuterHeight` (the dragged height, when the box was drawn by dragging).
+ *
  * Returns null for blank text — matching the fabric path's discard branch.
  */
 export function buildNewTextCommitJSON({
@@ -136,12 +143,16 @@ export function buildNewTextCommitJSON({
   // box is drawn - the new text box's border is then the house revision cloud
   // (data.pdfCloudIntensity, the field clouded shapes use). null = plain.
   cloudIntensity = null,
+  autoFit = true,
+  minOuterHeight = 0,
 }) {
   if (!text || String(text).trim() === '') return null;
   const pad = TEXT_PADDING;
-  const width = (lineCount <= 1 && maxLineWidth > 0)
+  const fit = autoFit !== false;
+  const width = (fit && lineCount <= 1 && maxLineWidth > 0)
     ? Math.ceil(maxLineWidth + 2) + 2 * pad
     : (Number(innerWrapWidth) || 0) + 2 * pad;
+  const naturalOuterHeight = (Number(naturalInnerHeight) || 0) + 2 * pad;
 
   const json = {
     ...FABRIC_TEXTBOX_ENVELOPE,
@@ -149,7 +160,7 @@ export function buildNewTextCommitJSON({
     left: Number(left) || 0,
     top: Number(top) || 0,
     width,
-    height: (Number(naturalInnerHeight) || 0) + 2 * pad,
+    height: fit ? naturalOuterHeight : Math.max(naturalOuterHeight, Number(minOuterHeight) || 0),
     fill,
     stroke,
     strokeWidth,
@@ -167,6 +178,7 @@ export function buildNewTextCommitJSON({
   if (cloudIntensity != null && Number.isFinite(cloud)) {
     json.data = { ...(json.data || {}), pdfCloudIntensity: Math.max(1, cloud) };
   }
+  if (fit) json.data = { ...(json.data || {}), textAutoFit: true };
   applyScope(json, { selectedModuleId, stampRegionId, activeRegionId });
   ensureTextAnnotationId(json, 'Textbox');
   return json;
@@ -186,6 +198,13 @@ export function buildNewTextCommitJSON({
  *  - rotated boxes keep their ROTATED top-left corner fixed when height
  *    changes (same trig compensation the fabric path applied).
  *
+ * KAL-397 — `autoFit` (the Settings switch, already combined by the caller
+ * with the box's own data.textAutoFit mark — see shouldAutoFitExistingText):
+ * the box fits its text again. Height = naturalInnerHeight + 2*padY, so it
+ * may shrink; a box that renders as one line (lineCount <= 1, measured
+ * maxLineWidth) also narrows to hug it, never widens, and only when it is not
+ * rotated. Never for callouts.
+ *
  * Returns null if `original` is missing.
  */
 export function buildExistingTextCommitJSON({
@@ -194,6 +213,9 @@ export function buildExistingTextCommitJSON({
   naturalInnerHeight,
   isCallout = false,
   style = {},
+  autoFit = false,
+  maxLineWidth = 0,
+  lineCount = 1,
 }) {
   if (!original || typeof original !== 'object') return null;
   const pad = TEXT_PADDING;
@@ -205,9 +227,14 @@ export function buildExistingTextCommitJSON({
   const origW = (Number(original.width) || 0) * scaleX;
   const origH = (Number(original.height) || 0) * scaleY;
 
+  const fit = !!autoFit && !isCallout;
+  const naturalOuterH = (Number(naturalInnerHeight) || 0) + 2 * padY;
   json.text = String(text ?? '');
   json.width = origW;
-  json.height = Math.max((Number(naturalInnerHeight) || 0) + 2 * padY, origH);
+  json.height = fit && naturalOuterH > 0 ? naturalOuterH : Math.max(naturalOuterH, origH);
+  if (fit && lineCount <= 1 && maxLineWidth > 0 && !(Number(json.angle) || 0)) {
+    json.width = Math.min(origW, Math.ceil(maxLineWidth + 2) + 2 * pad);
+  }
   json.scaleX = 1;
   json.scaleY = 1;
   applyTextStyle(json, style);
@@ -226,4 +253,16 @@ export function buildExistingTextCommitJSON({
 
   ensureTextAnnotationId(json, json.type || 'Textbox');
   return json;
+}
+
+/**
+ * KAL-397 — may a re-edit fit this existing box to its text? Only a plain
+ * text box (never a callout) that still carries the auto-fit mark from its
+ * creation, and only while the Settings switch is on. Boxes made before the
+ * switch existed, imported boxes and boxes the user resized carry no
+ * (or a false) mark, so they keep their size.
+ */
+export function shouldAutoFitExistingText({ original, isCallout = false, preference = true } = {}) {
+  if (isCallout || preference === false) return false;
+  return original?.data?.textAutoFit === true;
 }

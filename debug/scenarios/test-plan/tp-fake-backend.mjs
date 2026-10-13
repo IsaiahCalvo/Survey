@@ -17,7 +17,9 @@
 //   * Realtime (WebSocket, Phoenix protocol v2): channel join/leave, heartbeat,
 //     broadcast relay between windows (JSON and binary user pushes), presence,
 //     and postgres_changes INSERT delivery for annotation_updates.
-//   * auth answers 401 (the route has no session), storage/functions answer {}.
+//   * auth answers 401 (the route has no session), storage/functions answer {}
+//     — except a Storage object a test put there with putStorageObject()
+//     (e.g. a project's survey-data sidecar), which a download returns.
 // Two browser contexts that share one FakeBackend behave like two windows on
 // one live document. `counts` records every call for the evidence table.
 //
@@ -223,6 +225,9 @@ export class FakeBackend {
     this.sockets = new Set();
     this.walSeq = 0;
     this.presenceRef = 0;
+    // Files a test put in the 'documents' bucket with putStorageObject() while
+    // the full in-memory bucket (storage: true) is off: path -> { body, contentType }.
+    this.seededDownloads = new Map();
     // The document row: its owner is the dev route's signed-in user (the
     // eraser and History refuse to act without a known owner), already on the
     // live mark store (cutover sealed), not locked.
@@ -401,6 +406,18 @@ export class FakeBackend {
     return row;
   }
 
+  /**
+   * A file in the 'documents' Storage bucket that a download returns, without
+   * turning on the full bucket (every other Storage call still answers {}).
+   * With `storage: true` it goes into that bucket instead.
+   */
+  putStorageObject(path, value, contentType = 'application/json') {
+    const body = typeof value === 'string' || Buffer.isBuffer(value) ? value : json(value);
+    if (this.storageObjects) return this.seedStorageObject(path, Buffer.from(body), { type: contentType });
+    this.seededDownloads.set(path, { body, contentType });
+    return undefined;
+  }
+
   /** Share the document with `userId` as `role` (a document_collaborators row). */
   seedDocumentCollaborator({ userId, role = 'editor', email = null }) {
     const row = { id: fakeUuid(), document_id: this.documentId, user_id: userId, role, email, status: 'active', created_at: nowIso() };
@@ -435,6 +452,15 @@ export class FakeBackend {
 
     if (path.startsWith('/auth/')) { this.count(`${method} ${path}`); return reply(401, { message: 'no session (fake backend)' }); }
     if (path.startsWith('/storage/') && this.storageObjects) return this.handleStorage(route, { method, path, caller, reply, cors });
+    if (path.startsWith('/storage/') && method === 'GET') {
+      const object = path.match(/^\/storage\/v1\/object\/(?:authenticated\/|public\/)?documents\/(.+)$/);
+      const key = object ? decodeURIComponent(object[1]) : null;
+      if (key && this.seededDownloads.has(key)) {
+        this.count(`GET storage object ${key}`);
+        const { body, contentType } = this.seededDownloads.get(key);
+        return route.fulfill({ status: 200, headers: cors, contentType, body });
+      }
+    }
     if (path.startsWith('/storage/') || path.startsWith('/functions/')) { this.count(`${method} ${path}`); return reply(200, {}); }
 
     const rpc = path.match(/^\/rest\/v1\/rpc\/(.+)$/);
