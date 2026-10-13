@@ -19,6 +19,7 @@ import { formatUnsupportedAnnotationNotice } from '../utils/unsupportedAnnotatio
 import { DESKTOP_RIGHT_RAIL_WIDTH } from '../utils/floatingUiGeometry.js';
 import BodyPortal from './BodyPortal.js';
 import Icon from '../Icons';
+import usePhoneLayout from '../hooks/usePhoneLayout.js';
 
 const COLLAPSED_DISMISS_MS = 3000;
 const EXPANDED_DISMISS_MS = 5000;
@@ -29,9 +30,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
   const [isVisible, setIsVisible] = useState(true);
   const [isExiting, setIsExiting] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isMobile, setIsMobile] = useState(() => (
-    typeof window !== 'undefined' && window.matchMedia?.('(max-width: 720px)').matches
-  ));
+  const isMobile = usePhoneLayout();
   const dismissCompletionRef = useRef(null);
   const onDismissRef = useRef(onDismiss);
   onDismissRef.current = onDismiss;
@@ -59,14 +58,6 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
     }, EXIT_ANIMATION_MS);
   }, [clearDismissCompletion]);
 
-  useEffect(() => {
-    const query = window.matchMedia?.('(max-width: 720px)');
-    if (!query) return undefined;
-    const update = () => setIsMobile(query.matches);
-    update();
-    query.addEventListener?.('change', update);
-    return () => query.removeEventListener?.('change', update);
-  }, []);
 
   useEffect(() => () => clearDismissCompletion(), [clearDismissCompletion]);
 

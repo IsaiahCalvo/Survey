@@ -1,30 +1,62 @@
 /**
  * KeyboardShortcutsOverlay.jsx — self-toggling keyboard-shortcuts reference modal.
  *
- * Default-exports the KeyboardShortcutsOverlay component: holds its own open state,
- * toggled by '?' and closed by Escape (via useKeyPress). When open, renders an
- * overlay listing shortcuts grouped by Navigation/Actions/Interface, with the Find
- * modifier shown as ⌘ on Mac and Ctrl elsewhere. Stops wheel/touch events from
- * reaching the PDF handler so the list scrolls natively. Renders null when closed.
+ * Default-exports the KeyboardShortcutsOverlay component: holds its own open
+ * state. Opens on "?" or Cmd/Ctrl+/ (only when focus is not in a text field —
+ * typing a question mark into a text box, the Survey panel or search must stay
+ * a question mark), on the OPEN_SHORTCUTS_EVENT window event (the viewer's
+ * left-rail keyboard button, the Home account menu), and on the desktop app's
+ * Help > Keyboard Shortcuts menu item. Escape, the X, the backdrop, "?" again
+ * or Cmd/Ctrl+/ again close it. The rows come from src/utils/keyboardShortcuts.js,
+ * which a test keeps in step with the real key handlers. Stops wheel/touch
+ * events from reaching the PDF handler so the list scrolls natively. Renders
+ * null when closed.
  */
 import React from 'react';
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 import Icon from '../Icons';
-import { useKeyPress } from '../utils/hooks';
 import { useFocusTrap } from '../hooks/useFocusTrap';
-import { TOOL_SHORTCUTS } from '../utils/toolShortcuts';
+import { isTypingTarget } from '../utils/annotationFamilyRules';
+import {
+  OPEN_SHORTCUTS_EVENT,
+  chordKeycaps,
+  isShortcutsSheetKey,
+  shortcutSectionsFor,
+} from '../utils/keyboardShortcuts';
 
-/**
- * KeyboardShortcutsOverlay - Display keyboard shortcuts in an overlay
- * Press '?' to toggle
- */
 const KeyboardShortcutsOverlay = () => {
   const [isOpen, setIsOpen] = React.useState(false);
   const modalContentRef = React.useRef(null);
+  const isOpenRef = React.useRef(isOpen);
+  isOpenRef.current = isOpen;
 
-  useKeyPress('?', () => {
-    setIsOpen((prev) => !prev);
-  });
+  // KAL-444: the sheet is mounted on Home AND in the viewer, so its key needs
+  // the same "not while typing" guard the arrow-key nudge and the other
+  // single-key shortcuts obey (isTypingTarget: inputs, text areas,
+  // contentEditable editors, Fabric's hidden textarea, and menus and other
+  // widgets that own their keys). Once the sheet is open the key always closes
+  // it, even though focus is inside it.
+  React.useEffect(() => {
+    const onKeyDown = (event) => {
+      if (!isShortcutsSheetKey(event)) return;
+      if (!isOpenRef.current && isTypingTarget(document.activeElement)) return;
+      event.preventDefault();
+      if (event.repeat) return;
+      setIsOpen((prev) => !prev);
+    };
+    const open = () => setIsOpen(true);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener(OPEN_SHORTCUTS_EVENT, open);
+    // Desktop app: Help > Keyboard Shortcuts.
+    const unsubscribeMenu = typeof window.electronAPI?.onKeyboardShortcutsMenu === 'function'
+      ? window.electronAPI.onKeyboardShortcutsMenu(open)
+      : null;
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener(OPEN_SHORTCUTS_EVENT, open);
+      if (typeof unsubscribeMenu === 'function') unsubscribeMenu();
+    };
+  }, []);
 
   // Accessibility: Tab stays inside the overlay, Escape closes it (this replaces
   // the old useKeyPress('Escape') — the trap listens in the capture phase so it
@@ -39,61 +71,16 @@ const KeyboardShortcutsOverlay = () => {
   }
 
   const isMac = typeof navigator !== 'undefined' && /(Mac|iPhone|iPod|iPad)/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
-  const findShortcutModifier = isMac ? '⌘' : 'Ctrl';
-
-  const shortcuts = [
-    { category: 'Navigation', items: [
-      { keys: ['←', '→'], description: 'Previous/Next page' },
-      { keys: ['Home'], description: 'First page' },
-      { keys: ['End'], description: 'Last page' },
-      { keys: ['Ctrl', '+'], description: 'Zoom in' },
-      { keys: ['Ctrl', '-'], description: 'Zoom out' },
-      { keys: ['Ctrl', '0'], description: 'Reset zoom' },
-    ]},
-    { category: 'Actions', items: [
-      { keys: ['Ctrl', 'O'], description: 'Open document' },
-      { keys: ['Ctrl', 'W'], description: 'Close tab' },
-      { keys: ['Ctrl', 'Tab'], description: 'Next tab' },
-      { keys: ['Ctrl', 'Shift', 'Tab'], description: 'Previous tab' },
-      { keys: [findShortcutModifier, 'F'], description: 'Search text' },
-    ]},
-    // KAL-239: the tool keys were never listed here, so text selection (Shift+V)
-    // would have been undiscoverable from the keyboard. Intended UX: every
-    // single-key tool shortcut the viewer listens for is documented in one place,
-    // with the two Select modes shown together so the pairing is obvious.
-    // UX 2026-09-16: this list is GENERATED from src/utils/toolShortcuts.js —
-    // the same map the keyboard handler obeys and the tool tooltips print. A
-    // hand-copied list drifts the first time a tool is added, and a help sheet
-    // that lies is worse than no help sheet. Every letter's reasoning lives at
-    // its entry in that module.
-    { category: 'Tools', items: TOOL_SHORTCUTS.map((shortcut) => ({
-      keys: shortcut.badge.split('+'),
-      description: shortcut.label,
-    })) },
-    // UX: these keys only act while a polygon or polyline is being placed —
-    // documented separately so they read as part of that flow, not as global
-    // shortcuts.
-    { category: 'Polygon & Polyline', items: [
-      { keys: ['Click'], description: 'Place the next point' },
-      { keys: ['Shift'], description: 'Constrain the next segment to 45°' },
-      { keys: ['Enter'], description: 'Finish the shape' },
-      { keys: ['Esc'], description: 'Discard the unfinished shape' },
-    ]},
-    // UX: these keys act during a lasso, so list them by result instead of
-    // hiding them under the main tool shortcut.
-    { category: 'Lasso Select', items: [
-      { keys: ['Space'], description: 'Cycle Window, Crossing, and Fence' },
-      { keys: ['Shift'], description: 'Add hits to the selection' },
-      { keys: ['Alt'], description: 'Remove hits from the selection' },
-    ]},
-    { category: 'Interface', items: [
-      { keys: ['?'], description: 'Toggle shortcuts' },
-      { keys: ['Esc'], description: 'Close dialogs/cancel' },
-      // Polish round 6: "B  Toggle sidebar" was listed here, but no key
-      // handler for B exists anywhere in the app (the walkthrough pressed it:
-      // nothing). The sheet only lists keys that work.
-    ]},
-  ];
+  // Keys only the desktop app's menu provides (Open, Export) are left off the
+  // web sheet, where the browser keeps those keys for itself.
+  const isDesktopApp = typeof window !== 'undefined' && Boolean(window.electronAPI);
+  const shortcuts = shortcutSectionsFor({ isDesktopApp }).map((section) => ({
+    category: section.title,
+    items: section.items.map((item) => ({
+      keyGroups: item.chords.map((chord) => chordKeycaps(chord, { isMac })),
+      description: item.label,
+    })),
+  }));
 
   return (
     <div
@@ -116,12 +103,15 @@ const KeyboardShortcutsOverlay = () => {
     >
       <div
         ref={modalContentRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Keyboard shortcuts"
         style={{
           background: COLORS.background.secondary,
           borderRadius: BORDERS.radius.dialog,
           padding: '32px',
-          maxWidth: '700px',
-          width: '420px',
+          width: 'min(420px, calc(100vw - 32px))',
+          boxSizing: 'border-box',
           maxHeight: '80vh',
           overflow: 'auto',
           boxShadow: SHADOWS.xl,
@@ -188,12 +178,14 @@ const KeyboardShortcutsOverlay = () => {
         </div>
 
         {/* Shortcuts List */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+        {/* KAL-444: the list grew from 6 honest-ish rows to every key the app
+            answers to, so rows are compact enough to scan instead of scroll. */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           {shortcuts.map((section, idx) => (
             <div key={idx}>
               <h3
                 style={{
-                  margin: '0 0 16px 0',
+                  margin: '0 0 10px 0',
                   fontWeight: TYPOGRAPHY.fontWeight.semibold,
                   color: COLORS.text.tertiary,
                   fontFamily: TYPOGRAPHY.fontFamily.default,
@@ -204,7 +196,7 @@ const KeyboardShortcutsOverlay = () => {
               >
                 {section.category}
               </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {section.items.map((item, itemIdx) => (
                   <div
                     key={itemIdx}
@@ -212,7 +204,8 @@ const KeyboardShortcutsOverlay = () => {
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      padding: '12px',
+                      gap: '12px',
+                      padding: '8px 12px',
                       background: COLORS.background.tertiary,
                       borderRadius: BORDERS.radius.md,
                       border: `1px solid ${COLORS.border.default}`,
@@ -227,36 +220,53 @@ const KeyboardShortcutsOverlay = () => {
                     >
                       {item.description}
                     </div>
-                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                      {item.keys.map((key, keyIdx) => (
-                        <React.Fragment key={keyIdx}>
-                          {keyIdx > 0 && (
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      {item.keyGroups.map((keys, groupIdx) => (
+                        <React.Fragment key={groupIdx}>
+                          {groupIdx > 0 && (
                             <span
                               style={{
                                 color: COLORS.text.disabled,
                                 fontSize: TYPOGRAPHY.fontSize.sm,
-                                margin: '0 2px',
+                                fontFamily: TYPOGRAPHY.fontFamily.default,
+                                margin: '0 4px',
                               }}
                             >
-                              +
+                              or
                             </span>
                           )}
-                          <kbd
-                            style={{
-                              padding: '4px 8px',
-                              background: COLORS.background.dark,
-                              border: `1px solid ${COLORS.border.default}`,
-                              borderRadius: BORDERS.radius.sm,
-                              fontSize: TYPOGRAPHY.fontSize.base,
-                              fontWeight: TYPOGRAPHY.fontWeight.semibold,
-                              color: COLORS.text.secondary,
-                              fontFamily: TYPOGRAPHY.fontFamily.mono,
-                              minWidth: '32px',
-                              textAlign: 'center',
-                            }}
-                          >
-                            {key}
-                          </kbd>
+                          {keys.map((key, keyIdx) => (
+                            <React.Fragment key={keyIdx}>
+                              {keyIdx > 0 && (
+                                <span
+                                  style={{
+                                    color: COLORS.text.disabled,
+                                    fontSize: TYPOGRAPHY.fontSize.sm,
+                                    margin: '0 2px',
+                                  }}
+                                >
+                                  +
+                                </span>
+                              )}
+                              <kbd
+                                style={{
+                                  padding: '2px 7px',
+                                  background: COLORS.background.dark,
+                                  border: `1px solid ${COLORS.border.default}`,
+                                  borderRadius: BORDERS.radius.sm,
+                                  fontSize: TYPOGRAPHY.fontSize.base,
+                                  fontWeight: TYPOGRAPHY.fontWeight.semibold,
+                                  color: COLORS.text.secondary,
+                                  fontFamily: TYPOGRAPHY.fontFamily.mono,
+                                  minWidth: '32px',
+                                  textAlign: 'center',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {key}
+                              </kbd>
+                            </React.Fragment>
+                          ))}
                         </React.Fragment>
                       ))}
                     </div>

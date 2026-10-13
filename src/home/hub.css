@@ -641,7 +641,7 @@
   100% { --hub-tabs-fade-start: 36px; --hub-tabs-fade-end: 0px; }
 }
 
-@media screen and (max-width: 720px) {
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   .hub-menu__item {
     min-height: var(--sheet-menu-item-h);
     gap: 12px;
@@ -819,7 +819,7 @@
    When the browser paginates for paper the printable width can drop under
    720px (portrait + margins, any phone), and without the `screen` guard the
    pin clipped every print to a single sheet holding page 1. */
-@media screen and (max-width: 720px) {
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   html.survey-hub-native-frame,
   body.survey-hub-native-frame {
     height: 100% !important;
@@ -2442,7 +2442,7 @@
      other phone lists — holding the name block, an edge-to-edge hairline, a
      "Files" heading with Add files / Team as quiet words (gold until 2026-10-01), then the file
      rows as lines inside the same panel. No card inside a card, and the panel
-     hugs its rows. Phone only: this block sits inside the 720px query and every
+     hugs its rows. Phone only: this block sits inside the phone-layout query and every
      selector hangs off .projects-mobile-project-card, which only the phone
      drill view renders. Selectors repeat the ONE PANEL PER LIST shapes further
      down with the card class added, so they outrank those rules by
@@ -3578,13 +3578,13 @@
     height: 36px !important;
   }
   .survey-hub [data-drag-rearrange-handle]::after,
-  .survey-hub button[title="More"]::after {
+  .survey-hub button[aria-label="More"]::after {
     content: '';
     position: absolute;
     inset: -4px 0;
   }
 
-  .survey-hub button[title="More"] {
+  .survey-hub button[aria-label="More"] {
     position: relative;
     width: 44px !important;
     height: 36px !important;
@@ -3607,8 +3607,8 @@
 
   /* Right-edge list columns are visually 28px wide. Center the 44px target
      on that column so neither side is clipped by the scrollport. */
-  .survey-hub .projects-mobile-folder-row.reorderable > button[title="More"],
-  .survey-hub .templates-mobile-row.reorderable > button[title="More"] {
+  .survey-hub .projects-mobile-folder-row.reorderable > button[aria-label="More"],
+  .survey-hub .templates-mobile-row.reorderable > button[aria-label="More"] {
     justify-self: center;
   }
 
@@ -3698,7 +3698,7 @@
     padding: 10px;
   }
 
-  .survey-hub .templates-mobile-entity-row > button[title="Edit color"] {
+  .survey-hub .templates-mobile-entity-row > button[aria-label="Edit color"] {
     width: 44px;
     height: 44px;
     display: grid;
@@ -3708,7 +3708,7 @@
     padding: 0;
   }
 
-  .survey-hub .templates-mobile-entity-row > button[title="Edit color"] > span {
+  .survey-hub .templates-mobile-entity-row > button[aria-label="Edit color"] > span {
     width: 20px;
     height: 20px;
     border: 0; /* owner 2026-09-23: entity dots carry no edge */
@@ -4297,12 +4297,12 @@
      button painted a 44px box and pushed the row to 44px — measured at 390x844.
      It now paints 36px and keeps a 44px finger target through a pad, which is
      the same trick the grip and the More button already use just above. */
-  .survey-hub .templates-mobile-entity-row > button[title="Edit color"] {
+  .survey-hub .templates-mobile-entity-row > button[aria-label="Edit color"] {
     position: relative;
     height: 36px;
   }
 
-  .survey-hub .templates-mobile-entity-row > button[title="Edit color"]::after {
+  .survey-hub .templates-mobile-entity-row > button[aria-label="Edit color"]::after {
     content: '';
     position: absolute;
     inset: -4px 0;
@@ -4571,12 +4571,12 @@
   [data-drag-rearrange-handle]:hover { color: var(--text-1) !important; }
   [data-drag-rearrange-handle]:hover > svg { transform: scale(1.15); }
   [data-drag-rearrange-handle]:hover > svg.morph-grip.is-open { transform: scale(1.38); }
-  button[title="More"]:not(:disabled):hover { color: var(--text-1) !important; background: transparent !important; }
-  button[title="More"]:not(:disabled):hover > svg { transform: scale(1.15); }
+  button[aria-label="More"]:not(:disabled):hover { color: var(--text-1) !important; background: transparent !important; }
+  button[aria-label="More"]:not(:disabled):hover > svg { transform: scale(1.15); }
 }
-button[title="More"] > svg { transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1); }
-button[title="More"]:not(:disabled):active { background: transparent !important; color: var(--text-1) !important; }
-button[title="More"]:not(:disabled):active > svg { transform: scale(0.9); }
+button[aria-label="More"] > svg { transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1); }
+button[aria-label="More"]:not(:disabled):active { background: transparent !important; color: var(--text-1) !important; }
+button[aria-label="More"]:not(:disabled):active > svg { transform: scale(0.9); }
 
 /* SWITCHING between two entities' panels (owner 2026-09-23: "disorienting").
    The old panel folds and the new one opens over the SAME 300ms on the SAME
@@ -4604,20 +4604,20 @@ button[title="More"]:not(:disabled):active > svg { transform: scale(0.9); }
    Glyph-only and swatch-only controls — colour dots, grips, More, the icon
    buttons (X, share, delete) — never paint a grey box when pressed. Their
    press is the glyph or dot tightening to 88%. */
-button[title="Edit color"], button[aria-label="Edit color"],
+button[aria-label="Edit color"],
 .hub-btn.hub-btn--icon, .templates-mobile-more {
   -webkit-tap-highlight-color: transparent;
 }
-button[title="Edit color"]:active, button[aria-label="Edit color"]:active,
+button[aria-label="Edit color"]:active,
 .hub-btn.hub-btn--icon:not(:disabled):active, .templates-mobile-more:active {
   background-color: transparent !important;
 }
-button[title="Edit color"] > span, .hub-btn.hub-btn--icon > svg, .templates-mobile-more > svg {
+button[aria-label="Edit color"] > span, .hub-btn.hub-btn--icon > svg, .templates-mobile-more > svg {
   transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
 }
-button[title="Edit color"]:active { transform: scale(0.88); }
-button[title="Edit color"]:active:has(> span) { transform: none; }
-button[title="Edit color"]:active > span,
+button[aria-label="Edit color"]:active { transform: scale(0.88); }
+button[aria-label="Edit color"]:active:has(> span) { transform: none; }
+button[aria-label="Edit color"]:active > span,
 .hub-btn.hub-btn--icon:not(:disabled):active > svg,
 .templates-mobile-more:active > svg { transform: scale(0.88); }
 [data-drag-rearrange-handle] { -webkit-tap-highlight-color: transparent; }
@@ -4638,9 +4638,9 @@ button[title="Edit color"]:active > span,
    until 2026-10-01) — no boxes, no borders. The selection actions for
    categories replace those words in the same row, so select mode never
    pushes anything down. Desktop never renders any of this (the phone layout
-   is display: none above 720px), and every rule is scoped to it anyway.
+   is display: none off a phone screen), and every rule is scoped to it anyway.
    ========================================================================== */
-@media screen and (max-width: 720px) {
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   .survey-hub .templates-mobile-detail-card {
     min-width: 0;
     background: var(--ink-700);
@@ -4799,7 +4799,7 @@ button[title="Edit color"]:active > span,
    the first letters of a title woke the grip and grabbed the tap. The grip
    now paints 24px inside its own column, its dots stay where the other lists
    put them, and its 44px finger pad reaches LEFT into the card margin only. */
-@media screen and (max-width: 720px) {
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   .survey-hub :is(.projects-mobile-folder-row, .projects-mobile-file-row, .templates-mobile-row).reorderable > [data-drag-rearrange-handle] {
     width: 24px !important;
     transform: translateX(2px);
@@ -4815,7 +4815,7 @@ button[title="Edit color"]:active > span,
    and those 28px buttons made that line 6px taller than the other tabs', so
    the Documents list began lower. On desktop they paint 22px - the height of
    the subtitle line - and keep a taller invisible pad for the pointer. */
-@media screen and (min-width: 721px) {
+@media screen and (min-device-width: 600px) and (min-device-height: 600px) {
   /* The subtitle line itself is one fixed 22px band on every tab and at every
      window width (Projects measured 16px below 860px wide and 22px above it,
      Documents 22-28px), so the header - and the list under it - never moves
@@ -4835,6 +4835,12 @@ button[title="Edit color"]:active > span,
     content: '';
     position: absolute;
     inset: -3px 0;
+  }
+  /* Shell audit 2026-10-13 (Chunk B): desktop Documents retires the
+     Select-mode button, its rows have always-on checkboxes (Drawboard). The
+     phone keeps it (its cards have no checkbox column). */
+  .survey-hub.hub-tab-documents .documents-mobile-select-main > .mobile-header-select-button {
+    display: none;
   }
 }
 
@@ -4963,7 +4969,7 @@ button[title="Edit color"]:active > span,
 }
 
 /* ---------- PHONE: section headers ---------- */
-@media screen and (max-width: 720px) {
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   .survey-hub .templates-mobile-section-head > span {
     display: inline-flex;
     align-items: baseline;
@@ -5126,7 +5132,7 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
    label steps aside so All / Duplicate / Move/Copy / Share / Delete / Done
    fit on the one line at 390px with Done at the right edge (the desktop
    Entities rail does the same). */
-@media screen and (max-width: 720px) {
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   .survey-hub .templates-mobile-section-head:has(> .templates-mobile-select-actions) > span:first-child {
     display: none;
   }
@@ -5139,7 +5145,7 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 /* Desktop selection bars inside a header line: a touch tighter, so the
    268px Entities rail fits All / Duplicate / Move/Copy / Share / Delete and
    Done on its one line. */
-@media screen and (min-width: 721px) {
+@media screen and (min-device-width: 600px) and (min-device-height: 600px) {
   .survey-hub .hub-section-actions:has(> .hub-btn--bare) { gap: 0; }
   .survey-hub .hub-section-actions > .hub-btn.hub-btn--bare { padding: 0 4px; }
   .survey-hub .hub-section-actions > .hub-btn.hub-btn--icon { width: 24px; }
@@ -5248,4 +5254,282 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
     margin-block: -10px -8px;
     top: 4px;
   }
+}
+
+/* ==========================================================================
+   DOCUMENTS LIST: DESKTOP MULTI-SELECT, ROW MENU, DRAG TO PROJECT
+   (shell audit 2026-10-13, copying Drawboard's file list; Chunk B)
+   --------------------------------------------------------------------------
+   Timings are Drawboard's: 150 ms cubic-bezier(.4,0,.2,1) for colour
+   changes, 100 ms for a menu sliding in from the side it opens on.
+   ========================================================================== */
+
+/* The always-on row checkbox (and the header's select-all box). A 28px
+   target round a 14px box; unchecked it is a quiet outline (--border-strong
+   clears 3:1, see the UX 2026-09-22 note in DocumentsLedger), checked it is
+   the gold fill the phone's Select mode already uses. */
+.survey-hub .documents-row-check {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.survey-hub .documents-row-check__box {
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 1.4px solid var(--border-strong);
+  border-radius: 3px;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  transition: background-color 150ms cubic-bezier(.4, 0, .2, 1), border-color 150ms cubic-bezier(.4, 0, .2, 1);
+}
+.survey-hub .documents-row-check.is-checked .documents-row-check__box {
+  border-color: var(--gold);
+  background: var(--gold);
+}
+.survey-hub .documents-row-check__dash {
+  width: 8px;
+  height: 1.6px;
+  border-radius: 1px;
+  background: var(--accent-text);
+}
+@media (hover: hover) and (pointer: fine) {
+  .survey-hub .documents-row-check:not(.is-checked):hover .documents-row-check__box {
+    border-color: var(--text-2);
+  }
+}
+.survey-hub .documents-row-check:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus);
+}
+
+/* Rows: selection fills fade like Drawboard's (150 ms); the rows being
+   dragged go half-clear so you can see what is moving. */
+.survey-hub .documents-ledger-row {
+  transition: background-color 150ms cubic-bezier(.4, 0, .2, 1), opacity 150ms cubic-bezier(.4, 0, .2, 1);
+}
+.survey-hub .documents-ledger-row.is-dragging {
+  opacity: .5;
+}
+/* The row moves, not its thumbnail picture (a dragged <img> would also
+   carry 'Files' and wake the upload overlay). */
+.survey-hub .documents-ledger-row img {
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+
+/* The row menu (⋮ or right-click) slides 6px in from the side it opens on,
+   100 ms, like Drawboard's Radix menus; a short fade keeps it calm. */
+.hub-menu.documents-row-menu {
+  animation: documents-row-menu-in 100ms cubic-bezier(0, 0, .2, 1) both;
+}
+.hub-menu.documents-row-menu.opens-up {
+  animation-name: documents-row-menu-in-up;
+}
+@keyframes documents-row-menu-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes documents-row-menu-in-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.hub-menu.documents-row-menu:focus {
+  outline: none;
+}
+
+/* The "N selected" pane: same frame as the preview pane it replaces. */
+.survey-hub .documents-bulk-pane {
+  padding: 18px;
+  position: relative;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.survey-hub .documents-bulk-pane__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+}
+.survey-hub .documents-bulk-pane__count {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--bone-100);
+}
+.survey-hub .documents-bulk-pane__stack {
+  position: relative;
+  flex: 0 1 auto;
+  height: 220px;
+  min-height: 0;
+  margin: 24px 20px 0 0;
+}
+.survey-hub .documents-bulk-pane__sheet {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-1, var(--ink-800));
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .35);
+  overflow: hidden;
+}
+.survey-hub .documents-bulk-pane__names {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  flex: none;
+}
+.survey-hub .documents-bulk-pane__names > li {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.survey-hub .documents-bulk-pane__actions {
+  display: grid;
+  gap: 2px;
+  margin: 14px -6px 0;
+  flex: none;
+}
+.survey-hub .documents-bulk-pane__actions > .hub-menu__item {
+  min-height: 32px;
+  font-size: 13px;
+}
+
+/* Drag picture: up to three stacked cards (Drawboard: 320 px, ±5°, 3 px). */
+.documents-drag-ghost {
+  position: fixed;
+  top: -1000px;
+  left: -1000px;
+  width: 340px;
+  height: 64px;
+  pointer-events: none;
+  z-index: -1;
+}
+.documents-drag-ghost__card {
+  position: absolute;
+  left: 10px;
+  top: 12px;
+  width: 320px;
+  height: 40px;
+  box-sizing: border-box;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text-1);
+  font: 600 13px/1.2 var(--font-ui, system-ui);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .35);
+}
+.documents-drag-ghost__count {
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  z-index: 20;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border-radius: 10px;
+  background: var(--text-1);
+  color: var(--surface-1, #111);
+  font: 700 11px/20px var(--font-ui, system-ui);
+  text-align: center;
+}
+
+/* Projects as drop targets under "Projects" in the rail, only during a drag.
+   Neutral greys like the file-drop overlay: a dashed outline on the project
+   you are over. */
+.survey-hub .hub-project-drop-list {
+  display: grid;
+  gap: 2px;
+  margin: 0 0 4px 14px;
+  max-height: min(50vh, 360px);
+  overflow-y: auto;
+  animation: hub-project-drop-list-in 150ms cubic-bezier(.4, 0, .2, 1) both;
+}
+@keyframes hub-project-drop-list-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+.survey-hub .hub-project-drop-list__item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  border: 1px dashed transparent;
+  border-radius: 6px;
+  color: var(--ink-200);
+  font-size: 12px;
+  transition: background-color 150ms cubic-bezier(.4, 0, .2, 1), border-color 150ms cubic-bezier(.4, 0, .2, 1), color 150ms cubic-bezier(.4, 0, .2, 1);
+}
+.survey-hub .hub-project-drop-list__item.is-over {
+  border-color: var(--text-2);
+  background: color-mix(in srgb, var(--surface-3) 70%, transparent);
+  color: var(--bone-100);
+}
+.survey-hub .hub-project-drop-list__name {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.survey-hub .hub-project-drop-list__empty {
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-menu.documents-row-menu,
+  .survey-hub .hub-project-drop-list {
+    animation: none;
+  }
+  .survey-hub .documents-row-check__box,
+  .survey-hub .documents-ledger-row,
+  .survey-hub .hub-project-drop-list__item {
+    transition: none;
+  }
+}
+
+/* Home's "Moved to Archive · Undo" toast (Dashboard renders the viewer's
+   UndoToast inside .hub-undo-toast). It sizes to its words instead of the
+   half-screen a left:50% box gets, and on the phone it floats just above the
+   bottom tab bar (56px + the home-indicator inset), over the dock like the
+   viewer's own Undo toast. */
+.hub-undo-toast .undo-toast {
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+}
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
+  .hub-undo-toast .undo-toast {
+    bottom: calc(max(var(--native-safe-area-bottom, 10px), env(safe-area-inset-bottom, 0px)) + 56px + 10px);
+    z-index: 100000;
+  }
+}
+/* The header's select-all box keeps its 28px target without making the
+   column-label row taller than the labels (it pulls back to their line). */
+.survey-hub .documents-ledger-head-check .documents-row-check {
+  margin-block: -8px;
 }

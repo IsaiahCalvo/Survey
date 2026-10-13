@@ -211,7 +211,7 @@ html.survey-viewer-open #root {
 /* Screen-only: the html/body/#root pin below must never apply while the
    browser paginates for paper (printable width < 720px clipped every print
    to one sheet). */
-@media screen and (max-width: 720px) {
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   html.survey-viewer-open,
   html.survey-viewer-open body,
   html.survey-viewer-open #root,
@@ -238,7 +238,7 @@ html.survey-viewer-open #root {
      the same box, because a fixed body establishes no transform/filter/
      containment context.
 
-     Scoped to <=720px and to an open viewer, exactly like the pin it extends,
+     Scoped to the phone layout and to an open viewer, exactly like the pin it extends,
      so desktop, iPad and the hub are untouched. Guarded by
      tests/mobileKeyboardViewport.test.mjs. */
   html.survey-viewer-open body {
@@ -318,7 +318,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    scroller box (container-aware rule), so fit-to-width fits the new, shorter
    area on its own. The inset is constant (it does not drop while a panel hides
    the dock) so opening a panel never resizes the page area and re-fits it.
-   `.mobile-pdf-work-area` exists only in the phone shell (<=720px), so the
+   `.mobile-pdf-work-area` exists only in the phone shell (phone screens), so the
    tablet and desktop viewers are untouched. `!important` beats the host's
    inline `inset: 0` in PDFViewer.jsx without editing that file. Guarded by
    tests/mobileCanvasInsideBars.test.mjs. */
@@ -1156,6 +1156,97 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      the entity's own colour reads as a clean dot. It was a #0c0f13 literal. */
   border: 1px solid var(--surface-0);
   border-radius: 50%;
+}
+
+/* Phone survey round (2026-10-13): the entity of the selected Survey
+   Marker(s) - what a tap now changes - is ringed in bright ink, calm; the
+   gold ring above stays the armed pick for the NEXT marker (owner exception
+   2026-09-17). The desktop entity bar rings the same entity. */
+.mobile-pdf-tools__survey-entities button.is-current {
+  border-color: var(--text-1);
+}
+
+/* The "All" disc that ends a long category / entity column (lead decision
+   2026-10-13, long lists): a disc-sized rounded square with the word, so it
+   never reads as a category's initials or an entity's colour. Opens the list
+   sheet; while it is up the word is bright. */
+.mobile-pdf-tools__survey-categories .mobile-pdf-tools__survey-all,
+.mobile-pdf-tools__survey-entities .mobile-pdf-tools__survey-all {
+  width: var(--mobile-rail-disc);
+  height: var(--mobile-rail-disc);
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  font: 700 9px/1 var(--font-ui);
+  letter-spacing: -0.01em;
+}
+
+.mobile-pdf-tools__survey-categories .mobile-pdf-tools__survey-all.is-open,
+.mobile-pdf-tools__survey-entities .mobile-pdf-tools__survey-all.is-open {
+  color: var(--text-1);
+}
+
+.mobile-pdf-tools__survey-categories .mobile-pdf-tools__survey-all:active,
+.mobile-pdf-tools__survey-entities .mobile-pdf-tools__survey-all:active {
+  background: var(--pressed);
+}
+
+/* The Survey Marker shape menu beside the rail (the desktop tool bar's marker
+   group): the rail popover, its top set at the chip by MobileMarkerShapeChip. */
+.mobile-pdf-tools__popover.is-marker-shape {
+  width: min(210px, calc(100vw - var(--mobile-rail-w) - 14px));
+}
+
+.mobile-pdf-tools__popover.is-marker-shape button > span:first-of-type {
+  flex: 1 1 auto;
+}
+
+.mobile-pdf-tools__popover-check {
+  width: 14px;
+  display: inline-flex;
+  color: var(--text-1);
+}
+
+/* The long-list sheet (categories / entities / templates): the Active users
+   sheet's frame, the shared phone sheet scale, SurveyPickList inside it. */
+.mobile-survey-all-sheet {
+  --mobile-sheet-height: var(--mobile-panel-standard);
+  padding: 0 var(--sheet-pad-x) 12px;
+  display: flex;
+  flex-direction: column;
+  color: var(--text-1);
+  font-family: var(--sheet-font);
+}
+
+.mobile-survey-all-sheet > .mobile-pdf-sheet__handle {
+  display: flex;
+  align-items: center;
+}
+
+.mobile-survey-all-sheet > header {
+  min-height: var(--sheet-head-h);
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mobile-survey-all-sheet > header > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.mobile-survey-all-sheet > header strong { font: var(--sheet-title); }
+.mobile-survey-all-sheet > header span { color: var(--text-3); font: var(--sheet-subtitle); }
+
+.mobile-survey-all-sheet .survey-pick {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 /* UX 2026-09-16: the footer column is the same rail chip as the column above it

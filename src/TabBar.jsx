@@ -3,13 +3,23 @@
  *
  * Default-export component built on @dnd-kit for drag-to-reorder of PDF tabs
  * (Home tab is pinned, non-draggable); calls onTabClick / onTabClose /
- * onTabReorder and accepts cross-tab page drops via `application/pdf-page`.
+ * onTabReorder / onTabMenuAction.
  * Each tab shows an unsaved-annotation dot and a red dual-write-pending dot
  * sourced from a single useDocsPendingDualWrite() Set (called once, never in
  * the .map loop, to keep React hook counts stable when a tab closes).
+ *
+ * Drawboard shell audit, Chunk C (2026-10-13):
+ *  - right-click (or the Menu key / Shift+F10) opens the tab menu at the
+ *    pointer: Close tab, Close other tabs, Close all tabs, Download, Rename
+ *    document. AppShell runs them through the same close path as the X.
+ *  - middle-click closes the tab, like every browser.
+ *  - when the tabs no longer fit, an "N ▾" button at the right end lists every
+ *    open document, the current one marked.
+ *  - the old page-drop target is gone: nothing in the app drags a page onto a
+ *    tab any more, and a drop only ever showed a "being implemented" toast.
  */
-import { useState, useRef, useCallback, useMemo } from 'react';
-import { flushSync } from 'react-dom';
+import { useState, useRef, useCallback, useMemo, useEffect, useLayoutEffect } from 'react';
+import { createPortal, flushSync } from 'react-dom';
 import {
   DndContext,
   KeyboardSensor,
@@ -28,6 +38,10 @@ import {
 import { CALM_STRIP_AUTO_SCROLL } from './reorder/dragAutoScroll.js';
 import { CSS } from '@dnd-kit/utilities';
 import Icon from './Icons';
+import { useTooltip } from './components/Tooltip';
+import DismissBarrier from './components/DismissBarrier';
+import { canRenameTab } from './tabs/tabStrip.js';
+import './TabBar.css';
 // Phase 30 — per-tab subscription to the dual-write retry queue. Each tab
 // renders its own dot independently when its documentId has at least one
 // non-quarantined queue entry. CONTEXT.md AC-13 / 30-UI-SPEC.md Surface 3.
@@ -114,21 +128,37 @@ function TabItem({
   isHome,
   isSorting = false,
   isDragging = false,
-  dragOverTabId,
   hasPendingDualWrite,
   onTabClick,
   onTabClose,
-  onPageDragOver,
-  onPageDragLeave,
-  onPageDrop,
+  onOpenMenu,
   sortableAttributes = {},
   sortableListeners = {},
   setNodeRef = null,
   style: sortableStyle = {},
 }) {
+  const keyboardMenuAtRef = useRef(-Infinity);
   const handleTabCloseClick = (e) => {
     e.stopPropagation();
     onTabClose(tab.id);
+  };
+
+  // KAL-65: the app's shared chip instead of the OS tooltip. The tab's own
+  // name only gets one when the strip has cut it short - a chip repeating a
+  // name you can already read, popping up instantly as the pointer crosses
+  // the strip, would be noise. The dots always explain themselves.
+  const tip = useTooltip();
+  const nameTip = tip(tab.name, 'below');
+  const onlyWhenCut = (show) => (show
+    ? (e) => {
+      const el = e.currentTarget;
+      if (el && el.scrollWidth > el.clientWidth) show(e);
+    }
+    : undefined);
+  const truncatedNameTip = {
+    ...nameTip,
+    onMouseEnter: onlyWhenCut(nameTip.onMouseEnter),
+    onPointerEnter: onlyWhenCut(nameTip.onPointerEnter),
   };
 
   return (
@@ -138,6 +168,7 @@ function TabItem({
       {...sortableListeners}
       data-pdf-tab-id={!isHome ? tab.id : undefined}
       data-app-tab=""
+      data-tab-active={isActive ? 'true' : undefined}
       // Owner 2026-10-01: the held tab takes the app's one picked-up look
       // (states.css [data-drag-lifted]): solid raised surface, soft shadow,
       // no gold edge, fully opaque so no neighbour shows through.
@@ -150,7 +181,30 @@ function TabItem({
       role={isHome ? 'button' : sortableAttributes.role}
       tabIndex={isHome ? 0 : sortableAttributes.tabIndex}
       aria-current={isActive ? 'page' : undefined}
+      // Chunk C: right-click opens the tab menu at the pointer (Drawboard).
+      onContextMenu={isHome ? undefined : (e) => {
+        e.preventDefault();
+        // The Menu key / Shift+F10 already opened it (onKeyDown); the
+        // browser's own contextmenu event that follows is not a second open.
+        if (performance.now() - keyboardMenuAtRef.current < 600) return;
+        onOpenMenu?.(tab.id, { x: e.clientX, y: e.clientY }, e.currentTarget, false);
+      }}
+      // Middle-click closes, like every browser. The press itself (below)
+      // never starts a drag or the platform's auto-scroll.
+      onAuxClick={isHome ? undefined : (e) => {
+        if (e.button !== 1) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onTabClose(tab.id);
+      }}
       onKeyDown={(e) => {
+        if (!isHome && (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10'))) {
+          e.preventDefault();
+          keyboardMenuAtRef.current = performance.now();
+          const rect = e.currentTarget.getBoundingClientRect();
+          onOpenMenu?.(tab.id, { x: rect.left + 8, y: rect.bottom }, e.currentTarget, true);
+          return;
+        }
         sortableListeners.onKeyDown?.(e);
         if (e.defaultPrevented || e.target !== e.currentTarget) return;
         if (e.key === 'Enter' || (isHome && e.key === ' ')) {
@@ -158,9 +212,6 @@ function TabItem({
           onTabClick(tab.id);
         }
       }}
-      onDragOver={(e) => !isHome && onPageDragOver(e, tab.id)}
-      onDragLeave={(e) => !isHome && onPageDragLeave(e, tab.id)}
-      onDrop={(e) => !isHome && onPageDrop(e, tab.id)}
       style={{
         ...sortableStyle,
         position: 'relative',
@@ -171,9 +222,9 @@ function TabItem({
         width: isHome ? `${HOME_TAB_WIDTH}px` : 'auto',
         height: `${TAB_HEIGHT}px`,
         padding: '0 10px',
-        background: dragOverTabId === tab.id ? TAB_HOVER_BG : (isActive ? TAB_ACTIVE_BG : TAB_IDLE_BG),
+        background: isActive ? TAB_ACTIVE_BG : TAB_IDLE_BG,
         borderRight: `1px solid ${TAB_BORDER}`,
-        borderTop: isActive ? `2px solid ${TAB_ACCENT}` : (dragOverTabId === tab.id ? `2px solid ${TAB_ACCENT}` : '2px solid transparent'),
+        borderTop: isActive ? `2px solid ${TAB_ACCENT}` : '2px solid transparent',
         cursor: isHome ? 'pointer' : (isDragging ? 'grabbing' : 'grab'),
         userSelect: 'none',
         transition: isDragging
@@ -204,13 +255,20 @@ function TabItem({
          this prop replaced it, so the MouseSensor never saw a press and
          document tabs could not be dragged with a mouse (fix 2026-09-30). */
       onMouseDown={(e) => {
+        // A middle press only closes (onAuxClick): no drag, no auto-scroll
+        // cursor, no pressed fill. A right press only opens the menu.
+        if (e.button === 1) {
+          e.preventDefault();
+          return;
+        }
+        if (e.button !== 0) return;
         sortableListeners.onMouseDown?.(e);
         if (!isSorting) {
           e.currentTarget.style.background = TAB_PRESSED_BG;
         }
       }}
       onMouseUp={(e) => {
-        if (!isSorting) {
+        if (e.button === 0 && !isSorting) {
           e.currentTarget.style.background = isActive ? TAB_ACTIVE_BG : TAB_HOVER_BG;
         }
       }}
@@ -232,7 +290,9 @@ function TabItem({
             marginRight: '7px',
             flexShrink: 0
           }}
-          title="Unsaved changes (Cmd/Ctrl+S to save)"
+          role="img"
+          aria-label="Unsaved changes (Cmd/Ctrl+S to save)"
+          {...tip('Unsaved changes (Cmd/Ctrl+S to save)', 'below')}
           data-drag-keep-fill
         />
       ) : (
@@ -247,7 +307,7 @@ function TabItem({
           whiteSpace: 'nowrap',
           fontWeight: isActive ? '500' : '400'
         }}
-        title={tab.name}
+        {...truncatedNameTip}
       >
         {tab.name}
       </span>
@@ -256,7 +316,7 @@ function TabItem({
         <span
           role="status"
           aria-label="This document has unsaved changes"
-          title="This document has unsaved changes"
+          {...tip('This document has unsaved changes', 'below')}
           data-drag-keep-fill
           style={{
             width: '6px',
@@ -339,9 +399,218 @@ function SortablePdfTab(props) {
   );
 }
 
-const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onPageDrop }) => {
-  const [dragOverTabId, setDragOverTabId] = useState(null);
-  const tabBarRef = useRef(null);
+// Up/Down/Home/End move between a popup's enabled items; Tab leaves (closes).
+const moveFocusAmong = (container, selector, key) => {
+  if (!container) return false;
+  const items = Array.from(container.querySelectorAll(selector)).filter((node) => !node.disabled);
+  if (!items.length) return false;
+  const index = items.indexOf(document.activeElement);
+  let next = null;
+  if (key === 'ArrowDown') next = items[(index + 1) % items.length];
+  else if (key === 'ArrowUp') next = items[(index - 1 + items.length) % items.length];
+  else if (key === 'Home') next = items[0];
+  else if (key === 'End') next = items[items.length - 1];
+  if (!next) return false;
+  next.focus();
+  return true;
+};
+
+const placeNear = (el, x, y, setPos) => {
+  if (!el) return;
+  const rect = el.getBoundingClientRect();
+  const width = rect.width || 200;
+  const height = rect.height || 180;
+  const left = Math.max(8, Math.min(x, window.innerWidth - width - 8));
+  let top = y + 2;
+  if (top + height > window.innerHeight - 8) top = Math.max(8, y - height - 2);
+  setPos((prev) => (prev && prev.left === left && prev.top === top ? prev : { left, top }));
+};
+
+const TAB_MENU_ITEMS = [
+  { action: 'close', label: 'Close tab' },
+  { action: 'closeOthers', label: 'Close other tabs' },
+  { action: 'closeAll', label: 'Close all tabs' },
+  null,
+  { action: 'download', label: 'Download' },
+  { action: 'rename', label: 'Rename document' },
+];
+
+function TabContextMenu({ menu, tab, documentTabCount, signedIn, onAction, onClose }) {
+  const ref = useRef(null);
+  const [pos, setPos] = useState(null);
+
+  useLayoutEffect(() => {
+    placeNear(ref.current, menu.x, menu.y, setPos);
+  }, [menu.x, menu.y]);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      ref.current?.querySelector('[role="menuitem"]:not(:disabled)')?.focus({ preventScroll: true });
+    });
+    const returnTo = menu.returnFocus;
+    const viaKeyboard = menu.viaKeyboard;
+    return () => {
+      cancelAnimationFrame(frame);
+      // A menu opened from the keyboard hands focus back to its tab.
+      if (viaKeyboard && returnTo?.isConnected) returnTo.focus({ preventScroll: true });
+    };
+  }, [menu]);
+
+  const disabledFor = (action) => {
+    if (action === 'closeOthers') return documentTabCount < 2;
+    if (action === 'rename') return !canRenameTab(tab, signedIn);
+    return false;
+  };
+
+  return createPortal(
+    <>
+      <DismissBarrier insideRefs={[ref]} onDismiss={onClose} />
+      <div
+        ref={ref}
+        role="menu"
+        aria-label={`${tab.name} tab`}
+        data-tab-context-menu=""
+        className="tab-strip-menu"
+        style={pos ? { left: pos.left, top: pos.top } : { left: menu.x, top: menu.y, visibility: 'hidden' }}
+        onContextMenu={(e) => e.preventDefault()}
+        onKeyDown={(e) => {
+          if (moveFocusAmong(ref.current, '[role="menuitem"]', e.key)) {
+            e.preventDefault();
+          } else if (e.key === 'Tab') {
+            e.preventDefault();
+            onClose();
+          }
+        }}
+      >
+        {TAB_MENU_ITEMS.map((item, index) => (item ? (
+          <button
+            key={item.action}
+            type="button"
+            role="menuitem"
+            className="tab-strip-menu__item"
+            disabled={disabledFor(item.action)}
+            onClick={() => {
+              onClose();
+              onAction(item.action, tab.id);
+            }}
+          >
+            {item.label}
+          </button>
+        ) : <div key={`rule-${index}`} role="separator" className="tab-strip-menu__rule" />))}
+      </div>
+    </>,
+    document.body,
+  );
+}
+
+function TabListPanel({ anchor, documentTabs, activeTabId, onPick, onCloseTab, onCloseAll, onClose }) {
+  const ref = useRef(null);
+  // A long name gets the app's chip, only when the row has cut it short.
+  const tip = useTooltip();
+  const nameTipWhenCut = (name) => {
+    const binding = tip(name, 'left');
+    const onlyWhenCut = (show) => (show
+      ? (e) => {
+        const el = e.currentTarget;
+        if (el && el.scrollWidth > el.clientWidth) show(e);
+      }
+      : undefined);
+    return {
+      ...binding,
+      onMouseEnter: onlyWhenCut(binding.onMouseEnter),
+      onPointerEnter: onlyWhenCut(binding.onPointerEnter),
+    };
+  };
+  const left = Math.max(8, Math.min(anchor.right - 300, window.innerWidth - 308));
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const root = ref.current;
+      if (!root) return;
+      const current = root.querySelector('[aria-current="page"] .tab-strip-list__open')
+        || root.querySelector('.tab-strip-list__open');
+      current?.scrollIntoView?.({ block: 'nearest' });
+      current?.focus({ preventScroll: true });
+    });
+    const returnTo = anchor.button;
+    return () => {
+      cancelAnimationFrame(frame);
+      if (returnTo?.isConnected && ref.current?.contains(document.activeElement)) returnTo.focus({ preventScroll: true });
+    };
+  }, [anchor]);
+
+  return createPortal(
+    <>
+      <DismissBarrier insideRefs={[ref]} onDismiss={onClose} />
+      <div
+        ref={ref}
+        id="tab-strip-list"
+        role="dialog"
+        aria-label="Open documents"
+        data-tab-list-panel=""
+        className="tab-strip-list"
+        style={{ left, top: anchor.bottom + 4 }}
+        onKeyDown={(e) => {
+          if (moveFocusAmong(ref.current, '.tab-strip-list__open', e.key)) e.preventDefault();
+        }}
+      >
+        <div className="tab-strip-list__head">
+          <span>{`Open documents (${documentTabs.length})`}</span>
+          <button type="button" className="tab-strip-list__close-all" onClick={() => { onClose(); onCloseAll(); }}>
+            Close all
+          </button>
+        </div>
+        <div className="tab-strip-list__rows" role="list">
+          {documentTabs.map((tab) => {
+            const current = tab.id === activeTabId;
+            return (
+              <div
+                key={tab.id}
+                role="listitem"
+                className="tab-strip-list__row"
+                aria-current={current ? 'page' : undefined}
+                data-tab-list-row={tab.id}
+              >
+                <button
+                  type="button"
+                  className="tab-strip-list__open"
+                  onClick={() => { onClose(); onPick(tab.id); }}
+                  onAuxClick={(e) => {
+                    if (e.button !== 1) return;
+                    e.preventDefault();
+                    onCloseTab(tab.id);
+                  }}
+                >
+                  <span
+                    className={`tab-strip-list__dot${tab.hasUnsavedAnnotations ? '' : ' tab-strip-list__dot--none'}`}
+                    aria-hidden="true"
+                  />
+                  <span className="tab-strip-list__name" {...nameTipWhenCut(tab.name)}>{tab.name}</span>
+                </button>
+                <button
+                  type="button"
+                  className="tab-strip-list__x"
+                  aria-label={`Close ${tab.name}`}
+                  onClick={() => onCloseTab(tab.id)}
+                >
+                  <Icon name="close" size={11} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </>,
+    document.body,
+  );
+}
+
+const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onTabMenuAction, signedIn = false }) => {
+  const scrollerRef = useRef(null);
+  const overflowButtonRef = useRef(null);
+  const [menu, setMenu] = useState(null);
+  const [listAnchor, setListAnchor] = useState(null);
+  const [overflowing, setOverflowing] = useState(false);
 
   // Phase 30 — fix 2026-04-29: previously each tab in the .map() loop called
   // useTabPendingDualWrite individually; the hook count changed when a tab
@@ -382,64 +651,64 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onPag
     });
   }, [homeTab, onTabReorder, pdfTabs]);
 
-  const handlePageDragOver = (e, targetTabId) => {
-    // Check if this is a page drag by checking dataTransfer types
-    const types = Array.from(e.dataTransfer.types || []);
-    if (!types.includes('application/pdf-page')) {
-      return; // Not a page drag
-    }
-    
-    e.preventDefault();
-    e.stopPropagation();
-    
-    // We can't read the data in dragOver, but we can check types
-    // Store the target tab for visual feedback
-    // The actual data will be read in the drop handler
-    e.dataTransfer.dropEffect = 'move';
-    setDragOverTabId(targetTabId);
-  };
+  const openMenu = useCallback((tabId, point, tabNode, viaKeyboard = false) => {
+    setListAnchor(null);
+    setMenu({
+      tabId,
+      x: point.x,
+      y: point.y,
+      returnFocus: tabNode || null,
+      viaKeyboard,
+    });
+  }, []);
+  const closeMenu = useCallback(() => setMenu(null), []);
+  const closeList = useCallback(() => setListAnchor(null), []);
 
-  const handlePageDragLeave = (e, targetTabId) => {
-    // Only clear if we're actually leaving the tab (not just moving to a child element)
-    const relatedTarget = e.relatedTarget;
-    if (!relatedTarget || !e.currentTarget.contains(relatedTarget)) {
-      setDragOverTabId(null);
-    }
-  };
+  // Chunk C: the "N ▾" list only appears when the tabs no longer fit.
+  useLayoutEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return undefined;
+    const measure = () => {
+      const next = scroller.scrollWidth > scroller.clientWidth + 1;
+      setOverflowing((prev) => (prev === next ? prev : next));
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(scroller);
+    if (scroller.firstElementChild) observer.observe(scroller.firstElementChild);
+    return () => observer.disconnect();
+  }, [tabs.length]);
 
-  const handlePageDrop = (e, targetTabId) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOverTabId(null);
-    
-    try {
-      const data = e.dataTransfer.getData('application/pdf-page');
-      if (!data) return;
-      
-      const pageData = JSON.parse(data);
-      if (pageData.tabId === targetTabId) return; // Can't drop on same tab
-      
-      if (onPageDrop) {
-        onPageDrop(pageData.tabId, pageData.pageNumber, targetTabId);
-      }
-    } catch (err) {
-      console.error('Error handling page drop:', err);
-    }
-  };
+  // The active tab is always in view: picking one from the list, opening a
+  // document or closing a neighbour scrolls the strip to it.
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller || !activeTabId) return;
+    const node = Array.from(scroller.querySelectorAll('[data-pdf-tab-id]'))
+      .find((candidate) => candidate.dataset.pdfTabId === activeTabId);
+    if (!node) return;
+    const start = node.offsetLeft;
+    const end = start + node.offsetWidth;
+    if (start < scroller.scrollLeft) scroller.scrollLeft = start;
+    else if (end > scroller.scrollLeft + scroller.clientWidth) scroller.scrollLeft = end - scroller.clientWidth;
+  }, [activeTabId, tabs.length, overflowing]);
 
+  const menuTab = menu ? pdfTabs.find((tab) => tab.id === menu.tabId) : null;
+
+  // The list closes itself once the last document is gone.
+  useEffect(() => {
+    if (listAnchor && pdfTabs.length === 0) setListAnchor(null);
+  }, [listAnchor, pdfTabs.length]);
 
   return (
     <div
-      ref={tabBarRef}
       style={{
         display: 'flex',
         background: TAB_BAR_BG,
         borderBottom: `1px solid ${TAB_BORDER}`,
-        overflowX: 'auto',
-        overflowY: 'hidden',
         flexShrink: 0,
-        scrollbarWidth: 'thin',
-        scrollbarColor: `${TAB_BORDER} ${TAB_BAR_BG}`
+        minWidth: 0,
       }}
     >
       <style>{`
@@ -458,64 +727,117 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onPag
         }
       `}</style>
       <div
-        className="tab-bar"
+        ref={scrollerRef}
+        data-tab-strip-scroller=""
         style={{
-          display: 'flex',
-          minWidth: '100%',
-          height: `${TAB_HEIGHT}px`
+          position: 'relative',
+          flex: '1 1 auto',
+          minWidth: 0,
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          scrollbarWidth: 'thin',
+          scrollbarColor: `${TAB_BORDER} ${TAB_BAR_BG}`
         }}
       >
-        {homeTab && (
-          <TabItem
-            tab={homeTab}
-            isActive={homeTab.id === activeTabId}
-            isHome
-            dragOverTabId={dragOverTabId}
-            hasPendingDualWrite={false}
-            onTabClick={onTabClick}
-            onTabClose={onTabClose}
-            onPageDragOver={handlePageDragOver}
-            onPageDragLeave={handlePageDragLeave}
-            onPageDrop={handlePageDrop}
-          />
-        )}
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          modifiers={tabModifiers}
-          autoScroll={CALM_STRIP_AUTO_SCROLL}
-          onDragEnd={handleTabDragEnd}
+        <div
+          className="tab-bar"
+          style={{
+            display: 'flex',
+            minWidth: '100%',
+            width: 'max-content',
+            height: `${TAB_HEIGHT}px`
+          }}
         >
-          <SortableContext items={pdfTabs.map((tab) => tab.id)} strategy={horizontalListSortingStrategy}>
-            <div data-pdf-tab-list style={{ display: 'flex', height: `${TAB_HEIGHT}px` }}>
-              {pdfTabs.map((tab) => {
-                // Phase 30 — per-tab dual-write dot. We do NOT call a hook here
-                // (closing a tab would change the hook count and crash render).
-                // Consult the Set computed once at the top of TabBar instead.
-                const tabDocId = tab.documentId || tab.id;
-                const hasPendingDualWrite = pendingDualWriteDocIds.has(tabDocId);
-                const isActive = tab.id === activeTabId;
+          {homeTab && (
+            <TabItem
+              tab={homeTab}
+              isActive={homeTab.id === activeTabId}
+              isHome
+              hasPendingDualWrite={false}
+              onTabClick={onTabClick}
+              onTabClose={onTabClose}
+            />
+          )}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            modifiers={tabModifiers}
+            autoScroll={CALM_STRIP_AUTO_SCROLL}
+            onDragEnd={handleTabDragEnd}
+          >
+            <SortableContext items={pdfTabs.map((tab) => tab.id)} strategy={horizontalListSortingStrategy}>
+              <div data-pdf-tab-list style={{ display: 'flex', height: `${TAB_HEIGHT}px` }}>
+                {pdfTabs.map((tab) => {
+                  // Phase 30 — per-tab dual-write dot. We do NOT call a hook here
+                  // (closing a tab would change the hook count and crash render).
+                  // Consult the Set computed once at the top of TabBar instead.
+                  const tabDocId = tab.documentId || tab.id;
+                  const hasPendingDualWrite = pendingDualWriteDocIds.has(tabDocId);
+                  const isActive = tab.id === activeTabId;
 
-                return (
-                  <SortablePdfTab
-                    key={tab.id}
-                    tab={tab}
-                    isActive={isActive}
-                    isHome={false}
-                    dragOverTabId={dragOverTabId}
-                    hasPendingDualWrite={hasPendingDualWrite}
-                    onTabClick={onTabClick}
-                    onTabClose={onTabClose}
-                    onPageDragOver={handlePageDragOver}
-                    onPageDragLeave={handlePageDragLeave}
-                    onPageDrop={handlePageDrop}
-                  />
-                );
-              })}
-            </div>
-          </SortableContext>
-        </DndContext>
+                  return (
+                    <SortablePdfTab
+                      key={tab.id}
+                      tab={tab}
+                      isActive={isActive}
+                      isHome={false}
+                      hasPendingDualWrite={hasPendingDualWrite}
+                      onTabClick={onTabClick}
+                      onTabClose={onTabClose}
+                      onOpenMenu={openMenu}
+                    />
+                  );
+                })}
+              </div>
+            </SortableContext>
+          </DndContext>
+        </div>
       </div>
+      {overflowing && pdfTabs.length > 0 && (
+        <button
+          ref={overflowButtonRef}
+          type="button"
+          className="tab-strip-overflow"
+          aria-label={`All open documents (${pdfTabs.length})`}
+          aria-haspopup="dialog"
+          aria-expanded={listAnchor ? 'true' : 'false'}
+          aria-controls={listAnchor ? 'tab-strip-list' : undefined}
+          data-tab-strip-overflow=""
+          onClick={(e) => {
+            if (listAnchor) {
+              setListAnchor(null);
+              return;
+            }
+            const rect = e.currentTarget.getBoundingClientRect();
+            setMenu(null);
+            setListAnchor({ right: rect.right, bottom: rect.bottom, button: e.currentTarget });
+          }}
+        >
+          <span>{pdfTabs.length}</span>
+          <Icon name="chevronDown" size={12} />
+        </button>
+      )}
+      {menu && menuTab && (
+        <TabContextMenu
+          menu={menu}
+          tab={menuTab}
+          documentTabCount={pdfTabs.length}
+          signedIn={signedIn}
+          onAction={(action, tabId) => onTabMenuAction?.(action, tabId)}
+          onClose={closeMenu}
+        />
+      )}
+      {listAnchor && pdfTabs.length > 0 && (
+        <TabListPanel
+          anchor={listAnchor}
+          documentTabs={pdfTabs}
+          activeTabId={activeTabId}
+          onPick={onTabClick}
+          onCloseTab={onTabClose}
+          onCloseAll={() => onTabMenuAction?.('closeAll', null)}
+          onClose={closeList}
+        />
+      )}
     </div>
   );
 };

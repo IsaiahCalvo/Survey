@@ -1,5 +1,7 @@
 import { buildTextMarkupLinkRegions } from '../utils/pdfTextMarkup.js';
 import { openExternalDestination } from '../utils/accountPlatform.js';
+import { useMoveModifierHeld } from '../utils/moveModifier.js';
+import { LINK_MODE_DISABLED, LINK_MODE_OPEN, LINK_MODE_SELECT, resolveLinkMode, shouldOpenLinkOnClick } from '../utils/linkClickPolicy.js';
 
 const activateLink = (region, onPageNavigate) => {
   if (region.mode === 'page') onPageNavigate?.(region.pageNumber);
@@ -16,12 +18,17 @@ const pressStarts = new WeakMap();
 export const isLinkTap = (start, event) => !start
   || Math.hypot((event?.clientX ?? 0) - start.x, (event?.clientY ?? 0) - start.y) <= LINK_TAP_SLOP_PX;
 
-export default function TextMarkupLinkLayer({ annotations, pageSize, interactionMode = 'disabled', nativeTextSelection = false, onPageNavigate, onSelectLink }) {
+export default function TextMarkupLinkLayer({ annotations, pageSize, interactionMode: toolMode = 'disabled', nativeTextSelection = false, onPageNavigate, onSelectLink }) {
   const regions = buildTextMarkupLinkRegions(annotations, pageSize);
+  // Drawboard canvas audit 2026-10-13: Cmd/Ctrl+click opens a link under any
+  // tool (utils/linkClickPolicy.js). Only a page that HAS links listens for
+  // the key, and Pan (already open) never needs it.
+  const modifierHeld = useMoveModifierHeld(regions.length > 0 && toolMode !== LINK_MODE_OPEN);
   if (!regions.length) return null;
   // Native text owns pointer gestures in Text Select; the viewer resolves
   // short annotation clicks without blocking native text gestures.
-  const interactive = interactionMode !== 'disabled' && !nativeTextSelection;
+  const interactionMode = resolveLinkMode({ toolMode, modifierHeld, nativeTextSelection });
+  const interactive = interactionMode !== LINK_MODE_DISABLED;
   return (
     <div aria-label="Text links" style={{ position: 'absolute', inset: 0, zIndex: 110, pointerEvents: 'none' }}>
       {regions.map((region) => (
@@ -31,7 +38,7 @@ export default function TextMarkupLinkLayer({ annotations, pageSize, interaction
           data-text-markup-link-index={region.annotationIndex}
           type="button"
           aria-label={region.mode === 'page' ? `Go to page ${region.pageNumber}` : `Open link ${region.url}`}
-          title={interactionMode === 'select' ? 'Click to select. Double-click or Cmd/Ctrl+click to open.' : undefined}
+          title={interactionMode === LINK_MODE_SELECT ? 'Click to select. Double-click or Cmd/Ctrl+click to open.' : undefined}
           onPointerDownCapture={(event) => {
             if (!interactive || event.button !== 0) return;
             event.preventDefault();
@@ -47,14 +54,14 @@ export default function TextMarkupLinkLayer({ annotations, pageSize, interaction
             const start = pressStarts.get(event.currentTarget);
             pressStarts.delete(event.currentTarget);
             if (!isLinkTap(start, event)) return;
-            if (interactionMode === 'open' || event.metaKey || event.ctrlKey) {
+            if (shouldOpenLinkOnClick(interactionMode, event)) {
               activateLink(region, onPageNavigate);
               return;
             }
             onSelectLink?.(region);
           }}
           onDoubleClickCapture={(event) => {
-            if (!interactive || interactionMode !== 'select') return;
+            if (!interactive || interactionMode !== LINK_MODE_SELECT) return;
             event.preventDefault();
             event.stopPropagation();
             activateLink(region, onPageNavigate);
@@ -64,7 +71,7 @@ export default function TextMarkupLinkLayer({ annotations, pageSize, interaction
             event.stopPropagation();
             if (!interactive) return;
             // Pointer activation happens on pointerup. detail=0 is a keyboard click.
-            if (event.detail === 0 && interactionMode === 'open') {
+            if (event.detail === 0 && interactionMode === LINK_MODE_OPEN) {
               activateLink(region, onPageNavigate);
               return;
             }

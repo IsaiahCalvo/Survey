@@ -48,6 +48,7 @@ import { reorderSelectionInStack } from '../utils/annotationFamilyRules.js';
 import { resolveMenuTargets, sameMenuTargets, stampMenuTargetIds } from '../utils/selectionRemap.js';
 import { pageHasTransform } from '../utils/disabledActions.js';
 import { PICK_ANY_TOOLS } from '../utils/selectModes.js';
+import { contextMenuInputOf, isTouchMenuInput } from '../utils/touchLongPress.js';
 import { PageMenuList } from '../sidebar/PageActionsMenu.jsx';
 import { availableActions, buildPageMenuItems, runPageMenuAction } from '../sidebar/pageMenuItems.js';
 
@@ -118,6 +119,10 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
         // or those in the right-clicked selection ('group' kind).
         surveyMarkerId: surveyMarkerId || null,
         groupMarkerIds: Array.isArray(groupMarkerIds) ? groupMarkerIds.slice() : [],
+        // Touch audit 2026-10-13 (T1/S2): 'touch' | 'pen' | 'mouse' - a menu
+        // opened by a long press (or a touch screen's own contextmenu) takes
+        // 44px rows.
+        input: contextMenuInputOf(event),
       }, pageObjects));
     };
     return () => {
@@ -943,6 +948,9 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // demo per menu type: object menus (annotation / group / callout) = 176px,
     // paste/counter/text-markup = 154px (demo App.tsx:866/897 + styles.ts:861).
     const isMobileMenu = !!mobileMode;
+    // Desktop layout, opened by a finger or a pen (an iPad, a touch laptop):
+    // the same menu with 44px rows (states.css, data-touch-rows).
+    const touchRows = !isMobileMenu && isTouchMenuInput(ctx.input);
     const mobileWidth = pageMenuItems ? 'max-content'
       : (ctx.kind === 'annotation' || ctx.kind === 'group' || ctx.kind === 'callout' || ctx.kind === 'surveyMarker') ? 176 : 154;
     const mobileTitle = (ctx.kind === 'annotation' || ctx.kind === 'group') ? 'Annotation'
@@ -1018,6 +1026,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         role="menu"
         aria-label={pageMenuItems ? `Page ${ctx.pageNumber} actions` : `${mobileTitle} actions`}
         data-page-menu={pageMenuItems ? ctx.pageNumber : undefined}
+        data-touch-rows={touchRows ? 'true' : undefined}
         // Polish 3 (2026-10-04): both menus take the one popup corner and
         // shadow (--radius-md / --shadow-popover), and the phone rows are the
         // phone menu row (below). The fills and hover colours are unchanged:

@@ -15,11 +15,18 @@
 // in SQL would drop the metadata but strand the S3 bytes forever, which defeats
 // the point of a cleanup job. The Storage API removes both.
 //
+// After that it removes survey media (`survey-media` bucket) whose document row
+// is gone, listed by `public.list_orphaned_survey_media` (surveyMediaSweep.js):
+// "delete forever" on the client only removes the caller's own uploads once the
+// row is gone, so collaborators' photos / videos / recordings - and the media
+// of documents this sweep purged - are removed here.
+//
 // This function is MACHINE-invoked (Supabase Cron / pg_cron). It is not part of
 // any user flow: it authenticates a shared secret, never an end user, and holds
 // no per-user session. See docs/KAL-431-archive-auto-cleanup.md before enabling.
 
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
+import { sweepOrphanedSurveyMedia, MEDIA_SWEEP_LIMIT } from './surveyMediaSweep.js';
 
 const corsHeaders = {
   // ⚠️ INTENTIONAL — do NOT tighten to an origin allowlist (false positive if an
@@ -223,11 +230,33 @@ Deno.serve(async (req) => {
     if (writeBackError) log('writeback_failed', { message: writeBackError.message });
   }
 
+  // ── Remove orphaned survey media ────────────────────────────────────────
+  // Media whose document row no longer exists (purged above, by a client
+  // "delete forever", account deletion, ...). Same best-effort rule as the
+  // PDFs: sweepOrphanedSurveyMedia never throws, a listing or storage failure
+  // is counted and logged, and the objects stay listed for the next run. A dry
+  // run only counts them.
+  const media = await sweepOrphanedSurveyMedia(supabase, {
+    dryRun,
+    limit: MEDIA_SWEEP_LIMIT,
+    log,
+  });
+  log('media_sweep_done', {
+    run_id: result.run_id,
+    found: media.found,
+    removed: media.removed,
+    failed: media.failed,
+    skipped_live: media.skipped_live,
+    errors: media.errors.length,
+  });
+
   log('sweep_done', {
     run_id: result.run_id,
     unlinked,
     unlink_errors: unlinkErrors.length,
     stranded: failedPaths.length,
+    media_removed: media.removed,
+    media_failed: media.failed,
     duration_ms: Date.now() - startedAt,
   });
 
@@ -245,6 +274,11 @@ Deno.serve(async (req) => {
     unlinked,
     unlink_errors: unlinkErrors,
     stranded_paths: failedPaths.length,
+    media_orphans_found: media.found,
+    media_removed: media.removed,
+    media_failed: media.failed,
+    media_skipped_live: media.skipped_live,
+    media_errors: media.errors,
     dry_run: dryRun,
     duration_ms: Date.now() - startedAt,
   });

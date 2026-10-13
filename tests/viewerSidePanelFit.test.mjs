@@ -137,7 +137,11 @@ test('wiring: auto re-fits are marked and never land; user fits use the band', (
   // occluder (like the phone Pages sheet), so Locate fits above it.
   assert.match(rail, /ref=\{mobileMode \? undefined : sideOccluderRef\}\s*data-viewer-occluder=\{isSurveyPanelCollapsed \? undefined : \(mobileMode \? 'sheet' : 'side'\)\}/);
   const sidebar = read('../src/PDFSidebar.jsx');
-  assert.match(sidebar, /data-viewer-occluder=\{isCollapsed \? undefined : \(mobileMode \? 'sheet' : 'side'\)\}\s*ref=\{mobileMode \? undefined : sideOccluderRef\}/);
+  // Chunk D (2026-10-13): a side occluder while the desktop panel is laid out
+  // (open, or still sliding closed); the ref also keeps the rail element for
+  // the resize drag (setRailEl calls sideOccluderRef).
+  assert.match(sidebar, /data-viewer-occluder=\{mobileMode \? \(isCollapsed \? undefined : 'sheet'\) : \(layoutOpen \? 'side' : undefined\)\}\s*ref=\{mobileMode \? undefined : setRailEl\}/);
+  assert.match(sidebar, /const setRailEl = useCallback\(\(element\) => \{\s*railElRef\.current = element;\s*sideOccluderRef\(element\);/);
 });
 
 test('phone Fit width: a tap on chrome over the page never picks an annotation', () => {

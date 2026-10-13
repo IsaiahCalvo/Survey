@@ -243,7 +243,13 @@ test('creating or toggling a text mark keeps the live Text Select range active',
     PDF_VIEWER_SOURCE.indexOf('const isImportedSelectDeleteOnlyTextMarkupSelection'),
   );
   assert.doesNotMatch(createHandler, /activateSelectFamilyMode\('rectangle'\)/);
-  assert.doesNotMatch(createHandler, /clearLiveTextSelection\(\)/);
+  // DELIBERATE ASSERTION CHANGE (KAL-240): the floating quick menu passes
+  // { keepSelection: false } so its result shows without the blue range over
+  // it (and the iOS callout goes with the range). The docked bar still keeps
+  // the range, so every clear stays behind that one opt-out.
+  const clears = createHandler.match(/clearLiveTextSelection\(\)/g) || [];
+  const optedOutClears = createHandler.match(/options\.keepSelection === false\) \{\s*clearLiveTextSelection\(\);/g) || [];
+  assert.equal(clears.length, optedOutClears.length, 'only the quick menu opt-out may drop the live range');
   assert.match(createHandler, /text-markup:toggle-off-live-selection/);
   assert.ok(
     (createHandler.match(/restorePdfjsTextSelection\(selection\)/g) || []).length >= 2,
@@ -399,10 +405,16 @@ test('rule 2: Select / Pan pick any mark; group tools pick their own group; the 
   for (const tool of ['polygon', 'polyline', 'text', 'counter']) assert.equal(rules.shouldShowHoverHalo(tool), true, tool);
   // the drawing surface asks the table on every press that is not on the selection
   assert.match(SVG_LAYER_SOURCE, /const press = resolvePagePress\(e\.nativeEvent, \{/);
-  assert.match(SVG_LAYER_SOURCE, /state\.pressFallback && state\.startClient[\s\S]{0,200}< CLICK_PLACE_MAX_TRAVEL_PX\)[\s\S]{0,300}applyPressFallbackRef\.current\?\.\(state\.pressFallback\)/);
+  // (2026-10-13, Drawboard audit C4) "a click" is now a press that never
+  // passed the shape drag threshold (6 px mouse/pen, 10 px touch) instead of
+  // one that travelled under 4 px.
+  assert.match(SVG_LAYER_SOURCE, /const clicked = Boolean\(state && state\.mode === 'drag' && !state\.dragging\s*&& !hasPassedShapeDragThreshold\(state\.startClient/);
+  assert.match(SVG_LAYER_SOURCE, /if \(clicked && state\.pressFallback\) \{[\s\S]{0,300}applyPressFallbackRef\.current\?\.\(state\.pressFallback\)/);
   // Pan picks and STAYS Pan; the group tools' halo comes from the same hover
-  // effect, filtered by the hovered mark's group
-  assert.match(PDF_VIEWER_SOURCE, /const haloByPosition = activeTool === 'pan' \|\| activeTool === 'eraser'/);
+  // effect, filtered by the hovered mark's group.
+  // DELIBERATE ASSERTION CHANGE (owner 2026-10-13, docs/GESTURE-CONTRACT.md
+  // P7): Pan shows no hover halo and no pointer hand any more.
+  assert.match(PDF_VIEWER_SOURCE, /const haloByPosition = activeTool === 'eraser'\s*\|\| \(shouldShowHoverHalo\(activeTool\) && activeTool !== 'pan'/);
   assert.match(PDF_VIEWER_SOURCE, /shouldShowHoverHalo\(activeTool, hit\?\.kind === 'callout'\s*\? CALLOUT_MARK_GROUP\s*: getMarkGroup\(/);
 });
 

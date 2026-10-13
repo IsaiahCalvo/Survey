@@ -192,10 +192,12 @@ test('(c) Cmd held for several drags in a row: every drag saves what it showed',
 const hook = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
 
 test('single move: the preview and the save use the same clamp and the save finds the mark by id', () => {
-  assert.match(hook, /const shown = clampMoveDelta\(ds\.moveBoxes, dx, dy, pageWidth, pageHeight\);/);
+  // canvas audit chunk 2: both clamp the SAME snapped delta (snapMoveDelta)
+  assert.match(hook, /const shown = clampMoveDelta\(ds\.moveBoxes, snappedMove\.dx, snappedMove\.dy, pageWidth, pageHeight\);/);
   assert.match(hook, /setVisualTransform\(\{ id: ds\.annotationIndex, dx: shown\.dx, dy: shown\.dy \}\);/);
   assert.match(hook, /const moveIndex = resolveMarkIndex\(annotations\?\.objects, ds\.annotationIndex, ds\.markId\);/);
-  assert.match(hook, /const \{ dx: actualDx, dy: actualDy \} = clampMoveDelta\(ds\.moveBoxes, dx, dy, pageWidth, pageHeight\);/);
+  assert.match(hook, /const snappedRelease = ds\.orbitBase \? \{ dx, dy \} : snapMoveDelta\(ds, dx, dy, e\);/);
+  assert.match(hook, /const \{ dx: actualDx, dy: actualDy \} = clampMoveDelta\(ds\.moveBoxes, snappedRelease\.dx, snappedRelease\.dy, pageWidth, pageHeight\);/);
   assert.match(hook, /const targetObj = updatedAnnotations\.objects\[moveIndex\];/);
   // no second, disagreeing page clamp on release any more
   assert.doesNotMatch(hook, /constrainToPage\(/);
@@ -207,7 +209,9 @@ test('single move: the preview and the save use the same clamp and the save find
 
 test('group move: one rigid clamp for preview and save, callouts and markers included, members found by id', () => {
   assert.match(hook, /const \{ dx, dy \} = clampMoveDelta\(\s*ds\.groupBoxes,/);
-  assert.match(hook, /\? clampMoveDelta\(ds\.groupBoxes, rawGroupDx, rawGroupDy, pageWidth, pageHeight\)/);
+  // canvas audit chunk 2: the release clamps the same snapped group delta
+  assert.match(hook, /const snappedGroupRelease = groupBeyond \? snapMoveDelta\(ds, rawGroupDx, rawGroupDy, e\) : null;/);
+  assert.match(hook, /\? clampMoveDelta\(ds\.groupBoxes, snappedGroupRelease\.dx, snappedGroupRelease\.dy, pageWidth, pageHeight\)/);
   assert.match(hook, /resolveMarkIndex\(updatedAnnotations\.objects, Number\(idxStr\), ds\.groupIds\?\.\[idxStr\] \?\? null\)/);
   assert.match(hook, /const dxNorm = dx \/ W;/);
   // a whole-callout move keeps the callout on the page with the same rule

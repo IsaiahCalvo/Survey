@@ -41,6 +41,8 @@ import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt.js
 import { captureMorph, playMorph, prefersReducedMotion } from './surveyRailMorph.js';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from './components/SectionIconButton.jsx';
 import SharedTemplateBadge from './components/SharedTemplateBadge.jsx';
+import useSurveyRecents from './hooks/useSurveyRecents';
+import { SURVEY_LIST_SEARCH_FROM, surveyTemplateSections } from './utils/surveyPickLists.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -507,6 +509,9 @@ const SurveySpacesRail = ({
   surveyMarkerNameFocusRequest = null,
   undoSurveyMarkerPlacement,
   rememberSurveyEntity,
+  // 2026-10-13 (desktop entity bar): a ref this panel fills with its Entity
+  // menu's write, so the bar can change a selected marker's entity the same way.
+  surveyEntityApplyRef = null,
   selectedItemsInCategory,
   selectedModuleId,
   selectedSpaceId,
@@ -626,6 +631,9 @@ const SurveySpacesRail = ({
   const mobileExportMenuRef = useRef(null);
   const surveyMarkerDragRestoreRef = useRef(null);
   const availableSurveyTemplates = Array.isArray(surveyTemplates) ? surveyTemplates : [];
+  // The templates used most recently on this device (the desktop template
+  // menu's own list - same storage key), for the phone switch list's "Recent".
+  const recentTemplateIds = useSurveyRecents('template', 'all', selectedTemplate?.id ?? null);
   const surveyModuleOptions = selectedTemplate ? ((selectedTemplate.modules || selectedTemplate.spaces) || []) : [];
   const selectedModuleIndex = surveyModuleOptions.findIndex((module) => module.id === selectedModuleId);
   const activeSurveyModule = selectedModuleIndex >= 0 ? surveyModuleOptions[selectedModuleIndex] : null;
@@ -1324,6 +1332,20 @@ const SurveySpacesRail = ({
       });
     }
   };
+
+  // The desktop entity bar (PDFViewer) changes a selected Survey Marker's
+  // entity through this same write - the marker's own module and category.
+  if (surveyEntityApplyRef) {
+    surveyEntityApplyRef.current = (annotationId, entityId) => {
+      const marker = surveyMarkers?.[annotationId];
+      if (!marker) return false;
+      const markerModuleId = marker.moduleId || selectedModuleId;
+      const markerModule = (selectedTemplate?.modules || selectedTemplate?.spaces || []).find((module) => module.id === markerModuleId);
+      const category = (markerModule?.categories || []).find((c) => c.id === marker.categoryId) || null;
+      applyEntitySelectionForMarker(annotationId, markerModuleId, category, entityId);
+      return true;
+    };
+  }
 
   // The checklist Y/N/N-A click handler, shared by the desktop row and the
   // phone's open Survey Marker. Owner ruling 2026-10-01 (auto entity): "When
@@ -2251,12 +2273,47 @@ const SurveySpacesRail = ({
                       one is gold ink with a check. A tap switches and lands on
                       the new template's category list. A filter field only from
                       15 templates. The sheet keeps its height. */}
+                  {/* Phone survey round (2026-10-13): from 15 templates the 3
+                      used most recently sit on top under "Recent" (they stay
+                      in "All templates" too), like the desktop template menu
+                      (utils/surveyPickLists surveyTemplateSections). Typing in
+                      the field lists the matches only. */}
                   {isMobileTemplateSwitching && (() => {
                     const query = templateSwitchQuery.trim().toLowerCase();
-                    const showSearch = availableSurveyTemplates.length >= 15;
+                    const showSearch = availableSurveyTemplates.length >= SURVEY_LIST_SEARCH_FROM;
                     const shown = showSearch && query
                       ? availableSurveyTemplates.filter((template) => (template.name || 'Untitled template').toLowerCase().includes(query))
                       : availableSurveyTemplates;
+                    const byId = new Map(availableSurveyTemplates.map((template) => [String(template.id), template]));
+                    const groups = showSearch && !query
+                      ? surveyTemplateSections(availableSurveyTemplates, recentTemplateIds).map((section) => ({
+                        id: section.id,
+                        label: section.label,
+                        templates: section.items.map((item) => byId.get(String(item.id))).filter(Boolean),
+                      }))
+                      : [{ id: 'all', label: null, templates: shown }];
+                    const renderRow = (template, groupId) => {
+                      const isCurrent = template.id === selectedTemplate.id;
+                      const moduleCount = ((template.modules || template.spaces) || []).length;
+                      return (
+                        <button
+                          key={`${groupId}:${template.id}`}
+                          type="button"
+                          className="mobile-survey-template-row"
+                          aria-current={isCurrent ? 'true' : undefined}
+                          onClick={() => switchSurveyTemplate(template)}
+                        >
+                          <span className="mobile-survey-template-name">{template.name || 'Untitled template'}</span>
+                          {template.sharedFrom ? <SharedTemplateBadge sharedFrom={template.sharedFrom} size={18} /> : null}
+                          <span className="mobile-survey-template-meta">
+                            {moduleCount} module{moduleCount === 1 ? '' : 's'}
+                          </span>
+                          <span className="mobile-survey-switch-check" aria-hidden="true">
+                            {isCurrent ? <Icon name="check" size={16} color="currentColor" /> : null}
+                          </span>
+                        </button>
+                      );
+                    };
                     return (
                       <div className="mobile-survey-picker-body mobile-survey-switch">
                         {showSearch && (
@@ -2280,28 +2337,14 @@ const SurveySpacesRail = ({
                         >
                           {shown.length === 0 ? (
                             <div className="mobile-survey-switch-empty">No templates match</div>
-                          ) : shown.map((template) => {
-                            const isCurrent = template.id === selectedTemplate.id;
-                            const moduleCount = ((template.modules || template.spaces) || []).length;
-                            return (
-                              <button
-                                key={template.id}
-                                type="button"
-                                className="mobile-survey-template-row"
-                                aria-current={isCurrent ? 'true' : undefined}
-                                onClick={() => switchSurveyTemplate(template)}
-                              >
-                                <span className="mobile-survey-template-name">{template.name || 'Untitled template'}</span>
-                                {template.sharedFrom ? <SharedTemplateBadge sharedFrom={template.sharedFrom} size={18} /> : null}
-                                <span className="mobile-survey-template-meta">
-                                  {moduleCount} module{moduleCount === 1 ? '' : 's'}
-                                </span>
-                                <span className="mobile-survey-switch-check" aria-hidden="true">
-                                  {isCurrent ? <Icon name="check" size={16} color="currentColor" /> : null}
-                                </span>
-                              </button>
-                            );
-                          })}
+                          ) : groups.map((group) => (
+                            group.label ? (
+                              <div key={group.id} className="mobile-survey-switch-group" role="group" aria-label={group.label} data-template-group={group.id}>
+                                <div className="mobile-survey-switch-heading" aria-hidden="true">{group.label}</div>
+                                {group.templates.map((template) => renderRow(template, group.id))}
+                              </div>
+                            ) : group.templates.map((template) => renderRow(template, group.id))
+                          ))}
                         </div>
                       </div>
                     );
@@ -3546,7 +3589,7 @@ const SurveySpacesRail = ({
                                                           data-survey-marker-name-input={annotationId}
                                                           defaultValue={surveyMarkerName}
                                                           key={`${annotationId}:${surveyMarkerName}`}
-                                                          {...(({ onFocus, onMouseEnter, ...renameTip }) => ({
+                                                          {...(({ onFocus, onMouseEnter, onPointerEnter, ...renameTip }) => ({
                                                             // Owner 2026-10-01: a just-placed marker's name field is
                                                             // focused, and its "Rename" chip sat over the Entity
                                                             // control (onBlur below never hid it). No chip while
@@ -3555,6 +3598,11 @@ const SurveySpacesRail = ({
                                                             onFocus: renameTip.onMouseLeave,
                                                             onMouseEnter: (e) => {
                                                               if (e.currentTarget !== e.currentTarget.ownerDocument.activeElement) onMouseEnter?.(e);
+                                                            },
+                                                            // KAL-65: the chip now also follows the mouse pointer;
+                                                            // same rule - nothing while the field has the caret.
+                                                            onPointerEnter: (e) => {
+                                                              if (e.currentTarget !== e.currentTarget.ownerDocument.activeElement) onPointerEnter?.(e);
                                                             },
                                                           }))(tip('Rename Survey Marker', 'below'))}
                                                           aria-label={`Rename ${surveyMarkerName}`}

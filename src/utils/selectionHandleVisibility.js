@@ -3,10 +3,18 @@
  * size based on a selected object's screen-space bounding box.
  *
  * Exports the handle-name constants (CORNER/SIDE/ALL_RESIZE_HANDLES),
- * getSelectionHandleVisualMetrics (sizes scaled by sqrt(inverseScale) so handles stay
- * constant on screen across zoom), and getAdaptiveSelectionHandleSpec, which picks the
- * 'all' / 'corners' / 'single' tier and rotation offset that fit the box. Used by the
- * SVG/Fabric selection overlays.
+ * getHandleZoomScale (page units per screen px for any handle),
+ * getSelectionHandleVisualMetrics (sizes multiplied by that scale so handles stay
+ * the same size on screen at every zoom), and getAdaptiveSelectionHandleSpec, which
+ * picks the 'all' / 'corners' / 'single' tier and rotation offset that fit the box.
+ * Used by the SVG/Fabric selection overlays.
+ *
+ * Drawboard canvas audit 2026-10-13 (chunk 5): handles keep ONE on-screen size
+ * at every zoom — an 11 px corner dot, 28 x 8 edge pills, a 20 px rotate dot
+ * 36 px above the frame, at 50 %, 100 % and 400 % alike (Drawboard measured 10 px
+ * at 99 % and at 319 %). Before, sizes followed sqrt(inverseScale), so the dots
+ * grew ~1.4x per zoom doubling (15.6 px at 200 %) and shrank when zoomed out.
+ * Only the extreme zoom-out cap (clampInverseScale) remains.
  *
  * UX 2026-09-10 (round 4, defect 2 — "tiny polyline grabbers"). The adaptive
  * tier CULLS handles that do not fit, which is right for an ordinary mark but
@@ -23,6 +31,7 @@
  * at least one dot-diameter-plus-gap apart, so they can never overlap.
  */
 import { HANDLE_RADIUS } from './handleStyle.js';
+import { clampInverseScale } from './svgTransformMath.js';
 
 export const CORNER_RESIZE_HANDLES = ['tl', 'tr', 'bl', 'br'];
 export const SIDE_RESIZE_HANDLES = ['mt', 'mb', 'ml', 'mr'];
@@ -35,9 +44,24 @@ function safePositiveNumber(value, fallback) {
   return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback;
 }
 
+// Screen px of clearance between the frame's top edge and the rotate dot's
+// centre (before any extra room the top grabber needs).
+const ROTATION_OFFSET_PX = 36;
+
+/**
+ * Page units per screen px for sizing ANY handle (selection grabbers, line
+ * ends, callout and vertex dots): a handle `n` px wide on screen is
+ * `n * getHandleZoomScale(inverseScale)` page units, at every zoom. Capped on
+ * extreme zoom-out (svgTransformMath.clampInverseScale) so a dot on a tiny
+ * page view never balloons over the mark.
+ */
+export function getHandleZoomScale(inverseScale) {
+  return clampInverseScale(inverseScale);
+}
+
 export function getSelectionHandleVisualMetrics(inverseScale) {
   const inv = safePositiveNumber(inverseScale, 1);
-  const is = Math.sqrt(inv);
+  const is = inv;
   return {
     scale: is,
     cornerR: HANDLE_RADIUS * is,
@@ -116,7 +140,7 @@ export function getAdaptiveSelectionHandleSpec({
   const topHandleHalfHeight = edgeHandleShape === 'dot'
     ? metrics.cornerR + outset.y
     : (allFit ? metrics.hPillH / 2 : metrics.cornerR);
-  const rotationOffset = Math.max(36, metrics.rotationR + topHandleHalfHeight + metrics.minGap);
+  const rotationOffset = Math.max(ROTATION_OFFSET_PX * metrics.scale, metrics.rotationR + topHandleHalfHeight + metrics.minGap);
 
   return {
     resizeHandles,

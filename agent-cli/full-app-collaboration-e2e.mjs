@@ -207,7 +207,7 @@ async function createLinkInvite(page) {
 
 async function closeInviteModal(page) {
   const inviteModal = page.locator('[data-kal31-project-invite-modal="true"]');
-  await clickVisible(inviteModal.locator('button[title="Close"]'), 'Invite User close');
+  await clickVisible(inviteModal.locator('button[aria-label="Close"]'), 'Invite User close');
   await inviteModal.waitFor({ state: 'hidden', timeout: 10_000 });
 }
 
@@ -220,7 +220,7 @@ async function exactPendingInviteRow(page, inviteId) {
 
 async function revokePendingInvite(page, inviteId) {
   const row = await exactPendingInviteRow(page, inviteId);
-  await clickVisible(row.locator('button[title="More"]'), 'pending invite More');
+  await clickVisible(row.locator('button[aria-label="More"]'), 'pending invite More');
   await clickVisible(row.getByRole('button', { name: 'Revoke invite', exact: true }), 'Revoke invite');
   await page.locator('[data-kal31-manage-team="true"]')
     .getByText('Invite revoked.', { exact: true }).waitFor({ state: 'visible', timeout: 20_000 });
@@ -230,9 +230,9 @@ async function attemptProjectRename(page, fromName, toName) {
   await navigateHub(page, 'Projects');
   await clickProjectControl(page, fromName);
   let input = null;
-  const inputs = page.locator('input[title="Click to rename"], input[title="Tap to rename"]');
+  const inputs = page.locator('input[aria-label="Project name"], input[aria-label="Click to rename"], input[aria-label="Tap to rename"]');
   await page.waitForFunction(() => [...document.querySelectorAll(
-    'input[title="Click to rename"], input[title="Tap to rename"]',
+    'input[aria-label="Project name"], input[aria-label="Click to rename"], input[aria-label="Tap to rename"]',
   )].some((candidate) => candidate.getClientRects().length > 0), null, { timeout: 20_000 });
   for (let index = 0; index < await inputs.count(); index += 1) {
     const candidate = inputs.nth(index);
@@ -261,7 +261,7 @@ async function exactCollaboratorRow(page, userId) {
 
 async function setInviteeRole(page, inviteeEmail, inviteeUserId, role) {
   const row = await exactCollaboratorRow(page, inviteeUserId);
-  await clickVisible(row.locator('button[title="More"]'), 'collaborator More');
+  await clickVisible(row.locator('button[aria-label="More"]'), 'collaborator More');
   await clickVisible(row.getByRole('button', { name: 'Change role', exact: true }), 'Change role');
   const editRow = await exactCollaboratorRow(page, inviteeUserId);
   const roleMenu = editRow.locator('[data-kal31-role-menu="true"]');
@@ -276,7 +276,7 @@ async function setInviteeRole(page, inviteeEmail, inviteeUserId, role) {
 
 async function removeInvitee(page, inviteeEmail, inviteeUserId) {
   const row = await exactCollaboratorRow(page, inviteeUserId);
-  await clickVisible(row.locator('button[title="More"]'), 'collaborator More');
+  await clickVisible(row.locator('button[aria-label="More"]'), 'collaborator More');
   await clickVisible(row.getByRole('button', { name: 'Remove from team', exact: true }), 'Remove from team');
   await page.locator('[data-kal31-manage-team="true"]')
     .getByText(`Removed ${inviteeEmail}.`, { exact: true }).waitFor({ state: 'visible', timeout: 20_000 });

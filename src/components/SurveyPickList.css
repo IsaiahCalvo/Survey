@@ -1,0 +1,247 @@
+/* SurveyPickList - the long-list picker of the survey bars (lead decision
+   2026-10-13). Desktop: the content of a popover (.annotation-dropdown__popover
+   surface), 26px rows like every chrome menu. Phone (later): 44px rows. */
+.survey-pick {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 200px;
+  max-width: 280px;
+  font-family: var(--font-ui);
+}
+
+.survey-pick__search {
+  margin: 0 0 4px;
+  height: 26px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  color: var(--text-3);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.survey-pick__search:focus-within {
+  border-color: var(--border-strong);
+}
+
+.survey-pick__search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  color: var(--text-1);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font: 500 12px/1 var(--font-ui);
+}
+
+.survey-pick__search input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
+.survey-pick__body {
+  min-height: 0;
+  max-height: min(360px, calc(100vh - 160px));
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.survey-pick__section + .survey-pick__section {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.survey-pick__heading {
+  padding: 4px 6px 3px;
+  color: var(--text-3);
+  font: 600 10px/1.2 var(--font-ui);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.survey-pick__row {
+  width: 100%;
+  min-height: var(--chrome-menu-row-h, 26px);
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  box-sizing: border-box;
+  font: 600 11px/1 var(--font-ui);
+  letter-spacing: -0.01em;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.survey-pick__row:focus-visible {
+  color: var(--text-1);
+  background: var(--hover);
+  outline: 0;
+}
+
+@media (hover: hover) {
+  .survey-pick__row:hover {
+    color: var(--text-1);
+    background: var(--hover);
+    outline: 0;
+  }
+}
+
+/* The current item: bright ink with a check (survey calm gold, no gold). */
+.survey-pick__row.is-current {
+  color: var(--text-1);
+}
+
+.survey-pick__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.survey-pick__swatch {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--ink-ring);
+}
+
+.survey-pick__swatch.is-empty {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+/* A category's initials in its ring, as the bar's chips draw them. */
+.survey-pick__glyph {
+  flex: 0 0 auto;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  font: 700 8px/1 var(--font-ui);
+}
+
+.survey-pick__check {
+  flex: 0 0 12px;
+  width: 12px;
+  display: inline-flex;
+  color: var(--text-1);
+}
+
+.survey-pick__empty {
+  padding: 8px 6px;
+  color: var(--text-3);
+  font: 600 11px/1.2 var(--font-ui);
+}
+
+/* The phone's bottom sheet (mobile/MobileSurveyRail.jsx): the phone sheet
+   scale - 44px rows parted by hairlines that reach both sheet edges, 14px
+   names, the Survey sheet's find field (16px text so iOS does not zoom), a
+   check column on every row; the current row is bright ink with a check (no
+   gold). The list scrolls; the field stays on top. */
+.survey-pick--sheet {
+  min-width: 0;
+  max-width: none;
+  font-family: var(--sheet-font, var(--font-ui));
+}
+
+.survey-pick--sheet .survey-pick__search {
+  margin: 0 0 8px;
+  height: 36px;
+  padding: 0 12px 0 11px;
+  gap: 8px;
+  background: var(--panel-well);
+  border-radius: 10px;
+}
+
+.survey-pick--sheet .survey-pick__search input {
+  font-size: 16px;
+  font-weight: 400;
+}
+
+.survey-pick--sheet .survey-pick__body {
+  max-height: none;
+  flex: 1 1 auto;
+  margin: 0 calc(-1 * var(--sheet-pad-x, 16px));
+  border-top: var(--sheet-divider, 1px solid var(--border));
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.survey-pick--sheet .survey-pick__section + .survey-pick__section {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.survey-pick--sheet .survey-pick__heading {
+  padding: 14px var(--sheet-pad-x, 16px) 6px;
+  border-bottom: var(--sheet-divider, 1px solid var(--border));
+  font: 600 11px/1.2 var(--font-ui);
+}
+
+.survey-pick--sheet .survey-pick__row {
+  min-height: var(--sheet-row-h, 44px);
+  padding: 0 var(--sheet-pad-x, 16px);
+  gap: 12px;
+  color: var(--text-2);
+  border-bottom: var(--sheet-divider, 1px solid var(--border));
+  border-radius: 0;
+  font: var(--sheet-row-title, 500 14px/18px var(--font-ui));
+  letter-spacing: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (hover: hover) {
+  .survey-pick--sheet .survey-pick__row:hover {
+    background: transparent;
+  }
+}
+
+.survey-pick--sheet .survey-pick__row:active {
+  background: var(--pressed);
+}
+
+.survey-pick--sheet .survey-pick__row.is-current {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.survey-pick--sheet .survey-pick__swatch {
+  width: 16px;
+  height: 16px;
+}
+
+.survey-pick--sheet .survey-pick__glyph {
+  min-width: 22px;
+  height: 22px;
+  font-size: 9px;
+}
+
+.survey-pick--sheet .survey-pick__check {
+  flex-basis: 16px;
+  width: 16px;
+}
+
+.survey-pick--sheet .survey-pick__empty {
+  padding: 12px var(--sheet-pad-x, 16px);
+  font: 500 13px/1.3 var(--font-ui);
+}

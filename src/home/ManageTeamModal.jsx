@@ -31,6 +31,7 @@ import { visibleOpenInvites } from './accessRows';
 import { mergeRetryResult, summarizeInviteSend } from './inviteSendSummary';
 import InviteSendNotice from './InviteSendNotice';
 import { C } from '../uiPalette';
+import { useTooltip } from '../components/Tooltip';
 import {
   createProjectInvite,
   listProjectInvites,
@@ -111,6 +112,7 @@ function parseEmails(raw) {
 
 /* ============ Activity sub-modal ============ */
 const ActivityModal = ({ member, onClose }) => {
+  const tip = useTooltip();
   const [sortKey, setSortKey] = React.useState("edited");
   const [sortDir, setSortDir] = React.useState("desc");
   const cardRef = React.useRef(null);
@@ -140,7 +142,7 @@ const ActivityModal = ({ member, onClose }) => {
             <div style={{ fontSize: 11, letterSpacing: 0, color: INK_200, fontWeight: 600 }}>Activity</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4 }}>{member.name} · activity</div>
           </div>
-          <button onClick={onClose} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={13} /></button>
+          <button onClick={onClose} aria-label="Close" {...tip('Close')} className="hub-icon-btn"><Icon name="close" size={13} /></button>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 130px", gap: 14, padding: "8px 18px 6px", borderBottom: `1px solid ${INK_500}`, fontSize: 11, letterSpacing: 0, color: INK_200, fontWeight: 600 }}>
           <span onClick={() => click("file")} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "file" ? BONE_100 : "inherit" }}>File{arrow("file")}</span>
@@ -174,6 +176,7 @@ const ActivityModal = ({ member, onClose }) => {
    /invite/<token> URL; "Send invite" creates one email-bound invite per
    address (the service fires the Resend-backed email). */
 const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) => {
+  const tip = useTooltip();
   const [emails, setEmails] = React.useState("");
   const [copied, setCopied] = React.useState(false);
   const [linkRole, setLinkRole] = React.useState("Viewer");
@@ -303,7 +306,7 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
             <div style={{ fontSize: 11, letterSpacing: 0, color: INK_200, fontWeight: 600 }}>Invite User</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{project.name}</div>
           </div>
-          <button onClick={onClose} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={13} /></button>
+          <button onClick={onClose} aria-label="Close" {...tip('Close')} className="hub-icon-btn"><Icon name="close" size={13} /></button>
         </div>
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 18 }}>
           <div>
@@ -360,6 +363,7 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
 
 /* ============ Manage Team modal ============ */
 export default function ManageTeamModal({ open, onClose, project, members }) {
+  const tip = useTooltip();
   // Tolerant of missing provider — direct context read so tests/standalone
   // renders don't throw the way `useAuth` does.
   const auth = React.useContext(AuthContext) || {};
@@ -612,7 +616,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
   const someSel = selectedIds.size > 0;
 
   const ICON_BTN = (iconName, title, onClick, color, disabled) => (
-    <button title={title} disabled={Boolean(disabled)} onClick={(e) => { if (disabled) return; e.stopPropagation(); onClick(); }}
+    <button aria-label={title} {...tip(title)} disabled={Boolean(disabled)} onClick={(e) => { if (disabled) return; e.stopPropagation(); onClick(); }}
       className={`hub-btn hub-btn--icon${color === DANGER ? ' is-danger' : ''}`}>
       <Icon name={iconName} size={13} />
     </button>
@@ -768,7 +772,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                       )
                     ) : (
                       <button aria-haspopup="menu" onClick={(e) => { e.stopPropagation(); setOpenInviteMenu(null); setOpenMenu(openMenu === m.id ? null : m.id); }}
-                        title="More" aria-label="More"
+                        aria-label="More" {...tip('More')}
                         className="hub-icon-btn"><Icon name="more" size={14} /></button>
                     )}
                   </div>
@@ -809,7 +813,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                     <div style={{ fontSize: 12, color: BONE_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 14 }}>{roleLabel(inv.intended_role)}</div>
                     <div style={{ fontSize: 12, color: GOLD, fontWeight: 600 }}>Pending</div>
                     <button aria-haspopup="menu" onClick={(e) => { e.stopPropagation(); setOpenMenu(null); setOpenInviteMenu(openInviteMenu === inv.id ? null : inv.id); }}
-                      title="More" aria-label="More"
+                      aria-label="More" {...tip('More')}
                       className="hub-icon-btn"><Icon name="more" size={14} /></button>
                   </div>
                   {openInviteMenu === inv.id && (

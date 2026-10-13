@@ -602,6 +602,9 @@ export function surveyMarkerRenderEntry(annotationId, record, normalizeColor = n
     // Owner ruling 2026-09-28: the canvas shows a lock on a selected locked
     // marker and does not start a drag / resize on it.
     ...(record.lockedBy ? { lockedBy: record.lockedBy } : {}),
+    // Owner 2026-10-13: a freehand / smart-fill marker draws its outline
+    // (src/survey/markerShapes.js) mapped onto this box.
+    ...(record.bounds.shape ? { shape: record.bounds.shape } : {}),
   };
 }
 

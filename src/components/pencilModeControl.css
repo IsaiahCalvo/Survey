@@ -1,0 +1,58 @@
+/* The Pencil-only menu (PencilModeControl.jsx). Calm: the shared popup
+   surface, border, corner and shadow; no gold - the chosen row carries a check
+   and steps up to --text-1, as the desktop fit menu and the phone menus do. */
+.pencil-mode-menu {
+  position: fixed;
+  z-index: 6000;
+  min-width: 220px;
+  padding: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
+  font-family: var(--font-ui);
+}
+
+.pencil-mode-menu button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 4px 9px 4px 6px;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: var(--text-2);
+  font: 400 11px/16px var(--font-ui);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .pencil-mode-menu button:hover { background: var(--hover); }
+}
+.pencil-mode-menu button.is-checked { color: var(--text-1); }
+.pencil-mode-menu__check { width: 16px; display: inline-flex; justify-content: center; flex: none; }
+.pencil-mode-menu__label { flex: 1 1 auto; }
+.pencil-mode-menu__glyph { flex: none; opacity: 0.85; }
+
+/* Phone: the 44 px / 15 px menu rows of the rail's other menus. */
+.pencil-mode-menu.is-phone {
+  min-width: 0;
+  width: min(280px, calc(100vw - var(--mobile-rail-w, 56px) - 14px));
+  padding: 6px;
+  border-color: var(--border-strong);
+}
+.pencil-mode-menu.is-phone button {
+  min-height: var(--sheet-menu-item-h, 44px);
+  gap: 10px;
+  padding: 0 12px 0 8px;
+  color: var(--text-2);
+  font: 400 15px/20px var(--font-ui);
+  border-radius: var(--radius-xs, 4px);
+  white-space: normal;
+}
+.pencil-mode-menu.is-phone button.is-checked { color: var(--text-1); }
+.pencil-mode-menu.is-phone button:active { background: var(--pressed); }

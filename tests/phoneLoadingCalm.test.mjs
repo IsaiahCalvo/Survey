@@ -94,7 +94,7 @@ test('a tapped document answers at once with the quiet "Opening <file>…"', () 
 });
 
 test('every loading line on a phone sits in one place', () => {
-  assert.match(QUIET, /@media \(max-width: 720px\) \{\s*\.quiet-loading-text \{[\s\S]*?position: fixed;/);
+  assert.match(QUIET, /@media screen and \(max-device-width: 599px\), screen and \(max-device-height: 599px\) \{\s*\.quiet-loading-text \{[\s\S]*?position: fixed;/);
   assert.match(QUIET, /\.survey-pdfjs-viewer \.quiet-loading-text \{ top: 50%; \}/);
   // The Expo shell's line uses the same frame: 34px header, 36px + inset dock.
   assert.match(EXPO_APP, /paddingTop: 34, paddingBottom: 36 \+ bottomInset/);
@@ -134,6 +134,14 @@ test('offline, the viewer prefetch waits and no stale-deploy reload fires', () =
 
   assert.match(MAIN, /if \(window\.navigator\?\.onLine === false\) return;/);
   assert.match(APP_SHELL, /function ViewerLoadFailed\(\) \{[\s\S]*?window\.addEventListener\('online', reload\)/);
+});
+
+test('the viewer fallback never auto-reloads when its loop guard cannot be stored', () => {
+  // Codex review (#811): with sessionStorage blocked, reloading anyway could
+  // loop forever on a viewer that keeps failing; only the tap reloads then.
+  const body = /function ViewerLoadFailed\(\) \{([\s\S]*?)\n\}/.exec(APP_SHELL)[1];
+  assert.match(body, /catch \{[\s\S]*?return;\s*\}\s*window\.location\.reload\(\);/);
+  assert.doesNotMatch(body, /still reload once/);
 });
 
 test('the phone rail opens on your own initials, not a placeholder', () => {

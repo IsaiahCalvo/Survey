@@ -1302,8 +1302,57 @@ function paintUniformTextMarkupMasks(context, objects) {
   }
 }
 
+// Owner 2026-10-13: a freehand / smart-fill Survey Marker — twin of
+// SurveyMarkerShapePaint (src/survey/markerShapeSvg.jsx). `surveyMarkerShape`
+// is the outline already mapped onto the marker's box (page units); the box's
+// rotation turns about its centre like the rect branch below.
+function drawSurveyMarkerShape(context, object) {
+  const shape = object.surveyMarkerShape;
+  context.save();
+  applyBlendAndOpacity(context, object);
+  const left = toNumber(object.left);
+  const top = toNumber(object.top);
+  applyRotation(context, toNumber(object.angle), left + toNumber(object.width) / 2, top + toNumber(object.height) / 2);
+  if (typeof context.setLineDash === 'function') context.setLineDash([]);
+  context.beginPath();
+  if (shape.type === 'stroke') {
+    shape.points.forEach(([x, y], index) => {
+      if (index === 0) context.moveTo(x, y);
+      else context.lineTo(x, y);
+    });
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+    paintCurrentPath(context, {
+      stroke: object.needsEntity ? 'rgba(74, 144, 226, 0.35)' : object.fill,
+      strokeWidth: shape.width,
+    });
+  } else {
+    for (const polygon of shape.polygons) {
+      for (const ring of polygon) {
+        ring.forEach(([x, y], index) => {
+          if (index === 0) context.moveTo(x, y);
+          else context.lineTo(x, y);
+        });
+        context.closePath();
+      }
+    }
+    if (object.needsEntity && typeof context.setLineDash === 'function') context.setLineDash([5, 5]);
+    paintCurrentPath(context, {
+      fill: object.needsEntity ? 'transparent' : object.fill,
+      stroke: object.needsEntity ? '#4A90E2' : 'transparent',
+      strokeWidth: object.needsEntity ? 2 : 0,
+      fillRule: 'evenodd',
+    });
+  }
+  context.restore();
+}
+
 export function drawAnnotationObject(context, object, displayScale = 1) {
   if (!context || !object) return;
+  if (object.surveyMarkerShape) {
+    drawSurveyMarkerShape(context, object);
+    return;
+  }
   // Dual-rep callout projections live in the callouts[] pipeline — the SVG
   // dispatch skips them (SVGAnnotationLayer.jsx:1791-1802) and so must we, or
   // they double-paint over drawCallout.

@@ -15,6 +15,7 @@
      onCreateTemplate()    — start the new-template flow
 */
 import { useState, useEffect, lazy, Suspense, startTransition } from 'react';
+import { useTooltip } from '../components/Tooltip';
 import DocumentsLedger from './DocumentsLedger';
 import ProjectsFolderTree from './ProjectsFolderTree';
 import TemplatesEditor from './TemplatesEditor';
@@ -52,6 +53,9 @@ export default function SurveyHub({
   initialMobileDetailOpen = false,
   onOpenDocument,
   onUpload,
+  /* PDFs dragged in from the computer: (files, { projectId, projectName }).
+     Without it the home screen takes no drops (the dev preview). */
+  onDropFiles,
   uploadBusy = false,
   onCreateProject,
   onRenameProject,
@@ -75,6 +79,7 @@ export default function SurveyHub({
   onSignOut,
   onSignIn,
 }) {
+  const tip = useTooltip();
   const [tab, setTab] = useState(() => {
     if (initialTab) return initialTab;
     try { return localStorage.getItem(TAB_KEY) || 'documents'; } catch { return 'documents'; }
@@ -157,7 +162,7 @@ export default function SurveyHub({
             type="button"
             className="btn primary"
             onClick={() => { void Promise.resolve(onRetry?.()).catch(() => undefined); }}
-            title={error || undefined}
+            {...tip(error ? String(error) : '')}
           >Try again</button>
         </div>
       </div>
@@ -178,6 +183,7 @@ export default function SurveyHub({
           projects={projects}
           onOpenDocument={(document) => onOpenDocument?.(document, 'documents')}
           onUpload={onUpload}
+          onDropFiles={onDropFiles}
           uploadBusy={uploadBusy}
           onShare={shareDocuments}
           onDuplicate={onDuplicateDocuments}
@@ -204,6 +210,7 @@ export default function SurveyHub({
             onCreateProject={onCreateProject}
             onRenameProject={onRenameProject}
             onUpload={onUpload}
+            onDropFiles={onDropFiles}
             onDeleteProjects={onDeleteProjects}
             onDuplicateProjects={onDuplicateProjects}
             onDuplicateDocuments={onDuplicateDocuments}
