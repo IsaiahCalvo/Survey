@@ -75,6 +75,7 @@ const HISTORY_GLYPH = 14;
 import { TooltipContext, makeTooltipBinding } from './components/Tooltip';
 import { useViewerTopOverlayRef } from './utils/viewerTopOverlay.js';
 import DismissBarrier from './components/DismissBarrier.jsx';
+import PencilModeControl, { usePencilMode } from './components/PencilModeControl.jsx';
 import { sanitizeZoomInput } from './utils/pageNavigationMath.js';
 import { showsColourRule, showsPaintSwatch, showsQuickColourDots } from './utils/toolbarColourGroup.js';
 import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, showsFormatRow } from './utils/toolbarRows.js';
@@ -846,6 +847,9 @@ export default function App({ devPreviewReturnTab = null }) {
     () => makeTooltipBinding(bottomToolbarApi?.setTooltip),
     [bottomToolbarApi?.setTooltip],
   );
+  // drawboardAudit C2: the right rail's Pencil-only switch (shown once a pen
+  // has been used on this device).
+  const { penSeen: pencilModeSeen, drawMode: pencilModeDrawMode } = usePencilMode();
 
   // UX 2026-07-14 (rail-footer redesign): page-fit mode glyphs shared by the
   // rail footer's fit trigger and its popup options. Hoisted to component
@@ -4694,6 +4698,21 @@ export default function App({ devPreviewReturnTab = null }) {
                       </button>
                       {api.isZoomMenuOpen && fitMenu({ right: '100%', bottom: 0, marginRight: '6px' })}
                     </div>
+                    {/* drawboardAudit C2: the Pencil-only switch sits where
+                        Drawboard keeps it - the utility end of the bar holding
+                        the page controls. Nothing renders (no rule either)
+                        until a pen has been used on this device. */}
+                    {pencilModeSeen && (
+                      <>
+                        <div style={{ width: '24px', height: '1px', background: 'var(--surface-3)', margin: '4px 0' }} />
+                        <PencilModeControl
+                          surface="desktop"
+                          glyph={RAIL_CONTROL_GLYPH}
+                          style={footerBtn()}
+                          buttonProps={chromeTip(pencilModeDrawMode === 'pen' ? 'Annotate with Pencil only' : 'Annotate with Pencil or Touch', 'left')}
+                        />
+                      </>
+                    )}
                   </div>
                 );
             })()}

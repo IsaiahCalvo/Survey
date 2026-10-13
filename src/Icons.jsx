@@ -1190,6 +1190,20 @@ const ICON_RENDERERS = {
         <circle cx="9" cy="8" r="3.5" stroke={color} strokeWidth="1.5" /><path d="M2 20A7 7 0 0 1 16 20M17 12H22M22 8L17 16" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
+    // Pencil-only setting (drawboardAudit C2, Drawboard's "Annotate with
+    // Pencil or Touch / Pencil only"): a pointing finger = touch draws too;
+    // a plain pencil = only a pen draws. Lucide pointer / pencil at the house
+    // 1.5 stroke - neither is the Draw group's pen nor the Pan hand.
+    touchDraw: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
+        <path d="M22 14a8 8 0 0 1-8 8M18 11v-1a2 2 0 0 0-4 0M14 10V9a2 2 0 0 0-4 0v1M10 9.5V4a2 2 0 0 0-4 0v10M18 11a2 2 0 1 1 4 0v3a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+    pencilOnly: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
+        <path d="M21.17 6.81a1 1 0 0 0-3.98-3.98L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5zM15 5l4 4" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
 };
 
 const ICON_ALIASES = {

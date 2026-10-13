@@ -10,6 +10,7 @@ import { QuickColourDots, QuickPaintSwatch } from '../components/QuickStyleContr
 import { isPaintSelectionMixed } from '../utils/selectionRestyle.js';
 import { SheetOpacitySlider, SheetPreview, SheetRow, SheetScaleSlider, SheetSection, SheetSegmented, SheetSizeField, SheetSwatchRow } from './MobileToolSheetControls';
 import DismissBarrier from '../components/DismissBarrier';
+import PencilModeControl from '../components/PencilModeControl.jsx';
 import Spinner from '../components/Spinner';
 import ActiveSpaceChip from '../sidebar/ActiveSpaceChip';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from '../components/Callout/types';
@@ -2939,6 +2940,15 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
               never turns gold (gold = the active tool, owner 2026-10-02). The
               trigger says it is open (aria-expanded) and its glyph lights to
               --text-1, as the Spaces export icon does (styles.css). */}
+          {/* drawboardAudit C2: the Pencil-only switch, at the utility end of
+              the rail as Drawboard has it beside its More button. It renders
+              nothing until a pen has been used on this device. */}
+          <PencilModeControl
+            surface="phone"
+            className="mobile-pdf-tools__button"
+            glyph={RAIL_GLYPH}
+            onOpen={() => { setMoreOpen(false); setPresenceOpen(false); }}
+          />
           <RailButton
             icon="more"
             label="More document options"

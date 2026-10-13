@@ -4399,9 +4399,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // kept (no pointer hand).
   const eraserWholeModeRef = useRef(false);
   useEffect(() => {
-    const haloByPosition = activeTool === 'pan' || activeTool === 'eraser'
-      || (shouldShowHoverHalo(activeTool) && activeTool !== 'select' && activeTool !== 'text-select');
-    const pointerCursor = activeTool === 'pan';
+    // Owner 2026-10-13: Pan shows no hover halo and no pointer hand - a
+    // press-drag under Pan always pans (docs/GESTURE-CONTRACT.md P7).
+    const haloByPosition = activeTool === 'eraser'
+      || (shouldShowHoverHalo(activeTool) && activeTool !== 'pan' && activeTool !== 'select' && activeTool !== 'text-select');
     if (!haloByPosition) {
       // Tool changed away from pan — clear any lingering hover state + cursor.
       setPendingSvgHover((prev) => (prev == null ? prev : null));
@@ -4420,7 +4421,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (!e) return;
       // A drawing tool mid-stroke shows no halo; the eraser previews only in
       // Whole mode (Partial carves, it does not delete the mark).
-      if ((!pointerCursor && e.buttons !== 0) || (activeTool === 'eraser' && !eraserWholeModeRef.current)) {
+      if (e.buttons !== 0 || (activeTool === 'eraser' && !eraserWholeModeRef.current)) {
         if (lastKey !== '') {
           lastKey = '';
           setPendingSvgHover((prev) => (prev == null ? prev : null));
@@ -4471,12 +4472,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setPendingSvgHover(isAnnotation
           ? { pageNumber: hit.pageNumber, annotationIndex: hit.annotationIndex }
           : { pageNumber: hit.pageNumber, calloutId: hit.calloutId });
-        // UX: pointer cursor over annotations in pan mode. document.body is
-        // the lowest-priority target so Pdfjs-level pan cursor wins
-        // everywhere else. Cleared on no-hit and on tool-change cleanup.
-        if (pointerCursor && document.body.style.cursor !== 'pointer') {
-          document.body.style.cursor = 'pointer';
-        }
       } else {
         setPendingSvgHover((prev) => (prev == null ? prev : null));
         if (document.body.style.cursor === 'pointer') {
