@@ -122,6 +122,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('menu:export-annotated-pdf', subscription);
     return () => ipcRenderer.removeListener('menu:export-annotated-pdf', subscription);
   },
+  // KAL-444: Help > Keyboard Shortcuts opens the in-app shortcuts sheet.
+  onKeyboardShortcutsMenu: (callback) => {
+    const subscription = () => callback();
+    ipcRenderer.on('menu:keyboard-shortcuts', subscription);
+    return () => ipcRenderer.removeListener('menu:keyboard-shortcuts', subscription);
+  },
 
   // UX 2026-04-22: Save Log GitHub push. Returns { ok, url, filename, error }.
   // SECURITY 2026-06-17: the renderer now passes fallbackToken = null — no

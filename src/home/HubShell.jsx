@@ -7,6 +7,7 @@ import AppIcon from '../Icons';
 import DismissBarrier from '../components/DismissBarrier';
 import { presenceInitials } from '../components/presenceIdentity.js';
 import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
+import { openKeyboardShortcuts } from '../utils/keyboardShortcuts.js';
 
 const HUB_BUILD_STAMP = (
   typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STAMP__
@@ -209,7 +210,7 @@ const isExpoNativeShell = () => {
    that's where they'll be able to see their archives"). Desktop keeps Archive
    pinned at the bottom of the left rail, so putting it in the desktop menu too
    would be the same destination offered twice. */
-const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) => {
+const ProfileMenu = ({ userName, userMeta, showArchive = false, showShortcuts = false, tab, onNav }) => {
   const { user, onSettings, onSignOut, onSignIn } = useContext(HubChromeContext);
   // Resolve the per-tier badge text. Callers may pass `userMeta` explicitly;
   // otherwise we read from AuthContext so free users no longer see "Pro".
@@ -305,6 +306,14 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
               <button type="button" className="hub-menu__item" onClick={() => { setOpen(false); setConfirmSignOut(false); onSettings && onSettings(); }}>
                 <Icon name="settings" size={15} color="var(--ink-200)" />Settings
               </button>
+              {/* KAL-444: Home's visible way into the shortcuts sheet (the
+                  viewer's is the keyboard button on its left rail). Desktop
+                  only — the phone instance has no keyboard to describe. */}
+              {showShortcuts && (
+                <button type="button" className="hub-menu__item" onClick={() => { setOpen(false); setConfirmSignOut(false); openKeyboardShortcuts(); }}>
+                  <Icon name="keyboard" size={15} color="var(--ink-200)" />Keyboard shortcuts
+                </button>
+              )}
               {confirmSignOut ? (
                 <div className="profile-signout-confirm">
                   <div className="profile-signout-copy">Sign out of Survey?</div>
@@ -523,7 +532,7 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
           <nav className="nav nav-bottom">
             {navBtn(...archiveNavItem)}
           </nav>
-          <ProfileMenu userName={userName} userMeta={userMeta} />
+          <ProfileMenu userName={userName} userMeta={userMeta} showShortcuts />
         </aside>
         <main ref={mobileSwipeSurfaceRef} className="main paper">
           <div className="header">

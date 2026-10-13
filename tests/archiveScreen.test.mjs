@@ -946,11 +946,12 @@ test('on MOBILE, Archive leaves navigation and lives behind the profile avatar',
 
   // The profile menu carries it, and ONLY on the mobile instance — desktop
   // already has it pinned in the rail, so offering it twice there is noise.
-  assert.match(HUB_SHELL, /const ProfileMenu = \(\{ userName, userMeta, showArchive = false, tab, onNav \}\)/);
+  // (KAL-444 added a desktop-only showShortcuts flag beside showArchive.)
+  assert.match(HUB_SHELL, /const ProfileMenu = \(\{ userName, userMeta, showArchive = false, (?:showShortcuts = false, )?tab, onNav \}\)/);
   assert.match(HUB_SHELL, /\{showArchive && \([\s\S]*?onNav && onNav\('archive'\)[\s\S]*?Archive\s*\n?\s*<\/button>/);
   assert.match(HUB_SHELL, /<div className="mobile-profile">\s*\n\s*<ProfileMenu userName=\{userName\} userMeta=\{userMeta\} showArchive tab=\{tab\} onNav=\{onNav\} \/>/);
   // The desktop rail instance must NOT pass showArchive.
-  assert.match(HUB_SHELL, /<\/nav>\s*\n\s*<ProfileMenu userName=\{userName\} userMeta=\{userMeta\} \/>/);
+  assert.match(HUB_SHELL, /<\/nav>\s*\n\s*<ProfileMenu userName=\{userName\} userMeta=\{userMeta\}(?: showShortcuts)? \/>/);
 });
 
 test('the hub routes the archive tab to the data container, lazily', () => {

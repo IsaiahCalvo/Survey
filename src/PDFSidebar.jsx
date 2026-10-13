@@ -26,6 +26,7 @@ import { useTooltip } from './components/Tooltip';
 import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH } from './viewerShared';
 import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
 import SectionIconButton from './components/SectionIconButton.jsx';
+import { openKeyboardShortcuts } from './utils/keyboardShortcuts.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -646,6 +647,45 @@ const PDFSidebar = React.forwardRef(({
             </div>
             );
           })}
+        </div>
+
+        {/* KAL-444: the way into the keyboard shortcuts sheet for someone who
+            does not know its key yet. Drawboard keeps help at the foot of its
+            left rail; here it sits at the foot of the tabs, above the
+            collaboration footer, outside the "Document panels" toolbar since
+            it opens a sheet, not a panel. The tooltip carries the key ("?"),
+            the same "name  key" chip the tool buttons use, so one visit is
+            enough to learn it. */}
+        <div data-chrome-rail="true" style={{ padding: '0 8px 8px', background: 'var(--panel-bg)' }}>
+          <button
+            type="button"
+            {...tip('Keyboard shortcuts  ?', 'right')}
+            aria-label="Keyboard shortcuts"
+            aria-haspopup="dialog"
+            className="chrome-icon-btn"
+            onClick={openKeyboardShortcuts}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-2)',
+              borderRadius: 'var(--chrome-radius, 6px)',
+              padding: '11px 6px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minWidth: '28px',
+              minHeight: '28px',
+              width: '100%'
+            }}
+          >
+            <Icon
+              name="keyboard"
+              size={RAIL_GLYPH}
+              color="currentColor"
+              style={{ width: `${RAIL_GLYPH}px`, height: `${RAIL_GLYPH}px`, flexShrink: 0 }}
+            />
+          </button>
         </div>
 
         {/* 2026-04-25 — Collaboration footer (sync chip, History, presence)
