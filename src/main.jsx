@@ -382,6 +382,10 @@ import { installStrayFileDropGuard } from './utils/fileDrop.js';
 // A file dropped where the app does not take it must never make the browser
 // or the Electron window leave the app to show that file (2026-10-13).
 if (typeof window !== 'undefined') installStrayFileDropGuard(window);
+import { installInputModalityTracking } from './utils/inputModality.js';
+// <html data-input="mouse|pen|touch">: the input in use right now (last press
+// or hover). Selection grabbers size their hit pads from it (touch audit T3).
+if (typeof window !== 'undefined') installInputModalityTracking(window);
 
 // Suppress PDF.js "TT: undefined function" warnings
 // Suppress PDF.js "TT: undefined function" warnings
