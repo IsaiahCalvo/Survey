@@ -3432,6 +3432,37 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   pointer-events: none;
 }
 
+/* THE DESKTOP LAYOUT ON A TOUCH DEVICE (owner 2026-10-13, Drawboard touch
+   audit K1): an iPad or a touch laptop shows the desktop layout, and its
+   on-screen keyboard is handled by the same controller (keyboardViewport.js,
+   mounted by AppShell with `desktop: true` - never on a mouse-only desktop or
+   in Electron). Its two pieces of room, both inert at rest because the
+   controller sets their attributes only while a real keyboard is up:
+   - the page area gets the keyboard's scroll room below the last page, so a
+     text box low on the page can be scrolled above the keyboard (the same
+     content-box padding as the phone's, above);
+   - a list holding the field (the right rail's Survey list, a side panel)
+     gets room at its end, as a phone browse panel's lists do. */
+@media screen and (min-device-width: 600px) and (min-device-height: 600px) {
+  html.survey-viewer-open[data-keyboard-scroll-room] [data-mobile-pdf-surface='false'] [data-pdfjs-content='true'] {
+    box-sizing: content-box;
+    padding-bottom: var(--keyboard-scroll-room, 0px);
+  }
+
+  html.survey-viewer-open [data-keyboard-room] {
+    max-height: var(--keyboard-room-hold, none) !important;
+  }
+
+  html.survey-viewer-open [data-keyboard-room]::after {
+    content: '';
+    display: block;
+    flex: none;
+    grid-column: 1 / -1;
+    height: var(--keyboard-room, 0px);
+    pointer-events: none;
+  }
+}
+
 /* While a list carries the field you are typing in to its place (a compositor
    glide, keyboardViewport.js), the iOS caret - drawn by WebKit from the
    field's laid-out box, not from the animated one - would stand still beside
