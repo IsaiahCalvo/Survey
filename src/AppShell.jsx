@@ -40,6 +40,10 @@ import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from '.
 import './surveyRailStyles.js';
 import ActiveSpaceChip from './sidebar/ActiveSpaceChip';
 import TabBar from './TabBar';
+import { RenameModal } from './home/BulkModals';
+import { useConfirmDialog } from './components/dialogPrompts';
+import { closeConfirmFor, persistableDocumentId, pickActiveTabAfterClose, tabIdsForCloseAction } from './tabs/tabStrip.js';
+import { useTabSession } from './tabs/useTabSession.js';
 import {
   MobilePdfViewerDock,
   MobilePdfViewerHeader,
@@ -1583,41 +1587,194 @@ export default function App({ devPreviewReturnTab = null }) {
     return newFile;
   }, [selectedPDF, activeTabId, replaceDocument]);
 
-  const handleTabClose = (tabId) => {
-    // Prevent closing the home tab
-    if (tabId === HOME_TAB_ID) return;
+  // ---- Desktop tab strip: close, menu, rename, download, restore ----------
+  // Drawboard shell audit, Chunk C (2026-10-13). Every close a person makes -
+  // the X, a middle-click, the tab menu's Close tab / Close other tabs / Close
+  // all tabs and the overflow list - goes through requestCloseTabs, so one
+  // rule asks before work is lost: a local file with changes that are not
+  // saved (the same rule as the reload warning, beforeUnloadGuard.js). Close
+  // all asks once, like Drawboard ("Close all open documents (N)?").
+  // closeTabsNow is the close itself; a viewer that failed to load still calls
+  // it directly (onCloseAfterFailure): there is nothing to protect.
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+  const activeTabIdRef = useRef(activeTabId);
+  activeTabIdRef.current = activeTabId;
+  const bottomToolbarApiRef = useRef(bottomToolbarApi);
+  bottomToolbarApiRef.current = bottomToolbarApi;
+  const [askTabConfirm, tabConfirmDialog] = useConfirmDialog();
+  const [renameTabId, setRenameTabId] = useState(null);
 
-    const tabIndex = tabs.findIndex(t => t.id === tabId);
-    if (tabIndex === -1) return;
+  const closeTabsNow = (tabIds) => {
+    const currentTabs = tabsRef.current;
+    const closing = (tabIds || []).filter((id) => id !== HOME_TAB_ID && currentTabs.some((t) => t.id === id));
+    if (!closing.length) return;
+    const closingSet = new Set(closing);
+    const currentActive = activeTabIdRef.current;
+    // The tab to the right of the closed active one takes over, else the one
+    // to its left, else Home (the old single close did the same).
+    const nextActiveId = pickActiveTabAfterClose(currentTabs, closing, currentActive, HOME_TAB_ID);
+    setTabs((prev) => prev.filter((t) => !closingSet.has(t.id)));
+    if (nextActiveId === currentActive) return;
+    if (nextActiveId === HOME_TAB_ID) {
+      setActiveTabId(HOME_TAB_ID);
+      setSelectedPDF(null);
+      setCurrentView('dashboard');
+      return;
+    }
+    const nextTab = currentTabs.find((t) => t.id === nextActiveId);
+    setActiveTabId(nextActiveId);
+    setSelectedPDF(nextTab?.file || null);
+    setCurrentView('viewer');
+  };
 
-    const newTabs = tabs.filter(t => t.id !== tabId);
-    setTabs(newTabs);
+  const handleTabClose = (tabId) => closeTabsNow([tabId]);
 
-    // If closing the active tab, switch to another tab or go back to home
-    if (tabId === activeTabId) {
-      if (newTabs.length > 1) { // More than just home tab
-        // Switch to the tab that was at the same position, or the last tab (excluding home)
-        const pdfTabs = newTabs.filter(t => !t.isHome);
-        if (pdfTabs.length > 0) {
-          const newActiveIndex = Math.min(tabIndex - 1, pdfTabs.length - 1);
-          const newActiveTab = pdfTabs[newActiveIndex >= 0 ? newActiveIndex : 0];
-          setActiveTabId(newActiveTab.id);
-          setSelectedPDF(newActiveTab.file);
-          setCurrentView('viewer');
-        } else {
-          // Only home tab left
-          setActiveTabId(HOME_TAB_ID);
-          setSelectedPDF(null);
-          setCurrentView('dashboard');
-        }
-      } else {
-        // Only home tab left
-        setActiveTabId(HOME_TAB_ID);
-        setSelectedPDF(null);
-        setCurrentView('dashboard');
-      }
+  const requestCloseTabs = async (tabIds, action = 'close') => {
+    const ids = (tabIds || []).filter((id) => id !== HOME_TAB_ID);
+    if (!ids.length) return;
+    const confirm = closeConfirmFor({ tabs: tabsRef.current, closingIds: ids, action });
+    if (confirm && !(await askTabConfirm(confirm))) return;
+    closeTabsNow(ids);
+  };
+
+  const handleTabCloseRequest = (tabId) => requestCloseTabs([tabId], 'close');
+
+  // Download from the tab menu = the viewer's own "Export annotated PDF" for
+  // that document. A tab that is not in front is brought up first and its
+  // export runs as soon as its viewer has the document; a restored tab that
+  // was never opened gets a moment for its markup to load.
+  const pendingTabDownloadRef = useRef(null);
+  const tabDownloadTimerRef = useRef(null);
+  useEffect(() => () => clearTimeout(tabDownloadTimerRef.current), []);
+  const downloadTab = (tabId) => {
+    const tab = tabsRef.current.find((t) => t.id === tabId);
+    if (!tab || tab.isHome) return;
+    const api = bottomToolbarApiRef.current;
+    const inFront = tabId === activeTabIdRef.current && currentView === 'viewer';
+    if (inFront && typeof api?.exportAnnotatedPdf === 'function' && api.numPages > 0) {
+      api.exportAnnotatedPdf();
+      return;
+    }
+    pendingTabDownloadRef.current = {
+      tabId,
+      staleApi: inFront ? null : api,
+      wasLoaded: !tab.restorePending,
+      at: Date.now(),
+    };
+    if (!inFront) handleTabClick(tabId);
+  };
+  useEffect(() => {
+    const pending = pendingTabDownloadRef.current;
+    if (!pending) return;
+    if (Date.now() - pending.at > 30000 || !tabs.some((t) => t.id === pending.tabId)) {
+      pendingTabDownloadRef.current = null;
+      return;
+    }
+    if (activeTabId !== pending.tabId || currentView !== 'viewer') return;
+    const api = bottomToolbarApi;
+    if (!api || api === pending.staleApi || typeof api.exportAnnotatedPdf !== 'function' || !(api.numPages > 0)) return;
+    pendingTabDownloadRef.current = null;
+    clearTimeout(tabDownloadTimerRef.current);
+    tabDownloadTimerRef.current = setTimeout(() => {
+      if (activeTabIdRef.current !== pending.tabId) return;
+      bottomToolbarApiRef.current?.exportAnnotatedPdf?.();
+    }, pending.wasLoaded ? 0 : 1500);
+  }, [bottomToolbarApi, activeTabId, currentView, tabs]);
+
+  // Rename from the tab menu = the home's Rename (Dashboard's rename of the
+  // document row). The tab shows the new name at once and goes back if the
+  // rename fails (Dashboard shows the error toast).
+  const renameTab = renameTabId ? tabs.find((t) => t.id === renameTabId) || null : null;
+  const handleRenameTabConfirm = async (nextName) => {
+    const tab = tabsRef.current.find((t) => t.id === renameTabId);
+    const documentId = persistableDocumentId(tab);
+    if (!tab || !documentId) return;
+    const previousName = tab.name;
+    const sameDocument = (t) => persistableDocumentId(t) === documentId;
+    const row = documents.find((d) => String(d?.id) === String(documentId)) || { id: documentId, name: previousName };
+    setTabs((prev) => prev.map((t) => (sameDocument(t) ? { ...t, name: nextName } : t)));
+    const renamed = await dashboardRef.current?.renameDocument?.(row, nextName);
+    if (!renamed) setTabs((prev) => prev.map((t) => (sameDocument(t) ? { ...t, name: previousName } : t)));
+  };
+
+  const handleTabMenuAction = (action, tabId) => {
+    if (action === 'close' || action === 'closeOthers' || action === 'closeAll') {
+      requestCloseTabs(tabIdsForCloseAction(tabsRef.current, action, tabId), action);
+    } else if (action === 'rename') {
+      if (tabsRef.current.some((t) => t.id === tabId)) setRenameTabId(tabId);
+    } else if (action === 'download') {
+      downloadTab(tabId);
     }
   };
+
+  // Open tabs come back after a reload (per signed-in user; tabs/useTabSession).
+  // Restored tabs open through the same path as a share link (?docId=): the
+  // library row is the file and the viewer downloads it. Only the tab that was
+  // in front loads now; the others wait until they are first shown.
+  const restoreActivateRef = useRef(null);
+  const fileForRestoredRow = (row) => {
+    // Dev seam, exactly as the share-link open uses it: a seeded row's local
+    // copy, opened as a plain local file.
+    if (import.meta.env.DEV && typeof File !== 'undefined' && row?.__localFile instanceof File) {
+      return row.__localFile;
+    }
+    if (!(row?.file instanceof Blob)) return row;
+    // An upload still held in memory: the same metadata the home's open
+    // attaches to it.
+    const local = row.file;
+    if (row.id && !local.id) {
+      local.id = row.id;
+      local.projectId = row.projectId || row.project_id;
+      local.user_id = row.user_id || row.userId || null;
+    }
+    return local;
+  };
+  const handleTabSessionRestore = (plan) => {
+    const restored = plan.rows.map((row) => {
+      const file = fileForRestoredRow(row);
+      return {
+        id: generateTabId(),
+        name: row.name || file?.name || 'Document',
+        file,
+        filePath: row.filePath || row.file_path || null,
+        documentId: String(row.id),
+        isHome: false,
+        viewState: null,
+        restorePending: true,
+      };
+    });
+    setTabs((prev) => [
+      ...prev,
+      ...restored.filter((t) => !prev.some((open) => isSameDocumentTab(open, t.file, t.filePath))),
+    ]);
+    const target = plan.activeDocumentId
+      ? restored.find((t) => t.documentId === plan.activeDocumentId)
+      : null;
+    restoreActivateRef.current = target?.id || null;
+  };
+  useTabSession({
+    userId: user?.id || null,
+    documents,
+    tabs,
+    activeTabId,
+    onRestore: handleTabSessionRestore,
+    // The phone has no tab strip; it opens on Home as before.
+    enabled: !isNarrowShell,
+  });
+  // Bring the restored front tab up - unless the person already moved on.
+  useEffect(() => {
+    const targetId = restoreActivateRef.current;
+    if (!targetId || !tabs.some((t) => t.id === targetId)) return;
+    restoreActivateRef.current = null;
+    if (activeTabIdRef.current !== HOME_TAB_ID || currentView !== 'dashboard') return;
+    handleTabClick(targetId);
+  }, [tabs]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A restored tab mounts its viewer the first time it comes to the front.
+  useEffect(() => {
+    if (!tabs.some((t) => t.id === activeTabId && t.restorePending)) return;
+    setTabs((prev) => prev.map((t) => (t.id === activeTabId && t.restorePending ? { ...t, restorePending: false } : t)));
+  }, [activeTabId, tabs]);
 
   const handleTabReorder = (reorderedTabs) => {
     // Ensure home tab is always first
@@ -1630,19 +1787,9 @@ export default function App({ devPreviewReturnTab = null }) {
     }
   };
 
-  const handlePageDrop = (sourceTabId, pageNumber, targetTabId) => {
-    // This is a placeholder - actual PDF page copying would require PDF manipulation
-    // For now, we'll just show a message or implement basic structure
-
-    // TODO: Implement actual page copying using PDF.js or a PDF manipulation library
-    // This would involve:
-    // 1. Getting the page from source PDF
-    // 2. Creating a new PDF or modifying target PDF
-    // 3. Adding the page to target PDF
-    // 4. Updating the target tab's file
-
-    showToast(`Page ${pageNumber} drag-and-drop functionality is being implemented. This feature requires PDF manipulation capabilities.`, 'info');
-  };
+  // A page dragged onto a tab used to show a placeholder toast (a stub).
+  // Nothing in the app drags a page out any more (the Pages panel reorders
+  // with pointer events), so the tab strip no longer takes such drops.
 
   const handleBack = () => {
     if (returnToDevHubPreview()) return;
@@ -1674,7 +1821,10 @@ export default function App({ devPreviewReturnTab = null }) {
   const stableTabClick = useStableHandler(handleTabClick);
   const stableTabClose = useStableHandler(handleTabClose);
   const stableTabReorder = useStableHandler(handleTabReorder);
-  const stablePageDrop = useStableHandler(handlePageDrop);
+  const stableTabCloseRequest = useStableHandler(handleTabCloseRequest);
+  const stableTabMenuAction = useStableHandler(handleTabMenuAction);
+  const stableRenameTabConfirm = useStableHandler(handleRenameTabConfirm);
+  const closeRenameTab = useCallback(() => setRenameTabId(null), []);
   // Crash hunt 2026-10-07 (phone memory): every callback handed to PDFViewer
   // must keep one identity. PDFViewer folds some of them into the rail / tool
   // bar API objects it publishes back into this component's state, so a fresh
@@ -2239,6 +2389,20 @@ export default function App({ devPreviewReturnTab = null }) {
       <MemoSaveLogBanner />
       <MemoToastHost />
       <FileDropOverlay overlay={viewerDropOverlay} />
+      {/* The tab strip's confirm (closing unsaved work, Close all) and its
+          Rename document dialog - the home's own dialogs. */}
+      {/* Their own layer: they open over an open document, whose viewer
+          sits at z-index 5000 (the home's dialogs only ever cover the home). */}
+      <div data-tab-strip-dialogs="" style={{ position: 'relative', zIndex: 6500 }}>
+        {tabConfirmDialog}
+        <RenameModal
+          open={!!renameTab}
+          onClose={closeRenameTab}
+          title="Rename document"
+          initialName={renameTab?.name || ''}
+          onConfirm={stableRenameTabConfirm}
+        />
+      </div>
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }} {...viewerDropProps}>
         {tabs.length > 0 && !isNarrowShell && ( // Desktop-only: mobile navigation lives inside the home/viewer chrome.
           // KAL-65: the tab strip shows over the hub too, where the viewer's
@@ -2248,9 +2412,10 @@ export default function App({ devPreviewReturnTab = null }) {
             tabs={tabs}
             activeTabId={activeTabId}
             onTabClick={stableTabClick}
-            onTabClose={stableTabClose}
+            onTabClose={stableTabCloseRequest}
             onTabReorder={stableTabReorder}
-            onPageDrop={stablePageDrop}
+            onTabMenuAction={stableTabMenuAction}
+            signedIn={Boolean(user?.id)}
           />
           </TooltipProvider>
         )}
@@ -4259,6 +4424,8 @@ export default function App({ devPreviewReturnTab = null }) {
             </div>
             {tabs.map(tab => {
               if (tab.isHome) return null;
+              // A restored tab loads the first time it comes to the front.
+              if (tab.restorePending && tab.id !== activeTabId) return null;
 
               const isVisible = tab.id === activeTabId && currentView === 'viewer';
               const tabViewState = tab.viewState;
@@ -4304,7 +4471,6 @@ export default function App({ devPreviewReturnTab = null }) {
                       onBottomToolbarApiChange={setBottomToolbarApi}
                       onLeftRailApiChange={setLeftRailApi}
                       onRightRailApiChange={setRightRailApi}
-                      onPageDrop={stablePageDrop}
                       onUpdatePDFFile={stableUpdatePDFFile}
                       onCloseAfterFailure={stableTabClose}
                       onUnsavedAnnotationsChange={stableUnsavedAnnotationsChange}

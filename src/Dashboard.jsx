@@ -1704,6 +1704,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     // PDFs dropped on an open document (AppShell): uploaded like the Upload
     // button, each opened in a new tab.
     uploadDroppedFiles: handleDroppedFiles,
+    // The tab strip's "Rename document" (AppShell) renames through the same
+    // path as the home's Rename. Resolves true when it saved.
+    renameDocument: hubRenameDocument,
   }));
 
   /* --- Survey Hub (home redesign) wiring -------------------------------

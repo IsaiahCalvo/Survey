@@ -458,8 +458,14 @@ test.describe('desktop 1440x900', () => {
       async () => (await page.getByText('Keyboard shortcuts', { exact: true }).filter({ visible: true }).count()) === 0);
     await step('tab: back to the document', () => page.getByText('clickable-link-test.pdf', { exact: true }).filter({ visible: true }).first().click({ timeout: 5000 }),
       () => button(page, 'Pan').isVisible());
-    await step('tab: close the document', () => button(page, 'Close clickable-link-test.pdf').click({ timeout: 5000 }),
-      async () => (await page.locator('.survey-hub').isVisible()) && !(await button(page, 'Pan').isVisible()));
+    // The pen stroke above is unsaved work in a local file, so the close asks
+    // first (tab strip, Chunk C 2026-10-13: the same rule as the reload
+    // warning); the walk confirms it.
+    await step('tab: close the document', async () => {
+      await button(page, 'Close clickable-link-test.pdf').click({ timeout: 5000 });
+      const discard = page.getByRole('button', { name: 'Close without saving', exact: true });
+      await discard.waitFor({ state: 'visible', timeout: 2000 }).then(() => discard.click()).catch(() => {});
+    }, async () => (await page.locator('.survey-hub').isVisible()) && !(await button(page, 'Pan').isVisible()));
 
     });
   });
