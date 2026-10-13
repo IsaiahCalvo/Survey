@@ -127,7 +127,15 @@ test('Dashboard: document Delete archives without a confirm and offers Undo thro
   assert.match(body, /archiveItems\(/);
   assert.match(body, /enqueueArchiveUndo\(\{[\s\S]*onUndo:/);
   assert.match(body, /restoreArchiveItems\(succeeded\)/);
-  assert.match(src, /<UndoToast toast=\{archiveUndoToast\} onDismiss=\{dismissArchiveUndo\} \/>/);
+  assert.match(src, /<UndoToast toast=\{archiveUndoToast\} onDismiss=\{dismissArchiveUndo\} className="hub-undo-toast" \/>/);
+  // The toast is portalled to <body> (KAL-461), so a wrapper class never
+  // reaches it: the home's placement rules must target the toast itself
+  // (batch-6 verify: it sat on the phone tab bar at half width).
+  const hub = read('src/home/hub.css');
+  assert.doesNotMatch(hub, /\.hub-undo-toast \.undo-toast/);
+  assert.match(hub, /\.undo-toast\.hub-undo-toast \{\s*width: max-content;/);
+  assert.match(hub, /\.undo-toast\.hub-undo-toast \{\s*bottom: calc\(/);
+  assert.match(read('src/components/collab/UndoToast.jsx'), /className=\{className \? `undo-toast \$\{className\}` : 'undo-toast'\}/);
   // Projects still confirm (a project archives with all its documents).
   const projects = src.slice(end, src.indexOf('const hubRenameProject'));
   assert.match(projects, /askConfirm\(/);
