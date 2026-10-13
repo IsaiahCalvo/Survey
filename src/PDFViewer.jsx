@@ -5243,6 +5243,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setRightRailCollapsed(isCollapsed);
   }, []);
   const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(true);
+  // Chunk D (2026-10-13): the open left panel's width (each panel has its
+  // own, resizable - PDFSidebar), for the survey bar to keep clear of.
+  const [leftRailPanelWidth, setLeftRailPanelWidth] = useState(272);
 
   // Region annotation visibility state
   const [activeRegionId, setActiveRegionId] = useState(null);
@@ -8289,7 +8292,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const surveyBarCategories = (surveyBarModules.find((module) => module.id === selectedModuleId) || surveyBarModules[0])?.categories || [];
   const surveyBarFit = useSurveyBarFit({
     enabled: Boolean(showSurveyPanel && selectedTemplate),
-    insetLeft: isLeftSidebarCollapsed ? 0 : 272,
+    insetLeft: isLeftSidebarCollapsed ? 0 : leftRailPanelWidth,
     insetRight: rightRailCollapsed ? 0 : 320,
     templateName: selectedTemplate?.name || 'Survey',
     moduleNames: surveyBarModules.length ? surveyBarModules.map((module) => module.name || 'Untitled module') : ['No modules'],
@@ -34795,7 +34798,8 @@ ${pageBlocks}
     setPrintPanelOpen(false);
   }, [printPanelGetThumbnail]);
 
-  const handleLeftRailToggleCollapse = useCallback((isCollapsed) => {
+  const handleLeftRailToggleCollapse = useCallback((isCollapsed, panelWidth) => {
+    if (Number.isFinite(panelWidth) && panelWidth > 0) setLeftRailPanelWidth(Math.round(panelWidth));
     let didChange = false;
     setIsLeftSidebarCollapsed((prev) => {
       if (prev === isCollapsed) return prev;
@@ -38644,7 +38648,7 @@ ${pageBlocks}
                   // (320px) are drawn OVER this row: the end pieces keep clear
                   // of whichever is open; the centre group does not move.
                   style={{
-                    '--survey-bar-inset-l': isLeftSidebarCollapsed ? '0px' : '272px',
+                    '--survey-bar-inset-l': isLeftSidebarCollapsed ? '0px' : `${leftRailPanelWidth}px`,
                     '--survey-bar-inset-r': rightRailCollapsed ? '0px' : '320px',
                   }}
                 >
