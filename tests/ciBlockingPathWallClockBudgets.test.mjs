@@ -134,6 +134,10 @@ const ACKNOWLEDGED = new Map([
     '500ms/4000ms per-case guards inside the cloud geometry fuzzer; same '
     + 'argument — the budgets are far above the measured cost and the fuzzer '
     + 'is a correctness gate'],
+  ['tests/tick48.coverageChips.test.mjs',
+    'a LOWER bound (the backfill waited at least 1s for an empty map); a '
+    + 'slow or loaded runner only makes the elapsed time longer, so load can '
+    + 'never turn it red (recovered Cursor coverage, KAL-370)'],
 ]);
 
 /** This guard and its verification suites: they talk about clocks, never use them. */
