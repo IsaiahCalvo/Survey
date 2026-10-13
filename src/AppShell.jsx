@@ -42,7 +42,7 @@ import ActiveSpaceChip from './sidebar/ActiveSpaceChip';
 import TabBar from './TabBar';
 import { RenameModal } from './home/BulkModals';
 import { useConfirmDialog } from './components/dialogPrompts';
-import { closeConfirmFor, persistableDocumentId, pickActiveTabAfterClose, tabIdsForCloseAction } from './tabs/tabStrip.js';
+import { DISCARD_LOCAL_DRAFT_EVENT, closeConfirmFor, persistableDocumentId, pickActiveTabAfterClose, tabIdsForCloseAction, tabIdsToDiscardOnClose } from './tabs/tabStrip.js';
 import { useTabSession } from './tabs/useTabSession.js';
 import {
   MobilePdfViewerDock,
@@ -1664,6 +1664,11 @@ export default function App({ devPreviewReturnTab = null }) {
     if (!ids.length) return;
     const confirm = closeConfirmFor({ tabs: tabsRef.current, closingIds: ids, action });
     if (confirm && !(await askTabConfirm(confirm))) return;
+    // "Close without saving": the closing viewers drop their unsaved local
+    // copy first (they are still mounted), so a reload does not bring it back.
+    for (const tabId of tabIdsToDiscardOnClose(tabsRef.current, ids)) {
+      window.dispatchEvent(new CustomEvent(DISCARD_LOCAL_DRAFT_EVENT, { detail: { tabId } }));
+    }
     closeTabsNow(ids);
   };
 

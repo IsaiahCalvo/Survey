@@ -346,6 +346,26 @@ export function shouldHideSelectionChrome(interactionState) {
   return CHROME_HIDDEN_DURING.includes(interactionState);
 }
 
+/**
+ * Rule 11 for a Survey Marker: the page layer drags a marker with its own
+ * drag (SVGAnnotationLayer surveyMarkerDragRef), not the shape hook, so the
+ * hook's interactionState stays 'idle'. The marker drag's mode names the same
+ * gesture. Batch-6 verify: the floating quick bar stayed up over a dragged
+ * marker because only the hook's state reached data-selection-gesture.
+ */
+export const SURVEY_MARKER_DRAG_GESTURE = Object.freeze({ move: 'dragging', resize: 'resizing', rotate: 'rotating' });
+
+/**
+ * The page layer's one "a selection gesture is running" signal
+ * (data-selection-gesture): a shape / group move, resize or rotate, or a
+ * Survey Marker's own one. A marker's arrow-key nudge is not a gesture (a
+ * shape's nudge is not either).
+ */
+export function isSelectionGestureActive(interactionState, surveyMarkerDragMode = null) {
+  return shouldHideSelectionChrome(interactionState)
+    || shouldHideSelectionChrome(SURVEY_MARKER_DRAG_GESTURE[surveyMarkerDragMode]);
+}
+
 /** Rule 12 — none of these ever drop the selection (none is a tool switch). */
 export const SELECTION_SURVIVES = Object.freeze([
   'scroll', 'zoom', 'page-change', 'panel-open',
