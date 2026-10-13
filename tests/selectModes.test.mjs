@@ -243,7 +243,13 @@ test('creating or toggling a text mark keeps the live Text Select range active',
     PDF_VIEWER_SOURCE.indexOf('const isImportedSelectDeleteOnlyTextMarkupSelection'),
   );
   assert.doesNotMatch(createHandler, /activateSelectFamilyMode\('rectangle'\)/);
-  assert.doesNotMatch(createHandler, /clearLiveTextSelection\(\)/);
+  // DELIBERATE ASSERTION CHANGE (KAL-240): the floating quick menu passes
+  // { keepSelection: false } so its result shows without the blue range over
+  // it (and the iOS callout goes with the range). The docked bar still keeps
+  // the range, so every clear stays behind that one opt-out.
+  const clears = createHandler.match(/clearLiveTextSelection\(\)/g) || [];
+  const optedOutClears = createHandler.match(/options\.keepSelection === false\) \{\s*clearLiveTextSelection\(\);/g) || [];
+  assert.equal(clears.length, optedOutClears.length, 'only the quick menu opt-out may drop the live range');
   assert.match(createHandler, /text-markup:toggle-off-live-selection/);
   assert.ok(
     (createHandler.match(/restorePdfjsTextSelection\(selection\)/g) || []).length >= 2,
