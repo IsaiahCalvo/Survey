@@ -80,6 +80,25 @@
     right: -3px;
   }
 
+  /* The survey bar and the entity bar (batch-7 tablet check 2026-10-13: the
+     "All N" chips and Reuse took a finger only on their 28px / 22px box).
+     Their chips, swatches, template pill and More already get the zones
+     above (the row slot sits in #chrome-sub-toolbar-host). These two are
+     plain buttons: the bar's height, and 2px each side - inside half the
+     tightest gutter they sit in (4px, planSurveyBar 'tight'), so the plan's
+     widths and the centring are untouched. */
+  #chrome-survey-row-slot :is(.survey-row-all, .survey-subrow__keep) {
+    position: relative;
+  }
+  #chrome-survey-row-slot :is(.survey-row-all, .survey-subrow__keep)::after {
+    content: '';
+    position: absolute;
+    top: calc(50% - var(--chrome-bar-h) / 2);
+    bottom: calc(50% - var(--chrome-bar-h) / 2);
+    left: -2px;
+    right: -2px;
+  }
+
   /* A side panel's title row (Pages, Search, Survey ...): its buttons take
      the row's full height (--chrome-bar-h). */
   :is(.left-rail__head, .survey-rail__head) .section-icon-btn::after {
