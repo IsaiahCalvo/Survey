@@ -136,6 +136,94 @@ async function inViewport(page, locator) {
   return Boolean(box) && box.x >= 0 && box.y >= 0 && box.x + box.width <= vp.width + 0.5 && box.y + box.height <= vp.height + 0.5;
 }
 
+// Layering (residue notice vs its Review panel, the rails and the dock).
+// Boxes come from getBoundingClientRect; "on top" asks elementFromPoint, which
+// only finds things that take the pointer (the notice's own box is
+// pointer-events: none, so its buttons are what is probed).
+async function layering(page) {
+  return page.evaluate(() => {
+    const box = (el) => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      if (r.width < 1 || r.height < 1 || cs.visibility === 'hidden' || cs.display === 'none') return null;
+      return { x: r.left, y: r.top, w: r.width, h: r.height, r: r.right, b: r.bottom };
+    };
+    const notice = [...document.querySelectorAll('.storage-banner')]
+      .find((el) => /Old annotations to clean up/.test(el.textContent || ''));
+    const card = document.querySelector('.cleanup-residue-review__card');
+    const heading = document.querySelector('#cleanup-residue-review-heading');
+    const cardBody = document.querySelector('.cleanup-residue-review__body');
+    const close = notice?.querySelector('.storage-banner__dismiss');
+    const review = notice?.querySelector('[aria-label="Review old annotations"]');
+    const onTop = (el) => {
+      const b = box(el);
+      if (!b) return null;
+      // Probe the centre and the four corners pulled in by 3px.
+      const pts = [[b.x + b.w / 2, b.y + b.h / 2], [b.x + 3, b.y + 3], [b.r - 3, b.y + 3], [b.x + 3, b.b - 3], [b.r - 3, b.b - 3]];
+      return pts.every(([x, y]) => {
+        const hit = document.elementFromPoint(x, y);
+        return Boolean(hit && (hit === el || el.contains(hit)));
+      });
+    };
+    // Chrome the notice must stay clear of: both rails (desktop) and, on a
+    // phone, the header, the tool rail and the dock.
+    const chrome = ['#chrome-right-host', '#survey-rail-panel', '#chrome-left-host', '.mobile-pdf-header', '.mobile-pdf-dock']
+      .map((sel) => ({ sel, b: box(document.querySelector(sel)) }))
+      .filter((c) => c.b);
+    return {
+      vw: innerWidth,
+      vh: innerHeight,
+      notice: box(notice),
+      close: box(close),
+      closeOnTop: onTop(close),
+      reviewOnTop: onTop(review),
+      card: box(card),
+      cardOnTop: card ? onTop(card) : null,
+      headingOnTop: heading ? onTop(heading) : null,
+      bodyOnTop: cardBody ? onTop(cardBody) : null,
+      chrome,
+      stack: (() => {
+        const out = [];
+        for (let el = (card || notice)?.parentElement; el && el !== document.documentElement; el = el.parentElement) {
+          const cs = getComputedStyle(el);
+          if (cs.zIndex !== 'auto' || cs.transform !== 'none' || cs.isolation === 'isolate' || cs.contain !== 'none' || cs.filter !== 'none') {
+            out.push(`${el.tagName.toLowerCase()}#${el.id}.${String(el.className).split(' ')[0]} z=${cs.zIndex} pos=${cs.position} tf=${cs.transform !== 'none'} contain=${cs.contain}`);
+          }
+        }
+        return out;
+      })(),
+    };
+  });
+}
+
+const overlaps = (a, b) => Boolean(a && b) && a.x < b.r - 0.5 && b.x < a.r - 0.5 && a.y < b.b - 0.5 && b.y < a.b - 0.5;
+
+// Notice up, no panel: whole notice on screen, its × on top of everything and
+// clear of every rail / bar.
+function noticeLayoutProblems(l) {
+  const out = [];
+  if (!l.notice) return ['notice not visible'];
+  if (l.notice.x < 0 || l.notice.y < 0 || l.notice.r > l.vw + 0.5 || l.notice.b > l.vh + 0.5) out.push('notice off screen');
+  if (!l.close) out.push('no ×');
+  else if (!l.closeOnTop) out.push('× covered');
+  for (const c of l.chrome) if (overlaps(l.notice, c.b)) out.push(`notice overlaps ${c.sel}`);
+  return out;
+}
+
+// Review panel open: the panel card is on top and fully readable; the notice
+// is hidden or at least does not touch the card and is not on top.
+function panelLayoutProblems(l) {
+  const out = [];
+  if (!l.card) return ['panel card not visible'];
+  if (!l.cardOnTop) out.push('card covered');
+  if (!l.headingOnTop) out.push('heading covered');
+  if (!l.bodyOnTop) out.push('body covered');
+  if (l.notice && overlaps(l.notice, l.card)) out.push('notice overlaps card');
+  if (l.notice && l.reviewOnTop) out.push('notice above the panel');
+  return out;
+}
+
 for (const variant of [
   { name: 'desktop', device: DESKTOP, phone: false },
   { name: 'phone', device: PHONE, phone: true },
@@ -158,6 +246,28 @@ for (const variant of [
     const aSaw = await bannerShows(A.page);
     const aBannerOnScreen = aSaw && await inViewport(A.page, banner(A.page));
     await A.page.screenshot({ path: shot('A-owner-notice') });
+    const layNotice = await layering(A.page);
+    const noticeProblems = noticeLayoutProblems(layNotice);
+    // Desktop: with the Survey panel open beside the right rail the notice
+    // ends at the panel and its × is still on top.
+    let surveyProblems = [];
+    if (!variant.phone) {
+      const surveyTab = A.page.locator('.survey-rail-strip button[aria-label="Survey"]').first();
+      await surveyTab.click();
+      await A.page.locator('#survey-rail-panel').waitFor({ state: 'visible', timeout: 5000 });
+      await A.page.waitForTimeout(400);
+      const laySurvey = await layering(A.page);
+      surveyProblems = noticeLayoutProblems(laySurvey);
+      if (!laySurvey.chrome.some((c) => c.sel === '#survey-rail-panel')) surveyProblems.push('survey panel did not open');
+      await A.page.screenshot({ path: shot('A-owner-notice-survey-open') });
+      await surveyTab.click();
+      await A.page.locator('#survey-rail-panel').waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
+      await A.page.waitForTimeout(400);
+    }
+    // Where the notice is right before Review (the panel must hand it back
+    // in exactly this place).
+    const layBeforeReview = await layering(A.page);
+    await A.page.screenshot({ path: shot('A-owner-before-review') });
 
     // Review: the panel lists exactly A's 3 old marks (never B's).
     await A.page.getByRole('button', { name: 'Review old annotations' }).click();
@@ -165,7 +275,11 @@ for (const variant of [
     const heading = (await A.page.locator('#cleanup-residue-review-heading').textContent())?.trim();
     const listed = await A.page.locator('.cleanup-residue-review__sample-row code').allTextContents();
     const panelOnScreen = await inViewport(A.page, panel(A.page));
+    // Let the scrim's fade-in finish before probing what is on top.
+    await A.page.waitForTimeout(400);
     await A.page.screenshot({ path: shot('A-owner-review-panel') });
+    const layPanel = await layering(A.page);
+    const panelProblems = panelLayoutProblems(layPanel);
 
     // Close keeps everything (no rows touched, notice still there).
     await A.page.getByRole('button', { name: 'Close review panel' }).click();
@@ -173,6 +287,16 @@ for (const variant of [
     const panelClosed = (await panel(A.page).count()) === 0;
     const rowsAfterClose = backend.table('document_annotations').length;
     const stillAfterClose = await banner(A.page).isVisible();
+    // The notice comes back exactly where it was, × still reachable.
+    const layBack = await layering(A.page);
+    const backProblems = noticeLayoutProblems(layBack);
+    const backSamePlace = Boolean(layBack.notice && layBeforeReview.notice)
+      && Math.abs(layBack.notice.x - layBeforeReview.notice.x) < 1 && Math.abs(layBack.notice.y - layBeforeReview.notice.y) < 1
+      && Math.abs(layBack.notice.w - layBeforeReview.notice.w) < 1;
+    await A.page.screenshot({ path: shot('A-owner-after-close') });
+    const layoutOk = noticeProblems.length === 0 && surveyProblems.length === 0 && panelProblems.length === 0 && backProblems.length === 0 && backSamePlace;
+    const layoutNote = `layout: notice ${JSON.stringify(noticeProblems)} survey-open ${JSON.stringify(surveyProblems)} panel ${JSON.stringify(panelProblems)} back ${JSON.stringify(backProblems)} samePlace=${backSamePlace} back ${JSON.stringify(layBack.notice)}`
+      + ` | notice ${JSON.stringify(layNotice.notice)} × ${JSON.stringify(layNotice.close)} card ${JSON.stringify(layPanel.card)} stack ${JSON.stringify(layPanel.stack)} chrome ${JSON.stringify(layNotice.chrome.map((c) => [c.sel, Math.round(c.b.x), Math.round(c.b.y), Math.round(c.b.w), Math.round(c.b.h)]))}`;
 
     let finishedBy;
     if (variant.phone) {
@@ -184,6 +308,9 @@ for (const variant of [
       await A.page.getByRole('button', { name: 'Review old annotations' }).click();
       await A.page.getByRole('button', { name: 'Clean up all 3 annotations' }).click();
       finishedBy = 'clean-up';
+      // The notice is hidden while the panel is up, so wait for the clean-up
+      // itself to finish (it closes the panel) before checking the rows.
+      await panel(A.page).waitFor({ state: 'detached', timeout: 8000 }).catch(() => {});
     }
     await banner(A.page).waitFor({ state: 'hidden', timeout: 8000 });
     const rowsLeft = backend.table('document_annotations').map((r) => r.annotation_id).sort();
@@ -211,8 +338,9 @@ for (const variant of [
       && panelOnScreen && panelClosed && stillAfterClose && rowsAfterClose === 4
       && JSON.stringify(rowsLeft) === JSON.stringify(expectedRows)
       && Boolean(dismissedStored && dismissedStored.includes(docId))
-      && !aSawAgain && !bSawAfter && errors.length === 0;
-    report('KAL-420-9', ok ? 'PASS' : 'FAIL', `B (role ${bRole}) saw notice=${bSaw}, panel=${bPanel}; A (owner) saw notice=${aSaw} (on screen ${aBannerOnScreen}); Review heading "${heading}", listed ${JSON.stringify(listed)} (on screen ${panelOnScreen}); Close -> panel gone=${panelClosed}, notice kept=${stillAfterClose}, rows ${rowsAfterClose}/4; finished by ${finishedBy} -> rows left ${JSON.stringify(rowsLeft)}, stored dismissal=${dismissedStored}; after reopen A saw it=${aSawAgain}, B saw it=${bSawAfter}; errors=${JSON.stringify(errors).slice(0, 300)}`, `two-accounts-${variant.name}`);
+      && !aSawAgain && !bSawAfter && errors.length === 0
+      && layoutOk;
+    report('KAL-420-9', ok ? 'PASS' : 'FAIL', `B (role ${bRole}) saw notice=${bSaw}, panel=${bPanel}; A (owner) saw notice=${aSaw} (on screen ${aBannerOnScreen}); Review heading "${heading}", listed ${JSON.stringify(listed)} (on screen ${panelOnScreen}); Close -> panel gone=${panelClosed}, notice kept=${stillAfterClose}, rows ${rowsAfterClose}/4; finished by ${finishedBy} -> rows left ${JSON.stringify(rowsLeft)}, stored dismissal=${dismissedStored}; after reopen A saw it=${aSawAgain}, B saw it=${bSawAfter}; errors=${JSON.stringify(errors).slice(0, 300)}; ${layoutNote}`, `two-accounts-${variant.name}`);
     await A.context.close();
     await B.context.close();
     expect(ok).toBe(true);
