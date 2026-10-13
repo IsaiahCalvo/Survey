@@ -177,7 +177,7 @@ export function ConfirmModal({ open, onClose, title = 'Are you sure?', message =
   return (
     <MotionPresence open>
     <div onClick={submitting ? undefined : onClose} style={overlay}>
-      <div ref={cardRef} role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()} style={{ width: 380, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden' }}>
+      <div ref={cardRef} role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : undefined} onClick={(e) => e.stopPropagation()} style={{ width: 380, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden' }}>
         <div style={{ padding: '18px 18px 14px', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.015em' }}>{title}</div>
@@ -209,12 +209,7 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
   const tip = useTooltip();
   const [name, setName] = useState(initialName);
   const inputRef = useRef(null);
-  const previouslyFocusedRef = useRef(null);
-  // Callers pass a fresh onClose each render; reading it through a ref keeps
-  // the open effect below from re-running (it used to reset the typed name
-  // and lose the preselection on any parent render).
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  const cardRef = useRef(null);
 
   // The field gets the name in the SAME render that opens the dialog. It
   // used to be set from the effect below, one render late: the preselection
@@ -228,9 +223,14 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
     setOpenedWith(null);
   }
 
+  // KAL-66: the shared modal primitive, like ConfirmModal and MoveCopyModal
+  // above. Before, Rename only handled Escape, so Tab walked out of the
+  // dialog onto the page behind it. The hook also returns focus to the
+  // opener on close and answers Escape only when this is the top dialog.
+  useFocusTrap(cardRef, open, { onEscape: onClose });
+
   useEffect(() => {
     if (!open) return undefined;
-    previouslyFocusedRef.current = document.activeElement;
     // Shell audit 2026-10-13 (Drawboard, Finder): the name is preselected
     // WITHOUT its ".pdf", so typing replaces the name and keeps the type.
     const [start, end] = renameSelectionRange(initialName);
@@ -240,19 +240,7 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
       input.focus();
       try { input.setSelectionRange(start, end); } catch { input.select(); }
     });
-    const handleKey = (event) => {
-      if (event.key === 'Escape') {
-        event.stopPropagation();
-        onCloseRef.current?.();
-      }
-    };
-    window.addEventListener('keydown', handleKey, true);
-    return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener('keydown', handleKey, true);
-      previouslyFocusedRef.current?.focus?.();
-      previouslyFocusedRef.current = null;
-    };
+    return () => cancelAnimationFrame(frame);
   }, [initialName, open]);
 
   // Closed: MotionPresence plays the exit of the last open card (motion.css).
@@ -270,6 +258,7 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
     <MotionPresence open>
     <div onClick={onClose} style={overlay}>
       <div
+        ref={cardRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}

@@ -117,6 +117,9 @@ export default function SurveyPickList({
                   type="button"
                   role="option"
                   aria-selected={current}
+                  // The phone sheet's focus trap opens on the current row
+                  // (KAL-66; the desktop popover focuses it itself).
+                  data-autofocus={variant === 'sheet' && current ? '' : undefined}
                   className={`survey-pick__row${current ? ' is-current' : ''}`}
                   data-survey-pick-id={item.id}
                   onKeyDown={(event) => onRowKey(event, at)}

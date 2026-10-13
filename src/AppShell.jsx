@@ -4765,7 +4765,10 @@ export default function App({ devPreviewReturnTab = null }) {
               // AnnotationDropdown's popover uses.
               const fitMenu = (anchorStyle) => (
                 <div role="menu" aria-label="Fit modes" style={{ position: 'absolute', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-popover)', minWidth: '140px', zIndex: 6000, padding: '2px', ...anchorStyle }}>
-                  <DismissBarrier active insideRefs={railFitMenuRefs} onDismiss={dismissRailFitMenu} />
+                  {/* KAL-66: `menu` — opened from the keyboard, focus goes to
+                      the current fit, arrows move, and focus returns to the
+                      Fit options button when it closes. */}
+                  <DismissBarrier active insideRefs={railFitMenuRefs} onDismiss={dismissRailFitMenu} menu />
                   {ZOOM_MODE_OPTIONS.map((option) => {
                     if (option.id === ZOOM_MODES.MANUAL) return null;
                     const isActive = option.id === api.zoomMode;

@@ -1922,8 +1922,10 @@ const SearchTextPanel = ({
       <div
         ref={resultsContainerRef}
         className={`search-text-panel__results${mobileMode ? ' mobile-search-panel__results' : ''}`}
-        role="listbox"
-        aria-label="Search results"
+        // KAL-66: a listbox only while it holds results; empty, it is just
+        // the "no matches" message.
+        role={hasResults ? 'listbox' : undefined}
+        aria-label={hasResults ? 'Search results' : undefined}
         style={{
           flex: 1,
           overflowY: 'auto'

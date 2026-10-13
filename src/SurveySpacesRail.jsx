@@ -28,6 +28,7 @@ import { useConfirmDialog } from './components/dialogPrompts';
 import SurveyMarkerNotes from './components/SurveyMarkerNotes';
 import { normalizeNoteMedia } from './services/surveyMediaService';
 import { SHEET_DETENT_STANDARD, endSheetReveal, revealInSheet, useMobileSheetMotion } from './mobile/useMobileSheetMotion';
+import { useSheetFocus } from './mobile/useSheetFocus';
 // Phone Survey panel look (layout B, one card divided). Every rule in it is
 // scoped to .mobile-survey-sheet, which only the phone sheet carries.
 import './mobile/mobileSurveyPanel.css';
@@ -709,6 +710,15 @@ const SurveySpacesRail = ({
     expandable: mobileMode,
     fullscreenable: mobileMode,
   });
+  // KAL-66 / KAL-460: the phone sheet is modal (dimmed page behind it) -
+  // focus goes in, Tab stays in, and Escape slides the sheet away first (it is
+  // the topmost thing, dismiss rule R5); the next Escape puts an armed Survey
+  // Marker tool down. Focus comes back after.
+  const surveySheetFocusRef = useSheetFocus(
+    mobileMode && !isSurveyPanelCollapsed,
+    requestSurveySheetClose,
+    surveySheetProps.ref,
+  );
 
   // Close everything in the phone accordion (the "Categories" back button).
   const collapseMobileAccordion = () => {
@@ -1973,10 +1983,16 @@ const SurveySpacesRail = ({
               // Survey audit P1-5: the phone sheet is a bottom occluder (as the
               // phone Pages sheet is), so "Locate on page" fits the marker in
               // the page left above it.
-              ref={mobileMode ? undefined : sideOccluderRef}
               data-viewer-occluder={isSurveyPanelCollapsed ? undefined : (mobileMode ? 'sheet' : 'side')}
               // Phone: swipe down anywhere + the keyboard lift (owner 2026-09-30).
               {...(mobileMode ? surveySheetProps : null)}
+              ref={mobileMode ? surveySheetFocusRef : sideOccluderRef}
+              tabIndex={mobileMode && !isSurveyPanelCollapsed ? -1 : undefined}
+              // KAL-66: the phone Survey sheet is a named region (not a
+              // dialog: the viewer's key rules treat [role="dialog"] as a
+              // modal that owns every key).
+              role={mobileMode && !isSurveyPanelCollapsed ? 'region' : undefined}
+              aria-label={mobileMode && !isSurveyPanelCollapsed ? 'Survey' : undefined}
               className={`${mobileMode ? 'mobile-pdf-sheet mobile-survey-sheet ' : 'survey-rail '}${mobileMode && surveySheetExpanded ? 'is-expanded ' : ''}${mobileMode && surveySheetFullscreen ? 'is-fullscreen ' : ''}${isSurveyPanelCollapsed ? 'is-collapsed' : ''}`}
               style={{
                 // PASS 7 (DESIGN-SYSTEM.md, owner): every phone panel opens at

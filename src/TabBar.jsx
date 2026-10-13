@@ -167,12 +167,20 @@ function TabItem({
       {...sortableAttributes}
       {...sortableListeners}
       data-pdf-tab-id={!isHome ? tab.id : undefined}
+      data-app-tab=""
       data-tab-active={isActive ? 'true' : undefined}
       // Owner 2026-10-01: the held tab takes the app's one picked-up look
       // (states.css [data-drag-lifted]): solid raised surface, soft shadow,
       // no gold edge, fully opaque so no neighbour shows through.
       data-drag-lifted={isDragging ? '' : undefined}
       onClick={() => onTabClick(tab.id)}
+      // KAL-66: a keyboard user can reach and open every tab. The Home tab
+      // has no sortable attributes, so it gets its own role and tab stop.
+      // Enter opens a tab; Space stays the keyboard "pick up to reorder" key
+      // (the KeyboardSensor below starts a drag on Space only).
+      role={isHome ? 'button' : sortableAttributes.role}
+      tabIndex={isHome ? 0 : sortableAttributes.tabIndex}
+      aria-current={isActive ? 'page' : undefined}
       // Chunk C: right-click opens the tab menu at the pointer (Drawboard).
       onContextMenu={isHome ? undefined : (e) => {
         e.preventDefault();
@@ -198,6 +206,11 @@ function TabItem({
           return;
         }
         sortableListeners.onKeyDown?.(e);
+        if (e.defaultPrevented || e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || (isHome && e.key === ' ')) {
+          e.preventDefault();
+          onTabClick(tab.id);
+        }
       }}
       style={{
         ...sortableStyle,
@@ -613,7 +626,11 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onTab
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 160, tolerance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    // Space picks a tab up to reorder it; Enter is left free to open the tab.
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+      keyboardCodes: { start: ['Space'], cancel: ['Escape'], end: ['Space', 'Enter'] },
+    })
   );
   const tabModifiers = useMemo(() => [
     restrictTabsToHorizontalAxis,

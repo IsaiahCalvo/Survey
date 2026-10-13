@@ -1261,7 +1261,11 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false, onS
     <>
       {vertical.maxScroll > 0 && <div
         ref={verticalRailRef}
+        // KAL-66: a pointer-only drawing of the scroll position; the page
+        // itself scrolls from the keyboard. Hidden from assistive tech (its
+        // labels stay for the debug specs that find it by them).
         aria-label="Viewport vertical scroll bar"
+        aria-hidden="true"
         onTransitionEnd={finishFade}
         onPointerDown={takeScrollerFromGlide}
         onPointerEnter={() => hoverRail('vertical')}
@@ -1291,6 +1295,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false, onS
       {horizontal.maxScroll > 0 && <div
         ref={horizontalRailRef}
         aria-label="Viewport horizontal scroll bar"
+        aria-hidden="true"
         onTransitionEnd={finishFade}
         onPointerDown={takeScrollerFromGlide}
         onPointerEnter={() => hoverRail('horizontal')}

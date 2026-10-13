@@ -31,6 +31,7 @@ import { QuickColourDots, QuickPaintSwatch } from './QuickStyleControls';
 import { SurveyEntitySwatch } from './SurveyEntityBar';
 import SurveyOverflowRow from './SurveyOverflowRow';
 import { watchLightPopover } from './dismissRules.js';
+import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import { HISTORY_PAGE_SELECTION_EVENT } from '../utils/historyMarkFilter.js';
 import { LINE_STYLE_OPTIONS, LINE_STYLE_SAMPLE_ICONS } from '../utils/lineStyleOptions.js';
 import {
@@ -168,6 +169,7 @@ export default function SelectionQuickBar({
   const items = useSelectedItems();
   const barRef = useRef(null);
   const lineButtonRef = useRef(null);
+  const linePopoverRef = useRef(null);
   const [look, setLook] = useState({ visible: false, side: 'above', locked: false, readOnly: false });
   const [lineOpen, setLineOpen] = useState(false);
   const itemsRef = useRef(items);
@@ -304,6 +306,9 @@ export default function SelectionQuickBar({
   }, [active, place, plan?.colour, plan?.width, plan?.style, plan?.remove]);
 
   // The Line popover's dismiss rules (outside press, Escape) are the app's.
+  // KAL-66: opened from a keyboard, focus goes into it and Up / Down move
+  // through its buttons; closing hands focus back to the Line button.
+  useMenuFocus(linePopoverRef, lineOpen && visible);
   useEffect(() => {
     if (!lineOpen) return undefined;
     return watchLightPopover({
@@ -470,6 +475,7 @@ export default function SelectionQuickBar({
 
   const linePopover = lineOpen && visible ? (
     <div
+      ref={linePopoverRef}
       className="selection-quick-bar__popover"
       data-selection-quick-bar-popover="true"
       data-side={look.side === 'above' ? 'above' : 'below'}

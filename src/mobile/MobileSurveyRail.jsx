@@ -29,6 +29,7 @@ import Icon from '../Icons';
 import SurveyPickList from '../components/SurveyPickList';
 import { useSelectedSurveyMarkerIds } from '../components/SurveyEntityBar';
 import DismissBarrier from '../components/DismissBarrier';
+import { useSheetFocus } from './useSheetFocus';
 import useSurveyRecents from '../hooks/useSurveyRecents';
 import { pickSurveyRowItems, surveyTemplateSections } from '../utils/surveyPickLists.js';
 import { getCategoryGlyphLabel } from '../viewerShared';
@@ -220,6 +221,9 @@ export function MobileSurveyAllSheet({ kind, toolbar, armed, closeKey = 0, onClo
     sheetProps,
     requestClose,
   } = useMobileSheetMotion(onClose, { open, expandable: true });
+  // KAL-66 / KAL-460: focus goes into the sheet (the current row, never the
+  // find field), Tab stays in it, Escape slides it away, focus comes back.
+  const sheetFocusRef = useSheetFocus(open, requestClose, sheetProps.ref);
   // Another phone panel opened (AppShell's aux close request): slide away so
   // only one sheet is up, like the Active users sheet.
   const closeKeyRef = useRef(closeKey);
@@ -307,8 +311,11 @@ export function MobileSurveyAllSheet({ kind, toolbar, armed, closeKey = 0, onClo
         className="mobile-pdf-sheet mobile-survey-all-sheet"
         data-survey-all-sheet={shownKind}
         role="dialog"
+        aria-modal="true"
         aria-label={`All ${content.title.toLowerCase()}`}
         {...sheetProps}
+        ref={sheetFocusRef}
+        tabIndex={-1}
         style={motionStyle}
       >
         <div className="mobile-pdf-sheet__handle" />
@@ -388,7 +395,9 @@ export function MobileMarkerShapeChip({ armed, onArm, glyph = 17 }) {
       >
         <Icon name={current.icon} size={glyph} color="currentColor" />
       </button>
-      <DismissBarrier active={open} insideRefs={insideRefs} onDismiss={() => setOpen(false)} />
+      {/* KAL-66 `menu`: from a keyboard, focus goes to the shape in use,
+          Up / Down move, and Escape gives focus back to the chip. */}
+      <DismissBarrier active={open} insideRefs={insideRefs} onDismiss={() => setOpen(false)} menu />
       {open && (
         <div
           ref={menuRef}

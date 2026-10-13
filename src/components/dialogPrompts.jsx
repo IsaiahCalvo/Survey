@@ -32,6 +32,7 @@ import { ConfirmModal } from '../home/BulkModals';
 import { closeButtonStyle } from '../home/hubControls';
 import { Icon } from '../home/HubShell';
 import { C } from '../uiPalette';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import MotionPresence from './MotionPresence.jsx';
 
 // Literal hex colors mirror src/home/BulkModals.jsx: these overlays render
@@ -71,7 +72,7 @@ export function PromptModal({
 }) {
   const [value, setValue] = useState(defaultValue);
   const inputRef = useRef(null);
-  const previouslyFocusedRef = useRef(null);
+  const cardRef = useRef(null);
 
   // Reset the field every time the dialog opens so a previous answer never
   // leaks into the next one.
@@ -79,26 +80,10 @@ export function PromptModal({
     if (open) setValue(defaultValue);
   }, [open, defaultValue]);
 
-  // Accessibility: Escape cancels, the text field takes focus on open, and
-  // focus returns to whatever triggered the dialog once it closes. Mirrors the
-  // per-modal pattern in BulkModals (no shared modal primitive / focus trap).
-  useEffect(() => {
-    if (!open) return undefined;
-    previouslyFocusedRef.current = document.activeElement;
-    inputRef.current?.focus?.();
-    const handleKey = (e) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onCancel?.();
-      }
-    };
-    window.addEventListener('keydown', handleKey, true);
-    return () => {
-      window.removeEventListener('keydown', handleKey, true);
-      previouslyFocusedRef.current?.focus?.();
-      previouslyFocusedRef.current = null;
-    };
-  }, [open, onCancel]);
+  // Accessibility (KAL-66): the shared modal primitive (src/hooks/useFocusTrap)
+  // like ConfirmModal — Tab stays inside, Escape cancels, the text field takes
+  // focus on open, and focus returns to whatever opened the dialog.
+  useFocusTrap(cardRef, open, { onEscape: onCancel });
 
   // Closed: MotionPresence plays the exit of the last open card (motion.css).
   if (!open) return <MotionPresence open={false} />;
@@ -114,9 +99,11 @@ export function PromptModal({
     <MotionPresence open>
     <div onClick={onScrim} style={overlay}>
       <div
+        ref={cardRef}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
+        aria-label={typeof title === 'string' && title ? title : 'Enter a value'}
         style={{ width: 400, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden' }}
       >
         <div style={{ padding: '18px 18px 14px', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
@@ -131,6 +118,7 @@ export function PromptModal({
             <input
               ref={inputRef}
               type="text"
+              aria-label={label || title || undefined}
               value={value}
               placeholder={placeholder}
               onChange={(e) => setValue(e.target.value)}

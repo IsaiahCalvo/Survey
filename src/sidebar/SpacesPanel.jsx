@@ -28,6 +28,7 @@ import { showToast } from '../utils/toast';
 import { useTooltip } from '../components/Tooltip';
 import SectionIconButton from '../components/SectionIconButton.jsx';
 import { watchLightPopover } from '../components/dismissRules.js';
+import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import AnchoredPopover from '../components/AnchoredPopover';
 import { useConfirmDialog } from '../components/dialogPrompts';
 import {
@@ -780,6 +781,9 @@ const SpacesPanel = ({
   const spacesDropFrameCaptureRef = useRef(null);
   const spacesExportAnchorRef = useRef(null);
 
+  // KAL-66: keyboard focus goes into this menu as it opens, Up/Down move,
+  // and focus returns to its button when it closes (mouse/touch unchanged).
+  useMenuFocus(spacesExportMenuRef, Boolean(isSpacesExportMenuOpen && !mobileMode));
   React.useEffect(() => {
     // The phone sheet has its own backdrop (a blocking window, R4).
     if (!isSpacesExportMenuOpen || mobileMode) return undefined;
