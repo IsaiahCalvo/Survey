@@ -227,6 +227,7 @@ import { deferUntilEraseCommitsFinish } from './utils/pendingEraseCommits.js';
 
 import { debugMark } from './utils/debugBridge';
 import { deleteAnnotations, removeDocumentPresence, subscribeToDocumentAnnotations, syncAnnotationsToSupabase, updateDocumentPresence } from './services/documentAnnotationService';
+import { isRefusedAnnotationDelete, reportAnnotationDeleteOutcome } from './services/annotationDeleteOutcome.js';
 import { createPresenceActivityBump, PRESENCE_ACTIVITY_EVENTS } from './utils/presenceActivity.js';
 import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
 import { getActivePageRegionId, getPageAnnotationVisibilityState, isAnnotationVisibleInSurveyMode, isSurveyVisibilityContext, normalizePageRegions, normalizeRegionVisibility, shouldStampActiveRegionId } from './utils/annotationVisibilityRules';
@@ -15167,9 +15168,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     const ids = Array.from(cloudDeleteIds).filter(Boolean);
     if (pdfFile?.id && ids.length > 0) {
-      deleteAnnotations(pdfFile.id, ids).catch((err) => {
-        console.error('[SpaceCascadeDelete] cloud delete failed:', err);
-      });
+      deleteAnnotations(pdfFile.id, ids)
+        .then((result) => reportAnnotationDeleteOutcome(result, { showToast, source: 'space-cascade', onceKey: pdfFile.id }))
+        .catch((err) => {
+          console.error('[SpaceCascadeDelete] cloud delete failed:', err);
+        });
     }
     appDebug('[SpaceCascadeDelete] deleted scoped app state ' + JSON.stringify({
       reason,
@@ -21118,6 +21121,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         ? effect.payload.markerIds.map(String)
         : [markerId];
       const result = await deleteAnnotations(pdfFile.id, markerIds);
+      // KAL-440: a refusal is the server's permission rule, not a network
+      // blip — say so once instead of retrying it forever.
+      if (isRefusedAnnotationDelete(result)) {
+        reportAnnotationDeleteOutcome(result, { showToast, source: 'erase-legacy-marker', onceKey: pdfFile.id });
+        return;
+      }
       if (result?.success === false) {
         throw result.error || new Error(`legacy marker delete failed for ${markerIds.join(',')}`);
       }
@@ -31011,9 +31020,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // Delete from Supabase to persist the deletion
       const documentId = pdfFile?.id;
       if (documentId && user?.id && documentSyncEnabled) {
-        deleteAnnotations(documentId, permittedSurveyMarkerIds).catch(err => {
-          console.error('[App] Error deleting annotations from Supabase:', err);
-        });
+        deleteAnnotations(documentId, permittedSurveyMarkerIds)
+          .then((result) => reportAnnotationDeleteOutcome(result, { showToast, source: 'survey-marker-delete', onceKey: documentId }))
+          .catch(err => {
+            console.error('[App] Error deleting annotations from Supabase:', err);
+          });
       }
 
       // Clear the removal queue after a short delay
