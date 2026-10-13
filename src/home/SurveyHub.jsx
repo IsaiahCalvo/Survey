@@ -15,6 +15,7 @@
      onCreateTemplate()    — start the new-template flow
 */
 import { useState, useEffect, lazy, Suspense, startTransition } from 'react';
+import { useTooltip } from '../components/Tooltip';
 import DocumentsLedger from './DocumentsLedger';
 import ProjectsFolderTree from './ProjectsFolderTree';
 import TemplatesEditor from './TemplatesEditor';
@@ -75,6 +76,7 @@ export default function SurveyHub({
   onSignOut,
   onSignIn,
 }) {
+  const tip = useTooltip();
   const [tab, setTab] = useState(() => {
     if (initialTab) return initialTab;
     try { return localStorage.getItem(TAB_KEY) || 'documents'; } catch { return 'documents'; }
@@ -157,7 +159,7 @@ export default function SurveyHub({
             type="button"
             className="btn primary"
             onClick={() => { void Promise.resolve(onRetry?.()).catch(() => undefined); }}
-            title={error || undefined}
+            {...tip(error ? String(error) : '')}
           >Try again</button>
         </div>
       </div>

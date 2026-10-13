@@ -7,6 +7,7 @@
  * click/dragstart propagation. Used as the drag affordance in reorder lists.
  */
 import Icon, { CHEVRON_DOWN_PATH } from '../Icons';
+import { useTooltip, withOwnHandlers } from '../components/Tooltip';
 
 /*
  * MORPH GRIP (owner 2026-09-23, after morphicons.com). A row whose panel is
@@ -90,9 +91,42 @@ export default function DragRearrangeHandle({
   // tap calls onCollapse instead of starting anything. Undefined = plain grip.
   collapseOpen,
   onCollapse,
+  // Where the shared chip sits. Rows put the grip at their left edge, so the
+  // chip hangs below it by default rather than over the row's own name.
+  tooltipPlacement = 'below',
   ...props
 }) {
   const morphs = typeof collapseOpen === 'boolean';
+  const hint = morphs && collapseOpen ? 'Collapse' : title;
+  // KAL-65: the app's shared chip instead of the OS tooltip. This grip is used
+  // on the hub and in the viewer, and each surface supplies its own chip host.
+  // The caller's handlers (dnd-kit's pointer and key listeners arrive in
+  // `props`) are joined with the chip's, never replaced by them.
+  const tip = useTooltip();
+  const {
+    onPointerDown, onMouseDown, onFocus, onBlur, onKeyDown,
+    onMouseEnter: callerMouseEnter, onMouseLeave: callerMouseLeave,
+    ...rest
+  } = props;
+  const tipBundle = tip(hint, tooltipPlacement);
+  const handlers = withOwnHandlers(tipBundle, {
+    onPointerDown,
+    onMouseDown,
+    onFocus,
+    onBlur,
+    // Any key on a focused grip (Space lifts it, the arrows move it, Escape
+    // dismisses) clears the chip, so it never floats where the row used to be.
+    onKeyDown: (event) => {
+      tipBundle.onMouseLeave?.(event);
+      onKeyDown?.(event);
+    },
+    onMouseEnter: callerMouseEnter || ((event) => {
+      event.currentTarget.style.color = HOVER_HANDLE_COLOR;
+    }),
+    onMouseLeave: callerMouseLeave || ((event) => {
+      event.currentTarget.style.color = style?.color || DEFAULT_HANDLE_COLOR;
+    }),
+  });
   return (
     <span
       draggable={nativeDraggable}
@@ -101,12 +135,11 @@ export default function DragRearrangeHandle({
       // ancestor gesture recognisers (phone sheet swipe-down) ignore touches
       // that start inside [data-drag-handle].
       data-drag-handle=""
-      title={morphs && collapseOpen ? 'Collapse' : title}
       // Polish 3 (2026-10-04): a sortable grip gets role="button" and a tab
       // stop from dnd-kit's attributes, but a title is not a name - screen
       // readers and keyboard users met an unnamed button. The name is the
       // hint itself; a caller's own aria-label (spread below) still wins.
-      aria-label={morphs && collapseOpen ? 'Collapse' : title}
+      aria-label={hint}
       aria-expanded={morphs ? collapseOpen : undefined}
       onClick={(event) => {
         event.stopPropagation();
@@ -129,14 +162,9 @@ export default function DragRearrangeHandle({
         onDragStart?.(event);
       }}
       onDragEnd={onDragEnd}
-      onMouseEnter={(event) => {
-        event.currentTarget.style.color = HOVER_HANDLE_COLOR;
-      }}
-      onMouseLeave={(event) => {
-        event.currentTarget.style.color = style?.color || DEFAULT_HANDLE_COLOR;
-      }}
       style={handleStyle(isDragging, style)}
-      {...props}
+      {...rest}
+      {...handlers}
     >
       {morphs ? <MorphGrip open={collapseOpen} /> : <Icon name="grip" size={11} />}
     </span>

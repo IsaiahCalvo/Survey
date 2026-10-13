@@ -22,7 +22,7 @@ async function waitForReloadedTemplate(page, expected) {
 
     const center = document.querySelector('.templates-editor-grid > section');
     if (!center) return false;
-    const renamedTemplateVisible = [...center.querySelectorAll('input[title="Click to rename"]')]
+    const renamedTemplateVisible = [...center.querySelectorAll('input[data-template-title]')]
       .some((input) => input.value === templateName);
     const moduleVisible = [...center.querySelectorAll('[data-module-tab-id]')]
       .some((element) => element.dataset.moduleTabId === moduleId);
@@ -55,7 +55,7 @@ export async function runDesktopSurveyTemplateWorkflow({ page, baseUrl, artifact
 
   await page.getByRole('button', { name: 'New template', exact: true }).first().click();
   const templateName = `Desktop Template ${Date.now().toString(36)}`;
-  const title = center.locator('input[title="Click to rename"]').first();
+  const title = center.locator('input[data-template-title]').first();
   await title.waitFor({ state: 'visible' });
   await commit(title, templateName);
 
@@ -72,7 +72,7 @@ export async function runDesktopSurveyTemplateWorkflow({ page, baseUrl, artifact
   const categoryName = 'Desktop Survey Category';
   await commit(freshCategory.locator('input.cat-title').first(), categoryName);
   const category = categoryByName(page, categoryName);
-  await category.getByTitle('Expand').click().catch(() => {});
+  await category.locator('button.tpl-cat-chevron[aria-label^="Expand "]').click().catch(() => {});
   const addItem = category.getByRole('button', { name: 'Add checklist item', exact: false });
   await addItem.click();
   const itemText = 'Desktop item persists after reload';
@@ -99,7 +99,7 @@ export async function runDesktopSurveyTemplateWorkflow({ page, baseUrl, artifact
     'Desktop module missing after reload');
   const reloadedCategory = categoryByName(page, categoryName);
   await reloadedCategory.waitFor({ state: 'visible' });
-  await reloadedCategory.getByTitle('Expand').click();
+  await reloadedCategory.locator('button.tpl-cat-chevron[aria-label^="Expand "]').click();
   invariant(await reloadedCategory.locator(`input[value=${JSON.stringify(itemText)}]`).count(), 'Desktop item missing after reload');
 
   // Disposable item delete.
@@ -118,11 +118,11 @@ export async function runDesktopSurveyTemplateWorkflow({ page, baseUrl, artifact
   const disposableHeader = disposableCategoryNamed.locator('[data-drag-rearrange-row]');
   const categorySelectionControl = disposableHeader.locator(':scope > span').last();
   await categorySelectionControl.click();
-  const deleteSelectedCategory = center.locator('button[title="Delete"]');
+  const deleteSelectedCategory = center.locator('button[aria-label="Delete"]');
   await deleteSelectedCategory.waitFor({ state: 'visible' });
   await page.waitForFunction(() => {
     const centerPane = document.querySelector('.templates-editor-grid > section');
-    const button = centerPane?.querySelector('button[title="Delete"]');
+    const button = centerPane?.querySelector('button[aria-label="Delete"]');
     return button instanceof HTMLButtonElement && !button.disabled;
   });
   await deleteSelectedCategory.click();
@@ -141,7 +141,7 @@ export async function runDesktopSurveyTemplateWorkflow({ page, baseUrl, artifact
   const disposableModuleRow = modal.locator('[data-drag-rearrange-row]:has(input[value="Disposable desktop module"])');
   const moduleBox = invariant(await disposableModuleRow.boundingBox(), 'Desktop module selection row has no bounds');
   await page.mouse.click(moduleBox.x + 49, moduleBox.y + moduleBox.height / 2);
-  await modal.getByTitle('Delete').click();
+  await modal.getByLabel('Delete', { exact: true }).click();
   await modal.getByRole('button', { name: 'Done', exact: true }).click();
   await save(page);
 
@@ -159,7 +159,7 @@ export async function runDesktopSurveyTemplateWorkflow({ page, baseUrl, artifact
 
   // Template delete and hard-reload absence.
   const templateRow = grid.locator('aside').first().locator('[data-drag-rearrange-row]', { hasText: templateName });
-  await templateRow.getByTitle('More').click();
+  await templateRow.getByLabel('More', { exact: true }).click();
   await page.locator('button:visible', { hasText: /^Delete$/ }).click();
   await page.waitForFunction(({ key, id }) => !JSON.parse(localStorage.getItem(key) || '[]').some((entry) => entry.id === id),
     { key: TEMPLATE_WORKFLOW_STORAGE_KEY, id: ids.templateId });

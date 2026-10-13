@@ -22,6 +22,7 @@
    `.survey-hub` root, those popups use literal hex colors, not CSS vars.
 */
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { hoverOnly, useTooltip } from '../components/Tooltip';
 import { createPortal } from 'react-dom';
 import { mergeProjectDocumentOrder, orderDocumentsByProject } from './projectDocumentOrder.js';
 import { HubShell, Icon, Avatar, AvatarStack, Search, EmptyState } from './HubShell';
@@ -189,6 +190,7 @@ export default function ProjectsFolderTree({
   onShare,
   onShareDocument,
 }) {
+  const tip = useTooltip();
   const [search, setSearch] = useState('');
   const [fileSearch, setFileSearch] = useState('');
 
@@ -896,7 +898,7 @@ export default function ProjectsFolderTree({
               setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
             }}
             className="hub-icon-btn"
-            title="More" aria-label="More"
+            aria-label="More" {...tip('More')}
           ><Icon name="more" size={14} /></button>
         )}
       </div>
@@ -1005,7 +1007,7 @@ export default function ProjectsFolderTree({
                         or select-mode selection. When the project is pinned,
                         the grabber is replaced by a gold pin icon. */}
                     {isPinned ? (
-                      <span title="Pinned" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                      <span role="img" aria-label="Pinned" {...tip('Pinned')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
                         <PinIcon size={12} color="var(--gold)" />
                       </span>
                     ) : (
@@ -1048,7 +1050,7 @@ export default function ProjectsFolderTree({
                           setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
                         }}
                         className="hub-icon-btn"
-                        title="More" aria-label="More"
+                        aria-label="More" {...tip('More')}
                       ><Icon name="more" size={14} /></button>
                     )}
                   </div>
@@ -1076,7 +1078,8 @@ export default function ProjectsFolderTree({
                     size={1}
                     key={open.id}
                     {...projectNameField(open)}
-                    title="Click to rename"
+                    aria-label="Click to rename"
+                    {...hoverOnly(tip('Click to rename'))}
                     onDoubleClick={(e) => e.currentTarget.select()}
                     /* Same dotted rename line as the Templates editor
                        (.hub-rename); it used to turn gold while typing. */
@@ -1220,7 +1223,7 @@ export default function ProjectsFolderTree({
                                   setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
                                 }}
                                 className="hub-icon-btn"
-                                title="More" aria-label="More"
+                                aria-label="More" {...tip('More')}
                               ><Icon name="more" size={14} /></button>
                             )}
                           </div>
@@ -1319,7 +1322,8 @@ export default function ProjectsFolderTree({
                         key={`mobile-project-name-${mobileDrillProject.id}`}
                         className="projects-mobile-title-input hub-rename"
                         {...projectNameField(mobileDrillProject)}
-                        title="Tap to rename"
+                        aria-label="Tap to rename"
+                        {...hoverOnly(tip('Tap to rename'))}
                       />
                     </span>
                     <span>{mobileDrillAllFiles.length} {mobileDrillAllFiles.length === 1 ? 'file' : 'files'} · {projectLastEditedLabel(mobileDrillProject.id)}</span>
@@ -1402,7 +1406,7 @@ export default function ProjectsFolderTree({
                             }}
                           >
                             {isPinned ? (
-                              <span title="Pinned" className="projects-mobile-drag-slot">
+                              <span role="img" aria-label="Pinned" {...tip('Pinned')} className="projects-mobile-drag-slot">
                                 <PinIcon size={12} color="var(--gold)" />
                               </span>
                             ) : (
@@ -1429,7 +1433,7 @@ export default function ProjectsFolderTree({
                                   setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
                                 }}
                                 className="hub-icon-btn"
-                                title="More" aria-label="More"
+                                aria-label="More" {...tip('More')}
                               ><Icon name="more" size={14} /></button>
                             )}
                           </div>
@@ -1705,7 +1709,7 @@ export default function ProjectsFolderTree({
                     setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
                   }}
                   className="hub-icon-btn"
-                  title="More" aria-label="More"
+                  aria-label="More" {...tip('More')}
                 ><Icon name="more" size={14} /></button>
               )}
             </div>
@@ -1798,7 +1802,8 @@ export default function ProjectsFolderTree({
               <input
                 key={`mobile-${open.id}`}
                 {...projectNameField(open)}
-                title="Click to rename"
+                aria-label="Click to rename"
+                {...hoverOnly(tip('Click to rename'))}
                 style={{
                   background: 'transparent',
                   color: 'var(--bone-100)',
@@ -1865,7 +1870,7 @@ export default function ProjectsFolderTree({
                           setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
                         }}
                         className="hub-icon-btn"
-                        title="More" aria-label="More"
+                        aria-label="More" {...tip('More')}
                       ><Icon name="more" size={14} /></button>
                     )}
                   </div>
