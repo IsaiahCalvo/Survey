@@ -6,6 +6,7 @@
 // KAL-443 end-to-end walk on the real hub (Dashboard) + in-memory backend.
 import { open, OUT, docRows, visibleControls, USER, PDF_SHA, PA, PB } from './walk-lib.mjs';
 const phone = process.argv[2] === 'phone';
+const t0 = Date.now(); process.on('exit', () => console.error(`walk took ${Math.round((Date.now() - t0) / 1000)}s`));
 const tag = (process.env.TAG ? process.env.TAG + '-' : '') + (phone ? 'phone' : 'desk');
 const w = await open(phone ? { viewport: { width: 390, height: 844 }, phone: true } : {});
 const { page, backend, objects } = w;
@@ -61,7 +62,19 @@ out.after3 = docRows(backend);
 // 3b. Copy dialog into the project it already lives in: also a second document.
 await copyTo('Riser.pdf', 'Tower A', '3b-copy-same-project');
 out.after3b = docRows(backend);
+out.objectsAfterCopies = [...objects.keys()].map((k) => k.slice(-16));
+out.storageAfterCopies = w.storageLog.filter((l) => !l.startsWith('GET'));
 console.log(JSON.stringify(out, null, 1));
+// `short` (argv[3]) stops here so one run stays under two minutes.
+if (process.argv[3] === 'short') {
+  // Open the Tower B copy: it reads its own stored object.
+  const bCopyRow = page.locator('[data-document-id]').filter({ visible: true }).filter({ hasText: 'Riser (Copy).pdf' }).filter({ hasText: 'Tower B' }).first();
+  await bCopyRow.click();
+  await page.waitForTimeout(9000);
+  await shot('short-open-copy');
+  console.log('opened', await page.locator('.survey-pdfjs-page-div').count(), 'pages rendered');
+  await w.browser.close(); process.exit(0);
+}
 // 4. Refresh: the list still shows all three documents.
 await page.reload();
 await page.waitForTimeout(8000);

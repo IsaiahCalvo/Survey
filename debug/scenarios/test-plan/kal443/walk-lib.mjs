@@ -74,6 +74,12 @@ export async function attachStorage(ctx, objects, log) {
       objects.set(path, body);
       return route.fulfill({ status: 200, headers: cors(req), contentType: 'application/json', body: JSON.stringify({ Key: `documents/${path}`, Id: path }) });
     }
+    if (method === 'DELETE' && /\/object\/documents$/.test(url.pathname)) {
+      let prefixes = [];
+      try { prefixes = JSON.parse(req.postData() || '{}').prefixes || []; } catch { prefixes = []; }
+      for (const p of prefixes) { objects.delete(p); log.push(`removed ${p.slice(-12)}`); }
+      return route.fulfill({ status: 200, headers: cors(req), contentType: 'application/json', body: JSON.stringify(prefixes.map((name) => ({ name }))) });
+    }
     if (method === 'DELETE' || (method === 'POST' && /\/object\/documents$/.test(url.pathname))) {
       return route.fulfill({ status: 200, headers: cors(req), contentType: 'application/json', body: '[]' });
     }
