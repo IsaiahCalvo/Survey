@@ -26612,7 +26612,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const { direction } = e.detail || {};
       if (direction === 'in') zoomIn();
       else if (direction === 'out') zoomOut();
-      else if (direction === 'reset') resetZoom();
+      // KAL-444: Cmd/Ctrl+0 is Fit page, as it is in the browser build's key
+      // handler above (0 / 1 / 2 = fit page / width / height). The desktop
+      // app's version of the key used to reset to the default zoom instead.
+      else if (direction === 'reset') zoomControllerRef.current?.setMode(ZOOM_MODES.FIT_PAGE);
     };
     window.addEventListener('pdf-zoom', handlePdfZoom);
     return () => window.removeEventListener('pdf-zoom', handlePdfZoom);

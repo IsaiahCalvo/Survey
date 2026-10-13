@@ -1154,6 +1154,13 @@ const ICON_RENDERERS = {
         <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.5" /><circle cx="12" cy="8" r="1" fill={color} /><path d="M12 11V16" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
+    /* KAL-444: the keyboard shortcuts sheet's button (viewer left rail). Same
+       1.5 stroke and rounded corners as the rest of the chrome set. */
+    keyboard: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
+        <rect x="2.75" y="5.75" width="18.5" height="12.5" rx="1.39" stroke={color} strokeWidth="1.5" /><path d="M6.5 9.5H7M10 9.5H10.5M13.5 9.5H14M17 9.5H17.5M6.5 12.25H7M10 12.25H10.5M13.5 12.25H14M17 12.25H17.5M8.5 15H15.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
     lightbulbOn: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
         <path d="M14.5 19.5H9.5M14.5 19.5C14.5 18.7865 14.5 18.4297 14.5381 18.193C14.6609 17.4296 14.6824 17.3815 15.1692 16.7807C15.3201 16.5945 15.8805 16.0927 17.0012 15.0892C18.5349 13.7159 19.5 11.7206 19.5 9.5C19.5 5.35786 16.1421 2 12 2C7.85786 2 4.5 5.35786 4.5 9.5C4.5 11.7206 5.4651 13.7159 6.99876 15.0892C8.11945 16.0927 8.67987 16.5945 8.83082 16.7807C9.31762 17.3815 9.3391 17.4296 9.46192 18.193C9.5 18.4297 9.5 18.7865 9.5 19.5M14.5 19.5C14.5 20.4346 14.5 20.9019 14.299 21.25C14.1674 21.478 13.978 21.6674 13.75 21.799C13.4019 22 12.9346 22 12 22C11.0654 22 10.5981 22 10.25 21.799C10.022 21.6674 9.83261 21.478 9.70096 21.25C9.5 20.9019 9.5 20.4346 9.5 19.5" stroke={color} strokeWidth="1.5" />
