@@ -1469,6 +1469,10 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   // private document is shared or unshared while it remains open.
   useEffect(() => {
     if (!docId) { setIsDocShared(false); return undefined; }
+    // Offline mode (no Supabase credentials: supabaseClient exports null)
+    // has no live sync to be shared over; `supabase.channel` below would
+    // throw and take the whole viewer down on load.
+    if (!supabase) { setIsDocShared(false); return undefined; }
     let cancelled = false;
     const refreshSharedState = async (options) => {
       // w34 (2026-09-25): the 30 s fallback poll (called with no options)

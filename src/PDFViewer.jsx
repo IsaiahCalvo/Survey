@@ -21463,7 +21463,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   useEffect(() => {
     const documentId = pdfFile?.id || null;
-    if (!documentId || !user?.id || !cloudSyncEnabled) return undefined;
+    // !supabase: offline mode (no credentials) has no channel to listen on.
+    if (!documentId || !user?.id || !cloudSyncEnabled || !supabase) return undefined;
     let cancelled = false;
     let backoff = 1000;
     const MAX_BACKOFF = 30000;
