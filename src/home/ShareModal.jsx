@@ -33,6 +33,7 @@ import Spinner from '../components/Spinner';
 import useModalFocusTrap from './useModalFocusTrap';
 import useVisibleViewportBox from './useVisibleViewportBox';
 import { C } from '../uiPalette';
+import { useTooltip } from '../components/Tooltip';
 
 
 const KIND_LABEL = { document: 'document', project: 'project', template: 'template' };
@@ -55,6 +56,7 @@ export default function ShareModal({
   name = '',
   item = null,
 }) {
+  const tip = useTooltip();
   // Tolerant of missing provider — direct context read so tests/standalone
   // renders don't throw the way `useAuth` does.
   const auth = useContext(AuthContext) || {};
@@ -265,7 +267,7 @@ export default function ShareModal({
             <div style={{ fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600 }}>Share {noun}</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.015em', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name || 'Untitled'}</div>
           </div>
-          <button ref={closeRef} onClick={onClose} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={13} /></button>
+          <button ref={closeRef} onClick={onClose} aria-label="Close" {...tip('Close')} className="hub-icon-btn"><Icon name="close" size={13} /></button>
         </div>
 
         {/* Single role selector — applies to both link and email per locked spec. */}

@@ -13,6 +13,7 @@ import { calculateAnnotationDetailTile } from '../utils/annotationDetailTile.js'
 import { annotationImagesReady, preloadAnnotationImages } from '../utils/annotationImageCache.js';
 import { isAnnotationVisibleInContext } from '../utils/annotationVisibilityRules';
 import { projectPaperInkForPresentation } from '../utils/paperInkPresentation.js';
+import { getMarkerShape, projectMarkerShape } from '../survey/markerShapes.js';
 
 const EMPTY_ARR = [];
 const WORKER_OBJECT_THRESHOLD = 500;
@@ -190,6 +191,13 @@ const LightweightAnnotationOverlay = memo(({
       scaleX: 1,
       scaleY: 1,
       angle: Number(marker.angle) || 0,
+      // Owner 2026-10-13: a freehand / smart-fill marker paints its outline
+      // (annotationCanvasPainter drawSurveyMarkerShape), not its box.
+      ...(() => {
+        const shape = getMarkerShape(marker);
+        const surveyMarkerShape = shape ? projectMarkerShape(shape, marker) : null;
+        return surveyMarkerShape ? { surveyMarkerShape, needsEntity: Boolean(marker.needsEntity) } : {};
+      })(),
     })), [pageNumber, surveyMarkers, visibilityContext]);
 
   const visibleObjects = useMemo(() => {

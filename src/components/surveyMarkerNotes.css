@@ -376,6 +376,12 @@
   opacity: 1;
 }
 
+/* An iPad or Android tablet shows the desktop layout (owner 2026-10-13) but
+   has no hover, so the ✕ stays shown there. */
+@media (hover: none) {
+  .survey-media-thumb__remove { opacity: 1; }
+}
+
 .survey-media-thumb__remove:hover {
   color: var(--danger-text);
 }

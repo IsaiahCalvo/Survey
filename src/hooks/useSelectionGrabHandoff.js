@@ -36,6 +36,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import { isPalmContact } from '../utils/touchContact.js';
 
 // The pointer currently held by a selection grab, if any. Viewer-level press
 // listeners (Pan quick-click, tool overlays) skip a press that belongs to it.
@@ -84,6 +85,8 @@ export function useSelectionGrabHandoff({ svgRef, enabled, isSelectionTarget, on
     const onDown = (event) => {
       if (!event.isTrusted || event.defaultPrevented) return;
       if (event.pointerType === 'mouse' && event.button !== 0) return;
+      // A resting palm never grabs the selection (Drawboard audit C1).
+      if (isPalmContact(event)) return;
       if (grabRef.current) return;
       const svg = svgRef.current;
       const target = event.target;

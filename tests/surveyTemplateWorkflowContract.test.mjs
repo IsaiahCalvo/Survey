@@ -11,7 +11,7 @@ test('desktop survey-template reload waits for exact storage and hydrated DOM', 
   assert.match(desktopWorkflow, /async function waitForReloadedTemplate/);
   assert.match(desktopWorkflow, /stored\?\.name !== templateName/);
   assert.match(desktopWorkflow, /stored\.modules\?\.some\(\(entry\) => entry\.id === moduleId\)/);
-  assert.match(desktopWorkflow, /input\[title="Click to rename"\]/);
+  assert.match(desktopWorkflow, /input\[data-template-title\]/);
   assert.match(desktopWorkflow, /element\.dataset\.moduleTabId === moduleId/);
   assert.match(desktopWorkflow, /await waitForReloadedTemplate\(page, ids\)/);
   assert.match(desktopWorkflow, /count\(\) === 1,[\s\S]{0,100}'Desktop template rename missing after reload'/);

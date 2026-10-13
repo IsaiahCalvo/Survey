@@ -18,10 +18,14 @@ async function loadLinkLayer() {
   const jsxRuntimeUrl = pathToFileURL(require.resolve('react/jsx-runtime')).href;
   const markupUrl = pathToFileURL(path.join(repoRoot, 'src/utils/pdfTextMarkup.js')).href;
   const platformUrl = pathToFileURL(path.join(repoRoot, 'src/utils/accountPlatform.js')).href;
+  const modifierUrl = pathToFileURL(path.join(repoRoot, 'src/utils/moveModifier.js')).href;
+  const policyUrl = pathToFileURL(path.join(repoRoot, 'src/utils/linkClickPolicy.js')).href;
   let source = await readFile(componentPath, 'utf8');
   source = source
     .replace("'../utils/pdfTextMarkup.js'", JSON.stringify(markupUrl))
-    .replace("'../utils/accountPlatform.js'", JSON.stringify(platformUrl));
+    .replace("'../utils/accountPlatform.js'", JSON.stringify(platformUrl))
+    .replace("'../utils/moveModifier.js'", JSON.stringify(modifierUrl))
+    .replace("'../utils/linkClickPolicy.js'", JSON.stringify(policyUrl));
   const transformed = await transformWithOxc(source, componentPath, { lang: 'jsx' });
   const executable = transformed.code.replaceAll('"react/jsx-runtime"', JSON.stringify(jsxRuntimeUrl));
   const tempDir = await mkdtemp(path.join(tmpdir(), 'text-link-layer-test-'));
@@ -158,6 +162,50 @@ test('text link layer: a drag that starts on a link is a page pan, not a click',
     await render('open');
     await act(async () => press(document.querySelector('[data-text-markup-link="web-link"]'), [20, 30], [24, 34]));
     assert.equal(opened.length, 1);
+  } finally {
+    await act(async () => root.unmount());
+    await cleanup();
+    dom.window.close();
+    for (const key of ['window', 'document', 'HTMLElement', 'Node', 'IS_REACT_ACT_ENVIRONMENT']) delete globalThis[key];
+  }
+});
+
+// Drawboard canvas audit 2026-10-13 (chunk 1): under a drawing tool the link
+// takes no pointer (the pen draws on it); while Cmd/Ctrl is held it does, and
+// that click opens the link.
+test('text link layer: a drawing tool leaves the link to the tool; Ctrl+click opens it', async () => {
+  const dom = new JSDOM('<!doctype html><div id="root"></div>', { pretendToBeVisual: true, url: 'http://localhost/' });
+  const opened = [];
+  dom.window.open = (...args) => { opened.push(args); return {}; };
+  Object.assign(globalThis, {
+    window: dom.window,
+    document: dom.window.document,
+    HTMLElement: dom.window.HTMLElement,
+    Node: dom.window.Node,
+    IS_REACT_ACT_ENVIRONMENT: true,
+  });
+  const { LinkLayer, cleanup } = await loadLinkLayer();
+  const root = createRoot(document.getElementById('root'));
+  const key = (type, init) => dom.window.dispatchEvent(new dom.window.KeyboardEvent(type, { bubbles: true, ...init }));
+  try {
+    await act(async () => root.render(React.createElement(LinkLayer, {
+      annotations: [annotation({ id: 'web-link', url: 'https://example.com/docs' })],
+      pageSize: { width: 100, height: 100 },
+      interactionMode: 'disabled',
+    })));
+    const button = () => document.querySelector('[data-text-markup-link="web-link"]');
+    assert.equal(button().style.pointerEvents, 'none', 'pen / shape tools press through the link');
+    assert.equal(button().style.cursor, 'default');
+    await act(async () => key('keydown', { key: 'Control', ctrlKey: true, metaKey: true }));
+    assert.equal(button().style.pointerEvents, 'auto', 'Cmd/Ctrl held: the link takes the click');
+    assert.equal(button().style.cursor, 'pointer');
+    await act(async () => {
+      button().dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, cancelable: true, detail: 1, button: 0, ctrlKey: true, metaKey: true }));
+      button().dispatchEvent(new dom.window.MouseEvent('pointerup', { bubbles: true, cancelable: true, detail: 1, button: 0, ctrlKey: true, metaKey: true }));
+    });
+    assert.deepEqual(opened, [['https://example.com/docs', '_blank', 'noopener,noreferrer']]);
+    await act(async () => key('keyup', { key: 'Control' }));
+    assert.equal(button().style.pointerEvents, 'none', 'key up: back to the tool');
   } finally {
     await act(async () => root.unmount());
     await cleanup();

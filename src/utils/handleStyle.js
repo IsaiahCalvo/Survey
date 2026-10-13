@@ -35,8 +35,9 @@ export const HANDLE_RING_WIDTH = 1.5;
 // knee / arrow / textbox, line + arrow endpoints, polygon vertices, counter
 // pin rotation). One number so every handle is the same size — change it
 // here and the whole app follows (user request 2026-05-18: unify all handle
-// sizes onto the small rectangle / pen / text size). SVG call sites still
-// multiply by sqrt(inverseScale) so on-screen size stays constant on zoom.
+// sizes onto the small rectangle / pen / text size). SVG call sites multiply
+// by the clamped inverseScale (selectionHandleVisibility.getHandleZoomScale)
+// so the on-screen size is the same at every zoom (Drawboard audit 2026-10-13).
 export const HANDLE_RADIUS = 5.5;
 
 // Radius for secondary handles that should read as deliberately smaller than

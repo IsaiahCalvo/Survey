@@ -16,6 +16,7 @@
 import Dashboard from './Dashboard';
 import DocumentLockBanner from './components/DocumentLockBanner.jsx';
 import Icon from './Icons';
+import SurveyMarkerModeTools from './survey/SurveyMarkerModeTools.jsx';
 import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
 import SaveLogBanner from './components/SaveLogBanner';
 import QuietLoading, { openingLabel } from './components/QuietLoading';
@@ -29,8 +30,9 @@ import AnchoredPopover from './components/AnchoredPopover';
 import ExportMenu from './components/ExportMenu.jsx';
 import ToolbarOverflowMenu from './components/ToolbarOverflowMenu';
 import useResponsiveToolbar from './hooks/useResponsiveToolbar.js';
+import usePhoneLayout from './hooks/usePhoneLayout.js';
 import useLoadoutTransition, { useDropInRow, useLeavingRow, useRowCrossfade } from './hooks/useLoadoutTransition.js';
-import { PHONE_LAYOUT_MAX_WIDTH, placeUnderOpenerAvoiding, slotDefinition, TEXT_ROW_CAPTION_ROOM, TEXT_ROW_PARTS, textRowLook, TIGHT_SPACING } from './utils/responsiveToolbar.js';
+import { placeUnderOpenerAvoiding, slotDefinition, TEXT_ROW_CAPTION_ROOM, TEXT_ROW_PARTS, textRowLook, TIGHT_SPACING } from './utils/responsiveToolbar.js';
 import { recentPressedControl, registerLightPopover } from './components/dismissRules.js';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from './utils/annotationSize';
 // The two document rails (PDFSidebar, SurveySpacesRail) load with the viewer,
@@ -39,6 +41,10 @@ import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from '.
 import './surveyRailStyles.js';
 import ActiveSpaceChip from './sidebar/ActiveSpaceChip';
 import TabBar from './TabBar';
+import { RenameModal } from './home/BulkModals';
+import { useConfirmDialog } from './components/dialogPrompts';
+import { closeConfirmFor, persistableDocumentId, pickActiveTabAfterClose, tabIdsForCloseAction } from './tabs/tabStrip.js';
+import { useTabSession } from './tabs/useTabSession.js';
 import {
   MobilePdfViewerDock,
   MobilePdfViewerHeader,
@@ -65,6 +71,8 @@ import { getLiveZoomViewerId, isLiveZoomEventForViewer, LIVE_ZOOM_EVENT } from '
 import { useAuth } from './contexts/AuthContext';
 import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import useStableHandler from './hooks/useStableHandler.js';
+import useFileDropZone from './hooks/useFileDropZone.js';
+import FileDropOverlay from './components/FileDropOverlay.jsx';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { useOptionalAuth } from './components/OptionalAuthPrompt';
 import { useStorage, useTemplates } from './hooks/useDatabase';
@@ -73,12 +81,15 @@ import { composeTextColor, splitTextColor } from './utils/textColorOpacity';
 import { CHROME_GLYPH, FONT_FAMILY, RAIL_CARET, RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_SPLIT_CONTROL_W, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
 // Owner 2026-09-22: undo/redo draw at 14 (the phone's HISTORY_GLYPH) - see MobilePdfViewerChrome.
 const HISTORY_GLYPH = 14;
-import { TooltipContext, makeTooltipBinding } from './components/Tooltip';
+import { TooltipContext, TooltipProvider, makeTooltipBinding } from './components/Tooltip';
 import { useViewerTopOverlayRef } from './utils/viewerTopOverlay.js';
 import DismissBarrier from './components/DismissBarrier.jsx';
+import PencilModeControl, { usePencilMode } from './components/PencilModeControl.jsx';
 import { sanitizeZoomInput } from './utils/pageNavigationMath.js';
 import { showsColourRule, showsPaintSwatch, showsQuickColourDots } from './utils/toolbarColourGroup.js';
 import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, showsFormatRow } from './utils/toolbarRows.js';
+import { LINE_STYLE_OPTIONS, LINE_STYLE_SAMPLE_ICONS } from './utils/lineStyleOptions.js';
+import SelectionQuickBar from './components/SelectionQuickBar.jsx';
 
 // The dot between the current page and the page total in the right-rail
 // footer: a drawn 2px circle in the total's grey (see the rail audit note at
@@ -320,6 +331,33 @@ const resolveAnnotationPaint = (bottomToolbarApi, colorPickerTab) => {
 };
 
 /**
+ * The two colours the ONE combined swatch shows (the tool bar's, and the
+ * selection quick bar's). The swatch previews the paint the next mark will
+ * carry, or the selected mark's own paint when one is picked — the same two
+ * sources every other preview in the bar reads, with the same per-tool
+ * fallbacks the hand-drawn swatches used. A counter rings in its PIN colour and
+ * centres its NUMBER colour; every other shape rings in its BORDER and centres
+ * its FILL.
+ */
+const resolvePaintSwatch = (bottomToolbarApi) => {
+  const isCounter = bottomToolbarApi.contextTool === 'counter';
+  const pinColour = bottomToolbarApi.selectedFillColor ?? ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ef4444', (bottomToolbarApi.fillOpacity ?? 100) / 100);
+  const numberColour = bottomToolbarApi.selectedStrokeColor ?? ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#ffffff', (bottomToolbarApi.strokeOpacity ?? 100) / 100);
+  const borderColour = bottomToolbarApi.selectedStrokeColor ?? ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#000000', (bottomToolbarApi.strokeOpacity ?? 100) / 100);
+  const fillColour = bottomToolbarApi.selectedFillColor ?? ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ffffff', (bottomToolbarApi.fillOpacity ?? 100) / 100);
+  return {
+    isCounter,
+    pinColour,
+    numberColour,
+    borderColour,
+    fillColour,
+    variant: isCounter ? 'counter' : 'shape',
+    ring: isCounter ? pinColour : borderColour,
+    center: isCounter ? numberColour : fillColour,
+  };
+};
+
+/**
  * PASS 7 (board 12): the ONE source the text-formatting bar reads and writes.
  *
  * The bar has two jobs, and they are the same job: while a text box is open for
@@ -367,28 +405,12 @@ const resolveTextFormatting = (api) => {
   };
 };
 
-/*
- * PASS 7 (boards 9-12 + 15): the four LINE STYLES and the drawing each one
- * shows. The drawing is the same glyph in the pill and in the menu row, at two
- * sizes, so what the row promises is what the pill reports back.
- */
 /* Owner Test 41 (2026-10-04): a folded alignment pill shows its group's
    current choice, so the bar still says how the text is aligned. */
 const TEXT_ALIGN_GLYPH = Object.freeze({ left: 'alignLeft', center: 'alignCenter', right: 'alignRight' });
 const TEXT_VALIGN_GLYPH = Object.freeze({ top: 'alignTop', middle: 'alignMiddle', bottom: 'alignBottom' });
-const LINE_STYLE_OPTIONS = Object.freeze([
-  Object.freeze({ value: 'solid', label: 'Solid' }),
-  Object.freeze({ value: 'dashed', label: 'Dashed' }),
-  Object.freeze({ value: 'dotted', label: 'Dotted' }),
-  Object.freeze({ value: 'cloud', label: 'Cloud' }),
-]);
-
-const LINE_STYLE_SAMPLE_ICONS = Object.freeze({
-  solid: 'lineSampleSolid',
-  dashed: 'lineSampleDashed',
-  dotted: 'lineSampleDotted',
-  cloud: 'lineSampleCloud',
-});
+// The four LINE STYLES and their drawings live in utils/lineStyleOptions.js,
+// shared with the selection quick bar's Line popover.
 
 /*
  * PASS 7 (board 15): the six ARROWHEADS the boards offer, in board order, each
@@ -763,34 +785,12 @@ export default function App({ devPreviewReturnTab = null }) {
   // input. Typing is clamped to 1-4000 (the PDF engine's zoom range).
   const [isEditingRailZoom, setIsEditingRailZoom] = useState(false);
 
-  // UX 2026-07-08 (mobile design pass): on narrow viewports (Capacitor phones,
-  // narrow browser windows) the top toolbar's absolutely-pinned clusters
-  // (undo/redo left, pan/select and tool-properties flanking the centered
-  // icons, zoom/page/fit/export right) collide and overlap. Below 720px the
-  // clusters flow inline instead and the zoom pill wraps onto its own row —
-  // same controls, stacked mobile layout per docs/design/design.md
-  // ("Adapting Other Surfaces").
-  const [isNarrowShell, setIsNarrowShell] = useState(() => (
-    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? window.matchMedia(`(max-width: ${PHONE_LAYOUT_MAX_WIDTH}px)`).matches
-      : false
-  ));
-  // Owner Test 41 (2026-10-04): the desktop rows now give ground step by step
-  // and fit every width above this switch (down to 554px with no side panel),
-  // so there is no width where the rails cover a control. The switch stays at
-  // 720px with the viewer's own touch surface (PdfjsViewerContainer) and the
-  // stylesheets' 720px phone rules; see PHONE_LAYOUT_MAX_WIDTH.
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
-    const mq = window.matchMedia(`(max-width: ${PHONE_LAYOUT_MAX_WIDTH}px)`);
-    const onChange = () => setIsNarrowShell(mq.matches);
-    if (mq.addEventListener) mq.addEventListener('change', onChange);
-    else mq.addListener(onChange);
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener('change', onChange);
-      else mq.removeListener(onChange);
-    };
-  }, []);
+  // Phone layout or desktop layout (owner 2026-10-13): the SCREEN decides —
+  // its short side under 600 CSS px is a phone, upright or sideways. Touch
+  // never decides (an iPad or a touchscreen laptop gets the desktop layout),
+  // and a desktop window dragged narrow stays desktop. One rule for the code
+  // and the stylesheets: utils/layoutMode.js.
+  const isNarrowShell = usePhoneLayout();
 
   // UX 2026-05-13: App-level bottom toolbar state. The chrome-bottom host
   // mounts with final rail dimensions as soon as a PDF tab is active; the active
@@ -851,6 +851,9 @@ export default function App({ devPreviewReturnTab = null }) {
     () => makeTooltipBinding(bottomToolbarApi?.setTooltip),
     [bottomToolbarApi?.setTooltip],
   );
+  // drawboardAudit C2: the right rail's Pencil-only switch (shown once a pen
+  // has been used on this device).
+  const { penSeen: pencilModeSeen, drawMode: pencilModeDrawMode } = usePencilMode();
 
   // UX 2026-07-14 (rail-footer redesign): page-fit mode glyphs shared by the
   // rail footer's fit trigger and its popup options. Hoisted to component
@@ -941,7 +944,8 @@ export default function App({ devPreviewReturnTab = null }) {
   const getAnnotationColourAnchor = useCallback(() => {
     if (!colourPickerOpenerRef.current?.isConnected) {
       const pressed = recentPressedControl();
-      colourPickerOpenerRef.current = pressed?.closest?.('#chrome-top-host, #chrome-sub-toolbar-host') ? pressed : null;
+      // The selection quick bar's colour controls open this same picker.
+      colourPickerOpenerRef.current = pressed?.closest?.('#chrome-top-host, #chrome-sub-toolbar-host, [data-selection-quick-bar]') ? pressed : null;
     }
     if (colourPickerOpenerRef.current?.isConnected) return colourPickerOpenerRef.current;
     // w44: the colours live in the formatting row (row 2) now.
@@ -981,6 +985,13 @@ export default function App({ devPreviewReturnTab = null }) {
   // read and write: the quick colour dots, the swatch's ring, and the picker
   // itself. See resolveAnnotationPaint above.
   const annotationPaint = resolveAnnotationPaint(bottomToolbarApi, colorPickerTab);
+  // The custom colour disc and the combined swatch (tool bar and selection
+  // quick bar alike) open the picker on the channel they show, or close it.
+  const toggleAnnotationColourPicker = () => {
+    if (!annotationPaint || !bottomToolbarApi) return;
+    setColorPickerTab(annotationPaint.isShape ? 'fill' : annotationPaint.quick.tab);
+    bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);
+  };
   // PASS 7 (board 12): the THIRD BAR is shown while the text box or callout tool
   // is merely ARMED, not only once a text box is open for editing. Board 12 is
   // the text-box tool's board and it draws three bars; the formatting a mark is
@@ -1606,41 +1617,194 @@ export default function App({ devPreviewReturnTab = null }) {
     return newFile;
   }, [selectedPDF, activeTabId, replaceDocument]);
 
-  const handleTabClose = (tabId) => {
-    // Prevent closing the home tab
-    if (tabId === HOME_TAB_ID) return;
+  // ---- Desktop tab strip: close, menu, rename, download, restore ----------
+  // Drawboard shell audit, Chunk C (2026-10-13). Every close a person makes -
+  // the X, a middle-click, the tab menu's Close tab / Close other tabs / Close
+  // all tabs and the overflow list - goes through requestCloseTabs, so one
+  // rule asks before work is lost: a local file with changes that are not
+  // saved (the same rule as the reload warning, beforeUnloadGuard.js). Close
+  // all asks once, like Drawboard ("Close all open documents (N)?").
+  // closeTabsNow is the close itself; a viewer that failed to load still calls
+  // it directly (onCloseAfterFailure): there is nothing to protect.
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+  const activeTabIdRef = useRef(activeTabId);
+  activeTabIdRef.current = activeTabId;
+  const bottomToolbarApiRef = useRef(bottomToolbarApi);
+  bottomToolbarApiRef.current = bottomToolbarApi;
+  const [askTabConfirm, tabConfirmDialog] = useConfirmDialog();
+  const [renameTabId, setRenameTabId] = useState(null);
 
-    const tabIndex = tabs.findIndex(t => t.id === tabId);
-    if (tabIndex === -1) return;
+  const closeTabsNow = (tabIds) => {
+    const currentTabs = tabsRef.current;
+    const closing = (tabIds || []).filter((id) => id !== HOME_TAB_ID && currentTabs.some((t) => t.id === id));
+    if (!closing.length) return;
+    const closingSet = new Set(closing);
+    const currentActive = activeTabIdRef.current;
+    // The tab to the right of the closed active one takes over, else the one
+    // to its left, else Home (the old single close did the same).
+    const nextActiveId = pickActiveTabAfterClose(currentTabs, closing, currentActive, HOME_TAB_ID);
+    setTabs((prev) => prev.filter((t) => !closingSet.has(t.id)));
+    if (nextActiveId === currentActive) return;
+    if (nextActiveId === HOME_TAB_ID) {
+      setActiveTabId(HOME_TAB_ID);
+      setSelectedPDF(null);
+      setCurrentView('dashboard');
+      return;
+    }
+    const nextTab = currentTabs.find((t) => t.id === nextActiveId);
+    setActiveTabId(nextActiveId);
+    setSelectedPDF(nextTab?.file || null);
+    setCurrentView('viewer');
+  };
 
-    const newTabs = tabs.filter(t => t.id !== tabId);
-    setTabs(newTabs);
+  const handleTabClose = (tabId) => closeTabsNow([tabId]);
 
-    // If closing the active tab, switch to another tab or go back to home
-    if (tabId === activeTabId) {
-      if (newTabs.length > 1) { // More than just home tab
-        // Switch to the tab that was at the same position, or the last tab (excluding home)
-        const pdfTabs = newTabs.filter(t => !t.isHome);
-        if (pdfTabs.length > 0) {
-          const newActiveIndex = Math.min(tabIndex - 1, pdfTabs.length - 1);
-          const newActiveTab = pdfTabs[newActiveIndex >= 0 ? newActiveIndex : 0];
-          setActiveTabId(newActiveTab.id);
-          setSelectedPDF(newActiveTab.file);
-          setCurrentView('viewer');
-        } else {
-          // Only home tab left
-          setActiveTabId(HOME_TAB_ID);
-          setSelectedPDF(null);
-          setCurrentView('dashboard');
-        }
-      } else {
-        // Only home tab left
-        setActiveTabId(HOME_TAB_ID);
-        setSelectedPDF(null);
-        setCurrentView('dashboard');
-      }
+  const requestCloseTabs = async (tabIds, action = 'close') => {
+    const ids = (tabIds || []).filter((id) => id !== HOME_TAB_ID);
+    if (!ids.length) return;
+    const confirm = closeConfirmFor({ tabs: tabsRef.current, closingIds: ids, action });
+    if (confirm && !(await askTabConfirm(confirm))) return;
+    closeTabsNow(ids);
+  };
+
+  const handleTabCloseRequest = (tabId) => requestCloseTabs([tabId], 'close');
+
+  // Download from the tab menu = the viewer's own "Export annotated PDF" for
+  // that document. A tab that is not in front is brought up first and its
+  // export runs as soon as its viewer has the document; a restored tab that
+  // was never opened gets a moment for its markup to load.
+  const pendingTabDownloadRef = useRef(null);
+  const tabDownloadTimerRef = useRef(null);
+  useEffect(() => () => clearTimeout(tabDownloadTimerRef.current), []);
+  const downloadTab = (tabId) => {
+    const tab = tabsRef.current.find((t) => t.id === tabId);
+    if (!tab || tab.isHome) return;
+    const api = bottomToolbarApiRef.current;
+    const inFront = tabId === activeTabIdRef.current && currentView === 'viewer';
+    if (inFront && typeof api?.exportAnnotatedPdf === 'function' && api.numPages > 0) {
+      api.exportAnnotatedPdf();
+      return;
+    }
+    pendingTabDownloadRef.current = {
+      tabId,
+      staleApi: inFront ? null : api,
+      wasLoaded: !tab.restorePending,
+      at: Date.now(),
+    };
+    if (!inFront) handleTabClick(tabId);
+  };
+  useEffect(() => {
+    const pending = pendingTabDownloadRef.current;
+    if (!pending) return;
+    if (Date.now() - pending.at > 30000 || !tabs.some((t) => t.id === pending.tabId)) {
+      pendingTabDownloadRef.current = null;
+      return;
+    }
+    if (activeTabId !== pending.tabId || currentView !== 'viewer') return;
+    const api = bottomToolbarApi;
+    if (!api || api === pending.staleApi || typeof api.exportAnnotatedPdf !== 'function' || !(api.numPages > 0)) return;
+    pendingTabDownloadRef.current = null;
+    clearTimeout(tabDownloadTimerRef.current);
+    tabDownloadTimerRef.current = setTimeout(() => {
+      if (activeTabIdRef.current !== pending.tabId) return;
+      bottomToolbarApiRef.current?.exportAnnotatedPdf?.();
+    }, pending.wasLoaded ? 0 : 1500);
+  }, [bottomToolbarApi, activeTabId, currentView, tabs]);
+
+  // Rename from the tab menu = the home's Rename (Dashboard's rename of the
+  // document row). The tab shows the new name at once and goes back if the
+  // rename fails (Dashboard shows the error toast).
+  const renameTab = renameTabId ? tabs.find((t) => t.id === renameTabId) || null : null;
+  const handleRenameTabConfirm = async (nextName) => {
+    const tab = tabsRef.current.find((t) => t.id === renameTabId);
+    const documentId = persistableDocumentId(tab);
+    if (!tab || !documentId) return;
+    const previousName = tab.name;
+    const sameDocument = (t) => persistableDocumentId(t) === documentId;
+    const row = documents.find((d) => String(d?.id) === String(documentId)) || { id: documentId, name: previousName };
+    setTabs((prev) => prev.map((t) => (sameDocument(t) ? { ...t, name: nextName } : t)));
+    const renamed = await dashboardRef.current?.renameDocument?.(row, nextName);
+    if (!renamed) setTabs((prev) => prev.map((t) => (sameDocument(t) ? { ...t, name: previousName } : t)));
+  };
+
+  const handleTabMenuAction = (action, tabId) => {
+    if (action === 'close' || action === 'closeOthers' || action === 'closeAll') {
+      requestCloseTabs(tabIdsForCloseAction(tabsRef.current, action, tabId), action);
+    } else if (action === 'rename') {
+      if (tabsRef.current.some((t) => t.id === tabId)) setRenameTabId(tabId);
+    } else if (action === 'download') {
+      downloadTab(tabId);
     }
   };
+
+  // Open tabs come back after a reload (per signed-in user; tabs/useTabSession).
+  // Restored tabs open through the same path as a share link (?docId=): the
+  // library row is the file and the viewer downloads it. Only the tab that was
+  // in front loads now; the others wait until they are first shown.
+  const restoreActivateRef = useRef(null);
+  const fileForRestoredRow = (row) => {
+    // Dev seam, exactly as the share-link open uses it: a seeded row's local
+    // copy, opened as a plain local file.
+    if (import.meta.env.DEV && typeof File !== 'undefined' && row?.__localFile instanceof File) {
+      return row.__localFile;
+    }
+    if (!(row?.file instanceof Blob)) return row;
+    // An upload still held in memory: the same metadata the home's open
+    // attaches to it.
+    const local = row.file;
+    if (row.id && !local.id) {
+      local.id = row.id;
+      local.projectId = row.projectId || row.project_id;
+      local.user_id = row.user_id || row.userId || null;
+    }
+    return local;
+  };
+  const handleTabSessionRestore = (plan) => {
+    const restored = plan.rows.map((row) => {
+      const file = fileForRestoredRow(row);
+      return {
+        id: generateTabId(),
+        name: row.name || file?.name || 'Document',
+        file,
+        filePath: row.filePath || row.file_path || null,
+        documentId: String(row.id),
+        isHome: false,
+        viewState: null,
+        restorePending: true,
+      };
+    });
+    setTabs((prev) => [
+      ...prev,
+      ...restored.filter((t) => !prev.some((open) => isSameDocumentTab(open, t.file, t.filePath))),
+    ]);
+    const target = plan.activeDocumentId
+      ? restored.find((t) => t.documentId === plan.activeDocumentId)
+      : null;
+    restoreActivateRef.current = target?.id || null;
+  };
+  useTabSession({
+    userId: user?.id || null,
+    documents,
+    tabs,
+    activeTabId,
+    onRestore: handleTabSessionRestore,
+    // The phone has no tab strip; it opens on Home as before.
+    enabled: !isNarrowShell,
+  });
+  // Bring the restored front tab up - unless the person already moved on.
+  useEffect(() => {
+    const targetId = restoreActivateRef.current;
+    if (!targetId || !tabs.some((t) => t.id === targetId)) return;
+    restoreActivateRef.current = null;
+    if (activeTabIdRef.current !== HOME_TAB_ID || currentView !== 'dashboard') return;
+    handleTabClick(targetId);
+  }, [tabs]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A restored tab mounts its viewer the first time it comes to the front.
+  useEffect(() => {
+    if (!tabs.some((t) => t.id === activeTabId && t.restorePending)) return;
+    setTabs((prev) => prev.map((t) => (t.id === activeTabId && t.restorePending ? { ...t, restorePending: false } : t)));
+  }, [activeTabId, tabs]);
 
   const handleTabReorder = (reorderedTabs) => {
     // Ensure home tab is always first
@@ -1653,19 +1817,9 @@ export default function App({ devPreviewReturnTab = null }) {
     }
   };
 
-  const handlePageDrop = (sourceTabId, pageNumber, targetTabId) => {
-    // This is a placeholder - actual PDF page copying would require PDF manipulation
-    // For now, we'll just show a message or implement basic structure
-
-    // TODO: Implement actual page copying using PDF.js or a PDF manipulation library
-    // This would involve:
-    // 1. Getting the page from source PDF
-    // 2. Creating a new PDF or modifying target PDF
-    // 3. Adding the page to target PDF
-    // 4. Updating the target tab's file
-
-    showToast(`Page ${pageNumber} drag-and-drop functionality is being implemented. This feature requires PDF manipulation capabilities.`, 'info');
-  };
+  // A page dragged onto a tab used to show a placeholder toast (a stub).
+  // Nothing in the app drags a page out any more (the Pages panel reorders
+  // with pointer events), so the tab strip no longer takes such drops.
 
   const handleBack = () => {
     if (returnToDevHubPreview()) return;
@@ -1697,7 +1851,10 @@ export default function App({ devPreviewReturnTab = null }) {
   const stableTabClick = useStableHandler(handleTabClick);
   const stableTabClose = useStableHandler(handleTabClose);
   const stableTabReorder = useStableHandler(handleTabReorder);
-  const stablePageDrop = useStableHandler(handlePageDrop);
+  const stableTabCloseRequest = useStableHandler(handleTabCloseRequest);
+  const stableTabMenuAction = useStableHandler(handleTabMenuAction);
+  const stableRenameTabConfirm = useStableHandler(handleRenameTabConfirm);
+  const closeRenameTab = useCallback(() => setRenameTabId(null), []);
   // Crash hunt 2026-10-07 (phone memory): every callback handed to PDFViewer
   // must keep one identity. PDFViewer folds some of them into the rail / tool
   // bar API objects it publishes back into this component's state, so a fresh
@@ -1721,6 +1878,19 @@ export default function App({ devPreviewReturnTab = null }) {
   const activeTab = tabs.find(t => t.id === activeTabId);
   const isViewerVisible = activeTab && !activeTab.isHome && selectedPDF && currentView === 'viewer';
   const isMobileViewer = Boolean(isNarrowShell && isViewerVisible);
+  // PDFs dragged in from the computer onto an open document (owner request
+  // 2026-10-13, as in Drawboard): uploaded the same way as the Upload button
+  // and each opened in a new tab. Anywhere over the viewer counts, the pages
+  // rail included (there is no "insert pages from a file" to compete with);
+  // a survey note's own photo drop still wins over its block. Desktop only:
+  // a phone cannot drag files in. On Home the Documents / Projects screens
+  // have their own drop zones.
+  const viewerDropAreaRef = useRef(null);
+  const { dropProps: viewerDropProps, overlay: viewerDropOverlay } = useFileDropZone({
+    enabled: Boolean(isViewerVisible && !isNarrowShell),
+    resolveTarget: () => ({ key: 'viewer', kind: 'viewer', el: viewerDropAreaRef.current }),
+    onDropFiles: (files) => dashboardRef.current?.uploadDroppedFiles?.(files, { open: true }),
+  });
 
   // w42 (2026-09-26, owner report from an 840px split view): the desktop tool
   // bar adapts to narrow windows instead of letting its settings run into
@@ -1865,6 +2035,10 @@ export default function App({ devPreviewReturnTab = null }) {
     ? (bottomToolbarApi.regionToolbarApi || REGION_TOOLBAR_OPENING_STATE)
     : null;
   const areasMode = Boolean(regionApi);
+  // Owner 2026-10-13: with the Survey Marker tool armed, its drawing modes
+  // (Rectangle / Freehand / Smart fill) stand where a group's tools go.
+  const surveyMarkerModesInToolBar = !areasMode && !isMobileViewer
+    && bottomToolbarApi?.activeTool === 'survey-marker' && Boolean(rightRailApi?.showSurveyPanel);
   const areasPanArmed = areasMode && bottomToolbarApi?.activeTool === 'pan';
   // A group left open from before (Draw's row) must not draw its tools beside
   // the Areas tools.
@@ -2244,16 +2418,36 @@ export default function App({ devPreviewReturnTab = null }) {
           Log handler dispatches. */}
       <MemoSaveLogBanner />
       <MemoToastHost />
-      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <FileDropOverlay overlay={viewerDropOverlay} />
+      {/* The tab strip's confirm (closing unsaved work, Close all) and its
+          Rename document dialog - the home's own dialogs. */}
+      {/* Their own layer: they open over an open document, whose viewer
+          sits at z-index 5000 (the home's dialogs only ever cover the home). */}
+      <div data-tab-strip-dialogs="" style={{ position: 'relative', zIndex: 6500 }}>
+        {tabConfirmDialog}
+        <RenameModal
+          open={!!renameTab}
+          onClose={closeRenameTab}
+          title="Rename document"
+          initialName={renameTab?.name || ''}
+          onConfirm={stableRenameTabConfirm}
+        />
+      </div>
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }} {...viewerDropProps}>
         {tabs.length > 0 && !isNarrowShell && ( // Desktop-only: mobile navigation lives inside the home/viewer chrome.
+          // KAL-65: the tab strip shows over the hub too, where the viewer's
+          // chip host is not mounted, so it brings its own shared host.
+          <TooltipProvider>
           <MemoTabBar
             tabs={tabs}
             activeTabId={activeTabId}
             onTabClick={stableTabClick}
-            onTabClose={stableTabClose}
+            onTabClose={stableTabCloseRequest}
             onTabReorder={stableTabReorder}
-            onPageDrop={stablePageDrop}
+            onTabMenuAction={stableTabMenuAction}
+            signedIn={Boolean(user?.id)}
           />
+          </TooltipProvider>
         )}
         {/* UX 2026-05-14: App-level top toolbar consolidating Undo/Redo plus
             every annotation tool that used to live in the bottom toolbar.
@@ -2737,10 +2931,13 @@ export default function App({ devPreviewReturnTab = null }) {
                 {/* The rule between the group icons and the group's tools —
                     the same shared rule, same 8px inset, as the one on the
                     cluster's other edge. Only there when tools follow it. */}
-                {((toolBarGroup && toolBarGroup !== 'select') || selectModesInToolBar || areasMode) && (
+                {((toolBarGroup && toolBarGroup !== 'select') || selectModesInToolBar || areasMode || surveyMarkerModesInToolBar) && (
                   <div className="chrome-divider" />
                 )}
                 {areasMode && renderAreaTools()}
+                {surveyMarkerModesInToolBar && (
+                  <SurveyMarkerModeTools chromeTip={chromeTip} glyphSize={CHROME_GLYPH} />
+                )}
                 {/* RULED 2026-09-26 owner: select modes in top bar (w46).
                     Select's Box / Lasso / Text modes stand where a group's
                     tools go — with nothing picked, or a pick no drawing group
@@ -3241,25 +3438,13 @@ export default function App({ devPreviewReturnTab = null }) {
                     value={bottomToolbarApi.selectionMixed?.strokeColor ? null : annotationPaint.quick.color}
                     customActive={bottomToolbarApi.selectionMixed?.strokeColor ? false : undefined}
                     onPick={(hex) => annotationPaint.quick.apply(hex, annotationPaint.quick.opacity)}
-                    onOpenPicker={() => {
-                      setColorPickerTab(annotationPaint.isShape ? 'fill' : annotationPaint.quick.tab);
-                      bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);
-                    }}
+                    onOpenPicker={toggleAnnotationColourPicker}
                   />
                 )}
                 {showsPaintSwatch(bottomToolbarApi) && annotationPaint && (() => {
-                  const isCounter = bottomToolbarApi.contextTool === 'counter';
-                  /* The swatch previews the paint the next mark will carry, or
-                     the selected mark's own paint when one is picked — the same
-                     two sources every other preview in the bar reads, with the
-                     same per-tool fallbacks the hand-drawn swatches used.
-                     A counter rings in its PIN colour and centres its NUMBER
-                     colour; every other shape rings in its BORDER and centres
-                     its FILL. */
-                  const pinColour = bottomToolbarApi.selectedFillColor ?? ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ef4444', (bottomToolbarApi.fillOpacity ?? 100) / 100);
-                  const numberColour = bottomToolbarApi.selectedStrokeColor ?? ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#ffffff', (bottomToolbarApi.strokeOpacity ?? 100) / 100);
-                  const borderColour = bottomToolbarApi.selectedStrokeColor ?? ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#000000', (bottomToolbarApi.strokeOpacity ?? 100) / 100);
-                  const fillColour = bottomToolbarApi.selectedFillColor ?? ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ffffff', (bottomToolbarApi.fillOpacity ?? 100) / 100);
+                  // The swatch's two colours: resolvePaintSwatch (shared with
+                  // the selection quick bar).
+                  const { isCounter, pinColour, numberColour, borderColour, fillColour } = resolvePaintSwatch(bottomToolbarApi);
                   return (
                     /* data-annotation-color-trigger: the shared dismiss boundary
                        (the capture-phase effect above) has to count a press on a
@@ -3274,10 +3459,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         ring={isCounter ? pinColour : borderColour}
                         center={isCounter ? numberColour : fillColour}
                         mixed={isPaintSelectionMixed(bottomToolbarApi.selectionMixed)}
-                        onOpen={() => {
-                          setColorPickerTab(annotationPaint.isShape ? 'fill' : annotationPaint.quick.tab);
-                          bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);
-                        }}
+                        onOpen={toggleAnnotationColourPicker}
                       />
                     </span>
                   );
@@ -4240,7 +4422,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 />
               <div ref={setTextFormatRowEl} data-chrome-text-format-row="true" />
             </div>
-            <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative' }}>
+            <div ref={viewerDropAreaRef} style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative' }}>
             {/* Polish 3 (2026-10-04): the home screen stays mounted under an
                 open document (the viewer layer covers it), but it was still in
                 the Tab order - a keyboard user tabbed from the tool bar into
@@ -4249,6 +4431,9 @@ export default function App({ devPreviewReturnTab = null }) {
                 no clicks, not read out. display: contents, so the wrapper adds
                 no box and the layout is untouched. */}
             <div inert={isViewerVisible ? '' : undefined} style={{ display: 'contents' }}>
+            {/* KAL-65: the hub's own shared tooltip host - the viewer's chip
+                lives in PDFViewer and is not there when no document is open. */}
+            <TooltipProvider>
             <MemoDashboard
               ref={dashboardRef}
               onDocumentSelect={stableDocumentSelect}
@@ -4263,9 +4448,12 @@ export default function App({ devPreviewReturnTab = null }) {
               entities={entities}
               setEntities={setEntities}
             />
+            </TooltipProvider>
             </div>
             {tabs.map(tab => {
               if (tab.isHome) return null;
+              // A restored tab loads the first time it comes to the front.
+              if (tab.restorePending && tab.id !== activeTabId) return null;
 
               const isVisible = tab.id === activeTabId && currentView === 'viewer';
               const tabViewState = tab.viewState;
@@ -4311,7 +4499,6 @@ export default function App({ devPreviewReturnTab = null }) {
                       onBottomToolbarApiChange={setBottomToolbarApi}
                       onLeftRailApiChange={setLeftRailApi}
                       onRightRailApiChange={setRightRailApi}
-                      onPageDrop={stablePageDrop}
                       onUpdatePDFFile={stableUpdatePDFFile}
                       onCloseAfterFailure={stableTabClose}
                       onUnsavedAnnotationsChange={stableUnsavedAnnotationsChange}
@@ -4732,6 +4919,21 @@ export default function App({ devPreviewReturnTab = null }) {
                       </button>
                       {api.isZoomMenuOpen && fitMenu({ right: '100%', bottom: 0, marginRight: '6px' })}
                     </div>
+                    {/* drawboardAudit C2: the Pencil-only switch sits where
+                        Drawboard keeps it - the utility end of the bar holding
+                        the page controls. Nothing renders (no rule either)
+                        until a pen has been used on this device. */}
+                    {pencilModeSeen && (
+                      <>
+                        <div style={{ width: '24px', height: '1px', background: 'var(--surface-3)', margin: '4px 0' }} />
+                        <PencilModeControl
+                          surface="desktop"
+                          glyph={RAIL_CONTROL_GLYPH}
+                          style={footerBtn()}
+                          buttonProps={chromeTip(pencilModeDrawMode === 'pen' ? 'Annotate with Pencil only' : 'Annotate with Pencil or Touch', 'left')}
+                        />
+                      </>
+                    )}
                   </div>
                 );
             })()}
@@ -4780,11 +4982,34 @@ export default function App({ devPreviewReturnTab = null }) {
         onDismiss={!authPromptDismissed ? handleDismiss : null}
       />
 
-      {/* UX 2026-05-13: KeyboardShortcutsOverlay only renders on the home tab.
-          On the PDF viewer it was covering the zoom / page-fit controls in the
-          bottom-right after the status bar was removed. The '?' modal still
-          works on the home tab; on the viewer the screen stays clean. */}
-      {!isViewerVisible && <KeyboardShortcutsOverlay />}
+      {/* Drawboard canvas audit, chunk 4: the floating quick bar over a
+          selection (desktop layout; the phone has its own selection strip).
+          Its colour controls are the tool bar's own (same paint, same picker),
+          and a Survey Marker's entity changes through the entity bar's write. */}
+      <SelectionQuickBar
+        enabled={Boolean(isViewerVisible && !isMobileViewer && bottomToolbarApi)}
+        api={bottomToolbarApi}
+        paint={annotationPaint}
+        swatch={bottomToolbarApi && showsPaintSwatch(bottomToolbarApi) ? {
+          ...resolvePaintSwatch(bottomToolbarApi),
+          mixed: isPaintSelectionMixed(bottomToolbarApi.selectionMixed),
+        } : null}
+        onOpenColourPicker={toggleAnnotationColourPicker}
+        entities={rightRailApi?.selectedTemplate?.entities || null}
+        surveyMarkers={rightRailApi?.surveyMarkers || null}
+        onPickEntity={(entityId, markerIds) => {
+          rightRailApi?.rememberSurveyEntity?.(entityId);
+          (markerIds || []).forEach((markerId) => rightRailApi?.surveyEntityApplyRef?.current?.(markerId, entityId));
+        }}
+        tip={chromeTip}
+      />
+
+      {/* KAL-444: one shortcuts sheet for Home AND the viewer — inside a
+          document is where every one of those keys applies. (It was kept off
+          the viewer on 2026-05-13 because its floating "Press ?" hint pill
+          covered the zoom controls; that pill is gone, and the sheet itself
+          renders nothing until it is opened.) */}
+      <KeyboardShortcutsOverlay />
     </TooltipContext.Provider>
   );
 }
