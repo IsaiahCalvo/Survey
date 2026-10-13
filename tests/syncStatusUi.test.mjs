@@ -40,6 +40,52 @@ test('sync status view model exposes pending debounce as visible saving state', 
       retryLabel: 'Keep this document open while backup finishes.',
     },
   );
+  // Recovered from 90f10085 (KAL-370); detail/retryLabel copy added in 27bd12739.
+  assert.deepEqual(
+    getSyncStatusViewModel({ stage: 'hydrating' }, 0),
+    {
+      state: 'syncing',
+      label: 'Syncing...',
+      detail: 'Survey is loading and backing up this document’s cloud changes.',
+      retryLabel: 'Keep this document open while backup finishes.',
+    },
+  );
+  assert.deepEqual(
+    getSyncStatusViewModel({ stage: 'migrating' }, 0),
+    {
+      state: 'syncing',
+      label: 'Syncing...',
+      detail: 'Survey is loading and backing up this document’s cloud changes.',
+      retryLabel: 'Keep this document open while backup finishes.',
+    },
+  );
+  assert.deepEqual(
+    getSyncStatusViewModel({ stage: 'idle' }, 0),
+    {
+      state: 'synced',
+      label: 'Up to date',
+      detail: 'Everything is backed up to the cloud.',
+      retryLabel: '',
+    },
+  );
+  assert.deepEqual(
+    getSyncStatusViewModel(null, 0),
+    {
+      state: 'synced',
+      label: 'Up to date',
+      detail: 'Everything is backed up to the cloud.',
+      retryLabel: '',
+    },
+  );
+  assert.deepEqual(
+    getSyncStatusViewModel({ stage: 'idle' }, 0, true),
+    {
+      state: 'syncing',
+      label: 'Syncing now...',
+      detail: 'Survey is backing up your locally saved changes now.',
+      retryLabel: 'Keep this document open while backup finishes.',
+    },
+  );
 });
 
 test('sync status view model keeps queued and error states visible', () => {

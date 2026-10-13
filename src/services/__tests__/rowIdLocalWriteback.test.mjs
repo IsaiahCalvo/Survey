@@ -542,3 +542,76 @@ test('normalizeWorkbookCellValue: strings, blanks, rich text, formula results', 
   assert.equal(normalizeWorkbookCellValue({ formula: 'A1', result: 'tok' }), 'tok');
   assert.equal(normalizeWorkbookCellValue(42), '42');
 });
+
+
+test('statSignature / mid-flush refusal edges', async () => {
+  const storage = makeStorage();
+  enqueueDefaults(storage);
+
+  // getFileStats throws → unsafe-unknown via statSignature catch
+  {
+    const fs = makeFakeFs({ files: { [FILE]: await makeWorkbookBuffer() } });
+    const orig = fs.getFileStats;
+    fs.getFileStats = async () => { throw new Error('stat boom'); };
+    assert.equal((await drain(fs, storage)).status, 'unsafe-unknown');
+    fs.getFileStats = orig;
+  }
+
+  // isFile false → null signature → unsafe-unknown
+  {
+    const storage2 = makeStorage();
+    enqueueDefaults(storage2);
+    const fs = makeFakeFs({ files: { [FILE]: await makeWorkbookBuffer() } });
+    fs.getFileStats = async () => ({ mtime: 't', size: 1, isFile: false });
+    assert.equal((await drain(fs, storage2)).status, 'unsafe-unknown');
+  }
+
+  // mtime missing → null signature
+  {
+    const storage3 = makeStorage();
+    enqueueDefaults(storage3);
+    const fs = makeFakeFs({ files: { [FILE]: await makeWorkbookBuffer() } });
+    fs.getFileStats = async () => ({ size: 1, isFile: true });
+    assert.equal((await drain(fs, storage3)).status, 'unsafe-unknown');
+  }
+
+  // readFile throws during load → stopped-error
+  {
+    const storage4 = makeStorage();
+    enqueueDefaults(storage4);
+    const fs = makeFakeFs({ files: { [FILE]: await makeWorkbookBuffer() } });
+    fs.readFile = async () => { throw new Error('read boom'); };
+    const result = await drain(fs, storage4);
+    assert.equal(result.status, 'stopped-error');
+    assert.match(result.errorMessage || '', /read boom/);
+  }
+
+  // lock appears between plan and write → excel-open mid-flush
+  {
+    const storage5 = makeStorage();
+    enqueueDefaults(storage5);
+    const fs = makeFakeFs({ files: { [FILE]: await makeWorkbookBuffer() } });
+    let checks = 0;
+    const origExists = fs.fileExists;
+    fs.fileExists = async (p) => {
+      checks += 1;
+      if (p === LOCK && checks > 1) return true;
+      return origExists(p);
+    };
+    assert.equal((await drain(fs, storage5)).status, 'excel-open');
+    assert.equal(fs.state.writes.length, 0);
+  }
+
+  // writeFile throws after checks → stopped-error
+  {
+    const storage6 = makeStorage();
+    enqueueDefaults(storage6);
+    const fs = makeFakeFs({
+      files: { [FILE]: await makeWorkbookBuffer() },
+      failures: { writeFile: true },
+    });
+    const result = await drain(fs, storage6);
+    assert.equal(result.status, 'stopped-error');
+    assert.match(result.errorMessage || '', /writeFile boom/);
+  }
+});
