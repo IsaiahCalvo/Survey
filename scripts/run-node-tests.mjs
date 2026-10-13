@@ -327,7 +327,13 @@ function runTestFile(file, label, timeoutMs = 120_000) {
     // A fresh process per file avoids Node 24's worker-pool wedge. The named
     // timeout turns any future leaked handle or unfinished test into a useful,
     // bounded failure that reports the exact file.
-    const child = spawn(process.execPath, ['--test', file], {
+    // A `*.mocked.test.mjs` file replaces a module with node:test's
+    // mock.module(), which Node only offers behind this flag. Only those files
+    // get it, so no other test runs with the module-mock loader installed.
+    const nodeArgs = file.endsWith('.mocked.test.mjs')
+      ? ['--experimental-test-module-mocks', '--test', file]
+      : ['--test', file];
+    const child = spawn(process.execPath, nodeArgs, {
       stdio: 'inherit',
     });
     let timedOut = false;
