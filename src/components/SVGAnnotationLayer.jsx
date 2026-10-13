@@ -192,6 +192,10 @@ import {
 } from '../survey/markerShapeSvg.jsx';
 import { isPalmContact } from '../utils/touchContact.js';
 import { hasPassedShapeDragThreshold } from '../utils/dragThreshold.js';
+import SnapGuidesLayer from './SnapGuidesLayer.jsx';
+import {
+  isSnapFreeModifier, snapThreshold, snapMoveFrame, snapResizePoint, buildSnapGuides, snapRotationDegrees,
+} from '../utils/snapGuides.js';
 
 const svgAnnotationDebug = (...args) => {
   if (typeof window === 'undefined' || window.__SVG_ANNOTATION_DEBUG !== true) return;
@@ -795,6 +799,8 @@ const SVGAnnotationLayerBody = memo(({
   const {
     selectedIds, hoveredId, inverseScale, interactionState, activeCalloutDrag, visualTransform,
     dragState,
+    // Canvas audit chunk 2: alignment guides + the Survey Marker drag's snap.
+    snapGuides, setSnapGuides, collectSnapTargets,
     hoveredCalloutId, handleCalloutPointerEnter, handleCalloutPointerLeave,
     handleAnnotationPointerDown, handleAnnotationPointerEnter,
     handleAnnotationPointerLeave, handleAnnotationDoubleClick,
@@ -889,6 +895,11 @@ const SVGAnnotationLayerBody = memo(({
     () => crossPageGhostFor(documentId, pageNumber),
     () => null,
   );
+  // Canvas audit chunk 2: a Survey Marker drag's guides go when its preview
+  // does (Escape, tool switch, delete all clear the preview).
+  useEffect(() => {
+    if (!surveyMarkerPreviewBounds && interactionState === 'idle') setSnapGuides(null);
+  }, [surveyMarkerPreviewBounds, interactionState, setSnapGuides]);
 
   // UX: apply a pan-mode quick-click selection command from App.jsx. Matches
   // this layer's pageNumber, then calls the hook's selectAnnotation. The
@@ -4290,21 +4301,42 @@ const SVGAnnotationLayerBody = memo(({
     const dx = point.x - drag.startPoint.x;
     const dy = point.y - drag.startPoint.y;
     let nextBounds;
+    // Canvas audit chunks 2 + 3: a Survey Marker snaps and turns like any
+    // other mark (snapGuides.js); Alt = free.
+    const ob = drag.originalBounds;
+    const snapFree = isSnapFreeModifier(e);
+    if (drag.snapTargets === undefined) {
+      drag.snapTargets = collectSnapTargets({ markerIds: [drag.annotationId] });
+    }
+    let guides = null;
     if (drag.mode === 'rotate') {
       const pointerAngle = normalizeAngle(Math.atan2(point.y - drag.centerY, point.x - drag.centerX));
       nextBounds = {
-        ...drag.originalBounds,
-        angle: normalizeDegreesValue(drag.originalBounds.angle + pointerAngle - drag.startPointerAngle),
+        ...ob,
+        angle: normalizeDegreesValue(snapRotationDegrees(ob.angle + pointerAngle - drag.startPointerAngle, { shift: e.shiftKey, free: snapFree })),
       };
     } else if (drag.mode === 'resize') {
-      nextBounds = resizeSurveyMarkerBoundsRotated(drag.originalBounds, drag.handleId, point);
+      const upright = Math.abs(normalizeDegreesValue(ob.angle || 0)) < 0.01;
+      const snapped = upright && !snapFree && !e.shiftKey
+        ? snapResizePoint(point, drag.handleId, drag.snapTargets, snapThreshold(inverseScale))
+        : null;
+      nextBounds = resizeSurveyMarkerBoundsRotated(ob, drag.handleId, snapped || point);
+      if (snapped) {
+        guides = buildSnapGuides({ left: nextBounds.x, top: nextBounds.y, width: nextBounds.width, height: nextBounds.height }, snapped.features, drag.snapTargets);
+      }
     } else {
-      nextBounds = {
-        ...drag.originalBounds,
-        x: drag.originalBounds.x + dx,
-        y: drag.originalBounds.y + dy,
-      };
+      let mdx = dx;
+      let mdy = dy;
+      const box = boxWorldBounds({ left: ob.x, top: ob.y, width: ob.width, height: ob.height, angle: ob.angle || 0 });
+      if (box && !snapFree) {
+        const frame = snapMoveFrame(box, dx, dy, drag.snapTargets, snapThreshold(inverseScale));
+        mdx = frame.dx;
+        mdy = frame.dy;
+        guides = frame.guides;
+      }
+      nextBounds = { ...ob, x: ob.x + mdx, y: ob.y + mdy };
     }
+    setSnapGuides(commit ? null : guides);
 
     if (commit) {
       surveyMarkerDragRef.current = null;
@@ -4324,7 +4356,7 @@ const SVGAnnotationLayerBody = memo(({
       setSurveyMarkerPreviewBounds({ annotationId: drag.annotationId, bounds: nextBounds });
     }
     return true;
-  }, [onUpdateSurveyMarkerBounds, pageNumber, resizeSurveyMarkerBoundsRotated]);
+  }, [onUpdateSurveyMarkerBounds, pageNumber, resizeSurveyMarkerBoundsRotated, collectSnapTargets, setSnapGuides, inverseScale]);
 
   // UX: w52 (2026-09-28) — arrow-key nudge for a selected Survey Marker, the
   // same contract shapes and callouts get from useSVGInteraction: 1 page unit
@@ -7578,6 +7610,7 @@ const SVGAnnotationLayerBody = memo(({
           pointerEvents="none"
         />
       )}
+      <SnapGuidesLayer guides={snapGuides} inverseScale={inverseScale} />
       {lassoPoints?.length > 0 && (
         <g data-lasso-selection-preview="true" pointerEvents="none">
           <path

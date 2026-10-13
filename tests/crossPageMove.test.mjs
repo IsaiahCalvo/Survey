@@ -182,7 +182,8 @@ test('the carried picture belongs to one page of one document', () => {
 
 test('wiring: the drag previews / drops through the cross-page hook, Escape cancels, the viewer saves one transaction', () => {
   const hook = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
-  assert.match(hook, /if \(crossPageMove\.preview\(ds, e, annotations\?\.objects\)\) \{/);
+  // canvas audit chunk 2: the preview takes the snap adjuster (both moves)
+  assert.equal((hook.match(/if \(crossPageMove\.preview\(ds, e, annotations\?\.objects, /g) || []).length, 2);
   assert.match(hook, /const crossPageDropped = \(ds\.mode === 'move' \|\| ds\.mode === 'group-move'\) && crossPageMove\.drop\(ds, e\);/);
   assert.match(hook, /if \(cancelMoveDrag\(\) && event\?\.detail\) event\.detail\.cancelled = true;/);
   assert.match(hook, /crossPageMove\.end\(ds\);\n    \/\/ Reset drag state/);
