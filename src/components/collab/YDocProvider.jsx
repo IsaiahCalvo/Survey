@@ -1577,8 +1577,14 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   // gates the dismiss button for permission_revoked, so that code stays visible after a stale dismiss.
   // EXCEPTION: 'transport_offline' (live realtime/collaboration down) only surfaces when the document
   // is actually shared (isDocShared) — otherwise there is nothing to live-sync and it would be noise.
+  // A notice steps aside while the dialog it opened is up (KAL-420 follow-up,
+  // 2026-10-13): the notice paints at z 100020 so it clears the viewer's own
+  // floating layers, which also put it over that dialog (the sign-in modal
+  // here, the clean-up Review panel below). It comes back, unchanged, when
+  // the dialog closes without settling it.
   const showBanner = storageState && storageState.code !== 'ok' && !bannerDismissed
-    && (storageState.code !== 'transport_offline' || isDocShared === true);
+    && (storageState.code !== 'transport_offline' || isDocShared === true)
+    && !(storageState.code === 'login_expiry_failure' && reSignInModalOpen);
 
   return (
     <YDocContext.Provider value={value}>
@@ -1681,7 +1687,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
           it surfaces at most once per document for the document owner.
           Collaborators never see it (auditResidue returns empty when
           isViewerOwner is false). */}
-      {cleanupResidueIds && cleanupResidueIds.length > 0 &&
+      {cleanupResidueIds && cleanupResidueIds.length > 0 && !reviewPanelOpen &&
        (!storageState || storageState.code === 'ok') &&
        !(deletionsPending || dualWriteQueueState.stuckCount > 0 || dualWriteQueueState.quarantinedAnnoIds.length > 0 || (manualRetryExhausted && dualWriteQueueState.hasPending)) && (
         <StorageFailureBanner
@@ -1691,13 +1697,16 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
           onDismiss={handleCleanupBannerDismiss}
         />
       )}
-      {/* Phase 35 Plan 05 — Review surface mounted as a sibling so it can
-          overlay the banner when the owner clicks Review. Not gated on
+      {/* Phase 35 Plan 05 — Review surface. Not gated on
           cleanupResidueIds.length > 0 here — the panel itself returns null
           when isOpen is false, and the residueIds array stays in scope until
-          the user dismisses or completes cleanup. */}
+          the user dismisses or completes cleanup. While it is open the
+          notice above is hidden (it has the same two choices) and returns on
+          Close. The panel is portalled to <body> (see the component), so it
+          is shown only for the tab on screen: a hidden tab's panel must not
+          float over another document. */}
       <CleanupResidueReviewPanel
-        isOpen={reviewPanelOpen}
+        isOpen={reviewPanelOpen && isActive !== false}
         residueIds={cleanupResidueIds || []}
         onClose={() => setReviewPanelOpen(false)}
         onCleanupAll={handleCleanupBannerAction}
