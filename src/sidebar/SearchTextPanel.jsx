@@ -1711,7 +1711,6 @@ const SearchTextPanel = ({
   // result-set change, so we reach them through refs (written during render)
   // and bind the document listener ONCE instead of tearing it down and
   // rebinding it on every keystroke of a live search.
-  const clearSearchRef = useRef(null);
   const goToNextMatchRef = useRef(goToNextMatch);
   goToNextMatchRef.current = goToNextMatch;
   const goToPrevMatchRef = useRef(goToPrevMatch);
@@ -1743,11 +1742,17 @@ const SearchTextPanel = ({
         }
       }
 
-      // Esc clears the search, but only while the search input is focused so it
-      // never swallows Escape used elsewhere in the app.
+      // Esc hands the keyboard back to the page (Chunk D, owner 2026-10-13,
+      // Drawboard shell audit: Esc used to clear the box and keep focus in it,
+      // so the next shortcut - "?" - was typed into the search). The query,
+      // its results and the highlights stay, so Ctrl+G / F3 still step
+      // through them; the box's X clears. Only while the box is focused, so
+      // it never swallows Escape used elsewhere, and the page's own Escape
+      // (deselect / back to Pan) does not also run for this press.
       if (e.key === 'Escape' && isInputFocused) {
         e.preventDefault();
-        clearSearchRef.current?.();
+        e.stopPropagation();
+        searchInputRef.current.blur();
       }
     };
 
@@ -1770,12 +1775,6 @@ const SearchTextPanel = ({
     onClearTextSearch?.();
     searchInputRef.current?.focus();
   }, [onClearTextSearch, setSearchResults, setCurrentMatchIndex]);
-
-  // Keep the latest clearSearch reachable from the keydown listener above
-  // (which is declared earlier in render order) without re-binding the listener.
-  useEffect(() => {
-    clearSearchRef.current = clearSearch;
-  }, [clearSearch]);
 
   const typedQuery = (internalSearchQuery || '').trim();
   const queryTooShort = typedQuery.length > 0 && typedQuery.length < SEARCH_MIN_QUERY_LENGTH;
