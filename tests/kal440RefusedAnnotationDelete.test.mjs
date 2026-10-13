@@ -172,21 +172,3 @@ test('every delete helper and caller reports refusals instead of success', () =>
   assert.match(viewer, /source: 'survey-marker-delete'/);
   assert.match(viewer, /source: 'erase-legacy-marker'/);
 });
-
-test("the Survey Marker save sends only the saver's own markers, so a teammate's marker never turns sync off", async () => {
-  const { surveyMarkersSavedBy } = await import('../src/services/surveyMarkerSyncDiff.js');
-  const markers = {
-    mine: { userId: 'user-b', pageNumber: 1 },
-    theirs: { userId: 'user-a', pageNumber: 1 },
-    theirsFromRow: { annotationData: { userId: 'user-a' } },
-    editedByMeButTheirs: { userId: 'user-a', lastModifiedBy: 'user-b' },
-    legacyNoAuthor: { pageNumber: 2 },
-  };
-  const kept = surveyMarkersSavedBy(markers, 'user-b');
-  assert.deepEqual(Object.keys(kept).sort(), ['legacyNoAuthor', 'mine']);
-  assert.equal(Object.keys(markers).length, 5, 'input untouched');
-  assert.deepEqual(surveyMarkersSavedBy(null, 'user-b'), {});
-
-  const service = readFileSync(new URL('../src/services/documentAnnotationService.js', import.meta.url), 'utf8');
-  assert.match(service, /Object\.entries\(surveyMarkersSavedBy\(surveyMarkers, userId\)\)/);
-});

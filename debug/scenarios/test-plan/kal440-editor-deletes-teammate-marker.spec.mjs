@@ -5,9 +5,7 @@
 // owner delete the row. Before the fix B's app logged that refused delete as a
 // success; now B is told once, and the row is visibly kept. With the proposed
 // database rule (annotationWritePolicy 'role') the row really goes and B sees
-// no message. Also pins that B's background Survey Marker save no longer sends
-// A's marker (under today's rule that refusal switched B's cloud sync off, so
-// B's delete never even reached the server). No network, no database.
+// no message. No network, no database.
 // Run (.env needs VITE_SUPABASE_URL/KEY so the client exists):
 //   PW_CHROMIUM_PATH=/opt/pw-browsers/chromium PLAYWRIGHT_BASE_URL=http://127.0.0.1:5491 \
 //     npx playwright test --config debug/playwright.config.mjs debug/scenarios/test-plan/kal440-editor-deletes-teammate-marker.spec.mjs
@@ -53,13 +51,6 @@ for (const policy of ['author', 'role']) {
     }
 
     const B = await openWindow(browser, backend, docId, PDF, { ...WIN, user: B_USER });
-    const consoleLines = [];
-    for (const [who, w] of [['A', A], ['B', B]]) {
-      w.page.on('console', (msg) => {
-        const text = msg.text();
-        if (/delet|refus|SurveyMarker|AnnotationSync|ownership/i.test(text)) consoleLines.push(`${who}: ${text.slice(0, 300)}`);
-      });
-    }
     await B.page.evaluate(() => {
       window.__kalToasts = [];
       window.addEventListener('app-toast', (e) => window.__kalToasts.push(e.detail?.message || ''));
@@ -89,14 +80,11 @@ for (const policy of ['author', 'role']) {
     console.log(`[KAL-440 ${policy}]`, JSON.stringify({
       markerId: marker.id, syncedByApp, goneInB: Boolean(goneInB), goneInA: Boolean(goneInA), rowKept, notes,
       deleteCalls: backend.counts.get('DELETE document_annotations') || 0,
-      annotationRequests: [...backend.counts.entries()].filter(([k]) => /document_annotations/.test(k)),
-      console: consoleLines.slice(-25),
       errors: [...A.errors, ...B.errors].slice(0, 5),
     }, null, 1));
     await A.context.close();
     await B.context.close();
 
-    expect(backend.counts.get('refused UPSERT document_annotations (row-level security)') || 0).toBe(0);
     expect(goneInB).toBeTruthy();
     expect(goneInA).toBeTruthy();
     if (policy === 'author') {

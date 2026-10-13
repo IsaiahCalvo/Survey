@@ -6,7 +6,7 @@
 
 import { supabase } from '../supabaseClient';
 import { collectKeysetRows } from './annotationReadPagination.js';
-import { diffDeletedSurveyMarkerIds, surveyMarkersSavedBy } from './surveyMarkerSyncDiff.js';
+import { diffDeletedSurveyMarkerIds } from './surveyMarkerSyncDiff.js';
 import { deleteAnnotationRowsVerified } from './annotationDeleteOutcome.js';
 import { surveyMarkerSyncDiag } from './surveyMarkerSyncDiag.js';
 import { chunkRowsForAnnotationUpsert } from '../utils/annotationBatching.js';
@@ -396,9 +396,7 @@ export async function syncAnnotationsToSupabase(documentId, userId, surveyMarker
     }
   }
 
-  // KAL-440: only this person's own markers (and unattributed ones) — a
-  // teammate's marker is saved by the teammate's app (surveyMarkersSavedBy).
-  const annotations = Object.entries(surveyMarkersSavedBy(surveyMarkers, userId)).map(([annotationId, annotation]) =>
+  const annotations = Object.entries(surveyMarkers || {}).map(([annotationId, annotation]) =>
     buildSurveyMarkerRow({
       documentId,
       userId,
