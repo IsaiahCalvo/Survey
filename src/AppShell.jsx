@@ -30,6 +30,7 @@ import AnchoredPopover from './components/AnchoredPopover';
 import ToolbarOverflowMenu from './components/ToolbarOverflowMenu';
 import useResponsiveToolbar from './hooks/useResponsiveToolbar.js';
 import usePhoneLayout from './hooks/usePhoneLayout.js';
+import { hasTouchInput, isElectronApp } from './utils/layoutMode.js';
 import useLoadoutTransition, { useDropInRow, useLeavingRow, useRowCrossfade } from './hooks/useLoadoutTransition.js';
 import { placeUnderOpenerAvoiding, slotDefinition, TEXT_ROW_CAPTION_ROOM, TEXT_ROW_PARTS, textRowLook, TIGHT_SPACING } from './utils/responsiveToolbar.js';
 import { recentPressedControl, registerLightPopover } from './components/dismissRules.js';
@@ -2148,14 +2149,23 @@ export default function App({ devPreviewReturnTab = null }) {
   //
   // The controller publishes --keyboard-inset on <html> and re-pins the
   // document to 0,0 on every viewport event; mobilePdfViewer.css pins body and
-  // spends the inset on the PDF scroller alone. Mounted only for the phone
-  // viewer, which is the only surface with page-level text editing and fixed
-  // chrome; it tears itself down (clearing the var) when the viewer closes.
+  // spends the inset on the PDF scroller alone. It tears itself down
+  // (clearing the var) when the viewer closes.
+  //
+  // Owner 2026-10-13 (Drawboard touch audit, K1): iPads and touch laptops use
+  // the DESKTOP layout, and their on-screen keyboard covered text boxes low on
+  // the page, Survey Marker names low in the right rail and dialog fields. The
+  // same controller now runs for the desktop viewer on any touch device, in
+  // its `desktop` mode (keyboardViewport.js header: no predicted keyboard, so
+  // a hardware keyboard changes nothing). A mouse-only desktop and Electron
+  // never mount it.
+  const [touchDesktop] = useState(() => hasTouchInput() && !isElectronApp());
+  const isTouchDesktopViewer = Boolean(touchDesktop && isViewerVisible && !isNarrowShell);
   useEffect(() => {
-    if (!isMobileViewer) return undefined;
-    const controller = createKeyboardViewportController();
+    if (!isMobileViewer && !isTouchDesktopViewer) return undefined;
+    const controller = createKeyboardViewportController(isMobileViewer ? undefined : { desktop: true });
     return () => controller.dispose();
-  }, [isMobileViewer]);
+  }, [isMobileViewer, isTouchDesktopViewer]);
 
   // The sub-toolbar host lies over the top of the PDF scroll area; registering it
   // lets the viewer add scroll room so the page can be scrolled out from under
@@ -2421,8 +2431,12 @@ export default function App({ devPreviewReturnTab = null }) {
       {/* The tab strip's confirm (closing unsaved work, Close all) and its
           Rename document dialog - the home's own dialogs. */}
       {/* Their own layer: they open over an open document, whose viewer
-          sits at z-index 5000 (the home's dialogs only ever cover the home). */}
-      <div data-tab-strip-dialogs="" style={{ position: 'relative', zIndex: 6500 }}>
+          sits at z-index 5000 (the home's dialogs only ever cover the home).
+          A <section>, not a <div>: the phone stylesheets size every
+          `#root > div` to the full screen (mobilePdfViewer.css, hub.css), and
+          as a div this empty layer took a whole screen and pushed the phone
+          viewer and home below the bottom edge (found 2026-10-13). */}
+      <section data-tab-strip-dialogs="" style={{ position: 'relative', zIndex: 6500 }}>
         {tabConfirmDialog}
         <RenameModal
           open={!!renameTab}
@@ -2431,7 +2445,7 @@ export default function App({ devPreviewReturnTab = null }) {
           initialName={renameTab?.name || ''}
           onConfirm={stableRenameTabConfirm}
         />
-      </div>
+      </section>
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }} {...viewerDropProps}>
         {tabs.length > 0 && !isNarrowShell && ( // Desktop-only: mobile navigation lives inside the home/viewer chrome.
           // KAL-65: the tab strip shows over the hub too, where the viewer's
@@ -4797,7 +4811,12 @@ export default function App({ devPreviewReturnTab = null }) {
               // rail's full height; a transparent background lets the strip's
               // --panel-bg show through.
                 return (
-                  <div data-chrome-rail="true" style={{ position: 'relative', zIndex: 2, width: '100%', borderTop: '1px solid var(--border)', padding: '8px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: 'transparent' }}>
+                  <div data-chrome-rail="true" data-keyboard-lift="" style={{ position: 'relative', zIndex: 2, width: '100%', borderTop: '1px solid var(--border)', padding: '8px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: 'transparent' }}>
+                    {/* data-keyboard-lift (owner 2026-10-13, touch audit K1):
+                        on an iPad these zoom / page fields sit where the
+                        on-screen keyboard lands, so while one is typed in the
+                        stack stands on the keyboard and goes back down with
+                        it (keyboardViewport.js). */}
                     <button
                       onClick={api.zoomIn}
                       {...chromeTip('Zoom in', 'left')}
