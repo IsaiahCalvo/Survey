@@ -268,9 +268,17 @@ export const CLOUD_FRAME_PAD_STROKE_RATIO = 1.5;
 export const CLOUD_HOVER_GLOW_WIDTH_RATIO = 2.85;
 export const CLOUD_HOVER_GLOW_OPACITY = 0.666;
 
+// Owner Test 45 (2026-10-06): a thin cloud (a 1 pt text box border) got a
+// 2.85-unit glow - after the ink knockout a ring under one unit each side,
+// too faint to read as the hover. Thin clouds keep at least a 1.5-unit ring
+// each side of a 1-unit line; 2 pt and up keep Drawboard's 2.85x exactly.
+export const CLOUD_HOVER_GLOW_MIN_WIDTH = 4;
+
 /** Hover-glow stroke width for a cloud, in page units (scales with zoom like the ink). */
 export function cloudHoverGlowWidth(strokeWidth) {
-  return Math.max(0, num(strokeWidth)) * CLOUD_HOVER_GLOW_WIDTH_RATIO;
+  const width = Math.max(0, num(strokeWidth));
+  if (!(width > 0)) return 0;
+  return Math.max(CLOUD_HOVER_GLOW_MIN_WIDTH, width * CLOUD_HOVER_GLOW_WIDTH_RATIO);
 }
 
 /**

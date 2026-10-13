@@ -92,6 +92,12 @@ const LightweightAnnotationOverlay = memo(({
   callouts = EMPTY_ARR,
   surveyMarkers = EMPTY_ARR,
   visible = true,
+  // Perf (2026-09-30): false while nothing can show this canvas (it only
+  // serves the eraser's warm source and the proxy window). Painting every
+  // mounted page's hidden bitmap on each zoom commit and scroll frame was the
+  // top cost of moving around a heavily marked document. Turning it back on
+  // repaints in the same commit, before the next input.
+  paintEnabled = true,
   selectedModuleId = null,
   showSurveyPanel = false,
   selectedSpaceId = null,
@@ -342,9 +348,13 @@ const LightweightAnnotationOverlay = memo(({
   }, [useWorkerPaint]);
 
   useLayoutEffect(() => {
-    if (!hasRenderablePreview) return undefined;
+    if (!hasRenderablePreview || !paintEnabled) return undefined;
     if (!canvasRef.current || !detailCanvasRef.current || !overlayRef.current) return undefined;
     let readyFrame = 0;
+    // Key of the last whole-page (unclamped) paint. That bitmap depends only on
+    // the props, not on where the page sits in the viewport, so a scroll or
+    // resize tick that would repaint the same key is a no-op.
+    let lastBasePaintKey = null;
 
     const requestPaint = (payload) => {
       const canvas = payload.target === 'detail' ? detailCanvasRef.current : canvasRef.current;
@@ -411,6 +421,11 @@ const LightweightAnnotationOverlay = memo(({
         if (!force && tile && tile === detailTileRef.current) return;
         if (!tile && !force) return;
       }
+      const basePaintKey = tile
+        ? null
+        : `${backingStore.width}x${backingStore.height}@${backingStore.drawScale}/${backingStore.drawScaleY}`;
+      if (!force && basePaintKey && basePaintKey === lastBasePaintKey) return;
+      lastBasePaintKey = basePaintKey;
       detailTileRef.current = tile;
 
       // Device-exact CSS box for the UNCLAMPED base canvas: the page host box
@@ -457,6 +472,7 @@ const LightweightAnnotationOverlay = memo(({
     annotations?.eraserPresentationRevision,
     hasRenderablePreview,
     interactionSessionId,
+    paintEnabled,
     safeHeight,
     safeScale,
     safeWidth,
@@ -471,13 +487,13 @@ const LightweightAnnotationOverlay = memo(({
   // Repaint once they land so the canvas shows the stamp like the SVG layer.
   // (The worker path decodes in its own realm and repaints itself.)
   useEffect(() => {
-    if (!hasRenderablePreview || annotationImagesReady(visibleObjects)) return undefined;
+    if (!hasRenderablePreview || !paintEnabled || annotationImagesReady(visibleObjects)) return undefined;
     let cancelled = false;
     preloadAnnotationImages(visibleObjects).then((loaded) => {
       if (!cancelled && loaded) renderViewportRef.current?.(true);
     });
     return () => { cancelled = true; };
-  }, [hasRenderablePreview, visibleObjects]);
+  }, [hasRenderablePreview, paintEnabled, visibleObjects]);
 
   useEffect(() => {
     if (!hasRenderablePreview) return undefined;
@@ -512,7 +528,7 @@ const LightweightAnnotationOverlay = memo(({
   }, [hasRenderablePreview]);
 
   useEffect(() => {
-    if (!hasRenderablePreview) return undefined;
+    if (!hasRenderablePreview || !paintEnabled) return undefined;
     const scroller = overlayRef.current?.closest?.('.survey-pdfjs-viewer');
     if (!scroller) return undefined;
     const scheduleViewportRender = () => {
@@ -547,7 +563,7 @@ const LightweightAnnotationOverlay = memo(({
       if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
       scrollRafRef.current = 0;
     };
-  }, [hasRenderablePreview, safeScale]);
+  }, [hasRenderablePreview, paintEnabled, safeScale]);
 
   useLayoutEffect(() => () => {
     if (readyRafRef.current) cancelAnimationFrame(readyRafRef.current);
@@ -564,6 +580,7 @@ const LightweightAnnotationOverlay = memo(({
       data-lightweight-object-count={visibleObjects.length}
       data-lightweight-callout-count={visibleCallouts.length}
       data-canvas-visible={visible ? 'true' : 'false'}
+      data-canvas-paint-enabled={paintEnabled ? 'true' : 'false'}
       style={{
         // Fill the page host exactly (demo model: PdfjsArm's CanvasAnnotationLayer
         // is inset:0 in the page wrapper). Sizing from `pageSize * scale` px is

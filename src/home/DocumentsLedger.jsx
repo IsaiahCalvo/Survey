@@ -11,6 +11,9 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { HubShell, Icon, Avatar, PdfThumb, Search, EmptyState } from './HubShell';
+import { countLabel } from './countLabel.js';
+import { presenceInitials } from '../components/presenceIdentity.js';
+import SectionIconButton, { SelectModeButtons } from '../components/SectionIconButton.jsx';
 import { MoveCopyModal, RenameModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
 import { useThumbnailBackfill } from '../hooks/useThumbnailBackfill';
@@ -23,29 +26,32 @@ const ledgerHeader = {
   background: 'var(--ink-700)',
   borderBottom: '1px solid var(--ink-500)',
   borderTop: 0,
-  fontSize: 10.5, letterSpacing: '0.1em', textTransform: 'uppercase',
-  color: 'var(--ink-200)', fontWeight: 700,
+  /* Column labels: 11/600 in normal case with no tracking, the viewer's
+     label style (owner 2026-10-02, UI consistency audit). */
+  fontSize: 11, letterSpacing: 0,
+  color: 'var(--ink-200)', fontWeight: 600,
   padding: '8px 0',
 };
 
-const RIBBON = ['#d8a84e', '#7ab7e6', '#a6e07a', '#c293e6', '#e69a7a', '#9aa3b2'];
-const MENU_HEX = {
-  card: 'var(--surface-2)',
-  rule: 'var(--border)',
-  ink: 'var(--text-1)',
-  muted: 'var(--text-3)',
-  danger: 'var(--danger-text)', // the WORD Delete: --danger is a fill and measures 4.05:1 on the menu
-};
+// Survey calm gold (2026-10-01): no ribbon colour equals the accent gold.
+const RIBBON = ['#f0883e', '#7ab7e6', '#a6e07a', '#c293e6', '#e69a7a', '#9aa3b2'];
+/* The row menu wears the shared home menu (hub.css .hub-menu / .hub-menu__item,
+   owner 2026-10-02): 28px items at 12px on desktop, 44px at 15px on the phone. */
+const isPhoneWidth = () => typeof window !== 'undefined'
+  && typeof window.matchMedia === 'function'
+  && window.matchMedia('(max-width: 720px)').matches;
 
 function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168 }) {
   const ref = useRef(null);
 
   if (!anchorRect) return null;
 
-  const estHeight = items.length * 34 + 8;
+  const phone = isPhoneWidth();
+  const menuWidth = phone ? Math.max(minWidth, 200) : minWidth;
+  const estHeight = items.length * (phone ? 44 : 28) + 10;
   let top = anchorRect.bottom + 4;
   if (top + estHeight > window.innerHeight - 8) top = Math.max(8, anchorRect.top - estHeight - 4);
-  const left = Math.max(8, Math.min(anchorRect.right - minWidth, window.innerWidth - minWidth - 8));
+  const left = Math.max(8, Math.min(anchorRect.right - menuWidth, window.innerWidth - menuWidth - 8));
 
   return createPortal(
     <>
@@ -53,40 +59,17 @@ function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168 }) {
       <div
         ref={ref}
         role="menu"
-        style={{
-          position: 'fixed',
-          top,
-          left,
-          zIndex: 4000,
-          background: MENU_HEX.card,
-          border: `1px solid ${MENU_HEX.rule}`,
-          borderRadius: 8,
-          padding: 4,
-          minWidth,
-          boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
-        }}
+        className="hub-menu"
+        style={{ top, left, minWidth: menuWidth }}
       >
         {items.map((it) => (
           <button
             key={it.label}
+            type="button"
             role="menuitem"
+            className={`hub-menu__item${it.danger ? ' is-danger' : ''}`}
             disabled={it.disabled}
             onClick={() => { if (it.disabled) return; onClose(); it.onClick && it.onClick(); }}
-            style={{
-              display: 'block',
-              width: '100%',
-              textAlign: 'left',
-              background: 'transparent',
-              border: 0,
-              color: it.disabled ? MENU_HEX.muted : (it.danger ? MENU_HEX.danger : MENU_HEX.ink),
-              padding: '7px 10px',
-              fontSize: 12,
-              borderRadius: 4,
-              cursor: it.disabled ? 'not-allowed' : 'pointer',
-              fontFamily: 'inherit',
-            }}
-            onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = MENU_HEX.rule; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
           >
             {it.label}
           </button>
@@ -97,9 +80,10 @@ function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168 }) {
   );
 }
 
-/* Two-letter initials from a display name — for the Team avatar glyph. */
-const initialsOf = (name) => (name || '')
-  .trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase() || '—';
+/* The Team avatar is YOUR face: the one initials rule (owner 2026-10-02) and
+   your own pastel (utils/userColors.js, owner 2026-10-07) - the same face the
+   account button and the viewer's presence row show. */
+const initialsOf = (name) => presenceInitials(name || 'You');
 
 const longDate = (value) => {
   const ms = Date.parse(value || 0) || 0;
@@ -140,6 +124,7 @@ export default function DocumentsLedger({
   const [selDocs, setSelDocs] = useState(() => new Set());
   const [search, setSearch] = useState('');
   const [moveOpen, setMoveOpen] = useState(false);
+  const [moveMode, setMoveMode] = useState('move');
   const [renameTarget, setRenameTarget] = useState(null);
   const [docMenu, setDocMenu] = useState(null);
   const [clipboardDoc, setClipboardDoc] = useState(null);
@@ -271,25 +256,34 @@ export default function DocumentsLedger({
       onDismiss={() => setMobileSortOpen(false)}
     />
     <span className="documents-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
-      <span className="documents-file-count"><b>{docs.length}</b> files</span>
+      <span className="documents-file-count"><b>{docs.length}</b> {docs.length === 1 ? 'file' : 'files'}</span>
       <span className="documents-select-row mobile-header-select-row documents-mobile-select-sort-row">
         <span className="documents-mobile-select-main">
-          <button
-            className="mobile-header-select-button hub-btn hub-btn--tertiary"
+          <SectionIconButton
+            action="select"
+            label={docSelectMode ? 'Done' : 'Select'}
+            nothingToSelect={docs.length === 0}
+            active={docSelectMode}
+            className="mobile-header-select-button"
             onClick={() => { const next = !docSelectMode; setDocSelectMode(next); if (!next) setSelDocs(new Set()); }}
-          >
-            {docSelectMode ? 'Done' : 'Select'}
-          </button>
+          />
           {docSelectMode && (() => {
             const docSelCount = selDocs.size;
             const allSel = docSelCount === docs.length && docs.length > 0;
             return (
               <span className="documents-select-actions mobile-header-select-actions" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 8 }}>
-                <button onClick={() => setSelDocs(allSel ? new Set() : new Set(docs.map((d) => d.id)))} className="hub-btn hub-btn--bare">{allSel ? 'None' : 'All'}</button>
-                <button disabled={!docSelCount} onClick={() => { onDuplicate && onDuplicate(selectedRaw()); clearSel(); }} className="hub-btn hub-btn--bare">Duplicate</button>
-                <button disabled={!docSelCount} onClick={() => setMoveOpen(true)} className="hub-btn hub-btn--bare">Move/Copy</button>
-                <button disabled={!docSelCount} title="Share" onClick={() => onShare && onShare(selectedRaw())} className="hub-btn hub-btn--icon"><Icon name="share" size={12} /></button>
-                <button disabled={!docSelCount} title="Delete" aria-label="Delete" onClick={async () => { if (!onDelete) return; const ran = await onDelete(selectedRaw()); if (ran !== false) clearSel(); }} className="hub-btn hub-btn--icon is-danger"><Icon name="trash" size={12} /></button>
+                <SelectModeButtons
+                  phone
+                  count={docSelCount}
+                  allSelected={allSel}
+                  total={docs.length}
+                  onToggleAll={() => setSelDocs(allSel ? new Set() : new Set(docs.map((d) => d.id)))}
+                  onDuplicate={() => { onDuplicate && onDuplicate(selectedRaw()); clearSel(); }}
+                  onMove={() => { setMoveMode('move'); setMoveOpen(true); }}
+                  onCopy={() => { setMoveMode('copy'); setMoveOpen(true); }}
+                  onShare={() => onShare && onShare(selectedRaw())}
+                  onDelete={async () => { if (!onDelete) return; const ran = await onDelete(selectedRaw()); if (ran !== false) clearSel(); }}
+                />
               </span>
             );
           })()}
@@ -374,6 +368,7 @@ export default function DocumentsLedger({
   };
   const renderMobileMore = (d) => (
     <button
+      aria-haspopup="menu"
       type="button"
       onClick={(e) => openDocMenu(e, d)}
       className="hub-icon-btn"
@@ -509,6 +504,7 @@ export default function DocumentsLedger({
                         </span>
                       ) : (
                         <button
+                          aria-haspopup="menu"
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
@@ -537,9 +533,12 @@ export default function DocumentsLedger({
                       />
                     </div>
                     <div style={stickyCell(docSelectMode ? isChecked : isSel)}>
-                      <span style={{ fontWeight: 600, fontSize: 12.5, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{d.name}</span>
+                      <span style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{d.name}</span>
                     </div>
-                    <span className="meta" style={{ fontSize: 11.5, padding: '12px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.project === 'Sandbox' ? <span className="mono" style={{ color: 'var(--text-3)' }}>N/A</span> : d.project}</span>
+                    <span className="meta" style={{ fontSize: 12, padding: '12px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{/* Polish round 2 (2026-10-04): a file in no project leaves the cell
+                        empty, as the phone row, the preview and the phone details
+                        already do; it used to print a mono "N/A". */}
+                      {d.project === 'Sandbox' ? null : d.project}</span>
                     <div className="mono" style={{ fontSize: 11, padding: '10px 0', lineHeight: 1.35 }}>
                       <div style={{ fontWeight: 600 }}>{d.touchedTime}</div>
                       <div style={{ color: 'var(--text-3)' }}>{d.touchedAbs}</div>
@@ -562,8 +561,8 @@ export default function DocumentsLedger({
                 <button onClick={() => setPreviewOpen(false)} title="Close preview" aria-label="Close preview" className="hub-icon-btn"><Icon name="close" size={13} /></button>
               </div>
               <div style={{ marginTop: 10, fontSize: 15, fontWeight: 700, flex: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sel.name}</div>
-              <div className="meta" style={{ marginTop: 4, fontSize: 11.5, flex: 'none' }}>
-                {[sel.project === 'Sandbox' ? null : sel.project, sel.size, sel.pages != null ? `${sel.pages} pages` : null, sel.rev || null].filter(Boolean).join(' · ')}
+              <div className="meta" style={{ marginTop: 4, fontSize: 12, flex: 'none' }}>
+                {[sel.project === 'Sandbox' ? null : sel.project, sel.size, sel.pages != null ? countLabel(sel.pages, 'page') : null, sel.rev || null].filter(Boolean).join(' · ')}
               </div>
               {/* Preview viewport — a set custom size; the page is contained
                   inside at its true aspect ratio, letterboxed against a dark
@@ -596,7 +595,7 @@ export default function DocumentsLedger({
               <div style={{ marginTop: 14, flex: 'none' }}>
                 <div className="section-label">Team</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                  <Avatar initials={initialsOf(user?.name || user?.email || 'You')} size={22} color="var(--accent)" />
+                  <Avatar initials={initialsOf(user?.name || user?.email || 'You')} id={user?.id || user?.email || null} size={22} />
                   <span style={{ fontSize: 12, fontWeight: 600 }}>{user?.name || user?.email?.split('@')[0] || 'You'}</span>
                 </div>
               </div>
@@ -617,7 +616,7 @@ export default function DocumentsLedger({
               <div style={{ flex: 1, minHeight: 0 }} />
               <div style={{ display: 'flex', gap: 8, marginTop: 14, flex: 'none' }}>
                 <button className="btn primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => onOpenDocument && onOpenDocument(sel.raw)}>Open file</button>
-                <button className="btn" title="Share" aria-label="Share" onClick={() => onShare && onShare([sel.raw])}><Icon name="share" size={12} /></button>
+                <button className="btn documents-preview-share" title="Share" aria-label="Share" onClick={() => onShare && onShare([sel.raw])}><Icon name="share" size={16} /></button>
               </div>
             </aside>
           )}
@@ -658,7 +657,7 @@ export default function DocumentsLedger({
                 <button ref={mobileDetailCloseRef} type="button" title="Close details" aria-label="Close details" onClick={closeMobileDetail} className="hub-icon-btn"><Icon name="close" size={13} /></button>
               </div>
               <div className="documents-mobile-detail-meta">
-                {[mobileDetailDoc.project === 'Sandbox' ? null : mobileDetailDoc.project, mobileDetailDoc.size, mobileDetailDoc.pages != null ? `${mobileDetailDoc.pages} pages` : null].filter(Boolean).join(' · ')}
+                {[mobileDetailDoc.project === 'Sandbox' ? null : mobileDetailDoc.project, mobileDetailDoc.size, mobileDetailDoc.pages != null ? countLabel(mobileDetailDoc.pages, 'page') : null].filter(Boolean).join(' · ')}
               </div>
               <div className="documents-mobile-detail-preview">
                 <PdfPageThumb
@@ -674,16 +673,19 @@ export default function DocumentsLedger({
                 <div>
                   <span>Team</span>
                   <div className="documents-mobile-detail-owner">
-                    <Avatar initials={initialsOf(user?.name || user?.email || 'You')} size={22} color="var(--accent)" />
+                    <Avatar initials={initialsOf(user?.name || user?.email || 'You')} id={user?.id || user?.email || null} size={22} />
                     <strong>{user?.name || user?.email?.split('@')[0] || 'You'}</strong>
                   </div>
                 </div>
                 <div><span>Last edited</span><strong>{mobileDetailDoc.lastEditedAbs}</strong></div>
                 <div><span>Uploaded</span><strong>{mobileDetailDoc.uploadedAbs}</strong></div>
               </div>
+              {/* Same pair as the desktop preview panel: a wide Open file,
+                  then Share as an icon at the right (owner: icons over words
+                  for actions; phone and desktop match). */}
               <div className="documents-mobile-detail-actions">
-                <button type="button" className="btn" onClick={() => { setMobileDetailId(null); onShare && onShare([mobileDetailDoc.raw]); }}><Icon name="share" size={12} />Share</button>
                 <button type="button" className="btn primary" onClick={() => { setMobileDetailId(null); onOpenDocument && onOpenDocument(mobileDetailDoc.raw); }}>Open file</button>
+                <button type="button" className="btn documents-preview-share" title="Share" aria-label="Share" onClick={() => { setMobileDetailId(null); onShare && onShare([mobileDetailDoc.raw]); }}><Icon name="share" size={18} /></button>
               </div>
             </section>
           </div>
@@ -692,6 +694,7 @@ export default function DocumentsLedger({
     </HubShell>
     <MoveCopyModal
       open={moveOpen}
+      initialMode={moveMode}
       onClose={() => setMoveOpen(false)}
       projects={projects}
       count={selDocs.size}

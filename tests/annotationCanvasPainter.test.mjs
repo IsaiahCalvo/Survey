@@ -206,7 +206,10 @@ test('PDF hairlines stay one display pixel under anisotropic object transforms',
   assert.equal(verticalLine[2] - verticalMove[2], 10, 'scaleY affects centerline only');
 });
 
-test('Canvas2D paints a partial-erased curve from its analytic source under the cut clip', () => {
+// 2026-10-06 (test plan 68): the survivor polygons are FILLED (even-odd). They
+// used to clip the analytic source stroke; that clip edge sat on the stroke's
+// own edge, so edge pixels were anti-aliased twice and thin lines lightened.
+test('Canvas2D paints a partial-erased authored curve as its filled survivor polygons', () => {
   const calls = [];
   const context = {
     save: () => calls.push(['save']),
@@ -269,21 +272,15 @@ test('Canvas2D paints a partial-erased curve from its analytic source under the 
     strokeWidth: 0,
   }, 1);
 
-  assert.deepEqual(calls.find(([kind]) => kind === 'clip'), ['clip', 'evenodd']);
+  assert.equal(calls.some(([kind]) => kind === 'clip'), false, 'no clip: one anti-aliased edge');
+  assert.equal(calls.some(([kind]) => kind === 'stroke'), false);
+  assert.equal(calls.some(([kind]) => kind === 'quadraticCurveTo'), false, 'the survivor, not the source, is painted');
   assert.deepEqual(
-    calls.find(([kind]) => kind === 'transform'),
-    ['transform', 1, 0, 0, 1, 0, 0],
+    calls.filter(([kind]) => kind === 'moveTo' || kind === 'lineTo').slice(0, 4),
+    [['moveTo', 0, 0], ['lineTo', 100, 0], ['lineTo', 100, 20], ['lineTo', 0, 20]],
   );
-  assert.deepEqual(
-    calls.find(([kind]) => kind === 'quadraticCurveTo'),
-    ['quadraticCurveTo', 50, -20, 100, 10],
-  );
-  assert.deepEqual(
-    calls.filter(([kind]) => kind === 'stroke'),
-    [['stroke', 12]],
-  );
-  assert.equal(context.strokeStyle, '#2563eb', 'live survivor recolor wins over source snapshot');
-  assert.equal(calls.some(([kind]) => kind === 'fill'), false);
+  assert.deepEqual(calls.filter(([kind]) => kind === 'fill'), [['fill', 'evenodd']]);
+  assert.equal(context.fillStyle, '#2563eb', 'live survivor recolor wins over source snapshot');
 
   calls.length = 0;
   drawAnnotationObject(context, {
@@ -314,7 +311,8 @@ test('Canvas2D paints a partial-erased curve from its analytic source under the 
     strokeWidth: 0,
   }, 1);
 
-  assert.ok(calls.some(([kind]) => kind === 'bezierCurveTo'));
+  assert.equal(calls.some(([kind]) => kind === 'bezierCurveTo'), false);
+  assert.equal(calls.some(([kind]) => kind === 'clip'), false);
   assert.deepEqual(
     calls.filter(([kind]) => kind === 'fill'),
     [['fill', 'evenodd']],

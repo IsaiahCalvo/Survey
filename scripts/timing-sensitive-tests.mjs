@@ -31,7 +31,7 @@ export const TIMING_SENSITIVE_TEST_FILES = [
   'tests/annotationDocConcurrency.test.mjs',
   'tests/annotationFieldSyncPerf.test.mjs',
   'tests/cloudStrokeBandPathologicalBudget.test.mjs',
-  'tests/partialEraseCurveLocality.test.mjs',
+  'tests/partialEraseCurveLocalityBudget.test.mjs',
   'tests/partialEraserComplexity.test.mjs',
   'tests/roundStrokeOutlinePerformance.test.mjs',
   // w34: paced strokes vs the 1.2 s checkpoint debounce (multi-second

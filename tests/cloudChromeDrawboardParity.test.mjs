@@ -315,9 +315,13 @@ test('cloud grabbers: the overlay draws dot edge grabbers and the layer asks for
     'both edge pairs (mt/mb and ml/mr) get the dot fallback');
   assert.match(overlay, /const edgeHandleGeometry = \(pos, axis, asPill = false\) => \{/);
   // The dot drives the SAME resize math as the pill it replaces.
+  assert.match(overlay, /const pressHandler = \(id\) => \(delegateHandlePress \? undefined : \(e\) => \{\s*e\.stopPropagation\(\);\s*onHandleDrag\?\.\(e, id\);/);
   const dotBlocks = overlay.split('data-edge-handle-shape=').slice(1);
   for (const block of dotBlocks) {
-    assert.match(block.slice(0, 1200), /onHandleDrag\?\.\(e, id\)/,
+    // Owner Test 45 (2026-10-06): the entry point is pressHandler(id), which
+    // calls onHandleDrag(e, id) - or, for a callout box's grabbers only
+    // (delegateHandlePress), lets the press reach the callout's own handler.
+    assert.match(block.slice(0, 1200), /onPointerDown=\{(horizontalResizeOnly \? undefined : )?pressHandler\(id\)\}/,
       'a dot grabber must call the same handle-drag entry point');
   }
   const layer = read('src/components/SVGAnnotationLayer.jsx');

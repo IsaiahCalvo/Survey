@@ -5,8 +5,10 @@
  *     documents, projects, and templates look": rows are lines in the panel
  *     with an edge-to-edge hairline, no bordered card per row, and the app's
  *     grip icon instead of a ☰ text glyph;
- *   - "Add with a + sign on the left … Edit on the right", the gold footer
- *     bar gone, and no title ("the tab already says it");
+ *   - the gold footer bar gone and no title ("the tab already says it");
+ *     the header's Add and Edit were words ("Add with a + sign on the left …
+ *     Edit on the right") until the owner's 2026-10-02 ruling that section
+ *     header actions are ICONS, right-aligned, Add last: [Edit] [Add];
  *   - phone rows show rename/delete only in Edit mode, like desktop.
  * No React render harness exists for BookmarksPanel, so it is read as text.
  */
@@ -41,18 +43,21 @@ test('a row without children keeps no empty fold-arrow gap', () => {
   assert.match(mobileRow, /\{isFolder && item\.children\?\.length \? \(/);
 });
 
-test('desktop header is + Add left, Edit right, no title, no gold footer bar', () => {
+// Changed 2026-10-02 (owner: "The icons looked way better"): the header's
+// words became the shared section icons, right-aligned, [Edit] then [Add].
+test('desktop header is [Edit] [Add] icons at the right, no title, no gold footer bar', () => {
   const header = source.slice(source.indexOf('UX 2026-09-23 (owner, desktop Bookmarks header)'), source.indexOf('{/* Bookmarks List with Drag-and-Drop */}'));
   assert.ok(header.length > 0);
-  assert.match(header, /aria-label="Add bookmark"/);
-  assert.match(header, /\{isEditMode \? 'Done' : 'Edit'\}/);
+  assert.match(header, /justifyContent: 'flex-end'/);
+  assert.match(header, /<SectionIconButton\s+action="edit"\s+icon="editList"[\s\S]*?tooltip=\{isEditMode \? 'Done' : 'Edit'\}[\s\S]*?<SectionIconButton\s+action="add"\s+label="Add bookmark"/);
   assert.doesNotMatch(header, /<h3/);
+  assert.doesNotMatch(header, /\{isEditMode \? 'Done' : 'Edit'\}\s*<\/button>/);
   assert.doesNotMatch(desktopPanel, /Add Button at Bottom/);
 });
 
-test('phone header matches: Add left, Edit right, no title; rename/delete only in Edit mode', () => {
-  assert.match(mobileBranch, /className=\{`mobile-bookmark-add tertiary/);
-  assert.match(mobileBranch, /className=\{`mobile-bookmark-edit tertiary/);
+test('phone header matches: [Edit] [Add] icons, no title; rename/delete only in Edit mode', () => {
+  assert.match(mobileBranch, /<SectionIconActions phone className="mobile-bookmark-actions">\s*<SectionIconButton\s+phone\s+action="edit"[\s\S]*?label=\{isEditMode \? 'Done editing bookmarks' : 'Edit bookmarks'\}[\s\S]*?action="add"[\s\S]*?label=\{isAddOpen \? 'Cancel new bookmark' : 'Add bookmark'\}/);
+  assert.doesNotMatch(mobileBranch, /mobile-bookmark-add tertiary|mobile-bookmark-edit tertiary/);
   assert.doesNotMatch(mobileBranch, /mobile-bookmark-heading/);
   assert.match(mobileRow, /\{isEditMode && \(\s*<div className="mobile-bookmark-moves">/);
 });

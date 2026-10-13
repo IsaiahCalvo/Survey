@@ -19,6 +19,7 @@
  */
 
 import { isTextColorValue } from './textColorOpacity.js';
+import { placeResizedCalloutBox } from './calloutGeometry.js';
 
 const CALLOUT_FALLBACK = Object.freeze({
   fontColor: '#1e293b',
@@ -148,17 +149,20 @@ export function buildSelectedTextStylePatch(kind, current, next, { forceColor = 
   return Object.keys(patch).length ? patch : null;
 }
 
+
 /*
  * Box refit (review 2026-09-23): a bigger size, another font, or bold / italic
  * on a PICKED text box or callout reflows its text, and both renderers trust
  * the stored box height and hide overflow, so the new lines were clipped. The
- * live editor never lets that happen - it re-measures on every style change
- * and grows the box (TextEditOverlay broadcastLiveBounds + textEditCommit):
- * the width stays locked, the height becomes max(text height + padding,
- * current height), a tilted text box keeps its top-left corner. The same rule
- * runs here, in the SAME write as the style (one undo step). A callout's knee
- * never moves (KAL-30); its leader re-attaches to the grown box on render, as
- * it does after an edit.
+ * refit runs here, in the SAME write as the style (one undo step).
+ *
+ * Owner Test 44 (2026-10-06): the box now fits its text BOTH ways - it grows
+ * and it shrinks (never under one line) - and a callout's box moves AWAY from
+ * its leader (calloutGeometry placeResizedCalloutBox): knee below = bottom
+ * edge stays, knee above or beside = top edge stays, the knee and arrow tip
+ * never move, and a box that would still run into the leader shifts clear of
+ * it. The width stays, except that a callout widens when one word cannot fit
+ * on a line (the text would wrap mid-word). Text boxes keep their top edge.
  */
 
 // Same gutter as svgAnnotationRenderers / textEditCommit TEXT_PADDING.
@@ -176,8 +180,8 @@ export function patchCanReflowText(kind, patch) {
 }
 
 /**
- * The height the text box needs, or null when its current height already fits
- * (boxes grow, never shrink - the editor's rule).
+ * The height the text box needs - grow or shrink, never under one line - or
+ * null when its current height already fits to within half a unit.
  *
  * @param {object} args
  * @param {number} args.width outer width in page units
@@ -191,47 +195,117 @@ export function fittedTextBoxHeight({ text, width, height, padY, font, measure }
   const innerWidth = Math.max(0, Number(width) - 2 * TEXT_BOX_PADDING);
   const natural = Number(measure({ text: String(text ?? ''), innerWidth, ...font }));
   if (!Number.isFinite(natural) || natural <= 0) return null;
-  const needed = natural + 2 * padY;
+  const oneLine = (Number(font?.fontSize) || 0) * (Number(font?.lineHeight) || 1);
+  const needed = Math.max(natural, oneLine) + 2 * padY;
   const current = Number(height) || 0;
-  return needed > current + 0.5 ? needed : null;
+  return Math.abs(needed - current) > 0.5 ? needed : null;
+}
+
+const calloutFont = (style) => ({
+  fontSize: Number(style?.fontSize) || 12,
+  fontFamily: style?.fontFamily || 'Arial',
+  fontWeight: style?.bold ? 'bold' : 'normal',
+  fontStyle: style?.italic ? 'italic' : 'normal',
+  // The callout renderer's line step: (lineHeight || 1) x 1.13.
+  lineHeight: (Number(style?.lineHeight) || 1) * 1.13,
+  // buildCalloutTextContentStyle turns kerning and ligatures off.
+  plainGlyphs: true,
+});
+
+/** A callout's stored box and leader in page units. */
+function calloutBoxInPageUnits(callout, W, H) {
+  return {
+    left: (callout.textBoxPosition?.x ?? callout.textBox?.x ?? 0) * W,
+    top: (callout.textBoxPosition?.y ?? callout.textBox?.y ?? 0) * H,
+    width: Math.max(18, (callout.textBoxWidth ?? callout.textBox?.width ?? 0.1) * W),
+    height: (callout.textBoxHeight ?? callout.textBox?.height ?? 0.05) * H,
+    knee: callout.knee ? { x: callout.knee.x * W, y: callout.knee.y * H } : null,
+    arrowTip: callout.arrowTip ? { x: callout.arrowTip.x * W, y: callout.arrowTip.y * H } : null,
+  };
 }
 
 /**
- * A callout with its box grown to fit its (already patched) text style.
- * Only textBoxHeight changes; position, width, knee and tip are untouched.
+ * A callout with its box fitted to its (already patched) text style.
+ * The knee and tip never move; the box keeps the edge that faces its leader.
+ *
+ * @param {object} callout the callout with the new style
+ * @param {{width:number, height:number}} pageSize unscaled page size
+ * @param {(request: object) => number|null} measure layout measurer
+ *   (measureTextLayoutHeight). A request with `query: 'widestWord'` asks for
+ *   the widest single word's width; a measurer that cannot answer returns
+ *   null and the width stays.
+ * @param {{ before?: object }} [options] `before`: the callout as it was
+ *   before the style change (its font size sets the old drawn box edge)
  */
-export function refitCalloutToText(callout, pageSize, measure) {
+export function refitCalloutToText(callout, pageSize, measure, { before = null } = {}) {
   const W = Number(pageSize?.width);
   const H = Number(pageSize?.height);
-  if (!callout || !(W > 0) || !(H > 0)) return callout;
-  const style = callout.style || {};
-  const width = Math.max(18, (callout.textBoxWidth ?? callout.textBox?.width ?? 0.1) * W);
-  const height = Math.max(18, (callout.textBoxHeight ?? callout.textBox?.height ?? 0.05) * H);
-  const needed = fittedTextBoxHeight({
-    text: callout.text,
-    width,
-    height,
-    padY: 0,
-    font: {
-      fontSize: Number(style.fontSize) || 12,
-      fontFamily: style.fontFamily || 'Arial',
-      fontWeight: style.bold ? 'bold' : 'normal',
-      fontStyle: style.italic ? 'italic' : 'normal',
-      // The callout renderer's line step: (lineHeight || 1) x 1.13.
-      lineHeight: (Number(style.lineHeight) || 1) * 1.13,
-      // buildCalloutTextContentStyle turns kerning and ligatures off.
-      plainGlyphs: true,
-    },
-    measure,
+  if (!callout || !(W > 0) || !(H > 0) || typeof measure !== 'function') return callout;
+  const font = calloutFont(callout.style);
+  const box = calloutBoxInPageUnits(callout, W, H);
+  const text = String(callout.text ?? '');
+
+  let width = box.width;
+  const widest = Number(measure({ query: 'widestWord', text, ...font }));
+  if (Number.isFinite(widest) && widest > 0) {
+    // +1: a word measured at exactly the inner width may still wrap.
+    const wordWidth = widest + 2 * TEXT_BOX_PADDING + 1;
+    if (wordWidth > width + 0.5) width = Math.min(wordWidth, Math.max(width, W));
+  }
+  const fitted = fittedTextBoxHeight({ text, width, height: box.height, padY: 0, font, measure });
+  const height = fitted ?? box.height;
+  const beforeFontSize = Number(before?.style?.fontSize) || font.fontSize;
+  if (fitted == null && width === box.width && beforeFontSize === font.fontSize) return callout;
+
+  const pos = placeResizedCalloutBox({
+    box,
+    fontSize: beforeFontSize,
+    next: { width, height, fontSize: font.fontSize },
+    knee: box.knee,
+    arrowTip: box.arrowTip,
+    page: { width: W, height: H },
   });
-  if (needed == null) return callout;
-  return { ...callout, textBoxHeight: needed / H };
+  const moved = Math.abs(pos.left - box.left) > 1e-6 || Math.abs(pos.top - box.top) > 1e-6;
+  if (fitted == null && width === box.width && !moved) return callout;
+  const next = { ...callout };
+  if (fitted != null) next.textBoxHeight = height / H;
+  if (width !== box.width) next.textBoxWidth = width / W;
+  if (moved) next.textBoxPosition = { x: pos.left / W, y: pos.top / H };
+  return next;
 }
 
 /**
- * A Fabric text box with its height grown to fit its (already patched) font.
- * Width is locked; a tilted box keeps its rotated top-left corner in place
- * (the same shift textEditCommit applies after an edit).
+ * Typing into a callout (live editor): where its growing box goes, by the
+ * same away-from-the-leader rule, measured from the callout as it was when
+ * the edit began. Page units in and out.
+ *
+ * @param {object} startCallout the callout at the start of the edit
+ * @param {{width:number, height:number}} pageSize unscaled page size
+ * @param {{width:number, height:number, fontSize:number}} live the editor's
+ *   current box size and font size
+ * @returns {{left:number, top:number}|null}
+ */
+export function placeCalloutEditBox(startCallout, pageSize, live) {
+  const W = Number(pageSize?.width);
+  const H = Number(pageSize?.height);
+  if (!startCallout || !(W > 0) || !(H > 0) || !live) return null;
+  const box = calloutBoxInPageUnits(startCallout, W, H);
+  return placeResizedCalloutBox({
+    box,
+    fontSize: Number(startCallout.style?.fontSize) || 12,
+    next: { width: live.width, height: live.height, fontSize: live.fontSize },
+    knee: box.knee,
+    arrowTip: box.arrowTip,
+    page: { width: W, height: H },
+  });
+}
+
+
+/**
+ * A Fabric text box with its height fitted - grow or shrink, at least one
+ * line - to its (already patched) font. Width is locked; the top edge stays,
+ * and a tilted box keeps its rotated top-left corner in place (the same shift
+ * textEditCommit applies after an edit).
  */
 export function refitTextboxToText(annotation, measure) {
   if (!annotation) return annotation;
@@ -271,9 +345,11 @@ export function refitTextboxToText(annotation, measure) {
  * Browser measurer: lays the text out off-screen with the renderers' wrap
  * rules (pre-wrap, break-all; callouts also drop kerning/ligatures) and reads scrollHeight,
  * exactly what the live editor reads. Null outside a browser.
+ * With `query: 'widestWord'` it returns the width of the widest single word
+ * laid out on one line instead (refitCalloutToText widens a box to it).
  */
 export function measureTextLayoutHeight({
-  text, innerWidth, fontSize, fontFamily, fontWeight, fontStyle, lineHeight, plainGlyphs = false,
+  text, innerWidth, fontSize, fontFamily, fontWeight, fontStyle, lineHeight, plainGlyphs = false, query = null,
 }) {
   if (typeof document === 'undefined' || !document.body) return null;
   const el = document.createElement('div');
@@ -304,6 +380,20 @@ export function measureTextLayoutHeight({
     padding: '0',
     margin: '0',
   });
+  if (query === 'widestWord') {
+    Object.assign(el.style, { width: 'auto', whiteSpace: 'pre', display: 'inline-block', minHeight: '0' });
+    document.body.appendChild(el);
+    try {
+      return String(text ?? '').split(/\s+/).reduce((widest, word) => {
+        if (!word) return widest;
+        el.textContent = word;
+        // Layout units (like scrollHeight), immune to any page zoom transform.
+        return Math.max(widest, el.scrollWidth);
+      }, 0);
+    } finally {
+      el.remove();
+    }
+  }
   el.textContent = text;
   document.body.appendChild(el);
   try {

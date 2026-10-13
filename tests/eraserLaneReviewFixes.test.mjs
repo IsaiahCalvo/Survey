@@ -30,6 +30,11 @@ import {
   pathObjectToPagePolygons,
 } from '../src/utils/pageSpaceEraser.js';
 import { polygonSetArea } from '../src/utils/paperAnnotationGeometry.js';
+import {
+  bruteEvenOdd,
+  bruteRingEdgeDistance,
+  createPolygonProbeIndex,
+} from './helpers/polygonProbeIndex.mjs';
 
 function mulberry32(seed) {
   let value = seed >>> 0;
@@ -41,33 +46,6 @@ function mulberry32(seed) {
     return ((next ^ (next >>> 14)) >>> 0) / 4294967296;
   };
 }
-
-const evenOdd = (polygons, x, y) => {
-  let inside = false;
-  for (const polygon of polygons || []) for (const ring of polygon) {
-    for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
-      const [xi, yi] = ring[i]; const [xj, yj] = ring[j];
-      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-    }
-  }
-  return inside;
-};
-
-const segmentDistance = (p, a, b) => {
-  const dx = b.x - a.x; const dy = b.y - a.y; const l2 = dx * dx + dy * dy;
-  const t = l2 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2)) : 0;
-  return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
-};
-
-const ringEdgeDistance = (p, polygons) => {
-  let best = Infinity;
-  for (const polygon of polygons) for (const ring of polygon) {
-    for (let i = 1; i < ring.length; i += 1) {
-      best = Math.min(best, segmentDistance(p, { x: ring[i - 1][0], y: ring[i - 1][1] }, { x: ring[i][0], y: ring[i][1] }));
-    }
-  }
-  return best;
-};
 
 function commitErase(doc, gesture, writerId, id) {
   const before = docToByPage(doc);
@@ -128,15 +106,36 @@ test('1: two sessions erasing with very different radii compose to the exact ans
     const outline = pathObjectToPagePolygons(stroke, a.radius);
     const inEraser = (p) => [a, b].some(({ points: [c], radius }) => Math.hypot(p.x - c.x, p.y - c.y) < radius);
     const nearRim = (p) => [a, b].some(({ points: [c], radius }) => Math.abs(Math.hypot(p.x - c.x, p.y - c.y) - radius) < 0.08);
+    // Same grid, same points, same checks as the original brute-force loop;
+    // the index only skips edges that cannot change the answer (see
+    // tests/helpers/polygonProbeIndex.mjs). Brute force on all ~1.7M points
+    // spent ~140 s here — past the runner's 120 s per-file limit — while the
+    // erase work under test took ~1 s. Every 97th grid point is re-run
+    // through the brute-force oracle so the index can never go quietly wrong.
+    const outlineIndex = createPolygonProbeIndex(outline, { nearTolerance: 0.08 });
+    const shownIndex = createPolygonProbeIndex(shown.polygons);
+    let gridPoint = 0;
     for (const { points: [c], radius } of [a, b]) {
       const reach = radius + width;
       const step = Math.max(0.05, radius / 12);
       for (let py = c.y - reach; py <= c.y + reach; py += step) {
         for (let px = c.x - reach; px <= c.x + reach; px += step) {
           const p = { x: px, y: py };
-          if (nearRim(p) || ringEdgeDistance(p, outline) < 0.08) continue;
-          const expected = evenOdd(outline, px, py) && !inEraser(p);
-          assert.equal(evenOdd(shown.polygons, px, py), expected, `case ${n}: (${px}, ${py})`);
+          const spotCheck = gridPoint % 97 === 0;
+          gridPoint += 1;
+          const nearOutline = outlineIndex.isNearEdge(px, py, 0.08);
+          if (spotCheck) {
+            assert.equal(nearOutline, bruteRingEdgeDistance(p, outline) < 0.08, `index: near-edge at (${px}, ${py})`);
+          }
+          if (nearRim(p) || nearOutline) continue;
+          const inOutline = outlineIndex.evenOdd(px, py);
+          const inShown = shownIndex.evenOdd(px, py);
+          if (spotCheck) {
+            assert.equal(inOutline, bruteEvenOdd(outline, px, py), `index: outline parity at (${px}, ${py})`);
+            assert.equal(inShown, bruteEvenOdd(shown.polygons, px, py), `index: shown parity at (${px}, ${py})`);
+          }
+          const expected = inOutline && !inEraser(p);
+          assert.equal(inShown, expected, `case ${n}: (${px}, ${py})`);
         }
       }
     }

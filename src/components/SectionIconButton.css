@@ -1,0 +1,140 @@
+/*
+ * SectionIconButton.css — the bare icon used for section header actions
+ * (owner ruling 2026-10-02: "The icons looked way better").
+ *
+ *   LABEL count ............................ [Select] [Add]
+ *
+ * Desktop: a 28px square hit with a 16px glyph. Phone: an 18px glyph in a
+ * 36px box whose invisible ::after pad makes the finger target 44px.
+ * No plate, no border, no gold: --text-2 ink. Hover and press come
+ * from src/styles/states.css (the glyph grows on hover, tightens on press):
+ * section 5's icon model (glyph to 108% on hover, 92% on press). No gold
+ * anywhere (owner): a mode toggle that is on (Select while selecting, Edit
+ * while editing) swaps its glyph for a check in the same ink, named "Done".
+ */
+.section-icon-btn {
+  position: relative;
+  flex: none;
+  align-self: center;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  font: inherit;
+  line-height: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.section-icon-btn > svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.section-icon-btn.is-phone {
+  width: 36px;
+  height: 36px;
+}
+.section-icon-btn.is-phone > svg {
+  width: 18px;
+  height: 18px;
+}
+.section-icon-btn.is-phone::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+}
+/* Off (a select-mode action with nothing picked): the ONE disabled look from
+   src/styles/states.css section 6 - --disabled-ink on the glyph and the word,
+   Delete gives up its red, no hover / press, not-allowed. Nothing here, so a
+   hub or panel rule can never out-rank it again (owner 2026-10-06). */
+
+/* The row of header icons: right-aligned, [Select] then [Add]. */
+.section-icon-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  flex: none;
+}
+.section-icon-actions.is-phone {
+  gap: 8px;
+}
+
+/*
+ * The select-mode action row (owner 2026-10-02): All, Duplicate, Move, Copy,
+ * Share, Delete, then Done - every one this same button. "All" is the one
+ * word: same box height, same ink, 13px/500 (15px on a phone, beside the
+ * 18px glyphs), its own width. Delete keeps the app's danger ink so the
+ * destructive one still reads as such; it is never gold.
+ */
+.section-icon-btn.is-word {
+  width: auto;
+  min-width: 28px;
+  padding: 0 4px;
+  line-height: 1;
+}
+.section-icon-btn__word {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.section-icon-btn.is-word.is-phone {
+  width: auto;
+  min-width: 36px;
+  padding: 0 6px;
+}
+.section-icon-btn.is-phone .section-icon-btn__word {
+  font-size: 15px;
+}
+.section-icon-btn.is-danger {
+  color: var(--danger);
+}
+
+/*
+ * Done (owner 2026-10-06, after a circle-vs-square debate: circle). A mode
+ * toggle that is on shows its check on a round disc, so the commit reads as a
+ * button and not a stray tick - like iOS 26's round Done check and the app's
+ * own round text-box commit. Filled --surface-3 disc with a hairline, check in
+ * --text-1; the glyph keeps the shared hover/press scale. Desktop 24px disc in
+ * the 28px hit; phone 32px in the 36px box (44px touch pad unchanged).
+ */
+.section-icon-btn.is-active {
+  color: var(--text-1);
+}
+.section-icon-btn.is-active::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--border);
+  pointer-events: none;
+}
+.section-icon-btn.is-active.is-phone::before {
+  width: 32px;
+  height: 32px;
+}
+.section-icon-btn.is-active > svg {
+  position: relative;
+  z-index: 1;
+}
+@media (hover: hover) {
+  .section-icon-btn.is-active:not(:disabled):hover::before {
+    box-shadow: inset 0 0 0 1px var(--border-strong);
+  }
+}
+.section-icon-btn.is-active:not(:disabled):active::before {
+  background: var(--pressed);
+}

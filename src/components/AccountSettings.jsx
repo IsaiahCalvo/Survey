@@ -20,11 +20,13 @@ import Spinner from './Spinner';
 import { passwordMeetsRequirements } from './authFlow';
 import TurnstileWidget, { TURNSTILE_ENABLED } from './TurnstileWidget';
 import Icon from '../Icons';
+import CrashReportsPanel from './CrashReportsPanel';
 import {
   buildBillingReturnUrl,
   canUnlinkProvider,
   openDeferredExternalDestination,
   resolveSubscriptionQuery,
+  SUBSCRIPTION_LOAD_FAILED_TEXT,
 } from '../utils/accountPlatform';
 
 const SURVEY_SUPPORT_EMAIL = 'isaiahcalvo123@gmail.com';
@@ -134,8 +136,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
       setSubscription(data);
     } catch (err) {
       if (requestId !== subscriptionRequestRef.current) return;
-      console.error('Error:', err);
-      setSubscriptionError(err?.message || 'Could not load subscription status.');
+      console.error('Could not load subscription:', err);
+      setSubscriptionError(SUBSCRIPTION_LOAD_FAILED_TEXT);
     } finally {
       if (requestId === subscriptionRequestRef.current) setLoadingSubscription(false);
     }
@@ -194,6 +196,13 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
   if (!isOpen || !user) return null;
 
+  /* Owner 2026-10-02: only a real change asks to be saved. A missing name in
+     the profile and an empty field are the same thing, and stray spaces are
+     not a change, so Save stays off until something actually differs. */
+  const nameDiffers = (firstName || '').trim() !== (user?.user_metadata?.first_name || '').trim()
+    || (lastName || '').trim() !== (user?.user_metadata?.last_name || '').trim();
+  const hasProfileChanges = nameDiffers || !!(newPassword || confirmPassword || currentPassword);
+
   const handleSaveChanges = async (e) => {
     e.preventDefault();
     setError('');
@@ -204,9 +213,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
     try {
       // Check if name changed
-      const nameChanged =
-        firstName !== user?.user_metadata?.first_name ||
-        lastName !== user?.user_metadata?.last_name;
+      const nameChanged = nameDiffers;
 
       // Check if password fields are filled
       const passwordChanging = newPassword || confirmPassword || currentPassword;
@@ -445,6 +452,15 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                   its own longer label on the sub-tab inside. */}
               Subscription
             </button>
+            {/* Crash hunt 2026-10-07: this device's crash notes, to copy to us. */}
+            <button
+              onClick={() => setActiveTab('crash-reports')}
+              className={`account-sidebar-btn ${activeTab === 'crash-reports' ? 'active' : ''}`}
+              role="tab"
+              aria-selected={activeTab === 'crash-reports'}
+            >
+              Crash reports
+            </button>
           </div>
 
           {/* Content */}
@@ -594,7 +610,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                           type="button"
                           onClick={handleSendResetLink}
                           disabled={loading}
-                          style={{ display: 'inline-block', background: 'none', border: 'none', color: 'var(--accent)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', padding: '2px 0', textDecoration: 'underline' }}
+                          className="account-text-link"
+                          style={{ display: 'inline-block', background: 'none', border: 'none', fontSize: '12px', fontWeight: 600, cursor: 'pointer', padding: '2px 0', textDecoration: 'underline' }}
                         >
                           Forgot your current password? Email me a reset link
                         </button>
@@ -614,7 +631,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                             over 500ms, so it takes the shared button loading
                             treatment — 14px ring left of a present-participle
                             label, disabled until the save resolves. */}
-                        <button type="submit" className="account-btn-primary" disabled={loading}>
+                        <button type="submit" className="account-btn-primary" disabled={loading || !hasProfileChanges}>
                           {loading && <Spinner size={14} color="var(--accent-text)" trackColor="rgba(21,17,10,0.25)" />}
                           {loading ? 'Saving…' : 'Save changes'}
                         </button>
@@ -1010,6 +1027,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                 </section>
               </>
             )}
+
+            {activeTab === 'crash-reports' && <CrashReportsPanel />}
 
             {activeTab === 'connected-services' && (
               <section className="account-section">

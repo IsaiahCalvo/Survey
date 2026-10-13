@@ -335,6 +335,10 @@ export default defineConfig(({ mode }) => {
           // instead of re-downloading multiple MB every release. App code and
           // everything else keep Vite's default chunking.
           manualChunks(id) {
+            // Vite's tiny lazy-load helper. pdf.js imports it, so without this
+            // line it was swept into vendor-pdfjs and the home screen had to
+            // download and run all of pdf.js (~470 KB) just to get the helper.
+            if (id.includes('vite/preload-helper')) return 'preload-helper';
             if (!id.includes('node_modules')) return undefined;
             if (id.includes('/pdfjs-dist/')) return 'vendor-pdfjs';
             if (id.includes('/pdf-lib/')) return 'vendor-pdflib';

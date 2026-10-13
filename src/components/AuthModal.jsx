@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { hasCoarsePointer } from '../hooks/useCoarsePointer';
 import { resendCooldownRemainingMs, passwordMeetsRequirements } from './authFlow';
 import PasswordRequirements from './PasswordRequirements';
 import Spinner from './Spinner';
@@ -53,6 +54,12 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
 
   // Keyboard accessibility: Tab stays inside the dialog, Escape dismisses it,
   // focus opens on the first field and returns to the opener on close.
+  // 2026-10-07 (phone loading): on a touch screen focus lands on the title
+  // instead (data-autofocus below). The sheet opens by itself when the app
+  // starts signed out, and focusing the email field there threw the phone
+  // keyboard up over half the screen before anyone asked to type. A tap in the
+  // field brings the keyboard as usual; a screen reader still starts inside.
+  const focusTitleFirst = hasCoarsePointer();
   useFocusTrap(modalRef, isOpen, { onEscape: handleClose });
 
   // Modes that hit a captcha-protected endpoint (signin / signup / recover).
@@ -200,7 +207,11 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
         </button>
 
         <div className="auth-modal-header">
-          <h2 id="auth-modal-title">
+          <h2
+            id="auth-modal-title"
+            tabIndex={focusTitleFirst ? -1 : undefined}
+            data-autofocus={focusTitleFirst ? '' : undefined}
+          >
             {mode === 'login' && 'Welcome back'}
             {mode === 'signup' && 'Create account'}
             {mode === 'confirm' && 'Check your email'}

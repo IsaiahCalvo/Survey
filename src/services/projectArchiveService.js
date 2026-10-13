@@ -20,6 +20,7 @@ import { supabase } from '../supabaseClient';
 import { pdfByteCache } from './pdfByteCache.js';
 import { purgeAnnotationDoc } from './annotationDocSync';
 import { normalizeProjectItem } from './archiveContract';
+import { removeSurveyMediaForDocument } from './surveyMediaService.js';
 
 const PROJECT_ARCHIVE_COLUMNS =
   'id, user_id, name, user_archived_at, user_archive_expires_at, user_archived_by, archive_group_id';
@@ -107,6 +108,8 @@ export async function deleteProjectForever(projectId) {
   // Best-effort, same as the single-document path: the rows are already gone, so
   // a local-cache hiccup must not report the delete as failed.
   for (const childId of childIds) {
+    // Survey media (best-effort, never throws); the rest is swept server-side.
+    await removeSurveyMediaForDocument(childId);
     try {
       await purgeAnnotationDoc(childId);
     } catch (err) {

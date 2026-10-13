@@ -15,6 +15,10 @@ import {
   saveSelectMode,
   SELECT_MODE_OPTIONS,
   SELECT_MODE_SHORT_LABELS,
+  SELECTION_KEEPING_TOOLS,
+  getToolSwitchSelectionClearReason,
+  shouldBackdropPressDeselect,
+  shouldEscapeDeselect,
 } from '../src/utils/selectModes.js';
 
 const PDF_VIEWER_SOURCE = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
@@ -67,17 +71,32 @@ test('Select family keeps distinct approved icons without changing its transitio
   // three distinct, locked assets — is untouched. The lasso and text-select
   // hashes are unchanged: both already resolve to ~1.5 through their scaled
   // groups.
+  // DELIBERATE ASSERTION CHANGE (2026-10-02, owner pick): Box Select is now
+  // Hugeicons "Cursor Rectangle Selection 02" (a dashed box corner and a
+  // cursor), and Lasso draws that same cursor at the same size and place, so
+  // both hashes move. Text Select is unchanged. Still guarded: three distinct,
+  // locked assets.
   for (const [fileName, expectedHash] of [
-    ['selection-cursor-rounded.svg', '0a438b4cf39a44e85607b9cd78d813a7e10ea2c0a49fa111b14ec77b2b9853ae'],
-    ['lasso-select-rounded.svg', '9fe83afeef1c13c09aa557728badf71696341213210b5b2924e1becba8e50d22'],
-    ['text-select-rounded.svg', '7f75647ee4d328ec68eb867dfde598019fe1537db3861a7014273b812a80192e'],
+    ['selection-cursor-rounded.svg', '56075a0c4ed32b07418ba9cea0123ebed769304d0972330bfd16110d65052186'],
+    ['lasso-select-rounded.svg', '2a93eac6d83b701cfbe45454eae5a69fa081e999e7367bf491dab226419fb71a'],
+    ['text-select-rounded.svg', '206d7331013546f58733846df696525c106d42b574ed2cca4135caa58e3b5843'],
   ]) {
     const bytes = readFileSync(new URL(`../src/assets/icons/${fileName}`, import.meta.url));
     assert.equal(createHash('sha256').update(bytes).digest('hex'), expectedHash, fileName);
   }
 
+  // DELIBERATE ASSERTION CHANGE (2026-10-02, Select-trio optical balance; owner:
+  // "Lasso looks smaller than Rectangular, Text Select looks even smaller").
+  // The lasso and text-select hashes move because both assets were redrawn to
+  // read the same size as Box Select: the lasso's cursor 0.65 -> 0.72 scale
+  // with longer dashes, the text-select I-beam and field 0.75 -> 0.9 scale and
+  // centred on the grid (its old fixed 2px CSS drop is gone). Box Select is
+  // untouched. Still guarded: three distinct, locked assets. The old pin on
+  // text-select's outer translate(12 12.6) group is replaced by the placement
+  // that matters — its I-beam group drawn at 0.9, centred, with no outer group.
   const textSelectSource = readFileSync(new URL('../src/assets/icons/text-select-rounded.svg', import.meta.url), 'utf8');
-  assert.match(textSelectSource, /translate\(12 12\.6\)/);
+  assert.match(textSelectSource, /<g transform="translate\(1\.2 -\.85\) scale\(\.9\)"/);
+  assert.doesNotMatch(textSelectSource, /translate\(12 12\.6\)/);
 });
 
 test('the last Select-family mode survives reload and ignores invalid storage', () => {
@@ -147,8 +166,12 @@ test('desktop Select arms the family and its modes are a segmented toggle', () =
   assert.doesNotMatch(selectToolbar, /data-select-mode-caret/);
   assert.doesNotMatch(selectToolbar, /getNextSelectModeMenuOpen/);
   assert.doesNotMatch(selectToolbar, /chrome-control--split/);
-  // The trigger draws the live mode's glyph at the cluster's one glyph size.
-  assert.match(selectToolbar, /getSelectFamilyIconName\(bottomToolbarApi\.activeTool, bottomToolbarApi\.selectionMode\)[\s\S]{0,80}size=\{CHROME_GLYPH\}/);
+  // DELIBERATE ASSERTION CHANGE (2026-10-04, owner, Test 34): the trigger
+  // draws the Select GROUP glyph (the plain rounded cursor), like Draw /
+  // Shapes / Text draw theirs, at the cluster's one glyph size. The live mode
+  // shows only in the Box / Lasso / Text row.
+  assert.match(APP_SHELL_SOURCE, /{ id: 'select', label: 'Select', iconName: 'selectGroup' }/);
+  assert.match(selectToolbar, /name=\{t\.iconName\}[\s\S]{0,40}size=\{CHROME_GLYPH\}/);
 
   // The three modes, as a group of tool buttons.
   const toggle = APP_SHELL_SOURCE.slice(
@@ -205,7 +228,8 @@ test('Select family uses the larger optical sizes on mobile', () => {
   // FLYOUT. That flyout is deleted, so the three modes are drawn by the strip's
   // segmented toggle instead, at the strip's own STRIP_GLYPH.
   assert.match(MOBILE_CHROME_SOURCE, /const RAIL_GLYPH = 17;/);
-  assert.match(MOBILE_CHROME_SOURCE, /getSelectFamilyIconName\(activeTool, bottomToolbarApi\?\.selectionMode\)\} size=\{RAIL_GLYPH\}/);
+  // 2026-10-04 (owner, Test 34): the rail's Select button is the group glyph.
+  assert.match(MOBILE_CHROME_SOURCE, /<Icon name="selectGroup" size=\{RAIL_GLYPH\}/);
   assert.match(MOBILE_CHROME_SOURCE, /icon: getSelectModeIconName\('rectangle'\)/);
   assert.doesNotMatch(MOBILE_CHROME_SOURCE, /getSelectModeIconName\(option\.mode\)/);
 });
@@ -243,7 +267,10 @@ test('pan quick-pick leaves a saved Text Select mode in truthful rectangle objec
     PDF_VIEWER_SOURCE.indexOf('// UX: pan-mode quick-click → select annotation'),
     PDF_VIEWER_SOURCE.indexOf('// UX: pan-mode hover —'),
   );
-  assert.equal((quickPickHandler.match(/activateSelectFamilyMode\('rectangle'\)/g) || []).length, 2);
+  // Owner 2026-10-02 (Drawboard rule 2): a Pan click picks the mark and Pan
+  // STAYS armed — the quick-pick no longer switches to Select.
+  assert.equal((quickPickHandler.match(/activateSelectFamilyMode\('rectangle'\)/g) || []).length, 0);
+  assert.match(quickPickHandler, /setPendingSvgSelection\(\{/);
 });
 
 test('V and Shift+V use the same truthful Select-family transition as reload', () => {
@@ -260,4 +287,301 @@ test('V and Shift+V use the same truthful Select-family transition as reload', (
   const keyboardHandler = PDF_VIEWER_SOURCE.slice(keyboardStart, keyboardStart + 10_000);
   assert.match(keyboardHandler, /activateSelectFamilyMode\('rectangle'\)/);
   assert.match(keyboardHandler, /activateSelectFamilyMode\('text'\)/);
+});
+
+test('switching to a non-picking tool drops the selection; Pan / Select / Text Select keep it (owner 2026-10-02)', () => {
+  assert.deepEqual([...SELECTION_KEEPING_TOOLS], ['pan', 'select', 'text-select']);
+  // Drawing, shape, text, eraser and survey tools all clear.
+  for (const next of ['pen', 'highlighter', 'eraser', 'rect', 'ellipse', 'line', 'arrow', 'polygon', 'text', 'callout', 'counter', 'survey-marker', 'region-edit']) {
+    assert.equal(getToolSwitchSelectionClearReason('select', next), 'tool-change', next);
+    assert.equal(getToolSwitchSelectionClearReason('pan', next), 'tool-change', next);
+  }
+  // A just-drawn shape loses its handles when another drawing tool is picked.
+  assert.equal(getToolSwitchSelectionClearReason('rect', 'pen'), 'tool-change');
+  // Among the picking tools the selection stays.
+  assert.equal(getToolSwitchSelectionClearReason('pan', 'select'), null);
+  assert.equal(getToolSwitchSelectionClearReason('select', 'pan'), null);
+  assert.equal(getToolSwitchSelectionClearReason('select', 'text-select'), null);
+  // A switch INTO a tool that picks any mark keeps it (the viewer's own
+  // hand-overs — a new callout opening its editor under Select — need it).
+  assert.equal(getToolSwitchSelectionClearReason('rect', 'select'), null);
+  assert.equal(getToolSwitchSelectionClearReason('callout', 'select'), null);
+  // No change, no clear.
+  assert.equal(getToolSwitchSelectionClearReason('select', 'select'), null);
+  // Leaving Text Select keeps its older, stricter rule.
+  assert.equal(getToolSwitchSelectionClearReason('text-select', 'select'), 'text-select-tool-change');
+  assert.equal(getToolSwitchSelectionClearReason('text-select', 'pen'), 'text-select-tool-change');
+});
+
+test('the tool-switch rule runs in one effect on activeTool, and Escape listens under every tool', () => {
+  assert.match(
+    PDF_VIEWER_SOURCE,
+    /const reason = getToolSwitchSelectionClearReason\(previousTool, activeTool, \{ source \}\);\s*if \(reason\) clearAnnotationSelectionForContextChange\(reason\);\s*\}, \[activeTool, clearAnnotationSelectionForContextChange\]\);/,
+  );
+  const escStart = PDF_VIEWER_SOURCE.indexOf('// UX: Escape and grey-page backdrop clicks clear every selection mode alike.');
+  const escEffect = PDF_VIEWER_SOURCE.slice(escStart, PDF_VIEWER_SOURCE.indexOf('const textSelectGestureActiveRef', escStart));
+  assert.doesNotMatch(escEffect, /if \(!\['select', 'text-select'\]\.includes\(activeTool\)\) return undefined;/);
+  assert.match(escEffect, /const escapeDeselects = shouldEscapeDeselect\(activeTool\);/);
+  assert.match(escEffect, /const backdropDeselects = shouldBackdropPressDeselect\(activeTool\);/);
+  assert.match(escEffect, /if \(escapeDeselects\) window\.addEventListener\('keydown', clear, true\);\s*if \(backdropDeselects\) window\.addEventListener\('pointerdown', clear, true\);/);
+  for (const tool of ['pan', 'select', 'text-select', 'pen', 'rect', 'text', 'eraser', 'survey-marker']) {
+    assert.equal(shouldEscapeDeselect(tool), true, tool);
+  }
+  assert.equal(shouldBackdropPressDeselect('select'), true);
+  assert.equal(shouldBackdropPressDeselect('text-select'), true);
+  assert.equal(shouldBackdropPressDeselect('pen'), false);
+  assert.equal(shouldBackdropPressDeselect('pan'), false);
+});
+
+test('the rotation grabber has no connector line to the box (owner 2026-10-02)', () => {
+  const overlay = readFileSync(new URL('../src/components/SVGSelectionOverlay.jsx', import.meta.url), 'utf8');
+  const region = readFileSync(new URL('../src/RegionSelectionTool.jsx', import.meta.url), 'utf8');
+  const fabricCustom = readFileSync(new URL('../src/utils/fabricCustomization.js', import.meta.url), 'utf8');
+  for (const [name, src] of [['SVGSelectionOverlay', overlay], ['RegionSelectionTool', region]]) {
+    const start = src.search(/\n\s+data-rotation-handle="mtr"|<g className="rotation-handle" data-rotation-handle="mtr"/);
+    assert.notEqual(start, -1, name);
+    const group = src.slice(start, src.indexOf('</g>', start));
+    assert.doesNotMatch(group, /<line\b/, `${name} rotation group draws no <line>`);
+    assert.match(group, /<circle/, `${name} keeps the grabber circle`);
+  }
+  assert.match(fabricCustom, /standardControls\.mtr\.withConnection = false;/);
+});
+
+// ---------------------------------------------------------------------------
+// Drawboard PDF rules 1-13 (owner 2026-10-02; study scratchpad/drawboard2/RULES.md).
+// One rule table (utils/selectModes.js); each test pins one rule and the place
+// the app asks it.
+// ---------------------------------------------------------------------------
+const SVG_LAYER_SOURCE = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
+const INTERACTION_SOURCE = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
+const GRAB_SOURCE = readFileSync(new URL('../src/hooks/useSelectionGrabHandoff.js', import.meta.url), 'utf8');
+const ERASER_SOURCE = readFileSync(new URL('../src/components/FabricEraserCanvas.jsx', import.meta.url), 'utf8');
+const TEXT_EDIT_SOURCE = readFileSync(new URL('../src/components/TextEditOverlay.jsx', import.meta.url), 'utf8');
+const STYLES_SOURCE = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+
+const rules = await import('../src/utils/selectModes.js');
+const presence = await import('../src/utils/pageSelectionPresence.js');
+const routing = await import('../src/utils/toolPressRouting.js');
+const press = (tool, target, hasSelection = false, shiftKey = false, markGroup = null) => rules.resolveToolPress({ tool, target, hasSelection, shiftKey, markGroup });
+// DELIBERATE ASSERTION CHANGE (2026-10-04, owner): "own tool group only"
+// replaces Drawboard's "a shape tool clicks any mark". The full tool x mark
+// table is pinned in tests/toolPressMatrix.test.mjs; these tests keep the
+// per-rule wiring.
+
+test('rule 1: every tool has one class', () => {
+  // DELIBERATE ASSERTION CHANGE (2026-10-04, owner): the drag-to-draw tools
+  // are their own 'shape' class — they pick only their own group's marks.
+  const expected = {
+    select: 'select', 'text-select': 'select', pan: 'select', rect: 'shape', ellipse: 'shape', line: 'shape', arrow: 'shape', callout: 'shape',
+    pen: 'ink', highlighter: 'ink', polygon: 'point', polyline: 'point', eraser: 'eraser', text: 'text',
+    counter: 'place', 'survey-marker': 'place', 'region-edit': 'other',
+  };
+  for (const [tool, cls] of Object.entries(expected)) assert.equal(rules.getToolSelectionClass(tool), cls, tool);
+  assert.deepEqual([...rules.SHAPE_DRAW_TOOLS], ['rect', 'ellipse', 'line', 'arrow', 'callout']);
+});
+
+test('rule 2: Select / Pan pick any mark; group tools pick their own group; the halo follows', () => {
+  // DELIBERATE ASSERTION CHANGE (2026-10-04, owner): shape tools no longer
+  // pick a pen stroke or a text box; the Text group picks text; the Draw
+  // group never picks and shows no halo.
+  for (const tool of rules.TOOL_CLASSES.select) {
+    for (const target of ['mark', 'text']) assert.equal(press(tool, target).click, 'select', `${tool} ${target}`);
+    assert.equal(rules.shouldShowHoverHalo(tool), true, tool);
+  }
+  for (const tool of rules.SHAPE_DRAW_TOOLS) {
+    const own = tool === 'callout' ? 'review' : 'shape';
+    assert.equal(press(tool, 'mark', false, false, own).click, 'select', tool);
+    assert.equal(press(tool, 'mark', false, false, 'draw').click, 'tool', tool);
+    assert.equal(rules.shouldShowHoverHalo(tool, own), true, tool);
+    assert.equal(rules.shouldShowHoverHalo(tool, 'draw'), false, tool);
+  }
+  for (const tool of ['pen', 'highlighter', 'eraser']) assert.equal(rules.shouldShowHoverHalo(tool), false, tool);
+  for (const tool of ['polygon', 'polyline', 'text', 'counter']) assert.equal(rules.shouldShowHoverHalo(tool), true, tool);
+  // the drawing surface asks the table on every press that is not on the selection
+  assert.match(SVG_LAYER_SOURCE, /const press = resolvePagePress\(e\.nativeEvent, \{/);
+  assert.match(SVG_LAYER_SOURCE, /state\.pressFallback && state\.startClient[\s\S]{0,200}< CLICK_PLACE_MAX_TRAVEL_PX\)[\s\S]{0,300}applyPressFallbackRef\.current\?\.\(state\.pressFallback\)/);
+  // Pan picks and STAYS Pan; the group tools' halo comes from the same hover
+  // effect, filtered by the hovered mark's group
+  assert.match(PDF_VIEWER_SOURCE, /const haloByPosition = activeTool === 'pan' \|\| activeTool === 'eraser'/);
+  assert.match(PDF_VIEWER_SOURCE, /shouldShowHoverHalo\(activeTool, hit\?\.kind === 'callout'\s*\? CALLOUT_MARK_GROUP\s*: getMarkGroup\(/);
+});
+
+test('rule 3: a drag is the tool\'s own job unless it starts on a selection the tool may grab', () => {
+  assert.deepEqual(press('select', 'mark'), { drag: 'box-select', click: 'select', clearsSelection: false });
+  assert.equal(press('pan', 'mark').drag, 'pan');
+  for (const tool of rules.SHAPE_DRAW_TOOLS) assert.equal(press(tool, 'mark').drag, 'draw', tool);
+  for (const tool of ['select', 'pan', 'rect', 'polygon', 'text', 'counter']) {
+    assert.deepEqual(press(tool, 'selection', true), { drag: 'manipulate', click: 'keep', clearsSelection: false }, tool);
+  }
+  // DELIBERATE ASSERTION CHANGE (2026-10-04, owner): the Draw group always
+  // uses the tool, even on the selected mark.
+  assert.deepEqual(press('pen', 'selection', true), { drag: 'draw', click: 'tool', clearsSelection: true });
+  assert.deepEqual(press('eraser', 'selection', true), { drag: 'erase', click: 'tool', clearsSelection: true });
+  assert.equal(rules.canToolGrabSelection('pen', ['shape']), false);
+  assert.equal(rules.canToolGrabSelection('rect', ['shape']), true);
+  assert.equal(rules.canToolGrabSelection('rect', ['shape', 'draw']), false);
+  assert.equal(rules.canToolGrabSelection('pan', ['draw', null]), true);
+  // Select: a press on an unselected mark picks it and starts a box / lasso, never a move
+  assert.match(INTERACTION_SOURCE, /if \(!wasAlreadySelected && activeTool === 'select' && svgRef\.current\) \{\s*beginAreaSelectFromMark\(e\);/);
+  assert.match(INTERACTION_SOURCE, /if \(!e\.shiftKey && !_calAlreadyIn && activeTool === 'select'[\s\S]{0,300}beginAreaSelectFromMark\(e\);/);
+  assert.match(INTERACTION_SOURCE, /const beginAreaSelectFromMark = useCallback\(\(e\) => \{[\s\S]{0,1400}keepOnClick: true/);
+  assert.match(INTERACTION_SOURCE, /if \(!mq\.shiftHeld && !mq\.keepOnClick\)/);
+  assert.match(INTERACTION_SOURCE, /if \(!lasso\.shiftHeld && !lasso\.keepOnClick\)/);
+  // under a tool that may grab the selection, the selection is handed its own press
+  assert.match(SVG_LAYER_SOURCE, /const selectionGrabbableByTool = pageHasSelection && canToolGrabSelection\(activeTool, pageSelectionMarkGroups\(\{/);
+  assert.match(SVG_LAYER_SOURCE, /enabled: selectionGrabbableByTool && !isSelectFamilyTool\(activeTool\)/);
+  assert.match(SVG_LAYER_SOURCE, /const isSelectTool = \(activeTool === 'select' \|\| activeTool === 'text-select' \|\| selectionGrabArmed\)/);
+  assert.match(GRAB_SOURCE, /hit\.dispatchEvent\(new PointerEvent\('pointerdown', init\)\)/);
+});
+
+test('rule 4: ink never picks, ignores Shift, and a press clears the selection and draws', () => {
+  for (const tool of ['pen', 'highlighter']) {
+    for (const target of ['mark', 'text', 'empty']) {
+      assert.deepEqual(press(tool, target, false, true), { drag: 'draw', click: 'tool', clearsSelection: false }, `${tool} ${target}`);
+      assert.equal(press(tool, target, true).clearsSelection, true);
+    }
+  }
+});
+
+test('rule 5: the eraser erases what it touches and drops the selection', () => {
+  // DELIBERATE ASSERTION CHANGE (2026-10-04, owner): the Draw group always
+  // uses the tool, so the eraser no longer spares the picked mark (the
+  // spare list and its FabricEraserCanvas gate are gone).
+  assert.deepEqual(press('eraser', 'mark', true), { drag: 'erase', click: 'tool', clearsSelection: true });
+  assert.equal(presence.setEraseSparedIds, undefined);
+  assert.doesNotMatch(ERASER_SOURCE, /isEraseSpared/);
+  assert.match(PDF_VIEWER_SOURCE, /if \(!isSelectionGrabPress\(event\)\) clearAnnotationSelectionForContextChange\('eraser-press'\);/);
+});
+
+test('rule 6: the Text tool picks text, and makes a box anywhere else when nothing is selected', () => {
+  // DELIBERATE ASSERTION CHANGE (2026-10-04, owner): a click on a text box or
+  // callout picks it (it no longer makes a new box on top, nor opens the
+  // editor straight away); other marks are not there for the Text tool.
+  assert.equal(press('text', 'text', false, false, 'review').click, 'select');
+  assert.equal(press('text', 'text', true, false, 'review').click, 'select');
+  for (const [target, group] of [['mark', 'shape'], ['mark', 'draw'], ['empty', null]]) {
+    assert.equal(press('text', target, false, false, group).click, 'new-text', `${target} ${group}`);
+    assert.deepEqual(press('text', target, true, false, group), { drag: 'none', click: 'deselect', clearsSelection: true }, `${target} ${group}`);
+  }
+  assert.match(PDF_VIEWER_SOURCE, /tool: 'text', target: where\.target, markGroup: where\.markGroup, hasSelection: hasAnyPageSelection\(\),/);
+  assert.match(PDF_VIEWER_SOURCE, /noteOverlayTapPick\(`a:\$\{where\.index\}`, tapAt\);/);
+  // a click on existing text no longer opens it when nothing is selected
+  assert.doesNotMatch(PDF_VIEWER_SOURCE, /Click \(not drag\): check if an existing text annotation was hit/);
+});
+
+test('rule 7: a double-click edits selected text under a tool that may grab it; unselected text only gets picked (a double-tap edits)', () => {
+  for (const tool of ['select', 'pan', 'rect', 'pen', 'eraser', 'counter', 'text']) {
+    assert.equal(rules.resolveTextDoubleClick({ tool, wasSelected: true }), 'edit', tool);
+  }
+  // DELIBERATE ASSERTION CHANGE (2026-10-04, owner): the shape tools no
+  // longer pick text, so their double press on it is their own; the Text
+  // group picks it instead.
+  for (const tool of ['select', 'pan', 'text', 'callout']) {
+    assert.equal(rules.resolveTextDoubleClick({ tool, wasSelected: false, pointerType: 'mouse' }), 'select', tool);
+    assert.equal(rules.resolveTextDoubleClick({ tool, wasSelected: false, pointerType: 'touch' }), 'edit', tool);
+  }
+  for (const tool of ['rect', 'arrow', 'pen']) assert.equal(rules.resolveTextDoubleClick({ tool, wasSelected: false }), 'tool', tool);
+  assert.equal(rules.resolveTextDoubleClick({ tool: 'text-select', wasSelected: false }), 'edit');
+  assert.match(INTERACTION_SOURCE, /resolveTextDoubleClick\(\{ tool: activeTool, wasSelected, pointerType \}\) !== 'edit'/);
+  assert.match(PDF_VIEWER_SOURCE, /resolveTextDoubleClick\(\{ tool: firstTapTool, wasSelected: target\.wasSelected, pointerType: event\.pointerType \}\) !== 'edit'/);
+});
+
+test('rule 8: Shift-click adds under select-capable tools only', () => {
+  for (const tool of rules.TOOL_CLASSES.select) assert.equal(press(tool, 'mark', true, true).click, 'add', tool);
+  for (const tool of ['pen', 'highlighter', 'polygon', 'eraser']) assert.notEqual(press(tool, 'mark', true, true).click, 'add', tool);
+});
+
+test('rule 9: after a new shape, a click on empty page only drops it; with nothing picked a Line click is its own', () => {
+  for (const tool of rules.SHAPE_DRAW_TOOLS) assert.equal(press(tool, 'empty', true).click, 'deselect', tool);
+  assert.equal(press('line', 'empty', false).click, 'tool');
+  assert.equal(press('polygon', 'empty', true).click, 'deselect');
+  assert.equal(press('polygon', 'empty', false).click, 'tool');
+});
+
+test('rule 10: Escape closes, commits, cancels, deselects, then puts the tool down; Delete and undo', () => {
+  assert.equal(rules.resolveEscape({ popoverOpen: true, editing: true, hasSelection: true, tool: 'rect' }), 'close-popover');
+  assert.equal(rules.resolveEscape({ editing: true, hasSelection: true, tool: 'rect' }), 'commit-edit');
+  assert.equal(rules.resolveEscape({ draft: true, hasSelection: true, tool: 'rect' }), 'cancel-draft');
+  assert.equal(rules.resolveEscape({ hasSelection: true, tool: 'rect' }), 'deselect');
+  assert.equal(rules.resolveEscape({ tool: 'rect' }), 'switch-to-pan');
+  assert.equal(rules.resolveEscape({ tool: 'pan' }), null);
+  assert.equal(rules.shouldDeleteKeyRemoveSelection('pen', true), true);
+  assert.equal(rules.shouldDeleteKeyRemoveSelection('pen', false), false);
+  assert.deepEqual({ ...rules.UNDO_SELECTION_RULE }, { keepsSelection: true, addsSelection: false });
+  assert.match(PDF_VIEWER_SOURCE, /if \(escapeAction === 'switch-to-pan'\) \{[\s\S]{0,200}if \(!event\.defaultPrevented\) setActiveToolLogged\('pan'/);
+  assert.match(TEXT_EDIT_SOURCE, /commitRef\.current\(\{ flush: true, via: 'escape' \}\)/);
+  assert.match(PDF_VIEWER_SOURCE, /if \(commitMeta\?\.via === 'escape'\) \{[\s\S]{0,400}setPendingSvgSelection\(\{ pageNumber, annotationIndex: committedIndex/);
+  // Survey Markers' Delete is live under every tool, not only Select
+  assert.match(SVG_LAYER_SOURCE, /if \(!selectionKeysLive \|\| !selectedSurveyMarkerId\) return;/);
+});
+
+test('rule 11: handles hide while the selection is moved, resized or rotated', () => {
+  for (const state of ['dragging', 'resizing', 'rotating']) assert.equal(rules.shouldHideSelectionChrome(state), true, state);
+  assert.equal(rules.shouldHideSelectionChrome('idle'), false);
+  assert.match(SVG_LAYER_SOURCE, /data-selection-gesture=\{shouldHideSelectionChrome\(interactionState\) \? 'true' : undefined\}/);
+  assert.match(STYLES_SOURCE, /\[data-selection-gesture="true"\] \.svg-selection-overlay/);
+});
+
+test('rule 12: view changes keep the selection; every tool switch but Select <-> Pan drops it', () => {
+  // DELIBERATE ASSERTION CHANGE (2026-10-04, owner): a shortcut key, a
+  // category tab or the Pan button no longer carry a pick into another tool
+  // ("especially with the eraser": the kept pick took the eraser's first
+  // press). Select <-> Pan keeps it whatever the source.
+  for (const source of ['shortcut-key', 'category-tab', 'pan-button']) {
+    assert.equal(rules.getToolSwitchSelectionClearReason('select', 'pen', { source }), 'tool-change', source);
+    assert.equal(rules.getToolSwitchSelectionClearReason('select', 'eraser', { source }), 'tool-change', source);
+    assert.equal(rules.getToolSwitchSelectionClearReason('select', 'pan', { source }), null, source);
+  }
+  for (const source of ['shortcut-key', 'category-tab', 'pan-button']) assert.ok(!rules.SELECTION_SURVIVES.includes(source), source);
+  assert.equal(rules.getToolSwitchSelectionClearReason('select', 'pen', { source: 'toolbar' }), 'tool-change');
+  assert.equal(rules.getToolSwitchSelectionClearReason('select', 'pen'), 'tool-change');
+  assert.equal(rules.getToolSwitchSelectionClearReason('text-select', 'pen', { source: 'shortcut-key' }), 'text-select-tool-change');
+  for (const change of ['scroll', 'zoom', 'page-change', 'panel-open']) assert.ok(rules.SELECTION_SURVIVES.includes(change), change);
+  const keyboardStart = PDF_VIEWER_SOURCE.indexOf('// Keyboard shortcuts');
+  assert.match(PDF_VIEWER_SOURCE.slice(keyboardStart, keyboardStart + 1500), /const setActiveTool = \(tool\) => setActiveToolLogged\(tool, \{ source: 'shortcut-key' \}\);/);
+  assert.equal((APP_SHELL_SOURCE.match(/\{ source: 'category-tab' \}/g) || []).length, 3);
+  // a page far away unmounts its layer; the pick is kept by id and comes back
+  presence.recordPageSelection(1, []);
+  presence.stashPageSelection(1, { documentId: 'doc', markIds: ['m1'] });
+  assert.equal(presence.hasAnyPageSelection(), true);
+  assert.equal(presence.peekStashedSelection(1, 'other-doc'), null);
+  assert.deepEqual([...presence.peekStashedSelection(1, 'doc').markIds], ['m1']);
+  presence.recordPageSelection(5, [{ id: 'x', typeKey: 'rect' }]); // a pick elsewhere replaces it
+  assert.equal(presence.peekStashedSelection(1, 'doc'), null);
+  presence.recordPageSelection(5, []);
+  assert.equal(presence.hasAnyPageSelection(), false);
+  assert.match(PDF_VIEWER_SOURCE, /keepSelectionAcrossRemount\n/);
+});
+
+test('rule 13: touch taps follow the same table; a tap that picks text arms a double-tap edit', () => {
+  assert.equal(rules.TOUCH_RULES.tapIsClick, true);
+  assert.equal(rules.TOUCH_RULES.holdIsTap, true);
+  assert.equal(rules.TOUCH_RULES.doubleTapEditsText, true);
+  // documented gap: the phone hold menu stays until the ⋮ button carries it
+  assert.equal(rules.TOUCH_RULES.holdOpensMenu, true);
+  assert.match(GRAB_SOURCE, /const notePick = useCallback\(\(key, \{ x, y, pointerType \} = \{\}\) => \{\s*if \(pointerType !== 'touch'\) return;/);
+});
+
+test('the grab hand-off only takes presses that land on the selection', () => {
+  const el = (attrs, parent = null) => ({
+    attrs,
+    parent,
+    getAttribute(name) { return this.attrs[name] ?? null; },
+    closest(selector) {
+      const names = selector.split(',').map((part) => part.trim().replace(/^\[|\]$/g, '').split('=')[0]);
+      for (let node = this; node; node = node.parent) if (names.some((name) => name in node.attrs)) return node;
+      return null;
+    },
+  });
+  const svg = { contains: () => true };
+  const wrap = el({ 'data-annotation-index': '2' });
+  const objects = [{}, {}, { type: 'Textbox' }];
+  assert.equal(routing.classifySelectionGrabTarget(el({}, wrap), svg, { selectedIds: new Set([1]), objects }), null);
+  assert.deepEqual(
+    { ...routing.classifySelectionGrabTarget(el({}, wrap), svg, { selectedIds: new Set([2]), objects }), el: null },
+    { key: 'a:2', text: true, index: 2, calloutId: null, el: null },
+  );
+  assert.equal(routing.classifySelectionGrabTarget(el({ 'data-handle-hit-pad': 'tl' }), svg, {}).key, 'handle');
+  assert.equal(routing.isPageCalloutSelected([{ id: 'c1', pageNumber: 2 }], new Set(['c1']), 2), true);
+  assert.equal(routing.isPageCalloutSelected([{ id: 'c1', pageNumber: 2 }], new Set(['c1']), 3), false);
 });

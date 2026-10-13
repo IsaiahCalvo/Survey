@@ -4,27 +4,15 @@ import {
   APPLIED_REDACTION_FILL_COLOR,
   PENDING_REDACTION_OUTLINE_COLOR,
 } from '../utils/pdfRedactionAppearance.js';
-
-const hasCoarsePointer = () => (
-  typeof window !== 'undefined'
-  && typeof window.matchMedia === 'function'
-  && window.matchMedia('(pointer: coarse)').matches
-);
+// Polish 3 (2026-10-04): the shared hook, not a copy of it - this file held a
+// line-for-line duplicate of useCoarsePointer's state and media-query effect.
+import useCoarsePointer from '../hooks/useCoarsePointer.js';
 
 export default function PdfjsRedactionMarkLayer({ pdf, pageNumber, excludedAnnotationIds = [] }) {
   const [marks, setMarks] = useState([]);
   const [hoveredMarkId, setHoveredMarkId] = useState(null);
   const [previewMarkId, setPreviewMarkId] = useState(null);
-  const [isCoarsePointer, setIsCoarsePointer] = useState(hasCoarsePointer);
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
-    const coarseQuery = window.matchMedia('(pointer: coarse)');
-    const update = () => setIsCoarsePointer(coarseQuery.matches);
-    update();
-    coarseQuery.addEventListener?.('change', update);
-    return () => coarseQuery.removeEventListener?.('change', update);
-  }, []);
+  const isCoarsePointer = useCoarsePointer();
 
   useEffect(() => {
     if (!isCoarsePointer || previewMarkId === null) return undefined;

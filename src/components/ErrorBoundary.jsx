@@ -11,6 +11,7 @@ import React from 'react';
 import { COLORS, TYPOGRAPHY, BORDERS } from '../theme';
 import Icon from '../Icons';
 import { serializeErrorForLog, formatErrorForDisplay } from './errorBoundarySerialize';
+import { recordReactCrash } from '../utils/crashLog';
 
 /**
  * ErrorBoundary - Catches errors in child components and displays fallback UI
@@ -31,6 +32,8 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     console.error('ErrorBoundary caught an error:', serializeErrorForLog(error), errorInfo);
+    // Kept on this device for Settings -> Crash reports.
+    try { recordReactCrash(error, errorInfo?.componentStack); } catch { /* never throw from here */ }
     this.setState({
       error,
       errorInfo,

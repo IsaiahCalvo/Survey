@@ -32,6 +32,11 @@ import {
   sendAccessRemovedEmail,
 } from '../services/shareEmailService';
 import { copyTextToClipboard } from '../utils/clipboard';
+import { grantRememberedDocumentTemplates } from '../services/sharedTemplates.js';
+import { supabase } from '../supabaseClient';
+import { accessInviteRows } from './accessRows';
+import { presenceInitials } from '../components/presenceIdentity.js';
+import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
 import { Icon } from './HubShell';
 import { C } from '../uiPalette';
 
@@ -39,27 +44,23 @@ import { C } from '../uiPalette';
 const ROLES = ['Owner', 'Editor', 'Viewer'];
 const MONO_FONT = '"JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace';
 
-/* Avatar colours for collaborators — the same identity palette and the same
-   deterministic pick as ManageTeamModal and ProjectsFolderTree, so one person
-   wears one colour everywhere. An owner keeps gold.
-   UX 2026-09-17: every non-owner here used to be the SAME #5fbf83 green, which
-   told you nothing about who they were and read as a status ("all good") in an
-   app where green means synced. These colours are identity, never state. */
-const COLLAB_COLORS = ['#5fbf83', '#7aa2f7', '#b48ead', '#8fbcbb', '#cf9f6f'];
-const colorFor = (seed) => {
-  const str = String(seed || '');
-  let hash = 0;
-  for (let i = 0; i < str.length; i += 1) hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
-  return COLLAB_COLORS[hash % COLLAB_COLORS.length];
-};
+/* Avatar colours for collaborators: each person's own pastel from their user
+   id (utils/userColors.js, owner 2026-10-07), the one palette ManageTeamModal,
+   ProjectsFolderTree, the account button and the viewer use, so one person
+   wears one colour everywhere - an owner too (no gold: gold means selected).
+   These colours are identity, never state. A pending invite stays grey:
+   nobody is active on it yet. */
+const colorFor = (seed) => userColorFill(seed);
 
 function roleLabel(role) {
   const r = String(role || '').toLowerCase();
   return r.charAt(0).toUpperCase() + r.slice(1);
 }
 
+/* The one app-wide initials rule (presenceIdentity.js): an email gives its
+   first and last name part ("dana.smith@…" -> "DS"), not just "D". */
 function initialsOf(name) {
-  return (name || '').trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase() || '-';
+  return String(name || '').trim() ? presenceInitials(name) : '-';
 }
 
 function labelForKind(kind) {
@@ -155,6 +156,9 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
       return;
     }
     setStatus(`Updated ${member.email || 'collaborator'} to ${roleLabel(next)}.`);
+    // Their survey template role follows (editor edits, viewer uses only);
+    // the templates this device saw the document use. Fire-and-forget.
+    void grantRememberedDocumentTemplates({ client: supabase, documentId, user: currentUser });
 
     // Email best-effort.
     if (member.email) {
@@ -225,25 +229,26 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
 
   if (!open) return null;
 
-  const pendingInvites = invites.filter((i) => !i.accepted_at && !i.revoked_at && new Date(i.expires_at) > new Date());
-  const activeLinks = pendingInvites.filter((i) => !i.target_email);
-  const emailPending = pendingInvites.filter((i) => i.target_email);
+  // One person, one row: an email invite for someone who is already an active
+  // member (e.g. their invite email failed after access was granted) is not
+  // listed again as Pending with Resend. See accessRows.js.
+  const { links: activeLinks, emails: emailPending } = accessInviteRows(invites, members);
 
   return (
     <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: C.scrim, backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1300, fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' }}>
-        <div onClick={(e) => e.stopPropagation()} style={{ width: 620, maxWidth: '94vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 10, boxShadow: '0 24px 60px rgba(0,0,0,0.55)', color: C.ink, overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '88vh' }}>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: C.scrim, backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1300, fontFamily: 'var(--font-ui)' }}>
+        <div onClick={(e) => e.stopPropagation()} style={{ width: 620, maxWidth: '94vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '88vh' }}>
           <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${C.rule}`, display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ width: 3, height: 30, background: C.gold, borderRadius: 2, flex: 'none', marginRight: 10 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>{labelForKind(kind)}</div>
+              <div style={{ fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600 }}>{labelForKind(kind)}</div>
               <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{documentName}</div>
             </div>
             <button onClick={() => setInviteOpen(true)} data-kal31-invite-btn="true" className="hub-btn hub-btn--primary">Invite</button>
             <button onClick={onClose} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={13} /></button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 18px 6px', borderBottom: `1px solid ${C.rule}`, fontSize: 10.5, letterSpacing: 0.14, textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 18px 6px', borderBottom: `1px solid ${C.rule}`, fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600 }}>
             <span />
             <span>Users</span>
             <span>Role</span>
@@ -254,7 +259,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
           <div className="slim-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '6px 8px 12px', display: 'flex', flexDirection: 'column', gap: 2 }}>
             {loading && <div style={{ padding: '20px 12px', color: C.muted, fontSize: 12 }}>Loading collaborators…</div>}
 
-            {!loading && members.length === 0 && pendingInvites.length === 0 && (
+            {!loading && members.length === 0 && emailPending.length === 0 && activeLinks.length === 0 && (
               <div style={{ padding: '20px 12px', color: C.muted, fontSize: 12 }}>No collaborators yet. Use Invite to add one.</div>
             )}
 
@@ -265,7 +270,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
               const isLastOwner = rl === 'owner' && ownerCount <= 1;
               return (
                 <div key={m.id || `${m.user_id}-${m.document_id}`} data-kal31-row="member" data-kal31-role={rl} style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, height: 56, boxSizing: 'border-box' }}>
-                  <div style={{ width: 30, height: 30, borderRadius: '50%', background: rl === 'owner' ? C.gold : colorFor(m.user_id || m.user?.email || m.email), color: 'var(--accent-text)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, flex: 'none' }}>{initials}</div>
+                  <div data-user-avatar="" style={{ width: 30, height: 30, borderRadius: '50%', background: colorFor(m.user_id || m.user?.email || m.email), color: USER_INITIALS_INK, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 600, flex: 'none' }}>{initials}</div>
                   <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.user?.email || m.email || 'Unknown'}</div>
                     <div style={{ fontFamily: MONO_FONT, fontSize: 11, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.user_id}</div>
@@ -278,7 +283,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                   >
                     {ROLES.map((role) => <option key={role}>{role}</option>)}
                   </select>
-                  <div style={{ fontSize: 11.5, color: 'var(--text-2)', fontWeight: 600 }}>{m.status === 'active' ? 'Active' : (m.status || 'Active')}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-2)', fontWeight: 600 }}>{m.status === 'active' ? 'Active' : (m.status || 'Active')}</div>
                   <button
                     disabled={busy || isLastOwner}
                     onClick={() => handleRemove(m)}
@@ -295,14 +300,14 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
 
             {/* Pending email invites. */}
             {emailPending.map((inv) => (
-              <div key={inv.id} data-kal31-row="invite" style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, height: 56, boxSizing: 'border-box', background: 'var(--accent-soft)' }}>
+              <div key={inv.id} data-kal31-row="invite" style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, height: 56, boxSizing: 'border-box', background: 'var(--surface-2)' }}>
                 <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--text-3)', color: 'var(--accent-text)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, flex: 'none' }}>{initialsOf(inv.target_email)}</div>
                 <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{inv.target_email}</div>
                   <div style={{ fontFamily: MONO_FONT, fontSize: 11, color: C.muted }}>expires {new Date(inv.expires_at).toLocaleDateString()}</div>
                 </div>
                 <div style={{ fontSize: 12, color: C.inkSoft }}>{roleLabel(inv.intended_role)}</div>
-                <div style={{ fontSize: 11.5, color: C.gold, fontWeight: 600 }}>Pending</div>
+                <div style={{ fontSize: 12, color: C.gold, fontWeight: 600 }}>Pending</div>
                 <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                   <button disabled={busy} onClick={() => handleResend(inv)} className="hub-btn">Resend</button>
                   <button disabled={busy} onClick={() => handleRevoke(inv)} className="hub-btn is-danger">Revoke</button>
@@ -315,7 +320,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
               <div style={{ marginTop: 6, padding: '6px 4px', borderTop: `1px dashed ${C.rule}` }}>
                 <button
                   onClick={() => setLinksOpen((o) => !o)}
-                  style={{ background: 'transparent', border: 0, color: C.muted, fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'pointer', padding: '8px 14px', display: 'block', width: '100%', textAlign: 'left', fontFamily: 'inherit' }}
+                  style={{ background: 'transparent', border: 0, color: C.muted, fontSize: 11, fontWeight: 600, letterSpacing: 0, cursor: 'pointer', padding: '8px 14px', display: 'block', width: '100%', textAlign: 'left', fontFamily: 'inherit' }}
                 >
                   {linksOpen ? '▾' : '▸'} Active share links ({activeLinks.length})
                 </button>
@@ -350,7 +355,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
           )}
 
           <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 10.5, color: C.muted, letterSpacing: 0.06, textTransform: 'uppercase', fontWeight: 700 }}>
+            <span style={{ fontSize: 11, color: C.muted, letterSpacing: 0, fontWeight: 600 }}>
               {members.length} member{members.length === 1 ? '' : 's'} · {emailPending.length} pending · {activeLinks.length} link{activeLinks.length === 1 ? '' : 's'}
             </span>
             <button onClick={onClose} className="hub-btn hub-btn--primary">Done</button>

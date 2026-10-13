@@ -117,7 +117,7 @@ test('the fitted tool strip paints 20px controls and hits them at 44px', () => {
   // (the hairline under it) instead of #202126 and #090a0d, which were this one
   // stylesheet's own greys. The GEOMETRY this assertion exists for — paint to
   // 35px, a 1px rule to 36px, transparent after — is byte-for-byte unchanged.
-  assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,3000}background: linear-gradient\(to bottom, var\(--surface-1\) 0 35px, var\(--surface-0\) 35px 36px, transparent 36px\);/);
+  assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,3000}background: linear-gradient\(to bottom, var\(--panel-bg\) 0 35px, var\(--surface-0\) 35px 36px, transparent 36px\);/);
   // The 8px below the painted bar belongs to the page: the bar clips itself to
   // its painted band, which removes that strip from hit testing as well as from
   // painting, while leaving the bar a scroll container.
@@ -191,7 +191,9 @@ test('nested Entities actions and picker use explicit top-layer ownership', () =
   const focusTrap = read('../src/home/useModalFocusTrap.js');
   assert.match(share, /useModalFocusTrap\(\{[\s\S]{0,180}initialFocusRef: closeRef/);
   assert.match(share, /role="dialog"[\s\S]{0,100}data-modal-focus-layer="true"/);
-  assert.match(templates, /aria-label="Move or copy items"[\s\S]{0,100}data-modal-focus-layer="true"/);
+  // Move and Copy are separate actions (owner 2026-10-02); the one dialog is
+  // named for the mode it opened in.
+  assert.match(templates, /aria-label=\{moveModal\.mode === 'copy' \? 'Copy items' : 'Move items'\}[\s\S]{0,100}data-modal-focus-layer="true"/);
   assert.match(picker, /data-modal-focus-layer="true"/);
   assert.match(focusTrap, /hasActiveNestedLayer\(\)/);
 });
@@ -206,8 +208,10 @@ test('named compact mobile controls expose 44px hit areas without resizing heade
   // Owner ruling 2026-09-22 (the two-row phone header): the gold action and the
   // back button sit in row 2, the last row, so their pad takes its 44px out of
   // the header's own bottom padding instead of growing 16px upward into row 1,
-  // where the Select word's pad already hangs 8px below its box. 4 + 28 + 12.
-  assert.match(hubCss, /\.survey-hub \.hub-mobile-primary-action::after,[\s\S]{0,300}inset-block: -4px -12px/);
+  // where the Select word's pad already hangs 8px below its box. The pad is
+  // placed from the padding edge inside the 1px border: 5 + 26 + 13 = 44
+  // (polish round 5; -4/-12 measured 42).
+  assert.match(hubCss, /\.survey-hub \.hub-mobile-primary-action::after,[\s\S]{0,300}inset-block: -5px -13px/);
   assert.match(hubCss, /\.survey-hub \.documents-mobile-filter \{[\s\S]{0,120}height: 44px/);
   assert.match(hubCss, /\.survey-hub \.documents-mobile-filter-visual \{[\s\S]{0,120}height: 28px/);
   // Same ruling: the avatar is one of the three controls on row 1's centre line

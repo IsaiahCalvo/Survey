@@ -5,17 +5,24 @@
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgba(5, 7, 10, 0.76);
+  /* The one modal scrim and blur every other dialog uses (tokens.css
+     --overlay-scrim, KAL-62). It was its own darker 76% wash with no blur. */
+  background: var(--overlay-scrim);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .apply-redactions-modal {
   width: min(460px, 100%);
   padding: 22px;
+  /* The dialog card every other dialog draws (Confirm delete, Sign in):
+     --panel-bg, 10px corners, the same deep shadow. It was a darker
+     --surface-1 card with 12px corners. */
   border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface-1);
+  border-radius: var(--radius-dialog);
+  background: var(--panel-bg);
   color: var(--text-1);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.52);
+  box-shadow: var(--shadow-dialog);
 }
 
 .apply-redactions-modal h2 {
@@ -31,9 +38,11 @@
   line-height: 1.55;
 }
 
+/* Plain reassurance, so plain text (owner amendment (a): gold marks the
+   accent or an active state, never a sentence of information). */
 .apply-redactions-original-note {
   margin-top: 12px !important;
-  color: var(--accent) !important;
+  color: var(--text-1) !important;
 }
 
 .apply-redactions-progress,
@@ -62,11 +71,12 @@
   cursor: pointer;
 }
 
-/* The --surface-2 fill already steps this button up off the --surface-1 modal,
-   so its edge is decoration, not identification (tokens.css revision 4). */
+/* An outlined button on the --panel-bg card: no fill of its own, so its
+   edge is what identifies it and takes --border-strong (tokens.css
+   revision 4: "an outlined button gets the strong EDGE and no lighter fill"). */
 .apply-redactions-cancel {
-  border: 1px solid var(--border);
-  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  background: transparent;
   color: var(--text-2);
 }
 

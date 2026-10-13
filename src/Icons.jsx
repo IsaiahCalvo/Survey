@@ -1,5 +1,6 @@
 // Minimalist SVG Icons Component
 import { getContentTypeIconColor } from './utils/contentTypeColors.js';
+import { AREA_TOOL_GLYPHS, AREA_TOOL_STROKE_WIDTH } from './utils/areaToolGlyphs.js';
 import textBoldUrl from './assets/icons/text-bold.svg';
 import textItalicUrl from './assets/icons/text-italic.svg';
 import textUnderlineUrl from './assets/icons/text-underline.svg';
@@ -7,6 +8,7 @@ import textStrikethroughUrl from './assets/icons/text-strikethrough.svg';
 import textHighlightUrl from './assets/icons/text-highlight.svg';
 import highlighterToolUrl from './assets/icons/highlighter-tool.svg';
 import selectionCursorUrl from './assets/icons/selection-cursor-rounded.svg';
+import selectGroupUrl from './assets/icons/select-group-rounded.svg';
 import lassoSelectUrl from './assets/icons/lasso-select-rounded.svg';
 import textSelectUrl from './assets/icons/text-select-rounded.svg';
 import textSquiggleUrl from './assets/icons/text-squiggle.svg';
@@ -93,6 +95,19 @@ const POLYLINE_ICON_NODES = [
   [14.18, 11.82],
   [19.25, 5.66],
 ];
+
+const renderAreaToolGlyph = (name, size, color, style, className) => {
+  const glyph = AREA_TOOL_GLYPHS[name];
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+      <g transform={glyph.transform} stroke={color} strokeWidth={AREA_TOOL_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
+        {glyph.paths.map((path) => (
+          <path key={path.d} d={path.d} strokeDasharray={path.dasharray} />
+        ))}
+      </g>
+    </svg>
+  );
+};
 
 const renderMaskIcon = (url, size, color, style, className, width = size) => (
   <span
@@ -228,6 +243,44 @@ const ICON_RENDERERS = {
     check: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <path d="M20 6L9 17L4 12" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+
+    // Select mode for a list (owner 2026-10-02: section header actions are
+    // icons, the pair is Select = list-checks and Add = plus). Lucide
+    // list-checks on the house grid and stroke.
+    // Owner 2026-10-02 (debate pick, E5 redrawn): "edit this list" — rows
+    // with a pencil writing on the last one. Used wherever a list header
+    // toggles an edit mode (Bookmarks today). Not the Draw group's pencil.
+    editList: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M3 6h18M3 12h9M3 18h5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M12 21l.75-3 6.1-6.1a1.6 1.6 0 0 1 2.25 2.25L15 20.25z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+    // Spaces Areas tools (owner 2026-10-02, provisional): Rectangle area and
+    // Freehand area. The glyphs live in ONE place, utils/areaToolGlyphs.js
+    // (also read by the tool-group morph), so a pick swaps them there.
+    areaRect: (size, color, style, className) => renderAreaToolGlyph('areaRect', size, color, style, className),
+    areaFreehand: (size, color, style, className) => renderAreaToolGlyph('areaFreehand', size, color, style, className),
+    // Owner 2026-10-02: a Spaces region card's "edit areas" button. Hugeicons
+    // Select 02 (MIT): a plus, a box drawn as edges, and three square corner
+    // handles. Replaces the Draw pencil on each region card. The handles keep
+    // Hugeicons' rx 1 (the owner asked for the exact glyph), so they carry
+    // data-icon-source="hugeicons" and the house 1/9 corner ratio skips them.
+    regionEdit: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M5 2V8M2 5H8" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M20 18L20 7M7 20H18M18 5H12M5 12V18" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="18" y="3" width="4" height="4" rx="1" stroke={color} strokeWidth="1.5" data-icon-source="hugeicons" />
+        <rect x="18" y="18" width="4" height="4" rx="1" stroke={color} strokeWidth="1.5" data-icon-source="hugeicons" />
+        <rect x="3" y="18" width="4" height="4" rx="1" stroke={color} strokeWidth="1.5" data-icon-source="hugeicons" />
+      </svg>
+    ),
+    listChecks: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M3 7L5 9L9 5M3 17L5 19L9 15" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M13 6H21M13 12H21M13 18H21" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
 
@@ -431,8 +484,8 @@ const ICON_RENDERERS = {
     // Page view icons
     pages: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 19" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <rect x="3" y="3" width="9" height="13" rx="1" stroke={color} strokeWidth="1.5" />
-        <rect x="12" y="3" width="9" height="13" rx="1" stroke={color} strokeWidth="1.5" />
+        <rect x="3" y="3" width="9" height="13" rx="1" stroke={color} strokeWidth="1.5" data-icon-source="hugeicons" />
+        <rect x="12" y="3" width="9" height="13" rx="1" stroke={color} strokeWidth="1.5" data-icon-source="hugeicons" />
       </svg>
     ),
 
@@ -542,6 +595,39 @@ const ICON_RENDERERS = {
           <rect x="3" y="6.6" width="12.6" height="10.8" rx={iconCornerRadius(10.8)} />
           <path d="M21 8.4 15.6 12 21 15.6Z" />
         </g>
+      </svg>
+    ),
+
+    // Survey media (owner 2026-10-01): Take photo, Record audio, and the
+    // play mark on a video thumbnail.
+    camera: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <g stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 8.5A1.5 1.5 0 0 1 4.5 7H7.5L9 4.5H15L16.5 7H19.5A1.5 1.5 0 0 1 21 8.5V18A1.5 1.5 0 0 1 19.5 19.5H4.5A1.5 1.5 0 0 1 3 18Z" />
+          <circle cx="12" cy="13" r="3.5" />
+        </g>
+      </svg>
+    ),
+
+    mic: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <g stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 6A3 3 0 0 1 15 6V11A3 3 0 0 1 9 11Z" />
+          <path d="M5.5 11A6.5 6.5 0 0 0 18.5 11M12 17.5V21" />
+        </g>
+      </svg>
+    ),
+
+    play: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M8 5.5V18.5L18.5 12Z" fill={color} stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinejoin="round" />
+      </svg>
+    ),
+
+    // Survey note: add a photo, video or audio clip.
+    paperclip: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M20 11.5L12 19.5A5 5 0 0 1 4.9 12.4L13.4 3.9A3.3 3.3 0 0 1 18.1 8.6L9.7 17A1.7 1.7 0 0 1 7.3 14.6L15 6.9" stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
 
@@ -690,14 +776,18 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
-    // Duplicate icon - two overlapping rounded squares with plus in front
+    // Duplicate — Lucide "copy-plus" (lucide-static v1.49.0, ISC). Owner
+    // 2026-10-01: the page actions (Cut / Copy / Paste / Duplicate / Rotate /
+    // Mirror / Reset) show the Lucide glyphs everywhere; see the note above
+    // `scissors` for the two house adjustments (stroke 1.5, rect rx ratio).
     duplicate: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        {/* Back square */}
-        <rect x="3" y="5" width="14" height="14" rx="1.56" stroke={color} strokeWidth="1.5" fill="none" />
-        {/* Front square with plus */}
-        <rect x="7" y="1" width="14" height="14" rx="1.56" stroke={color} strokeWidth="1.5" fill="none" />
-        <path d="M14 8V14M11 11H17" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <g stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="15" x2="15" y1="12" y2="18" />
+          <line x1="12" x2="18" y1="15" y2="15" />
+          <rect width="14" height="14" x="8" y="8" rx="1.56" ry="1.56" />
+          <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+        </g>
       </svg>
     ),
 
@@ -764,81 +854,123 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
-    // Scissors/Cut icon
+    // Cut / Copy / Paste / Rotate / Mirror / Reset — owner 2026-10-01: the
+    // Lucide glyphs (lucide-static v1.49.0, ISC) everywhere these actions are
+    // offered, phone and desktop. Geometry is Lucide's own, verbatim, on its
+    // 24 grid with round caps and joins; the stroke is the house 1.5 rather
+    // than Lucide's 2 (the 2026-09-16 one-weight ruling at the top of this
+    // file, enforced by tests/iconSetConsistency.test.mjs), and a <rect>'s rx
+    // is the house ninth of its shorter side (copy 2 -> 1.56, the clipboard
+    // clip 1 -> 0.44; same test). Paths are untouched.
+
+    // Cut — Lucide "scissors".
     scissors: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <circle cx="6" cy="6" r="3" stroke={color} strokeWidth="1.5" fill="none" />
-        <circle cx="18" cy="6" r="3" stroke={color} strokeWidth="1.5" fill="none" />
-        <path d="M8.12 8.12L15.88 15.88" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M8.12 15.88L15.88 8.12" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-        <circle cx="6" cy="18" r="3" stroke={color} strokeWidth="1.5" fill="none" />
-        <circle cx="18" cy="18" r="3" stroke={color} strokeWidth="1.5" fill="none" />
+        <g stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="6" cy="6" r="3" />
+          <path d="M8.12 8.12 12 12" />
+          <path d="M20 4 8.12 15.88" />
+          <circle cx="6" cy="18" r="3" />
+          <path d="M14.8 14.8 20 20" />
+        </g>
       </svg>
     ),
 
-    // Copy icon
+    // Copy — Lucide "copy".
     copy: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <rect x="9" y="9" width="13" height="13" rx="1.44" stroke={color} strokeWidth="1.5" fill="none" />
-        <path d="M5 15H4C2.93913 15 1.92172 14.5786 1.17157 13.8284C0.421427 13.0783 0 12.0609 0 11V4C0 2.93913 0.421427 1.92172 1.17157 1.17157C1.92172 0.421427 2.93913 0 4 0H11C12.0609 0 13.0783 0.421427 13.8284 1.17157C14.5786 1.92172 15 2.93913 15 4V5" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <g stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <rect width="14" height="14" x="8" y="8" rx="1.56" ry="1.56" />
+          <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+        </g>
       </svg>
     ),
 
-    // Paste icon - clipboard with paper.
-    // UX 2026-09-16: one weight. This glyph used to carry three (1.5 clipboard,
-    // 1.2 paper, 1.0 text lines) — the only icon in the set that shaded its own
-    // detail. The inner paper rectangle and the fourth text line are gone: at
-    // the house 1.5 weight four lines 2 units apart merge into a block, so the
-    // detail was traded for the shared weight, which is the rule that matters.
+    // Move to — PROVISIONAL (owner 2026-10-02 is still choosing the final
+    // glyph). Copy's two sheets with the back sheet dashed (it leaves) and an
+    // arrow into the front one. Every Move button reads this one renderer, so
+    // swapping the artwork is an edit to these three paths only.
+    moveTo: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <g stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" strokeDasharray="1.5 3" />
+          <rect width="14" height="14" x="8" y="8" rx="1.56" ry="1.56" />
+          <path d="M11.5 15h6.5M15.5 12l3 3-3 3" />
+        </g>
+      </svg>
+    ),
+
+    // Paste — Lucide "clipboard".
     paste: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        {/* Clipboard body */}
-        <rect x="6" y="4" width="12" height="16" rx="1.33" stroke={color} strokeWidth="1.5" fill="none" />
-        {/* Clipboard clip */}
-        <rect x="8" y="2" width="8" height="4" rx="0.44" stroke={color} strokeWidth="1.5" fill="none" />
-        {/* Text lines on the clipboard */}
-        <path d="M9 10H15" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M9 13.5H15" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M9 17H13" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <g stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <rect width="8" height="4" x="8" y="2" rx="0.44" ry="0.44" />
+          <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+        </g>
       </svg>
     ),
 
-    // Rotate icon
+    // Rotate — Lucide "refresh-cw".
     rotate: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M1 4V10H7" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M23 20V14H17" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M20.49 9C19.7967 7.04557 18.4615 5.36328 16.6618 4.21405C14.8621 3.06482 12.6915 2.51013 10.5 2.63024C8.30846 2.75035 6.19479 3.53998 4.5 4.9M3.51 15C4.20334 16.9544 5.53847 18.6367 7.33818 19.786C9.13789 20.9352 11.3085 21.4899 13.5 21.3698C15.6915 21.2496 17.8052 20.46 19.5 19.1" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <g stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+          <path d="M21 3v5h-5" />
+          <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+          <path d="M8 16H3v5" />
+        </g>
       </svg>
     ),
 
-    // Flip horizontal icon
+    // Mirror horizontally — Lucide "triangles-centerline-dashed-vertical"
+    // (two triangles facing each other across a dashed vertical axis).
     flipHorizontal: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M8 3H3C2.44772 3 2 3.44772 2 4V20C2 20.5523 2.44772 21 3 21H8" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M16 3H21C21.5523 3 22 3.44772 22 4V20C22 20.5523 21.5523 21 21 21H16" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M12 2V22" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M8 7L12 3L16 7" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M8 17L12 21L16 17" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <g stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 14v2" />
+          <path d="M12 20v2" />
+          <path d="M12 2v2" />
+          <path d="M12 8v2" />
+          <path d="M20.288 16.703A1 1 0 0022 16V8a1 1 0 00-1.712-.703l-3.99 3.991a1 1 0 00-.001 1.424z" />
+          <path d="M3.712 16.703A1 1 0 012 16V8a1 1 0 011.712-.703l3.99 3.991a1 1 0 01.001 1.424z" />
+        </g>
       </svg>
     ),
 
-    // Flip vertical icon
+    // Mirror vertically — Lucide "triangles-centerline-dashed-horizontal".
     flipVertical: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M3 8V3C3 2.44772 3.44772 2 4 2H20C20.5523 2 21 2.44772 21 3V8" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M3 16V21C3 21.5523 3.44772 22 4 22H20C20.5523 22 21 21.5523 21 21V16" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M2 12H22" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M7 8L3 12L7 16" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M17 8L21 12L17 16" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <g stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M10 12H8" />
+          <path d="M16 12h-2" />
+          <path d="M22 12h-2" />
+          <path d="M4 12H2" />
+          <path d="M7.298 20.288A1 1 0 008 22h8a1 1 0 00.703-1.712l-3.991-3.99a1 1 0 00-1.424-.001z" />
+          <path d="M7.298 3.712A1 1 0 018 2h8a1 1 0 01.703 1.712l-3.991 3.99a1 1 0 01-1.424.001z" />
+        </g>
       </svg>
     ),
 
-    // Reset icon - checkmark in circle
+    // Reset — Lucide "rotate-cw-fading-clock" turned to run COUNTER-clockwise
+    // (owner 2026-10-01: reset winds the page back). Every path except the
+    // clock hands is mirrored about the vertical centre line x = 12 (x -> 24-x,
+    // relative dx negated, arc sweep flags flipped), so the arrowhead now
+    // points back from 12 o'clock towards 10 o'clock and the fading dashes run
+    // down the left. The hands "M12 7v5l4 2" are Lucide's, untouched.
     reset: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <circle cx="12" cy="12" r="10" stroke={color} strokeWidth="1.5" fill="none" />
-        <path d="M8 12L11 15L16 9" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <g stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 3a9.75 9.75 0 0 0-6.74 2.74" />
+          <path d="M5.26 5.74 3 8" />
+          <path d="M3 8V3" />
+          <path d="M16.5 19.794c6-3.464 6-12.124 0-15.588" />
+          <path d="M16.5 4.206A9 9 0 0 0 12 3" />
+          <path d="M12 7v5l4 2" />
+          <path d="M10 20.775A9 9 0 0 0 12 21" />
+          <path d="M5 17.656a9 9 0 0 0 1.5 1.456" />
+          <path d="M3 12a9 9 0 0 0 .228 2" />
+          <path d="M3 8h5" />
+        </g>
       </svg>
     ),
     // Undo icon
@@ -911,14 +1043,16 @@ const ICON_RENDERERS = {
     formatHighlight: (size, color, style, className) => renderMaskIcon(textHighlightUrl, size, color, style, className),
     highlighterTool: (size, color, style, className) => renderMaskIcon(highlighterToolUrl, size, color, style, className),
     selectCursor: (size, color, style, className) => renderMaskIcon(selectionCursorUrl, size, color, style, className),
+    // The Select tool GROUP button (desktop cluster, phone rail): the plain
+    // rounded cursor. Box / Lasso / Text keep their own glyphs.
+    selectGroup: (size, color, style, className) => renderMaskIcon(selectGroupUrl, size, color, style, className),
+    // 2026-10-02 optical balance: Box / Lasso / Text Select are sized by their
+    // assets, not here. Text Select used to carry a fixed translateY(2px) — 3
+    // grid units at 16px and 4 at the 12px phone strip — which sat it low and
+    // made it read smaller. Its asset is now drawn centred on the grid instead,
+    // so the placement scales with the glyph. Do not add a nudge back here.
     lassoSelect: (size, color, style, className) => renderMaskIcon(lassoSelectUrl, size, color, style, className),
-    textSelect: (size, color, style, className) => renderMaskIcon(
-      textSelectUrl,
-      size,
-      color,
-      { ...style, transform: `${style?.transform || ''} translateY(2px)`.trim() },
-      className,
-    ),
+    textSelect: (size, color, style, className) => renderMaskIcon(textSelectUrl, size, color, style, className),
     formatSquiggle: (size, color, style, className) => renderMaskIcon(textSquiggleUrl, size, color, style, className),
     formatHyperlink: (size, color, style, className) => renderMaskIcon(textHyperlinkUrl, size, color, style, className),
     formatRedact: (size, color, style, className) => renderMaskIcon(textRedactUrl, size, color, style, className),
@@ -1071,17 +1205,15 @@ const ICON_ALIASES = {
   redact: 'formatRedact',
 };
 
-const DEFAULT_CONTENT_TYPE_BY_ICON = {
-  document: 'document',
-  template: 'template',
-};
-
+/* Owner 2026-10-02 (phone/desktop consistency): an icon given no colour draws
+   in currentColor - ALWAYS, whatever its name. The document and template
+   glyphs used to fall back to their content-type colours (#7ab7e6 / #c293e6)
+   on their own, so a document glyph on the gold "Go to documents" button drew
+   blue. A row that wants the content-type colour asks for it with
+   `contentType` (Archive rows, project file rows, the hub empty states). */
 const Icon = ({ name, size = 16, color, contentType, style, className }) => {
   const rendererName = ICON_ALIASES[name] || name;
-  const resolvedColor = color || getContentTypeIconColor(
-    contentType || DEFAULT_CONTENT_TYPE_BY_ICON[name],
-    'currentColor',
-  );
+  const resolvedColor = color || getContentTypeIconColor(contentType, 'currentColor');
   return ICON_RENDERERS[rendererName]?.(size, resolvedColor, style, className) ?? null;
 };
 

@@ -107,7 +107,6 @@ test('every phone control that carries a glyph holds one glyph:control ratio', (
     { name: 'rail chip', control: pxValue(root, '--mobile-rail-chip'), glyph: constant('RAIL_GLYPH') },
     { name: 'sub-tool chip', control: pxValue(root, '--mobile-rail-sub-chip'), glyph: constant('SUBTOOL_GLYPH') },
     { name: 'header control', control: pxValue(root, '--mobile-control-h'), glyph: constant('HEADER_GLYPH') },
-    { name: 'dock control', control: pxValue(root, '--mobile-dock-control-h'), glyph: constant('DOCK_GLYPH') },
     { name: 'strip control', control: pxValue(root, '--mobile-strip-control-h'), glyph: constant('STRIP_GLYPH') },
     { name: 'zoom stepper (minus)', control: stepper, glyph: glyphSizeInside(chrome, 'aria-label="Zoom out"', 'minus') },
     { name: 'zoom stepper (plus)', control: stepper, glyph: glyphSizeInside(chrome, 'aria-label="Zoom in"', 'plus') },
@@ -123,4 +122,18 @@ test('every phone control that carries a glyph holds one glyph:control ratio', (
     [],
     `phone controls outside the ${RATIO_MIN}-${RATIO_MAX} glyph:control band - ${offenders.join('; ')}`,
   );
+});
+
+test('the dock draws its glyphs larger than the band, by owner ruling', () => {
+  // RULED CHANGE 2026-10-01 (owner, iPhone): "The icons for pages, search, and
+  // bookmarks, I would prefer them to be bigger. I don't want the actual row
+  // that they're in to grow", then "make the Spaces and Survey dock icons
+  // match too". Every dock glyph is 20-in-30 (0.667), above the band the other
+  // tiers keep; the control itself is unchanged.
+  const root = block(css, ':root');
+  const control = pxValue(root, '--mobile-dock-control-h');
+  const constant = (name) => Number(chrome.match(new RegExp(`const ${name} = (\\d+);`))?.[1]);
+  assert.equal(constant('DOCK_GLYPH'), 20);
+  assert.equal(constant('DOCK_HUB_GLYPH'), 20);
+  assert.equal(control, 30);
 });

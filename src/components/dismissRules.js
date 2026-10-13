@@ -21,8 +21,9 @@
  * R3 Typing. While you are typing (the canvas text editor, or a field inside
  *    an open popover or a search box), the first press outside only ends the
  *    typing (commits it) and does nothing else — except controls that act on
- *    the text (formatting bar, colour controls) and other popover openers and
- *    text/title fields, which work at once.
+ *    the text (formatting bar, colour controls), other popover openers and
+ *    text/title fields, and (owner 2026-10-04) the TOOL buttons: a press on a
+ *    tool commits the text AND arms that tool in the same press.
  * R4 Blocking windows block. Modal dialogs and sheets with a dimmed backdrop:
  *    a press on the backdrop only closes the window (destructive confirms:
  *    nothing) and never reaches what is behind it. They are NOT registered
@@ -56,6 +57,16 @@ export const TYPING_SELECTOR = 'input:not([type="checkbox"]):not([type="radio"])
  * AND works at once. Surfaces add their own (e.g. colour swatches).
  */
 export const OPENER_OR_FIELD_SELECTOR = `[aria-haspopup]:not([aria-haspopup="false"]), [data-dismiss-opener], ${TYPING_SELECTOR}`;
+
+/**
+ * R3 exception (owner 2026-10-04): "the first click on any tool button while a
+ * text box / callout is being edited commits it AND switches to that tool in
+ * the same click". Every tool button (Pan, Select and its modes, the group
+ * buttons, each group's tools — desktop bar and phone rail) carries
+ * `data-tool-switch`. The press is not consumed: the editor's own outside
+ * press commits the text and the button's click arms the tool.
+ */
+export const TOOL_SWITCH_SELECTOR = '[data-tool-switch]';
 
 /**
  * Anything on the PDF viewing area that is NOT bare page: a control, a link,
@@ -262,6 +273,7 @@ function typingPressToEnd(target) {
     if (!target) return null;
     if (safeContains(entry, target)) return null;
     if (target.closest(OPENER_OR_FIELD_SELECTOR)) return null;
+    if (target.closest(TOOL_SWITCH_SELECTOR)) return null;
     if (entry.passes?.(target)) return null;
     if (openPopovers.some((other) => other !== entry && safeContains(other, target))) return null;
     return { entry, field };

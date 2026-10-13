@@ -59,14 +59,14 @@ export async function runDesktopSurveyTemplateWorkflow({ page, baseUrl, artifact
   await title.waitFor({ state: 'visible' });
   await commit(title, templateName);
 
-  await center.getByTitle('New module').click();
+  await center.getByRole('button', { name: 'Add module', exact: true }).click();
   const moduleInput = center.locator('[data-module-tab-id] input.inline-edit').last();
   await moduleInput.waitFor({ state: 'visible' });
-  const moduleId = invariant(await moduleInput.locator('xpath=..').getAttribute('data-module-tab-id'), 'Desktop module has no id');
+  const moduleId = invariant(await moduleInput.locator('xpath=ancestor::*[@data-module-tab-id][1]').getAttribute('data-module-tab-id'), 'Desktop module has no id');
   const moduleName = 'Desktop Walkthrough Module';
   await commit(moduleInput, moduleName);
 
-  await center.getByRole('button', { name: 'New category', exact: true }).click();
+  await center.getByRole('button', { name: 'Add category', exact: true }).click();
   const freshCategory = center.locator('.card-line:has(input[value^="Category "])').last();
   await freshCategory.waitFor({ state: 'visible' });
   const categoryName = 'Desktop Survey Category';
@@ -109,7 +109,7 @@ export async function runDesktopSurveyTemplateWorkflow({ page, baseUrl, artifact
   await disposableItem.locator('xpath=..').getByRole('button', { name: 'Delete item', exact: true }).click();
 
   // Disposable category delete via the center-pane Select controls.
-  await center.getByRole('button', { name: 'New category', exact: true }).click();
+  await center.getByRole('button', { name: 'Add category', exact: true }).click();
   const disposableCategory = center.locator('.card-line:has(input[value^="Category "])').last();
   await commit(disposableCategory.locator('input.cat-title').first(), 'Disposable desktop category');
   const categorySelect = center.getByRole('button', { name: 'Select', exact: true }).nth(1);
@@ -131,7 +131,7 @@ export async function runDesktopSurveyTemplateWorkflow({ page, baseUrl, artifact
   await center.getByRole('button', { name: 'Done', exact: true }).click();
 
   // Disposable module delete via shared edit modal.
-  await center.getByTitle('New module').click();
+  await center.getByRole('button', { name: 'Add module', exact: true }).click();
   const disposableModuleInput = center.locator('[data-module-tab-id] input.inline-edit').last();
   await disposableModuleInput.waitFor({ state: 'visible' });
   await commit(disposableModuleInput, 'Disposable desktop module');

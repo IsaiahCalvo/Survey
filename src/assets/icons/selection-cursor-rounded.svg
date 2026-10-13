@@ -1,19 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-labelledby="title desc">
-  <title id="title">Select</title>
-  <desc id="desc">A rounded stroke cursor for regular and marquee selection.</desc>
+  <title id="title">Box select</title>
+  <desc id="desc">A cursor over the corner of a dashed selection box.</desc>
   <!--
-    2026-09-16: stroke-width is the house 1.5, down from 1.75. The tool rail and
-    the desktop top row are ONE set at ONE size now, and 1.75 made Select the
-    second-heaviest glyph in a row whose lightest was 1.5 (owner ruling: same
-    stroke weight across the set).
+    2026-10-02 (owner pick): Hugeicons "Cursor Rectangle Selection 02" (MIT),
+    replacing the bare arrow. Every Box Select surface (desktop tool bar and
+    its Box / Lasso / Text toggle, phone rail and strip, the tool-group morph)
+    draws this file through Icon `selectCursor`.
+    Optical balance, measured like the 2026-10-02 Select-trio pass: the
+    Hugeicons drawing runs edge to edge (ink 21.5 units) where the set sits in
+    a 19.5-20 envelope, so it is scaled 0.93 about the centre (ink 20.1,
+    centred on 12, 12) and stroked 1.61, which resolves to the house 1.5.
+    Lasso Select draws the same cursor, at the same size and place.
   -->
-  <path
-    transform="translate(12 12) scale(1) translate(-12 -12)"
-    d="M9.80282 4.62973L15.8364 6.99069C19.3164 8.35243 21.0564 9.03329 20.9987 10.1133C20.941 11.1934 19.1251 11.6886 15.4933 12.6791C14.412 12.974 13.8713 13.1215 13.4964 13.4963C13.1215 13.8712 12.9741 14.4119 12.6791 15.4933C11.6887 19.125 11.1934 20.9409 10.1134 20.9986C9.03335 21.0563 8.35249 19.3163 6.99075 15.8363L4.62979 9.80276C3.20411 6.15934 2.49127 4.33764 3.41448 3.41442C4.3377 2.49121 6.15941 3.20405 9.80282 4.62973Z"
+  <g
+    transform="translate(12 12) scale(0.93) translate(-12 -12)"
     fill="none"
     stroke="currentColor"
-    stroke-width="1.5"
+    stroke-width="1.61"
     stroke-linecap="round"
     stroke-linejoin="round"
-  />
+  >
+    <path d="M14.5352 11.0865L18.5575 12.6605C20.8775 13.5683 22.0375 14.0222 21.9991 14.7422C21.9606 15.4622 20.75 15.7924 18.3288 16.4527C17.6079 16.6493 17.2475 16.7476 16.9976 16.9976C16.7476 17.2475 16.6493 17.6079 16.4527 18.3288C15.7924 20.75 15.4622 21.9606 14.7422 21.9991C14.0222 22.0375 13.5683 20.8775 12.6605 18.5575L11.0865 14.5352C10.136 12.1062 9.6608 10.8918 10.2763 10.2763C10.8918 9.6608 12.1062 10.136 14.5352 11.0865Z" />
+    <path d="M2 8.5V11.5M11.5 2H8.5M8.5 18H9M18 9V8.5M4.5 18C3.11929 18 2 16.8807 2 15.5M2 4.5C2 3.11929 3.11929 2 4.5 2M18 4.5C18 3.11929 16.8807 2 15.5 2" />
+  </g>
 </svg>

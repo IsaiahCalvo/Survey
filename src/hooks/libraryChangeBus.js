@@ -29,3 +29,26 @@ export function notifyLibraryChanged() {
     }
   }
 }
+
+// Templates only (2026-10-07, shared templates): a template another person
+// shared with you may land while the app is open; the templates lists read
+// again without making the document and project lists refetch too.
+const templateListeners = new Set();
+
+/** Subscribe to template-list changes. Returns an unsubscribe function. */
+export function subscribeTemplatesChange(listener) {
+  if (typeof listener !== 'function') return () => {};
+  templateListeners.add(listener);
+  return () => templateListeners.delete(listener);
+}
+
+/** Announce that the templates lists should read again. */
+export function notifyTemplatesChanged() {
+  for (const listener of [...templateListeners]) {
+    try {
+      listener();
+    } catch (err) {
+      console.warn('[library-change] template subscriber failed:', err);
+    }
+  }
+}

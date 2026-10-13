@@ -47,11 +47,15 @@ export const HANDLE_HIT_PAD_FINE_MARGIN_PX = 4;
 // Apple HIG minimum (44 pt) — also what the polygon vertex grabbers already used.
 export const HANDLE_HIT_PAD_COARSE_PX = 44;
 
-// Transparent stroke painted along a mark so it can be selected by clicking
-// near its outline rather than exactly on it. 12 is what every mark ships with
-// today (+-6 px either side of the line); a finger gets double that.
-export const MARK_HIT_STROKE_FINE_PX = 12;
-export const MARK_HIT_STROKE_COARSE_PX = 24;
+// How far past a mark's real ink a pointer still counts as "on" it, in CSS px
+// each side, whatever the zoom and however much the mark was enlarged.
+// Owner 2026-10-04 ("I get the blue ring way earlier than when my cursor
+// touches it"): the old band was a 12-unit stroke in the MARK's own units, so
+// zoom and an enlarged mark's scale both widened it (a pen stroke scaled 4x
+// caught the pointer ~24 page units off its ink). A finger keeps a wider band
+// (it cannot hover, and it is not a fine pointer).
+export const MARK_HIT_TOLERANCE_FINE_PX = 4;
+export const MARK_HIT_TOLERANCE_COARSE_PX = 12;
 
 /**
  * Base pad for the current pointer kind, in CSS px.
@@ -62,11 +66,46 @@ export function getHandleHitPadPx(isCoarsePointer) {
 }
 
 /**
- * Transparent hit stroke for a mark's outline, in CSS px.
+ * Hit tolerance past the ink, in CSS px, for the current pointer kind.
  * @param {boolean} isCoarsePointer true when the primary pointer is a finger.
  */
-export function getMarkHitStrokePx(isCoarsePointer) {
-  return isCoarsePointer ? MARK_HIT_STROKE_COARSE_PX : MARK_HIT_STROKE_FINE_PX;
+export function getMarkHitTolerancePx(isCoarsePointer) {
+  return isCoarsePointer ? MARK_HIT_TOLERANCE_COARSE_PX : MARK_HIT_TOLERANCE_FINE_PX;
+}
+
+/**
+ * Width of a mark's invisible hit stroke, in the units that stroke is drawn
+ * in: the ink's own drawn width plus a fixed screen tolerance each side.
+ * Hover (halo), click-select and the Pan / tool hit test all read this one
+ * band, so they always agree.
+ *
+ * @param {object} opts
+ * @param {number} opts.inkWidth    the visible stroke width, same units
+ * @param {number} opts.unitsPerPx  the stroke's units per CSS px: the layer's
+ *   inverseScale for page units, inverseScale / scale under a scaling
+ *   transform, 1 for a non-scaling-stroke
+ * @param {boolean} [opts.isCoarsePointer]
+ */
+export function getMarkHitBandWidth({ inkWidth = 0, unitsPerPx = 1, isCoarsePointer = false } = {}) {
+  const ink = Math.max(0, Number(inkWidth) || 0);
+  const perPx = Number(unitsPerPx);
+  const safePerPx = Number.isFinite(perPx) && perPx > 0 ? perPx : 1;
+  return ink + 2 * getMarkHitTolerancePx(isCoarsePointer) * safePerPx;
+}
+
+/**
+ * The largest axis scale of an SVG `matrix(a b c d e f)` transform — how much
+ * one unit inside it grows on the page along its most-stretched axis (an
+ * enlarged mark is often stretched more one way than the other). Dividing the
+ * screen tolerance by this keeps the band within the tolerance in every
+ * direction. 1 for anything that is not a matrix.
+ */
+export function getSvgMatrixMaxScale(transform) {
+  const match = /matrix\(\s*([^)]*)\)/.exec(String(transform || ''));
+  if (!match) return 1;
+  const [a, b, c, d] = match[1].split(/[\s,]+/).map(Number);
+  const scale = Math.max(Math.hypot(a, b), Math.hypot(c, d));
+  return Number.isFinite(scale) && scale > 0 ? scale : 1;
 }
 
 /**

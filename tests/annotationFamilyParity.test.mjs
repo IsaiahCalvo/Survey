@@ -98,7 +98,9 @@ test('group right-click z-order moves selected callouts with the shapes (one sha
   const menu = readFileSync(new URL('../src/hooks/useAnnotationContextMenu.jsx', import.meta.url), 'utf8');
   const reorder = sliceFrom(menu, 'const reorderAll = (direction) => {', 1800);
   assert.match(reorder, /reorderSelectionInStack\(page\.objects, \[\.\.\.sortedAsc, \.\.\.calloutSlots\], direction\)/);
-  assert.match(VIEWER, /documentOwnerId,\n\s*selectedCalloutIds,\n\s*\}\)\}/);
+  // selectedCalloutIds reaches the menu (the page menu bundle follows it
+  // since 2026-10-07).
+  assert.match(VIEWER, /documentOwnerId,\n\s*selectedCalloutIds,\n/);
 });
 
 test('eraser: callouts follow the same space-scope rule as every other mark', () => {

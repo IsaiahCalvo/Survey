@@ -3,8 +3,16 @@ import './utils/randomUUIDPolyfill';
 import './utils/blobArrayBuffer';
 import { sanitizeConsoleLogText, shouldCaptureConsoleLine } from './utils/consoleLogFilter';
 import { installSurveyAnalytics } from './utils/surveyAnalytics';
+import { installCrashLog, setCrashLogBuild } from './utils/crashLog';
 
 installSurveyAnalytics();
+// Crash reports (Settings -> Crash reports): kept on this device only.
+installCrashLog({
+  build: [
+    typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'unknown',
+    typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STAMP__ ? __BUILD_STAMP__ : null,
+  ].filter(Boolean).join(' '),
+});
 
 // Stale-deploy recovery: when a lazy-loaded code chunk fails to load (usually a
 // new version deployed while this tab was open, so the old hashed chunk is
@@ -15,6 +23,11 @@ if (typeof window !== 'undefined') {
   const RELOAD_KEY = '__vite_preload_reloaded_at';
   window.addEventListener('vite:preloadError', (event) => {
     try {
+      // 2026-10-07 (phone loading): offline, a reload cannot fetch anything
+      // either - it only swapped the app for the browser's "No internet" page.
+      // Let the import fail quietly; the viewer's own retry line reloads once
+      // the connection is back.
+      if (window.navigator?.onLine === false) return;
       const last = Number(window.sessionStorage.getItem(RELOAD_KEY) || 0);
       if (!Number.isFinite(last) || Date.now() - last > 20000) {
         window.sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
@@ -133,7 +146,10 @@ if (typeof window !== 'undefined') {
   const releaseUrl = new URL('release.json', document.baseURI).href;
   fetch(releaseUrl, { cache: 'no-store' })
     .then((response) => (response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`))))
-    .then((release) => console.log('[Survey build]', { version, runtime: 'release', ...release }))
+    .then((release) => {
+      console.log('[Survey build]', { version, runtime: 'release', ...release });
+      setCrashLogBuild([version, release?.commit || release?.sha || release?.build || release?.marker].filter(Boolean).join(' '));
+    })
     .catch((error) => console.log('[Survey build]', { version, runtime: 'release', marker: 'unavailable', error: error.message }));
 })();
 

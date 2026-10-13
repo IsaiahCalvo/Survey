@@ -15,7 +15,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(13, 15, 20, 0.55);
+  background: var(--overlay-scrim);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   display: flex;
@@ -36,17 +36,17 @@
 
 .auth-modal {
   background: var(--surface-2);
-  border-radius: 10px;
+  border-radius: var(--radius-dialog);
   padding: 28px;
   max-width: 440px;
   width: 92%;
   max-height: 90vh;
   overflow-y: auto;
   position: relative;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--shadow-dialog);
   animation: slideUp 0.3s ease-out;
   border: 1px solid var(--border);
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: var(--font-ui);
   color: var(--text-1);
   letter-spacing: 0;
 }
@@ -92,18 +92,25 @@
   color: var(--text-1);
 }
 
-/* UX: keyboard focus gets a crisp gold ring so a Tab-only user can always see
+/* UX: keyboard focus gets the one grey ring (--focus) so a Tab-only user can always see
    where they are inside the trapped dialog. :focus-visible (not :focus) so a
    mouse click never draws it. Inputs are excluded — they already signal focus
-   with the gold border + glow below. */
+   with the grey border below (owner 2026-10-02: no gold ring). */
 .auth-modal button:focus-visible,
 .auth-modal a:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
 .auth-modal-header {
   margin-bottom: 22px;
+}
+
+/* 2026-10-07 (phone loading): on a touch screen the sheet opens with focus on
+   its title rather than the email field (no keyboard until a field is tapped).
+   The title is not a control, so it never draws the focus ring. */
+.auth-modal-header h2[tabindex='-1']:focus-visible {
+  outline: none !important;
 }
 
 .auth-modal-header h2 {
@@ -127,16 +134,17 @@
 }
 
 /* Inline error — low-opacity danger background + danger border/text. */
-/* UX (KAL-72): the app's one error-banner treatment — 10%-opacity destructive
-   fill, a 3px destructive left border as the accent, 8px radius, and bone-cream
-   body text. Red is the accent, not the text colour, so the message stays
-   readable rather than shouting. Same shape as .account-error. */
+/* UX (KAL-72, revised 2026-10-02): the app's one calm alert (tokens.css
+   --alert-*) — a soft destructive tint inside a thin red edge all the way
+   round, 8px radius, --text-1 words. Red is the edge, not the text colour, so
+   the message stays readable rather than shouting. It used to be a 3px red bar
+   down the left side only. Same shape as .account-error. */
 .auth-error {
-  background: var(--danger-soft);
-  border-left: 3px solid var(--danger);
+  background: var(--alert-danger-bg);
+  border: var(--alert-danger-border);
   color: var(--text-1);
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: var(--alert-radius);
   margin-bottom: 16px;
   font-size: 12.5px;
   font-weight: 400;
@@ -306,7 +314,7 @@
 .auth-sso-link {
   background: none;
   border: none;
-  color: var(--accent);
+  color: var(--link);
   font-size: 12.5px;
   cursor: pointer;
   padding: 8px;
@@ -319,7 +327,7 @@
 }
 
 .auth-sso-link:hover:not(:disabled) {
-  color: var(--accent-light);
+  color: var(--link-hover);
 }
 
 .auth-footer {
@@ -341,7 +349,7 @@
 .auth-link-btn {
   background: none;
   border: none;
-  color: var(--accent);
+  color: var(--link);
   cursor: pointer;
   font-size: 12.5px;
   text-decoration: underline;
@@ -353,7 +361,7 @@
 }
 
 .auth-link-btn:hover {
-  color: var(--accent-light);
+  color: var(--link-hover);
 }
 
 .auth-dismiss {
@@ -376,4 +384,41 @@
 
 .auth-dismiss-btn:hover {
   color: var(--text-2);
+}
+
+/* Polish round 5 (2026-10-04): 44px finger targets without changing the look.
+   The close keeps its 24px box; a transparent pad makes it 44 to the touch.
+   On a touch screen the text links, the SSO link and "Continue without an
+   account" each get a 44px-tall row (they were 14-30px, and "Create an
+   account" sat 8px above "Forgot password?"). Desktop spacing is unchanged. */
+.auth-modal-close::after {
+  content: '';
+  position: absolute;
+  inset: -11px; /* from the padding edge inside the 1px border: 11 + 22 + 11 = 44 */
+}
+
+@media (pointer: coarse) {
+  /* The 44px rows carry their own air, so the footer's rule moves closer. */
+  .auth-footer {
+    margin-top: 12px;
+    padding-top: 4px;
+  }
+
+  .auth-footer p {
+    margin: 0;
+  }
+
+  .auth-link-btn,
+  .auth-sso-link,
+  .auth-dismiss-btn {
+    min-height: 44px;
+  }
+
+  .auth-sso-link {
+    margin-top: 0;
+  }
+
+  .auth-dismiss {
+    margin-top: 0;
+  }
 }

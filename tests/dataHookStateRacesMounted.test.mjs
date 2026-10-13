@@ -80,6 +80,7 @@ async function mount(t, hookName, { deferredReads = false, args = [], tablesForU
     import { coalesceRead } from ${JSON.stringify(new URL('../src/hooks/requestCoalescer.js', import.meta.url).href)};
     import { isScopedRequestCurrent } from ${JSON.stringify(new URL('../src/hooks/scopedRequestGuard.js', import.meta.url).href)};
     import { readLibraryRows, readLibraryIdChunks, sortLibraryRows } from ${JSON.stringify(new URL('../src/hooks/libraryPagination.js', import.meta.url).href)};
+    import { mergeOwnAndSharedTemplateRows, isSharedTemplateRow } from ${JSON.stringify(new URL('../src/services/sharedTemplates.js', import.meta.url).href)};
     const state = globalThis[${JSON.stringify(key)}];
     const supabase = state.supabase;
     const useAuth = () => ({ user: state.user });
@@ -90,6 +91,7 @@ async function mount(t, hookName, { deferredReads = false, args = [], tablesForU
     const buildDocumentProvenance = () => ({});
     const isSupabaseNotFoundError = () => false;
     const subscribeLibraryChange = (listener) => { state.listeners.add(listener); return () => state.listeners.delete(listener); };
+    const subscribeTemplatesChange = () => () => {};
     const resolveDocumentMetadata = (id) => new Promise((resolve) => state.metadataReads.push({ id, resolve }));
     const invalidateDocumentMetadata = (id) => state.invalidations.push(id);
     const setTimeout = (callback) => { const id = ++state.timerId; state.timers.set(id, callback); return id; };
@@ -237,7 +239,9 @@ test('templates paginate beyond 1000 rows and retain last complete state on erro
     },
   });
   assert.equal(h.latest().templates.length, 1203);
-  assert.deepEqual(h.state.queryLog.map((query) => query.cursor), [undefined, '0499', '0999']);
+  // (2026-10-07: the read also probes template_collaborators for templates
+  // shared with me; only the templates pages are counted here.)
+  assert.deepEqual(h.state.queryLog.filter((query) => query.table === 'templates').map((query) => query.cursor), [undefined, '0499', '0999']);
   const before = h.latest().templates;
   h.state.failPage = (_table, cursor) => cursor ? new Error('offline') : null;
   await act(async () => assert.rejects(h.latest().refetch(), /offline/));

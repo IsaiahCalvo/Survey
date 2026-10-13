@@ -1,0 +1,733 @@
+/* The open Survey Marker's Notes block and Media strip (SurveyMarkerNotes.jsx),
+   phone accordion and desktop rail. Lines, not cards: the block is part of the
+   open Survey Marker, indented with its checklist. */
+
+.survey-marker-notes {
+  display: grid;
+  gap: 8px;
+  padding: 8px 14px 12px 24px;
+  border-top: 1px solid var(--border);
+}
+
+.survey-marker-notes--desktop {
+  gap: 8px;
+  padding: 4px var(--sv-detail-right, 8px) 10px var(--sv-detail-indent, 64px);
+  border-top: 0;
+}
+
+.survey-marker-notes.is-drag-over .survey-notes__box {
+  /* Survey calm gold (2026-10-01): neutral drop target, no gold wash. */
+  outline: 1px dashed var(--text-3);
+  outline-offset: 2px;
+}
+
+.survey-notes {
+  display: grid;
+  min-width: 0;
+}
+
+/* Owner 2026-10-01 (second pass, "the Add Media looks weird"): ONE field.
+   No "Notes" heading, no "+ Media" line: the well holds the note and, at its
+   end, the paperclip that opens the photo / video / audio menu. */
+.survey-notes__box {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  /* The well the name field uses: one step below the panel (--panel-well,
+     the same on both platforms). */
+  background: var(--panel-well);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  transition: border-color 120ms ease-out;
+}
+
+.survey-notes__box:focus-within {
+  border-color: var(--border-strong);
+}
+
+.survey-notes__box.is-readonly {
+  background: transparent;
+}
+
+.survey-notes__text {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The paperclip's column; "Saved" (a green check) covers it for a moment
+   after you leave the field. */
+.survey-notes__aside {
+  position: relative;
+  flex: 0 0 auto;
+  align-self: flex-start;
+}
+
+.survey-notes__saved {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--success-text);
+  background: var(--panel-well);
+  border-radius: 0 8px 8px 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 160ms ease-out;
+}
+
+.survey-notes__saved:empty {
+  display: none;
+}
+
+.survey-notes__saved.is-visible {
+  opacity: 1;
+}
+
+/* The word is for screen readers (and the tooltip); the check is what shows. */
+.survey-notes__saved-word {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* One line until it has words, then grows with them (SurveyNoteField sets
+   the height); no grip, no inner scroll, so a long note reads top to bottom
+   in the panel's own scroll. */
+.survey-notes__field {
+  width: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 6px 0 6px 10px;
+  display: block;
+  overflow: hidden;
+  resize: none;
+  color: var(--text-1);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Phone: every phone field is held at 16px so iOS never zooms the page on
+   focus (index.html, data-mobile-viewport="locked"), which made the note
+   read bigger than everything round it. It keeps 16px type and is drawn at
+   14/16 scale - the note's own 14px - from its top-left corner; it is 16/14
+   as wide as its column so it fills it, and SurveyNoteField hands back the
+   height the scale takes off. */
+.survey-notes--phone .survey-notes__field {
+  --note-scale: 0.875;
+  width: calc(100% / var(--note-scale));
+  /* 40px tall on one line: 11 + 18 + 11 on screen. */
+  padding: calc(11px / var(--note-scale)) 0 calc(11px / var(--note-scale)) calc(12px / var(--note-scale));
+  font-size: 16px;
+  /* 14px/18px on screen: the sheet scale's row-title type. */
+  line-height: calc(18px / var(--note-scale));
+  transform: scale(var(--note-scale));
+  transform-origin: top left;
+}
+
+.survey-notes--desktop .survey-notes__box {
+  border-radius: 6px;
+}
+
+.survey-notes--desktop .survey-notes__field {
+  padding: 6px 0 6px 8px;
+  font-size: 13px;
+  line-height: 16px;
+}
+
+.survey-notes--desktop .survey-notes__saved {
+  background: var(--panel-well);
+  border-radius: 0 6px 6px 0;
+}
+
+.survey-notes__field::placeholder {
+  color: var(--text-3);
+}
+
+.survey-notes__field[readonly] {
+  padding-left: 0;
+}
+
+/* The paperclip: a glyph at the field's end, its pad the field's height
+   (44 x 40 on the phone, 28 x 28 on desktop). --text-2 at rest, bright ink
+   while its menu is open; no plate. */
+.survey-notes__media-btn {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 40px;
+  margin: -1px 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.survey-notes__media-btn > svg {
+  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+/* Phone: the field is 40px tall, so a transparent 2px above and below brings
+   the paperclip's finger target to 44 without growing the field. */
+.survey-notes--phone .survey-notes__media-btn {
+  position: relative;
+}
+
+.survey-notes--phone .survey-notes__media-btn::after {
+  content: '';
+  position: absolute;
+  inset: -2px 0;
+}
+
+.survey-notes__media-btn:active > svg {
+  transform: scale(0.88);
+}
+
+.survey-notes__media-btn[aria-expanded='true'] {
+  color: var(--text-1);
+}
+
+.survey-notes__media-btn:disabled {
+  color: var(--text-disabled);
+  cursor: default;
+}
+
+.survey-notes--desktop .survey-notes__media-btn {
+  width: 28px;
+  height: 28px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .survey-notes__media-btn:not(:disabled):hover {
+    color: var(--text-1);
+  }
+}
+
+/* ---- media strip -------------------------------------------------------- */
+
+.survey-media {
+  position: relative;
+  min-width: 0;
+  border-radius: 8px;
+}
+
+.survey-media.is-drag-over {
+  /* Survey calm gold (2026-10-01): neutral drop target, no gold wash. */
+  outline: 1px dashed var(--text-3);
+  outline-offset: 3px;
+  background: var(--hover);
+}
+
+.survey-media__grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.survey-media__drop-hint {
+  margin-top: 6px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.survey-media-thumb {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  flex: 0 0 64px;
+}
+
+.survey-media-tile {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: var(--text-2);
+  background: var(--panel-well);
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.survey-media-tile > img,
+.survey-media-tile > video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  -webkit-touch-callout: none;
+}
+
+.survey-media-tile:active {
+  opacity: 0.75;
+}
+
+.survey-media-tile__badge {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 50%;
+}
+
+.survey-media-tile__audio {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  color: var(--text-1);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.survey-media-tile__audio > svg {
+  color: var(--text-2);
+}
+
+.survey-media-tile__placeholder {
+  color: var(--text-3);
+}
+
+.survey-media-tile__progress {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  height: 4px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 2px;
+}
+
+.survey-media-tile__progress > span {
+  display: block;
+  height: 100%;
+  /* Neutral ink on the dark track: the notes and media are part of the Survey
+     panel, where gold marks only the armed category (owner 2026-10-02). */
+  background: var(--text-2);
+  border-radius: 2px;
+  transition: width 200ms ease-out;
+}
+
+.survey-media-thumb.is-pending .survey-media-tile {
+  cursor: default;
+}
+
+.survey-media-thumb.is-pending .survey-media-tile > img {
+  opacity: 0.55;
+}
+
+/* Desktop remove: a small round ✕ on the thumbnail's corner, on hover. */
+.survey-media-thumb__remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-1);
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+.survey-media-thumb:hover .survey-media-thumb__remove,
+.survey-media-thumb:focus-within .survey-media-thumb__remove {
+  opacity: 1;
+}
+
+.survey-media-thumb__remove:hover {
+  color: var(--danger-text);
+}
+
+/* ---- the recorder line -------------------------------------------------- */
+
+.survey-media-recorder {
+  min-height: 40px;
+  padding: 4px 4px 4px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel-well);
+  border-radius: 8px;
+}
+
+.survey-media-recorder__dot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  background: var(--text-3);
+  border-radius: 50%;
+}
+
+.survey-media-recorder__dot.is-live {
+  background: var(--danger);
+  animation: surveyMediaRecPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes surveyMediaRecPulse {
+  50% { opacity: 0.35; }
+}
+
+.survey-media-recorder__time {
+  color: var(--text-1);
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.survey-media-recorder__label {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.survey-media-recorder__cancel,
+.survey-media-recorder__stop {
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.survey-media-recorder__cancel {
+  color: var(--text-1);
+  background: transparent;
+}
+
+.survey-media-recorder__stop {
+  color: #fff;
+  background: var(--danger-fill);
+}
+
+.survey-media-recorder__stop:disabled {
+  /* The shared off look (states.css section 6) on the ink; a filled
+     button also gives up its red fill. No opacity (owner 2026-10-06). */
+  background: var(--disabled-fill);
+}
+
+/* ---- Upload media menu: phone action sheet ------------------------------ */
+
+.survey-media-sheet-root {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+}
+
+.survey-media-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  animation: surveyMediaFade 160ms ease-out;
+}
+
+.survey-media-sheet {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: calc(8px + var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+  display: grid;
+  gap: 8px;
+  animation: surveyMediaRise 200ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.survey-media-sheet__group {
+  overflow: hidden;
+  display: grid;
+  background: var(--sheet-bg);
+  border-radius: 14px;
+}
+
+.survey-media-sheet__group > button,
+.survey-media-sheet__cancel {
+  min-height: 54px;
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--text-1);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.survey-media-sheet__group > button + button {
+  border-top: 1px solid var(--border);
+}
+
+.survey-media-sheet__group > button > svg {
+  color: var(--text-2);
+}
+
+.survey-media-sheet__group > button:active,
+.survey-media-sheet__cancel:active {
+  background: var(--pressed);
+}
+
+.survey-media-sheet__group > button:disabled {
+  color: var(--text-disabled);
+}
+
+.survey-media-sheet__cancel {
+  justify-content: center;
+  font-weight: 600;
+  background: var(--sheet-bg);
+  border-radius: 14px;
+}
+
+/* ---- Upload media menu: desktop popover --------------------------------- */
+
+.survey-media-menu {
+  position: fixed;
+  z-index: 9000;
+  width: 200px;
+  padding: 4px;
+  display: grid;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow-popover);
+}
+
+.survey-media-menu > button {
+  min-height: 32px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-1);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.survey-media-menu > button > svg {
+  color: var(--text-2);
+}
+
+.survey-media-menu > button:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.survey-media-menu > button:disabled {
+  color: var(--text-disabled);
+  cursor: default;
+}
+
+/* ---- full-screen viewer ------------------------------------------------- */
+
+.survey-media-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 9100;
+  display: flex;
+  flex-direction: column;
+  background: #050609;
+  animation: surveyMediaFade 160ms ease-out;
+}
+
+.survey-media-viewer__bar {
+  flex: 0 0 auto;
+  min-height: 52px;
+  padding: calc(6px + var(--native-safe-area-top, env(safe-area-inset-top, 0px))) 8px 6px 16px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-1);
+}
+
+.survey-media-viewer__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.survey-media-viewer__count {
+  margin-left: 8px;
+  color: var(--text-3);
+  font-weight: 400;
+}
+
+.survey-media-viewer__btn,
+.survey-media-viewer__nav {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-1);
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.survey-media-viewer__btn:active,
+.survey-media-viewer__nav:active {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.survey-media-viewer__stage {
+  flex: 1;
+  min-height: 0;
+  padding: 0 0 calc(12px + var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+  display: grid;
+  place-items: center;
+}
+
+.survey-media-viewer__photo,
+.survey-media-viewer__video {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.survey-media-viewer__audio {
+  width: min(420px, calc(100vw - 32px));
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  color: var(--text-1);
+}
+
+.survey-media-viewer__audio-glyph {
+  width: 120px;
+  height: 120px;
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border-radius: 24px;
+}
+
+.survey-media-viewer__audio-length {
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.survey-media-viewer__audio > audio {
+  width: 100%;
+}
+
+.survey-media-viewer__loading {
+  color: var(--text-3);
+  font-size: 14px;
+}
+
+.survey-media-viewer__nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.survey-media-viewer__nav.is-prev { left: 8px; }
+.survey-media-viewer__nav.is-next { right: 8px; }
+
+@keyframes surveyMediaFade {
+  from { opacity: 0; }
+}
+
+@keyframes surveyMediaRise {
+  from { transform: translateY(24px); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .survey-media-sheet,
+  .survey-media-sheet-backdrop,
+  .survey-media-viewer,
+  .survey-media-recorder__dot.is-live {
+    animation: none;
+  }
+}
+
+/* The remove confirm (the shared ConfirmModal, z 1300 inside this layer)
+   sits above the phone sheet and the viewer. */
+.survey-media-confirm-layer {
+  position: relative;
+  z-index: 9200;
+}
+
+/* Desktop wells used to step UP from a --surface-1 rail here. Both
+   platforms share --panel-bg / --panel-well now (owner 2026-10-02), so the
+   rule above serves the desktop too. */
+
+/* Thumbnails under the note, only once there is media: 56px on the phone,
+   48px in the 320px desktop rail (5 to a line), wrapping. */
+.survey-marker-notes--phone .survey-media-thumb,
+.survey-marker-notes--phone .survey-media-tile {
+  width: 56px;
+  height: 56px;
+  flex-basis: 56px;
+}
+
+.survey-marker-notes--desktop .survey-media__grid {
+  gap: 6px;
+}
+
+.survey-marker-notes--desktop .survey-media-thumb,
+.survey-marker-notes--desktop .survey-media-tile {
+  width: 48px;
+  height: 48px;
+  flex-basis: 48px;
+  border-radius: 6px;
+}

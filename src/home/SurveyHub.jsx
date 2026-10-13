@@ -20,9 +20,11 @@ import ProjectsFolderTree from './ProjectsFolderTree';
 import TemplatesEditor from './TemplatesEditor';
 const ArchiveScreenContainer = lazy(() => import('./ArchiveScreenContainer'));
 import ShareModal from './ShareModal';
+import { templateShareTarget } from './templateShareTarget';
 import AccessManagementModal from './AccessManagementModal';
 import { HubChromeContext, HubShell } from './HubShell';
-import HubLoadingSkeletons from './HubLoadingSkeletons';
+import HubLoading from './HubLoading';
+import useAutoRetryLoad from './useAutoRetryLoad';
 import { installOverlayScrollbars } from '../utils/overlayScrollbars';
 const AccountSettings = lazy(() => import('../components/AccountSettings').then(m => ({ default: m.AccountSettings })));
 import './hub.css';
@@ -91,6 +93,12 @@ export default function SurveyHub({
      menus, so no list has to wire itself up. */
   useEffect(() => installOverlayScrollbars(), []);
 
+  // A list that could not load tries again by itself (connection back, app back
+  // in front, widening timer) instead of waiting on its Try again button.
+  useAutoRetryLoad(Boolean(documentsLoadError) && documents.length === 0, onRetryDocuments);
+  useAutoRetryLoad(Boolean(projectsLoadError) && projects.length === 0, onRetryProjects);
+  useAutoRetryLoad(Boolean(templatesLoadError) && templates.length === 0, onRetryTemplates);
+
   // Documents, Projects, and Templates are primary navigation, not optional
   // features. Keep their code eager and retain the current frame while React
   // prepares the next tab so a first visit can never expose a blank shell.
@@ -118,7 +126,8 @@ export default function SurveyHub({
   const shareTemplate = (template) => {
     // manage:false always — AccessManagementModal is document-only; template
     // sharing goes through ShareModal (project/template invites are live).
-    if (template) setShare({ kind: 'template', name: template.name, item: template, manage: false });
+    // The invite is keyed on the template's row id, not the editor's config id.
+    if (template) setShare({ kind: 'template', name: template.name, item: templateShareTarget(template, templates), manage: false });
   };
 
   const common = { onNav: navigateToTab, user, templatesLocked: false };
@@ -159,7 +168,7 @@ export default function SurveyHub({
     <HubChromeContext.Provider value={{ user, onSettings: openSettings, onSignOut, onSignIn }}>
       {tab === 'documents' && (
         documentsInitialLoading ? (
-          <HubLoadingSkeletons {...common} tab="documents" />
+          <HubLoading {...common} tab="documents" />
         ) : documentsLoadError && documents.length === 0 ? (
           <HubLoadError tabName="documents" error={documentsLoadError} onRetry={onRetryDocuments} />
         ) : (
@@ -181,7 +190,7 @@ export default function SurveyHub({
       )}
       {tab === 'projects' && (
         projectsInitialLoading ? (
-          <HubLoadingSkeletons {...common} tab="projects" />
+          <HubLoading {...common} tab="projects" />
         ) : projectsLoadError && projects.length === 0 ? (
           <HubLoadError tabName="projects" error={projectsLoadError} onRetry={onRetryProjects} />
         ) : (
@@ -211,7 +220,7 @@ export default function SurveyHub({
       )}
       {tab === 'templates' && (
         templatesInitialLoading ? (
-          <HubLoadingSkeletons {...common} tab="templates" />
+          <HubLoading {...common} tab="templates" />
         ) : templatesLoadError && templates.length === 0 ? (
           <HubLoadError tabName="templates" error={templatesLoadError} onRetry={onRetryTemplates} />
         ) : (
@@ -233,7 +242,7 @@ export default function SurveyHub({
           directly rather than filtering the hub's live lists, because those
           lists deliberately exclude archived rows. */}
       {tab === 'archive' && (
-        <Suspense fallback={<HubLoadingSkeletons {...common} tab="documents" />}>
+        <Suspense fallback={<HubLoading {...common} tab="documents" />}>
           <ArchiveScreenContainer {...common} />
         </Suspense>
       )}

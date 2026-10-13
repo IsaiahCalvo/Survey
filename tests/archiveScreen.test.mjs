@@ -367,8 +367,9 @@ test('the screen mirrors the Documents ledger structure and states', () => {
   assert.match(SCREEN, /padding: '0 14px 0 0',\s*\n\s*alignSelf: 'stretch'/);
   assert.match(SCREEN, /padding: `\$\{ROW_PAD_Y\}px 0`/);
   assert.match(SCREEN, /sortKey === key \? 'var\(--bone-100\)' : 'inherit'/);
-  assert.match(SCREEN, /hub-skeleton-block/);
-  assert.match(SCREEN, /hub-loading-document-row/);
+  // Owner 2026-10-04: loading is the app's one quiet line, not placeholder rows.
+  assert.match(SCREEN, /<QuietLoading label="Loading archive…" \/>/);
+  assert.doesNotMatch(SCREEN, /hub-skeleton-block|hub-loading-document-row/);
   assert.match(SCREEN, /<EmptyState[\s\S]*?icon="clock"[\s\S]*?line="Nothing in Archive"/);
   assert.match(SCREEN, /allSelected \? 'None' : 'All'/);
   // Children are descriptive: no checkbox, no per-child action.
@@ -433,7 +434,10 @@ test('every document in Archive renders at the one Documents-ledger thumbnail si
   assert.match(SCREEN, /width: ROW_ART_W, height: ROW_THUMB/);
   assert.match(SCREEN, /const TYPE_ICON_SIZE = 24;/);
   assert.match(SCREEN, /const MOBILE_TYPE_ICON_SIZE = 24;/);
-  assert.match(SCREEN, /<Icon name=\{typeIcon\[item\.type\] \|\| 'doc'\} size=\{iconSize\} \/>/);
+  // 2026-10-02: an Icon given no colour is currentColor now (Icons.jsx), so the
+  // row asks for its content-type colour explicitly - still the shared one, never
+  // a literal; a project's folder stays neutral as it always was.
+  assert.match(SCREEN, /<Icon name=\{typeIcon\[item\.type\] \|\| 'doc'\} size=\{iconSize\} contentType=\{item\.type === 'project' \? undefined : item\.type\} \/>/);
   assert.doesNotMatch(SCREEN, /<Icon name=\{typeIcon\[item\.type\] \|\| 'doc'\}[^>]*color=/,
     'shared document/project/template colors remain authoritative');
   assert.match(SCREEN, /\{rowTypeArt\(item\)\}/);
@@ -765,8 +769,12 @@ test('avatar slots fill owners first, then editors, then viewers', () => {
 
 test('avatar initials come from the name, falling back to the invited email', () => {
   assert.equal(collaboratorInitials({ name: 'Isaiah Calvo' }), 'IC');
-  assert.equal(collaboratorInitials({ name: 'cher' }), 'C');
-  assert.equal(collaboratorInitials({ email: 'dana.smith@example.com' }), 'D');
+  // 2026-10-04: the one app-wide initials rule (presenceIdentity.js, owner
+  // 2026-10-02). A one-word name keeps its first two letters and an email
+  // gives the first and last name part, as the account avatar and the
+  // viewer's presence row already did.
+  assert.equal(collaboratorInitials({ name: 'cher' }), 'CH');
+  assert.equal(collaboratorInitials({ email: 'dana.smith@example.com' }), 'DS');
   assert.equal(collaboratorInitials({}), '—');
   assert.equal(collaboratorInitials(null), '—');
 });
@@ -781,7 +789,9 @@ test('the header is built on the Documents / Projects structure', () => {
 
   // Count + Select in the subtitle, as on both reference screens.
   assert.match(SCREEN, /const subtitle = \([\s\S]*?<b>\{rows\.length\}<\/b>[\s\S]*?\{selectMode \? 'Done' : 'Select'\}/);
-  assert.match(DOCS, /const subtitle = \([\s\S]*?<b>\{docs\.length\}<\/b> files/);
+  // Polish round 2 (2026-10-04): "1 file", not "1 files" — the word follows
+  // the count, as Archive's "1 item" already did.
+  assert.match(DOCS, /const subtitle = \([\s\S]*?<b>\{docs\.length\}<\/b> \{docs\.length === 1 \? 'file' : 'files'\}/);
 
   // Mobile search row + desktop search in the actions slot.
   assert.match(SCREEN, /<div className="archive-mobile-search-row" ref=\{menuRef\}>/);
@@ -961,7 +971,9 @@ test('archived rows leave the Documents, Projects and Templates lists', () => {
   // One filter per live read. `archived` (the Free-tier downgrade flag) and
   // `user_archived_at` (the 30-day Archive) are separate and both survive.
   const filters = DATABASE_HOOKS.match(/\.is\('user_archived_at', null\)/g) || [];
-  assert.equal(filters.length, 5, 'owned documents, collaborator documents, owned projects, collaborator projects, templates');
+  // 6 since 2026-10-07: templates shared with me are read too (and an
+  // archived one stays out of that list as well).
+  assert.equal(filters.length, 6, 'owned documents, collaborator documents, owned projects, collaborator projects, owned templates, shared templates');
   assert.match(DATABASE_HOOKS, /\.eq\('archived', false\)\s*\n[\s\S]{0,400}?\.is\('user_archived_at', null\)/);
 });
 

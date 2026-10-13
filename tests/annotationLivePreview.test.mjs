@@ -451,6 +451,11 @@ test('the compaction checkpoint does not hold the append queue', async () => {
     // Let each row land before the next edit, as separate strokes would.
     await until(() => cloud.rows.length === index + 1, { timeoutMs: 1_000, stepMs: 2 });
   }
+  // The checkpoint is scheduled, not started inline with row 40, so on a busy
+  // runner it can begin a few ms after the last row lands. Wait for it (the
+  // upload stays held by the gate, so the row assertion below still proves
+  // rows flowed while it was in flight).
+  await until(() => cloud.snapshotCalls >= 1, { timeoutMs: 2_000, stepMs: 2 }).catch(() => {});
   assert.ok(cloud.snapshotCalls >= 1, 'the 40-row checkpoint started');
   assert.equal(cloud.rows.length, 45, 'rows kept flowing while it uploads');
   gate.resolve();

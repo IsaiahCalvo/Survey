@@ -356,6 +356,10 @@ test('every rounded box in the set is rounded by the same ratio', async () => {
   const collect = (source, where) => {
     for (const match of source.matchAll(/<rect\b[^>]*>/g)) {
       const tag = match[0];
+      // DELIBERATE (owner 2026-10-02): a third-party glyph the owner picked
+      // as-is (Hugeicons Select 02, the Spaces region-edit icon) keeps its
+      // own corner radius on its 4x4 handles; it is marked in Icons.jsx.
+      if (/data-icon-source="hugeicons"/.test(tag)) continue;
       const n = (key) => {
         const m = new RegExp(`${key}\\s*=\\s*["'{]([\\d.]+)`).exec(tag);
         return m ? Number(m[1]) : null;

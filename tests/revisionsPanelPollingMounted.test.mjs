@@ -19,6 +19,9 @@ async function loadPanel() {
   let source = await readFile(sourceUrl, 'utf8');
   source = source
     .replace("from 'react'", `from ${JSON.stringify(reactUrl)}`)
+    // The panel portals its desktop header row into the rail's title row
+    // (2026-10-07 rail headers round), so it imports createPortal.
+    .replace("from 'react-dom'", `from ${JSON.stringify(pathToFileURL(require.resolve('react-dom')).href)}`)
     .replace("import { supabase } from '../../supabaseClient';", 'const supabase = null;')
     .replace("import Icon from '../../Icons';", 'const Icon = () => null;')
     .replace(/import \{[^}]+\} from '\.\.\/\.\.\/services\/documentRevisionService';/, 'const { createRevision, listRevisions, getRevision, restoreRevision } = globalThis.__historyPollingService;')

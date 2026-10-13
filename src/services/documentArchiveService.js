@@ -16,6 +16,7 @@ import { supabase } from '../supabaseClient';
 import { pdfByteCache } from './pdfByteCache.js';
 import { purgeAnnotationDoc } from './annotationDocSync';
 import { normalizeDocumentItem } from './archiveContract';
+import { removeSurveyMediaForDocument } from './surveyMediaService.js';
 
 // file_size and page_count feed the Archive preview pane, which mirrors the
 // Documents ledger's preview: you should be able to tell WHICH file you are
@@ -108,6 +109,10 @@ export async function deleteDocumentForever(documentId) {
   }
   // w36: this device's cached copy of a file nobody references any more.
   for (const path of orphanedPaths) void pdfByteCache().removePath(path);
+
+  // Survey media (best-effort, never throws): removes what this user uploaded;
+  // anything else is swept server-side (list_orphaned_survey_media).
+  await removeSurveyMediaForDocument(documentId);
 
   try {
     await purgeAnnotationDoc(documentId);

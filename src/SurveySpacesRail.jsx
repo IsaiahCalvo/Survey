@@ -9,11 +9,10 @@
 // tab or Spaces UI. The Spaces panel lives in the LEFT rail (PDFSidebar).
 // Accurate rename candidate: SurveyRail.jsx.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import Icon from './Icons';
 import CreateCategoryModal from './components/CreateCategoryModal';
-import EntityIndicator from './components/EntityIndicator';
 import Spinner from './components/Spinner';
 import { useTooltip } from './components/Tooltip';
 import DragRearrangeHandle from './reorder/DragRearrangeHandle';
@@ -26,7 +25,9 @@ import { compareSurveyMarkersForOrder } from './utils/surveyMarkerOrdering';
 import { showToast } from './utils/toast';
 import { watchLightPopover } from './components/dismissRules.js';
 import { useConfirmDialog } from './components/dialogPrompts';
-import { useMobileSheetMotion } from './mobile/useMobileSheetMotion';
+import SurveyMarkerNotes from './components/SurveyMarkerNotes';
+import { normalizeNoteMedia } from './services/surveyMediaService';
+import { SHEET_DETENT_STANDARD, endSheetReveal, revealInSheet, useMobileSheetMotion } from './mobile/useMobileSheetMotion';
 // Phone Survey panel look (layout B, one card divided). Every rule in it is
 // scoped to .mobile-survey-sheet, which only the phone sheet carries.
 import './mobile/mobileSurveyPanel.css';
@@ -35,6 +36,11 @@ import './mobile/mobileSurveyPanel.css';
 import './surveyRailPanel.css';
 import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH } from './viewerShared';
 import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
+import { resolveAutoCompleteEntity } from './utils/surveyAutoEntity.js';
+import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt.js';
+import { captureMorph, playMorph, prefersReducedMotion } from './surveyRailMorph.js';
+import SectionIconButton, { SectionIconActions, SelectModeButtons } from './components/SectionIconButton.jsx';
+import SharedTemplateBadge from './components/SharedTemplateBadge.jsx';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -78,6 +84,30 @@ const preserveElementViewportY = (element, mutateLayout) => {
     scrollContainer.scrollTop += deltaY;
   }
 };
+
+// A category row's press, played on its own (owner, after bf3888e): the row
+// darkens to the house --pressed fill and lets go, as when a finger presses
+// it. Arming plays it forwards; disarming plays the very same press
+// backwards. 280ms; nothing under prefers-reduced-motion.
+const CATEGORY_PRESS_MS = 280;
+const CATEGORY_PRESS_EASE = 'cubic-bezier(0.33, 1, 0.68, 1)';
+function playCategoryArmPress(root, categoryId, direction = 'normal') {
+  if (!root || prefersReducedMotion()) return null;
+  const card = Array.from(root.querySelectorAll('[data-survey-category-id]')).find((node) => (
+    node.getAttribute('data-survey-category-id') === String(categoryId)
+    && !node.closest('[data-survey-morph-overlay]')
+  ));
+  const row = card?.querySelector('.survey-marker-category-row');
+  if (!row || typeof row.animate !== 'function') return null;
+  const pressed = getComputedStyle(row).getPropertyValue('--pressed').trim() || 'rgba(0, 0, 0, 0.25)';
+  const rest = 'rgba(0, 0, 0, 0)';
+  return row.animate([
+    { offset: 0, backgroundColor: rest, easing: CATEGORY_PRESS_EASE },
+    { offset: 0.3, backgroundColor: pressed },
+    { offset: 0.45, backgroundColor: pressed, easing: CATEGORY_PRESS_EASE },
+    { offset: 1, backgroundColor: rest },
+  ], { duration: CATEGORY_PRESS_MS, direction });
+}
 
 const SurveyMarkerLeadingSelect = ({
   selected,
@@ -315,6 +345,86 @@ const SurveyMarkerReviewIndicator = ({
   );
 };
 
+// Phone: the open Survey Marker's checklist + note slide open and shut under
+// its line (owner 2026-10-01: "animate expand and collapse, with no jumps").
+// The block's measured height is eased 0 -> its content height (and back);
+// the layout height changes every frame, so the sheet (and anything observing
+// its size) follows smoothly. Open, it settles on `height: auto` at exactly
+// the height it eased to, so nothing snaps when it finishes. (A 0fr -> 1fr
+// grid row was tried first: Chromium sizes the box and its track differently
+// mid-way, leaving a blank band under the clipped content.) While it closes
+// it keeps showing what it showed last (the parent stops building the block
+// for a closed marker), then unmounts. Reduced motion: no slide.
+const MOBILE_MARKER_SLIDE_MS = 220;
+const MobileSurveyMarkerCollapse = ({ open, children }) => {
+  const [mounted, setMounted] = useState(open);
+  const lastChildrenRef = useRef(children);
+  const ref = useRef(null);
+  // Mounted already open (the sheet reopening on an open marker): no slide.
+  const skipFirstRef = useRef(open);
+  if (open && children) lastChildrenRef.current = children;
+
+  useLayoutEffect(() => {
+    if (open && !mounted) setMounted(true);
+  }, [open, mounted]);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    el.inert = !open;
+    const reduce = typeof window !== 'undefined'
+      && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (skipFirstRef.current || reduce) {
+      skipFirstRef.current = false;
+      if (open) {
+        el.style.height = 'auto';
+        el.style.overflow = 'visible';
+      } else {
+        setMounted(false);
+      }
+      return undefined;
+    }
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (open) {
+        el.style.height = 'auto';
+        el.style.overflow = 'visible';
+      } else {
+        setMounted(false);
+      }
+    };
+    const from = el.getBoundingClientRect().height;
+    const to = open ? el.scrollHeight : 0;
+    el.style.overflow = 'hidden';
+    el.style.height = `${from}px`;
+    el.getBoundingClientRect();
+    el.style.height = `${to}px`;
+    const onEnd = (e) => {
+      if (e.target === el && e.propertyName === 'height') finish();
+    };
+    el.addEventListener('transitionend', onEnd);
+    const timer = setTimeout(finish, MOBILE_MARKER_SLIDE_MS * 3);
+    return () => {
+      done = true;
+      el.removeEventListener('transitionend', onEnd);
+      clearTimeout(timer);
+    };
+  }, [open, mounted]);
+
+  if (!mounted) return null;
+  return (
+    <div
+      ref={ref}
+      className="mobile-survey-marker-body"
+      aria-hidden={open ? undefined : 'true'}
+    >
+      {open ? children : lastChildrenRef.current}
+    </div>
+  );
+};
+
 const SurveySpacesRail = ({
   activeSpaceId,
   addCategoryAsNewTemplate,
@@ -380,12 +490,23 @@ const SurveySpacesRail = ({
   onLiveSyncToggle,
   onVerifyLiveSync,
   onCloseSurveyMode,
+  surveyReenterCollapsedRef = null,
   onRequestCreateTemplate,
   onSelectSurveyTemplate,
   pdfFile,
   scale,
   selectedCategories,
   selectedCategoryId,
+  // Survey calm gold (2026-10-01): true while the Survey Marker tool is armed,
+  // so the chosen category is gold only when a touch on the page places it.
+  surveyPlacementArmed = false,
+  // Owner 2026-10-01 ("Yes, inline like phone"): { id, tick } - focus that
+  // new desktop Survey Marker's name; undoSurveyMarkerPlacement(id) takes a
+  // just-placed marker back as one Undo step (true when it did);
+  // rememberSurveyEntity(id) - the entity a new desktop marker starts with.
+  surveyMarkerNameFocusRequest = null,
+  undoSurveyMarkerPlacement,
+  rememberSurveyEntity,
   selectedItemsInCategory,
   selectedModuleId,
   selectedSpaceId,
@@ -403,8 +524,6 @@ const SurveySpacesRail = ({
   setItemSelectModeActive,
   setItems,
   setNewSurveyMarkersByPage,
-  setNoteDialogContent,
-  setNoteDialogOpen,
   setPendingLocationItem,
   setSelectedCategories,
   setSelectedCategoryId,
@@ -434,7 +553,13 @@ const SurveySpacesRail = ({
   collapseRequestKey = 0,
   onCollapseChange = null,
   mobileMode = false,
+  // Owner or editor of the document (PDFViewer's canRestoreFromHistory): may
+  // add and remove Survey media and move legacy inline media to storage.
+  canEditSurveyMarkers = true,
 }) => {
+  // The plain "Categories" head line's tag: h2 on the phone sheet (its first
+  // heading), h3 under the desktop rail's h2 title.
+  const CategoriesHeadingTag = mobileMode ? 'h2' : 'h3';
   // KAL-65: rail controls use the app's instant shared tooltip, never a native
   // title= (the OS tooltip takes ~1.5s and is styled by the OS, so mixing the
   // two showed users two different tooltips on the same control).
@@ -451,18 +576,44 @@ const SurveySpacesRail = ({
   // `if (!confirmed) return;` shape and nothing deletes before the user answers.
   const [askConfirm, confirmDialogElement] = useConfirmDialog();
   const [isSurveyPanelCollapsed, setIsSurveyPanelCollapsed] = useState(true);
+  // Desktop panel motion (owner 2026-09-30 "the expand animation isn't
+  // smooth"; 2026-10-07 Drawboard rail): the open panel slides out from under
+  // the Survey rail (surveyRailExpand) and, once closed, stays drawn for the
+  // 0.2s it takes to slide back under it (surveyRailCollapse). A timer, not
+  // animationend, ends that, so reduced motion (no animation) cannot strand
+  // it on screen.
+  const [railPanelLeaving, setRailPanelLeaving] = useState(false);
+  const railPanelWasOpenRef = useRef(false);
+  useLayoutEffect(() => {
+    if (mobileMode) return undefined;
+    if (!isSurveyPanelCollapsed) {
+      railPanelWasOpenRef.current = true;
+      setRailPanelLeaving(false);
+      return undefined;
+    }
+    if (!railPanelWasOpenRef.current) return undefined;
+    railPanelWasOpenRef.current = false;
+    setRailPanelLeaving(true);
+    const timer = window.setTimeout(() => setRailPanelLeaving(false), 200);
+    return () => window.clearTimeout(timer);
+  }, [isSurveyPanelCollapsed, mobileMode]);
+  const desktopSurveyPanelShown = !isSurveyPanelCollapsed || railPanelLeaving;
   const [openEntityDropdownId, setOpenEntityDropdownId] = useState(null);
+  // The template switcher (owner 2026-10-01, "hybrid" design): the template
+  // name in the panel header is a button. Phone: it swaps the category list
+  // for an in-sheet list of templates. Desktop: it opens a small menu under
+  // the rail header. The one way to switch template on each screen.
   const [isTemplateSelectorOpen, setIsTemplateSelectorOpen] = useState(false);
+  const [templateSwitchQuery, setTemplateSwitchQuery] = useState('');
   // Mobile-only export menu in the sheet header (demo SurveySheet.tsx:324-348);
   // desktop keeps its bottom EXPORT bar untouched.
   const [isMobileExportMenuOpen, setIsMobileExportMenuOpen] = useState(false);
-  // Mobile-only Survey Marker detail view state (demo SurveySheet.tsx):
-  // which small dropdown is open inside the detail view, and the in-sheet
-  // notes editor takeover with its local drafts (committed only on Save,
-  // mirroring the desktop Note dialog's draft-then-save behavior).
-  const [mobileDetailDropdown, setMobileDetailDropdown] = useState(null); // 'entity' | 'markerItem' | null
-  const [mobileNotesEditorOpen, setMobileNotesEditorOpen] = useState(false);
-  const [mobileNoteDraft, setMobileNoteDraft] = useState({ text: '', photos: [], videos: [] });
+  // Phone: whether the open Survey Marker's entity menu is open.
+  const [mobileDetailDropdown, setMobileDetailDropdown] = useState(null); // 'entity' | null
+  // Desktop: the note glyph on a marker line opens the marker and puts the
+  // caret in its inline Notes field (the 600px Note dialog is gone).
+  const [noteFocusRequestId, setNoteFocusRequestId] = useState(null);
+  const clearNoteFocusRequest = useCallback(() => setNoteFocusRequestId(null), []);
   // Desktop-only Create Category flow: the plus button in the "Categories"
   // heading row opens CreateCategoryModal (the old route opened a template
   // editor that has since been removed, leaving the button dead). Persistence
@@ -470,6 +621,8 @@ const SurveySpacesRail = ({
   const [isCreateCategoryModalOpen, setIsCreateCategoryModalOpen] = useState(false);
   const [railIconHover, setRailIconHover] = useState(null);
   const templateSelectorRef = useRef(null);
+  const templateTitleButtonRef = useRef(null);
+  const templateSwitchListRef = useRef(null);
   const mobileExportMenuRef = useRef(null);
   const surveyMarkerDragRestoreRef = useRef(null);
   const availableSurveyTemplates = Array.isArray(surveyTemplates) ? surveyTemplates : [];
@@ -502,34 +655,23 @@ const SurveySpacesRail = ({
       showToast('Failed to create category. Please try again.', 'error');
     }
   };
-  // UX (mobile demo parity): when exactly one Survey Marker is flagged expanded
-  // on mobile, the sheet swaps its category list for a marker DETAIL view
-  // (demo SurveySheet.tsx). Selection rides the existing expandedSurveyMarkers
-  // state — the same state PDFViewer already sets when a placed Survey Marker
-  // is tapped or a newly placed one commits — so no new plumbing is needed.
+  // Phone (owner 2026-10-01, "works like desktop"): ONE accordion, the
+  // desktop's tree - categories, their Survey Markers, and one open Survey
+  // Marker inline. The open one rides the existing expandedSurveyMarkers state
+  // (PDFViewer sets it when a placed Survey Marker is tapped or a new one
+  // commits); on the phone only one is open at a time.
   const mobileDetailMarkerId = mobileMode
     ? (Object.keys(expandedSurveyMarkers || {}).find((id) => expandedSurveyMarkers[id] && surveyMarkers?.[id]) || null)
     : null;
   const mobileDetailMarker = mobileDetailMarkerId
     ? { ...surveyMarkers[mobileDetailMarkerId], id: mobileDetailMarkerId }
     : null;
-  const mobileDetailModule = mobileDetailMarker
-    ? (surveyModuleOptions.find((module) => module.id === mobileDetailMarker.moduleId) || null)
-    : null;
-  const mobileDetailCategory = mobileDetailModule
-    ? ((mobileDetailModule.categories || []).find((category) => category.id === mobileDetailMarker.categoryId) || null)
-    : null;
-  const mobileDetailChecklist = mobileDetailCategory
-    ? (mobileDetailCategory.checklist || []).filter((item) => item && item.archived !== true)
-    : [];
-  // Demo pageUtils.ts:1-12 — the checklist window shows at most 4 rows before
-  // it scrolls. It still sizes the window INSIDE the panel;
-  // it no longer sizes the panel, which stands at Standard like every other one
-  // (pass 7 — see the sheet's own style block below).
-  const mobileChecklistVisibleCount = Math.min(4, Math.max(1, mobileDetailChecklist.length));
-  // UX 2026-09-23 (phone Survey panel integrated): checklist rows are 40px lines
-  // parted by a hairline (each row's 1px top edge is inside its 40), no gaps.
-  const mobileChecklistWindowHeight = mobileChecklistVisibleCount * 40;
+  // Anything open in the phone accordion (a category or a Survey Marker)?
+  // While it is, the sheet stands at Full screen (see the effect below).
+  const mobileAccordionOpen = mobileMode && (
+    Boolean(mobileDetailMarkerId)
+    || Object.values(expandedCategories || {}).some(Boolean)
+  );
 
   // Phase F (motion & feel): the survey sheet gets the same finger-follow drag +
   // velocity dismiss (dy>82 or vy>0.65) + spring-back + slide-down exit as the
@@ -543,8 +685,135 @@ const SurveySpacesRail = ({
   // 2026-09-17: the hook owns the slide-up too now (see useMobileSheetMotion),
   // so it needs the real open state — this element stays mounted and only
   // toggles .is-collapsed.
-  const { motionStyle: surveySheetMotionStyle, dragHandlers: surveySheetDragHandlers, requestClose: requestSurveySheetClose } =
-    useMobileSheetMotion(collapseSurveySheet, { open: mobileMode && !isSurveyPanelCollapsed });
+  // Owner 2026-09-30: Survey is a browse panel, so it climbs Standard ->
+  // Expanded -> Full like Pages / Spaces (DESIGN-SYSTEM.md "Phone bottom
+  // panels"), which is also the height it rises to when you type in it.
+  const {
+    motionStyle: surveySheetMotionStyle,
+    backdropStyle: surveyBackdropStyle,
+    sheetProps: surveySheetProps,
+    requestClose: requestSurveySheetClose,
+    expanded: surveySheetExpanded,
+    fullscreen: surveySheetFullscreen,
+    setDetent: setSurveySheetDetent,
+  } = useMobileSheetMotion(collapseSurveySheet, {
+    open: mobileMode && !isSurveyPanelCollapsed,
+    expandable: mobileMode,
+    fullscreenable: mobileMode,
+  });
+
+  // Close everything in the phone accordion (the "Categories" back button).
+  const collapseMobileAccordion = () => {
+    setMobileDetailDropdown(null);
+    setExpandedSurveyMarkers((prev) => (Object.keys(prev || {}).length ? {} : prev));
+    setExpandedCategories((prev) => (Object.keys(prev || {}).length ? {} : prev));
+  };
+
+  // Phone: where the list was, so closing the panel (a swipe, the dock, a
+  // tap outside) and opening it again comes back to the same place. Saved on
+  // every scroll with the accordion state it belongs to; restored only when
+  // the same category / Survey Marker is still open (a tap on another placed
+  // Survey Marker opens that one instead).
+  const mobileAccordionKey = mobileMode
+    ? `${Object.keys(expandedCategories || {}).filter((id) => expandedCategories[id]).join(',')}|${mobileDetailMarkerId || ''}`
+    : '';
+  const mobileSurveyListRef = useRef(null);
+  const mobileListScrollRef = useRef({ top: 0, key: '' });
+  const mobileListRestoredRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!mobileMode || isSurveyPanelCollapsed) return;
+    const list = mobileSurveyListRef.current;
+    const saved = mobileListScrollRef.current;
+    if (!list || !saved.top || saved.key !== mobileAccordionKey) return;
+    list.scrollTop = saved.top;
+    // The open Survey Marker's bring-to-top (below) skips this reopen.
+    mobileListRestoredRef.current = Boolean(mobileDetailMarkerId);
+    // Only on the reopen itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mobileMode, isSurveyPanelCollapsed]);
+
+  // Owner 2026-10-01 ("Door -> Door 1 sent the panel to full height, though the
+  // one item was already visible"): opening a category or a Survey Marker
+  // grows the sheet only when what opened would not fit (useMobileSheetMotion
+  // revealInSheet); closing everything lets it settle back (endSheetReveal).
+  // On a reopen the list keeps its restored scroll.
+  const surveyRevealRef = useRef({ open: false, key: '' });
+  useEffect(() => {
+    const was = surveyRevealRef.current;
+    const open = mobileMode && !isSurveyPanelCollapsed;
+    surveyRevealRef.current = { open, key: mobileAccordionKey };
+    const list = mobileSurveyListRef.current;
+    if (!open || !list) return;
+    if (!mobileAccordionOpen) { endSheetReveal(list); return; }
+    // Only what just opened (all of it on a reopen): closing a Survey Marker
+    // inside an open category moves nothing.
+    const [cats, markerId] = mobileAccordionKey.split('|');
+    const [wasCats, wasMarkerId] = was.open ? was.key.split('|') : ['', ''];
+    // The phone's open Survey Marker carries #mobile-survey-open-marker (the
+    // desktop rail row is #highlight-item-<id>).
+    const marker = markerId && markerId !== wasMarkerId
+      ? (list.querySelector('#mobile-survey-open-marker') || document.getElementById(`highlight-item-${markerId}`))
+      : null;
+    const card = !marker && cats && cats !== wasCats
+      ? list.querySelector('.survey-marker-category-main[aria-expanded="true"]')?.closest('.survey-marker-category-card')
+      : null;
+    if (marker || card) {
+      const block = marker || card;
+      const anchor = marker || card.querySelector('.survey-marker-category-row') || card;
+      revealInSheet(block, { anchor, scroll: was.open });
+      // Once the slide open and any growth have settled, finish the job with a
+      // scroll if a few px are still under the edge (no height change then).
+      if (was.open && typeof window !== 'undefined') {
+        window.setTimeout(() => { if (block.isConnected) revealInSheet(block, { anchor, scroll: true }); }, 420);
+      }
+    }
+    // mobileAccordionKey names what is open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mobileMode, isSurveyPanelCollapsed, mobileAccordionKey]);
+
+  // Owner 2026-10-01 ("Yes, inline like phone"): a Survey Marker just placed
+  // on desktop opens here with its name field focused and selected. While the
+  // name is untouched, Escape takes the placement back (one Undo step);
+  // typing, Enter or leaving the field keeps it.
+  const justPlacedSurveyMarkerIdRef = useRef(null);
+  useEffect(() => {
+    if (mobileMode || !surveyMarkerNameFocusRequest?.id || typeof window === 'undefined') return undefined;
+    const targetId = String(surveyMarkerNameFocusRequest.id);
+    let frames = 0;
+    let raf = 0;
+    const tryFocus = () => {
+      const input = Array.from(document.querySelectorAll('.survey-rail input[data-survey-marker-name-input]'))
+        .find((el) => el.getAttribute('data-survey-marker-name-input') === targetId);
+      if (input && input.offsetParent !== null) {
+        justPlacedSurveyMarkerIdRef.current = targetId;
+        input.focus({ preventScroll: false });
+        input.select();
+        input.scrollIntoView?.({ block: 'nearest' });
+        return;
+      }
+      frames += 1;
+      if (frames < 40) raf = window.requestAnimationFrame(tryFocus);
+    };
+    raf = window.requestAnimationFrame(tryFocus);
+    return () => window.cancelAnimationFrame(raf);
+  }, [mobileMode, surveyMarkerNameFocusRequest]);
+
+  // Phone: tapping a category opens it (and closes any other, one accordion).
+  const toggleMobileCategory = (categoryId) => {
+    const isOpen = Boolean(expandedCategories?.[categoryId]);
+    setExpandedCategories(isOpen ? {} : { [categoryId]: true });
+    if (isOpen || (mobileDetailMarker && mobileDetailMarker.categoryId !== categoryId)) {
+      setExpandedSurveyMarkers((prev) => (Object.keys(prev || {}).length ? {} : prev));
+    }
+  };
+
+  // Phone: "+ Place" on a category row arms the Survey Marker tool for that
+  // category and slides the sheet away so the page is free to draw on.
+  const placeMobileSurveyMarker = (categoryId) => {
+    setSelectedCategoryId(categoryId);
+    setActiveTool('survey-marker');
+    requestSurveySheetClose();
+  };
 
   const selectSurveyModule = (moduleId) => {
     if (!moduleId || moduleId === selectedModuleId) {
@@ -567,6 +836,9 @@ const SurveySpacesRail = ({
       // item via selectedModuleId — a rename in that state silently breaks
       // the marker <-> item link (adversarial review, 2026-07-12).
       setExpandedSurveyMarkers((prev) => (Object.keys(prev || {}).length ? {} : prev));
+      // ...and the new module starts with its categories closed (the
+      // accordion, and so the sheet's Full screen, belong to one module).
+      setExpandedCategories((prev) => (Object.keys(prev || {}).length ? {} : prev));
     }
   };
 
@@ -586,14 +858,91 @@ const SurveySpacesRail = ({
       setCopiedItemSelection({});
       setActiveTool('select');
     }
+    if (mobileMode) {
+      collapseMobileAccordion();
+      mobileListScrollRef.current = { top: 0, key: '' };
+    }
     setIsSurveyPanelCollapsed(true);
   };
 
+  const surveyWasOnRef = useRef(Boolean(showSurveyPanel));
   useEffect(() => {
+    const wasOn = surveyWasOnRef.current;
+    surveyWasOnRef.current = Boolean(showSurveyPanel);
     if (showSurveyPanel) {
+      // Owner 2026-10-07 (survey bar round): an Undo of "Left Survey" puts
+      // the panel back the way it was - closed, when it was closed.
+      if (surveyReenterCollapsedRef?.current) {
+        surveyReenterCollapsedRef.current = false;
+        return;
+      }
       setIsSurveyPanelCollapsed(false);
+      return;
     }
+    // Owner 2026-10-07: Survey is left from OUTSIDE the panel - "Done" at
+    // the end of the survey bar - so the panel follows the mode out, and the
+    // phone's accordion starts closed next time.
+    if (!wasOn) return;
+    if (mobileMode) {
+      collapseMobileAccordion();
+      mobileListScrollRef.current = { top: 0, key: '' };
+    }
+    setIsSurveyPanelCollapsed(true);
+    // Only Survey turning on / off moves the panel here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showSurveyPanel]);
+
+  // Owner 2026-10-07 (DEBATE.md): opening Survey and closing the template
+  // picker without choosing one leaves Survey - nothing was started, so there
+  // is nothing to be "in" (and no Exit button is needed to undo it). Closing
+  // the panel with a template chosen keeps you in Survey, as before.
+  useEffect(() => {
+    if (!isSurveyPanelCollapsed || !showSurveyPanel || selectedTemplate) return;
+    exitSurveyMode();
+    // Only the panel closing runs this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSurveyPanelCollapsed]);
+
+  // Desktop: the Survey tab in the rail. Closed: open the panel (and start
+  // Survey - the template picker - if it is off). Open: close it. Like every
+  // rail tab (Drawboard model, owner 2026-10-07).
+  const toggleDesktopSurveyPanel = () => {
+    setRailIconHover(null);
+    if (!isSurveyPanelCollapsed) {
+      setIsSurveyPanelCollapsed(true);
+    } else {
+      setIsSurveyPanelCollapsed(false);
+      if (!showSurveyPanel) handleSurveyToggle();
+    }
+    requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
+  };
+
+  // Owner 2026-10-07 (rail headers round): "On the right of all of these
+  // tabs, to the right of the head of the title, there should be an exit
+  // button to close out the window." Desktop: the close glyph at the right end
+  // of every Survey panel title row (template list, a template, its sub-views)
+  // - exactly the Survey tab pressed again. From the keyboard, focus goes back
+  // to that tab, since this button leaves with the panel. The phone sheet keeps
+  // its own header.
+  const desktopPanelClose = mobileMode ? null : (
+    <SectionIconButton
+      icon="close"
+      className="survey-rail__close"
+      data-rail-panel-close=""
+      label="Close Survey"
+      tooltip="Close"
+      onClick={(event) => {
+        const fromKeyboard = event.detail === 0;
+        const railHost = event.currentTarget.closest('#chrome-right-host') || document;
+        toggleDesktopSurveyPanel();
+        if (fromKeyboard) {
+          requestAnimationFrame(() => {
+            railHost.querySelector('.survey-rail-strip button[aria-label="Survey"]')?.focus();
+          });
+        }
+      }}
+    />
+  );
 
   useEffect(() => {
     if (expandRequestKey > 0) {
@@ -602,17 +951,179 @@ const SurveySpacesRail = ({
   }, [expandRequestKey]);
 
   useEffect(() => {
-    if (collapseRequestKey > 0) setIsSurveyPanelCollapsed(true);
+    if (collapseRequestKey <= 0) return;
+    // Owner 2026-10-01 (iPhone: closing from the dock was abrupt): on the phone
+    // the sheet slides down behind the dock like a swipe, or - when another
+    // panel is opening in the same tap - hands over to it in place
+    // (useMobileSheetMotion, PANEL TO PANEL).
+    if (mobileMode && !isSurveyPanelCollapsed) {
+      requestSurveySheetClose();
+      return;
+    }
+    setIsSurveyPanelCollapsed(true);
+    // Only a new request runs this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collapseRequestKey]);
 
+  // Phone: the template list is showing in place of the category list. Only
+  // from the category list itself (the title is hidden while a category is
+  // open, so an open accordion always wins).
+  const isMobileTemplateSwitching = mobileMode && isTemplateSelectorOpen && !mobileAccordionOpen;
+
+  const closeTemplateSwitcher = useCallback(({ focusTitle = true } = {}) => {
+    setIsTemplateSelectorOpen(false);
+    setTemplateSwitchQuery('');
+    if (focusTitle) {
+      requestAnimationFrame(() => templateTitleButtonRef.current?.focus({ preventScroll: true }));
+    }
+  }, []);
+
+  // Owner 2026-10-02 (after bf3888e: "a MORPH, not a fade"): when the
+  // panel's page changes - a template picked, another one picked from the
+  // menu or the phone's list, the phone's template list opened or closed -
+  // each old row turns into its counterpart in the new page (position,
+  // size, corners), extra rows grow out of the last one, surplus rows fold
+  // into the row above, and words cross-dissolve only inside a row's box.
+  // 300ms ease-in-out, transforms only, instant under reduced motion
+  // (src/surveyRailMorph.js). captureRailMorph() runs just before the state
+  // change; the layout effect below plays it once React has drawn the page.
+  const templatePickerRef = useRef(null);
+  const railMorphAnchorRef = useRef(null);
+  const pendingRailMorphRef = useRef(null);
+  // Which page the panel shows: the picker, a template's categories, or (on
+  // the phone) the template list in their place.
+  const railPageKey = `${selectedTemplate && showSurveyPanel ? `template:${selectedTemplate.id}` : 'picker'}${isMobileTemplateSwitching ? ':switching' : ''}`;
+  const railPageKeyRef = useRef(railPageKey);
+  railPageKeyRef.current = railPageKey;
+  const captureRailMorph = useCallback(() => {
+    const anchor = railMorphAnchorRef.current || templatePickerRef.current || templateTitleButtonRef.current;
+    const root = anchor?.closest?.('.survey-rail, .mobile-survey-sheet');
+    const before = captureMorph(root);
+    pendingRailMorphRef.current = before ? { before, pageKey: railPageKeyRef.current } : null;
+  }, []);
+
+  // The morph plays on the commit that actually draws the new page (the
+  // template arrives from PDFViewer, possibly a render or two later). One
+  // that never comes - the same template picked again - is dropped.
+  useLayoutEffect(() => {
+    const pending = pendingRailMorphRef.current;
+    if (!pending) return;
+    const age = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - pending.before.at;
+    if (pending.pageKey === railPageKey && age < 1500) return;
+    pendingRailMorphRef.current = null;
+    if (pending.pageKey !== railPageKey) playMorph(pending.before);
+  });
+
+  // The armed category (owner, after bf3888e): "When I click down on
+  // something, that invokes it... and has an animation. When I hit Escape
+  // that's essentially doing the exact opposite, so the animation should
+  // just go in reverse, and that's it." Arming plays the row's press;
+  // disarming - Escape, another category, another tool - plays the same
+  // press backwards. At rest the row looks like any other.
+  const armedCategoryId = surveyPlacementArmed && !categorySelectModeActive ? (selectedCategoryId || null) : null;
+  const shownArmedCategoryRef = useRef(armedCategoryId);
+  useLayoutEffect(() => {
+    const previous = shownArmedCategoryRef.current;
+    shownArmedCategoryRef.current = armedCategoryId;
+    if (previous === armedCategoryId) return;
+    // The phone's handle, or (desktop, no top row since 2026-10-07) the title.
+    const anchor = railMorphAnchorRef.current || templateTitleButtonRef.current || templatePickerRef.current;
+    const root = anchor?.closest?.('.survey-rail, .mobile-survey-sheet');
+    if (!root) return;
+    if (previous) playCategoryArmPress(root, previous, 'reverse');
+    if (armedCategoryId) playCategoryArmPress(root, armedCategoryId, 'normal');
+  }, [armedCategoryId]);
+
+  // Escape is the way back out of placing (the owner's "exact opposite" of
+  // arming): it puts the Survey Marker tool down. Anything that owns Escape
+  // first - a text field, a dialog, a menu, an open popover (which consumes
+  // it, src/components/dismissRules.js R5) - keeps it.
+  useEffect(() => {
+    if (!armedCategoryId || typeof window === 'undefined') return undefined;
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="dialog"], [role="menu"], [role="listbox"]')) return;
+      setActiveTool('select');
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [armedCategoryId, setActiveTool]);
+
+  // Switch to another template. The current one only closes the switcher.
+  const switchSurveyTemplate = (template) => {
+    if (template && template.id !== selectedTemplate?.id) {
+      // Another template starts on its category list.
+      if (mobileMode) collapseMobileAccordion();
+      captureRailMorph();
+      onSelectSurveyTemplate?.(template);
+    }
+    closeTemplateSwitcher();
+  };
+
+  // The switcher never outlives what it belongs to: closing the panel, an
+  // accordion opening (a placed Survey Marker tapped), another template, or
+  // desktop's category-select mode (whose title is the module, not the
+  // template) all put it away.
+  useEffect(() => {
+    if (!isTemplateSelectorOpen) return;
+    if (isSurveyPanelCollapsed || mobileAccordionOpen || (!mobileMode && categorySelectModeActive)) {
+      setIsTemplateSelectorOpen(false);
+      setTemplateSwitchQuery('');
+    }
+  }, [isTemplateSelectorOpen, isSurveyPanelCollapsed, mobileAccordionOpen, mobileMode, categorySelectModeActive]);
+  const lastTemplateIdRef = useRef(selectedTemplate?.id || null);
+  useEffect(() => {
+    setIsTemplateSelectorOpen(false);
+    setTemplateSwitchQuery('');
+    // Owner 2026-10-07: a template switched from the survey bar's menu also
+    // starts on its category list on the phone (as a switch in the sheet).
+    const previousId = lastTemplateIdRef.current;
+    lastTemplateIdRef.current = selectedTemplate?.id || null;
+    if (mobileMode && previousId && selectedTemplate?.id && previousId !== selectedTemplate.id) {
+      collapseMobileAccordion();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTemplate?.id]);
+
+  // Focus lands on the current template when the list or menu opens.
   useEffect(() => {
     if (!isTemplateSelectorOpen) return undefined;
-    // Light popover — shared dismiss rules R1/R2/R5 (src/components/dismissRules.js).
+    const frame = requestAnimationFrame(() => {
+      const list = templateSwitchListRef.current;
+      const current = list?.querySelector('[aria-current="true"], [aria-checked="true"]');
+      current?.focus({ preventScroll: !mobileMode });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [isTemplateSelectorOpen, mobileMode]);
+
+  // Desktop: the template menu is a light popover — shared dismiss rules
+  // R1/R2/R5 (src/components/dismissRules.js). The phone's list is part of
+  // the sheet, so a tap elsewhere in it does not close it.
+  useEffect(() => {
+    if (!isTemplateSelectorOpen || mobileMode) return undefined;
     return watchLightPopover({
       contains: (target) => !templateSelectorRef.current || templateSelectorRef.current.contains(target),
-      close: () => setIsTemplateSelectorOpen(false),
+      close: (_event, reason) => closeTemplateSwitcher({ focusTitle: reason === 'escape' }),
     });
-  }, [isTemplateSelectorOpen]);
+  }, [isTemplateSelectorOpen, mobileMode, closeTemplateSwitcher]);
+
+  // Desktop menu keys: up / down / Home / End move between templates.
+  const handleTemplateMenuKeyDown = (event) => {
+    const items = [...(templateSwitchListRef.current?.querySelectorAll('[role="menuitemradio"]') || [])];
+    if (!items.length) return;
+    const index = items.indexOf(document.activeElement);
+    let next = null;
+    if (event.key === 'ArrowDown') next = items[(index + 1) % items.length];
+    else if (event.key === 'ArrowUp') next = items[(index - 1 + items.length) % items.length];
+    else if (event.key === 'Home') next = items[0];
+    else if (event.key === 'End') next = items[items.length - 1];
+    else if (event.key === 'Tab') { closeTemplateSwitcher({ focusTitle: false }); return; }
+    if (next) {
+      event.preventDefault();
+      next.focus();
+    }
+  };
 
   useEffect(() => {
     if (!isMobileExportMenuOpen) return undefined;
@@ -628,25 +1139,44 @@ const SurveySpacesRail = ({
   }, [isSurveyPanelCollapsed]);
 
   // Reset detail-local UI whenever the selected Survey Marker changes so the
-  // notes takeover / dropdowns never carry over to another marker.
+  // dropdowns never carry over to another marker.
   useEffect(() => {
     setMobileDetailDropdown(null);
-    setMobileNotesEditorOpen(false);
   }, [mobileDetailMarkerId]);
 
-  // UX (mobile demo parity): collapsing the sheet clears the marker selection
-  // so the next open starts on the category list — mirrors the demo survey
-  // dock button clearing the selected marker before opening the setup sheet
-  // (demo App.tsx:389-393).
+  // Owner 2026-10-01: closing the sheet KEEPS the accordion (the open
+  // category and Survey Marker) so reopening comes back to the same place;
+  // only its menus close. (It used to clear it, after the demo's dock button.) A placement or a tap on a placed Survey
+  // Marker still opens the sheet with its own category and marker open
+  // (PDFViewer replaces the open set). Exiting Survey starts fresh.
   useEffect(() => {
-    if (mobileMode && isSurveyPanelCollapsed) {
-      setExpandedSurveyMarkers((prev) => (Object.keys(prev || {}).length ? {} : prev));
-      setMobileNotesEditorOpen(false);
-      setMobileDetailDropdown(null);
-    }
-  }, [mobileMode, isSurveyPanelCollapsed, setExpandedSurveyMarkers]);
+    if (mobileMode && isSurveyPanelCollapsed) setMobileDetailDropdown(null);
+  }, [mobileMode, isSurveyPanelCollapsed]);
 
-  // Outside-tap closes the detail view's entity / sibling-marker dropdowns.
+  // Phone: bring the open Survey Marker to the top of the list (after a
+  // placement it can be far down a long category). Scrolls the list only -
+  // never scrollIntoView, which would also nudge the overflow-hidden sheet.
+  useEffect(() => {
+    if (!mobileMode || !mobileDetailMarkerId || isSurveyPanelCollapsed) return undefined;
+    // Reopened where the finger left it: keep that scroll.
+    if (mobileListRestoredRef.current) {
+      mobileListRestoredRef.current = false;
+      return undefined;
+    }
+    const frame = requestAnimationFrame(() => {
+      const row = document.getElementById(`highlight-item-${mobileDetailMarkerId}`);
+      const list = row?.closest('.mobile-survey-list');
+      if (!row || !list) return;
+      const rowTop = row.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
+      // Already in the top part of the list: leave it where the finger was.
+      if (rowTop >= list.scrollTop && rowTop <= list.scrollTop + list.clientHeight * 0.4) return;
+      // One row of context (its category, or the row before) stays visible.
+      list.scrollTop = Math.max(0, rowTop - 40);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [mobileMode, mobileDetailMarkerId, isSurveyPanelCollapsed]);
+
+  // Outside-tap closes the open Survey Marker's entity menu.
   useEffect(() => {
     if (!mobileDetailDropdown) return undefined;
     // Light popover — shared dismiss rules R1/R2/R5 (src/components/dismissRules.js).
@@ -666,7 +1196,7 @@ const SurveySpacesRail = ({
     if (!openEntityDropdownId) return undefined;
     // Light popover — shared dismiss rules R1/R2/R5 (src/components/dismissRules.js).
     return watchLightPopover({
-      contains: (target) => Boolean(target.closest('.survey-marker-entity-select-wrap')),
+      contains: (target) => Boolean(target.closest('.survey-marker-entity-select-wrap, .survey-rail__entity-wrap')),
       close: () => setOpenEntityDropdownId(null),
     });
   }, [openEntityDropdownId]);
@@ -696,7 +1226,8 @@ const SurveySpacesRail = ({
   }, [items]);
 
   const commitSurveyMarkerName = (annotationId, categoryId, previousName, nextRawName, fallbackName) => {
-    const nextName = (nextRawName || '').trim() || fallbackName;
+    // BL-22 resolver (was the desktop Name pop-up's): blank -> the default name.
+    const nextName = resolveSurveyMarkerPromptName(nextRawName ?? '', fallbackName ?? '') || fallbackName;
     const oldName = (previousName || '').trim() || fallbackName;
     if (!annotationId || nextName === oldName) return;
 
@@ -746,10 +1277,12 @@ const SurveySpacesRail = ({
   // Same writes as the desktop expanded-row entity dropdown (handleEntitySelection
   // below): patch the marker annotation, then mirror onto the linked item's
   // module-specific data and its annotations. entityId '' / null clears.
-  const applyEntitySelectionForMarker = (annotationId, markerModuleId, category, entityId) => {
+  const applyEntitySelectionForMarker = (annotationId, markerModuleId, category, entityId, { automatic = false } = {}) => {
     const { matchingItem, moduleData, dataKey } = findMarkerMatchingItem(annotationId, markerModuleId, category);
     const entities = selectedTemplate?.entities || [];
     const entity = entityId ? entities.find(e => e.id === entityId) : null;
+    // A user's pick is what the next desktop Survey Marker starts with.
+    if (!automatic && typeof rememberSurveyEntity === 'function') rememberSurveyEntity(entity?.id || null);
 
     setSurveyMarkers(prev => ({
       ...prev,
@@ -792,256 +1325,411 @@ const SurveySpacesRail = ({
     }
   };
 
-  // Verbatim re-housing of the desktop checklist Y/N/N-A click handler
-  // (previously inline in the expanded marker row) so the mobile detail view
-  // and the desktop row share one implementation, including the KAL-44
-  // auto-"Complete"-entity behavior when every active item is Y or N/A.
+  // The checklist Y/N/N-A click handler, shared by the desktop row and the
+  // phone's open Survey Marker. Owner ruling 2026-10-01 (auto entity): "When
+  // every checklist answer is Y or N/A, set the entity to Complete by itself,
+  // but never undo it." The rule lives in utils/surveyAutoEntity.js: every
+  // ACTIVE item answered Y or N/A -> the template's Complete entity; a later
+  // answer never clears or changes the entity; no Space has to be selected
+  // (it used to run only with selectedSpaceId set, and cleared the entity to
+  // None as soon as one answer was not Y / N/A).
   const applyChecklistResponseSelection = (annotationId, markerModuleId, category, markerRowName, checklistItemId, option) => {
-    setSurveyMarkers(prev => {
-      const updated = {
-        ...prev,
-        [annotationId]: {
-          ...prev[annotationId],
-          checklistResponses: {
-            ...prev[annotationId]?.checklistResponses,
-            [checklistItemId]: {
-              ...prev[annotationId]?.checklistResponses?.[checklistItemId],
-              selection: option
-            }
-          }
-        }
-      };
-
-      // Check if all checklist items are Y or N/A.
-      // KAL-44: archived items don't gate auto-complete; only
-      // active items count toward "all complete".
-      const updatedSurveyMarker = updated[annotationId];
-      const activeChecklist = (category.checklist || []).filter(it => it && it.archived !== true);
-      if (updatedSurveyMarker && activeChecklist.length > 0 && selectedTemplate && selectedSpaceId) {
-        const allItemsComplete = activeChecklist.every(checklistItem => {
-          const response = updatedSurveyMarker.checklistResponses?.[checklistItem.id];
-          const selection = response?.selection;
-          return selection === 'Y' || selection === 'N/A';
-        });
-
-        // Find the item associated with this surveyMarker
-        const surveyMarkerData = updated[annotationId];
-        const categoryName = getCategoryName(selectedTemplate, markerModuleId, category.id);
-        const surveyMarkerName = surveyMarkerData?.name || markerRowName || '';
-        const matchingItem = itemsByNameType.get(`${surveyMarkerName}\0${categoryName}`);
-
-        // Get module-specific data
-        const moduleName = getModuleName(selectedTemplate, markerModuleId);
-        const dataKey = getModuleDataKey(moduleName);
-        const moduleData = matchingItem?.[dataKey] || {};
-
-        // If all items are Y or N/A, automatically set entity to "Complete"
-        if (allItemsComplete) {
-          // Find the "Complete" entity
-          const entities = selectedTemplate.entities || [];
-          const completeEntity = entities.find(e =>
-            e.name.toLowerCase().includes('complete')
-          );
-
-          if (completeEntity) {
-            const entityColor = normalizeSurveyMarkerColor(completeEntity.color) || completeEntity.color || hexToRgba('#E3D1FB', DEFAULT_SURVEY_MARKER_OPACITY);
-            // Update item's module-specific data with Complete entity status
-            if (matchingItem) {
-              const updatedItem = {
-                ...matchingItem,
-                [dataKey]: {
-                  ...moduleData,
-                  entityId: completeEntity.id,
-                  entityName: completeEntity.name,
-                  entityColor: entityColor
-                }
-              };
-
-              setItems(prev2 => ({
-                ...prev2,
-                [matchingItem.itemId]: updatedItem
-              }));
-
-              // Update all annotations for this item in this module with the new color
-              setAnnotations(prev2 => {
-                const updatedAnns = { ...prev2 };
-                Object.values(updatedAnns).forEach(ann => {
-                  const annModuleId = ann.moduleId || ann.spaceId; // Support legacy spaceId
-                  if (ann.itemId === matchingItem.itemId && annModuleId === markerModuleId) {
-                    updatedAnns[ann.annotationId] = {
-                      ...ann,
-                      entityId: completeEntity.id,
-                      entityName: completeEntity.name,
-                      entityColor: entityColor
-                    };
-                  }
-                });
-                return updatedAnns;
-              });
-
-              // Update surveyMarker color on PDF
-              if (surveyMarkerData?.pageNumber && surveyMarkerData?.bounds) {
-                setNewSurveyMarkersByPage(prev2 => {
-                  const pageSurveyMarkers = prev2[surveyMarkerData.pageNumber] || [];
-                  // Remove any existing surveyMarker with this annotationId or same bounds (regardless of needsEntity or color)
-                  const filtered = pageSurveyMarkers.filter(h => {
-                    // Keep surveyMarkers that don't match by ID or bounds
-                    const hasMatchingId = h.annotationId === annotationId;
-                    const hasMatchingBounds = h.x === surveyMarkerData.bounds.x &&
-                      h.y === surveyMarkerData.bounds.y &&
-                      h.width === surveyMarkerData.bounds.width &&
-                      h.height === surveyMarkerData.bounds.height;
-                    // Remove if it matches by ID or bounds
-                    return !hasMatchingId && !hasMatchingBounds;
-                  });
-                  return {
-                    ...prev2,
-                    [surveyMarkerData.pageNumber]: [
-                      ...filtered,
-                      {
-                        ...surveyMarkerData.bounds,
-                        color: entityColor,
-                        annotationId: annotationId
-                      }
-                    ]
-                  };
-                });
-              }
-            }
-
-            // Update survey marker annotation with Complete entity status
-            updated[annotationId] = {
-              ...updated[annotationId],
-              entityId: completeEntity.id,
-              entityName: completeEntity.name,
-              entityColor: entityColor
-            };
-          }
-        } else {
-          // Not all items are Y or N/A - remove entity status (set to None)
-          if (matchingItem) {
-            const updatedItem = {
-              ...matchingItem,
-              [dataKey]: {
-                ...moduleData,
-                entityId: undefined,
-                entityName: undefined,
-                entityColor: undefined
-              }
-            };
-
-            setItems(prev2 => ({
-              ...prev2,
-              [matchingItem.itemId]: updatedItem
-            }));
-
-            // Update all annotations for this item in this space
-            setAnnotations(prev2 => {
-              const updatedAnns = { ...prev2 };
-              Object.values(updatedAnns).forEach(ann => {
-                if (ann.itemId === matchingItem.itemId && ann.spaceId === selectedSpaceId) {
-                  updatedAnns[ann.annotationId] = {
-                    ...ann,
-                    entityId: undefined,
-                    entityName: undefined,
-                    entityColor: undefined
-                  };
-                }
-              });
-              return updatedAnns;
-            });
-
-            // Update surveyMarker on PDF - revert to "needs entity" state (transparent with dashed outline)
-            if (surveyMarkerData?.pageNumber && surveyMarkerData?.bounds) {
-              setNewSurveyMarkersByPage(prev2 => {
-                const pageSurveyMarkers = prev2[surveyMarkerData.pageNumber] || [];
-                // Remove any existing surveyMarker with this annotationId or same bounds (regardless of needsEntity or color)
-                const filtered = pageSurveyMarkers.filter(h => {
-                  // Keep surveyMarkers that don't match by ID or bounds
-                  const hasMatchingId = h.annotationId === annotationId;
-                  const hasMatchingBounds = h.x === surveyMarkerData.bounds.x &&
-                    h.y === surveyMarkerData.bounds.y &&
-                    h.width === surveyMarkerData.bounds.width &&
-                    h.height === surveyMarkerData.bounds.height;
-                  // Remove if it matches by ID or bounds
-                  return !hasMatchingId && !hasMatchingBounds;
-                });
-                // Add "needs entity" surveyMarker (transparent with dashed outline)
-                return {
-                  ...prev2,
-                  [surveyMarkerData.pageNumber]: [
-                    ...filtered,
-                    {
-                      ...surveyMarkerData.bounds,
-                      needsEntity: true,
-                      annotationId: annotationId
-                    }
-                  ]
-                };
-              });
-            }
-          }
-
-          // Update survey marker annotation to remove entity status
-          updated[annotationId] = {
-            ...updated[annotationId],
-            entityId: undefined,
-            entityName: undefined,
-            entityColor: undefined
-          };
-        }
+    const currentMarker = surveyMarkers[annotationId] || {};
+    const nextResponses = {
+      ...currentMarker.checklistResponses,
+      [checklistItemId]: {
+        ...currentMarker.checklistResponses?.[checklistItemId],
+        selection: option
       }
-
-      return updated;
-    });
-  };
-
-  // ——— Mobile in-sheet notes editor (demo SurveySheet.tsx:191-283) ———
-  const openMobileNotesEditor = () => {
-    const note = surveyMarkers?.[mobileDetailMarkerId]?.note || {};
-    setMobileNoteDraft({
-      text: note.text || '',
-      photos: Array.isArray(note.photos) ? note.photos : [],
-      videos: Array.isArray(note.videos) ? note.videos : []
-    });
-    setMobileDetailDropdown(null);
-    setMobileNotesEditorOpen(true);
-  };
-
-  // Same write as the desktop Note dialog's Save (PDFViewer Note Dialog):
-  // patch the marker's `note` through setSurveyMarkers so persistence and
-  // sync see the identical operation.
-  const saveMobileNotes = () => {
-    const annotationId = mobileDetailMarkerId;
-    if (!annotationId) return;
+    };
     setSurveyMarkers(prev => ({
       ...prev,
       [annotationId]: {
-        ...(prev[annotationId] || {}),
-        note: {
-          text: mobileNoteDraft.text,
-          photos: mobileNoteDraft.photos,
-          videos: mobileNoteDraft.videos
+        ...prev[annotationId],
+        checklistResponses: {
+          ...prev[annotationId]?.checklistResponses,
+          [checklistItemId]: {
+            ...prev[annotationId]?.checklistResponses?.[checklistItemId],
+            selection: option
+          }
         }
       }
     }));
-    setMobileNotesEditorOpen(false);
-  };
 
-  // Reuses the desktop Note dialog's FileReader/dataUrl attachment shape
-  // ({ name, dataUrl }) so saved attachments render in both editors.
-  const addMobileNoteMedia = (kind, fileList) => {
-    const files = Array.from(fileList || []);
-    if (!files.length) return;
-    Promise.all(files.map(file => new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (event) => resolve({ name: file.name, dataUrl: event.target.result });
-      reader.readAsDataURL(file);
-    }))).then(media => {
-      setMobileNoteDraft(prev => ({ ...prev, [kind]: [...prev[kind], ...media] }));
+    const { moduleData } = findMarkerMatchingItem(annotationId, markerModuleId, category);
+    const completeEntity = resolveAutoCompleteEntity({
+      checklist: category?.checklist,
+      responses: nextResponses,
+      entities: selectedTemplate?.entities,
+      currentEntityId: moduleData?.entityId || currentMarker.entityId || null,
     });
+    if (!completeEntity) return;
+    applyEntitySelectionForMarker(annotationId, markerModuleId, category, completeEntity.id, { automatic: true });
+    // Repaint the box on the page in the Complete colour (the same write the
+    // old rule made, kept to this marker's own id).
+    if (currentMarker.pageNumber && currentMarker.bounds) {
+      const color = normalizeSurveyMarkerColor(completeEntity.color)
+        || completeEntity.color
+        || hexToRgba('#E3D1FB', DEFAULT_SURVEY_MARKER_OPACITY);
+      setNewSurveyMarkersByPage(prev => {
+        const pageMarkers = prev[currentMarker.pageNumber] || [];
+        const existing = pageMarkers.find(h => h.annotationId === annotationId) || {};
+        const painted = { ...existing, ...currentMarker.bounds, color, annotationId };
+        delete painted.needsEntity;
+        return {
+          ...prev,
+          [currentMarker.pageNumber]: [
+            ...pageMarkers.filter(h => h.annotationId !== annotationId),
+            painted
+          ]
+        };
+      });
+    }
   };
 
+  // The open Survey Marker's note, edited inline (SurveyMarkerNotes) on the
+  // phone and the desktop. Same write the retired Notes screen and Note
+  // dialog made - patch the marker's `note` through setSurveyMarkers - so
+  // persistence, sync and the Excel row see the identical operation. The
+  // patch is functional, so a text save and an upload finishing at the same
+  // moment both land. `requireExisting`: an upload that finishes after its
+  // Survey Marker was deleted must not bring a stub of it back.
+  const updateSurveyMarkerNote = useCallback((annotationId, updater, { requireExisting = false } = {}) => {
+    if (!annotationId) return;
+    setSurveyMarkers(prev => {
+      const existing = prev?.[annotationId];
+      if (!existing && requireExisting) return prev;
+      const rawNote = existing?.note;
+      let prevNote = {};
+      if (rawNote && typeof rawNote === 'object') {
+        prevNote = rawNote;
+      } else if (typeof rawNote === 'string') {
+        // document_annotations.notes is TEXT: an object note can arrive as
+        // JSON text; anything else is a plain-text note.
+        try {
+          const parsed = rawNote.trim().startsWith('{') ? JSON.parse(rawNote) : null;
+          prevNote = parsed && typeof parsed === 'object' ? parsed : { text: rawNote };
+        } catch {
+          prevNote = { text: rawNote };
+        }
+      }
+      const nextNote = updater(prevNote);
+      if (!nextNote || nextNote === prevNote) return prev;
+      return {
+        ...prev,
+        [annotationId]: {
+          ...(existing || {}),
+          note: nextNote
+        }
+      };
+    });
+  }, [setSurveyMarkers]);
+
+  const renderSurveyMarkerNotes = (annotationId, variant) => (
+    <SurveyMarkerNotes
+      key={annotationId}
+      variant={variant}
+      note={surveyMarkers?.[annotationId]?.note}
+      markerId={annotationId}
+      documentId={pdfFile?.id || null}
+      canEdit={canEditSurveyMarkers !== false}
+      onUpdateNote={(updater, options) => updateSurveyMarkerNote(annotationId, updater, options)}
+      autoFocusNote={noteFocusRequestId === annotationId}
+      onAutoFocused={clearNoteFocusRequest}
+    />
+  );
+
+  // Item-row badges, shared by the phone and the desktop rows: checklist
+  // progress ("2/3" answered of the category's active items) and whether the
+  // Survey Marker has a note and how many photos / videos it carries.
+  const getSurveyMarkerProgress = (annotationId, category) => {
+    const active = (category?.checklist || []).filter((item) => item && item.archived !== true);
+    const responses = surveyMarkers?.[annotationId]?.checklistResponses || {};
+    const answered = active.filter((item) => Boolean(responses[item.id]?.selection)).length;
+    const no = active.filter((item) => responses[item.id]?.selection === 'N').length;
+    return { answered, total: active.length, no };
+  };
+  // The "answered/total" count. Owner 2026-10-01 (after a design debate):
+  // green with a check only when every item is answered Y or N/A (the same
+  // rule that marks the PDF marker Complete); red as soon as any item is N,
+  // finished or not; grey otherwise. The check keeps "done" readable without
+  // telling red from green.
+  const renderSurveyMarkerProgress = ({ answered, total, no }) => {
+    const done = total > 0 && answered === total && no === 0;
+    const state = no > 0 ? ' is-no' : done ? ' is-done' : '';
+    const label = done
+      ? `All ${total} checklist items answered, complete`
+      : `${answered} of ${total} checklist items answered${no > 0 ? `, ${no} answered No` : ''}`;
+    return (
+      <span className={`survey-marker-progress${state}`} aria-label={label} title={label}>
+        {done ? <Icon name="check" size={12} color="currentColor" /> : null}
+        {answered}/{total}
+      </span>
+    );
+  };
+  const getSurveyMarkerNoteInfo = (annotationId) => {
+    const note = surveyMarkers?.[annotationId]?.note || {};
+    // Every photo, video and audio clip: stored refs (note.media) and any
+    // legacy inline photos / videos.
+    const mediaCount = normalizeNoteMedia(note).length;
+    return { text: typeof note.text === 'string' ? note.text.trim() : '', mediaCount };
+  };
+  const renderSurveyMarkerBadges = (annotationId, category, className) => {
+    const progress = getSurveyMarkerProgress(annotationId, category);
+    const { total } = progress;
+    const { text, mediaCount } = getSurveyMarkerNoteInfo(annotationId);
+    return (
+      <span className={className}>
+        {text ? (
+          <span className="survey-marker-badge" aria-label="Has a note">
+            <Icon name="note" size={12} color="currentColor" />
+          </span>
+        ) : null}
+        {mediaCount > 0 ? (
+          <span className="survey-marker-badge" aria-label={`${mediaCount} media attachment${mediaCount === 1 ? '' : 's'}`}>
+            <Icon name="image" size={12} color="currentColor" />
+            <span>{mediaCount}</span>
+          </span>
+        ) : null}
+        {total > 0 ? renderSurveyMarkerProgress(progress) : null}
+      </span>
+    );
+  };
+
+  // Phone: a Survey Marker in the accordion - ONE line, the same line closed
+  // and open (owner 2026-10-01: "Expanding 'Camera 1' changes too much ...
+  // make it calm"):
+  //   [entity dot (+ its menu chevron when open)] [name] [Locate] [3/3] [chevron]
+  // - Closed, the whole line opens the marker; Locate is its own button.
+  // - Open, only two things change: the entity's menu chevron appears beside
+  //   the dot, and the name gets a field well behind it (it is now editable).
+  //   The name keeps its x, size, weight and baseline; Locate, the count and
+  //   the chevron keep their places. The line is 44px in both states.
+  // - The checklist and the note slide open under it (MobileSurveyMarkerCollapse).
+  // Locate is the original control restored (owner 2026-10-01: "its look
+  // changed without being asked"): the magnifier, blue when the marker is on
+  // the page (tap = go to it), orange when it is not (tap = place it).
+  const renderMobileSurveyMarker = (surveyMarker, category, markerName, fallbackName, { isOpen, dotColor, onOpen, onClose, grip = null }) => {
+    const annotationId = surveyMarker.id;
+    const markerModuleId = surveyMarker.moduleId || selectedModuleId;
+    const isPlaced = Boolean(surveyMarker.bounds && surveyMarker.pageNumber);
+    let entityMenu = null;
+    let entityLabel = '';
+    let hasEntity = Boolean(dotColor);
+    let body = null;
+    if (isOpen) {
+      const { moduleData } = findMarkerMatchingItem(annotationId, markerModuleId, category);
+      const currentEntityId = moduleData.entityId || surveyMarkers[annotationId]?.entityId;
+      const currentEntity = currentEntityId ? entitiesMap.get(currentEntityId) : null;
+      const entityName = currentEntity?.name || moduleData.entityName || surveyMarkers[annotationId]?.entityName || 'None';
+      hasEntity = Boolean(currentEntityId || entityName !== 'None');
+      entityLabel = `Entity: ${hasEntity ? entityName : 'none'}. Choose Survey Marker entity`;
+      const entityOptions = [
+        { id: '', name: 'None', color: null },
+        ...((selectedTemplate?.entities || []).map(entity => ({ id: entity.id, name: entity.name, color: entity.color })))
+      ];
+      if (mobileDetailDropdown === 'entity') {
+        entityMenu = (
+          <div className="mobile-survey-detail-menu mobile-survey-detail-entity-menu" role="listbox" aria-label="Entity">
+            {entityOptions.map(option => {
+              const isSelectedOption = (currentEntityId || '') === (option.id || '');
+              return (
+                <button
+                  key={option.id || 'none'}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelectedOption}
+                  className={isSelectedOption ? 'is-active' : ''}
+                  onClick={() => {
+                    applyEntitySelectionForMarker(annotationId, markerModuleId, category, option.id);
+                    setMobileDetailDropdown(null);
+                  }}
+                >
+                  <span
+                    className="mobile-survey-detail-entity-dot"
+                    style={{
+                      background: option.color || 'transparent',
+                      // UX: a USER colour gets the shared ink ring, no colour
+                      // gets ordinary chrome.
+                      borderColor: option.color ? 'var(--ink-ring-strong)' : 'var(--border-strong)'
+                    }}
+                  />
+                  <span>{option.name}</span>
+                  <span className="mobile-survey-detail-check" aria-hidden="true">
+                    {isSelectedOption ? <Icon name="check" size={14} color="currentColor" /> : null}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        );
+      }
+      const checklist = (category?.checklist || []).filter((item) => item && item.archived !== true);
+      body = (
+        <>
+          {/* The whole checklist, every row - no 4-row window scrolling inside
+              a sheet that also scrolls. */}
+          <div className="mobile-survey-detail-checklist">
+            {checklist.length ? checklist.map(item => {
+              const response = surveyMarkers[annotationId]?.checklistResponses?.[item.id]?.selection;
+              return (
+                <div key={item.id} className="mobile-survey-check-item">
+                  <span className="mobile-survey-check-text">{item.text}</span>
+                  <div className="mobile-survey-check-group">
+                    {['Y', 'N', 'N/A'].map(option => (
+                      <button
+                        key={option}
+                        type="button"
+                        className={`mobile-survey-check-btn${response === option ? ` is-active is-${option === 'Y' ? 'yes' : option === 'N' ? 'no' : 'na'}` : ''}`}
+                        aria-pressed={response === option}
+                        aria-label={`${item.text} ${option}`}
+                        onClick={() => applyChecklistResponseSelection(annotationId, markerModuleId, category, surveyMarker.name || '', item.id, option)}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            }) : (
+              <div className="mobile-survey-detail-empty">No checklist items</div>
+            )}
+          </div>
+
+          {/* NOTES / MEDIA SLOT: the note edited in place and the media strip
+              (audit chunk B, owner 2026-10-01) - the same block the desktop
+              row shows. */}
+          <div className="mobile-survey-open-notes" data-slot="survey-notes-media">
+            {renderSurveyMarkerNotes(annotationId, 'phone')}
+          </div>
+        </>
+      );
+    }
+    const dotStyle = {
+      background: dotColor || 'transparent',
+      borderColor: dotColor ? 'var(--ink-ring-strong)' : 'var(--text-3)'
+    };
+    const lead = (
+      <>
+        <span className="mobile-survey-marker-dot mobile-survey-detail-entity-dot" style={dotStyle} />
+        <span className="mobile-survey-marker-entity-chev" aria-hidden="true">
+          <Icon name="chevronDown" size={10} color="currentColor" />
+        </span>
+      </>
+    );
+
+    return (
+      <div
+        className={`mobile-survey-marker${isOpen ? ' is-open' : ''}`}
+        data-testid={isOpen ? 'mobile-survey-open-marker' : undefined}
+      >
+        <div className="mobile-survey-marker-line mobile-survey-detail-dropdown-wrap">
+          {/* The reorder grip in the gutter, as on desktop (owner 2026-10-02). */}
+          {grip}
+          {/* Closed: the whole line is the open button (behind the controls). */}
+          {!isOpen && (
+            <button
+              type="button"
+              className="mobile-survey-marker-cover"
+              aria-label={`Open ${markerName}`}
+              aria-expanded={false}
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpen();
+              }}
+            />
+          )}
+          {isOpen ? (
+            <button
+              type="button"
+              className={`mobile-survey-marker-lead mobile-survey-entity-chip${hasEntity ? '' : ' is-empty'}`}
+              aria-label={entityLabel}
+              aria-haspopup="listbox"
+              aria-expanded={mobileDetailDropdown === 'entity'}
+              onClick={() => setMobileDetailDropdown(prev => (prev === 'entity' ? null : 'entity'))}
+            >
+              {lead}
+            </button>
+          ) : (
+            <span className={`mobile-survey-marker-lead${hasEntity ? '' : ' is-empty'}`} aria-hidden="true">
+              {lead}
+            </span>
+          )}
+          {/* The name is the SAME field closed and open, so its letters cannot
+              move: closed it is read-only, out of the tab order and lets a tap
+              through to the line's open button; open it is editable and its
+              well shows. (A text span swapped for a field rode 1.3px off on
+              the engine's own field centring.) */}
+          <span className="mobile-survey-marker-field" aria-hidden={isOpen ? undefined : 'true'}>
+            <input
+              type="text"
+              className="mobile-survey-marker-name mobile-survey-detail-name"
+              defaultValue={markerName}
+              key={`${annotationId}:${markerName}`}
+              readOnly={!isOpen}
+              tabIndex={isOpen ? undefined : -1}
+              aria-label={`Rename ${markerName}`}
+              placeholder="Name"
+              onFocus={() => setMobileDetailDropdown(null)}
+              onBlur={(e) => {
+                if (!isOpen) return;
+                const nextName = (e.currentTarget.value || '').trim() || fallbackName;
+                e.currentTarget.value = nextName;
+                commitSurveyMarkerName(annotationId, surveyMarker.categoryId, markerName, nextName, fallbackName);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.currentTarget.blur();
+                } else if (e.key === 'Escape') {
+                  e.currentTarget.value = markerName;
+                  e.currentTarget.blur();
+                }
+              }}
+            />
+          </span>
+          <button
+            type="button"
+            className={`mobile-survey-locate${isPlaced ? '' : ' is-unplaced'}`}
+            data-testid={isPlaced ? undefined : 'survey-marker-unplaced-tag'}
+            aria-label={isPlaced ? 'Locate on page' : 'Not on the page. Place on page'}
+            title={isPlaced ? 'Locate on page' : 'Not on the page — tap to place'}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (isPlaced) {
+                // Survey audit P1-5: lower the sheet to its standard height so
+                // the page shows above it; the viewer then fits the marker in
+                // that visible strip (PDFViewer handleLocateItemOnPDF).
+                setSurveySheetDetent(SHEET_DETENT_STANDARD);
+                handleLocateItemOnPDF(surveyMarker);
+              } else {
+                setPendingLocationItem(surveyMarker);
+              }
+            }}
+          >
+            <Icon name="search" size={15} color="currentColor" />
+          </button>
+          {renderSurveyMarkerBadges(annotationId, category, 'mobile-survey-item-badges')}
+          <button
+            type="button"
+            className="mobile-survey-marker-toggle"
+            aria-label={isOpen ? `Close ${markerName}` : `Open ${markerName}`}
+            aria-expanded={isOpen}
+            // Closed, the line itself is the open button; this is only the glyph.
+            aria-hidden={isOpen ? undefined : 'true'}
+            tabIndex={isOpen ? undefined : -1}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (isOpen) onClose(); else onOpen();
+            }}
+          >
+            <Icon name="chevronDown" size={12} color="currentColor" />
+          </button>
+          {entityMenu}
+        </div>
+        <MobileSurveyMarkerCollapse open={isOpen}>{body}</MobileSurveyMarkerCollapse>
+      </div>
+    );
+  };
 
   const toggleSurveyMarkerExpanded = (annotationId) => {
     if (!annotationId) return;
@@ -1171,289 +1859,304 @@ const SurveySpacesRail = ({
                 type="button"
                 className="mobile-pdf-sheet-backdrop"
                 aria-label="Close Survey panel"
-                onClick={() => {
-                  setIsSurveyPanelCollapsed(true);
-                  requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
-                }}
+                // Slide down like a swipe, then collapse (owner 2026-09-30:
+                // a tap outside is how a phone sheet closes).
+                onClick={() => requestSurveySheetClose()}
+                style={surveyBackdropStyle}
               />
+            )}
+            {/* Desktop: the Survey tab's rail - always on screen, the right-hand
+                twin of the left rail (owner 2026-10-07, copied from Drawboard;
+                scratchpad railDrawboard/DRAWBOARD-SIDEBAR.md). No collapse row
+                and no chevron: the Survey tab opens the panel beside it, and
+                pressed again while the panel is open it closes it. Closing the
+                panel never leaves Survey - "Done" at the end of the survey bar
+                does that (owner 2026-10-07, survey bar round). The zoom / page /
+                fit footer AppShell draws at the bottom of this rail sits above
+                it (same layer, later in the page). */}
+            {!mobileMode && (
+              <div className="survey-rail-strip" data-chrome-rail="true" style={{
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                width: '48px',
+                height: '100%',
+                boxSizing: 'border-box',
+                // Above the panel, which slides out from under it.
+                zIndex: 2,
+                display: 'flex',
+                flexDirection: 'column',
+                background: 'var(--panel-bg)',
+                pointerEvents: 'none'
+              }}>
+                <div role="toolbar" aria-label="Survey panel" aria-orientation="vertical" style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  padding: '8px',
+                  gap: '4px',
+                  pointerEvents: 'auto'
+                }}>
+                  <div style={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={toggleDesktopSurveyPanel}
+                      aria-label="Survey"
+                      aria-expanded={!isSurveyPanelCollapsed}
+                      aria-controls={isSurveyPanelCollapsed ? undefined : 'survey-rail-panel'}
+                      {...tip('Survey', 'left')}
+                      // UX 2026-09-16 (desktop sweep): the Survey tab is a rail
+                      // TAB, so it takes the rail tab glyph (18) like Pages,
+                      // Search, Bookmarks and Spaces in the left rail, in the
+                      // same 40px tab box (padding 11/6).
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        /* UX 2026-09-22: resting chrome icon = --text-2, one
+                           grey across both rails and the top bar. Gold while
+                           Survey is on (the mode, not just the panel). */
+                        color: showSurveyPanel ? 'var(--accent)' : 'var(--text-2)',
+                        cursor: 'pointer',
+                        padding: '11px 6px',
+                        borderRadius: '6px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'background 0.15s',
+                        minWidth: '28px',
+                        minHeight: '28px',
+                        width: '100%'
+                      }}
+                      // Owner 2026-10-02: no hover plate (states.css section 5);
+                      // the shared rail hint comes from the tip() spread above.
+                    >
+                      <Icon
+                        name="survey"
+                        size={RAIL_GLYPH}
+                        color="currentColor"
+                        style={{ width: `${RAIL_GLYPH}px`, height: `${RAIL_GLYPH}px`, flexShrink: 0 }}
+                      />
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
             {/* Panel */}
             {/* UX 2026-05-29: the right rail starts at the same y-coordinate as
                 chrome-sub-toolbar-host. It overlays the right edge of that strip
-                instead of pushing or sitting below it, mirroring the left rail's
-                top collapse row. */}
+                instead of pushing or sitting below it. Desktop (owner
+                2026-10-07): the open panel stands beside the 48px Survey rail
+                (right: 48px), so the Survey tab stays on screen to close it. */}
             <div
+              id={mobileMode ? undefined : 'survey-rail-panel'}
+              // Survey audit P1-5: the phone sheet is a bottom occluder (as the
+              // phone Pages sheet is), so "Locate on page" fits the marker in
+              // the page left above it.
               ref={mobileMode ? undefined : sideOccluderRef}
-              data-viewer-occluder={!mobileMode && !isSurveyPanelCollapsed ? 'side' : undefined}
-              className={`${mobileMode ? 'mobile-pdf-sheet mobile-survey-sheet ' : 'survey-rail '}${isSurveyPanelCollapsed ? 'is-collapsed' : ''}`}
+              data-viewer-occluder={isSurveyPanelCollapsed ? undefined : (mobileMode ? 'sheet' : 'side')}
+              // Phone: swipe down anywhere + the keyboard lift (owner 2026-09-30).
+              {...(mobileMode ? surveySheetProps : null)}
+              className={`${mobileMode ? 'mobile-pdf-sheet mobile-survey-sheet ' : 'survey-rail '}${mobileMode && surveySheetExpanded ? 'is-expanded ' : ''}${mobileMode && surveySheetFullscreen ? 'is-fullscreen ' : ''}${isSurveyPanelCollapsed ? 'is-collapsed' : ''}`}
               style={{
                 // PASS 7 (DESIGN-SYSTEM.md, owner): every phone panel opens at
                 // Standard - 448px plus the bottom safe area - so the tray does
                 // not change height as you move between Pages, Search, Spaces and
-                // Survey. This panel used to measure its own content instead (154
-                // plus 48 a template, 392 with one chosen, 314 plus the checklist
-                // window in detail), which made it the odd one out AND made it
-                // resize under your finger as you moved through it. The token is
-                // --mobile-panel-standard, and .mobile-pdf-sheet already falls
-                // back to it, so nothing is set here: leaving --mobile-sheet-height
-                // unset is what lets .is-expanded and .is-fullscreen set it on a
-                // pull-up, which an inline value would have outranked.
+                // Survey. Leaving --mobile-sheet-height unset is what lets
+                // .is-expanded and .is-fullscreen set it on a pull-up, which an
+                // inline value would have outranked.
                 position: mobileMode ? 'fixed' : 'absolute',
                 top: mobileMode ? 'auto' : 0,
-                right: 0,
+                right: mobileMode ? 0 : '48px',
                 bottom: mobileMode ? 0 : 'auto',
                 left: mobileMode ? 0 : 'auto',
                 height: mobileMode ? 'var(--mobile-sheet-height, var(--mobile-panel-standard))' : '100%',
-                width: mobileMode ? '100%' : (isSurveyPanelCollapsed ? '48px' : '320px'),
-                background: 'var(--surface-1)',
+                width: mobileMode ? '100%' : '320px',
+                background: 'var(--panel-bg)',
                 borderLeft: mobileMode ? 'none' : '1px solid var(--border)',
+                // Desktop: a hairline against the Survey rail beside it, as the
+                // left panel has against the left rail.
+                borderRight: mobileMode ? undefined : '1px solid var(--border)',
+                boxSizing: mobileMode ? undefined : 'border-box',
                 zIndex: mobileMode ? 6500 : 1,
-                display: 'flex',
+                // Desktop: drawn while open, and for the 0.2s it slides back
+                // under the rail after closing.
+                display: (mobileMode || desktopSurveyPanelShown) ? 'flex' : 'none',
+                pointerEvents: (!mobileMode && railPanelLeaving) ? 'none' : undefined,
                 flexDirection: 'column',
-                // 2026-09-17: the desktop rail keeps its horizontal slide-in; on
-                // phone the sheet rises from the bottom, so a right-edge
-                // keyframe here would fight useMobileSheetMotion's transform.
-                animation: mobileMode ? 'none' : 'slideInRight 0.3s ease-out',
-                transition: 'width 0.2s ease, right 0.2s ease, top 0.2s ease, height 0.2s ease',
+                // Desktop motion (owner 2026-09-30: "the expand animation isn't
+                // smooth"; 2026-10-07 Drawboard rail): the panel is laid out
+                // ONCE at its 320px and slides out from under the Survey rail
+                // (surveyRailExpand), and back under it on close
+                // (surveyRailCollapse) - transforms only, 0.2s ease, so no row
+                // re-wraps mid-motion. Both end in an animationend the viewer's
+                // side-room measure listens for; off under prefers-reduced-motion
+                // (styles.css). On the phone the sheet rises from the bottom
+                // (useMobileSheetMotion), so no keyframe here.
+                animation: mobileMode
+                  ? 'none'
+                  : (railPanelLeaving ? 'surveyRailCollapse 0.2s ease forwards' : 'surveyRailExpand 0.2s ease'),
+                // Phone: the sheet hook's resize glide owns every height
+                // change (2026-10-01), so no CSS height leg to fight it.
+                transition: mobileMode ? 'none' : 'right 0.2s ease, top 0.2s ease, height 0.2s ease',
                 // Phase F: finger-follow / spring-back / slide-down exit, plus
                 // (2026-09-17) the slide-up entrance — one transform timeline.
                 ...(mobileMode ? surveySheetMotionStyle : null)
               }}
             >
-              {/* Collapsed strip — Survey icon only, with a hover tooltip.
-                  Mirrors the left rail's collapsed button metrics while keeping
-                  Survey in its own persistent right-side home. */}
-              {isSurveyPanelCollapsed && (
+              {(!isSurveyPanelCollapsed || railPanelLeaving) && (
                 <>
-                  <div className={mobileMode ? 'mobile-survey-sheet-header' : undefined} style={{
-                    height: '35px',
-                    padding: '0 8px',
-                    borderBottom: '1px solid var(--border)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    // UX 2026-09-16: the collapsed rail is one icon column, so
-                    // its top toggle sits on the same centre line as Survey,
-                    // zoom, the page steppers and Fit below it. Left-aligning
-                    // it to the rail's padding edge left it 3px off-axis.
-                    justifyContent: mobileMode ? 'flex-start' : 'center',
-                    background: 'var(--surface-1)',
-                    flexShrink: 0
-                  }}>
-                    <button
-                      onClick={() => {
-                        setIsSurveyPanelCollapsed(false);
-                        requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
-                      }}
-                      aria-label="Expand Survey panel"
-                      {...tip('Expand Survey panel', 'left')}
-                      // UX 2026-09-16 (desktop sweep): the shared rail control box
-                      // and glyph. It was a 16px chevron in a padding-derived 24px
-                      // box, so the top of the rail carried a glyph size nothing
-                      // else in the column used. The box measures the same 24 as
-                      // before, so the strip's 35px height and the rail's centre
-                      // line are unchanged — nothing moves.
-                      /* UX 2026-09-22 (desktop critic round): a resting chrome
-                         icon is --text-2 on every rail and on the top bar — see
-                         the note on the left rail's tabs in PDFSidebar.jsx.
-                         The box radius is the house 6, not a rail-only 4. */
-                      style={{ background: 'transparent', border: 'none', color: 'var(--text-2)', cursor: 'pointer', ...(mobileMode ? { padding: '4px' } : { padding: 0, width: `${RAIL_CONTROL}px`, height: `${RAIL_CONTROL}px` }), borderRadius: 'var(--chrome-radius)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--hover)'; tip('Expand Survey panel', 'left').onMouseEnter(e); }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; tip('Expand Survey panel', 'left').onMouseLeave(e); }}
-                    >
-                      <Icon name="chevronLeft" size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="var(--text-2)" />
-                    </button>
-                  </div>
-                  <div style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    padding: '8px',
-                    gap: '4px',
-                    background: 'var(--surface-1)',
-                    position: 'relative',
-                    flex: 1
-                  }}>
-                    <div style={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center' }}>
-                      <button
-                        onClick={() => {
-                          setRailIconHover(null);
-                          if (showSurveyPanel) {
-                            setIsSurveyPanelCollapsed(false);
-                          } else {
-                            setIsSurveyPanelCollapsed(false);
-                            handleSurveyToggle();
-                          }
-                          requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
-                        }}
-                        aria-label="Survey"
-                        {...tip('Survey', 'left')}
-                        // UX 2026-09-16 (desktop sweep): the Survey tab is a rail
-                        // TAB, so it takes the rail tab glyph (18) like Pages,
-                        // Search, Bookmarks and Spaces in the left rail — it was
-                        // the one 20 in either rail. The padding is split 11/6 the
-                        // way the left rail's tabs are, which keeps the button the
-                        // same 40px tall around the smaller glyph: 18 + 22 = 40,
-                        // exactly what 20 + 20 came to. Nothing moves.
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          /* UX 2026-09-22: resting chrome icon = --text-2, one
-                             grey across both rails and the top bar. */
-                          color: showSurveyPanel ? 'var(--accent)' : 'var(--text-2)',
-                          cursor: 'pointer',
-                          padding: '11px 6px',
-                          borderRadius: '6px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          transition: 'background 0.15s',
-                          minWidth: '28px',
-                          minHeight: '28px',
-                          width: '100%'
-                        }}
-                        onMouseEnter={(e) => {
-                          // UX: use the shared rail hint, including press dismissal.
-                          tip('Survey', 'left').onMouseEnter(e);
-                          e.currentTarget.style.background = 'var(--hover)';
-                        }}
-                        onMouseLeave={(e) => {
-                          tip('Survey', 'left').onMouseLeave(e);
-                          e.currentTarget.style.background = 'transparent';
-                        }}
-                      >
-                        <Icon
-                          name="survey"
-                          size={RAIL_GLYPH}
-                          color="currentColor"
-                          style={{ width: `${RAIL_GLYPH}px`, height: `${RAIL_GLYPH}px`, flexShrink: 0 }}
-                        />
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {!isSurveyPanelCollapsed && (
-                <>
-                  {/* Collapse row: mirrors the left rail's top strip. */}
-                  <div
-                    className={mobileMode ? 'mobile-pdf-sheet__handle mobile-pdf-sheet__handle--wide' : undefined}
-                    onTouchStart={mobileMode ? surveySheetDragHandlers.onTouchStart : undefined}
-                    onTouchMove={mobileMode ? surveySheetDragHandlers.onTouchMove : undefined}
-                    onTouchEnd={mobileMode ? surveySheetDragHandlers.onTouchEnd : undefined}
-                    style={{
-                      height: '35px',
-                      padding: '0 8px',
-                      borderBottom: '1px solid var(--border)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'flex-start',
-                      background: 'var(--surface-1)',
-                      flexShrink: 0
-                    }}
-                  >
-                    <button
-                      onClick={() => {
-                        // Phase F: mobile collapse slides the sheet down first;
-                        // desktop collapses immediately (no bottom-sheet motion).
-                        if (mobileMode) {
-                          requestSurveySheetClose();
-                          return;
-                        }
-                        setIsSurveyPanelCollapsed(true);
-                        requestAnimationFrame(() => {
-                          applyLayoutDrivenZoom();
-                        });
-                      }}
-                      aria-label="Collapse Survey panel"
-                      // UX 2026-09-16 (desktop sweep): the shared rail control box
-                      // and glyph, the same as its twin "Expand Survey panel" — it
-                      // is the same control in the other state, so it cannot be a
-                      // different size. The phone keeps its own 16px sheet handle
-                      // chevron; mobile sizing is not this pass's lane.
+                  {/* Phone: the sheet's grab handle. Owner 2026-10-07: the
+                      invisible "Collapse Survey panel" chevron that filled it is
+                      gone (no collapse arrow anywhere); a swipe down, a tap
+                      outside or the dock's Survey button closes the sheet. */}
+                  {mobileMode && (
+                    <div
+                      ref={railMorphAnchorRef}
+                      className="mobile-pdf-sheet__handle mobile-pdf-sheet__handle--wide"
+                      aria-hidden="true"
                       style={{
-                        background: 'transparent',
-                        border: 'none',
-                        /* UX 2026-09-22: was a raw rgb(153,153,153) — the one
-                           chrome icon in the app painting a hand-typed grey.
-                           It is the Expand chevron's twin, so it takes the same
-                           resting token and the same house radius. */
-                        color: 'var(--text-2)',
-                        cursor: 'pointer',
-                        ...(mobileMode
-                          ? { padding: '4px' }
-                          : { padding: 0, width: `${RAIL_CONTROL}px`, height: `${RAIL_CONTROL}px` }),
-                        borderRadius: 'var(--chrome-radius)',
+                        height: '35px',
+                        padding: '0 8px',
+                        borderBottom: '1px solid var(--border)',
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'center',
-                        transition: 'background 0.15s'
+                        justifyContent: 'flex-start',
+                        background: 'var(--panel-bg)',
+                        flexShrink: 0
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                    >
-                      <Icon name={mobileMode ? 'chevronDown' : 'chevronRight'} size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="var(--text-2)" />
-                    </button>
-                  </div>
+                    />
+                  )}
 
                   {selectedTemplate && showSurveyPanel ? (
                   <>
-                  {/* Template title lives below the rail tabs, not in the collapse row.
+                  {/* The panel's top line (owner 2026-10-07: no collapse row
+                      above it any more).
                       UX 2026-09-23 (owner: phone Survey panel integrated): on the
                       phone this is ONE slim 44px line - the template name as its
-                      own switcher, then Exit Survey as a quiet red word, the
-                      export glyph and the close glyph. The "SURVEY TEMPLATE"
-                      eyebrow and the round plated buttons are gone, and Exit
-                      Survey no longer takes a whole footer band.
+                      own switcher. The "SURVEY TEMPLATE" eyebrow and the round
+                      plated buttons are gone; Exit Survey left the panel on
+                      2026-10-07 (the survey bar's "Done" leaves Survey now).
                       UX 2026-09-23 (owner: desktop survey polish): desktop is one
                       40px line too, the Bookmarks / Spaces header - the template
                       name as a 13px title, then "Export" as a quiet glyph-and-word
                       (with a small caret for the linked workbook's actions) and the
                       close glyph. The 18px title and the gold EXPORT box are gone. */}
-                  <div className={mobileMode ? 'mobile-survey-head' : 'survey-rail__head'}>
+                  {/* Owner 2026-10-01 (template switcher, "hybrid" design):
+                      - Phone, category list: the template name IS the sheet title,
+                        a button with a bare chevron (no disc). A tap swaps the
+                        category list for the list of templates (.is-switching):
+                        the chevron turns up, Export gives its place to a quiet
+                        Cancel.
+                      - Phone, a category open (Full screen): "< Categories" stands
+                        ALONE on the line (owner: "the back button must not be
+                        inline with the template dropdown"); the template name is
+                        not shown at that level.
+                      - Desktop: the 13px rail title is a menu button; its menu
+                        lists the templates (28px rows, the current one checked).
+                        In category-select mode the title is the module's name and
+                        the button is disabled. */}
+                  <div className={mobileMode ? `mobile-survey-head${mobileAccordionOpen ? ' is-drilled' : ''}${isMobileTemplateSwitching ? ' is-switching' : ''}` : 'survey-rail__head'}>
+                    {/* Phone, Full screen (owner 2026-10-01): the way back. Closes
+                        everything in the accordion, which also returns the sheet
+                        to Standard height. */}
+                    {mobileMode && mobileAccordionOpen && (
+                      <button
+                        type="button"
+                        className="mobile-survey-back"
+                        aria-label="Back to categories"
+                        onClick={collapseMobileAccordion}
+                      >
+                        <Icon name="chevronLeft" size={20} color="currentColor" />
+                        <span>Categories</span>
+                      </button>
+                    )}
                     <div
-                      ref={mobileMode ? templateSelectorRef : undefined}
+                      ref={mobileMode ? undefined : templateSelectorRef}
                       className={mobileMode ? 'mobile-survey-head-title' : undefined}
-                      style={{ flex: 1, minWidth: 0, position: 'relative' }}
+                      // Desktop (owner 2026-10-07, rail headers round): the
+                      // title and what goes with it (the space chip) stay
+                      // together on the left; the close glyph is at the right.
+                      style={{ flex: mobileMode ? 1 : '0 1 auto', minWidth: 0 }}
                     >
                       {mobileMode ? (
-                        <>
+                        !mobileAccordionOpen && (
                           <button
                             type="button"
+                            ref={templateTitleButtonRef}
                             className="mobile-survey-template-button"
-                            aria-label="Choose survey template"
-                            aria-expanded={isTemplateSelectorOpen}
-                            onClick={() => setIsTemplateSelectorOpen((open) => !open)}
+                            aria-label={`Template: ${selectedTemplate.name || 'Survey'}. Switch template`}
+                            aria-expanded={isMobileTemplateSwitching}
+                            aria-controls="survey-template-list"
+                            onClick={() => {
+                              // The category rows turn into the template rows
+                              // and back (captureRailMorph).
+                              captureRailMorph();
+                              if (isMobileTemplateSwitching) closeTemplateSwitcher();
+                              else setIsTemplateSelectorOpen(true);
+                            }}
                           >
                             <span>{selectedTemplate.name || 'Survey'}</span>
-                            <Icon name="chevronDown" size={13} color="currentColor" />
+                            <Icon name="chevronDown" size={14} color="currentColor" />
                           </button>
-                          {isTemplateSelectorOpen && (
-                            <div className="mobile-survey-template-menu" role="listbox">
-                              {availableSurveyTemplates.map((template) => (
-                                <button
-                                  key={template.id}
-                                  type="button"
-                                  role="option"
-                                  aria-selected={template.id === selectedTemplate.id}
-                                  className={template.id === selectedTemplate.id ? 'is-active' : ''}
-                                  onClick={() => {
-                                    onSelectSurveyTemplate?.(template);
-                                    setIsTemplateSelectorOpen(false);
-                                  }}
-                                >
-                                  <span>{template.name || 'Untitled Template'}</span>
-                                  {template.id === selectedTemplate.id ? <Icon name="check" size={13} color="currentColor" /> : null}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </>
+                        )
                       ) : (
                         <h2 className="survey-rail__title">
-                          {categorySelectModeActive && selectedModuleId
-                            ? ((selectedTemplate.modules || selectedTemplate.spaces || []).find(m => m.id === selectedModuleId)?.name || 'Survey')
-                            : (selectedTemplate.name || 'Survey')}
+                          <button
+                            type="button"
+                            ref={templateTitleButtonRef}
+                            className="survey-rail__title-button"
+                            aria-haspopup="menu"
+                            aria-expanded={isTemplateSelectorOpen}
+                            aria-controls={isTemplateSelectorOpen ? 'survey-rail-template-menu' : undefined}
+                            aria-label={categorySelectModeActive
+                              ? undefined
+                              : `Template: ${selectedTemplate.name || 'Survey'}. Switch template`}
+                            disabled={categorySelectModeActive}
+                            onClick={() => {
+                              if (isTemplateSelectorOpen) closeTemplateSwitcher({ focusTitle: false });
+                              else setIsTemplateSelectorOpen(true);
+                            }}
+                          >
+                            <span>
+                              {categorySelectModeActive && selectedModuleId
+                                ? ((selectedTemplate.modules || selectedTemplate.spaces || []).find(m => m.id === selectedModuleId)?.name || 'Survey')
+                                : (selectedTemplate.name || 'Survey')}
+                            </span>
+                            {!categorySelectModeActive && <Icon name="chevronDown" size={10} color="currentColor" />}
+                          </button>
                         </h2>
+                      )}
+                      {!mobileMode && isTemplateSelectorOpen && (
+                        <div
+                          id="survey-rail-template-menu"
+                          ref={templateSwitchListRef}
+                          className="survey-rail__template-menu"
+                          role="menu"
+                          aria-label="Switch template"
+                          onKeyDown={handleTemplateMenuKeyDown}
+                        >
+                          {availableSurveyTemplates.map((template) => {
+                            const isCurrent = template.id === selectedTemplate.id;
+                            const moduleCount = ((template.modules || template.spaces) || []).length;
+                            return (
+                              <button
+                                key={template.id}
+                                type="button"
+                                role="menuitemradio"
+                                aria-checked={isCurrent}
+                                tabIndex={isCurrent ? 0 : -1}
+                                className={`survey-rail__menu-item survey-rail__template-option${template.sharedFrom ? ' survey-rail__template-option--shared' : ''}`}
+                                onClick={() => switchSurveyTemplate(template)}
+                              >
+                                <span className="survey-rail__template-option-name">{template.name || 'Untitled template'}</span>
+                                {template.sharedFrom ? <SharedTemplateBadge sharedFrom={template.sharedFrom} size={16} /> : null}
+                                <span className="survey-rail__template-option-meta">{moduleCount} module{moduleCount === 1 ? '' : 's'}</span>
+                                <span className="survey-rail__template-option-check" aria-hidden="true">
+                                  {isCurrent ? <Icon name="check" size={12} color="currentColor" /> : null}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
                       )}
                       {mobileMode && !categorySelectModeActive && selectedTemplate.linkedExcelPath && lastSyncMessage && (() => {
                         // Color the banner by the message's tone so warnings (close Excel,
@@ -1475,421 +2178,51 @@ const SurveySpacesRail = ({
                         );
                       })()}
                     </div>
+                    {/* Spaces chunk B: the space new Survey Markers are tagged with. */}
+                    {activeSpaceId && (spaces || []).some((s) => s?.id === activeSpaceId) && (
+                      <span className="survey-active-space">{(spaces || []).find((s) => s?.id === activeSpaceId)?.name || 'Space'}</span>
+                    )}
+                    {!mobileMode && <span className="survey-rail__head-fill" aria-hidden="true" />}
                     <div className={mobileMode ? 'mobile-survey-head-actions' : 'survey-rail__head-actions'}>
-                      {/* UX 2026-09-23 (owner: phone Survey panel integrated): Exit
-                          Survey moved up from its own full-width outlined footer
-                          band into this line as a quiet red word. Same handler. */}
-                      {mobileMode && (
-                        <button type="button" className="mobile-survey-exit" onClick={exitSurveyMode}>
-                          Exit Survey
-                        </button>
-                      )}
                       {/* UX (mobile demo parity): 34px round export button in the sheet
                           header opening a 218px menu with 48px rows (demo
                           SurveySheet.tsx:324-348, styles.ts:2731-2775; accent gold, not
                           demo blue). Wires the SAME handlers as the desktop bottom
                           export bar: "Export Excel" = handleExportSurveyToExcel(),
                           "Sync Microsoft 365" = push to the linked workbook. */}
+                      {/* Phone, choosing a template: Export steps aside for a quiet
+                          Cancel (the Spaces sheet's action word, never gold). A tap
+                          on a template is what switches; Cancel only leaves. */}
+                      {isMobileTemplateSwitching && (
+                        <button
+                          type="button"
+                          className="mobile-survey-cancel"
+                          onClick={() => {
+                            captureRailMorph();
+                            closeTemplateSwitcher();
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      )}
+                      {/* Owner 2026-10-07 (DEBATE.md): no "Exit Survey" in the
+                          panel any more, on either platform. Survey is left
+                          with "Done" at the right end of the survey bar
+                          (desktop and phone), with an Undo toast; the
+                          floating Survey chip that did it first is gone. */}
                       {mobileMode && (
-                        <div className="mobile-survey-sheet-export-wrap" ref={mobileExportMenuRef}>
-                          <button
-                            type="button"
-                            className={`mobile-survey-sheet-export${isMobileExportMenuOpen ? ' is-open' : ''}`}
-                            aria-label="Export survey data"
-                            aria-haspopup="menu"
-                            aria-expanded={isMobileExportMenuOpen}
-                            disabled={isExporting}
-                            onClick={() => setIsMobileExportMenuOpen((open) => !open)}
-                          >
-                            {isExporting
-                              // UX: trackColor is the unfilled ring behind the
-                              // spinner — a track, so it takes the raised
-                              // surface step like every other track.
-                              ? <Spinner size={14} color="var(--text-1)" trackColor="var(--surface-3)" />
-                              : <Icon name="upload" size={17} color="currentColor" />}
-                          </button>
-                          {isMobileExportMenuOpen && (
-                            <div className="mobile-survey-sheet-export-menu" role="menu">
-                              <button
-                                type="button"
-                                role="menuitem"
-                                disabled={isExporting}
-                                onClick={() => {
-                                  setIsMobileExportMenuOpen(false);
-                                  handleExportSurveyToExcel();
-                                }}
-                              >
-                                <strong>Export Excel</strong>
-                                <span>Create workbook from survey data</span>
-                              </button>
-                              <button
-                                type="button"
-                                role="menuitem"
-                                disabled={isExporting || !selectedTemplate.linkedExcelPath || linkedExcelExists !== true}
-                                onClick={() => {
-                                  setIsMobileExportMenuOpen(false);
-                                  handleExportSurveyToExcel(selectedTemplate.linkedExcelPath);
-                                }}
-                              >
-                                <strong>Sync Microsoft 365</strong>
-                                <span>Update the shared workbook location</span>
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      {/* Desktop Excel EXPORT - moved up from the Select row into the
-                          header as a quiet glyph-and-word (Spaces' Export). Same
-                          handlers and menu items as before; with a linked workbook a
-                          small caret beside the word opens the Excel actions menu. */}
-                      {!mobileMode && (
-                                <div ref={exportMenuRef} className="survey-rail__export">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleExportSurveyToExcel()} // Default action: Export new
-                                      disabled={isExporting}
-                                      className="survey-rail__head-btn"
-                                      {...tip('Export survey data to Excel', 'below')}
-                                    >
-                                      {isExporting
-                                        ? <Spinner size={13} color="var(--text-1)" trackColor="var(--surface-3)" />
-                                        : <Icon name="upload" size={14} color="currentColor" />}
-                                      <span>{isExporting ? 'Exporting' : 'Export'}</span>
-                                    </button>
-                                  {(selectedTemplate.linkedExcelPath && linkedExcelExists === true) && (
-                                    <button
-                                      type="button"
-                                      onClick={() => !isExporting && setShowExportMenu(!showExportMenu)}
-                                      disabled={isExporting}
-                                      className="survey-rail__head-btn survey-rail__head-btn--caret"
-                                      aria-label="Excel actions"
-                                      aria-haspopup="menu"
-                                      aria-expanded={showExportMenu}
-                                    >
-                                      <Icon name="chevronDown" size={10} color="currentColor" />
-                                    </button>
-                                  )}
-
-                                    {showExportMenu && (
-                                      <div className="survey-marker-export-compact-menu">
-                          <div
-                            onClick={async () => {
-                              const excelPath = selectedTemplate.linkedExcelPath;
-                              const isOneDrive = selectedTemplate.isOneDrive;
-
-
-                              if (!excelPath) {
-                                showToast('No Excel file is linked to this survey.', 'error');
-                                setShowExportMenu(false);
-                                return;
-                              }
-
-                              // Check if the path is actually a local file path (even if isOneDrive flag is set)
-                              // Local paths start with / and contain /Users/ or /Library/ or drive letters on Windows
-                              const isLocalFilePath = excelPath.startsWith('/Users/') ||
-                                excelPath.startsWith('/Library/') ||
-                                excelPath.match(/^[A-Za-z]:[\\/]/) || // Windows drive letter
-                                excelPath.includes('/CloudStorage/'); // OneDrive sync folder
-
-                              // For OneDrive API paths (like /Documents/file.xlsx), try to construct local sync folder path
-                              if (isOneDrive && !isLocalFilePath && window.electronAPI) {
-                                try {
-                                  // Get home directory and find OneDrive folders
-                                  const homeDir = await window.electronAPI.getHomeDir();
-                                  const cloudStoragePath = `${homeDir}/Library/CloudStorage`;
-
-                                  console.log('Looking for OneDrive file. Excel path:', excelPath);
-                                  console.log('Home dir:', homeDir);
-                                  console.log('CloudStorage path:', cloudStoragePath);
-
-                                  // List CloudStorage directory to find OneDrive folders
-                                  const cloudStorageContents = await window.electronAPI.listDir(cloudStoragePath);
-                                  console.log('CloudStorage contents:', cloudStorageContents);
-
-                                  const oneDriveFolders = cloudStorageContents.filter(name =>
-                                    name.startsWith('OneDrive') || name.includes('OneDrive')
-                                  );
-                                  console.log('OneDrive folders found:', oneDriveFolders);
-
-                                  // Build list of possible paths
-                                  const possibleLocalPaths = [];
-
-                                  // Add CloudStorage OneDrive folders
-                                  for (const folder of oneDriveFolders) {
-                                    possibleLocalPaths.push(`${cloudStoragePath}/${folder}${excelPath}`);
-                                  }
-
-                                  // Also try legacy OneDrive locations in home directory
-                                  possibleLocalPaths.push(`${homeDir}/OneDrive${excelPath}`);
-                                  possibleLocalPaths.push(`${homeDir}/OneDrive - Personal${excelPath}`);
-
-                                  console.log('Trying these local paths:', possibleLocalPaths);
-
-                                  let localPathFound = null;
-                                  for (const localPath of possibleLocalPaths) {
-                                    try {
-                                      const exists = await window.electronAPI.fileExists(localPath);
-                                      console.log(`Checking ${localPath}: ${exists ? 'EXISTS' : 'not found'}`);
-                                      if (exists) {
-                                        localPathFound = localPath;
-                                        break;
-                                      }
-                                    } catch (e) {
-                                      console.log(`Error checking ${localPath}:`, e);
-                                      // Continue trying other paths
-                                    }
-                                  }
-
-                                  if (localPathFound) {
-                                    console.log('Found local file at:', localPathFound);
-                                    // Open the local file directly
-                                    const result = await window.electronAPI.openPath(localPathFound);
-                                    if (result) {
-                                      console.error('Failed to open local OneDrive file:', result);
-                                      showToast(`Failed to open Excel file:\n${result}`, 'error');
-                                    }
-                                    setShowExportMenu(false);
-                                    return;
-                                  }
-
-                                  // If local file not found, fall through to web approach
-                                  console.log('Local OneDrive file not found, trying web approach...');
-                                } catch (err) {
-                                  console.error('Error searching for local OneDrive file:', err);
-                                  // Fall through to web approach
-                                }
-                              }
-
-                              // Handle OneDrive API files - try desktop Excel first, fall back to web
-                              if (isOneDrive && !isLocalFilePath) {
-                                console.log('Trying web approach for OneDrive file...');
-                                console.log('graphClient available:', !!graphClient);
-                                try {
-                                  // Get the file's web URL from OneDrive
-                                  if (graphClient) {
-                                    console.log('Fetching file metadata from Graph API:', `/me/drive/root:${excelPath}`);
-                                    const driveItem = await graphClient.api(`/me/drive/root:${excelPath}`).get();
-                                    console.log('Drive item response:', driveItem);
-                                    console.log('webUrl:', driveItem?.webUrl);
-                                    console.log('downloadUrl:', driveItem?.['@microsoft.graph.downloadUrl']);
-
-                                    // Get webUrl, or construct one from the downloadUrl/id
-                                    let webUrl = driveItem?.webUrl;
-
-                                    // If no webUrl, try to open the file directly using downloadUrl
-                                    if (!webUrl && driveItem?.['@microsoft.graph.downloadUrl']) {
-                                      // For personal OneDrive, construct the web URL
-                                      // Format: https://onedrive.live.com/edit.aspx?cid=<driveId>&resid=<itemId>
-                                      const downloadUrl = driveItem['@microsoft.graph.downloadUrl'];
-                                      console.log('No webUrl, using downloadUrl to open file');
-
-                                      // Open the download URL which should trigger Excel to open
-                                      window.open(downloadUrl, '_blank');
-                                      setShowExportMenu(false);
-                                      return;
-                                    }
-
-                                    if (webUrl) {
-                                      console.log('Opening with webUrl:', webUrl);
-
-                                      // In Electron, use shell.openExternal to open the URL
-                                      // This will open in the default browser and Excel Online can handle it
-                                      if (window.electronAPI?.openExternal) {
-                                        try {
-                                          await window.electronAPI.openExternal(webUrl);
-                                          console.log('Opened webUrl with shell.openExternal');
-                                        } catch (e) {
-                                          console.error('Failed to open with openExternal:', e);
-                                          // Fallback to window.open
-                                          window.open(webUrl, '_blank');
-                                        }
-                                      } else {
-                                        // Not in Electron, just open in new tab
-                                        window.open(webUrl, '_blank');
-                                      }
-                                    } else {
-                                      showToast('Could not get the OneDrive file URL. Please open the file manually from OneDrive.', 'error');
-                                    }
-                                  } else {
-                                    showToast('Please sign in to Microsoft to open OneDrive files.', 'warn');
-                                  }
-                                } catch (err) {
-                                  console.error('Error opening OneDrive file:', err);
-                                  showToast(`Error opening OneDrive file:\n${err.message}`, 'error');
-                                }
-                                setShowExportMenu(false);
-                                return;
-                              }
-
-                              // Handle local files
-                              if (window.electronAPI) {
-                                try {
-                                  // Check if file exists first
-                                  const exists = await window.electronAPI.fileExists(excelPath);
-
-                                  if (!exists) {
-                                    showToast(`Excel file not found at:\n${excelPath}\n\nThe file may have been moved or deleted.`, 'error');
-                                    setShowExportMenu(false);
-                                    return;
-                                  }
-
-                                  const result = await window.electronAPI.openPath(excelPath);
-                                  if (result) {
-                                    // shell.openPath returns an error string if it fails, empty string on success
-                                    console.error('Failed to open Excel file:', result);
-                                    showToast(`Failed to open Excel file:\n${result}\n\nPath: ${excelPath}`, 'error');
-                                  }
-                                } catch (err) {
-                                  console.error('Error opening Excel file:', err);
-                                  showToast(`Error opening Excel file:\n${err.message}\n\nPath: ${excelPath}`, 'error');
-                                }
-                              } else {
-                                showToast('This feature is only available in the desktop app.', 'error');
-                              }
-                              setShowExportMenu(false);
-                            }}
-                            role="menuitem"
-                            className="survey-rail__menu-item"
-                          >
-                            <Icon name="document" size={14} color="currentColor" />
-                            Open Excel
-                          </div>
-                          <div
-                            onClick={() => {
-                              handleExportSurveyToExcel(selectedTemplate.linkedExcelPath);
-                              setShowExportMenu(false);
-                            }}
-                            role="menuitem"
-                            className="survey-rail__menu-item"
-                          >
-                            <Icon name="upload" size={14} color="currentColor" />
-                            Push to Excel
-                          </div>
-                          {/* "Pull from Excel" reads the last SAVED copy from disk, which on
-                              a local file open in Excel is stale and overlaps the automatic
-                              import-on-save — so it's only offered for OneDrive workbooks. */}
-                          {selectedTemplate?.isOneDrive && (
-                          <div
-                            onClick={() => {
-                              handleSyncFromExcel();
-                              setShowExportMenu(false);
-                            }}
-                            role="menuitem"
-                            className="survey-rail__menu-item"
-                          >
-                            <Icon name="download" size={14} color="currentColor" />
-                            Pull from Excel
-                          </div>
-                          )}
-                          {selectedTemplate?.isOneDrive && (() => {
-                            // Amendment (b) capability gate: a refused verdict keeps the
-                            // toggle visible but inert-with-reason. Clicking re-checks
-                            // (retry); the plain-English reason comes from the shared
-                            // excelSyncStatus vocabulary — never an inline literal here.
-                            const gateRefused = !liveSyncEnabled && liveSyncGate && !liveSyncGate.allowed
-                              && liveSyncGate.reasonCode !== 'checking';
-                            const gateChecking = !liveSyncEnabled && liveSyncGate?.reasonCode === 'checking';
-                            return (
-                            <div
-                              onClick={() => {
-                                if (liveSyncSupported === false) return;
-                                if (typeof onLiveSyncToggle === 'function') onLiveSyncToggle();
-                              }}
-                              role="menuitem"
-                              className="survey-rail__menu-item"
-                              style={{
-                                color: liveSyncEnabled && liveSyncStatus === 'connected'
-                                  ? 'var(--accent)'
-                                  : liveSyncStatus === 'connecting' || gateChecking
-                                    ? 'var(--warning)'
-                                    : liveSyncStatus === 'error' || liveSyncSupported === false
-                                      ? 'var(--danger-text)'
-                                      : 'var(--text-2)',
-                                cursor: liveSyncSupported === false ? 'not-allowed' : 'pointer'
-                              }}
-                              {...tip(
-                                liveSyncSupported === false
-                                  ? 'Live sync requires Microsoft 365 Business account'
-                                  : gateRefused || gateChecking
-                                    ? liveSyncGateStatus(liveSyncGate.reasonCode).label
-                                    : liveSyncEnabled && liveSyncStatus === 'connected'
-                                      ? 'Live sync is active - changes sync in real-time'
-                                      : liveSyncStatus === 'connecting'
-                                        ? 'Connecting to Excel...'
-                                        : liveSyncStatus === 'error'
-                                          ? 'Live sync error - click to retry'
-                                          : 'Enable live sync for real-time Excel updates',
-                                'below'
-                              )}
-                            >
-                              <span style={{ width: '14px', textAlign: 'center', fontSize: '12px' }}>
-                                {liveSyncStatus === 'connecting' || gateChecking
-                                  ? '...'
-                                  : liveSyncEnabled && liveSyncStatus === 'connected'
-                                    ? '●'
-                                    : '○'}
-                              </span>
-                              Live Sync
-                            </div>
-                            );
-                          })()}
-                          {selectedTemplate?.isOneDrive && (() => {
-                            // Slice 4 — guided "Verify Live Sync": a READ-ONLY,
-                            // step-by-step check of the whole live-sync path. The
-                            // verdict (and the running state) comes from the shared
-                            // excelSyncStatus vocabulary — never an inline literal.
-                            const verifying = liveSyncVerify?.state === 'checking';
-                            const verdict = liveSyncVerify?.state === 'done'
-                              ? liveSyncVerifyStatus(liveSyncVerify.verdictCode)
-                              : null;
-                            const verdictColor = verdict ? SYNC_TONE_COLORS[verdict.tone]?.color : null;
-                            return (
-                            <div
-                              onClick={() => {
-                                if (verifying) return;
-                                if (typeof onVerifyLiveSync === 'function') onVerifyLiveSync();
-                              }}
-                              role="menuitem"
-                              className="survey-rail__menu-item"
-                              style={{
-                                color: verifying ? 'var(--warning)' : (verdictColor || 'var(--text-2)'),
-                                cursor: verifying ? 'wait' : 'pointer'
-                              }}
-                              {...tip(
-                                verifying
-                                  ? liveSyncVerifyStatus('verifying').label
-                                  : verdict
-                                    ? verdict.label
-                                    : liveSyncVerifyStatus('idle').label,
-                                'below'
-                              )}
-                            >
-                              <span style={{ width: '14px', textAlign: 'center', fontSize: '12px' }}>
-                                {verifying ? '...' : verdict ? (liveSyncVerify.ready ? <Icon name="check" size={14} /> : '!') : '○'}
-                              </span>
-                              Verify Live Sync
-                            </div>
-                            );
-                          })()}
-                                      </div>
-                                    )}
-                                </div>
-                      )}
-                      <button
-                        onClick={() => {
-                          if (mobileMode) {
+                        <button
+                          onClick={() => {
                             setIsSurveyPanelCollapsed(true);
                             requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
-                          } else {
-                            exitSurveyMode();
-                          }
-                        }}
-                        className={mobileMode ? 'mobile-survey-close' : 'survey-rail__head-btn survey-rail__head-btn--glyph'}
-                        aria-label="Close Survey panel"
-                        {...(mobileMode ? {} : tip('Exit Survey', 'below'))}
-                      >
-                        <Icon name="close" size={mobileMode ? 18 : 16} color="currentColor" />
-                      </button>
+                          }}
+                          className="mobile-survey-close"
+                          aria-label="Close Survey panel"
+                        >
+                          <Icon name="close" size={18} color="currentColor" />
+                        </button>
+                      )}
+                      {desktopPanelClose}
                     </div>
                   </div>
                   {/* Desktop: the Excel sync status is one quiet line under the
@@ -1908,9 +2241,71 @@ const SurveySpacesRail = ({
                       object as the home Documents, Projects and Templates lists. No
                       card per row. On desktop this wrapper is display: contents, so
                       the rail's layout is exactly what it was. */}
+                  {/* Phone, choosing a template (owner 2026-10-01, "hybrid"):
+                      the templates take the category list's place in the sheet -
+                      the entry picker's own rows, with a check column; the current
+                      one is gold ink with a check. A tap switches and lands on
+                      the new template's category list. A filter field only from
+                      15 templates. The sheet keeps its height. */}
+                  {isMobileTemplateSwitching && (() => {
+                    const query = templateSwitchQuery.trim().toLowerCase();
+                    const showSearch = availableSurveyTemplates.length >= 15;
+                    const shown = showSearch && query
+                      ? availableSurveyTemplates.filter((template) => (template.name || 'Untitled template').toLowerCase().includes(query))
+                      : availableSurveyTemplates;
+                    return (
+                      <div className="mobile-survey-picker-body mobile-survey-switch">
+                        {showSearch && (
+                          <label className="mobile-survey-switch-search">
+                            <Icon name="search" size={14} color="currentColor" />
+                            <input
+                              type="search"
+                              placeholder="Find a template"
+                              aria-label="Find a template"
+                              value={templateSwitchQuery}
+                              onChange={(event) => setTemplateSwitchQuery(event.target.value)}
+                            />
+                          </label>
+                        )}
+                        <div
+                          id="survey-template-list"
+                          ref={templateSwitchListRef}
+                          className="mobile-survey-card mobile-survey-template-list mobile-survey-switch-list"
+                          role="group"
+                          aria-label="Switch template"
+                        >
+                          {shown.length === 0 ? (
+                            <div className="mobile-survey-switch-empty">No templates match</div>
+                          ) : shown.map((template) => {
+                            const isCurrent = template.id === selectedTemplate.id;
+                            const moduleCount = ((template.modules || template.spaces) || []).length;
+                            return (
+                              <button
+                                key={template.id}
+                                type="button"
+                                className="mobile-survey-template-row"
+                                aria-current={isCurrent ? 'true' : undefined}
+                                onClick={() => switchSurveyTemplate(template)}
+                              >
+                                <span className="mobile-survey-template-name">{template.name || 'Untitled template'}</span>
+                                {template.sharedFrom ? <SharedTemplateBadge sharedFrom={template.sharedFrom} size={18} /> : null}
+                                <span className="mobile-survey-template-meta">
+                                  {moduleCount} module{moduleCount === 1 ? '' : 's'}
+                                </span>
+                                <span className="mobile-survey-switch-check" aria-hidden="true">
+                                  {isCurrent ? <Icon name="check" size={16} color="currentColor" /> : null}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <div
                     className={mobileMode ? 'mobile-survey-card' : undefined}
                     style={mobileMode ? undefined : { display: 'contents' }}
+                    hidden={isMobileTemplateSwitching || undefined}
                   >
                   {/* Module navigator. Phone: a row of module TABS pinned to the top
                       of the panel (active = bright ink with a 2px ink bar, the home
@@ -1934,7 +2329,21 @@ const SurveySpacesRail = ({
                             aria-selected={isActive}
                             className={isActive ? 'is-active' : undefined}
                             onClick={(event) => {
-                              event.currentTarget.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+                              // Bring a half-hidden tab into the row by scrolling
+                              // the ROW sideways only. scrollIntoView also scrolls
+                              // every ancestor that can scroll - including the
+                              // phone sheet, which is overflow: hidden, so a
+                              // nudge there could never be scrolled back and left
+                              // the panel's rows offset under the tabs (owner
+                              // 2026-10-01, "elements are colliding").
+                              const tab = event.currentTarget;
+                              const row = tab.parentElement;
+                              if (row) {
+                                const tabBox = tab.getBoundingClientRect();
+                                const rowBox = row.getBoundingClientRect();
+                                if (tabBox.left < rowBox.left) row.scrollLeft -= rowBox.left - tabBox.left;
+                                else if (tabBox.right > rowBox.right) row.scrollLeft += tabBox.right - rowBox.right;
+                              }
                               selectSurveyModule(module.id);
                             }}
                           >
@@ -1956,337 +2365,17 @@ const SurveySpacesRail = ({
                     onDismissAll={onDismissAllUnplacedRows}
                   />
 
-                  {/* Panel Content */}
-                  {/* UX (mobile demo parity): when a Survey Marker is selected on
-                      mobile, the sheet swaps the category list for a marker DETAIL
-                      view — mobile-scaled re-housing of the desktop expanded-row
-                      controls (rename, entity picker, sibling nav, locate, notes,
-                      checklist) modeled on demo SurveySheet.tsx:285-568 /
-                      styles.ts:2870-3401. Same handlers + store writes as the
-                      desktop rows; the desktop rail is unchanged. */}
-                  {mobileDetailMarker ? (() => {
-                    const annotationId = mobileDetailMarker.id;
-                    const detailCategory = mobileDetailCategory;
-                    const detailModuleId = mobileDetailMarker.moduleId;
-                    const { moduleData } = findMarkerMatchingItem(annotationId, detailModuleId, detailCategory);
-                    const currentEntityId = moduleData.entityId || mobileDetailMarker.entityId;
-                    const currentEntity = currentEntityId ? entitiesMap.get(currentEntityId) : null;
-                    const detailEntityColor = currentEntity?.color || moduleData.entityColor || mobileDetailMarker.entityColor || null;
-                    const detailEntityName = currentEntity?.name || moduleData.entityName || mobileDetailMarker.entityName || 'None';
-                    const entityOptions = [
-                      { id: '', name: 'None', color: null },
-                      ...((selectedTemplate?.entities || []).map(entity => ({ id: entity.id, name: entity.name, color: entity.color })))
-                    ];
-                    // Sibling nav: every Survey Marker of this category in this
-                    // module, in rail order (demo SurveySheet.tsx:459-491).
-                    const siblingMarkers = Object.entries(surveyMarkers)
-                      .filter(([, marker]) => marker.moduleId === detailModuleId && marker.categoryId === mobileDetailMarker.categoryId)
-                      .map(([id, marker]) => ({ ...marker, id }))
-                      .sort(compareSurveyMarkersForOrder);
-                    const siblingIndex = siblingMarkers.findIndex(marker => marker.id === annotationId);
-                    const baseCategoryName = detailCategory?.name?.trim() || 'Untitled Category';
-                    const fallbackName = `${baseCategoryName} ${siblingIndex >= 0 ? siblingIndex + 1 : siblingMarkers.length + 1}`;
-                    const detailMarkerName = mobileDetailMarker.name || fallbackName;
-                    const hasNoteText = Boolean(surveyMarkers[annotationId]?.note?.text);
-                    // UX 2026-09-16 (desktop sweep): the shared <Icon>, not two
-                    // hand-written <svg>s. Both drew at stroke 2 on a 24 grid, a
-                    // third heavier than every icon in the set, and the icon-set
-                    // test could not see them because they never went through
-                    // <Icon>. The glyphs are the same shapes, redrawn on the house
-                    // rules in src/Icons.jsx.
-                    const imageGlyph = <Icon name="image" size={15} color="currentColor" />;
-                    const videoGlyph = <Icon name="video" size={15} color="currentColor" />;
-
-                    if (mobileNotesEditorOpen) {
-                      // UX (mobile demo parity): full-sheet notes takeover instead of
-                      // the 600px desktop Note modal — multiline input, Photo/Video
-                      // pickers, attachment rows with remove, Cancel/Save footer
-                      // (demo SurveySheet.tsx:191-283; Save accent is the app's gold,
-                      // not demo blue, per the parity color rule).
-                      return (
-                        <div className="mobile-survey-detail mobile-survey-notes">
-                          <div className="mobile-survey-notes-title">
-                            <span className="mobile-survey-detail-label">Survey Marker notes</span>
-                            <span className="mobile-survey-notes-name">{detailMarkerName}</span>
-                          </div>
-                          <div className="mobile-survey-notes-scroll">
-                            <div className="mobile-survey-notes-card">
-                              <textarea
-                                aria-label="Survey Marker notes"
-                                value={mobileNoteDraft.text}
-                                onChange={(e) => setMobileNoteDraft(prev => ({ ...prev, text: e.target.value }))}
-                                placeholder="Add details..."
-                              />
-                            </div>
-                            <div className="mobile-survey-notes-card">
-                              <div className="mobile-survey-notes-attach-header">
-                                <span className="mobile-survey-detail-label">Attachments</span>
-                                <div className="mobile-survey-notes-upload-row">
-                                  <input
-                                    type="file"
-                                    accept="image/*"
-                                    multiple
-                                    style={{ display: 'none' }}
-                                    id={`mobile-note-photos-${annotationId}`}
-                                    onChange={(e) => {
-                                      addMobileNoteMedia('photos', e.target.files);
-                                      e.target.value = '';
-                                    }}
-                                  />
-                                  <label htmlFor={`mobile-note-photos-${annotationId}`} className="mobile-survey-notes-upload">
-                                    {imageGlyph}
-                                    <span>Photo</span>
-                                  </label>
-                                  <input
-                                    type="file"
-                                    accept="video/*"
-                                    multiple
-                                    style={{ display: 'none' }}
-                                    id={`mobile-note-videos-${annotationId}`}
-                                    onChange={(e) => {
-                                      addMobileNoteMedia('videos', e.target.files);
-                                      e.target.value = '';
-                                    }}
-                                  />
-                                  <label htmlFor={`mobile-note-videos-${annotationId}`} className="mobile-survey-notes-upload">
-                                    {videoGlyph}
-                                    <span>Video</span>
-                                  </label>
-                                </div>
-                              </div>
-                              {mobileNoteDraft.photos.map((photo, index) => (
-                                <div key={`photo-${index}`} className="mobile-survey-notes-attachment">
-                                  <span className="mobile-survey-notes-thumb">{imageGlyph}</span>
-                                  <span className="mobile-survey-notes-attachment-name">{photo?.name || 'Photo'}</span>
-                                  <button
-                                    type="button"
-                                    aria-label={`Remove ${photo?.name || 'photo'}`}
-                                    onClick={() => setMobileNoteDraft(prev => ({ ...prev, photos: prev.photos.filter((_, itemIndex) => itemIndex !== index) }))}
-                                  >
-                                    <Icon name="close" size={13} />
-                                  </button>
-                                </div>
-                              ))}
-                              {mobileNoteDraft.videos.map((video, index) => (
-                                <div key={`video-${index}`} className="mobile-survey-notes-attachment">
-                                  <span className="mobile-survey-notes-thumb">{videoGlyph}</span>
-                                  <span className="mobile-survey-notes-attachment-name">{video?.name || 'Video'}</span>
-                                  <button
-                                    type="button"
-                                    aria-label={`Remove ${video?.name || 'video'}`}
-                                    onClick={() => setMobileNoteDraft(prev => ({ ...prev, videos: prev.videos.filter((_, itemIndex) => itemIndex !== index) }))}
-                                  >
-                                    <Icon name="close" size={13} />
-                                  </button>
-                                </div>
-                              ))}
-                              {!mobileNoteDraft.photos.length && !mobileNoteDraft.videos.length && (
-                                <span className="mobile-survey-notes-empty">No attachments.</span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="mobile-survey-notes-footer">
-                            <button type="button" className="mobile-survey-notes-cancel" onClick={() => setMobileNotesEditorOpen(false)}>
-                              Cancel
-                            </button>
-                            <button type="button" className="mobile-survey-notes-save" onClick={saveMobileNotes}>
-                              Save
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <div className="mobile-survey-detail">
-                        {/* UX 2026-09-23 (owner: phone Survey panel integrated): the
-                            detail is lines in the one panel now - "Category" and its
-                            value on ONE row, the Survey Marker's own row under a
-                            hairline, then the checklist rows - instead of uppercase
-                            labels stacked over separate boxed fields. */}
-                        {/* Category re-assign is DEFERRED: the new side has no existing
-                            mutation that moves a Survey Marker between categories
-                            (item/Excel linkage is keyed by category), so this field is
-                            read-only for now — demo SurveySheet.tsx:396-425 offers a
-                            dropdown. Do not wire a raw categoryId patch here. */}
-                        <div className="mobile-survey-detail-field is-static">
-                          <span className="mobile-survey-detail-label">Category</span>
-                          <span className="mobile-survey-detail-field-value">{detailCategory?.name || 'No category'}</span>
-                          {detailCategory ? (
-                            <span className="mobile-survey-detail-field-meta" aria-label={`${mobileDetailChecklist.length} checklist items`}>{mobileDetailChecklist.length}</span>
-                          ) : null}
-                        </div>
-
-                        <div className="mobile-survey-detail-tools mobile-survey-detail-dropdown-wrap">
-                          <button
-                            type="button"
-                            className="mobile-survey-detail-swatch-btn"
-                            aria-label="Choose Survey Marker entity"
-                            aria-haspopup="listbox"
-                            aria-expanded={mobileDetailDropdown === 'entity'}
-                            onClick={() => setMobileDetailDropdown(prev => (prev === 'entity' ? null : 'entity'))}
-                          >
-                            <span
-                              className="mobile-survey-detail-swatch"
-                              style={{ background: detailEntityColor || 'transparent' }}
-                            />
-                          </button>
-                          <div className="mobile-survey-detail-name-wrap">
-                            <input
-                              type="text"
-                              className="mobile-survey-detail-name"
-                              defaultValue={detailMarkerName}
-                              key={`${annotationId}:${detailMarkerName}`}
-                              aria-label={`Rename ${detailMarkerName}`}
-                              placeholder="Category item"
-                              onFocus={() => setMobileDetailDropdown(null)}
-                              onBlur={(e) => {
-                                const nextName = (e.currentTarget.value || '').trim() || fallbackName;
-                                e.currentTarget.value = nextName;
-                                commitSurveyMarkerName(annotationId, mobileDetailMarker.categoryId, detailMarkerName, nextName, fallbackName);
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.currentTarget.blur();
-                                } else if (e.key === 'Escape') {
-                                  e.currentTarget.value = detailMarkerName;
-                                  e.currentTarget.blur();
-                                }
-                              }}
-                            />
-                            <button
-                              type="button"
-                              className="mobile-survey-detail-name-dd"
-                              aria-label="Choose Survey Marker"
-                              aria-haspopup="listbox"
-                              aria-expanded={mobileDetailDropdown === 'markerItem'}
-                              onClick={() => setMobileDetailDropdown(prev => (prev === 'markerItem' ? null : 'markerItem'))}
-                            >
-                              <Icon name="chevronDown" size={13} />
-                            </button>
-                            {mobileDetailDropdown === 'markerItem' && (
-                              <div className="mobile-survey-detail-menu" role="listbox" aria-label="Survey Markers in this category">
-                                {siblingMarkers.length ? siblingMarkers.map(sibling => (
-                                  <button
-                                    key={sibling.id}
-                                    type="button"
-                                    role="option"
-                                    aria-selected={sibling.id === annotationId}
-                                    className={sibling.id === annotationId ? 'is-active' : ''}
-                                    onClick={() => {
-                                      // Jump the detail view to a sibling Survey Marker.
-                                      setExpandedSurveyMarkers({ [sibling.id]: true });
-                                      setMobileDetailDropdown(null);
-                                    }}
-                                  >
-                                    <span>{sibling.name || 'Untitled Survey Marker'}</span>
-                                  </button>
-                                )) : (
-                                  <div className="mobile-survey-detail-menu-empty">No Survey Markers yet</div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                          {!(mobileDetailMarker.bounds && mobileDetailMarker.pageNumber) && (
-                            <span className="survey-marker-unplaced-tag" data-testid="survey-marker-unplaced-tag">Not on page</span>
-                          )}
-                          <button
-                            type="button"
-                            className="mobile-survey-detail-icon-btn"
-                            aria-label="Jump to this Survey Marker"
-                            onClick={() => {
-                              if (mobileDetailMarker.bounds && mobileDetailMarker.pageNumber) {
-                                handleLocateItemOnPDF(mobileDetailMarker);
-                              } else {
-                                setPendingLocationItem(mobileDetailMarker);
-                              }
-                            }}
-                          >
-                            <Icon name="search" size={15} />
-                          </button>
-                          <button
-                            type="button"
-                            className={`mobile-survey-detail-icon-btn${hasNoteText ? ' has-note' : ''}`}
-                            aria-label={hasNoteText ? 'Edit Survey Marker notes' : 'Add Survey Marker notes'}
-                            onClick={openMobileNotesEditor}
-                          >
-                            <Icon name="pen" size={14} />
-                          </button>
-                          {mobileDetailDropdown === 'entity' && (
-                            <div className="mobile-survey-detail-menu mobile-survey-detail-entity-menu" role="listbox" aria-label="Entity">
-                              {entityOptions.map(option => {
-                                const isSelectedOption = (currentEntityId || '') === (option.id || '');
-                                return (
-                                  <button
-                                    key={option.id || 'none'}
-                                    type="button"
-                                    role="option"
-                                    aria-selected={isSelectedOption}
-                                    className={isSelectedOption ? 'is-active' : ''}
-                                    onClick={() => {
-                                      applyEntitySelectionForMarker(annotationId, detailModuleId, detailCategory, option.id);
-                                      setMobileDetailDropdown(null);
-                                    }}
-                                  >
-                                    <span
-                                      className="mobile-survey-detail-entity-dot"
-                                      style={{
-                                        background: option.color || 'transparent',
-                                        // UX: same rule as the entity swatch
-                                        // above — a USER colour gets the
-                                        // shared ink ring, no colour gets
-                                        // ordinary chrome.
-                                        borderColor: option.color ? 'var(--ink-ring-strong)' : 'var(--border-strong)'
-                                      }}
-                                    />
-                                    <span>{option.name}</span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="mobile-survey-detail-check-header">
-                          <span className="mobile-survey-detail-label">Checklist</span>
-                          {/* Demo caption reads "Court: {entity}" — a demo-sample domain
-                              term; the product term is Entity (vocabulary rule). */}
-                          <span className="mobile-survey-detail-assigned">Entity: {detailEntityName}</span>
-                        </div>
-                        {detailCategory ? (
-                          <div className="mobile-survey-detail-checklist" style={{ height: `${mobileChecklistWindowHeight}px` }}>
-                            {mobileDetailChecklist.length ? mobileDetailChecklist.map(item => {
-                              const response = surveyMarkers[annotationId]?.checklistResponses?.[item.id]?.selection;
-                              return (
-                                <div key={item.id} className="mobile-survey-check-item">
-                                  <span className="mobile-survey-check-text">{item.text}</span>
-                                  <div className="mobile-survey-check-group">
-                                    {['Y', 'N', 'N/A'].map(option => (
-                                      <button
-                                        key={option}
-                                        type="button"
-                                        className={`mobile-survey-check-btn${response === option ? ` is-active is-${option === 'Y' ? 'yes' : option === 'N' ? 'no' : 'na'}` : ''}`}
-                                        aria-pressed={response === option}
-                                        aria-label={`${item.text} ${option}`}
-                                        onClick={() => applyChecklistResponseSelection(annotationId, detailModuleId, detailCategory, mobileDetailMarker.name || '', item.id, option)}
-                                      >
-                                        {option}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                              );
-                            }) : (
-                              <div className="mobile-survey-detail-empty" style={{ height: `${mobileChecklistWindowHeight}px` }}>No checklist items</div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="mobile-survey-detail-empty" style={{ height: `${mobileChecklistWindowHeight}px` }}>Choose category first</div>
-                        )}
-                      </div>
-                    );
-                  })() : (
-                  <div className={mobileMode ? 'mobile-survey-list' : 'survey-rail__list'} style={mobileMode ? undefined : { fontFamily: FONT_FAMILY }}>
+                  {/* Panel content. Phone and desktop are the same tree (owner
+                      2026-10-01): categories, their Survey Markers, and the open
+                      Survey Marker inline - the phone's separate detail view is gone. */}
+                  <div
+                    ref={mobileMode ? mobileSurveyListRef : undefined}
+                    className={mobileMode ? 'mobile-survey-list' : 'survey-rail__list'}
+                    style={mobileMode ? undefined : { fontFamily: FONT_FAMILY }}
+                    onScroll={mobileMode ? (event) => {
+                      mobileListScrollRef.current = { top: event.currentTarget.scrollTop, key: mobileAccordionKey };
+                    } : undefined}
+                  >
                     {selectedModuleId ? (() => {
                       const module = (selectedTemplate.modules || selectedTemplate.spaces || [])?.find(m => m.id === selectedModuleId);
                       if (!module) return null;
@@ -2398,93 +2487,78 @@ const SurveySpacesRail = ({
                               setSelectedCategories({});
                             };
 
-                            /* UX 2026-09-23 (owner: desktop survey polish, "cards within
-                               cards, it seems like a lot"): the boxed Select button and the
-                               gold EXPORT box are gone from above the list. This is now the
-                               ONE "Categories" head line: the label on the left, then quiet
-                               words on the right - "Select" (or, while selecting, "Done" in
-                               gold, "All", "Move/Copy" and a red trash glyph) and the create
-                               "+" as a bare glyph. Export moved up into the panel header. Same
-                               handlers as before. */
+                            /* The ONE "Categories" head line (owner 2026-10-02: works like
+                               the Templates editor). Label left; on the right the shared
+                               section icons (src/components/SectionIconButton.jsx):
+                               [Select] [Add category]. Select turns the right side into the
+                               shared select-mode row - All, Move, Copy, Delete - and Add
+                               turns into the Done check in the same spot. Same 28px hit /
+                               16px glyph, hover and press as the Templates editor; no gold.
+                               Move and Copy are two actions (owner: never one "Move/Copy"). */
+                            const allCategoriesSelected = categoriesForModule.length > 0
+                              && selectedCategoryCount === categoriesForModule.length;
+                            const exitCategorySelect = () => {
+                              setCategorySelectModeActive(false);
+                              setCategorySelectModeForCategory(null);
+                              setSelectedCategories({});
+                            };
                             return (
                               <h3 className="survey-rail__cats-head">
                                 <span>Categories</span>
-                                <span className="survey-rail__cats-actions">
+                                <SectionIconActions className="survey-rail__cats-actions">
                                   {categorySelectModeActive ? (
-                                    <span className="survey-rail__cats-actions" role="toolbar" aria-label="Category selection actions">
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setCategorySelectModeActive(false);
-                                          setCategorySelectModeForCategory(null);
-                                          setSelectedCategories({});
-                                        }}
-                                        className="survey-rail__head-btn is-done"
-                                      >
-                                        Done
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
+                                    <>
+                                      <SelectModeButtons
+                                        count={selectedCategoryCount}
+                                        allSelected={allCategoriesSelected}
+                                        onToggleAll={() => {
+                                          if (allCategoriesSelected) {
+                                            setSelectedCategories({});
+                                            return;
+                                          }
                                           const newSelection = {};
                                           categoriesForModule.forEach(category => {
                                             newSelection[category.id] = true;
                                           });
                                           setSelectedCategories(newSelection);
                                         }}
-                                        disabled={categoriesForModule.length === 0}
-                                        className="survey-rail__head-btn"
-                                      >
-                                        All
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const selectedCatIds = Object.keys(selectedCategories).filter(id => selectedCategories[id]);
-                                          if (selectedCatIds.length === 0) {
-                                            showToast('Please select at least one category to move or copy.', 'warn');
-                                            return;
-                                          }
-                                          showToast(`Move/Copy functionality for ${selectedCatIds.length} categories to be implemented.`, 'info');
+                                        // There is no move flow for categories yet (owner
+                                        // 2026-10-06: a button that cannot act is disabled and
+                                        // says why, instead of answering a tap with a notice).
+                                        total={categoriesForModule.length}
+                                        can={{
+                                          move: 'Moving categories is not available yet',
+                                          // Copy copies the categories' Survey Markers, so a
+                                          // selection with none has nothing to copy.
+                                          copy: Object.values(surveyMarkers || {}).some((marker) => (
+                                            marker?.moduleId === selectedModuleId && selectedCategories[marker?.categoryId]
+                                          )) || 'The selected categories have no items to copy',
                                         }}
-                                        disabled={!hasSelectedCategories}
-                                        className="survey-rail__head-btn"
-                                      >
-                                        Move/Copy
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={deleteSelectedCategories}
-                                        disabled={!hasSelectedCategories}
-                                        className="survey-rail__head-btn survey-rail__head-btn--glyph is-danger"
-                                        {...tip('Delete', 'below')}
-                                        aria-label="Delete selected categories"
-                                      >
-                                        <Icon name="trash" size={13} color="currentColor" />
-                                      </button>
-                                    </span>
+                                        onMove={() => {
+                                          showToast(`Moving ${selectedCategoryCount} categor${selectedCategoryCount === 1 ? 'y' : 'ies'} to another module is not available yet.`, 'info');
+                                        }}
+                                        // The survey's copy flow: the "Select space" picker,
+                                        // which copies the selected categories' Survey Markers.
+                                        onCopy={() => setShowSpaceSelection(true)}
+                                        onDelete={deleteSelectedCategories}
+                                      />
+                                      <SectionIconButton action="select" label="Done" active onClick={exitCategorySelect} />
+                                    </>
                                   ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setCategorySelectModeActive(true);
-                                        setSelectedCategories({});
-                                      }}
-                                      className="survey-rail__head-btn"
-                                    >
-                                      Select
-                                    </button>
+                                    <>
+                                      <SectionIconButton
+                                        action="select"
+                                        label="Select"
+                                        nothingToSelect={categoriesForModule.length === 0}
+                                        onClick={() => {
+                                          setCategorySelectModeActive(true);
+                                          setSelectedCategories({});
+                                        }}
+                                      />
+                                      <SectionIconButton action="add" label="Add category" onClick={openCreateCategoryModal} />
+                                    </>
                                   )}
-                                  <button
-                                    type="button"
-                                    onClick={openCreateCategoryModal}
-                                    className="survey-rail__head-btn survey-rail__head-btn--glyph"
-                                    {...tip('Create category', 'below')}
-                                    aria-label="Create category"
-                                  >
-                                    <Icon name="plus" size={14} color="currentColor" />
-                                  </button>
-                                </span>
+                                </SectionIconActions>
                               </h3>
                             );
                           })() : copyModeActive ? (
@@ -2836,24 +2910,21 @@ const SurveySpacesRail = ({
                             {/* Phone: its own "Categories" head line. Desktop: the head line
                                 is rendered above (with Select and +); only copy mode, which
                                 swaps that line for its own actions, shows this plain one. */}
+                            {/* Phone: an h2 (owner 2026-10-02, UI consistency audit) - the
+                                sheet's first heading under the page's h1, which skipped
+                                from h1 to h3 for screen readers. Its look is the class's. */}
                             {(mobileMode || copyModeActive) && (
-                            <h3 className={mobileMode ? 'mobile-survey-categories-heading' : 'survey-rail__cats-head'}>
-                              {/* Vocabulary rule: "Survey Marker" in full on mobile copy —
-                                  never bare "marker"/"highlight". Mobile copy unchanged. */}
+                            <CategoriesHeadingTag className={mobileMode ? 'mobile-survey-categories-heading' : 'survey-rail__cats-head'}>
+                              {/* Owner 2026-10-01: no "Tap category to place" hint on the
+                                  phone any more - a tap opens the category, and each row
+                                  carries its own "+ Place". */}
                               <span>Categories</span>
-                              {mobileMode ? <small>Tap category to place a Survey Marker</small> : null}
                               {!mobileMode && (
-                                <button
-                                  type="button"
-                                  onClick={openCreateCategoryModal}
-                                  className="survey-rail__head-btn survey-rail__head-btn--glyph"
-                                  {...tip('Create category', 'below')}
-                                  aria-label="Create category"
-                                >
-                                  <Icon name="plus" size={14} color="currentColor" />
-                                </button>
+                                <SectionIconActions className="survey-rail__cats-actions">
+                                  <SectionIconButton action="add" label="Add category" onClick={openCreateCategoryModal} />
+                                </SectionIconActions>
                               )}
-                            </h3>
+                            </CategoriesHeadingTag>
                             )}
 
                             {module.categories && module.categories.length > 0 ? (
@@ -2879,8 +2950,15 @@ const SurveySpacesRail = ({
                                   const isCategorySelected = selectedCategories[category.id] === true;
                                   const isCategorySelectModeActive = categorySelectModeActive;
                                   const isCategoryActive = (isCategorySelectModeActive && isCategorySelected) || selectedCategoryId === category.id;
-                                  const buttonTextColor = isCategoryActive ? 'var(--accent)' : 'var(--text-2)';
-                                  const buttonSubTextColor = isCategoryActive ? 'var(--accent)' : 'var(--text-3)';
+                                  // The ARMED category - what a touch on the page will do now - has
+                                  // no look of its own at rest (owner, after bf3888e: no fill, bar
+                                  // or ring): arming plays its row's press and disarming plays it
+                                  // backwards (playCategoryArmPress). .is-armed stays as a hook;
+                                  // the survey bar's chip is what says which category is armed.
+                                  // Only a category ticked in select mode brightens its count.
+                                  const isCategoryArmed = armedCategoryId === category.id;
+                                  const buttonTextColor = 'var(--text-1)';
+                                  const buttonSubTextColor = isCategorySelectModeActive && isCategorySelected ? 'var(--text-2)' : 'var(--text-3)';
 
                                   // Item-level selection state
                                   const isItemSelectModeActiveForCategory = itemSelectModeActive[category.id] === true;
@@ -2928,7 +3006,8 @@ const SurveySpacesRail = ({
 
                                         return (
                                     <div
-                                      className={`survey-marker-category-card${isCategoryActive ? ' is-active' : ''}`}
+                                      className={`survey-marker-category-card${isCategoryActive ? ' is-active' : ''}${isCategoryArmed ? ' is-armed' : ''}`}
+                                      data-survey-category-id={category.id}
                                       style={{
                                         transition: isDragging ? 'none' : undefined
                                       }}
@@ -2937,11 +3016,10 @@ const SurveySpacesRail = ({
                                         data-drag-rearrange-row
                                         className="survey-marker-category-row"
                                       >
-                                        {/* UX (mobile demo parity): no drag-reorder handle or
-                                            select circle on mobile — demo category rows lead
-                                            straight with the name (styles.ts:3113-3126); reorder
-                                            stays a desktop affordance. */}
-                                        {mobileMode ? null : isCategorySelectable ? (
+                                        {/* Owner 2026-10-02 (phone = desktop): the grip shows on
+                                            both platforms wherever a row can be reordered. The
+                                            select circle stays a desktop affordance. */}
+                                        {!mobileMode && isCategorySelectable ? (
                                           <SurveyMarkerLeadingSelect
                                             selected={isCategorySelectionSelected}
                                             category
@@ -2963,6 +3041,13 @@ const SurveySpacesRail = ({
                                             <button
                                               onClick={(e) => {
                                                 e.stopPropagation();
+                                                // Phone (owner 2026-10-01): the row opens the
+                                                // category, like desktop's accordion; placing is
+                                                // the row's own "+ Place" button.
+                                                if (mobileMode) {
+                                                  toggleMobileCategory(category.id);
+                                                  return;
+                                                }
                                                 if (isCategorySelectModeActive) {
                                                   toggleCategorySelection();
                                                   return;
@@ -2980,6 +3065,8 @@ const SurveySpacesRail = ({
                                                 setActiveTool('survey-marker');
                                               }}
                                               className="survey-marker-category-main"
+                                              aria-expanded={mobileMode ? Boolean(isExpanded) : undefined}
+                                              aria-label={mobileMode ? `${category.name || 'Untitled category'}, ${surveyMarkerCount} Survey Marker${surveyMarkerCount === 1 ? '' : 's'}` : undefined}
                                               style={{
                                                 // A resting category name is the bright row ink of
                                                 // the home lists, on the phone and (2026-09-23,
@@ -2996,8 +3083,54 @@ const SurveySpacesRail = ({
                                               >
                                                 {surveyMarkerCount}
                                               </span>
+                                              {mobileMode && (
+                                                <span
+                                                  className="mobile-survey-category-chevron"
+                                                  aria-hidden="true"
+                                                  style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                                                >
+                                                  <Icon name="chevronDown" size={14} color="currentColor" />
+                                                </span>
+                                              )}
                                             </button>
-                                            {surveyMarkerCount > 0 && (
+                                            {mobileMode && (
+                                              <button
+                                                type="button"
+                                                className="mobile-survey-place"
+                                                aria-label={`Place a Survey Marker in ${category.name || 'Untitled category'}`}
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  placeMobileSurveyMarker(category.id);
+                                                }}
+                                              >
+                                                <Icon name="plus" size={13} color="currentColor" />
+                                                <span>Place</span>
+                                              </button>
+                                            )}
+                                            {/* Owner 2026-10-01 ("that Select line should get
+                                                moved over"): an open category's Select is a small
+                                                word in its own row, not a line of its own under it.
+                                                While selecting, the toolbar line takes its place. */}
+                                            {!mobileMode && isExpanded && surveyMarkerCount > 0 && !copyModeActive && !categorySelectModeActive && !isItemSelectModeActiveForCategory && (
+                                              <SectionIconButton
+                                                action="select"
+                                                className="survey-marker-category-select"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setItemSelectModeActive(prev => ({
+                                                    ...prev,
+                                                    [category.id]: true
+                                                  }));
+                                                  setSelectedItemsInCategory(prev => ({
+                                                    ...prev,
+                                                    [category.id]: {}
+                                                  }));
+                                                }}
+                                                label={`Select Survey Markers in ${category.name || 'category'}`}
+                                                tooltip="Select"
+                                              />
+                                            )}
+                                            {!mobileMode && surveyMarkerCount > 0 && (
                                               <button
                                                 className="survey-marker-category-arrow"
                                                 onClick={(e) => {
@@ -3009,7 +3142,8 @@ const SurveySpacesRail = ({
                                                 }}
                                                 aria-label={isExpanded ? `Hide Survey Markers in ${category.name || 'category'}` : `Show Survey Markers in ${category.name || 'category'}`}
                                                 style={{
-                                                  color: isArrowActive ? 'var(--accent)' : 'var(--text-3)'
+                                                  // Calm gold: an open chevron is neutral ink.
+                                                  color: isArrowActive ? 'var(--text-2)' : 'var(--text-3)'
                                                 }}
                                               >
                                                 <span
@@ -3036,150 +3170,119 @@ const SurveySpacesRail = ({
                                       </div>
 
                                       {/* Expanded surveyMarkers list */}
+                                      {mobileMode && isExpanded && surveyMarkerCount === 0 && (
+                                        <div className="mobile-survey-item-empty">No Survey Markers yet</div>
+                                      )}
                                       {isExpanded && surveyMarkerCount > 0 && (
                                         <div className={mobileMode ? 'mobile-survey-item-list' : 'survey-rail__marker-list'}>
                                           {/* UX (mobile demo parity): the inline item Select /
                                               All / Copy / Delete toolbar is desktop-only admin
                                               chrome — not part of the demo's mobile sheet. */}
-                                          {!copyModeActive && !mobileMode && (
-                                            <div
-                                              className={`survey-marker-inline-select-row${categorySelectModeActive ? ' is-placeholder' : ''}`}
-                                              aria-hidden={categorySelectModeActive ? 'true' : undefined}
-                                            >
-                                              {categorySelectModeActive ? null : !isItemSelectModeActiveForCategory ? (
-                                                <button
-                                                  type="button"
-                                                  onClick={() => {
-                                                    setItemSelectModeActive(prev => ({
-                                                      ...prev,
-                                                      [category.id]: true
-                                                    }));
+                                          {/* An open category's Select (owner 2026-10-02: the same select
+                                              mode as the Categories head and the Templates editor): the
+                                              line under the category holds the shared select-mode row -
+                                              All, Copy, Delete - and Done, right-aligned so Done sits
+                                              under the Select icon it replaced. Items have no move flow,
+                                              so there is no Move here. */}
+                                          {!copyModeActive && !mobileMode && !categorySelectModeActive && isItemSelectModeActiveForCategory && (() => {
+                                            const exitItemSelect = () => {
+                                              setItemSelectModeActive(prev => {
+                                                const updated = { ...prev };
+                                                delete updated[category.id];
+                                                return updated;
+                                              });
+                                              setSelectedItemsInCategory(prev => {
+                                                const updated = { ...prev };
+                                                delete updated[category.id];
+                                                return updated;
+                                              });
+                                            };
+                                            const allItemsSelected = categorySurveyMarkers.length > 0
+                                              && categorySurveyMarkers.every(h => selectedItemsForCategory[h.id] === true);
+                                            return (
+                                            <div className="survey-marker-inline-select-row">
+                                              <SectionIconActions className="survey-marker-select-toolbar" role="toolbar" aria-label="Item selection actions">
+                                                <SelectModeButtons
+                                                  count={itemSelectedCount}
+                                                  total={categorySurveyMarkers.length}
+                                                  allSelected={allItemsSelected}
+                                                  onToggleAll={() => {
+                                                    const newSelection = {};
+                                                    if (!allItemsSelected) {
+                                                      categorySurveyMarkers.forEach(h => {
+                                                        newSelection[h.id] = true;
+                                                      });
+                                                    }
                                                     setSelectedItemsInCategory(prev => ({
                                                       ...prev,
-                                                      [category.id]: {}
+                                                      [category.id]: newSelection
                                                     }));
                                                   }}
-                                                  className="survey-marker-select-mode-toggle"
-                                                >
-                                                  Select
-                                                </button>
-                                              ) : (
-                                                <div className="survey-marker-select-toolbar" role="toolbar" aria-label="Item selection actions">
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  setItemSelectModeActive(prev => {
-                                                    const updated = { ...prev };
-                                                    delete updated[category.id];
-                                                    return updated;
-                                                  });
-                                                  setSelectedItemsInCategory(prev => {
-                                                    const updated = { ...prev };
-                                                    delete updated[category.id];
-                                                    return updated;
-                                                  });
-                                                }}
-                                                className="survey-marker-select-mode-toggle"
-                                              >
-                                                Done
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  const newSelection = {};
-                                                  categorySurveyMarkers.forEach(h => {
-                                                    newSelection[h.id] = true;
-                                                  });
-                                                  setSelectedItemsInCategory(prev => ({
-                                                    ...prev,
-                                                    [category.id]: newSelection
-                                                  }));
-                                                }}
-                                                className="survey-marker-select-action"
-                                              >
-                                                All
-                                              </button>
-
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  const selectedItemIds = Object.keys(selectedItemsForCategory).filter(id => selectedItemsForCategory[id]);
-                                                  if (selectedItemIds.length === 0) {
-                                                    showToast('Please select at least one item to copy.', 'warn');
-                                                    return;
-                                                  }
-                                                  // Store selected items for copy operation
-                                                  setCopiedItemSelection(prev => {
-                                                    const newSelection = { ...prev };
-                                                    selectedItemIds.forEach(id => {
-                                                      newSelection[id] = true;
+                                                  onCopy={() => {
+                                                    const selectedItemIds = Object.keys(selectedItemsForCategory).filter(id => selectedItemsForCategory[id]);
+                                                    if (selectedItemIds.length === 0) {
+                                                      showToast('Please select at least one item to copy.', 'warn');
+                                                      return;
+                                                    }
+                                                    // Store selected items for copy operation
+                                                    setCopiedItemSelection(prev => {
+                                                      const newSelection = { ...prev };
+                                                      selectedItemIds.forEach(id => {
+                                                        newSelection[id] = true;
+                                                      });
+                                                      return newSelection;
                                                     });
-                                                    return newSelection;
-                                                  });
-                                                  setShowSpaceSelection(true);
-                                                }}
-                                                disabled={itemSelectedCount === 0}
-                                                className="survey-marker-select-action"
-                                              >
-                                                Copy
-                                              </button>
-
-                                              <button
-                                                type="button"
-                                                onClick={async () => {
-                                                  const selectedItemIds = Object.keys(selectedItemsForCategory).filter(id => selectedItemsForCategory[id]);
-                                                  if (selectedItemIds.length === 0) {
-                                                    showToast('Please select at least one item to delete.', 'warn');
-                                                    return;
-                                                  }
-                                                  const confirmed = await askConfirm({
-                                                    title: `Delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}?`,
-                                                    message: `Are you sure you want to delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}?`,
-                                                    confirmLabel: `Delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}`,
-                                                    danger: true,
-                                                  });
-                                                  if (!confirmed) {
-                                                    return;
-                                                  }
-
-                                                  // Delete selected items
-                                                  selectedItemIds.forEach(annotationId => {
-                                                    handleDeleteSurveyMarkerItem(annotationId);
-                                                  });
-
-                                                  // Clear selection and exit item select mode if no items left
-                                                  const selectedSet = new Set(selectedItemIds);
-                                                  const remainingItems = categorySurveyMarkers.filter(h => !selectedSet.has(h.id));
-                                                  if (remainingItems.length === 0) {
-                                                    setItemSelectModeActive(prev => {
-                                                      const updated = { ...prev };
-                                                      delete updated[category.id];
-                                                      return updated;
+                                                    setShowSpaceSelection(true);
+                                                  }}
+                                                  onDelete={async () => {
+                                                    const selectedItemIds = Object.keys(selectedItemsForCategory).filter(id => selectedItemsForCategory[id]);
+                                                    if (selectedItemIds.length === 0) {
+                                                      showToast('Please select at least one item to delete.', 'warn');
+                                                      return;
+                                                    }
+                                                    const confirmed = await askConfirm({
+                                                      title: `Delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}?`,
+                                                      message: `Are you sure you want to delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}?`,
+                                                      confirmLabel: `Delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}`,
+                                                      danger: true,
                                                     });
-                                                    setSelectedItemsInCategory(prev => {
-                                                      const updated = { ...prev };
-                                                      delete updated[category.id];
-                                                      return updated;
+                                                    if (!confirmed) {
+                                                      return;
+                                                    }
+
+                                                    // Delete selected items
+                                                    selectedItemIds.forEach(annotationId => {
+                                                      handleDeleteSurveyMarkerItem(annotationId);
                                                     });
-                                                  } else {
-                                                    setSelectedItemsInCategory(prev => {
-                                                      const updated = { ...prev };
-                                                      updated[category.id] = {};
-                                                      return updated;
-                                                    });
-                                                  }
-                                                }}
-                                                disabled={itemSelectedCount === 0}
-                                                className="survey-marker-select-action survey-marker-select-action-icon survey-marker-select-action-danger"
-                                                {...tip('Delete', 'below')}
-                                                aria-label="Delete selected items"
-                                              >
-                                                <Icon name="trash" size={12} />
-                                              </button>
-                                                </div>
-                                              )}
+
+                                                    // Clear selection and exit item select mode if no items left
+                                                    const selectedSet = new Set(selectedItemIds);
+                                                    const remainingItems = categorySurveyMarkers.filter(h => !selectedSet.has(h.id));
+                                                    if (remainingItems.length === 0) {
+                                                      setItemSelectModeActive(prev => {
+                                                        const updated = { ...prev };
+                                                        delete updated[category.id];
+                                                        return updated;
+                                                      });
+                                                      setSelectedItemsInCategory(prev => {
+                                                        const updated = { ...prev };
+                                                        delete updated[category.id];
+                                                        return updated;
+                                                      });
+                                                    } else {
+                                                      setSelectedItemsInCategory(prev => {
+                                                        const updated = { ...prev };
+                                                        updated[category.id] = {};
+                                                        return updated;
+                                                      });
+                                                    }
+                                                  }}
+                                                />
+                                                <SectionIconButton action="select" label="Done" active onClick={exitItemSelect} />
+                                              </SectionIconActions>
                                             </div>
-                                          )}
+                                            );
+                                          })()}
 
                                           <SortableRearrangeList
                                             ids={categorySurveyMarkers.map((surveyMarker) => surveyMarker.id)}
@@ -3273,20 +3376,22 @@ const SurveySpacesRail = ({
                                                 // mobileSurveyPanel.css on the sortable wrapper.
                                                 // Desktop (2026-09-23, desktop survey polish): the same -
                                                 // a line, no box; surveyRailPanel.css draws its hairline.
-                                                // A carried one lifts on the selected surface.
-                                                background: mobileMode ? 'transparent' : (isDragging ? 'var(--surface-3)' : 'transparent'),
+                                                // A carried one takes the app's one picked-up look
+                                                // from its sortable wrapper (data-drag-lifted,
+                                                // states.css; owner 2026-10-01: no focus ring).
+                                                background: 'transparent',
                                                 border: 0,
                                                 borderRadius: 0,
                                                 overflow: (isEntityDropdownOpenForMarker || reviewMessage) ? 'visible' : 'hidden',
                                                 flexShrink: 0,
-                                                boxShadow: isDragging ? '0 10px 22px rgba(0, 0, 0, 0.34), inset 0 0 0 2px var(--focus)' : 'none',
+                                                boxShadow: 'none',
                                                 transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease'
                                               }}>
-                                                {/* UX (mobile demo parity): expanded-category item rows are
-                                                    plain tap rows — entity dot + name — that open the marker
-                                                    DETAIL view (demo SurveySetupSheet.tsx:221-243,
-                                                    styles.ts:3155-3165). The desktop inline controls below
-                                                    stay desktop-only. */}
+                                                {/* Phone (owner 2026-10-01): an item row is the desktop
+                                                    row's content at phone size - entity dot, name, note /
+                                                    media badges and checklist progress ("2/3") - and a tap
+                                                    opens it INLINE below, one at a time. The desktop inline
+                                                    controls below stay desktop-only. */}
                                                 {mobileMode && (() => {
                                                   const { moduleData } = findMarkerMatchingItem(annotationId, selectedModuleId, category);
                                                   const rowEntityId = moduleData.entityId || surveyMarkers[annotationId]?.entityId;
@@ -3294,31 +3399,64 @@ const SurveySpacesRail = ({
                                                     || moduleData.entityColor
                                                     || surveyMarkers[annotationId]?.entityColor
                                                     || null;
-                                                  return (
-                                                    <button
-                                                      type="button"
-                                                      className="mobile-survey-item-row"
-                                                      aria-label={`Open ${surveyMarkerName}`}
-                                                      onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        // Exclusive expansion drives the detail view.
-                                                        setExpandedSurveyMarkers({ [annotationId]: true });
-                                                      }}
-                                                    >
-                                                      <span className="mobile-survey-item-dot" style={{ background: dotColor || 'var(--border-strong)' }} aria-hidden="true" />
-                                                      <span className="mobile-survey-item-name">{surveyMarkerName}</span>
-                                                      <Icon name="chevronRight" size={12} color="var(--text-3)" />
-                                                    </button>
-                                                  );
+                                                  const isOpenOnPhone = annotationId === mobileDetailMarkerId;
+                                                  return renderMobileSurveyMarker(surveyMarker, category, surveyMarkerName, fallbackName, {
+                                                    isOpen: isOpenOnPhone,
+                                                    dotColor,
+                                                    grip: (
+                                                      <DragRearrangeHandle
+                                                        {...attributes}
+                                                        {...listeners}
+                                                        isDragging={isDragging}
+                                                        title="Drag to rearrange"
+                                                        style={{ width: undefined, height: undefined, marginLeft: 0, color: 'var(--text-3)' }}
+                                                      />
+                                                    ),
+                                                    onOpen: () => {
+                                                      setMobileDetailDropdown(null);
+                                                      // One open Survey Marker at a time.
+                                                      setExpandedSurveyMarkers({ [annotationId]: true });
+                                                    },
+                                                    onClose: () => {
+                                                      setMobileDetailDropdown(null);
+                                                      setExpandedSurveyMarkers({});
+                                                    },
+                                                  });
                                                 })()}
-                                                {/* SurveyMarker header - clickable to expand */}
-                                                {!mobileMode && (
-                                                <div className="survey-rail__marker-line">
-                                                  {/* UX (mobile demo parity): marker rows lose the
-                                                      desktop drag handle / select circle on mobile —
-                                                      demo item rows are plain tap rows
-                                                      (styles.ts:3155-3165). */}
-                                                  {mobileMode ? null : isMarkerSelectable ? (
+                                                {/* Owner 2026-10-01 (second pass) - ONE line per Survey
+                                                    Marker, open or not, the phone's open line too:
+                                                    [grip in the gutter] [entity dot = the entity menu]
+                                                    [name] [media / progress] [Locate] [open chevron].
+                                                    - The grip sits in the 28px gutter the category grips
+                                                      use and the dot follows it, so the name starts one
+                                                      12px step in from the category's name (2026-10-02,
+                                                      surveyRailPanel.css --sv-item-x).
+                                                    - The separate "Entity [● Subcontractor]" line is gone:
+                                                      the dot IS the entity menu (its full name in the menu,
+                                                      the tooltip and the label).
+                                                    - No "Add item notes" button: the open marker's note
+                                                      field is the way to add a note.
+                                                    - Locate: the magnifier, blue when the marker is on the
+                                                      page, orange when it is not (click to place). */}
+                                                {!mobileMode && (() => {
+                                                  const surveyMarkerData = surveyMarkers[annotationId];
+                                                  const { moduleData } = findMarkerMatchingItem(annotationId, selectedModuleId, category);
+                                                  const currentEntityId = moduleData.entityId || surveyMarkerData?.entityId || '';
+                                                  const currentEntity = currentEntityId ? entitiesMap.get(currentEntityId) : null;
+                                                  const selectedEntityColor = currentEntity?.color || moduleData.entityColor || surveyMarkerData?.entityColor || null;
+                                                  const selectedEntityName = currentEntity?.name || moduleData.entityName || surveyMarkerData?.entityName || '';
+                                                  const isEntityDropdownOpen = openEntityDropdownId === entityDropdownId;
+                                                  const entityOptions = [
+                                                    { id: '', name: 'None', color: null },
+                                                    ...((selectedTemplate?.entities || []).map(entity => ({ id: entity.id, name: entity.name, color: entity.color })))
+                                                  ];
+                                                  const isPlaced = Boolean(surveyMarker.bounds && surveyMarker.pageNumber);
+                                                  const progress = getSurveyMarkerProgress(annotationId, category);
+                                                  const { text: noteTextValue, mediaCount } = getSurveyMarkerNoteInfo(annotationId);
+                                                  const entityLabel = selectedEntityName ? `Entity: ${selectedEntityName}` : 'Entity: none';
+                                                  return (
+                                                <div className={`survey-rail__marker-line${isSurveyMarkerExpanded ? ' is-open' : ''}`}>
+                                                  {isMarkerSelectable ? (
                                                     <SurveyMarkerLeadingSelect
                                                       selected={isMarkerSelected}
                                                       onClick={toggleMarkerSelection}
@@ -3336,95 +3474,100 @@ const SurveySpacesRail = ({
                                                   )}
 
                                                   <div className="survey-rail__marker-main">
-
-                                                      {/* 2026-09-23 (desktop survey polish): the open/close
-                                                          chevron leads, then the entity dot (10px, the
-                                                          phone's small dot) and the name. */}
-                                                      <button
-                                                        type="button"
-                                                        className="survey-marker-expand-toggle"
-                                                        onClick={(e) => {
-                                                          e.stopPropagation();
-                                                          toggleSurveyMarkerExpanded(annotationId);
-                                                        }}
-                                                        {...tip(isSurveyMarkerExpanded ? 'Collapse' : 'Expand', 'below')}
-                                                        aria-label={isSurveyMarkerExpanded ? 'Collapse marker details' : 'Expand marker details'}
-                                                        style={{
-                                                          width: '18px',
-                                                          height: '20px',
-                                                          padding: 0,
-                                                          background: 'transparent',
-                                                          border: 0,
-                                                          color: isSurveyMarkerExpanded ? 'var(--accent)' : 'var(--text-3)',
-                                                          cursor: 'pointer',
-                                                          display: 'flex',
-                                                          alignItems: 'center',
-                                                          justifyContent: 'center',
-                                                          flexShrink: 0,
-                                                          transform: isSurveyMarkerExpanded ? 'rotate(90deg)' : 'none',
-                                                          transition: 'color 0.15s ease, transform 0.15s ease'
-                                                        }}
-                                                      >
-                                                        <Icon name="chevronRight" size={12} />
-                                                      </button>
-                                                      {(() => {
-                                                        // Get entity entity for indicator - data-driven from category item's entity field
-                                                        let indicatorColor = null;
-                                                        let indicatorTooltip = null;
-                                                        if (selectedTemplate && selectedModuleId) {
-                                                          const surveyMarkerData = surveyMarkers[annotationId];
-                                                          const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
-                                                          const surveyMarkerName = surveyMarkerData?.name || surveyMarker.name || '';
-                                                          const matchingItem = itemsByNameType.get(`${surveyMarkerName}\0${categoryName}`);
-
-                                                          // Try to get entityId from item's module data first, then from surveyMarkerData
-                                                          let entityId = null;
-                                                          if (matchingItem) {
-                                                            const moduleName = getModuleName(selectedTemplate, selectedModuleId);
-                                                            const dataKey = getModuleDataKey(moduleName);
-                                                            const moduleData = matchingItem[dataKey] || {};
-                                                            entityId = moduleData.entityId;
-                                                          }
-                                                          // Fallback to surveyMarkerData if not found in item
-                                                          if (!entityId && surveyMarkerData?.entityId) {
-                                                            entityId = surveyMarkerData.entityId;
-                                                          }
-
-                                                          if (entityId) {
-                                                            const entity = entitiesMap.get(entityId);
-                                                            if (entity) {
-                                                              // Use the exact color from entity.color without transformation
-                                                              indicatorColor = entity.color;
-                                                              indicatorTooltip = entity.name;
-                                                            }
-                                                          }
-                                                        }
-
-                                                        return (
-                                                          <EntityIndicator
-                                                            color={indicatorColor}
-                                                            size={10}
-                                                            tooltipText={indicatorTooltip}
+                                                      <div className="survey-rail__entity-wrap">
+                                                        <button
+                                                          type="button"
+                                                          className="survey-rail__entity-btn"
+                                                          aria-haspopup="listbox"
+                                                          aria-expanded={isEntityDropdownOpen}
+                                                          aria-label={`${entityLabel}. Change entity`}
+                                                          {...tip(selectedEntityName || 'No entity', 'below')}
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setOpenEntityDropdownId(isEntityDropdownOpen ? null : entityDropdownId);
+                                                          }}
+                                                        >
+                                                          <span
+                                                            className={`survey-rail__entity-dot${selectedEntityColor ? '' : ' is-empty'}`}
+                                                            style={selectedEntityColor ? { background: selectedEntityColor } : undefined}
                                                           />
-                                                        );
-                                                      })()}
+                                                          <span className="survey-rail__entity-caret" aria-hidden="true">
+                                                            <Icon name="chevronDown" size={10} color="currentColor" />
+                                                          </span>
+                                                        </button>
+                                                        {isEntityDropdownOpen && (
+                                                          <div
+                                                            className="survey-marker-entity-options survey-rail__entity-menu"
+                                                            role="listbox"
+                                                            aria-label="Entity"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                          >
+                                                            {entityOptions.map(option => {
+                                                              const optionValue = option.id || '';
+                                                              const isSelectedOption = currentEntityId === optionValue;
+                                                              return (
+                                                                <button
+                                                                  key={optionValue || 'none'}
+                                                                  type="button"
+                                                                  className={`survey-marker-entity-option${isSelectedOption ? ' is-selected' : ''}`}
+                                                                  role="option"
+                                                                  aria-selected={isSelectedOption}
+                                                                  onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    applyEntitySelectionForMarker(annotationId, selectedModuleId, category, optionValue);
+                                                                    setOpenEntityDropdownId(null);
+                                                                  }}
+                                                                >
+                                                                  <span
+                                                                    className="survey-marker-entity-option-swatch"
+                                                                    style={getEntitySwatchStyle(option.color)}
+                                                                  />
+                                                                  <span className="survey-marker-entity-option-label">
+                                                                    {option.name}
+                                                                  </span>
+                                                                  <span className="survey-rail__entity-check" aria-hidden="true">
+                                                                    {isSelectedOption ? <Icon name="check" size={12} color="currentColor" /> : null}
+                                                                  </span>
+                                                                </button>
+                                                              );
+                                                            })}
+                                                          </div>
+                                                        )}
+                                                      </div>
                                                       <span className="survey-marker-name-fit" data-value={surveyMarkerName || ' '}>
                                                         <input
                                                           type="text"
                                                           size={1}
                                                           className="survey-marker-name-inline"
+                                                          data-survey-marker-name-input={annotationId}
                                                           defaultValue={surveyMarkerName}
                                                           key={`${annotationId}:${surveyMarkerName}`}
-                                                          {...tip('Rename Survey Marker', 'below')}
+                                                          {...(({ onFocus, onMouseEnter, ...renameTip }) => ({
+                                                            // Owner 2026-10-01: a just-placed marker's name field is
+                                                            // focused, and its "Rename" chip sat over the Entity
+                                                            // control (onBlur below never hid it). No chip while
+                                                            // the field is focused; focusing hides a hover chip.
+                                                            ...renameTip,
+                                                            onFocus: renameTip.onMouseLeave,
+                                                            onMouseEnter: (e) => {
+                                                              if (e.currentTarget !== e.currentTarget.ownerDocument.activeElement) onMouseEnter?.(e);
+                                                            },
+                                                          }))(tip('Rename Survey Marker', 'below'))}
                                                           aria-label={`Rename ${surveyMarkerName}`}
                                                           onClick={(e) => e.stopPropagation()}
                                                           onDoubleClick={(e) => e.currentTarget.select()}
                                                           onInput={(e) => {
+                                                            if (justPlacedSurveyMarkerIdRef.current === String(annotationId)) {
+                                                              justPlacedSurveyMarkerIdRef.current = null;
+                                                            }
                                                             if (e.currentTarget.parentElement) {
                                                               e.currentTarget.parentElement.dataset.value = e.currentTarget.value || ' ';
                                                             }
                                                           }}
                                                           onBlur={(e) => {
+                                                            if (justPlacedSurveyMarkerIdRef.current === String(annotationId)) {
+                                                              justPlacedSurveyMarkerIdRef.current = null;
+                                                            }
                                                             const nextName = (e.currentTarget.value || '').trim() || fallbackName;
                                                             e.currentTarget.value = nextName;
                                                             if (e.currentTarget.parentElement) {
@@ -3436,6 +3579,18 @@ const SurveySpacesRail = ({
                                                             if (e.key === 'Enter') {
                                                               e.currentTarget.blur();
                                                             } else if (e.key === 'Escape') {
+                                                              // A Survey Marker just placed, name untouched:
+                                                              // Escape takes the placement back (one Undo step).
+                                                              if (
+                                                                justPlacedSurveyMarkerIdRef.current === String(annotationId)
+                                                                && e.currentTarget.value === surveyMarkerName
+                                                                && typeof undoSurveyMarkerPlacement === 'function'
+                                                              ) {
+                                                                justPlacedSurveyMarkerIdRef.current = null;
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                if (undoSurveyMarkerPlacement(annotationId)) return;
+                                                              }
                                                               e.currentTarget.value = surveyMarkerName;
                                                               if (e.currentTarget.parentElement) {
                                                                 e.currentTarget.parentElement.dataset.value = surveyMarkerName || ' ';
@@ -3445,19 +3600,8 @@ const SurveySpacesRail = ({
                                                           }}
                                                         />
                                                       </span>
-                                                      {/* UX (owner ruling 2026-09-28, Cut = pick up the
-                                                          placement): an item with no box on the PDF (cut
-                                                          and not pasted yet, or imported from Excel) says
-                                                          so in words next to its name. The orange Locate
-                                                          button at the end of the row places it again. */}
-                                                      {!(surveyMarker.bounds && surveyMarker.pageNumber) && (
-                                                        <span className="survey-marker-unplaced-tag" data-testid="survey-marker-unplaced-tag">
-                                                          Not on page
-                                                        </span>
-                                                      )}
                                                       <div
                                                         className="survey-marker-expand-spacer"
-                                                        {...tip(isSurveyMarkerExpanded ? 'Collapse' : 'Expand', 'below')}
                                                         aria-hidden="true"
                                                         onClick={(e) => {
                                                           e.stopPropagation();
@@ -3480,182 +3624,59 @@ const SurveySpacesRail = ({
                                                     }}
                                                   />
 
-                                                  {/* Item-level Notes button */}
-                                                  <button
-                                                    onClick={(e) => {
-                                                      e.stopPropagation();
-                                                      const surveyMarkerData = surveyMarkers[annotationId];
-                                                      const existingNote = surveyMarkerData?.note;
+                                                  {/* A note that exists is a small glyph on the CLOSED
+                                                      line (an indicator, not a button); media count and
+                                                      checklist progress as on the phone row. */}
+                                                  {(noteTextValue && !isSurveyMarkerExpanded) || mediaCount > 0 || progress.total > 0 ? (
+                                                    <span className="survey-rail__marker-badges">
+                                                      {noteTextValue && !isSurveyMarkerExpanded ? (
+                                                        <span className="survey-marker-badge" aria-label="Has a note" title="Has a note">
+                                                          <Icon name="note" size={12} color="currentColor" />
+                                                        </span>
+                                                      ) : null}
+                                                      {mediaCount > 0 ? (
+                                                        <span className="survey-marker-badge" aria-label={`${mediaCount} media attachment${mediaCount === 1 ? '' : 's'}`}>
+                                                          <Icon name="image" size={12} color="currentColor" />
+                                                          <span>{mediaCount}</span>
+                                                        </span>
+                                                      ) : null}
+                                                      {progress.total > 0 ? renderSurveyMarkerProgress(progress) : null}
+                                                    </span>
+                                                  ) : null}
 
-                                                      if (existingNote) {
-                                                        setNoteDialogContent({
-                                                          text: existingNote.text || '',
-                                                          photos: existingNote.photos || [],
-                                                          videos: existingNote.videos || []
-                                                        });
-                                                      } else {
-                                                        setNoteDialogContent({ text: '', photos: [], videos: [] });
-                                                      }
-
-                                                      // For item-level notes, we only need the annotationId
-                                                      setNoteDialogOpen(annotationId);
-                                                    }}
-                                                    // 2026-09-23 (desktop survey polish): a bare glyph in an
-                                                    // invisible column pad - no hover plate, no dimmed
-                                                    // opacity. Gold ink only when a note exists.
-                                                    className="survey-rail__marker-action"
-                                                    style={{
-                                                      color: surveyMarkers[annotationId]?.note?.text ? 'var(--accent)' : 'var(--text-3)'
-                                                    }}
-                                                    {...tip(surveyMarkers[annotationId]?.note?.text ? "Edit item notes" : "Add item notes", 'below')}
-                                                    aria-label={surveyMarkers[annotationId]?.note?.text ? "Edit item notes" : "Add item notes"}
-                                                  >
-                                                    <Icon name="pen" size={13} />
-                                                  </button>
-
-                                                  {/* Locate Button (Magnifying Glass) */}
                                                   <button
                                                     type="button"
                                                     onClick={(e) => {
                                                       e.stopPropagation();
-                                                      // Check if item has location (bounds and pageNumber)
-                                                      const hasLocation = surveyMarker.bounds && surveyMarker.pageNumber;
-
-                                                      if (hasLocation) {
-                                                        handleLocateItemOnPDF(surveyMarker);
-                                                      } else {
-                                                        // Prompt to surveyMarker
-                                                        setPendingLocationItem(surveyMarker);
-                                                      }
+                                                      if (isPlaced) handleLocateItemOnPDF(surveyMarker);
+                                                      else setPendingLocationItem(surveyMarker);
                                                     }}
-                                                    className="survey-rail__marker-action survey-rail__marker-action--end"
-                                                    style={{
-                                                      // Quiet when the Survey Marker is on the page; orange
-                                                      // when it still needs a location - the one that needs
-                                                      // you is the one that stands out (2026-09-23: was gold
-                                                      // on every placed line, a gold glyph per row).
-                                                      color: (surveyMarker.bounds && surveyMarker.pageNumber) ? 'var(--text-3)' : 'var(--warning)',
-                                                    }}
-                                                    {...tip(surveyMarker.bounds && surveyMarker.pageNumber ? "Jump to this Survey Marker" : "Place on page", 'below')}
-                                                    aria-label={surveyMarker.bounds && surveyMarker.pageNumber ? "Jump to this Survey Marker" : "Place on page"}
+                                                    className={`survey-rail__marker-action survey-rail__locate${isPlaced ? '' : ' is-unplaced'}`}
+                                                    data-testid={isPlaced ? undefined : 'survey-marker-unplaced-tag'}
+                                                    {...tip(isPlaced ? 'Locate on page' : 'Not on the page \u2014 click to place', 'below')}
+                                                    aria-label={isPlaced ? 'Locate on page' : 'Not on the page. Place on page'}
                                                   >
-                                                    <Icon name="search" size={14} />
+                                                    {/* The original Locate (restored, owner 2026-10-01):
+                                                        the magnifier, blue on the page / orange not
+                                                        placed (surveyRailPanel.css). */}
+                                                    <Icon name="search" size={14} color="currentColor" />
                                                   </button>
 
+                                                  <button
+                                                    type="button"
+                                                    className="survey-rail__marker-action survey-rail__marker-toggle"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      toggleSurveyMarkerExpanded(annotationId);
+                                                    }}
+                                                    aria-expanded={Boolean(isSurveyMarkerExpanded)}
+                                                    aria-label={isSurveyMarkerExpanded ? 'Collapse marker details' : 'Expand marker details'}
+                                                  >
+                                                    <Icon name="chevronDown" size={14} color="currentColor" />
+                                                  </button>
                                                 </div>
-                                                )}
-
-                                                {/* Entity selector */}
-                                                {
-                                                  !mobileMode && isSurveyMarkerExpanded && selectedTemplate && selectedModuleId && (() => {
-                                                    // Find the item associated with this surveyMarker
-                                                    const surveyMarkerData = surveyMarkers[annotationId];
-                                                    const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
-                                                    const surveyMarkerName = surveyMarkerData?.name || surveyMarker.name || '';
-                                                    const matchingItem = itemsByNameType.get(`${surveyMarkerName}\0${categoryName}`);
-
-                                                    // Get module-specific data
-                                                    const moduleName = getModuleName(selectedTemplate, selectedModuleId);
-                                                    const dataKey = getModuleDataKey(moduleName);
-                                                    const moduleData = matchingItem?.[dataKey] || {};
-
-                                                    // Get current entity status from item's module-specific data (preferred) or from survey marker annotation (legacy)
-                                                    const currentEntityId = moduleData.entityId || surveyMarkerData?.entityId;
-                                                    const entities = selectedTemplate?.entities || [];
-                                                    const currentEntity = currentEntityId ? entities.find(entity => entity.id === currentEntityId) : null;
-                                                    const selectedEntityColor = currentEntity?.color || moduleData.entityColor || surveyMarkerData?.entityColor;
-                                                    const selectedEntityName = currentEntity?.name || moduleData.entityName || surveyMarkerData?.entityName || 'None';
-                                                    const isEntityDropdownOpen = openEntityDropdownId === entityDropdownId;
-                                                    const entityOptions = [
-                                                      { id: '', name: 'None', color: null },
-                                                      ...entities.map(entity => ({
-                                                        id: entity.id,
-                                                        name: entity.name,
-                                                        color: entity.color
-                                                      }))
-                                                    ];
-                                                    // Delegates to the shared helper (see applyEntitySelectionForMarker
-                                                    // above) so the mobile detail view and this desktop row perform
-                                                    // byte-identical store writes.
-                                                    const handleEntitySelection = (entityId) => {
-                                                      applyEntitySelectionForMarker(annotationId, selectedModuleId, category, entityId);
-                                                    };
-
-                                                    /* UX 2026-09-23 (desktop survey polish): an open Survey
-                                                       Marker's detail is LINES indented under its name - no
-                                                       grey plate, no box per line. The Entity picker is a grey
-                                                       field (no edge, no gold ring) on the right. */
-                                                    return (
-                                                      <div className="survey-rail__detail-line">
-                                                        <div className="survey-marker-entity-row">
-                                                          <span className="survey-marker-entity-label">
-                                                            Entity
-                                                          </span>
-                                                          <div className="survey-marker-entity-select-wrap">
-                                                            <button
-                                                              type="button"
-                                                              className="survey-marker-entity-trigger"
-                                                              aria-haspopup="listbox"
-                                                              aria-expanded={isEntityDropdownOpen}
-                                                              onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setOpenEntityDropdownId(isEntityDropdownOpen ? null : entityDropdownId);
-                                                              }}
-                                                            >
-                                                              <span className="survey-marker-entity-trigger-content">
-                                                                <span
-                                                                  className="survey-marker-entity-swatch"
-                                                                  style={getEntitySwatchStyle(selectedEntityColor)}
-                                                                />
-                                                                <span className="survey-marker-entity-trigger-label">
-                                                                  {selectedEntityName}
-                                                                </span>
-                                                              </span>
-                                                              <span className={`survey-marker-entity-caret${isEntityDropdownOpen ? ' is-open' : ''}`}>
-                                                                <Icon name="chevronDown" size={12} />
-                                                              </span>
-                                                            </button>
-                                                            {isEntityDropdownOpen && (
-                                                              <div
-                                                                className="survey-marker-entity-options"
-                                                                role="listbox"
-                                                                aria-label="Entity"
-                                                                onClick={(e) => e.stopPropagation()}
-                                                              >
-                                                                {entityOptions.map(option => {
-                                                                  const optionValue = option.id || '';
-                                                                  const isSelectedOption = (currentEntityId || '') === optionValue;
-                                                                  return (
-                                                                    <button
-                                                                      key={optionValue || 'none'}
-                                                                      type="button"
-                                                                      className={`survey-marker-entity-option${isSelectedOption ? ' is-selected' : ''}`}
-                                                                      role="option"
-                                                                      aria-selected={isSelectedOption}
-                                                                      onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        handleEntitySelection(optionValue);
-                                                                        setOpenEntityDropdownId(null);
-                                                                      }}
-                                                                    >
-                                                                      <span
-                                                                        className="survey-marker-entity-option-swatch"
-                                                                        style={getEntitySwatchStyle(option.color)}
-                                                                      />
-                                                                      <span className="survey-marker-entity-option-label">
-                                                                        {option.name}
-                                                                      </span>
-                                                                    </button>
-                                                                  );
-                                                                })}
-                                                              </div>
-                                                            )}
-                                                          </div>
-                                                        </div>
-                                                      </div>
-                                                    );
-                                                  })()
-                                                }
+                                                  );
+                                                })()}
 
                                                 {/* Expanded checklist items — active items only.
                                                     KAL-44: archived items are rendered separately
@@ -3666,9 +3687,9 @@ const SurveySpacesRail = ({
                                                     const response = surveyMarkers[annotationId]?.checklistResponses?.[item.id] || {};
                                                     const isSelected = response.selection;
                                                     // Y / N / N/A: one grey well, the answers are words and
-                                                    // the chosen one is lit ink (Yes gold, No red, N/A
-                                                    // bright) - the phone's rule. They were three filled
-                                                    // light-grey boxes that turned solid gold / red.
+                                                    // the chosen one is lit on a plate of its hue (Yes
+                                                    // green, No red, N/A gold; owner 2026-10-01) - the
+                                                    // phone's rule.
                                                     return (
                                                       <div key={item.id} className="survey-rail__detail-line">
                                                         <span className="survey-rail__detail-text">
@@ -3773,21 +3794,23 @@ const SurveySpacesRail = ({
                                                                   fontSize: '10px',
                                                                   fontWeight: 600,
                                                                   borderRadius: '3px',
-                                                                  /* Same rule as the Y/N buttons above: the answered-value pill
-                                                                     is a filled control, so "yes" is gold and "no" is --danger.
-                                                                     --success stays on status dots only. */
+                                                                  /* Same chips as the chosen Y / N / N/A answer above
+                                                                     (owner 2026-10-01): Y green, N red, N/A neutral grey -
+                                                                     a near-white word on a solid plate of its hue. */
                                                                   background: sel === 'Y'
-                                                                    ? 'var(--accent)'
+                                                                    ? 'var(--success-plate)'
                                                                     : sel === 'N'
-                                                                      ? 'var(--danger)'
-                                                                      : sel
-                                                                        ? 'var(--text-disabled)'
+                                                                      ? 'var(--danger-plate)'
+                                                                      : sel === 'N/A'
+                                                                        ? 'var(--border)'
                                                                         : 'var(--surface-3)',
                                                                   color: sel === 'Y'
-                                                                    ? 'var(--accent-text)'
-                                                                    : sel
-                                                                      ? '#FFFFFF'
-                                                                      : 'var(--text-3)',
+                                                                    ? 'var(--on-success-plate)'
+                                                                    : sel === 'N'
+                                                                      ? 'var(--on-danger-plate)'
+                                                                      : sel === 'N/A'
+                                                                        ? 'var(--text-1)'
+                                                                        : 'var(--text-3)',
                                                                   textAlign: 'center',
                                                                 }}
                                                               >
@@ -3800,6 +3823,11 @@ const SurveySpacesRail = ({
                                                     );
                                                   })()
                                                 }
+
+                                                {/* Notes and media, inline (owner 2026-10-01,
+                                                    replaces the 600px Note dialog) - the same
+                                                    block the phone's open Survey Marker shows. */}
+                                                {!mobileMode && isSurveyMarkerExpanded && renderSurveyMarkerNotes(annotationId, 'desktop')}
                                               </div>
                                                   );
                                                 }}
@@ -3844,9 +3872,10 @@ const SurveySpacesRail = ({
                                          own hover so the pointer gets an
                                          answer on both properties - the fill
                                          lifts --surface-2 -> --surface-3 and
-                                         the gold edge lifts --accent ->
-                                         --accent-light. */
-                                      border: '1px solid var(--accent)',
+                                         the edge lifts --border-strong ->
+                                         --text-3 (calm gold 2026-10-01: an
+                                         empty state is not gold). */
+                                      border: '1px solid var(--border-strong)',
                                       background: 'var(--surface-2)',
                                       color: 'var(--text-1)',
                                       fontSize: '13px',
@@ -3860,11 +3889,11 @@ const SurveySpacesRail = ({
                                     }}
                                     onMouseEnter={(event) => {
                                       event.currentTarget.style.background = 'var(--hover)';
-                                      event.currentTarget.style.borderColor = 'var(--accent-light)';
+                                      event.currentTarget.style.borderColor = 'var(--text-3)';
                                     }}
                                     onMouseLeave={(event) => {
                                       event.currentTarget.style.background = 'var(--surface-2)';
-                                      event.currentTarget.style.borderColor = 'var(--accent)';
+                                      event.currentTarget.style.borderColor = 'var(--border-strong)';
                                     }}
                                   >
                                     Create category
@@ -3881,16 +3910,402 @@ const SurveySpacesRail = ({
                       </div>
                     )}
                   </div>
-                  )}
                   </div>
+                  {/* Owner 2026-10-01 ("the export button being so close to the X
+                      close button for survey is just weird"): Export left the
+                      header for the panel's foot - one quiet line at the bottom of
+                      the Survey panel (desktop: just above the zoom / page footer;
+                      phone: the sheet's last line, hidden while you type). The
+                      header keeps only the template name and the X. "Export to
+                      Excel" creates the workbook; with a linked workbook a "..."
+                      beside it holds that workbook's actions. Same handlers. */}
+                  {!isMobileTemplateSwitching && (() => {
+                    // Owner 2026-10-06: Export is off while the survey has no
+                    // items - there is nothing to put in the workbook yet.
+                    const templateModuleIds = new Set(((selectedTemplate?.modules || selectedTemplate?.spaces) || []).map((module) => module.id));
+                    const surveyHasItems = Object.values(surveyMarkers || {}).some((marker) => templateModuleIds.has(marker?.moduleId));
+                    return (
+                    <div className={mobileMode ? 'mobile-survey-foot' : 'survey-rail__foot'}>
+                      <button
+                        type="button"
+                        className={mobileMode ? 'mobile-survey-foot__export' : 'survey-rail__foot-export'}
+                        onClick={() => { if (surveyHasItems) handleExportSurveyToExcel(); }}
+                        disabled={isExporting || !surveyHasItems}
+                        {...(mobileMode ? {} : tip(surveyHasItems ? 'Create an Excel workbook from this survey' : 'Add a survey item to export', 'above'))}
+                      >
+                        {isExporting
+                          ? <Spinner size={mobileMode ? 16 : 14} color="var(--text-1)" trackColor="var(--surface-3)" />
+                          : <Icon name="download" size={mobileMode ? 16 : 14} color="currentColor" />}
+                        <span>{isExporting ? 'Exporting\u2026' : 'Export to Excel'}</span>
+                      </button>
+                      {mobileMode ? (
+                        (selectedTemplate.linkedExcelPath && linkedExcelExists === true) ? (
+                          <div className="mobile-survey-sheet-export-wrap" ref={mobileExportMenuRef}>
+                            <button
+                              type="button"
+                              className={`mobile-survey-foot__more${isMobileExportMenuOpen ? ' is-open' : ''}`}
+                              aria-label="Linked workbook actions"
+                              aria-haspopup="menu"
+                              aria-expanded={isMobileExportMenuOpen}
+                              disabled={isExporting}
+                              onClick={() => setIsMobileExportMenuOpen((open) => !open)}
+                            >
+                              <Icon name="moreHorizontal" size={18} color="currentColor" />
+                            </button>
+                            {isMobileExportMenuOpen && (
+                              <div className="mobile-survey-sheet-export-menu" role="menu">
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  disabled={isExporting}
+                                  onClick={() => {
+                                    setIsMobileExportMenuOpen(false);
+                                    handleExportSurveyToExcel(selectedTemplate.linkedExcelPath);
+                                  }}
+                                >
+                                  <strong>Sync Microsoft 365</strong>
+                                  <span>Update the shared workbook</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ) : null
+                      ) : (
+                        <div ref={exportMenuRef} className="survey-rail__export">
+                          {(selectedTemplate.linkedExcelPath && linkedExcelExists === true) && (
+                            <button
+                              type="button"
+                              onClick={() => !isExporting && setShowExportMenu(!showExportMenu)}
+                              disabled={isExporting}
+                              className="survey-rail__foot-more"
+                              aria-label="Linked workbook actions"
+                              aria-haspopup="menu"
+                              aria-expanded={showExportMenu}
+                              {...tip('Linked workbook', 'above')}
+                            >
+                              <Icon name="moreHorizontal" size={16} color="currentColor" />
+                            </button>
+                          )}
+                                    {showExportMenu && (
+                                      <div className="survey-marker-export-compact-menu">
+                          <div
+                            onClick={async () => {
+                              const excelPath = selectedTemplate.linkedExcelPath;
+                              const isOneDrive = selectedTemplate.isOneDrive;
+
+
+                              if (!excelPath) {
+                                showToast('No Excel file is linked to this survey.', 'error');
+                                setShowExportMenu(false);
+                                return;
+                              }
+
+                              // Check if the path is actually a local file path (even if isOneDrive flag is set)
+                              // Local paths start with / and contain /Users/ or /Library/ or drive letters on Windows
+                              const isLocalFilePath = excelPath.startsWith('/Users/') ||
+                                excelPath.startsWith('/Library/') ||
+                                excelPath.match(/^[A-Za-z]:[\\/]/) || // Windows drive letter
+                                excelPath.includes('/CloudStorage/'); // OneDrive sync folder
+
+                              // For OneDrive API paths (like /Documents/file.xlsx), try to construct local sync folder path
+                              if (isOneDrive && !isLocalFilePath && window.electronAPI) {
+                                try {
+                                  // Get home directory and find OneDrive folders
+                                  const homeDir = await window.electronAPI.getHomeDir();
+                                  const cloudStoragePath = `${homeDir}/Library/CloudStorage`;
+
+                                  console.log('Looking for OneDrive file. Excel path:', excelPath);
+                                  console.log('Home dir:', homeDir);
+                                  console.log('CloudStorage path:', cloudStoragePath);
+
+                                  // List CloudStorage directory to find OneDrive folders
+                                  const cloudStorageContents = await window.electronAPI.listDir(cloudStoragePath);
+                                  console.log('CloudStorage contents:', cloudStorageContents);
+
+                                  const oneDriveFolders = cloudStorageContents.filter(name =>
+                                    name.startsWith('OneDrive') || name.includes('OneDrive')
+                                  );
+                                  console.log('OneDrive folders found:', oneDriveFolders);
+
+                                  // Build list of possible paths
+                                  const possibleLocalPaths = [];
+
+                                  // Add CloudStorage OneDrive folders
+                                  for (const folder of oneDriveFolders) {
+                                    possibleLocalPaths.push(`${cloudStoragePath}/${folder}${excelPath}`);
+                                  }
+
+                                  // Also try legacy OneDrive locations in home directory
+                                  possibleLocalPaths.push(`${homeDir}/OneDrive${excelPath}`);
+                                  possibleLocalPaths.push(`${homeDir}/OneDrive - Personal${excelPath}`);
+
+                                  console.log('Trying these local paths:', possibleLocalPaths);
+
+                                  let localPathFound = null;
+                                  for (const localPath of possibleLocalPaths) {
+                                    try {
+                                      const exists = await window.electronAPI.fileExists(localPath);
+                                      console.log(`Checking ${localPath}: ${exists ? 'EXISTS' : 'not found'}`);
+                                      if (exists) {
+                                        localPathFound = localPath;
+                                        break;
+                                      }
+                                    } catch (e) {
+                                      console.log(`Error checking ${localPath}:`, e);
+                                      // Continue trying other paths
+                                    }
+                                  }
+
+                                  if (localPathFound) {
+                                    console.log('Found local file at:', localPathFound);
+                                    // Open the local file directly
+                                    const result = await window.electronAPI.openPath(localPathFound);
+                                    if (result) {
+                                      console.error('Failed to open local OneDrive file:', result);
+                                      showToast(`Failed to open Excel file:\n${result}`, 'error');
+                                    }
+                                    setShowExportMenu(false);
+                                    return;
+                                  }
+
+                                  // If local file not found, fall through to web approach
+                                  console.log('Local OneDrive file not found, trying web approach...');
+                                } catch (err) {
+                                  console.error('Error searching for local OneDrive file:', err);
+                                  // Fall through to web approach
+                                }
+                              }
+
+                              // Handle OneDrive API files - try desktop Excel first, fall back to web
+                              if (isOneDrive && !isLocalFilePath) {
+                                console.log('Trying web approach for OneDrive file...');
+                                console.log('graphClient available:', !!graphClient);
+                                try {
+                                  // Get the file's web URL from OneDrive
+                                  if (graphClient) {
+                                    console.log('Fetching file metadata from Graph API:', `/me/drive/root:${excelPath}`);
+                                    const driveItem = await graphClient.api(`/me/drive/root:${excelPath}`).get();
+                                    console.log('Drive item response:', driveItem);
+                                    console.log('webUrl:', driveItem?.webUrl);
+                                    console.log('downloadUrl:', driveItem?.['@microsoft.graph.downloadUrl']);
+
+                                    // Get webUrl, or construct one from the downloadUrl/id
+                                    let webUrl = driveItem?.webUrl;
+
+                                    // If no webUrl, try to open the file directly using downloadUrl
+                                    if (!webUrl && driveItem?.['@microsoft.graph.downloadUrl']) {
+                                      // For personal OneDrive, construct the web URL
+                                      // Format: https://onedrive.live.com/edit.aspx?cid=<driveId>&resid=<itemId>
+                                      const downloadUrl = driveItem['@microsoft.graph.downloadUrl'];
+                                      console.log('No webUrl, using downloadUrl to open file');
+
+                                      // Open the download URL which should trigger Excel to open
+                                      window.open(downloadUrl, '_blank');
+                                      setShowExportMenu(false);
+                                      return;
+                                    }
+
+                                    if (webUrl) {
+                                      console.log('Opening with webUrl:', webUrl);
+
+                                      // In Electron, use shell.openExternal to open the URL
+                                      // This will open in the default browser and Excel Online can handle it
+                                      if (window.electronAPI?.openExternal) {
+                                        try {
+                                          await window.electronAPI.openExternal(webUrl);
+                                          console.log('Opened webUrl with shell.openExternal');
+                                        } catch (e) {
+                                          console.error('Failed to open with openExternal:', e);
+                                          // Fallback to window.open
+                                          window.open(webUrl, '_blank');
+                                        }
+                                      } else {
+                                        // Not in Electron, just open in new tab
+                                        window.open(webUrl, '_blank');
+                                      }
+                                    } else {
+                                      showToast('Could not get the OneDrive file URL. Please open the file manually from OneDrive.', 'error');
+                                    }
+                                  } else {
+                                    showToast('Please sign in to Microsoft to open OneDrive files.', 'warn');
+                                  }
+                                } catch (err) {
+                                  console.error('Error opening OneDrive file:', err);
+                                  showToast(`Error opening OneDrive file:\n${err.message}`, 'error');
+                                }
+                                setShowExportMenu(false);
+                                return;
+                              }
+
+                              // Handle local files
+                              if (window.electronAPI) {
+                                try {
+                                  // Check if file exists first
+                                  const exists = await window.electronAPI.fileExists(excelPath);
+
+                                  if (!exists) {
+                                    showToast(`Excel file not found at:\n${excelPath}\n\nThe file may have been moved or deleted.`, 'error');
+                                    setShowExportMenu(false);
+                                    return;
+                                  }
+
+                                  const result = await window.electronAPI.openPath(excelPath);
+                                  if (result) {
+                                    // shell.openPath returns an error string if it fails, empty string on success
+                                    console.error('Failed to open Excel file:', result);
+                                    showToast(`Failed to open Excel file:\n${result}\n\nPath: ${excelPath}`, 'error');
+                                  }
+                                } catch (err) {
+                                  console.error('Error opening Excel file:', err);
+                                  showToast(`Error opening Excel file:\n${err.message}\n\nPath: ${excelPath}`, 'error');
+                                }
+                              } else {
+                                showToast('This feature is only available in the desktop app.', 'error');
+                              }
+                              setShowExportMenu(false);
+                            }}
+                            role="menuitem"
+                            className="survey-rail__menu-item"
+                          >
+                            <Icon name="document" size={14} color="currentColor" />
+                            Open Excel
+                          </div>
+                          <div
+                            onClick={() => {
+                              handleExportSurveyToExcel(selectedTemplate.linkedExcelPath);
+                              setShowExportMenu(false);
+                            }}
+                            role="menuitem"
+                            className="survey-rail__menu-item"
+                          >
+                            <Icon name="upload" size={14} color="currentColor" />
+                            Push to Excel
+                          </div>
+                          {/* "Pull from Excel" reads the last SAVED copy from disk, which on
+                              a local file open in Excel is stale and overlaps the automatic
+                              import-on-save — so it's only offered for OneDrive workbooks. */}
+                          {selectedTemplate?.isOneDrive && (
+                          <div
+                            onClick={() => {
+                              handleSyncFromExcel();
+                              setShowExportMenu(false);
+                            }}
+                            role="menuitem"
+                            className="survey-rail__menu-item"
+                          >
+                            <Icon name="download" size={14} color="currentColor" />
+                            Pull from Excel
+                          </div>
+                          )}
+                          {selectedTemplate?.isOneDrive && (() => {
+                            // Amendment (b) capability gate: a refused verdict keeps the
+                            // toggle visible but inert-with-reason. Clicking re-checks
+                            // (retry); the plain-English reason comes from the shared
+                            // excelSyncStatus vocabulary — never an inline literal here.
+                            const gateRefused = !liveSyncEnabled && liveSyncGate && !liveSyncGate.allowed
+                              && liveSyncGate.reasonCode !== 'checking';
+                            const gateChecking = !liveSyncEnabled && liveSyncGate?.reasonCode === 'checking';
+                            return (
+                            <div
+                              onClick={() => {
+                                if (liveSyncSupported === false) return;
+                                if (typeof onLiveSyncToggle === 'function') onLiveSyncToggle();
+                              }}
+                              role="menuitem"
+                              className="survey-rail__menu-item"
+                              style={{
+                                // Calm gold (2026-10-01): a live link is the house
+                                // "ok" green, beside warning amber and error red.
+                                color: liveSyncEnabled && liveSyncStatus === 'connected'
+                                  ? 'var(--success-text)'
+                                  : liveSyncStatus === 'connecting' || gateChecking
+                                    ? 'var(--warning)'
+                                    : liveSyncStatus === 'error' || liveSyncSupported === false
+                                      ? 'var(--danger-text)'
+                                      : 'var(--text-2)',
+                                cursor: liveSyncSupported === false ? 'not-allowed' : 'pointer'
+                              }}
+                              {...tip(
+                                liveSyncSupported === false
+                                  ? 'Live sync requires Microsoft 365 Business account'
+                                  : gateRefused || gateChecking
+                                    ? liveSyncGateStatus(liveSyncGate.reasonCode).label
+                                    : liveSyncEnabled && liveSyncStatus === 'connected'
+                                      ? 'Live sync is active - changes sync in real-time'
+                                      : liveSyncStatus === 'connecting'
+                                        ? 'Connecting to Excel...'
+                                        : liveSyncStatus === 'error'
+                                          ? 'Live sync error - click to retry'
+                                          : 'Enable live sync for real-time Excel updates',
+                                'below'
+                              )}
+                            >
+                              <span style={{ width: '14px', textAlign: 'center', fontSize: '12px' }}>
+                                {liveSyncStatus === 'connecting' || gateChecking
+                                  ? '...'
+                                  : liveSyncEnabled && liveSyncStatus === 'connected'
+                                    ? '●'
+                                    : '○'}
+                              </span>
+                              Live Sync
+                            </div>
+                            );
+                          })()}
+                          {selectedTemplate?.isOneDrive && (() => {
+                            // Slice 4 — guided "Verify Live Sync": a READ-ONLY,
+                            // step-by-step check of the whole live-sync path. The
+                            // verdict (and the running state) comes from the shared
+                            // excelSyncStatus vocabulary — never an inline literal.
+                            const verifying = liveSyncVerify?.state === 'checking';
+                            const verdict = liveSyncVerify?.state === 'done'
+                              ? liveSyncVerifyStatus(liveSyncVerify.verdictCode)
+                              : null;
+                            const verdictColor = verdict ? SYNC_TONE_COLORS[verdict.tone]?.color : null;
+                            return (
+                            <div
+                              onClick={() => {
+                                if (verifying) return;
+                                if (typeof onVerifyLiveSync === 'function') onVerifyLiveSync();
+                              }}
+                              role="menuitem"
+                              className="survey-rail__menu-item"
+                              style={{
+                                color: verifying ? 'var(--warning)' : (verdictColor || 'var(--text-2)'),
+                                cursor: verifying ? 'wait' : 'pointer'
+                              }}
+                              {...tip(
+                                verifying
+                                  ? liveSyncVerifyStatus('verifying').label
+                                  : verdict
+                                    ? verdict.label
+                                    : liveSyncVerifyStatus('idle').label,
+                                'below'
+                              )}
+                            >
+                              <span style={{ width: '14px', textAlign: 'center', fontSize: '12px' }}>
+                                {verifying ? '...' : verdict ? (liveSyncVerify.ready ? <Icon name="check" size={14} /> : '!') : '○'}
+                              </span>
+                              Verify Live Sync
+                            </div>
+                            );
+                          })()}
+                                      </div>
+                                    )}
+                        </div>
+                      )}
+                    </div>
+                    );
+                  })()}
                   </>
                   ) : (
-                    <div style={{
+                    <div ref={templatePickerRef} style={{
                       flex: 1,
                       minHeight: 0,
                       display: 'flex',
                       flexDirection: 'column',
-                      background: 'var(--surface-1)',
+                      // Owner 2026-10-01 ("one panel colour"): flat on the
+                      // panel colour, the same on both platforms.
+                      background: 'transparent',
                       fontFamily: FONT_FAMILY
                     }}>
                       {/* UX 2026-09-23 (owner: phone Survey panel integrated): the
@@ -3901,17 +4316,23 @@ const SurveySpacesRail = ({
                           massive cards should not be so big. Polish it like bookmarks
                           and spaces"): desktop is the same one-line 40px header as
                           Bookmarks and Spaces, a 13px title where it was 18px. */}
-                      <div className={mobileMode ? 'mobile-survey-head' : 'survey-rail__head'}>
+                      <div className={mobileMode ? 'mobile-survey-head mobile-survey-head--picker' : 'survey-rail__head'}>
                         {mobileMode ? (
+                          /* Owner 2026-10-02 (phone = desktop): centred, 600. */
                           <h2 className="mobile-survey-head-title">Choose a survey template</h2>
                         ) : (
+                          /* Owner 2026-10-07 (rail headers round): one rule for
+                             every panel title row - the title on the left, the
+                             close glyph at the right end (it was centred,
+                             2026-10-02, with nothing beside it). */
                           <h2 className="survey-rail__title">Choose a survey template</h2>
                         )}
+                        {/* Owner 2026-10-07 (DEBATE.md): no "Exit Survey" here -
+                            closing the picker without choosing a template
+                            (a swipe, a tap outside, the Survey tab or dock
+                            button again) leaves Survey on its own. */}
                         {mobileMode && (
                           <div className="mobile-survey-head-actions">
-                          <button type="button" className="mobile-survey-exit" onClick={exitSurveyMode}>
-                            Exit Survey
-                          </button>
                           <button
                             type="button"
                             className="mobile-survey-close"
@@ -3923,6 +4344,11 @@ const SurveySpacesRail = ({
                           >
                             <Icon name="close" size={18} color="currentColor" />
                           </button>
+                          </div>
+                        )}
+                        {!mobileMode && (
+                          <div className="survey-rail__head-actions">
+                            {desktopPanelClose}
                           </div>
                         )}
                       </div>
@@ -3967,10 +4393,15 @@ const SurveySpacesRail = ({
                                      handlers are desktop-only. */
                                   className={mobileMode ? 'mobile-survey-template-row' : 'survey-rail__template-row'}
                                   onClick={() => {
+                                    // The picker's rows turn into the
+                                    // template's rows (captureRailMorph).
+                                    captureRailMorph();
                                     onSelectSurveyTemplate?.(template);
                                   }}
                                 >
                                   <span className={mobileMode ? 'mobile-survey-template-name' : 'survey-rail__template-name'}>{template.name || 'Untitled template'}</span>
+                                  {/* Owner 2026-10-07: a template shared with you wears its owner's face. */}
+                                  {template.sharedFrom ? <SharedTemplateBadge sharedFrom={template.sharedFrom} size={mobileMode ? 18 : 16} /> : null}
                                   <span className={mobileMode ? 'mobile-survey-template-meta' : 'survey-rail__template-meta'}>
                                     {moduleCount} module{moduleCount === 1 ? '' : 's'}
                                   </span>

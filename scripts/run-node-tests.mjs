@@ -197,7 +197,14 @@ function parseArgs(argv) {
 // files account for 28% of a 389s test step, i.e. ~0.22s each.
 const DEFAULT_TEST_FILE_WEIGHT = 0.22;
 const MEASURED_TEST_FILE_WEIGHTS = new Map([
-  ['tests/partialEraserSequentialStress.test.mjs', 58.8],
+  // 2026-10-04: the 58.8s sequential-stress file was split six ways (same
+  // seeds, every sixth one per part) so no single file nears the 120s cap.
+  ['tests/partialEraserSequentialStressPart1.test.mjs', 9.8],
+  ['tests/partialEraserSequentialStressPart2.test.mjs', 9.8],
+  ['tests/partialEraserSequentialStressPart3.test.mjs', 9.8],
+  ['tests/partialEraserSequentialStressPart4.test.mjs', 9.8],
+  ['tests/partialEraserSequentialStressPart5.test.mjs', 9.8],
+  ['tests/partialEraserSequentialStressPart6.test.mjs', 9.8],
   ['tests/partialEraserPropertyStress.test.mjs', 40.4],
   ['tests/cloudExportStackSafety.test.mjs', 28.7],
   ['tests/annotationDocSyncDurability.test.mjs', 12.5],
@@ -292,12 +299,14 @@ if (options.shard) {
 }
 
 if (options.list) {
-  for (const file of [
+  const listing = [
     ...selectedMainFiles, ...selectedIsolatedFiles, ...selectedPerfFiles,
-  ]) {
-    console.log(file);
-  }
-  process.exit(0);
+  ].map((file) => `${file}\n`).join('');
+  // Exit only once the listing has been flushed. A bare process.exit() right
+  // after console.log can cut a piped listing short when the reader is slow
+  // (seen as the wall-clock guard tests' probe file "missing" from its shard).
+  process.stdout.write(listing, () => process.exit(0));
+  await new Promise(() => {});
 }
 
 if (

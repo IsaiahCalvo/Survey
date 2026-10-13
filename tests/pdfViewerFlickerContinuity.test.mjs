@@ -94,11 +94,16 @@ test('every surface reads AND writes the page raster cache', () => {
   // The mobile-only cache bypass is what made a revisited page a blank white
   // slab for up to seconds on a large drawing. Both guards must stay gone.
   assert.doesNotMatch(PDFJS_VIEWER_SOURCE, /isMobileSurface \? null : pageRasterCacheGet/);
-  assert.match(PDFJS_VIEWER_SOURCE, /const cachedCanvas = pageRasterCacheGet\(cacheKey\)/);
+  // 2026-10-06 (smooth zoom at every level): the cache keeps every bitmap of a
+  // page at any scale (pageRasterCacheCandidates) so a zoom change can reuse
+  // or shrink one; still read and written on every surface.
+  assert.match(PDFJS_VIEWER_SOURCE, /const candidates = pageRasterCacheCandidates\(pageId\);/);
   assert.doesNotMatch(PDFJS_VIEWER_SOURCE, /if \(!isMobileSurface\) \{\s*\/\/[^\n]*\n\s*pageRasterCacheSet/);
+  assert.match(PDFJS_VIEWER_SOURCE, /const maxBytes = pageRasterCacheMaxBytes\(isMobileSurface\);/);
   assert.match(
     PDFJS_VIEWER_SOURCE,
-    /pageRasterCacheSet\(cacheKey, target, pageRasterCacheMaxBytes\(isMobileSurface\)\)/
+    // 2026-10-07: far out a page draws at its thumbnail scale (drawScale >= want).
+    /pageRasterCacheSet\(rasterCacheKey\(pageId, drawScale\), target, maxBytes, drawScale\)/
   );
   // The bypass is replaced by a surface-aware byte ceiling, not by an unbounded
   // cache: mobile must stay well under the WKWebView budget.
@@ -138,7 +143,10 @@ test('the flicker fix leaves the enforced zoom contracts alone', () => {
   // path that is tightest on iPhone memory — it just no longer destroys the one
   // already on screen, which costs nothing and keeps the pinch-out sharp.
   assert.match(PDFJS_VIEWER_SOURCE, /if \(isMobileSurface && liveZoom < 1\) return;/);
-  const zoomOutBranch = /if \(isMobileSurface && liveZoom < 1\) \{([\s\S]*?)\n      return;/.exec(PDFJS_VIEWER_SOURCE);
+  // 2026-09-30 (owner: phone pinch as smooth as desktop): the scheduling
+  // branch now covers the whole live touch pinch (liveZoom !== 1), not only
+  // pinch-out — no tile raster competes with touchmove while fingers are down.
+  const zoomOutBranch = /if \(isMobileSurface && liveZoom (?:< 1|!== 1)\) \{([\s\S]*?)\n      return;/.exec(PDFJS_VIEWER_SOURCE);
   assert.ok(zoomOutBranch, 'the mobile zoom-out branch must still exist');
   assert.match(zoomOutBranch[1], /taskRef\.current\.cancel\(\)/);
   assert.doesNotMatch(zoomOutBranch[1], /setTile\(null\)/);

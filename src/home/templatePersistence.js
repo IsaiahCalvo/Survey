@@ -1,3 +1,5 @@
+import { sharedFromRow } from '../services/sharedTemplates.js';
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const deterministicTemplateRowId = (ownerId, logicalId) => {
@@ -46,7 +48,9 @@ export function buildAtomicTemplatePayload(templates, { ownerId } = {}) {
       throw new TypeError('Template snapshot entries require a template name.');
     }
 
-    const { supabaseId, ...config } = template || {};
+    // `sharedFrom` is this session's note that a template was shared with me;
+    // it is never part of the stored template.
+    const { supabaseId, sharedFrom: _sharedFrom, ...config } = template || {};
     if (supabaseId != null && !UUID_PATTERN.test(supabaseId)) {
       throw new TypeError('Template snapshot row id must be a UUID.');
     }
@@ -74,9 +78,12 @@ export async function persistTemplateSnapshot({ ownerId, templates, persist }) {
 export function mapAuthoritativeTemplateRows(rows) {
   return (Array.isArray(rows) ? rows : []).map((row) => {
     const config = row?.config && typeof row.config === 'object' ? row.config : {};
-    const { ballInCourtEntities, ...currentConfig } = config;
+    const { ballInCourtEntities, sharedFrom: _storedSharedFrom, ...currentConfig } = config;
+    // A row shared with me carries who shared it (never read from config).
+    const sharedFrom = sharedFromRow(row);
     return {
       ...currentConfig,
+      ...(sharedFrom ? { sharedFrom } : {}),
       entities: currentConfig.entities ?? ballInCourtEntities ?? [],
       id: currentConfig.id || row.id,
       supabaseId: row.id,

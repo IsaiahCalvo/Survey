@@ -17,12 +17,18 @@ test('Text Select installs existing-mark hit handling while preserving native dr
   assert.match(source, /event\.pointerType === 'touch'[\s\S]{0,180}350/);
   assert.match(source, /if \(!hit \|\| !\['annotation', 'callout'\]\.includes\(hit\.kind\)\) \{[\s\S]{0,180}clearAnnotationSelectionForContextChange\('text-select-empty-click'\)/);
   assert.match(source, /event\.key === 'Escape'[\s\S]{0,180}clearAnnotationSelectionForContextChange\('text-select-escape'\)/);
-  assert.match(source, /previousTool === 'text-select' && activeTool !== 'text-select'[\s\S]{0,180}clearAnnotationSelectionForContextChange\('text-select-tool-change'\)/);
+  // 2026-10-02: leaving Text Select still clears — now through the one
+  // tool-switch rule (selectModes.getToolSwitchSelectionClearReason).
+  // 2026-10-02: the call also passes HOW the switch was asked for (rule 12).
+  assert.match(source, /getToolSwitchSelectionClearReason\(previousTool, activeTool, \{ source \}\);[\s\S]{0,80}clearAnnotationSelectionForContextChange\(reason\)/);
 });
 
 test('Text Select enables SVG selection state but leaves the root inert so native text still receives drags', () => {
   assert.match(source, /const svgInteractive = activeTool === 'select' \|\| activeTool === 'text-select';/);
-  assert.match(svgSource, /const isSelectTool = \(activeTool === 'select' \|\| activeTool === 'text-select'\)/);
+  // 2026-10-02 (Drawboard rule 3/4): the same gate also opens while a press
+  // on the selection is in hand under another tool (selectionGrabArmed), so
+  // the pin stops at the select-family half of the condition.
+  assert.match(svgSource, /const isSelectTool = \(activeTool === 'select' \|\| activeTool === 'text-select'/);
   assert.match(svgSource, /activeTool !== 'text-select' \|\| textSelectManipulationArmed \|\| interactionState !== 'idle'/);
   assert.match(svgSource, /if \(event\.pointerType === 'touch'\) return/);
   assert.match(svgSource, /const releaseTouchOwnership = \(\) => \{[\s\S]{0,140}lastTextSelectPointerRef\.current = null/);

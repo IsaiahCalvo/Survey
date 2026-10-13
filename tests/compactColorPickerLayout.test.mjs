@@ -40,7 +40,8 @@ test('attached color picker joins its header without changing standalone corners
   // CHANGED 2026-09-22, owner's one-radius-scale ruling (pills 10, sheet tops
   // 16, popovers 9, cells 5, buttons 6): the panel was 12px standalone and
   // 0 0 8px 8px attached. A popover is 9, so both corners are 9 now.
-  assert.match(SOURCE, /borderRadius:\s*attachedHeader\s*\?\s*'0 0 9px 9px'\s*:\s*'9px'/);
+  // CHANGED 2026-10-02 (owner, phone/desktop consistency): popover radius 8.
+  assert.match(SOURCE, /borderRadius:\s*attachedHeader\s*\?\s*'0 0 8px 8px'\s*:\s*'8px'/);
 });
 
 test('the panel is 210px on the desktop (was board 19\'s 276px), full width on the phone', () => {

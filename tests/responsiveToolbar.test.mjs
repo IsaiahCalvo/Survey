@@ -41,6 +41,13 @@ import {
   planTopBar,
   centredRowLeft,
   rowWidth,
+  DESKTOP_RAIL_WIDTH,
+  PHONE_LAYOUT_MAX_WIDTH,
+  TEXT_ROW_STEPS,
+  minDesktopWindowWidth,
+  planTextRowStep,
+  textRowLook,
+  textRowWidth,
 } from '../src/utils/responsiveToolbar.js';
 
 // The bar as measured in the live app. RULED 2026-09-27 owner: Pan/Select
@@ -407,4 +414,110 @@ test('a narrow window with both side panels open: every setting but the colours 
   assert.equal(pen.fits, true);
   assert.ok(pen.left + rowWidth([{ kind: 'item', width: 48 }, divider, { kind: 'item', width: MORE_BUTTON_WIDTH }], TIGHT_SPACING)
     <= span.usableRight - ROW_INSET);
+});
+
+// Owner Test 41 (2026-10-04), "narrow window": "around the 780-pixel mark, the
+// more I shrink it, it doesn't really do anything. I can keep bringing the
+// right rail closer in until it covers ... the alignment tool for text."
+// Measured before the fix: the text bar (row 3) stayed 602px wide and ran
+// under the right rail from 751px down to the phone switch at 720px (and much
+// earlier beside an open side panel). It now gives ground in steps; the step
+// depends only on the room the row has.
+test('Test 41: the text bar\'s width at each step (fixed CSS widths, checked live)', () => {
+  // Measured in Chromium: 602 / 554 / 523 / 492 / 464 / 406 / 328 (the live
+  // bar rounds the last two a pixel down).
+  const withVertical = TEXT_ROW_STEPS.map((step) => textRowWidth(step));
+  assert.deepEqual(withVertical, [602, 554, 523, 492, 464, 407, 329, 329]);
+  // Callout text has no top / middle / bottom: folding them is a no-op.
+  const callout = TEXT_ROW_STEPS.map((step) => textRowWidth(step, { verticalAlign: false }));
+  assert.deepEqual(callout, [507, 471, 471, 440, 412, 355, 277, 277]);
+  assert.deepEqual(textRowLook('full'), {
+    step: 'full', tight: false, foldVertical: false, foldAlign: false, shortFont: false, foldStyle: false, oneColour: false, caption: true,
+  });
+  assert.deepEqual(textRowLook('no-caption'), {
+    step: 'no-caption', tight: true, foldVertical: true, foldAlign: true, shortFont: true, foldStyle: true, oneColour: true, caption: false,
+  });
+});
+
+test('Test 41: which step the text bar takes for the room it has', () => {
+  // span = the row's uncovered width (between the rails, less any open panel).
+  // A step fits when its controls + 2 * 10 inset + 34 caption room <= span.
+  const table = [
+    [1344, 'full'], // 1440 window
+    [656, 'full'], // 752: the narrowest window that keeps the full bar
+    [655, 'tight'],
+    [625, 'tight'], // 721: one px above the phone switch
+    [608, 'tight'],
+    [607, 'fold-vertical'],
+    [577, 'fold-vertical'],
+    [576, 'fold-align'],
+    [546, 'fold-align'],
+    [545, 'short-font'],
+    [518, 'short-font'],
+    [517, 'fold-style'],
+    [461, 'fold-style'],
+    [460, 'one-colour'],
+    [383, 'one-colour'],
+    [382, 'no-caption'],
+    [349, 'no-caption'],
+  ];
+  for (const [span, step] of table) {
+    const plan = planTextRowStep(span);
+    assert.equal(plan.step, step, `span ${span}`);
+    assert.equal(plan.fits, true, `span ${span} fits`);
+  }
+  // Too small even for the last step: it stays on the last step, flagged.
+  assert.deepEqual(planTextRowStep(129), { step: 'no-caption', index: 7, width: 329, fits: false });
+  // Callout text: tight already fits where fold-vertical would be needed, so
+  // fold-vertical (a no-op for it) is never chosen.
+  assert.equal(planTextRowStep(525, { verticalAlign: false }).step, 'tight');
+  assert.equal(planTextRowStep(524, { verticalAlign: false }).step, 'fold-align');
+  // Never steps back up as the room shrinks (no flip-flop as a window narrows).
+  let last = 0;
+  for (let span = 1400; span >= 300; span -= 1) {
+    const { index } = planTextRowStep(span);
+    assert.ok(index >= last, `span ${span}: step ${index} after ${last}`);
+    last = index;
+  }
+});
+
+test('Test 41: the text bar fits every desktop width above the phone switch', () => {
+  // No side panel: the row spans the window less the two 48px rails.
+  for (let width = PHONE_LAYOUT_MAX_WIDTH + 1; width <= 1440; width += 1) {
+    const span = width - 2 * DESKTOP_RAIL_WIDTH;
+    const plan = planTextRowStep(span);
+    assert.ok(plan.fits, `${width}px`);
+    // ...and only ever needs the first step (tighter gutters) to do it.
+    assert.ok(plan.index <= 1, `${width}px uses ${plan.step}`);
+  }
+  // With the Pages (224) or Survey (272) panel open, it still fits all the
+  // way down to the switch.
+  for (const panel of [224, 272]) {
+    for (let width = PHONE_LAYOUT_MAX_WIDTH + 1; width <= 1440; width += 1) {
+      assert.ok(planTextRowStep(width - 2 * DESKTOP_RAIL_WIDTH - panel).fits, `${width}px beside a ${panel}px panel`);
+    }
+  }
+  // The planned left edge keeps the controls inside the row.
+  const span = rowSpan(721, { rightPanel: 272 });
+  const plan = planTextRowStep(span.usableRight - span.usableLeft);
+  const left = planTextRow({ ...span, centre: 300, width: plan.width, caption: textRowLook(plan.step).caption });
+  assert.ok(left >= span.usableLeft + ROW_INSET);
+  assert.ok(left + plan.width <= span.usableRight - ROW_INSET);
+});
+
+test('Test 41: the phone switch stays at 720px, below which the desktop rows would still fit', () => {
+  // DELIBERATE: the brief asked for the switch to move to where even the most
+  // compact desktop rows stop fitting. That is 554px (the tool bar: Undo/Redo,
+  // Pan/Select, the group icons, the widest loadout and Export), but at 720px
+  // the viewer itself turns into the phone's touch surface (page gaps, pinch,
+  // no trackpad overscroll — PdfjsViewerContainer, out of scope), and ~20
+  // stylesheet rules switch with it. So the switch stays at 720, and every
+  // width above it now fits: no dead zone where a rail covers a control.
+  assert.equal(PHONE_LAYOUT_MAX_WIDTH, 720);
+  assert.equal(minDesktopWindowWidth(), 554);
+  assert.ok(minDesktopWindowWidth() < PHONE_LAYOUT_MAX_WIDTH);
+  // The tool bar's own plan agrees at the switch: the widest loadout ends
+  // clear of Export.
+  const plan = planTopBar(bar(PHONE_LAYOUT_MAX_WIDTH + 1));
+  assert.ok(plan.clusterLeft + 96 + WIDEST_SUBTOOLS_WIDTH + EDGE_CLEARANCE <= PHONE_LAYOUT_MAX_WIDTH + 1 - 38);
 });

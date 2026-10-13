@@ -16,8 +16,8 @@ test('dev viewer can hydrate the exact template model created by the mobile work
 test('mobile survey-template workflow covers persisted nested CRUD and viewer marker cleanup', () => {
   for (const phrase of [
     'New template',
-    'New module',
-    'New category',
+    'Add module',
+    'Add category',
     'Add checklist item',
     'Delete Survey Marker',
     'page.reload',

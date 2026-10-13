@@ -134,3 +134,28 @@ test('mounted lasso clears its trail when a tool switch or zoom takes over', asy
   assert.equal(mounted.svg.querySelector('[data-lasso-selection-preview]'), null);
   await act(async () => mounted.root.unmount());
 });
+
+// Owner 2026-10-07 (smooth zoom on heavily marked drawings): the zoom-start
+// bump (zoomGeneration, CLAUDE.md invariant) reaches the layer through a
+// signal, so it still drops a lasso / commits freehand work, but a bare bump
+// no longer re-renders every mark of every mounted page at the first touch of
+// a pinch.
+test('a zoom start reaches the layer without re-rendering its marks', async () => {
+  let reads = 0;
+  const annotations = new Proxy({ objects: [mark()] }, {
+    get(target, key) { if (key === 'objects') reads += 1; return target[key]; },
+  });
+  const mounted = await mountLayer({ annotations });
+  const node = mounted.svg.querySelector('[data-annotation-index="0"]');
+  const before = reads;
+  await mounted.rerender({ annotations, zoomGeneration: 1 });
+  await mounted.rerender({ annotations, zoomGeneration: 2 });
+  assert.equal(reads, before, 'a bare zoom start does not render the marks again');
+  assert.equal(mounted.svg.querySelector('[data-annotation-index="0"]'), node);
+  // A lasso in flight still clears on the next bump.
+  await act(async () => { mounted.svg.dispatchEvent(pointer('pointerdown', 10, 10)); mounted.svg.dispatchEvent(pointer('pointermove', 20, 20)); });
+  assert.ok(mounted.svg.querySelector('[data-lasso-selection-preview]'));
+  await mounted.rerender({ annotations, zoomGeneration: 3 });
+  assert.equal(mounted.svg.querySelector('[data-lasso-selection-preview]'), null);
+  await act(async () => mounted.root.unmount());
+});

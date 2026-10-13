@@ -10,6 +10,7 @@
 import { useId, useLayoutEffect, useMemo, useRef } from 'react';
 import { union, diff } from './vendor/martinezPolygonClipping.js';
 import { regionToPolygon } from './utils/regionMath';
+import { withRegionOutlineCoordinates } from './utils/regionOutline';
 
 const spaceRegionDebug = (...args) => {
   if (typeof window === 'undefined' || window.__SPACE_REGION_DEBUG !== true) return;
@@ -103,7 +104,8 @@ const SpaceRegionOverlay = ({
       if (!hasValidAreas(region)) {
         continue;
       }
-      const poly = regionToPolygon(region);
+      // Curved (freehand) areas: fill the same smooth outline the editor draws.
+      const poly = regionToPolygon(withRegionOutlineCoordinates(region));
       if (!poly) continue;
 
       if (mergedPolygons.length === 0) {

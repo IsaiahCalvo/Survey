@@ -13,7 +13,7 @@
  * can decide not to hard-block. When Supabase enforcement is ON the server will
  * still reject a tokenless request, but the client never adds an *extra* lockout.
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { isTurnstileEnabled, resolveTurnstileSiteKey } from './turnstileConfig';
 
 // Public site key — safe to ship in client code (Cloudflare renders it in HTML).
@@ -51,6 +51,10 @@ function loadTurnstile() {
 export default function TurnstileWidget({ onToken, onError, action }) {
   const containerRef = useRef(null);
   const widgetIdRef = useRef(null);
+  // 2026-10-07 (phone loading): the check arrives a moment after the sign-in
+  // sheet, and its 65px box used to push the sheet up as it landed. The room is
+  // kept from the first frame and only given back if the check cannot load.
+  const [unavailable, setUnavailable] = useState(false);
 
   useEffect(() => {
     if (!TURNSTILE_ENABLED) return undefined;
@@ -61,6 +65,9 @@ export default function TurnstileWidget({ onToken, onError, action }) {
         widgetIdRef.current = ts.render(containerRef.current, {
           sitekey: TURNSTILE_SITE_KEY,
           action,
+          // Dark like the app. 'auto' follows the phone's own light/dark
+          // setting and flashed a white box onto the dark sheet.
+          theme: 'dark',
           callback: (token) => onToken?.(token),
           'expired-callback': () => onToken?.(''),
           'error-callback': () => {
@@ -90,5 +97,5 @@ export default function TurnstileWidget({ onToken, onError, action }) {
   }, []);
 
   if (!TURNSTILE_ENABLED) return null;
-  return <div ref={containerRef} className="turnstile-widget" style={{ marginTop: 12 }} />;
+  return <div ref={containerRef} className="turnstile-widget" style={{ marginTop: 12, minHeight: unavailable ? 0 : 65 }} />;
 }

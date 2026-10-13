@@ -8,7 +8,7 @@
  * Phase 9 Plan 02: Drag-to-move, resize-by-handle, rotation.
  * Phase 9 Plan 03: Multi-select group ops (group-move, group-delete), double-click edit trigger.
  */
-import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, startTransition } from 'react';
 import { flushSync } from 'react-dom';
 import { screenToSVG, normalizeAngle, getInverseScale, snapAngleToNearest45, clampInverseScale } from '../utils/svgTransformMath';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, getLineEndpoints, computeLineBboxCenter, isImportedPath, isAbsoluteCoordPath } from '../utils/svgBoundingBox';
@@ -27,6 +27,7 @@ import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { roundCommittedAnnotationsGeometry } from '../utils/annotationCommitRounding.js';
 import { mergeDraggedMarksOntoPage } from '../utils/dragCommitMerge.js';
 import { remapSelectedIndices } from '../utils/selectionRemap.js';
+import { resizeCalloutBox } from '../utils/markBorderOutline.js';
 // w59: one rule for where a moved mark lands (preview === save).
 import {
   markIdOf,
@@ -146,8 +147,15 @@ import {
   buildPointsShapeResize,
   clampResizeScale,
 } from '../utils/resizeMinimum.js';
+import { resolveTextDoubleClick } from '../utils/selectModes.js';
+import { useCrossPageMove } from './useCrossPageMove.js';
+import { isTextLikeAnnotation } from '../utils/toolPressRouting.js';
 
 const cloneAnnotations = (annotations) => deepClone(annotations);
+
+// Drawboard rule 7: a mark picked less than this long before a double-click
+// was picked BY that double-click's first click (it was not selected before).
+const DOUBLE_CLICK_PICK_MS = 600;
 
 const diagLog = (...args) => {
   if (!isAnnotationPreviewDiagEnabled()) return;
@@ -318,6 +326,12 @@ export function useSVGInteraction({
   getSurveyMarkerMembers = null,
   selectedSurveyMarkerIds = null,
   onSelectedSurveyMarkerIdsChange = null,
+  // Owner after Test 46 (2026-10-06): a picked mark dragged 100 % off its page
+  // onto another page moves there (utils/crossPageMove.js). The viewer saves
+  // it: ({ toPage, marks: [{ id, object }] }) => true when moved. Absent ->
+  // marks stay clamped to their page (legacy mounts unchanged).
+  onMoveMarksToPage = null,
+  documentId = null,
 }) {
   // ---------------------------------------------------------------------------
   // State
@@ -445,6 +459,25 @@ export function useSVGInteraction({
   // if a drag just ended within a 400ms window. Mirrors the 300ms
   // `editModeCooldownRef` pattern in App.jsx:26690.
   const justDraggedAtRef = useRef(0);
+  const crossPageMove = useCrossPageMove({
+    svgRef, pageNumber, documentId, onMoveMarksToPage, setVisualTransform, selectedCount: selectedIds?.size ?? 0,
+  });
+  // Drawboard rule 7: the last two presses on marks ({ key, wasSelected, at,
+  // pointerType }, newest first) and when each picked mark joined the
+  // selection (key -> ms) — read by the double-click handler to tell text
+  // that was selected BEFORE a double-click from text its first click picked.
+  const pressLogRef = useRef([]);
+  const pickedAtRef = useRef(new Map());
+  useEffect(() => {
+    const now = Date.now();
+    const previous = pickedAtRef.current;
+    const next = new Map();
+    for (const index of selectedIds || []) next.set(`a:${index}`, previous.get(`a:${index}`) ?? now);
+    const calloutIds = selectedCalloutIds instanceof Set ? selectedCalloutIds
+      : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds : []);
+    for (const id of calloutIds) next.set(`c:${id}`, previous.get(`c:${id}`) ?? now);
+    pickedAtRef.current = next;
+  }, [selectedIds, selectedCalloutIds]);
 
   // Keep interactionStateRef in sync
   useEffect(() => {
@@ -547,14 +580,60 @@ export function useSVGInteraction({
     // Initial computation
     setInverseScale(getInverseScale(svgEl, pageWidth));
 
-    const observer = new ResizeObserver(() => {
-      setInverseScale(getInverseScale(svgEl, pageWidth));
-    });
+    // Owner 2026-10-07 (smooth zoom): a zoom commit resizes every mounted
+    // page's svg at once, and this update re-renders each whole layer (every
+    // mark, to retune a few hit pads). As a transition React renders it in
+    // slices between frames instead of one long freeze (~1 s on a phone with
+    // a set of marked drawings in view). The marks themselves never wait:
+    // the viewBox scales them.
+    //
+    // Owner 2026-10-07 (phone: a pinch started right after the last one
+    // stuttered while every layer re-rendered): the retune also waits while
+    // the page is still moving (a pinch, glide or scroll — the viewer marks
+    // its scroller data-pdfjs-moving) and runs once it is still, and a page
+    // off screen retunes after the ones on screen. Only hit pads and handle
+    // sizes wait; the marks are scaled by the viewBox, never by this.
+    let waitTimer = 0;
+    let stillChecks = 0;
+    const apply = () => {
+      waitTimer = 0;
+      if (!svgEl.isConnected) return;
+      const next = getInverseScale(svgEl, pageWidth);
+      startTransition(() => setInverseScale(next));
+    };
+    // Still means still for a moment: pinches often come one after another,
+    // and a retune that starts just before the next one competes with it.
+    const schedule = () => {
+      if (waitTimer) clearTimeout(waitTimer);
+      waitTimer = 0;
+      if (svgEl.closest?.('[data-pdfjs-moving="true"]')) {
+        stillChecks = 0;
+        waitTimer = setTimeout(schedule, 120);
+        return;
+      }
+      if (stillChecks < 2) {
+        stillChecks += 1;
+        waitTimer = setTimeout(schedule, 150);
+        return;
+      }
+      stillChecks = 0;
+      const rect = svgEl.getBoundingClientRect?.();
+      const vw = window.innerWidth || 0;
+      const vh = window.innerHeight || 0;
+      const offScreen = rect && vh > 0 && (rect.bottom < -vh * 0.5 || rect.top > vh * 1.5 || rect.right < 0 || rect.left > vw);
+      if (offScreen) {
+        waitTimer = setTimeout(apply, 400);
+        return;
+      }
+      apply();
+    };
+    const observer = new ResizeObserver(schedule);
 
     observer.observe(svgEl);
 
     return () => {
       observer.disconnect();
+      if (waitTimer) clearTimeout(waitTimer);
     };
   }, [svgRef, pageWidth]);
 
@@ -1063,6 +1142,43 @@ export function useSVGInteraction({
    * Click on an annotation to select it.
    * Shift-click toggles in/out of selection (for multi-select in Plan 03).
    */
+  // Drawboard rule 3 (owner 2026-10-02, utils/selectModes.js
+  // resolveToolPress): under Select a press on a mark (or callout) that was
+  // NOT selected picks it, and a drag from there is a box / lasso select — it
+  // never moves a mark that was not already selected. keepOnClick: a release
+  // without travel keeps the pick that press made.
+  const beginAreaSelectFromMark = useCallback((e) => {
+    const startPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
+    if (selectionMode === 'lasso') {
+      const intent = getLassoGestureIntent(e, lassoTouchOperation, lassoTouchMode);
+      applyLassoState({
+        points: [{
+          x: Math.max(0, Math.min(pageWidth, startPoint.x)),
+          y: Math.max(0, Math.min(pageHeight, startPoint.y)),
+        }],
+        ...intent,
+        mode: null,
+        pointerId: e.pointerId,
+        pointerType: e.pointerType || 'mouse',
+        keepOnClick: true,
+      });
+    } else {
+      applyMarqueeState({
+        startX: startPoint.x,
+        startY: startPoint.y,
+        endX: startPoint.x,
+        endY: startPoint.y,
+        shiftHeld: false,
+        altHeld: false,
+        active: false,
+        pointerId: e.pointerId,
+        keepOnClick: true,
+      });
+    }
+    try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+    e.preventDefault?.();
+  }, [svgRef, selectionMode, lassoTouchOperation, lassoTouchMode, applyLassoState, applyMarqueeState, pageWidth, pageHeight]);
+
   const handleAnnotationPointerDown = useCallback((e, index) => {
     e.stopPropagation();
     if (dragStateRef.current?.active && dragStateRef.current.annotationIndex === index) {
@@ -1204,6 +1320,13 @@ export function useSVGInteraction({
     }
 
     const wasAlreadySelected = selectedIds.has(index);
+    // Drawboard rule 7: remember whether each press found its mark already
+    // selected, so a double-click can tell "selected before" from "picked by
+    // the first click of this double-click".
+    pressLogRef.current = [
+      { key: `a:${index}`, wasSelected: wasAlreadySelected, at: Date.now(), pointerType: e.pointerType || 'mouse' },
+      pressLogRef.current[0],
+    ].filter(Boolean);
 
     // UX: 2026-04-20 — Group auto-expand-on-click (Stage 1 of the Group /
     // Ungroup design). When a plain (non-Shift) click lands on an
@@ -1256,6 +1379,15 @@ export function useSVGInteraction({
     }
     // w53: the same for Survey Markers in the selection.
     if (!wasAlreadySelected) clearSelectedMarkers();
+
+    // Drawboard rule 3 (owner 2026-10-02, utils/selectModes.js
+    // resolveToolPress): under Select a press on a mark that was NOT selected
+    // picks it, but a drag from there is a box / lasso select — it never moves
+    // a mark that was not already selected. Drag the selection to move it.
+    if (!wasAlreadySelected && activeTool === 'select' && svgRef.current) {
+      beginAreaSelectFromMark(e);
+      return;
+    }
 
     // Initiate drag-to-move
     const obj = annotations?.objects?.[index];
@@ -1395,7 +1527,7 @@ export function useSVGInteraction({
         ensureMoveStart(dragStateRef.current, annotations?.objects);
       }
     }
-  }, [selectedIds, selectAnnotation, annotations, svgRef, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, selectedMarkerCount]);
+  }, [selectedIds, selectAnnotation, annotations, svgRef, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, selectedMarkerCount, activeTool, beginAreaSelectFromMark]);
 
   /**
    * Hover enter: show blue outline preview.
@@ -1449,6 +1581,26 @@ export function useSVGInteraction({
       e.stopPropagation();
       return;
     }
+    // Drawboard rule 7 (utils/selectModes.js resolveTextDoubleClick): a mouse
+    // double-click on text that was NOT selected before it began only picks
+    // it (the first click did that); double-clicking selected text, or a
+    // double-tap, opens the editor. Only text boxes and callouts follow this.
+    {
+      const dblCalloutId = e.target?.closest?.('[data-callout-id]')?.getAttribute?.('data-callout-id');
+      const key = dblCalloutId != null ? `c:${dblCalloutId}` : `a:${index}`;
+      const isText = dblCalloutId != null || isTextLikeAnnotation(annotations?.objects?.[index]);
+      if (isText && !e.selectionDoublePress) {
+        const pickedAt = pickedAtRef.current.get(key);
+        const wasSelected = pickedAt != null && Date.now() - pickedAt > DOUBLE_CLICK_PICK_MS;
+        const latest = pressLogRef.current[0];
+        const pointerType = (latest && latest.key === key && Date.now() - latest.at < 1000 && latest.pointerType)
+          || (e.nativeEvent?.sourceCapabilities?.firesTouchEvents ? 'touch' : 'mouse');
+        if (resolveTextDoubleClick({ tool: activeTool, wasSelected, pointerType }) !== 'edit') {
+          e.stopPropagation();
+          return;
+        }
+      }
+    }
     // UX: Phase 14 CALL-10 — callout double-click enters edit mode via
     // FabricEditCanvas + calloutEditAdapter (see Plan 14-03 Task 3 in App.jsx).
     // Uses event-delegation via data-callout-id (same pattern as v2.2 EDIT-13
@@ -1489,7 +1641,7 @@ export function useSVGInteraction({
     if (onRequestEditMode && annotation) {
       onRequestEditMode(index, annotation.type, { caretAnchor: readCaretAnchor(e) });
     }
-  }, [onRequestEditMode, annotations, callouts, isCalloutSelectable]);
+  }, [onRequestEditMode, annotations, callouts, isCalloutSelectable, activeTool]);
 
   /**
    * Click on empty SVG background: deselect all.
@@ -1583,6 +1735,21 @@ export function useSVGInteraction({
       const _calAlreadyIn = (selectedCalloutIds instanceof Set)
         ? selectedCalloutIds.has(calloutId)
         : (Array.isArray(selectedCalloutIds) && selectedCalloutIds.indexOf(calloutId) >= 0);
+      // Drawboard rule 7 (see pressLogRef).
+      pressLogRef.current = [
+        { key: `c:${calloutId}`, wasSelected: _calAlreadyIn, at: Date.now(), pointerType: e.pointerType || 'mouse' },
+        pressLogRef.current[0],
+      ].filter(Boolean);
+      // Drawboard rule 3: the same for a callout that was not selected (a
+      // grouped callout still picks its whole group below).
+      if (!e.shiftKey && !_calAlreadyIn && activeTool === 'select' && !getCalloutGroupId(callout) && svgRef.current) {
+        onSelectedCalloutIdsChange?.(new Set([calloutId]));
+        deselectAll();
+        clearSelectedMarkers();
+        e.stopPropagation();
+        beginAreaSelectFromMark(e);
+        return;
+      }
       if (!e.shiftKey && _calAlreadyIn && (selectedIds.size + _calCount + selectedMarkerCount) > 1) {
         const ctmA = svgRef.current?.getScreenCTM();
         const ctmInverseA = ctmA ? ctmA.inverse() : null;
@@ -1744,7 +1911,7 @@ export function useSVGInteraction({
         active: true,
         mode: 'callout-part',
         partType,
-        textBoxCorner,           // 'tl' | 'tr' | 'bl' | 'br' | null
+        textBoxCorner,           // 'tl' | 'mt' | 'tr' | 'mr' | 'br' | 'mb' | 'bl' | 'ml' | null
         calloutId,
         startSVGPoint: svgPoint,
         ctmInverse,
@@ -1907,7 +2074,7 @@ export function useSVGInteraction({
       deselectAll();
       clearSelectedMarkers();
     }
-  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, selectionMode, lassoTouchOperation, lassoTouchMode, applyMarqueeState, applyLassoState, cancelLasso, pageWidth, pageHeight, selectedIds, annotations, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, getSurveyMarkerMembers, selectedMarkerCount]);
+  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, selectionMode, lassoTouchOperation, lassoTouchMode, applyMarqueeState, applyLassoState, cancelLasso, pageWidth, pageHeight, selectedIds, annotations, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, getSurveyMarkerMembers, selectedMarkerCount, beginAreaSelectFromMark]);
 
   /**
    * Pointer move on root SVG: update visual transform during drag.
@@ -2041,6 +2208,12 @@ export function useSVGInteraction({
       // w59: the preview shows the SAME page-clamped delta the release saves
       // (utils/moveCommit.js), so the mark never jumps when it is let go.
       ensureMoveStart(ds, annotations?.objects);
+      // Owner after Test 46: a mark that may change pages follows the pointer
+      // off its page (clipped) and jumps to the next page once fully off.
+      if (crossPageMove.preview(ds, e, annotations?.objects)) {
+        setInteractionState('dragging');
+        return;
+      }
       const shown = clampMoveDelta(ds.moveBoxes, dx, dy, pageWidth, pageHeight);
       if (ds.orbitBase) {
         // After a Shift-orbit the stored counter is still the pre-orbit one:
@@ -2129,6 +2302,10 @@ export function useSVGInteraction({
         pageHeight,
         markerBoxes: getGroupMarkerBoxes(ds.groupMarkerIds),
       });
+      if (crossPageMove.preview(ds, e, annotations?.objects)) {
+        setInteractionState('dragging');
+        return;
+      }
       const { dx, dy } = clampMoveDelta(
         ds.groupBoxes,
         svgPoint.x - ds.startSVGPoint.x,
@@ -3454,37 +3631,21 @@ export function useSVGInteraction({
           // grabbed corner stays put, the grabbed corner follows the
           // pointer. New rect dims fall out of that. Minimum size floor
           // (20px on each axis) matches the renderCallout min textBox dims.
-          const corner = ds.textBoxCorner || 'br';
-          const origLeft = original.textBoxPosition.x;
-          const origTop = original.textBoxPosition.y;
-          const origRight = origLeft + (original.textBoxWidth || 0);
-          const origBottom = origTop + (original.textBoxHeight || 0);
-          // Anchor point (opposite corner) in normalized coords.
-          let anchorX, anchorY;
-          if (corner === 'tl') { anchorX = origRight;  anchorY = origBottom; }
-          else if (corner === 'tr') { anchorX = origLeft;  anchorY = origBottom; }
-          else if (corner === 'bl') { anchorX = origRight; anchorY = origTop; }
-          else                      { anchorX = origLeft;  anchorY = origTop; }
-          // Moving corner = original corner + drag delta (in normalized).
-          let mvX, mvY;
-          if (corner === 'tl')      { mvX = origLeft + dxNorm;  mvY = origTop + dyNorm; }
-          else if (corner === 'tr') { mvX = origRight + dxNorm; mvY = origTop + dyNorm; }
-          else if (corner === 'bl') { mvX = origLeft + dxNorm;  mvY = origBottom + dyNorm; }
-          else                      { mvX = origRight + dxNorm; mvY = origBottom + dyNorm; }
-          const minW = 20 / W;
-          const minH = 20 / H;
-          // w63: the box flips through the fixed corner (text never mirrors)
-          // and, at its 20-unit minimum, stays attached to that corner on
-          // whichever side the pointer is — it no longer slides off it.
-          const newWidth = Math.max(minW, Math.abs(mvX - anchorX));
-          const newHeight = Math.max(minH, Math.abs(mvY - anchorY));
-          const newLeft = mvX >= anchorX ? anchorX : anchorX - newWidth;
-          const newTop = mvY >= anchorY ? anchorY : anchorY - newHeight;
-          const resizePatch = {
-            textBoxPosition: { x: newLeft, y: newTop },
-            textBoxWidth: newWidth,
-            textBoxHeight: newHeight,
-          };
+          // Owner Test 45 (2026-10-06): eight grabbers, rectangle-style - a
+          // corner moves both of its edges, an edge grabber only its own
+          // (utils/markBorderOutline.js resizeCalloutBox).
+          const resizePatch = resizeCalloutBox(
+            {
+              position: original.textBoxPosition,
+              width: original.textBoxWidth || 0,
+              height: original.textBoxHeight || 0,
+            },
+            ds.textBoxCorner || 'br',
+            dxNorm,
+            dyNorm,
+            20 / W,
+            20 / H,
+          );
           ds.currentCalloutPatch = resizePatch;
           setVisualTransform({
             id: 'callout',
@@ -3688,7 +3849,8 @@ export function useSVGInteraction({
       cancelLasso(e.pointerId);
       if (!polygon) {
         if (validation.issue === 'self-intersection') return;
-        if (!lasso.shiftHeld) {
+        // keepOnClick: the lasso began on a mark it just picked (rule 3).
+        if (!lasso.shiftHeld && !lasso.keepOnClick) {
           deselectAll();
           onSelectedCalloutIdsChange?.(new Set());
           clearSelectedMarkers();
@@ -3761,7 +3923,8 @@ export function useSVGInteraction({
       try { svgRef.current?.releasePointerCapture?.(mq.pointerId ?? e.pointerId); } catch (_) { /* optional */ }
 
       if (!wasActive) {
-        if (!mq.shiftHeld) {
+        // keepOnClick: the marquee began on a mark it just picked (rule 3).
+        if (!mq.shiftHeld && !mq.keepOnClick) {
           deselectAll();
           if (onSelectedCalloutIdsChange) onSelectedCalloutIdsChange(new Set());
           clearSelectedMarkers();
@@ -3891,7 +4054,13 @@ export function useSVGInteraction({
       partType: ds.partType || null,
     });
 
-    if (ds.mode === 'move') {
+    // Owner after Test 46: let go over another page -> the marks move there
+    // (one save, one undo step — PDFViewer handleMoveMarksToPage).
+    const crossPageDropped = (ds.mode === 'move' || ds.mode === 'group-move') && crossPageMove.drop(ds, e);
+    if (crossPageDropped) {
+      try { e.target?.releasePointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+      justDraggedAtRef.current = Date.now();
+    } else if (ds.mode === 'move') {
       const pt = new DOMPoint(e.clientX, e.clientY);
       const svgPoint = ds.ctmInverse
         ? pt.matrixTransform(ds.ctmInverse)
@@ -4196,8 +4365,34 @@ export function useSVGInteraction({
         reportDroppedMove({ reason: 'held-at-page-edge', mode: 'group-move', dx: rawGroupDx, dy: rawGroupDy, pageNumber });
       }
 
+      // TEST-PLAN item 55 (2026-10-06): the selected callouts are written
+      // FIRST and rendered (flushSync), so the page save below is built on a
+      // page that already holds them and closes ONE undo step for the whole
+      // selection — marks, callouts and Survey Markers — as the arrow-key
+      // nudge does (commitNudgeBurst). Writing them after the save made a
+      // second step: one Undo put the shapes back and left the callouts moved.
+      const groupCalloutEntries = (dx !== 0 || dy !== 0) && ds.groupCalloutOriginals
+        ? Object.entries(ds.groupCalloutOriginals)
+        : [];
+      if (groupCalloutEntries.length > 0 && typeof onUpdateCalloutLive === 'function') {
+        const W = pageWidth || 1;
+        const H = pageHeight || 1;
+        const dxNorm = dx / W;
+        const dyNorm = dy / H;
+        flushSync(() => {
+          for (const [cid, orig] of groupCalloutEntries) {
+            onUpdateCalloutLive(cid, {
+              arrowTip: { x: orig.arrowTip.x + dxNorm, y: orig.arrowTip.y + dyNorm },
+              knee: { x: orig.knee.x + dxNorm, y: orig.knee.y + dyNorm },
+              textBoxPosition: { x: orig.textBoxPosition.x + dxNorm, y: orig.textBoxPosition.y + dyNorm },
+            });
+          }
+        });
+      }
       if (dx !== 0 || dy !== 0) {
-        const updatedAnnotations = deepClone(annotations);
+        const updatedAnnotations = deepClone(groupCalloutEntries.length > 0
+          ? (nudgeLatestRef.current.annotations || annotations)
+          : annotations);
         const movedIndexes = [];
         let missing = 0;
 
@@ -4283,31 +4478,14 @@ export function useSVGInteraction({
           });
         }
       }
-      // UX: 2026-04-20 v2 — callout commit for group-move. Live drag now
-      // uses render-time translate via affectedCalloutIds (no setCallouts
-      // round-trip per frame). On pointerup we compute the final delta
-      // and call onUpdateCalloutLive to write each callout's actual new
-      // position, then onUpdateCallout for the undo checkpoint.
-      // w59: the callouts take the SAME clamped delta as the rest of the
-      // selection (it used to be the raw pointer delta — callouts could leave
-      // the page and part from the shapes they moved with).
-      if (ds.groupCalloutOriginals && (dx !== 0 || dy !== 0)) {
-        const W = pageWidth || 1;
-        const H = pageHeight || 1;
-        const dxNorm = dx / W;
-        const dyNorm = dy / H;
-        for (const [cid, orig] of Object.entries(ds.groupCalloutOriginals)) {
-          if (typeof onUpdateCalloutLive === 'function') {
-            onUpdateCalloutLive(cid, {
-              arrowTip: { x: orig.arrowTip.x + dxNorm, y: orig.arrowTip.y + dyNorm },
-              knee: { x: orig.knee.x + dxNorm, y: orig.knee.y + dyNorm },
-              textBoxPosition: { x: orig.textBoxPosition.x + dxNorm, y: orig.textBoxPosition.y + dyNorm },
-            });
-          }
-          if (typeof onUpdateCallout === 'function') {
-            onUpdateCallout(cid, {});
-          }
-        }
+      // UX: 2026-04-20 v2 — callout commit for group-move. Live drag uses
+      // render-time translate via affectedCalloutIds (no setCallouts
+      // round-trip per frame); the release wrote each callout's new pose
+      // above, before the page save (w59: the SAME clamped delta as the rest
+      // of the selection). onUpdateCallout closes the callout step when no
+      // save above closed it already (a no-op otherwise).
+      if (typeof onUpdateCallout === 'function') {
+        for (const [cid] of groupCalloutEntries) onUpdateCallout(cid, {});
       }
     } else if (ds.mode === 'text-markup-horizontal') {
       const releasePoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
@@ -4796,6 +4974,7 @@ export function useSVGInteraction({
       setActiveCalloutDrag(null);
     }
 
+    crossPageMove.end(ds);
     // Reset drag state
     dragStateRef.current = {
       active: false, mode: null, handleId: null, startSVGPoint: null,
@@ -4849,6 +5028,53 @@ export function useSVGInteraction({
     setVisualTransform(null);
     setInteractionState('idle');
   }, []);
+
+  // Owner after Test 46 (2026-10-06): Escape mid-drag puts a moving mark back
+  // where it started (nothing is saved, the pick stays). And a mark carried
+  // over another page keeps answering to this page even if the browser hands
+  // the pointer to the other page (lost capture).
+  useEffect(() => {
+    if (interactionState !== 'dragging') return undefined;
+    const activeMoveDrag = () => {
+      const ds = dragStateRef.current;
+      return ds?.active && (ds.mode === 'move' || ds.mode === 'group-move') ? ds : null;
+    };
+    const cancelMoveDrag = () => {
+      const ds = activeMoveDrag();
+      if (!ds) return false;
+      crossPageMove.end(ds);
+      dragStateRef.current = { ...ds, active: false, mode: null, crossPage: undefined };
+      justDraggedAtRef.current = Date.now();
+      setVisualTransform(null);
+      setInteractionState('idle');
+      return true;
+    };
+    // The viewer's Escape asks live gestures to cancel first (its seam); the
+    // key listener covers tools where the viewer does not listen.
+    const onCancelGesture = (event) => {
+      if (cancelMoveDrag() && event?.detail) event.detail.cancelled = true;
+    };
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      if (cancelMoveDrag()) event.preventDefault();
+    };
+    const onWindowPointer = (event) => {
+      const ds = activeMoveDrag();
+      if (!ds?.crossPage || svgRef.current?.contains(event.target)) return;
+      if (event.type === 'pointermove') handlePointerMove(event);
+      else handlePointerUp(event);
+    };
+    window.addEventListener('survey-cancel-selection-gesture', onCancelGesture);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('pointermove', onWindowPointer, true);
+    window.addEventListener('pointerup', onWindowPointer, true);
+    return () => {
+      window.removeEventListener('survey-cancel-selection-gesture', onCancelGesture);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('pointermove', onWindowPointer, true);
+      window.removeEventListener('pointerup', onWindowPointer, true);
+    };
+  }, [interactionState, handlePointerMove, handlePointerUp, crossPageMove, svgRef]);
 
   // Pointer capture normally sends the release back to this page's SVG. At
   // low zoom, a drag can cross into a sibling page before the browser grants

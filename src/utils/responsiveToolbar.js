@@ -26,10 +26,12 @@
  *       Undo/Redo): Pan / Select and their rule hang off the icons' LEFT
  *       edge at a fixed offset, so they move only when the icons do;
  *     - the Draw / Shapes / Text icons are centred on the canvas span (the
- *       span between the two side rails, or between an open side panel and
- *       the far rail) and NEVER move when you switch tools, pick a mark or
- *       open something — their spot depends on the window and the panels
- *       only;
+ *       span between the two side rails) and NEVER move when you switch
+ *       tools, pick a mark or open something — their spot depends on the
+ *       window only. Owner 2026-10-01: opening or closing a side panel
+ *       (Pages / Search / Bookmarks / Spaces / Survey) must not move them
+ *       either; the panels open below the tool bar, so the hook no longer
+ *       takes an open panel off the span (useResponsiveToolbar);
  *     - the "loadout" (the chosen group's own tools, Select's Box / Lasso /
  *       Text, a picked mark's group tools) hangs off the icons' right edge
  *       and grows rightward from that fixed anchor, so nothing else moves
@@ -59,9 +61,11 @@
  *        inside, same behaviour. Colours are never moved.
  *
  *   TEXT BAR (planTextRow). Row 3 is centred the same way (w48); its "Text"
- *   caption hangs off to the left of it.
+ *   caption hangs off to the left of it. In a narrow row it gives ground in
+ *   its own steps (planTextRowStep, owner Test 41).
  *
- * Below the phone breakpoint (720px) the phone layout takes over, as before.
+ * Below the phone breakpoint (PHONE_LAYOUT_MAX_WIDTH, 720px) the phone layout
+ * takes over, as before.
  * The hook that measures the DOM and applies both plans is useResponsiveToolbar.
  */
 
@@ -337,7 +341,10 @@ export function planFormatRow({
  * 2/3 centred, animated (w48) — centred like row 2, keeping room left of them
  * for the "Text" caption. A bar that would run past the row's inset slides
  * left just enough; one too wide for the span keeps its start (caption room)
- * and runs off the right, as before.
+ * and runs off the right. (Owner Test 41: the bar now steps down first —
+ * planTextRowStep — so that only happens beside a side panel too wide to
+ * leave room for even its last step.) `caption: false` once the caption has
+ * gone (the no-caption step).
  *
  * @param {object} input
  * @param {number} input.usableLeft  row coordinates, as planFormatRow
@@ -346,10 +353,268 @@ export function planFormatRow({
  * @param {number} input.width       the controls' drawn width
  * @returns {number} the controls' left edge (row coordinates)
  */
-export function planTextRow({ usableLeft, usableRight, centre, width }) {
+export function planTextRow({ usableLeft, usableRight, centre, width, caption = true }) {
   return centredRowLeft({
-    usableLeft, usableRight, centre, width, minLeft: usableLeft + ROW_INSET + TEXT_ROW_CAPTION_ROOM,
+    usableLeft, usableRight, centre, width, minLeft: usableLeft + ROW_INSET + (caption ? TEXT_ROW_CAPTION_ROOM : 0),
   });
+}
+
+/**
+ * Narrow text bar (owner Test 41, 2026-10-04). Owner: "around the 780-pixel
+ * mark, the more I shrink it, it doesn't really do anything. I can keep
+ * bringing the right rail closer in until it covers ... the alignment tool for
+ * text." Row 3 used to keep its full width and run under the right rail (or an
+ * open side panel). It now gives ground in steps, each one only once the step
+ * before it no longer fits the room it has (the row between the rails, less
+ * any open side panel, less its insets and the "Text" caption room):
+ *
+ *   0 full          as drawn at normal widths (602px with both alignments);
+ *   1 tight         gutters 6 -> 4px and the rules' inset 8 -> 4px, the same
+ *                   tightening row 2 does first;
+ *   2 fold-vertical top / middle / bottom become one pill showing the current
+ *                   one (the rarest setting goes first);
+ *   3 fold-align    left / center / right become one pill the same way;
+ *   4 short-font    the font-name pill goes 104 -> 76px (a long name ends in
+ *                   "..."; its list keeps the full width);
+ *   5 fold-style    B / I / U / S become one pill whose card holds the four
+ *                   toggles;
+ *   6 one-colour    the three colour discs and the custom disc become one
+ *                   disc in the current colour, which opens the same picker
+ *                   (its presets include the three);
+ *   7 no-caption    last resort: the "Text" caption goes, so its room does.
+ *
+ * Steps 2-7 are only reached beside an open side panel: with none open the
+ * row fits at "tight" all the way down to the phone switch (721px).
+ *
+ * Every number is a fixed CSS width (the colour discs, the pills, the 22px
+ * toggles), so the row's width at each step is known without measuring, and
+ * the step depends only on the room, never on the row's own width: it cannot
+ * flip back and forth.
+ */
+export const TEXT_ROW_STEPS = ['full', 'tight', 'fold-vertical', 'fold-align', 'short-font', 'fold-style', 'one-colour', 'no-caption'];
+
+/** The text bar's fixed widths (styles.css tokens), px. */
+export const TEXT_ROW_PARTS = Object.freeze({
+  colours: 100, // three discs + the custom disc: 4 * 22 + 3 * 4
+  oneColour: 22, // one disc
+  font: 104, // --chrome-field-w-font
+  shortFont: 76,
+  size: 62, // --chrome-field-w-fontsize
+  toggle: 22, // --chrome-text-toggle-w
+  // A folded group: a compact pill — 8px inset, 14px glyph, 6px gutter, 9px
+  // chevron, 6px inset.
+  fold: 43,
+});
+
+const stepIndex = (step) => (typeof step === 'number' ? step : Math.max(0, TEXT_ROW_STEPS.indexOf(step)));
+
+/**
+ * What the text bar draws at `step`: { tight, foldVertical, foldAlign,
+ * shortFont, foldStyle, oneColour, caption }.
+ */
+export function textRowLook(step) {
+  const at = stepIndex(step);
+  return {
+    step: TEXT_ROW_STEPS[at],
+    tight: at >= 1,
+    foldVertical: at >= 2,
+    foldAlign: at >= 3,
+    shortFont: at >= 4,
+    foldStyle: at >= 5,
+    oneColour: at >= 6,
+    caption: at < 7,
+  };
+}
+
+/**
+ * The text bar's controls' width at `step` (the caption hangs outside them).
+ * `verticalAlign: false` for a callout, which has no top / middle / bottom.
+ */
+export function textRowWidth(step, { verticalAlign = true } = {}) {
+  const look = textRowLook(step);
+  const P = TEXT_ROW_PARTS;
+  const toggles = (n) => Array.from({ length: n }, () => ({ kind: 'item', width: P.toggle }));
+  const fold = { kind: 'item', width: P.fold };
+  const divider = { kind: 'divider' };
+  const items = [
+    { kind: 'item', width: look.oneColour ? P.oneColour : P.colours }, divider,
+    { kind: 'item', width: look.shortFont ? P.shortFont : P.font }, { kind: 'item', width: P.size }, divider,
+    ...(look.foldStyle ? [fold] : toggles(4)), divider,
+    ...(look.foldAlign ? [fold] : toggles(3)),
+  ];
+  if (verticalAlign) items.push(divider, ...(look.foldVertical ? [fold] : toggles(3)));
+  return rowWidth(items, look.tight ? TIGHT_SPACING : LOOSE_SPACING);
+}
+
+/**
+ * Pick the text bar's step for a row whose uncovered span is `span` px wide
+ * (row coordinates: usableRight - usableLeft). The first step whose controls,
+ * the row's two insets and (while it shows) the caption room fit; the last
+ * step when none does.
+ * @returns {{ step: string, index: number, width: number, fits: boolean }}
+ */
+export function planTextRowStep(span, { verticalAlign = true } = {}) {
+  const room = (index) => span - 2 * ROW_INSET - (textRowLook(index).caption ? TEXT_ROW_CAPTION_ROOM : 0);
+  for (let index = 0; index < TEXT_ROW_STEPS.length; index += 1) {
+    const width = textRowWidth(index, { verticalAlign });
+    if (width <= room(index)) return { step: TEXT_ROW_STEPS[index], index, width, fits: true };
+  }
+  const last = TEXT_ROW_STEPS.length - 1;
+  return { step: TEXT_ROW_STEPS[last], index: last, width: textRowWidth(last, { verticalAlign }), fits: false };
+}
+
+/**
+ * SURVEY BAR (the strip under the tool bar in Survey, 2026-10-07):
+ *   [gold glyph + template v] ... [Module v] | (C)(D)(AC) | Reuse ... [Done]
+ * Owner report (rail-headers round): at 1024px with the left panel AND the
+ * Survey panel open, the template name was cut and the module pill ran over
+ * the category chips. Rule: nothing ever overlaps or slides under a panel.
+ *
+ * The bar gives ground in this order (planSurveyBarStep):
+ *   0 full            everything at its natural width; the chips stay on the
+ *                     bar's centre, or slide just enough off it;
+ *   1 short-template  the template name ends in "..." (down to a few letters);
+ *   2 glyph-template  the template name goes: the gold glyph and its chevron
+ *                     stay, and still open the template menu;
+ *   3 short-module    the module name ends in "..." (down to a few letters);
+ *   4 fold-reuse      Reuse moves into a "..." (More) menu before Done;
+ *   5 fold-module     the module menu moves into More too;
+ *   6 fold-template   the template menu moves into More too (only the chips,
+ *                     More and Done are left);
+ *   7 scroll-categories  last resort, many categories in a tiny span: the
+ *                     chips scroll sideways instead of being cut.
+ * The category chips and Done never hide. Steps 5 and 6 are only reached with
+ * both side panels open (or a very long template); with the Survey panel open
+ * its own head already shows the template and the module tabs.
+ *
+ * Every chrome width below is a fixed CSS size (styles.css .survey-subrow*),
+ * and the two names are measured as text, so the step depends only on the
+ * room and the names, never on what the bar draws now: it cannot flip back
+ * and forth.
+ */
+export const SURVEY_BAR_STEPS = ['full', 'short-template', 'glyph-template', 'short-module', 'fold-reuse', 'fold-module', 'fold-template', 'scroll-categories'];
+
+export const SURVEY_BAR_PARTS = Object.freeze({
+  gap: 8, // the sides' gutter
+  divider: 17, // .chrome-divider: 1px + 8px each side
+  // Template trigger: 6px inset, 14px glyph, 6px, the name, 6px, 9px chevron, 6px.
+  templateChrome: 47,
+  templateGlyph: 41, // the same with no name (and no gutter before it)
+  templateMax: 260,
+  // Module pill: 21px start inset (centres the name), the name, 6px, 9px chevron, 6px.
+  moduleChrome: 42,
+  moduleMax: 220,
+  nameMin: 40, // the fewest pixels of a name worth showing ("Exis...")
+  reuse: 67, // the switch and its word
+  more: 28, // the More (...) button
+  done: 50,
+  slack: 2, // text is measured, not drawn: a hair of room for rounding
+});
+
+/**
+ * What the survey bar draws at `step`.
+ * @returns {{ step: string, index: number, centred: boolean,
+ *   template: 'full'|'short'|'glyph'|'more', module: 'full'|'short'|'more',
+ *   reuse: 'bar'|'more', more: boolean, scroll: boolean }}
+ */
+export function surveyBarLook(step) {
+  const at = typeof step === 'number' ? step : Math.max(0, SURVEY_BAR_STEPS.indexOf(step));
+  return {
+    step: SURVEY_BAR_STEPS[at],
+    index: at,
+    centred: at === 0,
+    template: at >= 6 ? 'more' : at >= 2 ? 'glyph' : at === 1 ? 'short' : 'full',
+    module: at >= 5 ? 'more' : at >= 3 ? 'short' : 'full',
+    reuse: at >= 4 ? 'more' : 'bar',
+    more: at >= 4,
+    scroll: at >= 7,
+  };
+}
+
+/**
+ * The survey bar's widths at `step`. `templateText` / `moduleText` are the
+ * names' text widths (the module's is its LONGEST name: the pill is sized to
+ * it), `categories` the chips' row.
+ * @returns {{ start: number, end: number, categories: number, total: number,
+ *   templateMin: number, moduleMin: number }}
+ */
+export function surveyBarWidths(step, { templateText = 0, moduleText = 0, categories = 0 } = {}) {
+  const P = SURVEY_BAR_PARTS;
+  const look = surveyBarLook(step);
+  const templateFull = Math.min(P.templateMax, P.templateChrome + templateText);
+  const templateShort = Math.min(templateFull, P.templateChrome + P.nameMin);
+  const moduleFull = Math.min(P.moduleMax, P.moduleChrome + moduleText);
+  const moduleShort = Math.min(moduleFull, P.moduleChrome + P.nameMin);
+  const templateWidth = { full: templateFull, short: templateShort, glyph: P.templateGlyph, more: 0 }[look.template];
+  const moduleWidth = { full: moduleFull, short: moduleShort, more: 0 }[look.module];
+  let start = 0;
+  if (look.template !== 'more') {
+    start = templateWidth + P.divider;
+    if (look.module !== 'more') start += P.gap + moduleWidth;
+  }
+  // With nothing left before the chips, More sits a gutter after them (no rule).
+  const end = look.reuse === 'bar'
+    ? P.divider + P.reuse + P.gap + P.done
+    : (look.template === 'more' ? P.gap : P.divider) + P.more + P.gap + P.done;
+  return {
+    start,
+    end,
+    categories: look.scroll ? 0 : categories,
+    total: start + (look.scroll ? 0 : categories) + end,
+    templateMin: templateWidth,
+    moduleMin: moduleWidth,
+  };
+}
+
+/**
+ * Pick the survey bar's step for `room` px (the bar's width less its insets
+ * and the parts of it an open side panel covers): the first step that fits.
+ * @returns {{ step: string, index: number, widths: object, fits: boolean }}
+ */
+export function planSurveyBarStep(room, sizes = {}) {
+  const last = SURVEY_BAR_STEPS.length - 1;
+  for (let index = 0; index < last; index += 1) {
+    const widths = surveyBarWidths(index, sizes);
+    if (widths.total + SURVEY_BAR_PARTS.slack <= room) return { step: SURVEY_BAR_STEPS[index], index, widths, fits: true };
+  }
+  const widths = surveyBarWidths(last, sizes);
+  return { step: SURVEY_BAR_STEPS[last], index: last, widths, fits: widths.total + SURVEY_BAR_PARTS.slack <= room };
+}
+
+/** The desktop rails either side of rows 2 and 3 (48px each). */
+export const DESKTOP_RAIL_WIDTH = 48;
+
+/**
+ * The phone layout takes over at or below this window width (AppShell's
+ * isNarrowShell and the viewer's own mobile surface, PdfjsViewerContainer).
+ * Owner Test 41 (2026-10-04): the desktop rows must never be covered above it.
+ * With every step above, the narrowest desktop window whose rows still fit
+ * (no side panel open) is minDesktopWindowWidth() = 554px (the tool bar sets it), well under this,
+ * so there is no width at which the rails cover a control. The switch itself
+ * stays at 720: below it the viewer switches to its touch surface (page gaps,
+ * pinch, no trackpad overscroll), which is phone behaviour, not chrome.
+ */
+export const PHONE_LAYOUT_MAX_WIDTH = 720;
+
+/**
+ * The narrowest window (no side panel open) at which every desktop row fits in
+ * its most compact look while keeping the "Text" caption: the tool bar (Undo /
+ * Redo, Pan / Select, the group icons, the widest loadout, Export) and the
+ * text bar (rows 2 and 3 run between the rails). Row 2 always fits: its
+ * settings move into More.
+ */
+export function minDesktopWindowWidth({
+  undoRedoRight = 72,
+  leftBlockWidth = 79,
+  clusterWidth = 96,
+  exportWidth = 28,
+  exportInset = 10,
+} = {}) {
+  const topBar = undoRedoRight + START_GAP + leftBlockWidth + clusterWidth
+    + WIDEST_SUBTOOLS_WIDTH + EDGE_CLEARANCE + exportWidth + exportInset;
+  const keepsCaption = TEXT_ROW_STEPS.indexOf('no-caption') - 1;
+  const textRow = textRowWidth(keepsCaption) + 2 * ROW_INSET + TEXT_ROW_CAPTION_ROOM + 2 * DESKTOP_RAIL_WIDTH;
+  return Math.max(topBar, textRow);
 }
 
 /**

@@ -1,5 +1,7 @@
 /**
- * PDFSidebar.jsx — collapsible left rail for the PDF viewer.
+ * PDFSidebar.jsx — the left rail for the PDF viewer: a 48px icon column that
+ * stays on screen, with the open tab's panel beside it (desktop), or the
+ * phone's bottom sheet.
  *
  * Default-export forwardRef component that hosts the Pages / Search Text /
  * Bookmarks / Spaces tab panels plus a Version History panel, and anchors the
@@ -17,15 +19,20 @@ import BookmarksPanel from './sidebar/BookmarksPanel';
 import SpacesPanel from './sidebar/SpacesPanel';
 import SyncStatusChip from './components/SyncStatusChip';
 import PresenceAvatars from './components/PresenceAvatars';
+import { withDevFakePresence } from './components/presenceIdentity.js';
 import RevisionsPanel from './components/revisions/RevisionsPanel';
-import { SHEET_EXPANDED_HEIGHT, useMobileSheetMotion } from './mobile/useMobileSheetMotion';
+import { useMobileSheetMotion } from './mobile/useMobileSheetMotion';
 import { useTooltip } from './components/Tooltip';
 import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH } from './viewerShared';
 import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
+import SectionIconButton from './components/SectionIconButton.jsx';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
 // Module scope so it keeps a stable component identity across PDFSidebar renders.
+// Owner 2026-10-07 (Drawboard rail): History is a rail control like the tabs
+// above it - it opens its panel, and pressed again while that panel is open it
+// closes it (onClick is the sidebar's togglePanel('history')).
 const HistoryButton = ({ isActive, onClick, round = false }) => {
   // KAL-65: sidebar controls use the app's instant shared tooltip, never a
   // native title= (the OS tooltip takes ~1.5s and is OS-styled, so mixing the
@@ -36,11 +43,21 @@ const HistoryButton = ({ isActive, onClick, round = false }) => {
     type="button"
     {...tip('History', 'right')}
     aria-label="History"
+    aria-expanded={isActive}
+    aria-controls={isActive ? 'left-rail-panel' : undefined}
+    className={`chrome-icon-btn${isActive ? ' is-active' : ''}`}
     onClick={onClick}
     // UX 2026-09-16 (desktop sweep): the shared rail control box and glyph. It
     // was a 17px glyph in a 28px box, so the one button in the left rail's
     // collaboration footer used a size nothing else in that rail used — a 48px
     // column showing 14, 16, 17 and 18 at once.
+    // Owner 2026-10-07: the rail no longer opens into a wide one-row footer, so
+    // the round "face-sized" History variant that row used is gone.
+    // Owner 2026-10-07 (rail headers round): "When the left rail is expanded,
+    // the user annotation history and syncing should still assume the
+    // horizontal position" - with a panel open the footer is the one-row band
+    // again (faces, sync, History), and there History is the face-sized
+    // circle it was in that row (owner 2026-09-23).
     style={{
       width: round ? '24px' : `${RAIL_CONTROL}px`,
       height: round ? '24px' : `${RAIL_CONTROL}px`,
@@ -60,12 +77,9 @@ const HistoryButton = ({ isActive, onClick, round = false }) => {
     }}
   >
     {round ? (
-      /* Owner 2026-09-23: in the one-row footer the history control is a
-         circle about the size of the active-user faces (22px) and the same
-         24px height as the sync pill beside it, filled and edged like it, so the
-         row reads as three matching tokens. The circle is a child, not the
-         button's own background, so the app's glyph-only press rule shrinks
-         the whole circle instead of wiping its fill. */
+      /* The circle is a child, not the button's own background, so the app's
+         glyph-only press rule shrinks the whole circle instead of wiping its
+         fill; filled and edged like the sync pill beside it. */
       <span style={{
         width: '24px',
         height: '24px',
@@ -85,6 +99,21 @@ const HistoryButton = ({ isActive, onClick, round = false }) => {
     )}
   </button>
   );
+};
+
+// Owner 2026-10-07 ("study how Drawboard does its collapsible sidebar ... let's
+// just copy that"; scratchpad railDrawboard/DRAWBOARD-SIDEBAR.md): the desktop
+// rail is ALWAYS its 48px icon column. A tab opens its panel beside the rail,
+// the open tab pressed again closes it, another tab swaps the panel in place.
+// There is no collapse row and no chevron any more, open or closed.
+const LEFT_RAIL_W = 48;
+const LEFT_PANEL_W = 272;
+const PANEL_TITLES = {
+  pages: 'Pages',
+  search: 'Search text',
+  bookmarks: 'Bookmarks',
+  spaces: 'Spaces',
+  history: 'History',
 };
 
 const PDFSidebar = React.forwardRef(({
@@ -130,6 +159,7 @@ const PDFSidebar = React.forwardRef(({
   onSpaceAssignPages,
   onSpaceRenamePage,
   onSpaceRemovePage,
+  getSpaceRemovalImpact = null,
   onNavigateToSpacePage = null,
   onReorderSpaces,
   onExportSpaceCSV,
@@ -189,15 +219,44 @@ const PDFSidebar = React.forwardRef(({
   // Bookmarks / Spaces).
   React.useEffect(() => {
     if (typeof document === 'undefined' || !document.documentElement) return;
-    document.documentElement.style.setProperty('--app-sidebar-width', mobileMode ? '44px' : (isCollapsed ? '48px' : '272px'));
+    document.documentElement.style.setProperty('--app-sidebar-width', mobileMode ? '44px' : `${isCollapsed ? LEFT_RAIL_W : LEFT_RAIL_W + LEFT_PANEL_W}px`);
   }, [isCollapsed, mobileMode]);
   const [activeTab, setActiveTab] = useState('pages'); // 'pages' | 'search' | 'bookmarks' | 'spaces' | 'history'
+  // Desktop (owner 2026-10-07, Drawboard rail): a closed panel stays drawn for
+  // the 140ms it takes to fade back into the rail - the reverse of its arrival -
+  // instead of vanishing in one frame. A timer, not animationend, ends it, so
+  // reduced motion (no animation) cannot strand it on screen.
+  const [panelLeaving, setPanelLeaving] = useState(false);
+  const panelWasOpenRef = React.useRef(false);
+  React.useLayoutEffect(() => {
+    if (mobileMode) return undefined;
+    if (!isCollapsed) {
+      panelWasOpenRef.current = true;
+      setPanelLeaving(false);
+      return undefined;
+    }
+    if (!panelWasOpenRef.current) return undefined;
+    panelWasOpenRef.current = false;
+    setPanelLeaving(true);
+    const timer = window.setTimeout(() => setPanelLeaving(false), 140);
+    return () => window.clearTimeout(timer);
+  }, [isCollapsed, mobileMode]);
+  const footerPresence = withDevFakePresence({ presence, currentUserId, currentUserEmail, currentUserDisplayName });
   const tip = useTooltip();
   // RULED 2026-09-23 (coordinator: auto refits keep the view; fits use the
   // band between panels): the open desktop panel covers the left ~224px of the
   // PDF; fits size and centre the page beside it (utils/viewerSideOverlay.js).
   const sideOccluderRef = useViewerSideOccluderRef();
   const [searchFocusRequestToken, setSearchFocusRequestToken] = useState(0);
+  // Owner 2026-10-07 (rail headers round): "the title row should be centered
+  // when there are options, like in bookmarks and spaces to export or create.
+  // Those should be in line with the title, but on the left." Desktop: the
+  // title row holds a slot per panel that has actions; Bookmarks, Spaces and
+  // History draw their header actions into it (a portal) instead of a second
+  // row of their own. The phone keeps each panel's own header.
+  const [bookmarksHeadHost, setBookmarksHeadHost] = useState(null);
+  const [spacesHeadHost, setSpacesHeadHost] = useState(null);
+  const [historyHeadHost, setHistoryHeadHost] = useState(null);
   const [searchSelectOnFocus, setSearchSelectOnFocus] = useState(true);
   const [mobileSpacesPageRows, setMobileSpacesPageRows] = useState(0);
   // 2026-07-12 (demo parity defect #4): the spaces sheet follows its REAL
@@ -217,13 +276,6 @@ const PDFSidebar = React.forwardRef(({
     }
   }, [isCollapsed]);
 
-  const toggleCollapse = useCallback(() => {
-    if (!isCollapsed && activeTab === 'history') {
-      setActiveTab('pages');
-    }
-    setIsCollapsed(prev => !prev);
-  }, [activeTab, isCollapsed]);
-
   const openPanel = useCallback((panelId = 'pages', { focus = panelId === 'search', select = true } = {}) => {
     const validPanel = ['pages', 'search', 'bookmarks', 'spaces', 'history'].includes(panelId)
       ? panelId
@@ -239,6 +291,21 @@ const PDFSidebar = React.forwardRef(({
   const closePanel = useCallback(() => {
     setIsCollapsed(true);
   }, []);
+  // Owner 2026-10-01 (iPhone: closing from the dock was abrupt): on the phone a
+  // close asked for from outside the sheet - its dock button pressed again,
+  // another panel opening, Spaces' Done - slides the sheet down behind the dock
+  // exactly like a swipe or a tap outside, then collapses it. The hook's
+  // requestClose lands in this ref below. `{ handover: true }` (AppShell, when
+  // the dock is opening Survey in its place) lets the next panel take over in
+  // place instead (useMobileSheetMotion, PANEL TO PANEL).
+  const mobileSheetCloseRef = React.useRef(null);
+  const closePanelSmoothly = useCallback((closeOptions) => {
+    if (mobileMode && mobileSheetCloseRef.current) {
+      mobileSheetCloseRef.current(closeOptions?.handover === true ? { handover: true } : undefined);
+      return;
+    }
+    closePanel();
+  }, [closePanel, mobileMode]);
 
   const handleMobileSpacesMetricsChange = useCallback(({ expandedPageRows = 0, contentHeight = null } = {}) => {
     setMobileSpacesPageRows(expandedPageRows);
@@ -249,20 +316,46 @@ const PDFSidebar = React.forwardRef(({
 
   const togglePanel = useCallback((panelId, options = {}) => {
     if (!isCollapsed && activeTab === panelId) {
-      closePanel();
+      closePanelSmoothly();
       return;
     }
     openPanel(panelId, options);
-  }, [activeTab, closePanel, isCollapsed, openPanel]);
+  }, [activeTab, closePanelSmoothly, isCollapsed, openPanel]);
+
+  // Spaces chunk A (phone): Edit areas draws on the page, so the Spaces sheet
+  // and its backdrop leave while the region tool is on (the backdrop swallowed
+  // the first touch and every drag), and the sheet comes back - with the space
+  // that was being edited still open - on Confirm / Cancel.
+  const regionEditHidSheetRef = React.useRef(false);
+  // Spaces chunk B: which spaces are open survives the panel closing (the
+  // phone sheet unmounts SpacesPanel each time it closes).
+  const spacesExpandedStoreRef = React.useRef(null);
+  const [regionEditReturnSpaceId, setRegionEditReturnSpaceId] = useState(null);
+  React.useEffect(() => {
+    if (!mobileMode) return;
+    const spacesSheetOpen = !isCollapsed && activeTab === 'spaces';
+    if (isRegionSelectionActive) {
+      if (spacesSheetOpen) {
+        regionEditHidSheetRef.current = true;
+        setRegionEditReturnSpaceId(activeSpaceId || null);
+        closePanel();
+      }
+    } else if (regionEditHidSheetRef.current) {
+      regionEditHidSheetRef.current = false;
+      openPanel('spaces');
+    }
+    // Only the region tool turning on / off moves the sheet.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRegionSelectionActive, mobileMode]);
 
   useImperativeHandle(ref, () => ({
     openPanel,
-    closePanel,
+    closePanel: closePanelSmoothly,
     togglePanel,
     openSearchPanel: ({ focus = true, select = true } = {}) => {
       openPanel('search', { focus, select });
     }
-  }), [closePanel, openPanel, togglePanel]);
+  }), [closePanelSmoothly, openPanel, togglePanel]);
 
   React.useEffect(() => {
     if (!mobileMode || typeof onPanelStateChange !== 'function') return;
@@ -279,10 +372,9 @@ const PDFSidebar = React.forwardRef(({
     { id: 'spaces', label: 'Spaces', icon: 'layers' }
   ];
 
-  const openHistoryPanel = useCallback(() => {
-    setIsCollapsed(false);
-    setActiveTab('history');
-  }, []);
+  const toggleHistoryPanel = useCallback(() => {
+    togglePanel('history');
+  }, [togglePanel]);
 
   // Phase F (motion & feel): finger-follow drag + velocity dismiss (dy>82 or
   // vy>0.65) + spring-back + slide-down exit, replacing the old flat 48px
@@ -295,9 +387,10 @@ const PDFSidebar = React.forwardRef(({
   // PASS 7 (2026-09-21, DESIGN-SYSTEM.md "Phone bottom panels"): the browse
   // panels are the ones with content that can run long, so they are the ones
   // that can be pulled taller: Pages, Search and Bookmarks (the hub tray) and
-  // Spaces. Each opens at Standard, climbs to Expanded (70%) on a pull up, and
-  // to full screen on a second pull; pulling down steps back one height at a
-  // time. History (a long feed since option A, 2026-09-28) opts in too.
+  // Spaces. Each opens at Standard and has one taller height, Full (owner
+  // 2026-10-01: two heights, "the small one and the big one"): a pull up goes
+  // there, a pull down comes back. History (a long feed since option A,
+  // 2026-09-28) opts in too.
   // 2026-09-17: the hook also owns the slide-UP entrance (the CSS keyframe that
   // used to do it fought this transform), so it needs the sheet's open state —
   // this element stays mounted and only toggles .is-collapsed.
@@ -306,22 +399,22 @@ const PDFSidebar = React.forwardRef(({
   const browsePanel = mobileMode;
   const {
     motionStyle: sheetMotionStyle,
-    dragHandlers: sheetDragHandlers,
+    backdropStyle: sheetBackdropStyle,
+    sheetProps,
     requestClose: requestSheetClose,
-    expanded: sheetExpanded,
     fullscreen: sheetFullscreen,
   } = useMobileSheetMotion(closePanel, {
       expandable: browsePanel,
-      fullscreenable: browsePanel,
       open: mobileMode && !isCollapsed,
+      // Owner 2026-10-01: a dock switch between the hub, Spaces and History
+      // keeps the sheet up and fades the new panel in. The hub's own three
+      // tabs are one panel here, so flipping them inside the sheet stays as
+      // it was.
+      contentKey: activeTab === 'spaces' || activeTab === 'history' ? activeTab : 'hub',
     });
-  const expandedNavigationTabs = mobileMode
-    ? tabs.filter((tab) => tab.id !== 'spaces')
-    : tabs.concat(
-      typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()
-        ? [{ id: '__savelog', label: 'Save log', icon: 'document' }]
-        : []
-    );
+  mobileSheetCloseRef.current = mobileMode ? requestSheetClose : null;
+  // The phone hub's three tabs (Spaces has its own dock button).
+  const expandedNavigationTabs = tabs.filter((tab) => tab.id !== 'spaces');
   // RULED CHANGE 2026-09-21 (pass 7 / DESIGN-SYSTEM.md "Standard is the starting
   // height for every current phone panel"): ONE height for every tab, and it is
   // the shared Standard token. This supersedes every per-tab number that used to
@@ -330,21 +423,69 @@ const PDFSidebar = React.forwardRef(({
   // depending on which panel was in it. Every panel inside is flex:1, so the one
   // height simply lets each fill the tray and its empty state centre itself (see
   // .mobile-bookmark-empty / .mobile-search-empty). A long list is what the
-  // Expanded and full-screen detents above are for.
+  // Full height above is for.
   const MOBILE_PANEL_STANDARD = 'var(--mobile-panel-standard)';
+  // The open panel's frame: a column beside the desktop rail (owner
+  // 2026-10-07, Drawboard rail); none on the phone, where the hub tabs and the
+  // panel are the sheet's own children.
+  const PanelFrame = mobileMode ? React.Fragment : 'div';
+  const panelFrameProps = mobileMode ? {} : {
+    // While it fades out after closing it is no longer the tabs' panel.
+    id: isCollapsed ? undefined : 'left-rail-panel',
+    role: isCollapsed ? undefined : 'region',
+    'aria-label': isCollapsed ? undefined : PANEL_TITLES[activeTab],
+    'aria-hidden': isCollapsed ? 'true' : undefined,
+    // UX 2026-09-16: the panel fades and slides in 6px from the rail it is
+    // anchored to (140ms), and back out the same way when it closes
+    // (styles.css honours reduced motion).
+    className: `left-rail__panel ${isCollapsed ? 'survey-surface-out-left' : 'survey-surface-in-left'}`,
+    style: {
+      pointerEvents: isCollapsed ? 'none' : undefined,
+      width: `${LEFT_PANEL_W}px`,
+      flex: `0 0 ${LEFT_PANEL_W}px`,
+      minWidth: 0,
+      display: 'flex',
+      flexDirection: 'column',
+      background: 'var(--panel-bg)',
+      borderLeft: '1px solid var(--border)',
+      // Owner 2026-10-07 (rail headers round): "they should have a border on
+      // the inside, where the canvas is. The right rail seems to have it, but
+      // the left rail does not." The rail's own right edge sat under this
+      // panel, so the panel draws the canvas-side hairline itself - the same
+      // 1px var(--border) the Survey panel draws on its canvas side.
+      borderRight: '1px solid var(--border)',
+      boxSizing: 'border-box',
+    },
+  };
+
+  const MainFrame = mobileMode ? React.Fragment : 'div';
+  const mainFrameProps = mobileMode ? {} : {
+    className: 'left-rail__main',
+    style: {
+      flex: '1 1 auto',
+      minHeight: 0,
+      display: 'flex',
+      flexDirection: 'row',
+    },
+  };
+  // Dev only: `?fakePeers=N` fills the presence row with N fake people
+  // (presenceIdentity.js) and shows the footer without cloud sync.
+  const showFooter = !mobileMode && (cloudSyncEnabled || footerPresence.fake);
 
   return (
     <>
     {/* w64 (owner 2026-09-29): with History open, tapping a mark on the page
         shows that mark's history, so the History sheet leaves the page
         above it live (no dim, no tap-to-close cover — like a Maps sheet).
-        It still closes with its close button or a pull down. */}
+        It closes with a swipe down anywhere on it (owner 2026-09-30: no
+        close X on a phone sheet). */}
     {mobileMode && !isCollapsed && activeTab !== 'history' && (
       <button
         type="button"
         className="mobile-pdf-sheet-backdrop"
         aria-label="Close document panel"
         onClick={requestSheetClose}
+        style={sheetBackdropStyle}
       />
     )}
     <div
@@ -353,150 +494,273 @@ const PDFSidebar = React.forwardRef(({
       // desktop, a bottom sheet on the phone (see utils/searchMatchNavigation).
       data-viewer-occluder={isCollapsed ? undefined : (mobileMode ? 'sheet' : 'side')}
       ref={mobileMode ? undefined : sideOccluderRef}
-      className={`${mobileMode ? 'mobile-pdf-sheet ' : ''}${mobileMode && sheetExpanded ? 'is-expanded ' : ''}${mobileMode && sheetFullscreen ? 'is-fullscreen ' : ''}${isCollapsed ? 'is-collapsed' : ''}`} style={{
-      // The tall detent overrides the content-measured height. It has to be
-      // written here, not from the stylesheet: this inline custom property
-      // always wins over a rule, so a CSS-only override would be ignored.
-      // The taller detents override the Standard height. They have to be written
-      // here, not from the stylesheet: this inline custom property always wins
-      // over a rule, so a CSS-only override would be ignored.
+      // Phone: swipe down anywhere on the sheet + the keyboard lift (owner
+      // 2026-09-30, see useMobileSheetMotion).
+      {...(mobileMode ? sheetProps : null)}
+      className={`${mobileMode ? 'mobile-pdf-sheet ' : 'left-rail '}${mobileMode && sheetFullscreen ? 'is-fullscreen ' : ''}${isCollapsed ? 'is-collapsed' : ''}`} style={{
+      // The two heights (owner 2026-10-01: "the small one and the big one").
+      // Full has to be written here, not only from the stylesheet: this inline
+      // custom property always wins over a non-important rule.
       '--mobile-sheet-height': mobileMode
-        ? (sheetFullscreen
-          ? 'calc(100dvh - var(--app-chrome-top, 34px) - 18px)'
-          : (sheetExpanded ? SHEET_EXPANDED_HEIGHT : MOBILE_PANEL_STANDARD))
+        ? (sheetFullscreen ? 'var(--mobile-panel-full)' : MOBILE_PANEL_STANDARD)
         : undefined,
-      width: mobileMode ? (isCollapsed ? '0px' : '100%') : (isCollapsed ? '48px' : '272px'),
+      // Desktop (owner 2026-10-07, Drawboard rail): the 48px icon column, plus
+      // the 272px panel beside it while a tab is open.
+      width: mobileMode ? (isCollapsed ? '0px' : '100%') : `${isCollapsed ? LEFT_RAIL_W : LEFT_RAIL_W + LEFT_PANEL_W}px`,
       height: '100%',
-      background: 'var(--surface-1)',
+      background: 'var(--panel-bg)',
       borderRight: mobileMode ? 'none' : '1px solid var(--border)',
       display: 'flex',
+      // Desktop (owner 2026-10-07, rail headers round): the rail and its
+      // panel side by side, and - while a panel is open - the one-row
+      // collaboration footer across both under them.
       flexDirection: 'column',
-      // The height leg eases the step between the compact and tall detents
-      // with the same 260ms spring curve the sheet's spring-back uses.
-      transition: 'width 0.2s ease, height 0.26s cubic-bezier(0.22, 1.15, 0.36, 1)',
+      // Phone: every height change (detents, the keyboard) is the sheet
+      // hook's resize glide now (2026-10-01), so no CSS height leg here - a
+      // second engine on the same property would fight it.
+      transition: mobileMode ? 'none' : 'width 0.2s ease, height 0.26s cubic-bezier(0.22, 1.15, 0.36, 1)',
       flexShrink: 0,
       // Phase F: finger-follow / spring-back / slide-down exit (mobile only).
       ...(mobileMode ? sheetMotionStyle : null)
     }}>
-      {/* Collapse/Expand Button */}
-      <div
-        className={mobileMode ? 'mobile-pdf-sheet__handle' : undefined}
-        onTouchStart={mobileMode ? sheetDragHandlers.onTouchStart : undefined}
-        onTouchMove={mobileMode ? sheetDragHandlers.onTouchMove : undefined}
-        onTouchEnd={mobileMode ? sheetDragHandlers.onTouchEnd : undefined}
-        style={{
-        height: '35px',
-        padding: '0 8px',
-        borderBottom: '1px solid var(--border)',
-        display: 'flex',
-        alignItems: 'center',
-        // UX 2026-09-16: when the rail is collapsed to its 48px strip, the
-        // toggle is the top icon of a single icon column, so it sits on that
-        // column's centre line like everything below it. Right-aligning it
-        // there left it 3.5px off-axis from Pages / Search / Bookmarks /
-        // Spaces. Expanded, it keeps its right-edge home.
-        justifyContent: (!mobileMode && isCollapsed) ? 'center' : 'flex-end',
-        background: 'var(--surface-1)'
-      }}>
-        <button
-          onClick={toggleCollapse}
-          // UX 2026-09-16 (desktop sweep): the shared rail control box and glyph.
-          // It was a 16px chevron in a padding-derived 24px box — a fourth glyph
-          // size in a rail that already ran 17 and 18. The box measures the same
-          // 24 as before, so the 35px strip and the icon column's centre line are
-          // unchanged; nothing moves.
-          style={{
-            background: 'transparent',
-            border: 'none',
-            // UX 2026-09-22 (desktop critic round): resting chrome icon =
-            // --text-2, and a chrome button's corner is the house 6, not a
-            // rail-only 4. See the note on the rail tabs below.
-            color: 'var(--text-2)',
-            cursor: 'pointer',
-            ...(mobileMode
-              ? { padding: '4px' }
-              : { padding: 0, width: `${RAIL_CONTROL}px`, height: `${RAIL_CONTROL}px` }),
-            borderRadius: 'var(--chrome-radius)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            transition: 'background 0.15s ease'
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
-          onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-        >
-          <Icon name={mobileMode ? 'chevronDown' : (isCollapsed ? 'chevronRight' : 'chevronLeft')} size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="var(--text-2)" />
-        </button>
-      </div>
+      {/* Phone: the sheet's grab handle - a swipe down anywhere closes it, as
+          does a tap outside or its dock button again. Owner 2026-10-07: the
+          invisible "Collapse sidebar" chevron that used to fill this row is
+          gone (no collapse arrow anywhere). */}
+      {mobileMode && (
+        <div className="mobile-pdf-sheet__handle" aria-hidden="true" style={{
+          height: '35px',
+          padding: '0 8px',
+          borderBottom: '1px solid var(--border)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          background: 'var(--panel-bg)'
+        }} />
+      )}
 
-      {!isCollapsed && (
-        <>
-          {mobileMode && activeTab === 'history' && (
-            <button
-              type="button"
-              className="mobile-history-close"
-              aria-label="Close version history"
-              onClick={requestSheetClose}
+      {/* Desktop: the rail itself - always on screen. Owner 2026-10-07
+          ("get rid of the collapse sidebar row and arrow entirely ... if they
+          want to go to it, they just click on one of the tabs"), copied from
+          Drawboard (scratchpad railDrawboard/DRAWBOARD-SIDEBAR.md): a tab
+          opens its panel, the open tab pressed again closes it, another tab
+          swaps the panel in place. The tabs start at the top of the rail, where
+          the collapse row used to be. */}
+      {/* Desktop: the icon column and the open panel, side by side. Phone: no
+          wrapper - the sheet's children stay as they were. */}
+      <MainFrame {...mainFrameProps}>
+      {!mobileMode && (
+        <div className="left-rail__column" style={{
+          width: `${LEFT_RAIL_W}px`,
+          flex: `0 0 ${LEFT_RAIL_W}px`,
+          minWidth: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          background: 'var(--panel-bg)',
+          // Above the panel, which slides out from under it.
+          position: 'relative',
+          zIndex: 1
+        }}>
+        <div data-chrome-rail="true" role="toolbar" aria-label="Document panels" aria-orientation="vertical" style={{
+          display: 'flex',
+          flexDirection: 'column',
+          padding: '8px',
+          gap: '4px',
+          background: 'var(--panel-bg)',
+          position: 'relative',
+          // 2026-04-25 — flex:1 lets the collaboration footer at the bottom
+          // sit at the actual bottom of the rail instead of stacking right
+          // below the last icon.
+          flex: 1
+        }}>
+          {tabs.concat(
+            typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()
+              ? [{ id: '__savelog', label: 'Save log', icon: 'document' }]
+              : []
+          ).map(tab => {
+            // KAL-65: the shared instant tooltip, to the right of the rail.
+            const tabTip = tip(tab.label, 'right');
+            const isOpenTab = !isCollapsed && activeTab === tab.id;
+            const isPanelTab = tab.id !== '__savelog';
+            return (
+            <div
+              key={tab.id}
+              style={{
+                position: 'relative'
+              }}
             >
-              <Icon name="close" size={17} color="currentColor" />
-            </button>
+              <button
+                type="button"
+                {...tabTip}
+                aria-label={tab.label}
+                // A tab is a disclosure for its panel: it says whether its
+                // panel is the one showing.
+                aria-expanded={isPanelTab ? isOpenTab : undefined}
+                aria-controls={isOpenTab ? 'left-rail-panel' : undefined}
+                // The open tab is marked like an armed tool - gold glyph, no
+                // plate (src/styles/states.css section 5).
+                className={`chrome-icon-btn${isOpenTab ? ' is-active' : ''}`}
+                onClick={() => {
+                  if (tab.id === '__savelog') {
+                    // UX 2026-04-22: Save Log fires its banner without
+                    // switching panels.
+                    const buf = window.__consoleLogBuffer;
+                    const consoleText = Array.isArray(buf) && buf.length > 0
+                      ? buf.join('\n')
+                      : '(no console output captured)';
+                    window.dispatchEvent(new CustomEvent('save-log-banner-start', {
+                      detail: { consoleText }
+                    }));
+                    return;
+                  }
+                  togglePanel(tab.id);
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: isOpenTab ? 'var(--accent)' : 'var(--text-2)',
+                  borderRadius: 'var(--chrome-radius, 6px)',
+                  // UX 2026-09-16 (desktop sizing pass): a 40px tab around the
+                  // shared 18px chrome glyph, padding split so the glyph fits.
+                  padding: '11px 6px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minWidth: '28px',
+                  minHeight: '28px',
+                  width: '100%'
+                }}
+              >
+                {/* UX 2026-09-22 (desktop critic round): ONE grey for a
+                    resting chrome icon, and it is --text-2 - the left rail,
+                    the right rail and the top bar are one tier of chrome. Gold
+                    marks the open one. */}
+                <Icon
+                  name={tab.icon}
+                  size={RAIL_GLYPH}
+                  color="currentColor"
+                  style={{ width: `${RAIL_GLYPH}px`, height: `${RAIL_GLYPH}px`, flexShrink: 0 }}
+                />
+              </button>
+            </div>
+            );
+          })}
+        </div>
+
+        {/* 2026-04-25 — Collaboration footer (sync chip, History, presence)
+            anchored at the bottom of the rail. Lives here so it stays on
+            screen for every page. Hidden entirely when cloud sync is disabled
+            (free tier or no PDF). This is the vertical stack while no panel
+            is open; with a panel open the footer is the one-row band across
+            the rail and the panel (below, owner 2026-10-07 rail headers). */}
+        {showFooter && isCollapsed && (
+          <div data-chrome-rail="true" data-presence-footer="collapsed" style={{
+            borderTop: '1px solid var(--border)',
+            padding: '10px 6px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '10px',
+            background: 'var(--panel-bg)'
+          }}>
+            <SyncStatusChip
+              status={cloudSyncStatus}
+              queueSize={cloudSyncQueueSize}
+              enabled
+              compact
+              onRetry={cloudSyncOnRetry}
+            />
+            {documentId && <HistoryButton isActive={false} onClick={toggleHistoryPanel} />}
+            <PresenceAvatars
+              presence={footerPresence.presence}
+              currentUserId={footerPresence.currentUserId}
+              currentUserEmail={footerPresence.currentUserEmail}
+              currentUserDisplayName={footerPresence.currentUserDisplayName}
+              enabled
+              compact
+            />
+          </div>
+        )}
+        </div>
+      )}
+
+      {(!isCollapsed || (!mobileMode && panelLeaving)) && (
+        // Desktop: the open panel, a column beside the rail. Phone: no frame -
+        // the hub tabs and the panel stay the sheet's own children, which its
+        // panel-to-panel fade animates one by one (mobilePdfViewer.css).
+        <PanelFrame {...panelFrameProps}>
+          {/* Desktop: the open panel says what it is, where Drawboard puts its
+              panel title ("Pages", "Search"...); the rail's gold tab is the
+              other half of that answer. The same 40px band as the Survey
+              panel's header on the right. */}
+          {/* Owner 2026-10-07 (rail headers round): the title row is exactly
+              the sub-toolbar's height (--chrome-bar-h, styles.css), and reads
+              [title + the panel's actions] ... [close]. */}
+          {!mobileMode && (
+            <div className="left-rail__head">
+              <h2 className="left-rail__title">{PANEL_TITLES[activeTab]}</h2>
+              <div ref={setBookmarksHeadHost} className="left-rail__head-actions" hidden={activeTab !== 'bookmarks'} />
+              <div ref={setSpacesHeadHost} className="left-rail__head-actions" hidden={activeTab !== 'spaces'} />
+              <div ref={setHistoryHeadHost} className="left-rail__head-actions left-rail__head-actions--grow" hidden={activeTab !== 'history'} />
+              <span className="left-rail__head-fill" aria-hidden="true" />
+              <SectionIconButton
+                icon="close"
+                className="left-rail__close"
+                data-rail-panel-close=""
+                label={`Close ${PANEL_TITLES[activeTab]}`}
+                tooltip="Close"
+                // Exactly the open tab pressed again (owner: "an exit button to
+                // close out the window"). From the keyboard, focus goes back to
+                // that tab, since this button leaves with the panel.
+                onClick={(event) => {
+                  const fromKeyboard = event.detail === 0;
+                  const tabLabel = activeTab === 'search' ? 'Search text' : PANEL_TITLES[activeTab];
+                  const railEl = event.currentTarget.closest('.left-rail');
+                  togglePanel(activeTab);
+                  if (fromKeyboard) {
+                    window.requestAnimationFrame(() => {
+                      railEl?.querySelector(`.left-rail__column button[aria-label="${tabLabel}"]`)?.focus();
+                    });
+                  }
+                }}
+              />
+            </div>
           )}
-          {/* Tab Navigation */}
-          {mobileStandalonePanel ? null : (
-          <div className={mobileMode ? 'mobile-pdf-hub-tabs' : undefined} style={{
+          {/* Owner 2026-09-30: no close X on a phone sheet. History closes with
+              a swipe down (anywhere on it); it has no tap-outside cover, so a
+              tap on the page still picks a mark (w64). */}
+          {/* Phone: the hub's tab row (Pages / Search / Bookmarks). Desktop has
+              no tab row any more - the rail beside the panel is the tabs
+              (owner 2026-10-07). */}
+          {(!mobileMode || mobileStandalonePanel) ? null : (
+          <div className="mobile-pdf-hub-tabs" style={{
             display: 'flex',
             borderBottom: '1px solid var(--border)',
-            background: 'var(--surface-1)',
+            background: 'var(--panel-bg)',
             overflow: 'hidden',
             scrollbarWidth: 'none',
             msOverflowStyle: 'none',
             width: '100%',
             boxSizing: 'border-box'
           }}>
-            <style>{`
-              .sidebar-tabs::-webkit-scrollbar {
-                display: none;
-              }
-            `}</style>
             {expandedNavigationTabs.map(tab => {
               const isActive = activeTab === tab.id;
               return (
                 <button
                   key={tab.id}
-                  className={mobileMode ? `mobile-pdf-hub-tab${isActive ? ' is-active' : ''}` : undefined}
+                  className={`mobile-pdf-hub-tab${isActive ? ' is-active' : ''}`}
                   {...tip(tab.label, 'below')}
-                  onClick={() => {
-                    if (tab.id === '__savelog') {
-                      // UX 2026-04-22: Mobile-only tile that fires the Save Log
-                      // banner without switching panels. Kept alongside Pages /
-                      // Search / Bookmarks / Spaces so the user can submit a
-                      // log from anywhere inside a PDF.
-                      const buf = window.__consoleLogBuffer;
-                      const consoleText = Array.isArray(buf) && buf.length > 0
-                        ? buf.join('\n')
-                        : '(no console output captured)';
-                      window.dispatchEvent(new CustomEvent('save-log-banner-start', {
-                        detail: { consoleText }
-                      }));
-                      return;
-                    }
-                    setActiveTab(tab.id);
-                  }}
+                  // The phone hides the word under the glyph (mobilePdfViewer.css),
+                  // so the button carries its own name for screen readers.
+                  aria-label={tab.label}
+                  aria-pressed={isActive}
+                  onClick={() => setActiveTab(tab.id)}
                   style={{
-                    /* Owner 2026-09-23 ("evenly spaced across"): on desktop
-                       each tab starts at its label's width and the spare room
-                       is shared out equally, so the GAPS between the words
-                       match. Equal-width tabs ('1 1 0') left short words like
-                       "Pages" floating wide and "Search text" / "Bookmarks"
-                       crowding each other. */
-                    flex: mobileMode ? '1 1 0' : '1 1 auto',
+                    flex: '1 1 0',
                     minWidth: 0,
                     maxWidth: 'none',
-                    // UX 2026-09-17: 9px on the desktop, where the glyph above
-                    // is 2px bigger (RAIL_GLYPH). 9 + 18 = 10 + 16, so the tab
-                    // strip keeps the height it has and the panel's content
-                    // starts exactly where it did.
-                    padding: mobileMode ? '10px 2px' : '9px 2px',
+                    padding: '10px 2px',
                     background: isActive ? 'var(--surface-2)' : 'transparent',
                     border: 'none',
                     borderBottom: isActive ? '2px solid var(--accent)' : '2px solid transparent',
@@ -515,39 +779,15 @@ const PDFSidebar = React.forwardRef(({
                     transition: 'all 0.15s ease',
                     whiteSpace: 'nowrap'
                   }}
-                  onMouseEnter={(e) => {
-                    if (!isActive) {
-                      e.currentTarget.style.background = 'var(--hover)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isActive) {
-                      e.currentTarget.style.background = 'transparent';
-                    }
-                  }}
                 >
-                  {/* UX 2026-09-16: every tab icon draws in the same box with
-                      no nudge. The Pages glyph used to carry a 3px top margin,
-                      which grew its tab's centred column and pushed BOTH its
-                      icon and its label 1.5px below the other three, visibly
-                      breaking the row of labels. The glyph's own ink is already
-                      centred in its box.
-                      UX 2026-09-17 (desktop sweep): that box is RAIL_GLYPH on
-                      the desktop, not a literal 16. Pages / Search / Bookmarks /
-                      Spaces are the same four tabs whether the panel is open or
-                      collapsed, and the collapsed rail already draws them at
-                      RAIL_GLYPH (--rail-glyph 18) — so the same control changed
-                      glyph size by 2px (11%) when the panel opened. The tab's
-                      own height does not move with it: the vertical padding
-                      below drops by the 2px the glyph gains, so the strip is the
-                      same height it was and nothing under it shifts. The phone
-                      keeps 16: its glyph sizes come from the phone tier's own
-                      tokens, not the desktop rail's. */}
-                  {/* UX 2026-09-22: the resting grey is --text-2, the same one
-                      the collapsed rail draws — see the note there. */}
+                  {/* Owner 2026-10-01 (iPhone): "I would prefer them to be
+                      bigger. I don't want the actual row that they're in to
+                      grow." The phone's Pages / Search / Bookmarks tab glyphs
+                      draw at 22 (were 16) inside the same 34x32 tab, so the
+                      40px tab row keeps its height. */}
                   <Icon
                     name={tab.icon}
-                    size={mobileMode ? 16 : RAIL_GLYPH}
+                    size={22}
                     color={isActive ? 'var(--accent)' : 'var(--text-2)'}
                   />
                   <span style={{
@@ -559,33 +799,20 @@ const PDFSidebar = React.forwardRef(({
                 </button>
               );
             })}
-            {mobileMode && (
-              <button
-                type="button"
-                className="mobile-pdf-hub-close"
-                aria-label="Close document hub"
-                onClick={requestSheetClose}
-              >
-                <Icon name="close" size={16} color="currentColor" />
-              </button>
-            )}
+            {/* Owner 2026-09-30: the row holds only the three tabs; the sheet
+                closes by a tap outside it or a swipe down. */}
           </div>
           )}
 
           {/* Panel Content */}
-          {/* UX 2026-09-16: the panel body fades and slides in 6px from the
-              left edge it is anchored to (140ms), so opening Pages reads as
-              the panel arriving rather than the page jumping. Drawboard's own
-              panel opens with a short fade. Desktop only — on mobile the sheet
-              already owns its slide-up motion (useMobileSheetMotion), and
-              stacking a second animation on top would fight it. The shared
-              class in styles.css honours prefers-reduced-motion. */}
-          <div className={mobileMode ? undefined : 'survey-surface-in-left'} style={{
+          {/* The desktop panel's arrival (fade + 6px slide from the rail) is
+              on the frame above, so the title and the body move together. */}
+          <div style={{
             flex: 1,
             overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
-            background: 'var(--surface-1)'
+            background: 'var(--panel-bg)'
           }}>
             {/* Persistence: Keep all panels mounted but hide inactive ones using display: none */}
 
@@ -654,6 +881,7 @@ const PDFSidebar = React.forwardRef(({
                 pageNum={pageNum}
                 numPages={numPages}
                 mobileMode={mobileMode}
+                headActionsHost={mobileMode ? null : bookmarksHeadHost}
               />
             </div>
 
@@ -672,6 +900,9 @@ const PDFSidebar = React.forwardRef(({
                 onSpaceAssignPages={onSpaceAssignPages}
                 onSpaceRenamePage={onSpaceRenamePage}
                 onSpaceRemovePage={onSpaceRemovePage}
+                getSpaceRemovalImpact={getSpaceRemovalImpact}
+                initiallyExpandedSpaceId={mobileMode ? regionEditReturnSpaceId : null}
+                expandedSpacesStoreRef={spacesExpandedStoreRef}
                 onNavigateToPage={onNavigateToSpacePage}
                 onReorderSpaces={onReorderSpaces}
                 onExportSpaceCSV={onExportSpaceCSV}
@@ -692,13 +923,15 @@ const PDFSidebar = React.forwardRef(({
                 showSurveyPanel={showSurveyPanel}
                 selectedModuleId={selectedModuleId}
                 mobileMode={mobileMode}
+                headActionsHost={mobileMode ? null : spacesHeadHost}
                 mobilePanelVisible={mobileMode && activeTab === 'spaces' && !isCollapsed}
                 onMobilePanelMetricsChange={handleMobileSpacesMetricsChange}
-                // UX 2026-09-23 (owner: phone Spaces panel polished): Exit is a
-                // quiet red word at the end of the list, not a footer band.
+                // Spaces chunk B: the phone header's neutral "Done" (it took
+                // over from the red "Exit Spaces / Regions" link): leaves
+                // Spaces mode and closes the sheet.
                 onExitSpacesAction={mobileMode ? () => {
                   onExitSpaceMode?.();
-                  closePanel();
+                  closePanelSmoothly();
                 } : null}
               />
             </div>
@@ -719,193 +952,61 @@ const PDFSidebar = React.forwardRef(({
                 getHistoryMarkIndex={getHistoryMarkIndex}
                 locateHistoryMark={locateHistoryMark}
                 focusHistoryMark={focusHistoryMark}
+                headActionsHost={mobileMode ? null : historyHeadHost}
               />
             </div>
           </div>
-        </>
+        </PanelFrame>
       )}
+      </MainFrame>
 
-      {/* Collapsed State - Show Icons Only */}
-      {isCollapsed && (
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          padding: '8px',
-          gap: '4px',
-          background: 'var(--surface-1)',
-          position: 'relative',
-          // 2026-04-25 — flex:1 lets the collaboration footer at the bottom
-          // sit at the actual bottom of the rail instead of stacking right
-          // below the last icon.
-          flex: 1
-        }}>
-          {tabs.concat(
-            typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()
-              ? [{ id: '__savelog', label: 'Save log', icon: 'document' }]
-              : []
-          ).map(tab => {
-            // KAL-65: this rail used to grow its own hover-triggered tooltip
-            // div (positioned via hoveredTabId) alongside the native title=
-            // below — two custom tooltips stacking on the same button. The
-            // shared tip() binder replaces both; placement 'right' matches
-            // the removed div's left:100% / translateY(-50%) anchor exactly.
-            const tabTip = tip(tab.label, 'right');
-            return (
-            <div
-              key={tab.id}
-              style={{
-                position: 'relative'
-              }}
-            >
-              <button
-                {...tabTip}
-                aria-label={tab.label}
-                onClick={() => {
-                  if (tab.id === '__savelog') {
-                    // UX 2026-04-22: Mobile-only Save Log in collapsed
-                    // vertical rail so the user can trigger it without
-                    // expanding the sidebar first.
-                    const buf = window.__consoleLogBuffer;
-                    const consoleText = Array.isArray(buf) && buf.length > 0
-                      ? buf.join('\n')
-                      : '(no console output captured)';
-                    window.dispatchEvent(new CustomEvent('save-log-banner-start', {
-                      detail: { consoleText }
-                    }));
-                    return;
-                  }
-                  setIsCollapsed(false);
-                  setActiveTab(tab.id);
-                }}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  borderRadius: 'var(--chrome-radius, 6px)',
-                  // UX 2026-09-16 (desktop sizing pass): the rail tab keeps its
-                  // 40px height — nothing moves — but the glyph drops to the
-                  // shared chrome size (18px, --chrome-glyph) and the padding
-                  // is split so the glyph FITS. At 10px padding around a 20px
-                  // glyph the content box wanted 40px inside a 31px-wide rail,
-                  // so the glyph overflowed its own button.
-                  padding: '11px 6px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'background 0.15s ease',
-                  minWidth: '28px',
-                  minHeight: '28px',
-                  width: '100%'
-                }}
-                onMouseEnter={(e) => {
-                  tabTip.onMouseEnter(e);
-                  e.currentTarget.style.background = 'var(--hover)';
-                }}
-                onMouseLeave={(e) => {
-                  tabTip.onMouseLeave(e);
-                  e.currentTarget.style.background = 'transparent';
-                }}
-              >
-                {/* UX 2026-09-22 (desktop critic round): ONE grey for a
-                    resting chrome icon, and it is --text-2. Intended UX: the
-                    left rail, the right rail and the top bar are one tier of
-                    chrome, so an icon that is merely sitting there must be the
-                    same weight in all three. They used to disagree — these rail
-                    tabs and the Survey button drew --text-3 while Version
-                    history, Fit, Export and every top-bar tool glyph drew
-                    --text-2, which read as two different rails. Gold still
-                    marks the active one; --text-3 is left to real subtext. */}
-                <Icon
-                  name={tab.icon}
-                  size={RAIL_GLYPH}
-                  color="var(--text-2)"
-                  style={{ width: `${RAIL_GLYPH}px`, height: `${RAIL_GLYPH}px`, flexShrink: 0 }}
-                />
-              </button>
-            </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* 2026-04-25 — Collaboration footer (sync chip on top, presence row
-          below) anchored at the bottom of the rail. Lives here so it stays
-          on screen for every page — the previous top-toolbar location
-          scrolled off with the PDF area on page change.
-          Hidden entirely when cloud sync is disabled (free tier or no PDF). */}
-      {cloudSyncEnabled && !mobileMode && (
-        <div style={isCollapsed ? {
-          borderTop: '1px solid var(--border)',
-          padding: '10px 6px',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '10px',
-          background: 'var(--surface-1)'
-        } : {
-          /* Owner 2026-09-23: the expanded footer is ONE row - active users
-             on the left, sync status in the middle, version history on the
-             right as a face-sized circle - so it takes a single short band
-             instead of three stacked lines. Equal side columns keep the
-             status pill in the true middle whatever the sides hold (one face
-             or three plus "+N"); a long status label trims with an ellipsis.
-             Faces, pill and circle are all ~24-26px so the row reads as one
-             family of round tokens. */
+      {/* Owner 2026-10-07 (rail headers round): "When the left rail is
+          expanded, the user annotation history and syncing should still assume
+          the horizontal position with a bar going across as a divider" - with
+          a panel open the collaboration footer is the one-row band across the
+          rail and the panel (owner 2026-09-23 layout: faces on the left, sync
+          in the middle, History on the right), under a full-width hairline.
+          Closed, it is the rail's vertical stack above. */}
+      {showFooter && !isCollapsed && (
+        <div data-chrome-rail="true" data-presence-footer="expanded" style={{
+          flex: '0 0 auto',
           borderTop: '1px solid var(--border)',
           padding: '8px 12px',
           display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1fr)',
+          // The side columns never go narrower than what they hold, so the
+          // faces never run under the sync pill; the pill's label trims.
+          gridTemplateColumns: 'minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr)',
           alignItems: 'center',
           columnGap: '8px',
-          background: 'var(--surface-1)'
+          background: 'var(--panel-bg)',
+          position: 'relative',
+          zIndex: 1
         }}>
-          {isCollapsed ? (
-            <>
-              <SyncStatusChip
-                status={cloudSyncStatus}
-                queueSize={cloudSyncQueueSize}
-                enabled
-                compact
-                onRetry={cloudSyncOnRetry}
-              />
-              {documentId && <HistoryButton isActive={activeTab === 'history'} onClick={openHistoryPanel} />}
-              <PresenceAvatars
-                presence={presence}
-                currentUserId={currentUserId}
-                currentUserEmail={currentUserEmail}
-                currentUserDisplayName={currentUserDisplayName}
-                enabled
-                compact
-              />
-            </>
-          ) : (
-            <>
-              <div style={{ justifySelf: 'start', minWidth: 0, display: 'flex', alignItems: 'center' }}>
-                <PresenceAvatars
-                  presence={presence}
-                  currentUserId={currentUserId}
-                  currentUserEmail={currentUserEmail}
-                  currentUserDisplayName={currentUserDisplayName}
-                  enabled
-                  row
-                />
-              </div>
-              <div style={{ minWidth: 0, maxWidth: '100%', display: 'flex', justifyContent: 'center' }}>
-                <SyncStatusChip
-                  status={cloudSyncStatus}
-                  queueSize={cloudSyncQueueSize}
-                  enabled
-                  row
-                  onRetry={cloudSyncOnRetry}
-                />
-              </div>
-              <div style={{ justifySelf: 'end', display: 'flex', alignItems: 'center' }}>
-                {documentId && <HistoryButton round isActive={activeTab === 'history'} onClick={openHistoryPanel} />}
-              </div>
-            </>
-          )}
+          <div style={{ justifySelf: 'start', minWidth: 0, display: 'flex', alignItems: 'center' }}>
+            <PresenceAvatars
+              presence={footerPresence.presence}
+              currentUserId={footerPresence.currentUserId}
+              currentUserEmail={footerPresence.currentUserEmail}
+              currentUserDisplayName={footerPresence.currentUserDisplayName}
+              enabled
+              row
+            />
+          </div>
+          <div style={{ minWidth: 0, maxWidth: '100%', display: 'flex', justifyContent: 'center' }}>
+            <SyncStatusChip
+              status={cloudSyncStatus}
+              queueSize={cloudSyncQueueSize}
+              enabled
+              row
+              onRetry={cloudSyncOnRetry}
+            />
+          </div>
+          <div style={{ justifySelf: 'end', display: 'flex', alignItems: 'center' }}>
+            {documentId && <HistoryButton round isActive={activeTab === 'history'} onClick={toggleHistoryPanel} />}
+          </div>
         </div>
       )}
+
     </div>
     </>
   );

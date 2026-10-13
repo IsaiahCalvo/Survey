@@ -6,14 +6,24 @@
   position: fixed;
   inset: 0;
   z-index: 1300;
-  background: rgba(13, 15, 20, 0.55);
+  background: var(--overlay-scrim);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: var(--font-ui);
   animation: confirm-delete-modal-fade-in 120ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+/* PHONE (owner report 2026-09-30, "toasts must never be hidden"): 1300 sat
+   under the mobile viewer's header/dock (5850-5900) and bottom sheets
+   (7200-7400), so a delete confirmation asked from a sheet opened BEHIND it.
+   On a phone it clears all of them (still under the toasts at 100000). */
+@media screen and (max-width: 720px) {
+  .confirm-delete-modal__backdrop {
+    z-index: 9000;
+  }
 }
 
 @keyframes confirm-delete-modal-fade-in {
@@ -26,8 +36,8 @@
   max-width: 92vw;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  border-radius: var(--radius-dialog);
+  box-shadow: var(--shadow-dialog);
   color: var(--text-1);
   overflow: hidden;
 }

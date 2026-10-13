@@ -519,7 +519,7 @@ async function testMobileEntitiesModalCentering(page, baseUrl, touch) {
   };
 
   await assertCentered('short-list');
-  const addEntity = modal.getByRole('button', { name: 'New entity', exact: true });
+  const addEntity = modal.getByRole('button', { name: 'Add entity', exact: true });
   const entityRows = modal.locator('.templates-mobile-entity-row');
   for (let index = 0; index < 8; index += 1) {
     const previousCount = await entityRows.count();

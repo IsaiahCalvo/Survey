@@ -112,10 +112,13 @@ export function inviteEmailFailureMessage(
   emailResult,
   { completedAction, retryInstruction },
 ) {
+  // Plain words, one sentence each (inviteFix 2026-10-07). When the send
+  // outcome is unknown the email may have arrived, so no retry hint. The
+  // Share / Invite dialogs word their own outcome via home/inviteSendSummary.js.
   if (emailResult?.deliveryUncertain || emailResult?.retryable === false) {
-    return `${completedAction}. The email may already have been delivered. Use Resend only if you intentionally want to send another copy.`;
+    return `${completedAction}, but we couldn't confirm the email was sent.`;
   }
-  return `${completedAction}, but the email was not sent. ${retryInstruction}`;
+  return `${completedAction}, but the email didn't send. ${retryInstruction}`;
 }
 
 /** Send the permission-changed email after a role update. */

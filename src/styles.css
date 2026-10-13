@@ -10,13 +10,27 @@
   box-sizing: border-box;
 }
 
+/* Owner 2026-10-07 (iPhone): holding the active-users glyph raised iOS's
+   Copy / Look Up / Translate menu and selected its initials. A control's
+   label is never text to select: no button can be text-selected or raise
+   the long-press callout. Fields and real text are untouched. */
+button,
+[role="button"],
+[role="tab"],
+[role="menuitem"],
+[role="option"] {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
 /* The app's global SIZE tokens. The COLOUR tokens moved out to
    src/styles/tokens.css (imported at the top of this file) on 2026-09-17 when
    the owner approved the revision-2 palette — one file decides every colour on
    every platform, and nothing below may re-declare one. */
 :root {
-  --font-primary: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
-    "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif;
+  /* The one interface font (tokens.css --font-ui, owner 2026-10-02). */
+  --font-primary: var(--font-ui);
 
   /* UX 2026-09-16 (desktop sizing pass): ONE size scale for the desktop
      document chrome, so every control in the top bar, the tool sub-row and
@@ -159,6 +173,119 @@
   }
 }
 
+/* Desktop Survey panel open / close (owner 2026-09-30; 2026-10-07 Drawboard
+   rail). The panel stands beside the 48px Survey rail, which never moves. It
+   is laid out once at its open 320px and slides out from under the rail
+   (the rail is drawn above it), then back under it on close - transforms
+   only, so no row re-wraps mid-motion. */
+@keyframes surveyRailExpand {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes surveyRailCollapse {
+  from {
+    transform: none;
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* The left rail's open panel: a one-line header naming the panel, the
+   Survey panel's header on the right is the same band (owner 2026-10-07,
+   Drawboard rail; src/PDFSidebar.jsx).
+   Owner 2026-10-07 (rail headers round): "The sub-toolbar ... isn't as tall
+   as the rows that show for the page title ... Those title rows should be
+   more narrow to match the sub-toolbar." Every panel title row on both rails
+   is --chrome-bar-h tall, hairline included - the same token the sub-toolbar
+   row under the tool bar is drawn at, so the two cannot drift apart. The row
+   reads [title + the panel's actions] ... [close]: the actions sit in line
+   with the title on the left, the close glyph at the right end, its 28px box
+   placed so the glyph keeps the same 12px edge as the title. */
+.left-rail__head {
+  position: relative;
+  flex: 0 0 var(--chrome-bar-h);
+  height: var(--chrome-bar-h);
+  box-sizing: border-box;
+  padding: 0 6px 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--panel-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.left-rail__head-actions {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.left-rail__head-actions[hidden] {
+  display: none;
+}
+
+/* History's slot holds its search field when search is open, so it takes the
+   free width (the fill after it then has none). */
+.left-rail__head-actions--grow {
+  flex: 1 1 auto;
+}
+
+.left-rail__head-fill {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* History's count and search toggle in the title row (RevisionsPanel draws
+   them here on desktop): [History] [n entries] [search] ... [close], the
+   search glyph in the same --text-2 ink as the other panels' header icons. */
+.left-rail__head .dh-headrow {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 6px;
+}
+
+.left-rail__head .dh-count {
+  flex: 0 1 auto;
+}
+
+.left-rail__head .dh-ib {
+  color: var(--text-2);
+}
+
+.left-rail__head .dh-ib[aria-pressed='true'] {
+  color: var(--text-1);
+}
+
+.left-rail__title {
+  /* The panel names are short; the actions beside it give way, not it. */
+  flex: none;
+  margin: 0;
+  min-width: 0;
+  color: var(--text-1);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #chrome-right-host .survey-rail {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -252,9 +379,43 @@
    The generic 1px hover lift shoved the hovered button's rounded top —
    the visible "glow" — past that clip line, so it looked sliced flat.
    Inside the strip the lift is cancelled; the hover colors/ring stay. */
+/* Owner 2026-10-07: "The top sub-toolbars don't have dividers or borders on
+   their left and right ... they just blend straight into the left and right
+   rails." The rows under the tool bar (row 2's settings, the Aa bar, the
+   survey bar) are the rails' own surface, so each rail edge gets the 1px
+   var(--border) hairline the rail panels draw on their canvas side, for the
+   height of whatever rows are showing (none showing = no line). The host
+   spans the canvas column between the two 48px rails, so the lines sit on
+   the rails' edges. An open panel (Pages ... History on the left, Survey on
+   the right) is drawn OVER the rows and carries the same hairline on its
+   own canvas side, so the edge line travels with the panel as it slides or
+   fades in and out - same timing, nothing to keep in step - and the row's
+   own line underneath is covered, never doubled. Desktop only (AppShell sets
+   data-row-edges off the phone). */
+#chrome-sub-toolbar-host[data-row-edges='true']::before,
+#chrome-sub-toolbar-host[data-row-edges='true']::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+  pointer-events: none;
+  z-index: 20;
+}
+
+#chrome-sub-toolbar-host[data-row-edges='true']::before {
+  left: 0;
+}
+
+#chrome-sub-toolbar-host[data-row-edges='true']::after {
+  right: 0;
+}
+
 #chrome-sub-toolbar-host .btn:not(:disabled):hover,
 #chrome-subtools-host .btn:not(:disabled):hover,
-[data-select-mode-toggle] .btn:not(:disabled):hover {
+[data-select-mode-toggle] .btn:not(:disabled):hover,
+[data-area-tools] .btn:not(:disabled):hover {
   transform: none;
 }
 
@@ -506,7 +667,7 @@
   background: var(--surface-3);
   border: 0;
   border-radius: var(--chrome-field-radius);
-  font: 600 11px/1 Helvetica, Arial, sans-serif;
+  font: 600 11px/1 var(--font-ui);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
   cursor: pointer;
@@ -532,7 +693,7 @@
 }
 
 .chrome-pill:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -592,7 +753,7 @@
 }
 
 .chrome-text-toggle:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -637,7 +798,7 @@
   border: 0;
   /* ONE RADIUS SCALE (2026-09-22): a button is 6. Was 8. */
   border-radius: 6px;
-  font: 600 11px/1 Helvetica, Arial, sans-serif;
+  font: 600 11px/1 var(--font-ui);
   white-space: nowrap;
   cursor: pointer;
 }
@@ -663,26 +824,182 @@
    the chips are .chrome-subcontrol, the rules are .chrome-divider.
    ========================================================================== */
 .survey-subrow {
+  /* Owner 2026-10-07 (survey bar round): the bar now runs edge to edge -
+     [glyph template v] ...... [Module v] | (C)(D) | Reuse ...... Done.
+     Three columns: the two sides are equal (1fr each), so the category chips
+     stay exactly on the bar's centre whatever the names are, as before. Each
+     side packs to its edge: the template name hugs the left end and Done the
+     right end; the module pill and Reuse stay against the chips. When room
+     runs out the bar gives ground in a fixed order (2026-10-07, narrow
+     windows; planSurveyBarStep in utils/responsiveToolbar.js): the template
+     name shortens, then goes (glyph stays); the module name shortens; then
+     Reuse, the module menu and the template menu move into a "..." menu.
+     The chips and Done always stay, at full size.
+     The left panel and the Survey panel are drawn OVER this row, so the bar
+     is inset by whichever is open (PDFViewer sets the two insets) and centres
+     in what stays visible; it eases across as a panel opens or closes. */
   position: relative;
+  width: 100%;
   height: 100%;
+  box-sizing: border-box;
+  padding: 0 calc(8px + var(--survey-bar-inset-r, 0px)) 0 calc(8px + var(--survey-bar-inset-l, 0px));
+  transition: padding 180ms ease-out;
+  display: grid;
+  /* 2026-10-07 (narrow windows): each side is at least as wide as its
+     contents, so when one side needs more than half the chips slide off the
+     centre just enough instead of running under it. The bar only draws this
+     look while everything fits at full width (planSurveyBarStep). */
+  grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr);
+  align-items: center;
+}
+
+/* Past full width (useSurveyBarFit sets data-survey-bar-step): the start side
+   takes what the chips and the end side leave, and gives ground inside it -
+   the template name, then the module name, each down to the minimum the plan
+   allows (--survey-template-min / --survey-module-min). */
+.survey-subrow:not([data-survey-bar-step='full']) {
+  grid-template-columns: minmax(0, 1fr) max-content max-content;
+}
+
+/* Last resort (many categories in a tiny span): the chips scroll sideways
+   rather than being cut or covered. */
+.survey-subrow[data-survey-bar-step='scroll-categories'] {
+  grid-template-columns: 0 minmax(0, 1fr) max-content;
+}
+
+.survey-subrow[data-survey-bar-step='scroll-categories'] .survey-subrow__cats {
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.survey-subrow[data-survey-bar-step='scroll-categories'] .survey-subrow__cats::-webkit-scrollbar {
+  display: none;
+}
+
+/* The More (...) menu that takes Reuse, then the module and template menus,
+   in a narrow bar. With nothing before the chips it sits a gutter after
+   them, without a rule. */
+.survey-subrow__more {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
-  justify-content: center;
+}
+
+.survey-subrow[data-survey-bar-step='fold-template'] .survey-subrow__more,
+.survey-subrow[data-survey-bar-step='scroll-categories'] .survey-subrow__more {
+  margin-left: 8px;
+}
+
+/* The template and module menus inside More: ordinary setting pills, as wide
+   as their name up to a cap. */
+.survey-more__pill .chrome-pill {
+  width: auto;
+  min-width: 0;
+  max-width: 200px;
+}
+
+.survey-more__pill .chrome-pill__label {
+  text-overflow: ellipsis;
 }
 
 .survey-subrow__side {
-  position: absolute;
-  top: 0;
-  bottom: 0;
+  min-width: 0;
+  height: 100%;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   white-space: nowrap;
   /* The side groups are not gap rows, so each rule keeps its full 8px inset. */
   --chrome-row-gap: 0px;
 }
 
-.survey-subrow__side--start { right: 100%; }
-.survey-subrow__side--end { left: 100%; }
+.survey-subrow__reuse {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+.survey-subrow__module {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.survey-subrow__module .annotation-dropdown {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+}
+
+.survey-subrow__module .chrome-pill {
+  flex: 0 1 auto;
+  min-width: var(--survey-module-min, 0px);
+}
+
+/* The mode's name: a plateless menu trigger (a title, not a setting) - the
+   gold survey glyph (the Survey tab's glyph), the template in bright ink, its
+   chevron. Hover gives it the pill's surface step. It is the first item to
+   give ground: the name ellipsises down to a few letters, then goes. */
+.survey-subrow__template {
+  flex: 0 1000 auto;
+  min-width: var(--survey-template-min, 0px);
+  display: flex;
+}
+
+.survey-subrow__template .chrome-pill {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: var(--survey-template-min, 0px);
+  max-width: 260px;
+  padding: 0 6px;
+  color: var(--text-1);
+  background: transparent;
+  font-size: 12px;
+}
+
+.survey-subrow__template .chrome-pill:hover,
+.survey-subrow__template .chrome-pill[data-state='open'] {
+  background: var(--hover);
+}
+
+.survey-subrow__template .chrome-pill__label {
+  text-overflow: ellipsis;
+}
+
+/* "Done" leaves Survey. A plain word, neutral ink (never red, never gold),
+   32px tall so it is an easy target at the bar's far end. */
+.survey-subrow__done {
+  flex: 0 0 auto;
+  height: 32px;
+  min-width: 48px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-1);
+  background: transparent;
+  border: 0;
+  border-radius: var(--chrome-radius);
+  font: 600 12px/1 var(--font-ui);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.survey-subrow__done:hover {
+  background: var(--hover);
+}
+
+.survey-subrow__done:active {
+  background: var(--pressed);
+}
+
+.survey-subrow__done:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
 
 .survey-subrow__cats {
   display: flex;
@@ -703,7 +1020,7 @@
   justify-content: center;
   border: 1.5px solid currentColor;
   border-radius: 999px;
-  font: 700 9px/1 Helvetica, Arial, sans-serif;
+  font: 700 9px/1 var(--font-ui);
   letter-spacing: 0;
 }
 
@@ -714,12 +1031,12 @@
 .survey-subrow__empty {
   padding: 0 6px;
   color: var(--text-3);
-  font: 600 11px/1 Helvetica, Arial, sans-serif;
+  font: 600 11px/1 var(--font-ui);
 }
 
 /* "Keep active": the app's switch (the Spaces one) at the chrome's 20px pill
    height, then its word. The whole control is one button with an invisible
-   pad; hover brightens the word, never a plate. On = gold track. */
+   pad; hover brightens the word, never a plate. On = a neutral ink track. */
 .survey-subrow__keep {
   height: var(--chrome-field-h);
   padding: 0 2px;
@@ -730,7 +1047,7 @@
   background: transparent;
   border: 0;
   border-radius: var(--chrome-radius);
-  font: 600 11px/1 Helvetica, Arial, sans-serif;
+  font: 600 11px/1 var(--font-ui);
   letter-spacing: -0.01em;
   white-space: nowrap;
   cursor: pointer;
@@ -775,12 +1092,64 @@
 }
 
 .survey-subrow__keep[aria-checked='true'] .survey-subrow__track {
-  background: var(--accent);
+  /* Survey calm gold (2026-10-01): Reuse is a setting, not "what a touch on
+     the page will do now", so ON is a neutral ink track, not gold. */
+  background: var(--text-2);
   box-shadow: none;
 }
 
 .survey-subrow__keep[aria-checked='true'] .survey-subrow__track::after {
   transform: translateX(10px);
+}
+
+/* Survey calm gold (2026-10-01): the current module in the survey bar's menu
+   is bright ink with a weight step, not gold (the shared AnnotationDropdown
+   keeps its gold current row everywhere else). */
+.annotation-dropdown__popover[data-survey-module-menu] .annotation-dropdown__options > button.is-active,
+.annotation-dropdown__popover[data-survey-module-menu] .annotation-dropdown__option.is-active {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+/* Module pill (owner 2026-09-30): exactly as wide as its LONGEST module name -
+   every name sits in one grid cell, only the current one visible - so switching
+   module never moves anything, capped at 220px with an ellipsis. The pill's
+   width token is `auto` for this one pill (PDFViewer passes width="auto"). */
+.survey-subrow__module .chrome-pill {
+  max-width: 220px;
+  /* Owner 2026-10-01 ("the text is not centred when it should be, like it is
+     on mobile"): the label is centred in the PILL, as the phone's module pill
+     does it (mobilePdfViewer.css, .mobile-pdf-properties--survey). The start
+     side reserves the chevron's 9px + the pill gap on top of the chevron-side
+     inset, mirroring the chevron, so the label's box is symmetric about the
+     pill's centre while the chevron stays on the trailing edge. */
+  padding-left: calc(var(--chrome-field-pad-x) + 9px + var(--chrome-gap));
+}
+
+.survey-subrow__fit {
+  display: grid;
+  grid-template-columns: minmax(0, max-content);
+  text-align: center;
+}
+
+.survey-subrow__fit > span {
+  grid-area: 1 / 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.survey-subrow__fit > .is-ghost {
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .survey-subrow,
+  .survey-subrow__track,
+  .survey-subrow__track::after {
+    transition: none;
+  }
 }
 /* ===== end SURVEY SUB-ROW ===== */
 
@@ -860,63 +1229,81 @@ input[type="text"].survey-marker-name-inline:focus {
 }
 
 /* ==========================================================================
-   SPACES PANEL — ONE LIST, DIVIDED (owner 2026-09-23, desktop + phone)
+   SPACES PANEL — ROWS IN THE PANEL (owner 2026-10-02, desktop + phone)
    --------------------------------------------------------------------------
-   Owner: "everything is so bulky ... some shit that doesn't even align ...
-   the hitbox should be invisible", then "not individual cards; like
-   documents, projects and templates; dividers but integrated within the
-   panel" — on desktop AND phone, the same design sized for each.
+   Owner, after the cards came back (d6b8563): "I definitely like the way
+   spaces look ... but it's like boxes within boxes ... I want it integrated
+   within the panel as separate rows, just like we updated the survey panel."
+   Every control of the cards stays; only the CONTAINERS went. A space is a
+   flat line in the panel like a Survey category (src/surveyRailPanel.css):
+   32px with a hairline under it, edge to edge. Open, its add-pages line and
+   its page lines ("regions") follow, each one fixed step in, each parted by
+   a full-width hairline like the Survey Markers.
 
    Structure (src/sidebar/SpacesPanel.jsx):
-     .spaces-panel__head  [+ Add]      Spaces / status      [Export]
-     .spaces-item         grip  Space name ........ count  (switch)  trash
-       .spaces-item__add          [ Add pages, e.g. 3, 6-9 ]         Add
-       .spaces-region             (1) Region 1  edit  bulb (switch)  trash
-   A space is a row parted from the next by a hairline that reaches both
-   edges; its pages are indented lines under it (a to-do list nested under
-   its parent) — no card per space, none per region. Every line shares the
-   same right-hand COLUMNS, so switches, trash cans, bulbs/count and the
-   "Add" word each sit on one x, and the name, the add field and the page
-   badges all start on the same indent.
+     .spaces-panel__head  ........ [Exit space x] [export] [+]
+                          phone: Spaces  [export] [+] Done
+     .space-card          grip 2 > Space 1 .................. (switch) trash
+       .space-card__add          [ Add pages (e.g. 3, 6-9, 12)     | + ]
+       .space-region-card        2 (switch) Region 2 ..... edit bulb trash
 
-   Hit areas: every glyph owns a whole column and the row's full height —
-   an invisible pad, never a plate. Glyph buttons press by tightening the
-   glyph (states.css data-glyph-only); word buttons carry .tertiary (which
-   states.css exempts from the grey press plate) and press by darkening their
-   ink. Hover (desktop pointer only) brightens ink, never paints a box.
+   Columns: the grip sits in the Survey grip gutter (28; phone 32), the page
+   count starts right after it, and everything nested starts one step (12)
+   further in: --sp-nest-x = 40 on desktop (the rows' text line, --row-text-x),
+   44 on the phone. The add-pages field is the one recessed well
+   (--panel-well, the Survey notes box's well); nothing else paints a fill.
 
-   Sizes live in the custom properties below; the phone overrides them in
-   src/mobile/mobilePdfViewer.css (.mobile-spaces-panel), nothing else.
+   States are the Survey rows' (states.css tokens): hover (desktop pointer
+   only) paints the LINE --hover edge to edge; a press on the line itself
+   (not on a control in it) paints it --pressed; glyphs never paint a plate
+   (data-glyph-only: hover brightens, press tightens). A space picked up
+   for reordering wears the shared lift (states.css [data-drag-lifted]).
+
+   Sizes live in the custom properties below (desktop row scale, tokens.css);
+   the phone overrides them in src/mobile/mobilePdfViewer.css
+   (.mobile-spaces-panel), nothing else.
    ========================================================================== */
 .spaces-panel {
-  --sp-bg: var(--surface-1);
-  --sp-edge: 12px;          /* header + text inset from the panel edge */
-  --sp-head-h: 40px;
-  --sp-head-btn-pad: 6px;   /* a word button's own side pad (part of its hit area) */
-  --sp-pad-r: 3px;          /* right inset of every line's last column */
-  --sp-grip-w: 36px;        /* grip column; its glyph lands on --sp-edge */
-  --sp-indent: 40px;        /* where the name, add field and page badges start */
-  --sp-col-w: 24px;         /* edit / bulb / count columns */
+  --sp-bg: var(--panel-bg);
+  --sp-edge: var(--row-pad-x);    /* 12: header inset from the panel edge */
+  --sp-head-h: var(--row-h-page); /* 40 */
+  --sp-head-btn-pad: 6px;   /* a header icon's own side inset: 28px box, 16px glyph */
+  --sp-pad-r: 2px;          /* right inset of every row's last column */
+  --sp-grip-w: 28px;        /* the Survey grip gutter */
+  --sp-grip-pad: 4px;       /* the grip glyph's inset in it (Survey: 4) */
+  --sp-step: 12px;          /* one nesting level (Survey --sv-step) */
+  --sp-nest-x: calc(var(--sp-grip-w) + var(--sp-step)); /* 40 = --row-text-x */
+  --sp-field-r: 8px;        /* the add-pages field's right inset */
+  --sp-num-w: 14px;         /* the space's page count */
+  --sp-chev-w: 16px;
+  --sp-page-w: 22px;        /* a region's page number */
+  --sp-col-w: 24px;         /* a glyph button's column */
   --sp-switch-w: 36px;
-  --sp-end-w: 32px;         /* trash / "Add" column: 3 + (32-14)/2 = the 12px edge */
-  --sp-row-h: 32px;         /* a space row, the add row */
-  --sp-line-h: 28px;        /* a page line */
+  --sp-sm-switch-w: 32px;
+  /* A space line is a desktop row (32), a nested line a sub row (28); each
+     carries its 1px hairline inside that height, as the Survey rows do. */
+  --sp-row-h: var(--row-h);       /* 32 */
+  --sp-line-h: var(--row-h-sub);  /* 28: a region line */
+  --sp-add-h: var(--row-h);       /* 32: the add-pages line */
   --sp-field-h: 24px;
-  --sp-glyph: 14px;
+  --sp-field-pad: 8px;
+  --sp-glyph: var(--row-icon);    /* 14 */
   --sp-track-w: 28px;
   --sp-track-h: 16px;
   --sp-knob: 12px;
-  --sp-badge: 16px;
-  --sp-badge-type: 10px;
-  --sp-title-type: 13px;
-  --sp-status-type: 10px;
-  --sp-head-type: 13px;     /* matches the Bookmarks header words */
+  --sp-sm-track-w: 24px;
+  --sp-sm-track-h: 14px;
+  --sp-sm-knob: 10px;
   --sp-name-type: 13px;
+  --sp-name-weight: 600;
   --sp-label-type: 12px;
+  --sp-field-type: 12px;
   --sp-small-type: 11px;
+  --sp-title-type: 13px;
+  --sp-status-type: 11px;
 }
 
-/* ---- header: [+ Add]  title on the true centre  [Export] ---------------- */
+/* ---- header: ... [Exit space] [export] [+]; phone: title first --------- */
 .spaces-panel__head {
   position: relative;
   flex: 0 0 var(--sp-head-h);
@@ -924,8 +1311,8 @@ input[type="text"].survey-marker-name-inline:focus {
   display: flex;
   align-items: stretch;
   justify-content: space-between;
-  /* The visible glyph/word lands exactly --sp-edge from each edge: the
-     button's own side pad is part of that gap, not added to it. */
+  /* The visible glyph lands exactly --sp-edge from the edge: the icon box's
+     own side inset is part of that gap, not added to it. */
   padding: 0 calc(var(--sp-edge) - var(--sp-head-btn-pad));
   box-sizing: border-box;
   background: var(--sp-bg);
@@ -970,67 +1357,23 @@ input[type="text"].survey-marker-name-inline:focus {
   align-items: stretch;
 }
 
-.spaces-panel__head-btn {
-  appearance: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 var(--sp-head-btn-pad);
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  color: var(--text-2);
-  font: inherit;
-  font-size: var(--sp-head-type);
-  font-weight: 600;
-  line-height: 1;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  transition: color 90ms ease-out;
-}
-
-/* Header glyphs are 14px on both platforms, the Bookmarks header's size. */
-.spaces-panel__head-btn svg {
-  width: 14px;
-  height: 14px;
-  flex: 0 0 auto;
-  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
-}
-
-/* The plus ink (round caps included) starts 2.5px inside its 14px box; pulling the button left by
-   that much puts the visible "+" exactly on the edge line (Bookmarks does the
-   same), where the grip dots below also start. */
-.spaces-panel__head-btn--add {
-  margin-left: -2.5px;
-}
-
-.spaces-panel__head-btn:not(:disabled):active {
+/* The header actions are SectionIconButton icons (owner 2026-10-02); an open
+   export menu keeps its icon lit. */
+.spaces-panel__head-icon[aria-expanded='true'] {
   color: var(--text-1);
-}
-
-.spaces-panel__head-btn:not(:disabled):active svg {
-  transform: scale(0.88);
-}
-
-.spaces-panel__head-btn[aria-expanded='true'] {
-  color: var(--text-1);
-}
-
-.spaces-panel__head-btn:disabled {
-  color: var(--text-disabled);
-  cursor: not-allowed;
 }
 
 .spaces-panel .spaces-header-export-menu {
   top: calc(100% + 2px);
 }
 
-/* ---- the list ----------------------------------------------------------- */
+/* ---- the list: one line per space, edge to edge ----------------------- */
 .spaces-list {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding: 0;
+  box-sizing: border-box;
   background: var(--sp-bg);
 }
 
@@ -1042,53 +1385,58 @@ input[type="text"].survey-marker-name-inline:focus {
   text-align: center;
 }
 
-/* Each space ends in a hairline that spans the panel edge to edge. */
-.spaces-item {
+/* A space: no card. Its line (and, open, its nested lines) sit straight on
+   the panel, closed by one full-width hairline - the Survey category's. */
+.space-card {
   border-bottom: 1px solid var(--border);
 }
 
-.spaces-item__block {
-  background: var(--sp-bg);
+.space-card__block {
+  background: transparent;
 }
 
-/* The one space a pointer is carrying lifts off the list. */
-.spaces-item.is-dragging .spaces-item__block {
-  background: var(--surface-3);
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.32);
-}
+/* The one space a pointer is carrying lifts off the list with the app's one
+   picked-up look: SortableRearrangeRow marks its wrapper data-drag-lifted
+   (states.css), which also hides this hairline, so nothing here paints a
+   second surface. */
 
-.spaces-item__row {
+/* ---- the space row: grip · count · arrow · name ...... switch · trash ---- */
+.space-card__head {
   display: flex;
   align-items: center;
-  min-height: var(--sp-row-h);
+  min-height: calc(var(--sp-row-h) - 1px); /* the hairline is inside the 32 / 44 */
   padding-right: var(--sp-pad-r);
   box-sizing: border-box;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 
-.spaces-item__grip {
-  flex: 0 0 calc(var(--sp-grip-w) - var(--sp-chev-w, 16px));
-  width: calc(var(--sp-grip-w) - var(--sp-chev-w, 16px));
+/* The grip in the Survey grip gutter, its glyph at the same inset. */
+.space-card__grip {
+  flex: 0 0 var(--sp-grip-w);
+  width: var(--sp-grip-w) !important;
   align-self: stretch;
   height: auto !important;
+  padding-left: var(--sp-grip-pad) !important;
+  box-sizing: border-box;
 }
 
-/* The grip's dots start 3.75px inside its 12px glyph. Nudging the glyph left
-   by that much lands the dots on the edge line, under the header's "+" (the
-   box is narrower by the fold arrow's width now, so half of that is added
-   back to keep the dots on the same line). */
-.spaces-item__grip > svg {
-  /* The glyph is centred, so a margin moves it by half: +the arrow's full
-     width puts it back where it was before the box narrowed. */
-  margin-left: calc(-7.5px + var(--sp-chev-w, 16px));
+/* The page count: a plain small muted figure, no circle, right after the
+   grip gutter (a region's page number sits one step further in). */
+.space-card__count {
+  flex: 0 0 auto;
+  min-width: var(--sp-num-w);
+  color: var(--text-3);
+  font-size: var(--sp-small-type);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-align: left;
 }
 
-/* Fold arrow (owner 2026-09-23): lives in the gap between grip and name. A
-   glyph, not a box: no plate on hover or press; it turns down when open. */
-.spaces-item__chevron {
-  flex: 0 0 var(--sp-chev-w, 16px);
-  width: var(--sp-chev-w, 16px);
+.space-card__chevron {
+  flex: 0 0 var(--sp-chev-w);
+  width: var(--sp-chev-w);
   align-self: stretch;
   display: grid;
   place-items: center;
@@ -1099,91 +1447,85 @@ input[type="text"].survey-marker-name-inline:focus {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.spaces-item__chevron > svg {
+.space-card__chevron > svg {
   transition: transform 180ms cubic-bezier(0.33, 1, 0.68, 1);
 }
-.spaces-item.is-expanded .spaces-item__chevron > svg {
+.space-card.is-expanded .space-card__chevron > svg {
   transform: rotate(90deg);
 }
-@media (hover: hover) {
-  .spaces-item__chevron:hover { color: var(--text-1); }
-}
 @media (prefers-reduced-motion: reduce) {
-  .spaces-item__chevron > svg { transition: none; }
+  .space-card__chevron > svg { transition: none; }
 }
 
-/* The name sizes to its text (a hidden mirror in ::after), so the empty part
-   of the row stays a tap-to-open target instead of a rename field. */
-.spaces-item__name-fit {
+/* Click-to-rename name. The grid trick sizes the field to its text, so a
+   click on the row beside a short name still folds / opens the space. The
+   rename look is the app's one rename line (.hub-rename): nothing at rest,
+   a faint dotted line on hover, a grey one while typing. Never gold. */
+.space-card__name-fit {
   display: inline-grid;
   align-items: center;
   flex: 0 1 auto;
   min-width: 1ch;
   max-width: 100%;
-  margin-left: calc(var(--sp-indent) - var(--sp-grip-w));
-  overflow: hidden;
+  margin-left: 2px;
 }
 
-.spaces-item__name-fit::after,
-.spaces-item__name {
+.space-card__name-fit::after,
+.space-card__name {
   grid-area: 1 / 1;
-  min-width: 1ch;
-  padding: 0;
+  padding: 2px 0;
+  border-top: 1px dotted transparent;
+  border-bottom: 1px dotted transparent;
   font-family: inherit;
   font-size: var(--sp-name-type);
-  font-weight: 600;
+  font-weight: var(--sp-name-weight);
   letter-spacing: 0;
+  line-height: 1.25;
 }
 
-.spaces-item__name-fit::after {
+.space-card__name-fit::after {
   content: attr(data-value);
   visibility: hidden;
   white-space: pre;
+  min-width: 1ch;
 }
 
-.spaces-item__name {
+input[type="text"].space-card__name {
   width: 100%;
+  min-width: 1ch;
   max-width: 100%;
-  height: calc(var(--sp-row-h) - 4px);
+  height: auto;
+  margin: 0;
   background: transparent;
-  border: 0;
+  border-left: 0;
+  border-right: 0;
   border-radius: 0;
   box-shadow: none;
   outline: none;
   color: var(--text-1);
-  line-height: 1.2;
   cursor: text;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-/* Owner ruling: a field shows focus by its caret only — no underline, no
-   ring, no gold. */
-input[type="text"].spaces-item__name:focus,
-input[type="text"].spaces-item__name:focus-visible {
-  outline: none;
-  border: 0;
+input[type="text"].space-card__name:focus,
+input[type="text"].space-card__name:focus-visible {
+  background: transparent;
+  border-bottom-color: var(--text-3);
   box-shadow: none;
+  outline: none;
 }
 
-.spaces-item__fill {
+.space-card__fill {
   flex: 1 1 0;
   min-width: 8px;
   align-self: stretch;
 }
 
-.spaces-item__count {
-  flex: 0 0 var(--sp-col-w);
-  text-align: center;
-  color: var(--text-3);
-  font-size: var(--sp-small-type);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-}
-
-/* ---- switch: the column is the hit area, the track is drawn inside ------ */
+/* ---- switches: the column is the hit area, the track is drawn inside ----
+   ON is the app's calm neutral "on" (the Survey "Reuse" switch, --text-2
+   track), never gold (owner 2026-10-02). */
 .spaces-switch {
   position: relative;
   flex: 0 0 var(--sp-switch-w);
@@ -1210,7 +1552,7 @@ input[type="text"].spaces-item__name:focus-visible {
 }
 
 .spaces-switch[aria-checked='true']::before {
-  background: var(--accent);
+  background: var(--text-2);
   box-shadow: none;
 }
 
@@ -1242,8 +1584,16 @@ input[type="text"].spaces-item__name:focus-visible {
   opacity: 0.45;
 }
 
+/* A region's outline switch: the smaller track the region cards had. */
+.spaces-switch--sm {
+  --sp-switch-w: var(--sp-sm-switch-w);
+  --sp-track-w: var(--sp-sm-track-w);
+  --sp-track-h: var(--sp-sm-track-h);
+  --sp-knob: var(--sp-sm-knob);
+}
+
 /* ---- glyph buttons: the whole column is the pad, only the glyph shows --- */
-.spaces-item__icon {
+.space-card__icon {
   appearance: none;
   flex: 0 0 var(--sp-col-w);
   width: var(--sp-col-w);
@@ -1255,192 +1605,182 @@ input[type="text"].spaces-item__name:focus-visible {
   background: transparent;
   border: 0;
   border-radius: 0;
-  color: var(--text-2);
+  color: var(--text-3);
   cursor: pointer;
   font-family: inherit;
   -webkit-tap-highlight-color: transparent;
   transition: color 0.15s ease;
 }
 
-.spaces-item__icon svg {
+.space-card__icon svg {
   width: var(--sp-glyph);
   height: var(--sp-glyph);
 }
 
-.spaces-item__delete {
-  flex-basis: var(--sp-end-w);
-  width: var(--sp-end-w);
-  color: var(--danger);
-}
-
-/* UX 2026-09-17 (owner ruling): region-edit ON turns the pencil gold and
-   leaves its chrome alone — ink only. */
-.spaces-region__edit.is-editing,
-.spaces-region__visibility.is-on {
-  color: var(--accent);
-}
-
-.spaces-region__visibility:disabled {
+.space-card__icon[aria-disabled='true'] {
   color: var(--text-disabled);
   cursor: not-allowed;
 }
 
-/* ---- expanded space: add field, then the page lines -------------------- */
-.spaces-item__body {
-  padding: 0 var(--sp-pad-r) 4px var(--sp-indent);
+/* A lit state (marks shown, areas being edited) is bright ink, not gold. */
+.space-card__icon.is-on:not([aria-disabled='true']) {
+  color: var(--text-1);
 }
 
-.spaces-item__add {
+.space-card__delete {
+  color: var(--danger);
+}
+
+/* ---- an open space: the Add pages line, then one line per page ---------
+   Nested lines start one step in (--sp-nest-x); each carries a full-width
+   hairline on top, inside its own height (the Survey Marker lines). */
+.space-card__body {
+  display: flex;
+  flex-direction: column;
+}
+
+.space-card__add-line {
   display: flex;
   align-items: center;
-  min-height: var(--sp-row-h);
+  min-height: calc(var(--sp-add-h) - 1px);
+  padding: 0 var(--sp-field-r) 0 var(--sp-nest-x);
+  border-top: 1px solid var(--border);
 }
 
-.spaces-item__add-input {
+/* The field and its [+] are one joined control: same height, same fill,
+   one rounded shape. It is the panel's one recessed well (--panel-well,
+   the Survey notes box's): no edge at rest, the strong edge while typing.
+   The [+] is quiet grey (never a gold square). */
+.space-card__add {
   flex: 1 1 auto;
   min-width: 0;
+  display: flex;
+  align-items: stretch;
   height: var(--sp-field-h);
-  /* The field ends where the switch TRACK ends, so its edge lines up with
-     the switches in every row above and below. */
-  margin: 0 calc((var(--sp-switch-w) - var(--sp-track-w)) / 2) 0 0;
-  padding: 0 8px;
   box-sizing: border-box;
-  background: var(--surface-3);
+  border-radius: var(--radius-sm);
+  background: var(--panel-well);
+  border: 1px solid transparent;
+  overflow: hidden;
+  transition: border-color 120ms ease-out;
+}
+
+.space-card__add:focus-within {
+  border-color: var(--border-strong);
+}
+
+input[type="text"].space-card__add-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0 var(--sp-field-pad);
+  box-sizing: border-box;
+  background: transparent;
   border: 0;
-  border-radius: 6px;
+  border-radius: 0;
   box-shadow: none;
   outline: none;
   color: var(--text-1);
   font-family: inherit;
-  font-size: var(--sp-label-type);
+  font-size: var(--sp-field-type);
 }
 
-.spaces-item__add-input::placeholder {
+.space-card__add-input::placeholder {
   color: var(--text-3);
 }
 
-input[type="text"].spaces-item__add-input:focus,
-input[type="text"].spaces-item__add-input:focus-visible {
-  outline: none;
-  border: 0;
-  box-shadow: none;
-}
-
-.spaces-item__add-go {
+.space-card__add-go {
   appearance: none;
-  /* Same width as the trash column, so the field's end stays on the switch
-     track's edge. The word is right-aligned by flex, so if it is ever wider
-     than its box it spills left into the gap, never past the gutter. */
-  flex: 0 0 var(--sp-end-w);
-  width: var(--sp-end-w);
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  align-self: stretch;
-  /* The word's right edge lands where the trash glyphs end, so it lines up
-     with the column under it and with "Export" in the header. */
-  padding: 0 calc((var(--sp-end-w) - var(--sp-glyph)) / 2) 0 0;
+  position: relative;
+  flex: 0 0 var(--sp-field-h);
+  width: var(--sp-field-h);
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
   background: transparent;
   border: 0;
-  color: var(--text-3);
-  font-family: inherit;
-  font-size: var(--sp-label-type);
-  font-weight: 700;
-  text-align: right;
-  white-space: nowrap;
+  border-left: 1px solid var(--border);
+  border-radius: 0;
+  color: var(--text-2);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  transition: color 90ms ease-out;
+  transition: color 90ms ease-out, background 90ms ease-out;
 }
 
-/* Gold only once there is something to add — the panel's one gold word. */
-.spaces-item__add-go.has-value {
-  color: var(--accent);
+.space-card__add-go > svg {
+  width: var(--sp-glyph);
+  height: var(--sp-glyph);
 }
 
-.spaces-item__add-go:active {
-  color: var(--text-2);
+.space-card__add-go:active {
+  background: var(--pressed);
 }
 
-.spaces-item__add-go.has-value:active {
-  color: var(--accent-press);
-}
-
-.spaces-item__error {
-  padding: 0 0 4px;
+/* Under the field, no hairline of its own: it belongs to the add line. */
+.space-card__error {
+  margin-top: -2px;
+  padding: 0 var(--sp-field-r) 6px var(--sp-nest-x);
   color: var(--danger-text);
   font-size: var(--sp-small-type);
   font-weight: 600;
   line-height: 1.3;
 }
 
-.spaces-item__empty {
+.space-card__empty {
   display: flex;
   align-items: center;
-  min-height: var(--sp-line-h);
+  min-height: calc(var(--sp-line-h) - 1px);
+  padding: 0 var(--sp-field-r) 0 var(--sp-nest-x);
+  border-top: 1px solid var(--border);
   color: var(--text-3);
   font-size: var(--sp-label-type);
 }
 
-.spaces-item__regions {
+.space-card__regions {
   list-style: none;
   margin: 0;
   padding: 0;
+  display: flex;
+  flex-direction: column;
 }
 
-.spaces-region {
+/* A page in the space ("region"): a nested line, no card. */
+.space-region-card {
   display: flex;
   align-items: center;
-  min-height: var(--sp-line-h);
+  min-height: var(--sp-line-h); /* its hairline is inside (border-box) */
+  padding-right: var(--sp-pad-r);
+  box-sizing: border-box;
+  border-top: 1px solid var(--border);
 }
 
-/* The page badge: a small quiet disc. Its tap pad is the line's full height. */
+/* The page number: a plain small muted figure (no circle) on the nested
+   line (--sp-nest-x). It goes to the page; its pad runs from the panel
+   edge and is the line's full height. */
 .spaces-region__page {
-  position: relative;
   appearance: none;
   flex: 0 0 auto;
+  min-width: calc(var(--sp-nest-x) + var(--sp-page-w));
   align-self: stretch;
   display: inline-flex;
   align-items: center;
-  padding: 0 8px 0 0;
+  justify-content: flex-start;
+  padding: 0 2px 0 var(--sp-nest-x);
+  box-sizing: border-box;
   background: transparent;
   border: 0;
+  color: var(--text-3);
   cursor: pointer;
-  font-family: inherit;
+  font: inherit;
+  font-size: var(--sp-small-type);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
   -webkit-tap-highlight-color: transparent;
 }
 
-/* The disc is small, so its invisible pad reaches back into the empty grip
-   column beside it: a full --sp-col-w wide target without moving the label. */
-.spaces-region__page::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  right: 0;
-  width: max(100%, var(--sp-col-w));
-}
-
-.spaces-region__page > span {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: var(--sp-badge);
-  height: var(--sp-badge);
-  padding: 0 4px;
-  box-sizing: border-box;
-  border-radius: 999px;
-  background: var(--surface-3);
-  color: var(--text-2);
-  font-size: var(--sp-badge-type);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1), color 90ms ease-out;
-}
-
-.spaces-region__page:active > span {
-  transform: scale(0.88);
+.spaces-region__page:active {
   color: var(--text-1);
 }
 
@@ -1450,109 +1790,465 @@ input[type="text"].spaces-item__add-input:focus-visible {
   align-self: stretch;
   display: flex;
   align-items: center;
+  padding-left: 4px;
+}
+
+.spaces-region__label,
+input[type="text"].spaces-region__name-input {
+  max-width: 100%;
+  min-width: 0;
+  padding: 2px 0;
+  background: transparent;
+  border: 0;
+  border-top: 1px dotted transparent;
+  border-bottom: 1px dotted transparent;
+  border-radius: 0;
+  box-shadow: none;
+  outline: none;
+  color: var(--text-1);
+  font-family: inherit;
+  font-size: var(--sp-label-type);
+  font-weight: 500;
+  line-height: 1.25;
 }
 
 .spaces-region__label {
   appearance: none;
-  max-width: 100%;
-  height: 100%;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  color: var(--text-2);
-  font-family: inherit;
-  font-size: var(--sp-label-type);
-  font-weight: 500;
-  line-height: 1.2;
-  text-align: left;
-  white-space: nowrap;
   overflow: hidden;
+  text-align: left;
   text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: text;
   -webkit-tap-highlight-color: transparent;
 }
 
-.spaces-region__label:active {
-  color: var(--text-1);
+input[type="text"].spaces-region__name-input {
+  width: 100%;
+  height: auto;
+  margin: 0 4px 0 0;
 }
 
-.spaces-region__name-input {
-  width: 100%;
-  min-width: 0;
-  height: var(--sp-field-h);
-  margin-right: 6px;
-  padding: 0 6px;
-  box-sizing: border-box;
+input[type="text"].spaces-region__name-input:focus,
+input[type="text"].spaces-region__name-input:focus-visible {
+  background: transparent;
+  border-bottom-color: var(--text-3);
+  box-shadow: none;
+  outline: none;
+}
+
+.spaces-panel__head-fill {
+  flex: 1 1 auto;
+}
+
+/* Desktop, while a space is on: a small chip that turns it off. */
+.spaces-panel__exit-chip {
+  appearance: none;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  margin-right: 2px;
+  padding: 0 7px 0 8px;
   background: var(--surface-3);
   border: 0;
-  border-radius: 6px;
-  box-shadow: none;
-  outline: none;
+  border-radius: 999px;
   color: var(--text-1);
   font-family: inherit;
-  font-size: var(--sp-label-type);
-}
-
-.spaces-region__name-input:focus,
-.spaces-region__name-input:focus-visible {
-  outline: none;
-  border: 0;
-  box-shadow: none;
-}
-
-/* ---- phone: "Exit Spaces / Regions" as a red word, not a band ---------- */
-.spaces-list__exit {
-  appearance: none;
-  display: flex;
-  align-items: center;
-  width: 100%;
-  min-height: var(--sp-row-h);
-  padding: 0 var(--sp-edge);
-  background: transparent;
-  border: 0;
-  color: var(--danger-text);
-  font-family: inherit;
-  font-size: var(--sp-label-type);
+  font-size: 11px;
   font-weight: 600;
-  text-align: left;
+  line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  transition: color 90ms ease-out;
 }
 
-.spaces-list__exit:active {
-  color: var(--danger);
+.spaces-panel__exit-chip > svg {
+  color: var(--text-3);
 }
 
-/* ---- hover: desktop pointer only, ink brightens, never a box ----------- */
+/* ---- the Export menu (portalled; AnchoredPopover hangs it under Export) -- */
+.spaces-export--menu {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translate(-50%, 0);
+  margin-top: 2px;
+  min-width: 168px;
+  padding: 4px;
+  box-sizing: border-box;
+  display: grid;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow-popover);
+  font-family: var(--font-ui);
+}
+
+/* ---- "Export <space>": desktop menu under Export, phone sheet ----------- */
+.spaces-export--menu {
+  left: auto;
+  right: -40px;
+  transform: none;
+  width: 236px;
+}
+
+.spaces-export__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 8px;
+}
+
+.spaces-export__head > strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-1);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.spaces-export__close {
+  appearance: none;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--text-2);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.spaces-export__label {
+  padding: 4px 8px 2px;
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.spaces-export__spaces {
+  display: grid;
+  max-height: 168px;
+  overflow-y: auto;
+}
+
+.spaces-export__space {
+  appearance: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 16px;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 8px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.spaces-export__space > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spaces-export__space > small {
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+/* The chosen space: brighter ink and a gold check - never a gold box. */
+.spaces-export__space.is-chosen {
+  color: var(--text-1);
+}
+
+.spaces-export__space.is-chosen > svg {
+  color: var(--accent);
+}
+
+.spaces-export__actions {
+  display: grid;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.spaces-export__action {
+  appearance: none;
+  display: grid;
+  gap: 1px;
+  min-height: 32px;
+  padding: 4px 8px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.spaces-export__action > small {
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 400;
+}
+
+.spaces-export__space:active,
+.spaces-export__action:not(:disabled):active {
+  background: var(--pressed);
+}
+
+/* Phone: a small sheet of its own over the Spaces sheet, standing on the dock
+   like every phone sheet (bottom: --mobile-dock-bar-height). */
+.spaces-export-sheet__backdrop {
+  position: fixed;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  background: rgba(0, 0, 0, 0.32);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.spaces-export-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--mobile-dock-bar-height, 0px);
+  max-height: calc(100dvh - var(--mobile-dock-bar-height, 0px) - 64px);
+  overflow-y: auto;
+  padding: 6px 12px 12px;
+  box-sizing: border-box;
+  background: var(--sheet-bg);
+  border-radius: 14px 14px 0 0;
+  box-shadow: var(--shadow-sheet);
+  font-family: var(--font-ui);
+}
+
+.spaces-export-sheet .spaces-export__head {
+  min-height: 44px;
+  padding: 0 4px;
+}
+
+.spaces-export-sheet .spaces-export__head > strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.spaces-export-sheet .spaces-export__close {
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 13px;
+  text-align: right;
+}
+
+.spaces-export-sheet .spaces-export__label {
+  padding: 6px 4px 6px;
+  font-size: 12px;
+}
+
+.spaces-export-sheet .spaces-export__spaces {
+  max-height: 220px;
+  background: var(--panel-well);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.spaces-export-sheet .spaces-export__space {
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 0;
+  font-size: 14px;
+}
+
+.spaces-export-sheet .spaces-export__space + .spaces-export__space {
+  border-top: 1px solid var(--border);
+}
+
+.spaces-export-sheet .spaces-export__space > small {
+  font-size: 12px;
+}
+
+.spaces-export-sheet .spaces-export__actions {
+  margin-top: 12px;
+  padding-top: 0;
+  background: var(--panel-well);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.spaces-export-sheet .spaces-export__action {
+  min-height: 52px;
+  padding: 8px 12px;
+  border-radius: 0;
+  font-size: 14px;
+}
+
+.spaces-export-sheet .spaces-export__action + .spaces-export__action {
+  border-top: 1px solid var(--border);
+}
+
+.spaces-export-sheet .spaces-export__action > small {
+  font-size: 12px;
+}
+
+/* ---- the active space outside the panel (Spaces chunk B) ---------------
+   "Space 2 · 3 pages  x": desktop tool bar (left of Export) and the phone's
+   top area (src/AppShell.jsx, src/mobile/MobilePdfViewerChrome.jsx). The
+   words open the Spaces panel; x turns the space off. */
+.active-space-chip {
+  display: inline-flex;
+  align-items: stretch;
+  max-width: 220px;
+  height: 22px;
+  box-sizing: border-box;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-1);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.active-space-chip__open,
+.active-space-chip__off {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.active-space-chip__open {
+  gap: 5px;
+  min-width: 0;
+  padding: 0 2px 0 8px;
+}
+
+.active-space-chip__open > svg {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
+.active-space-chip__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.active-space-chip__meta {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.active-space-chip__off {
+  flex: 0 0 auto;
+  padding: 0 7px 0 4px;
+  color: var(--text-3);
+}
+
+.active-space-chip__off:active,
+.active-space-chip__open:active {
+  color: var(--text-1);
+}
+
 @media (hover: hover) and (pointer: fine) {
-  .spaces-item__row:hover {
+  .active-space-chip__off:hover { color: var(--text-1); }
+  .active-space-chip__open:hover .active-space-chip__name { text-decoration: underline; text-underline-offset: 2px; }
+}
+
+/* Survey panel header mirror (src/SurveySpacesRail.jsx): the space new
+   Survey Markers are tagged with, read-only. */
+.survey-active-space {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
+  align-self: center;
+  padding: 3px 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--surface-3);
+  border-radius: 999px;
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* ---- line states: the Survey rows' (surveyRailPanel.css ROW STATES) ----
+   A LINE is what the pointer is over and what is pressed, so the line paints
+   the states edge to edge: --pressed while the line itself is held (a space
+   line's empty part, count or fold arrow; a region line's page number or
+   name), never while one of its controls is (switch, name field, glyphs,
+   grip - they answer on their own). A region name or page number button
+   also takes the shared press plate (states.css rule 1), the same
+   --pressed, so the press reads as one line, never part of it. Picking a
+   space up is the shared lift (states.css [data-drag-lifted]). */
+.space-card__head:active:not(:has(input:active, [role='switch']:active, .space-card__icon:active, [data-drag-rearrange-handle]:active)) {
+  background: var(--pressed);
+}
+.space-region-card:has(> .spaces-region__page:active, .spaces-region__label:active) {
+  background: var(--pressed);
+}
+
+/* ---- hover: desktop pointer only; a line takes --hover, ink brightens --- */
+@media (hover: hover) and (pointer: fine) {
+  .space-card__head:hover,
+  .space-region-card:hover {
     background: var(--hover);
   }
-  .spaces-item.is-dragging .spaces-item__row:hover {
-    background: transparent;
-  }
-  .spaces-panel__head-btn:not(:disabled):hover,
-  .spaces-item__icon:not(:disabled):not(.spaces-item__delete):not(.is-editing):not(.is-on):hover,
-  .spaces-region__label:hover,
-  .spaces-item__add-go:not(.has-value):hover {
+  .space-card__chevron:hover,
+  .space-card__icon:not([aria-disabled='true']):hover,
+  .spaces-region__page:hover,
+  .space-card__add-go:hover {
     color: var(--text-1);
   }
-  .spaces-item__add-go.has-value:hover {
-    color: var(--accent-light);
+  .space-card__delete:hover {
+    color: var(--danger-text);
   }
-  .spaces-item__icon:not(:disabled):hover > svg,
-  .spaces-panel__head-btn:not(:disabled):hover svg {
+  input[type="text"].space-card__name:hover:not(:focus),
+  .spaces-region__label:hover {
+    border-bottom-color: var(--border-strong);
+  }
+  .spaces-export__space:hover,
+  .spaces-export__action:not(:disabled):hover {
+    background: var(--hover);
+  }
+  .spaces-panel__exit-chip:hover > svg {
+    color: var(--text-1);
+  }
+  .space-card__icon:not([aria-disabled='true']):hover > svg {
     transform: scale(1.1);
   }
-  .spaces-item__icon > svg {
+  .space-card__icon > svg {
     transition: transform 120ms ease-out;
   }
-  .spaces-list__exit:hover {
-    color: var(--danger);
-  }
 }
-/* ===== end SPACES PANEL — ONE LIST, DIVIDED ===== */
+/* ===== end SPACES PANEL — CARDS ===== */
 
 .survey-marker-expand-spacer {
   flex: 1 1 auto;
@@ -1616,8 +2312,9 @@ input[type="text"].spaces-item__add-input:focus-visible {
 }
 
 .survey-unplaced-dismiss-all:hover {
-  border-color: var(--accent);
-  background: var(--accent-soft-strong);
+  /* Survey calm gold (2026-10-01): hovers are the house --hover, never gold. */
+  color: var(--text-1);
+  background: var(--hover);
 }
 
 .survey-unplaced-notice {
@@ -1762,9 +2459,9 @@ input[type="text"].spaces-item__add-input:focus-visible {
      panel, so the edge is decoration (tokens.css revision 4). */
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: var(--surface-1);
+  background: var(--surface-3);
   color: var(--text-2);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
+  box-shadow: var(--shadow-popover);
   font-size: 11px;
   line-height: 1.35;
   opacity: 0;
@@ -1786,7 +2483,7 @@ input[type="text"].spaces-item__add-input:focus-visible {
   top: 100%;
   width: 8px;
   height: 8px;
-  background: var(--surface-1);
+  background: var(--surface-3);
   /* Matches the tooltip edge above; an arrow must never be a second grey. */
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
@@ -1837,8 +2534,8 @@ input[type="text"].spaces-item__add-input:focus-visible {
 }
 
 .survey-marker-review-tooltip-actions button:hover {
-  border-color: var(--accent);
-  background: var(--accent-soft-strong);
+  color: var(--text-1);
+  background: var(--hover);
 }
 
 .survey-marker-leading-control {
@@ -1888,19 +2585,20 @@ input[type="text"].spaces-item__add-input:focus-visible {
 }
 
 .survey-marker-leading-check.is-selected .survey-marker-leading-checkbox {
-  border-color: var(--accent);
-  background: var(--accent);
+  /* Survey calm gold: a ticked box is bright ink, not gold. */
+  border-color: var(--text-1);
+  background: var(--text-1);
 }
 
 .survey-marker-leading-checkmark {
-  color: var(--accent-text);
+  color: var(--surface-1);
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
 }
 
 .survey-marker-leading-check:focus-visible {
-  outline: 1px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -1927,7 +2625,7 @@ input[type="text"].spaces-item__add-input:focus-visible {
   margin-bottom: 0;
   background: transparent;
   border: 0;
-  color: var(--accent);
+  color: var(--text-1);
   border-radius: 2px;
   padding: 2px 4px;
   font-family: inherit;
@@ -1948,11 +2646,9 @@ input[type="text"].spaces-item__add-input:focus-visible {
   margin-bottom: 0;
 }
 
-/* UX: the hover IS the warm wash. The `color: var(--accent)` this rule used to
-   repeat is the resting colour, so it painted nothing; a declaration that
-   cannot change anything is dead weight in a hover rule. */
+/* Survey calm gold (2026-10-01): the hover is the house --hover plate. */
 .survey-marker-select-mode-toggle:hover {
-  background: var(--accent-soft);
+  background: var(--hover);
 }
 
 .survey-marker-select-action {
@@ -1975,9 +2671,8 @@ input[type="text"].spaces-item__add-input:focus-visible {
 }
 
 .survey-marker-select-action:hover:not(:disabled) {
-  border-color: var(--accent);
   color: var(--text-1);
-  background: var(--accent-soft);
+  background: var(--hover);
 }
 
 /* A disabled control is the quietest thing on the panel: the subtle edge, to
@@ -2031,133 +2726,10 @@ input[type="text"].spaces-item__add-input:focus-visible {
   flex-wrap: nowrap;
 }
 
-.survey-marker-category-select-button {
-  height: 24px;
-  flex: none;
-  padding: 0 10px;
-  /* UX: rests one surface step below its own hover, so the fill lifts
-     --surface-2 -> --surface-3 under the pointer. It used to declare
-     --surface-3 on both sides, which painted nothing. */
-  background: var(--surface-2);
-  /* A FILLED button, not an outlined one — the fill above is its definition and
-     it lifts a whole surface step on hover, so the edge is decoration. */
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  color: var(--text-2);
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.survey-marker-category-select-button:hover {
-  border-color: var(--accent);
-  color: var(--text-1);
-  background: var(--hover);
-}
-
-.survey-marker-category-create-button {
-  width: 32px;
-  height: 24px;
-  flex: 0 0 32px;
-  padding: 0;
-  background: var(--accent);
-  border: 1px solid var(--accent);
-  border-radius: 5px;
-  color: var(--accent-text);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* UX: a gold control hovers UP to --accent-light and presses DOWN to
-   --accent-press (tokens.css "HOW STATES ARE BUILT"). These used to darken on
-   hover, which reads as already-pressed; .auth-submit-btn had it right. */
-.survey-marker-category-create-button:hover {
-  background: var(--accent-light);
-  border-color: var(--accent-light);
-}
-
-/* Compact survey EXPORT control — lives at the right end of the Select row
-   (where the create-category plus button used to be; the plus moved down to
-   the "Categories" heading row). Height is locked to 24px so it matches
-   .survey-marker-category-create-button exactly. Replaces the old
-   bottom-pinned EXPORT bar: the panel bottom now belongs to the zoom cluster,
-   so the export dropdown opens DOWNWARD from this top-of-panel anchor
-   (same pattern as .spaces-header-export-menu in the left rail). */
-.survey-marker-export-compact-cluster {
-  position: relative;
-  flex: none;
-  display: inline-flex;
-  align-items: stretch;
-  height: 24px;
-}
-
-.survey-marker-export-compact-button {
-  height: 24px;
-  flex: none;
-  padding: 0 12px;
-  background: var(--accent);
-  border: 1px solid var(--accent-press);
-  border-radius: 5px;
-  color: var(--accent-text);
-  font-family: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  line-height: 1;
-  text-transform: uppercase;
-  cursor: pointer;
-  white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.survey-marker-export-compact-cluster .survey-marker-export-compact-button {
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
-  border-right: none;
-}
-
-.survey-marker-export-compact-chevron {
-  width: 22px;
-  height: 24px;
-  flex: 0 0 22px;
-  padding: 0;
-  background: var(--accent);
-  border: 1px solid var(--accent-press);
-  border-left: 1px solid rgba(0, 0, 0, 0.15);
-  border-radius: 0 5px 5px 0;
-  color: var(--accent-text);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-/* UX: a gold control hovers UP to --accent-light and presses DOWN to
-   --accent-press (tokens.css "HOW STATES ARE BUILT"). These used to darken on
-   hover, which reads as already-pressed; .auth-submit-btn had it right. */
-.survey-marker-export-compact-button:hover:not(:disabled),
-.survey-marker-export-compact-chevron:hover:not(:disabled) {
-  background: var(--accent-light);
-  border-color: var(--accent-light);
-}
-
-.survey-marker-export-compact-button:disabled,
-.survey-marker-export-compact-chevron:disabled {
-  background: var(--disabled-fill);
-  border-color: var(--border);
-  color: var(--text-disabled);
-  cursor: not-allowed;
-}
-
+/* Survey calm gold (2026-10-01): the solid-gold legacy "Select" category
+   button, "+" create-category button and EXPORT compact button/chevron rules
+   were deleted - no element has carried those classes since d6a578e (the
+   desktop Survey panel rebuild). The export menu below is still live. */
 .survey-marker-export-compact-menu {
   position: absolute;
   top: calc(100% + 6px);
@@ -2168,8 +2740,9 @@ input[type="text"].spaces-item__add-input:focus-visible {
   background: var(--surface-3);
   /* A menu: its own surface plus a drop shadow separate it — subtle edge. */
   border: 1px solid var(--border);
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  /* The one popup corner and shadow (polish 3). */
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
 }
 
 .spaces-header-export-menu {
@@ -2181,10 +2754,10 @@ input[type="text"].spaces-item__add-input:focus-visible {
   flex-direction: column;
   width: max-content;
   overflow: hidden;
-  background: var(--surface-1);
+  background: var(--surface-3);
   border: 1px solid var(--border);
   border-radius: 6px;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-popover);
 }
 
 .spaces-header-export-menu-button {
@@ -2214,13 +2787,10 @@ input[type="text"].spaces-item__add-input:focus-visible {
   transition: background 0.15s ease, opacity 0.15s ease;
 }
 
-/* UX 2026-09-17 (owner ruling: a selected thing does not get a warm fill). A
-   category card is a ROW, not a tool button, so it keeps the approved row cue —
-   the gold edge it already carries in its resting 1px border — and drops the
-   warm wash behind it. tokens.css: "--accent-soft ... never on a whole row or
-   panel, because a large warm wash is how the rejected brown happened." */
+/* Survey calm gold (2026-10-01): a chosen category card is a neutral edge;
+   gold is kept for the ARMED category (its top-bar disc and rail-row edge). */
 .survey-marker-category-card.is-active {
-  border-color: var(--accent);
+  border-color: var(--border-strong);
 }
 
 .survey-marker-category-row {
@@ -2352,7 +2922,7 @@ input[type="text"].spaces-item__add-input:focus-visible {
 
 .survey-marker-entity-trigger:focus,
 .survey-marker-entity-trigger[aria-expanded="true"] {
-  border-color: var(--accent);
+  border-color: var(--border-strong);
   box-shadow: 0 0 0 2px var(--focus);
 }
 
@@ -2421,7 +2991,7 @@ input[type="text"].spaces-item__add-input:focus-visible {
   /* A menu: its own surface plus a drop shadow separate it — subtle edge. */
   border: 1px solid var(--border);
   border-radius: 5px;
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.38);
+  box-shadow: var(--shadow-popover);
   isolation: isolate;
 }
 
@@ -2446,13 +3016,11 @@ input[type="text"].spaces-item__add-input:focus-visible {
   color: var(--text-1);
 }
 
-/* UX 2026-09-17 (revision-2 palette, owner approved): a selected row is a real
-   surface step plus a 2px gold edge, never the old #2a2218 warm wash. The edge
-   is an inset shadow rather than a border so the row's box never changes size —
-   a real border here would shift every label by 2px on selection. */
+/* Survey calm gold (2026-10-01): the current entity is bright ink on a
+   surface step - no gold edge (gold is kept for the armed category). */
 .survey-marker-entity-option.is-selected {
   background: var(--surface-3);
-  box-shadow: inset 2px 0 var(--accent);
+  box-shadow: none;
   color: var(--text-1);
 }
 
@@ -2473,44 +3041,6 @@ input[type="text"].spaces-item__add-input:focus-visible {
      re-centers and visibly jiggles every icon on each tool switch.
      Keep the full 1px transparent border, not just border-color. */
   border: 1px solid transparent;
-}
-
-/* Action Card Buttons */
-.btn-card {
-  padding: 16px 24px;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  font-family: inherit;
-}
-
-.btn-card:hover {
-  background: var(--hover);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  border-color: var(--accent);
-}
-
-.btn-card:active {
-  transform: translateY(0);
-}
-
-.btn-card .icon {
-  font-size: 24px;
-  line-height: 1;
-}
-
-.btn-card .label {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-1);
 }
 
 /* Remove spin buttons from number inputs */
@@ -2582,8 +3112,11 @@ input[type="text"].spaces-item__add-input:focus-visible {
    INSET twin — the box-shadow halo used where an outline would be clipped by
    an ancestor's overflow (THEME SHADOWS.focus, modal.hoverGlow, the print
    panel's --pp-accent-glow, the phone sheets). */
+/* Owner 2026-10-02 (Test 13: "when it collapsed, it put a gold ring around
+   the dropdown. I don't want that gold ring"): the ring is calm light grey,
+   not gold. --text-2 is opaque and reads past 3:1 on every surface. */
 :focus-visible {
-  outline: 2px solid var(--accent) !important;
+  outline: 2px solid var(--text-2) !important;
   outline-offset: 2px;
 }
 
@@ -2655,43 +3188,41 @@ textarea:focus-visible,
   cursor: crosshair;
 }
 
-/* UX: top tool groups use the sub-toolbar's neutral hover; gold remains
-   the active/focus cue rather than making an idle hover look selected. */
-/* UX: include Pan/Select icon buttons and active tools; every hover keeps
-   the same neutral chip and fixed baseline as the sub-toolbar. */
-/* w44 (rows flipped): a group's tools now sit in the tool bar beside the group
-   icons, so they answer the pointer exactly as those icons do — one hover look
-   across the whole bar.
-   w46 (owner 2026-09-26: select modes in top bar): Select's Box / Lasso / Text
-   modes are tools in that same spot, so they share every rule here. */
-.btn[data-tool-group]:hover:not(:disabled),
-#chrome-subtools-host .btn:hover:not(:disabled),
-[data-select-mode-toggle] .btn:hover:not(:disabled) {
-  background: var(--hover);
-  border-color: var(--border);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  transform: none;
+/* Drawboard rule 11 (owner 2026-10-02, utils/selectModes.js): while the
+   selection is being moved, resized or rotated its frame and handles step out
+   of the way, and come back on release. Opacity (not display) so the grabber
+   being dragged keeps its pointer capture. */
+[data-selection-gesture="true"] .svg-selection-overlay,
+[data-selection-gesture="true"] [data-group-selection-bbox],
+[data-selection-gesture="true"] [data-callout-handle-overlay] {
+  opacity: 0;
 }
 
-/* UX (polish round 4): the ACTIVE tool inside a sub-toolbar (Pen, Rectangle,
-   Text…) hovers with the same neutral plate as its idle siblings and as the
-   top row, so every button in a row answers the pointer the same way. Gold
-   stays the active cue; the border stays 1px so the box never jiggles. */
-#chrome-sub-toolbar-host .btn-active:hover:not(:disabled),
-#chrome-subtools-host .btn-active:hover:not(:disabled),
-[data-select-mode-toggle] .btn-active:hover:not(:disabled) {
+/* Owner 2026-10-04 (own tool group only): under a tool that may not grab the
+   picked mark (the Draw group, or a group tool over another group's pick) the
+   pick's handles and pads take no presses — the press is the tool's, so a
+   stroke or an erase that starts on a handle still draws / erases. */
+[data-selection-chrome-inert="true"] :is([data-resize-handle], [data-handle-hit-pad], [data-rotation-handle], [data-rotation-handle] *, [data-callout-handle-overlay] *) {
+  pointer-events: none !important;
+}
+
+/* Owner 2026-10-02 (test plan U2, "it gets a grey box around it"): the tool
+   bar's icons - Pan, Select, the group icons, every tool beside them, Select's
+   Box / Lasso / Text and the Areas tools - no longer paint a hover plate, a
+   hover edge, a drop shadow or a pressed fill. Each of them is an icon button,
+   and src/styles/states.css section 5 (CHROME ICON BUTTONS) is their whole
+   hover / press / chosen look: the glyph grows on hover, tightens on press, and
+   an armed tool is a gold glyph. The three rules that used to live here (a
+   neutral --hover plate with a border and shadow, the same on the armed tool,
+   and a --pressed fill) are gone rather than overridden.
+   The settings row under the bar keeps its own: its word toggles are not
+   icons, and an armed one still answers the pointer with the neutral plate. */
+#chrome-sub-toolbar-host .btn-active:hover:not(:disabled) {
   background: var(--hover);
   border-color: var(--border);
 }
 
-/* UX 2026-09-22: declared AFTER both tool-group hover rules, because the two
-   have identical specificity and the later one wins — with the press first,
-   measuring a real tool button in the app showed --hover under the finger, not
-   --pressed. Verified live at 1440x900 after the move. */
-.btn[data-tool-group]:active:not(:disabled),
-#chrome-sub-toolbar-host .btn-active:active:not(:disabled),
-#chrome-subtools-host .btn:active:not(:disabled),
-[data-select-mode-toggle] .btn:active:not(:disabled) {
+#chrome-sub-toolbar-host .btn-active:active:not(:disabled) {
   background: var(--pressed);
   border-color: var(--border);
 }
@@ -2741,10 +3272,25 @@ textarea:focus-visible,
   animation: surveySurfaceInFromLeft 140ms cubic-bezier(0.33, 1, 0.68, 1);
 }
 
+/* The left rail's panel closing (owner 2026-10-07): the same 140ms in
+   reverse - it fades and slides 6px back into the rail. */
+@keyframes surveySurfaceOutToLeft {
+  from { opacity: 1; translate: 0 0; }
+  to { opacity: 0; translate: -6px 0; }
+}
+
+.survey-surface-out-left {
+  animation: surveySurfaceOutToLeft 140ms cubic-bezier(0.32, 0, 0.67, 0) forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .survey-surface-in,
   .survey-surface-in-left {
     animation: none;
+  }
+  .survey-surface-out-left {
+    animation: none;
+    opacity: 0;
   }
 }
 
@@ -2814,3 +3360,147 @@ textarea:focus-visible,
 }
 .chrome-history:not(:disabled):hover { background: var(--hover); border-color: transparent; }
 .chrome-history:not(:disabled):active { background: var(--pressed); }
+
+/* PHONE TOASTS (owner report 2026-09-30: a Spaces error toast sat half behind
+   the status bar and the top bar, only "...exists. Please choose a different
+   name." readable). ToastHost portals to <body>; on a phone the stack sits at
+   the TOP, just under the app's top bar, so the dock, the bottom sheets and the
+   on-screen keyboard can never cover it.
+   --app-toast-chrome-bottom is the measured bottom edge of the visible top bar
+   (ToastHost sets it on the host each time the stack changes). The fallbacks
+   mirror the bars' own rules: home header 96px (hub.css --mobile-header-h),
+   viewer header 34px, each below env() on the web / Capacitor and flush with
+   the top inside the Expo shell, which pads its WebView natively.
+   The max() floor with the safe-area insets covers a shell whose WebView runs
+   UNDER the status bar: the stack then still starts below the status bar even
+   if the bar itself did not clear it. (In today's Expo shell the published
+   --native-safe-area-top is only informational; at worst the floor lowers the
+   toast by a few px there.)
+   The stack spans the width (16px gutters) so a sentence wraps to 1-2 lines
+   instead of a 3-line column; `!important` beats the host's desktop inline
+   placement (bottom: 24, centred by translateX). Desktop is untouched. */
+@media screen and (max-width: 720px) {
+  .app-toast-host {
+    --app-toast-chrome-fallback: calc(env(safe-area-inset-top, 0px) + 96px);
+    top: calc(max(
+      var(--app-toast-chrome-bottom, var(--app-toast-chrome-fallback)),
+      var(--native-safe-area-top, 0px),
+      env(safe-area-inset-top, 0px)
+    ) + 8px) !important;
+    bottom: auto !important;
+    left: 16px !important;
+    right: 16px !important;
+    transform: none !important;
+    max-width: none !important;
+  }
+  html.survey-viewer-open .app-toast-host {
+    --app-toast-chrome-fallback: calc(var(--native-safe-area-top, env(safe-area-inset-top, 0px)) + 34px);
+  }
+  html[data-native-shell="expo"] .app-toast-host {
+    --app-toast-chrome-fallback: 96px;
+  }
+  html[data-native-shell="expo"].survey-viewer-open .app-toast-host {
+    --app-toast-chrome-fallback: 34px;
+  }
+}
+
+/* PHONE: the "Document locked" banner is `top: 0` (inline, for desktop), which
+   on the phone covered the viewer header (back / undo / redo, and it swallowed
+   their taps) and, outside the Expo shell, sat under the status bar. Hang it
+   from the bottom of the top chrome instead (--app-chrome-top, measured by
+   AppShell; it already includes the header's safe-area padding). */
+@media screen and (max-width: 720px) {
+  html.survey-viewer-open .document-lock-banner {
+    top: var(--app-chrome-top, 34px) !important;
+  }
+}
+
+/* Pages tab (desktop): the page's "..." menu button. Owner 2026-10-07 ("the
+   three dots in the bottom right-hand corner should be visible on all pages,
+   whether it's selected or not"): always shown, on the page's bottom-right
+   corner, as a small calm dot (muted ink on a see-through fill) so a strip of
+   30 pages does not look busy; hovered or open it firms up. */
+.pages-panel-more {
+  color: var(--text-2);
+}
+.pages-panel-more > span {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--surface-3) 82%, transparent);
+  box-shadow: 0 0 0 1px var(--border);
+  transition: background-color 0.12s ease, box-shadow 0.12s ease, color 0.12s ease;
+}
+.pages-panel-more:hover,
+.pages-panel-card.is-menu-open .pages-panel-more {
+  color: var(--text-1);
+}
+.pages-panel-more:hover > span,
+.pages-panel-card.is-menu-open .pages-panel-more > span {
+  background: var(--surface-3);
+  box-shadow: 0 0 0 1px var(--border-strong), 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+.pages-panel-more:focus-visible > span {
+  box-shadow: 0 0 0 2px var(--focus-ring, var(--accent));
+}
+@media (prefers-reduced-motion: reduce) {
+  .pages-panel-more > span { transition: none; }
+}
+
+/* Pages tab cards (owner 2026-10-07: "there's a gold box bigger than the
+   page. I want that gold box just to outline the page"). The card has no
+   selected fill or border: a selected page (desktop: the selection, one page =
+   the current page; phone: the current page, or a ticked page in Select mode)
+   has the gold outline around the page picture itself. */
+.pages-panel-card:hover:not([data-drag-placeholder]) {
+  background: var(--hover);
+}
+.pages-panel-card.is-selected [data-page-preview],
+.mobile-page-card.is-active .mobile-page-preview,
+.mobile-page-card.is-selected .mobile-page-preview {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Pages tab drag: the card a page was lifted from shows the app's one drag
+   slot - the quiet dashed outline - in the shape of the page, where the page
+   will land (its picture hidden: the lifted copy rides above). Other selected
+   pages carried along fade while they ride. */
+[data-page-card][data-drag-placeholder] > :not([data-page-preview]),
+[data-page-card][data-drag-placeholder] [data-page-preview] > * {
+  visibility: hidden;
+}
+[data-page-card][data-drag-placeholder] [data-page-preview] {
+  background: var(--drag-slot-bg) !important;
+  border-color: transparent !important;
+  outline: var(--drag-slot-border) !important;
+  outline-offset: 0 !important;
+}
+[data-page-card][data-drag-rider] {
+  opacity: 0.35;
+}
+/* The count on a stack of carried pages. */
+.pages-drag-count {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font: 600 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+/* Keyboard: a focused card shows where focus is (it is the drag target). */
+[data-page-card]:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: -2px;
+}
