@@ -17,16 +17,38 @@
  * goes from 120 to 480 (wider only ever added empty margin).
  *
  * Whatever the limits say, an open panel always leaves MIN_VIEWER_VISIBLE px
- * of the window for the document (a window narrowed later clamps the width
- * it shows; the stored width is kept for a wider window).
+ * of the window for the document beside whatever covers the RIGHT side too
+ * (the right rail, and the 320px Survey panel while it is open), and in
+ * Survey it stops short of the survey bar's centre group (batch-7 tablet
+ * check 2026-10-13: at 1024px with the Survey panel open the Pages panel
+ * could reach 480px, leaving ~130px of document and covering the bar's
+ * chips). A narrower window or a right panel opening later clamps the width
+ * it SHOWS; the stored width is kept and comes back when the room does.
  *
  * Pure apart from the two storage helpers, which take the Storage object and
  * never throw (private windows, blocked storage and quota errors all fall
  * back to the defaults).
  */
 
+import { SURVEY_BAR_PARTS, surveyRowWidth } from '../utils/responsiveToolbar.js';
+
 export const LEFT_RAIL_WIDTH = 48;
-export const MIN_VIEWER_VISIBLE = 360;
+/** The least document an open left panel leaves (about 40% of a 1024px iPad). */
+export const MIN_VIEWER_VISIBLE = 400;
+
+/**
+ * In Survey: what the survey bar must keep between the left panel's edge and
+ * its centre spot (the tool bar's centre, where the centre group is pinned):
+ * the bar's inset, the start piece's smallest look (template glyph + More),
+ * the gutter, and half of the centre's smallest steady look - four chips and
+ * "All N" on the tight gutter (planSurveyBar's ROW_STABLE_MIN), so the chips
+ * never run under the panel and the plan does not fall to its last resort.
+ */
+const P = SURVEY_BAR_PARTS;
+export const SURVEY_CENTRE_CLEARANCE = Math.ceil(
+  P.inset + P.templateGlyph + P.moreGap + P.more + P.gap
+  + surveyRowWidth({ count: 99, item: P.chip, gap: P.chipGapTight, allChip: P.allChip, max: 5 }) / 2,
+);
 export const PANEL_IDS = Object.freeze(['pages', 'search', 'bookmarks', 'spaces', 'history']);
 
 const WIDE = Object.freeze({ initial: 340, min: 280, max: 1200 });
@@ -53,14 +75,23 @@ export function panelWidthSpec(panelId) {
 /**
  * The widest a panel may be in a window `viewportWidth` px wide: its own max,
  * but never so wide that less than MIN_VIEWER_VISIBLE px of document is left
- * beside the rail. Never below the panel's min (a tiny window gets the min).
+ * between the left rail and `room.rightCover` (what covers the window's right
+ * side: the right rail, plus the Survey panel while it is open), and - with
+ * `room.surveyCentreX` (the survey bar's centre spot in window px, while the
+ * bar is up) - never within SURVEY_CENTRE_CLEARANCE of that spot. Never below
+ * the panel's min (a tiny window gets the min).
  */
-export function panelMaxWidth(panelId, viewportWidth) {
+export function panelMaxWidth(panelId, viewportWidth, room = null) {
   const spec = panelWidthSpec(panelId);
   const vw = Number(viewportWidth);
   if (!Number.isFinite(vw) || vw <= 0) return spec.max;
-  const room = Math.floor(vw - LEFT_RAIL_WIDTH - MIN_VIEWER_VISIBLE);
-  return Math.max(spec.min, Math.min(spec.max, room));
+  const rightCover = Math.max(0, Number(room?.rightCover) || 0);
+  let limit = Math.floor(vw - LEFT_RAIL_WIDTH - rightCover - MIN_VIEWER_VISIBLE);
+  const centreX = Number(room?.surveyCentreX);
+  if (room?.surveyCentreX != null && Number.isFinite(centreX)) {
+    limit = Math.min(limit, Math.floor(centreX - LEFT_RAIL_WIDTH - SURVEY_CENTRE_CLEARANCE));
+  }
+  return Math.max(spec.min, Math.min(spec.max, limit));
 }
 
 /**
@@ -68,16 +99,16 @@ export function panelMaxWidth(panelId, viewportWidth) {
  * is not a number) -> its initial width; any number, however small or
  * negative (a drag that ran off the window's left edge), -> its min.
  */
-export function clampPanelWidth(panelId, width, viewportWidth) {
+export function clampPanelWidth(panelId, width, viewportWidth, room = null) {
   const spec = panelWidthSpec(panelId);
   const n = width === null || width === undefined || width === '' ? NaN : Number(width);
   const value = Number.isFinite(n) ? n : spec.initial;
-  return Math.round(Math.min(panelMaxWidth(panelId, viewportWidth), Math.max(spec.min, value)));
+  return Math.round(Math.min(panelMaxWidth(panelId, viewportWidth, room), Math.max(spec.min, value)));
 }
 
 /** The width a drag of the panel's right edge from `startX` to `x` gives. */
-export function widthFromDrag({ panelId, startWidth, startX, x, viewportWidth }) {
-  return clampPanelWidth(panelId, Number(startWidth) + (Number(x) - Number(startX)), viewportWidth);
+export function widthFromDrag({ panelId, startWidth, startX, x, viewportWidth, room = null }) {
+  return clampPanelWidth(panelId, Number(startWidth) + (Number(x) - Number(startX)), viewportWidth, room);
 }
 
 /**
@@ -86,15 +117,15 @@ export function widthFromDrag({ panelId, startWidth, startX, x, viewportWidth })
  * to the narrowest / widest; Enter puts back the starting width (the
  * keyboard's double-click).
  */
-export function widthFromKey({ panelId, width, key, shiftKey = false, viewportWidth }) {
+export function widthFromKey({ panelId, width, key, shiftKey = false, viewportWidth, room = null }) {
   const spec = panelWidthSpec(panelId);
   const step = shiftKey ? KEYBOARD_STEP_LARGE : KEYBOARD_STEP;
   switch (key) {
-    case 'ArrowLeft': return clampPanelWidth(panelId, Number(width) - step, viewportWidth);
-    case 'ArrowRight': return clampPanelWidth(panelId, Number(width) + step, viewportWidth);
-    case 'Home': return clampPanelWidth(panelId, spec.min, viewportWidth);
-    case 'End': return panelMaxWidth(panelId, viewportWidth);
-    case 'Enter': return clampPanelWidth(panelId, spec.initial, viewportWidth);
+    case 'ArrowLeft': return clampPanelWidth(panelId, Number(width) - step, viewportWidth, room);
+    case 'ArrowRight': return clampPanelWidth(panelId, Number(width) + step, viewportWidth, room);
+    case 'Home': return clampPanelWidth(panelId, spec.min, viewportWidth, room);
+    case 'End': return panelMaxWidth(panelId, viewportWidth, room);
+    case 'Enter': return clampPanelWidth(panelId, spec.initial, viewportWidth, room);
     default: return null;
   }
 }
@@ -150,4 +181,37 @@ export function browserStorage() {
   } catch {
     return null;
   }
+}
+
+/*
+ * What covers the window beside the left panel, published by the chrome that
+ * owns it: SurveySpacesRail (`rightCover`: its 48px rail, + 320 while the
+ * Survey panel is drawn) and useSurveyBarFit (`surveyCentreX`: the survey
+ * bar's centre spot in window px while the bar is up, else null). PDFSidebar
+ * reads it (useSyncExternalStore) to limit the open panel's width.
+ */
+let sideRoom = Object.freeze({ rightCover: LEFT_RAIL_WIDTH, surveyCentreX: null });
+const sideRoomListeners = new Set();
+
+export function getSideRoom() {
+  return sideRoom;
+}
+
+export function subscribeSideRoom(listener) {
+  sideRoomListeners.add(listener);
+  return () => sideRoomListeners.delete(listener);
+}
+
+/** Merge `patch` in; listeners hear only a real change (whole px). */
+export function publishSideRoom(patch = {}) {
+  const next = { ...sideRoom };
+  if ('rightCover' in patch) next.rightCover = Math.max(0, Math.round(Number(patch.rightCover) || 0));
+  if ('surveyCentreX' in patch) {
+    const x = Number(patch.surveyCentreX);
+    next.surveyCentreX = patch.surveyCentreX == null || !Number.isFinite(x) ? null : Math.round(x);
+  }
+  if (next.rightCover === sideRoom.rightCover && next.surveyCentreX === sideRoom.surveyCentreX) return false;
+  sideRoom = Object.freeze(next);
+  sideRoomListeners.forEach((listener) => { try { listener(); } catch { /* a listener never breaks the others */ } });
+  return true;
 }

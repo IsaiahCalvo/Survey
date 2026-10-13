@@ -9,7 +9,7 @@
  * Publishes its width as the `--app-sidebar-width` CSS var; exposes an
  * `openSearchPanel` imperative handle. Rendered by App into the chrome host.
  */
-import React, { useState, useCallback, useImperativeHandle, lazy, Suspense } from 'react';
+import React, { useState, useCallback, useImperativeHandle, useSyncExternalStore, lazy, Suspense } from 'react';
 import Icon from './Icons';
 import PagesPanel from './sidebar/PagesPanel';
 // Lazy so pdf.js (statically imported by SearchTextPanel for text-layer rendering)
@@ -32,9 +32,11 @@ import {
   DEFAULT_PANEL_LAYOUT,
   browserStorage,
   clampPanelWidth,
+  getSideRoom,
   panelMaxWidth,
   panelWidthSpec,
   readPanelLayout,
+  subscribeSideRoom,
   widthFromDrag,
   widthFromKey,
   writePanelLayout,
@@ -262,9 +264,14 @@ const PDFSidebar = React.forwardRef(({
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, [mobileMode]);
+  // What covers the window's right side (the right rail, the Survey panel)
+  // and, in Survey, the survey bar's centre spot: the panel stops short of
+  // both (panelLayoutStore.js panelMaxWidth).
+  const sideRoom = useSyncExternalStore(subscribeSideRoom, getSideRoom, getSideRoom);
   // The open panel's width: its remembered width, inside its limits for this
-  // window (a narrower window clamps what is shown, not what is stored).
-  const panelWidth = clampPanelWidth(activeTab, panelWidths[activeTab], viewportWidth);
+  // window (a narrower window or the Survey panel opening clamps what is
+  // shown, not what is stored).
+  const panelWidth = clampPanelWidth(activeTab, panelWidths[activeTab], viewportWidth, sideRoom);
   // Desktop (owner 2026-10-07, Drawboard rail): a closed panel stays drawn for
   // the slide that carries it back under the rail, instead of vanishing in
   // one frame. A timer, not animationend, ends it, so reduced motion (no
@@ -447,7 +454,7 @@ const PDFSidebar = React.forwardRef(({
   const handleResizePointerMove = useCallback((event) => {
     const drag = resizeDragRef.current;
     if (!drag || event.pointerId !== drag.pointerId) return;
-    const width = widthFromDrag({ ...drag, x: event.clientX, viewportWidth: window.innerWidth });
+    const width = widthFromDrag({ ...drag, x: event.clientX, viewportWidth: window.innerWidth, room: getSideRoom() });
     if (width === drag.width) return;
     drag.width = width;
     railElRef.current?.style.setProperty('--left-panel-w', `${width}px`);
@@ -461,7 +468,7 @@ const PDFSidebar = React.forwardRef(({
     commitPanelWidth(drag.panelId, drag.width);
   }, [commitPanelWidth]);
   const resetPanelWidth = useCallback(() => {
-    commitPanelWidth(activeTab, clampPanelWidth(activeTab, panelWidthSpec(activeTab).initial, window.innerWidth));
+    commitPanelWidth(activeTab, clampPanelWidth(activeTab, panelWidthSpec(activeTab).initial, window.innerWidth, getSideRoom()));
   }, [activeTab, commitPanelWidth]);
   const handleResizeKeyDown = useCallback((event) => {
     const width = widthFromKey({
@@ -470,6 +477,7 @@ const PDFSidebar = React.forwardRef(({
       key: event.key,
       shiftKey: event.shiftKey,
       viewportWidth: window.innerWidth,
+      room: getSideRoom(),
     });
     if (width === null) return;
     event.preventDefault();
@@ -943,7 +951,7 @@ const PDFSidebar = React.forwardRef(({
               aria-controls="left-rail-panel"
               aria-valuenow={panelWidth}
               aria-valuemin={panelWidthSpec(activeTab).min}
-              aria-valuemax={panelMaxWidth(activeTab, viewportWidth)}
+              aria-valuemax={panelMaxWidth(activeTab, viewportWidth, sideRoom)}
               tabIndex={0}
               data-left-rail-resize=""
               onPointerDown={handleResizePointerDown}

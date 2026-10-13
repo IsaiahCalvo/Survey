@@ -44,6 +44,7 @@ import SectionIconButton, { SectionIconActions, SelectModeButtons } from './comp
 import SharedTemplateBadge from './components/SharedTemplateBadge.jsx';
 import useSurveyRecents from './hooks/useSurveyRecents';
 import { SURVEY_LIST_SEARCH_FROM, surveyTemplateSections } from './utils/surveyPickLists.js';
+import { publishSideRoom } from './sidebar/panelLayoutStore.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -616,7 +617,10 @@ const SurveySpacesRail = ({
       '--app-right-rail-width',
       mobileMode ? '0px' : `${desktopSurveyPanelShown ? 48 + 320 : 48}px`,
     );
+    // The left panel's width limit reads the same cover (panelLayoutStore.js).
+    publishSideRoom({ rightCover: mobileMode ? 0 : (desktopSurveyPanelShown ? 48 + 320 : 48) });
   }, [mobileMode, desktopSurveyPanelShown]);
+  useEffect(() => () => { publishSideRoom({ rightCover: 48 }); }, []);
   const [openEntityDropdownId, setOpenEntityDropdownId] = useState(null);
   // The template switcher (owner 2026-10-01, "hybrid" design): the template
   // name in the panel header is a button. Phone: it swaps the category list
