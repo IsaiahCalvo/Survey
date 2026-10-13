@@ -44,7 +44,10 @@ test('creation previews render the commit JSON, never a dashed placeholder', () 
 
 test('line and arrow take click-move-click; rect and ellipse stay drag-only', () => {
   assert.match(layer, /const CLICK_PLACE_SHAPE_TOOLS = \['line', 'arrow'\];/);
-  assert.match(layer, /const CLICK_PLACE_MAX_TRAVEL_PX = 4;/);
+  // (2026-10-13, Drawboard audit C4) a click is a press that never passed the
+  // shared shape drag threshold (utils/dragThreshold.js), not one under 4 px.
+  assert.match(layer, /import \{ hasPassedShapeDragThreshold \} from '\.\.\/utils\/dragThreshold\.js';/);
+  assert.match(layer, /if \(clicked && CLICK_PLACE_SHAPE_TOOLS\.includes\(state\.tool\)\) \{/);
   // Escape cancels a shape draft; a tool switch drops a draft of another tool.
   assert.match(layer, /const shapeDraftActive = /);
   assert.match(layer, /shapeCreationRef\.current\.tool !== activeTool/);

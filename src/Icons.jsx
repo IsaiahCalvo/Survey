@@ -277,6 +277,16 @@ const ICON_RENDERERS = {
         <rect x="3" y="18" width="4" height="4" rx="1" stroke={color} strokeWidth="1.5" data-icon-source="hugeicons" />
       </svg>
     ),
+    // Owner 2026-10-13: the Survey Marker group's Smart fill (shown only while
+    // a provider is registered, src/survey/markerShapeProviders.js). Lucide
+    // paint-bucket (ISC) at the house 1.5 stroke.
+    paintBucket: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M19 11L11 3L2.4 11.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M5 2L10 7M2 13H17" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
     listChecks: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <path d="M3 7L5 9L9 5M3 17L5 19L9 15" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -1154,6 +1164,13 @@ const ICON_RENDERERS = {
         <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.5" /><circle cx="12" cy="8" r="1" fill={color} /><path d="M12 11V16" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
+    /* KAL-444: the keyboard shortcuts sheet's button (viewer left rail). Same
+       1.5 stroke and rounded corners as the rest of the chrome set. */
+    keyboard: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
+        <rect x="2.75" y="5.75" width="18.5" height="12.5" rx="1.39" stroke={color} strokeWidth="1.5" /><path d="M6.5 9.5H7M10 9.5H10.5M13.5 9.5H14M17 9.5H17.5M6.5 12.25H7M10 12.25H10.5M13.5 12.25H14M17 12.25H17.5M8.5 15H15.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
     lightbulbOn: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
         <path d="M14.5 19.5H9.5M14.5 19.5C14.5 18.7865 14.5 18.4297 14.5381 18.193C14.6609 17.4296 14.6824 17.3815 15.1692 16.7807C15.3201 16.5945 15.8805 16.0927 17.0012 15.0892C18.5349 13.7159 19.5 11.7206 19.5 9.5C19.5 5.35786 16.1421 2 12 2C7.85786 2 4.5 5.35786 4.5 9.5C4.5 11.7206 5.4651 13.7159 6.99876 15.0892C8.11945 16.0927 8.67987 16.5945 8.83082 16.7807C9.31762 17.3815 9.3391 17.4296 9.46192 18.193C9.5 18.4297 9.5 18.7865 9.5 19.5M14.5 19.5C14.5 20.4346 14.5 20.9019 14.299 21.25C14.1674 21.478 13.978 21.6674 13.75 21.799C13.4019 22 12.9346 22 12 22C11.0654 22 10.5981 22 10.25 21.799C10.022 21.6674 9.83261 21.478 9.70096 21.25C9.5 20.9019 9.5 20.4346 9.5 19.5" stroke={color} strokeWidth="1.5" />
@@ -1188,6 +1205,20 @@ const ICON_RENDERERS = {
     userRole: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
         <circle cx="9" cy="8" r="3.5" stroke={color} strokeWidth="1.5" /><path d="M2 20A7 7 0 0 1 16 20M17 12H22M22 8L17 16" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+    // Pencil-only setting (drawboardAudit C2, Drawboard's "Annotate with
+    // Pencil or Touch / Pencil only"): a pointing finger = touch draws too;
+    // a plain pencil = only a pen draws. Lucide pointer / pencil at the house
+    // 1.5 stroke - neither is the Draw group's pen nor the Pan hand.
+    touchDraw: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
+        <path d="M22 14a8 8 0 0 1-8 8M18 11v-1a2 2 0 0 0-4 0M14 10V9a2 2 0 0 0-4 0v1M10 9.5V4a2 2 0 0 0-4 0v10M18 11a2 2 0 1 1 4 0v3a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+    pencilOnly: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
+        <path d="M21.17 6.81a1 1 0 0 0-3.98-3.98L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5zM15 5l4 4" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
 };

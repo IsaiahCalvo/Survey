@@ -16,6 +16,7 @@
 import Dashboard from './Dashboard';
 import DocumentLockBanner from './components/DocumentLockBanner.jsx';
 import Icon from './Icons';
+import SurveyMarkerModeTools from './survey/SurveyMarkerModeTools.jsx';
 import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
 import SaveLogBanner from './components/SaveLogBanner';
 import QuietLoading, { openingLabel } from './components/QuietLoading';
@@ -28,8 +29,9 @@ import BodyPortal from './components/BodyPortal.js';
 import AnchoredPopover from './components/AnchoredPopover';
 import ToolbarOverflowMenu from './components/ToolbarOverflowMenu';
 import useResponsiveToolbar from './hooks/useResponsiveToolbar.js';
+import usePhoneLayout from './hooks/usePhoneLayout.js';
 import useLoadoutTransition, { useDropInRow, useLeavingRow, useRowCrossfade } from './hooks/useLoadoutTransition.js';
-import { PHONE_LAYOUT_MAX_WIDTH, placeUnderOpenerAvoiding, slotDefinition, TEXT_ROW_CAPTION_ROOM, TEXT_ROW_PARTS, textRowLook, TIGHT_SPACING } from './utils/responsiveToolbar.js';
+import { placeUnderOpenerAvoiding, slotDefinition, TEXT_ROW_CAPTION_ROOM, TEXT_ROW_PARTS, textRowLook, TIGHT_SPACING } from './utils/responsiveToolbar.js';
 import { recentPressedControl, registerLightPopover } from './components/dismissRules.js';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from './utils/annotationSize';
 // The two document rails (PDFSidebar, SurveySpacesRail) load with the viewer,
@@ -64,6 +66,8 @@ import { getLiveZoomViewerId, isLiveZoomEventForViewer, LIVE_ZOOM_EVENT } from '
 import { useAuth } from './contexts/AuthContext';
 import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import useStableHandler from './hooks/useStableHandler.js';
+import useFileDropZone from './hooks/useFileDropZone.js';
+import FileDropOverlay from './components/FileDropOverlay.jsx';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { useOptionalAuth } from './components/OptionalAuthPrompt';
 import { useStorage, useTemplates } from './hooks/useDatabase';
@@ -72,9 +76,10 @@ import { composeTextColor, splitTextColor } from './utils/textColorOpacity';
 import { CHROME_GLYPH, FONT_FAMILY, RAIL_CARET, RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_SPLIT_CONTROL_W, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
 // Owner 2026-09-22: undo/redo draw at 14 (the phone's HISTORY_GLYPH) - see MobilePdfViewerChrome.
 const HISTORY_GLYPH = 14;
-import { TooltipContext, makeTooltipBinding } from './components/Tooltip';
+import { TooltipContext, TooltipProvider, makeTooltipBinding } from './components/Tooltip';
 import { useViewerTopOverlayRef } from './utils/viewerTopOverlay.js';
 import DismissBarrier from './components/DismissBarrier.jsx';
+import PencilModeControl, { usePencilMode } from './components/PencilModeControl.jsx';
 import { sanitizeZoomInput } from './utils/pageNavigationMath.js';
 import { showsColourRule, showsPaintSwatch, showsQuickColourDots } from './utils/toolbarColourGroup.js';
 import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, showsFormatRow } from './utils/toolbarRows.js';
@@ -762,34 +767,12 @@ export default function App({ devPreviewReturnTab = null }) {
   // input. Typing is clamped to 1-4000 (the PDF engine's zoom range).
   const [isEditingRailZoom, setIsEditingRailZoom] = useState(false);
 
-  // UX 2026-07-08 (mobile design pass): on narrow viewports (Capacitor phones,
-  // narrow browser windows) the top toolbar's absolutely-pinned clusters
-  // (undo/redo left, pan/select and tool-properties flanking the centered
-  // icons, zoom/page/fit/export right) collide and overlap. Below 720px the
-  // clusters flow inline instead and the zoom pill wraps onto its own row —
-  // same controls, stacked mobile layout per docs/design/design.md
-  // ("Adapting Other Surfaces").
-  const [isNarrowShell, setIsNarrowShell] = useState(() => (
-    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? window.matchMedia(`(max-width: ${PHONE_LAYOUT_MAX_WIDTH}px)`).matches
-      : false
-  ));
-  // Owner Test 41 (2026-10-04): the desktop rows now give ground step by step
-  // and fit every width above this switch (down to 554px with no side panel),
-  // so there is no width where the rails cover a control. The switch stays at
-  // 720px with the viewer's own touch surface (PdfjsViewerContainer) and the
-  // stylesheets' 720px phone rules; see PHONE_LAYOUT_MAX_WIDTH.
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
-    const mq = window.matchMedia(`(max-width: ${PHONE_LAYOUT_MAX_WIDTH}px)`);
-    const onChange = () => setIsNarrowShell(mq.matches);
-    if (mq.addEventListener) mq.addEventListener('change', onChange);
-    else mq.addListener(onChange);
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener('change', onChange);
-      else mq.removeListener(onChange);
-    };
-  }, []);
+  // Phone layout or desktop layout (owner 2026-10-13): the SCREEN decides —
+  // its short side under 600 CSS px is a phone, upright or sideways. Touch
+  // never decides (an iPad or a touchscreen laptop gets the desktop layout),
+  // and a desktop window dragged narrow stays desktop. One rule for the code
+  // and the stylesheets: utils/layoutMode.js.
+  const isNarrowShell = usePhoneLayout();
 
   // UX 2026-05-13: App-level bottom toolbar state. The chrome-bottom host
   // mounts with final rail dimensions as soon as a PDF tab is active; the active
@@ -850,6 +833,9 @@ export default function App({ devPreviewReturnTab = null }) {
     () => makeTooltipBinding(bottomToolbarApi?.setTooltip),
     [bottomToolbarApi?.setTooltip],
   );
+  // drawboardAudit C2: the right rail's Pencil-only switch (shown once a pen
+  // has been used on this device).
+  const { penSeen: pencilModeSeen, drawMode: pencilModeDrawMode } = usePencilMode();
 
   // UX 2026-07-14 (rail-footer redesign): page-fit mode glyphs shared by the
   // rail footer's fit trigger and its popup options. Hoisted to component
@@ -1720,6 +1706,19 @@ export default function App({ devPreviewReturnTab = null }) {
   const activeTab = tabs.find(t => t.id === activeTabId);
   const isViewerVisible = activeTab && !activeTab.isHome && selectedPDF && currentView === 'viewer';
   const isMobileViewer = Boolean(isNarrowShell && isViewerVisible);
+  // PDFs dragged in from the computer onto an open document (owner request
+  // 2026-10-13, as in Drawboard): uploaded the same way as the Upload button
+  // and each opened in a new tab. Anywhere over the viewer counts, the pages
+  // rail included (there is no "insert pages from a file" to compete with);
+  // a survey note's own photo drop still wins over its block. Desktop only:
+  // a phone cannot drag files in. On Home the Documents / Projects screens
+  // have their own drop zones.
+  const viewerDropAreaRef = useRef(null);
+  const { dropProps: viewerDropProps, overlay: viewerDropOverlay } = useFileDropZone({
+    enabled: Boolean(isViewerVisible && !isNarrowShell),
+    resolveTarget: () => ({ key: 'viewer', kind: 'viewer', el: viewerDropAreaRef.current }),
+    onDropFiles: (files) => dashboardRef.current?.uploadDroppedFiles?.(files, { open: true }),
+  });
 
   // w42 (2026-09-26, owner report from an 840px split view): the desktop tool
   // bar adapts to narrow windows instead of letting its settings run into
@@ -1864,6 +1863,10 @@ export default function App({ devPreviewReturnTab = null }) {
     ? (bottomToolbarApi.regionToolbarApi || REGION_TOOLBAR_OPENING_STATE)
     : null;
   const areasMode = Boolean(regionApi);
+  // Owner 2026-10-13: with the Survey Marker tool armed, its drawing modes
+  // (Rectangle / Freehand / Smart fill) stand where a group's tools go.
+  const surveyMarkerModesInToolBar = !areasMode && !isMobileViewer
+    && bottomToolbarApi?.activeTool === 'survey-marker' && Boolean(rightRailApi?.showSurveyPanel);
   const areasPanArmed = areasMode && bottomToolbarApi?.activeTool === 'pan';
   // A group left open from before (Draw's row) must not draw its tools beside
   // the Areas tools.
@@ -2243,8 +2246,12 @@ export default function App({ devPreviewReturnTab = null }) {
           Log handler dispatches. */}
       <MemoSaveLogBanner />
       <MemoToastHost />
-      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <FileDropOverlay overlay={viewerDropOverlay} />
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }} {...viewerDropProps}>
         {tabs.length > 0 && !isNarrowShell && ( // Desktop-only: mobile navigation lives inside the home/viewer chrome.
+          // KAL-65: the tab strip shows over the hub too, where the viewer's
+          // chip host is not mounted, so it brings its own shared host.
+          <TooltipProvider>
           <MemoTabBar
             tabs={tabs}
             activeTabId={activeTabId}
@@ -2253,6 +2260,7 @@ export default function App({ devPreviewReturnTab = null }) {
             onTabReorder={stableTabReorder}
             onPageDrop={stablePageDrop}
           />
+          </TooltipProvider>
         )}
         {/* UX 2026-05-14: App-level top toolbar consolidating Undo/Redo plus
             every annotation tool that used to live in the bottom toolbar.
@@ -2723,10 +2731,13 @@ export default function App({ devPreviewReturnTab = null }) {
                 {/* The rule between the group icons and the group's tools —
                     the same shared rule, same 8px inset, as the one on the
                     cluster's other edge. Only there when tools follow it. */}
-                {((toolBarGroup && toolBarGroup !== 'select') || selectModesInToolBar || areasMode) && (
+                {((toolBarGroup && toolBarGroup !== 'select') || selectModesInToolBar || areasMode || surveyMarkerModesInToolBar) && (
                   <div className="chrome-divider" />
                 )}
                 {areasMode && renderAreaTools()}
+                {surveyMarkerModesInToolBar && (
+                  <SurveyMarkerModeTools chromeTip={chromeTip} glyphSize={CHROME_GLYPH} />
+                )}
                 {/* RULED 2026-09-26 owner: select modes in top bar (w46).
                     Select's Box / Lasso / Text modes stand where a group's
                     tools go — with nothing picked, or a pick no drawing group
@@ -4226,7 +4237,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 />
               <div ref={setTextFormatRowEl} data-chrome-text-format-row="true" />
             </div>
-            <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative' }}>
+            <div ref={viewerDropAreaRef} style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative' }}>
             {/* Polish 3 (2026-10-04): the home screen stays mounted under an
                 open document (the viewer layer covers it), but it was still in
                 the Tab order - a keyboard user tabbed from the tool bar into
@@ -4235,6 +4246,9 @@ export default function App({ devPreviewReturnTab = null }) {
                 no clicks, not read out. display: contents, so the wrapper adds
                 no box and the layout is untouched. */}
             <div inert={isViewerVisible ? '' : undefined} style={{ display: 'contents' }}>
+            {/* KAL-65: the hub's own shared tooltip host - the viewer's chip
+                lives in PDFViewer and is not there when no document is open. */}
+            <TooltipProvider>
             <MemoDashboard
               ref={dashboardRef}
               onDocumentSelect={stableDocumentSelect}
@@ -4249,6 +4263,7 @@ export default function App({ devPreviewReturnTab = null }) {
               entities={entities}
               setEntities={setEntities}
             />
+            </TooltipProvider>
             </div>
             {tabs.map(tab => {
               if (tab.isHome) return null;
@@ -4718,6 +4733,21 @@ export default function App({ devPreviewReturnTab = null }) {
                       </button>
                       {api.isZoomMenuOpen && fitMenu({ right: '100%', bottom: 0, marginRight: '6px' })}
                     </div>
+                    {/* drawboardAudit C2: the Pencil-only switch sits where
+                        Drawboard keeps it - the utility end of the bar holding
+                        the page controls. Nothing renders (no rule either)
+                        until a pen has been used on this device. */}
+                    {pencilModeSeen && (
+                      <>
+                        <div style={{ width: '24px', height: '1px', background: 'var(--surface-3)', margin: '4px 0' }} />
+                        <PencilModeControl
+                          surface="desktop"
+                          glyph={RAIL_CONTROL_GLYPH}
+                          style={footerBtn()}
+                          buttonProps={chromeTip(pencilModeDrawMode === 'pen' ? 'Annotate with Pencil only' : 'Annotate with Pencil or Touch', 'left')}
+                        />
+                      </>
+                    )}
                   </div>
                 );
             })()}
@@ -4766,11 +4796,12 @@ export default function App({ devPreviewReturnTab = null }) {
         onDismiss={!authPromptDismissed ? handleDismiss : null}
       />
 
-      {/* UX 2026-05-13: KeyboardShortcutsOverlay only renders on the home tab.
-          On the PDF viewer it was covering the zoom / page-fit controls in the
-          bottom-right after the status bar was removed. The '?' modal still
-          works on the home tab; on the viewer the screen stays clean. */}
-      {!isViewerVisible && <KeyboardShortcutsOverlay />}
+      {/* KAL-444: one shortcuts sheet for Home AND the viewer — inside a
+          document is where every one of those keys applies. (It was kept off
+          the viewer on 2026-05-13 because its floating "Press ?" hint pill
+          covered the zoom controls; that pill is gone, and the sheet itself
+          renders nothing until it is opened.) */}
+      <KeyboardShortcutsOverlay />
     </TooltipContext.Provider>
   );
 }

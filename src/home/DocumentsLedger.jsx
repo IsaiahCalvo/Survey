@@ -9,6 +9,7 @@
    without changing the layout.
 */
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useTooltip } from '../components/Tooltip';
 import { createPortal } from 'react-dom';
 import { HubShell, Icon, Avatar, PdfThumb, Search, EmptyState } from './HubShell';
 import { countLabel } from './countLabel.js';
@@ -21,6 +22,9 @@ import { useStorage } from '../hooks/useDatabase';
 import Spinner from '../components/Spinner';
 import DismissBarrier from '../components/DismissBarrier';
 import useModalFocusTrap from './useModalFocusTrap';
+import { isPhoneLayout } from '../utils/layoutMode.js';
+import useFileDropZone from '../hooks/useFileDropZone';
+import FileDropOverlay from '../components/FileDropOverlay';
 
 const ledgerHeader = {
   background: 'var(--ink-700)',
@@ -37,9 +41,7 @@ const ledgerHeader = {
 const RIBBON = ['#f0883e', '#7ab7e6', '#a6e07a', '#c293e6', '#e69a7a', '#9aa3b2'];
 /* The row menu wears the shared home menu (hub.css .hub-menu / .hub-menu__item,
    owner 2026-10-02): 28px items at 12px on desktop, 44px at 15px on the phone. */
-const isPhoneWidth = () => typeof window !== 'undefined'
-  && typeof window.matchMedia === 'function'
-  && window.matchMedia('(max-width: 720px)').matches;
+const isPhoneWidth = () => isPhoneLayout();
 
 function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168 }) {
   const ref = useRef(null);
@@ -108,6 +110,7 @@ export default function DocumentsLedger({
   onNav,
   onOpenDocument,
   onUpload,
+  onDropFiles,
   uploadBusy = false,
   onShare,
   onDuplicate,
@@ -116,6 +119,7 @@ export default function DocumentsLedger({
   onMoveCopy,
   onLockDocument,
 }) {
+  const tip = useTooltip();
   const [selId, setSelId] = useState(null);
   const [previewOpen, setPreviewOpen] = useState(true);
   const [sortKey, setSortKey] = useState('edited');
@@ -200,6 +204,21 @@ export default function DocumentsLedger({
      time, in the order shown, only while this list is on screen. The
      sentinel below is how it knows: hidden hub → no client rects → paused. */
   const backfillHostRef = useRef(null);
+
+  // PDFs dragged in from the computer land in Documents, like the Upload
+  // button (owner request 2026-10-13). The outline goes round the list card.
+  const dropCardRef = useRef(null);
+  const { dropProps, overlay: dropOverlay } = useFileDropZone({
+    enabled: Boolean(onDropFiles),
+    resolveTarget: (event) => {
+      const card = dropCardRef.current;
+      const el = card && card.getClientRects().length > 0
+        ? card
+        : event.currentTarget.querySelector?.('main') || event.currentTarget;
+      return { key: 'documents', kind: 'documents', el, projectId: null };
+    },
+    onDropFiles: (files) => onDropFiles?.(files, { projectId: null }),
+  });
   const backfillDocs = useMemo(() => docs.map((d) => d.raw), [docs]);
   useThumbnailBackfill(backfillDocs, { downloadDocument, hostRef: backfillHostRef });
 
@@ -231,7 +250,7 @@ export default function DocumentsLedger({
   const selectedRaw = () => docs.filter((d) => selDocs.has(d.id)).map((d) => d.raw);
   const clearSel = () => setSelDocs(new Set());
   const showDocumentDetails = (doc) => {
-    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 720px)').matches) {
+    if (isPhoneLayout()) {
       mobileDetailOpenerRef.current = docMenu?.trigger || document.activeElement;
       setMobileDetailId(doc.id);
       return;
@@ -372,7 +391,7 @@ export default function DocumentsLedger({
       type="button"
       onClick={(e) => openDocMenu(e, d)}
       className="hub-icon-btn"
-      title="More" aria-label="More"
+      aria-label="More" {...tip('More')}
     ><Icon name="more" size={14} /></button>
   );
   /* UX 2026-09-22: an unchecked box has no fill, so its edge is the whole
@@ -442,9 +461,10 @@ export default function DocumentsLedger({
       actions={actions}
       userName={user?.name || user?.email?.split('@')[0] || 'You'}
       templatesLocked={templatesLocked}
+      dropProps={dropProps}
     >
       <div className="documents-ledger-body" style={{ padding: '0 8px 8px 8px', flex: 1, minHeight: 0 }}>
-        <div className="card documents-desktop-card" style={{ display: 'grid', gridTemplateColumns: showPreview ? '2.2fr 1fr' : '1fr', height: '100%', overflow: 'hidden' }}>
+        <div ref={dropCardRef} className="card documents-desktop-card" style={{ display: 'grid', gridTemplateColumns: showPreview ? '2.2fr 1fr' : '1fr', height: '100%', overflow: 'hidden' }}>
           <div className="slim-scroll" style={{ overflow: 'auto', borderRight: showPreview ? '1px solid var(--ink-500)' : 0 }}>
             <div>
               <div style={{ ...ledgerHeader, display: 'grid', gridTemplateColumns: grid, position: 'sticky', top: 0, zIndex: 3 }}>
@@ -513,7 +533,7 @@ export default function DocumentsLedger({
                             setDocMenu((cur) => (cur && cur.id === d.id ? null : { id: d.id, rect, trigger }));
                           }}
                           className="hub-icon-btn"
-                          title="More" aria-label="More"
+                          aria-label="More" {...tip('More')}
                         ><Icon name="more" size={14} /></button>
                       )}
                     </div>
@@ -558,7 +578,7 @@ export default function DocumentsLedger({
             <aside style={{ padding: 18, position: 'relative', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: 'none' }}>
                 <div className="section-label">Preview</div>
-                <button onClick={() => setPreviewOpen(false)} title="Close preview" aria-label="Close preview" className="hub-icon-btn"><Icon name="close" size={13} /></button>
+                <button onClick={() => setPreviewOpen(false)} aria-label="Close preview" {...tip('Close preview')} className="hub-icon-btn"><Icon name="close" size={13} /></button>
               </div>
               <div style={{ marginTop: 10, fontSize: 15, fontWeight: 700, flex: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sel.name}</div>
               <div className="meta" style={{ marginTop: 4, fontSize: 12, flex: 'none' }}>
@@ -616,7 +636,7 @@ export default function DocumentsLedger({
               <div style={{ flex: 1, minHeight: 0 }} />
               <div style={{ display: 'flex', gap: 8, marginTop: 14, flex: 'none' }}>
                 <button className="btn primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => onOpenDocument && onOpenDocument(sel.raw)}>Open file</button>
-                <button className="btn documents-preview-share" title="Share" aria-label="Share" onClick={() => onShare && onShare([sel.raw])}><Icon name="share" size={16} /></button>
+                <button className="btn documents-preview-share" aria-label="Share" {...tip('Share', 'above')} onClick={() => onShare && onShare([sel.raw])}><Icon name="share" size={16} /></button>
               </div>
             </aside>
           )}
@@ -654,7 +674,7 @@ export default function DocumentsLedger({
                   <span>Document details</span>
                   <strong>{mobileDetailDoc.name}</strong>
                 </div>
-                <button ref={mobileDetailCloseRef} type="button" title="Close details" aria-label="Close details" onClick={closeMobileDetail} className="hub-icon-btn"><Icon name="close" size={13} /></button>
+                <button ref={mobileDetailCloseRef} type="button" aria-label="Close details" {...tip('Close details')} onClick={closeMobileDetail} className="hub-icon-btn"><Icon name="close" size={13} /></button>
               </div>
               <div className="documents-mobile-detail-meta">
                 {[mobileDetailDoc.project === 'Sandbox' ? null : mobileDetailDoc.project, mobileDetailDoc.size, mobileDetailDoc.pages != null ? countLabel(mobileDetailDoc.pages, 'page') : null].filter(Boolean).join(' · ')}
@@ -685,13 +705,14 @@ export default function DocumentsLedger({
                   for actions; phone and desktop match). */}
               <div className="documents-mobile-detail-actions">
                 <button type="button" className="btn primary" onClick={() => { setMobileDetailId(null); onOpenDocument && onOpenDocument(mobileDetailDoc.raw); }}>Open file</button>
-                <button type="button" className="btn documents-preview-share" title="Share" aria-label="Share" onClick={() => { setMobileDetailId(null); onShare && onShare([mobileDetailDoc.raw]); }}><Icon name="share" size={18} /></button>
+                <button type="button" className="btn documents-preview-share" aria-label="Share" {...tip('Share', 'above')} onClick={() => { setMobileDetailId(null); onShare && onShare([mobileDetailDoc.raw]); }}><Icon name="share" size={18} /></button>
               </div>
             </section>
           </div>
         ) : null}
       </div>
     </HubShell>
+    <FileDropOverlay overlay={dropOverlay} />
     <MoveCopyModal
       open={moveOpen}
       initialMode={moveMode}

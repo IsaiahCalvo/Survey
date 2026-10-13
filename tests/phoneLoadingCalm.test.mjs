@@ -94,7 +94,7 @@ test('a tapped document answers at once with the quiet "Opening <file>…"', () 
 });
 
 test('every loading line on a phone sits in one place', () => {
-  assert.match(QUIET, /@media \(max-width: 720px\) \{\s*\.quiet-loading-text \{[\s\S]*?position: fixed;/);
+  assert.match(QUIET, /@media screen and \(max-device-width: 599px\), screen and \(max-device-height: 599px\) \{\s*\.quiet-loading-text \{[\s\S]*?position: fixed;/);
   assert.match(QUIET, /\.survey-pdfjs-viewer \.quiet-loading-text \{ top: 50%; \}/);
   // The Expo shell's line uses the same frame: 34px header, 36px + inset dock.
   assert.match(EXPO_APP, /paddingTop: 34, paddingBottom: 36 \+ bottomInset/);

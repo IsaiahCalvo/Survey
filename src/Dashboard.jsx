@@ -39,6 +39,7 @@ import { archiveItems } from './services/archiveService';
 import { notifyLibraryChanged } from './hooks/libraryChangeBus';
 import { useConfirmDialog, usePromptDialog } from './components/dialogPrompts';
 import { readBlobAsArrayBuffer } from './utils/blobArrayBuffer.js';
+import { addedToProjectMessage, asPdfFile, isUploadableProjectId, rejectedFilesMessage, splitDroppedFiles } from './utils/fileDrop.js';
 import { FONT_FAMILY, hexToRgba, hasNameConflict } from './viewerShared.js';
 
 // --- helpers --------------------------------------------------------------
@@ -726,6 +727,151 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     }
   };
 
+  // The one upload path for a browser File: the Upload button's file picker
+  // and (owner request 2026-10-13) PDFs dropped in from the computer. Same
+  // dedupe ask, same errors, same background store as before; only the
+  // file-input bookkeeping stays in handleFileUpload. Resolves to what
+  // happened: 'added' | 'existing' (deduped to a document already there) |
+  // 'skipped' (the user canceled the duplicate ask) | 'failed'.
+  const uploadBrowserPdf = async (file, { projectId = null, openAfterUpload = true } = {}) => {
+    if (!user) {
+      setDashboardError('Please sign in to upload documents.');
+      onShowAuthModal();
+      return 'failed';
+    }
+
+    // 2026-04-30 fix: stamp the uploader's identity onto the in-memory File
+    // so the per-user delete authority gate can resolve documentOwnerId
+    // before the Supabase row's id round-trips back. Without this, a quick
+    // delete right after browser-input upload silently failed.
+    file.user_id = user.id;
+
+    // Content fingerprint → resolve the document's identity BEFORE opening, so
+    // the viewer opens with a real id (durable store + save shortcut work on a
+    // fresh upload) and identical bytes dedup to one document.
+    let contentSha;
+    try {
+      const bytes = new Uint8Array(await readBlobAsArrayBuffer(file));
+      contentSha = await computeContentSha256(bytes);
+    } catch (hashErr) {
+      console.error('Content hashing failed:', hashErr);
+      setDashboardError('Couldn’t read that file for upload. Please try again.');
+      return 'failed';
+    }
+
+    // Decision 6 gate: same name + different contents -> ask first.
+    const duplicateGate = await confirmSameNameDifferentContent({
+      fileName: file.name,
+      contentSha,
+      projectId,
+      openAfterUpload,
+    });
+    if (!duplicateGate.proceed) return 'skipped';
+
+    let resolvedDoc;
+    try {
+      resolvedDoc = await createSupabaseDocument({
+        name: file.name,
+        file_path: `${user.id}/${contentSha}.pdf`,
+        file_size: file.size,
+        page_count: 1,
+        project_id: projectId || null,
+        content_sha256: contentSha,
+      });
+    } catch (createErr) {
+      console.error('Could not create/resolve document before open:', createErr);
+      setDashboardError('Couldn’t prepare the document in the cloud: ' + (createErr.message || 'Unknown error'));
+      return 'failed';
+    }
+
+    // Decision 6: identical bytes deduped to a doc with a different name ->
+    // offer to keep the new name as an alias, then open the EXISTING document
+    // by its own identity (a second same-document tab under the new name
+    // double-mounts the viewer — see the Electron path note).
+    if (resolvedDoc.content_sha256 === contentSha && resolvedDoc.name !== file.name) {
+      // A deduped row does not GUARANTEE a durable object (a prior failed
+      // upload can leave a row whose object is missing). We hold identical
+      // bytes — store them AT THE ROW'S OWN file_path (which is what the
+      // open below reads; it may still be a legacy pre-rekey path) so the
+      // open can't hit file-not-found and cascade into deleting the very
+      // row we're reusing. Idempotent upsert: same bytes, same key.
+      try {
+        const { error: healErr } = await supabase.storage
+          .from('documents')
+          .upload(resolvedDoc.file_path, file, { upsert: true, contentType: 'application/pdf' });
+        if (healErr) throw healErr;
+      } catch (upErr) {
+        console.error('Could not store the file bytes:', upErr);
+        setDashboardError('Couldn’t save the document to the cloud: ' + (upErr.message || 'Unknown error'));
+        return 'failed'; // nothing archived, nothing opened — safe retry
+      }
+      await archiveReplacedDocument(duplicateGate.archiveDocId);
+      await maybeOfferAlias(resolvedDoc, file.name, contentSha);
+      if (openAfterUpload) await handleDocumentClick(resolvedDoc);
+      refetchAllDocuments();
+      return 'existing';
+    }
+
+    file.id = resolvedDoc.id;
+    file.projectId = resolvedDoc.project_id ?? projectId ?? null;
+    file.supabaseFilePath = resolvedDoc.file_path ?? null;
+    file.contentSha256 = resolvedDoc.content_sha256 ?? null; // thumbnail cache key
+    file.uploadStartTime = performance.now();
+    if (openAfterUpload) onDocumentSelect(file);
+
+    // OPTIMISTIC LIST UPDATE — carry both key spellings so the file shows
+    // immediately in the project-grouped views (which read project_id).
+    const tempDoc = {
+      id: resolvedDoc.id,
+      name: file.name,
+      size: file.size,
+      uploadedAt: new Date().toISOString(),
+      created_at: resolvedDoc.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      type: 'application/pdf',
+      filePath: null,
+      projectId: projectId,
+      project_id: projectId,
+      file: file
+    };
+    setDocuments(prev => [tempDoc, ...prev.filter(d => d.id !== tempDoc.id)]);
+
+    // Background: store the bytes (content-addressed, idempotent) and correct
+    // the page count once parsed.
+    (async () => {
+      setActiveUploads((count) => count + 1);
+      try {
+        const uploadPromise = uploadToStorage(file, projectId || 'general', undefined, contentSha);
+        const pageCountPromise = readPdfPageCount(file, { readBlobAsArrayBuffer, loadPdfjs })
+          .catch((err) => {
+            console.error('Error getting page count:', err);
+            return null;
+          });
+
+        await uploadPromise;
+
+        // "Upload as new version": archive the replaced copy only now that
+        // the new bytes are DURABLE in storage — a failed upload must never
+        // leave the old document hidden and the new row pointing at nothing.
+        await archiveReplacedDocument(duplicateGate.archiveDocId);
+
+        pageCountPromise.then(async (pageCount) => {
+          if (pageCount !== null && pageCount !== resolvedDoc.page_count) {
+            try { await updateSupabaseDocument(resolvedDoc.id, { page_count: pageCount }); } catch (err) { console.error('Error updating page count:', err); }
+          }
+        }).catch(() => {});
+
+        refetchAllDocuments();
+      } catch (err) {
+        console.error('Error uploading file in background:', err);
+        setDashboardError('Couldn’t save the document to the cloud: ' + (err.message || 'Unknown error') + '. Your file is still on disk — try uploading again or check your connection.');
+      } finally {
+        setActiveUploads((count) => count - 1);
+      }
+    })();
+    return 'added';
+  };
+
   const handleFileUpload = async (event) => {
     const file = event.target.files?.[0];
     if (file && file.type === 'application/pdf') {
@@ -736,12 +882,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         event.target.value = '';
         return;
       }
-
-      // 2026-04-30 fix: stamp the uploader's identity onto the in-memory File
-      // so the per-user delete authority gate can resolve documentOwnerId
-      // before the Supabase row's id round-trips back. Without this, a quick
-      // delete right after browser-input upload silently failed.
-      file.user_id = user.id;
 
       // Determine Project ID + open-after flag. A request stashed by the
       // Projects-tab upload wins; consume-and-clear it so a later plain upload
@@ -754,140 +894,44 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         projectId = selectedProjectId;
       }
 
-      // Content fingerprint → resolve the document's identity BEFORE opening, so
-      // the viewer opens with a real id (durable store + save shortcut work on a
-      // fresh upload) and identical bytes dedup to one document.
-      let contentSha;
-      try {
-        const bytes = new Uint8Array(await readBlobAsArrayBuffer(file));
-        contentSha = await computeContentSha256(bytes);
-      } catch (hashErr) {
-        console.error('Content hashing failed:', hashErr);
-        setDashboardError('Couldn’t read that file for upload. Please try again.');
-        event.target.value = '';
-        return;
-      }
-
-      // Decision 6 gate: same name + different contents -> ask first.
-      const duplicateGate = await confirmSameNameDifferentContent({
-        fileName: file.name,
-        contentSha,
-        projectId,
-        openAfterUpload,
-      });
-      if (!duplicateGate.proceed) {
-        event.target.value = '';
-        return;
-      }
-
-      let resolvedDoc;
-      try {
-        resolvedDoc = await createSupabaseDocument({
-          name: file.name,
-          file_path: `${user.id}/${contentSha}.pdf`,
-          file_size: file.size,
-          page_count: 1,
-          project_id: projectId || null,
-          content_sha256: contentSha,
-        });
-      } catch (createErr) {
-        console.error('Could not create/resolve document before open:', createErr);
-        setDashboardError('Couldn’t prepare the document in the cloud: ' + (createErr.message || 'Unknown error'));
-        event.target.value = '';
-        return;
-      }
-
-      // Decision 6: identical bytes deduped to a doc with a different name ->
-      // offer to keep the new name as an alias, then open the EXISTING document
-      // by its own identity (a second same-document tab under the new name
-      // double-mounts the viewer — see the Electron path note).
-      if (resolvedDoc.content_sha256 === contentSha && resolvedDoc.name !== file.name) {
-        // A deduped row does not GUARANTEE a durable object (a prior failed
-        // upload can leave a row whose object is missing). We hold identical
-        // bytes — store them AT THE ROW'S OWN file_path (which is what the
-        // open below reads; it may still be a legacy pre-rekey path) so the
-        // open can't hit file-not-found and cascade into deleting the very
-        // row we're reusing. Idempotent upsert: same bytes, same key.
-        try {
-          const { error: healErr } = await supabase.storage
-            .from('documents')
-            .upload(resolvedDoc.file_path, file, { upsert: true, contentType: 'application/pdf' });
-          if (healErr) throw healErr;
-        } catch (upErr) {
-          console.error('Could not store the file bytes:', upErr);
-          setDashboardError('Couldn’t save the document to the cloud: ' + (upErr.message || 'Unknown error'));
-          event.target.value = '';
-          return; // nothing archived, nothing opened — safe retry
-        }
-        await archiveReplacedDocument(duplicateGate.archiveDocId);
-        await maybeOfferAlias(resolvedDoc, file.name, contentSha);
-        if (openAfterUpload) await handleDocumentClick(resolvedDoc);
-        refetchAllDocuments();
-        event.target.value = '';
-        return;
-      }
-
-      file.id = resolvedDoc.id;
-      file.projectId = resolvedDoc.project_id ?? projectId ?? null;
-      file.supabaseFilePath = resolvedDoc.file_path ?? null;
-      file.contentSha256 = resolvedDoc.content_sha256 ?? null; // thumbnail cache key
-      file.uploadStartTime = performance.now();
-      if (openAfterUpload) onDocumentSelect(file);
-
-      // OPTIMISTIC LIST UPDATE — carry both key spellings so the file shows
-      // immediately in the project-grouped views (which read project_id).
-      const tempDoc = {
-        id: resolvedDoc.id,
-        name: file.name,
-        size: file.size,
-        uploadedAt: new Date().toISOString(),
-        created_at: resolvedDoc.created_at || new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        type: 'application/pdf',
-        filePath: null,
-        projectId: projectId,
-        project_id: projectId,
-        file: file
-      };
-      setDocuments(prev => [tempDoc, ...prev.filter(d => d.id !== tempDoc.id)]);
-
-      // Background: store the bytes (content-addressed, idempotent) and correct
-      // the page count once parsed.
-      (async () => {
-        setActiveUploads((count) => count + 1);
-        try {
-          const uploadPromise = uploadToStorage(file, projectId || 'general', undefined, contentSha);
-          const pageCountPromise = readPdfPageCount(file, { readBlobAsArrayBuffer, loadPdfjs })
-            .catch((err) => {
-              console.error('Error getting page count:', err);
-              return null;
-            });
-
-          await uploadPromise;
-
-          // "Upload as new version": archive the replaced copy only now that
-          // the new bytes are DURABLE in storage — a failed upload must never
-          // leave the old document hidden and the new row pointing at nothing.
-          await archiveReplacedDocument(duplicateGate.archiveDocId);
-
-          pageCountPromise.then(async (pageCount) => {
-            if (pageCount !== null && pageCount !== resolvedDoc.page_count) {
-              try { await updateSupabaseDocument(resolvedDoc.id, { page_count: pageCount }); } catch (err) { console.error('Error updating page count:', err); }
-            }
-          }).catch(() => {});
-
-          refetchAllDocuments();
-        } catch (err) {
-          console.error('Error uploading file in background:', err);
-          setDashboardError('Couldn’t save the document to the cloud: ' + (err.message || 'Unknown error') + '. Your file is still on disk — try uploading again or check your connection.');
-        } finally {
-          setActiveUploads((count) => count - 1);
-        }
-      })();
-
+      await uploadBrowserPdf(file, { projectId, openAfterUpload });
     }
     // Reset input
     event.target.value = '';
+  };
+
+  // PDFs dropped in from the computer (owner request 2026-10-13, as in
+  // Drawboard): the Documents list, a project row or open project, or an open
+  // document (open: true -> each opens in a new tab). Non-PDFs are skipped
+  // with a short note; the PDFs go one at a time through the same path as
+  // the Upload button, so a duplicate ask waits for its answer.
+  const handleDroppedFiles = async (files, { projectId = null, projectName = null, open = false } = {}) => {
+    const { pdfs, rejected } = splitDroppedFiles(files);
+    const skipped = rejectedFilesMessage(rejected);
+    if (skipped) showToast(skipped, 'info');
+    if (pdfs.length === 0) return { added: 0, skipped: rejected.length };
+    if (!user) {
+      setDashboardError('Please sign in to upload documents.');
+      onShowAuthModal();
+      return { added: 0, skipped: rejected.length };
+    }
+    const targetProjectId = isUploadableProjectId(projectId) ? projectId : null;
+    let added = 0;
+    // Shows 'Uploading…' on the Upload button for the whole batch.
+    setActiveUploads((count) => count + 1);
+    try {
+      for (const pdf of pdfs) {
+        const status = await uploadBrowserPdf(asPdfFile(pdf), {
+          projectId: targetProjectId,
+          openAfterUpload: open,
+        });
+        if (status === 'added' || status === 'existing') added += 1;
+      }
+    } finally {
+      setActiveUploads((count) => count - 1);
+    }
+    if (targetProjectId && added > 0) showToast(addedToProjectMessage(added, projectName), 'success');
+    return { added, skipped: rejected.length };
   };
 
   // Create Project flow
@@ -1656,7 +1700,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     openTemplateModal,
     openEditTemplateModal,
     closeTemplateModal: () => {}, // KAL-82 slice 2: no modal left to close
-    exitSelectionMode
+    exitSelectionMode,
+    // PDFs dropped on an open document (AppShell): uploaded like the Upload
+    // button, each opened in a new tab.
+    uploadDroppedFiles: handleDroppedFiles,
   }));
 
   /* --- Survey Hub (home redesign) wiring -------------------------------
@@ -2333,6 +2380,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         isPro={!!features?.advancedSurvey}
         onOpenDocument={hubOpenDocument}
         onUpload={handleUploadClick}
+        onDropFiles={handleDroppedFiles}
         uploadBusy={activeUploads > 0 || uploadInFlight}
         onCreateProject={handleCreateProjectClick}
         onRenameProject={hubRenameProject}

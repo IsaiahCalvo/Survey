@@ -883,19 +883,22 @@ test('the dev build stamp is logged to the console, never rendered on screen', (
   assert.match(VITE, /__BUILD_STAMP__: JSON\.stringify\(buildStamp\)/);
 });
 
-test('the mobile card list is hidden on desktop and shown under 720px', () => {
+// The phone layout follows the screen since 2026-10-13 (utils/layoutMode.js),
+// no longer a 720px window.
+test('the mobile card list is hidden on desktop and shown on a phone screen', () => {
   assert.match(SCREEN, /className="archive-mobile-list slim-scroll"/);
   assert.match(SCREEN, /className="card archive-desktop-card"/);
   assert.match(CSS, /\.survey-hub \.archive-mobile-list \{\s*\n\s*display: none;/);
-  assert.match(CSS, /@media screen and \(max-width: 720px\)[\s\S]*?\.survey-hub \.archive-desktop-card \{[\s\S]*?display: none !important/);
-  assert.match(CSS, /@media screen and \(max-width: 720px\)[\s\S]*?\.survey-hub \.archive-mobile-list \{[\s\S]*?display: flex/);
+  assert.match(CSS, /@media screen and \(max-device-width: 599px\), screen and \(max-device-height: 599px\)[\s\S]*?\.survey-hub \.archive-desktop-card \{[\s\S]*?display: none !important/);
+  assert.match(CSS, /@media screen and \(max-device-width: 599px\), screen and \(max-device-height: 599px\)[\s\S]*?\.survey-hub \.archive-mobile-list \{[\s\S]*?display: flex/);
 });
 
 test('Archive transient controls follow the shared home interaction contract', () => {
   assert.match(SCREEN, /import DismissBarrier from '\.\.\/components\/DismissBarrier';/);
   assert.match(SCREEN, /<DismissBarrier[\s\S]*?active=\{menuOpen\}[\s\S]*?insideRefs=\{\[menuRef, desktopMenuRef\]\}[\s\S]*?onDismiss=\{\(\) => setMenuOpen\(false\)\}/);
-  assert.match(SCREEN, /title="Close preview"[\s\S]*?<Icon name="close" size=\{14\} \/>/);
-  assert.doesNotMatch(SCREEN, /title="Close preview"[^>]*>×<\/button>/,
+  // KAL-65: the name moved from a native title= to aria-label (+ shared chip).
+  assert.match(SCREEN, /aria-label="Close preview"[\s\S]*?<Icon name="close" size=\{14\} \/>/);
+  assert.doesNotMatch(SCREEN, /aria-label="Close preview"[^>]*>×<\/button>/,
     'preview close uses the shared drawn icon, not a font glyph');
 });
 
@@ -946,11 +949,12 @@ test('on MOBILE, Archive leaves navigation and lives behind the profile avatar',
 
   // The profile menu carries it, and ONLY on the mobile instance — desktop
   // already has it pinned in the rail, so offering it twice there is noise.
-  assert.match(HUB_SHELL, /const ProfileMenu = \(\{ userName, userMeta, showArchive = false, tab, onNav \}\)/);
+  // (KAL-444 added a desktop-only showShortcuts flag beside showArchive.)
+  assert.match(HUB_SHELL, /const ProfileMenu = \(\{ userName, userMeta, showArchive = false, (?:showShortcuts = false, )?tab, onNav \}\)/);
   assert.match(HUB_SHELL, /\{showArchive && \([\s\S]*?onNav && onNav\('archive'\)[\s\S]*?Archive\s*\n?\s*<\/button>/);
   assert.match(HUB_SHELL, /<div className="mobile-profile">\s*\n\s*<ProfileMenu userName=\{userName\} userMeta=\{userMeta\} showArchive tab=\{tab\} onNav=\{onNav\} \/>/);
   // The desktop rail instance must NOT pass showArchive.
-  assert.match(HUB_SHELL, /<\/nav>\s*\n\s*<ProfileMenu userName=\{userName\} userMeta=\{userMeta\} \/>/);
+  assert.match(HUB_SHELL, /<\/nav>\s*\n\s*<ProfileMenu userName=\{userName\} userMeta=\{userMeta\}(?: showShortcuts)? \/>/);
 });
 
 test('the hub routes the archive tab to the data container, lazily', () => {

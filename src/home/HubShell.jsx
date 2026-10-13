@@ -7,6 +7,8 @@ import AppIcon from '../Icons';
 import DismissBarrier from '../components/DismissBarrier';
 import { presenceInitials } from '../components/presenceIdentity.js';
 import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
+import { openKeyboardShortcuts } from '../utils/keyboardShortcuts.js';
+import { useTooltip } from '../components/Tooltip';
 
 const HUB_BUILD_STAMP = (
   typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STAMP__
@@ -209,8 +211,9 @@ const isExpoNativeShell = () => {
    that's where they'll be able to see their archives"). Desktop keeps Archive
    pinned at the bottom of the left rail, so putting it in the desktop menu too
    would be the same destination offered twice. */
-const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) => {
+const ProfileMenu = ({ userName, userMeta, showArchive = false, showShortcuts = false, tab, onNav }) => {
   const { user, onSettings, onSignOut, onSignIn } = useContext(HubChromeContext);
+  const tip = useTooltip();
   // Resolve the per-tier badge text. Callers may pass `userMeta` explicitly;
   // otherwise we read from AuthContext so free users no longer see "Pro".
   const auth = useAuth();
@@ -261,7 +264,8 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
           if (!next) setConfirmSignOut(false);
           return next;
         })}
-        title={email || name}
+        // KAL-65: the shared chip, to the right like every left-rail control.
+        {...tip(email || name, 'right')}
         style={{ display: 'flex', alignItems: 'center', gap: 7, width: '100%', background: open ? 'var(--ink-600)' : 'transparent', border: 0, borderRadius: 6, padding: '4px 6px', cursor: 'pointer', fontFamily: 'inherit', color: 'inherit', textAlign: 'left' }}
       >
         <Avatar initials={initials} id={user?.id || email || name} size={24} />
@@ -305,6 +309,14 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
               <button type="button" className="hub-menu__item" onClick={() => { setOpen(false); setConfirmSignOut(false); onSettings && onSettings(); }}>
                 <Icon name="settings" size={15} color="var(--ink-200)" />Settings
               </button>
+              {/* KAL-444: Home's visible way into the shortcuts sheet (the
+                  viewer's is the keyboard button on its left rail). Desktop
+                  only — the phone instance has no keyboard to describe. */}
+              {showShortcuts && (
+                <button type="button" className="hub-menu__item" onClick={() => { setOpen(false); setConfirmSignOut(false); openKeyboardShortcuts(); }}>
+                  <Icon name="keyboard" size={15} color="var(--ink-200)" />Keyboard shortcuts
+                </button>
+              )}
               {confirmSignOut ? (
                 <div className="profile-signout-confirm">
                   <div className="profile-signout-copy">Sign out of Survey?</div>
@@ -449,7 +461,11 @@ const MobileRailNav = ({ mode, title, tab, navItems, onNav }) => {
 
 /* Sidebar + header frame. SurveyHub swaps complete tab shells atomically, so
    this component owns the shared viewport and chrome contract for each tab. */
-export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userName = 'You', userMeta = undefined, templatesLocked = false, mobileSwipeSurfaceRef = undefined }) => {
+// dropProps (optional): drag-and-drop handlers for PDFs dragged in from the
+// computer (useFileDropZone). They go on the whole home screen, so a file let
+// go over the side bar still lands where the overlay says.
+export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userName = 'You', userMeta = undefined, templatesLocked = false, mobileSwipeSurfaceRef = undefined, dropProps = undefined }) => {
+  const tip = useTooltip();
   const expoNativeShell = isExpoNativeShell();
 
   // These classes define the mobile viewport itself. A passive effect can run
@@ -497,7 +513,7 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
       className={tab === key ? 'active' : ''}
       disabled={disabled}
       onClick={() => !disabled && onNav && onNav(key)}
-      title={disabled ? 'Templates is a Pro feature' : undefined}
+      {...(disabled ? tip('Templates is a Pro feature', 'right') : {})}
     >
       {/* UX 2026-09-16: currentColor, so all three tabs read as one icon set and
           the selected tab's own icon changes with it. Documents and Templates
@@ -513,7 +529,7 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
   return (
     // The hub-tab-* class lets mobile CSS size the fixed header per tab
     // (Documents carries an extra select/bulk row; the others don't).
-    <div className={`survey-hub hub-tab-${tab} ${mobileNavMode === 'rail' ? 'hub-mobile-nav-rail' : ''} ${expoNativeShell ? 'hub-native-shell-expo' : ''}`}>
+    <div className={`survey-hub hub-tab-${tab} ${mobileNavMode === 'rail' ? 'hub-mobile-nav-rail' : ''} ${expoNativeShell ? 'hub-native-shell-expo' : ''}`} {...dropProps}>
       <div className="shell">
         <aside className="side">
           <div className="brand"><span className="brand-dot"></span>Survey</div>
@@ -523,7 +539,7 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
           <nav className="nav nav-bottom">
             {navBtn(...archiveNavItem)}
           </nav>
-          <ProfileMenu userName={userName} userMeta={userMeta} />
+          <ProfileMenu userName={userName} userMeta={userMeta} showShortcuts />
         </aside>
         <main ref={mobileSwipeSurfaceRef} className="main paper">
           <div className="header">

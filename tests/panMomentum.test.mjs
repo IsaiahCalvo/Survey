@@ -710,16 +710,22 @@ test('Pan tool: a press the selection grab claimed drags only the mark, and any 
   // Desktop: the scroller's pointerdown leaves a claimed press alone, but
   // still catches a glide in flight (the page must not coast under the mark).
   const down = source.slice(source.indexOf('const onPointerDown = (event) => {'));
-  const bail = down.indexOf('if (isSelectionGrabPress(event)');
+  // (drawboardAudit C5, 2026-10-13: the check now reads
+  // `if (!middle && (isSelectionGrabPress(event)` - a middle-button drag pans
+  // even from the selected mark; a primary press is unchanged.)
+  const bail = down.indexOf('isSelectionGrabPress(event)');
   const stopGlide = down.indexOf('if (panMomentumRef.current?.isRunning()) cancelPanInertia();');
   const panStart = down.indexOf('panPointerRef.current = {');
   assert.ok(bail > 0 && stopGlide > bail && stopGlide < panStart, 'claimed press bails before a pan starts, after stopping the glide');
   // Phone: one finger on the selection never starts a pan; a pan that the
   // grab claims later (any engine's event order) ends on the spot, no glide.
   const touchStart = source.slice(source.indexOf('const onTouchStart = (event) => {'));
-  assert.ok(touchStart.indexOf('event.touches.length === 1 && isSelectionGrabPress(event)') > 0);
-  assert.ok(touchStart.indexOf('event.touches.length === 1 && isSelectionGrabPress(event)') < touchStart.indexOf("mobileTouchRef.current = { mode: 'pan' };"));
+  // (2026-10-13, Drawboard audit C1) finger counts leave palm-sized contacts
+  // out: `touches` is withoutPalmTouches(event.touches).
+  assert.ok(touchStart.indexOf('touches.length === 1 && isSelectionGrabPress(event)') > 0);
+  assert.ok(touchStart.indexOf('touches.length === 1 && isSelectionGrabPress(event)') < touchStart.indexOf("mobileTouchRef.current = { mode: 'pan' };"));
   assert.match(source, /if \(touchState\?\.mode === 'pan' && isSelectionGrabPress\(event\)\) \{\s*panVelocityRef\.current\.reset\(\);\s*endTouchPan\(0, 0\);/);
   // Pinch is untouched: two fingers still reach startPinch.
-  assert.match(touchStart, /if \(event\.touches\.length >= 2\) \{\s*event\.stopPropagation\(\);\s*startPinch\(event\.touches\);/);
+  assert.match(touchStart, /const touches = withoutPalmTouches\(event\.touches\);/);
+  assert.match(touchStart, /if \(touches\.length >= 2\) \{\s*event\.stopPropagation\(\);\s*startPinch\(touches\);/);
 });

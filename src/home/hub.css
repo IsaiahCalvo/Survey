@@ -641,7 +641,7 @@
   100% { --hub-tabs-fade-start: 36px; --hub-tabs-fade-end: 0px; }
 }
 
-@media screen and (max-width: 720px) {
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   .hub-menu__item {
     min-height: var(--sheet-menu-item-h);
     gap: 12px;
@@ -819,7 +819,7 @@
    When the browser paginates for paper the printable width can drop under
    720px (portrait + margins, any phone), and without the `screen` guard the
    pin clipped every print to a single sheet holding page 1. */
-@media screen and (max-width: 720px) {
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   html.survey-hub-native-frame,
   body.survey-hub-native-frame {
     height: 100% !important;
@@ -2442,7 +2442,7 @@
      other phone lists — holding the name block, an edge-to-edge hairline, a
      "Files" heading with Add files / Team as quiet words (gold until 2026-10-01), then the file
      rows as lines inside the same panel. No card inside a card, and the panel
-     hugs its rows. Phone only: this block sits inside the 720px query and every
+     hugs its rows. Phone only: this block sits inside the phone-layout query and every
      selector hangs off .projects-mobile-project-card, which only the phone
      drill view renders. Selectors repeat the ONE PANEL PER LIST shapes further
      down with the card class added, so they outrank those rules by
@@ -3578,13 +3578,13 @@
     height: 36px !important;
   }
   .survey-hub [data-drag-rearrange-handle]::after,
-  .survey-hub button[title="More"]::after {
+  .survey-hub button[aria-label="More"]::after {
     content: '';
     position: absolute;
     inset: -4px 0;
   }
 
-  .survey-hub button[title="More"] {
+  .survey-hub button[aria-label="More"] {
     position: relative;
     width: 44px !important;
     height: 36px !important;
@@ -3607,8 +3607,8 @@
 
   /* Right-edge list columns are visually 28px wide. Center the 44px target
      on that column so neither side is clipped by the scrollport. */
-  .survey-hub .projects-mobile-folder-row.reorderable > button[title="More"],
-  .survey-hub .templates-mobile-row.reorderable > button[title="More"] {
+  .survey-hub .projects-mobile-folder-row.reorderable > button[aria-label="More"],
+  .survey-hub .templates-mobile-row.reorderable > button[aria-label="More"] {
     justify-self: center;
   }
 
@@ -3698,7 +3698,7 @@
     padding: 10px;
   }
 
-  .survey-hub .templates-mobile-entity-row > button[title="Edit color"] {
+  .survey-hub .templates-mobile-entity-row > button[aria-label="Edit color"] {
     width: 44px;
     height: 44px;
     display: grid;
@@ -3708,7 +3708,7 @@
     padding: 0;
   }
 
-  .survey-hub .templates-mobile-entity-row > button[title="Edit color"] > span {
+  .survey-hub .templates-mobile-entity-row > button[aria-label="Edit color"] > span {
     width: 20px;
     height: 20px;
     border: 0; /* owner 2026-09-23: entity dots carry no edge */
@@ -4297,12 +4297,12 @@
      button painted a 44px box and pushed the row to 44px — measured at 390x844.
      It now paints 36px and keeps a 44px finger target through a pad, which is
      the same trick the grip and the More button already use just above. */
-  .survey-hub .templates-mobile-entity-row > button[title="Edit color"] {
+  .survey-hub .templates-mobile-entity-row > button[aria-label="Edit color"] {
     position: relative;
     height: 36px;
   }
 
-  .survey-hub .templates-mobile-entity-row > button[title="Edit color"]::after {
+  .survey-hub .templates-mobile-entity-row > button[aria-label="Edit color"]::after {
     content: '';
     position: absolute;
     inset: -4px 0;
@@ -4571,12 +4571,12 @@
   [data-drag-rearrange-handle]:hover { color: var(--text-1) !important; }
   [data-drag-rearrange-handle]:hover > svg { transform: scale(1.15); }
   [data-drag-rearrange-handle]:hover > svg.morph-grip.is-open { transform: scale(1.38); }
-  button[title="More"]:not(:disabled):hover { color: var(--text-1) !important; background: transparent !important; }
-  button[title="More"]:not(:disabled):hover > svg { transform: scale(1.15); }
+  button[aria-label="More"]:not(:disabled):hover { color: var(--text-1) !important; background: transparent !important; }
+  button[aria-label="More"]:not(:disabled):hover > svg { transform: scale(1.15); }
 }
-button[title="More"] > svg { transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1); }
-button[title="More"]:not(:disabled):active { background: transparent !important; color: var(--text-1) !important; }
-button[title="More"]:not(:disabled):active > svg { transform: scale(0.9); }
+button[aria-label="More"] > svg { transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1); }
+button[aria-label="More"]:not(:disabled):active { background: transparent !important; color: var(--text-1) !important; }
+button[aria-label="More"]:not(:disabled):active > svg { transform: scale(0.9); }
 
 /* SWITCHING between two entities' panels (owner 2026-09-23: "disorienting").
    The old panel folds and the new one opens over the SAME 300ms on the SAME
@@ -4604,20 +4604,20 @@ button[title="More"]:not(:disabled):active > svg { transform: scale(0.9); }
    Glyph-only and swatch-only controls — colour dots, grips, More, the icon
    buttons (X, share, delete) — never paint a grey box when pressed. Their
    press is the glyph or dot tightening to 88%. */
-button[title="Edit color"], button[aria-label="Edit color"],
+button[aria-label="Edit color"],
 .hub-btn.hub-btn--icon, .templates-mobile-more {
   -webkit-tap-highlight-color: transparent;
 }
-button[title="Edit color"]:active, button[aria-label="Edit color"]:active,
+button[aria-label="Edit color"]:active,
 .hub-btn.hub-btn--icon:not(:disabled):active, .templates-mobile-more:active {
   background-color: transparent !important;
 }
-button[title="Edit color"] > span, .hub-btn.hub-btn--icon > svg, .templates-mobile-more > svg {
+button[aria-label="Edit color"] > span, .hub-btn.hub-btn--icon > svg, .templates-mobile-more > svg {
   transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
 }
-button[title="Edit color"]:active { transform: scale(0.88); }
-button[title="Edit color"]:active:has(> span) { transform: none; }
-button[title="Edit color"]:active > span,
+button[aria-label="Edit color"]:active { transform: scale(0.88); }
+button[aria-label="Edit color"]:active:has(> span) { transform: none; }
+button[aria-label="Edit color"]:active > span,
 .hub-btn.hub-btn--icon:not(:disabled):active > svg,
 .templates-mobile-more:active > svg { transform: scale(0.88); }
 [data-drag-rearrange-handle] { -webkit-tap-highlight-color: transparent; }
@@ -4638,9 +4638,9 @@ button[title="Edit color"]:active > span,
    until 2026-10-01) — no boxes, no borders. The selection actions for
    categories replace those words in the same row, so select mode never
    pushes anything down. Desktop never renders any of this (the phone layout
-   is display: none above 720px), and every rule is scoped to it anyway.
+   is display: none off a phone screen), and every rule is scoped to it anyway.
    ========================================================================== */
-@media screen and (max-width: 720px) {
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   .survey-hub .templates-mobile-detail-card {
     min-width: 0;
     background: var(--ink-700);
@@ -4799,7 +4799,7 @@ button[title="Edit color"]:active > span,
    the first letters of a title woke the grip and grabbed the tap. The grip
    now paints 24px inside its own column, its dots stay where the other lists
    put them, and its 44px finger pad reaches LEFT into the card margin only. */
-@media screen and (max-width: 720px) {
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   .survey-hub :is(.projects-mobile-folder-row, .projects-mobile-file-row, .templates-mobile-row).reorderable > [data-drag-rearrange-handle] {
     width: 24px !important;
     transform: translateX(2px);
@@ -4815,7 +4815,7 @@ button[title="Edit color"]:active > span,
    and those 28px buttons made that line 6px taller than the other tabs', so
    the Documents list began lower. On desktop they paint 22px - the height of
    the subtitle line - and keep a taller invisible pad for the pointer. */
-@media screen and (min-width: 721px) {
+@media screen and (min-device-width: 600px) and (min-device-height: 600px) {
   /* The subtitle line itself is one fixed 22px band on every tab and at every
      window width (Projects measured 16px below 860px wide and 22px above it,
      Documents 22-28px), so the header - and the list under it - never moves
@@ -4963,7 +4963,7 @@ button[title="Edit color"]:active > span,
 }
 
 /* ---------- PHONE: section headers ---------- */
-@media screen and (max-width: 720px) {
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   .survey-hub .templates-mobile-section-head > span {
     display: inline-flex;
     align-items: baseline;
@@ -5126,7 +5126,7 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
    label steps aside so All / Duplicate / Move/Copy / Share / Delete / Done
    fit on the one line at 390px with Done at the right edge (the desktop
    Entities rail does the same). */
-@media screen and (max-width: 720px) {
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   .survey-hub .templates-mobile-section-head:has(> .templates-mobile-select-actions) > span:first-child {
     display: none;
   }
@@ -5139,7 +5139,7 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 /* Desktop selection bars inside a header line: a touch tighter, so the
    268px Entities rail fits All / Duplicate / Move/Copy / Share / Delete and
    Done on its one line. */
-@media screen and (min-width: 721px) {
+@media screen and (min-device-width: 600px) and (min-device-height: 600px) {
   .survey-hub .hub-section-actions:has(> .hub-btn--bare) { gap: 0; }
   .survey-hub .hub-section-actions > .hub-btn.hub-btn--bare { padding: 0 4px; }
   .survey-hub .hub-section-actions > .hub-btn.hub-btn--icon { width: 24px; }

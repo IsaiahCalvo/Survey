@@ -197,7 +197,7 @@
 /* The phone's own sizes. The pill variant is excluded: it is the desktop
    chrome's control and its box comes from .chrome-pill, so a narrow WINDOW on
    the desktop must not grow it. */
-@media (max-width: 720px) {
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   .annotation-size-control:not(.annotation-size-control--pill) {
     height: 30px;
     background: var(--surface-3);
