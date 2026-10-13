@@ -13429,6 +13429,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return 'unchanged';
     }
 
+    // The lock guard runs BEFORE counter renumbering: renumbering is now
+    // copy-on-write (counterNumbering.js), so a locked counter whose number
+    // only follows its series must not read as an Undo edit of a locked mark.
+    // RULED 2026-09-28 owner: open editing + lock — Undo / Redo never change
+    // a locked mark either (only the lock toggle itself, for its author or
+    // the document owner). utils/markLock.js.
+    {
+      const pagesNow = annotationsByPageRef.current || {};
+      for (const pageKey of Object.keys(nextAnnotationsByPage || {})) {
+        const nextPage = nextAnnotationsByPage[pageKey];
+        const prevPage = pagesNow[pageKey];
+        if (!Array.isArray(nextPage?.objects) || nextPage === prevPage) continue;
+        const lockGuard = guardLockedMarksOnSave({
+          previousObjects: prevPage?.objects || [],
+          nextObjects: nextPage.objects,
+          viewerId,
+          documentOwnerId,
+        });
+        if (lockGuard.changed) {
+          nextAnnotationsByPage[pageKey] = { ...nextPage, objects: lockGuard.objects };
+          notifyLockedMarkBlocked();
+        }
+      }
+    }
+
     const counterRenumberDecision = shouldRenumberCountersForSave({
       source: scopedAction.type,
       action: scopedAction.type,
@@ -13457,28 +13482,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           reason: counterRenumberDecision.reason,
         }));
       } catch (_) {}
-    }
-
-    // RULED 2026-09-28 owner: open editing + lock — Undo / Redo never change
-    // a locked mark either (only the lock toggle itself, for its author or
-    // the document owner). utils/markLock.js.
-    {
-      const pagesNow = annotationsByPageRef.current || {};
-      for (const pageKey of Object.keys(nextAnnotationsByPage || {})) {
-        const nextPage = nextAnnotationsByPage[pageKey];
-        const prevPage = pagesNow[pageKey];
-        if (!Array.isArray(nextPage?.objects) || nextPage === prevPage) continue;
-        const lockGuard = guardLockedMarksOnSave({
-          previousObjects: prevPage?.objects || [],
-          nextObjects: nextPage.objects,
-          viewerId,
-          documentOwnerId,
-        });
-        if (lockGuard.changed) {
-          nextAnnotationsByPage[pageKey] = { ...nextPage, objects: lockGuard.objects };
-          notifyLockedMarkBlocked();
-        }
-      }
     }
 
     annotationsByPageRef.current = nextAnnotationsByPage;

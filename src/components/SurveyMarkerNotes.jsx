@@ -15,12 +15,12 @@ import {
   buildNoteWithMedia,
   checkSurveyMediaLimits,
   classifyMediaFile,
-  deleteSurveyMedia,
   migrateLegacyNoteMedia,
   normalizeNoteMedia,
   noteHasLegacyMedia,
   uploadSurveyMedia,
 } from '../services/surveyMediaService';
+import { deleteSurveyMediaOrQueue, retrySurveyMediaDeletesSoon } from '../services/surveyMediaDeleteQueue';
 import SurveyMediaStrip, { mediaKindLabel } from './SurveyMediaStrip';
 import { SurveyAudioRecorderBar, SurveyMediaUploadTile, useAudioRecorder } from './SurveyMediaCapture';
 import './surveyMarkerNotes.css';
@@ -241,6 +241,8 @@ export default function SurveyMarkerNotes({
       }).then((ref) => {
         onUpdateNote((prev) => buildNoteWithMedia(prev, [...normalizeNoteMedia(prev), ref]), { requireExisting: true });
         finish();
+        // Storage is reachable: retry any media removal that failed earlier.
+        retrySurveyMediaDeletesSoon();
       }).catch((error) => {
         finish();
         console.warn('[surveyMedia] upload failed', error);
@@ -264,9 +266,11 @@ export default function SurveyMarkerNotes({
     // also match its bytes to be the one that was on screen.
     const isTarget = (entry) => entry.id === item.id && (entry.legacyDataUrl || null) === (item.legacyDataUrl || null);
     onUpdateNote((prev) => buildNoteWithMedia(prev, normalizeNoteMedia(prev).filter((entry) => !isTarget(entry))), { requireExisting: true });
-    if (item.path) {
-      deleteSurveyMedia(item).catch((error) => console.warn('[surveyMedia] could not delete the file', error));
-    }
+    // The stored file goes next. If storage cannot be reached its path is
+    // kept and retried later (surveyMediaDeleteQueue); a file this user may
+    // not remove (another editor's upload) is left for its uploader or the
+    // document owner.
+    if (item.path) void deleteSurveyMediaOrQueue(item);
   }, [askConfirm, onUpdateNote]);
 
   // Legacy inline photos/videos: move them to storage once, in the

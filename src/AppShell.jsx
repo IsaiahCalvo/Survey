@@ -1287,6 +1287,26 @@ export default function App({ devPreviewReturnTab = null }) {
   // Template refetch for PDFViewer
   const { refetch: refetchTemplates } = useTemplates();
 
+  // Survey media files whose removal failed earlier (offline, storage hiccup)
+  // are retried at start and whenever the device comes back online
+  // (services/surveyMediaDeleteQueue.js). Loaded lazily: it is only needed
+  // once someone is signed in.
+  const signedInUserId = user?.id || null;
+  useEffect(() => {
+    if (!signedInUserId) return undefined;
+    let stop = null;
+    let cancelled = false;
+    import('./services/surveyMediaDeleteQueue')
+      .then(({ startSurveyMediaDeleteRetry }) => {
+        if (!cancelled) stop = startSurveyMediaDeleteRetry(signedInUserId);
+      })
+      .catch(() => { /* retried on a later start */ });
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
+  }, [signedInUserId]);
+
   // Clean up any old localStorage data that might be causing issues
   useEffect(() => {
     // Remove old document data to prevent quota issues
