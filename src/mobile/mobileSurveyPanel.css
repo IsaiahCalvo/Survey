@@ -526,6 +526,21 @@
   font-weight: 500;
 }
 
+/* From 15 templates: "Recent" (the 3 used last on this device) and "All
+   templates" headings, the desktop template menu's sections (phone survey
+   round 2026-10-13). Quiet small caps in --text-3, a hairline between groups. */
+.mobile-survey-sheet .mobile-survey-switch-group + .mobile-survey-switch-group {
+  border-top: 1px solid var(--border);
+}
+
+.mobile-survey-sheet .mobile-survey-switch-heading {
+  padding: 12px var(--sheet-pad-x) 6px;
+  color: var(--text-3);
+  font: 600 11px/1.2 var(--font-ui);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
 /* A filter field, only from 15 templates. 16px text so iOS does not zoom. */
 .mobile-survey-sheet .mobile-survey-switch-search {
   position: relative;
