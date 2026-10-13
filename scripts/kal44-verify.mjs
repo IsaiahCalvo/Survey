@@ -161,7 +161,7 @@ try {
 
   // Expand the category by clicking the expand chevron next to "Wiring".
   // First find the category row, then click its expand button.
-  const expandBtns = host.locator('button[title="Expand"]');
+  const expandBtns = host.locator('button.tpl-cat-chevron[aria-label^="Expand "]');
   const expandCount = await expandBtns.count();
   console.log(`[verify] expand buttons found = ${expandCount}`);
   for (let i = 0; i < Math.min(expandCount, 8); i++) {
@@ -175,7 +175,7 @@ try {
   // 3. Click the × button next to the "Pull cable (USED)" item — should
   // open the archive confirmation modal because usage > 0.
   // The delete × button has title="Delete item".
-  const usedItemDeleteButtons = page.locator('button[title="Delete item"]');
+  const usedItemDeleteButtons = page.locator('button[aria-label="Delete item"]');
   const buttonCount = await usedItemDeleteButtons.count();
   if (buttonCount === 0) {
     record('delete button visible', false, { detail: 'no delete buttons rendered — category may not be expanded' });
@@ -224,18 +224,18 @@ try {
       // 7. Verify the active list lost the item (it should no longer have a
       // delete button for the used item — only one delete button remaining,
       // for the free item).
-      const remainingDelButtons = await page.locator('button[title="Delete item"]').count();
+      const remainingDelButtons = await page.locator('button[aria-label="Delete item"]').count();
       record('active checklist drops archived item', remainingDelButtons === 1, {
         detail: `remaining delete buttons=${remainingDelButtons}`,
       });
 
       // 8. Verify the unused-item path still hard-deletes without modal.
       if (remainingDelButtons === 1) {
-        await page.locator('button[title="Delete item"]').first().click();
+        await page.locator('button[aria-label="Delete item"]').first().click();
         await page.waitForTimeout(400);
         const modalAppeared = await archiveModal.isVisible().catch(() => false);
         record('hard-delete path: no archive modal for unused item', !modalAppeared);
-        const noMoreDelButtons = await page.locator('button[title="Delete item"]').count();
+        const noMoreDelButtons = await page.locator('button[aria-label="Delete item"]').count();
         record('hard-delete path: unused item removed silently', noMoreDelButtons === 0, {
           detail: `delete buttons after=${noMoreDelButtons}`,
         });

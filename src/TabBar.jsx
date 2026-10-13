@@ -28,6 +28,7 @@ import {
 import { CALM_STRIP_AUTO_SCROLL } from './reorder/dragAutoScroll.js';
 import { CSS } from '@dnd-kit/utilities';
 import Icon from './Icons';
+import { useTooltip } from './components/Tooltip';
 // Phase 30 — per-tab subscription to the dual-write retry queue. Each tab
 // renders its own dot independently when its documentId has at least one
 // non-quarantined queue entry. CONTEXT.md AC-13 / 30-UI-SPEC.md Surface 3.
@@ -131,6 +132,24 @@ function TabItem({
     onTabClose(tab.id);
   };
 
+  // KAL-65: the app's shared chip instead of the OS tooltip. The tab's own
+  // name only gets one when the strip has cut it short - a chip repeating a
+  // name you can already read, popping up instantly as the pointer crosses
+  // the strip, would be noise. The dots always explain themselves.
+  const tip = useTooltip();
+  const nameTip = tip(tab.name, 'below');
+  const onlyWhenCut = (show) => (show
+    ? (e) => {
+      const el = e.currentTarget;
+      if (el && el.scrollWidth > el.clientWidth) show(e);
+    }
+    : undefined);
+  const truncatedNameTip = {
+    ...nameTip,
+    onMouseEnter: onlyWhenCut(nameTip.onMouseEnter),
+    onPointerEnter: onlyWhenCut(nameTip.onPointerEnter),
+  };
+
   return (
     <div
       ref={setNodeRef}
@@ -216,7 +235,9 @@ function TabItem({
             marginRight: '7px',
             flexShrink: 0
           }}
-          title="Unsaved changes (Cmd/Ctrl+S to save)"
+          role="img"
+          aria-label="Unsaved changes (Cmd/Ctrl+S to save)"
+          {...tip('Unsaved changes (Cmd/Ctrl+S to save)', 'below')}
           data-drag-keep-fill
         />
       ) : (
@@ -231,7 +252,7 @@ function TabItem({
           whiteSpace: 'nowrap',
           fontWeight: isActive ? '500' : '400'
         }}
-        title={tab.name}
+        {...truncatedNameTip}
       >
         {tab.name}
       </span>
@@ -240,7 +261,7 @@ function TabItem({
         <span
           role="status"
           aria-label="This document has unsaved changes"
-          title="This document has unsaved changes"
+          {...tip('This document has unsaved changes', 'below')}
           data-drag-keep-fill
           style={{
             width: '6px',

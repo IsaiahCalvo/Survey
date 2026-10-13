@@ -3559,7 +3559,7 @@ const SurveySpacesRail = ({
                                                           data-survey-marker-name-input={annotationId}
                                                           defaultValue={surveyMarkerName}
                                                           key={`${annotationId}:${surveyMarkerName}`}
-                                                          {...(({ onFocus, onMouseEnter, ...renameTip }) => ({
+                                                          {...(({ onFocus, onMouseEnter, onPointerEnter, ...renameTip }) => ({
                                                             // Owner 2026-10-01: a just-placed marker's name field is
                                                             // focused, and its "Rename" chip sat over the Entity
                                                             // control (onBlur below never hid it). No chip while
@@ -3568,6 +3568,11 @@ const SurveySpacesRail = ({
                                                             onFocus: renameTip.onMouseLeave,
                                                             onMouseEnter: (e) => {
                                                               if (e.currentTarget !== e.currentTarget.ownerDocument.activeElement) onMouseEnter?.(e);
+                                                            },
+                                                            // KAL-65: the chip now also follows the mouse pointer;
+                                                            // same rule - nothing while the field has the caret.
+                                                            onPointerEnter: (e) => {
+                                                              if (e.currentTarget !== e.currentTarget.ownerDocument.activeElement) onPointerEnter?.(e);
                                                             },
                                                           }))(tip('Rename Survey Marker', 'below'))}
                                                           aria-label={`Rename ${surveyMarkerName}`}

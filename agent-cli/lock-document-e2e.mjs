@@ -191,14 +191,14 @@ async function main() {
 
     // Locate the ⋯ button inside the ledger/file row that shows `name`.
     // Rows are style-only divs (no testids): walk up from the name text to the
-    // container that holds a button[title="More"], return its center point.
+    // container that holds a button[aria-label="More"], return its center point.
     const rowMorePoint = (name) => page.evaluate((docName) => {
       const spans = Array.from(document.querySelectorAll('span, div'))
         .filter((el) => el.childElementCount === 0 && el.textContent.trim() === docName);
       for (const el of spans) {
         let node = el;
         for (let i = 0; i < 8 && node; i += 1) {
-          const btn = node.querySelector?.('button[title="More"]');
+          const btn = node.querySelector?.('button[aria-label="More"]');
           if (btn) {
             const r = btn.getBoundingClientRect();
             if (r.width > 0) return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
@@ -290,7 +290,7 @@ async function main() {
     log('\n=== S2: Documents row slot — ⋯ button ⇄ select-mode checkbox ===');
     mock.setWindow('S2');
     await backToHub();
-    const moreCount = () => page.evaluate(() => document.querySelectorAll('button[title="More"]').length);
+    const moreCount = () => page.evaluate(() => document.querySelectorAll('button[aria-label="More"]').length);
     expect((await moreCount()) >= 4, `S2: each doc row shows a ⋯ button (saw ${await moreCount()})`);
     await page.locator('button', { hasText: 'Select' }).first().click();
     await page.waitForTimeout(400);
@@ -334,7 +334,7 @@ async function main() {
     expect(shareVisible && shareNamed, 'S3: Share opens the share flow for the document');
     await shot('s3-share');
     // ShareModal has no Escape handler — close via its × button (title="Close").
-    await page.locator('button[title="Close"]').first().click();
+    await page.locator('button[aria-label="Close"]').first().click();
     await page.waitForTimeout(400);
 
     // Delete safety on the sacrificial doc.
@@ -903,7 +903,7 @@ async function main() {
     await page.waitForTimeout(300);
     expect(!(await menuOpen()), 'S7: Escape closes the file-row menu');
     // Select-mode swap on file rows (Select/Done toggle in the Files header).
-    const fileMoreCount = () => page.evaluate(() => document.querySelectorAll('button[title="More"]').length);
+    const fileMoreCount = () => page.evaluate(() => document.querySelectorAll('button[aria-label="More"]').length);
     const beforeSelect = await fileMoreCount();
     await page.locator('button', { hasText: 'Select' }).first().click();
     await page.waitForTimeout(400);

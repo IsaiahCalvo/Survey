@@ -8,6 +8,7 @@ import DismissBarrier from '../components/DismissBarrier';
 import { presenceInitials } from '../components/presenceIdentity.js';
 import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
 import { openKeyboardShortcuts } from '../utils/keyboardShortcuts.js';
+import { useTooltip } from '../components/Tooltip';
 
 const HUB_BUILD_STAMP = (
   typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STAMP__
@@ -212,6 +213,7 @@ const isExpoNativeShell = () => {
    would be the same destination offered twice. */
 const ProfileMenu = ({ userName, userMeta, showArchive = false, showShortcuts = false, tab, onNav }) => {
   const { user, onSettings, onSignOut, onSignIn } = useContext(HubChromeContext);
+  const tip = useTooltip();
   // Resolve the per-tier badge text. Callers may pass `userMeta` explicitly;
   // otherwise we read from AuthContext so free users no longer see "Pro".
   const auth = useAuth();
@@ -262,7 +264,8 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, showShortcuts = 
           if (!next) setConfirmSignOut(false);
           return next;
         })}
-        title={email || name}
+        // KAL-65: the shared chip, to the right like every left-rail control.
+        {...tip(email || name, 'right')}
         style={{ display: 'flex', alignItems: 'center', gap: 7, width: '100%', background: open ? 'var(--ink-600)' : 'transparent', border: 0, borderRadius: 6, padding: '4px 6px', cursor: 'pointer', fontFamily: 'inherit', color: 'inherit', textAlign: 'left' }}
       >
         <Avatar initials={initials} id={user?.id || email || name} size={24} />
@@ -462,6 +465,7 @@ const MobileRailNav = ({ mode, title, tab, navItems, onNav }) => {
 // computer (useFileDropZone). They go on the whole home screen, so a file let
 // go over the side bar still lands where the overlay says.
 export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userName = 'You', userMeta = undefined, templatesLocked = false, mobileSwipeSurfaceRef = undefined, dropProps = undefined }) => {
+  const tip = useTooltip();
   const expoNativeShell = isExpoNativeShell();
 
   // These classes define the mobile viewport itself. A passive effect can run
@@ -509,7 +513,7 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
       className={tab === key ? 'active' : ''}
       disabled={disabled}
       onClick={() => !disabled && onNav && onNav(key)}
-      title={disabled ? 'Templates is a Pro feature' : undefined}
+      {...(disabled ? tip('Templates is a Pro feature', 'right') : {})}
     >
       {/* UX 2026-09-16: currentColor, so all three tabs read as one icon set and
           the selected tab's own icon changes with it. Documents and Templates

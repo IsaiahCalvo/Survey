@@ -76,7 +76,7 @@ import { composeTextColor, splitTextColor } from './utils/textColorOpacity';
 import { CHROME_GLYPH, FONT_FAMILY, RAIL_CARET, RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_SPLIT_CONTROL_W, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
 // Owner 2026-09-22: undo/redo draw at 14 (the phone's HISTORY_GLYPH) - see MobilePdfViewerChrome.
 const HISTORY_GLYPH = 14;
-import { TooltipContext, makeTooltipBinding } from './components/Tooltip';
+import { TooltipContext, TooltipProvider, makeTooltipBinding } from './components/Tooltip';
 import { useViewerTopOverlayRef } from './utils/viewerTopOverlay.js';
 import DismissBarrier from './components/DismissBarrier.jsx';
 import { sanitizeZoomInput } from './utils/pageNavigationMath.js';
@@ -2241,6 +2241,9 @@ export default function App({ devPreviewReturnTab = null }) {
       <FileDropOverlay overlay={viewerDropOverlay} />
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }} {...viewerDropProps}>
         {tabs.length > 0 && !isNarrowShell && ( // Desktop-only: mobile navigation lives inside the home/viewer chrome.
+          // KAL-65: the tab strip shows over the hub too, where the viewer's
+          // chip host is not mounted, so it brings its own shared host.
+          <TooltipProvider>
           <MemoTabBar
             tabs={tabs}
             activeTabId={activeTabId}
@@ -2249,6 +2252,7 @@ export default function App({ devPreviewReturnTab = null }) {
             onTabReorder={stableTabReorder}
             onPageDrop={stablePageDrop}
           />
+          </TooltipProvider>
         )}
         {/* UX 2026-05-14: App-level top toolbar consolidating Undo/Redo plus
             every annotation tool that used to live in the bottom toolbar.
@@ -4234,6 +4238,9 @@ export default function App({ devPreviewReturnTab = null }) {
                 no clicks, not read out. display: contents, so the wrapper adds
                 no box and the layout is untouched. */}
             <div inert={isViewerVisible ? '' : undefined} style={{ display: 'contents' }}>
+            {/* KAL-65: the hub's own shared tooltip host - the viewer's chip
+                lives in PDFViewer and is not there when no document is open. */}
+            <TooltipProvider>
             <MemoDashboard
               ref={dashboardRef}
               onDocumentSelect={stableDocumentSelect}
@@ -4248,6 +4255,7 @@ export default function App({ devPreviewReturnTab = null }) {
               entities={entities}
               setEntities={setEntities}
             />
+            </TooltipProvider>
             </div>
             {tabs.map(tab => {
               if (tab.isHome) return null;

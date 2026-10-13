@@ -40,6 +40,7 @@
    scrollbars.
 */
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { hoverOnly, useTooltip, withOwnHandlers } from '../components/Tooltip';
 import { createPortal, flushSync } from 'react-dom';
 import { reloadTemplatesAfterPendingSave } from './templatePersistence.js';
 import useMobileEdgeSwipeBack from './useMobileEdgeSwipeBack';
@@ -337,6 +338,7 @@ function SortableModuleTab({
   onCancelRename,
   onOpenMenu,
 }) {
+  const tip = useTooltip();
   /* How the last press on the label arrived. A touch screen has no
      double-click, so on touch a tap on the tab that is ALREADY open opens its
      menu (Rename / Delete) instead (owner 2026-10-01: module tabs could not be
@@ -427,7 +429,11 @@ function SortableModuleTab({
       ) : (
         <button
           type="button"
-          onPointerDown={(e) => { pointerTypeRef.current = e.pointerType || 'mouse'; }}
+          // KAL-65: the shared chip, joined with the tab's own pointerdown so
+          // the touch/mouse sniff below keeps working.
+          {...withOwnHandlers(tip(`${mod.name} · drag to reorder · double-click to rename`), {
+            onPointerDown: (e) => { pointerTypeRef.current = e.pointerType || 'mouse'; },
+          })}
           onClick={(e) => {
             if (isOn && pointerTypeRef.current === 'touch' && onOpenMenu) {
               onOpenMenu(mod.id, (e.currentTarget.closest('[data-module-tab-id]') || e.currentTarget).getBoundingClientRect());
@@ -440,7 +446,6 @@ function SortableModuleTab({
             e.preventDefault();
             onOpenMenu(mod.id, (e.currentTarget.closest('[data-module-tab-id]') || e.currentTarget).getBoundingClientRect());
           } : undefined}
-          title={`${mod.name} · drag to reorder · double-click to rename`}
           style={{
             background: 'transparent',
             border: 0,
@@ -770,6 +775,7 @@ export default function TemplatesEditor({
      it up yet. */
   getChecklistItemUsageCount = null,
 }) {
+  const tip = useTooltip();
   /* ---- mutable working data ----
      Seeded from the `templates` prop, then owned locally so every editor
      action below actually mutates it. Re-seeded from the prop only while the
@@ -887,9 +893,9 @@ export default function TemplatesEditor({
   const isEntitySwitchPress = (event) => {
     const target = event?.target;
     if (!target?.closest) return false;
-    if (target.closest('button[title="Edit color"]')) return true;
+    if (target.closest('button[aria-label="Edit color"]')) return true;
     return !!(target.closest('[data-entity-row]')
-      && !target.closest('input, button[title="More"], [data-drag-rearrange-handle]'));
+      && !target.closest('input, button[aria-label="More"], [data-drag-rearrange-handle]'));
   };
   const foldColor = (next, anchorEl) => {
     clearTimeout(foldTimerRef.current);
@@ -2332,7 +2338,7 @@ export default function TemplatesEditor({
                             setTplMenu((m) => (m && m.id === t.id ? null : { id: t.id, rect }));
                           }}
                           className="hub-icon-btn"
-                          title="More" aria-label="More"
+                          aria-label="More" {...tip('More')}
                         ><Icon name="more" size={14} /></button>
                       )}
                     </div>
@@ -2378,8 +2384,8 @@ export default function TemplatesEditor({
                     className="inline-edit cat-title hub-rename"
                     data-template-title
                     {...templateTitleField(tpl)}
-                    title="Click to rename"
                     aria-label="Template name"
+                    {...hoverOnly(tip('Click to rename'))}
                     onDoubleClick={(e) => e.currentTarget.select()}
                   />
                 </span>
@@ -2513,7 +2519,7 @@ export default function TemplatesEditor({
                         <button
                           type="button"
                           className="tpl-cat-chevron"
-                          title={open ? 'Collapse' : 'Expand'}
+                          {...tip(open ? 'Collapse' : 'Expand')}
                           aria-label={`${open ? 'Collapse' : 'Expand'} ${c.name}`}
                         ><CategoryDisclosureGlyph /></button>
                         <span className="hub-autowidth tpl-cat-name" data-value={c.name}>
@@ -2523,8 +2529,8 @@ export default function TemplatesEditor({
                             data-category-name-id={c.id}
                             defaultValue={c.name}
                             key={c.id + ':' + c.name}
-                            title="Rename"
                             aria-label={`Category name, ${c.name}`}
+                            {...hoverOnly(tip('Rename'))}
                             onClick={(e) => e.stopPropagation()}
                             onDoubleClick={(e) => e.currentTarget.select()}
                             onInput={syncAutoWidth}
@@ -2541,7 +2547,7 @@ export default function TemplatesEditor({
                             onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = c.name; e.currentTarget.blur(); } }}
                           />
                         </span>
-                        <span className="tpl-cat-count" title={`${items.length} ${items.length === 1 ? 'item' : 'items'}${archivedItems.length > 0 ? `, ${archivedItems.length} archived` : ''}`}>
+                        <span className="tpl-cat-count" {...tip(`${items.length} ${items.length === 1 ? 'item' : 'items'}${archivedItems.length > 0 ? `, ${archivedItems.length} archived` : ''}`)}>
                           {items.length} {items.length === 1 ? 'item' : 'items'}{archivedItems.length > 0 ? ` (+${archivedItems.length} archived)` : ''}
                         </span>
                         {catEdit ? (
@@ -2557,7 +2563,7 @@ export default function TemplatesEditor({
                             aria-haspopup="menu"
                             type="button"
                             className="hub-icon-btn tpl-cat-more"
-                            title="More" aria-label="More"
+                            aria-label="More" {...tip('More')}
                             onClick={(e) => {
                               e.stopPropagation();
                               const rect = e.currentTarget.getBoundingClientRect();
@@ -2617,7 +2623,7 @@ export default function TemplatesEditor({
                                   onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { discardFreshItem(i, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
                                 />
                                 <button
-                                  title="Delete item" aria-label="Delete item"
+                                  aria-label="Delete item" {...tip('Delete item')}
                                   onClick={(e) => { e.stopPropagation(); deleteItem(i, it.id); }}
                                   className="hub-icon-btn is-danger"
                                 ><Icon name="close" size={11} /></button>
@@ -2666,13 +2672,13 @@ export default function TemplatesEditor({
                                   >
                                     <span style={{ color: 'var(--text-3)', fontSize: 11 }}>—</span>
                                     <span
-                                      title={`Archived${it.archivedAt ? ` ${new Date(it.archivedAt).toLocaleString()}` : ''} — historical responses preserved`}
+                                      {...tip(`Archived${it.archivedAt ? ` ${new Date(it.archivedAt).toLocaleString()}` : ''} — historical responses preserved`)}
                                       style={{ fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic', textDecoration: 'line-through' }}
                                     >
                                       {archivedItemLabel(it)}
                                     </span>
                                     <button
-                                      title="Permanently delete (orphans historical responses)" aria-label="Permanently delete (orphans historical responses)"
+                                      aria-label="Permanently delete (orphans historical responses)" {...tip('Permanently delete (orphans historical responses)')}
                                       onClick={(e) => { e.stopPropagation(); hardDeleteItem(i, it.id); }}
                                       className="hub-icon-btn is-danger"
                                     ><Icon name="close" size={11} /></button>
@@ -2790,7 +2796,7 @@ export default function TemplatesEditor({
                         />
                         <button
                           onClick={(e) => { if (entityEdit) return; e.stopPropagation(); foldColor(isOpen ? null : r.id, e.currentTarget); }}
-                          title="Edit color" aria-label="Edit color"
+                          aria-label="Edit color" {...tip('Edit color')}
                           style={{
                             width: 18, height: 18, borderRadius: '50%', margin: '0 2px',
                             /* Solid full-strength chip (Drawboard-style) so entity
@@ -2811,7 +2817,8 @@ export default function TemplatesEditor({
                             defaultValue={r.role}
                             key={r.id + ':' + r.role}
                             placeholder="Entity name"
-                            title="Rename"
+                            aria-label="Rename"
+                            {...hoverOnly(tip('Rename'))}
                             onClick={(e) => e.stopPropagation()}
                             onDoubleClick={(e) => e.currentTarget.select()}
                             onInput={syncAutoWidth}
@@ -2831,7 +2838,7 @@ export default function TemplatesEditor({
                           ) : (
                             <button
                               aria-haspopup="menu"
-                              title="More" aria-label="More"
+                              aria-label="More" {...tip('More')}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 const rect = e.currentTarget.getBoundingClientRect();
@@ -3016,7 +3023,7 @@ export default function TemplatesEditor({
                                     setTplMenu((m) => (m && m.id === t.id ? null : { id: t.id, rect }));
                                   }}
                                   className="hub-icon-btn"
-                                  title="More" aria-label="More"
+                                  aria-label="More" {...tip('More')}
                                 ><Icon name="more" size={14} /></button>
                               )}
                             </div>
@@ -3045,8 +3052,8 @@ export default function TemplatesEditor({
                       className="templates-mobile-title-input hub-rename"
                       data-template-title
                       {...templateTitleField(tpl)}
-                      title="Tap to rename"
                       aria-label="Template name"
+                      {...hoverOnly(tip('Tap to rename'))}
                     />
                   </span>
                   <span>{orderedMods.length} {orderedMods.length === 1 ? 'module' : 'modules'} · {totalCategoryCount} {totalCategoryCount === 1 ? 'category' : 'categories'} · {tpl.roster.length} {tpl.roster.length === 1 ? 'entity' : 'entities'}</span>
@@ -3220,7 +3227,7 @@ export default function TemplatesEditor({
                                     onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = c.name; e.currentTarget.blur(); } }}
                                   />
                                 </span>
-                                <span className="templates-mobile-category-count" title={archivedItems.length ? `${items.length} active ${items.length === 1 ? 'item' : 'items'}, ${archivedItems.length} archived` : `${items.length} active ${items.length === 1 ? 'item' : 'items'}`}>{items.length} {items.length === 1 ? 'item' : 'items'}{archivedItems.length ? ` +${archivedItems.length}` : ''}</span>
+                                <span className="templates-mobile-category-count" {...tip(archivedItems.length ? `${items.length} active ${items.length === 1 ? 'item' : 'items'}, ${archivedItems.length} archived` : `${items.length} active ${items.length === 1 ? 'item' : 'items'}`)}>{items.length} {items.length === 1 ? 'item' : 'items'}{archivedItems.length ? ` +${archivedItems.length}` : ''}</span>
                                 {catEdit ? (
                                   <i className={`templates-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? <Icon name="check" size={11} /> : null}</i>
                                 ) : (
@@ -3231,7 +3238,7 @@ export default function TemplatesEditor({
                                       aria-haspopup="menu"
                                       type="button"
                                       className="templates-mobile-more"
-                                      title="More" aria-label="More"
+                                      aria-label="More" {...tip('More')}
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         const rect = e.currentTarget.getBoundingClientRect();
@@ -3263,7 +3270,7 @@ export default function TemplatesEditor({
                                               onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(ci, it.id, v), () => discardFreshItem(ci, it.id))}
                                               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { discardFreshItem(ci, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
                                             />
-                                            <button type="button" title="Delete item" aria-label="Delete item" onClick={(e) => { e.stopPropagation(); deleteItem(ci, it.id); }}><Icon name="close" size={11} /></button>
+                                            <button type="button" aria-label="Delete item" {...tip('Delete item')} onClick={(e) => { e.stopPropagation(); deleteItem(ci, it.id); }}><Icon name="close" size={11} /></button>
                                           </div>
                                           </SwipeToDeleteRow>
                                         )}
@@ -3279,7 +3286,7 @@ export default function TemplatesEditor({
                                           <span>{archivedItemLabel(it)}</span>
                                           <button
                                             type="button"
-                                            title="Permanently delete" aria-label="Permanently delete"
+                                            aria-label="Permanently delete" {...tip('Permanently delete')}
                                             onClick={(e) => { e.stopPropagation(); hardDeleteItem(ci, it.id); }}
                                           ><Icon name="close" size={11} /></button>
                                         </div>
@@ -3326,8 +3333,8 @@ export default function TemplatesEditor({
                         type="button"
                         onClick={closeMobileEntities}
                         className="hub-icon-btn"
-                        title="Close"
                         aria-label="Close"
+                        {...tip('Close')}
                       >
                         <Icon name="close" size={13} />
                       </button>
@@ -3408,7 +3415,7 @@ export default function TemplatesEditor({
                                 <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 24, height: 24 }} collapseOpen={isOpen && foldingColor !== r.id} onCollapse={() => foldColor(null)} />
                                 <button
                                   type="button"
-                                  title="Edit color" aria-label="Edit color"
+                                  aria-label="Edit color" {...tip('Edit color')}
                                   onClick={(e) => { if (entityEdit) return; e.stopPropagation(); foldColor(isOpen ? null : r.id, e.currentTarget); }}
                                   style={{ '--entity-color': c, '--entity-border-color': rowBorderColor }}
                                 ><span aria-hidden="true" /></button>
@@ -3438,7 +3445,7 @@ export default function TemplatesEditor({
                                     aria-haspopup="menu"
                                     type="button"
                                     className="templates-mobile-more"
-                                    title="More" aria-label="More"
+                                    aria-label="More" {...tip('More')}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       const rect = e.currentTarget.getBoundingClientRect();
@@ -3808,7 +3815,7 @@ export default function TemplatesEditor({
               <p style={{ margin: 0, fontSize: 11, letterSpacing: 0, color: 'var(--text-3)', fontWeight: 600, fontFamily: 'var(--font-ui)' }}>{moveModal.mode === 'copy' ? 'Copy' : 'Move'}</p>
               <h3 style={{ fontSize: 14, fontWeight: 700, margin: '2px 0 0', color: 'var(--text-1)', letterSpacing: '-0.025em', fontFamily: 'var(--font-ui)' }}>{moveModal.count} item{moveModal.count === 1 ? '' : 's'}</h3>
             </div>
-            <button ref={moveModalCloseRef} onClick={closeMoveModal} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={13} /></button>
+            <button ref={moveModalCloseRef} onClick={closeMoveModal} aria-label="Close" {...tip('Close')} className="hub-icon-btn"><Icon name="close" size={13} /></button>
           </div>
           {/* Destination fields depend on WHAT is being moved/copied:
               - Category → pick a Destination Template, then a Destination

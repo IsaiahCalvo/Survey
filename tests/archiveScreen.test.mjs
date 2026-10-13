@@ -896,8 +896,9 @@ test('the mobile card list is hidden on desktop and shown on a phone screen', ()
 test('Archive transient controls follow the shared home interaction contract', () => {
   assert.match(SCREEN, /import DismissBarrier from '\.\.\/components\/DismissBarrier';/);
   assert.match(SCREEN, /<DismissBarrier[\s\S]*?active=\{menuOpen\}[\s\S]*?insideRefs=\{\[menuRef, desktopMenuRef\]\}[\s\S]*?onDismiss=\{\(\) => setMenuOpen\(false\)\}/);
-  assert.match(SCREEN, /title="Close preview"[\s\S]*?<Icon name="close" size=\{14\} \/>/);
-  assert.doesNotMatch(SCREEN, /title="Close preview"[^>]*>×<\/button>/,
+  // KAL-65: the name moved from a native title= to aria-label (+ shared chip).
+  assert.match(SCREEN, /aria-label="Close preview"[\s\S]*?<Icon name="close" size=\{14\} \/>/);
+  assert.doesNotMatch(SCREEN, /aria-label="Close preview"[^>]*>×<\/button>/,
     'preview close uses the shared drawn icon, not a font glyph');
 });
 
