@@ -10,12 +10,13 @@
  * or Cmd/Ctrl+/ again close it. The rows come from src/utils/keyboardShortcuts.js,
  * which a test keeps in step with the real key handlers. Stops wheel/touch
  * events from reaching the PDF handler so the list scrolls natively. Renders
- * null when closed.
+ * null when closed (after a 120 ms exit through MotionPresence).
  */
 import React from 'react';
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 import Icon from '../Icons';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import MotionPresence from './MotionPresence.jsx';
 import { isTypingTarget } from '../utils/annotationFamilyRules';
 import {
   OPEN_SHORTCUTS_EVENT,
@@ -66,8 +67,9 @@ const KeyboardShortcutsOverlay = () => {
 
   // No floating hint pill — the overlay stays reachable via the '?' key, but
   // the bottom-right "Press ? for keyboard shortcuts" prompt is not shown.
+  // Closed: MotionPresence plays the sheet's exit (motion.css), then nothing.
   if (!isOpen) {
-    return null;
+    return <MotionPresence open={false} />;
   }
 
   const isMac = typeof navigator !== 'undefined' && /(Mac|iPhone|iPod|iPad)/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
@@ -83,6 +85,7 @@ const KeyboardShortcutsOverlay = () => {
   }));
 
   return (
+    <MotionPresence open>
     <div
       data-keyboard-shortcuts-modal="true"
       style={{
@@ -278,6 +281,7 @@ const KeyboardShortcutsOverlay = () => {
         </div>
       </div>
     </div>
+    </MotionPresence>
   );
 };
 

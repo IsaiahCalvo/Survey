@@ -14,6 +14,7 @@ import Spinner from '../components/Spinner';
 import { C } from '../uiPalette';
 import { useTooltip } from '../components/Tooltip';
 import { renameSelectionRange } from './documentSelection.js';
+import MotionPresence from '../components/MotionPresence.jsx';
 
 
 const overlay = {
@@ -56,7 +57,8 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
     if (open) { setSubmitError(''); setMode(initialMode === 'copy' ? 'copy' : 'move'); }
   }, [open, initialMode]);
 
-  if (!open) return null;
+  // Closed: MotionPresence plays the exit of the last open card (motion.css).
+  if (!open) return <MotionPresence open={false} />;
 
   const modeBtn = (val, label) => (
     <button
@@ -74,6 +76,7 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
   );
 
   return (
+    <MotionPresence open>
     <div onClick={submitting ? undefined : onClose} style={overlay}>
       <div ref={cardRef} role="dialog" aria-modal="true" aria-label="Move or copy documents" onClick={(e) => e.stopPropagation()} style={{ width: 420, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden' }}>
         <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${C.rule}`, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
@@ -136,6 +139,7 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
         </div>
       </div>
     </div>
+    </MotionPresence>
   );
 }
 
@@ -157,7 +161,8 @@ export function ConfirmModal({ open, onClose, title = 'Are you sure?', message =
     if (open) setSubmitting(false);
   }, [open]);
 
-  if (!open) return null;
+  // Closed: MotionPresence plays the exit of the last open card (motion.css).
+  if (!open) return <MotionPresence open={false} />;
 
   const handleConfirm = async () => {
     if (submitting) return;
@@ -170,6 +175,7 @@ export function ConfirmModal({ open, onClose, title = 'Are you sure?', message =
   };
 
   return (
+    <MotionPresence open>
     <div onClick={submitting ? undefined : onClose} style={overlay}>
       <div ref={cardRef} role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : undefined} onClick={(e) => e.stopPropagation()} style={{ width: 380, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden' }}>
         <div style={{ padding: '18px 18px 14px', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
@@ -195,6 +201,7 @@ export function ConfirmModal({ open, onClose, title = 'Are you sure?', message =
         </div>
       </div>
     </div>
+    </MotionPresence>
   );
 }
 
@@ -236,7 +243,8 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
     return () => cancelAnimationFrame(frame);
   }, [initialName, open]);
 
-  if (!open) return null;
+  // Closed: MotionPresence plays the exit of the last open card (motion.css).
+  if (!open) return <MotionPresence open={false} />;
   const trimmed = name.trim();
   // Owner 2026-10-02: only a real change is saved. The same name just closes.
   const unchanged = trimmed === (initialName || '').trim();
@@ -247,6 +255,7 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
   };
 
   return (
+    <MotionPresence open>
     <div onClick={onClose} style={overlay}>
       <div
         ref={cardRef}
@@ -291,5 +300,6 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
         </div>
       </div>
     </div>
+    </MotionPresence>
   );
 }

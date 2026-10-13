@@ -389,7 +389,7 @@ export default function SaveLogBanner() {
     left: 20,
     transform: visible ? 'translateX(0)' : 'translateX(-24px)',
     opacity: visible ? 1 : 0,
-    transition: 'transform 260ms cubic-bezier(0.16, 1, 0.3, 1), opacity 240ms ease',
+    transition: 'transform 260ms var(--ease-out), opacity 240ms ease',
     background: colors.bg,
     color: colors.text,
     padding: state === 'entry' ? '14px 14px 14px 14px' : '12px 14px 12px 14px',

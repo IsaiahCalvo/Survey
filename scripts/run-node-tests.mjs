@@ -1,9 +1,9 @@
 import { readdir } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
-import { spawn } from 'node:child_process';
 import { TIMING_SENSITIVE_TEST_FILES } from './timing-sensitive-tests.mjs';
 
 import { CI_PERF_TEST_FILES } from './ci-perf-tests.mjs';
+import { runGuardedTestFile } from './test-file-guard.mjs';
 
 async function collectTestFiles(root, shouldInclude) {
   const entries = await readdir(root, { withFileTypes: true });
@@ -214,6 +214,8 @@ const MEASURED_TEST_FILE_WEIGHTS = new Map([
   ['tests/printDrawerPathStackSafety.test.mjs', 7.1],
   ['tests/annotationDocSyncCatchup.test.mjs', 6.7],
   ['tests/freeTextAppearanceGlyphOverflow.test.mjs', 6.7],
+  // 2026-10-13: real-process hang-guard probes (local estimate, not CI-measured).
+  ['tests/testFileGuard.test.mjs', 8.0],
   ['tests/cloudStudioVisualParity.test.mjs', 4.0],
   ['tests/pdfAnnotationImporter.test.mjs', 3.6],
   ['tests/annotationEraseTransaction.test.mjs', 2.6],
@@ -321,41 +323,14 @@ if (
 if (skipNotice) console.log(skipNotice);
 console.log(`[tests] selection: ${selectionLabel}`);
 
-function runTestFile(file, label, timeoutMs = 120_000) {
+// Every file runs in a fresh `node --test` process under the gate's hang
+// guard (scripts/test-file-guard.mjs). The guard bounds hangs by the file's
+// own CPU time and progress, not by raw wall-clock time, so a busy machine
+// cannot turn a slow-but-working file into a red run (KAL-446).
+async function runTestFile(file, label) {
   console.log(`\n[tests] ${label}`);
-  return new Promise((resolveExitCode) => {
-    // A fresh process per file avoids Node 24's worker-pool wedge. The named
-    // timeout turns any future leaked handle or unfinished test into a useful,
-    // bounded failure that reports the exact file.
-    const child = spawn(process.execPath, ['--test', file], {
-      stdio: 'inherit',
-    });
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill('SIGKILL');
-    }, timeoutMs);
-
-    child.once('error', (error) => {
-      clearTimeout(timer);
-      console.error(`${file} failed to start: ${error.message}`);
-      resolveExitCode(1);
-    });
-    child.once('exit', (code, signal) => {
-      clearTimeout(timer);
-      if (timedOut) {
-        console.error(`${file} exceeded its ${timeoutMs}ms file timeout.`);
-        resolveExitCode(1);
-        return;
-      }
-      if (signal) {
-        console.error(`${file} terminated by ${signal}.`);
-        resolveExitCode(1);
-        return;
-      }
-      resolveExitCode(code ?? 1);
-    });
-  });
+  const { exitCode } = await runGuardedTestFile(file);
+  return exitCode;
 }
 
 let exitCode = 0;

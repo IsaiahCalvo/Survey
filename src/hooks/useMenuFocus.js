@@ -24,10 +24,10 @@
  *      focus back to it when the dialog closes.
  *
  * Mouse and touch users see no change: steps 1 and 3 only run when the last
- * input was a key press (src/utils/inputModality.js).
+ * input was a key press (src/utils/keyboardModality.js).
  */
 import { useEffect, useRef } from 'react';
-import { lastInputWasKeyboard } from '../utils/inputModality.js';
+import { lastInputWasKeyboard } from '../utils/keyboardModality.js';
 
 const ITEM_SELECTOR = [
   '[role="menuitem"]',
