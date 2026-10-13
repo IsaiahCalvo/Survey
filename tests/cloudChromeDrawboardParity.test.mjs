@@ -256,7 +256,9 @@ test('cloud grabbers: eight dots on the smallest frames, and no two of them ever
       });
       assert.deepEqual(spec.resizeHandles, ALL_RESIZE_HANDLES,
         `${label}@${inverseScale}: all eight grabbers, always`);
-      const metrics = { r: 5.5 * Math.sqrt(inverseScale), gap: 4 * Math.sqrt(inverseScale) };
+      // Mirrors getSelectionHandleVisualMetrics: one on-screen size at every
+      // zoom since the 2026-10-13 Drawboard audit (was sqrt(inverseScale)).
+      const metrics = { r: 5.5 * inverseScale, gap: 4 * inverseScale };
       const points = drawnPoints(chrome.frame, spec, metrics);
       const ids = Object.keys(points);
       for (let i = 0; i < ids.length; i += 1) {

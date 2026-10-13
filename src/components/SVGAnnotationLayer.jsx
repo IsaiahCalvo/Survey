@@ -83,6 +83,8 @@ import { canToolGrabSelection, isSelectFamilyTool, shouldHideSelectionChrome } f
 import { classifySelectionGrabTarget, isPageCalloutSelected, pageSelectionMarkGroups, resolvePagePress } from '../utils/toolPressRouting.js';
 import { dropStashedSelection, peekStashedSelection, stashPageSelection } from '../utils/pageSelectionPresence.js';
 import { useSelectionGrabHandoff } from '../hooks/useSelectionGrabHandoff.js';
+import { useRotateHandleClick } from '../hooks/useRotateHandleClick.js';
+import { useSelectionMoveCursor } from '../hooks/useSelectionMoveCursor.js';
 import { DRAWN_CENTERED_STROKE_CONTRACT } from '../utils/shapeCommitGeometry.js';
 import { useSVGInteraction } from '../hooks/useSVGInteraction';
 // Plan 14-03 Task 3 (CREATE-01 callout half): factory for constructing a
@@ -1144,6 +1146,18 @@ const SVGAnnotationLayerBody = memo(({
       };
       handleAnnotationDoubleClick(fake, info.index);
     },
+  });
+  // Drawboard canvas audit 2026-10-13: the hover over a selected mark that a
+  // drag would move shows `move`, not the tool's crosshair
+  // (hooks/useSelectionMoveCursor.js).
+  useSelectionMoveCursor({
+    svgRef,
+    enabled: selectionGrabbableByTool && !isSelectFamilyTool(activeTool) && !selectionGrabArmed
+      && interactionState === 'idle'
+      && !isCalloutTextEditMode && (editingAnnotationIndex == null || isBboxEditMode),
+    isSelectedHit: (hit) => (hit.kind === 'callout'
+      ? Boolean(hit.calloutId && selectedCalloutIds?.has?.(hit.calloutId))
+      : Boolean(selectedIds?.has?.(hit.annotationIndex))),
   });
   // Rule-table answers a drawing tool's press needs (see resolvePagePress in
   // the root onPointerDown): drop this page's pick, add to it (Shift), or —
@@ -2463,10 +2477,11 @@ const SVGAnnotationLayerBody = memo(({
   // Page-unit scale for the draft's chrome (vertex dots, checkmark rings, the
   // first-vertex magnet). Screen constants are converted to page units so the
   // chrome stays a constant size on screen while the drawn geometry scales
-  // with the page. The dampened `sqrt` is deliberate: it is the exact sizing
-  // the committed polygon's vertex handles already use, so the draft dots and
-  // the post-commit handles are the same size at every zoom level.
-  const polyHitScale = Math.sqrt(clampInverseScale(inverseScale));
+  // with the page. It is the exact sizing the committed polygon's vertex
+  // handles use, so the draft dots and the post-commit handles are the same
+  // size at every zoom level (screen-constant since the 2026-10-13 Drawboard
+  // canvas audit; selectionHandleVisibility.getHandleZoomScale).
+  const polyHitScale = clampInverseScale(inverseScale);
   // UX 2026-09-09 (iOS Simulator pass): a finger needs a 44pt+ target, so
   // on a coarse pointer the finish checkmarks' hit discs and the first-vertex
   // magnet grow (polyDraftHitRadii); the drawn chrome does not change. The
@@ -2496,10 +2511,11 @@ const SVGAnnotationLayerBody = memo(({
   }, []);
   const polyDraftRadii = polyDraftHitRadii({ coarsePointer: isCoarsePointer });
   // Touch hit surfaces use the UNdampened inverse scale so they are truly
-  // screen-constant: the sqrt dampening above is right for drawn chrome, but
-  // at the phone's fit-to-width zoom it shrank a nominal 24px disc to ~17pt
-  // and a finger 21pt off the checkmark placed a vertex instead (iPhone 17
-  // Pro simulator). clampInverseScale still caps growth on extreme zoom-out.
+  // screen-constant (the drawn chrome above now is too). A sqrt dampening,
+  // used until 2026-10-13, shrank a nominal 24px disc to ~17pt at the phone's
+  // fit-to-width zoom, and a finger 21pt off the checkmark placed a vertex
+  // instead (iPhone 17 Pro simulator). clampInverseScale still caps growth on
+  // extreme zoom-out.
   const polyHitSurfaceScale = isCoarsePointer ? clampInverseScale(inverseScale) : polyHitScale;
   const polyFirstPointSnapRadius = polyDraftRadii.firstPointSnapRadius * polyHitSurfaceScale;
   const polyDraftActive = !!polyDraft;
@@ -2942,6 +2958,25 @@ const SVGAnnotationLayerBody = memo(({
     // annotations, visualTransform, or rotInputVisible to the dep array.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedIds, selectedSurveyMarkerId, selectedSurveyMarkerIds, setRotInputVisibleDbg, editingAnnotationIndex]);
+
+  // Drawboard canvas audit 2026-10-13: a click (no drag) on the rotate grabber
+  // shows the angle box at once and focuses it with the number selected
+  // (hooks/useRotateHandleClick.js). The selection gate above still decides
+  // whether the box may render at all.
+  useRotateHandleClick({
+    svgRef,
+    onClick: () => {
+      if (rotInputHoverTimerRef.current) {
+        clearTimeout(rotInputHoverTimerRef.current);
+        rotInputHoverTimerRef.current = null;
+      }
+      if (rotInputCloseTimerRef.current) {
+        clearTimeout(rotInputCloseTimerRef.current);
+        rotInputCloseTimerRef.current = null;
+      }
+      setRotInputVisibleDbg(true, 'click on the rotate grabber');
+    },
+  });
 
   // ---------------------------------------------------------------------------
   // EDIT-12: Derived state for RotationInputField props
@@ -4714,12 +4749,12 @@ const SVGAnnotationLayerBody = memo(({
     // EVERY handle on the callout turns red together as one clear "this
     // callout is in a bad spot" warning (user request 2026-05-18).
     const ringColor = dragInvalid ? HANDLE_RING_INVALID : HANDLE_RING;
-    // Handle radius — shared HANDLE_RADIUS, sqrt-dampened on zoom so callout
-    // handles match every other handle in both size and zoom behaviour.
+    // Handle radius — shared HANDLE_RADIUS, one size on screen at every zoom
+    // so callout handles match every other handle (Drawboard audit 2026-10-13).
     // Zoom-out balloon fix: clamp inverseScale first so the VISIBLE callout
     // handles (and their matching transparent hit circles) stop growing on
     // extreme zoom-out. No-op at rest (inverseScale ≈ 1) / on zoom-in.
-    const calloutHandleR = HANDLE_RADIUS * Math.sqrt(clampInverseScale(inverseScale));
+    const calloutHandleR = HANDLE_RADIUS * clampInverseScale(inverseScale);
     // UX 2026-09-16: an invisible hit pad behind each callout grabber — 32 px
     // on a mouse (Drawboard PDF measures 34 x 34 on its handles), 44 pt on a
     // finger — so the knee, the arrow tip and the four text-box corners can be
@@ -5282,7 +5317,7 @@ const SVGAnnotationLayerBody = memo(({
     // ride-along translate so callouts stay in lockstep with annotations
     // during group drag.
     // UX: 2026-05-18 — inverseScale MUST be a dependency. The callout handles
-    // size themselves from it (HANDLE_RADIUS * sqrt(inverseScale)); without it
+    // size themselves from it (HANDLE_RADIUS * inverseScale); without it
     // here this memo holds a stale value and the handles swell on zoom while
     // every other shape's handles (which re-read it fresh) stay constant.
     // UX 2026-07-17 — hoveredCalloutId + selectedIds MUST be dependencies.
@@ -7691,12 +7726,12 @@ const SVGAnnotationLayerBody = memo(({
           const tipExtension = radius * 0.5;
           const tipX = cx + Math.cos(angleRad) * (radius + tipExtension);
           const tipY = cy + Math.sin(angleRad) * (radius + tipExtension);
-          // UX: dampened handle sizing. The sqrt curve softens growth so the
-          // handle feels proportional across zoom levels. Radius comes from
-          // the shared HANDLE_RADIUS constant so every handle is one size.
+          // UX: one on-screen handle size at every zoom (Drawboard audit
+          // 2026-10-13). Radius comes from the shared HANDLE_RADIUS constant
+          // so every handle is one size.
           // Zoom-out balloon fix: clamp inverseScale first so this visible
           // handle + its shadow stop growing on extreme zoom-out (no-op at rest).
-          const is = Math.sqrt(clampInverseScale(inverseScale));
+          const is = clampInverseScale(inverseScale);
           const handleR = HANDLE_RADIUS * is;
           // UX 2026-09-16: invisible hit pad behind the counter's rotate
           // grabber — the grabber + 4 px on a mouse (w63), 44 pt on a finger. It is the only grabber on a selected
@@ -7781,9 +7816,8 @@ const SVGAnnotationLayerBody = memo(({
                   // surrounding SVG layer flips to pointer-events:none in edit mode.
                   cursor: 'grab',
                   pointerEvents: 'auto',
-                  // UX: same sqrt damping as handleR above — CSS filter px
-                  // work in screen space, so raw inverseScale produces 4× the
-                  // shadow at 25% zoom. Matches SVGSelectionOverlay.jsx:48.
+                  // UX: same scale as handleR above (clamped, so the shadow
+                  // stops growing on extreme zoom-out). Matches SVGSelectionOverlay.
                   filter: `drop-shadow(0 ${1 * is}px ${3 * is}px rgba(0,0,0,0.25))`,
                 }}
                 {...counterRotateHandlers}
@@ -7989,10 +8023,10 @@ const SVGAnnotationLayerBody = memo(({
           const isArrow = selectionObj.tool === 'arrow';
           // Arrow: handle at arrowhead tip (ep2) and line start (ep1)
           // Line: handles at both endpoints
-          // Dampened inverse scale (sqrt) to match SVGSelectionOverlay handle sizing.
+          // Screen-constant scale to match SVGSelectionOverlay handle sizing.
           // Zoom-out balloon fix: clamp inverseScale first so these visible
           // endpoint handles + shadows stop growing on extreme zoom-out (no-op at rest).
-          const handleIs = Math.sqrt(clampInverseScale(inverseScale));
+          const handleIs = clampInverseScale(inverseScale);
           const handleR = HANDLE_RADIUS * handleIs;
           const handleStyle = {
             filter: `drop-shadow(0 ${1 * handleIs}px ${3 * handleIs}px rgba(0,0,0,0.15))`,
@@ -8160,11 +8194,11 @@ const SVGAnnotationLayerBody = memo(({
             const ry = pRotCenterY + dx * sinP + dy * cosP;
             return { x: pLeft + rx, y: pTop + ry };
           });
-          // Dampened inverse scale mirrors SVGSelectionOverlay + endpoint
-          // handles so vertex dots feel proportional across zoom levels.
+          // Screen-constant scale mirrors SVGSelectionOverlay + endpoint
+          // handles so vertex dots are one size at every zoom.
           // Zoom-out balloon fix: clamp inverseScale first so these visible
           // vertex handles + shadows stop growing on extreme zoom-out (no-op at rest).
-          const vHandleIs = Math.sqrt(clampInverseScale(inverseScale));
+          const vHandleIs = clampInverseScale(inverseScale);
           const vHandleR = HANDLE_RADIUS * vHandleIs;
           // UX 2026-09-16: an invisible hit disc sits behind each vertex dot so
           // the corner can be grabbed without landing on the 11 px dot — 32 px

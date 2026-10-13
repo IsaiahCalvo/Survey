@@ -5199,6 +5199,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         [data-mobile-pdf-surface]:not([data-space-pan='dragging']) > [data-pdfjs-content] { cursor: grab; }
         :where([data-mobile-pdf-surface] .survey-pdfjs-page-div) { cursor: auto; }
         [data-space-pan='armed'], [data-space-pan='armed'] * { cursor: grab !important; }
+        /* Pan opens links on a click, so a link shows the hand (utils/linkClickPolicy.js). */
+        [data-space-pan='armed'] :is([data-text-markup-link], [data-pdfjs-link-layer] a) { cursor: pointer !important; }
         [data-space-pan='dragging'], [data-space-pan='dragging'] * { cursor: grabbing !important; }
         /* Owner 2026-10-13 (docs/GESTURE-CONTRACT.md P7): with Pan (or Space)
            nothing on the page is selectable text - a press-drag always pans.
