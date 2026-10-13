@@ -26,6 +26,7 @@ import { QuickColourDots, QuickPaintSwatch } from './components/QuickStyleContro
 import { isPaintSelectionMixed } from './utils/selectionRestyle.js';
 import BodyPortal from './components/BodyPortal.js';
 import AnchoredPopover from './components/AnchoredPopover';
+import ExportMenu from './components/ExportMenu.jsx';
 import ToolbarOverflowMenu from './components/ToolbarOverflowMenu';
 import useResponsiveToolbar from './hooks/useResponsiveToolbar.js';
 import useLoadoutTransition, { useDropInRow, useLeavingRow, useRowCrossfade } from './hooks/useLoadoutTransition.js';
@@ -2361,6 +2362,19 @@ export default function App({ devPreviewReturnTab = null }) {
               >
                 <Icon name="download" size={CHROME_GLYPH} />
               </button>
+              {/* KAL-393: every export in one list; the button above stays
+                  the one-click annotated PDF. */}
+              <ExportMenu
+                tooltip={chromeTip('More export options', 'below')}
+                items={[
+                  { label: 'Annotated PDF', onSelect: bottomToolbarApi.exportAnnotatedPdf },
+                  {
+                    label: 'Markup only (XFDF)',
+                    title: 'Your marks in a separate file for Acrobat or Bluebeam. Your PDF stays the same.',
+                    onSelect: bottomToolbarApi.exportXfdf,
+                  },
+                ]}
+              />
             </div>
           )}
 

@@ -3002,6 +3002,18 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                 <Icon name="download" size={16} color="currentColor" />
                 Export annotated PDF
               </button>
+              {/* KAL-393: the marks alone as an XFDF file; the PDF stays the same. */}
+              <button
+                type="button"
+                disabled={!bottomToolbarApi?.exportXfdf}
+                onClick={() => {
+                  setMoreOpen(false);
+                  bottomToolbarApi?.exportXfdf?.();
+                }}
+              >
+                <Icon name="download" size={16} color="currentColor" />
+                Export markup (XFDF)
+              </button>
               {/* RULED 2026-09-22 (owner): "More = Export + Save log". Save log
                   used to be gated on window.Capacitor.isNativePlatform(), so the
                   menu on web mobile held ONE row and the ruling's second item
