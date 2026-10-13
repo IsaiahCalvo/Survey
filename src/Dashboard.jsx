@@ -30,6 +30,7 @@ import { getSupabaseSession, supabase } from './supabaseClient';
 import { isStorageFileNotFoundError, isSupabaseRowNotFoundError } from './utils/storageErrors';
 import { countSurveyMarkersReferencingChecklistItem } from './services/documentAnnotationService';
 import { computeContentSha256 } from './services/contentHash';
+import { copyDocumentToProject, isReusedCopy } from './home/copyDocumentToProject';
 import { purgeAnnotationDoc } from './services/annotationDocSync';
 import { lockDocument, unlockDocument } from './services/documentLockService.js';
 import { resolveDocumentMetadata } from './services/documentMetadataResolver.js';
@@ -1946,47 +1947,38 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     }
   };
 
-  const cloneDocumentToProject = async (doc, projectId = null, operation = null) => {
+  // KAL-443: the copy carries the REAL content fingerprint of its bytes and
+  // shares the content-addressed stored object (see copyDocumentToProject).
+  const hasSameBytesInProject = async (contentSha, projectId) => {
+    let lookup = supabase
+      .from('documents')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('content_sha256', contentSha)
+      .limit(1);
+    lookup = projectId == null ? lookup.is('project_id', null) : lookup.eq('project_id', projectId);
+    const { data, error } = await lookup.maybeSingle();
+    if (error && !isSupabaseRowNotFoundError(error)) throw error;
+    return Boolean(data);
+  };
+
+  const cloneDocumentToProject = async (doc, projectId = null, operation = null, { keepBoth = false } = {}) => {
     const actualDoc = (allDocuments || []).find((candidate) => candidate.id === doc?.id) || doc;
-    const filePath = actualDoc?.file_path || actualDoc?.filePath;
-    if (!filePath) throw new Error(`Document "${actualDoc?.name || 'Untitled'}" has no stored PDF.`);
-    const blob = await downloadFromStorage(filePath);
-    const sourceName = actualDoc.name || 'Untitled.pdf';
-    const dot = sourceName.toLowerCase().lastIndexOf('.pdf');
-    const copyName = dot >= 0
-      ? `${sourceName.slice(0, dot)} (Copy)${sourceName.slice(dot)}`
-      : `${sourceName} (Copy)`;
-    const copyFile = new File([blob], copyName, { type: blob.type || 'application/pdf' });
-    // A batch copy supplies a stable UUID. The same key makes both the storage
-    // upload and documents insert idempotent after a committed-but-lost reply.
-    const stableCopyId = operation?.operationId || crypto.randomUUID();
-    const uploadedPath = await uploadToStorage(
-      copyFile,
+    return copyDocumentToProject({
+      source: actualDoc,
       projectId,
-      undefined,
-      stableCopyId,
-    );
-    try {
-      return await createSupabaseDocument({
-        id: stableCopyId,
-        name: copyName,
-        file_path: uploadedPath,
-        file_size: blob.size,
-        page_count: actualDoc.page_count ?? null,
-        project_id: projectId,
-        archived: false,
-      });
-    } catch (error) {
-      // The row may have committed even though the response was lost. The
-      // batch compensator reconciles this stable candidate by id; never remove
-      // its bytes here based on the response alone.
-      error.recoveryValue = { id: stableCopyId, file_path: uploadedPath };
-      throw error;
-    }
+      operationId: operation?.operationId || null,
+      keepBoth,
+      download: downloadFromStorage,
+      upload: (file, destinationId, contentSha) => uploadToStorage(file, destinationId, undefined, contentSha),
+      createDocument: createSupabaseDocument,
+      hasSameBytesInProject,
+    });
   };
 
   const rollbackClonedDocument = async (created) => {
-    if (!created?.id) return;
+    // A copy that resolved to an existing document was not made here.
+    if (!created?.id || isReusedCopy(created)) return;
     await deleteDocumentEverywhere({
       docId: created.id,
       filePath: created.file_path || created.filePath || null,
@@ -2025,6 +2017,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         (doc) => cloneDocumentToProject(
           doc,
           targetProjectId === undefined ? (doc.project_id ?? null) : targetProjectId,
+          null,
+          { keepBoth: true },
         ),
         rollbackClonedDocument,
       );
@@ -2070,7 +2064,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         const sourceDocuments = (allDocuments || []).filter((doc) => doc.project_id === source.id);
         try {
           for (const doc of sourceDocuments) {
-            createdDocuments.push(await cloneDocumentToProject(doc, created.id));
+            createdDocuments.push(await cloneDocumentToProject(doc, created.id, null, { keepBoth: true }));
           }
           return { project: created, documents: createdDocuments };
         } catch (error) {
@@ -2187,7 +2181,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           return true;
         }
       }
-      await moveOrCopyDocumentsAtomically({
+      const results = await moveOrCopyDocumentsAtomically({
         documents: actualDocuments,
         projectId,
         mode,
@@ -2200,6 +2194,18 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         readDocument,
         onRecoveryChange: persistDocumentMoveCopyRecovery,
       });
+      // KAL-443: same bytes already in the destination = one document, as
+      // with a normal upload. Say so instead of silently making nothing.
+      const alreadyThere = (results || []).filter(isReusedCopy);
+      if (alreadyThere.length > 0) {
+        const where = targetProj.name || 'that project';
+        const inArchive = alreadyThere.filter((row) => row.user_archived_at);
+        showToast(alreadyThere.length === 1
+          ? (inArchive.length
+            ? `“${alreadyThere[0].name || 'This PDF'}” is already in ${where}, in Archive. Restore it from Archive to use it.`
+            : `“${alreadyThere[0].name || 'This PDF'}” is already in ${where}, so it was not copied again.`)
+          : `${alreadyThere.length} of these PDFs are already in ${where}${inArchive.length ? ' or its Archive' : ''}, so they were not copied again.`, 'info');
+      }
       await refetchProjects();
       await refetchDocuments();
       await refetchAllDocuments();
