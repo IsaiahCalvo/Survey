@@ -83,7 +83,17 @@ function useSelectedItems() {
   return useMemo(() => [...byPage.values()].flat(), [byPage]);
 }
 
-const pageLayer = (pageNumber) => document.querySelector(`svg[data-svg-annotation-layer="${pageNumber}"]`);
+// Every opened document tab keeps its viewer mounted (AppShell hides the
+// others with display: none), so a plain querySelector can land in a hidden
+// tab and the bar never showed on any tab but the first opened (batch-6
+// verify). Prefer the element that is on screen.
+const shownElement = (selector) => {
+  const all = document.querySelectorAll(selector);
+  for (const element of all) if (element.getClientRects().length > 0) return element;
+  return all[0] || null;
+};
+
+const pageLayer = (pageNumber) => shownElement(`svg[data-svg-annotation-layer="${pageNumber}"]`);
 
 const visibleRect = (element) => {
   const rect = element?.getBoundingClientRect?.();
@@ -92,8 +102,8 @@ const visibleRect = (element) => {
 
 /** The viewer area the bar must stay inside: under the tool bars. */
 function viewerBounds() {
-  const container = document.querySelector('[data-testid="pdf-container"]')
-    || document.querySelector('[data-mobile-pdf-surface="false"]');
+  const container = shownElement('[data-testid="pdf-container"]')
+    || shownElement('[data-mobile-pdf-surface="false"]');
   const rect = container?.getBoundingClientRect?.();
   let top = Math.max(rect ? rect.top : 0, 0);
   const bottom = Math.min(rect ? rect.bottom : window.innerHeight, window.innerHeight);
@@ -214,8 +224,8 @@ export default function SelectionQuickBar({
     window.addEventListener('resize', onAny);
     window.addEventListener('pointerup', onAny, true);
     window.addEventListener('keyup', onAny, true);
-    const root = document.querySelector('[data-testid="pdf-container"]')
-      || document.querySelector('[data-mobile-pdf-surface="false"]')
+    const root = shownElement('[data-testid="pdf-container"]')
+      || shownElement('[data-mobile-pdf-surface="false"]')
       || document.body;
     const observer = typeof MutationObserver === 'undefined' ? null : new MutationObserver(onAny);
     observer?.observe(root, {
@@ -246,7 +256,7 @@ export default function SelectionQuickBar({
     if (!bar) return undefined;
     const onWheel = (event) => {
       if (event.target?.closest?.('[data-selection-quick-bar-popover]')) return;
-      const scroller = document.querySelector('[data-mobile-pdf-surface="false"]');
+      const scroller = shownElement('[data-mobile-pdf-surface="false"]');
       if (!scroller) return;
       event.preventDefault();
       // The same hand-off the viewer's own scroll rails make
@@ -314,7 +324,7 @@ export default function SelectionQuickBar({
     const item = list[0];
     const selector = selectionItemSelector(item);
     const target = selector
-      ? (pageLayer(item.pageNumber)?.querySelector(selector) || document.querySelector(selector))
+      ? (pageLayer(item.pageNumber)?.querySelector(selector) || shownElement(selector))
       : null;
     if (!target) return;
     // The menu opens with its corner at this point (and flips up / left
@@ -323,7 +333,7 @@ export default function SelectionQuickBar({
     // menu that has to grow upward never covers the button that opened it.
     // (The menu keeps inside the page it belongs to, so the room is the page's.)
     const rect = button.getBoundingClientRect();
-    const pageRect = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${item.pageNumber}"]`)?.getBoundingClientRect?.();
+    const pageRect = shownElement(`.survey-pdfjs-page-div[data-page-number="${item.pageNumber}"]`)?.getBoundingClientRect?.();
     const roomBelow = Math.min(pageRect ? pageRect.bottom : Infinity, viewerBounds().bottom, window.innerHeight) - rect.bottom;
     const point = roomBelow >= MORE_MENU_ROOM
       ? { x: rect.left, y: rect.bottom + 4 }
