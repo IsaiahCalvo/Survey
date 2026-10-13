@@ -190,6 +190,8 @@ import {
   SurveyMarkerShapePaint,
   surveyMarkerShapeHitProps,
 } from '../survey/markerShapeSvg.jsx';
+import { isPalmContact } from '../utils/touchContact.js';
+import { hasPassedShapeDragThreshold } from '../utils/dragThreshold.js';
 
 const svgAnnotationDebug = (...args) => {
   if (typeof window === 'undefined' || window.__SVG_ANNOTATION_DEBUG !== true) return;
@@ -376,13 +378,15 @@ const FREEHAND_CREATION_TOOLS = ['pen', 'highlighter', 'survey-marker-freehand']
 // (src/utils/polyDraft.js) rather than riding the drag-out gesture above.
 const POLY_CREATION_TOOLS = POLY_DRAFT_TOOLS;
 // UX 2026-10-02 (owner): Line and Arrow take BOTH gestures — press-drag-release
-// draws one in a go, and a click (a press that travels less than this many
-// SCREEN pixels before release) sets the start, the end follows the pointer
+// draws one in a go, and a click (a press that never passes the shape drag
+// threshold, utils/dragThreshold.js) sets the start, the end follows the pointer
 // with the button up, and a second click sets the end. Escape or a tool
 // switch abandons the draft. Rect/ellipse stay drag-only: a plain click with
 // them is how people click away from the mark they just drew.
+// Drawboard audit C4 (2026-10-13): no shape exists until the press has moved
+// more than 6 px (mouse / pen) or 10 px (finger) on screen; a shorter press is
+// a click. Freehand ink has no threshold.
 const CLICK_PLACE_SHAPE_TOOLS = ['line', 'arrow'];
-const CLICK_PLACE_MAX_TRAVEL_PX = 4;
 // Owner 2026-10-02: the translucency of every hover / selection halo. A halo
 // with more than one part (a line and its heads, a callout's box, leaders and
 // head) paints its parts OPAQUE inside one group carrying this opacity, so
@@ -2033,6 +2037,10 @@ const SVGAnnotationLayerBody = memo(({
       const raw = screenToSVG(svgRef.current, e.clientX, e.clientY);
       setCalloutCreation((prev) => {
         if (!prev) return null;
+        // Drawboard audit C4: no callout until the press passes the shape
+        // drag threshold (screen px); below it the press stays a click.
+        if (!prev.dragging && prev.startClient
+          && !hasPassedShapeDragThreshold(prev.startClient, { x: e.clientX, y: e.clientY }, prev.pointerType)) return prev;
         // UX: 2026-05-18 — during creation the textbox can never be placed
         // over the arrow. The textbox (120x32, positioned by its top-left)
         // has a forbidden zone around the arrow tip; if the cursor enters it
@@ -2051,7 +2059,7 @@ const SVGAnnotationLayerBody = memo(({
           else if (least === dUp) y = fy0;
           else y = fy1;
         }
-        return { ...prev, currentPointer: { x, y } };
+        return { ...prev, dragging: true, currentPointer: { x, y } };
       });
     };
     const onUp = () => {
@@ -2060,8 +2068,8 @@ const SVGAnnotationLayerBody = memo(({
       if (!state) return;
       const W = width || 1;
       const H = height || 1;
-      // UX: min-drag threshold — 4px in page space. Short clicks are
-      // treated as cancels (no stray 0x0 callout committed).
+      // UX: min-drag threshold — the screen-px shape threshold above (the
+      // callout never moves off its tip below it) plus 4px in page space.
       const dx = state.currentPointer.x - state.arrowTip.x;
       const dy = state.currentPointer.y - state.arrowTip.y;
       if (dx * dx + dy * dy < 16) {
@@ -2602,8 +2610,16 @@ const SVGAnnotationLayerBody = memo(({
         // Button released outside our listeners (e.g. over browser chrome) —
         // treat as release so no zombie preview survives.
         if (isFreehand) commitShapeCreationRef.current(null);
-        else commitShapeCreationRef.current({ x: e.clientX, y: e.clientY });
+        else releaseDrag(e);
         return;
+      }
+      // Drawboard audit C4: a drag-out shape does not exist (no preview, no
+      // commit) until the press passes the screen-px drag threshold. The ref
+      // is set synchronously so a release in the same task sees it.
+      const draft = shapeCreationRef.current;
+      if (!isFreehand && draft && draft.mode === 'drag' && !draft.dragging) {
+        if (!hasPassedShapeDragThreshold(draft.startClient, { x: e.clientX, y: e.clientY }, draft.pointerType)) return;
+        shapeCreationRef.current = { ...draft, dragging: true };
       }
       markAnnotationPreviewFrame(shapeCreation.gestureId, { action });
       if (isFreehand) {
@@ -2612,8 +2628,38 @@ const SVGAnnotationLayerBody = memo(({
         setShapeCreation((prev) => (prev ? { ...prev, tick: (prev.tick || 0) + 1 } : prev));
       } else {
         const point = screenToSVG(svgRef.current, e.clientX, e.clientY);
-        if (point) setShapeCreation((prev) => (prev ? { ...prev, current: point } : prev));
+        setShapeCreation((prev) => (prev ? {
+          ...prev,
+          ...(point ? { current: point } : {}),
+          ...(prev.mode === 'drag' ? { dragging: true } : {}),
+        } : prev));
       }
+    };
+    // Release of a drag-out press. One that never passed the drag threshold
+    // is a click: it picks the pressed mark (or drops the pick), puts a
+    // Line / Arrow into click-to-place, and otherwise draws nothing.
+    const releaseDrag = (e) => {
+      const state = shapeCreationRef.current;
+      const clicked = Boolean(state && state.mode === 'drag' && !state.dragging
+        && !hasPassedShapeDragThreshold(state.startClient, { x: e.clientX, y: e.clientY }, state.pointerType));
+      if (clicked && state.pressFallback) {
+        // Drawboard rule 2: a click (not a drag) on a mark picks it; on empty
+        // page with something picked it only drops the pick. Nothing drawn.
+        cancelDraft();
+        applyPressFallbackRef.current?.(state.pressFallback);
+        return;
+      }
+      if (clicked && CLICK_PLACE_SHAPE_TOOLS.includes(state.tool)) {
+        // A click, not a drag: the start is set, the end now follows the
+        // pointer until the next click.
+        replaceDraft({ ...state, mode: 'click', current: state.start, endPointerId: null });
+        return;
+      }
+      if (clicked) {
+        cancelDraft();
+        return;
+      }
+      commitShapeCreationRef.current({ x: e.clientX, y: e.clientY });
     };
     const onUp = (e) => {
       const placing = clickPlace();
@@ -2629,23 +2675,7 @@ const SVGAnnotationLayerBody = memo(({
         commitShapeCreationRef.current(null);
         return;
       }
-      const state = shapeCreationRef.current;
-      if (state && state.pressFallback && state.startClient
-        && Math.hypot(e.clientX - state.startClient.x, e.clientY - state.startClient.y) < CLICK_PLACE_MAX_TRAVEL_PX) {
-        // Drawboard rule 2: a click (not a drag) on a mark picks it; on empty
-        // page with something picked it only drops the pick. Nothing drawn.
-        cancelDraft();
-        applyPressFallbackRef.current?.(state.pressFallback);
-        return;
-      }
-      if (state && CLICK_PLACE_SHAPE_TOOLS.includes(state.tool) && state.startClient
-        && Math.hypot(e.clientX - state.startClient.x, e.clientY - state.startClient.y) < CLICK_PLACE_MAX_TRAVEL_PX) {
-        // A click, not a drag: the start is set, the end now follows the
-        // pointer until the next click.
-        replaceDraft({ ...state, mode: 'click', current: state.start, endPointerId: null });
-        return;
-      }
-      commitShapeCreationRef.current({ x: e.clientX, y: e.clientY });
+      releaseDrag(e);
     };
     // Click mode only: the second press. Window capture, so it is claimed
     // before this layer's own pointerdown would start a NEW line under it.
@@ -2653,6 +2683,7 @@ const SVGAnnotationLayerBody = memo(({
       const placing = clickPlace();
       if (!placing || placing.endPointerId != null) return;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
+      if (isPalmContact(e)) return; // a resting palm never places the end
       const svg = svgRef.current;
       if (!svg) return;
       const ownPage = svg.closest?.('[data-page-number]') || svg;
@@ -6835,6 +6866,11 @@ const SVGAnnotationLayerBody = memo(({
               : undefined,
       }}
       preserveAspectRatio="none"
+      // Drawboard audit C1: a palm-sized touch (utils/touchContact.js) is not
+      // a tool press - no stroke, shape, marker, selection or erase. Taken in
+      // the capture phase so no mark's own handler sees it either; a stroke
+      // already under way ignores it (its listeners follow its own pointerId).
+      onPointerDownCapture={(e) => { if (isPalmContact(e)) { e.stopPropagation(); e.preventDefault(); } }}
       onPointerDown={(e) => {
         if (isInteractive) {
           // Form-widget click hand-down, step 1 of 2 (see formWidgetClickRef).
@@ -6917,7 +6953,7 @@ const SVGAnnotationLayerBody = memo(({
             // empty space deselects.
             if (onSelectedCalloutIdsChange) onSelectedCalloutIdsChange(new Set());
             const pt = screenToSVG(svgRef.current, e.clientX, e.clientY);
-            setCalloutCreation({ arrowTip: pt, currentPointer: pt, pressFallback });
+            setCalloutCreation({ arrowTip: pt, currentPointer: pt, pressFallback, startClient: { x: e.clientX, y: e.clientY }, pointerType: e.pointerType });
             e.preventDefault();
             return;
           }
@@ -7035,11 +7071,11 @@ const SVGAnnotationLayerBody = memo(({
                   pointerId: e.pointerId,
                   pointerType: e.pointerType,
                   // screen point of the press: a release within
-                  // CLICK_PLACE_MAX_TRAVEL_PX of it turns a line/arrow into
+                  // the shape drag threshold of it turns a line/arrow into
                   // click-to-place mode (see the window effect).
                   startClient: { x: e.clientX, y: e.clientY },
                   mode: 'drag',
-                  // A release within CLICK_PLACE_MAX_TRAVEL_PX picks the mark
+                  // A release within the drag threshold picks the mark
                   // pressed (or drops the pick) instead of drawing.
                   pressFallback,
                 });
