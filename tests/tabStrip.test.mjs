@@ -165,3 +165,18 @@ test('the tab strip wiring: one guarded close path, no page-drop stub, restore w
   assert.match(tabBar, /onAuxClick=/);
   assert.match(tabBar, /onContextMenu=/);
 });
+
+test('the tab strip dialogs host takes no room in #root (phone viewer stays on screen)', () => {
+  // On a phone, hub.css sizes every `#root.survey-hub-native-root > div` to
+  // 100% height. An in-flow dialogs host sitting before the app's column was
+  // one screen tall and pushed the whole viewer below the fold (batch-6
+  // verify, click-every-control phone viewer 80/100).
+  const appShell = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
+  const hubCss = readFileSync(new URL('../src/home/hub.css', import.meta.url), 'utf8');
+  assert.match(hubCss, /#root\.survey-hub-native-root > div \{\s*height: 100% !important;/);
+  const host = appShell.match(/<div data-tab-strip-dialogs=""[^>]*style=\{\{([^}]*)\}\}/);
+  assert.ok(host, 'the dialogs host is found');
+  assert.match(host[1], /position: 'fixed'/, 'out of the flow, so its forced height moves nothing');
+  assert.match(host[1], /width: 0/);
+  assert.match(host[1], /zIndex: 6500/, 'still above an open document (z-index 5000)');
+});
