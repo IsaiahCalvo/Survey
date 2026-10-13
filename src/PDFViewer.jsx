@@ -35851,8 +35851,10 @@ ${pageBlocks}
                        the PDF surface opens the touch context menu, but ONLY
                        under the pan or select tool (demo App.tsx:1555/1579 gate
                        long-press to activeTool pan|select). Drawing tools keep
-                       the finger for their own strokes. */
-                    mobileLongPressContextMenu={mobileMode && (activeTool === 'pan' || activeTool === 'select')}
+                       the finger for their own strokes. Every touch screen, not
+                       only the phone layout (touch audit 2026-10-13, T1): the
+                       viewer arms it only where touch exists. */
+                    mobileLongPressContextMenu={activeTool === 'pan' || activeTool === 'select'}
                     textHighlightModeActive={activeTool === 'text-highlight'}
                     textHighlightColor={strokeColor}
                     textHighlightOpacity={Math.max(0, Math.min(1, Number(strokeOpacity) / 100 || 0.5))}

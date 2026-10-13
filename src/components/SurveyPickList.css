@@ -85,11 +85,18 @@
   cursor: pointer;
 }
 
-.survey-pick__row:hover,
 .survey-pick__row:focus-visible {
   color: var(--text-1);
   background: var(--hover);
   outline: 0;
+}
+
+@media (hover: hover) {
+  .survey-pick__row:hover {
+    color: var(--text-1);
+    background: var(--hover);
+    outline: 0;
+  }
 }
 
 /* The current item: bright ink with a check (survey calm gold, no gold). */

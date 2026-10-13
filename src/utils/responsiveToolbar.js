@@ -75,6 +75,15 @@
  * when the live width is not given. */
 export const WIDEST_SUBTOOLS_WIDTH = 249;
 
+/** The same widest loadout on a given tool gutter. A touch-first screen
+ * opens the tool bar's gutter to 12px (styles/touchTargets.css, touch audit
+ * 2026-10-13) so each button's invisible hit zone can reach 40px; the plan
+ * then keeps that much wider loadout clear of Export. */
+export const widestSubtoolsWidth = (toolGap = 6) => {
+  const gap = Number.isFinite(toolGap) && toolGap >= 0 ? toolGap : 6;
+  return 7 * 28 + 6 * gap + 17;
+};
+
 /** The widest formatting row any tool draws: the Arrow tool's colours, rule,
  * width, line style, arrowhead and ends — 485px on the loose gutters,
  * measured live 2026-09-26 (Callout 351, Polyline / Line 287, Text 255, Pen

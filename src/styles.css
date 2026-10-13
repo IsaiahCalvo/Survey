@@ -3,6 +3,8 @@
    every control. Imported second so its rules sit after the token block. */
 @import './styles/states.css';
 @import './styles/swatches.css';
+/* Finger-sized targets on the desktop layout (touch screens only). */
+@import './styles/touchTargets.css';
 
 * {
   margin: 0;
@@ -364,9 +366,11 @@ button,
   border-color: var(--border);
 }
 
-.btn:not(:disabled):hover {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+@media (hover: hover) {
+  .btn:not(:disabled):hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  }
 }
 
 .btn:not(:disabled):active {
@@ -412,12 +416,14 @@ button,
   right: 0;
 }
 
-#chrome-sub-toolbar-host .btn:not(:disabled):hover,
-#chrome-subtools-host .btn:not(:disabled):hover,
-[data-select-mode-toggle] .btn:not(:disabled):hover,
-[data-area-tools] .btn:not(:disabled):hover,
-[data-marker-draw-modes] .btn:not(:disabled):hover {
-  transform: none;
+@media (hover: hover) {
+  #chrome-sub-toolbar-host .btn:not(:disabled):hover,
+  #chrome-subtools-host .btn:not(:disabled):hover,
+  [data-select-mode-toggle] .btn:not(:disabled):hover,
+  [data-area-tools] .btn:not(:disabled):hover,
+  [data-marker-draw-modes] .btn:not(:disabled):hover {
+    transform: none;
+  }
 }
 
 /* Button Sizes */
@@ -454,9 +460,11 @@ button,
    already paints a fill takes the subtle --border. This is the rule that made
    every toolbar button in the app flash a 3:1 light box under the pointer —
    the "light buttons, light elements" the owner rejected. */
-.btn-default:hover:not(:disabled) {
-  background: var(--hover);
-  border-color: var(--border);
+@media (hover: hover) {
+  .btn-default:hover:not(:disabled) {
+    background: var(--hover);
+    border-color: var(--border);
+  }
 }
 
 .btn-primary {
@@ -468,9 +476,11 @@ button,
 /* UX: a gold control hovers UP to --accent-light and presses DOWN to
    --accent-press (tokens.css "HOW STATES ARE BUILT"). These used to darken on
    hover, which reads as already-pressed; .auth-submit-btn had it right. */
-.btn-primary:hover:not(:disabled) {
-  background: var(--accent-light);
-  border-color: var(--accent-light);
+@media (hover: hover) {
+  .btn-primary:hover:not(:disabled) {
+    background: var(--accent-light);
+    border-color: var(--accent-light);
+  }
 }
 
 .btn-secondary {
@@ -479,9 +489,11 @@ button,
   border: 1px solid transparent;
 }
 
-.btn-secondary:hover:not(:disabled) {
-  background: var(--hover);
-  border-color: var(--border);
+@media (hover: hover) {
+  .btn-secondary:hover:not(:disabled) {
+    background: var(--hover);
+    border-color: var(--border);
+  }
 }
 
 /* .btn-success (a #a6e07a green button and its #93cf68 hover) was DELETED
@@ -498,9 +510,11 @@ button,
   border: 1px solid var(--danger-fill);
 }
 
-.btn-danger:hover:not(:disabled) {
-  background: var(--danger);
-  border-color: var(--danger);
+@media (hover: hover) {
+  .btn-danger:hover:not(:disabled) {
+    background: var(--danger);
+    border-color: var(--danger);
+  }
 }
 
 .btn-ghost {
@@ -509,9 +523,11 @@ button,
   border: 1px solid transparent;
 }
 
-.btn-ghost:hover:not(:disabled) {
-  background: var(--hover);
-  border-color: var(--border);
+@media (hover: hover) {
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--hover);
+    border-color: var(--border);
+  }
 }
 
 .btn-icon {
@@ -524,9 +540,11 @@ button,
   font-size: 14px;
 }
 
-.btn-icon:hover:not(:disabled) {
-  background: var(--hover);
-  border-color: var(--border);
+@media (hover: hover) {
+  .btn-icon:hover:not(:disabled) {
+    background: var(--hover);
+    border-color: var(--border);
+  }
 }
 
 /* UX 2026-09-22 (revision-3 palette): THE PRESSED STATE, declared after every
@@ -679,9 +697,11 @@ button,
    a fill, which is why an idle pill under the pointer looked brighter than a
    selected one. Hover is --hover; an OPEN pill is showing its menu, which is a
    selected state, so it takes --surface-3 like every other selected thing. */
-.chrome-pill:hover {
-  color: var(--text-1);
-  background: var(--hover);
+@media (hover: hover) {
+  .chrome-pill:hover {
+    color: var(--text-1);
+    background: var(--hover);
+  }
 }
 
 .chrome-pill:active {
@@ -745,8 +765,10 @@ button,
   cursor: pointer;
 }
 
-.chrome-text-toggle:hover {
-  background: var(--hover);
+@media (hover: hover) {
+  .chrome-text-toggle:hover {
+    background: var(--hover);
+  }
 }
 
 .chrome-text-toggle:active {
@@ -804,9 +826,11 @@ button,
   cursor: pointer;
 }
 
-.chrome-segmented > button:hover {
-  color: var(--text-1);
-  background: var(--hover);
+@media (hover: hover) {
+  .chrome-segmented > button:hover {
+    color: var(--text-1);
+    background: var(--hover);
+  }
 }
 
 /* Gold word and gold glyph, and nothing else. */
@@ -963,9 +987,14 @@ button,
   font-size: 12px;
 }
 
-.survey-subrow__template .chrome-pill:hover,
 .survey-subrow__template .chrome-pill[data-state='open'] {
   background: var(--hover);
+}
+
+@media (hover: hover) {
+  .survey-subrow__template .chrome-pill:hover {
+    background: var(--hover);
+  }
 }
 
 /* Block, not the trigger's flex: text-overflow does not reach a flex box's
@@ -994,8 +1023,10 @@ button,
   cursor: pointer;
 }
 
-.survey-subrow__done:hover {
-  background: var(--hover);
+@media (hover: hover) {
+  .survey-subrow__done:hover {
+    background: var(--hover);
+  }
 }
 
 .survey-subrow__done:active {
@@ -1041,10 +1072,16 @@ button,
   cursor: pointer;
 }
 
-.survey-row-all:hover,
 .survey-row-all.is-open {
   color: var(--text-1);
   background: var(--hover);
+}
+
+@media (hover: hover) {
+  .survey-row-all:hover {
+    color: var(--text-1);
+    background: var(--hover);
+  }
 }
 
 .survey-row-all:focus-visible {
@@ -1136,8 +1173,10 @@ button,
   cursor: pointer;
 }
 
-.survey-subrow__keep:hover {
-  color: var(--text-1);
+@media (hover: hover) {
+  .survey-subrow__keep:hover {
+    color: var(--text-1);
+  }
 }
 
 .survey-subrow__keep:active {
@@ -3337,9 +3376,11 @@ svg[data-svg-annotation-layer][data-selection-hover="move"] {
    and a --pressed fill) are gone rather than overridden.
    The settings row under the bar keeps its own: its word toggles are not
    icons, and an armed one still answers the pointer with the neutral plate. */
-#chrome-sub-toolbar-host .btn-active:hover:not(:disabled) {
-  background: var(--hover);
-  border-color: var(--border);
+@media (hover: hover) {
+  #chrome-sub-toolbar-host .btn-active:hover:not(:disabled) {
+    background: var(--hover);
+    border-color: var(--border);
+  }
 }
 
 #chrome-sub-toolbar-host .btn-active:active:not(:disabled) {
@@ -3576,7 +3617,9 @@ html.is-resizing-side-panel * {
   border-color: transparent;
   color: var(--text-disabled);
 }
-.chrome-history:not(:disabled):hover { background: var(--hover); border-color: transparent; }
+@media (hover: hover) {
+  .chrome-history:not(:disabled):hover { background: var(--hover); border-color: transparent; }
+}
 .chrome-history:not(:disabled):active { background: var(--pressed); }
 
 /* PHONE TOASTS (owner report 2026-09-30: a Spaces error toast sat half behind

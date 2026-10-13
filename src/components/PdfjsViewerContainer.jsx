@@ -76,8 +76,9 @@ import { createZoomGlide, retargetZoomGlide, stepZoomGlide } from '../utils/zoom
 import { isLiveFormWidgetTarget } from '../utils/formWidgetPointerTargets.js';
 import { isSelectionGrabPress } from '../hooks/useSelectionGrabHandoff.js';
 import {
-  hasStylusTouch, isPenDown, isPencilOnly, resolveTouchStartRoute, resolveViewerPressRoute, subscribeGatedPointers,
+  DRAW_MODES, hasStylusTouch, isPenDown, isPencilOnly, resolveTouchStartRoute, resolveViewerPressRoute, subscribeGatedPointers,
 } from '../utils/pencilMode.js';
+import { createLongPressTracker, longPressMayArm, markLongPressEvent } from '../utils/touchLongPress.js';
 import {
   compensateScrollTopForRoom,
   computeTopOverlayInset,
@@ -4346,15 +4347,23 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
   }, [applyWheelZoom, beginElasticPan, cancelPanInertia, catchElastic, checkpointPinchGesture, commitGesture, flushPan, isMobileSurface, releaseElastic, releaseElasticPan, releaseLayoutShift, schedulePan, setPanInteraction, setZoomInteraction, startPanInertia, stopElastic, touchSurface]);
 
-  // Mobile long-press → context menu (Phase D parity). Isolated, additive,
-  // and passive: this effect only OBSERVES touches (it never preventDefaults or
-  // stops propagation), so it cannot disturb the pan/pinch/tool contract above.
-  // A single finger held still for ~380ms synthesizes a `contextmenu` MouseEvent
-  // at the touch point; the app-wide right-click dispatcher
+  // Long-press → context menu (Phase D parity; docs/GESTURE-CONTRACT.md L1).
+  // Isolated, additive and passive: this effect only OBSERVES touches and pen
+  // pointers (it never preventDefaults or stops propagation), so it cannot
+  // disturb the pan/pinch/tool contract above.
+  // A finger or pen held still for 380ms synthesizes a `contextmenu` MouseEvent
+  // at the press point; the app-wide right-click dispatcher
   // (utils/contextMenuDiagnostics.js) then resolves the target and opens the
   // annotation / paste / region menu — reusing the exact desktop handlers, so
   // sync/CRDT sees identical operations. Movement beyond 10px, a second finger,
-  // or lift-off before the timer cancels the press.
+  // or lift-off before the timer cancels the press (utils/touchLongPress.js).
+  //
+  // Every touch screen, not only the phone (Drawboard touch audit 2026-10-13,
+  // T1): iPads and touch laptops use the desktop layout, where a finger had no
+  // other way to reach Delete / Duplicate / Lock / Arrange. Pencil only: a
+  // finger navigates (P2), so only the pen's long press opens the menu. A pen
+  // that sends no touch events (Windows / Surface pens) is heard through its
+  // pointer events; an Apple Pencil sends both and simply re-arms the same press.
   //
   // Demo reference: mobile-expo-go/App.tsx wires per-target long-press —
   // annotation 320ms (866-895), canvas paste 360ms (897-915), region 420ms
@@ -4363,83 +4372,93 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // all three rather than three separate delays.
   useEffect(() => {
     const el = scrollerRef.current;
-    if (!el || !isMobileSurface || !mobileLongPressContextMenu) return undefined;
+    if (!el || !touchSurface || !mobileLongPressContextMenu) return undefined;
 
-    const LONG_PRESS_MS = 380;
-    const MOVE_CANCEL_PX = 10;
-    let timer = null;
-    let startX = 0;
-    let startY = 0;
+    // Synthesize a right-click at the held point on whatever element is
+    // topmost there. The dispatcher reads clientX/clientY + composedPath /
+    // elementsFromPoint, so a real MouseEvent on the hit element resolves
+    // the page + annotation/region exactly as a desktop right-click would.
+    // The event carries the input so the menu takes its 44px touch rows.
+    const press = createLongPressTracker({
+      onFire: ({ x, y, input }) => {
+        const target = document.elementFromPoint(x, y) || el;
+        const ev = new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          clientX: x,
+          clientY: y,
+          button: 2,
+        });
+        target.dispatchEvent(markLongPressEvent(ev, input));
+      },
+    });
+    const drawMode = () => (isPencilOnly() ? DRAW_MODES.PEN : DRAW_MODES.TOUCH);
 
-    const clear = () => {
-      if (timer) { clearTimeout(timer); timer = null; }
-    };
-
-    const fire = () => {
-      timer = null;
-      // Synthesize a right-click at the held point on whatever element is
-      // topmost there. The dispatcher reads clientX/clientY + composedPath /
-      // elementsFromPoint, so a real MouseEvent on the hit element resolves
-      // the page + annotation/region exactly as a desktop right-click would.
-      const target = document.elementFromPoint(startX, startY) || el;
-      const ev = new MouseEvent('contextmenu', {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-        clientX: startX,
-        clientY: startY,
-        button: 2,
-      });
-      target.dispatchEvent(ev);
-    };
+    // Resize/rotation handles own the entire touch sequence. Never arm the
+    // annotation long-press menu beneath them; WebKit otherwise may surface
+    // its native Page/Paste callout during a deliberate slow transform.
+    // UX 2026-09-16: the invisible 44 pt pad behind each grabber counts as
+    // the grabber for this rule. Without it a finger that landed on the pad
+    // (which is the normal way to grab a handle by touch) armed the
+    // long-press menu underneath instead of starting the transform.
+    const onHandle = (target) => Boolean(target?.closest?.('[data-resize-handle], [data-rotation-handle], [data-handle-hit-pad]'));
 
     const onStart = (event) => {
-      if (event.touches.length !== 1) { clear(); return; }
-      // Resize/rotation handles own the entire touch sequence. Never arm the
-      // annotation long-press menu beneath them; WebKit otherwise may surface
-      // its native Page/Paste callout during a deliberate slow transform.
-      if (event.target?.closest?.('[data-resize-handle], [data-rotation-handle]')) {
-        clear();
-        return;
-      }
-      // UX 2026-09-16: the invisible 44 pt pad behind each grabber counts as
-      // the grabber for this rule. Without it a finger that landed on the pad
-      // (which is the normal way to grab a handle by touch) armed the
-      // long-press menu underneath instead of starting the transform.
-      if (event.target?.closest?.('[data-handle-hit-pad]')) {
-        clear();
-        return;
-      }
+      if (event.touches.length !== 1) { press.cancel(); return; }
+      if (onHandle(event.target)) { press.cancel(); return; }
       const t = event.touches[0];
       // A resting palm never opens the page menu (Drawboard audit C1).
-      if (isPalmContact(t)) { clear(); return; }
-      startX = t.clientX;
-      startY = t.clientY;
-      clear();
-      timer = window.setTimeout(fire, LONG_PRESS_MS);
+      if (isPalmContact(t)) { press.cancel(); return; }
+      const input = hasStylusTouch(event.touches) ? 'pen' : 'touch';
+      if (!longPressMayArm(input, drawMode())) { press.cancel(); return; }
+      press.start(t.clientX, t.clientY, input);
     };
     const onMove = (event) => {
-      if (!timer) return;
-      if (event.touches.length !== 1) { clear(); return; }
+      if (event.touches.length !== 1) { press.cancel(); return; }
       const t = event.touches[0];
-      if (Math.abs(t.clientX - startX) > MOVE_CANCEL_PX || Math.abs(t.clientY - startY) > MOVE_CANCEL_PX) {
-        clear();
-      }
+      press.move(t.clientX, t.clientY);
+    };
+    const cancel = () => press.cancel();
+    // Pen pointers (a pen that sends no touch events). Fingers stay on the
+    // touch stream above; a mouse never arms (it has the right button).
+    let penId = null;
+    const onPenDown = (event) => {
+      if (event.pointerType !== 'pen') return;
+      if (event.button !== 0 || onHandle(event.target)) { penId = null; press.cancel(); return; }
+      penId = event.pointerId;
+      press.start(event.clientX, event.clientY, 'pen');
+    };
+    const onPenMove = (event) => {
+      if (event.pointerType === 'pen' && event.pointerId === penId) press.move(event.clientX, event.clientY);
+    };
+    const onPenEnd = (event) => {
+      if (event.pointerType !== 'pen' || event.pointerId !== penId) return;
+      penId = null;
+      press.cancel();
     };
 
     // passive:true — guarantees we never interfere with the active touch contract.
     el.addEventListener('touchstart', onStart, { capture: true, passive: true });
     el.addEventListener('touchmove', onMove, { capture: true, passive: true });
-    el.addEventListener('touchend', clear, { capture: true, passive: true });
-    el.addEventListener('touchcancel', clear, { capture: true, passive: true });
+    el.addEventListener('touchend', cancel, { capture: true, passive: true });
+    el.addEventListener('touchcancel', cancel, { capture: true, passive: true });
+    el.addEventListener('pointerdown', onPenDown, { capture: true, passive: true });
+    el.addEventListener('pointermove', onPenMove, { capture: true, passive: true });
+    el.addEventListener('pointerup', onPenEnd, { capture: true, passive: true });
+    el.addEventListener('pointercancel', onPenEnd, { capture: true, passive: true });
     return () => {
-      clear();
+      press.cancel();
       el.removeEventListener('touchstart', onStart, true);
       el.removeEventListener('touchmove', onMove, true);
-      el.removeEventListener('touchend', clear, true);
-      el.removeEventListener('touchcancel', clear, true);
+      el.removeEventListener('touchend', cancel, true);
+      el.removeEventListener('touchcancel', cancel, true);
+      el.removeEventListener('pointerdown', onPenDown, true);
+      el.removeEventListener('pointermove', onPenMove, true);
+      el.removeEventListener('pointerup', onPenEnd, true);
+      el.removeEventListener('pointercancel', onPenEnd, true);
     };
-  }, [isMobileSurface, mobileLongPressContextMenu]);
+  }, [touchSurface, mobileLongPressContextMenu]);
 
   // ---- imperative zoom / nav -----------------------------------------------
   const zoomToScale = useCallback((target, options = {}) => {
