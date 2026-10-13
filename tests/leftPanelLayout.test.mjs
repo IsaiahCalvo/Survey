@@ -6,8 +6,10 @@
  *   - each panel's right edge resizes it (mouse 8px strip, 24px on touch
  *     screens with an always-drawn grip), inside per-panel limits
  *     (Pages 224 120-480; Search / Bookmarks / Spaces / History 340 280-1200),
- *     never leaving less than 360px of document; double-click (or Enter on the
- *     focused edge) resets;
+ *     never leaving less than 400px of document beside whatever covers the
+ *     right side (the right rail, the Survey panel), and in Survey never
+ *     reaching into the survey bar's centre group; double-click (or Enter on
+ *     the focused edge) resets;
  *   - every panel keeps its own width, and which panel was open, per user,
  *     across reloads (localStorage, never throwing);
  *   - opening / closing slides the panel with a transform, so the page is not
@@ -22,6 +24,10 @@ import {
   LEFT_RAIL_WIDTH,
   MIN_VIEWER_VISIBLE,
   PANEL_WIDTHS,
+  SURVEY_CENTRE_CLEARANCE,
+  getSideRoom,
+  publishSideRoom,
+  subscribeSideRoom,
   DEFAULT_PANEL_LAYOUT,
   clampPanelWidth,
   normalizePanelLayout,
@@ -62,9 +68,12 @@ test('clamp: inside the limits, and never more than the window leaves room for',
   assert.equal(clampPanelWidth('pages', -56, 1440), 120);
   assert.equal(clampPanelWidth('pages', 5000, 1440), 480);
   assert.equal(clampPanelWidth('search', 300.6, 1440), 301);
-  // 1440 window: 1440 - 48 - 360 = 1032 is the widest a Search panel gets.
+  // 1440 window (nothing given for the right side): 1440 - 48 - 400 = 992 is
+  // the widest a Search panel gets. (Was 360 / 1032 before the batch-7 tablet
+  // check raised the document's floor.)
+  assert.equal(MIN_VIEWER_VISIBLE, 400);
   assert.equal(panelMaxWidth('search', 1440), 1440 - LEFT_RAIL_WIDTH - MIN_VIEWER_VISIBLE);
-  assert.equal(clampPanelWidth('search', 1200, 1440), 1032);
+  assert.equal(clampPanelWidth('search', 1200, 1440), 992);
   // A tiny window still gets the panel's min, never less.
   assert.equal(panelMaxWidth('search', 500), 280);
   assert.equal(clampPanelWidth('search', 900, 500), 280);
@@ -86,10 +95,65 @@ test('keyboard on the edge: arrows step, Shift steps more, Home/End, Enter reset
   assert.equal(at('ArrowRight', 340, true), 404);
   assert.equal(at('ArrowLeft', 290, true), 280);
   assert.equal(at('Home'), 280);
-  assert.equal(at('End'), 1032);
+  assert.equal(at('End'), 992);
   assert.equal(at('Enter', 600), 340);
   assert.equal(at('a'), null);
   assert.equal(at('ArrowUp'), null);
+});
+
+test('the right side and the survey bar limit the panel (batch-7 tablet check)', () => {
+  // iPad portrait, Survey panel open (48 rail + 320 panel): 1024 - 48 - 368 - 400.
+  const open = { rightCover: 368, surveyCentreX: 512 };
+  assert.equal(panelMaxWidth('pages', 1024, open), 208);
+  assert.equal(clampPanelWidth('pages', 480, 1024, open), 208);
+  assert.equal(widthFromDrag({ panelId: 'pages', startWidth: 224, startX: 272, x: 1000, viewportWidth: 1024, room: open }), 208);
+  assert.equal(widthFromKey({ panelId: 'pages', width: 208, key: 'End', viewportWidth: 1024, room: open }), 208);
+  // Survey panel closed: the survey bar's centre spot is the limit (it stops
+  // SURVEY_CENTRE_CLEARANCE short: start piece, gutter, 4 chips + "All N").
+  assert.equal(SURVEY_CENTRE_CLEARANCE, 176);
+  assert.equal(panelMaxWidth('pages', 1024, { rightCover: 48, surveyCentreX: 512 }), 512 - 48 - 176);
+  // Not in Survey: only the document's floor.
+  assert.equal(panelMaxWidth('pages', 1024, { rightCover: 48, surveyCentreX: null }), 480);
+  // iPad landscape: 1366 - 48 - 368 - 400 = 550, centre 683 - 48 - 176 = 459.
+  assert.equal(panelMaxWidth('pages', 1366, { rightCover: 368, surveyCentreX: 683 }), 459);
+  // Desktop 1440 in Survey with the Survey panel open: Pages keeps its 480.
+  assert.equal(panelMaxWidth('pages', 1440, { rightCover: 368, surveyCentreX: 720 }), 480);
+  // Never below the panel's own min, however little room.
+  assert.equal(panelMaxWidth('search', 1024, open), 280);
+  // The stored width is not touched: room coming back gives it back.
+  assert.equal(clampPanelWidth('pages', 400, 1024, { rightCover: 48 }), 400);
+});
+
+test('side room store: merges, whole px, notifies only on a change', () => {
+  const start = getSideRoom();
+  let calls = 0;
+  const off = subscribeSideRoom(() => { calls += 1; });
+  try {
+    assert.equal(publishSideRoom({ rightCover: 368.4 }), true);
+    assert.equal(getSideRoom().rightCover, 368);
+    assert.equal(publishSideRoom({ rightCover: 368 }), false);
+    assert.equal(publishSideRoom({ surveyCentreX: 511.6 }), true);
+    assert.deepEqual({ ...getSideRoom() }, { rightCover: 368, surveyCentreX: 512 });
+    assert.equal(publishSideRoom({ surveyCentreX: null }), true);
+    assert.equal(getSideRoom().surveyCentreX, null);
+    assert.equal(publishSideRoom({ surveyCentreX: 'x' }), false);
+    assert.equal(calls, 3);
+  } finally {
+    off();
+    publishSideRoom(start);
+  }
+});
+
+test('wiring: the right rail and the survey bar publish their room; the sidebar reads it', () => {
+  const sidebar = read('../src/PDFSidebar.jsx');
+  const rail = read('../src/SurveySpacesRail.jsx');
+  const fit = read('../src/hooks/useSurveyBarFit.js');
+  assert.match(sidebar, /useSyncExternalStore\(subscribeSideRoom, getSideRoom, getSideRoom\)/);
+  assert.match(sidebar, /clampPanelWidth\(activeTab, panelWidths\[activeTab\], viewportWidth, sideRoom\)/);
+  assert.match(sidebar, /widthFromDrag\(\{ \.\.\.drag, x: event\.clientX, viewportWidth: window\.innerWidth, room: getSideRoom\(\) \}\)/);
+  assert.match(rail, /publishSideRoom\(\{ rightCover: mobileMode \? 0 : \(desktopSurveyPanelShown \? 48 \+ 320 : 48\) \}\)/);
+  assert.match(fit, /publishSideRoom\(\{ surveyCentreX: barRect\.left \+ centre \}\)/);
+  assert.match(fit, /publishSideRoom\(\{ surveyCentreX: null \}\)/);
 });
 
 test('storage: per user, round trips, never throws, ignores junk', () => {

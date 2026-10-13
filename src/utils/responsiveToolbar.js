@@ -636,6 +636,8 @@ export function surveyBarCentreWidth(step, sizes = {}, rowMax = ROW_MAX) {
  * @param {number} [input.empty]         "No categories"
  * @param {number} [input.entityCount]   the template's entities
  * @param {number} [input.entityAllChip] the entities' "All N" chip
+ * @param {number} [input.swatchGap]     the entity swatches' gutter as drawn
+ *   (6px; a touch-first tablet draws the roomier colour gutter, touchTargets.css)
  * @returns {{ step: string, index: number, stable: boolean, centreWidth: number,
  *   rowMax: number, template: 'full'|'glyph', templateRoom: number,
  *   done: 'word'|'glyph', entityRowMax: number, entityStable: boolean,
@@ -656,6 +658,7 @@ export function planSurveyBar({
   empty = SURVEY_BAR_PARTS.empty,
   entityCount = 0,
   entityAllChip = SURVEY_BAR_PARTS.allChip,
+  swatchGap = SURVEY_BAR_PARTS.swatchGap,
 }) {
   const P = SURVEY_BAR_PARTS;
   const sizes = { moduleText, categoryCount, chip, allChip, empty };
@@ -700,7 +703,7 @@ export function planSurveyBar({
   // The entity bar under it: centred on the same spot, never under a panel,
   // planned for the worst case the same way.
   const entityRoom = (left, right) => 2 * Math.min(centre - left - P.inset, barWidth - right - P.inset - centre);
-  const entityRow = { count: entityCount, item: P.swatch, gap: P.swatchGap, allChip: entityAllChip };
+  const entityRow = { count: entityCount, item: P.swatch, gap: Number.isFinite(swatchGap) && swatchGap >= 0 ? swatchGap : P.swatchGap, allChip: entityAllChip };
   let entityRowMax = surveyRowMaxFor(entityRoom(worstL, worstR), entityRow);
   let entityStable = true;
   if (entityRowMax < ROW_STABLE_MIN) {
