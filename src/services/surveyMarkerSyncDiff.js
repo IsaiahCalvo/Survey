@@ -94,3 +94,26 @@ export function computeImportDeletionCandidates(surveyMarkers, excelItemsByScope
   }
   return out;
 }
+
+/**
+ * KAL-440: the Survey Markers this person's app saves into
+ * document_annotations — their own, plus any with no recorded author.
+ *
+ * The projection upsert used to send EVERY marker on the page stamped with the
+ * saver's user_id. For a teammate's marker that either rewrote the row's
+ * author to the saver (where the database allows any editor to update), or —
+ * under today's author-match rule — was refused, and that one refusal turned
+ * cloud sync off for the whole document: the person's own new markers and
+ * deletes then never reached the server, silently. Each author's app saves
+ * their own markers, so leaving teammates' markers out loses nothing.
+ *
+ * Returns a new object (id -> marker); the input is not changed.
+ */
+export function surveyMarkersSavedBy(surveyMarkers, userId) {
+  const kept = {};
+  for (const [id, marker] of Object.entries(surveyMarkers || {})) {
+    const authorId = marker?.userId ?? marker?.annotationData?.userId ?? marker?.lastModifiedBy ?? null;
+    if (authorId == null || authorId === '' || authorId === userId) kept[id] = marker;
+  }
+  return kept;
+}
