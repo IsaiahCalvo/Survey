@@ -480,8 +480,13 @@ test.describe('desktop 1440x900', () => {
       await step(`Home tab: ${tab}`, () => page.getByRole('button', { name: tab, exact: true }).filter({ visible: true }).first().click({ timeout: 5000 }),
         () => shown(page, `.survey-hub.hub-tab-${tab.toLowerCase()}`));
     }
-    await step('Select', () => button(page, 'Select').click({ timeout: 5000 }), () => button(page, 'Done').isVisible());
-    await step('Done', () => button(page, 'Done').click({ timeout: 5000 }), () => button(page, 'Select').isVisible());
+    // Desktop Documents has always-on checkboxes (shell B, 2026-10-13): the
+    // header box replaces the old Select / Done mode, which is phone-only now.
+    const headerBox = (name) => page.getByRole('checkbox', { name, exact: true }).filter({ visible: true }).first();
+    await step('header box: select all', () => headerBox('Select all documents').click({ timeout: 5000 }),
+      () => shown(page, '.documents-bulk-pane'));
+    await step('header box: select none', () => headerBox('Select none').click({ timeout: 5000 }),
+      () => hidden(page, '.documents-bulk-pane'));
     await step('Upload opens the file picker', async () => {
       const chooser = page.waitForEvent('filechooser', { timeout: 8000 });
       await page.getByRole('button', { name: 'Upload', exact: true }).filter({ visible: true }).first().click({ timeout: 5000 });
