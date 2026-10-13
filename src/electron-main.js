@@ -1,17 +1,37 @@
 // electron-main.js
 // electron-main.js
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain: electronIpcMain, dialog, shell, Menu, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { exec, spawn } = require('child_process');
 const os = require('os');
 const { isTrustedElectronAnalyticsSender } = require('./electronAnalyticsBridge');
 const { writeFileAtomic } = require('./electron/atomicFileWriter.cjs');
+const { createTrustedIpcMain } = require('./electron/trustedIpc.cjs');
+const { isClearableDirectory, isPathAllowed } = require('./electron/fsPathGuard.cjs');
 
 const DEV_PORT = process.env.DEV_PORT || '5173';
 const SURVEY_ANALYTICS_PROXY_URL = 'https://surveytool.app/api/analytics/track';
 const SURVEY_ANALYTICS_MAX_BYTES = 32 * 1024;
 let surveyMainWindow = null;
+
+// KAL-369: every IPC handler below is registered through this wrapper, so a
+// call is served only when it comes from the Survey app page in the main
+// window (same test analytics:track has always used). A page the window was
+// navigated to, or an injected iframe, gets an EPERM rejection instead.
+// See src/electron/trustedIpc.cjs.
+function isTrustedAppIpcEvent(event) {
+  return isTrustedElectronAnalyticsSender({
+    senderWebContents: event?.sender,
+    mainWebContents: surveyMainWindow?.webContents,
+    senderUrl: String(event?.senderFrame?.url || ''),
+    development: process.env.NODE_ENV === 'development',
+    devPort: DEV_PORT,
+    appPath: app.getAppPath(),
+    platform: process.platform,
+  });
+}
+const ipcMain = createTrustedIpcMain(electronIpcMain, isTrustedAppIpcEvent);
 
 // 2026-06-04 — Continuous main-process renderer console capture.
 // The in-page console buffer (window.__consoleLogBuffer in src/main.jsx) lives in
@@ -801,7 +821,8 @@ function buildAllowedRoots() {
  * Assert that `p` is an allowed filesystem path.
  *
  * Permitted if the resolved path equals or is a child of (using strict
- * path.sep prefix, NOT substring) any of:
+ * path.sep prefix, NOT substring) any of the entries below, AND its real
+ * location after following links is inside the real location of one of them:
  *   1. A static trusted root from buildAllowedRoots()
  *   2. A path in dialogAllowedPaths (user explicitly chose it via a dialog)
  *
@@ -818,18 +839,13 @@ function assertAllowedPath(p, { forWrite = false } = {}) {
   }
   const resolved = path.resolve(p);
 
-  // Check dialog-chosen paths (exact match or child).
-  for (const allowed of dialogAllowedPaths) {
-    if (resolved === allowed || resolved.startsWith(allowed + path.sep)) {
-      return; // permitted
-    }
-  }
-
-  // Check static trusted roots.
-  for (const root of buildAllowedRoots()) {
-    if (resolved === root || resolved.startsWith(root + path.sep)) {
-      return; // permitted
-    }
+  // KAL-369: the path text must be inside a dialog-chosen path or a static
+  // root (exact match or child, as before) AND its real location on disk,
+  // after following links, must be inside the real location of one of them.
+  // This closes the symlink / junction bypass of the text-only check. See
+  // src/electron/fsPathGuard.cjs.
+  if (isPathAllowed(resolved, { entries: [...dialogAllowedPaths, ...buildAllowedRoots()] })) {
+    return; // permitted
   }
 
   const err = new Error(
@@ -1035,8 +1051,18 @@ ipcMain.handle('fs:appendFile', async (event, { path: filePath, data }) => {
 // The old includes('TestLogs') substring check was bypassable (e.g. a path containing
 // "TestLogs" anywhere in it, even in unrelated segments); replaced with the strict
 // allowlist guard per KAL-259.
+// KAL-369: the allowlist alone still let this recursive delete wipe a whole
+// trusted root (all of OneDrive, userData, tmp) or any dialog-picked folder.
+// Save Log's TestLogs folder in the app folder is the only caller, so that
+// exact folder is the only one that may be cleared.
+const DIAGNOSTICS_CLEARABLE_DIRS = () => [path.join(app.getAppPath(), 'TestLogs')];
 ipcMain.handle('fs:clearDir', async (event, dirPath) => {
   assertAllowedPath(dirPath, { forWrite: true });
+  if (!isClearableDirectory(dirPath, DIAGNOSTICS_CLEARABLE_DIRS())) {
+    const err = new Error(`fs:clearDir refused: only the diagnostics folder may be cleared: ${path.resolve(String(dirPath))}`);
+    err.code = 'EPERM';
+    throw err;
+  }
   try {
     if (fs.existsSync(dirPath)) {
       fs.rmSync(dirPath, { recursive: true, force: true });
