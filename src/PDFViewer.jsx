@@ -15,8 +15,13 @@
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
+import { jsonEqual } from './utils/jsonEqual.js';
+import { mergeEditOntoCurrent } from './utils/dragCommitMerge.js';
+import { countSpaceCascadeImpact, isSpaceScopedEntry, resolveSpaceCascadeScope } from './utils/spaceCascadeImpact.js';
+import { EMBEDDED_IMPORT_INCOMPLETE_KEY, EMBEDDED_IMPORT_MARKER_KEY, embeddedImportDecision, embeddedImportFailedPages, embeddedImportMarkerDecision, selectEmbeddedImportObjects } from './utils/embeddedImportGate.js';
 import { READ_ONLY_BLOCKED_KEYS } from './utils/toolShortcuts.js';
 import { sanitizeTemplateConfig } from './utils/templateConfig.js';
+import useSharedDocumentTemplates from './hooks/useSharedDocumentTemplates.js';
 import { migrateSidebarData } from './utils/sidebarPersistence.js';
 import { resolveMarkerEntityFromName } from './utils/surveyMarkerEntityResolver.js';
 import {
@@ -24,6 +29,7 @@ import {
   deletePendingSurveyMarkerUi,
 } from './utils/pendingSurveyMarkerHistory.js';
 import { buildSpaceCSVContent } from './utils/spaceCSVExporter.js';
+import { createPageSizeCommitBatcher } from './utils/pageSizeCommitBatcher.js';
 import { renderPdfPageForExport } from './utils/spacePdfPageRender.js';
 import { eraserDiameterToScreenRadius } from './utils/eraserSizing.js';
 // UX 2026-09-09: arming a click-to-place shape tool (polygon / polyline) hands
@@ -55,11 +61,19 @@ import { openExternalDestination } from './utils/accountPlatform.js';
 // below — see `await import('exceljs')` — so it stays out of the main viewer chunk.
 import ExcelLockedModal from './components/ExcelLockedModal';
 import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
+import SpaceSelectionDialog from './components/SpaceSelectionDialog';
 import TextEditOverlay from './components/TextEditOverlay';
+import { resolveNewMarkStyle, resolvePickBarTool, resolveToolbarCallout } from './utils/toolbarCalloutTarget.js';
+import { resolvePickBarValues } from './utils/pickBarValues.js';
 import FabricEraserCanvas from './components/FabricEraserCanvas';
 import FormFieldPropertiesPanel from './components/FormFieldPropertiesPanel';
+import AnnotationDropdown from './components/AnnotationDropdown';
+import ToolbarOverflowMenu from './components/ToolbarOverflowMenu';
+import useSurveyBarFit from './hooks/useSurveyBarFit';
+import { surveyBarLook } from './utils/responsiveToolbar.js';
 import Icon from './Icons';
 import LightweightAnnotationOverlay from './components/LightweightAnnotationOverlay';
+import { useDocumentThumbnailCapture } from './hooks/useDocumentThumbnailCapture';
 import NewColumnsModal from './components/NewColumnsModal';
 import OneDriveFileSaveModal from './components/OneDriveFileSaveModal';
 import PDFPageCanvas from './components/PDFPageCanvas';
@@ -71,7 +85,15 @@ import RegionSelectionTool from './RegionSelectionTool';
 import SVGAnnotationLayer from './components/SVGAnnotationLayer';
 import SaveLogBanner from './components/SaveLogBanner';
 import Spinner from './components/Spinner';
+import QuietLoading, { openingLabel } from './components/QuietLoading';
 import SearchHighlightLayer from './components/SearchHighlightLayer';
+import {
+  SEARCH_READABLE_TEXT_PX,
+  SEARCH_READABLE_TEXT_PX_PHONE,
+  measureCenterOffset,
+  resolveReadableSearchScale,
+  resolveViewerOcclusionInsets
+} from './utils/searchMatchNavigation';
 import PdfjsLinkLayer from './components/PdfjsLinkLayer';
 import PdfjsRedactionMarkLayer from './components/PdfjsRedactionMarkLayer';
 import TextMarkupLinkLayer from './components/TextMarkupLinkLayer';
@@ -84,10 +106,11 @@ import PdfjsViewerContainer from './components/PdfjsViewerContainer';
 import TemplateOverwriteWarningModal from './components/TemplateOverwriteWarningModal';
 import TextLayer from './TextLayer';
 import UnsupportedAnnotationsNotice from './components/UnsupportedAnnotationsNotice';
-import { ANNOTATION_HYDRATION_PENDING, ANNOTATION_HYDRATION_READY_LOCAL, resolveFirstVisibleAnnotationPage, shouldGateFirstVisibleAnnotationPage } from './utils/annotationHydrationGate';
+import { ANNOTATION_HYDRATION_PENDING, ANNOTATION_HYDRATION_READY_LOCAL, isFirstVisibleAnnotationPagePreviewing, resolveFirstVisibleAnnotationPage, shouldGateFirstVisibleAnnotationPage } from './utils/annotationHydrationGate';
 import { BORDERS, COLORS, SHADOWS, TYPOGRAPHY } from './theme';
 import { ConfirmDeleteModal } from './components/collab/ConfirmDeleteModal.jsx';
 import { DEFAULT_ZOOM_PREFERENCES, ZOOM_MODES, clampScale, createZoomController, loadZoomPreferences, saveZoomPreferences } from './utils/zoomController';
+import { TYPED_PAGE_JUMP_FITS_PAGE, parseZoomPercentInput, resolvePageInput, sanitizeZoomInput } from './utils/pageNavigationMath.js';
 import { FORM_TOOLS as FORM_DESIGNER_TOOLS, getFormFieldTypeForTool, isFormTool } from './components/formDesignerTools';
 // PERF (KAL-384): pdf-lib is the PDF *export/write* library, not the renderer.
 // It is only needed when the user exports an annotated PDF, exports a space to
@@ -101,7 +124,9 @@ import { FORM_TOOLS as FORM_DESIGNER_TOOLS, getFormFieldTypeForTool, isFormTool 
 import { PageRenderCache } from './utils/pdfCache';
 import { UndoToast } from './components/collab/UndoToast.jsx';
 import { applyAnnotationGroupId, findGroupMembers, generateGroupId, getAnnotationGroupId, getCalloutGroupId } from './utils/annotationGroups';
-import { applyAnnotationHistoryAction, buildAnnotationHistoryAction, buildPreciseAnnotationHistoryAction, filterAnnotationHistoryActionByOwner, invertAnnotationHistoryAction } from './utils/annotationLocalHistory';
+import { buildCrossPageMovePlan } from './utils/crossPageMove.js';
+import { applyAnnotationHistoryAction, dropAlreadyPresentRestoreTargets, getAnnotationHistoryId, buildAnnotationHistoryAction, buildPreciseAnnotationHistoryAction, createGestureTouchRecord, endPagePreviewGesture, filterAnnotationHistoryActionByOwner, invertAnnotationHistoryAction, recordGestureTouchesFromAction, restrictAnnotationHistoryActionFields } from './utils/annotationLocalHistory';
+import { normalizeMergedHistoryObject } from './utils/historyMergeNormalize';
 import {
   buildAtomicTextMarkupPageMutation,
   buildRequestedRedactionSnapshot,
@@ -116,27 +141,78 @@ import {
   preserveTextMarkupRangeResizeSiblings,
   resolveTextLinkEditorPrefill,
 } from './utils/textMarkupGroupTransactions.js';
-import { getAnnotationRenderIdentity, normalizeByPageAnnotationIdentities } from './utils/annotationStorageIdentity.js';
+import { findSelectedAnnotationIndex, getAnnotationRenderIdentity, getAnnotationStorageKey, normalizeByPageAnnotationIdentities, stampAnnotationCreationIdentity } from './utils/annotationStorageIdentity.js';
+import { collectChangedObjectKeys, restoreTouchedObjects } from './utils/paintDragHistory.js';
+import {
+  buildSelectedTextStylePatch,
+  isFormattableTextObject,
+  measureTextLayoutHeight,
+  patchCanReflowText,
+  readCalloutTextStyle,
+  readTextboxTextStyle,
+  placeCalloutEditBox,
+  refitCalloutToText,
+  refitTextboxToText,
+  resolveTextStyleWrite,
+} from './utils/selectedTextFormatting.js';
+import {
+  applyRestyleChange,
+  applyRestyleChangeToPage,
+  calloutRestylePatch,
+  isFilledInkPath,
+  planGroupUpdate,
+  resolveGroupWrite,
+  resolveGroupPaintWrite,
+  resolvePickedMembers,
+  restyleCapabilities,
+  summarizeSelectionRestyle,
+} from './utils/selectionRestyle.js';
 import { toolSupportsCloudBorderStyle } from './utils/pdfAnnotationAppearance.js';
+import { toolOffersCloudLineStyle } from './utils/textCloudBorder.js';
 import { trackSurveyAnalyticsEvent } from './utils/surveyAnalytics';
 import { mintPastedCloneIdentity } from './utils/pasteCloneIdentity';
 import { areViewStatesEqual, normalizeViewState } from './utils/viewState';
 import { arrayMove } from '@dnd-kit/sortable';
 import { buildAnnotationSelectionContextKey, didAnnotationSelectionContextChange } from './utils/annotationSelectionContext';
 import { buildBulkDeletePlan } from './lib/collab/bulkDeletePlan.js';
+import { guardLockedMarksOnSave, withCalloutLock, withMarkLock, withSurveyMarkerLock } from './utils/markLock.js';
 import { calloutToAnnotationObject, projectCalloutsIntoByPage, deriveCalloutsFromByPage, applyCalloutListToByPage } from './utils/calloutAnnotationBridge';
-import { buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent, recordAndNotifyDocumentHistoryEvent } from './services/documentHistoryService.js';
+import { buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent, recordAndNotifyDocumentHistoryEvent, buildPartialEraseHistoryRow } from './services/documentHistoryService.js';
 import { buildTextSearchDiagLogSection, emitTextSearchDiag } from './utils/textSearchDiag';
 import {
   canDelete,
   canCommitSurveyMarkerErase,
   canModify,
   canModifySurveyMarker,
+  canToggleLock,
+  isUserLocked,
+  getMarkLockedBy,
   filterEraserCommitIds,
   getAnnotationAuthorId,
   resolveDocumentOwnerId,
 } from './lib/collab/permissionScope.js';
 import { resolveEraserInterruptionPolicy } from './utils/eraserInterruptionPolicy.js';
+import {
+  applySurveyMarkerHistoryAction,
+  buildSurveyMarkerHistoryAction,
+  planFamilyReorder,
+  collectSurveyMarkerHistoryActions,
+  patchSurveyMarkerRenderPages,
+  surveyMarkerRenderEntry,
+  translateSurveyMarkerRecord,
+  isSurveyMarkerPlaced,
+  placeSurveyMarkerRecord,
+  unplaceSurveyMarkerRecord,
+} from './utils/surveyMarkerFamily.js';
+import { overlayLiveSurveyMarkers } from './services/annotationLiveMarkers.js';
+import {
+  DUPLICATE_OFFSET_PAGE_UNITS,
+  buildFamilyClipboard,
+  makePastedMarkOwn,
+  orderPastedFamily,
+  planFamilyPaste,
+} from './utils/familyClipboard.js';
+import { clampNudgeDelta, flushPendingNudges } from './utils/annotationFamilyRules.js';
 import { checkFileExists, checkFileExistsInDrive, downloadExcelFile, downloadExcelFileByPath, getFileById, getFileETag, getFileMetadata, getTemplateIdFromExcel, uploadExcelFile, uploadFileContentById, uploadFileToDrive } from './services/excelGraphService';
 import { checkSessionSupport, closeWorkbookSession, createWorkbookSession, getFileIdFromPath, getUsedRange, getWorksheets, refreshWorkbookSession, updateCellRange } from './services/excelSessionService';
 import { LIVE_SYNC_GATE_REASON, resolveLiveSyncEligibility } from './services/liveSyncEligibility';
@@ -151,13 +227,15 @@ import { deferUntilEraseCommitsFinish } from './utils/pendingEraseCommits.js';
 
 import { debugMark } from './utils/debugBridge';
 import { deleteAnnotations, removeDocumentPresence, subscribeToDocumentAnnotations, syncAnnotationsToSupabase, updateDocumentPresence } from './services/documentAnnotationService';
+import { createPresenceActivityBump, PRESENCE_ACTIVITY_EVENTS } from './utils/presenceActivity.js';
 import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
 import { getActivePageRegionId, getPageAnnotationVisibilityState, isAnnotationVisibleInSurveyMode, isSurveyVisibilityContext, normalizePageRegions, normalizeRegionVisibility, shouldStampActiveRegionId } from './utils/annotationVisibilityRules';
 // KAL-88 — shared creation scope stamp (Decision 11 companion); used by the
 // counter drop so counters scope exactly like pen/shape/text creations.
-import { applyScope as applyAnnotationCreationScope } from './utils/annotationCreationCommit';
+import { applyScope as applyAnnotationCreationScope, applyPasteScope } from './utils/annotationCreationCommit';
 import { shouldAutoSelectAfterCommit } from './utils/autoSelectAfterCommit';
-import { resolveHistoryEntryContext } from './utils/historyContextRestore';
+import { isSurveyScopedHistoryEvent, resolveHistoryEntryContext } from './utils/historyContextRestore';
+import { projectAnnotationForHistoryPreview } from './utils/historyPreviewAnnotation';
 import { isUndoKeyEvent, isRedoKeyEvent, isUndoRedoBlocked } from './utils/undoRedoHotkeys';
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
 import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
@@ -217,8 +295,11 @@ import { readPendingChangeset, writePendingChangeset, clearPendingChangeset } fr
 import { buildCounterSeriesDeletionUpdates, getCounterSeriesList, pickNextSeriesColor, renumberCounters, resolveCounterSeriesPaint } from './utils/counterNumbering';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS, normalizeAnnotationSize, sanitizeAnnotationSizeDraft } from './utils/annotationSize';
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
-import { getHistoryOrder, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
+import { pageOperationCheckpoint, pageOperationStepId } from './utils/pageOperationHistory.js';
+import { snapshotAnnotationPages } from './utils/historySnapshotShare';
+import { eraseTransitionChangedScreen as eraseTransitionChangedScreenWith, foldIntoCreateStep, getHistoryOrder, historyActionChangedPages, isTransientEraseHistoryFailure, legacyRestoreChangesState, runHistoryPress, scopeLegacyRestoreToOwnSlices, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
 import { countUnsupportedAnnotations, importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
+import { withoutUnstoredFieldsByPage } from './services/annotationMarkCodec.js';
 import { isBlankCalloutText, resolveCommittedCalloutText, shouldDeleteBlankCalloutOnCommit } from './utils/calloutBlankCommit';
 import { materializeCalloutFromYMap } from './lib/collab/crdtAnnotationBridge.js';
 import { perfLoad, perfZoom, setDebugEnabled as setPerfDebugEnabled } from './utils/performanceLogger';
@@ -226,6 +307,7 @@ import { loadTrace } from './utils/loadTrace';
 import { preserveExistingCountersOnPage, shouldRenumberCountersForSave, summarizeCounterRenumberEffect } from './utils/counterRenumberSavePolicy';
 import { recordAnnotationCommit, recordAnnotationSyncPush, recordAnnotationUndoRedo } from './utils/annotationPreviewDiag';
 import { resolveAnnotationAt } from './utils/annotationHitTest';
+import { watchLightPopover } from './components/dismissRules.js';
 import { resolveEditTypeForAnnotation } from './utils/annotationEditRoute';
 import { buildCaretAnchor, createDoubleTapTracker, editEntryKeyForHit, shouldHandleDoubleTapEntry } from './utils/doubleTapEditEntry';
 import { createMultiTouchTapGate } from './utils/multiTouchTapGate';
@@ -233,7 +315,6 @@ import { isLiveFormWidgetTarget } from './utils/formWidgetPointerTargets.js';
 import { resolveSafeSnapshot } from './utils/safeSnapshot';
 import { canManageCollaborativeSpaces } from './utils/collaborativeSpaceAccess';
 import { combineCollaborationSyncStatus } from './utils/collaborationSyncStatus';
-import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt';
 import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
 import { scopeHistoryStateForCalloutRestore } from './utils/calloutHistoryScope';
 import { shouldRunSurveyMarkerSync } from './utils/surveyMarkerSyncSafety';
@@ -250,9 +331,16 @@ import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
-import { getSelectFamilyTransition, loadSelectMode, saveSelectMode } from './utils/selectModes.js';
+import { usePageViewDocument } from './hooks/usePageViewDocument.js';
+import { getPageViewBase } from './utils/pageViewDocument.js';
+import { getSelectFamilyTransition, getToolSwitchSelectionClearReason, isSelectFamilyTool, loadSelectMode, resolveEscape, resolveTextDoubleClick, resolveToolPress, saveSelectMode, shouldBackdropPressDeselect, shouldEscapeDeselect, shouldShowHoverHalo } from './utils/selectModes.js';
+import { classifyPagePress, ownGroupMarkFilter } from './utils/toolPressRouting.js';
+import { CALLOUT_MARK_GROUP, getMarkGroup } from './utils/markToolGroup.js';
+import { dropStashedSelection, hasAnyPageSelection, isItemSelected, pageHasSelection } from './utils/pageSelectionPresence.js';
+import { isSelectionGrabPress, noteOverlayTapPick } from './hooks/useSelectionGrabHandoff.js';
+import { resolveToolBarGroup, TOOL_BAR_GROUPS } from './utils/toolbarRows.js';
 import { cycleLassoMode } from './utils/lassoSelection.js';
-import { pageNumberAfterOperation } from './utils/pageAnnotationReindex.js';
+import { pageCountChange, pageNumberAfterOperation } from './utils/pageAnnotationReindex.js';
 import { usePdfjsFormFieldPersistence } from './hooks/usePdfjsFormFieldPersistence.js';
 import { useRegionOverlayVisibility } from './hooks/useRegionOverlayVisibility.js';
 import { userRedo, userUndo } from './lib/collab/crdtUndoManager.js';
@@ -404,6 +492,7 @@ import { renderAnnotationHydrationPageCover } from './components/annotationHydra
 import { getExportErrorMessage, isFileLocked } from './utils/exportHelpers';
 import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } from './utils/overlayDebug';
 import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './utils/excelWritebackGate';
+import { rememberLastSurveyTemplate, resolveLastSurveyTemplate, surveyMemoryDocumentKey } from './utils/surveyLastTemplate.js';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
 import { createTextMarkupAnnotation, getExcludedPdfTextMarkupIds, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection, TEXT_MARKUP_DEFAULT_PAINT } from './utils/pdfTextMarkup.js';
 import {
@@ -445,6 +534,11 @@ function readWorkbookRegistration(workbook) {
 // timer there meant that dismissing an editor and tapping another annotation
 // inside the same 600ms selected nothing. See panQuickClickSuppressedRef.
 const PAN_EDIT_ENTRY_RESTORE_MS = 600;
+
+// w37: erase Undo/Redo visibility check with the viewer's JSON equality.
+const eraseTransitionChangedScreen = (result, before, meta) => (
+  eraseTransitionChangedScreenWith(result, before, meta, jsonEqual)
+);
 
 export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
@@ -961,6 +1055,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const pendingRendererRestoreRef = useRef(null);
   const [pdfjsPageContainers, setPdfjsPageContainers] = useState({});
   const [pdfjsMountedPages, setPdfjsMountedPages] = useState(new Set());
+  // Read by the annotation-overlay watchdog (an interval, so it needs the
+  // live window, not a stale closure).
+  const pdfjsMountedPagesRef = useRef(pdfjsMountedPages);
+  pdfjsMountedPagesRef.current = pdfjsMountedPages;
   const pageInputRef = useRef(null);
   const zoomInputRef = useRef(null);
   const pageRenderCacheRef = useRef(new PageRenderCache(100)); // Cache up to 100 pages
@@ -1118,6 +1216,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     byteSizeBucket: 'unknown',
     reported: true,
   });
+  // Page 1 of the open document has been drawn (work that can wait starts then).
+  const firstPageDrawnRef = useRef({ drawn: false, resolve: null });
   // KAL-46 / sleep-wake: bounds how many times the load watchdog will silently
   // auto-retry a hung download (dead socket after display sleep/wake) before it
   // gives up and surfaces the retryable error screen. Reset whenever a fresh
@@ -2884,11 +2984,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // UNDO = Cmd+Z or Ctrl+Z; REDO = Cmd+Shift+Z, Ctrl+Shift+Z, Cmd+Y, or
   // Ctrl+Y. Predicates shared with RegionSelectionTool via
   // utils/undoRedoHotkeys.js so the two surfaces can't drift.
+  // w37: every open document tab stays mounted (hidden ones display:none) and
+  // each registers this window listener; the first one registered stops the
+  // event for the rest. Without this check Cmd+Z in the second document you
+  // opened undid (invisibly) in the FIRST one. Only the visible tab answers.
+  const undoRedoKeyActiveRef = useRef(isActive);
+  undoRedoKeyActiveRef.current = isActive;
   useEffect(() => {
     const handleUndoRedoKey = (e) => {
       const isUndoCombo = isUndoKeyEvent(e);
       const isRedoCombo = isRedoKeyEvent(e);
       if (!isUndoCombo && !isRedoCombo) return;
+      if (!undoRedoKeyActiveRef.current) return;
 
       if (isUndoRedoBlocked(document)) return;
 
@@ -2898,6 +3005,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       } else {
         e.stopPropagation();
       }
+      // w57: an arrow-key nudge still waiting to save lands first, so Undo
+      // takes back the nudge (this handler runs before the page layers').
+      flushPendingNudges();
       if (isRedoCombo) {
         handleRedoRef.current?.();
       } else {
@@ -3198,7 +3308,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // viewer was still gated (input-while-gated) when the request arrived. The
   // matching RESPONSE is logged in the activeToolRef sync effect above; an
   // intent with no following tool-changed line means the switch was a no-op.
-  const setActiveToolLogged = useCallback((next) => {
+  // Drawboard rule 12 (utils/selectModes.js): HOW a switch was asked for
+  // decides whether the selection survives it. { tool, source } of the latest
+  // request; read once by the tool-switch effect below.
+  const toolSwitchRequestRef = useRef(null);
+  const setActiveToolLogged = useCallback((next, { source } = {}) => {
+    toolSwitchRequestRef.current = source && typeof next === 'string' ? { tool: next, source } : null;
     try {
       const requested = typeof next === 'function' ? '(updater-fn)' : String(next);
       const from = activeToolRef.current;
@@ -3247,24 +3362,53 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [ocrStateByPage, setOcrStateByPage] = useState({});
   const ocrCacheRef = useRef(new Map());
   const ocrAbortByPageRef = useRef(new Map());
+  // w41: every selected mark on the owning page (indices into its objects),
+  // so the formatting bar can restyle a multi-pick (utils/selectionRestyle).
+  // Kept apart from selectedToolbarAnnotation, which stays the single pick.
+  const [selectedToolbarIndices, setSelectedToolbarIndices] = useState(null);
   const handleSelectionForToolbar = useCallback((payload) => {
     if (!payload) {
       setSelectedToolbarAnnotation(null);
+      setSelectedToolbarIndices(null);
       return;
     }
     const { pageNumber, annotationIndex, annotation } = payload;
+    const indices = Array.isArray(payload.annotationIndices) ? payload.annotationIndices : [];
+    setSelectedToolbarIndices((prev) => {
+      if (indices.length === 0) {
+        return prev && prev.pageNumber === pageNumber ? null : prev;
+      }
+      // The ids picked, as the layer read them from the same objects its
+      // indices point into: a later write resolves each mark by id, so a
+      // collaborator's delete that shifts the indices can never retarget the
+      // change onto a mark that was not picked.
+      const ids = Array.isArray(payload.annotationIds) && payload.annotationIds.length === indices.length
+        ? payload.annotationIds.map((id) => id || '')
+        : indices.map(() => '');
+      const key = `${indices.join(',')}|${ids.join(',')}`;
+      if (prev && prev.pageNumber === pageNumber && prev.key === key) return prev;
+      return { pageNumber, indices, ids, key };
+    });
     setSelectedToolbarAnnotation((prev) => {
       if (annotationIndex == null) {
         if (prev && prev.pageNumber === pageNumber) return null;
+        // A multi-pick on this page replaces a single pick on another page
+        // (its layer is then cleared through selectionOwnerPageNumber).
+        if (prev && indices.length > 0) return null;
         return prev;
       }
+      // justDrawn (owner Test 15, 2026-10-02): the mark just drawn and
+      // auto-selected while its tool stays armed - the paint handlers restyle
+      // it (see isJustDrawnMarkSelected).
+      const justDrawn = payload.justDrawn === true;
       if (prev
         && prev.pageNumber === pageNumber
         && prev.annotationIndex === annotationIndex
-        && prev.annotation === annotation) {
+        && prev.annotation === annotation
+        && Boolean(prev.justDrawn) === justDrawn) {
         return prev;
       }
-      return { pageNumber, annotationIndex, annotation };
+      return { pageNumber, annotationIndex, annotation, justDrawn };
     });
   }, []);
   const selectedToolbarAnnotationRef = useRef(selectedToolbarAnnotation);
@@ -3275,41 +3419,114 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleCounterGroupUpdateRef = useRef(null);
   const handleDeleteCounterSeriesRef = useRef(null);
   const commitTextMarkupDocumentTransactionRef = useRef(null);
+  // UX 2026-09-23 (owner: "dragging this is laggy" — the colour picker's
+  // sliders). The phase of the paint change being applied right now: 'preview'
+  // while a slider is still being dragged, 'commit' when it is released, null
+  // for every other edit. A preview repaints and saves the mark like any edit
+  // but records NO undo step and no history row (checkpointPolicy 'skip', the
+  // same live-preview contract drags on the canvas already use); the commit
+  // records the whole drag as ONE step from the value it started on. 'settle'
+  // is the commit's leading writes (a colour write before the opacity write
+  // that commits): no undo step yet, but the tool's setting is saved. Before
+  // this, every pointer move wrote an undo step and a history row, which is
+  // both why a drag stuttered and why undoing it took dozens of presses.
+  const paintPhaseRef = useRef(null);
+  // pageKey -> Set of object keys a slider drag's frames have edited.
+  const paintDragTouchedByPageRef = useRef(new Map());
+  const textMarkupPaintBaselineRef = useRef(null);
+  // While a slider drag previews, the shared-document capture (useAnnotationDoc)
+  // holds off: the drag's in-between values stay on this screen and only the
+  // released value is written — one write instead of one per frame, and no
+  // late echo of an in-between value can land after the release. The hold is
+  // time-boxed: if a release never arrives, it lifts itself after 1.5s and
+  // captures whatever is on screen, so nothing can be left unsaved.
+  const annotationCapturePauseRef = useRef({ until: 0, timer: null });
+  // The hold belongs to one open document and one mounted viewer.
+  useEffect(() => () => {
+    clearTimeout(annotationCapturePauseRef.current.timer);
+    annotationCapturePauseRef.current = { until: 0, timer: null };
+  }, [pdfFile?.id]);
   const handleDeleteCounterSeriesFromToolbar = useCallback((seriesId) => (
     handleDeleteCounterSeriesRef.current?.(seriesId) || { ok: false, reason: 'unavailable' }
   ), []);
-  const handlePatchSelectedAnnotation = useCallback((patch) => {
+  // `refit` (optional): runs on the patched object before it is saved, in the
+  // same write - the text bar uses it to grow a text box to fit a bigger font
+  // (utils/selectedTextFormatting refitTextboxToText).
+  const handlePatchSelectedAnnotation = useCallback((patch, refit = null) => {
     const sel = selectedToolbarAnnotationRef.current;
     if (!sel || sel.annotationIndex == null) return;
     const pageJSON = annotationsByPageRef.current?.[sel.pageNumber];
     if (!pageJSON || !Array.isArray(pageJSON.objects)) return;
     const selectedId = getAnnotationRenderIdentity(sel.annotation).annotationId;
-    const currentIndex = selectedId
-      ? pageJSON.objects.findIndex((annotation) => (
-          getAnnotationRenderIdentity(annotation).annotationId === selectedId
-        ))
-      : sel.annotationIndex;
-    const current = pageJSON.objects[currentIndex];
+    // By id only; an id-less pick is re-verified at its index, never trusted
+    // blindly - after a remote delete another mark may sit there now.
+    const currentIndex = findSelectedAnnotationIndex(pageJSON.objects, sel);
+    const current = currentIndex >= 0 ? pageJSON.objects[currentIndex] : null;
     if (!current) return;
     if (current.data?.type === 'text-markup'
       && patch.fill != null
       && patch.stroke != null
       && patch.opacity != null) {
+      // A slider drag (paintPhaseRef): preview frames repaint the mark with
+      // no undo step. The group's STARTING paint (only its paint, per id) is
+      // kept from the first preview; the release builds ONE transaction whose
+      // "before" is today's document with just that paint put back, so undo
+      // restores the starting paint and nothing else (edits made elsewhere
+      // during the drag are left alone).
+      const paintPhase = paintPhaseRef.current;
+      const isPaintPreview = paintPhase === 'preview' || paintPhase === 'settle';
+      const groupId = current.data?.selectionGroupId;
+      const byPageNow = annotationsByPageRef.current || {};
+      let startPaint = textMarkupPaintBaselineRef.current;
+      if (startPaint && startPaint.groupId !== groupId) {
+        startPaint = null;
+        textMarkupPaintBaselineRef.current = null;
+      }
+      if (isPaintPreview && !startPaint) {
+        const paintById = new Map();
+        Object.values(byPageNow).forEach((page) => (page?.objects || []).forEach((candidate) => {
+          if (candidate?.data?.type === 'text-markup' && candidate.data.selectionGroupId === groupId) {
+            paintById.set(getAnnotationRenderIdentity(candidate).annotationId, {
+              fill: candidate.fill,
+              stroke: candidate.stroke,
+              opacity: candidate.opacity,
+            });
+          }
+        }));
+        startPaint = { groupId, paintById };
+        textMarkupPaintBaselineRef.current = startPaint;
+      }
+      if (paintPhase === 'commit') textMarkupPaintBaselineRef.current = null;
+      let sourceByPage = byPageNow;
+      if (paintPhase === 'commit' && startPaint) {
+        sourceByPage = {};
+        Object.entries(byPageNow).forEach(([pageKey, page]) => {
+          const objects = Array.isArray(page?.objects) ? page.objects : null;
+          if (!objects) { sourceByPage[pageKey] = page; return; }
+          let touched = false;
+          const restored = objects.map((candidate) => {
+            const paint = startPaint.paintById.get(getAnnotationRenderIdentity(candidate).annotationId);
+            if (!paint || candidate?.data?.type !== 'text-markup') return candidate;
+            touched = true;
+            return { ...candidate, ...paint };
+          });
+          sourceByPage[pageKey] = touched ? { ...page, objects: restored } : page;
+        });
+      }
+      const sourceAnnotation = (sourceByPage[sel.pageNumber]?.objects || []).find((annotation) => (
+        getAnnotationRenderIdentity(annotation).annotationId === selectedId
+      )) || current;
       const transaction = buildTextMarkupPaintEditTransaction({
-        annotationsByPage: annotationsByPageRef.current || {},
-        annotation: current,
+        annotationsByPage: sourceByPage,
+        annotation: sourceAnnotation,
         color: patch.stroke,
         opacity: patch.opacity,
       });
-      if (transaction && commitTextMarkupDocumentTransactionRef.current?.(transaction, {
-        source: 'text-markup:paint-edit',
-        action: 'text-markup-update',
-        selectionGroupIds: transaction.selectionGroupIds,
-      })) {
-        const updated = transaction.updated.find((entry) => (
+      const followTransactionSelection = (applied) => {
+        const updated = applied.updated.find((entry) => (
           entry.pageNumber === Number(sel.pageNumber)
           && getAnnotationRenderIdentity(entry.annotation).annotationId === selectedId
-        )) || transaction.updated[0];
+        )) || applied.updated[0];
         if (updated) {
           const nextSelection = {
             pageNumber: updated.pageNumber,
@@ -3319,16 +3536,45 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           selectedToolbarAnnotationRef.current = nextSelection;
           setSelectedToolbarAnnotation(nextSelection);
         }
+      };
+      if (isPaintPreview) {
+        // Same ownership rules as a real edit, just no undo step.
+        if (transaction && commitTextMarkupDocumentTransactionRef.current?.(transaction, {
+          source: 'text-markup:paint-preview',
+          action: 'text-markup-update',
+          selectionGroupIds: transaction.selectionGroupIds,
+          skipHistory: true,
+        })) {
+          followTransactionSelection(transaction);
+        }
+        return;
+      }
+      if (!transaction && paintPhase === 'commit' && startPaint) {
+        // Released on the paint it started with: put the whole group back
+        // as it was, and record nothing.
+        if (sourceByPage !== byPageNow) {
+          annotationsByPageRef.current = sourceByPage;
+          setAnnotationsByPage(sourceByPage);
+        }
+        return;
+      }
+      if (transaction && commitTextMarkupDocumentTransactionRef.current?.(transaction, {
+        source: 'text-markup:paint-edit',
+        action: 'text-markup-update',
+        selectionGroupIds: transaction.selectionGroupIds,
+      })) {
+        followTransactionSelection(transaction);
         return;
       }
     }
-    const nextObj = {
+    const mergedObj = {
       ...current,
       ...patch,
       data: patch.data
         ? { ...(current.data || {}), ...patch.data }
         : current.data,
     };
+    const nextObj = typeof refit === 'function' ? (refit(mergedObj) || mergedObj) : mergedObj;
     const nextPage = {
       ...pageJSON,
       objects: pageJSON.objects.map((o, i) => (i === currentIndex ? nextObj : o)),
@@ -3675,10 +3921,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return null;
   }, []);
 
-  const handleCalloutTextStyleChange = useCallback((calloutId, stylePatch) => {
+  const handleCalloutTextStyleChange = useCallback((calloutId, stylePatch, options) => {
     if (!calloutId || !stylePatch) return;
     const pageNumber = resolveCalloutPageNumber(calloutId);
     if (!Number.isFinite(pageNumber)) return;
+    // UX 2026-09-23: a text-colour slider drag in the live editor carries the
+    // picker's phase, so it previews per frame and records ONE undo step on
+    // release, like every other colour drag (runWithPaintPhase, below).
+    if (options?.phase) {
+      runWithPaintPhase(options, () => handleCalloutTextStyleChange(calloutId, stylePatch));
+      return;
+    }
     // R2.2 Slice 3: text-style writes commit through the shared save pipeline —
     // they GAIN a per-object undo entry (previously style changes carried NO
     // history checkpoint at all, so Cmd+Z skipped straight past them).
@@ -3689,7 +3942,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     commitCalloutMutation(pageNumber, (prev) => prev.map((c) => {
       if (!c || c.id !== calloutId) return c;
       return { ...c, style: { ...(c.style || {}), ...stylePatch } };
-    }), { source: 'callout:style', action: 'callout-text-style' });
+    }), {
+      source: 'callout:style',
+      action: 'callout-text-style',
+      // w37: a style picked while typing a NEW callout is part of creating
+      // it (one Undo removes the whole new callout).
+      ...(newlyCreatedCalloutIdsRef.current.has(calloutId) ? { foldIntoCreateOf: calloutId } : {}),
+    });
   }, [commitCalloutMutation, resolveCalloutPageNumber]);
   const [selectedCalloutId, setSelectedCalloutId] = useState(null);
   // UX: Phase 14 CALL-10 — selectedCalloutIds is a Set<string> parallel to
@@ -3707,6 +3966,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // 'cut' differs from 'copy' only in that the original is removed at Copy time,
   // matching the callout clipboard contract at ~line 11085.
   const [clipboardAnnotation, setClipboardAnnotation] = useState(null);
+  // w53: ONE clipboard for any family selection (marks + callouts + Survey
+  // Markers, see utils/familyClipboard.js). Like the two above, only one of
+  // the three is ever filled: the most recent Copy / Cut wins.
+  const [familyClipboard, setFamilyClipboard] = useState(null);
+  const familyClipboardRef = useRef(null);
+  familyClipboardRef.current = familyClipboard;
+  const pasteFamilyAtRef = useRef(null);
   // UX: shared paste-anchor memory for the "repeat paste at the same spot"
   // rule (Bluebeam/tldraw convention): the FIRST paste lands exactly at the
   // cursor / right-click point; pasting again WITHOUT moving the cursor
@@ -3732,7 +3998,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // renderAnnotationContextMenu, called in the JSX return below with the
   // viewer's action handlers. Opened via window.__onAnnotationContextMenu
   // (src/utils/contextMenuDiagnostics.js).
-  const { annotationContextMenu, openAnnotationContextMenu, closeAnnotationContextMenu } = useAnnotationContextMenu();
+  // w61: the menu notes its target marks by id (annotationsByPageRef is
+  // declared further down; read only when a menu opens).
+  const { annotationContextMenu, openAnnotationContextMenu, closeAnnotationContextMenu } = useAnnotationContextMenu({
+    getPageObjects: (pageNumber) => annotationsByPageRef.current?.[pageNumber]?.objects || null,
+  });
   const selectedNativeTextMarkupRef = useRef(null);
   // UX: pan-mode quick-click selection command. Set by the document-level
   // mousedown/mouseup listeners below when a short click lands on an
@@ -3762,6 +4032,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // changes, which matches our needs.
   const [pendingSvgHover, setPendingSvgHover] = useState(null);
   const clearAnnotationSelectionForContextChange = useCallback((reason = 'annotation-context-change') => {
+    dropStashedSelection(); // also a far page's kept pick (Drawboard rule 12)
     setAnnotationSelectionClearToken((token) => token + 1);
     setSelectedCalloutId(null);
     setSelectedCalloutIds((prev) => {
@@ -3788,11 +4059,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, []);
 
-  // UX: pan-mode quick-click → select annotation + auto-switch to Select tool.
+  // UX: pan-mode quick-click → select annotation; Pan stays armed (Drawboard rule 2, 2026-10-02).
   // Records pointer position on pointerdown; on pointerup, if the cursor moved
   // less than QUICK_CLICK_PX and we're in pan mode and an annotation (any
-  // type, callouts included) sits under the cursor, auto-switch to the Select
-  // tool and broadcast a selection command to the matching SVGAnnotationLayer.
+  // type, callouts included) sits under the cursor, broadcast a selection
+  // command to the matching SVGAnnotationLayer (the tool stays Pan).
   // Reference behavior (Drawboard): click on an annotation in pan mode
   // selects it; a drag pans.
   //
@@ -3834,6 +4105,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // closure when that second click lands. The latch is dropped by onDown
       // above on the first press after the editor closes — never on a timer.
       if (panQuickClickSuppressedRef.current) return;
+      // UX 2026-09-23 (coordinator, w23): only a press ON the PDF surface can
+      // pick an annotation. The hit test below works by position, so a tap on
+      // chrome floating over the page — the phone's zoom and fit menu (Fit
+      // width sits right over page 1), a desktop menu — selected whatever
+      // annotation lay underneath, switched to Select and opened that tool's
+      // settings strip. Reference: Drawboard PDF — a menu tap only does what
+      // the menu item says.
+      if (!e.target?.closest?.('[data-mobile-pdf-surface]')) return;
       if (e.target?.closest?.('[data-text-markup-link]')) return;
       // UX 2026-09-15 — a click on a live form field fills the field and does
       // NOTHING else: no annotation selection, no switch to Select. Without
@@ -3845,25 +4124,41 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const dx = e.clientX - start.x;
       const dy = e.clientY - start.y;
       if (Math.hypot(dx, dy) > QUICK_CLICK_PX) return; // real pan, not a tap
+      // A press on the selection itself was handed to its move machinery
+      // (hooks/useSelectionGrabHandoff.js) — it is not a pick.
+      if (isSelectionGrabPress(e)) return;
       const hit = resolveAnnotationAt(e);
       if (!hit) return;
+      // Drawboard rules 2 / 8 / 12 (owner 2026-10-02, utils/selectModes.js):
+      // a click picks the mark and Pan STAYS armed (the selection still moves
+      // and resizes under Pan); Shift adds; a click on empty page only drops
+      // the pick.
       // UX: Phase 15 UAT-3 — pan-mode quick-click also picks up callouts,
-      // matching how every other annotation type behaves in pan mode. Same
-      // tool-switch to Select as the plain-annotation branch so followup
-      // drags / edits work naturally.
+      // matching how every other annotation type behaves in pan mode.
       if (hit.kind === 'callout' && hit.calloutId) {
         panQuickClickAutoSelectAtRef.current = Date.now();
-        activateSelectFamilyMode('rectangle');
-        setSelectedCalloutIds(new Set([hit.calloutId]));
+        // w41: the callout REPLACES any mark still picked, or the two would
+        // form a restyle group the user never made (review 2026-09-25).
+        if (!e.shiftKey) setAnnotationSelectionClearToken((token) => token + 1);
+        setSelectedCalloutIds((previous) => {
+          const next = new Set(e.shiftKey && previous ? previous : []);
+          next.add(hit.calloutId);
+          return next;
+        });
+        return;
+      }
+      if (hit.kind === 'page') {
+        if (!e.shiftKey && hasAnyPageSelection()) clearAnnotationSelectionForContextChange('pan-empty-click');
         return;
       }
       if (hit.kind !== 'annotation') return;
       if (typeof hit.annotationIndex !== 'number' || hit.pageNumber == null) return;
       panQuickClickAutoSelectAtRef.current = Date.now();
-      activateSelectFamilyMode('rectangle');
+      if (!e.shiftKey) setSelectedCalloutIds((previous) => (previous instanceof Set && previous.size === 0 ? previous : new Set()));
       setPendingSvgSelection({
         pageNumber: hit.pageNumber,
         annotationIndex: hit.annotationIndex,
+        addToSelection: e.shiftKey,
         tick: Date.now(),
       });
     };
@@ -3873,11 +4168,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       window.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('pointerup', onUp, true);
     };
-  }, [activeTool, activateSelectFamilyMode]);
+  }, [activeTool, clearAnnotationSelectionForContextChange]);
 
   // UX: Escape and grey-page backdrop clicks clear every selection mode alike.
+  // UX 2026-10-02 (owner): which tools listen comes from the selection
+  // dismiss rules in utils/selectModes.js (Escape: every tool; backdrop
+  // press: Select family, and a click under the Shapes / Text tools).
   useEffect(() => {
-    if (!['select', 'text-select'].includes(activeTool)) return undefined;
+    const escapeDeselects = shouldEscapeDeselect(activeTool);
+    const backdropDeselects = shouldBackdropPressDeselect(activeTool);
+    if (!escapeDeselects && !backdropDeselects) return undefined;
     const clear = (event) => {
       // UX 2026-09-16 — the text editor owns Escape while it is open.
       //
@@ -3898,12 +4198,52 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (event.type === 'pointerdown' && (event.button !== 0 || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey
         || !event.target?.closest?.('[data-mobile-pdf-surface]')
         || event.target?.closest?.('.survey-pdfjs-page-div'))) return;
+      // Owner 2026-10-04: a Shapes / Text tool holding a pick of its own
+      // group drops it on a CLICK on the grey area too — on release, so a
+      // drag there (a finger scrolling the view) keeps it (rule 12).
+      if (event.type === 'pointerdown' && !isSelectFamilyTool(activeTool)) {
+        const start = { id: event.pointerId, x: event.clientX, y: event.clientY };
+        const slop = event.pointerType === 'touch' ? 12 : 6;
+        // A press that ends without a pointerup (the touch became a scroll,
+        // or the window lost focus) must not leave this behind to drop a
+        // pick on some later release.
+        const stop = () => {
+          window.removeEventListener('pointerup', onUp, true);
+          window.removeEventListener('pointercancel', onPressCancel, true);
+          window.removeEventListener('blur', stop);
+        };
+        const onPressCancel = (cancel) => { if (cancel.pointerId === start.id) stop(); };
+        const onUp = (up) => {
+          if (up.pointerId !== start.id) return;
+          stop();
+          if (Math.hypot(up.clientX - start.x, up.clientY - start.y) <= slop) clearAnnotationSelectionForContextChange('backdrop-click');
+        };
+        window.addEventListener('pointerup', onUp, true);
+        window.addEventListener('pointercancel', onPressCancel, true);
+        window.addEventListener('blur', stop);
+        return;
+      }
       // UX: Phase 19 — first Escape cancels a live selection drag only;
       // a second Escape (or one at rest) clears the prior selection.
       if (event.key === 'Escape') {
         const detail = { cancelled: false };
         window.dispatchEvent(new CustomEvent('survey-cancel-selection-gesture', { detail }));
         if (detail.cancelled) { event.preventDefault(); return; }
+        // Drawboard rule 10 (utils/selectModes.js resolveEscape): with
+        // nothing left to close, commit, cancel or deselect, Escape puts the
+        // tool down (Pan). A popover or a text edit consumed the key before
+        // this listener; a shape / polygon draft cancels itself on this same
+        // key (it marks it handled), so wait for the dispatch to finish.
+        const escapeAction = resolveEscape({
+          hasSelection: hasAnyPageSelection() || !!editingAnnotation,
+          tool: activeTool,
+        });
+        if (escapeAction === 'switch-to-pan') {
+          window.setTimeout(() => {
+            if (!event.defaultPrevented) setActiveToolLogged('pan', { source: 'escape' });
+          }, 0);
+          return;
+        }
       }
       if (event.key === 'Escape' && activeTool === 'text-select') {
         clearAnnotationSelectionForContextChange('text-select-escape');
@@ -3911,13 +4251,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         clearAnnotationSelectionForContextChange('select-family-dismiss');
       }
     };
-    window.addEventListener('keydown', clear, true);
-    window.addEventListener('pointerdown', clear, true);
+    if (escapeDeselects) window.addEventListener('keydown', clear, true);
+    if (backdropDeselects) window.addEventListener('pointerdown', clear, true);
     return () => {
-      window.removeEventListener('keydown', clear, true);
-      window.removeEventListener('pointerdown', clear, true);
+      if (escapeDeselects) window.removeEventListener('keydown', clear, true);
+      if (backdropDeselects) window.removeEventListener('pointerdown', clear, true);
     };
-  }, [activeTool, clearAnnotationSelectionForContextChange]);
+  }, [activeTool, clearAnnotationSelectionForContextChange, editingAnnotation, setActiveToolLogged]);
 
   const textSelectGestureActiveRef = useRef(false);
 
@@ -3973,6 +4313,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setLiveTextSelection(null);
         if (hit.kind === 'callout' && hit.calloutId) {
           // UX: all select modes use Shift to add and Alt to subtract callouts.
+          // w41: a plain click replaces any picked mark too (no stray group).
+          if (!event.shiftKey && !event.altKey) setAnnotationSelectionClearToken((token) => token + 1);
           setSelectedCalloutIds((previous) => {
             const next = new Set(event.shiftKey || event.altKey ? previous : []);
             if (event.altKey) next.delete(hit.calloutId);
@@ -4014,13 +4356,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
   }, [activeTool, clearAnnotationSelectionForContextChange, resolveAnnotationAt]);
 
+  // UX 2026-10-02 (owner): switching tool drops the selection — the ONE place
+  // that rule lives, so every way of switching (toolbar, phone bar, keyboard
+  // shortcut, programmatic) behaves the same. Rule + reasons:
+  // getToolSwitchSelectionClearReason (utils/selectModes.js). Pan, Select and
+  // Text Select keep it. Changing a property of the selected mark is not a
+  // tool switch and never reaches this effect.
+  // Owner 2026-10-04: every switch drops it except Select <-> Pan, however it
+  // was asked for (the source only reaches the rule for its logs).
   const previousSelectionToolRef = useRef(activeTool);
   useEffect(() => {
     const previousTool = previousSelectionToolRef.current;
     previousSelectionToolRef.current = activeTool;
-    if (previousTool === 'text-select' && activeTool !== 'text-select') {
-      clearAnnotationSelectionForContextChange('text-select-tool-change');
-    }
+    const request = toolSwitchRequestRef.current;
+    toolSwitchRequestRef.current = null;
+    const source = request && request.tool === activeTool ? request.source : 'toolbar';
+    const reason = getToolSwitchSelectionClearReason(previousTool, activeTool, { source });
+    if (reason) clearAnnotationSelectionForContextChange(reason);
   }, [activeTool, clearAnnotationSelectionForContextChange]);
 
   // UX: pan-mode hover — when the cursor is over an annotation in pan mode,
@@ -4041,8 +4393,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Throttled via requestAnimationFrame so resolveAnnotationAt (composedPath
   // + elementsFromPoint + querySelectorAll fallback) runs at most once per
   // frame, not per mousemove event.
+  // Drawboard rule 2 (owner 2026-10-02, utils/selectModes.js): the tools that
+  // pick marks (Shapes, Text, Counter — own group only since 2026-10-04) show
+  // the same blue halo over a mark a click would pick, with their own cursor
+  // kept (no pointer hand).
+  const eraserWholeModeRef = useRef(false);
   useEffect(() => {
-    if (activeTool !== 'pan') {
+    const haloByPosition = activeTool === 'pan' || activeTool === 'eraser'
+      || (shouldShowHoverHalo(activeTool) && activeTool !== 'select' && activeTool !== 'text-select');
+    const pointerCursor = activeTool === 'pan';
+    if (!haloByPosition) {
       // Tool changed away from pan — clear any lingering hover state + cursor.
       setPendingSvgHover((prev) => (prev == null ? prev : null));
       if (document.body.style.cursor === 'pointer') {
@@ -4058,6 +4418,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const e = latestEvent;
       latestEvent = null;
       if (!e) return;
+      // A drawing tool mid-stroke shows no halo; the eraser previews only in
+      // Whole mode (Partial carves, it does not delete the mark).
+      if ((!pointerCursor && e.buttons !== 0) || (activeTool === 'eraser' && !eraserWholeModeRef.current)) {
+        if (lastKey !== '') {
+          lastKey = '';
+          setPendingSvgHover((prev) => (prev == null ? prev : null));
+        }
+        return;
+      }
       // UX 2026-09-15 — over a live form field the control owns the affordance:
       // its own caret / checkbox cursor, no annotation glow and no `pointer`
       // override, matching the click rule above (a widget click never selects).
@@ -4069,16 +4438,28 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         if (document.body.style.cursor === 'pointer') document.body.style.cursor = '';
         return;
       }
-      const hit = resolveAnnotationAt(e);
+      // Owner 2026-10-04: a Shapes / Text tool looks past another group's mark
+      // to its own group's mark beneath (the same rule as its press).
+      const hit = resolveAnnotationAt(e, {
+        acceptMark: ownGroupMarkFilter(activeTool, (page) => annotationsByPageRef.current?.[page]?.objects),
+      });
+      // Owner 2026-10-04 (own tool group only): a tool's halo shows only over
+      // a mark it may pick — any mark under Pan, its own group's under the
+      // Shapes / Text tools, none while a polygon is under way. The eraser's
+      // Whole-mode preview is its own and shows over every mark.
+      const haloAllowed = activeTool === 'eraser' || (!document.querySelector('[data-poly-draft-action]')
+        && shouldShowHoverHalo(activeTool, hit?.kind === 'callout'
+          ? CALLOUT_MARK_GROUP
+          : getMarkGroup(annotationsByPageRef.current?.[hit?.pageNumber]?.objects?.[hit?.annotationIndex])));
       // UX 2026-07-17 — pan-mode hover parity: annotations AND callouts both
       // glow under the pan tool (same affordance the Select tool shows).
       // Counters flow through their own hover path (or none).
       const isAnnotation = hit && hit.kind === 'annotation'
         && typeof hit.annotationIndex === 'number'
-        && hit.pageNumber != null;
+        && hit.pageNumber != null && haloAllowed;
       const isCallout = hit && hit.kind === 'callout'
         && hit.calloutId != null
-        && hit.pageNumber != null;
+        && hit.pageNumber != null && haloAllowed;
       const nextKey = isAnnotation
         ? `${hit.pageNumber}:${hit.annotationIndex}`
         : isCallout
@@ -4093,7 +4474,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // UX: pointer cursor over annotations in pan mode. document.body is
         // the lowest-priority target so Pdfjs-level pan cursor wins
         // everywhere else. Cleared on no-hit and on tool-change cleanup.
-        if (document.body.style.cursor !== 'pointer') {
+        if (pointerCursor && document.body.style.cursor !== 'pointer') {
           document.body.style.cursor = 'pointer';
         }
       } else {
@@ -4163,17 +4544,114 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     lightweightCalloutCountByPageRef.current = lightweightCalloutCountByPage || {};
   }, [lightweightCalloutCountByPage]);
 
-  const selectedToolbarCallout = useMemo(() => {
-    if (!(selectedCalloutIds instanceof Set) || selectedCalloutIds.size !== 1) return null;
-    const id = Array.from(selectedCalloutIds)[0];
-    const callout = (callouts || []).find((c) => c && c.id === id);
-    if (!callout) return null;
-    return { id, pageNumber: callout.pageNumber, callout };
-  }, [selectedCalloutIds, callouts]);
+  // Owner 2026-10-04: with nothing else picked, a callout open for typing is
+  // the callout row 2 shows and edits (utils/toolbarCalloutTarget.js).
+  const editingCalloutIdForToolbar = editingAnnotation?.reactCalloutId || null;
+  const selectedToolbarCallout = useMemo(() => resolveToolbarCallout({
+    selectedCalloutIds,
+    callouts,
+    editingCalloutId: editingCalloutIdForToolbar,
+  }), [selectedCalloutIds, callouts, editingCalloutIdForToolbar]);
   const selectedToolbarCalloutRef = useRef(selectedToolbarCallout);
   useEffect(() => { selectedToolbarCalloutRef.current = selectedToolbarCallout; }, [selectedToolbarCallout]);
+  // Owner 2026-10-04: the tool the bar works for. 'select' while it shows and
+  // edits the PICKED mark(s) - under Select, under Pan, and under a Shapes /
+  // Text tool holding a pick of its own group - else the armed tool, whose
+  // settings are for the next mark (utils/toolbarCalloutTarget.js).
+  const pickBarTool = useMemo(() => {
+    const groups = [];
+    if (selectedToolbarIndices?.indices?.length) {
+      const objects = annotationsByPage?.[selectedToolbarIndices.pageNumber]?.objects || [];
+      selectedToolbarIndices.indices.forEach((index) => groups.push(getMarkGroup(objects[index])));
+    } else if (selectedToolbarAnnotation?.annotation) {
+      groups.push(getMarkGroup(selectedToolbarAnnotation.annotation));
+    }
+    if (selectedToolbarCallout || (selectedCalloutIds instanceof Set && selectedCalloutIds.size > 0)) {
+      groups.push(CALLOUT_MARK_GROUP);
+    }
+    return resolvePickBarTool({
+      activeTool,
+      pickedGroups: groups,
+      justDrawn: selectedToolbarAnnotation?.justDrawn === true,
+    });
+  }, [activeTool, selectedToolbarIndices, selectedToolbarAnnotation, selectedToolbarCallout, selectedCalloutIds, annotationsByPage]);
+  const pickBarToolRef = useRef(pickBarTool);
+  pickBarToolRef.current = pickBarTool;
 
-  const handlePatchSelectedCallout = useCallback((stylePatch) => {
+  // w41 (owner 2026-09-25: "I should be able to select things and then change
+  // their color, their width, their line type"): two or more marks picked -
+  // any mix of shapes, strokes, text boxes and callouts - make ONE restyle
+  // group. The bar shows the group's values (a property the marks disagree on
+  // shows as mixed) and a change lands on every member that has that property,
+  // as one save per page = one undo step (applyRestyleToGroup). Reference:
+  // Drawboard / Bluebeam / Acrobat multi-selection formatting.
+  const restyleGroupCacheRef = useRef(null);
+  const restyleGroup = useMemo(() => {
+    // Only while the bar edits the pick (pickBarTool: Select, Pan, a Shapes /
+    // Text tool's own-group pick). With a drawing tool armed otherwise, the
+    // bar is that tool's defaults for the next mark, and a pick left behind
+    // must never load its values into them nor take the tool's changes
+    // (review 2026-09-25).
+    if (pickBarTool !== 'select') return null;
+    const annotationMembers = [];
+    let annotationSelection = null;
+    if (selectedToolbarIndices && selectedToolbarIndices.indices.length > 0) {
+      const objects = annotationsByPage?.[selectedToolbarIndices.pageNumber]?.objects || [];
+      resolvePickedMembers(objects, selectedToolbarIndices.indices, selectedToolbarIndices.ids)
+        // A callout's page object is picked through selectedCalloutIds.
+        .filter(({ annotation }) => annotation?.data?.type !== 'callout')
+        .forEach((member) => annotationMembers.push(member));
+      annotationSelection = selectedToolbarIndices;
+    }
+    const calloutMembers = (selectedCalloutIds instanceof Set && selectedCalloutIds.size > 0)
+      ? (callouts || []).filter((callout) => callout && selectedCalloutIds.has(callout.id))
+      : [];
+    // Every save anywhere re-runs this memo; when the picked marks are the
+    // very same objects, the previous group is reused as is (no re-summary,
+    // no toolbar republish) - review 2026-09-25, big picks on busy pages.
+    const memberObjects = [
+      ...annotationMembers.map(({ annotation }) => annotation),
+      ...calloutMembers.map((callout) => callout.style),
+    ];
+    const cached = restyleGroupCacheRef.current;
+    if (cached
+      && cached.selection === annotationSelection
+      && cached.objects.length === memberObjects.length
+      && cached.objects.every((object, index) => object === memberObjects[index])
+      && cached.calloutIds.join(',') === calloutMembers.map((callout) => callout.id).join(',')) {
+      return cached.result;
+    }
+    const summary = summarizeSelectionRestyle([
+      ...annotationMembers.map(({ annotation }) => ({ kind: 'annotation', annotation })),
+      ...calloutMembers.map((callout) => ({ kind: 'callout', callout })),
+    ]);
+    // The text bar shows the first picked box's text style (the text-only
+    // groups the bar offers it for: all text boxes, or all callouts).
+    const firstTextBox = annotationMembers.find(({ annotation }) => isFormattableTextObject(annotation));
+    const firstTextStyle = firstTextBox
+      ? readTextboxTextStyle(firstTextBox.annotation)
+      : (calloutMembers[0] ? readCalloutTextStyle(calloutMembers[0]) : null);
+    const result = summary ? {
+      summary,
+      firstTextStyle,
+      annotationSelection,
+      calloutIds: calloutMembers.map((callout) => callout.id),
+      key: `${annotationSelection?.key || ''}#${calloutMembers.map((callout) => callout.id).join(',')}`,
+    } : null;
+    restyleGroupCacheRef.current = {
+      selection: annotationSelection,
+      objects: memberObjects,
+      calloutIds: calloutMembers.map((callout) => callout.id),
+      result,
+    };
+    return result;
+  }, [pickBarTool, selectedToolbarIndices, annotationsByPage, selectedCalloutIds, callouts]);
+  const restyleGroupRef = useRef(restyleGroup);
+  restyleGroupRef.current = restyleGroup;
+
+  // `refit` (optional): runs on the patched callout in the same write - the
+  // text bar uses it to grow the box to fit a bigger font (one undo step).
+  const handlePatchSelectedCallout = useCallback((stylePatch, refit = null) => {
     const sel = selectedToolbarCalloutRef.current;
     if (!sel || !sel.id) return;
     const pageNumber = Number.isFinite(Number(sel.pageNumber))
@@ -4188,126 +4666,100 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // shape for the bc28e2a0 text-style rendering contract).
     commitCalloutMutation(pageNumber, (prev) => prev.map((c) => {
       if (!c || c.id !== sel.id) return c;
-      return { ...c, style: { ...(c.style || {}), ...stylePatch } };
+      const patched = { ...c, style: { ...(c.style || {}), ...stylePatch } };
+      return typeof refit === 'function' ? (refit(patched, pageNumber, c) || patched) : patched;
     }), { source: 'callout:style', action: 'callout-style-patch' });
   }, [commitCalloutMutation, resolveCalloutPageNumber]);
 
-  useEffect(() => {
+  // Owner Test 45 (2026-10-06): the bar shows the PICKED mark(s) - one page
+  // mark, one callout (picked or open for typing) or a multi-pick group - and
+  // reloads whenever the settled pick or any of its values changes
+  // (utils/pickBarValues.js). This replaces three loaders keyed on object
+  // identity: a pick switch passes through one render holding both the old
+  // and the new pick, the group loader loaded the OLD mark's values there, and
+  // nothing reloaded afterwards - a solid callout picked after a cloud read
+  // "Cloud". Only while the bar works for the pick (pickBarTool 'select'):
+  // otherwise it is the armed tool's settings and a pick left behind never
+  // loads into them (review 2026-09-25). Under Select these states are only
+  // what the bar shows; the tool defaults reload when a drawing tool is armed.
+  const pickBarLoad = useMemo(() => {
+    if (pickBarTool !== 'select') return null;
     const sel = selectedToolbarAnnotation;
-    if (!sel || !sel.annotation) return;
-    const type = String(sel.annotation.type || '').toLowerCase();
-    const annot = sel.annotation;
-    const isCounter = type === 'circle' && annot?.data?.type === 'counter';
-    if (type !== 'rect' && type !== 'ellipse' && type !== 'path'
-      && type !== 'line' && type !== 'textbox'
-      && type !== 'polygon' && type !== 'polyline'
-      && !isCounter) return;
-    const isFillable = type === 'rect' || type === 'ellipse' || type === 'textbox'
-      || type === 'polygon' || isCounter;
-    const fillSource = type === 'textbox' ? annot.backgroundColor : annot.fill;
-    const strokeSource = isCounter ? annot.data?.numberColor : annot.stroke;
-    const strokeHex = strokeSource ? getHexFromColor(strokeSource) : null;
-    const strokeOp = strokeSource ? getOpacityFromEntityColor(strokeSource) : 100;
-    const fillHex = fillSource && fillSource !== 'transparent' ? getHexFromColor(fillSource) : null;
-    const fillOp = fillSource && fillSource !== 'transparent' ? getOpacityFromEntityColor(fillSource) : 0;
-    if (strokeHex) {
-      setStrokeColor(strokeHex);
-      setStrokeOpacity(strokeOp);
+    let annotation = null;
+    let annotationKey = '';
+    if (sel?.annotation) {
+      const pageObjects = annotationsByPage?.[sel.pageNumber]?.objects || [];
+      const liveIndex = findSelectedAnnotationIndex(pageObjects, sel);
+      annotation = (liveIndex >= 0 ? pageObjects[liveIndex] : null) || sel.annotation;
+      annotationKey = `${sel.pageNumber}:${liveIndex >= 0 ? liveIndex : sel.annotationIndex}:${getAnnotationRenderIdentity(annotation).annotationId || ''}`;
     }
-    if (isFillable) {
-      if (fillHex) {
-        setFillColor(fillHex);
-        setFillOpacity(fillOp);
-      } else if (fillSource === 'transparent' || !fillSource) {
-        setFillOpacity(0);
+    return resolvePickBarValues({
+      pickBarTool,
+      group: restyleGroup,
+      callout: selectedToolbarCallout,
+      annotation,
+      annotationKey,
+    });
+  }, [pickBarTool, restyleGroup, selectedToolbarCallout, selectedToolbarAnnotation, annotationsByPage]);
+  const pickBarLoadRef = useRef(pickBarLoad);
+  pickBarLoadRef.current = pickBarLoad;
+  const pickBarLoadKey = pickBarLoad ? pickBarLoad.key : '';
+  useEffect(() => {
+    const values = pickBarLoadRef.current?.values;
+    if (!values) return;
+    if (values.strokeColor) {
+      strokeColorStateRef.current = values.strokeColor;
+      setStrokeColor(values.strokeColor);
+    }
+    if (values.strokeOpacity != null) {
+      strokeOpacityStateRef.current = values.strokeOpacity;
+      setStrokeOpacity(values.strokeOpacity);
+    }
+    if (values.fillColor) {
+      fillColorStateRef.current = values.fillColor;
+      setFillColor(values.fillColor);
+    }
+    if (values.fillOpacity != null) {
+      fillOpacityStateRef.current = values.fillOpacity;
+      setFillOpacity(values.fillOpacity);
+    }
+    if (Number.isFinite(Number(values.width)) && Number(values.width) > 0) {
+      const width = Number(values.width);
+      // A cloud's studio-default 2.5 line must read as "2.5", not round to 3.
+      const nextWidthInputValue = String(Number.isInteger(width) ? width : Math.round(width * 10) / 10);
+      setStrokeWidth(width);
+      if (!isStrokeWidthFocusedRef.current) {
+        strokeWidthInputValueRef.current = nextWidthInputValue;
+        setStrokeWidthInputValue(nextWidthInputValue);
       }
     }
-    const sizeValue = isCounter ? Number(annot.radius) : Number(annot.strokeWidth);
-    if (Number.isFinite(sizeValue) && sizeValue > 0) {
-      // A cloud's studio-default 2.5 line must read as "2.5", not round to 3.
-      const nextWidthInputValue = String(Number.isInteger(sizeValue)
-        ? sizeValue
-        : Math.round(sizeValue * 10) / 10);
-      setStrokeWidth(sizeValue);
-      strokeWidthInputValueRef.current = nextWidthInputValue;
-      setStrokeWidthInputValue(nextWidthInputValue);
-    }
-    const dash = Array.isArray(annot.strokeDashArray) ? annot.strokeDashArray : null;
-    // UX 2026-09-09: selecting ANY cloud shape (rect, ellipse/circle, polygon,
-    // polyline) puts the Style picker on Cloud and loads its bump size, so the
-    // toolbar always reflects what is selected. Counters are circles internally
-    // but are never clouds, hence the isCounter guard.
-    if (!isCounter && toolSupportsCloudBorderStyle(type) && annot.data?.pdfCloudIntensity != null) {
-      setLineBorderStyle('cloud');
-      setCloudIntensity(Number(annot.data.pdfCloudIntensity) || 2);
-    } else if (dash && dash.length >= 2) {
-      if (dash[0] === 6) setLineBorderStyle('dashed');
-      else if (dash[0] === 2) setLineBorderStyle('dotted');
-      else setLineBorderStyle('solid');
-    } else {
-      setLineBorderStyle('solid');
-    }
-    if (type === 'line' && annot.data?.arrowheadStyle) {
-      setArrowheadStyle(annot.data.arrowheadStyle);
-    }
-    if (type === 'line' && (annot.tool === 'arrow' || annot.data?.arrowheadStyle)) {
-      // Reflect the selected arrow: "both ends" is on only when its start
-      // ending explicitly matches its end ending. An imported line with two
-      // different endings therefore shows the toggle OFF and keeps both.
-      const startStyle = annot.data?.startArrowheadStyle ?? null;
-      const endStyle = annot.data?.arrowheadStyle ?? null;
-      setArrowBothEnds(Boolean(startStyle && startStyle !== ARROWHEAD_STYLES.NONE && startStyle === endStyle));
-    }
-  }, [selectedToolbarAnnotation]);
-
-  useEffect(() => {
-    const sel = selectedToolbarCallout;
-    if (!sel || !sel.callout) return;
-    const style = sel.callout.style || {};
-    const border = style.borderColor || style.lineColor;
-    if (border) {
-      const borderHex = getHexFromColor(border);
-      if (borderHex) setStrokeColor(borderHex);
-    }
-    if (Number.isFinite(Number(style.borderOpacity))) {
-      setStrokeOpacity(Math.round(Math.max(0, Math.min(1, Number(style.borderOpacity))) * 100));
-    } else {
-      setStrokeOpacity(100);
-    }
-    if (style.fillColor && style.fillColor !== 'transparent') {
-      const fillHex = getHexFromColor(style.fillColor);
-      if (fillHex) setFillColor(fillHex);
-      const fo = Number(style.fillOpacity);
-      if (Number.isFinite(fo)) setFillOpacity(Math.round(Math.max(0, Math.min(1, fo)) * 100));
-      else setFillOpacity(100);
-    } else {
-      setFillOpacity(0);
-    }
-    const thickness = Number(style.lineThickness);
-    if (Number.isFinite(thickness) && thickness > 0) {
-      const nextWidthInputValue = String(Math.round(thickness));
-      setStrokeWidth(thickness);
-      strokeWidthInputValueRef.current = nextWidthInputValue;
-      setStrokeWidthInputValue(nextWidthInputValue);
-    }
-    if (style.arrowheadStyle) {
-      setArrowheadStyle(style.arrowheadStyle);
-    }
-    // UX (2026-07-17, callout line style): reflect the selected callout's
-    // leader style in the Style picker (absent field = legacy solid callout).
-    setLineBorderStyle(
-      style.lineStyle === 'dashed' || style.lineStyle === 'dotted'
-        ? style.lineStyle
-        : 'solid',
-    );
-  }, [selectedToolbarCallout]);
+    if (values.lineStyle) setLineBorderStyle(values.lineStyle);
+    if (values.cloudIntensity != null) setCloudIntensity(values.cloudIntensity);
+    if (values.arrowheadStyle) setArrowheadStyle(values.arrowheadStyle);
+    if (values.arrowBothEnds != null) setArrowBothEnds(Boolean(values.arrowBothEnds));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickBarLoadKey]);
 
   // Clipboard handlers for callouts
+  // w52: (pageNumber) => paste scope; assigned next to pasteAnnotationAt.
+  const pasteScopeRef = useRef(null);
+  // w52: documentOwnerId is declared further down (TDZ); read via a ref.
+  const cutGateOwnerIdRef = useRef(null);
   const handleCutCallout = useCallback((calloutId) => {
     const callout = callouts.find(c => c.id === calloutId);
+    // RULED 2026-09-28 owner: open editing + lock — Cut takes anyone's
+    // callout with no confirmation (menu AND Cmd+X); a user-locked one stays
+    // (even in the boot window, when the ids are not known yet).
+    if (callout && isUserLocked(callout)) {
+      showToast('Locked — its author or the document owner can unlock it.', 'info');
+      return;
+    }
+    if (callout && user?.id && cutGateOwnerIdRef.current
+      && !canModify({ annotation: callout, viewerId: user.id, documentOwnerId: cutGateOwnerIdRef.current })) return;
     if (callout) {
       setClipboardCallout(callout);
       setClipboardCalloutType('cut');
+      setFamilyClipboard(null);
       // UX: one logical clipboard — most recent Copy/Cut wins (see
       // handleCopyCallout).
       setClipboardAnnotation(null);
@@ -4325,7 +4777,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setSelectedCalloutId(null);
       }
     }
-  }, [callouts, selectedCalloutId, commitCalloutMutation, resolveCalloutPageNumber]);
+  }, [callouts, selectedCalloutId, commitCalloutMutation, resolveCalloutPageNumber, user?.id]);
 
   const handleCopyCallout = useCallback((calloutId) => {
     const callout = callouts.find(c => c.id === calloutId);
@@ -4335,6 +4787,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // UX: one logical clipboard — the most recent Copy/Cut wins. Clear the
       // shape clipboard so Cmd+V pastes THIS callout, not a stale shape.
       setClipboardAnnotation(null);
+      setFamilyClipboard(null);
     }
   }, [callouts]);
 
@@ -4418,6 +4871,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         : {}),
     };
 
+    // w52: a pasted callout takes the scope of where it lands (active Survey
+    // module / region), like every pasted mark — see applyPasteScope. Read
+    // through a ref: the scope inputs are declared further down (TDZ).
+    const calloutPasteScope = pasteScopeRef.current?.(pageNumber);
+    if (calloutPasteScope) applyPasteScope(newCallout, calloutPasteScope);
+
     // R2.2 Slice 4: paste commits through the shared save pipeline (paste does
     // NOT route through handleCreateCallout — confirmed in Slice 3), gaining a
     // per-object fabric:create undo entry like every other create.
@@ -4425,6 +4884,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       source: 'callout:paste',
       action: 'paste',
     });
+    // w63 (Figma / Acrobat): the pasted callout becomes the whole selection so
+    // it can be nudged or dragged straight away.
+    setSelectedCalloutIds(new Set([newId]));
+    setPendingSvgSelection({ pageNumber, annotationIndices: [], surveyMarkerIds: [], exclusive: true, tick: Date.now() });
 
     // Clear clipboard if it was a cut operation
     if (clipboardCalloutType === 'cut') {
@@ -4650,6 +5113,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return 'partial';
     }
   }); // 'partial' | 'entire'
+  // Drawboard rule 5 (owner 2026-10-02): in Whole mode the eraser previews
+  // what a press would delete with the hover halo (read by the hover effect).
+  eraserWholeModeRef.current = eraserMode === 'entire';
+  // Drawboard rule 5: an eraser press drops the selection. Owner 2026-10-04
+  // (Draw group always uses the tool): the eraser no longer grabs the picked
+  // mark nor spares it — it erases whatever it touches, picked or not.
+  useEffect(() => {
+    if (activeTool !== 'eraser') return undefined;
+    const onDown = (event) => {
+      if (!event.isTrusted || event.defaultPrevented) return;
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      if (!event.target?.closest?.('[data-page-number]')) return;
+      if (!hasAnyPageSelection()) return;
+      window.setTimeout(() => {
+        if (!isSelectionGrabPress(event)) clearAnnotationSelectionForContextChange('eraser-press');
+      }, 0);
+    };
+    window.addEventListener('pointerdown', onDown, true);
+    return () => window.removeEventListener('pointerdown', onDown, true);
+  }, [activeTool, clearAnnotationSelectionForContextChange]);
   const [eraserSize, setEraserSize] = useState(20); // Diameter in page pixels
   const [eraserCursorPos, setEraserCursorPos] = useState({ visible: false });
   const eraserCursorRef = useRef(null);
@@ -4703,12 +5186,34 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const currentMatchIndexRef = useRef(-1);
   const searchZoomLevelRef = useRef(null); // Store zoom level before search zoom
   const isNavigatingToMatchRef = useRef(false); // Flag to prevent recursive navigation
+  const textMatchNavTokenRef = useRef(0); // Newest text-search jump wins; older ones stop
   const activeTextSearchQueryRef = useRef('');
   const textSearchRefreshTimerRef = useRef(null);
   const previousSearchResultsCountRef = useRef(0);
 
   // Survey/Template state
   const [activeCategoryDropdown, setActiveCategoryDropdown] = useState(null); // 'draw' | 'shape' | 'review' | 'survey'
+  // RULED 2026-09-26 owner: flip rows (w44). A group's tools sit in the tool
+  // bar (AppShell's #chrome-subtools-host), and in Select mode a picked mark
+  // brings its own group's tools there (utils/toolbarRows.js). The picked
+  // mark's tool is worked out where the toolbar API is published; it is kept
+  // here so the tools render from it. The host is looked up after every
+  // commit, because AppShell creates it in the same commit it first renders us.
+  const [subToolContextTool, setSubToolContextTool] = useState(null);
+  const [subToolsHostEl, setSubToolsHostEl] = useState(null);
+  // Test plan 63 (2026-10-06): only call the setter when the host really
+  // changed. A functional no-op update still schedules a render whenever this
+  // component has other work pending, and this effect runs after EVERY commit:
+  // after a Delete in one window while another window had just deleted a mark,
+  // that fed itself until React threw "Maximum update depth exceeded" and the
+  // viewer was torn down.
+  const subToolsHostElRef = useRef(null);
+  useLayoutEffect(() => {
+    const el = typeof document !== 'undefined' ? document.getElementById('chrome-subtools-host') : null;
+    if (subToolsHostElRef.current === el) return;
+    subToolsHostElRef.current = el;
+    setSubToolsHostEl(el);
+  });
   const [showSurveyPanel, setShowSurveyPanel] = useState(false);
   const [rightRailCollapsed, setRightRailCollapsed] = useState(true);
   const [rightRailExpandRequestKey, setRightRailExpandRequestKey] = useState(0);
@@ -5369,22 +5874,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return () => clearTimeout(timer);
   }, [activeTool]);
 
-  // Close menus when clicking outside
+  // Survey export menu: a light popover under the shared dismiss rules
+  // (src/components/dismissRules.js, owner 2026-09-23) — an outside press closes
+  // it and still does its job (R1), a press on the bare page only closes it
+  // (R2), Escape closes it (R5).
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      // Close export menu
-      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target)) {
-        setShowExportMenu(false);
-      }
-    };
-
-    if (showExportMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
+    if (!showExportMenu) return undefined;
+    return watchLightPopover({
+      contains: (target) => !exportMenuRef.current || exportMenuRef.current.contains(target),
+      close: () => setShowExportMenu(false),
+    });
   }, [showExportMenu]);
 
   // Persist eraser mode
@@ -5512,20 +6011,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setActiveTool('select');
   }, []);
 
-  // UX 2026-05-29: Survey entry now belongs to the always-visible right rail.
-  // The handler stays in PDFViewer because it owns the survey/template state.
-  const handleSurveyToggle = useCallback(() => {
-    if (!features?.advancedSurvey) {
-      showToast('Survey templates are a Pro feature. Please upgrade to use this tool.', 'warn');
-      return;
-    }
-    if (!showSurveyPanel) {
-      setShowSurveyPanel(true);
-    } else {
-      handleCloseSurveyMode();
-    }
-  }, [features, handleCloseSurveyMode, showSurveyPanel]);
-
   // UX 2026-05-13: top-toolbar publish effect was here but moved further down,
   // past where handleUndo / handleRedo are declared — those are const arrow
   // useCallbacks defined much later in the function body, so referencing them
@@ -5547,6 +6032,55 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setActiveTool('survey-marker');
     setShowSurveyPanel(true);
   }, []);
+
+  // UX 2026-05-29: Survey entry now belongs to the always-visible right rail.
+  // The handler stays in PDFViewer because it owns the survey/template state.
+  // Owner 2026-10-07 (survey bar round): turning Survey on goes straight back
+  // into the template last used on this document (remembered on this device,
+  // utils/surveyLastTemplate.js); the picker only shows the first time, or
+  // when that template is gone.
+  const surveyMemoryDocKey = surveyMemoryDocumentKey(pdfFile, pdfFilePath);
+  const handleSurveyToggle = useCallback(() => {
+    if (!features?.advancedSurvey) {
+      showToast('Survey templates are a Pro feature. Please upgrade to use this tool.', 'warn');
+      return;
+    }
+    if (!showSurveyPanel) {
+      const remembered = resolveLastSurveyTemplate(surveyMemoryDocKey, appTemplates);
+      if (remembered) {
+        handleSelectSurveyTemplate(remembered);
+      } else {
+        setShowSurveyPanel(true);
+      }
+    } else {
+      handleCloseSurveyMode();
+    }
+  }, [features, handleCloseSurveyMode, handleSelectSurveyTemplate, showSurveyPanel, surveyMemoryDocKey, appTemplates]);
+
+  // Remember the template in use for this document (any way it was chosen:
+  // the picker, the panel's or the survey bar's template menu, an Undo).
+  useEffect(() => {
+    if (!showSurveyPanel || !selectedTemplate?.id) return;
+    rememberLastSurveyTemplate(surveyMemoryDocKey, selectedTemplate.id);
+  }, [showSurveyPanel, selectedTemplate?.id, surveyMemoryDocKey]);
+
+  // The survey bar's template menu (desktop and phone): switch template in
+  // place; the current one is a no-op.
+  // The published tool-bar / rail APIs keep a callback's first identity while
+  // only functions change, so the bar's handlers read Survey's live state here.
+  // (Filled in below, once selectedCategoryId is declared.)
+  const surveyBarLiveRef = useRef(null);
+  const handleSwitchSurveyTemplateById = useCallback((templateId) => {
+    const live = surveyBarLiveRef.current;
+    if (!templateId || templateId === live.selectedTemplate?.id) return;
+    const template = (live.appTemplates || []).find((entry) => entry?.id === templateId);
+    if (template) handleSelectSurveyTemplate(template);
+  }, [handleSelectSurveyTemplate]);
+
+  // An Undo of "Left Survey" re-enters with the panel the way it was: when it
+  // was closed, this tells the expand effect below and the rail to leave it
+  // closed this once (the rail clears it).
+  const surveyReenterCollapsedRef = useRef(false);
 
   // Restore scroll position when PDF loads or tab/document context changes.
   useEffect(() => {
@@ -6465,7 +6999,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         scrollTop: viewerContainer.scrollTop,
         tMs: (typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now()
       };
-      recordTrackpadInteractionEvent('pointer-down', {
+      // Perf: readTrackpadDebugState forces style + layout (getComputedStyle,
+      // elementFromPoint); only pay for it while the recorder is on.
+      if (trackpadInteractionDebugRef.current?.enabled) recordTrackpadInteractionEvent('pointer-down', {
         family: 'pan',
         direction: 'start',
         button: event.button,
@@ -6488,7 +7024,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       lastDragEventAt = now;
       const start = trackpadInteractionDebugRef.current.pointerPanStart || null;
       trackpadInteractionDebugRef.current.totals.pointerPanMoves += 1;
-      recordTrackpadInteractionEvent('pointer-pan-move', {
+      if (trackpadInteractionDebugRef.current.enabled) recordTrackpadInteractionEvent('pointer-pan-move', {
         family: 'pan',
         direction: 'drag',
         processed: true,
@@ -6538,7 +7074,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
       } catch (_e) { /* swallow */ }
       pointerDown = false;
-      recordTrackpadInteractionEvent('pointer-up', {
+      if (trackpadInteractionDebugRef.current?.enabled) recordTrackpadInteractionEvent('pointer-up', {
         family: 'pan',
         direction: 'end',
         after: readTrackpadDebugState(viewerContainer)
@@ -7268,7 +7804,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const readPdfjsPageVisitState = useCallback((pageNumber) => {
     const pageContainerMap = pdfjsPageContainersStateRef.current || pageContainersRef.current || {};
     const directHost = pageContainerMap[pageNumber] || pageContainersRef.current?.[pageNumber] || null;
-    const domHost = typeof document !== 'undefined'
+    // Only search the document when the known host is gone: this runs for
+    // every mounted page on every render, and the search walked every mark of
+    // the pages before it (owner 2026-10-06, smooth zoom).
+    const domHost = !directHost?.isConnected && typeof document !== 'undefined'
       ? document.querySelector(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`)
       : null;
     const host = directHost?.isConnected ? directHost : domHost;
@@ -7555,6 +8094,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handlePdfjsPageRenderComplete = useCallback((payload) => {
     reconcilePdfjsScaleFromRenderedPage('page-render-complete');
     scheduleTextSearchHighlightRefresh('page-render-complete', 80);
+    if (payload?.pageNumber === 1 && !firstPageDrawnRef.current.drawn) {
+      firstPageDrawnRef.current.drawn = true;
+      firstPageDrawnRef.current.resolve?.();
+    }
     const paintState = firstPagePaintAnalyticsRef.current;
     if (payload?.pageNumber !== 1 || paintState.reported || !paintState.startedAt) return;
     paintState.reported = true;
@@ -7641,8 +8184,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Legacy state (to be migrated)
   const [surveyResponses, setSurveyResponses] = useState({}); // { [itemId]: { selection: 'Y'|'N'|'N/A', note: { text, photos, videos } } }
-  const [noteDialogOpen, setNoteDialogOpen] = useState(null); // null or itemId
-  const [noteDialogContent, setNoteDialogContent] = useState({ text: '', photos: [], videos: [] });
   const [pendingSurveyMarker, setPendingSurveyMarker] = useState(null); // { pageNumber, x, y, width, height, id }
   const [showSpaceSelection, setShowSpaceSelection] = useState(false);
   const [surveyMarkers, setSurveyMarkers] = useState({}); // { [annotationId]: { pageNumber, bounds, categoryId, spaceId, checklistResponses: { [itemId]: { selection, note } } } }
@@ -7718,10 +8259,37 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const [selectedCategoryId, setSelectedCategoryId] = useState(null); // Category selected for highlighting
   const [surveyKeepCategoryActive, setSurveyKeepCategoryActive] = useState(false);
+  // Desktop survey sub-row: whether the Survey module menu is open.
+  const [surveyModuleMenuOpen, setSurveyModuleMenuOpen] = useState(false);
+  // ...and its template menu (owner 2026-10-07, the bar's first item).
+  const [surveyTemplateMenuOpen, setSurveyTemplateMenuOpen] = useState(false);
+  surveyBarLiveRef.current = { selectedTemplate, selectedModuleId, selectedCategoryId, rightRailCollapsed, appTemplates };
+  // 2026-10-07 (survey bar, narrow windows): how far the survey bar gives
+  // ground so nothing in it overlaps (hooks/useSurveyBarFit.js).
+  const surveyBarModules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
+  const surveyBarFit = useSurveyBarFit({
+    enabled: Boolean(showSurveyPanel && selectedTemplate),
+    insetLeft: isLeftSidebarCollapsed ? 0 : 272,
+    insetRight: rightRailCollapsed ? 0 : 320,
+    templateName: selectedTemplate?.name || 'Survey',
+    moduleNames: surveyBarModules.length ? surveyBarModules.map((module) => module.name || 'Untitled module') : ['No modules'],
+    categoriesKey: ((surveyBarModules.find((module) => module.id === selectedModuleId) || surveyBarModules[0])?.categories || [])
+      .map((category) => `${category.id}:${category.name}`).join('|'),
+  });
   const [selectedSpaceId, setSelectedSpaceId] = useState(null); // Currently selected space for survey interactions
   const [pendingSurveyMarkerName, setPendingSurveyMarkerName] = useState(null); // { surveyMarker, categoryId } when prompting for name
   const [surveyMarkerNameInput, setSurveyMarkerNameInput] = useState(null); // Name prompt input; null = untouched (show category-derived default), any string ('' included) = user's text
   const [pendingEntitySelection, setPendingEntitySelection] = useState(null); // { surveyMarker, categoryId } when prompting for Entity
+  // Owner 2026-10-01 ("Yes, inline like phone"): a Survey Marker placed on
+  // desktop opens in the Survey rail with its name field focused - no Entity /
+  // Name pop-ups. { id, tick } asks the rail to focus that marker's name.
+  const [surveyMarkerNameFocusRequest, setSurveyMarkerNameFocusRequest] = useState(null);
+  // The entity last picked for a Survey Marker on desktop (the rail's Entity
+  // menu); a new desktop marker starts with it, like the phone's entity disc.
+  const lastSurveyEntityIdRef = useRef(null);
+  const rememberSurveyEntity = useCallback((entityId) => {
+    lastSurveyEntityIdRef.current = entityId || null;
+  }, []);
   const [mobileSurveyEntityId, setMobileSurveyEntityId] = useState(null);
   // Pending Survey Marker deletion participates in legacy Undo/Redo. Keep the
   // entire transient prompt/preview slice together so restoring the marker
@@ -7739,8 +8307,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // NEW: Item and Annotation system state
   const [pdfId, setPdfId] = useState(null);
   const pdfSearchDocumentKey = useMemo(
-    () => `${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}:${numPages || 0}`,
-    [pdfFile?.id, pdfFile?.name, pdfId, numPages]
+    // A page operation (move/rotate/...) changes what text sits on which page
+    // even when the count stays the same: the page view version keys it.
+    () => `${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}:${numPages || 0}:${pdfDoc?.__pageViewVersion || 0}`,
+    [pdfFile?.id, pdfFile?.name, pdfId, numPages, pdfDoc]
   );
   const previousPdfSelectionContextRef = useRef(null);
   useLayoutEffect(() => {
@@ -7803,7 +8373,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Sync tool properties when activeTool or pdfId changes (load per-tool preferences)
   useEffect(() => {
     if (!pdfId) return;
-    if (activeTool === 'select') return;
+    if (pickBarTool === 'select') return;
     const toolPrefs = getToolPreference(activeTool);
     if (activeTool === 'text-select') {
       const paint = textMarkupPaintByType[focusedTextMarkupPaint]
@@ -7837,7 +8407,65 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setStrokeWidthInputValue(nextValue);
       }
     }
-  }, [activeTool, focusedTextMarkupPaint, lineBorderStyle, pdfId, textMarkupPaintByType, toolPreferences]);
+  }, [activeTool, pickBarTool, focusedTextMarkupPaint, lineBorderStyle, pdfId, textMarkupPaintByType, toolPreferences]);
+
+  // Owner 2026-10-04: a Shapes / Text tool that picks a mark of its own group
+  // shows that mark's values in the bar; when the pick goes (empty click,
+  // Escape) the bar is the tool's own settings again, as they were before the
+  // pick. A tool switch is not a pick ending here: the switch loads the new
+  // tool's settings (above).
+  const toolSettingsBeforePickRef = useRef(null);
+  const toolSettingsPickToolRef = useRef(activeTool);
+  useEffect(() => {
+    const toolChanged = toolSettingsPickToolRef.current !== activeTool;
+    toolSettingsPickToolRef.current = activeTool;
+    if (toolChanged) {
+      toolSettingsBeforePickRef.current = null;
+      return;
+    }
+    if (pickBarTool === 'select') {
+      if (activeTool !== 'select' && activeTool !== 'pan' && !toolSettingsBeforePickRef.current) {
+        toolSettingsBeforePickRef.current = {
+          strokeColor, strokeOpacity, fillColor, fillOpacity, strokeWidth,
+          lineBorderStyle, cloudIntensity, arrowheadStyle, arrowBothEnds,
+        };
+      }
+      return;
+    }
+    const saved = toolSettingsBeforePickRef.current;
+    toolSettingsBeforePickRef.current = null;
+    if (!saved) return;
+    strokeColorStateRef.current = saved.strokeColor;
+    strokeOpacityStateRef.current = saved.strokeOpacity;
+    fillColorStateRef.current = saved.fillColor;
+    fillOpacityStateRef.current = saved.fillOpacity;
+    setStrokeColor(saved.strokeColor);
+    setStrokeOpacity(saved.strokeOpacity);
+    setFillColor(saved.fillColor);
+    setFillOpacity(saved.fillOpacity);
+    setStrokeWidth(saved.strokeWidth);
+    if (!isStrokeWidthFocusedRef.current) {
+      strokeWidthInputValueRef.current = String(saved.strokeWidth);
+      setStrokeWidthInputValue(String(saved.strokeWidth));
+    }
+    setLineBorderStyle(saved.lineBorderStyle);
+    setCloudIntensity(saved.cloudIntensity);
+    setArrowheadStyle(saved.arrowheadStyle);
+    setArrowBothEnds(saved.arrowBothEnds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTool, pickBarTool]);
+  // Review round 9: while that pick is held the bar holds the PICKED mark's
+  // values; a drag that draws a new mark meanwhile still draws it with the
+  // tool's own settings (it used to take the picked mark's width and colours).
+  const newMarkStyle = resolveNewMarkStyle({
+    activeTool,
+    pickBarTool,
+    savedToolSettings: toolSettingsBeforePickRef.current,
+    live: {
+      strokeColor, strokeOpacity, fillColor, fillOpacity, strokeWidth,
+      lineBorderStyle, cloudIntensity, arrowheadStyle, arrowBothEnds,
+    },
+  });
 
   // Sync strokeWidthInputValue when strokeWidth changes (but not while focused)
   useEffect(() => {
@@ -7867,13 +8495,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => { fillColorStateRef.current = fillColor; }, [fillColor]);
   useEffect(() => { fillOpacityStateRef.current = fillOpacity; }, [fillOpacity]);
   useEffect(() => {
-    if (activeTool !== 'select' || selectedToolbarAnnotation?.annotation?.data?.type !== 'text-markup') return;
+    if (pickBarTool !== 'select' || selectedToolbarAnnotation?.annotation?.data?.type !== 'text-markup') return;
     const paint = resolveTextMarkupEditPaint(selectedToolbarAnnotation.annotation, strokeColorStateRef.current);
     strokeColorStateRef.current = paint.color;
     strokeOpacityStateRef.current = paint.opacity;
     setStrokeColor(paint.color);
     setStrokeOpacity(paint.opacity);
-  }, [activeTool, selectedToolbarAnnotation]);
+  }, [pickBarTool, selectedToolbarAnnotation]);
   const getSelectedShapeMeta = () => {
     const sel = selectedToolbarAnnotationRef.current;
     const annotation = sel?.annotation;
@@ -7896,6 +8524,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return isCounter;
   };
   const isCalloutSelected = () => !!selectedToolbarCalloutRef.current;
+  // Owner Test 15 (2026-10-02): a shape comes up selected the moment it is
+  // drawn, with its tool still armed. The paint handlers below only restyled
+  // a selection under Select, so the first colour / opacity / fill change on
+  // the new shape went to the tool alone and the shape stayed as drawn until
+  // it was clicked away and picked again. That mark (and only that mark - a
+  // pick left behind under a drawing tool still never takes the tool's
+  // changes) now takes the change too, along with the tool for the next one.
+  const isJustDrawnMarkSelected = () => selectedToolbarAnnotationRef.current?.justDrawn === true;
   const patchSelectedFill = (rgba) => {
     const { type, isCounter, annotation } = getSelectedShapeMeta();
     if (isCounter && annotation?.data?.seriesId) {
@@ -7927,19 +8563,98 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } else if (annotation?.data?.type === 'text-markup') {
       const color = getHexFromColor(rgba) || rgba;
       handlePatchSelectedAnnotation({ fill: color, stroke: color });
+    } else if (isFilledInkPath(annotation)) {
+      // w41 (regression since a3380bbf9, 2026-07-10): a pen / highlighter
+      // stroke is a filled outline, so its colour is its FILL - writing
+      // `stroke` (as below) changed nothing on screen.
+      handlePatchSelectedAnnotation({ fill: rgba });
     } else {
       handlePatchSelectedAnnotation({ stroke: rgba });
     }
+  };
+
+  // w41: one bar change applied to the restyle group (see restyleGroup).
+  // Returns false when no group is picked, so the single-pick paths run.
+  // Every member that has the property takes it; one save per page (one undo
+  // step). A slider drag's release always reaches the save path, even when
+  // its last frame already showed the released value, or the drag would
+  // leave no undo step (runWithPaintPhase / previewBaselineByPageRef).
+  // The shared core: `annotationPage(pageJSON, members)` returns the page with
+  // its picked marks updated (or null), `calloutStyle(callout, page)` a style
+  // patch for one picked callout (or null), `calloutRefit` optional
+  // (callout, page, stylePatch) => callout, the text bar's grow-to-fit. The
+  // pages to write are planned purely (utils/selectionRestyle planGroupUpdate).
+  //
+  // ONE undo step per change: a group on one page is one page save (and a
+  // slider drag resolves through handleSaveAnnotations' drag baseline, like a
+  // single mark). A group spread over several pages (callouts picked on other
+  // pages) is committed as ONE document transaction instead of a save per
+  // page; its drag frames record no step and its release records one, from
+  // the drag's starting paint (recordDragBaseline / restoreDragBaseline).
+  const groupDragBaselineRef = useRef(new Map());
+  const applyGroupUpdate = ({ annotationPage, calloutStyle, calloutRefit = null }) => {
+    const group = restyleGroupRef.current;
+    if (!group) return false;
+    const save = handleSaveAnnotationsRef.current;
+    if (typeof save !== 'function') return true;
+    const byPage = annotationsByPageRef.current || {};
+    const phase = paintPhaseRef.current;
+    const { nextPages, groupPages } = planGroupUpdate({
+      byPage,
+      selection: group.annotationSelection,
+      calloutIds: group.calloutIds,
+      calloutPageOf: (id) => (calloutsRef.current || []).find((callout) => callout?.id === id)?.pageNumber
+        ?? resolveCalloutPageNumber(id),
+      annotationPage,
+      calloutStyle,
+      calloutRefit,
+      deriveCallouts: deriveCalloutsFromByPage,
+      applyCalloutList: applyCalloutListToByPage,
+      pageSizes: pageSizesRef.current || {},
+      release: phase === 'commit',
+    });
+    const write = resolveGroupWrite({
+      byPage,
+      plan: { nextPages, groupPages },
+      phase,
+      baseline: groupDragBaselineRef.current,
+      buildDocumentAction: buildTextMarkupDocumentAction,
+    });
+    if (write.kind === 'saves') {
+      write.saves.forEach(([page, pageJSON]) => {
+        save(page, pageJSON, { source: 'toolbar:selected-group-edit', tool: 'select' });
+      });
+    } else if (write.kind === 'transaction') {
+      commitTextMarkupDocumentTransactionRef.current?.({ action: write.action, nextByPage: write.nextByPage }, {
+        source: 'toolbar:selected-group-edit',
+        action: 'group-restyle',
+        applyWithoutOwnedStep: true,
+        skipHistory: write.skipHistory,
+      });
+    }
+    return true;
+  };
+  const applyRestyleToGroup = (change) => applyGroupUpdate({
+    annotationPage: (pageJSON, members) => applyRestyleChangeToPage(pageJSON, members, change),
+    calloutStyle: (callout) => calloutRestylePatch(callout, change),
+  });
+  // One paint write for the group (utils/selectionRestyle resolveGroupPaintWrite).
+  const writeGroupPaint = (kind, value, previous) => {
+    if (!restyleGroupRef.current) return false;
+    const write = resolveGroupPaintWrite(kind, value, previous, paintPhaseRef.current);
+    if (write.action === 'skip') return true;
+    if (write.action === 'release') return applyRestyleToGroup({ kind: 'noop' });
+    return applyRestyleToGroup(write.change);
   };
 
   const handleTextMarkupOverlapModeChange = useCallback((mode) => {
     const normalized = mode === 'uniform' ? 'uniform' : 'layered';
     setTextMarkupOverlapMode(normalized);
     const annotation = selectedToolbarAnnotationRef.current?.annotation;
-    if (activeTool === 'select' && annotation?.data?.type === 'text-markup') {
+    if (pickBarTool === 'select' && annotation?.data?.type === 'text-markup') {
       handlePatchSelectedAnnotation({ data: { overlapMode: normalized } });
     }
-  }, [activeTool, handlePatchSelectedAnnotation]);
+  }, [pickBarTool, handlePatchSelectedAnnotation]);
 
   const handleSelectedCounterSeriesStartChange = useCallback((value) => {
     const sel = selectedToolbarAnnotationRef.current;
@@ -7971,10 +8686,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, []);
 
   const handleStrokeColorChange = useCallback((color) => {
+    const previousStrokeColor = strokeColorStateRef.current;
     strokeColorStateRef.current = color;
     setStrokeColor(color);
     const nextNumberColor = composeColorForPatch(color, strokeOpacityStateRef.current);
-    if (activeTool === 'counter') {
+    if (pickBarTool === 'counter') {
       activeCounterSeriesNumberColorRef.current = nextNumberColor;
       const activeSeriesId = activeCounterSeriesIdRef.current;
       const activeSeriesHasPins = activeSeriesId
@@ -7987,9 +8703,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setCounterUITick((tick) => tick + 1);
       }
     }
-    if (pdfId && activeTool !== 'select') updateToolPreference(paintPreferenceKey(activeTool), { strokeColor: color });
-    if (activeTool === 'counter') return;
-    if (activeTool !== 'select') return;
+    if (pdfId && pickBarTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(paintPreferenceKey(pickBarTool), { strokeColor: color });
+    if (pickBarTool === 'counter') return;
+    if (pickBarTool !== 'select') {
+      if (isJustDrawnMarkSelected() && isEditableShapeSelected()) patchSelectedStroke(nextNumberColor);
+      return;
+    }
+    if (writeGroupPaint('strokeColor', color, previousStrokeColor)) return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ borderColor: color });
     } else if (selectedToolbarAnnotationRef.current?.annotation?.data?.type === 'text-markup') {
@@ -7997,7 +8717,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } else if (isEditableShapeSelected()) {
       patchSelectedStroke(nextNumberColor);
     }
-  }, [activeTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
+  }, [pickBarTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleTextMarkupPaintChange = useCallback((color, opacity) => {
     const normalizedOpacity = Math.max(5, Math.min(100, Number(opacity)
@@ -8020,8 +8740,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         ? { ...current, [focusedTextMarkupPaint]: { color, opacity: normalizedOpacity } }
         : current
     ));
-    if (pdfId && activeTool !== 'select') {
-      updateToolPreference(activeTool, { strokeColor: color, strokeOpacity: normalizedOpacity });
+    if (pdfId && pickBarTool !== 'select' && paintPhaseRef.current !== 'preview') {
+      updateToolPreference(pickBarTool, { strokeColor: color, strokeOpacity: normalizedOpacity });
     }
     if (selectedToolbarAnnotationRef.current?.annotation?.data?.type === 'text-markup') {
       handlePatchSelectedAnnotation({
@@ -8030,13 +8750,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         opacity: normalizedOpacity / 100,
       });
     }
-  }, [activeTool, focusedTextMarkupPaint, handlePatchSelectedAnnotation, pdfId, updateToolPreference]);
+  }, [pickBarTool, focusedTextMarkupPaint, handlePatchSelectedAnnotation, pdfId, updateToolPreference]);
 
   const handleStrokeOpacityChange = useCallback((opacity) => {
+    const previousStrokeOpacity = strokeOpacityStateRef.current;
     strokeOpacityStateRef.current = opacity;
     setStrokeOpacity(opacity);
     const nextNumberColor = composeColorForPatch(strokeColorStateRef.current, opacity);
-    if (activeTool === 'counter') {
+    if (pickBarTool === 'counter') {
       activeCounterSeriesNumberColorRef.current = nextNumberColor;
       const activeSeriesId = activeCounterSeriesIdRef.current;
       const activeSeriesHasPins = activeSeriesId
@@ -8047,9 +8768,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setCounterUITick((tick) => tick + 1);
       }
     }
-    if (pdfId && activeTool !== 'select') updateToolPreference(paintPreferenceKey(activeTool), { strokeOpacity: opacity });
-    if (activeTool === 'counter') return;
-    if (activeTool !== 'select') return;
+    if (pdfId && pickBarTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(paintPreferenceKey(pickBarTool), { strokeOpacity: opacity });
+    if (pickBarTool === 'counter') return;
+    if (pickBarTool !== 'select') {
+      if (isJustDrawnMarkSelected() && isEditableShapeSelected()) patchSelectedStroke(nextNumberColor);
+      return;
+    }
+    if (writeGroupPaint('strokeOpacity', opacity, previousStrokeOpacity)) return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ borderOpacity: Math.max(0, Math.min(1, (Number(opacity) || 0) / 100)) });
     } else if (selectedToolbarAnnotationRef.current?.annotation?.data?.type === 'text-markup') {
@@ -8064,13 +8789,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } else if (isEditableShapeSelected()) {
       patchSelectedStroke(nextNumberColor);
     }
-  }, [activeTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
+  }, [pickBarTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleFillColorChange = useCallback((color) => {
+    const previousFillColor = fillColorStateRef.current;
     fillColorStateRef.current = color;
     setFillColor(color);
     const nextFillColor = composeColorForPatch(color, fillOpacityStateRef.current);
-    if (activeTool === 'counter') {
+    if (pickBarTool === 'counter') {
       activeCounterSeriesColorRef.current = nextFillColor;
       const activeSeriesId = activeCounterSeriesIdRef.current;
       const activeSeriesHasPins = activeSeriesId
@@ -8081,21 +8807,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setCounterUITick((tick) => tick + 1);
       }
     }
-    if (pdfId && activeTool !== 'select') updateToolPreference(activeTool, { fillColor: color });
-    if (activeTool === 'counter') return;
-    if (activeTool !== 'select') return;
+    if (pdfId && pickBarTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(pickBarTool, { fillColor: color });
+    if (pickBarTool === 'counter') return;
+    if (pickBarTool !== 'select') {
+      if (isJustDrawnMarkSelected() && isFillableShapeSelected()) patchSelectedFill(nextFillColor);
+      return;
+    }
+    if (writeGroupPaint('fillColor', color, previousFillColor)) return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ fillColor: color });
     } else if (isFillableShapeSelected()) {
       patchSelectedFill(nextFillColor);
     }
-  }, [activeTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
+  }, [pickBarTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleFillOpacityChange = useCallback((opacity) => {
+    const previousFillOpacity = fillOpacityStateRef.current;
     fillOpacityStateRef.current = opacity;
     setFillOpacity(opacity);
     const nextFillColor = composeColorForPatch(fillColorStateRef.current, opacity);
-    if (activeTool === 'counter') {
+    if (pickBarTool === 'counter') {
       activeCounterSeriesColorRef.current = nextFillColor;
       const activeSeriesId = activeCounterSeriesIdRef.current;
       const activeSeriesHasPins = activeSeriesId
@@ -8106,25 +8837,209 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setCounterUITick((tick) => tick + 1);
       }
     }
-    if (pdfId && activeTool !== 'select') updateToolPreference(activeTool, { fillOpacity: opacity });
-    if (activeTool === 'counter') return;
-    if (activeTool !== 'select') return;
+    if (pdfId && pickBarTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(pickBarTool, { fillOpacity: opacity });
+    if (pickBarTool === 'counter') return;
+    if (pickBarTool !== 'select') {
+      if (isJustDrawnMarkSelected() && isFillableShapeSelected()) patchSelectedFill(nextFillColor);
+      return;
+    }
+    if (writeGroupPaint('fillOpacity', opacity, previousFillOpacity)) return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ fillOpacity: Math.max(0, Math.min(1, (Number(opacity) || 0) / 100)) });
     } else if (isFillableShapeSelected()) {
       patchSelectedFill(nextFillColor);
     }
-  }, [activeTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
+  }, [pickBarTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
+
+  // The paint handlers as the toolbars see them: the same writes, plus the
+  // colour picker's optional drag phase (see paintPhaseRef). The phase is set
+  // only for the synchronous duration of the write it belongs to.
+  const runWithPaintPhase = (options, write) => {
+    const phase = options?.phase;
+    const pause = annotationCapturePauseRef.current;
+    if (phase === 'preview' || phase === 'settle') {
+      pause.until = Date.now() + 1500;
+      clearTimeout(pause.timer);
+      pause.timer = setTimeout(() => {
+        pause.until = 0;
+        pause.timer = null;
+        // Nudge the capture so the last previewed value is written.
+        setAnnotationsByPage((current) => ({ ...current }));
+      }, 1600);
+    } else if (phase === 'commit') {
+      // Lift the hold BEFORE the commit's write, so its render is captured.
+      pause.until = 0;
+      clearTimeout(pause.timer);
+      pause.timer = null;
+    }
+    const previous = paintPhaseRef.current;
+    paintPhaseRef.current = (phase === 'preview' || phase === 'settle' || phase === 'commit') ? phase : null;
+    try {
+      return write();
+    } finally {
+      paintPhaseRef.current = previous;
+      if (phase !== 'preview' && phase !== 'settle') {
+        // Whatever the write did, a drag is over: its text-markup starting
+        // paint must never carry into a later, unrelated drag.
+        textMarkupPaintBaselineRef.current = null;
+        // Nor a multi-page group drag's starting paint (applyGroupUpdate).
+        groupDragBaselineRef.current = new Map();
+        // Nor may any page snapshot it left: a commit that never reached the
+        // save path (the mark was deleted remotely, the selection changed,
+        // a counter's other pages) would otherwise fold this drag into the
+        // next unrelated undo step on that page.
+        paintDragTouchedByPageRef.current.forEach((_keys, pageKey) => {
+          previewBaselineByPageRef.current.delete(pageKey);
+          gestureFieldTouchesByPageRef.current.delete(pageKey);
+        });
+        paintDragTouchedByPageRef.current.clear();
+      }
+      if (phase === 'commit') {
+        // The released value always reaches the shared document, even when
+        // the commit itself changed nothing on screen (the last preview was
+        // already the released value, or the selection went away mid-drag):
+        // a fresh reference makes the capture run once more.
+        setAnnotationsByPage((current) => ({ ...current }));
+      }
+    }
+  };
+  const handleStrokeColorChangePhased = useCallback((color, options) => (
+    runWithPaintPhase(options, () => handleStrokeColorChange(color))
+  ), [handleStrokeColorChange]);
+  const handleStrokeOpacityChangePhased = useCallback((opacity, options) => (
+    runWithPaintPhase(options, () => handleStrokeOpacityChange(opacity))
+  ), [handleStrokeOpacityChange]);
+  const handleFillColorChangePhased = useCallback((color, options) => (
+    runWithPaintPhase(options, () => handleFillColorChange(color))
+  ), [handleFillColorChange]);
+  const handleFillOpacityChangePhased = useCallback((opacity, options) => (
+    runWithPaintPhase(options, () => handleFillOpacityChange(opacity))
+  ), [handleFillOpacityChange]);
+  const handleTextMarkupPaintChangePhased = useCallback((color, opacity, options) => (
+    runWithPaintPhase(options, () => handleTextMarkupPaintChange(color, opacity))
+  ), [handleTextMarkupPaintChange]);
+
+  // UX 2026-09-23 (bug: a selected callout's text colour did not change from
+  // the text bar): the text bar and the phone Text card write through ONE
+  // handler. With a text box or callout selected (the publish effect below
+  // records which, in selectedTextTargetRef) the change lands on THAT object -
+  // through the same save pipeline as its border/fill, so it saves, syncs and
+  // undoes; a colour-slider drag previews per frame and records one undo step
+  // on release (runWithPaintPhase). With the tool merely armed it is still the
+  // tool's defaults for the next box. See utils/selectedTextFormatting.js.
+  //
+  // Review 2026-09-23: the WHOLE handler runs inside runWithPaintPhase, so a
+  // drag's page snapshot is always dropped on release, even when nothing is
+  // written. A drag frame or release that arrives after its picked mark went
+  // away (a collaborator deleted it, the selection changed) is IGNORED - it
+  // never lands on another mark or in the tool's defaults. A size / font /
+  // bold / italic change also grows the box to fit, in the same write.
+  const selectedTextTargetRef = useRef(null);
+  const textStyleDragTargetKeyRef = useRef(null);
+  // `changed` is only the field(s) the user touched (the bar's own `fields`):
+  // a picked mark is patched with those alone, never the bar's whole state,
+  // so a frame that beats the bar's re-render cannot write back a size / bold
+  // / font a collaborator just changed (hardening 2026-09-23).
+  // w41: several text boxes / callouts picked - each takes only the field(s)
+  // the user touched, patched against its OWN style (a size change leaves each
+  // box's colour alone), in one write (applyGroupUpdate: one undo step). A
+  // drag re-sends its colour every frame (forceColor), as for one box.
+  const writeTextStyleToGroup = (next, changed, phase) => {
+        const fields = changed && typeof changed === 'object' ? changed : next;
+        const inDrag = phase === 'preview' || phase === 'settle' || phase === 'commit';
+        applyGroupUpdate({
+          annotationPage: (pageJSON, members) => {
+            let objects = null;
+            members.forEach(({ index, annotation }) => {
+              if (!isFormattableTextObject(annotation)) return;
+              const patch = buildSelectedTextStylePatch(
+                'textbox', readTextboxTextStyle(annotation), fields, { forceColor: inDrag },
+              );
+              if (!patch) return;
+              let nextObj = { ...annotation, ...patch };
+              if (patchCanReflowText('textbox', patch)) {
+                nextObj = refitTextboxToText(nextObj, measureTextLayoutHeight) || nextObj;
+              }
+              if (!objects) objects = pageJSON.objects.slice();
+              objects[index] = nextObj;
+            });
+            return objects ? { ...pageJSON, objects } : null;
+          },
+          calloutStyle: (callout) => buildSelectedTextStylePatch(
+            'callout', readCalloutTextStyle(callout), fields, { forceColor: inDrag },
+          ),
+          calloutRefit: (callout, pageNumber, stylePatch, before) => (patchCanReflowText('callout', stylePatch)
+            ? refitCalloutToText(
+              callout,
+              pageSizesRef.current?.[pageNumber] || pageSizesRef.current?.[String(pageNumber)],
+              measureTextLayoutHeight,
+              { before },
+            )
+            : callout),
+        });
+  };
+  const handleTextStyleSourceChange = useCallback((next, options, changed) => {
+    runWithPaintPhase(options, () => {
+      const target = selectedTextTargetRef.current;
+      if (target?.group) { writeTextStyleToGroup(next, changed, options?.phase); return; }
+      const write = resolveTextStyleWrite({
+        next,
+        changed,
+        phase: options?.phase,
+        target,
+        activeTool: pickBarTool,
+        dragRecord: textStyleDragTargetKeyRef.current,
+      });
+      textStyleDragTargetKeyRef.current = write.dragRecord;
+      if (write.action === 'defaults') {
+        setTextStyleDefaults(write.defaults);
+        return;
+      }
+      if (write.action !== 'patch') return;
+      if (target.kind === 'callout') {
+        handlePatchSelectedCallout(write.patch, write.reflows
+          ? (callout, pageNumber, before) => refitCalloutToText(
+            callout,
+            pageSizesRef.current?.[pageNumber] || pageSizesRef.current?.[String(pageNumber)],
+            measureTextLayoutHeight,
+            { before },
+          )
+          : null);
+      } else {
+        handlePatchSelectedAnnotation(write.patch, write.reflows
+          ? (annotation) => refitTextboxToText(annotation, measureTextLayoutHeight)
+          : null);
+      }
+    });
+  }, [pickBarTool, handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
 
   const handleStrokeWidthChange = useCallback((width) => {
     setStrokeWidth(width);
-    if (pdfId && activeTool !== 'select') updateToolPreference(paintPreferenceKey(activeTool), { strokeWidth: width });
+    if (pdfId && pickBarTool !== 'select') updateToolPreference(paintPreferenceKey(pickBarTool), { strokeWidth: width });
+    if (pickBarTool === 'select' && applyRestyleToGroup({ kind: 'width', width })) return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ lineThickness: Math.max(1, Number(width) || 2) });
       return;
     }
     if (!isEditableShapeSelected()) return;
     const { isCounter, annotation } = getSelectedShapeMeta();
+    // w41: a pen / highlighter stroke's width is baked into its outline, so it
+    // is rebuilt from its centreline at the new width (utils/selectionRestyle
+    // rebuildInkAtWidth). A partly erased or imported outline cannot be, and
+    // the bar hides Width for it (selectionCapabilities).
+    if (isFilledInkPath(annotation)) {
+      const rebuilt = applyRestyleChange(annotation, { kind: 'width', width });
+      if (rebuilt) {
+        handlePatchSelectedAnnotation({
+          path: rebuilt.path,
+          polygons: rebuilt.polygons,
+          sourceWidth: rebuilt.sourceWidth,
+          width: rebuilt.width,
+          height: rebuilt.height,
+        });
+      }
+      return;
+    }
     if (isCounter && annotation) {
       const newRadius = Math.max(4, Number(width) || 14);
       const oldRadius = Number(annotation.radius) || newRadius;
@@ -8137,7 +9052,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } else {
       handlePatchSelectedAnnotation({ strokeWidth: width });
     }
-  }, [activeTool, pdfId, updateToolPreference, handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
+  }, [pickBarTool, pdfId, updateToolPreference, handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
 
   const handleLineBorderStyleChange = useCallback((next) => {
     setLineBorderStyle(next);
@@ -8145,9 +9060,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // picker too — patch style.lineStyle through the undoable callout patch
     // path (same route as the arrowhead picker). 'cloud' is never offered for
     // the callout context (rect-only option), but guard anyway.
+    if (pickBarToolRef.current === 'select' && applyRestyleToGroup({
+      kind: 'lineStyle',
+      style: next,
+      cloudIntensity: Math.max(1, Number(cloudIntensity) || 2),
+    })) return;
     if (isCalloutSelected()) {
       if (next === 'solid' || next === 'dashed' || next === 'dotted') {
         handlePatchSelectedCallout({ lineStyle: next });
+      } else if (next === 'cloud') {
+        // w43: Cloud clouds the callout's text box (one undoable style
+        // patch); the leader and arrowhead stay straight.
+        handlePatchSelectedCallout({ lineStyle: 'cloud', cloudIntensity: Math.max(1, Number(cloudIntensity) || 2) });
       }
       return;
     }
@@ -8168,12 +9092,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleCloudIntensityChange = useCallback((next) => {
     setCloudIntensity(next);
+    if (pickBarToolRef.current === 'select' && applyRestyleToGroup({
+      kind: 'cloudIntensity',
+      cloudIntensity: Math.max(1, Number(next) || 2),
+    })) return;
+    if (isCalloutSelected()) {
+      // w43: the bump size of a clouded callout text box.
+      if (selectedToolbarCalloutRef.current?.callout?.style?.lineStyle === 'cloud'
+        || lineBorderStyleRef.current === 'cloud') {
+        handlePatchSelectedCallout({ cloudIntensity: Math.max(1, Number(next) || 2) });
+      }
+      return;
+    }
     if (!isEditableShapeSelected()) return;
     handlePatchSelectedAnnotation({ data: { pdfCloudIntensity: Math.max(1, Number(next) || 2) } });
-  }, [handlePatchSelectedAnnotation]);
+  }, [handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
 
   const handleArrowheadStyleChange = useCallback((next) => {
     setArrowheadStyle(next);
+    if (pickBarToolRef.current === 'select' && applyRestyleToGroup({
+      kind: 'arrowhead',
+      style: next,
+      // Each picked arrow keeps its own ends (the bar's both-ends state may
+      // be a mix); only the Arrow ends menu changes which ends have heads.
+      bothEnds: 'keep',
+    })) return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ arrowheadStyle: next });
       return;
@@ -8191,10 +9134,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
   }, [handlePatchSelectedAnnotation, handlePatchSelectedCallout, arrowBothEnds]);
 
+  const handleGroupArrowEndsChange = useCallback((ends) => {
+    if (pickBarToolRef.current !== 'select') return;
+    applyRestyleToGroup({ kind: 'arrowEnds', ends });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const handleArrowBothEndsChange = useCallback((next) => {
     const on = Boolean(next);
     setArrowBothEnds(on);
     try { localStorage.setItem('arrowBothEnds', on ? '1' : '0'); } catch {}
+    if (pickBarToolRef.current === 'select' && applyRestyleToGroup({ kind: 'arrowBothEnds', on })) return;
     const sel = selectedToolbarAnnotationRef.current;
     const type = String(sel?.annotation?.type || '').toLowerCase();
     const isArrow = type === 'line' && (sel?.annotation?.tool === 'arrow'
@@ -8211,7 +9160,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // UX 2026-09-09: line widths keep one decimal place (the Cloud style's
     // approved 2.5-unit default must type, read back and draw as 2.5);
     // counter sizes stay whole numbers. A trailing "2." is a legal draft.
-    const isCounterSize = activeTool === 'counter' || getSelectedShapeMeta().isCounter;
+    const isCounterSize = pickBarTool === 'counter' || getSelectedShapeMeta().isCounter;
     const widthDecimals = isCounterSize ? 0 : ANNOTATION_WIDTH_DECIMALS;
     // Allow empty string or valid numbers
     if (sanitizeAnnotationSizeDraft(value, widthDecimals) !== null) {
@@ -8228,17 +9177,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
       publishToolbarDraft('strokeWidthInputValue', value);
     }
-  }, [activeTool, publishToolbarDraft]);
+  }, [pickBarTool, publishToolbarDraft]);
 
   // Commit width value on blur (clamp to valid range)
   const handleStrokeWidthInputBlur = useCallback((event) => {
     handleStrokeWidthFocusChange(false);
     // AppShell receives this handler through an effect-published API. Read the
     // blur-time DOM value so a fast edit cannot recommit a stale closure value.
-    const isCounterSize = activeTool === 'counter' || getSelectedShapeMeta().isCounter;
+    const isCounterSize = pickBarTool === 'counter' || getSelectedShapeMeta().isCounter;
     const minWidth = isCounterSize ? COUNTER_SIZE_MIN : 1;
     const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : 50;
     const rawValue = String(event?.currentTarget?.value ?? strokeWidthInputValueRef.current ?? '').trim();
+    // w41: an empty Width over picked marks of different widths means "leave
+    // them" - never "set all of them to the minimum".
+    if (rawValue === '' && pickBarTool === 'select' && restyleGroupRef.current?.summary?.mixed?.width) return;
     const parsed = rawValue === ''
       ? NaN
       : normalizeAnnotationSize(rawValue, -Infinity, Infinity, isCounterSize ? 0 : ANNOTATION_WIDTH_DECIMALS);
@@ -8257,7 +9209,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       publishToolbarDraft('strokeWidthInputValue', clamped);
       handleStrokeWidthChange(clamped);
     }
-  }, [activeTool, handleStrokeWidthChange, handleStrokeWidthFocusChange, publishToolbarDraft]);
+  }, [pickBarTool, handleStrokeWidthChange, handleStrokeWidthFocusChange, publishToolbarDraft]);
 
   // Handle eraser size input changes (allows empty string while typing)
   const handleEraserSizeInputChange = useCallback((e) => {
@@ -8389,6 +9341,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   };
   const spacePageNavigationTimersRef = useRef([]);
   const pageSizesRef = useRef({});
+  // Owner 2026-10-01 (instant page operations): page operations swap in an
+  // in-memory page view over the loaded document; see the hook.
+  const {
+    applyPageView: applyPageViewOperationToViewer,
+    restorePageView: restorePageViewDocument,
+    markFileCurrent: markPageViewFileCurrent,
+    isFileCurrent: isPageViewFileCurrent,
+    isViewOver: isPageViewOver,
+  } = usePageViewDocument({
+    pdfDoc,
+    pageObjects,
+    pageSizesRef,
+    pageRenderCacheRef,
+    setPdfDoc,
+    setNumPages,
+    setPageSizes,
+    setPageHeights,
+  });
   const manualZoomScaleRef = useRef(initialZoomPreferences.manualScale);
   // Bug #2.6 calibration: Pdfjs's page div at 100% is pdfPageSize.width * electronFactor
   // CSS pixels (Electron/browser zoom factor). Calibrated on first known-good measurement
@@ -8417,7 +9387,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setIsZoomMenuOpen((prev) => !prev);
   }, []);
 
-  const handleZoomModeSelect = useCallback((mode) => {
+  const handleZoomModeSelect = useCallback((mode, options) => {
     if (usePdfjsRenderer) {
       setIsZoomMenuOpen(false);
       const viewer = pdfjsViewerRef.current;
@@ -8455,6 +9425,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         zoomModeRef.current = mode;
         pdfjsZoomSourceRef.current = mode;
         setZoomMode(mode);
+
+        // RULED 2026-09-23 (coordinator: auto refits keep the view; fits use
+        // the band between panels). A re-fit the app runs by itself after a
+        // layout change (applyLayoutDrivenZoom: panel open/close, window
+        // resize, tab switch) must not land the page the way a fit you pick
+        // does: the viewer keeps the visible middle still, and does nothing at
+        // all when only a floating panel opened or closed.
+        if (options?.auto === true && typeof magnification.refitAfterLayoutChange === 'function') {
+          magnification.refitAfterLayoutChange(
+            mode === ZOOM_MODES.FIT_WIDTH ? 'fitw' : mode === ZOOM_MODES.FIT_HEIGHT ? 'fith' : 'fit',
+          );
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            const postZoom = (typeof viewer.getZoomValue === 'function' ? viewer.getZoomValue() : null);
+            if (typeof postZoom === 'number' && postZoom > 0) setScale(postZoom / 100);
+          }));
+          return;
+        }
 
         // Bug #2.6: derive real page dimensions from pdf.js pageSize (scale-invariant,
         // in PDF points) × calibrated Electron zoom factor. Never divide live pageDiv by
@@ -8506,6 +9493,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               calibrateElectronFactor(postScale);
             }
           });
+        } else if (mode === ZOOM_MODES.FIT_HEIGHT && typeof magnification.fitToHeight === 'function') {
+          // UX 2026-09-23 (owner: right rail audit): Fit height is measured by
+          // the viewer from the CURRENT page, with the same page gaps Fit page
+          // uses, and lands that page. The fallback below divided the wrapper
+          // by a calibrated factor taken from the first mounted page — on a
+          // mixed portrait/landscape set that factor was off 2x (211% instead
+          // of 105%), and it ignored the page gaps (page overran by 0.6px).
+          magnification.fitToHeight();
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            const postZoom = (typeof viewer.getZoomValue === 'function' ? viewer.getZoomValue() : null);
+            if (typeof postZoom === 'number' && postZoom > 0) setScale(postZoom / 100);
+          }));
         } else if (mode === ZOOM_MODES.FIT_HEIGHT) {
           if (wrapperH > 0 && pdfPageSize?.height > 0) {
             const realPageH = pdfPageSize.height * electronFactor;
@@ -8547,7 +9546,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // the window regains focus or layout changes. The generic zoom controller
       // can still hold an old fit-page mode, which caused the surprise zoom-out.
       if (!currentMode || currentMode === ZOOM_MODES.MANUAL) return;
-      handleZoomModeSelectRef.current?.(currentMode);
+      // RULED 2026-09-23 (coordinator: auto refits keep the view; fits use the
+      // band between panels): marked automatic, so it never lands the page.
+      handleZoomModeSelectRef.current?.(currentMode, { auto: true });
       return;
     }
     zoomControllerRef.current?.applyZoom({ persist: false, force: true });
@@ -8606,25 +9607,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => {
     if (!isZoomMenuOpen) return;
 
-    const handleClickOutside = (event) => {
-      if (!zoomMenuRef.current) return;
-      if (!zoomMenuRef.current.contains(event.target)) {
-        setIsZoomMenuOpen(false);
-      }
-    };
-
-    const handleEscape = (event) => {
-      if (event.key === 'Escape') {
-        setIsZoomMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleEscape);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleEscape);
-    };
+    // Zoom/fit menu: a light popover under the shared dismiss rules
+    // (src/components/dismissRules.js, owner 2026-09-23): an outside press
+    // closes it and still does its job (R1); a press on the bare page only
+    // closes it (R2); Escape closes it and nothing under it (R5).
+    return watchLightPopover({
+      contains: (target) => !zoomMenuRef.current || zoomMenuRef.current.contains(target),
+      close: () => setIsZoomMenuOpen(false),
+    });
   }, [isZoomMenuOpen]);
 
   useEffect(() => {
@@ -10399,7 +11389,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return;
     }
 
-    if (activeTool === 'pan' && isPanningRef.current) {
+    // Owner 2026-10-01 (Spaces toolbar): the Pan tool itself (tool bar, rail,
+    // M) stays armed too, not only a held Space; an area tool hands back.
+    if (activeTool === 'pan') {
       return;
     }
 
@@ -10489,6 +11481,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     isDocShared: yjsIsDocShared,
     accessRevoked: yjsAccessRevoked,
   } = useYDoc();
+  // Owner 2026-10-07: a shared document carries its survey templates to the
+  // people it is shared with (all logic in hooks/useSharedDocumentTemplates).
+  useSharedDocumentTemplates({ documentId: pdfFile?.id ?? null, user, docRole: yjsDocRole, isDocShared: yjsIsDocShared, surveyMarkers, templates: appTemplates, selectedTemplateId: selectedTemplate?.id ?? null });
   const [devAccessRevoked, setDevAccessRevoked] = useState(false);
   useEffect(() => {
     if (
@@ -10554,6 +11549,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const embeddedImportFallbackDoneRef = useRef(null);
   const annotationsByPageRef = useRef(annotationsByPage);
   const surveyMarkersRef = useRef(surveyMarkers);
+  // w53: the canvas lists of Survey Markers (with their stack) as last
+  // rendered — the family restack reads the page's markers from here.
+  const newSurveyMarkersByPageRef = useRef({});
+  newSurveyMarkersByPageRef.current = newSurveyMarkersByPage;
   const spacesRef = useRef(spaces);
   const undoHistoryRef = useRef(undoHistory);
   const redoHistoryRef = useRef(redoHistory);
@@ -10561,6 +11560,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const redoHistoryMetaRef = useRef([]);
   const localAnnotationUndoRef = useRef([]);
   const localAnnotationRedoRef = useRef([]);
+  // Page changes' Undo / Redo ({ undo(id), redo(id) } from usePageOperations,
+  // declared further down; utils/pageOperationHistory.js).
+  const pageOperationHistoryRef = useRef(null);
   const historyDebugTraceRef = useRef([]);
   const historyDebugSeqRef = useRef(0);
   const historyCheckpointSeqRef = useRef(0);
@@ -10568,6 +11570,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const lastCheckpointHashRef = useRef(null);
   const objectModifiedInteractionCheckpointRef = useRef(new Map());
   const previewBaselineByPageRef = useRef(new Map());
+  // Field-level undo (2026-09-23): pageKey -> Map<storageKey, Map<pathKey,
+  // path>> — the fields each save of the gesture in progress on that page
+  // itself changed. The release's single undo step is limited to these, so a
+  // collaborator's mid-gesture edit to another field of the same mark is not
+  // folded into it (see utils/annotationLocalHistory.js).
+  const gestureFieldTouchesByPageRef = useRef(new Map());
   // R2.2 Slice 3: calloutLiveHistoryBaselineRef (per-callout whole-document
   // drag baselines) was retired — callout drags now use the shared
   // previewBaselineByPageRef contract via checkpointPolicy 'skip'.
@@ -10588,14 +11596,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
 
     const intervalId = window.setInterval(() => {
+      // Never mid-gesture: its style read forced a whole-document style pass
+      // in the middle of a pinch or glide (owner 2026-10-06, smooth zoom).
+      if (document.querySelector('[data-pdfjs-moving="true"]')) return;
       const pages = annotationsByPageRef.current || {};
       const currentPageNumber = Number(pageNumRef.current) || Number(pageNum) || 1;
       const currentPageObjects = pages[currentPageNumber]?.objects || [];
+      // Only a page inside the engine's mounted window is supposed to have a
+      // live layer. Checking a marked page that was scrolled out of that
+      // window always found "no layer", called the overlay broken, and
+      // remounted EVERY page's layer every 5 s — wiping a shape mid-draw
+      // (owner 2026-10-02: hold the mouse still and the shape vanishes).
+      const mountedPages = pdfjsMountedPagesRef.current;
+      const isLivePage = (n) => !(mountedPages?.size > 0) || mountedPages.has(n) || n === currentPageNumber;
       let pageNumber = currentPageObjects.length > 0 ? currentPageNumber : null;
       if (!pageNumber) {
         pageNumber = Number(Object.keys(pages).find((key) => {
           const objects = pages[key]?.objects;
-          return Array.isArray(objects) && objects.length > 0;
+          return Array.isArray(objects) && objects.length > 0 && isLivePage(Number(key));
         })) || null;
       }
       if (!pageNumber) {
@@ -10628,6 +11646,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return;
       }
 
+      // A recovery remounts every layer, so never run it under a mark that is
+      // being drawn; wait until it is committed or cancelled.
+      if (document.querySelector('.shape-creation-preview, .poly-creation-preview, .freehand-creation-preview')) return;
+
       const state = annotationOverlayWatchdogRef.current;
       state.consecutiveMismatch += 1;
       if (state.consecutiveMismatch < 2) return;
@@ -10653,6 +11675,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => { pdfIdRef.current = pdfId; }, [pdfId]);
   const selectedTemplateRef = useRef(selectedTemplate);
   useEffect(() => { selectedTemplateRef.current = selectedTemplate; }, [selectedTemplate]);
+  // Set by a survey-item delete (or its Undo / History restore, owner ruling
+  // 2026-09-28); the effect after handleSurveyMarkerDeleted then writes the
+  // linked Excel. Declared here so the undo paths above can reach it.
+  const pendingExcelSyncAfterDeleteRefBridge = useRef(false);
 
   // MUST stay identity-stable. This callback is a dependency of the "reset
   // everything when the PDF changes" effect. If it were rebuilt on every
@@ -10991,7 +12017,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getHistorySnapshot = useCallback(() => ({
-    annotationsByPage: deepClone(annotationsByPageRef.current || {}),
+    // Unchanged pages share one copy across snapshots (crash hunt 2026-10-07:
+    // full copies of a big drawing set ran the phone out of memory).
+    annotationsByPage: snapshotAnnotationPages(annotationsByPageRef.current || {}, deepClone),
     surveyMarkers: deepClone(surveyMarkersRef.current || {}),
     spaces: deepClone(spacesRef.current || []),
     // UX 2026-04-21: callouts were previously left out of the undo snapshot,
@@ -11052,6 +12080,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageSizesRef.current || {}
     );
 
+    // Owner ruling 2026-09-28: an Undo that brings a deleted survey item back
+    // brings its Excel row back too (same Row ID, same answers) — queue the
+    // linked-Excel write the delete queued.
+    {
+      const liveMarkers = surveyMarkersRef.current || {};
+      const returningIds = Object.keys(restoredSurveyMarkers).filter((id) => !liveMarkers[id]);
+      // An item Undo brings back is app-restored (same as a History restore):
+      // no "received by Excel" stamp until it is exported again.
+      returningIds.forEach((id) => {
+        const record = restoredSurveyMarkers[id];
+        if (record && (record.exportedAt || record.exportAckEtag)) {
+          const { exportedAt: _e, exportAckEtag: _a, ...rest } = record;
+          restoredSurveyMarkers[id] = rest;
+        }
+      });
+      if (returningIds.length > 0 && selectedTemplateRef.current?.linkedExcelPath) {
+        pendingExcelSyncAfterDeleteRefBridge.current = true;
+      }
+    }
     annotationsByPageRef.current = restoredAnnotationsByPage;
     surveyMarkersRef.current = restoredSurveyMarkers;
     spacesRef.current = restoredSpaces;
@@ -11081,6 +12128,68 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       applyRestoredState();
     }
   }, [migrateHistorySpaces]);
+
+  // w37 (2026-09-25): a new step clears Redo in BOTH lanes (Drawboard /
+  // Acrobat / Figma: any new action ends the redo branch). Each lane used to
+  // clear only its own, so after "erase, Undo the erase, draw a stroke" Redo
+  // re-applied the old erase instead of doing nothing.
+  const clearLegacyRedoForNewStep = useCallback((reason) => {
+    const cleared = Math.max(redoHistoryRef.current.length, redoHistoryMetaRef.current.length);
+    if (cleared === 0) return;
+    redoHistoryRef.current = [];
+    redoHistoryMetaRef.current = [];
+    setRedoHistory([]);
+    pushHistoryDebugEvent('redo_cleared_on_new_checkpoint', {
+      reason,
+      clearedRedoStack: 'legacyRedoHistory',
+      clearedRedoEntries: cleared,
+      redoDepth: 0,
+    });
+  }, [pushHistoryDebugEvent]);
+  const clearLocalRedoForNewStep = useCallback((reason) => {
+    const cleared = localAnnotationRedoRef.current.length;
+    if (cleared === 0) return;
+    localAnnotationRedoRef.current = [];
+    setLocalAnnotationHistoryVersion((prev) => prev + 1);
+    pushHistoryDebugEvent('redo_cleared_on_new_checkpoint', {
+      reason,
+      clearedRedoStack: 'localAnnotationRedo',
+      clearedRedoEntries: cleared,
+      redoDepth: 0,
+    });
+  }, [pushHistoryDebugEvent]);
+
+  // A page change is one step on the timeline (utils/pageOperationHistory.js).
+  const recordPageOperationStep = useCallback((id, operation) => {
+    const checkpointId = historyCheckpointSeqRef.current + 1;
+    historyCheckpointSeqRef.current = checkpointId;
+    const { state, meta } = pageOperationCheckpoint(id, operation, checkpointId);
+    undoHistoryRef.current = [...undoHistoryRef.current, state].slice(-50);
+    undoHistoryMetaRef.current = [...undoHistoryMetaRef.current, meta].slice(-50);
+    setUndoHistory(undoHistoryRef.current);
+    redoHistoryRef.current = [];
+    redoHistoryMetaRef.current = [];
+    setRedoHistory([]);
+    clearLocalRedoForNewStep(meta.reason);
+    lastCheckpointHashRef.current = null;
+    pushHistoryDebugEvent('checkpoint_added_page_operation', { reason: meta.reason, checkpointId, pageOperationId: id });
+  }, [clearLocalRedoForNewStep, pushHistoryDebugEvent]);
+
+  // A page change that can no longer be taken back (its save failed and was
+  // rolled back, or another version of the document was opened): every older
+  // step names pages by the old numbers, so the whole timeline goes.
+  const dropHistoryAfterPageChange = useCallback(() => {
+    undoHistoryRef.current = [];
+    undoHistoryMetaRef.current = [];
+    redoHistoryRef.current = [];
+    redoHistoryMetaRef.current = [];
+    localAnnotationUndoRef.current = [];
+    localAnnotationRedoRef.current = [];
+    setUndoHistory([]);
+    setRedoHistory([]);
+    setLocalAnnotationHistoryVersion((prev) => prev + 1);
+    lastCheckpointHashRef.current = null;
+  }, []);
 
   const createHistoryMeta = useCallback((snapshot, reason, context = null, previousSnapshot = null) => {
     const snapshotFingerprint = getHistoryFingerprint(snapshot);
@@ -11152,6 +12261,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       redoHistoryMetaRef.current = nextHistory.redoMeta;
       setUndoHistory(nextHistory.undoHistory);
       setRedoHistory(nextHistory.redoHistory);
+      clearLocalRedoForNewStep(normalizedReason);
       // Transition checkpoints are mutation-addressed rather than snapshots.
       // A later ordinary checkpoint must fingerprint its actual current state.
       lastCheckpointHashRef.current = null;
@@ -11245,6 +12355,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setRedoHistory([]);
       redoHistoryRef.current = [];
       redoHistoryMetaRef.current = [];
+      clearLocalRedoForNewStep(normalizedReason);
       lastCheckpointHashRef.current = null;
 
       pushHistoryDebugEvent('checkpoint_added_annotation_fast', {
@@ -11333,6 +12444,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setRedoHistory([]); // Clear redo history when new action is performed
     redoHistoryRef.current = [];
     redoHistoryMetaRef.current = [];
+    clearLocalRedoForNewStep(normalizedReason);
     lastCheckpointHashRef.current = currentFingerprint.hash;
 
     pushHistoryDebugEvent('checkpoint_added', {
@@ -11365,7 +12477,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         snapshotHash: checkpointMeta.snapshotHash
       });
     }
-  }, [createHistoryMeta, getAnnotationPageHistorySnapshot, getHistoryFingerprint, getHistorySnapshot, normalizeHistoryReason, pushHistoryDebugEvent]);
+  }, [clearLocalRedoForNewStep, createHistoryMeta, getAnnotationPageHistorySnapshot, getHistoryFingerprint, getHistorySnapshot, normalizeHistoryReason, pushHistoryDebugEvent]);
 
   // Phase 35 Plan 03 — per-user delete authority. documentOwnerId comes from
   // the documents-table user_id attached to pdfFile at Dashboard load time
@@ -11414,6 +12526,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return documentOwnerId;
   }, [documentOwnerId, pdfFile?.id, pdfFile?.user_id]);
 
+  // RULED 2026-09-28 owner: open editing + lock. When something tries to
+  // change a locked mark (a drag, a colour, Delete, Cut, the eraser, a paste
+  // over it …) the mark stays as it is and this says why, once per burst.
+  const lockedMarkToastAtRef = useRef(0);
+  const notifyLockedMarkBlocked = useCallback(() => {
+    const now = Date.now();
+    if (now - lockedMarkToastAtRef.current < 1500) return;
+    lockedMarkToastAtRef.current = now;
+    showToast('Locked — its author or the document owner can unlock it.', 'info');
+  }, []);
+
   const canManageSpaces = useMemo(() => canManageCollaborativeSpaces({
     hasAdvancedSurvey: !!features?.advancedSurvey,
     documentId: pdfFile?.id || null,
@@ -11427,6 +12550,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     user?.id,
     yjsDocRole,
   ]);
+  // w55: who may press Restore in History. Restoring writes marks back, so it
+  // takes the same rights as drawing: owner or editor, document not locked,
+  // access not revoked. Viewers browse History but never see Restore. (The
+  // server refuses a viewer's write anyway — append_annotation_update requires
+  // editor access and an unlocked document — this keeps the UI honest.)
+  const canRestoreFromHistory = useMemo(() => {
+    if (yjsAccessRevoked || documentLocked) return false;
+    if (!pdfFile?.id) return true; // a local-only file belongs to this person
+    if (documentOwnerId && user?.id && documentOwnerId === user.id) return true;
+    // Same fail-open rule as the rest of the app (documentRole.js): only a
+    // resolved 'viewer' role is read-only; an unresolved role keeps Restore.
+    return yjsDocRole !== 'viewer';
+  }, [documentLocked, documentOwnerId, pdfFile?.id, user?.id, yjsAccessRevoked, yjsDocRole]);
+  const canRestoreFromHistoryRef = useRef(canRestoreFromHistory);
+  canRestoreFromHistoryRef.current = canRestoreFromHistory;
+
   const requireSpaceManagement = useCallback(() => {
     if (canManageSpaces) return true;
     showToast('Your plan or document access does not allow editing Spaces or Regions.', 'warn');
@@ -11458,11 +12597,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       settleEraseRequest(false);
       return;
     }
-    // KAL-125: ownership gate — mirror the standard annotation delete path
-    // (useSVGInteraction.js:4207-4224). Run canModify against each callout at
-    // delete time; silently drop any callout the viewer is not allowed to modify.
-    // Eraser commits are non-confirming and therefore require resolved identity
-    // plus canModify; keyboard delete keeps the confirmed canDelete route.
+    // RULED 2026-09-28 owner: open editing + lock — any editor deletes any
+    // callout with no confirmation; user-locked callouts are dropped here
+    // (canDelete / filterEraserCommitIds refuse them). Eraser commits also
+    // require resolved identity.
     const viewerId = user?.id ?? null;
     const permittedIds = eraseRequest
       ? filterEraserCommitIds({
@@ -11628,17 +12766,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         : {}),
       style: {
         ...rawCallout.style,
-        borderColor: strokeColor,
-        borderOpacity: (strokeOpacity ?? 100) / 100,
-        fillColor,
-        fillOpacity: (fillOpacity ?? 100) / 100,
-        lineThickness: Math.max(1, Number(strokeWidth) || 2),
+        // Review round 9: the tool's own settings even while a picked text
+        // box's values fill the bar (resolveNewMarkStyle).
+        borderColor: newMarkStyle.strokeColor,
+        borderOpacity: (newMarkStyle.strokeOpacity ?? 100) / 100,
+        fillColor: newMarkStyle.fillColor,
+        fillOpacity: (newMarkStyle.fillOpacity ?? 100) / 100,
+        lineThickness: Math.max(1, Number(newMarkStyle.strokeWidth) || 2),
         // UX (2026-07-17, callout line style): new callouts honor the Style
         // picker's current choice, exactly like new shapes do (applyBorderStyle
-        // at shape creation). 'cloud' is rect-only — treat as solid here.
-        lineStyle: (lineBorderStyle === 'dashed' || lineBorderStyle === 'dotted')
-          ? lineBorderStyle
+        // at shape creation). w43 (2026-09-26): 'cloud' clouds the new
+        // callout's TEXT BOX at the bar's bump size; its leader stays straight.
+        lineStyle: (newMarkStyle.lineBorderStyle === 'dashed' || newMarkStyle.lineBorderStyle === 'dotted' || newMarkStyle.lineBorderStyle === 'cloud')
+          ? newMarkStyle.lineBorderStyle
           : 'solid',
+        ...(newMarkStyle.lineBorderStyle === 'cloud'
+          ? { cloudIntensity: Math.max(1, Number(newMarkStyle.cloudIntensity) || 2) }
+          : {}),
         ...(mobileMode ? {
           fontColor: textStyleDefaults.fontColor,
           fontFamily: textStyleDefaults.fontFamily,
@@ -11672,7 +12816,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       source: 'callout:create',
       action: 'callout-create',
     });
-  }, [commitCalloutMutation, strokeColor, strokeOpacity, fillColor, fillOpacity, mobileMode, strokeWidth, lineBorderStyle, textStyleDefaults, user?.id]);
+  }, [commitCalloutMutation, newMarkStyle.strokeColor, newMarkStyle.strokeOpacity, newMarkStyle.fillColor, newMarkStyle.fillOpacity, mobileMode, newMarkStyle.strokeWidth, newMarkStyle.lineBorderStyle, newMarkStyle.cloudIntensity, textStyleDefaults, user?.id]);
 
   // UX: Phase 14 CALL-10 (drag MVP) — pointerup commit for a callout drag.
   // Called from useSVGInteraction's 'callout-part' drag mode on pointerup
@@ -11977,8 +13121,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // landing while the second still rested started a fresh tap candidate —
     // two of those opened an editor in the middle of a pinch.
     const downPointers = createMultiTouchTapGate();
+    // Drawboard rule 7: was the mark under this press ALREADY selected? Read
+    // before the press itself can pick it.
+    const isHitSelected = (hit) => {
+      if (!hit || hit.pageNumber == null) return false;
+      if (hit.kind === 'callout') return isItemSelected(hit.pageNumber, hit.calloutId);
+      if (hit.kind !== 'annotation') return false;
+      const object = annotationsByPageRef.current?.[hit.pageNumber]?.objects?.[hit.annotationIndex];
+      return object ? isItemSelected(hit.pageNumber, getAnnotationRenderIdentity(object).annotationId) : false;
+    };
+    const pickedAtPress = new Map(); // pointerId -> was the mark under it already selected
     const onDown = (event) => {
       if (event.button != null && event.button !== 0) return;
+      let wasSelected = false;
+      if (pageHasSelection(Number(event.target?.closest?.('[data-page-number]')?.getAttribute?.('data-page-number')))) {
+        try { wasSelected = isHitSelected(resolveAnnotationAt(event)); } catch (_) { wasSelected = false; }
+      }
+      pickedAtPress.set(event.pointerId, wasSelected);
       downPointers.press(event.pointerId, { x: event.clientX, y: event.clientY });
       if (downPointers.size > 1) {
         // A second finger arrived: this gesture is a pinch (or a stray palm),
@@ -12018,6 +13177,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const slop = event.pointerType === 'touch' ? 12 : 6;
       if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > slop) { tracker.reset(); return; }
       const hit = resolveAnnotationAt(event);
+      hit.wasSelected = pickedAtPress.get(event.pointerId) === true;
+      pickedAtPress.delete(event.pointerId);
       const key = editEntryKeyForHit(hit);
       const { isDoubleTap, firstTapTool, target } = tracker.register({
         key,
@@ -12032,6 +13193,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       appDebug(`[EditEntryGesture] tool=${tool} pointer=${event.pointerType} page=${hit.pageNumber} kind=${hit.kind} editEntryKind=${hit.editEntryKind} key=${key} double=${isDoubleTap} firstTapTool=${firstTapTool} firstTapTarget=${editEntryKeyForHit(target)} firstTapEditEntryKind=${target?.editEntryKind ?? null}`);
       if (!isDoubleTap) return;
       if (!shouldHandleDoubleTapEntry({ firstTapTool, pointerType: event.pointerType })) return;
+      // Drawboard rule 7 (utils/selectModes.js resolveTextDoubleClick): a
+      // mouse double-click on text that was not selected before it began only
+      // picks it; selected text, or a double-tap, opens the editor.
+      if (target && (target.kind === 'callout' || target.editEntryKind === 'text')
+        && resolveTextDoubleClick({ tool: firstTapTool, wasSelected: target.wasSelected, pointerType: event.pointerType }) !== 'edit') return;
       // Where annotations OVERLAP, the two taps can resolve different things:
       // under Pan the hit test hand-walks SVG geometry (the layer is
       // pointer-events:none) while under Select it reads the real hit targets,
@@ -12166,9 +13332,47 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
   }, []);
 
+  // Returns 'applied' (the screen changed), 'unchanged' (nothing left for this
+  // step to change: its marks were deleted or changed back by someone else),
+  // 'out-of-scope' (not this user's to undo) or 'no-viewer' (signed-in user
+  // not known yet). w37: Undo / Redo skip a step that is 'unchanged' or
+  // 'out-of-scope' within the same press (historyStacks.runHistoryPress).
+  // w53: the Survey Marker half of a family action (see handleSaveAnnotations
+  // and commitSurveyMarkerFamilyPatch). Set just before the page save, taken
+  // by the next pushLocalAnnotationHistoryAction.
+  const surveyMarkerFamilyCompanionRef = useRef(null);
+  const commitSurveyMarkerFamilyPatchRef = useRef(null);
+  const applySurveyMarkerFamilyActionRef = useRef(null);
+  // w55: Undo/Redo that changes a page out of view takes the reader there,
+  // like the Yjs lane always did (Phase 29) — otherwise a press changes
+  // something off-screen and the next press undoes a second step unseen.
+  // "In view" = any of the step's pages overlaps the viewport; a page already
+  // on screen never scrolls.
+  const revealUndoneHistoryPage = useCallback((scopedAction) => {
+    if (typeof document === 'undefined' || !scopedAction) return;
+    const pages = (scopedAction.type === 'fabric:document-batch'
+      ? (scopedAction.actions || []).map((child) => Number(child?.pageNumber))
+      : [Number(scopedAction.pageNumber)])
+      .filter((page) => Number.isFinite(page) && page > 0);
+    if (pages.length === 0) return;
+    const pageInView = (page) => {
+      const element = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${page}"]`);
+      const rect = element?.getBoundingClientRect?.();
+      if (!rect || rect.width <= 0 || rect.height <= 0) return false;
+      return rect.bottom > 40 && rect.top < (window.innerHeight - 40)
+        && rect.right > 0 && rect.left < window.innerWidth;
+    };
+    if (pages.some(pageInView)) return;
+    const nav = goToPageRef.current;
+    if (typeof nav === 'function') {
+      try { nav(pages[0], { fallback: 'nearest', bypassActiveSpace: true }); } catch { /* navigation is best-effort */ }
+    }
+  }, []);
+
   const applyLocalAnnotationHistoryAction = useCallback((action) => {
-    if (!action) return false;
+    if (!action) return 'unchanged';
     const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    if (!viewerId) return 'no-viewer';
     const scopedAction = filterAnnotationHistoryActionByOwner(
       action,
       viewerId,
@@ -12179,10 +13383,75 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         requestedAction: summarizeHistoryActionForLog(action),
         viewerId,
       });
-      return false;
+      return 'out-of-scope';
     }
-    const nextAnnotationsByPage = applyAnnotationHistoryAction(annotationsByPageRef.current || {}, scopedAction);
-    if (nextAnnotationsByPage === annotationsByPageRef.current) return false;
+    // Undo/Redo writes only the fields the action changed onto each mark as it
+    // is now. When that leaves a mark in a state neither snapshot had (a
+    // collaborator changed another field meanwhile), a callout is re-projected
+    // from data.legacyCallout and a text box / callout whose text or font no
+    // longer matches its restored height grows to fit (never clipped) — see
+    // utils/historyMergeNormalize.js.
+    const nextAnnotationsByPage = applyAnnotationHistoryAction(annotationsByPageRef.current || {}, scopedAction, {
+      normalizeUpdatedObject: (object, { pageNumber: updatedPage, entry }) => normalizeMergedHistoryObject(
+        object,
+        entry?.after,
+        {
+          pageNumber: updatedPage,
+          pageSize: pageSizesRef.current?.[Number(updatedPage)] || pageSizesRef.current?.[String(updatedPage)],
+          measure: measureTextLayoutHeight,
+        },
+      ),
+    });
+    // w53: the Survey Marker half of a family step (surveyMarkerFamily.js):
+    // field-level, onto each marker as it is now; a marker the step removes
+    // goes through the marker delete pipeline.
+    const changedSurveyMarkerIds = [];
+    for (const markerAction of collectSurveyMarkerHistoryActions(scopedAction)) {
+      changedSurveyMarkerIds.push(...(applySurveyMarkerFamilyActionRef.current?.(markerAction) || []));
+    }
+    const pagesChanged = historyActionChangedPages(
+      annotationsByPageRef.current || {},
+      nextAnnotationsByPage,
+      scopedAction,
+      jsonEqual,
+    );
+    if (changedSurveyMarkerIds.length > 0 && !pagesChanged) return 'applied';
+    // w37: a step that no longer changes what the pages show (its mark was
+    // deleted by someone else, or already changed back) is not a step: the
+    // press moves on to the next one instead of doing nothing visible.
+    if (!pagesChanged) {
+      pushHistoryDebugEvent('local_annotation_history_unchanged', {
+        ...summarizeHistoryActionForLog(scopedAction),
+        pageNumber: scopedAction.pageNumber,
+        viewerId,
+      });
+      return 'unchanged';
+    }
+
+    // The lock guard runs BEFORE counter renumbering: renumbering is now
+    // copy-on-write (counterNumbering.js), so a locked counter whose number
+    // only follows its series must not read as an Undo edit of a locked mark.
+    // RULED 2026-09-28 owner: open editing + lock — Undo / Redo never change
+    // a locked mark either (only the lock toggle itself, for its author or
+    // the document owner). utils/markLock.js.
+    {
+      const pagesNow = annotationsByPageRef.current || {};
+      for (const pageKey of Object.keys(nextAnnotationsByPage || {})) {
+        const nextPage = nextAnnotationsByPage[pageKey];
+        const prevPage = pagesNow[pageKey];
+        if (!Array.isArray(nextPage?.objects) || nextPage === prevPage) continue;
+        const lockGuard = guardLockedMarksOnSave({
+          previousObjects: prevPage?.objects || [],
+          nextObjects: nextPage.objects,
+          viewerId,
+          documentOwnerId,
+        });
+        if (lockGuard.changed) {
+          nextAnnotationsByPage[pageKey] = { ...nextPage, objects: lockGuard.objects };
+          notifyLockedMarkBlocked();
+        }
+      }
+    }
 
     const counterRenumberDecision = shouldRenumberCountersForSave({
       source: scopedAction.type,
@@ -12227,8 +13496,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         requestedAction: summarizeHistoryActionForLog(action),
         viewerId,
 	    });
-    return true;
-  }, [documentOwnerId, pushHistoryDebugEvent, user?.id, yjsUndoCtx?.userId]);
+    revealUndoneHistoryPage(scopedAction);
+    return 'applied';
+  }, [documentOwnerId, notifyLockedMarkBlocked, pushHistoryDebugEvent, revealUndoneHistoryPage, user?.id, yjsUndoCtx?.userId]);
 
   const refreshYjsHistoryTargetFromDoc = useCallback((target, reason = 'yjs-history-pop') => {
     if (!yjsDoc || !target?.id) return false;
@@ -12345,6 +13615,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       yUndoDepth: yjsUndoManager?.undoStack?.length ?? null,
       yRedoDepth: yjsUndoManager?.redoStack?.length ?? null,
     });
+    // w37 (2026-09-25): one press = one VISIBLE step, newest first across both
+    // lanes. A step that can no longer change anything (someone else deleted
+    // or changed back what it touched, its erase lanes were replaced) is
+    // dropped and the SAME press takes the next one — a press never looks dead
+    // while there is something left to undo (historyStacks.runHistoryPress).
+    runHistoryPress(() => {
 	    const localAction = localAnnotationUndoRef.current[localAnnotationUndoRef.current.length - 1] || null;
 	    const legacyUndoMeta = undoHistoryMetaRef.current[undoHistoryMetaRef.current.length - 1] || null;
 	    const shouldUndoLocal = shouldUndoLocalBeforeLegacy(localAction, legacyUndoMeta);
@@ -12412,7 +13688,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const inverse = invertAnnotationHistoryAction(localAction);
       isUndoingRef.current = true;
       try {
-	        if (applyLocalAnnotationHistoryAction(inverse)) {
+	        const localOutcome = applyLocalAnnotationHistoryAction(inverse);
+	        if (localOutcome === 'applied') {
 	          localAnnotationUndoRef.current = localAnnotationUndoRef.current.slice(0, -1);
 	          localAnnotationRedoRef.current = [...localAnnotationRedoRef.current, localAction].slice(-100);
 	          setLocalAnnotationHistoryVersion((prev) => prev + 1);
@@ -12426,11 +13703,51 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 	            undoDepth: localAnnotationUndoRef.current.length,
             redoDepth: localAnnotationRedoRef.current.length
           });
-          return;
+          return 'applied';
         }
+        // Sign-in not known yet: keep every step, do nothing this press.
+        if (localOutcome === 'no-viewer') return 'none';
+        // w37: nothing left for this step to change. It used to stay on top
+        // of the stack while the press fell through to an OLDER step of the
+        // other lane (and to it again on every later press). Drop it and let
+        // the same press take the next step in order.
+        localAnnotationUndoRef.current = localAnnotationUndoRef.current.slice(0, -1);
+        setLocalAnnotationHistoryVersion((prev) => prev + 1);
+        pushHistoryDebugEvent('local_annotation_undo_skipped', {
+          historySource: 'local annotation history',
+          chosenStack: 'localAnnotationUndo',
+          reason: localOutcome,
+          ...summarizeHistoryActionForLog(localAction),
+          pageNumber: localAction.pageNumber,
+          annotationId: localAction.annotationId,
+          undoDepth: localAnnotationUndoRef.current.length,
+          redoDepth: localAnnotationRedoRef.current.length,
+        });
+        return 'skipped';
       } finally {
         isUndoingRef.current = false;
       }
+    }
+
+    // A page change (utils/pageOperationHistory.js): its inverse runs through
+    // the page operations (instant view + one background save), never a
+    // snapshot restore.
+    const pageStepId = pageOperationStepId(legacyUndoMeta);
+    if (pageStepId != null) {
+      if (!pageOperationHistoryRef.current?.undo?.(pageStepId)) {
+        dropHistoryAfterPageChange();
+        showToast('That page change can no longer be undone.', 'info');
+        return 'none';
+      }
+      undoHistoryRef.current = undoHistoryRef.current.slice(0, -1);
+      undoHistoryMetaRef.current = undoHistoryMetaRef.current.slice(0, -1);
+      setUndoHistory(undoHistoryRef.current);
+      redoHistoryRef.current = [{ pageOperationStep: pageStepId }, ...redoHistoryRef.current].slice(0, 50);
+      redoHistoryMetaRef.current = [legacyUndoMeta, ...redoHistoryMetaRef.current].slice(0, 50);
+      setRedoHistory(redoHistoryRef.current);
+      lastCheckpointHashRef.current = null;
+      pushHistoryDebugEvent('page_operation_undo_applied', { reason: legacyUndoMeta.reason, pageOperationId: pageStepId });
+      return 'applied';
     }
 
     if (isLegacyAnnotationHistoryMeta(legacyUndoMeta)) {
@@ -12444,12 +13761,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               isEraseTransitionHistorySentinel(stateToRestore)
               && stateToRestore.mutationId === eraseHistoryTransition.mutationId
             );
+            const eraseScreenBefore = annotationsByPageRef.current || {};
             const transitionResult = sentinelMatches
               ? applyDurableEraseHistoryTransitionRef.current(
                 eraseHistoryTransition,
                 'undo',
               )
               : { status: 'conflict', reason: 'history-sentinel-mismatch' };
+            // w37: the store is (re)opening (a tab just shown again) or an
+            // authoritative rollback is resetting history: keep the step and
+            // stop — it works on the next press. Never drop it for this.
+            if (isTransientEraseHistoryFailure(transitionResult)) {
+              pushHistoryDebugEvent('erase_history_transition_deferred', {
+                direction: 'undo',
+                reason: transitionResult?.reason || 'unknown',
+                mutationId: eraseHistoryTransition.mutationId || null,
+              });
+              return 'none';
+            }
             if (!['applied', 'noop'].includes(transitionResult?.status)) {
               const quarantined = removeEraseTransitionHistoryCheckpoints({
                 mutationIds: [eraseHistoryTransition.mutationId],
@@ -12473,7 +13802,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 undoDepth: quarantined.undoHistory.length,
                 redoDepth: quarantined.redoHistory.length,
               });
-              return;
+              // w37: a real conflict (the marks this erase touched changed
+              // since in a way its lanes cannot be taken back). The step is
+              // gone; the press STOPS and says so — running on would take back
+              // an older step the user did not ask for.
+              showToast('That erase can no longer be undone: the marks changed since.', 'info');
+              return 'none';
             }
             const moved = moveEraseTransitionHistoryCheckpointByMutationId({
               mutationId: eraseHistoryTransition.mutationId,
@@ -12483,7 +13817,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               redoHistory: redoHistoryRef.current,
               redoMeta: redoHistoryMetaRef.current,
             });
-            if (!moved) return;
+            // An authoritative rollback reset history inside apply(): done.
+            if (!moved) return 'applied';
             undoHistoryRef.current = moved.undoHistory;
             undoHistoryMetaRef.current = moved.undoMeta;
             redoHistoryRef.current = moved.redoHistory;
@@ -12503,7 +13838,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               undoDepth: moved.undoHistory.length,
               redoDepth: moved.redoHistory.length,
             });
-            return;
+            // 'noop' (nothing left to take back), or lanes on marks no longer
+            // shown (someone deleted them): the step moved to Redo in step with
+            // the store, but nothing visible changed, so the same press takes
+            // the next step.
+            return eraseTransitionChangedScreen(transitionResult, eraseScreenBefore, legacyUndoMeta)
+              ? 'applied'
+              : 'skipped';
           } finally {
             isUndoingRef.current = false;
           }
@@ -12526,7 +13867,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             meta: legacyUndoMeta,
             userId: yjsUndoCtx?.userId || user?.id || null,
           })
-          : stateToRestore;
+          // w37: a Survey Marker / space step restores only what it owns
+          // (that marker; that space and what its cascade removed), never
+          // every mark / marker / space as it was (that deleted a
+          // collaborator's newer work and reverted Excel syncs).
+          : scopeLegacyRestoreToOwnSlices(legacyUndoMeta, currentState, stateToRestore, {
+            direction: 'undo',
+            deriveCallouts: deriveCalloutsFromByPage,
+          });
+        // w37: nothing to put back (an empty checkpoint, or someone already
+        // did it): drop the step, the same press takes the next one.
+        if (!legacyRestoreChangesState(currentState, scopedStateToRestore, jsonEqual)) {
+          undoHistoryRef.current = undoHistoryRef.current.slice(0, -1);
+          undoHistoryMetaRef.current = undoHistoryMetaRef.current.slice(0, -1);
+          setUndoHistory(undoHistoryRef.current);
+          lastCheckpointHashRef.current = null;
+          pushHistoryDebugEvent('legacy_annotation_undo_skipped', {
+            historySource: 'legacy history',
+            chosenStack: 'legacyUndoHistory',
+            ...summarizeHistoryMetaForLog(legacyUndoMeta),
+            reason: 'unchanged',
+            undoDepth: undoHistoryRef.current.length,
+            redoDepth: redoHistoryRef.current.length,
+          });
+          return 'skipped';
+        }
         isUndoingRef.current = true;
         try {
           restoreHistoryState(scopedStateToRestore);
@@ -12552,11 +13917,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             undoDepth: undoHistoryRef.current.length,
             redoDepth: redoHistoryRef.current.length
           });
-          return;
+          return 'applied';
         } finally {
           isUndoingRef.current = false;
         }
       }
+    }
+
+    // w37: the newest legacy step is one Undo cannot take (a checkpoint of a
+    // kind it does not restore, or its snapshot is missing). It used to block
+    // every older step: presses fell through to the (empty) Yjs lane and did
+    // nothing. Drop it; the same press takes the next step.
+    if (!(localAction && shouldUndoLocal) && (undoHistoryMetaRef.current.length > 0 || undoHistoryRef.current.length > 0)) {
+      undoHistoryRef.current = undoHistoryRef.current.slice(0, -1);
+      undoHistoryMetaRef.current = undoHistoryMetaRef.current.slice(0, -1);
+      setUndoHistory(undoHistoryRef.current);
+      lastCheckpointHashRef.current = null;
+      pushHistoryDebugEvent('legacy_annotation_undo_skipped', {
+        historySource: 'legacy history',
+        chosenStack: 'legacyUndoHistory',
+        ...summarizeHistoryMetaForLog(legacyUndoMeta),
+        reason: legacyUndoMeta?.reason || null,
+        undoDepth: undoHistoryRef.current.length,
+        redoDepth: redoHistoryRef.current.length,
+      });
+      return 'skipped';
     }
 
     // 2026-05-07 — Diagnostic logging for undo path. Surfaces the three
@@ -12581,7 +13966,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       ctxUserId: yjsUndoCtx?.userId ?? null,
       yMapAnnotationsSize,
     });
-    if (!yjsUndoManager || !yjsDoc || !yjsUndoCtx) return;
+    if (!yjsUndoManager || !yjsDoc || !yjsUndoCtx) return 'none';
+    if ((yjsUndoManager.undoStack?.length || 0) === 0) return 'none';
     const yjsHistoryTarget = getYjsHistoryTarget(yjsUndoManager.undoStack?.[yjsUndoManager.undoStack.length - 1]);
     userUndo(yjsDoc, yjsUndoManager, yjsUndoCtx);
     refreshYjsHistoryTargetFromDoc(yjsHistoryTarget, 'undo');
@@ -12591,6 +13977,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       undoStackLen: yjsUndoManager?.undoStack?.length ?? null,
       redoStackLen: yjsUndoManager?.redoStack?.length ?? null,
       yMapAnnotationsSize: (() => { try { return yjsDoc?.getMap?.('annotations')?.size ?? null; } catch (_e) { return null; } })(),
+    });
+    return 'applied';
     });
 	  }, [applyLocalAnnotationHistoryAction, getHistoryOrder, getHistorySnapshot, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, pushHistoryDebugEvent, refreshYjsHistoryTargetFromDoc, restoreHistoryState, shouldUndoLocalBeforeLegacy, user?.id, yjsDoc, yjsUndoManager, yjsUndoCtx]);
 
@@ -12613,6 +14001,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       yUndoDepth: yjsUndoManager?.undoStack?.length ?? null,
       yRedoDepth: yjsUndoManager?.redoStack?.length ?? null,
     });
+    // w37: one press = one visible step, oldest undone first across both
+    // lanes; a step that can no longer change anything is dropped and the
+    // same press takes the next one (historyStacks.runHistoryPress).
+    runHistoryPress(() => {
     const localAction = localAnnotationRedoRef.current[localAnnotationRedoRef.current.length - 1] || null;
     const legacyRedoState = redoHistoryRef.current[0] || null;
 	    const legacyRedoMeta = redoHistoryMetaRef.current[0] || null;
@@ -12680,7 +14072,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (localAction && shouldRedoLocal) {
       isUndoingRef.current = true;
       try {
-	        if (applyLocalAnnotationHistoryAction(localAction)) {
+	        const localOutcome = applyLocalAnnotationHistoryAction(localAction);
+	        if (localOutcome === 'applied') {
 	          localAnnotationRedoRef.current = localAnnotationRedoRef.current.slice(0, -1);
 	          localAnnotationUndoRef.current = [...localAnnotationUndoRef.current, localAction].slice(-100);
 	          setLocalAnnotationHistoryVersion((prev) => prev + 1);
@@ -12694,11 +14087,45 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             undoDepth: localAnnotationUndoRef.current.length,
             redoDepth: localAnnotationRedoRef.current.length
           });
-          return;
+          return 'applied';
         }
+        if (localOutcome === 'no-viewer') return 'none';
+        // w37: nothing left for this step to change: drop it (see Undo).
+        localAnnotationRedoRef.current = localAnnotationRedoRef.current.slice(0, -1);
+        setLocalAnnotationHistoryVersion((prev) => prev + 1);
+        pushHistoryDebugEvent('local_annotation_redo_skipped', {
+          historySource: 'local annotation history',
+          chosenStack: 'localAnnotationRedo',
+          reason: localOutcome,
+          ...summarizeHistoryActionForLog(localAction),
+          pageNumber: localAction.pageNumber,
+          annotationId: localAction.annotationId,
+          undoDepth: localAnnotationUndoRef.current.length,
+          redoDepth: localAnnotationRedoRef.current.length,
+        });
+        return 'skipped';
       } finally {
         isUndoingRef.current = false;
       }
+    }
+
+    // A page change: run it again (utils/pageOperationHistory.js).
+    const pageRedoId = pageOperationStepId(legacyRedoMeta);
+    if (legacyRedoState && pageRedoId != null) {
+      if (!pageOperationHistoryRef.current?.redo?.(pageRedoId)) {
+        dropHistoryAfterPageChange();
+        showToast('That page change can no longer be redone.', 'info');
+        return 'none';
+      }
+      redoHistoryRef.current = redoHistoryRef.current.slice(1);
+      redoHistoryMetaRef.current = redoHistoryMetaRef.current.slice(1);
+      setRedoHistory(redoHistoryRef.current);
+      undoHistoryRef.current = [...undoHistoryRef.current, legacyRedoState].slice(-50);
+      undoHistoryMetaRef.current = [...undoHistoryMetaRef.current, legacyRedoMeta].slice(-50);
+      setUndoHistory(undoHistoryRef.current);
+      lastCheckpointHashRef.current = null;
+      pushHistoryDebugEvent('page_operation_redo_applied', { reason: legacyRedoMeta.reason, pageOperationId: pageRedoId });
+      return 'applied';
     }
 
     if (legacyRedoState && isLegacyAnnotationHistoryMeta(legacyRedoMeta)) {
@@ -12710,12 +14137,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             isEraseTransitionHistorySentinel(legacyRedoState)
             && legacyRedoState.mutationId === eraseHistoryTransition.mutationId
           );
+          const eraseScreenBefore = annotationsByPageRef.current || {};
           const transitionResult = sentinelMatches
             ? applyDurableEraseHistoryTransitionRef.current(
               eraseHistoryTransition,
               'redo',
             )
             : { status: 'conflict', reason: 'history-sentinel-mismatch' };
+          // w37: store not ready / rollback in progress: keep the step, stop.
+          if (isTransientEraseHistoryFailure(transitionResult)) {
+            pushHistoryDebugEvent('erase_history_transition_deferred', {
+              direction: 'redo',
+              reason: transitionResult?.reason || 'unknown',
+              mutationId: eraseHistoryTransition.mutationId || null,
+            });
+            return 'none';
+          }
           if (!['applied', 'noop'].includes(transitionResult?.status)) {
             const quarantined = removeEraseTransitionHistoryCheckpoints({
               mutationIds: [eraseHistoryTransition.mutationId],
@@ -12739,7 +14176,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               undoDepth: quarantined.undoHistory.length,
               redoDepth: quarantined.redoHistory.length,
             });
-            return;
+            showToast('That erase can no longer be redone: the marks changed since.', 'info');
+            return 'none';
           }
           const moved = moveEraseTransitionHistoryCheckpointByMutationId({
             mutationId: eraseHistoryTransition.mutationId,
@@ -12749,7 +14187,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             redoHistory: redoHistoryRef.current,
             redoMeta: redoHistoryMetaRef.current,
           });
-          if (!moved) return;
+          if (!moved) return 'applied';
           undoHistoryRef.current = moved.undoHistory;
           undoHistoryMetaRef.current = moved.undoMeta;
           redoHistoryRef.current = moved.redoHistory;
@@ -12769,7 +14207,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             undoDepth: moved.undoHistory.length,
             redoDepth: moved.redoHistory.length,
           });
-          return;
+          return eraseTransitionChangedScreen(transitionResult, eraseScreenBefore, legacyRedoMeta)
+            ? 'applied'
+            : 'skipped';
         } finally {
           isUndoingRef.current = false;
         }
@@ -12792,7 +14232,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           meta: legacyRedoMeta,
           userId: yjsUndoCtx?.userId || user?.id || null,
         })
-        : legacyRedoState;
+        : scopeLegacyRestoreToOwnSlices(legacyRedoMeta, currentState, legacyRedoState, {
+          direction: 'redo',
+          deriveCallouts: deriveCalloutsFromByPage,
+        });
+      // w37: nothing to re-apply: drop the step, the press takes the next one.
+      if (!legacyRestoreChangesState(currentState, scopedRedoState, jsonEqual)) {
+        redoHistoryRef.current = redoHistoryRef.current.slice(1);
+        redoHistoryMetaRef.current = redoHistoryMetaRef.current.slice(1);
+        setRedoHistory(redoHistoryRef.current);
+        pushHistoryDebugEvent('legacy_annotation_redo_skipped', {
+          historySource: 'legacy history',
+          chosenStack: 'legacyRedoHistory',
+          ...summarizeHistoryMetaForLog(legacyRedoMeta),
+          reason: 'unchanged',
+          undoDepth: undoHistoryRef.current.length,
+          redoDepth: redoHistoryRef.current.length,
+        });
+        return 'skipped';
+      }
       isUndoingRef.current = true;
       try {
         restoreHistoryState(scopedRedoState);
@@ -12815,10 +14273,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           undoDepth: undoHistoryRef.current.length,
           redoDepth: redoHistoryRef.current.length
         });
-        return;
+        return 'applied';
       } finally {
         isUndoingRef.current = false;
       }
+    }
+
+    // w37: a legacy redo step Redo cannot take: drop it (see Undo).
+    if (redoHistoryMetaRef.current.length > 0 || redoHistoryRef.current.length > 0) {
+      redoHistoryRef.current = redoHistoryRef.current.slice(1);
+      redoHistoryMetaRef.current = redoHistoryMetaRef.current.slice(1);
+      setRedoHistory(redoHistoryRef.current);
+      pushHistoryDebugEvent('legacy_annotation_redo_skipped', {
+        historySource: 'legacy history',
+        chosenStack: 'legacyRedoHistory',
+        ...summarizeHistoryMetaForLog(legacyRedoMeta),
+        reason: legacyRedoMeta?.reason || null,
+        undoDepth: undoHistoryRef.current.length,
+        redoDepth: redoHistoryRef.current.length,
+      });
+      return 'skipped';
     }
 
 	    pushHistoryDebugEvent('yjs_redo_invoked', {
@@ -12830,7 +14304,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       undoStackLen: yjsUndoManager?.undoStack?.length ?? null,
       redoStackLen: yjsUndoManager?.redoStack?.length ?? null,
     });
-    if (!yjsUndoManager || !yjsDoc || !yjsUndoCtx) return;
+    if (!yjsUndoManager || !yjsDoc || !yjsUndoCtx) return 'none';
+    if ((yjsUndoManager.redoStack?.length || 0) === 0) return 'none';
     const yjsHistoryTarget = getYjsHistoryTarget(yjsUndoManager.redoStack?.[yjsUndoManager.redoStack.length - 1]);
     userRedo(yjsDoc, yjsUndoManager, yjsUndoCtx);
     refreshYjsHistoryTargetFromDoc(yjsHistoryTarget, 'redo');
@@ -12839,6 +14314,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       receivedStack: 'yjsUndoStack',
       undoStackLen: yjsUndoManager?.undoStack?.length ?? null,
       redoStackLen: yjsUndoManager?.redoStack?.length ?? null,
+    });
+    return 'applied';
     });
 	  }, [applyLocalAnnotationHistoryAction, getHistoryOrder, getHistorySnapshot, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, pushHistoryDebugEvent, refreshYjsHistoryTargetFromDoc, restoreHistoryState, shouldRedoLocalBeforeLegacy, user?.id, yjsDoc, yjsUndoManager, yjsUndoCtx]);
 
@@ -12973,6 +14450,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // remapped annotation/sidebar stores together. `_surveyPdfId` stays stable,
   // so the same-document reload path cannot hydrate the pre-mutation keys.
   const pageStructureStateRef = useRef(null);
+  // The marks a page change already wrote at its commit: the mirror effect
+  // below skips that same object (one stringify per page change, not two).
+  const pageChangeBackedUpMarksRef = useRef(null);
   pageStructureStateRef.current = {
     annotationsByPage: annotationsByPageRef.current || {},
     surveyMarkers: surveyMarkersRef.current || {},
@@ -12984,10 +14464,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     regionOverlayDisabled: regionOverlayDisabled || new Map(),
   };
   const getPageStructureState = useCallback(() => pageStructureStateRef.current, []);
-  const persistPageMutationFile = useCallback((file) => (
-    onUpdatePDFFile?.(file, tabId)
-  ), [onUpdatePDFFile, tabId]);
-  const commitPageStructureState = useCallback((next, operation) => {
+  const persistPageMutationFile = useCallback((file) => {
+    // The background save of a page operation: these bytes are already on
+    // screen as a page view, so the load effect must not re-open them.
+    markPageViewFileCurrent(file);
+    return onUpdatePDFFile?.(file, tabId);
+  }, [markPageViewFileCurrent, onUpdatePDFFile, tabId]);
+  const commitPageStructureState = useCallback((next, operation, step = null) => {
     pageStructureStateRef.current = next;
     annotationsByPageRef.current = next.annotationsByPage;
     surveyMarkersRef.current = next.surveyMarkers;
@@ -13000,8 +14483,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setBookmarks(next.bookmarks);
     setSpaces(next.spaces);
     setRegionOverlayDisabled(next.regionOverlayDisabled);
-    setUndoHistory([]);
-    setRedoHistory([]);
+    // A page change is one Undo step; Undo / Redo of it move that step
+    // between the stacks themselves. Anything else (a rollback) clears.
+    if (step?.phase === 'do') recordPageOperationStep(step.id, operation);
+    else if (!step) dropHistoryAfterPageChange();
     clearAnnotationSelectionForContextChange('page-structure-change');
 
     // Persist synchronously at the commit boundary. React effects retain their
@@ -13009,6 +14494,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // the transformed graph rather than racing a later effect.
     if (pdfId) {
       saveAnnotationsByPage(pdfId, next.annotationsByPage);
+      pageChangeBackedUpMarksRef.current = next.annotationsByPage;
       saveSurveyMarkers(pdfId, next.surveyMarkers);
       try {
         localStorage.setItem(`pdfSidebar_${pdfId}`, JSON.stringify({
@@ -13027,9 +14513,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     }
 
-    const pageCountDelta = operation?.type === 'delete'
-      ? -1
-      : ['insert', 'duplicate', 'copy'].includes(operation?.type) ? 1 : 0;
+    const pageCountDelta = pageCountChange(operation);
     setPageNum((current) => pageNumberAfterOperation(
       current,
       operation,
@@ -13038,8 +14522,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [
     activeSpaceId,
     clearAnnotationSelectionForContextChange,
+    dropHistoryAfterPageChange,
     numPages,
     pdfId,
+    recordPageOperationStep,
     setRegionOverlayDisabled,
   ]);
 
@@ -13062,11 +14548,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleRotatePageCW,
     handleRotatePageCCW,
     handleInsertBlankPage,
+    undoPageOperation,
+    redoPageOperation,
+    flushPageOperations,
   } = usePageOperations({
     pdfFile,
     onUpdatePDFFile: persistPageMutationFile,
     getPageState: getPageStructureState,
     commitPageState: commitPageStructureState,
+    applyPageView: applyPageViewOperationToViewer,
+    restorePageView: restorePageViewDocument,
     setPageNames,
     setPageTransformations,
     clipboardPage,
@@ -13074,6 +14565,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     clipboardType,
     setClipboardType,
   });
+  pageOperationHistoryRef.current = { undo: undoPageOperation, redo: redoPageOperation };
 
   const importPdfBookmarksIntoSidebar = useCallback((incomingBookmarks = []) => {
     if (!Array.isArray(incomingBookmarks) || incomingBookmarks.length === 0) {
@@ -13421,11 +14913,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
   }, []);
 
+  // w37: { spaceId, ids } of the last space cascade, read once by the space
+  // step that owns it (space:update for a region replace, space:delete).
+  const pendingSpaceCascadeRef = useRef(null);
   const handleSpaceCreate = useCallback((space) => {
     if (!requireSpaceManagement()) return;
     // Checkpoint history before creating space
+    // w37: the new space's id is known before the checkpoint, so Undo / Redo
+    // restore exactly this space (historyStacks.scopeLegacyRestoreToOwnSlices).
+    const newSpaceId = space?.id || crypto.randomUUID();
     addHistoryCheckpoint('space:create', {
-      requestedName: typeof space?.name === 'string' ? space.name : null
+      requestedName: typeof space?.name === 'string' ? space.name : null,
+      spaceId: newSpaceId,
     });
 
     setSpaces(prev => {
@@ -13450,7 +14949,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const newSpace = {
         ...space,
         name: finalName,
-        id: space?.id || crypto.randomUUID(),
+        id: newSpaceId,
         assignedPages: Array.isArray(space?.assignedPages) ? space.assignedPages : []
       };
       return [...prev, newSpace];
@@ -13460,9 +14959,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleSpaceUpdate = useCallback((id, updates) => {
     if (!requireSpaceManagement()) return;
     // Checkpoint history before updating space
+    // w37: a region replace ran its cascade just before this update; the step
+    // records what it removed (a rename / recolour removed nothing).
+    const cascade = pendingSpaceCascadeRef.current;
+    pendingSpaceCascadeRef.current = null;
     addHistoryCheckpoint('space:update', {
       spaceId: id,
-      updateKeys: Object.keys(updates || {})
+      updateKeys: Object.keys(updates || {}),
+      ...(cascade?.spaceId === id && cascade.ids.length > 0 ? { cascadeIds: cascade.ids } : {}),
     });
 
     setSpaces(prev => {
@@ -13557,36 +15061,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const cascadeDeleteScopedAppState = useCallback(({ spaceId, pageIds = null, regionIds = null, reason = 'space-scope-delete' }) => {
     if (!spaceId) return;
-    const pageSet = Array.isArray(pageIds) && pageIds.length > 0
-      ? new Set(pageIds.map(Number).filter(Number.isFinite))
-      : null;
-    const sourceSpace = spacesRef.current.find((space) => space?.id === spaceId);
-    const hasExplicitRegionIds = Array.isArray(regionIds) && regionIds.length > 0;
-    const collectedRegionIds = new Set(
-      hasExplicitRegionIds
-        ? regionIds.filter(Boolean)
-        : []
-    );
-    if (!hasExplicitRegionIds) {
-      (sourceSpace?.assignedPages || []).forEach((page) => {
-        const pageNumber = Number(page?.pageId);
-        if (pageSet && !pageSet.has(pageNumber)) return;
-        (page?.regions || []).forEach((region) => {
-          if (region?.regionId) collectedRegionIds.add(region.regionId);
-        });
-      });
-    }
-
-    const shouldDeleteScopedEntry = (entry) => {
-      if (!entry) return false;
-      const pageNumber = Number(entry.pageNumber ?? entry.page ?? entry.pageId);
-      if (pageSet && Number.isFinite(pageNumber) && !pageSet.has(pageNumber)) return false;
-      if (entry.regionId && collectedRegionIds.has(entry.regionId)) return true;
-      if (hasExplicitRegionIds) return false;
-      if (entry.spaceId === spaceId) return true;
-      if (entry.moduleId === spaceId) return true;
-      return false;
-    };
+    // Spaces chunk A: one rule for this cascade and the confirm that counts it
+    // first (utils/spaceCascadeImpact.js).
+    const scope = resolveSpaceCascadeScope({
+      spaceId,
+      space: spacesRef.current.find((space) => space?.id === spaceId),
+      pageIds,
+      regionIds,
+    });
+    const { pageSet, regionIds: collectedRegionIds } = scope;
+    const shouldDeleteScopedEntry = (entry) => isSpaceScopedEntry(entry, scope);
 
     const cloudDeleteIds = new Set();
     Object.entries(annotationsByPageRef.current || {}).forEach(([pageKey, pageData]) => {
@@ -13698,15 +15182,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       regionIds: Array.from(collectedRegionIds),
       cloudDeleteIds: ids.length,
     }));
+    // w37: the ids this cascade removed, so the space step's Undo / Redo puts
+    // back / removes exactly these (historyStacks.scopeLegacyRestoreToOwnSlices).
+    pendingSpaceCascadeRef.current = { spaceId, ids };
+    return ids;
   }, [pdfFile?.id, setCalloutsIfPersistedChanged]);
 
   const handleSpaceRemovePage = useCallback((spaceId, pageId) => {
     if (!requireSpaceManagement()) return;
-    cascadeDeleteScopedAppState({
+    // Spaces chunk A: one Undo step — the space's page list plus exactly the
+    // marks the cascade removed (same shape as space:delete; see
+    // historyStacks.scopeLegacyRestoreToOwnSlices).
+    const removePageContext = { spaceId, pageId, updateKeys: ['assignedPages'] };
+    addHistoryCheckpoint('space:remove-page', removePageContext);
+    removePageContext.cascadeIds = cascadeDeleteScopedAppState({
       spaceId,
       pageIds: [pageId],
       reason: 'space-page-delete',
-    });
+    }) || [];
+    // The step above owns this cascade: it must not be claimed by a later one.
+    pendingSpaceCascadeRef.current = null;
 
     // KAL-313 / history F1 (2026-06-11): the sidebar trash button on a region
     // row commits the deletion immediately (no Confirm step), so journal the
@@ -13765,7 +15260,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       return nextSpaces;
     });
-  }, [activeSpaceId, cascadeDeleteScopedAppState, pdfFile?.id, requireSpaceManagement, user]);
+  }, [activeSpaceId, addHistoryCheckpoint, cascadeDeleteScopedAppState, pdfFile?.id, requireSpaceManagement, user]);
+
+  // Spaces chunk A: what removing these pages (null = the whole space) would
+  // delete, for the confirm in SpacesPanel. Reads the live refs the cascade
+  // reads, so the number shown is the number deleted.
+  const getSpaceRemovalImpact = useCallback((spaceId, pageIds = null) => countSpaceCascadeImpact({
+    spaceId,
+    space: (spacesRef.current || []).find((space) => space?.id === spaceId) || null,
+    pageIds,
+    annotationsByPage: annotationsByPageRef.current || {},
+    callouts: calloutsRef.current || [],
+    surveyMarkers: surveyMarkersRef.current || {},
+    getMarkId: getHistoryAnnotationId,
+  }), []);
 
   const handleSpaceRenamePage = useCallback((spaceId, pageId, newLabel) => {
     if (!requireSpaceManagement()) return;
@@ -13821,6 +15329,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageIds: [pageId],
       reason: 'space-page-regions-clear',
     });
+    // No undo step records this cascade: it must not be claimed by a later one.
+    pendingSpaceCascadeRef.current = null;
 
     setSpaces(prev => {
       const beforeSpace = prev.find(s => s.id === spaceId);
@@ -16254,6 +17764,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       (plan.candidateDeletes || []).forEach((markerId) => {
         const ann = newSurveyMarkers[markerId];
         if (!ann) return;
+        // Owner ruling 2026-09-28: a user-locked survey item is never deleted —
+        // a missing Excel row only flags it for review.
+        if (typeof ann.lockedBy === 'string' && ann.lockedBy) {
+          importReviewItems.push({ scopeKey: reviewScopeKey, rowIndex: null, reason: 'candidate-delete', markerId });
+          return;
+        }
         if (!recencyDeletesDisabled && wasReceivedByExcel(ann)) {
           // One-import delete-grace window (blank-rowid slice 4, Amendment #5): the
           // FIRST import that misses a received marker's row only stamps a pending
@@ -16906,6 +18422,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       (plan.candidateDeletes || []).forEach((markerId) => {
         const ann = newSurveyMarkers[markerId];
         if (!ann) return;
+        // Owner ruling 2026-09-28: a user-locked survey item is never deleted.
+        if (typeof ann.lockedBy === 'string' && ann.lockedBy) {
+          importReviewItems.push({ scopeKey: reviewScopeKey, rowIndex: null, reason: 'candidate-delete', markerId });
+          return;
+        }
         if (wasReceivedByExcel(ann)) {
           // One-import delete-grace window (blank-rowid slice 4) — same rule as the
           // manual import: first miss marks (no trash), a later import that still
@@ -17787,10 +19308,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Auto-sync from Excel when file changes (file watcher)
   const handleAutoSyncFromExcel = useCallback(async () => {
-    // Checkpoint history before sync
-    addHistoryCheckpoint('excel:auto-sync', {
-      templateId: selectedTemplate?.id || null
-    });
+    // w37: no Undo step. The file watcher is not a gesture made in this
+    // document, and Undo never restored this checkpoint ('excel:' is not a
+    // lane Undo takes): sitting on top of the stack it made every older step
+    // unreachable (presses did nothing) and cleared Redo in the background.
 
     if (!selectedTemplate?.linkedExcelPath) {
       return;
@@ -18887,6 +20408,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
   }, [pdfFile?.id, user?.id, documentSyncEnabled]);
 
+  // A document viewer never writes this projection: the database refuses it
+  // (403 RLS on every open, seen on the real backend 2026-10-07, realCheck3)
+  // and the refusal switched document sync off for the session.
+  const surveySyncViewerRef = useRef(false);
+  surveySyncViewerRef.current = yjsDocRole === 'viewer';
   // Sync local annotation changes to Supabase (debounced)
   useEffect(() => {
     const documentId = pdfFile?.id;
@@ -18895,6 +20421,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       !documentId ||
       !user?.id ||
       !documentSyncEnabled ||
+      surveySyncViewerRef.current ||
       syncRLSErrorShownRef.current ||
       syncStructuralAutoDisabledRef.current
     ) return;
@@ -18938,7 +20465,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     let syncTimeout = null;
 
     const runSync = async () => {
-      if (cancelled || syncStructuralAutoDisabledRef.current) return;
+      if (cancelled || syncStructuralAutoDisabledRef.current || surveySyncViewerRef.current) return;
       // Bug 2 fix (2026-04-30): pass the last-synced state as priorSurveyMarker-
       // Annotations so the service can detect erases / removals and push DELETE
       // events to the cloud BEFORE the upsert. Without this, peers keep
@@ -19074,7 +20601,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         pendingSurveyMarkerSyncRef.current = null;
         try {
           // Upsert-only projection flush (see runSync) — no delete-diff baseline.
-          if (!syncStructuralAutoDisabledRef.current) {
+          if (!syncStructuralAutoDisabledRef.current && !surveySyncViewerRef.current) {
             appDebug('[DocumentSync] unmount flush — pushing pending highlight sync');
             Promise.resolve(
               syncAnnotationsToSupabase(documentId, user.id, surveyMarkers, {
@@ -19163,6 +20690,42 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     enqueue: enqueueUndoToast,
     dismiss: dismissUndoToast,
   } = useUndoToast();
+
+  // Owner 2026-10-07 (survey bar round): "Done" at the right end of the survey
+  // bar leaves Survey at once - no confirmation - and the app's undo toast
+  // offers it back: "Left Survey  Undo" re-enters the same template, module,
+  // category and panel (open or closed). Escape never leaves Survey.
+  const handleLeaveSurvey = useCallback(() => {
+    const live = surveyBarLiveRef.current;
+    const template = live.selectedTemplate;
+    if (!template) {
+      handleCloseSurveyMode();
+      return;
+    }
+    const snapshot = {
+      templateId: template.id,
+      moduleId: live.selectedModuleId,
+      categoryId: live.selectedCategoryId,
+      panelCollapsed: live.rightRailCollapsed,
+    };
+    const templatesAtLeave = live.appTemplates;
+    handleCloseSurveyMode();
+    enqueueUndoToast({
+      kind: 'single',
+      message: 'Left Survey',
+      onUndo: () => {
+        const again = (templatesAtLeave || []).find((entry) => entry?.id === snapshot.templateId) || template;
+        surveyReenterCollapsedRef.current = Boolean(snapshot.panelCollapsed);
+        handleSelectSurveyTemplate(again);
+        const modules = again.modules || again.spaces || [];
+        if (snapshot.moduleId && modules.some((module) => module?.id === snapshot.moduleId)) {
+          setSelectedModuleId(snapshot.moduleId);
+          if (snapshot.categoryId) setSelectedCategoryId(snapshot.categoryId);
+        }
+      },
+    });
+  }, [handleCloseSurveyMode, handleSelectSurveyTemplate, enqueueUndoToast]);
+
   const [pendingDeletePlan, setPendingDeletePlan] = useState(null);
   const pendingDeleteRunnerRef = useRef(null);
   const pendingDeleteCancelRef = useRef(null);
@@ -19380,72 +20943,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
       };
 
-      // Wrap runDelete with the toast enqueue. Both the direct-fire path
-      // (owner-own-only) and the modal-confirm path use this wrapped runner
-      // so the undo restoration is identical regardless of which branch
-      // fires.
-      const wrappedRunDelete = () => {
-        // KAL-313 / history F2: mark these ids as bulk-journaled BEFORE the
-        // delete mutation runs, so pushLocalAnnotationHistoryAction (invoked
-        // synchronously or async by the save pipeline) skips its own
-        // single-annotation trash row for the same delete.
-        registerBulkJournaledAnnotationIds(candidateIds);
-        runDelete();
-        emitBulkTrashRows();
-        // Snapshot restoration: re-add the deleted objects to
-        // annotationsByPage. Functional setter ensures we read the latest
-        // state at undo time (closure-captured snapshot is the source of
-        // truth for what was deleted).
-        const onUndo = () => {
-          setAnnotationsByPage((prev) => {
-            const prevPage = prev?.[pageNumber] || { objects: [] };
-            const restoredObjects = [
-              ...(prevPage.objects || []),
-              ...snapshotObjects,
-            ];
-            return {
-              ...prev,
-              [pageNumber]: { ...prevPage, objects: restoredObjects },
-            };
-          });
-        };
-        const message =
-          plan.mode === 'owner-cross-author'
-            ? `Deleted ${plan.count} annotations from ${
-                Object.keys(plan.byAuthor || {}).length
-              } people`
-            : `${plan.count} annotations deleted`;
-        // eslint-disable-next-line max-len
-        enqueueUndoToast({ kind: 'bulk', message, count: plan.count, onUndo });
-      };
-
-      if (plan.mode === 'owner-own-only') {
-        // 2026-05-04 — Owner deleting only their own marks: skip the modal
-        // AND skip the bulk-toast banner. UX: a solo-document owner seeing
-        // a "5 annotations deleted" banner on every delete reads as the
-        // app questioning their action. Cmd+Z still works as the undo
-        // path. The toast is only valuable when the delete is unusual
-        // (cross-author wipe, collaborator deleting all of theirs) — for
-        // the everyday solo-owner delete it's noise.
-        // KAL-313 / history F2: this direct-fire branch bypasses
-        // wrappedRunDelete, so register the ids here too — otherwise the
-        // single-annotation emitter journals the same delete a second time.
-        registerBulkJournaledAnnotationIds(candidateIds);
-        runDelete();
-        emitBulkTrashRows();
-        return;
-      }
-
-      // Modal-required path (collaborator-all-mine OR owner-cross-author).
-      // Stash the runner in a ref so the modal's onConfirm can fire it
-      // without rebuilding the closure (and without holding state that
-      // captures snapshotObjects in a way that survives plan reset).
-      pendingDeleteCancelRef.current?.();
-      pendingDeleteCancelRef.current = null;
-      pendingDeleteRunnerRef.current = wrappedRunDelete;
-      setPendingDeletePlan(plan);
+      // RULED 2026-09-28 owner: open editing + lock. Every delete the
+      // planner allows fires now — own marks, other people's, a mix — with
+      // no confirmation modal and no "Deleted – Undo" toast. Safety is
+      // Cmd+Z (the save pipeline's undo step), History (emitBulkTrashRows
+      // journals a restorable row) and the user lock (locked marks never
+      // reach runDelete: deleteSelected / the planner drop them).
+      // KAL-313 / history F2: register the ids BEFORE runDelete so the
+      // single-annotation emitter doesn't journal the same delete twice.
+      registerBulkJournaledAnnotationIds(candidateIds);
+      runDelete();
+      emitBulkTrashRows();
     },
-    [annotationsByPage, user, documentOwnerId, enqueueUndoToast, pdfFile?.id, registerBulkJournaledAnnotationIds],
+    [annotationsByPage, user, documentOwnerId, pdfFile?.id, registerBulkJournaledAnnotationIds],
   );
   // R2.2 Slice 4: keep the TDZ ref bridge current so handleDeleteSelectedCallouts
   // (declared ~7k lines above) always routes through this render's bulk-delete
@@ -19492,26 +21002,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (plan.mode === 'no-op') {
       return Promise.resolve({ approved: false, plan, reason: 'permission' });
     }
-    if (plan.mode === 'owner-own-only') {
-      return Promise.resolve({ approved: true, plan });
-    }
-
-    pendingDeleteCancelRef.current?.();
-    return new Promise((resolve) => {
-      let settled = false;
-      const settle = (approved) => {
-        if (settled) return;
-        settled = true;
-        resolve({
-          approved,
-          plan,
-          ...(approved ? {} : { reason: 'user-cancelled' }),
-        });
-      };
-      pendingDeleteRunnerRef.current = () => settle(true);
-      pendingDeleteCancelRef.current = () => settle(false);
-      setPendingDeletePlan(plan);
-    });
+    // RULED 2026-09-28 owner: open editing + lock — erasing another
+    // person's callout never asks; only user-locked callouts are refused
+    // (the planner drops them, so an all-locked hit list is 'no-op').
+    return Promise.resolve({ approved: true, plan });
   }, [eraseDocumentOwnerId, pdfFile?.id, user?.id]);
 
   // Core geometry and recoverable external side effects have separate failure
@@ -19658,7 +21152,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       localAnnotationRedoRef.current = [];
       suppressBatchCheckpointsRef.current = 0;
       objectModifiedInteractionCheckpointRef.current.clear();
-      previewBaselineByPageRef.current.clear();
+      endPagePreviewGesture(previewBaselineByPageRef.current, gestureFieldTouchesByPageRef.current);
       setErasePreviewPages(new Set());
       setUndoHistory([]);
       setRedoHistory([]);
@@ -19709,6 +21203,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // KAL-309: durable Y.Doc META accessors for the excelSyncFrontier cursor + review set.
     metaGet: excelSyncMetaGet,
     metaSet: excelSyncMetaSet,
+    hasStoredMarks: annotationDocHasStoredMarks,
+    beginBulkImport: annotationDocBeginBulkImport,
+    whenBulkImportSaved: annotationDocWhenBulkImportSaved,
+    // w53: other screens' in-flight Survey Marker / spaces changes (draw only).
+    liveMarkerOverlay,
   } = useAnnotationDoc({
     documentId: pdfFile?.id || null,
     userId: user?.id || null,
@@ -19732,6 +21231,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // retired: the [pageSizes]-keyed re-projection effect below owns the
     // measured-late correction; pageSizes resets + re-measures every open.)
     pageSizesRef,
+    // UX 2026-09-23 (smooth sliders): while a colour slider is dragged the
+    // mark repaints every frame but only the RELEASED value is written to the
+    // shared document (see paintPhaseRef / annotationCapturePauseRef).
+    capturePauseRef: annotationCapturePauseRef,
     // Resolved document role from YDocProvider (get_my_document_role). The
     // hook only runs the calloutsList meta migration when this is a confirmed
     // writable role ('owner'/'editor') — annotation_updates INSERT is
@@ -19739,6 +21242,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // sync status in a permanent error state. Viewers still see legacy
     // callouts via the hook's zero-op read-only fallback.
     docRole: yjsDocRole,
+    // w33: no one-time store compaction write while the document is locked.
+    documentLocked,
   });
   const deletedPdfAnnotations = useMemo(() => filterRestoredPdfAnnotationTombstones([
     ...new Map(
@@ -19809,6 +21314,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return { status: 'conflict', reason: 'history-checkpoint-missing' };
     }
     const result = applyDurableEraseHistoryTransition(transition, 'undo');
+    // w37: store not ready / rollback: keep the step (same rule as Cmd+Z).
+    if (isTransientEraseHistoryFailure(result)) return result;
     if (!['applied', 'noop'].includes(result?.status)) {
       const cleaned = removeEraseTransitionHistoryCheckpoints({
         mutationIds: [mutationId],
@@ -19998,19 +21505,44 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       handlePresenceFailure(presenceResult, 'page-change');
     };
 
-    if (isInteractionPerfWindowActive()) {
-      const retryDelay = getInteractionPerfResumeDelay();
-      emitPdfDebugEvent('sync_gate_presence_deferred', { retryDelay });
-      deferredTimer = setTimeout(() => {
-        if (cancelled) return;
+    const schedulePresenceUpdate = () => {
+      if (deferredTimer) return;
+      if (isInteractionPerfWindowActive()) {
+        const retryDelay = getInteractionPerfResumeDelay();
+        emitPdfDebugEvent('sync_gate_presence_deferred', { retryDelay });
+        deferredTimer = setTimeout(() => {
+          deferredTimer = null;
+          if (cancelled) return;
+          runPresenceUpdate();
+        }, retryDelay);
+      } else {
         runPresenceUpdate();
-      }, retryDelay);
-    } else {
-      runPresenceUpdate();
+      }
+    };
+
+    schedulePresenceUpdate();
+
+    // 2026-10-06: also refresh while the person works on this page (throttled,
+    // input-driven, no timer), so other viewers keep showing them as here
+    // instead of dropping them after 2 minutes on one page.
+    // See utils/presenceActivity.js.
+    // Background tabs stay mounted: only the front tab's input counts
+    // (undoRedoKeyActiveRef mirrors this tab's isActive prop).
+    const activityBump = createPresenceActivityBump({
+      onBump: schedulePresenceUpdate,
+      isActive: () => undoRedoKeyActiveRef.current !== false,
+    });
+    activityBump.noteWrite();
+    const onPresenceActivity = () => { activityBump.onActivity(); };
+    for (const type of PRESENCE_ACTIVITY_EVENTS) {
+      window.addEventListener(type, onPresenceActivity, { capture: true, passive: true });
     }
 
     return () => {
       cancelled = true;
+      for (const type of PRESENCE_ACTIVITY_EVENTS) {
+        window.removeEventListener(type, onPresenceActivity, { capture: true });
+      }
       if (deferredTimer) {
         clearTimeout(deferredTimer);
       }
@@ -20161,7 +21693,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleSpaceDelete = useCallback((id) => {
     if (!requireSpaceManagement()) return;
     // Checkpoint history before deleting space
-    addHistoryCheckpoint('space:delete', { spaceId: id });
+    // w37: the checkpoint keeps this very context object; the cascade below
+    // adds what it removed to it (cascadeIds).
+    const spaceDeleteContext = { spaceId: id };
+    addHistoryCheckpoint('space:delete', spaceDeleteContext);
 
     // KAL-313: emit a space_deleted history row so the region cascade restore
     // path (resolveRegionRestoreCascade) can find the space's restore record
@@ -20185,10 +21720,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (spaceTrashRow) void recordAndNotifyDocumentHistoryEvent(spaceTrashRow);
     }
 
-    cascadeDeleteScopedAppState({
+    const cascadeIds = cascadeDeleteScopedAppState({
       spaceId: id,
       reason: 'space-delete',
-    });
+    }) || [];
+    pendingSpaceCascadeRef.current = null;
+    spaceDeleteContext.cascadeIds = cascadeIds;
     setSpaces(prev => prev.filter(s => s.id !== id));
     if (activeSpaceId === id) {
       setActiveSpaceId(null);
@@ -20199,6 +21736,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [addHistoryCheckpoint, activeSpaceId, selectedSpaceId, cascadeDeleteScopedAppState, pdfFile?.id, requireSpaceManagement, user]);
 
   const handleSetActiveSpace = useCallback((spaceId) => {
+    // Spaces chunk A: a space with no pages filters out every page and blanked
+    // the viewer. Refuse to turn it on; SpacesPanel also disables its switch.
+    const targetSpace = spaceId ? (spacesRef.current || []).find((s) => s.id === spaceId) : null;
+    if (targetSpace && (targetSpace.assignedPages || []).length === 0) {
+      showToast(`Add pages to ${targetSpace.name || 'this space'} first.`, 'warn');
+      return;
+    }
     debugLog('[SPACE TOGGLE] Activating space - regions enabled, annotations with regionId should be shown:', { spaceId, previousActiveSpaceId: activeSpaceId });
     clearAnnotationSelectionForContextChange('region-open');
     setActiveSpaceId(spaceId);
@@ -20273,6 +21817,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     pdfjsActiveSpacePagesRef.current = Array.isArray(activeSpacePages) ? activeSpacePages : [];
   }, [activeSpacePages]);
 
+  // Spaces chunk A: the active space lost its pages (pages removed elsewhere,
+  // an Undo, a collaborator). The viewer then shows nothing, so it shows the
+  // "No pages in <space>" card instead and the page counters stop claiming a
+  // page that is not shown.
+  const activeSpaceHasNoPages = Boolean(activeSpaceId) && Array.isArray(activeSpacePages) && activeSpacePages.length === 0;
+  const activeSpaceName = activeSpaceHasNoPages
+    ? (spaces.find((s) => s.id === activeSpaceId)?.name || 'this space')
+    : null;
+
   const annotationSpaceId = activeSpaceId ?? selectedSpaceId ?? null;
 
   const annotationSelectionContextKey = useMemo(() => buildAnnotationSelectionContextKey({
@@ -20320,6 +21873,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }), [visiblePagesSet, pageNum]);
 
   const isCloudBackedAnnotationDocument = !!pdfFile?.id && cloudSyncEnabled;
+  // UX (w29, open speed): while the store is still opening, marks from this
+  // device's saved copy / the cloud snapshot are already painted; the first
+  // page then shows the PDF and those marks (no grey loading cover) and only
+  // blocks input until hydration is ready.
+  const firstVisibleAnnotationPagePreviewing = isFirstVisibleAnnotationPagePreviewing({
+    documentId: pdfFile?.id || null,
+    isCloudBackedDocument: isCloudBackedAnnotationDocument,
+    normalHydration: normalAnnotationHydration,
+    surveyHydration: surveyAnnotationHydration,
+  });
   const isFirstVisibleAnnotationPageGated = useCallback((pageNumber) => {
     const gated = shouldGateFirstVisibleAnnotationPage({
       documentId: pdfFile?.id || null,
@@ -20365,6 +21928,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageNumber: firstVisibleAnnotationPage,
       ready,
       visualCoverActive: !ready,
+      // w29: marks painted early; the grey cover is off, input still held.
+      previewing: firstVisibleAnnotationPagePreviewing,
       normal: normalAnnotationHydration,
       survey: surveyAnnotationHydration,
     }));
@@ -20372,10 +21937,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       documentId: pdfFile?.id || null,
       pdfId,
       pageNumber: firstVisibleAnnotationPage,
-      active: !ready,
-      reason: ready ? 'hydration-ready' : 'annotation-hydration-gated',
+      active: !ready && !firstVisibleAnnotationPagePreviewing,
+      inputBlocked: !ready,
+      reason: ready
+        ? 'hydration-ready'
+        : (firstVisibleAnnotationPagePreviewing ? 'annotation-hydration-preview' : 'annotation-hydration-gated'),
     }));
   }, [
+    firstVisibleAnnotationPagePreviewing,
     firstVisibleAnnotationPage,
     isCloudBackedAnnotationDocument,
     normalAnnotationHydration,
@@ -21187,8 +22756,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setTransferState(null);
     setCopiedItemSelection({});
     setSurveyResponses({});
-    setNoteDialogOpen(null);
-    setNoteDialogContent({ text: '', photos: [], videos: [] });
     // UX 2026-07-17 — snap the tool back to Pan ONLY on a real document
     // change. This effect re-runs for the same open document on
     // zoom/scroll-driven callback identity churn (see the history-wipe gate
@@ -21469,11 +23036,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => {
     if (!pdfId) return;
 
-    // Compare current with saved to detect changes
-    const currentJson = JSON.stringify(annotationsByPage);
-    const savedJson = JSON.stringify(savedAnnotationsByPageRef.current);
+    // Compare current with saved to detect changes. jsonEqual answers exactly
+    // like comparing the two JSON.stringify strings, without building them
+    // (w29: ~70 ms per change on a 3,000-mark document).
+    const matchesSaved = jsonEqual(annotationsByPage, savedAnnotationsByPageRef.current);
 
-    if (currentJson !== savedJson && Object.keys(annotationsByPage).length > 0) {
+    if (!matchesSaved && Object.keys(annotationsByPage).length > 0) {
       setHasUnsavedAnnotations(true);
       // Notify parent component
       if (onUnsavedAnnotationsChange) {
@@ -21523,6 +23091,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => {
     if (!pdfId) return;
     if (pdfFile?.id) return;
+    if (pageChangeBackedUpMarksRef.current === annotationsByPage) return;
     saveAnnotationsByPage(pdfId, annotationsByPage);
   }, [pdfId, pdfFile?.id, annotationsByPage]);
 
@@ -21585,15 +23154,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [pdfFile, pdfId, annotationsByPage, callouts, entities, scale, pageNum, uploadDataFile, updateSupabaseDocument]);
 
   // Load survey data from Supabase Storage
-  const loadSurveyDataFromSupabase = useCallback(async (doc) => {
+  const loadSurveyDataFromSupabase = useCallback(async (doc, prefetchedDataBlob) => {
     if (!doc || !doc.projectId) return;
 
     try {
       const filePath = `${doc.projectId}/${doc.id}_data.json`;
 
       // Check if file exists by trying to get URL (or just try download and catch error)
-      // We'll just try to download
-      const dataBlob = await downloadFromStorage(filePath);
+      // We'll just try to download. Open speed (2026-10-04): the PDF load starts
+      // this same download alongside the PDF's own and hands its promise in,
+      // so it no longer adds a round trip before the first page.
+      const dataBlob = prefetchedDataBlob !== undefined
+        ? await prefetchedDataBlob
+        : await downloadFromStorage(filePath);
       if (!dataBlob) return;
 
       const text = await dataBlob.text();
@@ -21708,7 +23281,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         embeddedPdfNativeAnnotationHandling: 'preserve-unedited-native-annots-skip-unedited-imported-copies-export-edited-imported-copies',
         note: 'Explicit export generates a PDF copy from original PDF bytes. Unedited imported PDF-native app copies are skipped to avoid duplication; edited imported copies are exported from app state.'
       }));
-      const sourcePdfForExport = pdfFile;
+      // Page operations save in the background; export the bytes that match
+      // the pages on screen.
+      const sourcePdfForExport = (await flushPageOperations()) || pdfFile;
       if (typeof pdfjsViewerRef.current?.saveAsBlob === 'function') {
         console.log('[PDFSaveExport] source PDF selection ' + JSON.stringify({
           actionType: 'pdf-export',
@@ -21809,6 +23384,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     annotationsByPage,
     callouts,
     deletedPdfAnnotations,
+    flushPageOperations,
     pageSizes,
     pdfFile,
     spaces,
@@ -21841,7 +23417,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         import('./utils/permanentPdfRedaction.js'),
       ]);
       const annotatedBytes = await savePDFWithAnnotationsPdfLib(
-        pdfFile,
+        (await flushPageOperations()) || pdfFile,
         redactionAnnotationsByPage,
         pageSizes,
         null,
@@ -21899,6 +23475,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     applyRedactionsBusy,
     callouts,
     deletedPdfAnnotations,
+    flushPageOperations,
     numPages,
     pageSizes,
     pdfFile,
@@ -22091,30 +23668,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return removeListener;
   }, [hasUnsavedAnnotations, handleSaveDocument]);
 
-  // Load note content when note dialog opens
-  useEffect(() => {
-    if (!noteDialogOpen) {
-      return;
-    }
-
-    // For item-level notes, noteDialogOpen is just the annotationId
-    const annotationId = noteDialogOpen;
-
-
-    const existingNote = surveyMarkers[annotationId]?.note;
-
-
-    if (existingNote) {
-      setNoteDialogContent({
-        text: existingNote.text || '',
-        photos: existingNote.photos || [],
-        videos: existingNote.videos || []
-      });
-    } else {
-      setNoteDialogContent({ text: '', photos: [], videos: [] });
-    }
-  }, [noteDialogOpen, surveyMarkers]);
-
   // Migrate legacy surveyMarkers to new system (one-time, when template is selected)
   useEffect(() => {
     if (!selectedTemplate || !pdfId || Object.keys(surveyMarkers).length === 0) return;
@@ -22203,16 +23756,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
   }, [bookmarks.length, pdfOutlinePageLookup]);
 
+  // Page operations (usePageViewDocument): the load token of the last real
+  // load, and the latest file/token for the effect cleanup below.
+  const pageViewLoadTokenRef = useRef(null);
+  const latestPdfFileRef = useRef(pdfFile);
+  latestPdfFileRef.current = pdfFile;
+  const latestLoadRetryTokenRef = useRef(loadRetryToken);
+  latestLoadRetryTokenRef.current = loadRetryToken;
   // Load PDF
   useEffect(() => {
     if (!pdfFile) {
       return;
     }
+    // Background save of a page operation: these bytes are already on screen.
+    // (A retry — new loadRetryToken — always loads.)
+    if (isPageViewFileCurrent(pdfFile) && pageViewLoadTokenRef.current === loadRetryToken) {
+      return;
+    }
+    pageViewLoadTokenRef.current = loadRetryToken;
     let isCancelled = false;
 
     const loadPDF = async () => {
       const docName = pdfFile.name || 'unknown';
       const analyticsLoadStartedAt = performance.now();
+      firstPageDrawnRef.current = { drawn: false, resolve: null };
       firstPagePaintAnalyticsRef.current = {
         startedAt: analyticsLoadStartedAt,
         byteSizeBucket: 'unknown',
@@ -22230,6 +23797,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // PDF.js will use default verbosity level
 
         setIsLoadingPDF(true);
+
+        // Open speed (2026-10-04): the project sidecar read below used to start
+        // only after the PDF was downloaded and parsed, holding the first page
+        // back by one more round trip. Start it now, alongside the PDF download
+        // (the same one read, just earlier); it is still applied at the same
+        // point as before.
+        const surveyDataBlobPromise = pdfFile.projectId
+          ? Promise.resolve()
+            .then(() => downloadFromStorage(`${pdfFile.projectId}/${pdfFile.id}_data.json`))
+            .catch(() => null)
+          : undefined;
 
         // UX: the unsupported-annotations toast is once-per-document-open —
         // clear both pieces on every load so a document without unsupported
@@ -22368,7 +23946,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
         // Load project data from Supabase if available
         if (pdfFile.projectId) {
-          await loadSurveyDataFromSupabase(pdfFile);
+          await loadSurveyDataFromSupabase(pdfFile, surveyDataBlobPromise);
         }
         if (isCancelled) return;
 
@@ -22413,6 +23991,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           remainingPages.push(i);
         }
 
+        // Commit the sizes a few times, not once per batch (WebKit warned
+        // "Maximum update depth exceeded" on open) — utils/pageSizeCommitBatcher.
+        const pageSizeCommits = createPageSizeCommitBatcher({
+          commit: ({ heights, sizes, pages }) => {
+            setPageHeights((prev) => ({ ...prev, ...heights }));
+            setPageSizes((prev) => ({ ...prev, ...sizes }));
+            setPageObjects((prev) => ({ ...prev, ...pages }));
+          },
+        });
         for (let start = 0; start < remainingPages.length; start += maxWorkers) {
           const batch = remainingPages.slice(start, start + maxWorkers);
           const batchResults = await Promise.all(batch.map(async (pageNumber) => {
@@ -22437,10 +24024,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             loadedPageSizes[pageNumber] = { width: viewport.width, height: viewport.height };
           });
 
-          setPageHeights((prev) => ({ ...prev, ...batchHeights }));
-          setPageSizes((prev) => ({ ...prev, ...batchSizes }));
-          setPageObjects((prev) => ({ ...prev, ...batchPages }));
+          // A page operation during this sizing loop switched the viewer to a
+          // page view whose numbering differs from this document's; the view
+          // measures its own pages (usePageViewDocument).
+          if (isPageViewOver(pdf)) continue;
+          pageSizeCommits.add(batchHeights, batchSizes, batchPages);
         }
+        if (!isPageViewOver(pdf)) pageSizeCommits.flush();
 
         perfLoad.mark(docName, `Page sizes calculated (${pdf.numPages} pages)`);
 
@@ -22472,8 +24062,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             // in the file and exports. Unlike the skipped diagnostics pass
             // above, this is a cheap subtype-count scan (getAnnotations only —
             // no pdf-lib raw-bytes parse, no conversion) and it is fire-and-
-            // forget so it never delays first paint.
-            countUnsupportedAnnotations(pdf).then((counts) => {
+            // forget so it never delays first paint. Open speed (2026-10-04):
+            // it reads every page's annotations on the one pdf.js worker, which
+            // held back page 1's own drawing on a large set, so it now starts
+            // once page 1 is drawn (4 s at the latest).
+            new Promise((resolve) => {
+              if (firstPageDrawnRef.current.drawn) { resolve(); return; }
+              firstPageDrawnRef.current.resolve = resolve;
+              setTimeout(resolve, 4000);
+            }).then(() => (isCancelled ? null : countUnsupportedAnnotations(pdf))).then((counts) => {
               if (isCancelled) return;
               if (counts && Object.keys(counts).length > 0) {
                 setUnsupportedAnnotationCounts(counts);
@@ -22785,16 +24382,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setPdfLoadError(null);
     loadPDF();
     return () => {
+      // A page operation's background save swaps pdfFile while this load may
+      // still be sizing pages; those bytes are already on screen, so the load
+      // keeps running.
+      if (isPageViewFileCurrent(latestPdfFileRef.current)
+        && pageViewLoadTokenRef.current === latestLoadRetryTokenRef.current) return;
       isCancelled = true;
     };
   }, [pdfFile, loadRetryToken]);
 
   // PDFViewer owns the single pdf.js document proxy. The mobile renderer reuses
   // it instead of parsing and retaining a second copy of the same PDF.
+  // A page view (instant page operations) shares its base document, so only a
+  // different base is destroyed.
+  const pdfBaseDoc = getPageViewBase(pdfDoc);
   useEffect(() => () => {
-    if (!pdfDoc) return;
-    try { pdfDoc.destroy(); } catch { /* noop */ }
-  }, [pdfDoc]);
+    if (!pdfBaseDoc) return;
+    try { pdfBaseDoc.destroy(); } catch { /* noop */ }
+  }, [pdfBaseDoc]);
 
   // KAL-46 / sleep-wake recovery watchdog.
   //
@@ -22925,7 +24530,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     if (usePdfjsRenderer) {
       const viewer = pdfjsViewerRef.current;
-      if (Math.abs(safeScale - previousScale) > 0.0001 && viewer?.magnificationModule) {
+      // options.animate (zoom buttons / Ctrl+-): the engine glides there. It may
+      // be gliding away from previousScale, so a step back to it still counts.
+      if ((Math.abs(safeScale - previousScale) > 0.0001 || options.animate) && viewer?.magnificationModule) {
         const zoomPercent = safeScale * 100;
         const zoomSource = options.mode || pdfjsZoomSourceRef.current || ZOOM_MODES.MANUAL;
         pdfjsZoomSourceRef.current = zoomSource;
@@ -22941,7 +24548,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             : containerRect.top + anchor.y;
           viewer.magnificationModule.initiateMouseZoom(zoomClientX, zoomClientY, zoomPercent);
         } else if (viewer.magnificationModule.zoomTo) {
-          viewer.magnificationModule.zoomTo(zoomPercent);
+          viewer.magnificationModule.zoomTo(zoomPercent, options.animate ? { animate: true } : undefined);
         }
       }
       return;
@@ -23021,6 +24628,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       retryDelay = usePdfjsRenderer ? 80 : 40,
       rightInset = 0,
       leftInset = 0,
+      // Top/bottom cover (phone search sheet): centre in the strip left over.
+      topInset = 0,
+      bottomInset = 0,
       bypassActiveSpace = true,
       navigateFirst = true,
       settlePasses = 0,
@@ -23106,12 +24716,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const containerWidth = Number(container.clientWidth) || containerRect.width;
       const containerHeight = Number(container.clientHeight) || containerRect.height;
       const visibleWidth = Math.max(80, containerWidth - Math.max(0, leftInset) - Math.max(0, rightInset));
-      const visibleHeight = Math.max(80, containerHeight);
+      const visibleHeight = Math.max(80, containerHeight - Math.max(0, topInset) - Math.max(0, bottomInset));
 
       const pageOffsetX = pageRect.left - containerRect.left + container.scrollLeft;
       const pageOffsetY = pageRect.top - containerRect.top + container.scrollTop;
       const targetScrollLeft = pageOffsetX + targetBounds.centerX * pageScaleX - Math.max(0, leftInset) - visibleWidth / 2;
-      const targetScrollTop = pageOffsetY + targetBounds.centerY * pageScaleY - visibleHeight / 2;
+      const targetScrollTop = pageOffsetY + targetBounds.centerY * pageScaleY - Math.max(0, topInset) - visibleHeight / 2;
 
       const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
       const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
@@ -23231,8 +24841,205 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [usePdfjsRenderer]);
 
   // Navigate to a search match with zoom and centering
-  const navigateToMatch = useCallback((match, index) => {
+  const navigateToMatch = useCallback((match, index, navigationOptions = undefined) => {
     if (!match || !containerRef.current) return;
+
+    if (usePdfjsRenderer) {
+      // UX (owner 2026-09-23: "when I click, I should be directly brought to
+      // it, zoomed in and centered on whatever it is that it found"):
+      //   1. bring the match's page on screen;
+      //   2. zoom in (never out) to a comfortable reading size for that line of
+      //      text — through the normal viewer zoom (setScaleWithViewportPreservation
+      //      → magnificationModule.zoomTo), so the zoomGeneration signal and the
+      //      pdf.js commit lifecycle run exactly as for a toolbar zoom;
+      //   3. once the page has re-rendered at the new size, centre the match in
+      //      the part of the viewer you can see (beside the open side panel on
+      //      desktop; above the Search sheet on the phone while it stays open).
+      // Every jump takes a token, so clicking or stepping quickly never queues
+      // stale jumps — the newest one wins and older ones stop where they are.
+      const navToken = textMatchNavTokenRef.current + 1;
+      textMatchNavTokenRef.current = navToken;
+      const isCurrentJump = () => textMatchNavTokenRef.current === navToken;
+      const pageNumber = Number(match.pageNumber);
+      const bounds = match.bounds;
+      const dismissingSheet = Boolean(navigationOptions?.dismissingSheet);
+
+      currentMatchIndexRef.current = index;
+      setCurrentMatchIndex(index);
+      scheduleTextSearchHighlightRefresh('match-navigation', 80);
+
+      const resolveInsets = () => {
+        const container = containerRef.current;
+        if (!container || typeof document === 'undefined') {
+          return { left: 0, right: 0, top: 0, bottom: 0 };
+        }
+        const occluders = Array.from(document.querySelectorAll('[data-viewer-occluder]'))
+          // A sheet that is closing because you picked a result no longer counts.
+          .filter((node) => !(dismissingSheet && node.getAttribute('data-viewer-occluder') === 'sheet'))
+          .map((node) => node.getBoundingClientRect());
+        return resolveViewerOcclusionInsets(container.getBoundingClientRect(), occluders);
+      };
+      const readPageGeometry = () => {
+        const pageContainer =
+          pageContainersRef.current?.[pageNumber] ||
+          pdfjsPageContainersStateRef.current?.[pageNumber] ||
+          pdfjsViewerRef.current?.getPageContainer?.(pageNumber) ||
+          null;
+        if (!pageContainer || !pageContainer.isConnected) return null;
+        const pageElement = resolvePageContentElement(pageContainer) || pageContainer;
+        const pageRect = pageElement.getBoundingClientRect();
+        const pageSize = pageSizesRef.current?.[pageNumber] || {};
+        if (!(pageRect.width > 0) || !(Number(pageSize.width) > 0)) return null;
+        return { pageRect, renderedScale: pageRect.width / Number(pageSize.width) };
+      };
+      const centerNow = (behavior = 'auto', insets = resolveInsets()) => centerPageBoundsInViewer(pageNumber, bounds, {
+        behavior,
+        retryBehavior: 'auto',
+        maxRetries: 18,
+        retryDelay: 60,
+        navigateFirst: true,
+        leftInset: insets.left,
+        rightInset: insets.right,
+        topInset: insets.top,
+        bottomInset: insets.bottom
+      });
+      const waitFor = (predicate, onReady, { maxWaitMs = 1500 } = {}) => {
+        const startedAt = Date.now();
+        const tick = () => {
+          if (!isCurrentJump()) return;
+          const value = predicate();
+          if (value || Date.now() - startedAt >= maxWaitMs) {
+            onReady(value);
+            return;
+          }
+          // A frame, or 16ms when frames are throttled (unfocused window).
+          let stepped = false;
+          const step = () => {
+            if (stepped) return;
+            stepped = true;
+            tick();
+          };
+          window.requestAnimationFrame(step);
+          window.setTimeout(step, 16);
+        };
+        tick();
+      };
+      const reportLanding = (phase, extra = {}) => {
+        if (typeof document === 'undefined') return;
+        const container = containerRef.current;
+        const geometry = readPageGeometry();
+        const center = getBoundsCenter(bounds);
+        if (!container || !geometry || !center) return;
+        const insets = resolveInsets();
+        const matchRect = {
+          left: geometry.pageRect.left + center.centerX * geometry.renderedScale,
+          top: geometry.pageRect.top + center.centerY * geometry.renderedScale,
+          width: 0,
+          height: 0
+        };
+        emitTextSearchDiag('app_match_navigation_landed', {
+          phase,
+          index,
+          pageNumber,
+          renderedScale: Math.round(geometry.renderedScale * 1000) / 1000,
+          insets,
+          offset: measureCenterOffset(matchRect, container.getBoundingClientRect(), insets),
+          ...extra,
+          pdfDocumentKey: pdfSearchDocumentKey
+        });
+      };
+
+      if (!Number.isFinite(pageNumber) || pageNumber < 1) return;
+      if (!bounds) {
+        goToPage(pageNumber, { bypassActiveSpace: true });
+        return;
+      }
+
+      emitTextSearchDiag('app_match_navigation_start', {
+        index,
+        pageNumber,
+        hasBounds: true,
+        currentScale: scaleRef.current,
+        dismissingSheet,
+        targetRenderer: 'pdfjs',
+        pdfDocumentKey: pdfSearchDocumentKey
+      });
+
+      // Step 1: get the page on screen (it may be virtualized away).
+      if (!readPageGeometry()) {
+        goToPage(pageNumber, { bypassActiveSpace: true });
+      }
+      waitFor(readPageGeometry, (geometry) => {
+        const currentScale = Math.max(0.01, geometry?.renderedScale || Number(scaleRef.current) || Number(scale) || 1);
+        const container = containerRef.current;
+        const insets = resolveInsets();
+        const visibleWidth = Math.max(80, (Number(container?.clientWidth) || 0) - insets.left - insets.right);
+        const lineHeight = Number(match.lineHeight) > 0
+          ? Number(match.lineHeight)
+          : Math.max(1, Number(bounds.height) || 0);
+        const targetScale = resolveReadableSearchScale({
+          currentScale,
+          lineHeight,
+          matchWidth: Number(bounds.width) || 0,
+          visibleWidth,
+          targetTextPx: mobileMode ? SEARCH_READABLE_TEXT_PX_PHONE : SEARCH_READABLE_TEXT_PX
+        });
+        const shouldZoom = targetScale > currentScale * 1.02;
+
+        if (!shouldZoom) {
+          // Same zoom: glide when the match is close by, jump when it is far.
+          const pageRect = geometry?.pageRect;
+          const containerRect = container?.getBoundingClientRect?.();
+          const nearby = pageRect && containerRect &&
+            pageRect.bottom > containerRect.top && pageRect.top < containerRect.bottom;
+          centerNow(nearby ? 'smooth' : 'auto', insets);
+          window.setTimeout(() => {
+            if (isCurrentJump()) reportLanding('center', { zoomed: false, fromScale: currentScale });
+          }, nearby ? 480 : 60);
+          return;
+        }
+
+        if (searchZoomLevelRef.current === null) {
+          searchZoomLevelRef.current = currentScale;
+        }
+        // Put the match in the middle of the scroller first, so the zoom —
+        // which holds the scroller's centre still — grows the page around it.
+        centerNow('auto', { left: 0, right: 0, top: 0, bottom: 0 });
+        // MANUAL, like pressing zoom-in: a still-armed fit-to-page must not
+        // snap the view back out a moment later (it did on the phone when the
+        // Search sheet closed).
+        setScaleWithViewportPreservation(targetScale, { preserveCenter: false, mode: ZOOM_MODES.MANUAL });
+        // Step 3: wait for the committed zoom to reach the page, then centre
+        // in the visible area and check once more a frame later (the viewer
+        // re-anchors its scroll position in a layout pass after the commit).
+        waitFor(() => {
+          const next = readPageGeometry();
+          return next && Math.abs(next.renderedScale - targetScale) / targetScale < 0.015 ? next : null;
+        }, () => {
+          centerNow('auto');
+          window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+            if (!isCurrentJump()) return;
+            centerPageBoundsInViewer(pageNumber, bounds, {
+              behavior: 'auto',
+              navigateFirst: false,
+              maxRetries: 4,
+              skipIfClosePx: 2,
+              ...(() => {
+                const finalInsets = resolveInsets();
+                return {
+                  leftInset: finalInsets.left,
+                  rightInset: finalInsets.right,
+                  topInset: finalInsets.top,
+                  bottomInset: finalInsets.bottom
+                };
+              })()
+            });
+            reportLanding('zoom-center', { zoomed: true, fromScale: currentScale, targetScale });
+          }));
+        });
+      });
+      return;
+    }
 
     // Prevent recursive navigation
     if (isNavigatingToMatchRef.current) {
@@ -23428,9 +25235,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [
     centerPageBoundsInViewer,
+    getBoundsCenter,
     goToPage,
+    mobileMode,
     pageSizes,
     pdfSearchDocumentKey,
+    resolvePageContentElement,
     scale,
     scheduleTextSearchHighlightRefresh,
     scrollMode,
@@ -23454,12 +25264,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     previousSearchResultsCountRef.current = safeResults.length;
     setSearchResults(safeResults);
-    // Reset zoom when search changes
-    if (searchZoomLevelRef.current !== null && safeResults.length === 0) {
-      setScaleWithViewportPreservation(searchZoomLevelRef.current);
-      searchZoomLevelRef.current = null;
-    }
-  }, [currentMatchIndex, pageNum, pdfSearchDocumentKey, setScaleWithViewportPreservation]);
+    // The zoom a search jump added is handed back only when the search is
+    // cleared (handleClearTextSearch) — not whenever a half-typed query has
+    // no matches yet, which zoomed the page out from under you mid-typing.
+  }, [currentMatchIndex, pageNum, pdfSearchDocumentKey]);
 
   // Handler for current match index change
   const handleCurrentMatchIndexChange = useCallback((index) => {
@@ -23487,12 +25295,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleClearTextSearch = useCallback(() => {
     activeTextSearchQueryRef.current = '';
+    // Stop any jump still in flight, then give back the zoom you had before
+    // the first search jump (UX: clearing a search returns your view's zoom).
+    textMatchNavTokenRef.current += 1;
+    if (searchZoomLevelRef.current !== null) {
+      setScaleWithViewportPreservation(searchZoomLevelRef.current, { mode: ZOOM_MODES.MANUAL });
+      searchZoomLevelRef.current = null;
+    }
     if (textSearchRefreshTimerRef.current) {
       clearTimeout(textSearchRefreshTimerRef.current);
       textSearchRefreshTimerRef.current = null;
     }
     pdfjsViewerRef.current?.cancelTextSearch?.();
-  }, []);
+  }, [setScaleWithViewportPreservation]);
 
   if (!zoomControllerRef.current) {
     zoomControllerRef.current = createZoomController({
@@ -23556,9 +25371,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } catch (_e) { /* swallow */ }
     if (!controller) return;
     const measuredScale = reconcilePdfjsScaleFromRenderedPage('manual-zoom');
-    const basisScale = measuredScale || scaleRef.current || manualZoomScaleRef.current || 1.0;
+    // Owner 2026-10-07 (smooth zoom): mid-glide, step from where it is heading.
+    const glideTarget = Number(pdfjsViewerRef.current?.getZoomGlideTarget?.()) || null;
+    const basisScale = glideTarget || measuredScale || scaleRef.current || manualZoomScaleRef.current || 1.0;
     const nextScale = clampScale(basisScale * TOOLBAR_ZOOM_STEP_FACTOR);
-    controller.setScale(nextScale);
+    controller.setScale(nextScale, { animate: true });
     try { console.log(`[InteractionDiag] zoom-applied @ ${Math.round(performance.now())}ms dir=in from=${basisScale.toFixed(3)} to=${nextScale.toFixed(3)}`); } catch (_e) { /* swallow */ }
   }, [reconcilePdfjsScaleFromRenderedPage]);
 
@@ -23570,9 +25387,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } catch (_e) { /* swallow */ }
     if (!controller) return;
     const measuredScale = reconcilePdfjsScaleFromRenderedPage('manual-zoom');
-    const basisScale = measuredScale || scaleRef.current || manualZoomScaleRef.current || 1.0;
+    // Owner 2026-10-07 (smooth zoom): mid-glide, step from where it is heading.
+    const glideTarget = Number(pdfjsViewerRef.current?.getZoomGlideTarget?.()) || null;
+    const basisScale = glideTarget || measuredScale || scaleRef.current || manualZoomScaleRef.current || 1.0;
     const nextScale = clampScale(basisScale / TOOLBAR_ZOOM_STEP_FACTOR);
-    controller.setScale(nextScale);
+    controller.setScale(nextScale, { animate: true });
     try { console.log(`[InteractionDiag] zoom-applied @ ${Math.round(performance.now())}ms dir=out from=${basisScale.toFixed(3)} to=${nextScale.toFixed(3)}`); } catch (_e) { /* swallow */ }
   }, [reconcilePdfjsScaleFromRenderedPage]);
 
@@ -23656,11 +25475,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setIsPageInputDirty(true);
   }, []);
 
-  const commitPageInput = useCallback(() => {
-    const value = parseInt(pageInputValue);
-    if (!isNaN(value) && value >= 1 && value <= numPages) {
+  // UX 2026-09-23 (owner: right rail audit): Escape in the page / zoom field
+  // CANCELS. Both handlers blur the field after Escape, and the blur handler
+  // commits — reading the typed value from a closure the reset had not yet
+  // reached, so Escape used to apply the value you were abandoning (typed 250,
+  // Escape -> zoom went to 250%). These flags make that one blur a no-op.
+  const skipPageInputCommitRef = useRef(false);
+  const skipZoomInputCommitRef = useRef(false);
+
+  // `typed` is the field's own DOM value when the caller has it. The state
+  // copy reaches AppShell's rail field a render late (PDFViewer publishes
+  // the toolbar API through an effect), so a fast "17" + Enter could commit
+  // the stale "1" — measured: 2 of 4 fast-typed jumps went to the wrong page.
+  const commitPageInput = useCallback((typed) => {
+    // Out-of-range numbers clamp to the first / last page (99 -> 36, 0 -> 1);
+    // they used to be dropped silently. Non-numbers cancel.
+    const value = resolvePageInput(typeof typed === 'string' ? typed : pageInputValue, numPages);
+    if (value !== null) {
       // Navigate first, then update input value will be synced by useEffect when pageNum updates
       goToPage(value);
+      // Drawboard parity (measured 2026-10-04): a typed jump zooms to Fit page
+      // for that page — top at the top of the view, centred across, page 1 and
+      // the last page resting against the document ends. See pageNavigationMath.
+      if (TYPED_PAGE_JUMP_FITS_PAGE) handleZoomModeSelect(ZOOM_MODES.FIT_PAGE);
       // Also set it immediately for visual feedback, but useEffect will ensure it's correct
       setPageInputValue(String(value));
       setIsPageInputDirty(false);
@@ -23669,18 +25506,28 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setPageInputValue(String(pageNum));
       setIsPageInputDirty(false);
     }
-  }, [pageInputValue, numPages, goToPage, pageNum]);
+  }, [pageInputValue, numPages, goToPage, pageNum, handleZoomModeSelect]);
 
   const handlePageInputKeyDown = useCallback((e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      commitPageInput();
+      commitPageInput(e.target.value);
+      skipPageInputCommitRef.current = true;
       e.target.blur();
+      skipPageInputCommitRef.current = false;
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setPageInputValue(String(pageNum));
+      setIsPageInputDirty(false);
+      skipPageInputCommitRef.current = true;
+      e.target.blur();
+      skipPageInputCommitRef.current = false;
     }
-  }, [commitPageInput]);
+  }, [commitPageInput, pageNum]);
 
-  const handlePageInputBlur = useCallback(() => {
-    commitPageInput();
+  const handlePageInputBlur = useCallback((e) => {
+    if (skipPageInputCommitRef.current) return;
+    commitPageInput(e?.target?.value);
   }, [commitPageInput]);
 
   useEffect(() => {
@@ -23735,36 +25582,28 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [scale]);
 
   const handleZoomInputChange = useCallback((e) => {
-    const digitsOnly = e.target.value.replace(/\D/g, '');
     // Keep typed zoom inside the same 1%-4000% contract as the PDF engine.
     // Min is not clamped here;
     // typing "5" should not jump to "10" mid-keystroke. Final min clamp
-    // happens on commit in commitZoomInput.
-    if (digitsOnly === '') {
-      setZoomInputValue('');
-      return;
-    }
-    const numeric = parseInt(digitsOnly, 10);
-    if (Number.isFinite(numeric) && numeric > 4000) {
-      setZoomInputValue('4000');
-    } else {
-      setZoomInputValue(digitsOnly);
-    }
+    // happens on commit in commitZoomInput. One decimal point is kept
+    // (2026-09-23 rail audit): "12.5" used to become "125", a 10x zoom.
+    setZoomInputValue(sanitizeZoomInput(e.target.value));
   }, []);
 
-  const commitZoomInput = useCallback(() => {
-    if (!zoomInputValue) {
+  const commitZoomInput = useCallback((typed) => {
+    // `typed` = the field's DOM value (see commitPageInput for why).
+    const source = typeof typed === 'string' ? typed : zoomInputValue;
+    if (!source) {
       setZoomInputValue(String(Math.round(scale * 100)));
       return;
     }
 
-    const parsed = parseInt(zoomInputValue, 10);
-    if (isNaN(parsed)) {
+    const clamped = parseZoomPercentInput(source);
+    if (clamped === null) {
       setZoomInputValue(String(Math.round(scale * 100)));
       return;
     }
 
-    const clamped = Math.min(Math.max(parsed, 1), 4000);
     const controller = zoomControllerRef.current;
     if (controller) {
       const normalized = clampScale(clamped / 100);
@@ -23779,16 +25618,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleZoomInputKeyDown = useCallback((e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      commitZoomInput();
+      commitZoomInput(e.currentTarget.value);
+      skipZoomInputCommitRef.current = true;
       e.currentTarget.blur();
+      skipZoomInputCommitRef.current = false;
     } else if (e.key === 'Escape') {
       setZoomInputValue(String(Math.round(scale * 100)));
+      skipZoomInputCommitRef.current = true;
       e.currentTarget.blur();
+      skipZoomInputCommitRef.current = false;
     }
   }, [commitZoomInput, scale]);
 
-  const handleZoomInputBlur = useCallback(() => {
-    commitZoomInput();
+  const handleZoomInputBlur = useCallback((e) => {
+    if (skipZoomInputCommitRef.current) return;
+    commitZoomInput(e?.target?.value);
   }, [commitZoomInput]);
 
   const mobileSurveyModules = useMemo(
@@ -23809,14 +25653,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setMobileSurveyEntityId(null);
     setActiveToolLogged('survey-marker');
   }, [setActiveToolLogged]);
+  // Survey audit P1-3 (2026-10-01): the category and the entity are two
+  // independent picks for the next Survey Marker. Picking one keeps the other
+  // (an entity tap used to disarm the category, so the next drag opened a
+  // surprise "Categorize" dialog).
   const handleMobileSurveyCategorySelect = useCallback((categoryId) => {
     setSelectedCategoryId(categoryId || null);
-    setMobileSurveyEntityId(null);
     setActiveToolLogged('survey-marker');
   }, [setActiveToolLogged]);
   const handleMobileSurveyEntitySelect = useCallback((entityId) => {
     setMobileSurveyEntityId(entityId || null);
-    setSelectedCategoryId(null);
     setActiveToolLogged('survey-marker');
   }, [setActiveToolLogged]);
 
@@ -23865,12 +25711,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const selectedAnnotationId = getAnnotationRenderIdentity(
       selectedToolbarAnnotation?.annotation,
     ).annotationId;
+    const selectedAnnotIndex = findSelectedAnnotationIndex(pageObjects, selectedToolbarAnnotation);
     const currentSelectedAnnot = (
-      selectedAnnotationId
-        ? pageObjects.find((annotation) => (
-            getAnnotationRenderIdentity(annotation).annotationId === selectedAnnotationId
-          ))
-        : pageObjects[selectedToolbarAnnotation?.annotationIndex]
+      selectedAnnotIndex >= 0 ? pageObjects[selectedAnnotIndex] : null
     ) || selectedToolbarAnnotation?.annotation;
     const selectedAnnot = currentSelectedAnnot;
     const selectedType = String(selectedAnnot?.type || '').toLowerCase();
@@ -23899,9 +25742,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     ) {
       selectionMappedTool = 'arrow';
     }
-    const contextTool = (activeTool === 'select' && selectionMappedTool)
+    // Owner 2026-10-04: pickBarTool is 'select' while the bar shows and edits
+    // the pick - under Select, Pan, or a Shapes / Text tool's own-group pick
+    // (utils/toolbarCalloutTarget.js) - so all three read the pick alike.
+    // w41: two or more marks picked -> the bar shows the group's layout
+    // (utils/selectionRestyle summarizeSelectionRestyle), not the Select
+    // mode toggle, so the picked marks can be restyled together.
+    const groupSummary = pickBarTool === 'select' ? (restyleGroup?.summary || null) : null;
+    if (groupSummary) selectionMappedTool = groupSummary.contextTool;
+    const contextTool = (pickBarTool === 'select' && selectionMappedTool)
       ? selectionMappedTool
       : activeTool;
+    // w44 (rows flipped): the tool bar shows the picked mark's group's tools.
+    // Marks of more than one kind picked together borrow no group: the bar
+    // shows Select's own modes and row 2 the settings they share.
+    const subToolTool = groupSummary?.mixedKinds ? 'select' : contextTool;
+    setSubToolContextTool((prev) => (prev === subToolTool ? prev : subToolTool));
+    // What the picked mark(s) can change: a partly erased or imported pen
+    // stroke has no rebuildable width, a group only offers what at least one
+    // member has. Null while nothing is picked (the tool's own controls).
+    const selectionCapabilities = groupSummary
+      ? groupSummary.capabilities
+      : (pickBarTool === 'select' && !selectedToolbarCallout && isFilledInkPath(selectedAnnot)
+        ? restyleCapabilities(selectedAnnot)
+        : null);
     const textMarkupSelectionRect = (() => {
       if (contextTool === 'text-select' && liveTextSelection?.anchor) return liveTextSelection.anchor;
       if (selectedAnnot?.data?.type !== 'text-markup') return null;
@@ -23942,7 +25806,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return composeColorForPatch(hex, effectiveAlpha * 100);
     };
     const selectedPreviewColors = (() => {
-      if (activeTool === 'counter') {
+      if (pickBarTool === 'counter') {
         return {
           fill: effectivePreviewColor(activeCounterSeriesPaint.fill),
           stroke: effectivePreviewColor(activeCounterSeriesPaint.numberColor),
@@ -23951,7 +25815,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // A selection can remain cached after the user arms a drawing tool. In
       // that state the toolbar must preview the drawing tool defaults, not the
       // stale selected object's paint.
-      if (activeTool !== 'select') return { fill: null, stroke: null };
+      if (pickBarTool !== 'select') return { fill: null, stroke: null };
+      // w41: a group previews the values the bar loaded for it (the states).
+      if (groupSummary) return { fill: null, stroke: null };
       if (selectedToolbarCallout?.callout) {
         const style = selectedToolbarCallout.callout.style || {};
         const border = style.borderColor || style.lineColor || '#1e293b';
@@ -24008,21 +25874,59 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         stroke: effectivePreviewColor(currentSelectedAnnot.stroke || 'transparent', objectOpacity),
       };
     })();
-    const counterToolStrokeColor = activeTool === 'counter'
+    const counterToolStrokeColor = pickBarTool === 'counter'
       ? (getHexFromColor(activeCounterSeriesPaint.numberColor) || strokeColor)
       : strokeColor;
-    const counterToolStrokeOpacity = activeTool === 'counter'
+    const counterToolStrokeOpacity = pickBarTool === 'counter'
       ? getOpacityFromEntityColor(activeCounterSeriesPaint.numberColor)
       : strokeOpacity;
-    const counterToolFillColor = activeTool === 'counter'
+    const counterToolFillColor = pickBarTool === 'counter'
       ? (getHexFromColor(activeCounterSeriesPaint.fill) || fillColor)
       : fillColor;
-    const counterToolFillOpacity = activeTool === 'counter'
+    const counterToolFillOpacity = pickBarTool === 'counter'
       ? getOpacityFromEntityColor(activeCounterSeriesPaint.fill)
       : fillOpacity;
-    const selectedTextMarkupPaint = activeTool === 'select' && selectedAnnot?.data?.type === 'text-markup'
+    const selectedTextMarkupPaint = pickBarTool === 'select' && selectedAnnot?.data?.type === 'text-markup'
       ? resolveTextMarkupEditPaint(selectedAnnot, strokeColor)
       : null;
+    // UX 2026-09-23: with one callout or text box selected (and no live
+    // editor, whose own bridge wins), the text bar reads and writes THAT
+    // object's text style, not the tool's defaults (handleTextStyleSourceChange).
+    const selectedTextboxPlaceKey = `textbox:@${selectedToolbarAnnotation?.pageNumber}:${selectedToolbarAnnotation?.annotationIndex}`;
+    const groupTextTarget = (groupSummary && !richTextEditor && restyleGroup?.firstTextStyle
+      && (groupSummary.contextTool === 'text' || groupSummary.contextTool === 'callout'))
+      ? {
+        // kind: what the boxes are (all callouts or all text boxes); group:
+        // the change goes to every picked box (handleTextStyleSourceChange).
+        kind: groupSummary.contextTool === 'callout' ? 'callout' : 'textbox',
+        group: true,
+        key: `group:${restyleGroup.key}`,
+        style: restyleGroup.firstTextStyle,
+      }
+      : null;
+    const selectedTextTarget = (pickBarTool === 'select' && !richTextEditor)
+      ? (groupTextTarget || (groupSummary ? null : selectedToolbarCallout?.callout
+        ? {
+          kind: 'callout',
+          key: `callout:${selectedToolbarCallout.id}`,
+          style: readCalloutTextStyle(selectedToolbarCallout.callout),
+        }
+        : (isFormattableTextObject(selectedAnnot)
+          ? {
+            kind: 'textbox',
+            // Hardening 2026-09-23: the id is '' (never null) when absent, so
+            // an id-less box is keyed by its place; that place key rides along
+            // as aliasKey while the PICK has no id, so the first save giving it
+            // an id mid-drag does not orphan the rest of the drag.
+            key: getAnnotationRenderIdentity(selectedAnnot).annotationId
+              ? `textbox:${getAnnotationRenderIdentity(selectedAnnot).annotationId}`
+              : selectedTextboxPlaceKey,
+            aliasKey: selectedAnnotationId ? null : selectedTextboxPlaceKey,
+            style: readTextboxTextStyle(selectedAnnot),
+          }
+          : null)))
+      : null;
+    selectedTextTargetRef.current = selectedTextTarget;
     onBottomToolbarApiChange({
       // Identifies which PDFViewer instance owns the currently-published API, so
       // an unmounting instance clears only its own (see the clear-on-unmount
@@ -24040,6 +25944,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       lassoTouchMode,
       cycleLassoTouchMode,
       contextTool,
+      // w44: the tool whose group's tools the tool bar shows ('select' when
+      // marks of several kinds are picked together) — utils/toolbarRows.js.
+      toolBarContextTool: subToolTool,
       hasLiveTextSelection: !!liveTextSelection?.pages?.length,
       textMarkupSelectionRect,
       activeCategoryDropdown,
@@ -24059,6 +25966,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         onSelectEntity: handleMobileSurveyEntitySelect,
         keepCategoryActive: surveyKeepCategoryActive,
         onKeepCategoryActiveChange: setSurveyKeepCategoryActive,
+        // Owner 2026-10-07 (survey bar round): the strip opens with the
+        // template's name (a menu to switch template) and ends with "Done",
+        // which leaves Survey with an Undo toast.
+        templateId: selectedTemplate.id,
+        templateName: selectedTemplate.name || 'Survey',
+        templates: (appTemplates || []).map((template) => ({ id: template.id, name: template.name || 'Untitled template' })),
+        onSelectTemplate: handleSwitchSurveyTemplateById,
+        onExit: handleLeaveSurvey,
       } : null,
       regionEditing: showRegionSelection,
       regionToolbarApi: mobileRegionToolbarApi,
@@ -24069,6 +25984,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       strokeColor: selectedTextMarkupPaint?.color || counterToolStrokeColor,
       strokeOpacity: selectedTextMarkupPaint?.opacity ?? counterToolStrokeOpacity,
       selectedStrokeColor: selectedPreviewColors.stroke,
+      // w41: what the picked mark(s) can change (null = nothing picked, the
+      // tool's own controls) and, for a group, which values the picked marks
+      // disagree on - the bar shows those as mixed (no colour ringed, a dash
+      // in Width, "Mixed" in the style menus) until the user sets them.
+      selectionCapabilities,
+      selectionMixed: groupSummary ? groupSummary.mixed : null,
+      selectionCount: groupSummary ? groupSummary.count : (selectedToolbarAnnotation || selectedToolbarCallout ? 1 : 0),
       strokeWidthInputValue: strokeWidthInputValueRef.current,
       eraserSizeInputValue: eraserSizeInputValueRef.current,
       eraserMode,
@@ -24077,12 +25999,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setArrowheadStyle: handleArrowheadStyleChange,
       arrowBothEnds,
       setArrowBothEnds: handleArrowBothEndsChange,
+      // w41: only while several marks are picked (the Arrow ends menu then
+      // writes every picked arrow at once; see applyRestyleChange arrowEnds).
+      setGroupArrowEnds: groupSummary ? handleGroupArrowEndsChange : null,
       onEnterTextEdit: handleEnterTextEditFromStrip,
-      canEnterTextEdit: !!(selectedToolbarCallout
+      canEnterTextEdit: !groupSummary && !!(selectedToolbarCallout
         || (selectedToolbarAnnotation
           && String(selectedToolbarAnnotation.annotation?.type || '').toLowerCase() === 'textbox')),
       onEnterBBoxEdit: handleEnterBBoxEditFromStrip,
-      canEnterBBoxEdit: !!(selectedToolbarAnnotation && (() => {
+      canEnterBBoxEdit: !groupSummary && !!(selectedToolbarAnnotation && (() => {
         const annotation = selectedToolbarAnnotation.annotation;
         const type = String(annotation?.type || '').toLowerCase();
         return annotation?.data?.type === 'counter'
@@ -24091,8 +26016,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           || type === 'polyline';
       })()),
       richTextEditor,
-      textStyleDefaults,
-      onTextStyleDefaultsChange: setTextStyleDefaults,
+      // The selected text box / callout's own text style while one is
+      // selected, else the tool's defaults (see selectedTextTarget above).
+      textStyleDefaults: selectedTextTarget ? selectedTextTarget.style : textStyleDefaults,
+      onTextStyleDefaultsChange: handleTextStyleSourceChange,
+      // Review 2026-09-23: callout text is always vertically centred (the
+      // renderer and the editor ignore verticalAlign), so the top / middle /
+      // bottom controls are hidden whenever a callout is what the bar edits -
+      // picked, being typed in, or the armed tool's defaults.
+      textVerticalAlignSupported: richTextEditor
+        ? richTextEditor.state?.supportsVerticalAlign !== false
+        : !(selectedTextTarget ? selectedTextTarget.kind === 'callout' : contextTool === 'callout'),
       lineBorderStyle,
       setLineBorderStyle: handleLineBorderStyleChange,
       // UX 2026-09-09: the Style picker offers "Cloud" (and, once picked, the
@@ -24103,9 +26037,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // from the SELECTED object's real type (not contextTool, which folds a
       // selected polygon onto 'rect' and a selected polyline onto 'line'), so
       // the menu matches what will actually render.
-      supportsCloudStyle: selectionMappedTool && activeTool === 'select'
-        ? (selectedAnnot?.data?.type !== 'counter' && toolSupportsCloudBorderStyle(selectedType))
-        : toolSupportsCloudBorderStyle(activeTool),
+      supportsCloudStyle: groupSummary
+        ? groupSummary.capabilities.cloud
+        : selectionMappedTool && pickBarTool === 'select'
+        ? (selectedToolbarCallout
+          ? true
+          : (selectedAnnot?.data?.type !== 'counter' && toolOffersCloudLineStyle(selectedType)))
+        : toolOffersCloudLineStyle(activeTool),
       cloudIntensity,
       setCloudIntensity: handleCloudIntensityChange,
       textMarkupOverlapMode: selectedAnnot?.data?.type === 'text-markup'
@@ -24126,8 +26064,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       fillColor: counterToolFillColor,
       fillOpacity: counterToolFillOpacity,
       selectedFillColor: selectedPreviewColors.fill,
-      handleFillColorChange,
-      handleFillOpacityChange,
+      handleFillColorChange: handleFillColorChangePhased,
+      handleFillOpacityChange: handleFillOpacityChangePhased,
       zoomInputValue,
       isZoomMenuOpen,
       zoomDropdownLabel,
@@ -24136,15 +26074,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageNum,
       pageInputValue,
       numPages,
+      activeSpaceHasNoPages,
       // [InteractionDiag] route toolbar tool selection through the logged
       // wrapper so every tool-button click emits a tool-intent marker.
       setActiveTool: setActiveToolLogged,
       setActiveCategoryDropdown,
       setTooltip,
       setShowAnnotationColorPicker,
-      handleStrokeColorChange,
-      handleStrokeOpacityChange,
-      handleTextMarkupPaintChange,
+      handleStrokeColorChange: handleStrokeColorChangePhased,
+      handleStrokeOpacityChange: handleStrokeOpacityChangePhased,
+      handleTextMarkupPaintChange: handleTextMarkupPaintChangePhased,
       handleStrokeWidthInputChange,
       handleStrokeWidthInputBlur,
       setIsStrokeWidthFocused: handleStrokeWidthFocusChange,
@@ -24176,6 +26115,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     zoomMenuRef,
     pageInputRef,
     activeTool,
+    pickBarTool,
     liveTextSelection,
     selectionMode,
     lassoTouchOperation,
@@ -24184,6 +26124,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     annotationsByPage,
     selectedToolbarAnnotation,
     selectedToolbarCallout,
+    restyleGroup,
     activeCategoryDropdown,
     lastDrawTool,
     lastShapeTool,
@@ -24200,6 +26141,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleMobileSurveyCategorySelect,
     handleMobileSurveyEntitySelect,
     surveyKeepCategoryActive,
+    appTemplates,
+    handleSwitchSurveyTemplateById,
+    handleLeaveSurvey,
     showRegionSelection,
     mobileRegionToolbarApi,
     showAnnotationColorPicker,
@@ -24216,6 +26160,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleEnterBBoxEditFromStrip,
     richTextEditor,
     textStyleDefaults,
+    handleTextStyleSourceChange,
     lineBorderStyle,
     handleLineBorderStyleChange,
     cloudIntensity,
@@ -24230,8 +26175,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleSelectedCounterSeriesStartChange,
     fillColor,
     fillOpacity,
-    handleFillColorChange,
-    handleFillOpacityChange,
+    handleFillColorChangePhased,
+    handleFillOpacityChangePhased,
     zoomInputValue,
     isZoomMenuOpen,
     zoomDropdownLabel,
@@ -24240,10 +26185,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     pageNum,
     pageInputValue,
     numPages,
+    activeSpaceHasNoPages,
     setTooltip,
-    handleStrokeColorChange,
-    handleStrokeOpacityChange,
-    handleTextMarkupPaintChange,
+    handleStrokeColorChangePhased,
+    handleStrokeOpacityChangePhased,
+    handleTextMarkupPaintChangePhased,
     handleStrokeWidthFocusChange,
     handleStrokeWidthInputChange,
     handleStrokeWidthInputBlur,
@@ -24289,6 +26235,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Rule 12 (utils/selectModes.js): every tool letter below switches
+      // through this and says so (a switch other than Select <-> Pan drops
+      // the selection, owner 2026-10-04).
+      const setActiveTool = (tool) => setActiveToolLogged(tool, { source: 'shortcut-key' });
       const activeElement = document.activeElement;
       const isFormField =
         activeElement &&
@@ -24590,7 +26540,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // (form fields, system paste, etc). Resolves the target page from
           // the cursor via elementFromPoint → closest('.survey-pdfjs-page-div') →
           // data attribute lookup, matching the resolveAnnotationAt pattern.
-          if (key === 'v' && !e.shiftKey && (clipboardAnnotation || clipboardCallout)) {
+          if (key === 'v' && !e.shiftKey && (clipboardAnnotation || clipboardCallout || familyClipboardRef.current)) {
             // KAL-75 (G1): paste is a mutation — inert on locked/read-only docs.
             if (document.body.getAttribute('data-readonly') === 'true') return;
             const { x, y } = lastPointerPosRef.current;
@@ -24621,6 +26571,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               // Cmd+V and right-click Paste place callouts identically.
               // Only one clipboard is populated at a time (Copy/Cut clears
               // the other — see handleCopyAnnotation / handleCopyCallout).
+              // w53: a family clipboard (a whole mixed selection).
+              if (familyClipboardRef.current && pasteFamilyAtRef.current) {
+                e.preventDefault();
+                pasteFamilyAtRef.current(pageNumber, x, y);
+                return;
+              }
               if (clipboardAnnotation && pasteAnnotationAtRef.current) {
                 e.preventDefault();
                 pasteAnnotationAtRef.current(pageNumber, x, y);
@@ -24727,20 +26683,72 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     ...(scrollMode === 'single' && { justifyContent: 'center' })
   }), [scrollMode]);
 
+  // w37: set by handleSaveAnnotations for exactly one push (a new callout's
+  // first commit), cleared by that push whatever it does.
+  const historyFoldIntoCreateRef = useRef(null);
+  // w55: set by a History-panel Restore for exactly the one history push its
+  // re-save makes, so that row reads "restored", not "created"/"moved".
+  // Cleared by that push, or on the next tick if the save pushed nothing.
+  const historyPushIsRestoreRef = useRef(false);
+  const markNextHistoryPushAsRestore = useCallback(() => {
+    historyPushIsRestoreRef.current = true;
+    if (typeof window !== 'undefined') {
+      window.setTimeout(() => { historyPushIsRestoreRef.current = false; }, 0);
+    }
+  }, []);
   const pushLocalAnnotationHistoryAction = useCallback((action) => {
+    const foldIntoCreateOf = historyFoldIntoCreateRef.current;
+    historyFoldIntoCreateRef.current = null;
+    const pushIsHistoryRestore = historyPushIsRestoreRef.current;
+    historyPushIsRestoreRef.current = false;
+    // w53: Survey Marker changes made by the same family action (a group move
+    // or nudge, a mixed restack or paste) ride this step, so one Undo takes
+    // back the marks AND the markers (surveyMarkerFamily.js).
+    const familyCompanion = surveyMarkerFamilyCompanionRef.current;
+    surveyMarkerFamilyCompanionRef.current = null;
     if (!action || isUndoingRef.current) return;
     const viewerId = yjsUndoCtx?.userId || user?.id || null;
-    const scopedAction = filterAnnotationHistoryActionByOwner(
+    const ownerScopedAction = filterAnnotationHistoryActionByOwner(
       action,
       viewerId,
       documentOwnerId,
     );
+    const scopedAction = familyCompanion
+      ? (ownerScopedAction
+        ? { type: 'fabric:document-batch', actions: [ownerScopedAction, familyCompanion] }
+        : familyCompanion)
+      : ownerScopedAction;
     if (!scopedAction) {
       pushHistoryDebugEvent('local_annotation_history_skipped_owner_scope', {
         requestedAction: summarizeHistoryActionForLog(action),
         viewerId,
       });
       return;
+    }
+    // w37: a new callout's first text commit (or its removal when left blank
+    // / Esc) is part of the create gesture: it folds into the create step
+    // instead of adding a second one. Live-verified before: one Undo after
+    // "draw callout, type, click away" left an empty callout behind.
+    if (foldIntoCreateOf) {
+      const fold = foldIntoCreateStep(
+        localAnnotationUndoRef.current,
+        scopedAction,
+        foldIntoCreateOf,
+        historyCheckpointSeqRef.current,
+      );
+      if (fold.folded) {
+        localAnnotationUndoRef.current = fold.stack;
+        setLocalAnnotationHistoryVersion((prev) => prev + 1);
+        pushHistoryDebugEvent('local_annotation_history_folded_into_create', {
+          historySource: 'local annotation history',
+          folded: fold.folded,
+          ...summarizeHistoryActionForLog(scopedAction),
+          pageNumber: scopedAction.pageNumber,
+          annotationId: scopedAction.annotationId,
+          undoDepth: fold.stack.length,
+        });
+        return;
+      }
     }
     const checkpointId = historyCheckpointSeqRef.current + 1;
     historyCheckpointSeqRef.current = checkpointId;
@@ -24756,6 +26764,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     localAnnotationUndoRef.current = nextUndo;
     const clearedRedoEntries = localAnnotationRedoRef.current.length;
     localAnnotationRedoRef.current = [];
+    // w37: a new action clears Redo in EVERY lane. Only this lane's Redo was
+    // cleared, so after "erase, Undo, draw" a Redo re-applied the old erase
+    // on top of the new stroke (live-verified: Redo after a new pen stroke
+    // re-erased marks instead of doing nothing).
+    clearLegacyRedoForNewStep(scopedAction.type || 'annotations:local');
     setLocalAnnotationHistoryVersion((prev) => prev + 1);
 
     // KAL-313 / history F2 (2026-06-11): ONE restorable History row per delete.
@@ -24788,9 +26801,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const deletedIdsForJournal = collectDeletedIdsForJournal(scopedAction);
     const journaledByBulkPath = deletedIdsForJournal.length > 0
       && deletedIdsForJournal.every((id) => isBulkJournaledAnnotationId(id));
-    const suppressActivityHistoryRow = deletedIdsForJournal.length > 0
-      && (scopedAction.type === 'fabric:delete' || journaledByBulkPath);
+    // History option A: a Survey Marker step that only removes markers is
+    // already in History as their restorable survey_marker_deleted rows.
+    const surveyMarkerRemovalOnly = scopedAction.type === 'survey-marker:batch'
+      && Array.isArray(scopedAction.changes) && scopedAction.changes.length > 0
+      && scopedAction.changes.every((change) => change?.after == null);
+    const suppressActivityHistoryRow = surveyMarkerRemovalOnly || (deletedIdsForJournal.length > 0
+      && (scopedAction.type === 'fabric:delete' || journaledByBulkPath));
 
+	    const historyPushSummary = summarizeHistoryActionForLog(actionWithMeta);
 	    pushHistoryDebugEvent('local_annotation_history_added', {
 	      checkpointId,
 	      order: checkpointId,
@@ -24799,12 +26818,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 	      receivedStack: 'localAnnotationUndo',
 	      clearedRedoStack: clearedRedoEntries > 0 ? 'localAnnotationRedo' : null,
 	      clearedRedoEntries,
-	      ...summarizeHistoryActionForLog(actionWithMeta),
-	      pageNumber: actionWithMeta.pageNumber,
-	      annotationId: actionWithMeta.annotationId,
+	      ...historyPushSummary,
+	      // History option A: a Survey Marker step names its page / marker in
+	      // its summary (the step itself has no top-level page or id).
+	      pageNumber: actionWithMeta.pageNumber ?? historyPushSummary?.pageNumber ?? null,
+	      annotationId: actionWithMeta.annotationId ?? historyPushSummary?.annotationId ?? null,
 	      undoDepth: nextUndo.length,
       redoDepth: 0,
-      suppressHistoryRow: suppressActivityHistoryRow
+      suppressHistoryRow: suppressActivityHistoryRow,
+      restoredFromHistory: pushIsHistoryRestore,
     });
 
     // KAL-313: emit a durable trash event for single-annotation deletes so the
@@ -24831,9 +26853,32 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
       }
     }
-  }, [documentOwnerId, pushHistoryDebugEvent, user, pdfFile?.id, yjsUndoCtx?.userId, isBulkJournaledAnnotationId]);
+  }, [clearLegacyRedoForNewStep, documentOwnerId, pushHistoryDebugEvent, user, pdfFile?.id, yjsUndoCtx?.userId, isBulkJournaledAnnotationId]);
 
   const handleSaveAnnotations = useCallback((pageNumber, json, saveContext = null) => {
+    // w53: a family action that also moves / restacks / creates Survey
+    // Markers (saveContext.surveyMarkerFamily). The markers are written to
+    // their own store first; their undo half rides the page's step (or is the
+    // step, when the page did not change).
+    if (saveContext && typeof saveContext === 'object' && saveContext.surveyMarkerFamily) {
+      const { surveyMarkerFamily, ...pageSaveContext } = saveContext;
+      // Markers change only with a step that can be undone (never on a
+      // preview frame or while Undo / Redo is replaying).
+      const recordsStep = String(pageSaveContext.checkpointPolicy || '').toLowerCase() !== 'skip'
+        && !isUndoingRef.current;
+      const companion = recordsStep
+        ? (commitSurveyMarkerFamilyPatchRef.current?.(surveyMarkerFamily) || null)
+        : null;
+      surveyMarkerFamilyCompanionRef.current = companion;
+      try {
+        handleSaveAnnotations(pageNumber, json, pageSaveContext);
+      } finally {
+        const unclaimed = surveyMarkerFamilyCompanionRef.current;
+        surveyMarkerFamilyCompanionRef.current = null;
+        if (unclaimed) pushLocalAnnotationHistoryAction(unclaimed);
+      }
+      return;
+    }
     // R2.2 Slice 4 — mixed marquee co-delete: the combined bulk-delete runner
     // arms calloutCoDeleteRef around the shape half's runDelete(); strip the
     // claimed callout groups from the incoming JSON here so shapes + callouts
@@ -24849,6 +26894,52 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         objects: json.objects.filter((obj) => !(obj?.data?.type === 'callout'
           && calloutCoDelete.ids.has(obj.data.id))),
       };
+    }
+    // RULED 2026-09-28 owner: open editing + lock. The lock's last wall: every
+    // page save passes here, so a path that forgot to check the lock still
+    // cannot move / resize / restyle / cut / delete / erase a locked mark
+    // (the change is put back inside this save; only the lock toggle itself
+    // passes, for the mark's author or the document owner). utils/markLock.js.
+    if (Array.isArray(json?.objects)) {
+      const lockGuard = guardLockedMarksOnSave({
+        previousObjects: annotationsByPageRef.current?.[pageNumber]?.objects || [],
+        nextObjects: json.objects,
+        viewerId: user?.id ?? null,
+        documentOwnerId,
+      });
+      if (lockGuard.changed) {
+        json = { ...json, objects: lockGuard.objects };
+        notifyLockedMarkBlocked();
+        // w59: one line so a "it snapped back" report names the cause.
+        try {
+          console.warn(`[MoveDiag] save put locked marks back reason=locked pdf=${window.__currentPdfName || 'unknown.pdf'} page=${pageNumber} action=${saveContext?.action || '?'} ids=${lockGuard.blockedIds.join(',')}`);
+        } catch (_) { /* diagnostics only */ }
+        // An eraser save also carries its own change list (written to the
+        // store and the Undo step from the save context, not from the page):
+        // drop the put-back marks from it too, so nothing half-erases them.
+        const blocked = new Set(lockGuard.blockedIds.map(String));
+        if (blocked.size > 0 && saveContext && typeof saveContext === 'object') {
+          const keep = (id) => id == null || !blocked.has(String(id));
+          const blockedStorageKeys = new Set((json.objects || [])
+            .filter((obj) => blocked.has(String(obj?.data?.id ?? obj?.id ?? '')))
+            .map((obj) => getAnnotationStorageKey(obj))
+            .filter((key) => key != null)
+            .map(String));
+          saveContext = {
+            ...saveContext,
+            ...(Array.isArray(saveContext.objectMutations) ? {
+              objectMutations: saveContext.objectMutations.filter((mutation) => keep(mutation?.annotationId)
+                && !(mutation?.storageKey != null && blockedStorageKeys.has(String(mutation.storageKey)))),
+            } : {}),
+            ...(Array.isArray(saveContext.finalDeletedAnnotationIds)
+              ? { finalDeletedAnnotationIds: saveContext.finalDeletedAnnotationIds.filter(keep) } : {}),
+            ...(Array.isArray(saveContext.finalChangedAnnotationIds)
+              ? { finalChangedAnnotationIds: saveContext.finalChangedAnnotationIds.filter(keep) } : {}),
+            ...(Array.isArray(saveContext.touchedAnnotationIds)
+              ? { touchedAnnotationIds: saveContext.touchedAnnotationIds.filter(keep) } : {}),
+          };
+        }
+      }
     }
     const source_ = saveContext?.source || 'unknown';
     const prevCount_ = annotationsByPageRef.current?.[pageNumber]?.objects?.length ?? 0;
@@ -24943,7 +27034,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const interactionId = typeof normalizedSaveContext?.interactionId === 'string' && normalizedSaveContext.interactionId.trim()
       ? normalizedSaveContext.interactionId.trim()
       : null;
-    const checkpointPolicyRaw = typeof normalizedSaveContext?.checkpointPolicy === 'string'
+    // A slider drag's preview frames never checkpoint (see paintPhaseRef).
+    const checkpointPolicyRaw = (paintPhaseRef.current === 'preview' || paintPhaseRef.current === 'settle')
+      ? 'skip'
+      : typeof normalizedSaveContext?.checkpointPolicy === 'string'
       ? normalizedSaveContext.checkpointPolicy.trim().toLowerCase()
       : 'normal';
     const checkpointPolicy = checkpointPolicyRaw === 'skip' || checkpointPolicyRaw === 'force'
@@ -24956,11 +27050,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         interactionPageKey,
         deepClone(normalizedCurrentAnnotations || { objects: [] })
       );
+      // A new gesture starts with no recorded field touches.
+      gestureFieldTouchesByPageRef.current.delete(interactionPageKey);
     }
     const previewBaseline = checkpointPolicy === 'skip'
       ? null
       : (previewBaselineByPageRef.current.get(interactionPageKey) || null);
-    const historyPreviousAnnotations = previewBaseline || normalizedCurrentAnnotations;
+    // A colour-slider drag (paintPhaseRef) remembers which objects its frames
+    // edited on this page. Its release records the step against the CURRENT
+    // page with only those objects put back to their pre-drag versions, so an
+    // undo never reverts a collaborator's change that landed mid-drag (see
+    // utils/paintDragHistory.js).
+    const paintPhaseNow = paintPhaseRef.current;
+    if (paintPhaseNow) {
+      const touched = paintDragTouchedByPageRef.current.get(interactionPageKey) || new Set();
+      collectChangedObjectKeys(normalizedCurrentAnnotations, normalizedIncomingAnnotations)
+        .forEach((key) => touched.add(key));
+      paintDragTouchedByPageRef.current.set(interactionPageKey, touched);
+    }
+    const historyPreviousAnnotations = (previewBaseline && paintPhaseNow === 'commit')
+      ? restoreTouchedObjects(
+        normalizedCurrentAnnotations,
+        previewBaseline,
+        paintDragTouchedByPageRef.current.get(interactionPageKey),
+      )
+      : (previewBaseline || normalizedCurrentAnnotations);
     const lastInteractionIdForPage = objectModifiedInteractionCheckpointRef.current.get(interactionPageKey) || null;
     const shouldSkipCheckpointByPolicy = checkpointPolicy === 'skip';
     const shouldSkipCheckpointByInteraction = checkpointPolicy !== 'force'
@@ -25005,6 +27119,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       currentPageFingerprint.serialized === nextPageFingerprint.serialized
       && (!previewBaseline || previousPageFingerprint.serialized === nextPageFingerprint.serialized)
     ) {
+      // A gesture that ends exactly where it began is over too: drop its
+      // preview baseline, or the next unrelated save on this page would diff
+      // from it and fold this gesture into that undo step.
+      if (!shouldSkipCheckpointByPolicy && previewBaseline) {
+        previewBaselineByPageRef.current.delete(interactionPageKey);
+        gestureFieldTouchesByPageRef.current.delete(interactionPageKey);
+      }
       pushHistoryDebugEvent('annotations_save_noop', {
         reason: 'annotations:save',
         source,
@@ -25136,11 +27257,58 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!shouldRenumberCounters) {
       logCounterRenumberSkip();
     }
+    // Field-level undo: every save inside a gesture (preview frames and the
+    // release) records what it changed — fields per mark, marks created,
+    // marks deleted — diffed against the page as it was just before this save,
+    // so a collaborator's edit that landed between frames is never counted as
+    // ours. The release's step keeps only those. A preview frame's own action
+    // already IS that diff (no baseline), so it is reused rather than
+    // re-comparing every mark each frame; only the release diffs once more.
+    const gestureInProgress = checkpointPolicy === 'skip' || Boolean(previewBaseline);
+    if (gestureInProgress && !isEraserCommit) {
+      const touches = gestureFieldTouchesByPageRef.current.get(interactionPageKey) || createGestureTouchRecord();
+      recordGestureTouchesFromAction(
+        historyPreviousAnnotations === normalizedCurrentAnnotations
+          ? finalLocalHistoryAction
+          : buildAnnotationHistoryAction({
+            pageNumber,
+            previousPage: normalizedCurrentAnnotations,
+            nextPage: finalIncomingAnnotations,
+          }),
+        touches,
+      );
+      gestureFieldTouchesByPageRef.current.set(interactionPageKey, touches);
+    }
+    let localStepCoversGesture = false;
     if (!shouldSkipCheckpointByPolicy && !shouldSkipCheckpointByInteraction) {
-      pushLocalAnnotationHistoryAction(finalLocalHistoryAction);
+      // w37: a new callout's first commit folds into its create step (read
+      // and cleared by the push below).
+      historyFoldIntoCreateRef.current = normalizedSaveContext?.foldIntoCreateOf || null;
+      const coversWholeGesture = Boolean(surveyMarkerFamilyCompanionRef.current)
+        || Boolean(previewBaseline && !isEraserCommit);
+      const localTopBefore = localAnnotationUndoRef.current[localAnnotationUndoRef.current.length - 1];
+      if (previewBaseline && !isEraserCommit) {
+        pushLocalAnnotationHistoryAction(restrictAnnotationHistoryActionFields(
+          finalLocalHistoryAction,
+          gestureFieldTouchesByPageRef.current.get(interactionPageKey),
+        ));
+      } else {
+        // No gesture baseline (the diff is exactly this save), or an eraser
+        // commit whose precise builder already names exactly what it changed.
+        pushLocalAnnotationHistoryAction(finalLocalHistoryAction);
+      }
+      // TEST-PLAN item 55 (2026-10-06): this step is the whole gesture — a
+      // live-preview release (diffed against the pre-gesture baseline) or a
+      // family action carrying Survey Markers. The legacy snapshot below
+      // would be taken mid-gesture and without the markers, so on a document
+      // without the CRDT layer one Undo put back only part of the selection.
+      localStepCoversGesture = coversWholeGesture
+        && localAnnotationUndoRef.current[localAnnotationUndoRef.current.length - 1] !== localTopBefore;
+      historyFoldIntoCreateRef.current = null;
     }
     if (!shouldSkipCheckpointByPolicy) {
       previewBaselineByPageRef.current.delete(interactionPageKey);
+      gestureFieldTouchesByPageRef.current.delete(interactionPageKey);
     }
 
     pushHistoryDebugEvent('annotations_save_detected', {
@@ -25212,6 +27380,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         changedObjectsCount: finalPageTransition.changedObjectsCount,
         previousPageHash: previousPageFingerprint.hash,
         nextPageHash: finalNextPageFingerprint.hash,
+        undoDepth: undoHistoryRef.current.length,
+        redoDepth: redoHistoryRef.current.length,
+        saveContext: normalizedSaveContext
+      });
+    } else if (localStepCoversGesture) {
+      // The local step pushed above already holds the whole gesture (see
+      // localStepCoversGesture); a legacy snapshot would split it in two.
+      pushHistoryDebugEvent('annotations_checkpoint_skipped_local_gesture_step', {
+        reason: 'annotations:save',
+        source,
+        pageNumber,
         undoDepth: undoHistoryRef.current.length,
         redoDepth: redoHistoryRef.current.length,
         saveContext: normalizedSaveContext
@@ -25399,6 +27578,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     summarizeAnnotationPageTransitionForDebug,
     enqueueUndoToast,
     user?.id,
+    documentOwnerId,
+    notifyLockedMarkBlocked,
     yjsDoc,
     yjsUndoManager,
     commitEraserMutationToDoc,
@@ -25412,13 +27593,40 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const commitTextMarkupDocumentTransaction = useCallback((transaction, saveContext = null) => {
     if (!transaction?.action || !transaction?.nextByPage) return false;
     const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    // RULED 2026-09-28 owner: open editing + lock — a text-markup transaction
+    // that would change a locked mark does not happen at all (it is one
+    // atomic group; half of it must not land).
+    {
+      const pagesNow = annotationsByPageRef.current || {};
+      const touchesLocked = Object.keys(transaction.nextByPage).some((pageKey) => {
+        const nextPage = transaction.nextByPage[pageKey];
+        const prevPage = pagesNow[pageKey];
+        if (!Array.isArray(nextPage?.objects) || nextPage === prevPage) return false;
+        return guardLockedMarksOnSave({
+          previousObjects: prevPage?.objects || [],
+          nextObjects: nextPage.objects,
+          viewerId,
+          documentOwnerId,
+        }).changed;
+      });
+      if (touchesLocked) {
+        notifyLockedMarkBlocked();
+        return false;
+      }
+    }
     const scopedAction = filterAnnotationHistoryActionByOwner(
       transaction.action,
       viewerId,
       documentOwnerId,
     );
-    if (!scopedAction) return false;
-    pushLocalAnnotationHistoryAction(scopedAction);
+    // w41: a restyle group may hold a colleague's mark (contributors may edit
+    // everything - permissions model). Like handleSaveAnnotations, the edit is
+    // applied and only the undo step is left out when it is not all this
+    // user's (applyWithoutOwnedStep).
+    if (!scopedAction && !saveContext?.applyWithoutOwnedStep) return false;
+    // A colour-slider preview frame (paintPhaseRef) repaints without an undo
+    // step; its release commits the one step for the whole drag.
+    if (scopedAction && !saveContext?.skipHistory) pushLocalAnnotationHistoryAction(scopedAction);
     setLocallyDeletedPdfAnnotations((previous) => {
       const keyFor = (entry) => `${Number(entry.pageNumber)}:${String(entry.pdfAnnotationId)}`;
       const next = new Map(previous.map((entry) => [keyFor(entry), entry]));
@@ -25437,15 +27645,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     pushHistoryDebugEvent('text_markup_document_transaction_applied', {
       source: saveContext?.source || 'text-markup:document-transaction',
-      action: saveContext?.action || scopedAction.type,
+      action: saveContext?.action || scopedAction?.type,
       selectionGroupIds: transaction.selectionGroupIds || [],
-      pageNumbers: scopedAction.type === 'fabric:document-batch'
+      pageNumbers: !scopedAction
+        ? []
+        : scopedAction.type === 'fabric:document-batch'
         ? scopedAction.actions.map((action) => action.pageNumber)
         : [scopedAction.pageNumber],
     });
     return true;
   }, [
     documentOwnerId,
+    notifyLockedMarkBlocked,
     pushHistoryDebugEvent,
     pushLocalAnnotationHistoryAction,
     user?.id,
@@ -25453,12 +27664,53 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   ]);
   commitTextMarkupDocumentTransactionRef.current = commitTextMarkupDocumentTransaction;
 
+  // Owner after Test 46 (2026-10-06): a picked mark dragged onto another page
+  // moves there. Both pages change in ONE state update (the mark keeps its
+  // id, so collaborators see one move, never a copy) and ONE undo step; the
+  // lock check and owner scoping are the document transaction's own.
+  const handleMoveMarksToPage = useCallback((fromPage, { toPage, marks } = {}) => {
+    const from = Number(fromPage);
+    const to = Number(toPage);
+    if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return false;
+    const pagesNow = annotationsByPageRef.current || {};
+    const plan = buildCrossPageMovePlan({ fromPage: pagesNow[from], toPage: pagesNow[to], marks });
+    if (!plan) return false;
+    const action = {
+      type: 'fabric:document-batch',
+      actions: [
+        buildAnnotationHistoryAction({ pageNumber: from, previousPage: pagesNow[from], nextPage: plan.fromPage }),
+        buildAnnotationHistoryAction({ pageNumber: to, previousPage: pagesNow[to] || { objects: [] }, nextPage: plan.toPage }),
+      ].filter(Boolean),
+    };
+    const moved = commitTextMarkupDocumentTransaction(
+      { action, nextByPage: { ...pagesNow, [from]: plan.fromPage, [to]: plan.toPage } },
+      { source: 'annotation:move-to-page', action: 'move-to-page', applyWithoutOwnedStep: true },
+    );
+    if (!moved) return false;
+    // The moved marks stay picked, now on their new page.
+    setPendingSvgSelection({ pageNumber: to, annotationIndices: plan.toIndices, surveyMarkerIds: [], exclusive: true, tick: Date.now() });
+    return true;
+  }, [commitTextMarkupDocumentTransaction]);
+
   const handleSaveAnnotationsWithTextMarkupAtomicity = useCallback((pageNumber, json, saveContext = null) => {
     const transaction = buildAtomicTextMarkupPageMutation({
       annotationsByPage: annotationsByPageRef.current || {},
       pageNumber,
       nextPage: json,
     });
+    // A text-markup group that holds a locked mark is refused whole (the
+    // transaction above says no) — never fall through to a partial save.
+    if (transaction && Object.keys(transaction.nextByPage || {}).some((pageKey) => (
+      guardLockedMarksOnSave({
+        previousObjects: annotationsByPageRef.current?.[pageKey]?.objects || [],
+        nextObjects: transaction.nextByPage[pageKey]?.objects || [],
+        viewerId: user?.id ?? null,
+        documentOwnerId,
+      }).changed
+    ))) {
+      notifyLockedMarkBlocked();
+      return { lockedBlocked: true };
+    }
     if (transaction && commitTextMarkupDocumentTransaction(transaction, saveContext)) {
       setSelectedToolbarAnnotation(null);
       setPendingSvgSelection({
@@ -25471,7 +27723,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return { atomicTextMarkupGroup: true };
     }
     return handleSaveAnnotations(pageNumber, json, saveContext);
-  }, [commitTextMarkupDocumentTransaction, handleSaveAnnotations]);
+  }, [commitTextMarkupDocumentTransaction, documentOwnerId, handleSaveAnnotations, notifyLockedMarkBlocked, user?.id]);
 
   // KAL-313: Space restore — re-inserts a deleted space into live spaces state
   // exactly as captured at delete time (full object incl. assignedPages).
@@ -25500,6 +27752,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [requireSpaceManagement]);
 
   const handleRestoreHistoryActivity = useCallback((event) => {
+    if (!canRestoreFromHistoryRef.current) return { ok: false, reason: 'permission' };
     const restoreAction = event?.payload?.restoreAction;
     // Bulk-delete rows carry payload.objects (per-object restoreActions), not a
     // top-level restoreAction — they must reach the isBulkAnnotationDeleteEvent
@@ -25516,14 +27769,36 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // still missing — it becomes Excel-deletable again only after a successful
     // export. Its tombstone is dropped and, if it was placed, it is redrawn.
     if (restoreAction?.type === 'surveyMarker') {
+      // Already back (an Undo brought it back, or it was never gone): a
+      // Restore must not roll a live survey item back to its delete-time copy.
+      if (restoreAction.markerId && surveyMarkersRef.current?.[restoreAction.markerId]) {
+        return { ok: false, reason: 'restore-noop' };
+      }
       const result = applySurveyMarkerRestore(
         surveyMarkersRef.current || {},
         restoreAction,
         { restoredAt: new Date().toISOString() }
       );
       if (!result) return { ok: false, reason: 'restore-unavailable' };
+      if (result.alreadyPresent) return { ok: false, reason: 'restore-noop' };
       const { markerId, marker } = result;
-      setSurveyMarkers(result.surveyMarkers);
+      // RULED 2026-09-28 owner: History option A — a Restore is ONE undo step
+      // and writes a "restored" History row, for Survey Markers too. The
+      // marker comes back through the w53 family path (the same one Undo of
+      // a delete uses), which also: brings the linked Excel row back (same
+      // Row ID, answers) by queueing the Excel write; keeps the "received by
+      // Excel" stamp cleared so the next import can't re-trash it; and
+      // redraws it on its page in its module.
+      const restoreStep = buildSurveyMarkerHistoryAction([{ id: markerId, before: null, after: marker }]);
+      const apply = applySurveyMarkerFamilyActionRef.current;
+      if (!restoreStep || typeof apply !== 'function') return { ok: false, reason: 'restore-unavailable' };
+      const changed = apply(restoreStep) || [];
+      if (!changed.includes(markerId)) return { ok: false, reason: 'restore-noop' };
+      if (selectedTemplateRef.current?.linkedExcelPath) {
+        pendingExcelSyncAfterDeleteRefBridge.current = true;
+      }
+      markNextHistoryPushAsRestore();
+      pushLocalAnnotationHistoryAction(restoreStep);
       try {
         const trash = loadTrash(pdfId);
         if (trash && trash[markerId]) saveTrash(pdfId, removeTombstone(trash, markerId));
@@ -25531,21 +27806,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // tombstone cleanup is best-effort
       }
       const pageNumber = Number(marker.pageNumber);
-      if (Number.isFinite(pageNumber) && marker.bounds) {
-        const b = marker.bounds;
-        setNewSurveyMarkersByPage(prev => {
-          const list = Array.isArray(prev?.[pageNumber]) ? prev[pageNumber] : [];
-          if (list.some(h => h.annotationId === markerId)) return prev;
-          return {
-            ...prev,
-            [pageNumber]: [...list, {
-              annotationId: markerId,
-              x: b.x, y: b.y, width: b.width, height: b.height,
-              angle: Number(b.angle) || 0,
-            }],
-          };
-        });
-      }
       return { ok: true, pageNumber: Number.isFinite(pageNumber) ? pageNumber : null };
     }
 
@@ -25656,17 +27916,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           const pg = String(ra.pageNumber);
           if (!byPage.has(pg)) byPage.set(pg, []);
           byPage.get(pg).push(ra);
-          restoredCount++;
         }
       }
       // Apply all fabric restoreActions per page in one handleSaveAnnotations call.
       for (const [pg, ras] of byPage.entries()) {
         const current = annotationsByPageRef.current || {};
         let pageState = current[pg] || current[Number(pg)] || { objects: [] };
+        let pageRestored = 0;
         for (const ra of ras) {
-          const nextByPage = applyAnnotationHistoryAction({ [pg]: pageState }, ra);
+          // w55: skip marks already back on the page (never overwrite them
+          // with their delete-time copy).
+          const missingOnly = dropAlreadyPresentRestoreTargets({ [pg]: pageState }, ra);
+          if (!missingOnly) continue;
+          const nextByPage = applyAnnotationHistoryAction({ [pg]: pageState }, missingOnly);
           pageState = nextByPage[pg] || pageState;
+          pageRestored++;
         }
+        if (pageRestored === 0) continue;
+        restoredCount += pageRestored;
+        markNextHistoryPushAsRestore();
         handleSaveAnnotations(Number(pg), pageState, {
           source: 'history:restore-deleted-annotation',
           action: 'restore',
@@ -25707,7 +27975,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         : { ok: false, reason: 'restore-noop' };
     }
     const current = annotationsByPageRef.current || {};
-    const nextByPage = applyAnnotationHistoryAction(current, restoreAction);
+    // w55: a mark that is already back (undo, a teammate, a second press) is
+    // left as it is now; its delete-time copy must never replace it.
+    const missingOnly = dropAlreadyPresentRestoreTargets(current, restoreAction);
+    if (!missingOnly) return { ok: false, reason: 'restore-noop' };
+    const nextByPage = applyAnnotationHistoryAction(current, missingOnly);
     if (nextByPage === current) {
       return { ok: false, reason: 'restore-noop' };
     }
@@ -25716,6 +27988,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!nextPage) {
       return { ok: false, reason: 'restore-missing-page' };
     }
+    markNextHistoryPushAsRestore();
     handleSaveAnnotations(pageNumber, nextPage, {
       source: 'history:restore-deleted-annotation',
       action: 'restore',
@@ -25728,7 +28001,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleSaveAnnotations,
     handleSpaceUpdate,
     handleRestoreSpace,
+    markNextHistoryPushAsRestore,
     pdfId,
+    pushLocalAnnotationHistoryAction,
     restoreDurableEraseDeletion,
     user?.id,
   ]);
@@ -25821,44 +28096,36 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // pure + node-tested in utils/historyContextRestore.js; this callback only
   // applies the resolved context to live viewer state.
   const handleRestoreHistoryContext = useCallback((event) => {
+    // w55: only a survey-scoped mark (Survey Marker, module mark, region/space)
+    // moves the reader into its context, and only ever INTO it: clicking a
+    // History row never closes the reader's survey panel or leaves their
+    // space. An ordinary mark leaves the reader's setup alone.
+    if (!isSurveyScopedHistoryEvent(event)) return null;
     const resolved = resolveHistoryEntryContext(event, { spaces: spacesRef.current || [] });
     if (!resolved) return false;
 
-    // (b) Survey/region mode: activate the mark's space, or exit space mode
-    // for document-level marks (explicit null stamp).
+    // (b) Survey/region mode: activate the mark's space when it still exists.
     let spaceContextRestored = true;
-    if (resolved.hasSpaceTarget) {
-      // Only activate spaces that still exist — a deleted space can't be entered.
-      const spaceExists = resolved.spaceId
-        ? (spacesRef.current || []).some((space) => space?.id === resolved.spaceId)
-        : false;
-      if (resolved.spaceId && !spaceExists) {
-        // The mark's space was deleted: don't select the dead id, don't leave an
-        // unrelated space active, and don't report a full context restore.
-        if (activeSpaceId) handleExitSpaceMode();
+    if (resolved.hasSpaceTarget && resolved.spaceId) {
+      const spaceExists = (spacesRef.current || []).some((space) => space?.id === resolved.spaceId);
+      if (!spaceExists) {
         spaceContextRestored = false;
-      } else if (resolved.spaceId) {
+      } else {
         if (resolved.spaceId !== activeSpaceId) handleSetActiveSpace(resolved.spaceId);
         setSelectedSpaceId(resolved.spaceId);
-      } else if (activeSpaceId) {
-        handleExitSpaceMode();
       }
     }
 
-    // (c) Survey panel + selected template/module/category.
-    if (resolved.hasSurveyPanel) {
-      if (resolved.surveyPanelOpen) {
-        if (resolved.hasTemplate
-          && (!selectedTemplate || (selectedTemplate.id !== resolved.templateId && selectedTemplate.supabaseId !== resolved.templateId))) {
-          const template = (templates || []).find(
-            (candidate) => candidate?.id === resolved.templateId || candidate?.supabaseId === resolved.templateId,
-          );
-          if (template) handleSelectSurveyTemplate(template);
-        }
-        setShowSurveyPanel(true);
-      } else if (showSurveyPanel) {
-        handleCloseSurveyMode();
+    // (c) Survey panel + selected template/module/category: open, never close.
+    if (resolved.hasSurveyPanel && resolved.surveyPanelOpen) {
+      if (resolved.hasTemplate
+        && (!selectedTemplate || (selectedTemplate.id !== resolved.templateId && selectedTemplate.supabaseId !== resolved.templateId))) {
+        const template = (templates || []).find(
+          (candidate) => candidate?.id === resolved.templateId || candidate?.supabaseId === resolved.templateId,
+        );
+        if (template) handleSelectSurveyTemplate(template);
       }
+      setShowSurveyPanel(true);
     }
     if (resolved.hasModule && (resolved.surveyPanelOpen ?? true)) {
       setSelectedModuleId(resolved.moduleId);
@@ -25867,19 +28134,133 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setSelectedCategoryId(resolved.categoryId);
     }
     return spaceContextRestored;
-  }, [activeSpaceId, handleSetActiveSpace, handleExitSpaceMode, handleSelectSurveyTemplate, handleCloseSurveyMode, selectedTemplate, templates, showSurveyPanel]);
+  }, [activeSpaceId, handleSetActiveSpace, handleSelectSurveyTemplate, selectedTemplate, templates]);
 
-  // Embedded import — exactly once per document, durably.
+  // RULED 2026-09-28 owner: History option A. The History panel asks the
+  // viewer three things (all read through refs, so their identity never
+  // changes and the left-rail API is never republished for them):
+  //   getHistoryMarkIndex()  which marks / Survey Markers / spaces / regions
+  //                          exist right now, and on which page — drives
+  //                          Restore vs "Back on the page now" vs "deleted later";
+  //   locateHistoryMark(id)  where one mark is NOW (page + its geometry), so
+  //                          a row highlights the mark where it is, not where
+  //                          it was when the row was written;
+  //   focusHistoryMark(page, box)  page + zoom so the mark fills ~40% of the
+  //                          view (PdfjsViewerContainer.focusPageRect).
+  const historyMarkIndexCacheRef = useRef({ sources: null, index: null });
+  const getHistoryMarkIndex = useCallback(() => {
+    const pages = annotationsByPageRef.current || {};
+    const markers = surveyMarkersRef.current || {};
+    const spacesNow = spacesRef.current || [];
+    const calloutsNow = calloutsRef.current || [];
+    const cache = historyMarkIndexCacheRef.current;
+    const sources = cache.sources;
+    if (sources && sources[0] === pages && sources[1] === markers && sources[2] === spacesNow && sources[3] === calloutsNow) {
+      return cache.index;
+    }
+    const index = new Map();
+    for (const [pageKey, page] of Object.entries(pages)) {
+      const pageNumber = Number(pageKey);
+      for (const object of page?.objects || []) {
+        const id = getHistoryAnnotationId(object);
+        if (id && !index.has(String(id))) index.set(String(id), { pageNumber, kind: 'mark' });
+      }
+    }
+    for (const [id, record] of Object.entries(markers)) {
+      if (!record || typeof record !== 'object' || record.deletedAt || record.deleted) continue;
+      const pageNumber = Number(record.pageNumber);
+      index.set(String(id), {
+        pageNumber: Number.isFinite(pageNumber) && pageNumber > 0 && record.bounds ? pageNumber : null,
+        kind: 'surveyMarker',
+      });
+    }
+    for (const callout of Array.isArray(calloutsNow) ? calloutsNow : []) {
+      if (callout?.id && !index.has(String(callout.id))) {
+        index.set(String(callout.id), { pageNumber: Number(callout.pageNumber) || null, kind: 'callout' });
+      }
+    }
+    for (const space of Array.isArray(spacesNow) ? spacesNow : []) {
+      if (!space?.id) continue;
+      index.set(String(space.id), { pageNumber: null, kind: 'space' });
+      for (const pageEntry of space.assignedPages || []) {
+        for (const region of pageEntry?.regions || []) {
+          if (region?.regionId) {
+            index.set(String(region.regionId), { pageNumber: Number(pageEntry.pageId) || null, kind: 'region', spaceId: space.id });
+          }
+        }
+      }
+    }
+    historyMarkIndexCacheRef.current = { sources: [pages, markers, spacesNow, calloutsNow], index };
+    return index;
+  }, []);
+
+  const locateHistoryMark = useCallback((markId) => {
+    if (markId == null) return null;
+    const id = String(markId);
+    const entry = getHistoryMarkIndex().get(id);
+    if (!entry) return null;
+    if (entry.kind === 'mark') {
+      const page = (annotationsByPageRef.current || {})[entry.pageNumber]
+        || (annotationsByPageRef.current || {})[String(entry.pageNumber)];
+      const object = (page?.objects || []).find((candidate) => String(getHistoryAnnotationId(candidate)) === id);
+      return { pageNumber: entry.pageNumber, kind: entry.kind, annotation: object ? projectAnnotationForHistoryPreview(object) : null };
+    }
+    if (entry.kind === 'surveyMarker') {
+      const record = (surveyMarkersRef.current || {})[id];
+      const b = record?.bounds;
+      return {
+        pageNumber: entry.pageNumber,
+        kind: entry.kind,
+        annotation: b && entry.pageNumber
+          ? { type: 'surveyMarker', left: Number(b.x) || 0, top: Number(b.y) || 0, width: Number(b.width) || 0, height: Number(b.height) || 0, angle: Number(b.angle) || 0 }
+          : null,
+      };
+    }
+    return { pageNumber: entry.pageNumber, kind: entry.kind, annotation: null };
+  }, [getHistoryMarkIndex]);
+
+  const focusHistoryMark = useCallback((pageNumber, box, options = {}) => {
+    const page = Number(pageNumber);
+    if (!Number.isFinite(page) || page < 1) return false;
+    const nav = goToPageRef.current;
+    const viewer = pdfjsViewerRef.current;
+    if (box && typeof viewer?.focusPageRect === 'function') {
+      // Keep the viewer's page state in step (page field, rail), then zoom.
+      if (typeof nav === 'function') {
+        try { nav(page, { fallback: 'nearest', bypassActiveSpace: true }); } catch { /* best-effort */ }
+      }
+      return viewer.focusPageRect(page, box, options) === true;
+    }
+    if (typeof nav === 'function') {
+      try { nav(page, { fallback: 'nearest', bypassActiveSpace: true }); return true; } catch { return false; }
+    }
+    return false;
+  }, []);
+
+  // Read through a ref: the tombstone list is a new array after every capture,
+  // and the import effect must not be cancelled mid-import by that churn.
+  const durableDeletedPdfAnnotationsRef = useRef(durableDeletedPdfAnnotations);
+  durableDeletedPdfAnnotationsRef.current = durableDeletedPdfAnnotations;
+
+  // Embedded import — exactly once per document AND store version, durably.
   //
   // A PDF can carry its own embedded annotations (e.g. markups on pages 6-11).
-  // Those must be imported into the annotation store the FIRST time this document
-  // is opened, and then never re-imported. The trigger is a durable per-document
-  // marker (documents.embedded_import_completed_at), NOT the live mark count: a
-  // user could draw one stroke before the import runs, and gating on count===0
-  // (the old behavior) let a single stroke silently suppress the import forever.
-  // Imported objects are merged ALONGSIDE any existing marks (stable ids keep a
-  // re-run idempotent), and the marker is stamped once the import lands so reopen
-  // skips it. Runs at most once per mount via embeddedImportFallbackDoneRef.
+  // Those are imported into the annotation store the first time an EDITOR
+  // opens the document on this build, and then never again. The gate is a
+  // marker inside the document's own Y.Doc meta (EMBEDDED_IMPORT_MARKER_KEY,
+  // embeddedImportGate.js) written by store v3 only: documents imported by an
+  // older build put those marks in the old `annotations` map this build no
+  // longer reads, so the old server-side column (embedded_import_completed_at)
+  // cannot gate it — the PDF's built-in markup must come back once.
+  //   * Viewers and a not-yet-resolved role never write (the effect re-runs
+  //     when the role resolves).
+  //   * Deterministic ids: two editors importing at once write the same keys.
+  //   * Deletion tombstones are honoured: an embedded annotation someone
+  //     deleted is never brought back.
+  //   * The marker is written only once every imported mark is stored, so a
+  //     tab closed mid-import retries next open.
+  // Imported objects are merged ALONGSIDE existing marks. Runs at most once
+  // per mount via embeddedImportFallbackDoneRef.
   useEffect(() => {
     const hydration = normalAnnotationHydration;
     const documentId = pdfFile?.id || null;
@@ -25887,37 +28268,34 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!hydration || hydration.ready !== true) return undefined;
     if (hydration.documentId && hydration.documentId !== documentId) return undefined;
     if (embeddedImportFallbackDoneRef.current === documentId) return undefined;
+    const decision = embeddedImportDecision({
+      // The document's owner may import even before the role RPC resolves.
+      role: yjsDocRole ?? (documentOwnerId && user?.id && documentOwnerId === user.id ? 'owner' : null),
+      marker: excelSyncMetaGet(EMBEDDED_IMPORT_MARKER_KEY),
+    });
+    if (decision === 'wait') return undefined;
     embeddedImportFallbackDoneRef.current = documentId;
+    if (decision === 'skip') return undefined;
 
     let cancelled = false;
     (async () => {
       try {
-        // Durable once-only gate: if this document already imported its embedded
-        // marks in any prior session, never import again.
-        let alreadyImported = false;
-        try {
-          const { data: metaRow } = await supabase
-            .from('documents')
-            .select('embedded_import_completed_at')
-            .eq('id', documentId)
-            .maybeSingle();
-          alreadyImported = !!metaRow?.embedded_import_completed_at;
-        } catch (metaErr) {
-          // If we can't read the marker, fall through to importing — stable ids
-          // make a redundant import a no-op, and the merge never clobbers.
-          console.warn('[PDFImport] could not read embedded-import marker:', metaErr?.message || metaErr);
-        }
-        if (cancelled || alreadyImported) return;
-
         const rawPdfBytes = typeof pdfFile.arrayBuffer === 'function'
           ? await pdfFile.arrayBuffer()
           : null;
-        const { annotationsByPage: importedAnnotations, nativeLayerPolicyByPage } =
+        const { annotationsByPage: importedWithSource, nativeLayerPolicyByPage } =
           await importAnnotationsFromPdf(pdfDoc, { rawPdfBytes });
         if (cancelled) return;
+        // w33: the store keeps one geometry per imported mark, not the PDF's
+        // source geometry; the screen gets the same copy the store reads back
+        // (an erase compares the two).
+        const importedAnnotations = withoutUnstoredFieldsByPage(importedWithSource);
+        // Another screen may have finished the import while this one parsed.
+        if (excelSyncMetaGet(EMBEDDED_IMPORT_MARKER_KEY)) return;
 
         const totalImported = Object.values(importedAnnotations || {})
           .reduce((n, pg) => n + (Array.isArray(pg?.objects) ? pg.objects.length : 0), 0);
+        const importedIds = [];
 
         if (totalImported > 0) {
           setPdfNativeAnnotationLayerPolicyByPage(nativeLayerPolicyByPage || {});
@@ -25929,43 +28307,87 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               || annotationsByPageRef.current?.[pageNumber]
               || { objects: [] };
             const currentObjects = Array.isArray(current.objects) ? current.objects : [];
-            // Stable ids make this merge idempotent: an imported mark keyed by the
-            // same id overwrites rather than duplicates, and existing user marks
-            // (different ids) are preserved.
             const existingIds = new Set(currentObjects.map((o) => o?.id || o?.data?.id).filter(Boolean));
-            const stamped = objects.map((obj) => {
-              const stableId = obj.id || obj.data?.id || obj.pdfAnnotationId;
-              return { ...obj, id: stableId, data: { ...(obj.data || {}), id: stableId } };
-            }).filter((o) => !existingIds.has(o.id));
+            const stamped = selectEmbeddedImportObjects(objects, pageNumber, {
+              existingIds,
+              deletedPdfAnnotations: durableDeletedPdfAnnotationsRef.current,
+            });
             if (stamped.length === 0) return;
+            stamped.forEach((object) => importedIds.push(object.id));
+            // 2026-10-07: saved as one checkpoint, apart from the user's edits.
+            annotationDocBeginBulkImport(stamped.map((object) => object.id));
             handleSaveAnnotations(pageNumber, { ...current, objects: [...currentObjects, ...stamped] }, {
               source: 'embedded-import-once',
               action: 'import-pdf-annotations',
               checkpointPolicy: 'skip',
             });
+            // The import is not a gesture: drop the page snapshot its 'skip'
+            // save left, or the user's first edit here would record the
+            // imported marks as its own creates (and Undo would delete them).
+            endPagePreviewGesture(previewBaselineByPageRef.current, gestureFieldTouchesByPageRef.current, pageNumber);
           });
           appDebug('[PDFImport] imported embedded PDF annotations (once) ' + JSON.stringify({
             documentId,
             pages: Object.keys(importedAnnotations || {}).length,
             totalImported,
+            added: importedIds.length,
           }));
         }
 
-        // Stamp the durable marker so this document never re-parses for embedded
-        // marks again — whether it had marks or was genuinely empty. Only after a
-        // successful parse (a thrown parse leaves the marker null so we retry).
-        if (!cancelled) {
-          try {
-            await supabase
-              .from('documents')
-              .update({ embedded_import_completed_at: new Date().toISOString() })
-              .eq('id', documentId);
-          } catch (markErr) {
-            console.warn('[PDFImport] could not stamp embedded-import marker:', markErr?.message || markErr);
-          }
+        // Write the once-only marker after the imported marks reached the
+        // store (the capture runs after React commits the saves above).
+        for (let attempt = 0; attempt < 40 && !cancelled; attempt += 1) {
+          if (importedIds.length === 0 || annotationDocHasStoredMarks(importedIds)) break;
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        if (cancelled) return;
+        if (importedIds.length > 0 && !annotationDocHasStoredMarks(importedIds)) {
+          throw new Error('embedded import did not reach the store yet');
+        }
+        // ...and the cloud (one checkpoint; also one a closed tab left to
+        // this open): the marker must never be read where the marks cannot.
+        if (!(await annotationDocWhenBulkImportSaved())) {
+          throw new Error('embedded import was not stored yet');
+        }
+        if (cancelled) return;
+        // w27: a page with markup that pdf.js could not read was skipped; no
+        // marker yet (it would hide that page's markup for good). Record the
+        // attempt and retry on the next open — the per-mount guard stays set,
+        // so not on every render. Bounded: see embeddedImportGate.js.
+        const markerDecision = embeddedImportMarkerDecision({
+          failedPages: embeddedImportFailedPages(nativeLayerPolicyByPage),
+          previous: excelSyncMetaGet(EMBEDDED_IMPORT_INCOMPLETE_KEY),
+        });
+        if (!markerDecision.write) {
+          excelSyncMetaSet(EMBEDDED_IMPORT_INCOMPLETE_KEY, {
+            at: new Date().toISOString(),
+            attempts: markerDecision.attempts,
+            pages: markerDecision.pages,
+          }, 'local');
+          console.warn('[PDFImport] embedded import incomplete; will retry on the next open', {
+            documentId,
+            pages: markerDecision.pages,
+            attempts: markerDecision.attempts,
+            added: importedIds.length,
+          });
+          return;
+        }
+        excelSyncMetaSet(EMBEDDED_IMPORT_MARKER_KEY, {
+          at: new Date().toISOString(),
+          count: importedIds.length,
+          ...(markerDecision.incompletePages ? { incompletePages: markerDecision.incompletePages } : {}),
+        }, 'local');
+        // The reference build's server-side marker, kept for it.
+        try {
+          await supabase
+            .from('documents')
+            .update({ embedded_import_completed_at: new Date().toISOString() })
+            .eq('id', documentId);
+        } catch (markErr) {
+          console.warn('[PDFImport] could not stamp embedded-import marker:', markErr?.message || markErr);
         }
       } catch (importError) {
-        // Leave the marker unset so a transient parse failure retries next open;
+        // Leave the marker unset so a transient failure retries next open;
         // clear the per-mount guard so a remount can re-attempt.
         if (embeddedImportFallbackDoneRef.current === documentId) {
           embeddedImportFallbackDoneRef.current = null;
@@ -25975,7 +28397,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     })();
 
     return () => { cancelled = true; };
-  }, [normalAnnotationHydration, pdfFile, pdfDoc, handleSaveAnnotations]);
+  }, [normalAnnotationHydration, pdfFile, pdfDoc, handleSaveAnnotations, yjsDocRole, documentOwnerId, user?.id, excelSyncMetaGet, excelSyncMetaSet, annotationDocHasStoredMarks, annotationDocBeginBulkImport, annotationDocWhenBulkImportSaved]);
+
+  // Keep this document's list thumbnail current (page 1 with its markup),
+  // debounced after edits settle and never while drawing — see the hook.
+  useDocumentThumbnailCapture({
+    pdfFile,
+    pdfDoc,
+    pageOneAnnotations: annotationsByPage?.[1],
+    callouts,
+    hydrationReady: normalAnnotationHydration?.ready === true,
+  });
 
   useEffect(() => {
     if (!import.meta.env.DEV || typeof window === 'undefined') return undefined;
@@ -26054,6 +28486,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             action: 'import-pdf-annotations',
             checkpointPolicy: 'skip',
           });
+          endPagePreviewGesture(previewBaselineByPageRef.current, gestureFieldTouchesByPageRef.current, pageNumber);
         }
       });
 
@@ -26628,18 +29061,53 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       appDebug(`[CSeries group-update] seriesId=${seriesId} patch=${JSON.stringify(patch)} -> NO matching pins (no-op)`);
       return;
     }
-    // Save all but the last with 'skip' so the undo history stays compact;
-    // the last save uses 'normal' to commit a single undo entry that captures
-    // the full multi-page change.
-    updates.forEach(({ pageKey, json }, idx) => {
-      const isLast = idx === updates.length - 1;
+    if (updates.length === 1) {
+      const [{ pageKey, json }] = updates;
       const numericKey = Number(pageKey);
       handleSaveAnnotations(Number.isFinite(numericKey) ? numericKey : pageKey, json, {
         source: 'counter:group-update',
         action: 'counter-group-update',
-        checkpointPolicy: isLast ? 'normal' : 'skip',
+        checkpointPolicy: 'normal',
       });
-    });
+    } else {
+      // w37: a series on several pages is ONE step for all of them (a
+      // document batch, like the counter-series delete). It used to save all
+      // but the last page as live frames: Undo reverted only the last page,
+      // and the other pages' leftover gesture baselines folded this change
+      // into the next, unrelated step on each of those pages.
+      // A colour-slider drag calls this every frame: frames are live saves
+      // only (each page keeps its pre-drag baseline and touch record); the
+      // release records the one step from those baselines.
+      const phase = paintPhaseRef.current;
+      const isDragFrame = phase === 'preview' || phase === 'settle';
+      updates.forEach(({ pageKey, json }) => {
+        const numericKey = Number(pageKey);
+        handleSaveAnnotations(Number.isFinite(numericKey) ? numericKey : pageKey, json, {
+          source: 'counter:group-update',
+          action: 'counter-group-update',
+          checkpointPolicy: 'skip',
+        });
+      });
+      if (!isDragFrame) {
+        const viewerId = yjsUndoCtx?.userId || user?.id || null;
+        const pageActions = updates.map(({ pageKey, json }) => {
+          const numericKey = Number(pageKey);
+          const pageNumber = Number.isFinite(numericKey) ? numericKey : pageKey;
+          const baseline = previewBaselineByPageRef.current.get(String(pageKey)) || allPages[pageKey];
+          const touches = gestureFieldTouchesByPageRef.current.get(String(pageKey));
+          const built = buildAnnotationHistoryAction({ pageNumber, previousPage: baseline, nextPage: json });
+          const own = touches ? restrictAnnotationHistoryActionFields(built, touches) : built;
+          endPagePreviewGesture(previewBaselineByPageRef.current, gestureFieldTouchesByPageRef.current, pageNumber);
+          // Per page: a collaborator's pin on one page must not take away
+          // the step for the user's own pins (a document batch is
+          // all-or-nothing under the owner filter).
+          return filterAnnotationHistoryActionByOwner(own, viewerId, documentOwnerId);
+        }).filter(Boolean);
+        if (pageActions.length > 0) {
+          pushLocalAnnotationHistoryAction({ type: 'fabric:document-batch', actions: pageActions });
+        }
+      }
+    }
     // [COUNTER STEP 7] When the group whose color was just changed is the
     // ACTIVE series (i.e. the one new pins land in), sync the active-series
     // color refs so the next pin matches and the bottom toolbar caret swatch
@@ -26661,7 +29129,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setCounterUITick((t) => t + 1);
     }
     appDebug(`[CSeries group-update] seriesId=${seriesId} patch=${JSON.stringify(patch)} -> updated ${updates.length} page(s)`);
-  }, [handleSaveAnnotations]);
+  }, [documentOwnerId, handleSaveAnnotations, pushLocalAnnotationHistoryAction, user?.id, yjsUndoCtx?.userId]);
   handleCounterGroupUpdateRef.current = handleCounterGroupUpdate;
 
   // Request deletion of one complete counter series. The existing shared
@@ -26767,7 +29235,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           checkpointPolicy: 'skip',
           deletedCount: removedCount,
         });
-        previewBaselineByPageRef.current.delete(String(pageNumber));
+        endPagePreviewGesture(previewBaselineByPageRef.current, gestureFieldTouchesByPageRef.current, pageNumber);
       });
       pushLocalAnnotationHistoryAction(scopedDocumentAction);
 
@@ -26859,6 +29327,36 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // coord transform so shapes land under the cursor at any zoom. Declared
   // AFTER handleSaveAnnotations so the dep array doesn't TDZ-crash at
   // first render (same pattern as handleDeleteSelectedCallouts).
+  // w52: the scope a mark pasted on `pageNumber` takes — the same shared
+  // helpers every creation surface uses (applyScope + shouldStampActiveRegionId).
+  const currentPasteScope = (pageNumber) => ({
+    selectedModuleId,
+    stampRegionId: shouldStampActiveRegionId({
+      regionId: activeRegionId,
+      spaceId: annotationSpaceId,
+      pageNumber,
+      spaces,
+      isRegionOverlayEnabled,
+    }),
+    activeRegionId,
+  });
+  pasteScopeRef.current = currentPasteScope;
+  cutGateOwnerIdRef.current = documentOwnerId;
+  // w63 (Figma / Acrobat / Drawboard): whatever a paste creates becomes the
+  // selection — and ONLY that — so the next arrow-key nudge or drag moves the
+  // copy you just made, never the original. The family paste and Duplicate
+  // already do this through the same pendingSvgSelection broadcast.
+  const selectPastedMarks = useCallback((pageNumber, annotationIndices) => {
+    setSelectedCalloutIds(new Set());
+    setPendingSvgSelection({
+      pageNumber,
+      annotationIndices,
+      surveyMarkerIds: [],
+      exclusive: true,
+      tick: Date.now(),
+    });
+  }, []);
+
   const pasteAnnotationAt = useCallback((pageNumber, clientX, clientY) => {
     if (!clipboardAnnotation || pageNumber == null) return false;
     const page = annotationsByPageRef.current?.[pageNumber] || { objects: [] };
@@ -26928,6 +29426,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       dx += repeatOffset;
       dy += repeatOffset;
 
+      const pasteScope = currentPasteScope(pageNumber);
+      const firstPastedIndex = next.objects.length;
       for (const c of clones) {
         // UX: every clone is a brand-new NATIVE object — fresh data.id (same
         // uuid contract as creation), no import provenance — so the save diff
@@ -26935,6 +29435,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // untouched) and export/dedupe never see two objects claiming one
         // native PDF annotation id. See utils/pasteCloneIdentity.js.
         mintPastedCloneIdentity(c);
+        // w56: the paste is the paster's own mark (no copied lock / author).
+        makePastedMarkOwn(c, user?.id || null);
+        applyPasteScope(c, pasteScope);
         if (typeof c.left === 'number') c.left += dx;
         if (typeof c.top === 'number') c.top += dy;
         next.objects.push(c);
@@ -26944,6 +29447,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         action: 'paste',
         checkpointPolicy: 'normal',
       });
+      // w63 (Figma / Acrobat): the pasted marks become the selection, so the
+      // next arrow key or drag moves the copies, not the originals.
+      selectPastedMarks(pageNumber, clones.map((_, offset) => firstPastedIndex + offset));
       if (clipboardAnnotation.mode === 'cut') {
         setClipboardAnnotation(null);
       }
@@ -26963,6 +29469,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // path: rendering detects imported-path geometry structurally, not via
     // the provenance flags. See utils/pasteCloneIdentity.js.
     mintPastedCloneIdentity(pasted);
+    // w56: the paste is the paster's own mark (no copied lock / author).
+    makePastedMarkOwn(pasted, user?.id || null);
+    applyPasteScope(pasted, currentPasteScope(pageNumber));
     const originalLeft = typeof pasted.left === 'number' ? pasted.left : 0;
     const originalTop = typeof pasted.top === 'number' ? pasted.top : 0;
 
@@ -26999,6 +29508,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     pasted.left = pastedLeft + repeatOffset;
     pasted.top = pastedTop + repeatOffset;
+    const pastedIndex = next.objects.length;
     next.objects.push(pasted);
 
     console.log(`[PasteDiag] resolvedVia=${resolvedVia} click=(${clientX},${clientY}) pasted=(${pastedLeft.toFixed(2)},${pastedTop.toFixed(2)}) original=(${originalLeft},${originalTop}) type=${pasted.type} page=${pageNumber}`);
@@ -27008,11 +29518,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       action: 'paste',
       checkpointPolicy: 'normal',
     });
+    // w63: the pasted mark becomes the selection (see the group branch above).
+    selectPastedMarks(pageNumber, [pastedIndex]);
     if (clipboardAnnotation.mode === 'cut') {
       setClipboardAnnotation(null);
     }
     return true;
-  }, [clipboardAnnotation, handleSaveAnnotations, resolvePasteRepeatCount, showToast]);
+  }, [clipboardAnnotation, handleSaveAnnotations, selectPastedMarks, resolvePasteRepeatCount, showToast, selectedModuleId, activeRegionId, annotationSpaceId, spaces, isRegionOverlayEnabled, user?.id]);
   // Keep the ref in sync so the keydown useEffect (declared above
   // pasteAnnotationAt) can call it without TDZ'ing on the dep array.
   pasteAnnotationAtRef.current = pasteAnnotationAt;
@@ -27038,6 +29550,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // callout clipboard so Cmd+V pastes THIS shape, not a stale callout.
     setClipboardCallout(null);
     setClipboardCalloutType(null);
+    setFamilyClipboard(null);
   }, []);
 
   // UX: Shared annotation Cut handler — called by the Cmd+X hotkey. Same
@@ -27055,6 +29568,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (annotationIndex < 0 || annotationIndex >= page.objects.length) return;
     const obj = page.objects[annotationIndex];
     if (!obj) return;
+    // RULED 2026-09-28 owner: open editing + lock — Cmd+X runs the SAME gate
+    // as the right-click Cut: any mark, own or someone else's, no
+    // confirmation; a user-locked mark stays (even in the boot window).
+    if (isUserLocked(obj)) {
+      notifyLockedMarkBlocked();
+      return;
+    }
+    const cutViewerId = user?.id ?? null;
+    if (cutViewerId && documentOwnerId
+      && !canModify({ annotation: obj, viewerId: cutViewerId, documentOwnerId })) return;
     setClipboardAnnotation({
       object: deepClone(obj),
       sourcePageNumber: pageNumber,
@@ -27064,6 +29587,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // handleCopyAnnotation).
     setClipboardCallout(null);
     setClipboardCalloutType(null);
+    setFamilyClipboard(null);
     const next = deepClone(page);
     next.objects.splice(annotationIndex, 1);
     handleSaveAnnotations(pageNumber, next, {
@@ -27076,7 +29600,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       annotationIndex: null,
       tick: Date.now(),
     });
-  }, [handleSaveAnnotations]);
+  }, [handleSaveAnnotations, user?.id, documentOwnerId, notifyLockedMarkBlocked]);
 
   const { handlePdfjsFormFieldChange, handlePdfjsFormFieldBlur } = usePdfjsFormFieldPersistence({
     handleSaveAnnotations,
@@ -27093,6 +29617,80 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // the shape instead of sticking to whichever neighbor slid into the
   // original slot (matches Illustrator/Figma/Photoshop). toIndex is clamped
   // to [0, objects.length - 1]; same-index is a no-op.
+  // UX: w53 (2026-09-28) — restack a selection that may mix marks, callouts
+  // and Survey Markers in the page's ONE stacking order (planFamilyReorder):
+  // Bring to front / back move the whole selection to the top / bottom in its
+  // own order; Bring forward / Send backward step it past its neighbours (one
+  // item jumps to the nearest mark or marker it overlaps, Figma rule). The
+  // marks' new order and the markers' new `stack` save together: one save,
+  // one undo step. The shapes stay selected at their new slots; callouts and
+  // markers are selected by id and stay selected on their own.
+  const handleReorderFamily = useCallback((pageNumber, {
+    indices = [], calloutIds = [], markerIds = [], direction,
+  } = {}) => {
+    if (pageNumber == null || !direction) return false;
+    const page = annotationsByPageRef.current?.[pageNumber] || { objects: [] };
+    const objects = Array.isArray(page.objects) ? page.objects : [];
+    const calloutSet = new Set([...(calloutIds || [])].map(String));
+    const picked = [...(indices || [])].filter((index) => Number.isInteger(index)
+      && index >= 0 && index < objects.length && objects[index]?.data?.type !== 'callout');
+    if (calloutSet.size > 0) {
+      objects.forEach((object, index) => {
+        if (object?.data?.type === 'callout' && calloutSet.has(String(object?.data?.id))) picked.push(index);
+      });
+    }
+    const pageMarkers = (newSurveyMarkersByPageRef.current?.[pageNumber] || [])
+      .filter((entry) => entry?.annotationId)
+      .map((entry) => ({ id: String(entry.annotationId), stack: entry.stack || null }));
+    const svg = typeof document !== 'undefined'
+      ? document.querySelector(`[data-svg-annotation-layer="${pageNumber}"]`)
+      : null;
+    const bboxOfEntry = (entry) => {
+      if (!svg) return null;
+      const node = entry.kind === 'mark'
+        ? (svg.querySelector(`[data-annotation-index="${entry.index}"]`)
+          || svg.querySelector(`[data-stack-index="${entry.index}"]`))
+        : svg.querySelector(`[data-survey-marker-id="${CSS.escape(String(entry.id))}"]`);
+      if (!node || typeof node.getBBox !== 'function') return null;
+      try { return node.getBBox(); } catch (_e) { return null; }
+    };
+    const overlaps = (a, b) => {
+      const boxA = bboxOfEntry(a);
+      if (!boxA) return true; // the moving item's own geometry unknown: plain one-slot step
+      const boxB = bboxOfEntry(b);
+      if (!boxB) return false; // a hidden / unrendered neighbour is never jumped over
+      return !(boxA.x + boxA.width < boxB.x || boxB.x + boxB.width < boxA.x
+        || boxA.y + boxA.height < boxB.y || boxB.y + boxB.height < boxA.y);
+    };
+    const plan = planFamilyReorder(objects, pageMarkers, {
+      selectedIndices: picked,
+      selectedMarkerIds: markerIds,
+      direction,
+      overlaps,
+    });
+    if (!plan.changed) return false;
+    const next = deepClone(page);
+    next.objects = plan.objects.map((object) => deepClone(object));
+    const stacks = plan.markerStacks.size > 0 ? Object.fromEntries(plan.markerStacks) : null;
+    handleSaveAnnotations(pageNumber, next, {
+      source: 'object:modified',
+      action: 'reorder-group',
+      checkpointPolicy: 'normal',
+      ...(stacks ? { surveyMarkerFamily: { stacks } } : {}),
+    });
+    if (plan.objectsChanged) {
+      setPendingSvgSelection({
+        pageNumber,
+        annotationIndices: plan.selectedIndices.filter(
+          (index) => plan.objects[index]?.data?.type !== 'callout',
+        ),
+        keepSurveyMarkers: true,
+        tick: Date.now(),
+      });
+    }
+    return true;
+  }, [handleSaveAnnotations]);
+
   const handleReorderAnnotation = useCallback((pageNumber, fromIndex, target) => {
     if (pageNumber == null || fromIndex == null) return;
     const page = annotationsByPageRef.current?.[pageNumber];
@@ -27113,8 +29711,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (direction !== 'forward' && direction !== 'backward') return fromIndex;
       const svg = document.querySelector(`[data-svg-annotation-layer="${pageNumber}"]`);
       if (!svg) return stepFallback;
+      // w52: callouts render in the same stack but carry data-stack-index
+      // (not data-annotation-index, which routes clicks to the shape path).
       const bboxOf = (i) => {
-        const g = svg.querySelector(`[data-annotation-index="${i}"]`);
+        const g = svg.querySelector(`[data-annotation-index="${i}"]`)
+          || svg.querySelector(`[data-stack-index="${i}"]`);
         if (!g || typeof g.getBBox !== 'function') return null;
         try { return g.getBBox(); } catch (_e) { return null; }
       };
@@ -27136,6 +29737,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
       return fromIndex;
     };
+    // w53: on a page that shows Survey Markers, a mark's place is among the
+    // markers too — restack through the family planner (same Figma overlap
+    // rule for forward / backward, markers counted as neighbours).
+    if (typeof target === 'string' && (newSurveyMarkersByPageRef.current?.[pageNumber] || []).length > 0) {
+      const isCallout = page.objects[fromIndex]?.data?.type === 'callout';
+      handleReorderFamily(pageNumber, isCallout
+        ? { calloutIds: [page.objects[fromIndex]?.data?.id], direction: target }
+        : { indices: [fromIndex], direction: target });
+      return;
+    }
     const resolved = typeof target === 'string' ? resolveOverlapTarget(target) : target;
     const clamped = Math.max(0, Math.min(resolved, objectsLen - 1));
     if (clamped === fromIndex) return;
@@ -27147,12 +29758,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       action: 'reorder',
       checkpointPolicy: 'normal',
     });
+    // w52: a callout's selection is keyed by its id and survives the move on
+    // its own; pointing the shape selection at its new slot would select the
+    // callout's group object as if it were a shape.
+    if (moved?.data?.type === 'callout') return;
     setPendingSvgSelection({
       pageNumber,
       annotationIndex: clamped,
       tick: Date.now(),
     });
-  }, [handleSaveAnnotations]);
+  }, [handleSaveAnnotations, handleReorderFamily]);
 
   // ---------------------------------------------------------------------------
   // Group / Ungroup — persistent grouping (2026-04-20)
@@ -27395,9 +30010,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return;
     }
     const currentPage = annotationsByPageRef.current?.[drag.pageKey] || { version: '5.3.0', objects: [] };
+    // w56 (live two-user test 2026-09-28): a dropped counter carries its
+    // creator in meta.authorId like every drawn shape (the SVG layer stamps
+    // those in dispatchCommit). Without it the pin counted as an
+    // unattributed legacy mark, so only the document owner could Lock /
+    // Unlock it — a collaborator could not lock their own counter.
+    const counter = stampAnnotationCreationIdentity(drag.counter, { authorId: user?.id ?? null });
     const updatedJSON = {
       ...currentPage,
-      objects: [...(currentPage.objects || []), drag.counter],
+      objects: [...(currentPage.objects || []), counter],
     };
     // Commit BEFORE tearing down the drag preview, and force the React pass
     // synchronously, so the committed pin is already painted by the (always
@@ -27425,7 +30046,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     removeCounterDragPreview(drag);
 
     counterDragRef.current = null;
-  }, [handleSaveAnnotations, removeCounterDragPreview]);
+  }, [handleSaveAnnotations, removeCounterDragPreview, user?.id]);
 
   // [COUNTER WIP — DO NOT TOUCH] Window-level Shift/Escape listener for the
   // counter drag-to-place flow. Only acts when activeTool === 'counter' AND a
@@ -27546,6 +30167,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }, 300);
   }, [surveyMarkers, selectedTemplate, showSurveyPanel, rightRailCollapsed, requestRightRailExpand, mobileMode]);
 
+  // Survey audit P1-5 (phone "Locate on page"): newest locate wins.
+  const surveyLocateTokenRef = useRef(0);
+
   // Locate item on PDF (Forward Navigation)
   const handleLocateItemOnPDF = useCallback((surveyMarker) => {
     if (!surveyMarker) return;
@@ -27567,6 +30191,87 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         annotationId,
         tick: Date.now(),
       });
+    }
+
+    // Survey audit P1-5 (phone): the Survey sheet has just been lowered to
+    // its standard height (SurveySpacesRail). Once it has settled, fit the
+    // marker in the page you can still see - above the sheet, beside the tool
+    // rail - with drawing around it: the box takes at most ~40% of that area's
+    // width and height (it used to fill the width, under a full-screen sheet).
+    // The zoom goes through the normal viewer zoom, so zoomGeneration and the
+    // pdf.js commit run exactly as for the zoom buttons.
+    if (mobileMode && typeof window !== 'undefined' && typeof document !== 'undefined') {
+      const token = surveyLocateTokenRef.current + 1;
+      surveyLocateTokenRef.current = token;
+      const isCurrent = () => surveyLocateTokenRef.current === token;
+      const readInsets = () => {
+        const container = containerRef.current;
+        if (!container) return { left: 0, right: 0, top: 0, bottom: 0 };
+        const occluders = Array.from(document.querySelectorAll('[data-viewer-occluder], .mobile-pdf-tools, .mobile-pdf-properties'))
+          .filter((node) => node.getClientRects().length > 0)
+          .map((node) => node.getBoundingClientRect());
+        return resolveViewerOcclusionInsets(container.getBoundingClientRect(), occluders);
+      };
+      const readRenderedScale = () => {
+        const pageContainer =
+          pageContainersRef.current?.[pageNumber] ||
+          pdfjsPageContainersStateRef.current?.[pageNumber] ||
+          pdfjsViewerRef.current?.getPageContainer?.(pageNumber) ||
+          null;
+        const pageElement = resolvePageContentElement(pageContainer) || pageContainer;
+        const pageRect = pageElement?.getBoundingClientRect?.();
+        const pageSize = pageSizesRef.current?.[pageNumber] || {};
+        if (!pageRect || !(pageRect.width > 0) || !(Number(pageSize.width) > 0)) return null;
+        return pageRect.width / Number(pageSize.width);
+      };
+      const centerInVisibleArea = () => {
+        const insets = readInsets();
+        return centerPageBoundsInViewer(pageNumber, bounds, {
+          behavior: 'auto',
+          retryBehavior: 'auto',
+          maxRetries: 18,
+          retryDelay: 60,
+          navigateFirst: true,
+          leftInset: insets.left,
+          rightInset: insets.right,
+          topInset: insets.top,
+          bottomInset: insets.bottom,
+        });
+      };
+      window.setTimeout(() => {
+        if (!isCurrent()) return;
+        const container = containerRef.current;
+        if (!container) return;
+        const insets = readInsets();
+        const visibleWidth = Math.max(80, container.clientWidth - insets.left - insets.right);
+        const visibleHeight = Math.max(80, container.clientHeight - insets.top - insets.bottom);
+        const boxWidth = Math.max(1, Number(bounds.width) || 1);
+        const boxHeight = Math.max(1, Number(bounds.height) || 1);
+        const fitScale = Math.min((visibleWidth * 0.4) / boxWidth, (visibleHeight * 0.4) / boxHeight);
+        const targetScale = Math.min(3, Math.max(0.35, fitScale));
+        const currentScale = readRenderedScale() || Math.max(0.01, Number(scaleRef.current) || 1);
+        debugMark('survey_locate_phone', { pageNumber, annotationId, insets, visibleWidth, visibleHeight, currentScale, targetScale });
+        if (Math.abs(targetScale - currentScale) / currentScale < 0.04) {
+          centerInVisibleArea();
+          return;
+        }
+        centerPageBoundsInViewer(pageNumber, bounds, { behavior: 'auto', navigateFirst: true, maxRetries: 18, retryDelay: 60 });
+        setScaleWithViewportPreservation(targetScale, { preserveCenter: false, mode: ZOOM_MODES.MANUAL });
+        const startedAt = Date.now();
+        const waitForZoom = () => {
+          if (!isCurrent()) return;
+          const rendered = readRenderedScale();
+          if ((rendered && Math.abs(rendered - targetScale) / targetScale < 0.015) || Date.now() - startedAt > 1500) {
+            centerInVisibleArea();
+            // The viewer re-anchors its scroll a layout pass after the commit.
+            window.setTimeout(() => { if (isCurrent()) centerInVisibleArea(); }, 120);
+            return;
+          }
+          window.setTimeout(waitForZoom, 30);
+        };
+        window.setTimeout(waitForZoom, 30);
+      }, 320);
+      return;
     }
 
     const currentScale = Math.max(0.01, Number(scaleRef.current) || Number(scale) || 1);
@@ -27749,6 +30454,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     centerSurveyMarkerElementInViewer,
     centerPageBoundsInViewer,
     goToPage,
+    mobileMode,
     resolvePageContentElement,
     scale,
     setActiveTool,
@@ -27778,6 +30484,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // history. surveyMarkersRef (not the surveyMarkers state) keeps this
     // callback's identity stable across marker updates.
     const existingSurveyMarker = surveyMarkersRef.current?.[annotationId];
+    // Owner ruling 2026-09-28: a user-locked marker never moves / resizes,
+    // even before the ids are known.
+    if (existingSurveyMarker && isUserLocked(existingSurveyMarker)) {
+      notifyLockedMarkBlocked();
+      return;
+    }
     if (existingSurveyMarker) {
       const viewerId = user?.id ?? null;
       if (
@@ -27856,22 +30568,212 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         )),
       };
     });
-  }, [addHistoryCheckpoint, user?.id, documentOwnerId]);
+  }, [addHistoryCheckpoint, user?.id, documentOwnerId, notifyLockedMarkBlocked]);
+
+  // UX: w53 (2026-09-28, owner: "annotations are annotations") — Survey
+  // Markers take part in the family actions every other mark has: a group
+  // move or nudge together with shapes / callouts, a restack among them
+  // (Bring / Send, Cmd+] / Cmd+[), paste and duplicate. Their records stay
+  // in their OWN store (Excel two-way sync, Row ID identity) — this writes
+  // only geometry (`bounds`), the canvas-only `stack`, or whole NEW records
+  // (paste / duplicate: a new survey item with no Excel identity). Returns
+  // the undo half (a survey-marker:batch) for the caller's single step.
+  // Permission: the same gate as a marker drag (canModifySurveyMarker —
+  // owner any, others their own; pre-auth permissive); a new record is the
+  // viewer's own. Pending markers (placed, not yet named) are not family
+  // members and are skipped.
+  //
+  // Writes are field-level onto each marker AS IT IS NOW (a functional state
+  // update — never a whole-dict replace built from a copy that may be a
+  // frame old), so an Excel import or a collaborator's edit that landed a
+  // moment earlier is kept. A marker the step REMOVES (a family Delete, the
+  // Undo of a paste, the Redo of a delete) goes through the established
+  // marker delete — ownership gate, 30-day trash, History row, item cleanup,
+  // linked-Excel row removal — with its own legacy step folded into this one.
+  const handleSurveyMarkerDeletedRef = useRef(null);
+  const applySurveyMarkerFamilyAction = useCallback((action) => {
+    const changes = Array.isArray(action?.changes) ? action.changes : [];
+    if (changes.length === 0) return [];
+    const now = surveyMarkersRef.current || {};
+    // Undo of a paste / Redo of a delete: a marker that never reached Excel
+    // (no export identity) is simply taken off again — no trash entry, no
+    // "deleted" History row, no Excel re-export for a step the user took back.
+    const quietRemoval = (change) => isUndoingRef.current && !now[change.id]?.excelSync;
+    // Owner ruling 2026-09-28: Undo / Redo never change a user-locked marker
+    // either — only the lock toggle itself (by its author / the owner).
+    const viewerNow = user?.id ?? null;
+    const onlyLockChanges = (change) => {
+      const keys = new Set([...Object.keys(change.before || {}), ...Object.keys(change.after || {})]);
+      keys.delete('lockedBy');
+      return [...keys].every((key) => JSON.stringify(change.before?.[key] ?? null) === JSON.stringify(change.after?.[key] ?? null));
+    };
+    const allowed = changes.filter((change) => {
+      const live = now[change.id];
+      if (!live || !isUserLocked(live)) return true;
+      return change.before != null && change.after != null && onlyLockChanges(change)
+        && canToggleLock({ surveyMarker: live, viewerId: viewerNow, documentOwnerId });
+    });
+    if (allowed.length < changes.length) notifyLockedMarkBlocked();
+    // A survey item an Undo / Redo brings back is app-restored: its "received
+    // by Excel" stamp goes (as a History restore does), so the next import
+    // can't trash it for a row the sheet has not got back yet.
+    const revived = (change) => {
+      if (change.before != null || change.after == null || now[change.id]) return change;
+      const { exportedAt: _e, exportAckEtag: _a, ...after } = change.after;
+      return { ...change, after };
+    };
+    const removals = allowed.filter((change) => change.after == null && now[change.id] && !quietRemoval(change));
+    const rest = allowed
+      .filter((change) => change.after != null || (now[change.id] && quietRemoval(change)))
+      .map(revived);
+    const changedIds = [];
+    // Owner ruling 2026-09-28: an Undo / Redo that brings a deleted survey
+    // item back queues its linked-Excel row the same way a delete does.
+    if (rest.some((change) => change.before == null && change.after != null && !now[change.id])
+      && selectedTemplateRef.current?.linkedExcelPath) {
+      pendingExcelSyncAfterDeleteRefBridge.current = true;
+    }
+    if (rest.length > 0) {
+      const restAction = { ...action, changes: rest };
+      const preview = applySurveyMarkerHistoryAction(now, restAction);
+      if (preview.changedIds.length > 0) {
+        changedIds.push(...preview.changedIds);
+        surveyMarkersRef.current = preview.markers;
+        setSurveyMarkers((prev) => applySurveyMarkerHistoryAction(prev, restAction).markers);
+        setNewSurveyMarkersByPage((prev) => patchSurveyMarkerRenderPages(prev, preview.markers, preview.changedIds, {
+          selectedModuleId,
+          normalizeColor: normalizeSurveyMarkerColor,
+        }));
+      }
+    }
+    if (removals.length > 0 && typeof handleSurveyMarkerDeletedRef.current === 'function') {
+      const suppressedBefore = suppressBatchCheckpointsRef.current;
+      suppressBatchCheckpointsRef.current = suppressedBefore + removals.length;
+      try {
+        for (const change of removals) {
+          const record = now[change.id];
+          handleSurveyMarkerDeletedRef.current(record.pageNumber, record.bounds, change.id);
+          changedIds.push(change.id);
+        }
+      } finally {
+        suppressBatchCheckpointsRef.current = suppressedBefore;
+      }
+    }
+    return changedIds;
+  }, [selectedModuleId, documentOwnerId, notifyLockedMarkBlocked, user?.id]);
+  applySurveyMarkerFamilyActionRef.current = applySurveyMarkerFamilyAction;
+
+  const commitSurveyMarkerFamilyPatch = useCallback((patch) => {
+    if (!patch || typeof patch !== 'object') return null;
+    const current = surveyMarkersRef.current || {};
+    const viewerId = user?.id ?? null;
+    const mayEdit = (record) => !isUserLocked(record) && (
+      !viewerId || !documentOwnerId
+      || canModifySurveyMarker({ surveyMarker: record, viewerId, documentOwnerId })
+    );
+    // Restacking is not moving (same rule as marks): a locked marker may
+    // change its place in the stack.
+    const mayRestack = (record) => mayEdit(withSurveyMarkerLock(record, null));
+    const changes = [];
+    const next = { ...current };
+    if (patch.move && Array.isArray(patch.move.ids)) {
+      const dx = Number(patch.move.dx) || 0;
+      const dy = Number(patch.move.dy) || 0;
+      if (dx !== 0 || dy !== 0) {
+        for (const rawId of patch.move.ids) {
+          const id = String(rawId);
+          const record = current[id];
+          if (!record?.bounds || !mayEdit(record)) continue;
+          const moved = translateSurveyMarkerRecord(record, dx, dy);
+          next[id] = moved;
+          changes.push({ id, before: record, after: moved });
+        }
+      }
+    }
+    if (patch.stacks && typeof patch.stacks === 'object') {
+      for (const [id, stack] of Object.entries(patch.stacks)) {
+        const record = next[id];
+        if (!record || !mayRestack(record)) continue;
+        const restacked = { ...record, stack };
+        next[id] = restacked;
+        const existing = changes.find((change) => change.id === id);
+        if (existing) existing.after = restacked;
+        else changes.push({ id, before: current[id], after: restacked });
+      }
+    }
+    if (Array.isArray(patch.creates)) {
+      for (const record of patch.creates) {
+        if (!record?.id || current[record.id] || !record.bounds || !record.pageNumber) continue;
+        next[record.id] = record;
+        changes.push({ id: String(record.id), before: null, after: record });
+      }
+    }
+    // Owner ruling 2026-09-28 — Cut picks up a survey item's PLACEMENT only:
+    // the record (answers, Excel identity, Row ID) stays and the survey panel
+    // lists it as "Not on page". A field-level change, so Undo puts the box
+    // back and an Excel edit to the item made meanwhile is kept.
+    if (Array.isArray(patch.unplaces)) {
+      for (const rawId of patch.unplaces) {
+        const id = String(rawId);
+        const record = next[id];
+        if (!isSurveyMarkerPlaced(record) || !mayEdit(record)) continue;
+        if (changes.some((change) => change.id === id)) continue;
+        const unplaced = unplaceSurveyMarkerRecord(record);
+        next[id] = unplaced;
+        changes.push({ id, before: current[id], after: unplaced });
+      }
+    }
+    // Owner ruling 2026-09-28: Lock / Unlock a Survey Marker (its author or
+    // the document owner only). `locks` = { [id]: lockedBy | null }.
+    if (patch.locks && typeof patch.locks === 'object') {
+      for (const [id, lockedBy] of Object.entries(patch.locks)) {
+        const record = next[id];
+        if (!record || changes.some((change) => change.id === id)) continue;
+        if (!canToggleLock({ surveyMarker: record, viewerId, documentOwnerId })) continue;
+        if ((record.lockedBy || null) === (lockedBy || null)) continue;
+        const toggled = withSurveyMarkerLock(record, lockedBy || null);
+        next[id] = toggled;
+        changes.push({ id, before: current[id], after: toggled });
+      }
+    }
+    // Paste of a cut survey item: the SAME record goes back on the page.
+    if (Array.isArray(patch.places)) {
+      for (const place of patch.places) {
+        const id = String(place?.id ?? '');
+        const record = next[id];
+        if (!record || isSurveyMarkerPlaced(record) || !mayEdit(record)) continue;
+        if (!place.pageNumber || !place.bounds) continue;
+        if (changes.some((change) => change.id === id)) continue;
+        const placed = placeSurveyMarkerRecord(record, place);
+        next[id] = placed;
+        changes.push({ id, before: current[id], after: placed });
+      }
+    }
+    if (Array.isArray(patch.deletes)) {
+      // Same gate as every marker delete (fails closed before sign-in).
+      for (const rawId of patch.deletes) {
+        const id = String(rawId);
+        const record = current[id];
+        if (!record || changes.some((change) => change.id === id)) continue;
+        if (!canCommitSurveyMarkerErase({ surveyMarker: record, viewerId, documentOwnerId })) continue;
+        changes.push({ id, before: record, after: null });
+      }
+    }
+    const action = buildSurveyMarkerHistoryAction(changes);
+    if (!action) return null;
+    applySurveyMarkerFamilyAction(action);
+    return action;
+  }, [applySurveyMarkerFamilyAction, documentOwnerId, user?.id]);
+  commitSurveyMarkerFamilyPatchRef.current = commitSurveyMarkerFamilyPatch;
 
   // Set true by handleSurveyMarkerDeleted once a delete commits; the effect
   // below watches surveyMarkers and re-exports the linked Excel so the
   // deleted marker's row is removed there too (otherwise the next document
   // open re-imports the stale row and resurrects the marker).
-  const pendingExcelSyncAfterDeleteRef = useRef(false);
+  const pendingExcelSyncAfterDeleteRef = pendingExcelSyncAfterDeleteRefBridge;
 
   // Handle surveyMarker deletion from PDF (via eraser tool)
   const handleSurveyMarkerDeleted = useCallback((pageNumber, bounds, annotationId = null) => {
-    // Checkpoint history before deletion
-    addHistoryCheckpoint('highlight:delete', {
-      pageNumber,
-      annotationId: annotationId || null
-    });
-
 
     // When an explicit annotationId is supplied we can always identify the
     // Survey Marker to remove, so deletion proceeds regardless of which
@@ -27935,6 +30837,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
       const permittedSurveyMarkerIds = surveyMarkersToDelete.map(({ id }) => id);
 
+      // Checkpoint history before deletion — w52: only once the delete is
+      // allowed and will happen. It used to run first, so a delete the
+      // ownership gate refused (or that matched nothing) still pushed an Undo
+      // step that did nothing.
+      addHistoryCheckpoint('highlight:delete', {
+        pageNumber,
+        annotationId: annotationId || null
+      });
+
       // Stage 2 recovery net: tombstone each marker BEFORE removing it, so the
       // delete is recoverable from the 30-day trash. No marker is destroyed;
       // restore reinstates it with its geometry. Best-effort — if the durable
@@ -27986,6 +30897,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             // Remove survey marker by annotationId or by bounds match
             const filtered = pageSurveyMarkers.filter(h => {
               if (h.annotationId === id) return false;
+              // w53: an entry that names its own marker is only ever removed
+              // by its id — a pasted copy lying within 5 units of another
+              // marker must never take that marker's box with it.
+              if (h.annotationId != null) return true;
               if (surveyMarker.bounds && h.x !== undefined && h.y !== undefined) {
                 return !boundsMatch(
                   { x: h.x, y: h.y, width: h.width, height: h.height },
@@ -28125,6 +31040,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }, 100);
     }
   }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, surveyMarkers, items, boundsMatch, getCategoryName, getModuleName, getModuleDataKey, pdfFile?.id, user?.id, documentOwnerId, documentSyncEnabled]);
+
+  handleSurveyMarkerDeletedRef.current = handleSurveyMarkerDeleted;
 
   // After a Survey Marker delete commits to surveyMarkers, re-export the
   // linked Excel so the deleted marker's row is removed there too. The
@@ -28293,6 +31210,481 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setSurveyMarkerNameInput(nextPendingUi.surveyMarkerNameInput);
   }, [addHistoryCheckpoint, handleSurveyMarkerDeleted, surveyMarkers]);
 
+  // Survey audit P1-2 (2026-10-01): taking back a Survey Marker that was just
+  // drawn is ONE Undo step. When the newest Undo step is this marker's own
+  // placement ('highlight:create'), the history engine undoes it - the page,
+  // the marker and any open placement UI go back to how they were before the
+  // drag - and this returns true. Otherwise it changes nothing and returns
+  // false (something else happened since, so a blind Undo would undo that).
+  const undoSurveyMarkerPlacement = useCallback((annotationId) => {
+    if (!annotationId) return false;
+    const undoMeta = undoHistoryMetaRef.current;
+    const topMeta = undoMeta[undoMeta.length - 1] || null;
+    if (topMeta?.reason !== 'highlight:create' || String(topMeta?.context?.annotationId ?? '') !== String(annotationId)) {
+      return false;
+    }
+    handleUndo();
+    return true;
+  }, [handleUndo]);
+
+  // The Categorize dialog (a marker drawn with no category armed): Escape,
+  // its X and a click off it take the marker back. Falls back to dropping the
+  // pending marker locally, as that dialog always did.
+  const cancelSurveyMarkerPlacement = useCallback((annotationId) => {
+    if (!annotationId) return;
+    if (undoSurveyMarkerPlacement(annotationId)) return;
+    const nextPendingUi = deletePendingSurveyMarkerUi(
+      pendingSurveyMarkerUiRef.current,
+      annotationId,
+    );
+    pendingSurveyMarkerUiRef.current = nextPendingUi;
+    setNewSurveyMarkersByPage(nextPendingUi.newSurveyMarkersByPage);
+    setPendingSurveyMarker(nextPendingUi.pendingSurveyMarker);
+    setPendingSurveyMarkerSelection(nextPendingUi.pendingSurveyMarkerSelection);
+    setPendingEntitySelection(nextPendingUi.pendingEntitySelection);
+    setPendingSurveyMarkerName(nextPendingUi.pendingSurveyMarkerName);
+    setSurveyMarkerNameInput(nextPendingUi.surveyMarkerNameInput);
+  }, [undoSurveyMarkerPlacement]);
+
+  const categorizeDialogMarkerId = mobileMode ? null : (pendingSurveyMarker?.id || null);
+  useEffect(() => {
+    if (!categorizeDialogMarkerId || typeof window === 'undefined') return undefined;
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      event.preventDefault();
+      event.stopPropagation();
+      cancelSurveyMarkerPlacement(categorizeDialogMarkerId);
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [categorizeDialogMarkerId, cancelSurveyMarkerPlacement]);
+
+  // UX: w53 — Delete with several Survey Markers selected (a family
+  // selection of markers only) deletes them as ONE undo step. Each marker
+  // goes through the established marker delete (ownership gate, 30-day
+  // trash, History row, item cleanup, linked-Excel row removal); only
+  // markers the viewer may delete are taken. With marks in the selection
+  // too, the marks' own Delete carries the markers (useSVGInteraction
+  // deleteSelected), so a cancelled cross-author confirm deletes nothing.
+  const handleDeleteSurveyMarkers = useCallback((annotationIds) => {
+    const ids = [...new Set((annotationIds || []).map(String))]
+      .filter((id) => surveyMarkersRef.current?.[id]);
+    if (ids.length === 0) return;
+    if (ids.length === 1) {
+      handleDeleteSurveyMarker(ids[0]);
+      return;
+    }
+    const pageNumber = surveyMarkersRef.current[ids[0]]?.pageNumber;
+    if (pageNumber == null) return;
+    const page = annotationsByPageRef.current?.[pageNumber] || { objects: [] };
+    handleSaveAnnotations(pageNumber, page, {
+      source: 'object:modified',
+      action: 'delete',
+      checkpointPolicy: 'normal',
+      surveyMarkerFamily: { deletes: ids },
+    });
+  }, [handleDeleteSurveyMarker, handleSaveAnnotations]);
+
+  // ---------------------------------------------------------------------------
+  // w53 (2026-09-28) — one clipboard + Duplicate for any family selection
+  // ---------------------------------------------------------------------------
+  // UX (owner: "annotations are annotations"; Figma / Bluebeam): Copy, Cut,
+  // Paste and Duplicate work on the WHOLE selection — marks, callouts and
+  // Survey Markers together. A paste / duplicate is one save and one Undo
+  // step; every item is new (fresh id; a Survey Marker is a new survey item
+  // with the next default name of its category, an empty checklist and no
+  // Excel identity), takes the scope of where it lands (the open Survey
+  // module / region), keeps the stacking order it had among the copied items
+  // and lands on top. Survey Markers paste only into an open Survey module
+  // whose categories include theirs (by name); others are skipped with a note.
+  // Cut is own-marks-only (the locked Cut rule: it deletes with no confirm).
+  const getPageSurveyRegionIdRef = useRef(null);
+  const pageSizeFor = (pageNumber) => {
+    const size = pageSizesRef.current?.[pageNumber] || pageSizesRef.current?.[String(pageNumber)] || null;
+    return { width: Number(size?.width) || 612, height: Number(size?.height) || 792 };
+  };
+
+  const collectFamilySelection = useCallback((pageNumber, { indices = [], calloutIds = [], markerIds = [] } = {}) => {
+    const page = annotationsByPageRef.current?.[pageNumber] || { objects: [] };
+    const objects = Array.isArray(page.objects) ? page.objects : [];
+    const calloutIdSet = new Set([...(calloutIds || [])].map(String));
+    const callouts = deriveCalloutsFromByPage({ [pageNumber]: page })
+      .filter((callout) => callout && calloutIdSet.has(String(callout.id)));
+    const markers = [...new Set((markerIds || []).map(String))]
+      .map((id) => ({ id, record: surveyMarkersRef.current?.[id] }))
+      .filter((m) => m.record?.bounds)
+      .map((m) => ({
+        ...m,
+        categoryName: selectedTemplate
+          ? getCategoryName(selectedTemplate, m.record.moduleId, m.record.categoryId)
+          : null,
+      }));
+    const pageMarkers = (newSurveyMarkersByPageRef.current?.[pageNumber] || [])
+      .filter((entry) => entry?.annotationId)
+      .map((entry) => ({ id: String(entry.annotationId), stack: entry.stack || null }));
+    return { page, objects, indices: [...(indices || [])], callouts, markers, pageMarkers };
+  }, [selectedTemplate]);
+
+  const commitFamilyPaste = useCallback((pageNumber, clipboard, dx, dy) => {
+    if (!clipboard?.items?.length || pageNumber == null) return false;
+    if (typeof document !== 'undefined'
+      && (document.body?.getAttribute('data-readonly') === 'true'
+        || document.body?.getAttribute('data-kal49-locked') === 'true')) return false;
+    const page = annotationsByPageRef.current?.[pageNumber] || { objects: [] };
+    const baseObjects = Array.isArray(page.objects) ? page.objects : [];
+    const { width, height } = pageSizeFor(pageNumber);
+    // Text ranges cannot move apart: an exact duplicate of a text mark that
+    // is still on the page is dropped (same rule as the single paste).
+    const textKey = (obj) => (obj?.data?.type === 'text-markup'
+      ? JSON.stringify([obj.data.markupType, obj.fill, obj.opacity, obj.data.quads]) : null);
+    const existingText = new Set(baseObjects.map(textKey).filter(Boolean));
+    const items = clipboard.items.filter((item) => item.kind !== 'mark' || !existingText.has(textKey(item.object)));
+    if (items.length === 0) { showToast('That mark is already here', 'info'); return false; }
+    const template = selectedTemplate;
+    const landingModule = selectedModuleId && template
+      ? ((template.modules || template.spaces) || []).find((m) => m.id === selectedModuleId)
+      : null;
+    const pastedNames = [];
+    const resolveMarker = (item) => {
+      if (!landingModule) return null;
+      const categories = landingModule.categories || [];
+      const category = (item.sourceModuleId === landingModule.id
+        && categories.find((c) => c.id === item.entry?.categoryId))
+        || categories.find((c) => item.categoryName && c.name === item.categoryName);
+      if (!category) return null;
+      const siblings = Object.values(surveyMarkersRef.current || {})
+        .filter((m) => m?.categoryId === category.id)
+        .concat(pastedNames.filter((m) => m.categoryId === category.id));
+      const name = generateDefaultSurveyMarkerName(category.name, siblings);
+      pastedNames.push({ categoryId: category.id, name });
+      return {
+        moduleId: landingModule.id,
+        categoryId: category.id,
+        name,
+        regionId: getPageSurveyRegionIdRef.current?.(pageNumber) ?? null,
+      };
+    };
+    // Owner ruling 2026-09-28: a CUT survey item goes back as itself (same
+    // id, so the same Row ID and Excel row, same answers). Its module and
+    // category are part of the Row ID, so it goes back only while its own
+    // Survey module is open, and only if it is still off the page (an Undo
+    // of the Cut, or someone else, may have put it back already).
+    let cutMarkerSkip = null; // why a cut item could not go back: 'gone' | 'placed' | 'category' | module id
+    const resolveCutMarker = (item) => {
+      const record = surveyMarkersRef.current?.[String(item.cutMarkerId)];
+      if (!record) { cutMarkerSkip = 'gone'; return null; }
+      if (isSurveyMarkerPlaced(record)) { cutMarkerSkip = 'placed'; return null; }
+      if (!selectedModuleId || record.moduleId !== selectedModuleId) {
+        cutMarkerSkip = { module: record.moduleId || null };
+        return null;
+      }
+      const categories = landingModule?.categories || [];
+      if (!categories.some((category) => category.id === record.categoryId)) {
+        cutMarkerSkip = 'category';
+        return null;
+      }
+      return { regionId: getPageSurveyRegionIdRef.current?.(pageNumber) ?? record.regionId ?? null };
+    };
+    const plan = planFamilyPaste({ ...clipboard, items }, {
+      objects: baseObjects,
+      dx,
+      dy,
+      pageWidth: width,
+      pageHeight: height,
+      scope: currentPasteScope(pageNumber),
+      authorId: user?.id || null,
+      userId: user?.id || null,
+      resolveMarker,
+      resolveCutMarker,
+      pageNumber,
+    });
+    const cutMarkerNote = () => {
+      if (!plan.skippedCutMarkers) return;
+      if (cutMarkerSkip === 'gone') {
+        showToast('That survey item was deleted, so there is nothing to paste.', 'info');
+      } else if (cutMarkerSkip === 'placed') {
+        showToast('That survey item is already on the page.', 'info');
+      } else if (cutMarkerSkip === 'category') {
+        showToast('That survey item\'s category is gone, so it can\'t go back on the page.', 'info');
+      } else {
+        const moduleId = cutMarkerSkip?.module || null;
+        const moduleName = moduleId && template ? getModuleName(template, moduleId) : null;
+        showToast(moduleName
+          ? `Open ${moduleName} to paste that survey item back on the page.`
+          : 'Open its Survey module to paste that survey item back on the page.', 'info');
+      }
+    };
+    const withMarks = { ...page, objects: plan.objects };
+    const pageMap = { [pageNumber]: withMarks };
+    const projected = plan.callouts.length > 0
+      ? (applyCalloutListToByPage(pageMap, [...deriveCalloutsFromByPage(pageMap), ...plan.callouts], pageSizesRef.current || {})[pageNumber] || withMarks)
+      : withMarks;
+    const next = {
+      ...projected,
+      objects: orderPastedFamily(projected.objects, plan.pastedOrder, [...plan.markers, ...plan.placedMarkers]),
+    };
+    if (plan.newMarkIds.length === 0 && plan.callouts.length === 0
+      && plan.markers.length === 0 && plan.placedMarkers.length === 0) {
+      if (plan.skippedMarkers > 0) showToast('Survey Markers paste into an open Survey module that has their category.', 'info');
+      cutMarkerNote();
+      return false;
+    }
+    const familyPatch = {
+      ...(plan.markers.length > 0 ? { creates: plan.markers } : {}),
+      ...(plan.placedMarkers.length > 0 ? { places: plan.placedMarkers } : {}),
+    };
+    handleSaveAnnotations(pageNumber, next, {
+      source: 'object:modified',
+      action: 'paste',
+      checkpointPolicy: 'normal',
+      ...(Object.keys(familyPatch).length > 0 ? { surveyMarkerFamily: familyPatch } : {}),
+    });
+    // The pasted items become the selection (Cmd+D again duplicates them).
+    const newIds = new Set(plan.newMarkIds.filter(Boolean));
+    const annotationIndices = [];
+    next.objects.forEach((object, index) => {
+      if (newIds.has(String(object?.data?.id ?? ''))) annotationIndices.push(index);
+    });
+    setSelectedCalloutIds(new Set(plan.callouts.map((callout) => callout.id)));
+    setPendingSvgSelection({
+      pageNumber,
+      annotationIndices,
+      surveyMarkerIds: [...plan.markers.map((record) => record.id), ...plan.placedMarkers.map((place) => place.id)],
+      // w63: marks still picked on another page drop out of the selection.
+      exclusive: true,
+      tick: Date.now(),
+    });
+    if (plan.skippedMarkers > 0) {
+      showToast('Survey Markers paste into an open Survey module that has their category.', 'info');
+    }
+    cutMarkerNote();
+    return true;
+  }, [handleSaveAnnotations, selectedTemplate, selectedModuleId, showToast, user?.id, activeRegionId, annotationSpaceId, spaces, isRegionOverlayEnabled]);
+
+  const familyEditsBlocked = () => (typeof document !== 'undefined'
+    && (document.body?.getAttribute('data-readonly') === 'true'
+      || document.body?.getAttribute('data-kal49-locked') === 'true'));
+  const copyFamilySelection = useCallback((pageNumber, selection, mode = 'copy') => {
+    if (mode === 'cut' && familyEditsBlocked()) return false;
+    const collected = collectFamilySelection(pageNumber, selection);
+    const viewerId = user?.id ?? null;
+    // RULED 2026-09-28 owner: open editing + lock — Cut takes ANY mark (own
+    // or someone else's, no confirmation); only user-locked items stay (a
+    // lock holds even before the ids are known). The clipboard matches what
+    // is removed.
+    const mayCut = (annotation) => !isUserLocked(annotation) && (
+      !viewerId || !documentOwnerId
+      || canModify({ annotation, viewerId, documentOwnerId }));
+    const indices = mode === 'cut'
+      ? collected.indices.filter((index) => mayCut(collected.objects[index]))
+      : collected.indices;
+    const callouts = mode === 'cut' ? collected.callouts.filter(mayCut) : collected.callouts;
+    // Owner ruling 2026-09-28: Cut of a Survey Marker picks up its placement
+    // only — the survey item, its Excel row and its answers stay (the panel
+    // shows it as "Not on page"); Paste puts the SAME item back on a page.
+    const markers = mode === 'cut'
+      ? collected.markers.filter((m) => !isUserLocked(m.record) && (
+        !viewerId || !documentOwnerId
+        || canModifySurveyMarker({ surveyMarker: m.record, viewerId, documentOwnerId })))
+      : collected.markers;
+    const lockedLeft = mode === 'cut'
+      && (indices.length < collected.indices.length
+        || callouts.length < collected.callouts.length
+        || markers.length < collected.markers.length);
+    const { width, height } = pageSizeFor(pageNumber);
+    const clipboard = buildFamilyClipboard({
+      pageNumber,
+      objects: collected.objects,
+      indices,
+      callouts,
+      markers,
+      pageMarkers: collected.pageMarkers,
+      pageWidth: width,
+      pageHeight: height,
+      cut: mode === 'cut',
+    });
+    if (!clipboard) {
+      if (lockedLeft) showToast('Locked — unlock it first to cut it.', 'info');
+      return false;
+    }
+    if (lockedLeft) showToast('Locked items stay put — unlock them first to cut them.', 'info');
+    setFamilyClipboard({ ...clipboard, mode });
+    setClipboardAnnotation(null);
+    setClipboardCallout(null);
+    setClipboardCalloutType(null);
+    if (mode !== 'cut') return true;
+    const removeIndexes = new Set(indices);
+    const removeCallouts = new Set(callouts.map((callout) => String(callout.id)));
+    const next = {
+      ...collected.page,
+      objects: collected.objects.filter((object, index) => !removeIndexes.has(index)
+        && !(object?.data?.type === 'callout' && removeCallouts.has(String(object?.data?.id)))),
+    };
+    handleSaveAnnotations(pageNumber, next, {
+      source: 'object:modified',
+      action: 'cut',
+      checkpointPolicy: 'normal',
+      ...(markers.length > 0 ? { surveyMarkerFamily: { unplaces: markers.map((m) => m.id) } } : {}),
+    });
+    setSelectedCalloutIds(new Set());
+    setPendingSvgSelection({ pageNumber, annotationIndex: null, surveyMarkerIds: [], tick: Date.now() });
+    return true;
+  }, [collectFamilySelection, documentOwnerId, handleSaveAnnotations, showToast, user?.id]);
+
+  // ---------------------------------------------------------------------------
+  // Owner ruling 2026-09-28 — Lock / Unlock (right-click, one mark or a whole
+  // selection). Only the mark's author or the document owner may lock or
+  // unlock it (canToggleLock); a locked mark can't be moved, resized,
+  // restyled, cut, deleted or erased by anyone until it is unlocked. The
+  // stamp is the locker's id in the mark itself (data.lockedBy, a callout's
+  // legacyCallout.lockedBy, a Survey Marker's lockedBy), so it syncs and
+  // reloads like any other field. One save per page = one Undo step.
+  // ---------------------------------------------------------------------------
+  const handleToggleMarkLock = useCallback((pageNumber, selection = {}, lock = true) => {
+    const viewerId = user?.id ?? null;
+    if (!viewerId || pageNumber == null || familyEditsBlocked()) return false;
+    const lockedBy = lock ? viewerId : null;
+    const mayToggle = (annotation) => canToggleLock({ annotation, viewerId, documentOwnerId });
+    const wants = (object) => (lock ? !isUserLocked(object) : isUserLocked(object));
+    const byPage = annotationsByPageRef.current || {};
+    const indexSet = new Set((selection.indices || []).filter((i) => Number.isInteger(i)));
+    const calloutIdSet = new Set((selection.calloutIds || []).map(String));
+    // Callouts may sit on another page than the right-click (the callout
+    // selection is shared by every page): one save per page they are on.
+    const pages = new Set([String(pageNumber)]);
+    if (calloutIdSet.size > 0) {
+      for (const callout of calloutsRef.current || []) {
+        if (callout && calloutIdSet.has(String(callout.id)) && callout.pageNumber != null) {
+          pages.add(String(callout.pageNumber));
+        }
+      }
+    }
+    let changedCount = 0;
+    let refusedCount = 0;
+    const saves = [];
+    for (const pageKey of pages) {
+      const page = byPage[pageKey] || byPage[Number(pageKey)];
+      if (!Array.isArray(page?.objects)) continue;
+      let touched = false;
+      const objects = page.objects.map((object, index) => {
+        const isPickedMark = String(pageKey) === String(pageNumber)
+          && indexSet.has(index) && object?.data?.type !== 'callout';
+        const isPickedCallout = object?.data?.type === 'callout'
+          && calloutIdSet.has(String(object?.data?.id));
+        if (!isPickedMark && !isPickedCallout) return object;
+        if (!wants(object)) return object;
+        if (!mayToggle(object) || (object?.data?.id == null && object?.id == null)) {
+          refusedCount += 1;
+          return object;
+        }
+        touched = true;
+        changedCount += 1;
+        return withMarkLock(object, lockedBy);
+      });
+      if (touched) saves.push([pageKey, { ...page, objects }]);
+    }
+    // Survey Markers: their own store, their own permission read.
+    const locks = {};
+    for (const rawId of selection.markerIds || []) {
+      const id = String(rawId);
+      const record = surveyMarkersRef.current?.[id];
+      if (!record || !(lock ? !record.lockedBy : Boolean(record.lockedBy))) continue;
+      if (!canToggleLock({ surveyMarker: record, viewerId, documentOwnerId })) {
+        refusedCount += 1;
+        continue;
+      }
+      locks[id] = lockedBy;
+      changedCount += 1;
+    }
+    const markerPatch = Object.keys(locks).length > 0 ? { surveyMarkerFamily: { locks } } : {};
+    if (saves.length === 0 && Object.keys(locks).length > 0) {
+      const page = byPage[String(pageNumber)] || byPage[Number(pageNumber)] || { objects: [] };
+      handleSaveAnnotations(pageNumber, page, {
+        source: 'object:modified',
+        action: lock ? 'lock' : 'unlock',
+        checkpointPolicy: 'normal',
+        ...markerPatch,
+      });
+    }
+    saves.forEach(([pageKey, json], position) => {
+      const numericKey = Number(pageKey);
+      handleSaveAnnotations(Number.isFinite(numericKey) ? numericKey : pageKey, json, {
+        source: 'object:modified',
+        action: lock ? 'lock' : 'unlock',
+        checkpointPolicy: 'normal',
+        ...(position === 0 ? markerPatch : {}),
+      });
+    });
+    if (changedCount === 0 && refusedCount > 0) {
+      showToast(lock
+        ? 'Only its author or the document owner can lock this.'
+        : 'Only its author or the document owner can unlock this.', 'info');
+    }
+    return changedCount > 0;
+  }, [documentOwnerId, handleSaveAnnotations, showToast, user?.id]);
+
+  const pasteFamilyAt = useCallback((pageNumber, clientX, clientY) => {
+    const clipboard = familyClipboardRef.current;
+    if (!clipboard || pageNumber == null) return false;
+    const repeatOffset = resolvePasteRepeatCount(clientX, clientY) * PASTE_REPEAT_OFFSET_PAGE_UNITS;
+    // The group's top-left lands at the pointer (same page-unit transform as
+    // the shape paste); without a page under it, +20 like the shape paste.
+    let dx = 20;
+    let dy = 20;
+    try {
+      const svgWrap = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
+      const pageDiv = svgWrap?.closest?.('.survey-pdfjs-page-div') || null;
+      const svgEl = svgWrap?.querySelector?.('svg') || pageDiv?.querySelector?.('svg[viewBox]') || null;
+      const vb = svgEl?.getAttribute?.('viewBox')?.split(/\s+/) || null;
+      const viewBoxW = vb && vb.length === 4 ? parseFloat(vb[2]) : NaN;
+      const viewBoxH = vb && vb.length === 4 ? parseFloat(vb[3]) : NaN;
+      const rect = (pageDiv || svgEl)?.getBoundingClientRect?.() || null;
+      const w = pageDiv?.offsetWidth || rect?.width;
+      const h = pageDiv?.offsetHeight || rect?.height;
+      if (rect && w && h && viewBoxW && viewBoxH) {
+        dx = (clientX - rect.left) / (w / viewBoxW) - clipboard.origin.left;
+        dy = (clientY - rect.top) / (h / viewBoxH) - clipboard.origin.top;
+      }
+    } catch (_) { /* +20 fallback */ }
+    // The whole group stays on the page (it slides in from an edge).
+    const { width: pageW, height: pageH } = pageSizeFor(pageNumber);
+    const held = clipboard.extent
+      ? clampNudgeDelta([clipboard.extent], dx + repeatOffset, dy + repeatOffset, pageW, pageH)
+      : { dx: dx + repeatOffset, dy: dy + repeatOffset };
+    const done = commitFamilyPaste(pageNumber, clipboard, held.dx, held.dy);
+    if (done && clipboard.mode === 'cut') setFamilyClipboard(null);
+    return done;
+  }, [commitFamilyPaste, resolvePasteRepeatCount]);
+  pasteFamilyAtRef.current = pasteFamilyAt;
+
+  // Duplicate (Cmd+D, right-click Duplicate): a copy of the selection 16
+  // page units down-right of it; the clipboard is left alone.
+  const duplicateFamilySelection = useCallback((pageNumber, selection) => {
+    const collected = collectFamilySelection(pageNumber, selection);
+    const { width, height } = pageSizeFor(pageNumber);
+    const clipboard = buildFamilyClipboard({
+      pageNumber,
+      objects: collected.objects,
+      indices: collected.indices,
+      callouts: collected.callouts,
+      markers: collected.markers,
+      pageMarkers: collected.pageMarkers,
+      pageWidth: width,
+      pageHeight: height,
+    });
+    if (!clipboard) return false;
+    return commitFamilyPaste(pageNumber, clipboard, DUPLICATE_OFFSET_PAGE_UNITS, DUPLICATE_OFFSET_PAGE_UNITS);
+  }, [collectFamilySelection, commitFamilyPaste]);
+
+  // w53: a saved marker is a family member; one still being placed is not.
+  const isSurveyMarkerFamilyMember = useCallback((annotationId) => (
+    Boolean(annotationId && surveyMarkersRef.current?.[annotationId])
+  ), []);
+
+  // Read through a ref so a token refresh (a new user object) does not
+  // rebuild the erase handler.
+  const historyUserRef = useRef(user);
+  historyUserRef.current = user;
   const handleEraseIntent = useCallback(async (intent) => {
     if (!pdfFile?.id) {
       return {
@@ -28424,6 +31816,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         ?? target.storageKey
       ))
       .filter(Boolean);
+    // RULED 2026-09-28 owner: History option A — a partial erase is one
+    // History line on the screen that erased ("erased part of a pen
+    // stroke"). Whole marks the eraser removed keep their restorable trash
+    // row from the erase outbox; this line is only for marks that stay.
+    // (A counter the erase renumbered is not a trimmed mark.)
+    if (pageTargets.some((target) => target.operation === 'replace' && target.cause !== 'counter-renumber')) {
+      const eraseRow = buildPartialEraseHistoryRow({
+        targets: pageTargets,
+        documentId: pdfFile.id,
+        user: historyUserRef.current,
+        mutationId: durableIntent.mutationId,
+        pageNumber: durableIntent.pageNumber,
+        committedAt: new Date().toISOString(),
+        project: projectAnnotationForHistoryPreview,
+      });
+      if (eraseRow) void recordAndNotifyDocumentHistoryEvent(eraseRow);
+    }
     recordAnnotationCommit({
       surface: 'App.handleEraseIntent',
       source: 'eraser:commit',
@@ -28461,20 +31870,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return next.size === previous.size ? previous : next;
       });
     }
-    if (approval.plan && approval.plan.mode !== 'owner-own-only') {
-      const peopleCount = Object.keys(approval.plan.byAuthor || {}).length;
-      const message = approval.plan.mode.includes('cross-author')
-        ? `Deleted ${approval.plan.count} annotations from ${peopleCount} people`
-        : `${approval.plan.count} annotations deleted`;
-      enqueueUndoToast({
-        kind: 'bulk',
-        message,
-        count: approval.plan.count,
-        onUndo: () => {
-          applyEraseHistoryTransitionFromToast(result.historyTransition);
-        },
-      });
-    }
+    // RULED 2026-09-28 owner: no "Deleted – Undo" toast after an erase
+    // (Cmd+Z and History are the way back).
 
     return result;
   }, [
@@ -28498,6 +31895,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       isRegionOverlayEnabled
     });
   }, [activeSpaceId, spaces, isRegionOverlayEnabled]);
+  getPageSurveyRegionIdRef.current = getPageSurveyRegionId;
 
   // Persist explicit regionId/null on survey marker previews so older
   // survey-scoped surveyMarkers do not get silently reclassified when a page
@@ -28634,14 +32032,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // "created a survey marker" row to spotlight the mark on click. The locate
     // branch reuses the pending item's id; the standard branch uses this one.
     const newMarkerId = pendingLocationItem?.id || `surveyMarker-${crypto.randomUUID()}`;
-    // Checkpoint history before creation
-    addHistoryCheckpoint('highlight:create', {
-      pageNumber,
-      hasPendingLocationItem: Boolean(pendingLocationItem),
-      selectedCategoryId: selectedCategoryId || null,
-      annotationId: newMarkerId
-    });
-
 
     // Only handle if survey mode is active
     if (!showSurveyPanel || !selectedTemplate) {
@@ -28660,6 +32050,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     }
 
+    // Checkpoint history before creation. w37: only once a marker will really
+    // be created — a checkpoint taken before the early returns above was an
+    // empty Undo step (the press did nothing) and cleared Redo for nothing.
+    addHistoryCheckpoint('highlight:create', {
+      pageNumber,
+      hasPendingLocationItem: Boolean(pendingLocationItem),
+      selectedCategoryId: selectedCategoryId || null,
+      annotationId: newMarkerId
+    });
+
     const pageRegionId = getPageSurveyRegionId(pageNumber);
 
     // Handle locating a pending item (from "Locate" button on unlocated item)
@@ -28672,14 +32072,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // If it's a new annotation for an existing item, ensure we have all necessary data
         return {
           ...prev,
-          [annotationId]: {
-            ...pendingLocationItem, // Base on the item data
-            ...existing, // Override with any existing annotation data
-            pageNumber,
-            bounds,
-            moduleId: effectiveModuleId,
-            regionId: pageRegionId
-          }
+          [annotationId]: (() => {
+            const placed = {
+              ...pendingLocationItem, // Base on the item data
+              ...existing, // Override with any existing annotation data
+              pageNumber,
+              bounds,
+              // Owner ruling 2026-09-28: an item placed again (e.g. cut and
+              // never pasted) keeps its own module — it is part of its Row ID.
+              moduleId: existing.moduleId || pendingLocationItem.moduleId || effectiveModuleId,
+              regionId: pageRegionId
+            };
+            delete placed.unplacedByCut;
+            return placed;
+          })()
         };
       });
 
@@ -28708,29 +32114,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const entities = selectedTemplate?.entities || [];
 
       if (!hasEntity && entities.length > 0) {
-        if (mobileMode) {
-          // UX: on mobile the entity is assigned in the Survey Marker detail
-          // sheet (which has the entity picker), never the desktop centered
-          // modal — open the detail view for the just-located marker instead
-          // (same sequence as commitMobileSurveyMarker; adversarial review
-          // defect 2, 2026-07-12).
-          setExpandedCategories({ [pendingLocationItem.categoryId]: true });
-          setExpandedSurveyMarkers({ [annotationId]: true });
-          setShowSurveyPanel(true);
-          requestRightRailExpand();
-        } else {
-          // Prompt for Entity since it wasn't set in Excel
-          setPendingEntitySelection({
-            surveyMarker: {
-              id: annotationId,
-              pageNumber,
-              bounds,
-              moduleId: effectiveModuleId,
-              regionId: pageRegionId
-            },
-            categoryId: pendingLocationItem.categoryId
-          });
-        }
+        // UX: the entity is assigned in the open Survey Marker (it has the
+        // entity menu), never a centred modal - open the just-located marker
+        // in the panel (same sequence as commitMobileSurveyMarker; adversarial
+        // review defect 2, 2026-07-12). Owner 2026-10-01 ("Yes, inline like
+        // phone"): desktop too - the desktop Entity pop-up is gone.
+        setExpandedCategories({ [pendingLocationItem.categoryId]: true });
+        setExpandedSurveyMarkers({ [annotationId]: true });
+        setShowSurveyPanel(true);
+        requestRightRailExpand();
       }
 
       setPendingLocationItem(null);
@@ -28786,66 +32178,40 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       };
     });
 
-    // If a category is already selected, show Entity dialog first
+    // If a category is already selected, place the Survey Marker straight
+    // away with its default name and open it in the Survey panel.
     if (selectedCategoryId) {
-      // Check if template has Entities
-      const entities = selectedTemplate?.entities || [];
-      if (mobileMode) {
-        // UX (mobile demo parity): commit instantly with the default name and
-        // open the marker detail sheet (demo App.tsx:1155) — the desktop
-        // Entity/Name modal chain below stays desktop-only.
-        commitMobileSurveyMarker({
-          id: annotationId,
-          pageNumber,
-          bounds,
-          moduleId: effectiveModuleId,
-          regionId: pageRegionId,
-          ...(mobileSelectedEntity ? {
-            entityId: mobileSelectedEntity.id,
-            entityName: mobileSelectedEntity.name,
-            entityColor: mobileSelectedEntityColor,
-          } : {})
-        }, selectedCategoryId);
-      } else if (mobileSelectedEntity) {
-        setPendingSurveyMarkerName({
-          surveyMarker: {
-            id: annotationId,
-            pageNumber,
-            bounds,
-            moduleId: effectiveModuleId,
-            regionId: pageRegionId,
-            entityId: mobileSelectedEntity.id,
-            entityName: mobileSelectedEntity.name,
-            entityColor: mobileSelectedEntityColor,
-          },
-          categoryId: selectedCategoryId
-        });
-        setSurveyMarkerNameInput(null);
-      } else if (entities.length > 0) {
-        // Show Entity selection dialog
-        setPendingEntitySelection({
-          surveyMarker: {
-            id: annotationId,
-            pageNumber,
-            bounds,
-            moduleId: effectiveModuleId,
-            regionId: pageRegionId
-          },
-          categoryId: selectedCategoryId
-        });
-      } else {
-        // No Entities, go directly to name prompt
-        setPendingSurveyMarkerName({
-          surveyMarker: {
-            id: annotationId,
-            pageNumber,
-            bounds,
-            moduleId: effectiveModuleId,
-            regionId: pageRegionId
-          },
-          categoryId: selectedCategoryId
-        });
-        setSurveyMarkerNameInput(null); // Reset input
+      // UX (mobile demo parity): commit instantly with the default name and
+      // open the marker (demo App.tsx:1155). Owner 2026-10-01 ("Yes, inline
+      // like phone"): desktop too - the Entity and Name pop-ups are gone; the
+      // new marker opens in the rail with its name field focused and its
+      // Entity menu right there. Escape on that untouched name takes the
+      // placement back (one Undo step, SurveySpacesRail). The entity it starts
+      // with: the phone's entity disc, else (desktop) the last one picked.
+      const placementEntity = mobileSelectedEntity || (!mobileMode
+        ? (selectedTemplate?.entities || []).find((entity) => entity.id === lastSurveyEntityIdRef.current) || null
+        : null);
+      const placementEntityColor = placementEntity
+        ? (normalizeSurveyMarkerColor(placementEntity.color)
+          || placementEntity.color
+          || hexToRgba('#E3D1FB', DEFAULT_SURVEY_MARKER_OPACITY))
+        : null;
+      commitMobileSurveyMarker({
+        id: annotationId,
+        // Owner ruling 2026-09-28: the creator stamp (lock rights).
+        ...(user?.id ? { userId: user.id } : {}),
+        pageNumber,
+        bounds,
+        moduleId: effectiveModuleId,
+        regionId: pageRegionId,
+        ...(placementEntity ? {
+          entityId: placementEntity.id,
+          entityName: placementEntity.name,
+          entityColor: placementEntityColor,
+        } : {})
+      }, selectedCategoryId);
+      if (!mobileMode) {
+        setSurveyMarkerNameFocusRequest({ id: annotationId, tick: Date.now() });
       }
 
       if (!surveyKeepCategoryActive) {
@@ -28863,6 +32229,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (showSurveyPanel) {
         setPendingSurveyMarker({
           id: annotationId,
+          // Owner ruling 2026-09-28: the creator stamp (lock rights).
+          ...(user?.id ? { userId: user.id } : {}),
           pageNumber,
           bounds,
           moduleId: effectiveModuleId,
@@ -28875,7 +32243,51 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         });
       }
     }
-  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, surveyKeepCategoryActive, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyMarkerPreview, mobileSurveyEntityId, normalizeSurveyMarkerColor, hexToRgba, DEFAULT_SURVEY_MARKER_OPACITY, mobileMode, commitMobileSurveyMarker, requestRightRailExpand]);
+  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, surveyKeepCategoryActive, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyMarkerPreview, mobileSurveyEntityId, normalizeSurveyMarkerColor, hexToRgba, DEFAULT_SURVEY_MARKER_OPACITY, mobileMode, commitMobileSurveyMarker, requestRightRailExpand, user?.id]);
+
+  // Perf (2026-09-30): SVGAnnotationLayer is memo()'d, but it was handed
+  // per-render inline lambdas and survey-marker delete callbacks whose deps
+  // churn, so every PDFViewer render (page change, scroll, zoom commit)
+  // re-rendered every page's whole SVG layer. One identity per page, always
+  // calling the latest handler.
+  const svgLayerHandlerSourceRef = useRef(null);
+  svgLayerHandlerSourceRef.current = {
+    handleSaveAnnotationsWithTextMarkupAtomicity,
+    requestAnnotationEditEntry,
+    handleDeleteSurveyMarker,
+    handleDeleteSurveyMarkers,
+    handleSurveyMarkerCreated,
+    handleMoveMarksToPage,
+  };
+  const svgLayerPageHandlersRef = useRef(new Map());
+  const getSvgLayerPageHandlers = (pageNumber) => {
+    let handlers = svgLayerPageHandlersRef.current.get(pageNumber);
+    if (handlers) return handlers;
+    const latest = () => svgLayerHandlerSourceRef.current;
+    handlers = {
+      onSaveAnnotations: (updatedJSON, saveContext) => (
+        latest().handleSaveAnnotationsWithTextMarkupAtomicity(pageNumber, updatedJSON, saveContext)
+      ),
+      // UX: one dispatcher for every edit entry — this native double-click
+      // (Select family, mouse) and the window-capture double-tap recogniser
+      // that covers Pan, Text Select and touch. Routing (which type opens
+      // which editor) lives in utils/annotationEditRoute so the two entries
+      // cannot drift.
+      onRequestEditMode: (annotationIndex, annotationType, editOptions) => latest().requestAnnotationEditEntry({
+        pageNumber,
+        annotationIndex,
+        annotationType,
+        caretAnchor: editOptions?.caretAnchor || null,
+      }),
+      onRequestExitEdit: () => setEditingAnnotation(null),
+      onSurveyMarkerCreated: (bounds) => latest().handleSurveyMarkerCreated(pageNumber, bounds),
+      onDeleteSurveyMarker: (annotationId) => latest().handleDeleteSurveyMarker(annotationId),
+      onDeleteSurveyMarkers: (annotationIds) => latest().handleDeleteSurveyMarkers(annotationIds),
+      onMoveMarksToPage: (move) => latest().handleMoveMarksToPage(pageNumber, move),
+    };
+    svgLayerPageHandlersRef.current.set(pageNumber, handlers);
+    return handlers;
+  };
 
   // Auto-switch to surveyMarker tool when template is selected in survey mode (only on initial entry)
   useEffect(() => {
@@ -28942,9 +32354,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
   }, [applyLayoutDrivenZoom, isLeftSidebarCollapsed]);
 
-  // Ensure survey panel always opens in expanded state
+  // Ensure survey panel always opens in expanded state (except an Undo of
+  // "Left Survey" that left it closed - surveyReenterCollapsedRef).
   useEffect(() => {
-    if (showSurveyPanel) {
+    if (showSurveyPanel && !surveyReenterCollapsedRef.current) {
       requestRightRailExpand();
     }
   }, [showSurveyPanel, requestRightRailExpand]);
@@ -29095,6 +32508,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   useEffect(() => {
     if (activeTool !== 'text-select') {
+      // Owner 2026-10-02: a just-drawn callout opens its text editor and the
+      // tool flips back to Select in the same pass, so this ran right after
+      // the editor took focus and wiped its caret - the box looked dead until
+      // clicked. A caret inside an open editor is not a PDF text selection;
+      // leave it alone.
+      if (typeof document !== 'undefined' && document.activeElement?.isContentEditable) {
+        liveTextSelectionRef.current = null;
+        setLiveTextSelection(null);
+        return undefined;
+      }
       clearLiveTextSelection();
       return undefined;
     }
@@ -29412,7 +32835,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         || resolveTextMarkupEditPaint(selectedMarkup, strokeColorStateRef.current);
       const annotations = (sourceMarks.length ? sourceMarks : [selectedMarkup])
         .flatMap((source) => (markupType === 'link' ? source.data.quads.map((quad) => [source, [quad]]) : [[source, source.data.quads]]))
-        .map(([source, quads]) => createTextMarkupAnnotation({
+        .map(([source, quads]) => ({ source, mark: createTextMarkupAnnotation({
           id: generateUUID(),
           pageNumber: source.data.pageNumber,
           selectionGroupId,
@@ -29427,8 +32850,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           linkUrl,
           linkPageNumber,
           authorId: user?.id || null,
-        }))
-        .filter(Boolean);
+        }) }))
+        .filter(({ mark }) => Boolean(mark))
+        // w52: a markup stacked onto an existing text mark lives where that
+        // mark does (same Survey module / region), like any mark drawn there.
+        .map(({ source, mark }) => {
+          if (source?.moduleId != null && mark.moduleId == null) mark.moduleId = source.moduleId;
+          if (source?.regionId != null && mark.regionId == null) mark.regionId = source.regionId;
+          return mark;
+        });
       const transactionBase = toggleOff?.nextByPage || annotationsByPageRef.current || {};
       let transaction = buildTextMarkupGroupCreateTransaction(
         transactionBase,
@@ -29485,7 +32915,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         linkPageNumber,
         authorId: user?.id || null,
       });
-    }).filter(Boolean);
+    }).filter(Boolean)
+      // w52 (2026-09-28): text markup is stamped with the active Survey module /
+      // region scope through the SAME shared helpers every other creation
+      // surface uses (applyScope + shouldStampActiveRegionId). Before, a text
+      // highlight made inside a Survey module or region carried no scope and
+      // was hidden the moment it was made (clean-slate rule) — or read-only
+      // inside a space.
+      .map((mark) => applyAnnotationCreationScope(mark, {
+        selectedModuleId,
+        stampRegionId: shouldStampActiveRegionId({
+          regionId: activeRegionId,
+          spaceId: annotationSpaceId,
+          pageNumber: mark?.data?.pageNumber,
+          spaces,
+          isRegionOverlayEnabled,
+        }),
+        activeRegionId,
+      }));
     const toggleOff = buildTextMarkupRangeToggleOffTransaction(
       annotationsByPageRef.current || {},
       annotations,
@@ -29528,7 +32975,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         capturePdfjsTextSelection();
       });
     }
-  }, [activeTool, capturePdfjsTextSelection, commitTextMarkupDocumentTransaction, liveTextSelectionActionSelection, numPages, queuePermanentRedactionConfirmation, selectedTextMarkupActionSelection, textMarkupOverlapMode, textMarkupPaintByType, user?.id]);
+  }, [activeTool, capturePdfjsTextSelection, commitTextMarkupDocumentTransaction, liveTextSelectionActionSelection, numPages, queuePermanentRedactionConfirmation, selectedTextMarkupActionSelection, textMarkupOverlapMode, textMarkupPaintByType, user?.id, selectedModuleId, activeRegionId, annotationSpaceId, spaces, isRegionOverlayEnabled]);
 
   const isImportedSelectDeleteOnlyTextMarkupSelection = useCallback((pageNumber, selectedId, selectedType) => {
     if (!selectedId) return false;
@@ -29937,30 +33384,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             return; // Already added (either as pending or from a previous iteration)
           }
 
-          // Determine if survey marker needs entity (Entity) assignment
-          const needsEntity = !surveyMarker.entityColor && !surveyMarker.entityId;
-
-          // Determine survey marker color - use entityColor first (current entity state), then stored color
-          const storedColor = surveyMarker.entityColor || surveyMarker.color;
-          const highlightColor = storedColor
-            ? (normalizeSurveyMarkerColor(storedColor) || storedColor)
-            : null;
-
-          // Add survey marker to the page array
-          const surveyMarkerData = {
-            x: surveyMarker.bounds.x,
-            y: surveyMarker.bounds.y,
-            width: surveyMarker.bounds.width,
-            height: surveyMarker.bounds.height,
-            angle: Number.isFinite(Number(surveyMarker.bounds.angle))
-              ? ((Number(surveyMarker.bounds.angle) % 360) + 360) % 360
-              : 0,
-            annotationId: annotationId,
-            moduleId: surveyMarkerModuleId,
-            regionId: surveyMarker.regionId ?? null,
-            ...(needsEntity && { needsEntity: true }),
-            ...(highlightColor && (highlightColor ? { color: highlightColor } : { needsEntity: true }))
-          };
+          // w53: one entry builder shared with the family edits (move /
+          // restack / paste patch the list in the same update), so both paths
+          // draw a marker identically — including its place in the stack.
+          const surveyMarkerData = surveyMarkerRenderEntry(annotationId, surveyMarker, normalizeSurveyMarkerColor);
+          if (!surveyMarkerData) return;
           surveyMarkersByPage[pageNumber].push(surveyMarkerData);
         });
       }
@@ -29971,6 +33399,39 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return surveyMarkersByPage;
     });
   }, [selectedModuleId, surveyMarkers]);
+
+  // UX: w53 (2026-09-28) — another screen's Survey Marker change (moved,
+  // restacked, new, deleted) shows here AS IT HAPPENS, before its saved row
+  // lands (the w32 live-overlay pattern: annotationLiveMarkers.js). DISPLAY
+  // ONLY: the overlay is laid over the canvas lists this screen draws; it is
+  // never written to surveyMarkers (so the capture never saves another
+  // screen's in-flight change) and it leaves when the row lands, 12 s pass,
+  // or the channel closes.
+  // A marker drawn from the overlay is look-only until its row lands (~½ s):
+  // it cannot be picked, dragged or deleted, so nothing is ever saved from
+  // another screen's in-flight copy. Survey Markers show only inside their
+  // open Survey module (clean slate), overlay ones too.
+  const displaySurveyMarkersByPage = useMemo(() => {
+    const overlayMarkers = liveMarkerOverlay?.markers;
+    if (!overlayMarkers || overlayMarkers.size === 0 || !selectedModuleId) return newSurveyMarkersByPage;
+    const patched = patchSurveyMarkerRenderPages(
+      newSurveyMarkersByPage,
+      overlayLiveSurveyMarkers(surveyMarkers, overlayMarkers),
+      [...overlayMarkers.keys()],
+      { selectedModuleId, normalizeColor: normalizeSurveyMarkerColor },
+    );
+    const out = {};
+    for (const [page, list] of Object.entries(patched)) {
+      out[page] = list.map((entry) => (overlayMarkers.has(String(entry?.annotationId))
+        ? { ...entry, liveOverlay: true }
+        : entry));
+    }
+    return out;
+  }, [liveMarkerOverlay, newSurveyMarkersByPage, surveyMarkers, selectedModuleId]);
+  // …and another screen's region change draws live in the region outlines
+  // (display only: region editing, the spaces list and every space action
+  // keep reading this screen's own saved spaces).
+  const displaySpaces = liveMarkerOverlay?.spaces || spaces;
 
   // Cleanup orphaned canvas surveyMarkers - ensures surveyMarkers can only exist if they have a corresponding survey panel item
   useEffect(() => {
@@ -30458,6 +33919,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return allRegions;
   }, [activeSpaceId, spaces, showRegionSelection, regionSelectionPage]);
 
+  // w53: the region outlines DRAWN for a page — another screen's in-flight
+  // region change shows live. Drawing only (never seeds region editing).
+  const getDisplayPageRegions = useCallback((pageNumber) => {
+    if (displaySpaces === spaces) return getPageRegions(pageNumber);
+    if (!activeSpaceId) return null;
+    const space = displaySpaces.find((s) => s.id === activeSpaceId);
+    const assignedPage = space?.assignedPages?.find((p) => p.pageId === pageNumber);
+    if (!assignedPage) return null;
+    const isEditingThisPage = showRegionSelection && regionSelectionPage === pageNumber;
+    if (assignedPage.wholePageIncluded !== false && !isEditingThisPage) return null;
+    const allRegions = normalizePageRegions(assignedPage.regions || []);
+    return allRegions.length === 0 ? null : allRegions;
+  }, [activeSpaceId, displaySpaces, spaces, getPageRegions, showRegionSelection, regionSelectionPage]);
+
   // Stable reference for the region-selection tool's initial regions.
   // Memoized so the array identity only changes when the underlying space data
   // actually changes — not on every PDFViewer render.  Without this, any spaces
@@ -30658,7 +34133,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 spaces,
               });
               const annotatedBytes = await savePDFWithFlattenedRegularAnnotationsForPrint(
-                pdfFile,
+                (await flushPageOperations()) || pdfFile,
                 printableRegularPayload.annotationsByPage,
                 pageSizes,
                 {
@@ -31324,6 +34799,7 @@ ${pageBlocks}
       onSpaceAssignPages: handleSpaceAssignPages,
       onSpaceRenamePage: handleSpaceRenamePage,
       onSpaceRemovePage: handleSpaceRemovePage,
+      getSpaceRemovalImpact,
       onNavigateToSpacePage: handleNavigateToSpacePage,
       onReorderSpaces: handleReorderSpaces,
       onExportSpaceCSV: handleExportSpaceToCSV,
@@ -31359,6 +34835,11 @@ ${pageBlocks}
       onRestoreHistoryActivity: handleRestoreHistoryActivity,
       onCascadeRestoreRegion: handleCascadeRestoreRegion,
       onRestoreHistoryContext: handleRestoreHistoryContext,
+      canRestoreHistory: canRestoreFromHistory,
+      // RULED 2026-09-28 owner: History option A (stable, ref-reading).
+      getHistoryMarkIndex,
+      locateHistoryMark,
+      focusHistoryMark,
     };
     onLeftRailApiChange((prev) => {
       if (prev) {
@@ -31424,6 +34905,7 @@ ${pageBlocks}
     handleSpaceAssignPages,
     handleSpaceRenamePage,
     handleSpaceRemovePage,
+    getSpaceRemovalImpact,
     handleNavigateToSpacePage,
     handleReorderSpaces,
     handleExportSpaceToCSV,
@@ -31456,6 +34938,10 @@ ${pageBlocks}
     handleRestoreHistoryActivity,
     handleCascadeRestoreRegion,
     handleRestoreHistoryContext,
+    canRestoreFromHistory,
+    getHistoryMarkIndex,
+    locateHistoryMark,
+    focusHistoryMark,
   ]);
 
   // UX 2026-05-29: Publish the active PDF viewer's right-rail data to the App
@@ -31533,12 +35019,23 @@ ${pageBlocks}
       // Slice 4: the read-only guided "Verify Live Sync" probe.
       onVerifyLiveSync: handleVerifyLiveSync,
       onCloseSurveyMode: handleCloseSurveyMode,
+      // Owner 2026-10-07: an Undo of "Left Survey" that leaves the panel shut.
+      surveyReenterCollapsedRef,
       onRequestCreateTemplate,
       onSelectSurveyTemplate: handleSelectSurveyTemplate,
       pdfFile,
       scale,
       selectedCategories,
       selectedCategoryId,
+      // Survey calm gold (2026-10-01): the rail paints the chosen category
+      // gold only while a touch on the page would place it.
+      surveyPlacementArmed: activeTool === 'survey-marker',
+      // Owner 2026-10-01 (desktop placing inline): focus a new marker's name;
+      // Escape on it untouched takes the placement back; the rail reports the
+      // entity a user picks so the next marker starts with it.
+      surveyMarkerNameFocusRequest,
+      undoSurveyMarkerPlacement,
+      rememberSurveyEntity,
       selectedItemsInCategory,
       selectedModuleId,
       selectedSpaceId,
@@ -31559,8 +35056,6 @@ ${pageBlocks}
       setItemSelectModeActive,
       setItems,
       setNewSurveyMarkersByPage,
-      setNoteDialogContent,
-      setNoteDialogOpen,
       setPendingLocationItem,
       setSelectedCategories,
       setSelectedCategoryId,
@@ -31583,6 +35078,8 @@ ${pageBlocks}
       onDismissUnplacedRow: handleDismissUnplacedRow,
       onDismissAllUnplacedRows: handleDismissAllUnplacedRows,
       onResolveExcelConflict: handleResolveExcelConflict,
+      // Survey media: owner or editor (same rule as Restore in History).
+      canEditSurveyMarkers: canRestoreFromHistory,
       user,
       expandRequestKey: rightRailExpandRequestKey,
       onCollapseChange: handleRightRailCollapseChange,
@@ -31676,6 +35173,10 @@ ${pageBlocks}
     scale,
     selectedCategories,
     selectedCategoryId,
+    activeTool,
+    surveyMarkerNameFocusRequest,
+    undoSurveyMarkerPlacement,
+    rememberSurveyEntity,
     selectedItemsInCategory,
     selectedModuleId,
     selectedSpaceId,
@@ -31694,8 +35195,6 @@ ${pageBlocks}
     setItemSelectModeActive,
     setItems,
     setNewSurveyMarkersByPage,
-    setNoteDialogContent,
-    setNoteDialogOpen,
     setPendingLocationItem,
     setSelectedCategories,
     setSelectedCategoryId,
@@ -31718,6 +35217,7 @@ ${pageBlocks}
     handleDismissUnplacedRow,
     handleDismissAllUnplacedRows,
     handleResolveExcelConflict,
+    canRestoreFromHistory,
     user,
     rightRailExpandRequestKey,
     handleRightRailCollapseChange,
@@ -31854,38 +35354,15 @@ ${pageBlocks}
   if (!pdfDoc || isLoadingPDF) {
     return (
       <>
+      {/* Owner 2026-10-04: the one quiet loading state (QuietLoading), on the
+          viewer's own surround, so the pages simply appear on it. */}
       <div style={{
+        position: 'relative',
         height: '100vh',
-        display: 'flex',
-        flexDirection: 'row',
-        background: 'var(--surface-2)',
-        color: 'var(--text-2)',
+        background: 'var(--surface-0)',
         fontFamily: FONT_FAMILY
       }}>
-        {/* Loading content */}
-        <div style={{
-          flex: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: 'var(--text-3)',
-          fontSize: '15px',
-          letterSpacing: '-0.2px'
-        }}>
-          {isLoadingPDF ? (
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'center' }}>
-                <Icon name="document" size={48} />
-              </div>
-              <div style={{ fontSize: '18px', color: 'var(--text-3)' }}>Loading PDF...</div>
-              <div style={{ fontSize: '14px', color: 'var(--text-3)', marginTop: '10px' }}>
-                {pdfFile?.name || 'document.pdf'}
-              </div>
-            </div>
-          ) : (
-            'Loading PDF...'
-          )}
-        </div>
+        <QuietLoading label={openingLabel(pdfFile?.name)} />
       </div>
       {browserPrintDocument}
       </>
@@ -31925,6 +35402,8 @@ ${pageBlocks}
         handleCopyCallout,
         handlePasteCallout,
         annotationsByPageRef,
+        // w61: this render's page lists (the ref above catches up in an effect).
+        annotationsByPageNow: annotationsByPage,
         setClipboardAnnotation,
         handleSaveAnnotations,
         setPendingSvgSelection,
@@ -31935,6 +35414,8 @@ ${pageBlocks}
         clearCalloutClipboard: () => {
           setClipboardCallout(null);
           setClipboardCalloutType(null);
+          // w53: …and the family clipboard (one logical clipboard).
+          setFamilyClipboard(null);
         },
         // UX: lets every menu's Paste item paste a copied CALLOUT at the
         // right-click point too (doPasteAny in the menu builder).
@@ -31948,8 +35429,41 @@ ${pageBlocks}
         // keyboard Delete; ownership inputs drive the menu's own/foreign
         // partition (Cut stays own-only, foreign Delete requires the modal).
         requestBulkDelete: (args) => requestBulkDeleteRef.current?.(args),
+        // Owner ruling 2026-09-28: Lock / Unlock on every object menu.
+        toggleLockSelection: handleToggleMarkLock,
+        // w56: group-menu Delete of a mixed marks+callouts selection.
+        beginBatchDelete: handleBeginBatchDelete,
+        resolveSurveyMarker: (id) => surveyMarkersRef.current?.[id] || null,
+        // w53: Survey Markers in the family menu, one clipboard, Duplicate.
+        handleReorderFamily,
+        deleteSurveyMarkers: handleDeleteSurveyMarkers,
+        copyFamilySelection,
+        duplicateFamilySelection,
+        familyClipboard,
+        pasteFamilyAt,
         viewerId: user?.id ?? null,
         documentOwnerId,
+        selectedCalloutIds,
+        // Owner 2026-10-07: right-click / long-press a bare page under Pan or
+        // Select = the Pages tab's page menu (sidebar/pageMenuItems.js).
+        pageMenu: {
+          activeTool,
+          pageCount: numPages,
+          clipboardPage,
+          clipboardType,
+          pageTransformations,
+          handlers: {
+            cut: handleCutPage,
+            copy: handleCopyPage,
+            paste: (page, position) => { if (clipboardPage) handlePastePage(page, clipboardPage, clipboardType, position); },
+            duplicate: handleDuplicatePage,
+            insertBlank: handleInsertBlankPage,
+            rotate: handleRotatePage,
+            mirror: handleMirrorPage,
+            reset: handleResetPage,
+            delete: (page) => { if (window.confirm(`Delete page ${page}?`)) handleDeletePage(page); },
+          },
+        },
       })}
 
       {/* Unsupported Annotations Notice — see UnsupportedAnnotationsNotice.jsx
@@ -32035,6 +35549,7 @@ ${pageBlocks}
             active={showRegionSelection}
             mobileMode={mobileMode}
             onMobileToolbarApiChange={setMobileRegionToolbarApi}
+            onRequestRegionTool={() => setActiveTool(REGION_EDIT_TOOL)}
             activeTool={activeTool}
             onRegionComplete={handleRegionComplete}
             onCancel={handleCancelRegionEdit}
@@ -32211,6 +35726,40 @@ ${pageBlocks}
                 </div>
               );
             })()}
+            {/* Spaces chunk A: an active space with no pages hides every page;
+                say so instead of leaving a blank viewer. */}
+            {activeSpaceHasNoPages && (
+              <div
+                style={{ position: 'absolute', inset: 0, zIndex: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, pointerEvents: 'none' }}
+              >
+                <div
+                  role="status"
+                  data-space-empty-card
+                  style={{ pointerEvents: 'auto', width: '100%', maxWidth: 320, boxSizing: 'border-box', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 16px 14px', color: 'var(--text-1)', fontFamily: FONT_FAMILY, textAlign: 'center' }}
+                >
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>No pages in {activeSpaceName}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 6, lineHeight: 1.45 }}>
+                    Add pages to this space, or turn it off to see the whole document.
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 14 }}>
+                    <button
+                      type="button"
+                      onClick={handleExitSpaceMode}
+                      style={{ minHeight: 36, padding: '0 14px', background: 'transparent', border: '1px solid var(--border-strong)', borderRadius: 6, color: 'var(--text-2)', fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}
+                    >
+                      Turn off space
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => pdfSidebarRef.current?.openPanel?.('spaces')}
+                      style={{ minHeight: 36, padding: '0 14px', background: 'var(--accent)', border: 0, borderRadius: 6, color: 'var(--accent-text)', fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}
+                    >
+                      Add pages
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             {(
               <>
                 <div
@@ -32410,6 +35959,11 @@ ${pageBlocks}
                       const layerScale = zoomOverlayTransformActiveRef.current && hasCommittedPageScale
                         ? committedPageScale
                         : resolvedMeasuredPageScale;
+                      // Owner 2026-10-07 (far zoom): a page this small on screen
+                      // has no tappable links or fillable fields; skipping those
+                      // layers keeps a zoomed-out document (dozens of pages in
+                      // view) light. Marks and redactions always render.
+                      const pageTinyOnScreen = resolvedPageSize.width * layerScale < 96;
 
                       // [DEBUG] Log props being passed to PAL
                       // 2026-04-29: silenced — fires on every frame and floods
@@ -32457,14 +36011,16 @@ ${pageBlocks}
                       );
                       const regionSelectionDisplayWidth = overlayDiv?.offsetWidth || (resolvedPageSize.width * layerScale);
                       const regionSelectionDisplayHeight = overlayDiv?.offsetHeight || (resolvedPageSize.height * layerScale);
-                      const annotationHydrationGated = isFirstVisibleAnnotationPageGated(pageNumber);
+                      const annotationHydrationPending = isFirstVisibleAnnotationPageGated(pageNumber);
+                      // w29: a previewed page shows the PDF and its early-painted marks
+                      // (no grey cover) while a see-through blocker keeps input off it
+                      // until hydration is ready, so nothing drawn can be lost.
+                      const annotationPreviewInputBlocked = annotationHydrationPending && firstVisibleAnnotationPagePreviewing;
+                      const annotationHydrationGated = annotationHydrationPending && !annotationPreviewInputBlocked;
                       const annotationVisualCoverActive = annotationHydrationGated;
                       const nativePdfAnnotationPolicy = pdfNativeAnnotationLayerPolicyByPage?.[pageNumber] ||
                         pdfNativeAnnotationLayerPolicyByPage?.[String(pageNumber)] ||
                         null;
-                      const appImportedPdfAnnotationIds = pageAnnotationObjects
-                        .filter((obj) => obj?.isPdfImported && obj?.pdfAnnotationId)
-                        .map((obj) => obj.pdfAnnotationId);
                       const importedTextMarkupIdsByType = pageAnnotationObjects.reduce((result, obj) => {
                         if (obj?.isPdfImported && obj?.data?.type === 'text-markup' && obj?.pdfAnnotationId) {
                           const subtype = String(obj.pdfAnnotationType || '');
@@ -32482,11 +36038,10 @@ ${pageBlocks}
                           deletedPdfAnnotations,
                         });
                       }
-                      const requiredImportedPdfAnnotationIds = Array.isArray(nativePdfAnnotationPolicy?.importedIds)
-                        ? nativePdfAnnotationPolicy.importedIds
-                        : [];
-                      const importedPdfCopiesAvailable = requiredImportedPdfAnnotationIds.length > 0 &&
-                        requiredImportedPdfAnnotationIds.every((id) => appImportedPdfAnnotationIds.includes(id));
+                      // (An unused "imported copies available" check stood here: an
+                      // every x includes over all of a page's imported marks on every
+                      // render — ~1M comparisons per large drawing per frame of a
+                      // zoom gesture. Removed 2026-10-06, smooth zoom.)
                       const shouldHideNativePdfAnnotationLayer = Boolean(
                         nativePdfAnnotationPolicy?.hideNativeLayer
                       );
@@ -32621,7 +36176,7 @@ ${pageBlocks}
                               fillContainer
                             />
                           )}
-                          {pdfDoc && (
+                          {pdfDoc && !pageTinyOnScreen && (
                             <PdfjsLinkLayer
                               pdf={pdfDoc}
                               pageNumber={pageNumber}
@@ -32637,7 +36192,7 @@ ${pageBlocks}
                               excludedAnnotationIds={importedTextMarkupIdsByType.Redact || []}
                             />
                           )}
-                          <TextMarkupLinkLayer
+                          {!pageTinyOnScreen && <TextMarkupLinkLayer
                             annotations={pageAnnotationObjects}
                             pageSize={resolvedPageSize}
                             interactionMode={activeTool === 'pan' ? 'open' : activeTool === 'select' || activeTool === 'text-select' ? 'select' : 'disabled'}
@@ -32651,8 +36206,8 @@ ${pageBlocks}
                               setSelectedToolbarAnnotation(nextSelection);
                               setPendingSvgSelection({ pageNumber, annotationIndex: region.annotationIndex, tick: Date.now() });
                             }}
-                          />
-                          {true && pdfDoc && (
+                          />}
+                          {true && pdfDoc && !pageTinyOnScreen && (
                             <PdfjsFormLayer
                               pdf={pdfDoc}
                               pageNumber={pageNumber}
@@ -32833,7 +36388,9 @@ ${pageBlocks}
                                 return null;
                               }
 
-                              const validRegions = pageRegions.filter(region => {
+                              // w53: drawn from getDisplayPageRegions (another screen's in-flight region
+                              // change shows live; drawing only).
+                              const validRegions = (getDisplayPageRegions(pageNumber) || []).filter(region => {
                                 if (!region || !Array.isArray(region.coordinates)) return false;
                                 const coords = region.coordinates;
                                 return (region.shapeType === 'rectangular' && coords.length >= 8) ||
@@ -32978,6 +36535,11 @@ ${pageBlocks}
                                   height: '100%',
                                   pointerEvents: 'none',
                                   visibility: pdfjsZoomPreviewActive ? 'hidden' : undefined,
+                                  // Owner 2026-10-04: the page shows as soon as it is drawn
+                                  // and its marks fade in quietly when hydration is ready
+                                  // (no grey cover). Only the gate flip changes opacity.
+                                  opacity: annotationHydrationGated ? 0 : undefined,
+                                  transition: 'opacity 180ms ease-out',
                                 }}
                               >
                               {!annotationHydrationGated && (
@@ -32988,7 +36550,7 @@ ${pageBlocks}
                                   scale={layerScale}
                                   annotations={isEraserTool ? pageAnnotations : benchmarkPageAnnotations}
                                   callouts={callouts}
-                                  surveyMarkers={newSurveyMarkersByPage[pageNumber]}
+                                  surveyMarkers={displaySurveyMarkersByPage[pageNumber]}
                                   selectedModuleId={selectedModuleId}
                                   showSurveyPanel={showSurveyPanel}
                                   selectedSpaceId={annotationSpaceId}
@@ -33012,6 +36574,10 @@ ${pageBlocks}
                                   // hole showed intact ink through it ("partial erase does
                                   // nothing" regression, 2026-07-14).
                                   visible={suspendFullSvgForProxy}
+                                  // Perf: only paint the hidden bitmap while it can be shown
+                                  // (an erase can only start on a page in the render window).
+                                  paintEnabled={suspendFullSvgForProxy || (isEraserTool
+                                    && (pdfjsMountedPages.has(pageNumber) || Math.abs(pageNumber - pageNum) <= 1))}
                                 />
                               )}
                               {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {
@@ -33030,7 +36596,9 @@ ${pageBlocks}
                                   return null;
                                 }
 
-                                const validRegions = pageRegions.filter(region => {
+                                // w53: drawn from getDisplayPageRegions (another screen's in-flight region
+                              // change shows live; drawing only).
+                              const validRegions = (getDisplayPageRegions(pageNumber) || []).filter(region => {
                                   if (!region || !Array.isArray(region.coordinates)) return false;
                                   const coords = region.coordinates;
                                   return (region.shapeType === 'rectangular' && coords.length >= 8) ||
@@ -33069,7 +36637,9 @@ ${pageBlocks}
                                     width: '100%',
                                     height: '100%',
                                     pointerEvents: 'none',
-                                    zIndex: 99
+                                    // Above the SVG annotation layer (100): the Spaces
+                                    // area editor now renders inside this target.
+                                    zIndex: 101
                                   }}
                                 >
                                   <div
@@ -33133,15 +36703,24 @@ ${pageBlocks}
                               >
                                 <SVGAnnotationLayer
                                   key={`svg-layer-${pageNumber}-${annotationOverlayRecoveryTick}`}
+                                  documentId={pdfFile?.id || null}
                                   pageNumber={pageNumber}
-                                  isPageInRenderWindow={visiblePagesSet.has(pageNumber) || Math.abs(pageNumber - pageNum) <= 1}
+                                  // visiblePagesSet is never updated past page 1, so a pinch-out
+                                  // left newly visible pages with no marks until the current page
+                                  // changed; the engine's mounted window is the real one.
+                                  isPageInRenderWindow={pdfjsMountedPages.has(pageNumber) || Math.abs(pageNumber - pageNum) <= 1}
                                   width={resolvedPageSize.width}
                                   height={resolvedPageSize.height}
                                   annotations={pageAnnotations}
                                   callouts={callouts}
-                                  surveyMarkers={newSurveyMarkersByPage[pageNumber]}
+                                  surveyMarkers={displaySurveyMarkersByPage[pageNumber]}
                                   onUpdateSurveyMarkerBounds={handleSurveyMarkerBoundsChange}
-                                  onDeleteSurveyMarker={handleDeleteSurveyMarker}
+                                  onDeleteSurveyMarker={getSvgLayerPageHandlers(pageNumber).onDeleteSurveyMarker}
+                                  isSurveyMarkerFamilyMember={isSurveyMarkerFamilyMember}
+                                  onDeleteSurveyMarkers={getSvgLayerPageHandlers(pageNumber).onDeleteSurveyMarkers}
+                                  onReorderFamily={handleReorderFamily}
+                                  onCopyFamily={copyFamilySelection}
+                                  onDuplicateFamily={duplicateFamilySelection}
                                   onSurveyMarkerDoubleClick={handleSurveyMarkerClicked}
                                   pendingSurveyMarkerSelection={pendingSurveyMarkerSelection}
                                   onPendingSurveyMarkerSelectionConsumed={handlePendingSurveyMarkerSelectionConsumed}
@@ -33156,22 +36735,9 @@ ${pageBlocks}
                                   getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
                                   isRegionOverlayEnabled={isRegionOverlayEnabled}
                                   layerVisibility={annotationLayerVisibility}
-                                  onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotationsWithTextMarkupAtomicity(pageNumber, updatedJSON, saveContext)}
-                                  onRequestEditMode={(annotationIndex, annotationType, editOptions) => {
-                                    // UX: one dispatcher for every edit entry —
-                                    // this native double-click (Select family,
-                                    // mouse) and the window-capture double-tap
-                                    // recogniser that covers Pan, Text Select
-                                    // and touch. Routing (which type opens which
-                                    // editor) lives in utils/annotationEditRoute
-                                    // so the two entries cannot drift.
-                                    requestAnnotationEditEntry({
-                                      pageNumber,
-                                      annotationIndex,
-                                      annotationType,
-                                      caretAnchor: editOptions?.caretAnchor || null,
-                                    });
-                                  }}
+                                  onSaveAnnotations={getSvgLayerPageHandlers(pageNumber).onSaveAnnotations}
+                                  onMoveMarksToPage={getSvgLayerPageHandlers(pageNumber).onMoveMarksToPage}
+                                  onRequestEditMode={getSvgLayerPageHandlers(pageNumber).onRequestEditMode}
                                   activeTool={activeTool}
                                   // UX 2026-09-15 (Drawboard parity — Pan is a selection
                                   // mode): mount the edit-entry HIT LAYER under Pan.
@@ -33181,12 +36747,14 @@ ${pageBlocks}
                                   // one only stamps data attributes inside the layer, so
                                   // Pan keeps owning every drag.
                                   panEditEntryEnabled={activeTool === 'pan'}
+                                  // Drawboard rule 12: the pick survives this page layer unmounting.
+                                  keepSelectionAcrossRemount
                                   selectionMode={selectionMode}
                                   lassoTouchOperation={lassoTouchOperation}
                                   lassoTouchMode={lassoTouchMode}
                                   editingAnnotationIndex={isEditMode && !editingAnnotation.reactCalloutId ? editingAnnotation.index : null}
                                   editingAnnotationEditType={isEditMode ? editingAnnotation.editType : null}
-                                  onRequestExitEdit={() => setEditingAnnotation(null)}
+                                  onRequestExitEdit={getSvgLayerPageHandlers(pageNumber).onRequestExitEdit}
                                   // UX: Phase 14 CALL-10 + KBD-01 + CREATE-01 — new props
                                   // for the unified callout render + selection + delete +
                                   // create pipeline. Wave 2 Plan 14-03 wires these so the
@@ -33207,6 +36775,8 @@ ${pageBlocks}
                                   // commit path, so keyboard and menu flows stay consistent.
                                   onCopyAnnotation={handleCopyAnnotation}
                                   onCutAnnotation={handleCutAnnotation}
+                                  onCopyCallout={handleCopyCallout}
+                                  onCutCallout={handleCutCallout}
                                   // UX: z-order hotkeys (Cmd+]/[ + Shift variants). Fires
                                   // from SVGAnnotationLayer's keydown useEffect when that
                                   // page has exactly one shape selected. Matches the
@@ -33232,12 +36802,18 @@ ${pageBlocks}
                                   // UX: Plan 15-04 Step 3 — live textbox bounds for
                                   // plain-text (non-callout) edits; feeds renderText so
                                   // typed characters appear in the SVG textbox live.
-                                  liveTextEditBounds={liveTextEditBounds}
+                                  // w43: only the page being typed on - the new-box
+                                  // preview used to paint its border on EVERY page.
+                                  liveTextEditBounds={isEditMode ? liveTextEditBounds : null}
                                   // UX: pan-mode quick-click selection command. See
                                   // pendingSvgSelection state at ~line 11046 for details.
                                   pendingSelection={pendingSvgSelection}
                                   selectionClearToken={annotationSelectionClearToken}
                                   selectionOwnerPageNumber={selectedToolbarAnnotation?.pageNumber ?? null}
+                                  // w41: the page holding the latest pick (single or multi); a
+                                  // pick on one page clears picks left on the others, so a
+                                  // restyle group is always one page of marks (+ callouts).
+                                  pickOwnerPageNumber={selectedToolbarIndices?.pageNumber ?? null}
                                   onSelectionChange={handleSelectionForToolbar}
                                   onTextSelectManipulationChange={handleTextSelectManipulationChange}
                                   // UX: pan-mode hover glow broadcast — see pendingSvgHover state.
@@ -33258,18 +36834,20 @@ ${pageBlocks}
                                   // survey-marker) — FabricDrawingCanvas is retired, so
                                   // the in-progress drawing and the committed shape are
                                   // the same renderer in the same coordinate space.
-                                  strokeColor={strokeColor}
-                                  strokeOpacity={strokeOpacity}
-                                  fillColor={fillColor}
-                                  fillOpacity={fillOpacity}
+                                  // Review round 9: the tool's settings, not a held
+                                  // own-group pick's (resolveNewMarkStyle).
+                                  strokeColor={newMarkStyle.strokeColor}
+                                  strokeOpacity={newMarkStyle.strokeOpacity}
+                                  fillColor={newMarkStyle.fillColor}
+                                  fillOpacity={newMarkStyle.fillOpacity}
                                   highlightColor="rgba(255, 193, 7, 0.3)"
-                                  strokeWidth={strokeWidth}
-                                  arrowheadStyle={arrowheadStyle}
-                                arrowStartStyle={arrowBothEnds ? arrowheadStyle : null}
-                                  lineBorderStyle={lineBorderStyle}
-                                  cloudIntensity={cloudIntensity}
+                                  strokeWidth={newMarkStyle.strokeWidth}
+                                  arrowheadStyle={newMarkStyle.arrowheadStyle}
+                                arrowStartStyle={newMarkStyle.arrowBothEnds ? newMarkStyle.arrowheadStyle : null}
+                                  lineBorderStyle={newMarkStyle.lineBorderStyle}
+                                  cloudIntensity={newMarkStyle.cloudIntensity}
                                   zoomGeneration={zoomGeneration}
-                                  onSurveyMarkerCreated={(bounds) => handleSurveyMarkerCreated(pageNumber, bounds)}
+                                  onSurveyMarkerCreated={getSvgLayerPageHandlers(pageNumber).onSurveyMarkerCreated}
                                 />
                               </div>
                               )}
@@ -33354,6 +36932,34 @@ ${pageBlocks}
                                   }}
                                   onPointerDown={(e) => {
                                     if (Date.now() - editModeCooldownRef.current < 300) return;
+                                    // Rule 6 (owner 2026-10-04, utils/selectModes.js): a press on
+                                    // a text box or callout picks it (a second press on the picked
+                                    // text edits it, through the selection grab); any other mark
+                                    // is not there for the Text tool. With something selected a
+                                    // press elsewhere only drops the pick (the next makes a box).
+                                    // A press on the selection itself never reaches here: it is
+                                    // handed to the selection (hooks/useSelectionGrabHandoff).
+                                    const where = classifyPagePress(e.nativeEvent, { pageNumber, objects: pageAnnotations?.objects, tool: 'text' });
+                                    const press = resolveToolPress({
+                                      tool: 'text', target: where.target, markGroup: where.markGroup, hasSelection: hasAnyPageSelection(),
+                                    });
+                                    if (press.click === 'select' || press.click === 'deselect') {
+                                      e.stopPropagation();
+                                      e.preventDefault();
+                                      const tapAt = { x: e.clientX, y: e.clientY, pointerType: e.pointerType };
+                                      if (press.click === 'select' && where.calloutId != null) {
+                                        setAnnotationSelectionClearToken((token) => token + 1);
+                                        setSelectedCalloutIds(new Set([where.calloutId]));
+                                        noteOverlayTapPick(`c:${where.calloutId}`, tapAt);
+                                      } else if (press.click === 'select' && Number.isInteger(where.index)) {
+                                        setSelectedCalloutIds((previous) => (previous instanceof Set && previous.size === 0 ? previous : new Set()));
+                                        setPendingSvgSelection({ pageNumber, annotationIndex: where.index, tick: Date.now() });
+                                        noteOverlayTapPick(`a:${where.index}`, tapAt);
+                                      } else {
+                                        clearAnnotationSelectionForContextChange('text-tool-empty-click');
+                                      }
+                                      return;
+                                    }
                                     e.stopPropagation();
                                     e.currentTarget.setPointerCapture(e.pointerId);
                                     const rect = e.currentTarget.getBoundingClientRect();
@@ -33393,28 +36999,10 @@ ${pageBlocks}
                                     const x = (Math.min(startX, e.clientX) - rect.left) / effectiveScale;
                                     const y = (Math.min(startY, e.clientY) - rect.top) / effectiveScale;
                                     const isDrag = dx > 10 || dy > 10;
-                                    // Click (not drag): check if an existing text annotation was hit
-                                    if (!isDrag && pageAnnotations?.objects) {
-                                      const hitIdx = pageAnnotations.objects.findIndex((obj) => {
-                                        const t = String(obj.type || '').toLowerCase();
-                                        if (t !== 'textbox' && t !== 'i-text' && t !== 'text') return false;
-                                        const l = obj.left || 0, tp = obj.top || 0;
-                                        const w = (obj.width || 0) * Math.abs(obj.scaleX ?? 1);
-                                        const h = (obj.height || 0) * Math.abs(obj.scaleY ?? 1);
-                                        return x >= l && x <= l + w && y >= tp && y <= tp + h;
-                                      });
-                                      if (hitIdx >= 0) {
-                                        const hitObj = pageAnnotations.objects[hitIdx];
-                                        setEditingAnnotation({
-                                          pageNumber,
-                                          index: hitIdx,
-                                          type: hitObj.type,
-                                          editType: 'text',
-                                          data: hitObj,
-                                        });
-                                        return;
-                                      }
-                                    }
+                                    // Drawboard rule 6: with nothing selected a click makes a NEW
+                                    // box in edit mode, even on top of existing text (editing
+                                    // that text is a double-click, or a click once something is
+                                    // selected — see onPointerDown).
                                     setEditingAnnotation({
                                       pageNumber,
                                       index: null,
@@ -33473,6 +37061,26 @@ ${pageBlocks}
                                     if (e.target?.closest?.('[data-counter-caret-popup]')) {
                                       appDebug('[CSeries popup] counter overlay #1 pointerdown bailed — target inside caret popup');
                                       return;
+                                    }
+                                    // Owner 2026-10-02 (Drawboard rules, utils/selectModes.js
+                                    // 'place' tools): a press on an existing Shapes-group mark
+                                    // (the Counter's own group, owner 2026-10-04) picks it; any
+                                    // other mark or empty page drops a pin.
+                                    {
+                                      const where = classifyPagePress(e.nativeEvent, { pageNumber, objects: pageAnnotations?.objects, tool: 'counter' });
+                                      const press = resolveToolPress({ tool: 'counter', target: where.target, markGroup: where.markGroup, hasSelection: hasAnyPageSelection() });
+                                      if (press.click === 'select') {
+                                        e.stopPropagation();
+                                        e.preventDefault();
+                                        if (where.calloutId != null) {
+                                          setAnnotationSelectionClearToken((token) => token + 1);
+                                          setSelectedCalloutIds(new Set([where.calloutId]));
+                                        } else if (Number.isInteger(where.index)) {
+                                          setSelectedCalloutIds((previous) => (previous instanceof Set && previous.size === 0 ? previous : new Set()));
+                                          setPendingSvgSelection({ pageNumber, annotationIndex: where.index, tick: Date.now() });
+                                        }
+                                        return;
+                                      }
                                     }
                                     // UX 2026-05-01 — runaway-pin guard. See ref decl
                                     // for full rationale. 200ms cooldown + immediate
@@ -33721,6 +37329,7 @@ ${pageBlocks}
                                   caretAnchor={editingAnnotation.caretAnchor || null}
                                   textBoxWidth={editingAnnotation.textBoxWidth}
                                   newTextStyle={mobileMode ? textStyleDefaults : null}
+                                  newTextCloudIntensity={lineBorderStyle === 'cloud' ? Math.max(1, Number(cloudIntensity) || 2) : null}
                                   authorId={user?.id ?? null}
                                   // KAL-88 — survey/region scope inputs for NEW text commits;
                                   // same sources SVGAnnotationLayer's creation commit uses.
@@ -33745,9 +37354,17 @@ ${pageBlocks}
                                   onLiveTextGrow={editingAnnotation?.reactCalloutId
                                     ? setLiveCalloutEditBounds
                                     : setLiveTextEditBounds}
+                                  // Owner Test 44: a callout's box grows away from its leader.
+                                  placeCalloutBox={editingAnnotation?.reactCalloutId
+                                    ? (live) => placeCalloutEditBox(
+                                      editingAnnotation.originalReactCallout,
+                                      editingAnnotation.pageSize || resolvedPageSize,
+                                      live,
+                                    )
+                                    : null}
                                   onRichTextEditorChange={setRichTextEditor}
                                   onCalloutTextStyleChange={handleCalloutTextStyleChange}
-                                  onEditCommit={(updatedJSON) => {
+                                  onEditCommit={(updatedJSON, commitMeta) => {
                                     // UX: Phase 15 UAT-1 restructure — reactCalloutId
                                     // routes callout commit through fromFabricGroup.
                                     // updatedJSON.objects[0] is the edited textbox in
@@ -33809,6 +37426,8 @@ ${pageBlocks}
                                           source: 'callout:delete-blank',
                                           action: 'callout-delete-blank',
                                           checkpointPolicy: 'normal',
+                                          // w37: a new callout left blank undoes as nothing.
+                                          ...(isNewCallout ? { foldIntoCreateOf: editingAnnotation.reactCalloutId } : {}),
                                         });
                                         editModeCooldownRef.current = Date.now();
                                         newlyCreatedCalloutIdsRef.current.delete(editingAnnotation.reactCalloutId);
@@ -33818,16 +37437,35 @@ ${pageBlocks}
                                       // R2.2 Slice 3: text-edit commit lands as ONE fabric:update
                                       // delta via the shared pipeline (Cmd+Z reverts just this
                                       // callout's edit instead of a whole-document snapshot).
-                                      commitCalloutMutation(pageNumber, (prev) => prev.map((c) =>
-                                        c.id === editingAnnotation.reactCalloutId ? updatedReactCallout : c
-                                      ), {
+                                      // UX: text-bar style picks (colour, bold, size…) already
+                                      // committed onto the live callout mid-edit via
+                                      // handleCalloutTextStyleChange; updatedReactCallout spreads
+                                      // the edit-START snapshot, so keep the live style or the
+                                      // pick is silently reverted on commit.
+                                      // Per-field sync (2026-09-24): updatedReactCallout is built
+                                      // from the edit-START callout, so only what this text edit
+                                      // changed (text, grown box) is written onto the callout as
+                                      // it is NOW — a collaborator's move or restyle made while
+                                      // typing survives (mergeEditOntoCurrent).
+                                      const calloutEditStart = editingAnnotation.originalReactCallout;
+                                      commitCalloutMutation(pageNumber, (prev) => prev.map((c) => {
+                                        if (c.id !== editingAnnotation.reactCalloutId) return c;
+                                        if (!calloutEditStart) {
+                                          return { ...updatedReactCallout, style: c.style || updatedReactCallout.style };
+                                        }
+                                        return mergeEditOntoCurrent(c, calloutEditStart, updatedReactCallout) || c;
+                                      }), {
                                         source: 'callout:edit-commit',
                                         action: 'callout-edit-commit',
                                         checkpointPolicy: 'normal',
+                                        // w37: drawing a callout and typing its text is one Undo step.
+                                        ...(isNewCallout ? { foldIntoCreateOf: editingAnnotation.reactCalloutId } : {}),
                                       });
                                       editModeCooldownRef.current = Date.now();
                                       newlyCreatedCalloutIdsRef.current.delete(editingAnnotation.reactCalloutId);
                                       setEditingAnnotation(null);
+                                      // Drawboard rule 10: Escape commits and keeps it selected.
+                                      if (commitMeta?.via === 'escape') setSelectedCalloutIds(new Set([editingAnnotation.reactCalloutId]));
                                       return;
                                     }
                                     handleSaveAnnotations(pageNumber, updatedJSON, {
@@ -33837,6 +37475,17 @@ ${pageBlocks}
                                     });
                                     editModeCooldownRef.current = Date.now();
                                     setEditingAnnotation(null);
+                                    // Drawboard rule 10 (utils/selectModes.js): Escape commits
+                                    // the text and keeps the box selected (the tool stays);
+                                    // the next Escape deselects, the one after puts the tool down.
+                                    if (commitMeta?.via === 'escape') {
+                                      const committedIndex = editingAnnotation.isNewText
+                                        ? (updatedJSON?.objects?.length ?? 0) - 1
+                                        : editingAnnotation.index;
+                                      if (Number.isInteger(committedIndex) && committedIndex >= 0) {
+                                        setPendingSvgSelection({ pageNumber, annotationIndex: committedIndex, tick: Date.now() });
+                                      }
+                                    }
                                   }}
                                   onEditCancel={() => {
                                     // UX 2026-04-25 — Esc on a brand-new callout removes
@@ -33854,6 +37503,8 @@ ${pageBlocks}
                                           source: 'callout:cancel-new',
                                           action: 'callout-cancel-new',
                                           checkpointPolicy: 'normal',
+                                          // w37: Esc on a new callout leaves no Undo step behind.
+                                          foldIntoCreateOf: editingAnnotation.reactCalloutId,
                                         });
                                         newlyCreatedCalloutIdsRef.current.delete(editingAnnotation.reactCalloutId);
                                       }
@@ -33890,6 +37541,13 @@ ${pageBlocks}
                           })()}
                           </div>
                           {renderAnnotationHydrationPageCover(pageNumber, 'pdfjs', annotationVisualCoverActive)}
+                          {annotationPreviewInputBlocked && (
+                            <div
+                              data-annotation-preview-input-blocker={pageNumber}
+                              aria-busy="true"
+                              style={{ position: 'absolute', inset: 0, zIndex: 1000, pointerEvents: 'auto', cursor: 'progress' }}
+                            />
+                          )}
                         </div>,
                         portalTarget,
                         `pdfjs-overlay-${pageNumber}`,
@@ -33910,16 +37568,42 @@ ${pageBlocks}
             The host element sits between the rails and above the actual
             viewer body so the strip aligns exactly between the two rails
             with no extra positioning math. */}
-        {isActive && pdfFile && activeCategoryDropdown && typeof document !== 'undefined' && document.getElementById('chrome-sub-toolbar-host') && createPortal(
+        {/* RULED 2026-09-26 owner: flip rows (w44). A tool group's tools
+            (Draw / Shapes / Text, and the hidden Forms) now render into the
+            TOOL BAR, right of the group icons (AppShell's
+            #chrome-subtools-host) — and in Select mode the picked mark's own
+            group's tools do too (utils/toolbarRows.js resolveToolBarGroup).
+            The Survey row keeps its own bar under the tool bar, as before.
+            The same buttons and handlers draw both; only the host and the
+            wrapper differ. */}
+        {isActive && pdfFile && typeof document !== 'undefined' && (() => {
+          const toolBarGroup = resolveToolBarGroup({ activeTool, activeCategoryDropdown, contextTool: subToolContextTool });
+          // w46 (owner 2026-09-26: select modes in top bar): the Survey row
+          // has its own slot ABOVE row 2 (AppShell #chrome-survey-row-slot).
+          // In Select mode row 2 now comes and goes as a mark is picked and
+          // dropped; under it, the Survey row would jump by a bar's height.
+          const subRowHost = document.getElementById('chrome-survey-row-slot')
+            || document.getElementById('chrome-sub-toolbar-host');
+          const renderSubRow = (subRowCategory, host, inToolBar) => createPortal(
           <div
+            key={inToolBar ? 'tool-bar-tools' : 'sub-row'}
             data-chrome-strip="true"
+            data-chrome-subtools-row={inToolBar ? 'true' : undefined}
             /* UX 2026-09-16: the tool sub-row fades and slides down 5px as it
                opens (140ms), the same cue Drawboard gives its own second row.
                It used to appear in a single frame with no transition at all,
                which read as a flicker over the top of the page. Honours
-               prefers-reduced-motion via the shared class in styles.css. */
-            className="survey-surface-in"
-            style={{
+               prefers-reduced-motion via the shared class in styles.css.
+               w44: the tools in the tool bar sit still like the icons beside
+               them — no drop-in there. */
+            className={inToolBar ? undefined : 'survey-surface-in'}
+            style={inToolBar ? {
+              // w44: inline in the tool bar — the same 28px buttons on the
+              // same 6px tool gutter as the group icons beside them.
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--chrome-tool-gap)',
+            } : {
               width: '100%',
               // PASS 7 (boards 8-12): the sub-tool row is the SECOND of three
               // 36px bars, with the same 2px gutter between tool buttons as the
@@ -33938,7 +37622,7 @@ ${pageBlocks}
               boxSizing: 'border-box'
             }}
           >
-            {activeCategoryDropdown === 'draw' && (
+            {subRowCategory === 'draw' && (
               <>
                 {[
                   { id: 'pen', label: 'Pen', iconName: 'pen' },
@@ -33967,6 +37651,9 @@ ${pageBlocks}
                     <button
                       key={t.id}
                       data-highlighter-caret-button={isHighlighterSplitMenu ? 'true' : undefined}
+                      // w49: which glyph this tool shows, so a group switch can morph it (utils/loadoutTransition.js).
+                      data-morph-icon={t.iconName}
+                      data-tool-switch="true"
                       onClick={(e) => {
                         if (isHighlighter) {
                           e.stopPropagation();
@@ -34149,7 +37836,7 @@ ${pageBlocks}
               </>
             )}
 
-            {activeCategoryDropdown === 'shape' && (
+            {subRowCategory === 'shape' && (
               <>
                 {[
                   { id: 'rect', label: 'Rectangle', iconName: 'rect' },
@@ -34185,6 +37872,9 @@ ${pageBlocks}
                     <button
                       key={t.id}
                       data-counter-caret-button={isCounter ? 'true' : undefined}
+                      // w49: which glyph this tool shows, so a group switch can morph it (utils/loadoutTransition.js).
+                      data-morph-icon={t.iconName}
+                      data-tool-switch="true"
                       onClick={(e) => {
                         setActiveTool(t.id);
                         // UX 2026-09-09: Polygon and Polyline are click-to-place
@@ -34574,7 +38264,7 @@ ${pageBlocks}
               </>
             )}
 
-            {activeCategoryDropdown === 'review' && (
+            {subRowCategory === 'review' && (
               <>
                 {[
                   { id: 'text', label: 'Text', iconName: 'textBox' },
@@ -34621,6 +38311,9 @@ ${pageBlocks}
                     <button
                       key={t.id}
                       {...((isUnderlineMenu || isStrikeMenu) ? { [caretAttr]: 'true' } : {})}
+                      // w49: which glyph this tool shows, so a group switch can morph it (utils/loadoutTransition.js).
+                      data-morph-icon={t.iconName}
+                      data-tool-switch="true"
                       onClick={onMainClick}
                       {...chromeTip(isUnderlineMenu ? (activeTool === 'squiggly' ? 'Wavy underline' : 'Underline') : isStrikeMenu ? 'Strike through' : t.label, 'below')}
                       // UX 2026-09-16 (desktop sizing pass): shared
@@ -34772,133 +38465,217 @@ ${pageBlocks}
               </>
             )}
 
-            {activeCategoryDropdown === 'survey' && (() => {
+            {subRowCategory === 'survey' && (() => {
               const modules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
               const selectedModule = modules.find((module) => module.id === selectedModuleId) || modules[0] || null;
               const categories = selectedModule?.categories || [];
 
-	              return (
-	                <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '34px' }}>
-	                  <div style={{ position: 'absolute', right: '100%', top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center', paddingRight: '12px', whiteSpace: 'nowrap' }}>
-	                    <select
-	                      value={selectedModule?.id || ''}
-	                      onChange={(e) => {
-	                        setSelectedModuleId(e.target.value || null);
-	                        setSelectedCategoryId(null);
-	                        setActiveTool('survey-marker');
-	                      }}
-	                      disabled={modules.length === 0}
-	                      {...chromeTip('Survey module', 'below')}
-	                      aria-label="Survey module"
-	                      style={{
-	                        height: '26px',
-	                        width: '160px',
-	                        maxWidth: '220px',
-	                        padding: '2px 28px 2px 10px',
-	                        background: 'var(--surface-3)',
-	                        color: 'var(--text-2)',
-	                        border: '1px solid var(--border-strong)',
-	                        borderRadius: '6px',
-	                        fontSize: '12px',
-	                        fontFamily: FONT_FAMILY,
-	                        outline: 'none',
-	                        cursor: modules.length > 0 ? 'pointer' : 'not-allowed'
-	                      }}
-	                    >
-	                      {modules.length === 0 ? (
-	                        <option value="">No modules</option>
-	                      ) : modules.map((module) => (
-	                        <option key={module.id} value={module.id}>
-	                          {module.name || 'Untitled module'}
-	                        </option>
-	                      ))}
-	                    </select>
-	                  </div>
+              /* UX 2026-09-23 (owner: desktop survey polish - "this dropdown
+                 doesn't look like the rest of the dropdowns within the app ... make
+                 it look more aesthetic and intentional"). The survey sub-row, what
+                 each control does:
+                 - MODULE: which module of the chosen template you are surveying
+                   (e.g. Existing / New). Switching it swaps the categories beside
+                   it and the list in the Survey panel, and arms Survey Marker
+                   placement. Now the app's standard setting pill + menu (the shared
+                   AnnotationDropdown, like Width / Line style / Font) - it was a
+                   native <select> with its own box and a gold focus ring.
+                 - CATEGORIES: one chip per category of that module, showing the
+                   category's initials. Pick one, then drag on the page to place a
+                   Survey Marker of that category. The tooltip names the category.
+                   Now the sub-row's own tool chip (28px, no fill; chosen = gold
+                   glyph only, like every other tool) - they were 30px grey discs
+                   that turned solid gold.
+                 - KEEP ACTIVE: after a Survey Marker is placed, keep the same
+                   category armed so the next drag places another one; off, the
+                   category is cleared after each placement. Now the app's switch
+                   (the Spaces one, drawn to the 20px pill height) with its word -
+                   it was a native checkbox.
+                 The category chips stay on the bar's centre and the two side groups
+                 hang off them, as before, so the chips never move when the module
+                 name changes. Rules are the shared .chrome-divider. */
+              /* 2026-10-07 (survey bar, narrow windows): the bar gives ground in
+                 a fixed order so nothing ever overlaps or runs under an open
+                 panel - the template name shortens, then goes (glyph stays);
+                 the module name shortens; then Reuse, the module menu and the
+                 template menu move, in that order, into a "..." menu before
+                 Done. The chips and Done always stay (planSurveyBarStep in
+                 utils/responsiveToolbar.js; measured by useSurveyBarFit). */
+              const look = surveyBarLook(surveyBarFit.step);
+              const templateMenu = (inMore) => (
+                <AnnotationDropdown
+                  open={surveyTemplateMenuOpen}
+                  onOpenChange={setSurveyTemplateMenuOpen}
+                  label={`Survey template: ${selectedTemplate?.name || 'Survey'}. Switch template`}
+                  className={inMore ? 'survey-more__pill' : 'survey-subrow__template'}
+                  value={selectedTemplate?.id || ''}
+                  preview={<Icon name="survey" size={14} color="var(--accent)" />}
+                  triggerContent={selectedTemplate?.name || 'Survey'}
+                  options={(appTemplates || []).map((template) => ({
+                    value: template.id,
+                    label: template.name || 'Untitled template'
+                  }))}
+                  onSelect={handleSwitchSurveyTemplateById}
+                  width="auto"
+                  compact={!inMore && look.template === 'glyph'}
+                  dataMarker="data-survey-template-menu"
+                />
+              );
+              const moduleMenu = (inMore) => (
+                <AnnotationDropdown
+                  open={surveyModuleMenuOpen}
+                  onOpenChange={setSurveyModuleMenuOpen}
+                  label="Survey module"
+                  className={inMore ? 'survey-more__pill' : ''}
+                  value={selectedModule?.id || ''}
+                  /* Owner 2026-09-30: the pill is exactly as wide as its
+                     LONGEST module name (every name stacked in one grid
+                     cell, only the current one visible), capped at 220px
+                     (styles.css .survey-subrow__fit). */
+                  triggerContent={modules.length === 0 ? 'No modules' : (
+                    <span className="survey-subrow__fit">
+                      {modules.map((module) => (
+                        <span
+                          key={module.id}
+                          aria-hidden={module.id === selectedModule?.id ? undefined : 'true'}
+                          className={module.id === selectedModule?.id ? undefined : 'is-ghost'}
+                        >
+                          {module.name || 'Untitled module'}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                  options={modules.map((module) => ({
+                    value: module.id,
+                    label: module.name || 'Untitled module'
+                  }))}
+                  onSelect={(moduleId) => {
+                    setSelectedModuleId(moduleId || null);
+                    setSelectedCategoryId(null);
+                    setActiveTool('survey-marker');
+                  }}
+                  disabled={modules.length === 0}
+                  width="auto"
+                  contentWidth="var(--radix-popover-trigger-width)"
+                  dataMarker="data-survey-module-menu"
+                />
+              );
+              const reuseSwitch = (inMore) => (
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={surveyKeepCategoryActive}
+                  aria-label="Reuse category"
+                  className="survey-subrow__keep tertiary"
+                  onClick={() => setSurveyKeepCategoryActive((on) => !on)}
+                  {...chromeTip('Reuse the category: keep it armed after placing a Survey Marker', 'below')}
+                >
+                  <span className="survey-subrow__track" aria-hidden="true" />
+                  {/* Owner 2026-09-30: "Keep active" -> "Repeat"; 2026-10-01:
+                      "Repeat" -> "Reuse" (it keeps the CATEGORY armed), same
+                      word as the phone bar. In More the row names it. */}
+                  {inMore ? null : <span>Reuse</span>}
+                </button>
+              );
+              const moreItems = [
+                look.template === 'more' && { id: 'survey-template', label: 'Template', node: templateMenu(true) },
+                look.module === 'more' && { id: 'survey-module', label: 'Module', node: moduleMenu(true) },
+                look.reuse === 'more' && { id: 'survey-reuse', label: 'Reuse category', node: reuseSwitch(true) },
+              ].filter(Boolean);
 
-	                  <div style={{ position: 'relative', minWidth: '154px', minHeight: '30px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 16px', boxSizing: 'border-box' }}>
-	                    <div style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: '1px', height: '20px', background: 'var(--border-strong)' }} />
-	                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-	                      {categories.length > 0 ? categories.map((category) => {
-	                        const isActive = selectedCategoryId === category.id && activeTool === 'survey-marker';
-	                        const glyph = getCategoryGlyphLabel(category.name);
+              return (
+                <div
+                  ref={surveyBarFit.ref}
+                  className="survey-subrow"
+                  data-survey-bar-step={look.step}
+                  // The left rail's open panel (272px) and the Survey panel
+                  // (320px) are drawn OVER this row, so the bar keeps its
+                  // template name and Done clear of whichever is open.
+                  style={{
+                    '--survey-bar-inset-l': isLeftSidebarCollapsed ? '0px' : '272px',
+                    '--survey-bar-inset-r': rightRailCollapsed ? '0px' : '320px',
+                  }}
+                >
+                  {/* Owner 2026-10-07 (survey bar round, after a debate): the
+                      bar names the mode itself - the floating Survey chip is
+                      gone. FIRST item: [gold survey glyph] <template> v, a
+                      menu that switches template (ellipsis when long). LAST
+                      item, at the right end: "Done" (Leave Survey), with an
+                      Undo toast. The bar only shows in Survey, so the bar IS
+                      the "you are in Survey" signal. */}
+                  <div className="survey-subrow__side survey-subrow__side--start">
+                    {look.template !== 'more' && templateMenu(false)}
+                    {look.module !== 'more' ? (
+                      <div className="survey-subrow__module">
+                        {moduleMenu(false)}
+                        <div className="chrome-divider" aria-hidden="true" />
+                      </div>
+                    ) : look.template !== 'more' && (
+                      <div className="chrome-divider" aria-hidden="true" />
+                    )}
+                  </div>
 
-	                        return (
-	                          <button
-	                            key={category.id}
-	                            onClick={() => {
-	                              setSelectedCategoryId(category.id);
-	                              setActiveTool('survey-marker');
-	                            }}
-	                            {...chromeTip(category.name || 'Untitled category', 'below')}
-	                            className={`btn ${isActive ? 'btn-active' : 'btn-ghost'}`}
-	                            // KAL-65: instant chip above is the tooltip; a native
-	                            // title= would stack the OS tooltip on top of it.
-	                            aria-label={category.name || 'Untitled category'}
-	                            style={{
-	                              width: '30px',
-	                              height: '30px',
-	                              minWidth: '30px',
-	                              borderRadius: '50%',
-	                              padding: 0,
-	                              display: 'flex',
-	                              alignItems: 'center',
-	                              justifyContent: 'center',
-	                              fontSize: glyph.length > 2 ? '9px' : '11px',
-	                              fontWeight: 700,
-	                              letterSpacing: 0,
-	                              lineHeight: 1,
-	                              fontFamily: FONT_FAMILY,
-	                              border: isActive ? '1px solid var(--accent)' : '1px solid var(--border-strong)',
-	                              background: isActive ? 'var(--accent)' : 'var(--surface-3)',
-	                              color: isActive ? 'var(--accent-text)' : 'var(--text-2)',
-	                              cursor: 'pointer'
-	                            }}
-	                          >
-	                            {glyph}
-	                          </button>
-	                        );
-	                      }) : (
-	                        <span style={{ color: 'var(--text-3)', fontSize: '12px', padding: '0 6px' }}>
-	                          No categories
-	                        </span>
-	                      )}
-	                    </div>
-	                    <div style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', width: '1px', height: '20px', background: 'var(--border-strong)' }} />
-	                  </div>
+                  <div className="survey-subrow__cats">
+                    {categories.length > 0 ? categories.map((category) => {
+                      const isActive = selectedCategoryId === category.id && activeTool === 'survey-marker';
+                      const glyph = getCategoryGlyphLabel(category.name);
 
-	                  <div style={{ position: 'absolute', left: '100%', top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center', paddingLeft: '12px', whiteSpace: 'nowrap' }}>
-	                    <label
-	                      {...chromeTip('Keep selected category active after placing a region', 'below')}
-	                      style={{
-	                        display: 'flex',
-	                        alignItems: 'center',
-	                        gap: '6px',
-	                        color: 'var(--text-2)',
-	                        fontSize: '12px',
-	                        fontFamily: FONT_FAMILY,
-	                        cursor: 'pointer',
-	                        userSelect: 'none',
-	                        whiteSpace: 'nowrap'
-	                      }}
-	                    >
-	                      <input
-	                        type="checkbox"
-	                        checked={surveyKeepCategoryActive}
-	                        onChange={(e) => setSurveyKeepCategoryActive(e.target.checked)}
-	                        style={{ margin: 0, accentColor: 'var(--accent)', cursor: 'pointer' }}
-	                      />
-	                      Keep active
-	                    </label>
-	                  </div>
-	                </div>
-	              );
+                      return (
+                        <button
+                          key={category.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedCategoryId(category.id);
+                            setActiveTool('survey-marker');
+                          }}
+                          {...chromeTip(category.name || 'Untitled category', 'below')}
+                          className={`btn chrome-subcontrol ${isActive ? 'btn-active' : 'btn-ghost'}`}
+                          // KAL-65: instant chip above is the tooltip; a native
+                          // title= would stack the OS tooltip on top of it.
+                          aria-label={category.name || 'Untitled category'}
+                          aria-pressed={isActive}
+                        >
+                          <span className={`survey-subrow__glyph${glyph.length > 1 ? ' is-wide' : ''}`} aria-hidden="true">
+                            {glyph}
+                          </span>
+                        </button>
+                      );
+                    }) : (
+                      <span className="survey-subrow__empty">No categories</span>
+                    )}
+                  </div>
+
+                  <div className="survey-subrow__side survey-subrow__side--end">
+                    {look.reuse === 'bar' ? (
+                      <div className="survey-subrow__reuse">
+                        <div className="chrome-divider" aria-hidden="true" />
+                        {reuseSwitch(false)}
+                      </div>
+                    ) : (
+                      <div className="survey-subrow__more">
+                        {look.template !== 'more' && <div className="chrome-divider" aria-hidden="true" />}
+                        <ToolbarOverflowMenu items={moreItems} tooltip={chromeTip('More', 'below')} />
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      className="survey-subrow__done"
+                      aria-label="Leave Survey"
+                      onClick={handleLeaveSurvey}
+                      {...chromeTip('Leave Survey', 'below')}
+                    >
+                      Done
+                    </button>
+                  </div>
+                </div>
+              );
             })()}
 
             {/* KAL-47: Forms subtoolbar. Each button selects a form-field tool
                 (e.g. `form-textbox`), which triggers the useEffect that calls
                 Pdfjs's `setFormFieldMode`. Designer mode is toggled on
                 automatically and the next click on the PDF places the field. */}
-            {activeCategoryDropdown === 'forms' && (
+            {subRowCategory === 'forms' && (
               <>
                 {FORM_DESIGNER_TOOLS.map((t) => {
                   const isActive = activeTool === t.id;
@@ -34923,77 +38700,37 @@ ${pageBlocks}
               </>
             )}
           </div>,
-          document.getElementById('chrome-sub-toolbar-host')
-        )}
+          host,
+          // w44 review: keyed, so the Survey row never remounts (and replays
+          // its fade) when the tool-bar tools come and go beside it.
+          inToolBar ? 'tool-bar-tools' : 'sub-row'
+          );
+          const rows = [];
+          if (TOOL_BAR_GROUPS.includes(toolBarGroup) && subToolsHostEl) {
+            rows.push(renderSubRow(toolBarGroup, subToolsHostEl, true));
+          }
+          // Survey audit P1-1 (2026-10-01): the Survey row shows whenever survey
+          // mode is on with a template chosen. It used to follow
+          // activeCategoryDropdown === 'survey', which Select / Pan / "Jump to
+          // marker" cleared and nothing restored, so a rail category could arm
+          // placement with no bar on screen.
+          const subRowGroup = (showSurveyPanel && selectedTemplate)
+            ? 'survey'
+            : (activeCategoryDropdown && !TOOL_BAR_GROUPS.includes(activeCategoryDropdown) ? activeCategoryDropdown : null);
+          if (subRowGroup && subRowHost) {
+            rows.push(renderSubRow(subRowGroup, subRowHost, false));
+          }
+          return rows;
+        })()}
 
         {/* UX 2026-05-13: status bar (Scroll to navigate hint + N of M pages
             rendered counter) removed per user request — the row added noise
             without surfacing actionable info. */}
 
         {/* Space Selection Modal */}
-        {showSpaceSelection && (
-          <>
-            <div
-              onClick={() => setShowSpaceSelection(false)}
-              style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                background: COLORS.modal.overlay,
-                backdropFilter: 'blur(8px)',
-                WebkitBackdropFilter: 'blur(8px)',
-                zIndex: 10000,
-                animation: 'fadeIn 0.2s ease-out',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              <div
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  background: COLORS.modal.surface,
-                  border: `1px solid ${COLORS.modal.border}`,
-                  borderRadius: '8px',
-                  padding: '24px',
-                  width: '500px',
-                  maxWidth: '90vw',
-                  maxHeight: '80vh',
-                  overflow: 'auto',
-                  boxShadow: SHADOWS.xl,
-                  animation: 'fadeIn 0.2s ease-out'
-                }}
-              >
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: '20px'
-                }}>
-                  <h2 style={{
-                    margin: 0,
-                    fontSize: '18px',
-                    fontWeight: '600',
-                    color: COLORS.modal.textPrimary,
-                    fontFamily: FONT_FAMILY
-                  }}>
-                    Select space
-                  </h2>
-                  <button
-                    onClick={() => setShowSpaceSelection(false)}
-                    className="btn btn-icon btn-icon-sm"
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--text-3)'
-                    }}
-                  >
-                    <Icon name="close" size={18} />
-                  </button>
-                </div>
-
+        {/* Portalled to document.body by SpaceSelectionDialog so it sits above
+            both rails and the toolbars instead of under them. */}
+        {showSpaceSelection && (<SpaceSelectionDialog open onClose={() => setShowSpaceSelection(false)}>
                 {appTemplates.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '40px', color: COLORS.modal.textMuted }}>
                     <p>No templates available. Please create a template first.</p>
@@ -35002,7 +38739,7 @@ ${pageBlocks}
                   // Aggregate all spaces from all templates
                   const allSpaces = [];
                   appTemplates.forEach(template => {
-                    (template.spaces || []).forEach(space => {
+                    (template.modules || template.spaces || []).forEach(space => {
                       allSpaces.push({ ...space, templateId: template.id, templateName: template.name });
                     });
                   });
@@ -35278,6 +39015,11 @@ ${pageBlocks}
                             if (selectedSurveyMarkerIds.length > 0) {
                               // We're copying items - get the itemIds from the selected surveyMarkers
                               const itemIdsToCopy = [];
+                              // w53: the source space is the module the copied
+                              // Survey Markers live in (resolved above as
+                              // sourceModuleId). This name was used below but
+                              // never defined, so every item copy crashed.
+                              const sourceSpaceId = sourceModuleId;
 
                               if (!sourceSpaceId) {
                                 console.error('No source space ID found');
@@ -35287,7 +39029,7 @@ ${pageBlocks}
 
                               // Find the source template (the one containing the source space)
                               const sourceTemplate = selectedTemplate || appTemplates.find(t =>
-                                t.spaces?.some(s => s.id === sourceSpaceId)
+                                ((t.modules || t.spaces) || []).some(s => s.id === sourceSpaceId)
                               );
 
                               if (!sourceTemplate) {
@@ -35406,7 +39148,7 @@ ${pageBlocks}
 
 
                                     // Find destination category ID
-                                    const destSpace = template.spaces.find(s => s.id === space.id);
+                                    const destSpace = ((template.modules || template.spaces) || []).find(s => s.id === space.id);
                                     const destCategory = destSpace?.categories?.find(c => c.name === item.itemType);
 
                                     // Use destination annotation coordinates, or source annotation coordinates, or source surveyMarker bounds
@@ -35467,10 +39209,12 @@ ${pageBlocks}
                                   setCopyModeActive(false);
                                   setShowSpaceSelection(false);
 
-                                  // Switch to the destination space to show the copied items
-                              setSelectedTemplate(template);
-                              setSelectedSpaceId(space.id);
-                              setShowSurveyPanel(true);
+                                  // Switch to the destination module to show the copied items
+                                  // (w53: was setSelectedSpaceId — that is the REGION
+                                  // selection, not the Survey module).
+                                  setSelectedTemplate(template);
+                                  setSelectedModuleId(space.id);
+                                  setShowSurveyPanel(true);
 
                                   // Explicitly return to prevent any further code execution
                                   return;
@@ -35489,7 +39233,7 @@ ${pageBlocks}
 
 
                                 // Check if all required categories exist in destination space
-                                const destSpace = template.spaces.find(s => s.id === space.id);
+                                const destSpace = ((template.modules || template.spaces) || []).find(s => s.id === space.id);
                                 const missingCategories = [];
                                 legacySurveyMarkers.forEach(h => {
                                   const sourceCategoryName = getCategoryName(sourceTemplate, h.moduleId, h.categoryId);
@@ -35532,9 +39276,9 @@ ${pageBlocks}
                                 setCopyModeActive(false);
                                 setShowSpaceSelection(false);
 
-                                // Switch to destination space
+                                // Switch to destination module (w53: module, not region selection)
                                 setSelectedTemplate(template);
-                                setSelectedSpaceId(space.id);
+                                setSelectedModuleId(space.id);
                                 setShowSurveyPanel(true);
 
                                 return;
@@ -35573,10 +39317,7 @@ ${pageBlocks}
                     </div>
                   );
                 })()}
-              </div>
-            </div>
-          </>
-        )}
+        </SpaceSelectionDialog>)}
 
         {/* Category Selection Modal (after highlighting) */}
         {
@@ -35584,36 +39325,17 @@ ${pageBlocks}
             <>
               <div
                 onClick={() => {
-                  // Remove the pending surveyMarker from the canvas
-                  const surveyMarkerToRemove = pendingSurveyMarker;
-                  setNewSurveyMarkersByPage(prev => {
-                    const updated = { ...prev };
-                    if (updated[surveyMarkerToRemove.pageNumber]) {
-                      updated[surveyMarkerToRemove.pageNumber] = updated[surveyMarkerToRemove.pageNumber].filter(
-                        h => h.annotationId !== surveyMarkerToRemove.id
-                      );
-                      // Clean up empty arrays
-                      if (updated[surveyMarkerToRemove.pageNumber].length === 0) {
-                        delete updated[surveyMarkerToRemove.pageNumber];
-                      }
-                    }
-                    return updated;
-                  });
-
-                  // Add to removal list to ensure canvas cleanup
-                  if (surveyMarkerToRemove.bounds) {
-                    setSurveyMarkersToRemoveByPage(prev => ({
-                      ...prev,
-                      [surveyMarkerToRemove.pageNumber]: [...(prev[surveyMarkerToRemove.pageNumber] || []), surveyMarkerToRemove.bounds]
-                    }));
-                  }
-
-                  setPendingSurveyMarker(null);
+                  // Survey audit P1-2: a click off the dialog takes the marker
+                  // back as one Undo step.
+                  cancelSurveyMarkerPlacement(pendingSurveyMarker.id);
                 }}
                 style={{
                   position: 'fixed',
                   top: 0,
-                  left: 0,
+                  // Survey audit P1-3: on the phone the tool rail lies over the
+                  // left edge of the page, so the dialog centres in the area
+                  // beside it instead of sliding under it.
+                  left: mobileMode ? 'var(--mobile-rail-w, 36px)' : 0,
                   right: 0,
                   bottom: 0,
                   background: COLORS.modal.overlay,
@@ -35627,6 +39349,9 @@ ${pageBlocks}
                 }}
               >
                 <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="survey-marker-categorize-dialog-title"
                   onClick={(e) => e.stopPropagation()}
                   style={{
                     background: COLORS.modal.surface,
@@ -35634,7 +39359,7 @@ ${pageBlocks}
                     borderRadius: '8px',
                     padding: '24px',
                     width: '500px',
-                    maxWidth: '90vw',
+                    maxWidth: mobileMode ? 'calc(100% - 24px)' : '90vw',
                     maxHeight: '80vh',
                     overflow: 'auto',
                     boxShadow: SHADOWS.xl,
@@ -35647,7 +39372,7 @@ ${pageBlocks}
                     justifyContent: 'space-between',
                     marginBottom: '20px'
                   }}>
-                    <h3 style={{
+                    <h3 id="survey-marker-categorize-dialog-title" style={{
                       margin: 0,
                       fontSize: '18px',
                       fontWeight: '600',
@@ -35659,32 +39384,12 @@ ${pageBlocks}
                       Categorize Survey Marker
                     </h3>
                     <button
+                      type="button"
+                      aria-label="Cancel Survey Marker"
                       onClick={() => {
-                        // Remove the pending surveyMarker from the canvas
-                        const surveyMarkerToRemove = pendingSurveyMarker;
-                        setNewSurveyMarkersByPage(prev => {
-                          const updated = { ...prev };
-                          if (updated[surveyMarkerToRemove.pageNumber]) {
-                            updated[surveyMarkerToRemove.pageNumber] = updated[surveyMarkerToRemove.pageNumber].filter(
-                              h => h.annotationId !== surveyMarkerToRemove.id
-                            );
-                            // Clean up empty arrays
-                            if (updated[surveyMarkerToRemove.pageNumber].length === 0) {
-                              delete updated[surveyMarkerToRemove.pageNumber];
-                            }
-                          }
-                          return updated;
-                        });
-
-                        // Add to removal list to ensure canvas cleanup
-                        if (surveyMarkerToRemove.bounds) {
-                          setSurveyMarkersToRemoveByPage(prev => ({
-                            ...prev,
-                            [surveyMarkerToRemove.pageNumber]: [...(prev[surveyMarkerToRemove.pageNumber] || []), surveyMarkerToRemove.bounds]
-                          }));
-                        }
-
-                        setPendingSurveyMarker(null);
+                        // Survey audit P1-2: X takes the marker back as one
+                        // Undo step.
+                        cancelSurveyMarkerPlacement(pendingSurveyMarker.id);
                       }}
                       className="btn btn-icon btn-icon-sm"
                       style={{
@@ -35717,38 +39422,23 @@ ${pageBlocks}
                           <button
                             key={category.id}
                             onClick={() => {
-                              if (mobileMode) {
-                                // UX (mobile demo parity): once categorized on mobile,
-                                // commit with the default name and open the marker
-                                // detail sheet instead of chaining the desktop
-                                // Entity/Name modals (demo App.tsx:1155).
-                                commitMobileSurveyMarker(pendingSurveyMarker, category.id);
-                                setPendingSurveyMarker(null);
-                                return;
+                              // UX (mobile demo parity): once categorized, commit
+                              // with the default name and open the marker in the
+                              // panel (demo App.tsx:1155). Owner 2026-10-01
+                              // ("Yes, inline like phone"): desktop too - no
+                              // Entity / Name pop-ups; desktop focuses the name.
+                              const placementEntity = (pendingSurveyMarker.entityId || mobileMode)
+                                ? null
+                                : (selectedTemplate?.entities || []).find((entity) => entity.id === lastSurveyEntityIdRef.current) || null;
+                              commitMobileSurveyMarker(placementEntity ? {
+                                ...pendingSurveyMarker,
+                                entityId: placementEntity.id,
+                                entityName: placementEntity.name,
+                                entityColor: normalizeSurveyMarkerColor(placementEntity.color) || placementEntity.color,
+                              } : pendingSurveyMarker, category.id);
+                              if (!mobileMode) {
+                                setSurveyMarkerNameFocusRequest({ id: pendingSurveyMarker.id, tick: Date.now() });
                               }
-                              // Check if template has Entities
-                              const entities = selectedTemplate?.entities || [];
-                              if (pendingSurveyMarker.entityId || pendingSurveyMarker.entityColor) {
-                                setPendingSurveyMarkerName({
-                                  surveyMarker: pendingSurveyMarker,
-                                  categoryId: category.id
-                                });
-                                setSurveyMarkerNameInput(null);
-                              } else if (entities.length > 0) {
-                                // Show Entity selection dialog first
-                                setPendingEntitySelection({
-                                  surveyMarker: pendingSurveyMarker,
-                                  categoryId: category.id
-                                });
-                              } else {
-                                // No Entities, go directly to name prompt
-                                setPendingSurveyMarkerName({
-                                  surveyMarker: pendingSurveyMarker,
-                                  categoryId: category.id
-                                });
-                                setSurveyMarkerNameInput(null); // Reset input
-                              }
-                              // Clear pending surveyMarker modal
                               setPendingSurveyMarker(null);
                             }}
                             className="btn btn-default btn-md"
@@ -35789,1146 +39479,10 @@ ${pageBlocks}
           )
         }
 
-        {/* Entity Selection Dialog */}
-        {
-          pendingEntitySelection && selectedTemplate && selectedModuleId && (() => {
-            const entities = selectedTemplate.entities || [];
-
-            return (
-              <>
-                <div
-                  onClick={() => {
-                    // Cancel - proceed without entity selection
-                    setPendingSurveyMarkerName({
-                      surveyMarker: pendingEntitySelection.surveyMarker,
-                      categoryId: pendingEntitySelection.categoryId
-                    });
-                    setPendingEntitySelection(null);
-                    setSurveyMarkerNameInput(null);
-                  }}
-                  style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    background: COLORS.modal.overlay,
-                    backdropFilter: 'blur(8px)',
-                    WebkitBackdropFilter: 'blur(8px)',
-                    zIndex: 10003,
-                    animation: 'fadeIn 0.2s ease-out',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                >
-                  <div
-                    onClick={(e) => e.stopPropagation()}
-                    style={{
-                      background: COLORS.modal.surface,
-                      border: `1px solid ${COLORS.modal.border}`,
-                      borderRadius: '8px',
-                      padding: '24px',
-                      width: '500px',
-                      maxWidth: '90vw',
-                      boxShadow: SHADOWS.xl,
-                      animation: 'fadeIn 0.2s ease-out'
-                    }}
-                  >
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      marginBottom: '20px'
-                    }}>
-                      <h3 style={{
-                        margin: 0,
-                        fontSize: '18px',
-                        fontWeight: '600',
-                        color: COLORS.modal.textPrimary,
-                        fontFamily: FONT_FAMILY
-                      }}>
-                        Entity
-                      </h3>
-                      <button
-                        onClick={() => {
-                          // Cancel - proceed without entity selection
-                          setPendingSurveyMarkerName({
-                            surveyMarker: pendingEntitySelection.surveyMarker,
-                            categoryId: pendingEntitySelection.categoryId
-                          });
-                          setPendingEntitySelection(null);
-                          setSurveyMarkerNameInput(null);
-                        }}
-                        className="btn btn-icon btn-icon-sm"
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: 'var(--text-3)'
-                        }}
-                      >
-                        <Icon name="close" size={18} />
-                      </button>
-                    </div>
-
-                    <div style={{
-                      fontSize: '14px',
-                      color: COLORS.modal.textMuted,
-                      marginBottom: '16px'
-                    }}>
-                      Select the entity responsible for this highlight:
-                    </div>
-
-                    <div style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '8px',
-                      maxHeight: '400px',
-                      overflowY: 'auto'
-                    }}>
-                      {entities.map(entity => (
-                        <button
-                          key={entity.id}
-                          onClick={() => {
-                            // Apply entity color and proceed to name prompt
-                            // Use the entity's saved opacity for surveyMarkers
-                            const entityColor = normalizeSurveyMarkerColor(entity.color) || entity.color || hexToRgba('#E3D1FB', DEFAULT_SURVEY_MARKER_OPACITY);
-
-                            // Store surveyMarker with entity info
-                            setSurveyMarkers(prev => ({
-                              ...prev,
-                              [pendingEntitySelection.surveyMarker.id]: {
-                                ...pendingEntitySelection.surveyMarker,
-                                categoryId: pendingEntitySelection.categoryId,
-                                entityId: entity.id,
-                                entityName: entity.name,
-                                entityColor: entityColor,
-                                checklistResponses: {}
-                              }
-                            }));
-
-                            // Update existing surveyMarker on page with entity color (rgba with 100% opacity)
-                            // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
-                            setNewSurveyMarkersByPage(prev => {
-                              const pageSurveyMarkers = prev[pendingEntitySelection.surveyMarker.pageNumber] || [];
-                              // Remove existing surveyMarker with this annotationId (if it exists)
-                              const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingEntitySelection.surveyMarker.id);
-                              // Add the new surveyMarker with color
-                              return {
-                                ...prev,
-                                [pendingEntitySelection.surveyMarker.pageNumber]: [
-                                  ...filtered,
-                                  buildSurveyMarkerPreview(
-                                    pendingEntitySelection.surveyMarker,
-                                    { color: entityColor }
-                                  )
-                                ]
-                              };
-                            });
-
-                            // Proceed to name prompt
-                            setPendingSurveyMarkerName({
-                              surveyMarker: {
-                                ...pendingEntitySelection.surveyMarker,
-                                entityId: entity.id,
-                                entityName: entity.name,
-                                entityColor: entityColor
-                              },
-                              categoryId: pendingEntitySelection.categoryId
-                            });
-                            setPendingEntitySelection(null);
-                            setSurveyMarkerNameInput(null);
-                          }}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '12px',
-                            padding: '12px 16px',
-                            background: COLORS.modal.panel,
-                            border: `1px solid ${COLORS.modal.borderStrong}`,
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                            transition: 'background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease',
-                            textAlign: 'left'
-                          }}
-                          onMouseEnter={handleModalOptionMouseEnter}
-                          onMouseLeave={handleModalOptionMouseLeave}
-                        >
-                          <div
-                            style={{
-                              width: '24px',
-                              height: '24px',
-                              borderRadius: '4px',
-                              background: entity.color,
-                              // UX: an entity swatch filled with the USER's
-                              // chosen colour — the shared ink ring, same as
-                              // every other colour swatch in the app.
-                              border: '1px solid var(--ink-ring)',
-                              flexShrink: 0
-                            }}
-                          />
-                          <span style={{
-                            color: COLORS.modal.textPrimary,
-                            fontSize: '14px',
-                            fontWeight: '500',
-                            fontFamily: FONT_FAMILY
-                          }}>
-                            {entity.name}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </>
-            );
-          })()
-        }
-
-        {/* Name Prompt Modal (after categorizing surveyMarker) */}
-        {
-          pendingSurveyMarkerName && selectedTemplate && selectedModuleId && (() => {
-            const module = ((selectedTemplate.modules || selectedTemplate.spaces) || [])?.find(m => m.id === selectedModuleId);
-            const category = module?.categories?.find(c => c.id === pendingSurveyMarkerName.categoryId);
-            const categoryName = category?.name?.trim() || 'Untitled Category';
-            const existingSurveyMarkers = Object.values(surveyMarkers).filter(h => h.categoryId === pendingSurveyMarkerName.categoryId);
-            const defaultName = generateDefaultSurveyMarkerName(categoryName, existingSurveyMarkers);
-
-            return (
-              <>
-                <div
-                  onClick={() => {
-                    // Cancel - save with default name
-                    // Compute color first so it can be saved with surveyMarkerData
-                    const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
-                      ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
-                      : null; // No Entity yet — render as needs-Entity (blue dashed)
-                    const surveyMarkerData = {
-                      ...pendingSurveyMarkerName.surveyMarker,
-                      categoryId: pendingSurveyMarkerName.categoryId,
-                      name: defaultName,
-                      checklistResponses: {},
-                      color: highlightColor
-                    };
-                    setSurveyMarkers(prev => ({
-                      ...prev,
-                      [pendingSurveyMarkerName.surveyMarker.id]: surveyMarkerData
-                    }));
-
-                    // Update existing surveyMarker with color if Entity was selected (ensure 100% opacity)
-                    // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
-                    setNewSurveyMarkersByPage(prev => {
-                      const pageSurveyMarkers = prev[pendingSurveyMarkerName.surveyMarker.pageNumber] || [];
-                      // Remove existing surveyMarker with this annotationId (if it exists)
-                      const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingSurveyMarkerName.surveyMarker.id);
-                      // Add the new surveyMarker with color
-                      return {
-                        ...prev,
-                        [pendingSurveyMarkerName.surveyMarker.pageNumber]: [
-                          ...filtered,
-                          buildSurveyMarkerPreview(
-                            pendingSurveyMarkerName.surveyMarker,
-                            (highlightColor ? { color: highlightColor } : { needsEntity: true })
-                          )
-                        ]
-                      };
-                    });
-
-                    setPendingSurveyMarkerName(null);
-                    setSurveyMarkerNameInput(null);
-                    setShowSurveyPanel(true);
-                  }}
-                  style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    background: COLORS.modal.overlay,
-                    backdropFilter: 'blur(8px)',
-                    WebkitBackdropFilter: 'blur(8px)',
-                    zIndex: 10002,
-                    animation: 'fadeIn 0.2s ease-out',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                >
-                  <div
-                    onClick={(e) => e.stopPropagation()}
-                    style={{
-                      background: COLORS.modal.surface,
-                      border: `1px solid ${COLORS.modal.border}`,
-                      borderRadius: '8px',
-                      padding: '24px',
-                      width: '500px',
-                      maxWidth: '90vw',
-                      boxShadow: SHADOWS.xl,
-                      animation: 'fadeIn 0.2s ease-out'
-                    }}
-                  >
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      marginBottom: '20px'
-                    }}>
-                      <h3 style={{
-                        margin: 0,
-                        fontSize: '18px',
-                        fontWeight: '600',
-                        color: COLORS.modal.textPrimary,
-                        fontFamily: FONT_FAMILY
-                      }}>
-                        Name highlight
-                      </h3>
-                      <button
-                        onClick={() => {
-                          // Cancel - save with default name
-                          // Compute color first so it can be saved with surveyMarkerData
-                          const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
-                            ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
-                            : null; // No Entity yet — render as needs-Entity (blue dashed)
-                          const surveyMarkerData = {
-                            ...pendingSurveyMarkerName.surveyMarker,
-                            categoryId: pendingSurveyMarkerName.categoryId,
-                            name: defaultName,
-                            checklistResponses: {},
-                            color: highlightColor
-                          };
-                          setSurveyMarkers(prev => ({
-                            ...prev,
-                            [pendingSurveyMarkerName.surveyMarker.id]: surveyMarkerData
-                          }));
-
-                          // If entity was selected, also store it in the item's module-specific data
-                          if (surveyMarkerData.entityId && selectedTemplate && selectedModuleId) {
-                            // Find or create item for this surveyMarker
-                            const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingSurveyMarkerName.categoryId);
-                            const moduleName = getModuleName(selectedTemplate, selectedModuleId);
-                            const dataKey = getModuleDataKey(moduleName);
-
-                            // Find existing item by name and category
-                            const existingItem = Object.values(items).find(item =>
-                              item.name === defaultName &&
-                              item.itemType === categoryName
-                            );
-
-                            if (existingItem) {
-                              // Update existing item's module-specific data with entity
-                              const moduleData = existingItem[dataKey] || {};
-                              const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
-
-                              if (entity) {
-                                setItems(prev => ({
-                                  ...prev,
-                                  [existingItem.itemId]: {
-                                    ...existingItem,
-                                    [dataKey]: {
-                                      ...moduleData,
-                                      entityId: entity.id,
-                                      entityName: entity.name,
-                                      entityColor: entity.color
-                                    }
-                                  }
-                                }));
-                              }
-                            } else {
-                              // Create new item with entity in module-specific data
-                              const newItem = createItem(
-                                selectedTemplate,
-                                selectedModuleId,
-                                pendingSurveyMarkerName.categoryId,
-                                defaultName,
-                                1
-                              );
-
-                              const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
-                              if (entity) {
-                                newItem[dataKey] = {
-                                  entityId: entity.id,
-                                  entityName: entity.name,
-                                  entityColor: entity.color
-                                };
-                              }
-
-                              setItems(prev => ({
-                                ...prev,
-                                [newItem.itemId]: newItem
-                              }));
-
-                              // Also create annotation for this item
-                              const annotation = createAnnotation(
-                                pendingSurveyMarkerName.surveyMarker.bounds,
-                                'highlight',
-                                selectedTemplate,
-                                selectedSpaceId,
-                                newItem.itemId,
-                                categoryName
-                              );
-
-                              // Set entity on annotation
-                              if (entity) {
-                                annotation.entityId = entity.id;
-                                annotation.entityName = entity.name;
-                                annotation.entityColor = entity.color;
-                              }
-
-                              setAnnotations(prev => ({
-                                ...prev,
-                                [annotation.annotationId]: annotation
-                              }));
-                            }
-                          }
-
-                          // Update existing surveyMarker with color if Entity was selected (ensure 100% opacity)
-                          // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
-                          setNewSurveyMarkersByPage(prev => {
-                            const pageSurveyMarkers = prev[pendingSurveyMarkerName.surveyMarker.pageNumber] || [];
-                            // Remove existing surveyMarker with this annotationId (if it exists)
-                            const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingSurveyMarkerName.surveyMarker.id);
-                            // Add the new surveyMarker with color
-                            return {
-                              ...prev,
-                              [pendingSurveyMarkerName.surveyMarker.pageNumber]: [
-                                ...filtered,
-                                buildSurveyMarkerPreview(
-                                  pendingSurveyMarkerName.surveyMarker,
-                                  (highlightColor ? { color: highlightColor } : { needsEntity: true })
-                                )
-                              ]
-                            };
-                          });
-
-                          setPendingSurveyMarkerName(null);
-                          setSurveyMarkerNameInput(null);
-                          setShowSurveyPanel(true);
-                        }}
-                        className="btn btn-icon btn-icon-sm"
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: 'var(--text-3)'
-                        }}
-                      >
-                        <Icon name="close" size={18} />
-                      </button>
-                    </div>
-
-                    <p style={{ color: COLORS.modal.textMuted, fontSize: '14px', marginBottom: '16px' }}>
-                      Category: <strong style={{ color: COLORS.modal.textPrimary }}>{category?.name || 'Untitled category'}</strong>
-                    </p>
-
-                    <input
-                      type="text"
-                      autoFocus
-                      value={surveyMarkerNameInput ?? defaultName}
-                      onChange={(e) => setSurveyMarkerNameInput(e.target.value)}
-                      onFocus={(e) => { if (surveyMarkerNameInput === null) e.target.select(); }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          const name = resolveSurveyMarkerPromptName(surveyMarkerNameInput, defaultName);
-                          // Compute color first so it can be saved with surveyMarkerData
-                          const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
-                            ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
-                            : null; // No Entity yet — render as needs-Entity (blue dashed)
-                          const surveyMarkerData = {
-                            ...pendingSurveyMarkerName.surveyMarker,
-                            categoryId: pendingSurveyMarkerName.categoryId,
-                            name: name,
-                            checklistResponses: {},
-                            color: highlightColor
-                          };
-                          setSurveyMarkers(prev => ({
-                            ...prev,
-                            [pendingSurveyMarkerName.surveyMarker.id]: surveyMarkerData
-                          }));
-
-                          // Update existing surveyMarker with color if Entity was selected (ensure 100% opacity)
-                          // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
-                          setNewSurveyMarkersByPage(prev => {
-                            const pageSurveyMarkers = prev[pendingSurveyMarkerName.surveyMarker.pageNumber] || [];
-                            // Remove existing surveyMarker with this annotationId (if it exists)
-                            const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingSurveyMarkerName.surveyMarker.id);
-                            // Add the new surveyMarker with color
-                            return {
-                              ...prev,
-                              [pendingSurveyMarkerName.surveyMarker.pageNumber]: [
-                                ...filtered,
-                                buildSurveyMarkerPreview(
-                                  pendingSurveyMarkerName.surveyMarker,
-                                  (highlightColor ? { color: highlightColor } : { needsEntity: true })
-                                )
-                              ]
-                            };
-                          });
-
-                          setPendingSurveyMarkerName(null);
-                          setSurveyMarkerNameInput(null);
-                          setShowSurveyPanel(true);
-                        } else if (e.key === 'Escape') {
-                          // Cancel - save with default name
-                          // Compute color first so it can be saved with surveyMarkerData
-                          const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
-                            ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
-                            : null; // No Entity yet — render as needs-Entity (blue dashed)
-                          const surveyMarkerData = {
-                            ...pendingSurveyMarkerName.surveyMarker,
-                            categoryId: pendingSurveyMarkerName.categoryId,
-                            name: defaultName,
-                            checklistResponses: {},
-                            color: highlightColor
-                          };
-                          setSurveyMarkers(prev => ({
-                            ...prev,
-                            [pendingSurveyMarkerName.surveyMarker.id]: surveyMarkerData
-                          }));
-
-                          // Update existing surveyMarker with color if Entity was selected (ensure 100% opacity)
-                          // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
-                          setNewSurveyMarkersByPage(prev => {
-                            const pageSurveyMarkers = prev[pendingSurveyMarkerName.surveyMarker.pageNumber] || [];
-                            // Remove existing surveyMarker with this annotationId (if it exists)
-                            const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingSurveyMarkerName.surveyMarker.id);
-                            // Add the new surveyMarker with color
-                            return {
-                              ...prev,
-                              [pendingSurveyMarkerName.surveyMarker.pageNumber]: [
-                                ...filtered,
-                                buildSurveyMarkerPreview(
-                                  pendingSurveyMarkerName.surveyMarker,
-                                  (highlightColor ? { color: highlightColor } : { needsEntity: true })
-                                )
-                              ]
-                            };
-                          });
-
-                          setPendingSurveyMarkerName(null);
-                          setSurveyMarkerNameInput(null);
-                          setShowSurveyPanel(true);
-                        }
-                      }}
-                      style={{
-                        width: '100%',
-                        padding: '12px 16px',
-                        background: 'var(--surface-0)',
-                        border: `1px solid ${COLORS.modal.borderStrong}`,
-                        borderRadius: '6px',
-                        color: COLORS.modal.textPrimary,
-                        fontSize: '14px',
-                        fontFamily: FONT_FAMILY,
-                        outline: 'none',
-                        marginBottom: '16px'
-                      }}
-                      placeholder="Enter name"
-                    />
-
-                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                      <button
-                        onClick={() => {
-                          // Cancel - save with default name
-                          // Compute color first so it can be saved with surveyMarkerData
-                          const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
-                            ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
-                            : null; // No Entity yet — render as needs-Entity (blue dashed)
-                          const surveyMarkerData = {
-                            ...pendingSurveyMarkerName.surveyMarker,
-                            categoryId: pendingSurveyMarkerName.categoryId,
-                            name: defaultName,
-                            checklistResponses: {},
-                            color: highlightColor
-                          };
-                          setSurveyMarkers(prev => ({
-                            ...prev,
-                            [pendingSurveyMarkerName.surveyMarker.id]: surveyMarkerData
-                          }));
-
-                          // If entity was selected, also store it in the item's module-specific data
-                          if (surveyMarkerData.entityId && selectedTemplate && selectedModuleId) {
-                            // Find or create item for this surveyMarker
-                            const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingSurveyMarkerName.categoryId);
-                            const moduleName = getModuleName(selectedTemplate, selectedModuleId);
-                            const dataKey = getModuleDataKey(moduleName);
-
-                            // Find existing item by name and category
-                            const existingItem = Object.values(items).find(item =>
-                              item.name === defaultName &&
-                              item.itemType === categoryName
-                            );
-
-                            if (existingItem) {
-                              // Update existing item's module-specific data with entity
-                              const moduleData = existingItem[dataKey] || {};
-                              const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
-
-                              if (entity) {
-                                setItems(prev => ({
-                                  ...prev,
-                                  [existingItem.itemId]: {
-                                    ...existingItem,
-                                    [dataKey]: {
-                                      ...moduleData,
-                                      entityId: entity.id,
-                                      entityName: entity.name,
-                                      entityColor: entity.color
-                                    }
-                                  }
-                                }));
-                              }
-                            } else {
-                              // Create new item with entity in module-specific data
-                              const newItem = createItem(
-                                selectedTemplate,
-                                selectedModuleId,
-                                pendingSurveyMarkerName.categoryId,
-                                defaultName,
-                                1
-                              );
-
-                              const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
-                              if (entity) {
-                                newItem[dataKey] = {
-                                  entityId: entity.id,
-                                  entityName: entity.name,
-                                  entityColor: entity.color
-                                };
-                              }
-
-                              setItems(prev => ({
-                                ...prev,
-                                [newItem.itemId]: newItem
-                              }));
-
-                              // Also create annotation for this item
-                              const annotation = createAnnotation(
-                                pendingSurveyMarkerName.surveyMarker.bounds,
-                                'highlight',
-                                selectedTemplate,
-                                selectedSpaceId,
-                                newItem.itemId,
-                                categoryName
-                              );
-
-                              // Set entity on annotation
-                              if (entity) {
-                                annotation.entityId = entity.id;
-                                annotation.entityName = entity.name;
-                                annotation.entityColor = entity.color;
-                              }
-
-                              setAnnotations(prev => ({
-                                ...prev,
-                                [annotation.annotationId]: annotation
-                              }));
-                            }
-                          }
-
-                          // Update existing surveyMarker with color if Entity was selected (ensure 100% opacity)
-                          // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
-                          setNewSurveyMarkersByPage(prev => {
-                            const pageSurveyMarkers = prev[pendingSurveyMarkerName.surveyMarker.pageNumber] || [];
-                            // Remove existing surveyMarker with this annotationId (if it exists)
-                            const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingSurveyMarkerName.surveyMarker.id);
-                            // Add the new surveyMarker with color
-                            return {
-                              ...prev,
-                              [pendingSurveyMarkerName.surveyMarker.pageNumber]: [
-                                ...filtered,
-                                buildSurveyMarkerPreview(
-                                  pendingSurveyMarkerName.surveyMarker,
-                                  (highlightColor ? { color: highlightColor } : { needsEntity: true })
-                                )
-                              ]
-                            };
-                          });
-
-                          setPendingSurveyMarkerName(null);
-                          setSurveyMarkerNameInput(null);
-                          setShowSurveyPanel(true);
-                        }}
-                        className="btn btn-default btn-md"
-                        style={{
-                          padding: '10px 20px',
-                          background: COLORS.modal.secondaryButton,
-                          border: `1px solid ${COLORS.modal.borderStrong}`,
-                          color: COLORS.modal.textPrimary
-                        }}
-                        onMouseEnter={handleModalSecondaryButtonMouseEnter}
-                        onMouseLeave={handleModalSecondaryButtonMouseLeave}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={() => {
-                          const name = resolveSurveyMarkerPromptName(surveyMarkerNameInput, defaultName);
-                          // Compute color first so it can be saved with surveyMarkerData
-                          const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
-                            ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
-                            : null; // No Entity yet — render as needs-Entity (blue dashed)
-                          const surveyMarkerData = {
-                            ...pendingSurveyMarkerName.surveyMarker,
-                            categoryId: pendingSurveyMarkerName.categoryId,
-                            name: name,
-                            checklistResponses: {},
-                            color: highlightColor
-                          };
-                          setSurveyMarkers(prev => ({
-                            ...prev,
-                            [pendingSurveyMarkerName.surveyMarker.id]: surveyMarkerData
-                          }));
-
-                          // If entity was selected, also store it in the item's module-specific data
-                          if (surveyMarkerData.entityId && selectedTemplate && selectedModuleId) {
-                            // Find or create item for this surveyMarker
-                            const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingSurveyMarkerName.categoryId);
-                            const moduleName = getModuleName(selectedTemplate, selectedModuleId);
-                            const dataKey = getModuleDataKey(moduleName);
-
-                            // Find existing item by name and category
-                            const existingItem = Object.values(items).find(item =>
-                              item.name === name &&
-                              item.itemType === categoryName
-                            );
-
-                            if (existingItem) {
-                              // Update existing item's module-specific data with entity
-                              const moduleData = existingItem[dataKey] || {};
-                              const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
-
-                              if (entity) {
-                                setItems(prev => ({
-                                  ...prev,
-                                  [existingItem.itemId]: {
-                                    ...existingItem,
-                                    [dataKey]: {
-                                      ...moduleData,
-                                      entityId: entity.id,
-                                      entityName: entity.name,
-                                      entityColor: entity.color
-                                    }
-                                  }
-                                }));
-                              }
-                            } else {
-                              // Create new item with entity in space-specific data
-                              const newItem = createItem(
-                                selectedTemplate,
-                                selectedSpaceId,
-                                pendingSurveyMarkerName.categoryId,
-                                name,
-                                1
-                              );
-
-                              const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
-                              if (entity) {
-                                newItem[dataKey] = {
-                                  entityId: entity.id,
-                                  entityName: entity.name,
-                                  entityColor: entity.color
-                                };
-                              }
-
-                              setItems(prev => ({
-                                ...prev,
-                                [newItem.itemId]: newItem
-                              }));
-
-                              // Also create annotation for this item
-                              const annotation = createAnnotation(
-                                pendingSurveyMarkerName.surveyMarker.bounds,
-                                'highlight',
-                                selectedTemplate,
-                                selectedSpaceId,
-                                newItem.itemId,
-                                categoryName
-                              );
-
-                              // Set entity on annotation
-                              if (entity) {
-                                annotation.entityId = entity.id;
-                                annotation.entityName = entity.name;
-                                annotation.entityColor = entity.color;
-                              }
-
-                              setAnnotations(prev => ({
-                                ...prev,
-                                [annotation.annotationId]: annotation
-                              }));
-                            }
-                          }
-
-                          // Update existing surveyMarker with color if Entity was selected (ensure 100% opacity)
-                          // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
-                          setNewSurveyMarkersByPage(prev => {
-                            const pageSurveyMarkers = prev[pendingSurveyMarkerName.surveyMarker.pageNumber] || [];
-                            // Remove existing surveyMarker with this annotationId (if it exists)
-                            const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingSurveyMarkerName.surveyMarker.id);
-                            // Add the new surveyMarker with color
-                            return {
-                              ...prev,
-                              [pendingSurveyMarkerName.surveyMarker.pageNumber]: [
-                                ...filtered,
-                                buildSurveyMarkerPreview(
-                                  pendingSurveyMarkerName.surveyMarker,
-                                  (highlightColor ? { color: highlightColor } : { needsEntity: true })
-                                )
-                              ]
-                            };
-                          });
-
-                          setPendingSurveyMarkerName(null);
-                          setSurveyMarkerNameInput(null);
-                          setShowSurveyPanel(true);
-                        }}
-                        className="btn btn-primary btn-md"
-                        style={{
-                          padding: '10px 20px',
-                          background: COLORS.modal.primaryButton,
-                          border: `1px solid ${COLORS.modal.borderStrong}`,
-                          color: COLORS.modal.textPrimary
-                        }}
-                        onMouseEnter={handleModalPrimaryButtonMouseEnter}
-                        onMouseLeave={handleModalPrimaryButtonMouseLeave}
-                      >
-                        Save
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </>
-            );
-          })()
-        }
-
-        {/* Note Dialog */}
-        {
-          noteDialogOpen && (
-            <>
-              <div
-                onClick={() => setNoteDialogOpen(null)}
-                style={{
-                  position: 'fixed',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  background: COLORS.modal.overlay,
-                  backdropFilter: 'blur(8px)',
-                  WebkitBackdropFilter: 'blur(8px)',
-                  zIndex: 10001,
-                  animation: 'fadeIn 0.2s ease-out',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    background: COLORS.modal.surface,
-                    border: `1px solid ${COLORS.modal.border}`,
-                    borderRadius: '8px',
-                    padding: '24px',
-                    width: '600px',
-                    maxWidth: '90vw',
-                    maxHeight: '80vh',
-                    overflow: 'auto',
-                    boxShadow: SHADOWS.xl,
-                    animation: 'fadeIn 0.2s ease-out'
-                  }}
-                >
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    marginBottom: '20px'
-                  }}>
-                    <h3 style={{
-                      margin: 0,
-                      fontSize: '18px',
-                      fontWeight: '600',
-                      color: COLORS.modal.textPrimary,
-                      fontFamily: FONT_FAMILY
-                    }}>
-                      Note
-                    </h3>
-                    <button
-                      onClick={() => setNoteDialogOpen(null)}
-                      className="btn btn-icon btn-icon-sm"
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--text-3)'
-                      }}
-                    >
-                      <Icon name="close" size={18} />
-                    </button>
-                  </div>
-
-                  <div style={{ marginBottom: '16px' }}>
-                    <label style={{
-                      display: 'block',
-                      marginBottom: '8px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      color: COLORS.modal.textPrimary
-                    }}>
-                      Notes
-                    </label>
-                    <textarea
-                      value={noteDialogContent.text}
-                      onChange={(e) => setNoteDialogContent(prev => ({ ...prev, text: e.target.value }))}
-                      rows={6}
-                      style={{
-                        width: '100%',
-                        padding: '10px',
-                        background: COLORS.modal.panel,
-                        color: COLORS.modal.textPrimary,
-                        border: `1px solid ${COLORS.modal.borderStrong}`,
-                        borderRadius: '5px',
-                        fontSize: '14px',
-                        fontFamily: FONT_FAMILY,
-                        resize: 'vertical'
-                      }}
-                      placeholder="Enter your notes..."
-                    />
-                  </div>
-
-                  <div style={{ marginBottom: '16px' }}>
-                    <label style={{
-                      display: 'block',
-                      marginBottom: '8px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      color: COLORS.modal.textPrimary
-                    }}>
-                      Photos
-                    </label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={(e) => {
-                        const files = Array.from(e.target.files || []);
-                        const photoPromises = files.map(file => {
-                          return new Promise((resolve) => {
-                            const reader = new FileReader();
-                            reader.onload = (event) => {
-                              resolve({ name: file.name, dataUrl: event.target.result });
-                            };
-                            reader.readAsDataURL(file);
-                          });
-                        });
-                        Promise.all(photoPromises).then(photos => {
-                          setNoteDialogContent(prev => ({
-                            ...prev,
-                            photos: [...prev.photos, ...photos]
-                          }));
-                        });
-                      }}
-                      style={{ display: 'none' }}
-                      id={`photo-upload-${noteDialogOpen}`}
-                    />
-                    <label
-                      htmlFor={`photo-upload-${noteDialogOpen}`}
-                      className="btn btn-secondary btn-md"
-                      style={{ cursor: 'pointer', display: 'inline-block' }}
-                    >
-                      Upload photos
-                    </label>
-                    {noteDialogContent.photos.length > 0 && (
-                      <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {noteDialogContent.photos.map((photo, idx) => (
-                          <div key={idx} style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            padding: '8px',
-                            background: COLORS.modal.panel,
-                            borderRadius: '4px'
-                          }}>
-                            <img src={photo.dataUrl} alt={photo.name} style={{
-                              width: '60px',
-                              height: '60px',
-                              objectFit: 'cover',
-                              borderRadius: '4px'
-                            }} />
-                            <span style={{ flex: 1, color: COLORS.modal.textPrimary, fontSize: '13px' }}>{photo.name}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setNoteDialogContent(prev => ({
-                                  ...prev,
-                                  photos: prev.photos.filter((_, i) => i !== idx)
-                                }));
-                              }}
-                              className="btn btn-icon btn-icon-sm"
-                              style={{ background: COLORS.modal.secondaryButton, border: `1px solid ${COLORS.modal.borderStrong}` }}
-                              onMouseEnter={handleModalSecondaryButtonMouseEnter}
-                              onMouseLeave={handleModalSecondaryButtonMouseLeave}
-                            >
-                              <Icon name="close" size={14} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div style={{ marginBottom: '20px' }}>
-                    <label style={{
-                      display: 'block',
-                      marginBottom: '8px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      color: COLORS.modal.textPrimary
-                    }}>
-                      Videos
-                    </label>
-                    <input
-                      type="file"
-                      accept="video/*"
-                      multiple
-                      onChange={(e) => {
-                        const files = Array.from(e.target.files || []);
-                        const videoPromises = files.map(file => {
-                          return new Promise((resolve) => {
-                            const reader = new FileReader();
-                            reader.onload = (event) => {
-                              resolve({ name: file.name, dataUrl: event.target.result });
-                            };
-                            reader.readAsDataURL(file);
-                          });
-                        });
-                        Promise.all(videoPromises).then(videos => {
-                          setNoteDialogContent(prev => ({
-                            ...prev,
-                            videos: [...prev.videos, ...videos]
-                          }));
-                        });
-                      }}
-                      style={{ display: 'none' }}
-                      id={`video-upload-${noteDialogOpen}`}
-                    />
-                    <label
-                      htmlFor={`video-upload-${noteDialogOpen}`}
-                      className="btn btn-secondary btn-md"
-                      style={{ cursor: 'pointer', display: 'inline-block' }}
-                    >
-                      Upload videos
-                    </label>
-                    {noteDialogContent.videos.length > 0 && (
-                      <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {noteDialogContent.videos.map((video, idx) => (
-                          <div key={idx} style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            padding: '8px',
-                            background: COLORS.modal.panel,
-                            borderRadius: '4px'
-                          }}>
-                            <video src={video.dataUrl} style={{
-                              width: '60px',
-                              height: '60px',
-                              objectFit: 'cover',
-                              borderRadius: '4px'
-                            }} />
-                            <span style={{ flex: 1, color: COLORS.modal.textPrimary, fontSize: '13px' }}>{video.name}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setNoteDialogContent(prev => ({
-                                  ...prev,
-                                  videos: prev.videos.filter((_, i) => i !== idx)
-                                }));
-                              }}
-                              className="btn btn-icon btn-icon-sm"
-                              style={{ background: COLORS.modal.secondaryButton, border: `1px solid ${COLORS.modal.borderStrong}` }}
-                              onMouseEnter={handleModalSecondaryButtonMouseEnter}
-                              onMouseLeave={handleModalSecondaryButtonMouseLeave}
-                            >
-                              <Icon name="close" size={14} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-                    <button
-                      type="button"
-                      onClick={() => setNoteDialogOpen(null)}
-                      className="btn btn-default btn-md"
-                      style={{
-                        background: COLORS.modal.secondaryButton,
-                        border: `1px solid ${COLORS.modal.borderStrong}`,
-                        color: COLORS.modal.textPrimary
-                      }}
-                      onMouseEnter={handleModalSecondaryButtonMouseEnter}
-                      onMouseLeave={handleModalSecondaryButtonMouseLeave}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-
-                        // For item-level notes, noteDialogOpen is just the annotationId
-                        const annotationId = noteDialogOpen;
-
-
-                        // Update survey marker annotation with item-level note
-                        setSurveyMarkers(prev => {
-
-                          const existingSurveyMarker = prev[annotationId] || {};
-
-                          const newNote = {
-                            text: noteDialogContent.text,
-                            photos: noteDialogContent.photos,
-                            videos: noteDialogContent.videos
-                          };
-
-                          const updated = {
-                            ...prev,
-                            [annotationId]: {
-                              ...existingSurveyMarker, // Preserve all existing data
-                              note: newNote  // Save note at surveyMarker level
-                            }
-                          };
-
-
-                          // Save to localStorage immediately
-                          if (pdfId) {
-                            saveSurveyMarkers(pdfId, updated);
-                          } else {
-                            console.warn('Cannot save to localStorage: pdfId is null');
-                          }
-
-                          return updated;
-                        });
-
-                        setNoteDialogOpen(null);
-                        setNoteDialogContent({ text: '', photos: [], videos: [] }); // Clear dialog content
-                      }}
-                      className="btn btn-primary btn-md"
-                      style={{
-                        background: COLORS.modal.primaryButton,
-                        border: `1px solid ${COLORS.modal.borderStrong}`,
-                        color: COLORS.modal.textPrimary
-                      }}
-                      onMouseEnter={handleModalPrimaryButtonMouseEnter}
-                      onMouseLeave={handleModalPrimaryButtonMouseLeave}
-                    >
-                      Save
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </>
-          )
-        }
+        {/* Owner 2026-10-01 ("Yes, inline like phone"): the desktop Entity and
+            Name placement pop-ups that stood here are gone. A new Survey
+            Marker opens in the Survey rail with its name focused and its Entity
+            menu beside it (handleSurveyMarkerCreated / commitMobileSurveyMarker). */}
 
         {/* Item Transfer - Destination Selection Modal */}
         {

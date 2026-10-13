@@ -1,4 +1,5 @@
-import { diff, intersection, union, xor } from 'martinez-polygon-clipping';
+import { diff, intersection, union, xor } from './polygonBooleans.js';
+import * as martinezBooleans from '../vendor/martinezPolygonClipping.js';
 import { erasePathWithCapsules } from './paperInkEraser.js';
 
 const EPS = 1e-7;
@@ -40,6 +41,105 @@ export function intersectPolygonSets(left, right) {
   const b = normalizeMultiPolygon(right);
   if (!a.length || !b.length) return [];
   return normalizeMultiPolygon(intersection(a, b));
+}
+
+/**
+ * w38 (2026-09-25): intersection of two cuts of the SAME outline (two eraser
+ * lanes' survivors). They share most edges bit for bit, which Martinez
+ * mis-cuts (see separateCoincidentVertices); nudge the second operand off the
+ * shared vertices first. The result can differ from the exact answer only by
+ * ~1e-9 of the shape's size along shared edges.
+ */
+// Always move `movable` a little, and keep growing the move (x16) while any
+// of its vertices still equals one of `fixed`'s bit for bit.
+function nudgeApart(fixed, movable, factor) {
+  const fixedVertices = new Set();
+  for (const polygon of fixed) {
+    for (const ring of polygon) {
+      for (const point of ring) fixedVertices.add(`${point[0]},${point[1]}`);
+    }
+  }
+  const touches = (polygons) => polygons.some((polygon) => polygon.some((ring) => (
+    ring.some((point) => fixedVertices.has(`${point[0]},${point[1]}`))
+  )));
+  let moved = movable;
+  let step = factor;
+  for (let attempt = 0; attempt < 6; attempt += 1, step *= 16) {
+    moved = separateCoincidentVertices(fixed, movable, step);
+    if (!touches(moved)) return moved;
+  }
+  return moved;
+}
+
+// Absolute cap (page units^2) on how far a nudged attempt's areas may drift
+// from the exact identities. A relative-only tolerance (1e-4 of the area) let
+// a 4-unit^2 painted-back blob pass on a page-length stroke (w38 review).
+const SHARED_OUTLINE_AREA_CAP = 0.05;
+
+/**
+ * Returns the intersection, or null when every attempt threw (the caller
+ * must not read that as "fully erased": w38 review, an all-throw returned []
+ * and hid the whole mark on every screen).
+ *
+ * w39 (2026-09-25): the booleans are exact now (Clipper2 grid), so the plain
+ * intersection comes first with a tight check; w38's nudged attempts remain
+ * as the fallback. The old lower bound |A∩B| >= |A|+|B|-|O| is gone: the
+ * caller's outline O was rebuilt at a different curve tolerance than the
+ * lanes (an eraser radius under 1 makes lane outlines finer), so the bound
+ * sat too high, rejected every correct answer, and the least-wrong fallback
+ * preferred MORE ink. `outlineArea` is accepted and ignored.
+ */
+export function intersectSharedOutlinePolygonSets(left, right, { outlineArea = null } = {}) {
+  void outlineArea;
+  const a = normalizeMultiPolygon(left);
+  const b = normalizeMultiPolygon(right);
+  if (!a.length || !b.length) return [];
+  // What must hold for two subsets of one outline: |A∩B| <= min(|A|, |B|),
+  // and |A∩B| + |A∪B| = |A| + |B| (which a mis-cut breaks even when
+  // painted-back and dropped ink happen to fit the first bound).
+  const areaA = polygonSetArea(a);
+  const areaB = polygonSetArea(b);
+  const scaleArea = Math.max(areaA, areaB, Number.MIN_VALUE);
+  const exactTolerance = scaleArea * 1e-9;
+  const nudgedTolerance = Math.min(scaleArea * 1e-4, SHARED_OUTLINE_AREA_CAP);
+  // The nudge is checked against the operand it must avoid: lanes of one
+  // mark share one box, so with a fixed factor the third lane landed exactly
+  // on the second lane's nudged edges already in the running result, and
+  // Martinez ran out of memory (w38 review D, 3+ lanes).
+  const attempts = [
+    [a, () => b, exactTolerance],
+    [a, () => nudgeApart(a, b, 1e-9), nudgedTolerance],
+    [b, () => nudgeApart(b, a, 1e-9), nudgedTolerance],
+    [a, () => nudgeApart(a, b, 1e-7), nudgedTolerance],
+    [b, () => nudgeApart(b, a, 1e-7), nudgedTolerance],
+  ];
+  let best = null;
+  for (const [fixed, moved, tolerance] of attempts) {
+    let result;
+    let unionArea;
+    try {
+      const other = moved();
+      result = normalizeMultiPolygon(intersection(fixed, other));
+      unionArea = polygonSetArea(union(fixed, other));
+    } catch {
+      continue;
+    }
+    const area = polygonSetArea(result);
+    const violation = Math.max(
+      0,
+      area - (Math.min(areaA, areaB) + tolerance),
+      Math.abs(area + unionArea - areaA - areaB) - tolerance,
+    );
+    if (violation === 0) return result;
+    // Least wrong first; between equally wrong answers keep less ink (a
+    // painted-back dab is the visible failure).
+    if (
+      !best
+      || violation < best.violation
+      || (violation === best.violation && area < best.area)
+    ) best = { result, violation, area };
+  }
+  return best ? best.result : null;
 }
 
 export function subtractPolygonSets(left, right) {
@@ -571,18 +671,181 @@ const sweptDiskSemicircleSteps = (radius, options) => {
   return DEFAULT_ARC_STEPS;
 };
 
+/**
+ * Drop near-duplicate centerline vertices without moving the centerline by
+ * more than `tolerance`. A vertex closer than `minDistance` to the last kept
+ * vertex is dropped only while every vertex dropped since that anchor stays
+ * within `tolerance` of the chord that replaces them, so the compacted
+ * polyline is within `tolerance` of the input (both ways).
+ *
+ * Why (w39, 2026-09-25): plain distance compaction (`compactPoints`) dropped
+ * the tip of a tight authored curve. A flattened quadratic whose turn has a
+ * 0.07-unit curvature radius puts its tip vertices ~0.12 apart; all fell
+ * under the 0.35 floor, the centerline lost 0.17 at the tip, and the stroke
+ * outline missed a 0.18-deep crescent of the true round stroke there. Both
+ * renderers clip the true source stroke to that outline after a bite, so ink
+ * vanished at the turn, far from the eraser.
+ */
+const compactCenterlineWithinTolerance = (points, minDistance, tolerance) => {
+  const valid = (points || []).filter((point) => (
+    point && Number.isFinite(point.x) && Number.isFinite(point.y)
+  ));
+  if (!valid.length) return [];
+  const output = [{ x: valid[0].x, y: valid[0].y }];
+  // Bounds the re-check below; a denser cluster simply keeps a vertex.
+  const MAX_PENDING = 64;
+  let pending = [];
+  for (let index = 1; index < valid.length; index += 1) {
+    const point = valid[index];
+    const anchor = output.at(-1);
+    if (point.x === anchor.x && point.y === anchor.y) continue;
+    const next = valid[index + 1];
+    if (
+      next
+      && pending.length < MAX_PENDING
+      && Math.hypot(point.x - anchor.x, point.y - anchor.y) < minDistance
+      && perpendicularDistance(point, anchor, next) <= tolerance
+      && pending.every((dropped) => (
+        perpendicularDistance(dropped, anchor, next) <= tolerance
+      ))
+    ) {
+      pending.push(point);
+      continue;
+    }
+    output.push({ x: point.x, y: point.y });
+    pending = [];
+  }
+  return output;
+};
+
 const compactSweptDiskPoints = (points, radius, options) => {
   // Sampling thresholds are geometry-relative. In particular, do not restore
   // an absolute epsilon here: imported PDF ink can legitimately be many
   // orders of magnitude smaller than one page unit.
   const minDistance = options.minDistance
     ?? Math.max(Number.MIN_VALUE, Math.min(0.35, radius * 0.1));
+  const compactionTolerance = Number(options.compactionTolerance);
+  if (Number.isFinite(compactionTolerance) && compactionTolerance >= 0) {
+    return compactCenterlineWithinTolerance(points, minDistance, compactionTolerance);
+  }
   return compactPoints(points, minDistance).filter((point, index, values) => (
     index === 0
     || point.x !== values[index - 1].x
     || point.y !== values[index - 1].y
   ));
 };
+
+const balancedUnion = (geometries) => {
+  let level = geometries;
+  while (level.length > 1) {
+    const merged = [];
+    for (let index = 0; index < level.length; index += 2) {
+      merged.push(
+        index + 1 < level.length
+          ? union(level[index], level[index + 1])
+          : level[index],
+      );
+    }
+    level = merged;
+  }
+  return normalizeMultiPolygon(level[0]);
+};
+
+/**
+ * Round-stroke outline for a centerline whose single direct offset ring is
+ * unsafe (a turn tighter than the stroke radius, a fold, a self-crossing).
+ *
+ * The swept disk of a polyline is exactly the union of the swept disks of
+ * consecutive sub-polylines that share their end vertices: the round caps at
+ * a shared vertex are the round join. So split only where the direct offset
+ * breaks, build a direct ring per run, and union the few runs. Before this,
+ * one tight tip sent the whole stroke to a per-segment capsule union (tens of
+ * milliseconds for a few hundred vertices).
+ *
+ * Break rule: a segment whose inside-join insets meet or cross (the direct
+ * ring's own safety test) is cut out at both ends, as is a full reversal.
+ * Removing a join only shrinks its neighbours' insets, so every remaining run
+ * passes that test. A run that still fails (its ring crosses itself, or it is
+ * closed) is halved until it passes; a two-vertex run is a plain capsule.
+ *
+ * The pieces' round caps meet on shared circles. Martinez mis-unioned such
+ * caps (w39 review: a closed square's halves unioned to 137 instead of 185,
+ * zero-area results, wedges cut across the stroke, throws); the union now
+ * runs on Clipper2's exact integer grid (polygonBooleans.js), which measured
+ * 0 bad outlines over 4,000 adversarial right-angle polylines that Martinez
+ * got wrong about 1.5% of the time.
+ */
+function sweptDiskPolygonByRuns(points, radius, semicircleSteps) {
+  const count = points.length;
+  const segments = [];
+  for (let index = 1; index < count; index += 1) {
+    const dx = points[index].x - points[index - 1].x;
+    const dy = points[index].y - points[index - 1].y;
+    const length = Math.hypot(dx, dy);
+    segments.push({ length, ux: length ? dx / length : 0, uy: length ? dy / length : 0 });
+  }
+  const breakAt = new Uint8Array(count);
+  const startInsets = [new Float64Array(segments.length), new Float64Array(segments.length)];
+  const endInsets = [new Float64Array(segments.length), new Float64Array(segments.length)];
+  for (let index = 1; index < segments.length; index += 1) {
+    const previous = segments[index - 1];
+    const next = segments[index];
+    if (!previous.length || !next.length) {
+      breakAt[index] = 1;
+      continue;
+    }
+    const cross = previous.ux * next.uy - previous.uy * next.ux;
+    const dot = previous.ux * next.ux + previous.uy * next.uy;
+    const turn = Math.atan2(Math.abs(cross), dot);
+    const inset = radius * Math.tan(turn / 2);
+    if (turn >= Math.PI - Number.EPSILON * 32 || !Number.isFinite(inset)) {
+      breakAt[index] = 1;
+      continue;
+    }
+    const insideSide = cross >= 0 ? 0 : 1;
+    endInsets[insideSide][index - 1] = inset;
+    startInsets[insideSide][index] = inset;
+  }
+  for (let index = 0; index < segments.length; index += 1) {
+    for (let side = 0; side < 2; side += 1) {
+      if (startInsets[side][index] + endInsets[side][index] >= segments[index].length) {
+        breakAt[index] = 1;
+        breakAt[index + 1] = 1;
+      }
+    }
+  }
+
+  const pieces = [];
+  const buildRun = (run) => {
+    const ring = directSweptDiskRing(run, radius, semicircleSteps, true);
+    if (ring) {
+      pieces.push([[ring]]);
+      return;
+    }
+    if (run.length <= 2) {
+      if (
+        run.length === 2
+        && (run[0].x !== run[1].x || run[0].y !== run[1].y)
+      ) {
+        pieces.push([capsulePolygon(run[0], run[1], radius, semicircleSteps)]);
+      } else {
+        pieces.push([circlePolygon(run[0], radius, semicircleSteps * 2)]);
+      }
+      return;
+    }
+    const middle = Math.floor((run.length - 1) / 2);
+    buildRun(run.slice(0, middle + 1));
+    buildRun(run.slice(middle));
+  };
+  let start = 0;
+  for (let index = 1; index < count; index += 1) {
+    if (index === count - 1 || breakAt[index]) {
+      buildRun(points.slice(start, index + 1));
+      start = index;
+    }
+  }
+  return balancedUnion(pieces);
+}
 
 export function sweptDiskPolygon(points, radius, options = {}) {
   if (!Number.isFinite(radius) || radius <= 0) return [];
@@ -604,6 +867,9 @@ export function sweptDiskPolygon(points, radius, options = {}) {
     compacted, radius, semicircleSteps, options.inkOutline,
   );
   if (directRing) return [[directRing]];
+  if (options.inkOutline) {
+    return sweptDiskPolygonByRuns(compacted, radius, semicircleSteps);
+  }
   return sweptDiskPolygonByCapsules(
     compacted,
     radius,
@@ -1345,7 +1611,21 @@ export function commandsToPolygonSet(commands, {
     const outlined = sweptDiskPolygon(
       points,
       strokeWidth / 2,
-      { curveTolerance: outlineCurveTolerance, inkOutline: true },
+      {
+        curveTolerance: outlineCurveTolerance,
+        inkOutline: true,
+        // The flattened centerline is already exactly as dense as the curve
+        // needs. Compaction may only merge near-duplicates, never cut a tight
+        // tip (see compactCenterlineWithinTolerance). A quarter of the curve
+        // tolerance keeps the total outline error (flattening + compaction
+        // + round-arc facets) within two curve tolerances. Floor: 1e-4 of the
+        // stroke radius. A caller's curve tolerance can be absurdly fine in
+        // local units (0.05 page units divided by a 1e160 object scale); the
+        // flattening then emits ~800,000 points and, kept, a single bite took
+        // over 100 s (w39 review). A ten-thousandth of the radius is far
+        // below anything visible and collapses that to hundreds.
+        compactionTolerance: Math.max(outlineCurveTolerance / 4, (strokeWidth / 2) * 1e-4),
+      },
     );
     if (!outlined.length) continue;
     geometry = geometry ? union(geometry, outlined) : outlined;
@@ -1724,6 +2004,18 @@ export function filledOutlineCommandsToPolygonSet(commands, {
   if (rings.length === 0) return [];
   if (rings.length === 1) return [[rings[0]]];
 
+  // w39 (2026-09-25): this function's output is stored by reference (the
+  // "~polygons-from-path:v1" marker in annotationMarkCodec.js is rebuilt
+  // from the path on every read, and eraser lanes key on those polygons bit
+  // for bit), so it keeps its Martinez booleans rather than the eraser's
+  // Clipper2 ones: a different engine changes the vertex order of every
+  // multi-ring result, which would make existing erase lanes on imported
+  // filled ink go dormant. Moving it needs a v2 marker. (The vendored copy
+  // differs from npm Martinez only where its exact isBelow changes a
+  // near-degenerate order: ~8 of 3,200 random multi-ring fills, 0 of the
+  // 2,549 marker-stored marks on the owner's Package 2; npm hung on 5 of
+  // those 8.)
+  const { diff, intersection, union, xor } = martinezBooleans;
   try {
     if (fillRule === 'evenodd') {
       let geometry = null;
@@ -2386,7 +2678,75 @@ function ribbonPatch(chunk, ribbonWidth) {
   return normalizeMultiPolygon([ring]);
 }
 
-function subtractPolygonPart(subject, eraser, sourceWidth) {
+/**
+ * w38 (2026-09-25): Martinez (0.7.4) mis-cuts when the two operands share
+ * coincident edges, and moving one operand by ~1e-9 of its size is enough to
+ * avoid it (measured: 0 failures in 199 random repeats, was 49). Two places
+ * hand it such operands:
+ *   * an eraser disk identical to one already applied (the same spot erased
+ *     twice — a second click on the same pixel): Martinez dropped ink far
+ *     outside the eraser (up to 1,245 units^2 on a 30-unit pen stroke) or
+ *     rejected the gesture;
+ *   * two eraser lanes' survivors of one stroke (both cut from the same
+ *     outline): the intersection painted dabs back in and dropped blocks.
+ * Shared edges need not share a vertex (a collinear overlap, or a copy a few
+ * ulps off), so for the survivor intersection the nudge is unconditional
+ * (and the answer is checked); erasers use separateSharedEraserVertices.
+ * Grow `movable` by a factor of
+ * 1 + 1e-9 about a point inside its box that is not its centre (a vertex
+ * sitting exactly on the scaling point would never move). Invisible, the same
+ * on every screen, and a larger eraser still clears everything the gesture
+ * covered. `fixed` is accepted for symmetry with the callers.
+ */
+export function separateCoincidentVertices(fixed, movable, factor = 1e-9) {
+  void fixed;
+  const polygons = normalizeMultiPolygon(movable);
+  if (!polygons.length) return polygons;
+  const bounds = boundsOfCommands(polygonSetToCommands(polygons));
+  const size = Math.max(bounds.w, bounds.h);
+  if (!(size > 0) || !Number.isFinite(size)) return polygons;
+  const pivotX = bounds.x + bounds.w * 0.4142135623730951;
+  const pivotY = bounds.y + bounds.h * 0.7320508075688772;
+  const scale = 1 + factor;
+  return polygons.map((polygon) => polygon.map((ring) => ring.map(([x, y]) => [
+    pivotX + (x - pivotX) * scale,
+    pivotY + (y - pivotY) * scale,
+  ])));
+}
+
+/**
+ * The eraser-side use of the nudge (subtractPolygonPart) stays conditional:
+ * only an eraser that shares a vertex with the subject bit for bit (the same
+ * spot erased twice) is moved. Nudging every eraser made ordinary bites on
+ * axis-aligned PDF appearance layers fail (tests/pdfAppearanceMappingFidelity:
+ * a disk centred on a rectangle's edge), so the unconditional form is kept for
+ * the checked survivor intersection only. The scaling point avoids the box
+ * centre (a vertex exactly there would never move) and the factor grows if a
+ * shared vertex survives.
+ */
+function separateSharedEraserVertices(subject, movable) {
+  const subjectVertices = new Set();
+  for (const polygon of normalizeMultiPolygon(subject)) {
+    for (const ring of polygon) {
+      for (const point of ring) subjectVertices.add(`${point[0]},${point[1]}`);
+    }
+  }
+  const eraser = normalizeMultiPolygon(movable);
+  const touches = (polygons) => polygons.some((polygon) => polygon.some((ring) => (
+    ring.some((point) => subjectVertices.has(`${point[0]},${point[1]}`))
+  )));
+  if (!touches(eraser)) return eraser;
+  let factor = 1e-9;
+  let moved = eraser;
+  for (let attempt = 0; attempt < 4; attempt += 1, factor *= 16) {
+    moved = separateCoincidentVertices(subject, eraser, factor);
+    if (!touches(moved)) return moved;
+  }
+  return moved;
+}
+
+function subtractPolygonPart(subject, rawEraser, sourceWidth) {
+  const eraser = separateSharedEraserVertices(subject, rawEraser);
   let overlap;
   try {
     overlap = normalizeMultiPolygon(intersection(subject, eraser));

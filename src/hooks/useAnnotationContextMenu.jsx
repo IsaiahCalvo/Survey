@@ -19,22 +19,36 @@
 // useCallback-stable so the external callers that omit the setter from their
 // dependency arrays keep their referential identity.
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { appDebug } from '../viewerShared.js';
 import { deepClone } from '../utils/deepClone.js';
+import { zOrderMenuState } from '../utils/disabledActions.js';
+import { watchLightPopover } from '../components/dismissRules.js';
 import {
   clampFloatingMenuPosition,
   DESKTOP_RIGHT_RAIL_WIDTH,
+  fitMenuInBand,
   getPageViewportBounds,
 } from '../utils/floatingUiGeometry.js';
-// Locked permissions model 2026-07-17 — the shape Delete items route through
-// PDFViewer's bulk-delete planner (confirm modal for cross-author deletes)
-// and the Cut items are restricted to marks the viewer authored (or owner
-// mode). Same single source of truth as click hit-test / marquee / planner.
-import { canDelete, canModify } from '../lib/collab/permissionScope.js';
+// RULED 2026-09-28 owner: open editing + lock. Cut / Delete take ANY mark
+// (own or someone else's) with no confirmation; a user-locked mark greys them
+// out and the menu offers Lock / Unlock (its author or the document owner).
+// Same single source of truth as click hit-test / marquee / planner.
+import { canModify, canToggleLock, isUserLocked } from '../lib/collab/permissionScope.js';
+import { reorderSelectionInStack } from '../utils/annotationFamilyRules.js';
+import { resolveMenuTargets, sameMenuTargets, stampMenuTargetIds } from '../utils/selectionRemap.js';
+import { pageHasTransform } from '../utils/disabledActions.js';
+import { PICK_ANY_TOOLS } from '../utils/selectModes.js';
+import { PageMenuList } from '../sidebar/PageActionsMenu.jsx';
+import { availableActions, buildPageMenuItems, runPageMenuAction } from '../sidebar/pageMenuItems.js';
 
-export function useAnnotationContextMenu() {
+// w61: `getPageObjects(pageNumber)` (optional) returns the page's mark list,
+// so the menu can note which marks it was opened on (by id) and still act on
+// exactly those if another screen changes the list while it is open.
+export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
+  const getPageObjectsRef = useRef(getPageObjects);
+  getPageObjectsRef.current = getPageObjects;
   // UX: annotation right-click menu — anchored to the pointer.
   // { x, y, pageNumber, annotationIndex, calloutId, kind, groupIndices }.
   const [annotationContextMenu, setAnnotationContextMenu] = useState(null);
@@ -55,7 +69,7 @@ export function useAnnotationContextMenu() {
   // resolves (pageNumber, annotationIndex) from the click target and invokes this
   // — one listener, always on, covers every page without needing PAL to be mounted.
   useEffect(() => {
-    window.__onAnnotationContextMenu = ({ pageNumber, annotationIndex, calloutId, kind, groupIndices, event }) => {
+    window.__onAnnotationContextMenu = ({ pageNumber, annotationIndex, calloutId, kind, groupIndices, groupMarkerIds, surveyMarkerId, event }) => {
       // KAL-75 (G4): locked/read-only documents — this menu's items (Cut /
       // Paste / Delete / z-order) call the save path directly; suppress at
       // THIS entry too (the route from contextMenuDiagnostics lands here,
@@ -78,7 +92,10 @@ export function useAnnotationContextMenu() {
           window.__ctxDiagMenuOpenWatcher(snapshot);
         }
       } catch { /* ignore */ }
-      setAnnotationContextMenu({
+      const pageObjects = (() => {
+        try { return getPageObjectsRef.current?.(pageNumber) || null; } catch { return null; }
+      })();
+      setAnnotationContextMenu(stampMenuTargetIds({
         x: event.clientX,
         y: event.clientY,
         pageNumber,
@@ -89,7 +106,11 @@ export function useAnnotationContextMenu() {
         // array of selected annotation indices so batch handlers (cut,
         // copy, delete, z-order) can iterate them in one go.
         groupIndices: Array.isArray(groupIndices) ? groupIndices.slice() : null,
-      });
+        // w53: Survey Markers — the one right-clicked ('surveyMarker' kind)
+        // or those in the right-clicked selection ('group' kind).
+        surveyMarkerId: surveyMarkerId || null,
+        groupMarkerIds: Array.isArray(groupMarkerIds) ? groupMarkerIds.slice() : [],
+      }, pageObjects));
     };
     return () => {
       if (window.__onAnnotationContextMenu) delete window.__onAnnotationContextMenu;
@@ -103,23 +124,26 @@ export function useAnnotationContextMenu() {
   // bubble-phase listener silently dropped clicks on Pdfjs surfaces.
   // Marker check replaces the menu-div's own onMouseDown stopPropagation
   // so the logic lives in one place: "is the click target inside the menu?"
+  //
+  // 2026-09-23: now one of the shared dismiss rules' light popovers
+  // (src/components/dismissRules.js): an outside press still closes it and
+  // still does its job (R1 — select the mark pressed, press the button); a
+  // press on the bare page only closes it (R2); Escape closes it and nothing
+  // under it (R5). Still capture phase, so descendants cannot stop it.
   useEffect(() => {
     if (!annotationContextMenu) return undefined;
-    const close = (e) => {
-      if (e?.target?.closest && e.target.closest('[data-annotation-context-menu]')) return;
-      setAnnotationContextMenu(null);
-    };
-    const onKey = (e) => { if (e.key === 'Escape') setAnnotationContextMenu(null); };
-    // Delay attaching so the opening right-click's own mousedown doesn't
+    let stop = null;
+    // Delay attaching so the opening right-click's own press doesn't
     // instantly re-close the menu.
     const t = window.setTimeout(() => {
-      window.addEventListener('mousedown', close, true);
-      window.addEventListener('keydown', onKey);
+      stop = watchLightPopover({
+        contains: (target) => Boolean(target.closest('[data-annotation-context-menu]')),
+        close: () => setAnnotationContextMenu(null),
+      });
     }, 0);
     return () => {
       window.clearTimeout(t);
-      window.removeEventListener('mousedown', close, true);
-      window.removeEventListener('keydown', onKey);
+      stop?.();
     };
   }, [annotationContextMenu]);
 
@@ -144,6 +168,8 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     handleCopyCallout,
     handlePasteCallout,
     annotationsByPageRef,
+    // w61: the page lists of the render drawing the menu (optional).
+    annotationsByPageNow = null,
     setClipboardAnnotation,
     handleSaveAnnotations,
     setPendingSvgSelection,
@@ -163,53 +189,114 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // (mobileMode falsy) keeps its exact prior styling — demo ref
     // mobile-expo-go/src/styles.ts:856-902.
     mobileMode = false,
-    // Locked permissions model 2026-07-17 — bulk-delete planner bridge
-    // (PDFViewer's requestBulkDeleteRef). When provided, the shape Delete
-    // items route through it so cross-author deletes ALWAYS get the
-    // collaborator-cross-author confirm modal (parity with keyboard Delete /
-    // useSVGInteraction.deleteSelected). Optional: legacy mounts without it
-    // fall back to the direct splice for the viewer's OWN marks only.
+    // RULED 2026-09-28 owner: open editing + lock: bulk-delete planner bridge (PDFViewer's
+    // requestBulkDeleteRef). Deletes go straight through (no confirmation) and
+    // get one History row; user-locked marks are left out. Optional: mounts
+    // without it fall back to the direct splice.
     requestBulkDelete = null,
     // Ownership inputs for the delete/cut partition below. Optional — when
     // either is missing (boot window) the legacy permissive behavior applies.
     viewerId = null,
     documentOwnerId = null,
+    // w52: callouts selected together with shapes move with the group's
+    // z-order items.
+    selectedCalloutIds = null,
+    // w53: Survey Markers in the family — restack a mixed selection in the
+    // page's one stack (one save, one undo step) and delete markers.
+    handleReorderFamily = null,
+    deleteSurveyMarkers = null,
+    // w53: one clipboard for any selection (marks + callouts + Survey
+    // Markers) and Duplicate — utils/familyClipboard.js via PDFViewer.
+    copyFamilySelection = null,
+    duplicateFamilySelection = null,
+    familyClipboard = null,
+    pasteFamilyAt = null,
+    // Owner ruling 2026-09-28 — Lock / Unlock on every object menu:
+    // toggleLockSelection(pageNumber, { indices, calloutIds, markerIds }, lock)
+    // and a Survey Marker record lookup by id.
+    toggleLockSelection = null,
+    resolveSurveyMarker = null,
+    // w56: PDFViewer's handleBeginBatchDelete — arms a mixed marks+callouts
+    // delete so the group menu's Delete is one save / one Undo.
+    beginBatchDelete = null,
+    // Owner 2026-10-07: a right-click (phone: long-press) on a bare page with
+    // Pan or Select armed opens the page menu - the SAME list as the Pages
+    // tab's (sidebar/pageMenuItems.js). { activeTool, pageCount,
+    // clipboardPage, clipboardType, pageTransformations, handlers } where
+    // handlers are the page operations (runPageMenuAction). Optional.
+    pageMenu = null,
   } = actions;
 
-  // Own-mark check (author or document owner; boot window is permissive to
-  // match canSelectAnnotationByIndex / deleteSelected in useSVGInteraction).
+  // May this mark be cut / deleted? RULED 2026-09-28 owner: open editing +
+  // lock — any mark that is not user-locked (the boot window stays
+  // permissive for unlocked marks, matching canSelectAnnotationByIndex /
+  // deleteSelected in useSVGInteraction).
   const canModifyObj = (obj) => {
     if (!obj) return false;
+    if (isUserLocked(obj)) return false;
     if (!viewerId || !documentOwnerId) return true;
     return canModify({ annotation: obj, viewerId, documentOwnerId });
   };
-  // Foreign-mark deletability: only through the planner's confirm modal, and
-  // only when the object carries the stable id the planner is keyed by.
-  const canPlanForeignDelete = (obj) => {
-    if (!obj || typeof requestBulkDelete !== 'function') return false;
-    if (!viewerId || !documentOwnerId) return false;
-    if (obj.id == null) return false;
-    return canDelete({ annotation: obj, viewerId, documentOwnerId });
+  // Lock / Unlock item for a set of members [{ obj, marker? }]. Every
+  // member locked -> "Unlock"; otherwise "Lock" (locks the rest). Greyed out
+  // when the viewer may toggle none of them (author / document owner only).
+  const lockItemFor = (members, selection) => {
+    const list = (members || []).filter((m) => m && m.obj);
+    if (list.length === 0 || typeof toggleLockSelection !== 'function') return null;
+    const allLocked = list.every((m) => isUserLocked(m.obj));
+    const mayToggle = (m) => canToggleLock(m.marker
+      ? { surveyMarker: m.obj, viewerId, documentOwnerId }
+      : { annotation: m.obj, viewerId, documentOwnerId });
+    const target = allLocked ? list : list.filter((m) => !isUserLocked(m.obj));
+    const enabled = Boolean(viewerId) && target.some(mayToggle);
+    return allLocked
+      ? { label: 'Unlock', key: 'unlock', lock: false, enabled, selection }
+      : { label: 'Lock', key: 'lock', lock: true, enabled, selection };
   };
 
   return createPortal((() => {
-    const ctx = annotationContextMenu;
+    // w61: the targets noted (by id) when the menu opened, found again in
+    // the page list as it is now — never a neighbour that slid into place.
+    const ctx = resolveMenuTargets(
+      annotationContextMenu,
+      (annotationsByPageNow || annotationsByPageRef?.current)?.[annotationContextMenu.pageNumber]?.objects || null,
+    );
     const logStub = (key) => console.log(`[AnnotCtxMenu] ${key} kind=${ctx.kind} page=${ctx.pageNumber} annoIdx=${ctx.annotationIndex} calloutId=${ctx.calloutId}`);
     // Menu item builder. action = wired callback; omit to log a stub.
     // UX: `enabled` (default true) controls the grayed-out / click-blocked
     // state for items like Paste-when-clipboard-empty. Disabled items still
     // render (so users can see the option exists) but clicks are ignored
     // and styling is muted to match Acrobat / Bluebeam / Figma behavior.
-    const item = (label, key, action, enabled = true) => ({
-      label, key,
-      disabled: !enabled,
-      onClick: enabled
-        ? () => {
-            if (action) action(); else logStub(key);
-            closeAnnotationContextMenu();
-          }
-        : undefined,
-    });
+    // w61: an item acts only on the marks the menu was opened on. Paste works
+    // at the right-click point with or without them; every other item is
+    // greyed out once they are gone, and a click that lands while the list
+    // changed under the drawn menu (the page ref runs one step ahead or
+    // behind this render) closes the menu without acting.
+    const targetFree = (key) => key === 'paste';
+    const item = (label, key, action, enabled = true) => {
+      const usable = enabled && !(ctx.targetsGone && !targetFree(key));
+      return {
+        label, key,
+        disabled: !usable,
+        onClick: usable
+          ? () => {
+              if (!targetFree(key)) {
+                const atClick = resolveMenuTargets(
+                  annotationContextMenu,
+                  annotationsByPageRef?.current?.[annotationContextMenu.pageNumber]?.objects || null,
+                );
+                if (!sameMenuTargets(atClick, ctx)) {
+                  console.warn(`[AnnotCtxMenu] ${key} skipped: the page changed under the menu (pdf=${(typeof window !== 'undefined' && window.__currentPdfName) || 'unknown.pdf'} page=${ctx.pageNumber})`);
+                  closeAnnotationContextMenu();
+                  return;
+                }
+              }
+              if (action) action(); else logStub(key);
+              closeAnnotationContextMenu();
+            }
+          : undefined,
+      };
+    };
     // UX: each separator must have a unique key. Previous `const SEP =
     // {..., key: sep-<rand>}` reused the same object across multiple slots
     // in the items array, which made React warn about duplicate children
@@ -227,13 +314,62 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // callouts center their text box there via handlePasteCallout's
     // cursor-anchored mode.
     const doPasteAny = () => {
-      if (clipboardAnnotation) {
+      if (familyClipboard && typeof pasteFamilyAt === 'function') {
+        pasteFamilyAt(ctx.pageNumber, ctx.x, ctx.y);
+      } else if (clipboardAnnotation) {
         doPasteAnnotation();
       } else if (clipboardCallout) {
         handlePasteCallout(ctx.pageNumber, { clientX: ctx.x, clientY: ctx.y });
       }
     };
-    const hasAnyClipboard = Boolean(clipboardAnnotation || clipboardCallout);
+    const hasAnyClipboard = Boolean(clipboardAnnotation || clipboardCallout || familyClipboard);
+    // Owner 2026-10-06: an item that would do nothing is disabled, not a
+    // silent no-op - "Bring forward" on the top mark, "Send to back" on the
+    // bottom one, and forward / backward with no overlapping mark that way
+    // (handleReorderAnnotation's Figma step). Reads the drawn page once per
+    // open; utils/disabledActions.js zOrderMenuState holds the rule.
+    const zOrderFor = (index) => {
+      const length = annotationsByPageRef.current?.[ctx.pageNumber]?.objects?.length || 0;
+      const svg = typeof document !== 'undefined'
+        ? document.querySelector(`[data-svg-annotation-layer="${ctx.pageNumber}"]`)
+        : null;
+      const bboxOf = (i) => {
+        const g = svg?.querySelector(`[data-annotation-index="${i}"]`)
+          || svg?.querySelector(`[data-stack-index="${i}"]`);
+        if (!g || typeof g.getBBox !== 'function') return null;
+        try { return g.getBBox(); } catch (_e) { return null; }
+      };
+      const own = Number.isInteger(index) ? bboxOf(index) : null;
+      const overlapToward = (step) => {
+        if (!own) return undefined;
+        for (let j = index + step; j >= 0 && j < length; j += step) {
+          const b = bboxOf(j);
+          if (b && !(own.x + own.width < b.x || b.x + b.width < own.x
+            || own.y + own.height < b.y || b.y + b.height < own.y)) return true;
+        }
+        return false;
+      };
+      return zOrderMenuState({
+        index,
+        length,
+        hasMarkers: Boolean(svg?.querySelector('[data-survey-marker-id]')),
+        overlapAbove: overlapToward(1),
+        overlapBelow: overlapToward(-1),
+      });
+    };
+    // w53: Duplicate — a copy 16 page units down-right, one Undo step, the
+    // clipboard untouched (same item on every menu).
+    const duplicateItem = (selection) => item('Duplicate', 'duplicate', () => {
+      if (typeof duplicateFamilySelection === 'function') duplicateFamilySelection(ctx.pageNumber, selection);
+    }, typeof duplicateFamilySelection === 'function');
+    // Owner ruling 2026-09-28: Lock / Unlock, right under Delete.
+    const lockMenuItems = (members, selection) => {
+      const spec = lockItemFor(members, selection);
+      if (!spec) return [];
+      return [item(spec.label, spec.key, () => {
+        toggleLockSelection(ctx.pageNumber, spec.selection, spec.lock);
+      }, spec.enabled)];
+    };
 
     let items;
     if (ctx.kind === 'textMarkup') {
@@ -257,32 +393,23 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       // UX: 2026-07-17 — callout menu parity with the shape menu, audited
       // item by item. Cut / Copy / Paste / Delete are 1:1 with the shape
       // menu (same clipboard rules, same paste-at-point rule, same gated
-      // delete). The four z-order items (Bring to front / Bring forward /
-      // Send backward / Send to back) are DELIBERATELY EXCLUDED, not
-      // missing:
-      //   - Cross-type z-order is meaningless by design: callouts render in
-      //     their own SVG loop ABOVE all shapes (SVGAnnotationLayer's
-      //     dedicated filteredCallouts renderer — a deliberate, tested
-      //     layering), so no reorder could ever move a callout below a shape.
-      //   - Callout-vs-callout order is fixed too: deriveCalloutsFromByPage
-      //     sorts each page's callouts by id (localeCompare) for
-      //     deterministic derive/fingerprint round-trips, so the shapes'
-      //     handleReorderAnnotation machinery (which permutes
-      //     page.objects indices) has zero rendered effect on callouts —
-      //     any reorder would be visually dead AND silently reverted by the
-      //     next derive. Making it real requires a persisted z-field or the
-      //     callout render-loop unification (the dedicated callout-migration
-      //     project), not a menu item.
-      // Rendering dead/no-op items is worse than omitting them — the menu
-      // shows only what actually works on a callout.
+      // delete).
       //
-      // Resolve the right-clicked callout's projected group object
-      // (data.type === 'callout', id at data.id) so the Cut item can run the
-      // SAME own-marks-only gate as the shape menu's Cut (locked model
-      // 2026-07-17: Cut = Copy + immediate delete with no confirmation
-      // surface, so it must never touch a foreign-author mark; to remove
-      // another user's callout: Copy + Delete — Delete confirms via the
-      // cross-author modal).
+      // UX: w52 (2026-09-28, owner: "annotations are annotations") — the four
+      // z-order items (Bring to front / Bring forward / Send backward / Send
+      // to back) are on the callout menu too, exactly like the shape menu.
+      // A callout is a mark in its page's one stacking order
+      // (annotationsByPage[page].objects, persisted per mark as `z` —
+      // src/services/annotationStackOrder.js), drawn in that order by the SVG
+      // layer, the canvas painter, thumbnails, export and print. So any mark
+      // can go above or below a callout, and a callout above or below any
+      // mark. The items resolve the callout's slot in page.objects and call
+      // the SAME handleReorderAnnotation the shape menu uses (one undo step,
+      // same Figma-style overlap-aware forward/backward).
+      //
+      // Resolve the right-clicked callout's projected group object (data.type
+      // === 'callout', id at data.id) so Cut / Delete / Lock read its user lock
+      // (RULED 2026-09-28 owner: open editing + lock: any editor cuts or deletes it unless it is locked).
       const findCalloutObj = () => {
         const page = annotationsByPageRef.current?.[ctx.pageNumber];
         if (!page?.objects || !ctx.calloutId) return null;
@@ -290,21 +417,37 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           (o) => o?.data?.type === 'callout' && o?.data?.id === ctx.calloutId
         ) || null;
       };
+      // w52: the callout's slot in its page's stacking order.
+      const reorderCallout = (direction) => {
+        const page = annotationsByPageRef.current?.[ctx.pageNumber];
+        if (!page?.objects || !ctx.calloutId) return;
+        const index = page.objects.findIndex(
+          (o) => o?.data?.type === 'callout' && o?.data?.id === ctx.calloutId
+        );
+        if (index < 0) return;
+        handleReorderAnnotation(ctx.pageNumber, index, direction);
+      };
+      const calloutObj = findCalloutObj();
+      const calloutEditable = !calloutObj || canModifyObj(calloutObj);
+      const calloutZ = zOrderFor(calloutObj
+        ? annotationsByPageRef.current?.[ctx.pageNumber]?.objects?.indexOf(calloutObj)
+        : null);
       items = [
         item('Cut', 'cut', () => {
           if (!ctx.calloutId) return;
           const obj = findCalloutObj();
-          // Own-mark gate (boot window permissive inside canModifyObj —
-          // matches the shape Cut item). A callout that can't be resolved
-          // from the page projection is a no-op rather than an ungated cut.
+          // Lock gate (boot window permissive inside canModifyObj - matches
+          // the shape Cut item). A callout that can't be resolved from the
+          // page projection is a no-op rather than an ungated cut.
           if (!obj || !canModifyObj(obj)) return;
           handleCutCallout(ctx.calloutId);
-        }),
+        }, calloutEditable),
         item('Copy', 'copy', () => ctx.calloutId && handleCopyCallout(ctx.calloutId)),
         // UX: paste lands at the right-click point (same cursor-anchored rule
         // as Cmd+V and the shape menu's doPasteAnnotation). ctx.x/y are the
         // right-click's client coords. doPasteAny covers both clipboards.
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
+        duplicateItem({ calloutIds: [ctx.calloutId] }),
         // UX: right-click Delete = the SAME gated delete as pressing Delete/
         // Backspace with the callout selected — PDFViewer's
         // handleDeleteSelectedCallouts (canModify ownership check, undo
@@ -316,13 +459,28 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           if (ctx.calloutId && typeof window.__onDeleteSelectedCallouts === 'function') {
             window.__onDeleteSelectedCallouts([ctx.calloutId]);
           }
-        }),
+        }, calloutEditable),
+        ...lockMenuItems(calloutObj ? [{ obj: calloutObj }] : [], { calloutIds: [ctx.calloutId] }),
+        sep(),
+        // w52: same z-order block as the shape menu, same handler.
+        item('Bring to front', 'bringToFront', () => reorderCallout('front'), calloutZ.front),
+        item('Bring forward', 'bringForward', () => reorderCallout('forward'), calloutZ.forward),
+        item('Send backward', 'sendBackward', () => reorderCallout('backward'), calloutZ.backward),
+        item('Send to back', 'sendToBack', () => reorderCallout('back'), calloutZ.back),
       ];
     } else if (ctx.kind === 'counter') {
+      // w52 (2026-09-28): right-clicking the page while the Counter tool is
+      // armed. The old lone "Continue pin" item did nothing (no handler ever
+      // existed). A pin (or any mark) under the pointer now resolves to the
+      // normal annotation menu in annotationHitTest; bare page = the page
+      // menu, same as every other tool.
       items = [
-        item('Continue pin', 'continuePin'),
+        item('Paste', 'paste', doPasteAny, hasAnyClipboard),
       ];
     } else if (ctx.kind === 'annotation') {
+      const menuObj = annotationsByPageRef.current?.[ctx.pageNumber]?.objects?.[ctx.annotationIndex] || null;
+      const menuObjEditable = !menuObj || canModifyObj(menuObj);
+      const menuZ = zOrderFor(ctx.annotationIndex);
       items = [
         // UX: Cut = Copy + Delete. Stashes a deep clone of the shape on
         // the clipboard with mode='cut' (so doPasteAnnotation clears the
@@ -338,10 +496,8 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           if (ctx.annotationIndex < 0 || ctx.annotationIndex >= page.objects.length) return;
           const obj = page.objects[ctx.annotationIndex];
           if (!obj) return;
-          // Locked model 2026-07-17: Cut = Copy + immediate delete with no
-          // confirmation surface, so it stays OWN-marks-only (cross-author
-          // deletes must always confirm via the modal). To remove another
-          // user's shape: Copy + Delete (Delete routes through the modal).
+          // RULED 2026-09-28 owner: open editing + lock: Cut takes anyone's mark with no confirmation;
+          // a user-locked mark stays (canModifyObj).
           if (!canModifyObj(obj)) return;
           setClipboardAnnotation({
             object: deepClone(obj),
@@ -361,7 +517,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
             annotationIndex: null,
             tick: Date.now(),
           });
-        }),
+        }, menuObjEditable),
         // UX: Copy stashes the targeted shape's Fabric JSON + source page
         // on the clipboardAnnotation state (see ~line 11058). No visual
         // change — Paste is where the user sees the result. Matches the
@@ -382,15 +538,11 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         // behavior + live diagnostic dump. Grayed out when the clipboard
         // is empty — matches Acrobat, Drawboard PDF, Bluebeam, Figma.
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
+        duplicateItem({ indices: [ctx.annotationIndex] }),
         // UX: right-click Delete mirrors the keyboard Delete/Backspace path.
-        // Locked model 2026-07-17: when PDFViewer provides the bulk-delete
-        // planner bridge, the delete routes through it — cross-author deletes
-        // ALWAYS confirm via the collaborator-cross-author modal, own deletes
-        // follow the planner's existing modes (owner-own-only direct-fires) —
-        // exactly like pressing Delete with the shape selected. The splice
-        // itself is unchanged and runs as the planner's runDelete. Legacy
-        // fallback (no planner, or id-less object): direct splice for OWN
-        // marks only; foreign marks are never direct-fired.
+        // RULED 2026-09-28 owner: open editing + lock: Delete takes anyone's mark with no confirmation
+        // (via the planner when present, for the History row); a user-locked mark
+        // stays.
         // After the save, broadcast a "clear selection on this page" command
         // via pendingSvgSelection (annotationIndex: null) so the selection
         // doesn't stick to the shape that slides into the deleted index
@@ -401,8 +553,8 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           if (ctx.annotationIndex < 0 || ctx.annotationIndex >= page.objects.length) return;
           const obj = page.objects[ctx.annotationIndex];
           if (!obj) return;
-          const own = canModifyObj(obj);
-          if (!own && !canPlanForeignDelete(obj)) return;
+          // Open editing: any mark that is not user-locked.
+          if (!canModifyObj(obj)) return;
           const runDelete = () => {
             const next = deepClone(page);
             next.objects.splice(ctx.annotationIndex, 1);
@@ -426,10 +578,10 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
             });
             return;
           }
-          // Own-only fallback (planner absent or id-less own mark) — the
-          // guard above already rejected foreign marks on this path.
+          // Direct fallback (planner absent or id-less mark).
           runDelete();
-        }),
+        }, menuObjEditable),
+        ...lockMenuItems(menuObj ? [{ obj: menuObj }] : [], { indices: [ctx.annotationIndex] }),
         sep(),
         // UX: z-order — mirrors Illustrator/Figma/Photoshop placement
         // (flat block after Delete, above Group). Handler resolves each
@@ -445,23 +597,58 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         //   Cmd+Shift+[  → Send to Back
         item('Bring to front', 'bringToFront', () => {
           handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'front');
-        }),
+        }, menuZ.front),
         item('Bring forward', 'bringForward', () => {
           if (ctx.annotationIndex == null) return;
           handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'forward');
-        }),
+        }, menuZ.forward),
         item('Send backward', 'sendBackward', () => {
           if (ctx.annotationIndex == null) return;
           handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'backward');
-        }),
+        }, menuZ.backward),
         item('Send to back', 'sendToBack', () => {
           handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'back');
-        }),
+        }, menuZ.back),
         // UX: 2026-04-21 — Group / Ungroup items intentionally omitted
         // from the right-click menu. The feature is hidden app-wide
         // until the matrix-per-shape rewrite ships.
       ];
-    } else if (ctx.kind === 'group' && Array.isArray(ctx.groupIndices) && ctx.groupIndices.length >= 2) {
+    } else if (ctx.kind === 'surveyMarker' && ctx.surveyMarkerId) {
+      // UX: w53 (2026-09-28, owner: "annotations are annotations") — the
+      // Survey Marker menu is the shape menu: Paste, Delete and the four
+      // z-order items (the marker takes its place in the page's one stack).
+      // Delete uses the marker's own delete (ownership gate, trash, History
+      // row, linked-Excel row removal).
+      const reorderMarker = (direction) => {
+        if (typeof handleReorderFamily !== 'function') return;
+        handleReorderFamily(ctx.pageNumber, { markerIds: [ctx.surveyMarkerId], direction });
+      };
+      const markerRecord = typeof resolveSurveyMarker === 'function' ? resolveSurveyMarker(ctx.surveyMarkerId) : null;
+      const markerEditable = !markerRecord || !isUserLocked(markerRecord);
+      items = [
+        // Owner ruling 2026-09-28: Cut picks up the survey item's PLACEMENT
+        // only - the item, its Excel row and its answers stay (the survey
+        // panel shows it "Not on page"); Paste puts the SAME item back.
+        item('Cut', 'cut', () => copyFamilySelection?.(ctx.pageNumber, { markerIds: [ctx.surveyMarkerId] }, 'cut'),
+          markerEditable && typeof copyFamilySelection === 'function'),
+        item('Copy', 'copy', () => copyFamilySelection?.(ctx.pageNumber, { markerIds: [ctx.surveyMarkerId] }, 'copy')),
+        item('Paste', 'paste', doPasteAny, hasAnyClipboard),
+        duplicateItem({ markerIds: [ctx.surveyMarkerId] }),
+        item('Delete', 'delete', () => {
+          if (typeof deleteSurveyMarkers === 'function') deleteSurveyMarkers([ctx.surveyMarkerId]);
+        }, markerEditable),
+        ...lockMenuItems(markerRecord ? [{ obj: markerRecord, marker: true }] : [], { markerIds: [ctx.surveyMarkerId] }),
+        sep(),
+        item('Bring to front', 'bringToFront', () => reorderMarker('front')),
+        item('Bring forward', 'bringForward', () => reorderMarker('forward')),
+        item('Send backward', 'sendBackward', () => reorderMarker('backward')),
+        item('Send to back', 'sendToBack', () => reorderMarker('back')),
+      ];
+    } else if (ctx.kind === 'group' && Array.isArray(ctx.groupIndices)
+      // w56: selected callouts count as members too (a mark + a callout,
+      // or two callouts, is a multi-selection with the group menu).
+      && (ctx.groupIndices.length + (ctx.groupMarkerIds?.length || 0)
+        + (selectedCalloutIds && typeof selectedCalloutIds.size === 'number' ? selectedCalloutIds.size : 0)) >= 2) {
       // UX: Phase 19 follow-up — right-click inside the outer dashed
       // box of a multi-selection. Cut/Copy/Paste/Delete and the four
       // z-order items each operate on every selected annotation at
@@ -504,29 +691,31 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       // the live ref and can move a neighbor instead of the selected object.
       // Keep relative order within the selection and commit only once.
       const reorderAll = (direction) => {
+        // w53: family planner (same permutation; Survey Markers too).
+        if (typeof handleReorderFamily === 'function') {
+          handleReorderFamily(ctx.pageNumber, {
+            indices: sortedAsc,
+            calloutIds: Array.from(selectedCalloutIds || []),
+            markerIds: ctx.groupMarkerIds || [],
+            direction,
+          });
+          return;
+        }
         const page = annotationsByPageRef.current?.[ctx.pageNumber];
         if (!page?.objects?.length) return;
-        const selected = new Set(sortedAsc);
-        let entries = page.objects.map((object, index) => ({ object, selected: selected.has(index) }));
-        if (direction === 'front' || direction === 'back') {
-          const picked = entries.filter((entry) => entry.selected);
-          const rest = entries.filter((entry) => !entry.selected);
-          entries = direction === 'front' ? [...rest, ...picked] : [...picked, ...rest];
-        } else if (direction === 'forward') {
-          for (let index = entries.length - 2; index >= 0; index -= 1) {
-            if (entries[index].selected && !entries[index + 1].selected) {
-              [entries[index], entries[index + 1]] = [entries[index + 1], entries[index]];
-            }
-          }
-        } else if (direction === 'backward') {
-          for (let index = 1; index < entries.length; index += 1) {
-            if (entries[index].selected && !entries[index - 1].selected) {
-              [entries[index], entries[index - 1]] = [entries[index - 1], entries[index]];
-            }
-          }
+        // w52: the selection moves as ONE block through the shared stack
+        // helper (same permutation as the keyboard Cmd+]/[ path), and any
+        // callouts selected with the shapes move with them.
+        const calloutSlots = [];
+        if (selectedCalloutIds && typeof selectedCalloutIds.has === 'function' && selectedCalloutIds.size > 0) {
+          page.objects.forEach((object, index) => {
+            if (object?.data?.type === 'callout' && selectedCalloutIds.has(object?.data?.id)) calloutSlots.push(index);
+          });
         }
+        const result = reorderSelectionInStack(page.objects, [...sortedAsc, ...calloutSlots], direction);
+        if (!result.changed) return;
         const next = deepClone(page);
-        next.objects = entries.map((entry) => deepClone(entry.object));
+        next.objects = result.objects.map((object) => deepClone(object));
         handleSaveAnnotations(ctx.pageNumber, next, {
           source: 'object:modified',
           action: 'reorder-group',
@@ -534,23 +723,46 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         });
         setPendingSvgSelection({
           pageNumber: ctx.pageNumber,
-          annotationIndices: entries.reduce((indices, entry, index) => (
-            entry.selected ? [...indices, index] : indices
-          ), []),
+          // Shapes only: callout selection is keyed by id and survives the move.
+          annotationIndices: result.selectedIndices.filter(
+            (index) => result.objects[index]?.data?.type !== 'callout'
+          ),
           tick: Date.now(),
         });
       };
 
+      // w53: the whole selection — marks, callouts, Survey Markers.
+      const familySelection = {
+        indices: sortedAsc,
+        calloutIds: Array.from(selectedCalloutIds || []),
+        markerIds: ctx.groupMarkerIds || [],
+      };
+      // Owner ruling 2026-09-28: the group's members for Lock / Unlock, and
+      // whether any of them can still be cut / deleted (locked ones stay).
+      const groupPage = annotationsByPageRef.current?.[ctx.pageNumber];
+      const groupCalloutIdSet = new Set(familySelection.calloutIds.map(String));
+      const groupMembers = [
+        ...sortedAsc.map((idx) => ({ obj: groupPage?.objects?.[idx] })),
+        ...(groupPage?.objects || [])
+          .filter((o) => o?.data?.type === 'callout' && groupCalloutIdSet.has(String(o?.data?.id)))
+          .map((obj) => ({ obj })),
+        ...familySelection.markerIds.map((id) => ({
+          obj: typeof resolveSurveyMarker === 'function' ? resolveSurveyMarker(id) : null,
+          marker: true,
+        })),
+      ].filter((m) => m.obj);
+      const groupHasEditable = groupMembers.length === 0 || groupMembers.some((m) => !isUserLocked(m.obj));
       items = [
         item('Cut', 'cut', () => {
+          if (typeof copyFamilySelection === 'function') {
+            copyFamilySelection(ctx.pageNumber, familySelection, 'cut');
+            return;
+          }
           const page = annotationsByPageRef.current?.[ctx.pageNumber];
           if (!page?.objects) return;
-          // Locked model 2026-07-17: Cut deletes with no confirmation
-          // surface, so it operates on the viewer's OWN members only —
-          // foreign-author members stay on the page untouched (cross-author
-          // deletes must always confirm via the Delete item's modal path).
-          // Clipboard matches the splice exactly (own members only) so
-          // Paste never duplicates a shape that was left on the page.
+          // RULED 2026-09-28 owner: open editing + lock: Cut takes every member that is not user-locked;
+          // the clipboard matches the splice exactly, so Paste never duplicates a
+          // member that stayed on the page.
           const ownAsc = sortedAsc.filter((idx) => canModifyObj(page.objects[idx]));
           if (ownAsc.length === 0) return;
           const copy = copyAll(ownAsc);
@@ -571,26 +783,54 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
             annotationIndex: null,
             tick: Date.now(),
           });
-        }),
+        }, groupHasEditable),
         item('Copy', 'copy', () => {
+          if (typeof copyFamilySelection === 'function') {
+            copyFamilySelection(ctx.pageNumber, familySelection, 'copy');
+            return;
+          }
           const copy = copyAll();
           if (!copy) return;
           setClipboardAnnotation({ ...copy, mode: 'copy' });
           clearCalloutClipboard();
         }),
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
-        // Locked model 2026-07-17: multi-select Delete routes through the
-        // bulk-delete planner (parity with keyboard Delete on the same
-        // selection) — cross-author members ALWAYS confirm via the modal.
-        // Deletable set = own members + foreign members that can be planned
+        duplicateItem(familySelection),
+        // RULED 2026-09-28 owner: open editing + lock: multi-select Delete removes every member
+        // that is not user-locked, with no confirmation (via the planner for the
+        // History row).
         // (planner present + stable id); anything else stays on the page.
         item('Delete', 'delete', () => {
+          // w53: the selection's Survey Markers are deleted with the marks
+          // in the same save (one undo step, nothing deleted if the
+          // cross-author confirm is cancelled); markers alone go through
+          // their own delete.
+          const markerIds = ctx.groupMarkerIds || [];
           const page = annotationsByPageRef.current?.[ctx.pageNumber];
-          if (!page?.objects) return;
-          const deletable = sortedDesc
+          const deletable = page?.objects ? sortedDesc
             .map((idx) => ({ idx, obj: page.objects[idx] }))
-            .filter(({ obj }) => canModifyObj(obj) || canPlanForeignDelete(obj));
-          if (deletable.length === 0) return;
+            .filter(({ obj }) => canModifyObj(obj)) : [];
+          // w56: the selection's callouts go too — the same gated delete as
+          // pressing Delete with the mixed selection (SVGAnnotationLayer's
+          // keyboard path). Cut / Copy / Duplicate / Lock already took them;
+          // Delete used to leave them on the page. Only this page's callouts
+          // (the same scope Cut / Copy / Duplicate use), and only ones that
+          // still exist.
+          const pageCalloutIds = new Set((page?.objects || [])
+            .filter((o) => o?.data?.type === 'callout' && o?.data?.id != null)
+            .map((o) => String(o.data.id)));
+          const selectedCalloutIdList = familySelection.calloutIds
+            .filter((id) => pageCalloutIds.has(String(id)));
+          const deleteSelectedCallouts = () => {
+            if (selectedCalloutIdList.length > 0 && typeof window.__onDeleteSelectedCallouts === 'function') {
+              window.__onDeleteSelectedCallouts(selectedCalloutIdList);
+            }
+          };
+          if (deletable.length === 0) {
+            if (markerIds.length > 0 && typeof deleteSurveyMarkers === 'function') deleteSurveyMarkers(markerIds);
+            deleteSelectedCallouts();
+            return;
+          }
           const runDelete = () => {
             const next = deepClone(page);
             for (const { idx } of deletable) {
@@ -600,6 +840,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
               source: 'object:modified',
               action: 'delete',
               checkpointPolicy: 'normal',
+              ...(markerIds.length > 0 ? { surveyMarkerFamily: { deletes: markerIds } } : {}),
             });
             setPendingSvgSelection({
               pageNumber: ctx.pageNumber,
@@ -611,19 +852,27 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
             .map(({ obj }) => obj?.id)
             .filter((id) => id != null);
           if (typeof requestBulkDelete === 'function' && candidateIds.length > 0) {
+            // w56: arm the mixed marks+callouts batch first (as the keyboard
+            // Delete does) so the planner folds this page's callouts into the
+            // marks' save — one Undo brings both back; the callout delete
+            // below then skips the ones already taken.
+            if (selectedCalloutIdList.length > 0 && typeof beginBatchDelete === 'function') {
+              beginBatchDelete(2, selectedCalloutIdList);
+            }
             requestBulkDelete({
               candidateIds,
               snapshotObjects: deletable.map(({ obj }) => deepClone(obj)),
               pageNumber: ctx.pageNumber,
               runDelete,
             });
+            deleteSelectedCallouts();
             return;
           }
-          // Own-only fallback: with no planner (or an all-id-less set) the
-          // deletable filter above admitted own/boot marks only, so a direct
-          // fire can never touch a foreign-author mark.
+          // Direct fallback: no planner (or an all-id-less set).
           runDelete();
-        }),
+          deleteSelectedCallouts();
+        }, groupHasEditable),
+        ...lockMenuItems(groupMembers, familySelection),
         sep(),
         item('Bring to front', 'bringToFront', () => {
           reorderAll('front');
@@ -642,25 +891,52 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         // hidden app-wide until the matrix-per-shape rewrite ships.
       ];
     } else {
-      // Empty canvas / page — only Paste lives here (for annotation paste).
-      // Page-level operations (Cut/Copy/Delete/Rotate/Mirror) belong in the
-      // thumbnails sidebar (src/sidebar/PagesPanel.jsx), not the canvas
-      // right-click. This matches Acrobat and Bluebeam: right-click a page
-      // thumbnail for page ops; right-click the page body for annotation
-      // ops. Shares doPasteAnnotation with the annotation menu above.
+      // Empty canvas / page. Paste (marks) at the press point lives here,
+      // shared with the annotation menu above (doPasteAny). Owner 2026-10-07:
+      // with Pan or Select armed the page operations are here too (below).
       items = [
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
       ];
     }
 
+    // The page menu: a bare page under Pan / Select (any Select mode). A
+    // drawing tool keeps the plain Paste menu (its press is for drawing).
+    const pageMenuItems = ctx.kind === 'page'
+      && pageMenu && PICK_ANY_TOOLS.includes(pageMenu.activeTool)
+      && Number.isInteger(ctx.pageNumber) && ctx.pageNumber >= 1
+      ? [
+        // Marks on the clipboard still paste here first, at the press point.
+        ...(hasAnyClipboard ? [
+          { key: 'pasteMarks', label: 'Paste', icon: 'paste' },
+          { key: 'sep-marks', separator: true },
+        ] : []),
+        ...buildPageMenuItems({
+          pageNumber: ctx.pageNumber,
+          pageCount: pageMenu.pageCount,
+          clipboardPage: pageMenu.clipboardPage,
+          clipboardType: pageMenu.clipboardType,
+          hasTransform: pageHasTransform(pageMenu.pageTransformations?.[ctx.pageNumber]),
+          available: availableActions(pageMenu.handlers),
+          // Phone: the same compact rows as the Pages tab's menu.
+          compact: Boolean(mobileMode),
+        }),
+      ]
+      : null;
+    const pickPageMenuItem = (key) => {
+      closeAnnotationContextMenu();
+      if (key === 'pasteMarks') { doPasteAny(); return; }
+      runPageMenuAction(key, ctx.pageNumber, pageMenu?.handlers);
+    };
+
     // UX: mobile context-menu chrome (Phase D parity). Panel width tracks the
     // demo per menu type: object menus (annotation / group / callout) = 176px,
     // paste/counter/text-markup = 154px (demo App.tsx:866/897 + styles.ts:861).
     const isMobileMenu = !!mobileMode;
-    const mobileWidth = (ctx.kind === 'annotation' || ctx.kind === 'group' || ctx.kind === 'callout') ? 176 : 154;
+    const mobileWidth = pageMenuItems ? 'max-content'
+      : (ctx.kind === 'annotation' || ctx.kind === 'group' || ctx.kind === 'callout' || ctx.kind === 'surveyMarker') ? 176 : 154;
     const mobileTitle = (ctx.kind === 'annotation' || ctx.kind === 'group') ? 'Annotation'
+      : ctx.kind === 'surveyMarker' ? 'Survey Marker'
       : ctx.kind === 'callout' ? 'Callout'
-      : ctx.kind === 'counter' ? 'Counter'
       : 'Page';
 
     const panel = (
@@ -676,6 +952,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           // be found, use that viewport alone. An 8px margin keeps the menu
           // off each bound.
           if (!el) return;
+          if (isMobileMenu) el.style.maxHeight = 'none';
           const rect = el.getBoundingClientRect();
 
           // Find the PDF page wrapper for ctx.pageNumber, then cut its rect
@@ -710,24 +987,52 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
 
           el.style.left = `${position.left}px`;
           el.style.top = `${position.top}px`;
+          if (isMobileMenu) {
+            // Polish round 6: on the phone the menu stays between the header
+            // and the dock (it ran 25px under the dock on a 375x667), and
+            // scrolls inside when it is taller than that band.
+            const vv = window.visualViewport;
+            let bandTop = 0;
+            let bandBottom = vv ? Math.min(window.innerHeight, vv.offsetTop + vv.height) : window.innerHeight;
+            const header = document.querySelector('[data-mobile-pdf-header]')?.getBoundingClientRect();
+            if (header && header.height > 0) bandTop = Math.max(bandTop, header.bottom);
+            const dock = document.querySelector('.mobile-pdf-dock')?.getBoundingClientRect();
+            if (dock && dock.height > 0 && dock.top < bandBottom) bandBottom = dock.top;
+            const fit = fitMenuInBand({ top: position.top, height: rect.height, band: { top: bandTop, bottom: bandBottom } });
+            el.style.top = `${fit.top}px`;
+            el.style.maxHeight = fit.maxHeight == null ? '' : `${fit.maxHeight}px`;
+            el.style.overflowY = fit.maxHeight == null ? '' : 'auto';
+          }
         }}
+        role="menu"
+        aria-label={pageMenuItems ? `Page ${ctx.pageNumber} actions` : `${mobileTitle} actions`}
+        data-page-menu={pageMenuItems ? ctx.pageNumber : undefined}
+        // Polish 3 (2026-10-04): both menus take the one popup corner and
+        // shadow (--radius-md / --shadow-popover), and the phone rows are the
+        // phone menu row (below). The fills and hover colours are unchanged:
+        // the menu shades are an owner decision still pending.
         style={isMobileMenu ? {
           // UX: demo touch context-menu chrome (mobile-expo-go/src/styles.ts:861-871).
-          // Fixed panel, per-type width, radius 9, #181B20 fill / #3C424D border,
-          // 6px padding, no shadow (demo uses borders + fills only).
+          // Fixed panel, per-type width, --surface-1 fill / --border edge,
+          // 6px padding.
           position: 'fixed',
           left: ctx.x,
           top: ctx.y,
           background: 'var(--surface-1)',
           border: '1px solid var(--border)',
-          borderRadius: 9,
+          borderRadius: 'var(--radius-md)',
+          boxShadow: 'var(--shadow-popover)',
           zIndex: 10000,
           width: mobileWidth,
+          // The page menu is as wide as its longest row, at least 188px
+          // (the Pages tab's page menu).
+          minWidth: pageMenuItems ? 188 : undefined,
+          maxWidth: pageMenuItems ? 'calc(100vw - 32px)' : undefined,
           padding: 6,
           fontSize: 13,
           color: 'var(--text-1)',
           letterSpacing: 0,
-          fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+          fontFamily: 'var(--font-ui)',
         } : {
           // Design.md menu spec: dark card, ink border, small radius,
           // deep soft shadow — matches the home page's portalled menus.
@@ -736,55 +1041,70 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           top: ctx.y,
           background: 'var(--surface-2)',
           border: '1px solid var(--border)',
-          borderRadius: 8,
-          boxShadow: '0 12px 30px rgba(0,0,0,0.5)',
+          borderRadius: 'var(--radius-md)',
+          boxShadow: 'var(--shadow-popover)',
           zIndex: 10000,
           minWidth: 160,
           padding: 4,
           fontSize: 12.5,
           color: 'var(--text-2)',
           letterSpacing: 0,
-          fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+          fontFamily: 'var(--font-ui)',
         }}
       >
         {/* UX: mobile menus lead with a muted title row + divider, matching the
             demo FloatingContextMenu (styles.ts:872-889). Desktop stays title-less. */}
-        {isMobileMenu && (
+        {isMobileMenu && !pageMenuItems && (
           <>
-            <div style={{ color: 'var(--text-3)', fontSize: 11, fontWeight: 800, padding: '4px 6px' }}>{mobileTitle}</div>
-            <div style={{ height: 1, background: 'var(--surface-3)' }} />
+            <div style={{ color: 'var(--text-3)', font: 'var(--sheet-section)', padding: '4px 6px' }}>{mobileTitle}</div>
+            <div role="separator" style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
           </>
         )}
-        {items.map((it) => (
+        {pageMenuItems && (
+          // The Pages tab's own rows (sidebar/PageActionsMenu.jsx); hover is
+          // this menu's (it sits on --surface-2 / --surface-1).
+          <PageMenuList
+            items={pageMenuItems}
+            mobile={isMobileMenu}
+            onPick={pickPageMenuItem}
+            hoverBg={isMobileMenu ? 'var(--surface-2)' : 'var(--surface-3)'}
+            dangerHoverBg={isMobileMenu ? 'var(--surface-2)' : 'var(--surface-3)'}
+          />
+        )}
+        {!pageMenuItems && items.map((it) => (
           it.separator
-            ? <div key={it.key} style={{ height: 1, background: isMobileMenu ? 'var(--surface-3)' : 'var(--surface-3)', margin: '4px 0' }} />
+            ? <div key={it.key} role="separator" style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
             : (
               <div
                 key={it.key}
+                role="menuitem"
+                aria-disabled={it.disabled ? 'true' : undefined}
                 onClick={it.disabled ? undefined : it.onClick}
                 // UX: disabled items (e.g. Paste when the clipboard is
                 // empty) render in muted gray with a default cursor and no
                 // hover surveyMarker — the user can see the option exists but
                 // that it's not currently actionable. Matches standard
-                // desktop-app menu behavior. Danger items (Delete) use the
-                // demo destructive color #F08A8A on mobile, design.md danger on desktop.
+                // desktop-app menu behavior. Danger items (Delete) use
+                // --danger-text on both.
+                // Polish 3: the phone row is the phone menu row every other
+                // phone menu uses (--sheet-menu-item-h, 15px regular, as the
+                // More menu and the page menu); it was 34px at 13px/800.
                 style={isMobileMenu ? {
-                  height: 34,
+                  minHeight: 'var(--sheet-menu-item-h)',
                   display: 'flex',
                   alignItems: 'center',
                   padding: '0 8px',
-                  borderRadius: 6,
-                  cursor: it.disabled ? 'default' : 'pointer',
+                  borderRadius: 'var(--radius-xs)',
+                  cursor: 'pointer',
                   userSelect: 'none',
-                  fontSize: 13,
-                  fontWeight: 800,
-                  color: it.disabled ? 'var(--text-disabled)' : (it.key === 'delete' ? 'var(--danger-text)' : 'var(--text-1)'),
+                  font: '400 15px/20px var(--font-ui)',
+                  color: it.key === 'delete' ? 'var(--danger-text)' : 'var(--text-1)', // off: states.css section 6
                 } : {
                   padding: '7px 12px',
                   borderRadius: 5,
-                  cursor: it.disabled ? 'default' : 'pointer',
+                  cursor: 'pointer',
                   userSelect: 'none',
-                  color: it.disabled ? 'var(--text-disabled)' : (it.key === 'delete' ? 'var(--danger-text)' : 'var(--text-1)'),
+                  color: it.key === 'delete' ? 'var(--danger-text)' : 'var(--text-1)', // off: states.css section 6
                 }}
                 onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = isMobileMenu ? 'var(--surface-2)' : 'var(--surface-3)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}

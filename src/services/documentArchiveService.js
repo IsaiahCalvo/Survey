@@ -13,8 +13,10 @@
  */
 
 import { supabase } from '../supabaseClient';
+import { pdfByteCache } from './pdfByteCache.js';
 import { purgeAnnotationDoc } from './annotationDocSync';
 import { normalizeDocumentItem } from './archiveContract';
+import { purgeWithSurveyMedia, survivingDocumentsFinder } from './surveyMediaPurge.js';
 
 // file_size and page_count feed the Archive preview pane, which mirrors the
 // Documents ledger's preview: you should be able to tell WHICH file you are
@@ -89,11 +91,25 @@ export async function restoreDocument(documentId) {
  *
  * Both follow-up steps are best-effort: the row is already gone, so a storage or
  * IndexedDB hiccup must not report the delete as failed.
+ *
+ * Survey media is cleaned up only AFTER the purge has succeeded
+ * (surveyMediaPurge.js): a failed purge leaves the document and all its media
+ * intact. The caller then removes their own uploads (retryable failures are
+ * queued for them); other uploaders' media is removed by the server sweep
+ * (archive-purge-sweep -> list_orphaned_survey_media).
  */
 export async function deleteDocumentForever(documentId) {
   if (!documentId) return { success: false, error: 'No document selected.' };
 
-  const result = await callArchiveRpc('purge_archived_document', { p_document_id: documentId }, 'document');
+  const { data: rows } = await supabase
+    .from('documents')
+    .select('id, user_id, user_archived_at')
+    .eq('id', documentId);
+  const result = await purgeWithSurveyMedia({
+    documents: rows?.length ? rows : [{ id: documentId }],
+    purge: () => callArchiveRpc('purge_archived_document', { p_document_id: documentId }, 'document'),
+    findSurvivingDocuments: survivingDocumentsFinder(supabase),
+  });
   if (!result.success) return result;
 
   const orphanedPaths = result.data?.orphaned_paths || [];
@@ -105,6 +121,8 @@ export async function deleteDocumentForever(documentId) {
       console.warn('[KAL-428] stored PDF removal threw:', err);
     }
   }
+  // w36: this device's cached copy of a file nobody references any more.
+  for (const path of orphanedPaths) void pdfByteCache().removePath(path);
 
   try {
     await purgeAnnotationDoc(documentId);

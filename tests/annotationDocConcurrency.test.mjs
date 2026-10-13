@@ -13,7 +13,17 @@ import {
   getSurveyMarkersMap,
   setMetaValue,
   syncByPageToDoc,
+  readAnnotationObject,
+  writeAnnotationMark,
 } from '../src/services/annotationDocStore.js';
+
+// RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
+// — marks are nested per-field maps in the `marks` map (store v3); tests seed
+// them through the store instead of setting a whole { p, o } value.
+function seedMark(doc, key, entry) {
+  writeAnnotationMark(doc, key, entry.p, entry.o);
+}
+
 import {
   openAnnotationDoc,
   purgeAnnotationDoc,
@@ -420,7 +430,7 @@ test('two production handles preserve an eraser lane while collaborator move/res
       [...getEraserOpsMap(docB).keys()].some((key) => key.startsWith('writer-b\u0000')),
       false,
     );
-    const stableBase = getAnnotationsMap(docB).get('collab-base-edit').o;
+    const stableBase = readAnnotationObject(docB, 'collab-base-edit'); // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
     assert.equal(stableBase.left, 200);
     assert.equal(stableBase.top, 100);
     assert.equal(stableBase.angle, 30);
@@ -441,7 +451,7 @@ test('two production handles preserve an eraser lane while collaborator move/res
     handleB.applyByPage(beforeBEdit);
     assert.equal(getEraserOpsMap(docB).size, 1);
     assert.equal(
-      getAnnotationsMap(docB).get('collab-base-edit').o.paperEraserGeometry,
+      readAnnotationObject(docB, 'collab-base-edit').paperEraserGeometry, // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
       undefined,
       'collaborator edit Undo must not bake the erased survivor into the stable base',
     );
@@ -516,7 +526,7 @@ test('same-writer erase then edit Undo leaves the older erase Undo/Redo exact', 
     handle.applyByPage(erased);
     assert.equal(getEraserOpsMap(doc).size, 1, 'edit Undo preserves older erase lane');
     assert.equal(
-      getAnnotationsMap(doc).get('same-writer-edit').o.paperEraserGeometry,
+      readAnnotationObject(doc, 'same-writer-edit').paperEraserGeometry, // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
       undefined,
       'edit Undo must keep the original stable centerline base',
     );
@@ -1116,11 +1126,11 @@ test('id-less erase identity survives JSON clone and z-order reversal', () => {
 test('legacy duplicate identity survives the real JSON clone and reverse boundary', () => {
   const doc = new Y.Doc();
   const legacyKey = '\u0000duplicate:dup:1:1';
-  getAnnotationsMap(doc).set('dup', {
+  seedMark(doc, 'dup', {
     p: 1,
     o: shortInk('dup', 0, 20),
   });
-  getAnnotationsMap(doc).set(legacyKey, {
+  seedMark(doc, legacyKey, {
     p: 1,
     o: shortInk('dup', 30, 50),
   });
@@ -1741,7 +1751,7 @@ test('cold reopen terminal outbox records quarantine persisted and legacy local 
       const persisted = new Y.Doc();
       setMetaValue(persisted, 'persisted-only', status, 'indexeddb-preload');
       const legacy = new Y.Doc();
-      getAnnotationsMap(legacy).set(`legacy-${status}`, {
+      seedMark(legacy, `legacy-${status}`, {
         p: 1,
         o: {
           type: 'rect',
@@ -1969,7 +1979,7 @@ test('actor-scoped persisted offline deletion reaches authorized WAL and cold re
   const documentId = 'doc-persisted-offline-delete';
   const actorUserId = 'actor-a';
   const cloud = new Y.Doc();
-  getAnnotationsMap(cloud).set('offline-delete', {
+  seedMark(cloud, 'offline-delete', {
     p: 1,
     o: {
       type: 'rect',
@@ -2035,7 +2045,7 @@ test('actor-scoped persisted offline update reaches authorized WAL and cold repl
   const documentId = 'doc-persisted-offline-update';
   const actorUserId = 'actor-a';
   const cloud = new Y.Doc();
-  getAnnotationsMap(cloud).set('offline-update', {
+  seedMark(cloud, 'offline-update', {
     p: 1,
     o: {
       type: 'rect',
@@ -2052,7 +2062,7 @@ test('actor-scoped persisted offline update reaches authorized WAL and cold repl
     data: bytesToPgHex(Y.encodeStateAsUpdate(cloud)),
   }];
   const persisted = cloneDoc(cloud);
-  getAnnotationsMap(persisted).set('offline-update', {
+  seedMark(persisted, 'offline-update', {
     p: 1,
     o: {
       type: 'rect',
@@ -2330,7 +2340,7 @@ test('actorless legacy recovery cannot override an ordinary pending same-key val
   const actorUserId = 'actor-a';
   const outbox = createMemoryAnnotationOutbox();
   const pendingDoc = new Y.Doc();
-  getAnnotationsMap(pendingDoc).set('same-key', {
+  seedMark(pendingDoc, 'same-key', {
     p: 1,
     o: {
       type: 'rect',
@@ -2351,7 +2361,7 @@ test('actorless legacy recovery cannot override an ordinary pending same-key val
     update: Y.encodeStateAsUpdate(pendingDoc),
   });
   const legacy = new Y.Doc();
-  getAnnotationsMap(legacy).set('same-key', {
+  seedMark(legacy, 'same-key', {
     p: 1,
     o: {
       type: 'rect',
@@ -2401,7 +2411,7 @@ test('actorless legacy recovery defers behind a pending net-zero tombstone', asy
   const actorUserId = 'actor-a';
   const outbox = createMemoryAnnotationOutbox();
   const pendingDoc = new Y.Doc();
-  getAnnotationsMap(pendingDoc).set('same-key', {
+  seedMark(pendingDoc, 'same-key', {
     p: 1,
     o: {
       type: 'rect',
@@ -2427,7 +2437,7 @@ test('actorless legacy recovery defers behind a pending net-zero tombstone', asy
     update: pendingUpdate,
   });
   const legacy = new Y.Doc();
-  getAnnotationsMap(legacy).set('same-key', {
+  seedMark(legacy, 'same-key', {
     p: 1,
     o: {
       type: 'rect',
@@ -2715,7 +2725,7 @@ test('account switch cannot expose or delete another actor outbox', async () => 
 
 test('two clients deterministically converge when promoting one legacy sentinel identity', () => {
   const seed = new Y.Doc();
-  getAnnotationsMap(seed).set('\u0000idless:1:0', {
+  seedMark(seed, '\u0000idless:1:0', {
     p: 1,
     o: shortInk('legacy', 0, 30, { idless: true }),
   });
@@ -2743,7 +2753,7 @@ test('lane-owned stable base survives clone/reorder and lane clear restores it',
   syncByPageToDoc(doc, {
     1: { objects: [shortInk('a', 0, 30), shortInk('b', 50, 80)] },
   });
-  const originalBase = structuredClone(getAnnotationsMap(doc).get('a').o);
+  const originalBase = structuredClone(readAnnotationObject(doc, 'a')); // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
 
   commitErase(doc, {
     id: 'stable-clone-reorder',
@@ -2761,7 +2771,7 @@ test('lane-owned stable base survives clone/reorder and lane clear restores it',
   clonedReordered[1].objects.reverse();
   syncByPageToDoc(doc, clonedReordered);
   assert.deepEqual(
-    getAnnotationsMap(doc).get('a').o,
+    readAnnotationObject(doc, 'a'), // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
     originalBase,
     'materialized survivor never replaces the stable base',
   );
@@ -2977,9 +2987,15 @@ test('history normalization preserves serialized duplicate identity through reor
   );
   syncByPageToDoc(doc, normalized);
   assert.equal(getAnnotationsMap(doc).size, 2);
+  // w52 ruling (2026-09-28): this test is about identity; its old expected
+  // order ([0..10] first) was the store DROPPING the reorder on reload — the
+  // bug the owner reported ("I can't change the Z-order"). The stacking order
+  // now persists (annotationStackOrder.js), so a reload keeps the reordered
+  // order. Identity is still what is checked: both strokes survive, each with
+  // its own geometry, in the order the page was saved.
   assert.deepEqual(
     docToByPage(cloneDoc(doc))[1].objects.map((object) => object.path),
-    [[['M', 0, 50], ['L', 10, 50]], [['M', 20, 50], ['L', 30, 50]]],
+    [[['M', 20, 50], ['L', 30, 50]], [['M', 0, 50], ['L', 10, 50]]],
   );
 });
 
@@ -3843,8 +3859,8 @@ test('catch-up replays a late lower sequence after legal database commit inversi
     if (!earlyHigher) earlyHigher = bytesToPgHex(update);
     else lateLower = bytesToPgHex(update);
   });
-  remote.getMap('annotations').set('seq-2', { p: 1, o: nativeInk('seq-2') });
-  remote.getMap('annotations').set('seq-1', { p: 1, o: nativeInk('seq-1') });
+  seedMark(remote, 'seq-2', { p: 1, o: nativeInk('seq-2') });
+  seedMark(remote, 'seq-1', { p: 1, o: nativeInk('seq-1') });
 
   const doc = new Y.Doc();
   const handle = await openAnnotationDoc({ actorUserId: 'test-actor',
@@ -3863,8 +3879,8 @@ test('catch-up replays a late lower sequence after legal database commit inversi
   subscribed?.('SUBSCRIBED');
   await new Promise((resolve) => setTimeout(resolve, 5));
 
-  assert.equal(doc.getMap('annotations').has('seq-1'), true, 'late lower sequence is not skipped');
-  assert.equal(doc.getMap('annotations').has('seq-2'), true);
+  assert.equal(getAnnotationsMap(doc).has('seq-1'), true, 'late lower sequence is not skipped');
+  assert.equal(getAnnotationsMap(doc).has('seq-2'), true);
   await handle.destroy();
 });
 
@@ -4361,6 +4377,9 @@ test('42501 drains skipped causal dependents and a fresh authorized edit returns
     enableLocal: false,
     enableRealtime: false,
     doc,
+    // w33: the per-edit debounce is now an idle checkpoint past a minimum
+    // tail; this pins the same 1.2 s / one-row case.
+    checkpointPolicy: { idleMs: 1200, minTailRows: 1 },
   });
 
   handle.setMeta('X', 'rejected');
@@ -4542,12 +4561,18 @@ test('the 40-op accepted-prefix snapshot excludes a concurrently queued denied o
     enableLocal: false,
     enableRealtime: false,
     doc,
+    // w33: the row-40 checkpoint waits for a quiet moment (none here) and
+    // for no pending append, so the denied op is always settled before it
+    // encodes; this still pins that the checkpoint holds Y and not Z.
+    checkpointPolicy: { dueQuietMs: 0 },
   });
   for (let index = 0; index < 39; index += 1) handle.setMeta(`pre-${index}`, index);
   await handle.drain();
 
   handle.setMeta('Y', 'fortieth-authorized');
   handle.setMeta('Z', 'forty-first-denied');
+  await handle.drain();
+  await new Promise((resolve) => setTimeout(resolve, 20));
   await handle.drain();
 
   assert.equal(rows.length, 40);
@@ -4566,9 +4591,11 @@ function makeGapRepairBackend(documentId) {
   let appendAttempt = 0;
   let snapshotMode = 'fail';
   let subscribeCallback = null;
+  const snapshotAtSeqs = [];
   return {
     rows,
     snapshots,
+    snapshotAtSeqs,
     allowRepair() { snapshotMode = 'success'; },
     denyRepair() { snapshotMode = 'deny'; },
     fireSubscribed() { return subscribeCallback?.('SUBSCRIBED'); },
@@ -4600,6 +4627,7 @@ function makeGapRepairBackend(documentId) {
             return { data: null, error: { code: 'XX000', message: 'checkpoint unavailable' } };
           }
           snapshots.push(args.p_snapshot);
+          snapshotAtSeqs.push(Number(args.p_at_seq));
           return { data: true, error: null };
         }
         throw new Error(`unexpected RPC ${name}`);
@@ -4645,7 +4673,13 @@ test('scheduled staged-prefix repair returns sync health to idle', async () => {
     { healthy: true, error: null, stage: 'idle', queueSize: 0 },
     'debounced staged checkpoint explicitly repairs the gap',
   );
+  // w33 (checkpoint policy ruled 2026-09-25): no checkpoint per edit, so B
+  // (accepted by the WAL) is read from the tail after the repair checkpoint,
+  // as a cold reopen does: checkpoint + every row after its at_seq.
   const cold = await snapshotHexToDoc(backend.snapshots.at(-1));
+  for (const row of backend.rows.filter((entry) => entry.seq > backend.snapshotAtSeqs.at(-1))) {
+    Y.applyUpdate(cold, pgHexToBytes(row.data));
+  }
   assert.equal(getMetaValue(cold, 'A'), 'missed-predecessor');
   assert.equal(getMetaValue(cold, 'B'), 'later-wal');
 
@@ -4802,6 +4836,8 @@ test('reconnect gap repair excludes a pending mutation that is later denied', as
   const rows = [];
   const snapshots = [];
   let appendAttempt = 0;
+  const liveResends = [];
+  let firstAppendArgs = null;
   let allowSnapshots = false;
   let subscribeCallback = null;
   let resolveDeniedAppend;
@@ -4815,11 +4851,18 @@ test('reconnect gap repair excludes a pending mutation that is later denied', as
       if (name === 'append_annotation_update') {
         appendAttempt += 1;
         if (appendAttempt === 1) {
+          firstAppendArgs = args;
           return { data: null, error: { code: 'XX000', message: 'first WAL miss' } };
         }
         if (appendAttempt === 2) {
           markDeniedAppendEntered();
           return pendingDeniedAppend;
+        }
+        // RULED 2026-09-24 (per-field sync task: an update only a snapshot
+        // carried is re-sent through the WAL so already-open peers get it).
+        if (args.p_client_seq === firstAppendArgs?.p_client_seq) {
+          liveResends.push(args);
+          return { data: [{ seq: 1 }], error: null };
         }
         throw new Error(`unexpected append attempt ${appendAttempt}`);
       }
@@ -4880,7 +4923,13 @@ test('reconnect gap repair excludes a pending mutation that is later denied', as
     undefined,
     'reconnect repair excludes the still-pending authorization result',
   );
-  assert.equal(appendAttempt, 2);
+  // RULED 2026-09-24 (per-field sync task): the third submission is the live
+  // re-send of the snapshot-covered 'gap' update — exact bytes, same writer
+  // and sequence — never the denied one.
+  assert.equal(appendAttempt, 3);
+  assert.equal(liveResends.length, 1);
+  assert.equal(liveResends[0].p_client_id, firstAppendArgs.p_client_id);
+  assert.equal(liveResends[0].p_data, firstAppendArgs.p_data);
   assert.equal(getMetaValue(doc, 'gap'), 'missed-predecessor');
   assert.equal(getMetaValue(doc, 'denied'), undefined);
   assert.equal(handle.isSyncHealthy(), false);
@@ -5061,7 +5110,7 @@ test('shipped actorless IndexedDB recovers only matching-author entries and neve
   const rows = [];
   let legacyCleared = false;
   const legacySeed = new Y.Doc();
-  getAnnotationsMap(legacySeed).set('legacy-a', {
+  seedMark(legacySeed, 'legacy-a', {
     p: 1,
     o: {
       type: 'rect',
@@ -5160,7 +5209,7 @@ test('shipped actorless IndexedDB recovers only matching-author entries and neve
 test('actorless legacy deletion stays quarantined because the deleting account is unknowable', async () => {
   const documentId = 'doc-legacy-owned-delete';
   const cloud = new Y.Doc();
-  getAnnotationsMap(cloud).set('owned', {
+  seedMark(cloud, 'owned', {
     p: 1,
     o: {
       type: 'rect',
@@ -5225,7 +5274,7 @@ test('a permission-rejected legacy recovery never auto-resubmits on a later open
   let denyWrites = true;
   let cleared = false;
   const legacy = new Y.Doc();
-  getAnnotationsMap(legacy).set('rejected-owned', {
+  seedMark(legacy, 'rejected-owned', {
     p: 1,
     o: {
       type: 'rect',
@@ -5313,7 +5362,7 @@ test('offline legacy recovery transitioning to 42501 quarantines only one semant
   let mode = 'offline';
   let appendAttempts = 0;
   const legacy = new Y.Doc();
-  getAnnotationsMap(legacy).set('offline-then-denied', {
+  seedMark(legacy, 'offline-then-denied', {
     p: 1,
     o: {
       type: 'rect',
@@ -5410,7 +5459,7 @@ test('repeated offline legacy opens keep one bounded pending recovery', async ()
   const documentId = 'doc-legacy-offline-dedupe';
   const rows = [];
   const legacy = new Y.Doc();
-  getAnnotationsMap(legacy).set('offline-owned', {
+  seedMark(legacy, 'offline-owned', {
     p: 1,
     o: {
       type: 'rect',
@@ -5463,7 +5512,7 @@ test('repeated offline legacy opens keep one bounded pending recovery', async ()
 test('cloud-identical collaborator annotations and metadata retire without reauthoring', async () => {
   const documentId = 'doc-legacy-identical-retirement';
   const cloud = new Y.Doc();
-  getAnnotationsMap(cloud).set('collaborator', {
+  seedMark(cloud, 'collaborator', {
     p: 1,
     o: {
       type: 'circle',
@@ -5520,7 +5569,7 @@ test('missing-author and same-key legacy conflicts remain detached and quarantin
   const documentId = 'doc-legacy-quarantine';
   const rows = [];
   const cloud = new Y.Doc();
-  getAnnotationsMap(cloud).set('conflict', {
+  seedMark(cloud, 'conflict', {
     p: 1,
     o: {
       type: 'rect',
@@ -5537,7 +5586,7 @@ test('missing-author and same-key legacy conflicts remain detached and quarantin
     data: bytesToPgHex(Y.encodeStateAsUpdate(cloud)),
   });
   const legacy = new Y.Doc();
-  getAnnotationsMap(legacy).set('conflict', {
+  seedMark(legacy, 'conflict', {
     p: 1,
     o: {
       type: 'rect',
@@ -5545,7 +5594,7 @@ test('missing-author and same-key legacy conflicts remain detached and quarantin
       data: { id: 'conflict', authorId: 'actor-a' },
     },
   });
-  getAnnotationsMap(legacy).set('missing-author', {
+  seedMark(legacy, 'missing-author', {
     p: 1,
     o: { type: 'circle', left: 9, data: { id: 'missing-author' } },
   });
@@ -5602,7 +5651,7 @@ test('missing-author and same-key legacy conflicts remain detached and quarantin
 test('failed or timed-out legacy recovery stays hidden and leaves shipped storage untouched', async () => {
   const makeLegacySeed = () => {
     const legacy = new Y.Doc();
-    getAnnotationsMap(legacy).set('offline-a', {
+    seedMark(legacy, 'offline-a', {
       p: 1,
       o: {
         type: 'rect',
@@ -5772,10 +5821,19 @@ test('never-settling append and snapshot transports do not hold drain forever', 
 
   handle.setMeta('offline', 'outbox');
   const drainPromise = handle.drain();
+  // RULED 2026-09-25 (flake fix, assertion unchanged): the property is that
+  // drain settles while BOTH transports are still pending — they are only
+  // released after this race. The old 100 ms wall-clock cap was a timing
+  // assumption, not the contract (the bound comes from requestTimeoutMs: 10);
+  // under full-suite CPU load the 10 ms timers fired late and drain settled
+  // after 100 ms (reproduced 4/12 with a busy loop). The watchdog below only
+  // turns a real "held forever" regression into a failure instead of a hang.
+  let watchdog;
   const settledBeforeRelease = await Promise.race([
     drainPromise.then(() => true),
-    new Promise((resolve) => setTimeout(() => resolve(false), 100)),
+    new Promise((resolve) => { watchdog = setTimeout(() => resolve(false), 10_000); }),
   ]);
+  clearTimeout(watchdog);
   const boundedStatus = handle.getSyncStatus();
 
   releaseTransport = true;
@@ -6520,12 +6578,23 @@ test('a CAS gap repair cannot let a later dependent overtake its predecessor', a
     handle.setMeta('C', 'later-success');
     await handle.drain();
 
+    // RULED 2026-09-24 (per-field sync task: an update only a snapshot
+    // carried is re-sent through the WAL so already-open peers receive it).
+    // A's live re-send is the one extra submission; B still lands before C.
     assert.equal(
       appendAttempt,
-      4,
-      'A repair, exact B retry, then C are the only serialized submissions',
+      5,
+      'A repair, A live re-send, exact B retry, then C are the only submissions',
     );
-    assert.equal(rows.length, 2, 'B is positively accepted before C');
+    assert.equal(rows.length, 3, 'A (re-sent live), B and C reach the WAL');
+    const rowMeta = rows.map((row) => (
+      Y.decodeUpdate(pgHexToBytes(row.data)).structs
+        .map((struct) => struct.parentSub)
+        .filter(Boolean)
+        .join(',')
+    ));
+    assert.ok(rowMeta.includes('A'), `A's exact bytes were re-sent live (${rowMeta})`);
+    assert.ok(rowMeta.indexOf('B') < rowMeta.indexOf('C'), 'B is positively accepted before C');
     assert.equal(acceptedSnapshots.length, 1);
     assert.equal(handle.isSyncHealthy(), true);
     const cold = await snapshotHexToDoc(acceptedSnapshots[0]);

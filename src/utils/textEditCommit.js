@@ -132,6 +132,10 @@ export function buildNewTextCommitJSON({
   selectedModuleId = null,
   stampRegionId = false,
   activeRegionId = null,
+  // w43 (2026-09-26): the bump size when the Style picker is on Cloud as the
+  // box is drawn - the new text box's border is then the house revision cloud
+  // (data.pdfCloudIntensity, the field clouded shapes use). null = plain.
+  cloudIntensity = null,
 }) {
   if (!text || String(text).trim() === '') return null;
   const pad = TEXT_PADDING;
@@ -159,6 +163,10 @@ export function buildNewTextCommitJSON({
     linethrough: false,
   };
   applyTextStyle(json, style);
+  const cloud = Number(cloudIntensity);
+  if (cloudIntensity != null && Number.isFinite(cloud)) {
+    json.data = { ...(json.data || {}), pdfCloudIntensity: Math.max(1, cloud) };
+  }
   applyScope(json, { selectedModuleId, stampRegionId, activeRegionId });
   ensureTextAnnotationId(json, 'Textbox');
   return json;

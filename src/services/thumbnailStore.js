@@ -200,7 +200,16 @@ export function createThumbnailStore({
     const tx = database.transaction(THUMB_STORE, 'readonly');
     const record = await requestResult(tx.objectStore(THUMB_STORE).get(key), tx, timeoutMs);
     if (!record || typeof record.url !== 'string') return null;
-    return { url: record.url, aspect: record.aspect };
+    // signature/source (2026-09-23): which content the image was made from —
+    // see services/thumbnailSignature.js. Older rows carry neither and read
+    // as "page-only, signature unknown", which the viewer refreshes on open.
+    return {
+      url: record.url,
+      aspect: record.aspect,
+      signature: record.signature || null,
+      source: record.source || null,
+      savedAt: record.savedAt || 0,
+    };
   };
 
   const write = async (key, value) => {
@@ -223,7 +232,13 @@ export function createThumbnailStore({
           let total = (usage.result || 0) - (previous.result?.bytes || 0);
           const save = () => {
             const info = { key, bytes: value.url.length, savedAt: Date.now() };
-            store.put({ ...info, url: value.url, aspect: value.aspect });
+            store.put({
+              ...info,
+              url: value.url,
+              aspect: value.aspect,
+              signature: value.signature || null,
+              source: value.source || null,
+            });
             metadata.put(info);
             state.put(total + info.bytes, 'bytes');
           };
@@ -251,7 +266,36 @@ export function createThumbnailStore({
     }
   };
 
+  /* "Do not try this one again" markers for the idle backfill — a PDF too big
+     to preview cheaply, or one pdf.js cannot open. Keyed by the same file-stamped
+     key, so a re-upload (new key) is retried automatically. Kept in the small
+     state store, outside the byte budget: each marker is a few dozen bytes. */
+  const readSkip = async (key) => {
+    if (!key) return null;
+    const database = await db();
+    if (!database) return null;
+    const tx = database.transaction(STATE_STORE, 'readonly');
+    const value = await requestResult(tx.objectStore(STATE_STORE).get(`skip:${key}`), tx, timeoutMs);
+    return value && typeof value === 'object' ? value : null;
+  };
+  const writeSkip = async (key, reason) => {
+    if (!key) return false;
+    const database = await db();
+    if (!database) return false;
+    const tx = database.transaction(STATE_STORE, 'readwrite');
+    const committed = transactionResult(tx, timeoutMs);
+    tx.objectStore(STATE_STORE).put({ reason: String(reason || 'skipped'), at: Date.now() }, `skip:${key}`);
+    await committed;
+    return true;
+  };
+
   return {
+    getSkip: async (key) => {
+      try { return await readSkip(key); } catch { return null; }
+    },
+    putSkip: async (key, reason) => {
+      try { return await writeSkip(key, reason); } catch { return false; }
+    },
     get: async (key) => {
       try { return await read(key); } catch (error) {
         console.warn('[thumbnailStore] read failed:', error?.message || error);

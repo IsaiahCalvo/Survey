@@ -14,9 +14,44 @@ import { buildDocumentProvenance } from '../utils/documentProvenance.js';
 import { coalesceRead } from './requestCoalescer.js';
 import { resolveDocumentMetadata, invalidateDocumentMetadata } from '../services/documentMetadataResolver.js';
 import { isScopedRequestCurrent } from './scopedRequestGuard.js';
-import { subscribeLibraryChange } from './libraryChangeBus.js';
+import { subscribeLibraryChange, subscribeTemplatesChange } from './libraryChangeBus.js';
+import { mergeOwnAndSharedTemplateRows, isSharedTemplateRow } from '../services/sharedTemplates.js';
 import { storageDownloads } from '../services/storageDownloads.js';
+import { pdfByteCache, readPdfThroughCache, bindPdfCacheToAuth, seedPdfCacheFromUpload } from '../services/pdfByteCache.js';
 import { readLibraryRows, readLibraryIdChunks, sortLibraryRows } from './libraryPagination.js';
+
+// The device PDF cache follows the signed-in account: emptied on sign-out,
+// other accounts' entries dropped on sign-in. Bound once at startup so a
+// signed-out start clears it even before anything is downloaded.
+if (supabase) bindPdfCacheToAuth(supabase, pdfByteCache());
+
+// Storage's metadata for one stored PDF, always from the server: the browser's
+// HTTP cache must never answer the per-open access check (uploads are stored
+// with max-age=3600, and the metadata answer can carry it). Same route and
+// auth as storage-js's info() (the client's fetch adds the session token).
+async function fetchStoredPdfInfo(filePath) {
+  const api = supabase.storage.from('documents');
+  const objectPath = `documents/${String(filePath).replace(/^\/+/, '')}`;
+  try {
+    const response = await api.fetch(`${api.url}/object/info/${objectPath}`, {
+      method: 'GET',
+      headers: api.headers,
+      cache: 'no-store',
+    });
+    if (!response.ok) {
+      let message = `HTTP ${response.status}`;
+      try { message = (await response.json())?.message || message; } catch { /* no body */ }
+      return { data: null, error: { status: response.status, message } };
+    }
+    return { data: await response.json(), error: null };
+  } catch (error) {
+    return { data: null, error };
+  }
+}
+const withTimeout = (promise, ms) => Promise.race([
+  promise,
+  new Promise((resolve) => setTimeout(resolve, ms)),
+]);
 
 const isSupabaseNotFoundError = (error) => {
   if (!error) return false;
@@ -82,7 +117,8 @@ export const useProjects = () => {
     });
     try {
       setLoading(true);
-      setError(null);
+      // The last error stays until a read succeeds (2026-10-07): a retry that
+      // cleared it up front flashed the empty list between two error screens.
       // KAL-285 — explicit column list instead of select('*'). The live
       // `projects` table has exactly these 8 columns (verified against prod
       // schema); Dashboard.jsx and this hook consume id/name/user_id directly
@@ -131,6 +167,7 @@ export const useProjects = () => {
       ).values()].sort((a, b) => (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0));
       if (!isCurrentRequest()) return [];
       setProjects(projectsData);
+      setError(null);
       return projectsData; // Return the data so callers can use it immediately
     } catch (err) {
       if (!isCurrentRequest()) return [];
@@ -344,13 +381,15 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
     });
     try {
       setLoading(true);
-      setError(null);
+      // The last error stays until a read succeeds (2026-10-07): a retry that
+      // cleared it up front flashed the empty list between two error screens.
       const key = `documents:${user.id}:${projectId ?? 'null'}`;
       const merged = coalesce
         ? await coalesceRead(key, runDocumentsQuery)
         : await runDocumentsQuery();
       if (!isCurrentRequest()) return [];
       setDocuments(merged);
+      setError(null);
       return merged;
     } catch (err) {
       if (!isCurrentRequest()) return [];
@@ -513,6 +552,8 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
 export const useTemplates = () => {
   const { user } = useAuth();
   const [templates, setTemplates] = useState([]);
+  const templatesStateRef = useRef(templates);
+  templatesStateRef.current = templates;
   const [loading, setLoading] = useState(true);
   const templateScopeKey = user?.id || 'anonymous';
   const [loadedTemplateScopeKey, setLoadedTemplateScopeKey] = useState(null);
@@ -543,20 +584,62 @@ export const useTemplates = () => {
   // to leave/rejoin this list without a reload, same as documents and projects.
   useEffect(() => {
     if (!user || !isSupabaseAvailable()) return undefined;
-    return subscribeLibraryChange(() => {
+    const offLibrary = subscribeLibraryChange(() => {
       void loadTemplates({ initialScopeKey: templateScopeKeyRef.current }).catch(() => undefined);
     });
+    // A template shared with me through a document can land while I work.
+    const offTemplates = subscribeTemplatesChange(() => {
+      void loadTemplates({ initialScopeKey: templateScopeKeyRef.current }).catch(() => undefined);
+    });
+    return () => { offLibrary(); offTemplates(); };
   }, [user]);
 
+  // My own templates, then the ones shared with me (owner 2026-10-07: people
+  // a document is shared with get its survey template). Same shape as the
+  // documents read: own rows + a probe of my collaborator rows + the missing
+  // rows by id. The database decides what I may see (RLS); a failed probe
+  // leaves my own list intact.
   const runTemplatesQuery = async () => {
-    const { data, error } = await readLibraryRows(() => supabase
+    const [ownedRes, collaboratorRows] = await Promise.all([
+      readLibraryRows(() => supabase
+        .from('templates')
+        .select('*')
+        .eq('user_id', user.id)
+        // KAL-280 — user-archived templates live in Archive, not the library.
+        .is('user_archived_at', null)),
+      readLibraryRows(() => supabase
+        .from('template_collaborators')
+        .select('template_id, role, status')
+        .eq('user_id', user.id)
+        .eq('status', 'active'), { cursorColumn: 'template_id' }),
+    ]);
+    const { data, error } = ownedRes;
+    if (error) throw error;
+    const ownRows = sortLibraryRows(data || [], 'created_at');
+    if (collaboratorRows.error) {
+      console.warn('Error fetching shared templates:', collaboratorRows.error);
+      return ownRows;
+    }
+    const ownIds = new Set(ownRows.map((row) => row.id));
+    const missingIds = [...new Set((collaboratorRows.data || [])
+      .map((row) => row.template_id)
+      .filter((id) => id && !ownIds.has(id)))];
+    if (missingIds.length === 0) return ownRows;
+    const sharedResult = await readLibraryIdChunks(missingIds, (ids) => supabase
       .from('templates')
       .select('*')
-      .eq('user_id', user.id)
-      // KAL-280 — user-archived templates live in Archive, not the library.
+      .in('id', ids)
       .is('user_archived_at', null));
-    if (error) throw error;
-    return sortLibraryRows(data || [], 'created_at');
+    if (sharedResult.error) {
+      console.warn('Error fetching shared templates:', sharedResult.error);
+      return ownRows;
+    }
+    return mergeOwnAndSharedTemplateRows({
+      ownRows,
+      sharedRows: sortLibraryRows(sharedResult.data || [], 'created_at'),
+      collaboratorRows: collaboratorRows.data || [],
+      userId: user.id,
+    });
   };
 
   const loadTemplates = async ({ coalesce = false, initialScopeKey = null } = {}) => {
@@ -571,13 +654,15 @@ export const useTemplates = () => {
     });
     try {
       setLoading(true);
-      setError(null);
+      // The last error stays until a read succeeds (2026-10-07): a retry that
+      // cleared it up front flashed the empty list between two error screens.
       const key = `templates:${user.id}`;
       const rows = coalesce
         ? await coalesceRead(key, runTemplatesQuery)
         : await runTemplatesQuery();
       if (!isCurrentRequest()) return [];
       setTemplates(rows);
+      setError(null);
       return rows;
     } catch (err) {
       if (!isCurrentRequest()) return [];
@@ -620,7 +705,14 @@ export const useTemplates = () => {
         .single();
 
       if (error) throw error;
-      setTemplates((current) => current.map((t) => (t.id === id ? data : t)));
+      // A template shared with me keeps its "shared with me" mark. The ref is
+      // patched at once so a snapshot save right behind this edit keeps it.
+      const patch = (list) => list.map((t) => {
+        if (t.id !== id) return t;
+        return isSharedTemplateRow(t) ? { ...data, shared_role: t.shared_role } : data;
+      });
+      templatesStateRef.current = patch(templatesStateRef.current || []);
+      setTemplates((current) => patch(current));
       return data;
     } catch (err) {
       setError(err.message);
@@ -651,9 +743,11 @@ export const useTemplates = () => {
         p_templates: templateRows,
       });
       if (error) throw error;
-      const rows = Array.isArray(data) ? data : [];
-      setTemplates(rows);
-      return rows;
+      // The snapshot holds only MY templates; the ones shared with me stay.
+      const ownRows = Array.isArray(data) ? data : [];
+      const merged = [...ownRows, ...(templatesStateRef.current || []).filter(isSharedTemplateRow)];
+      setTemplates(merged);
+      return merged;
     } catch (err) {
       setError(err.message);
       throw err;
@@ -765,6 +859,22 @@ export const useStorage = () => {
 
     if (error) throw error;
     storageDownloads(supabase).invalidate(filePath);
+    // w36: the path names these bytes (content hash, or a fresh unique path),
+    // so this device keeps them: its first reopen downloads nothing. Awaited
+    // (one small metadata read + a local write; uploads already run in the
+    // background) so a read the finished upload triggers finds the copy.
+    // Capped at 2 s (w36 review A): a stuck IndexedDB must not hold what
+    // follows an upload; losing the race costs one download later.
+    await withTimeout((async () => {
+      await pdfByteCache().removePath(filePath);
+      await seedPdfCacheFromUpload({
+        cache: pdfByteCache(),
+        actorId: user.id,
+        path: filePath,
+        file,
+        fetchInfo: () => fetchStoredPdfInfo(filePath),
+      });
+    })().catch(() => { /* cache only: the upload itself succeeded */ }), 2_000);
     return filePath;
   }, [user]);
 
@@ -783,6 +893,7 @@ export const useStorage = () => {
 
     if (error) throw error;
     storageDownloads(supabase).invalidate(filePath);
+    void pdfByteCache().removePath(filePath);
     return filePath;
   }, [user]);
 
@@ -800,6 +911,7 @@ export const useStorage = () => {
       });
     if (error) throw error;
     storageDownloads(supabase).invalidate(filePath);
+    void pdfByteCache().removePath(filePath);
     return filePath;
   }, [user]);
 
@@ -808,13 +920,27 @@ export const useStorage = () => {
       throw new Error('Supabase not available');
     }
 
-    return storageDownloads(supabase).read(user?.id, filePath, async () => {
-      const { data, error } = await supabase.storage
-        .from('documents')
-        .download(filePath);
-      if (error) throw error;
-      return data;
-    });
+    // w36: an unchanged PDF is served from this device's cache after Storage
+    // confirms (a metadata read under the same access rules) that this account
+    // may still read it and that it is the cached version. See
+    // services/pdfByteCache.js for why that keeps the #802 "every open passes
+    // the server's access check" rule.
+    const actorId = user?.id ?? null;
+    return storageDownloads(supabase).read(actorId, filePath, () => readPdfThroughCache({
+      cache: pdfByteCache(),
+      actorId,
+      path: filePath,
+      fetchInfo: () => fetchStoredPdfInfo(filePath),
+      download: async () => {
+        // no-store: never the browser's HTTP copy (it could be an older
+        // version than the one the check just named, and it outlives sign-out).
+        const { data, error } = await supabase.storage
+          .from('documents')
+          .download(filePath, {}, { cache: 'no-store' });
+        if (error) throw error;
+        return data;
+      },
+    }));
   }, [user?.id]);
 
   const deleteDocumentFile = useCallback(async (filePath) => {
@@ -828,6 +954,7 @@ export const useStorage = () => {
 
     if (error) throw error;
     storageDownloads(supabase).invalidate(filePath);
+    void pdfByteCache().removePath(filePath);
   }, []);
 
   return {
@@ -1045,10 +1172,15 @@ const DEFAULT_TOOL_PREFERENCES = {
   line: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100 },
   arrow: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100 },
   callout: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 90, strokeOpacity: 100 },
-  // Counter (Shottr-style numbered badge) — strokeColor is the circle fill;
-  // strokeWidth is repurposed as the badge radius (px in page-space) so it shares
-  // the bottom toolbar Size input wiring with all other shape tools.
-  counter: { strokeColor: '#ef4444', strokeWidth: 14, strokeOpacity: 100 },
+  // Counter (Shottr-style numbered badge) — the pin takes the FILL (fillColor);
+  // strokeWidth is repurposed as the badge radius (px in page-space) so it shares the bottom toolbar Size input wiring
+  // with all other shape tools. The fill must be set here: without it the pin
+  // kept the fill left behind by Rectangle (white, the Shapes group's first
+  // tool), so a fresh Shapes > Counter dropped white pins with white numbers -
+  // invisible on a white page.
+  // No fillOpacity on purpose: the pin ignores it, and Polygon (no defaults of
+  // its own) inherits it - Rectangle's 0 keeps a Counter -> Polygon switch unfilled.
+  counter: { strokeColor: '#ef4444', strokeWidth: 14, strokeOpacity: 100, fillColor: '#ef4444' },
   text: { strokeColor: '#000000', strokeOpacity: 100 },
   note: { strokeColor: '#ffff00', fillColor: '#ffff00', strokeOpacity: 100, fillOpacity: 100 },
   underline: { strokeColor: '#ff0000', strokeOpacity: 100 },

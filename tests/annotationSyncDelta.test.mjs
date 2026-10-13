@@ -308,11 +308,15 @@ test('suspicious stale-cache wipe without explicit deleted ids is still suppress
   }), true);
 });
 
-test('undo/redo dispatches only affected owner-scoped annotations', () => {
+// RULED 2026-09-28 owner: open editing + lock — a step is no longer trimmed
+// to the recorder's own marks (their edit to a colleague's mark is theirs to
+// undo), so both edited marks are dispatched; an untouched mark still is not.
+test('undo/redo dispatches only the annotations the step touched', () => {
   const prior = {
     1: page([
       { type: 'rect', data: { id: 'mine', authorId: 'user-a' }, left: 1 },
       { type: 'rect', data: { id: 'theirs', authorId: 'user-b' }, left: 2 },
+      { type: 'rect', data: { id: 'untouched', authorId: 'user-b' }, left: 3 },
     ]),
   };
   const action = {
@@ -330,8 +334,8 @@ test('undo/redo dispatches only affected owner-scoped annotations', () => {
   const afterUndo = applyAnnotationHistoryAction(afterRedo, scopedUndo);
   const undoDelta = buildFabricSyncDelta({ currentByPage: afterUndo, priorByPage: afterRedo, actionType: 'undo' });
 
-  deepStrictEqual(idsForPage(redoDelta.upsertByPage), ['mine']);
-  deepStrictEqual(redoDelta.changedIds, ['mine']);
-  deepStrictEqual(idsForPage(undoDelta.upsertByPage), ['mine']);
-  deepStrictEqual(undoDelta.changedIds, ['mine']);
+  deepStrictEqual(idsForPage(redoDelta.upsertByPage).sort(), ['mine', 'theirs']);
+  deepStrictEqual([...redoDelta.changedIds].sort(), ['mine', 'theirs']);
+  deepStrictEqual(idsForPage(undoDelta.upsertByPage).sort(), ['mine', 'theirs']);
+  deepStrictEqual([...undoDelta.changedIds].sort(), ['mine', 'theirs']);
 });

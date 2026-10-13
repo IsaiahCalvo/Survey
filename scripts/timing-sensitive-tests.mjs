@@ -29,9 +29,13 @@
 export const TIMING_SENSITIVE_TEST_FILES = [
   'src/lib/collab/__tests__/crdtBackfillLoserLatency.test.mjs',
   'tests/annotationDocConcurrency.test.mjs',
+  'tests/annotationFieldSyncPerf.test.mjs',
   'tests/cloudStrokeBandPathologicalBudget.test.mjs',
-  'tests/partialEraseCurveLocality.test.mjs',
+  'tests/partialEraseCurveLocalityBudget.test.mjs',
   'tests/partialEraserComplexity.test.mjs',
   'tests/roundStrokeOutlinePerformance.test.mjs',
+  // w34: paced strokes vs the 1.2 s checkpoint debounce (multi-second
+  // transport timing, ~11 s). A usage-budget correctness gate: stays blocking.
+  'tests/supabaseUsageBudget.test.mjs',
   'tests/svgPathTransformFidelity.test.mjs',
 ];

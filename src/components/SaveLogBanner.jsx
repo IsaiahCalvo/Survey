@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { buildLogPreamble } from '../utils/logPreamble';
 import { sanitizeConsoleLogText } from '../utils/consoleLogFilter';
 import Spinner from './Spinner';
@@ -26,6 +27,16 @@ import Icon from '../Icons';
 //   → backwards-compatible success/error pill for callers that already
 //   pushed themselves (e.g. the diagnostic callout-dump path).
 
+// Polish round 6 (found by the click-every-control walkthrough): the banner is
+// mounted twice while a document is open — once by App (so Save Log works on
+// every screen) and once inside PDFViewer. Both listened, so one Save Log
+// showed two banners and ran two pushes (two GitHub logs on desktop). Only
+// the OLDEST live instance answers now. And it renders into <body>: as a
+// direct child of #root on the phone, the shell's `#root > div { height:
+// 100% !important }` stretched it into a full-height slab over the screen.
+const liveBanners = [];
+export const isSaveLogBannerOwner = (token) => liveBanners[0] === token;
+
 const COUNTDOWN_MS = 5000; // UX: 5 seconds is enough to react, short enough to feel snappy
 const AUTO_DISMISS_RESULT_MS = 2800; // UX: success/error pill linger time, matches old toast
 
@@ -51,6 +62,16 @@ export default function SaveLogBanner() {
   // Cleared in `dismiss` and on a fresh `save-log-banner-start` event so a
   // legitimate next Save Log can still run.
   const pushInFlightRef = useRef(false);
+  const instanceRef = useRef(null);
+  if (!instanceRef.current) instanceRef.current = {};
+  useEffect(() => {
+    const token = instanceRef.current;
+    liveBanners.push(token);
+    return () => {
+      const at = liveBanners.indexOf(token);
+      if (at !== -1) liveBanners.splice(at, 1);
+    };
+  }, []);
 
   const clearTimers = useCallback(() => {
     if (rafRef.current) {
@@ -242,6 +263,7 @@ export default function SaveLogBanner() {
   // shortcut twice.
   useEffect(() => {
     const handleStart = (event) => {
+      if (!isSaveLogBannerOwner(instanceRef.current)) return;
       // KAL-27 — if a push is mid-flight, ignore the new start event so
       // the in-flight upload finishes cleanly. Without this, a rapid
       // second trigger (shortcut + menu firing together, or repeated
@@ -269,6 +291,7 @@ export default function SaveLogBanner() {
       requestAnimationFrame(() => setVisible(true));
     };
     const handleToast = (event) => {
+      if (!isSaveLogBannerOwner(instanceRef.current)) return;
       const detail = event?.detail || {};
       const type = detail.type === 'error' ? 'error' : 'success';
       clearTimers();
@@ -343,15 +366,19 @@ export default function SaveLogBanner() {
   const isResult = state === 'success' || state === 'error';
   const isError = state === 'error';
 
+  // The box is the app's one calm alert (tokens.css --alert-*, owner
+  // 2026-10-02 UI consistency audit): a soft tint inside a thin edge all the
+  // way round - it was a 3px coloured bar down the left side. Only the error
+  // carries a colour (the red tint, over the opaque panel so the page never
+  // shows through); "saved" and "working" are the plain surface and hairline.
   const colors = isResult
     ? (isError
-      ? { bg: 'rgba(46, 22, 22, 0.96)', border: 'var(--danger)', accent: 'var(--danger)', text: 'var(--text-1)' }
+      ? { bg: 'linear-gradient(var(--alert-danger-bg), var(--alert-danger-bg)), var(--surface-2)', border: 'var(--alert-danger-border)', accent: 'var(--danger)', text: 'var(--text-1)' }
       /* UX 2026-09-17 (revision-2 palette): the "saved" banner was green and the
-         "working" banner was blue, neither of which is a colour in this app.
-         Gold carries the good news; the neutral surface carries the in-progress
-         one, so red stays the only colour that means trouble. */
-      : { bg: 'var(--surface-2)', border: 'var(--accent)', accent: 'var(--accent)', text: 'var(--text-1)' })
-    : { bg: 'var(--surface-2)', border: 'var(--border)', accent: 'var(--text-3)', text: 'var(--text-1)' };
+         "working" banner was blue, neither of which is a colour in this app,
+         so red stays the only colour that means trouble. */
+      : { bg: 'var(--surface-2)', border: 'var(--alert-neutral-border)', accent: 'var(--accent)', text: 'var(--text-1)' })
+    : { bg: 'var(--surface-2)', border: 'var(--alert-neutral-border)', accent: 'var(--text-3)', text: 'var(--text-1)' };
 
   // UX: slide from the LEFT — user specifically asked to flip the direction
   // so the new submit banner is visually distinct from the old right-side
@@ -366,8 +393,8 @@ export default function SaveLogBanner() {
     background: colors.bg,
     color: colors.text,
     padding: state === 'entry' ? '14px 14px 14px 14px' : '12px 14px 12px 14px',
-    borderRadius: 12,
-    borderLeft: `3px solid ${colors.border}`,
+    borderRadius: 'var(--alert-radius)',
+    border: colors.border,
     boxShadow: '0 12px 30px rgba(0,0,0,0.35), 0 2px 6px rgba(0,0,0,0.15)',
     backdropFilter: 'blur(6px)',
     WebkitBackdropFilter: 'blur(6px)',
@@ -383,7 +410,8 @@ export default function SaveLogBanner() {
     letterSpacing: 0.1
   };
 
-  return (
+  if (typeof document === 'undefined') return null;
+  return createPortal(
     <>
       <div role="status" aria-live="polite" style={bannerStyle}>
         {state === 'countdown' && (
@@ -575,7 +603,7 @@ export default function SaveLogBanner() {
             inset: 0,
             // UX (KAL-62): the app's one modal scrim — warm-dark dim plus an
             // 8px blur, matching every other dialog.
-            background: 'rgba(13, 15, 20, 0.55)',
+            background: 'var(--overlay-scrim)',
             backdropFilter: 'blur(8px)',
             WebkitBackdropFilter: 'blur(8px)',
             display: 'flex',
@@ -591,8 +619,8 @@ export default function SaveLogBanner() {
               background: 'var(--surface-2)',
               color: 'var(--text-1)',
               padding: '20px 22px',
-              borderRadius: 12,
-              boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+              borderRadius: 'var(--radius-dialog)',
+              boxShadow: 'var(--shadow-dialog)',
               width: 380,
               maxWidth: '90vw'
             }}
@@ -642,6 +670,7 @@ export default function SaveLogBanner() {
         </div>
       )}
 
-    </>
+    </>,
+    document.body,
   );
 }

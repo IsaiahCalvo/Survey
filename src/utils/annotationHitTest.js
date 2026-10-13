@@ -22,7 +22,14 @@
  * The unified SVG renderer remains the intended architecture.
  */
 
-export function resolveAnnotationAt(e) {
+/**
+ * `acceptMark` (optional, owner 2026-10-04): ({ pageNumber, annotationIndex,
+ * calloutId }) => boolean. A mark it turns down is not there: the walk goes on
+ * to the mark beneath it, so a Shapes / Text tool's press or hover over another
+ * group's mark lying on top of one of its own reaches its own (the same
+ * ink-accurate geometry, top-most first). Omitted: every mark counts.
+ */
+export function resolveAnnotationAt(e, { acceptMark = null } = {}) {
   let pageNumber = null;
   let annotationIndex = null;
   let calloutId = null;
@@ -47,6 +54,7 @@ export function resolveAnnotationAt(e) {
   // a 'group' kind so the right-click menu can batch cut/copy/delete/
   // z-order across every selected annotation at once.
   let groupIndices = null;
+  let groupMarkerIds = null;
   const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
 
   const readFrom = (el) => {
@@ -88,6 +96,16 @@ export function resolveAnnotationAt(e) {
 
   for (const el of path) readFrom(el);
 
+  // A mark the caller turns down (acceptMark) is dropped and the walk goes on.
+  const rejectsMark = () => typeof acceptMark === 'function'
+    && (annotationIndex != null || calloutId != null)
+    && !acceptMark({ pageNumber, annotationIndex, calloutId });
+  const dropMark = () => {
+    annotationIndex = null;
+    calloutId = null;
+    editEntryKind = null;
+  };
+
   if (pageNumber == null && typeof document.elementsFromPoint === 'function') {
     const stack = document.elementsFromPoint(e.clientX, e.clientY);
     for (const el of stack) {
@@ -95,6 +113,7 @@ export function resolveAnnotationAt(e) {
       if (pageNumber != null) break;
     }
   }
+  if (rejectsMark()) dropMark();
 
   // 2026-04-25 — Reject pageNumber matches that came purely from a
   // Pdfjs `_pageDiv_N` id when the cursor isn't actually within
@@ -209,6 +228,23 @@ export function resolveAnnotationAt(e) {
     return false;
   };
 
+  // w52: a callout carrier's own box spans its text box, knee and arrow tip,
+  // so it is mostly empty page. Walking top-most first, that box would beat a
+  // text box sitting in the empty space under it — test the callout's parts
+  // instead (lines by stroke geometry, text box / tip / knee by their box).
+  const calloutCarrierContainsPoint = (el) => {
+    if (!el?.getAttribute?.('data-callout-id') || typeof el.querySelectorAll !== 'function') {
+      return rectContainsPoint(el);
+    }
+    const parts = Array.from(el.querySelectorAll('[data-callout-part]') || []);
+    if (parts.length === 0) return rectContainsPoint(el);
+    return parts.some((part) => (
+      String(part.tagName || '').toLowerCase() === 'line'
+        ? svgGeometryContainsPoint(part)
+        : rectContainsPoint(part)
+    ));
+  };
+
   const readHitCarrier = (el) => {
     if (!el) return;
     const carrier = el.closest?.('[data-annotation-index], [data-callout-id], [data-counter-overlay]') || el;
@@ -226,10 +262,18 @@ export function resolveAnnotationAt(e) {
     for (const link of page?.querySelectorAll('[data-text-markup-link-index]') || []) {
       if (rectContainsPoint(link)) {
         annotationIndex = Number(link.getAttribute('data-text-markup-link-index'));
+        if (rejectsMark()) { dropMark(); continue; }
         break;
       }
     }
   }
+
+  // w52: the Counter tool's placement overlay covers the whole page, so a
+  // right-click on a placed pin (or any mark) used to resolve to the overlay
+  // and open a dead "counter" menu. Look for a real mark under the overlay
+  // first (same geometry walk as Pan); only a bare page stays a counter hit.
+  const counterOverlayHit = isCounter && annotationIndex == null && !calloutId;
+  if (counterOverlayHit) isCounter = false;
 
   // Pan-mode fallback: SVG layer is pointer-events:none, so walk the DOM
   // children of every visible page SVG wrapper. Path hit targets are tested
@@ -247,11 +291,15 @@ export function resolveAnnotationAt(e) {
       // but off the geometry is NOT a hit — hollow shape interiors stay
       // inert in pan/right-click exactly as they are under the Select tool
       // (uniform Bluebeam-style model: edge-only unless filled/text-bearing).
-      const geometryTargets = wrapper.querySelectorAll('[data-path-hit-target="true"], [data-shape-hit-target]');
+      // w52 (2026-09-28): walk TOP-most first (reverse document order - the
+      // SVG paints later siblings above earlier ones), so where marks overlap
+      // the one drawn on top wins, matching the page's stacking order.
+      const geometryTargets = Array.from(wrapper.querySelectorAll('[data-path-hit-target="true"], [data-shape-hit-target]')).reverse();
       for (const el of geometryTargets) {
         inspected += 1;
         if (!svgGeometryContainsPoint(el)) continue;
         readHitCarrier(el);
+        if (rejectsMark()) { dropMark(); continue; }
         if (annotationIndex != null || calloutId || isCounter) break;
       }
       if (annotationIndex != null || calloutId || isCounter) break;
@@ -260,15 +308,16 @@ export function resolveAnnotationAt(e) {
       // rects, survey markers, callout hit zones, counter HTML overlays.
       // Carriers that contain real geometry targets were already decided by
       // pass 1 — skip them so hollow interiors can't resurrect via bbox.
-      const candidates = wrapper.querySelectorAll('[data-annotation-index], [data-callout-id], [data-counter-overlay], [data-path-bbox-hit-target="true"]');
+      const candidates = Array.from(wrapper.querySelectorAll('[data-annotation-index], [data-callout-id], [data-counter-overlay], [data-path-bbox-hit-target="true"]')).reverse();
       for (const el of candidates) {
         inspected += 1;
         if (typeof el.querySelector === 'function'
           && el.querySelector('[data-path-hit-target="true"], [data-shape-hit-target]')) {
           continue;
         }
-        if (!rectContainsPoint(el)) continue;
+        if (!calloutCarrierContainsPoint(el)) continue;
         readHitCarrier(el);
+        if (rejectsMark()) { dropMark(); continue; }
         if (annotationIndex != null || calloutId || isCounter) break;
       }
       if (annotationIndex != null || calloutId || isCounter) break;
@@ -281,6 +330,8 @@ export function resolveAnnotationAt(e) {
       }
     }
   }
+
+  if (counterOverlayHit && annotationIndex == null && !calloutId) isCounter = true;
 
   // Group-selection fallback: when no annotation / callout / counter
   // matched, check whether the click point is inside any page's outer
@@ -303,10 +354,16 @@ export function resolveAnnotationAt(e) {
         const csv = el.getAttribute('data-group-selection-indices') || '';
         groupIndices = csv
           .split(',')
+          .filter((s) => s !== '')
           .map((s) => Number(s))
           .filter((n) => Number.isFinite(n));
-        if (groupIndices.length >= 2) break;
+        // w53: Survey Markers in the selection count as members too.
+        groupMarkerIds = (el.getAttribute('data-group-selection-marker-ids') || '')
+          .split(',')
+          .filter(Boolean);
+        if (groupIndices.length + groupMarkerIds.length >= 2) break;
         groupIndices = null;
+        groupMarkerIds = null;
       }
     }
   }
@@ -315,7 +372,9 @@ export function resolveAnnotationAt(e) {
   if (calloutId) kind = 'callout';
   else if (isCounter) kind = 'counter';
   else if (annotationIndex != null) kind = 'annotation';
-  else if (groupIndices && groupIndices.length >= 2) kind = 'group';
+  else if (groupIndices && (groupIndices.length + (groupMarkerIds?.length || 0)) >= 2) kind = 'group';
 
+  // (w53: the group's Survey Marker ids ride its frame's
+  // data-group-selection-marker-ids; the menu dispatcher reads them there.)
   return { pageNumber, annotationIndex, calloutId, kind, groupIndices, editEntryKind };
 }

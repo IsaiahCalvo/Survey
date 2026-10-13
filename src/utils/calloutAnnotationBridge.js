@@ -260,7 +260,15 @@ export function calloutToAnnotationObject(callout, pageSize) {
     textBackgroundColor: '',
     hasBorders: false,
     hasControls: false,
-    data: { calloutPart: 'textBox' },
+    // w43: a clouded text box records its bump size on the box child (a key
+    // of its own, never pdfCloudIntensity, so nothing draws this projection
+    // child as a clouded text box) so the fallback reader below keeps Cloud.
+    data: {
+      calloutPart: 'textBox',
+      ...(style.lineStyle === 'cloud'
+        ? { calloutCloudIntensity: Math.max(1, Number(style.cloudIntensity) || 2) }
+        : {}),
+    },
   };
 
   const id = callout.id ?? null;
@@ -326,6 +334,9 @@ export function calloutToAnnotationObject(callout, pageSize) {
       id,
       // Author chain for the shared canModify delete gate (matches backfill).
       ...(authorId ? { authorId } : {}),
+      // Owner ruling 2026-09-28: the user lock rides the projected group too
+      // (the authoritative copy is legacyCallout.lockedBy below).
+      ...(callout.lockedBy ? { lockedBy: callout.lockedBy } : {}),
       // Verbatim original normalized callout — the reload payload the
       // deserializeRowToCallout shim recovers. Deep-cloned above.
       legacyCallout,
@@ -399,31 +410,26 @@ export function projectCalloutsIntoByPage(byPage, calloutsList, pageSizes, { pre
       return s && Number.isFinite(s.width) && Number.isFinite(s.height) ? s : null;
     };
     const src = byPage || {};
-    const next = {};
     // Ids of stored callout objects kept verbatim on unmeasured pages (only
     // populated under preserveUnmeasured) — the add-loop below skips these.
     const preservedIdsByPage = new Map();
-    // Start from a callout-free copy of every existing page so a re-projection
-    // can't leave behind a callout the new list no longer contains.
+    const preservedPages = new Set();
     for (const key of Object.keys(src)) {
-      const page = src[key];
-      const objects = Array.isArray(page?.objects) ? page.objects : [];
       const pageNum = Number(key);
-      if (preserveUnmeasured && !measuredSize(pageNum)) {
-        // Unmeasured page: keep every object (incl. callouts) by reference —
-        // stored geometry is the best truth until real dims land.
-        const kept = new Set();
-        for (const o of objects) {
-          if (o?.data?.type === 'callout' && o?.data?.id != null) kept.add(String(o.data.id));
-        }
-        preservedIdsByPage.set(pageNum, kept);
-        next[key] = page;
-        continue;
+      if (!(preserveUnmeasured && !measuredSize(pageNum))) continue;
+      // Unmeasured page: keep every object (incl. callouts) by reference —
+      // stored geometry is the best truth until real dims land.
+      const objects = Array.isArray(src[key]?.objects) ? src[key].objects : [];
+      const kept = new Set();
+      for (const o of objects) {
+        if (o?.data?.type === 'callout' && o?.data?.id != null) kept.add(String(o.data.id));
       }
-      const nonCallout = objects.filter((o) => !(o?.data?.type === 'callout'));
-      next[key] = { ...(page || {}), objects: nonCallout };
+      preservedIdsByPage.set(pageNum, kept);
+      preservedPages.add(String(key));
     }
 
+    // Project the list, page by page (first occurrence of an id wins).
+    const projectedByPage = new Map(); // pageKey -> Map(id|symbol -> obj), list order
     const seenIds = new Set();
     for (const callout of calloutsList) {
       if (!callout) continue;
@@ -446,11 +452,55 @@ export function projectCalloutsIntoByPage(byPage, calloutsList, pageSizes, { pre
       const pageSize = sizes[page] || { width: 612, height: 792 };
       if (!Number.isFinite(pageSize.width) || !Number.isFinite(pageSize.height)) continue;
       const obj = calloutToAnnotationObject(callout, pageSize);
-      const existing = next[page];
+      const pageKey = String(page);
+      if (!projectedByPage.has(pageKey)) projectedByPage.set(pageKey, new Map());
+      projectedByPage.get(pageKey).set(id != null ? String(id) : Symbol('callout'), obj);
+    }
+
+    // w52 (2026-09-28): a re-projected callout stays at ITS place in the
+    // page's stacking order — it replaces its own stored object in place.
+    // Only a callout new to the page is added, on top. (Before, every callout
+    // write stripped all callouts and re-appended them, so any callout edit
+    // lifted every callout on the page above every other mark and the
+    // stacking order could never hold for callouts.) A stored callout the
+    // list no longer holds is dropped (ghost-cleanup).
+    const next = {};
+    const pageKeyOf = (key) => {
+      const n = Number(key);
+      return Number.isFinite(n) ? String(n) : String(key);
+    };
+    for (const key of Object.keys(src)) {
+      const page = src[key];
+      if (preservedPages.has(String(key))) {
+        next[key] = page;
+        continue;
+      }
+      const objects = Array.isArray(page?.objects) ? page.objects : [];
+      const projected = projectedByPage.get(pageKeyOf(key));
+      const placed = [];
+      for (const o of objects) {
+        if (!(o?.data?.type === 'callout')) {
+          placed.push(o);
+          continue;
+        }
+        const id = o?.data?.id;
+        if (projected && id != null && projected.has(String(id))) {
+          placed.push(projected.get(String(id)));
+          projected.delete(String(id));
+        }
+      }
+      next[key] = { ...(page || {}), objects: placed };
+    }
+    for (const [pageKey, projected] of projectedByPage) {
+      if (projected.size === 0) continue;
+      const existingKey = Object.prototype.hasOwnProperty.call(next, pageKey)
+        ? pageKey
+        : Object.keys(next).find((key) => pageKeyOf(key) === pageKey) ?? Number(pageKey);
+      const existing = next[existingKey];
       const existingObjects = Array.isArray(existing?.objects) ? existing.objects : [];
-      next[page] = {
+      next[existingKey] = {
         ...(existing || {}),
-        objects: [...existingObjects, obj],
+        objects: [...existingObjects, ...projected.values()],
       };
     }
 
@@ -557,6 +607,11 @@ export function annotationObjectToCallout(obj, pageSize) {
     // group→callout round trip keeps dashed/dotted callouts dashed.
     lineStyle: calloutLineStyleFromDash(line1.strokeDashArray || line2.strokeDashArray),
   };
+  // w43: Cloud rides on the box child (the leaders carry no dash for it).
+  if (textbox.data?.calloutCloudIntensity != null) {
+    style.lineStyle = 'cloud';
+    style.cloudIntensity = Math.max(1, Number(textbox.data.calloutCloudIntensity) || 2);
+  }
 
   return {
     id: obj.data?.id ?? null,

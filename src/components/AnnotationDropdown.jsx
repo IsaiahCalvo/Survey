@@ -4,6 +4,20 @@ import Icon from '../Icons';
 import './AnnotationDropdown.css';
 
 /**
+ * True when focus already sits on a real control outside the closing popover:
+ * the press that closed it landed on (and focused) something else. Shared with
+ * AnnotationSizeControl.
+ */
+export function focusMovedElsewhere(event) {
+  if (typeof document === 'undefined') return false;
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return false;
+  const content = event?.currentTarget;
+  if (content && typeof content.contains === 'function' && content.contains(active)) return false;
+  return true;
+}
+
+/**
  * Shared annotation-toolbar dropdown. Simple menus pass options/onSelect;
  * richer menus (counter series, alignment) can pass children while retaining
  * the same Radix positioning, surface, heading, and dismissal behavior.
@@ -35,6 +49,10 @@ export default function AnnotationDropdown({
   // still gets the old single-slot trigger.
   preview,
   width,
+  // w42 (2026-09-26): the narrow-window look — the pill keeps its drawing and
+  // chevron and drops the word ("Solid" becomes just the line). Only a pill
+  // with a preview can collapse; its aria-label and tooltip still name it.
+  compact = false,
 }) {
   const [focusedIndex, setFocusedIndex] = useState(0);
   const optionRefs = useRef([]);
@@ -71,9 +89,14 @@ export default function AnnotationDropdown({
     preserveFocus
     && !document.activeElement?.closest?.('.annotation-dropdown, .annotation-dropdown__popover')
   );
-  const renderContent = (content) => (
-    preserveFocus ? content : <Popover.Portal>{content}</Popover.Portal>
-  );
+  // w42 (2026-09-26, owner: popovers must never go under the rails): every
+  // menu is portalled into the page's top layer. The text bar's font menus
+  // (preserveFocus) used to stay inside the sub-bar so the text editor would
+  // treat a press in them as a press on the formatting bar; they now carry the
+  // bar's own opt-out marker (data-rich-text-toolbar) instead, so they keep
+  // that behaviour and still open above the right rail.
+  const renderContent = (content) => <Popover.Portal>{content}</Popover.Portal>;
+  const isCompact = compact && !!preview;
 
   return (
     <Popover.Root open={open} onOpenChange={onOpenChange}>
@@ -82,7 +105,7 @@ export default function AnnotationDropdown({
           <button
             ref={triggerRef}
             type="button"
-            className="chrome-pill annotation-dropdown__trigger"
+            className={`chrome-pill annotation-dropdown__trigger${isCompact ? ' chrome-pill--compact' : ''}`}
             aria-label={label}
             title={label}
             disabled={disabled}
@@ -115,6 +138,7 @@ export default function AnnotationDropdown({
           className={`annotation-dropdown__popover ${contentClassName}`.trim()}
           data-annotation-dropdown-popover="true"
           {...markerProps}
+          {...(preserveFocus ? { 'data-rich-text-toolbar': 'true' } : {})}
           align={align}
           sideOffset={6}
           collisionPadding={8}
@@ -128,6 +152,18 @@ export default function AnnotationDropdown({
             if (keepEditorFocus) event.preventDefault();
           }}
           onCloseAutoFocus={(event) => {
+            // Dismiss rules R1/R6 (owner 2026-09-23, src/components/dismissRules.js):
+            // when this menu closed because the press went to another control
+            // (another dropdown, the width pill), focus is already there. Handing
+            // it back to this trigger would count as "focus outside" for the menu
+            // that press just opened and close it again, so the second dropdown
+            // never stayed open. Leave focus where the user put it.
+            // (The text-editor focus cycle below keeps its own handling.)
+            if (!keepEditorFocusForCycleRef.current && focusMovedElsewhere(event)) {
+              editorFocusElementRef.current = null;
+              event.preventDefault();
+              return;
+            }
             if (keepEditorFocusForCycleRef.current) {
               event.preventDefault();
               const editorElement = editorFocusElementRef.current;

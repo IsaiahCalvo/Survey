@@ -12,10 +12,16 @@
  *
  * So: the drawn dot keeps exactly the size it has today, and a transparent pad
  * sits behind it.
- *   - fine pointer (mouse / trackpad): 32 x 32 CSS px — Drawboard's 34, minus a
- *     little so two handles on a small mark still resolve to the nearer one.
+ *   - fine pointer (mouse / trackpad): the grabber you can see plus 4 CSS px
+ *     all round, and never less than 20 x 20 (w63, 2026-09-28). The first cut
+ *     was Drawboard's 34 (we shipped 32): it reached 16 px out from a corner,
+ *     so a box-select started just outside a selected mark grabbed a corner
+ *     and RESIZED the mark instead. Figma and Acrobat keep the mouse grab area
+ *     a few px round the handle; pressing on the page beyond that starts a
+ *     box-select.
  *   - coarse pointer (finger / stylus): 44 x 44 CSS px — Apple's minimum touch
- *     target, and the size the polygon vertex grabbers already used.
+ *     target, and the size the polygon vertex grabbers already used. A finger
+ *     has no hover and hides what it touches, so it keeps the big pad.
  *
  * The pad is SCREEN-CONSTANT: it is expressed in CSS px and converted to page
  * units at the call site by multiplying by the (clamped) inverse scale, so it
@@ -29,19 +35,27 @@
  * never shrinks it below the grabber you can actually see.
  */
 
-// Invisible catch area for one handle, CSS px, mouse / trackpad.
-// Drawboard PDF measures 34 x 34; 32 keeps a hair of separation on small marks.
-export const HANDLE_HIT_PAD_FINE_PX = 32;
+// Invisible catch area for one handle, CSS px, mouse / trackpad: the smallest
+// pad a mouse gets. w63: 20 = the 11 px corner dot plus ~4.5 px each side.
+export const HANDLE_HIT_PAD_FINE_PX = 20;
+
+// Mouse pads also reach this far past the edge of the grabber you can see, so
+// a bigger grabber (the 20 px rotate dot) still gets a few px of slack.
+export const HANDLE_HIT_PAD_FINE_MARGIN_PX = 4;
 
 // Invisible catch area for one handle, CSS px, finger / stylus.
 // Apple HIG minimum (44 pt) — also what the polygon vertex grabbers already used.
 export const HANDLE_HIT_PAD_COARSE_PX = 44;
 
-// Transparent stroke painted along a mark so it can be selected by clicking
-// near its outline rather than exactly on it. 12 is what every mark ships with
-// today (+-6 px either side of the line); a finger gets double that.
-export const MARK_HIT_STROKE_FINE_PX = 12;
-export const MARK_HIT_STROKE_COARSE_PX = 24;
+// How far past a mark's real ink a pointer still counts as "on" it, in CSS px
+// each side, whatever the zoom and however much the mark was enlarged.
+// Owner 2026-10-04 ("I get the blue ring way earlier than when my cursor
+// touches it"): the old band was a 12-unit stroke in the MARK's own units, so
+// zoom and an enlarged mark's scale both widened it (a pen stroke scaled 4x
+// caught the pointer ~24 page units off its ink). A finger keeps a wider band
+// (it cannot hover, and it is not a fine pointer).
+export const MARK_HIT_TOLERANCE_FINE_PX = 4;
+export const MARK_HIT_TOLERANCE_COARSE_PX = 12;
 
 /**
  * Base pad for the current pointer kind, in CSS px.
@@ -52,11 +66,46 @@ export function getHandleHitPadPx(isCoarsePointer) {
 }
 
 /**
- * Transparent hit stroke for a mark's outline, in CSS px.
+ * Hit tolerance past the ink, in CSS px, for the current pointer kind.
  * @param {boolean} isCoarsePointer true when the primary pointer is a finger.
  */
-export function getMarkHitStrokePx(isCoarsePointer) {
-  return isCoarsePointer ? MARK_HIT_STROKE_COARSE_PX : MARK_HIT_STROKE_FINE_PX;
+export function getMarkHitTolerancePx(isCoarsePointer) {
+  return isCoarsePointer ? MARK_HIT_TOLERANCE_COARSE_PX : MARK_HIT_TOLERANCE_FINE_PX;
+}
+
+/**
+ * Width of a mark's invisible hit stroke, in the units that stroke is drawn
+ * in: the ink's own drawn width plus a fixed screen tolerance each side.
+ * Hover (halo), click-select and the Pan / tool hit test all read this one
+ * band, so they always agree.
+ *
+ * @param {object} opts
+ * @param {number} opts.inkWidth    the visible stroke width, same units
+ * @param {number} opts.unitsPerPx  the stroke's units per CSS px: the layer's
+ *   inverseScale for page units, inverseScale / scale under a scaling
+ *   transform, 1 for a non-scaling-stroke
+ * @param {boolean} [opts.isCoarsePointer]
+ */
+export function getMarkHitBandWidth({ inkWidth = 0, unitsPerPx = 1, isCoarsePointer = false } = {}) {
+  const ink = Math.max(0, Number(inkWidth) || 0);
+  const perPx = Number(unitsPerPx);
+  const safePerPx = Number.isFinite(perPx) && perPx > 0 ? perPx : 1;
+  return ink + 2 * getMarkHitTolerancePx(isCoarsePointer) * safePerPx;
+}
+
+/**
+ * The largest axis scale of an SVG `matrix(a b c d e f)` transform — how much
+ * one unit inside it grows on the page along its most-stretched axis (an
+ * enlarged mark is often stretched more one way than the other). Dividing the
+ * screen tolerance by this keeps the band within the tolerance in every
+ * direction. 1 for anything that is not a matrix.
+ */
+export function getSvgMatrixMaxScale(transform) {
+  const match = /matrix\(\s*([^)]*)\)/.exec(String(transform || ''));
+  if (!match) return 1;
+  const [a, b, c, d] = match[1].split(/[\s,]+/).map(Number);
+  const scale = Math.max(Math.hypot(a, b), Math.hypot(c, d));
+  return Number.isFinite(scale) && scale > 0 ? scale : 1;
 }
 
 /**
@@ -70,7 +119,7 @@ export function getMarkHitStrokePx(isCoarsePointer) {
  * dot you can see is always clickable.
  *
  * @param {object} opts
- * @param {number} opts.basePadPx        pad we would like (32 or 44)
+ * @param {number} opts.basePadPx        pad we would like (mouse: grabber + 8, min 20; finger: 44)
  * @param {number} [opts.neighbourSpacingPx] distance to the closest other handle
  * @param {number} [opts.minPadPx]       never go below this (visible grabber size)
  * @returns {number} pad side length in CSS px
@@ -114,10 +163,16 @@ export function resolveHandleHitPadPageSize({
   const safeInv = Number.isFinite(inv) && inv > 0 ? inv : 1;
   const spacing = Number(neighbourSpacingPageUnits);
   const floor = Number(minPadPageUnits);
+  const floorPx = Number.isFinite(floor) ? floor / safeInv : 0;
+  // A mouse pad is the visible grabber plus a small margin, never below the
+  // fine base; a finger always gets its full 44.
+  const basePadPx = isCoarsePointer
+    ? getHandleHitPadPx(true)
+    : Math.max(getHandleHitPadPx(false), floorPx + HANDLE_HIT_PAD_FINE_MARGIN_PX * 2);
   const padPx = resolveHandleHitPadSize({
-    basePadPx: getHandleHitPadPx(isCoarsePointer),
+    basePadPx,
     neighbourSpacingPx: Number.isFinite(spacing) ? spacing / safeInv : undefined,
-    minPadPx: Number.isFinite(floor) ? floor / safeInv : 0,
+    minPadPx: floorPx,
   });
   return padPx * safeInv;
 }

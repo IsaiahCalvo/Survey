@@ -263,9 +263,25 @@ export function createInkPathAffine(
   const declaredPageSpace = (
     object?.inkGeometrySpace === 'page' || object?.data?.inkGeometrySpace === 'page'
   );
-  const hasExplicitFabricOrigin = !declaredPageSpace
-    && (object?.originX != null || object?.originY != null);
   const centerOrigin = geometryOrigin === INK_CENTER_ORIGIN;
+  // Unmarked LEGACY page-space ink: left/top 0, no pathOffset, no space flag.
+  // Every pen stroke committed before 2026-07-25 has this shape AND a Fabric
+  // origin pair — the old FabricDrawingCanvas path:created handler (Fabric
+  // 5.5.2) zeroed left/top over page-coordinate commands, and the SVG pen
+  // commit leaked PEN_FABRIC_RESIDUE's originX/originY 'left'/'top' through
+  // createProductionPaperInk until 76c03744f stripped them. The renderer of
+  // that era ignored the pair; honouring it here draws every such stroke
+  // with its bounding box on the page origin, piling all of them into the
+  // top-left corner (2026-09-23, owner's phone). isAbsoluteInkGeometry is the
+  // same discriminator the move/resize commits already use for this shape,
+  // so rendering and committing agree; normalized PDF imports, explicit
+  // 'local' rows and center-v1 rows are excluded by it / by centerOrigin.
+  const legacyPageSpace = !declaredPageSpace
+    && !centerOrigin
+    && isAbsoluteInkGeometry(object);
+  const hasExplicitFabricOrigin = !declaredPageSpace
+    && !legacyPageSpace
+    && (object?.originX != null || object?.originY != null);
   const pathOffsetX = Number.isFinite(Number(object?.pathOffset?.x))
     ? Number(object.pathOffset.x)
     : (centerOrigin || hasExplicitFabricOrigin ? rawCenterX : 0);

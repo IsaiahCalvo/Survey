@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
+import { focusMovedElsewhere } from './AnnotationDropdown';
 import {
   getAnnotationSizePreviewThickness,
   normalizeAnnotationSize,
@@ -49,6 +50,14 @@ export default function AnnotationSizeControl({
   unit = '',
   width,
   preview,
+  // w41: several picked marks with different widths. The pill reads "Mixed"
+  // and no preset is ticked until one is chosen (then every picked mark takes
+  // it). Reference: Bluebeam / Acrobat show a blank or "Mixed" field.
+  mixed = false,
+  // w42 (2026-09-26): the narrow-window look — "2 pt" reads "2" and the pill
+  // hugs it. The stroke drawn beside it and the accessible name ("Width: 2 pt")
+  // still say what the number is; the menu's rows keep the unit.
+  compact = false,
 }) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const open = controlledOpen ?? uncontrolledOpen;
@@ -61,11 +70,17 @@ export default function AnnotationSizeControl({
   const valueText = rawValueText === ''
     ? ''
     : String(normalizeAnnotationSize(rawValueText, min, max, decimals));
-  const [customValue, setCustomValue] = useState(valueText);
+  // A mixed width shows an empty field ("Mixed" placeholder) until typed in.
+  const [customValue, setCustomValue] = useState(mixed ? '' : valueText);
+  // While a mixed field is being typed in, the draft is the user's: the
+  // parent's value moves with each keystroke, and resetting to empty then
+  // would throw the typing away (review 2026-09-25).
+  const fieldFocusedRef = useRef(false);
 
   useEffect(() => {
-    setCustomValue(valueText);
-  }, [valueText]);
+    if (mixed && fieldFocusedRef.current) return;
+    setCustomValue(mixed ? '' : valueText);
+  }, [valueText, mixed]);
 
   const availablePresets = useMemo(() => (
     [...new Set(presets)]
@@ -75,7 +90,9 @@ export default function AnnotationSizeControl({
   ), [max, min, presets]);
   const previewScaleMin = availablePresets[0] ?? min;
   const previewScaleMax = availablePresets[availablePresets.length - 1] ?? max;
-  const selectedPresetIndex = availablePresets.findIndex((preset) => Number(valueText) === preset);
+  const selectedPresetIndex = mixed
+    ? -1
+    : availablePresets.findIndex((preset) => Number(valueText) === preset);
 
   const handleOpenChange = (nextOpen) => {
     if (nextOpen) {
@@ -132,9 +149,12 @@ export default function AnnotationSizeControl({
     disabled,
     value: customValue,
     onChange: (event) => updateDraft(event.target.value),
-    onFocus: () => onFocusChange?.(true),
+    onFocus: () => { fieldFocusedRef.current = true; onFocusChange?.(true); },
+    placeholder: mixed ? 'Mixed' : undefined,
+    // Leaving a mixed field untouched keeps every picked mark's own width.
     onBlur: (event) => {
-      onFocusChange?.(false);
+      onFocusChange?.(false); fieldFocusedRef.current = false;
+      if (mixed && !event.currentTarget.value.trim()) return;
       commit(event.currentTarget.value);
     },
     onKeyDown: (event) => {
@@ -146,7 +166,9 @@ export default function AnnotationSizeControl({
   };
 
   const isPill = variant === 'pill';
-  const valueLabel = `${valueText}${unit ? ` ${unit}` : ''}`;
+  const valueLabel = mixed ? 'Mixed' : `${valueText}${unit ? ` ${unit}` : ''}`;
+  const isCompact = compact && !mixed;
+  const shownLabel = isCompact ? valueText : valueLabel;
 
   return (
     <Popover.Root open={open} onOpenChange={handleOpenChange}>
@@ -155,15 +177,16 @@ export default function AnnotationSizeControl({
           <Popover.Trigger asChild>
             <button
               type="button"
-              className="chrome-pill annotation-size-control__pill"
+              className={`chrome-pill annotation-size-control__pill${isCompact ? ' chrome-pill--compact' : ''}`}
               aria-label={`${label}: ${valueLabel}`}
               title={label}
               aria-haspopup="listbox"
               disabled={disabled}
               style={width ? { '--chrome-pill-w': width } : undefined}
             >
-              {preview ? <span className="chrome-pill__preview" aria-hidden="true">{preview}</span> : null}
-              <span className="chrome-pill__label">{valueLabel}</span>
+              {/* A mixed width has no one stroke to preview. */}
+              {preview && !mixed ? <span className="chrome-pill__preview" aria-hidden="true">{preview}</span> : null}
+              <span className="chrome-pill__label">{shownLabel}</span>
               <span className="chrome-pill__chevron" aria-hidden="true">
                 <Icon name="chevronDown" size={9} color="currentColor" />
               </span>
@@ -195,6 +218,11 @@ export default function AnnotationSizeControl({
         <Popover.Content
           className="annotation-size-control__popover"
           data-annotation-size-popover="true"
+          // Dismiss rules R1/R6: see AnnotationDropdown — never pull focus back
+          // to this pill once the press that closed it focused another control.
+          onCloseAutoFocus={(event) => {
+            if (focusMovedElsewhere(event)) event.preventDefault();
+          }}
           align={isPill ? 'start' : 'center'}
           sideOffset={6}
           collisionPadding={8}
@@ -205,7 +233,7 @@ export default function AnnotationSizeControl({
               in a 36px chrome. */}
           <div className="annotation-size-control__presets" role="listbox" aria-label={`${label} presets`}>
             {availablePresets.map((preset, index) => {
-              const active = Number(valueText) === preset;
+              const active = !mixed && Number(valueText) === preset;
               return (
                 <button
                   key={preset}

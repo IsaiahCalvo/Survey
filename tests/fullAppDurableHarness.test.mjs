@@ -153,7 +153,7 @@ test('real-auth durable harness installs and checks leased identity without envi
 
 test('durable UI waits for loaded hub controls and uses supported locator APIs', () => {
   const source = readFileSync(new URL('../agent-cli/full-app-durable-e2e.mjs', import.meta.url), 'utf8');
-  assert.match(source, /querySelectorAll\('\.hub-skeleton-block'\)/);
+  assert.match(source, /querySelectorAll\('\.hub-loading-region, \[data-quiet-loading\]'\)/);
   assert.match(source, /visibleInputWithValue\(page, oldName\)/);
   assert.doesNotMatch(source, /page\.getByDisplayValue/);
 });

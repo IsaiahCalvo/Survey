@@ -213,10 +213,13 @@ test('region_deleted entries label as Region in <space>', () => {
   assert.equal(describeHistoryEventSubject(noSpaceName), 'Region in a space');
 });
 
-test('annotation entries keep the Annotation label; bulk and empty events show nothing', () => {
+// w55 (ruled change, audit defect 17): History never shows a raw mark id to
+// the reader — the row's own sentence already names the mark. Annotation
+// entries now show no subject line, like bulk and empty events.
+test('annotation entries show no raw-id subject line; bulk and empty events show nothing', () => {
   assert.equal(
     describeHistoryEventSubject({ event_type: 'annotation_deleted', annotation_id: 'ann-1' }),
-    'Annotation: ann-1',
+    null,
   );
   assert.equal(
     describeHistoryEventSubject({ event_type: 'annotations_bulk_deleted', annotation_id: null }),

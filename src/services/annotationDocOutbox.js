@@ -10,6 +10,111 @@ const INCARNATION_STORE = 'documentIncarnations';
 const REQUEST_TIMEOUT_MS = 10_000;
 const COMPACT_AFTER_DELTAS = 40;
 
+// compactAccepted's snapshot may be a function: the caller's full-document
+// encode then runs only when a compaction actually happens (every
+// COMPACT_AFTER_DELTAS accepted rows), not after every accepted row. A big
+// import is dozens of rows (w26, 2026-09-24); encoding a 17 MB document after
+// each one was seconds of wasted work.
+function resolveAcceptedSnapshot(acceptedSnapshot) {
+  return typeof acceptedSnapshot === 'function' ? acceptedSnapshot() : acceptedSnapshot;
+}
+
+function sameBytes(left, right) {
+  if (left == null || right == null) return left == null && right == null;
+  const a = left instanceof Uint8Array ? left : new Uint8Array(left);
+  const b = right instanceof Uint8Array ? right : new Uint8Array(right);
+  if (a.length !== b.length) return false;
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] !== b[index]) return false;
+  }
+  return true;
+}
+
+// Open speed (w29, 2026-09-24): compaction options.
+//
+// `covered` = { token, checkpointUpdate, recordKeys } describes what the
+// caller's accepted state is KNOWN to contain: the checkpoint it loaded or
+// last wrote (by `token`; `checkpointUpdate` bytes only for a checkpoint
+// saved before tokens existed) and the accepted record keys already applied
+// to it. When the store still holds that checkpoint (or none) and no record
+// outside those keys, merging would give back the accepted state itself, so
+// it is stored as-is instead of merging two ~20 MB updates. Anything else
+// (another tab compacted or added records) takes the full merge as before.
+//
+// `identity` (a value, or a function called right after the accepted state
+// is encoded) names the cloud snapshot row the stored checkpoint is known to
+// contain: { atSeq, writerId, writerEpoch }. An open whose cloud snapshot row
+// still has that identity can skip downloading it (annotationDocSync). A
+// MERGED checkpoint keeps the previous identity unless a new one is given
+// (the merge contains the previous checkpoint). A checkpoint stored as-is
+// carries only the identity given with it (review A, w29).
+//
+// `token` names the checkpoint this compaction writes. The caller may use it
+// as its next `covered.token` only when `outcome.merged` is false: a merged
+// checkpoint can hold content (another tab's) its accepted state lacks.
+//
+// `onlyIfCovered`: store only via the as-is path; when that does not apply,
+// do nothing and return false (no ~20 MB merge on the main thread).
+//
+// `outcome` (optional object) is filled with { merged } when a checkpoint is
+// written.
+function checkpointCovered(checkpoint, covered) {
+  if (!checkpoint) return true;
+  if (checkpoint.token != null) return checkpoint.token === covered.token;
+  return covered.checkpointUpdate != null && sameBytes(checkpoint.update, covered.checkpointUpdate);
+}
+
+function compactionPlan(checkpoint, acceptedSnapshot, records, options = {}) {
+  const resolved = resolveAcceptedSnapshot(acceptedSnapshot);
+  const resolvedIdentity = typeof options.identity === 'function'
+    ? options.identity()
+    : options.identity;
+  const identity = normalizeSnapshotIdentity(resolvedIdentity)
+    || normalizeSnapshotIdentity(checkpoint?.snapshotIdentity);
+  const token = options.token || newCheckpointToken();
+  const covered = options.covered;
+  if (
+    resolved
+    && covered
+    && checkpointCovered(checkpoint, covered)
+    && records.every((record) => covered.recordKeys?.has?.(record.key))
+  ) {
+    return {
+      update: cloneBytes(resolved),
+      identity: normalizeSnapshotIdentity(resolvedIdentity),
+      token,
+      merged: false,
+    };
+  }
+  if (options.onlyIfCovered) return { skip: true };
+  const updates = [
+    checkpoint?.update,
+    resolved,
+    ...records.map((record) => record.update),
+  ].filter(Boolean).map(cloneBytes);
+  if (!updates.length) return { update: null, identity, token, merged: false };
+  return { update: Y.mergeUpdates(updates), identity, token, merged: true };
+}
+
+export function normalizeSnapshotIdentity(identity) {
+  if (!identity || identity.atSeq == null) return null;
+  const atSeq = Number(identity.atSeq);
+  const writerEpoch = Number(identity.writerEpoch);
+  if (!Number.isFinite(atSeq) || !Number.isFinite(writerEpoch)) return null;
+  return {
+    atSeq,
+    writerId: identity.writerId == null ? null : String(identity.writerId),
+    writerEpoch,
+  };
+}
+
+function newCheckpointToken() {
+  try {
+    if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+  } catch { /* fall through */ }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
 function actorScopeKey(documentId, actorUserId) {
   return `${documentId}\u0000${actorUserId}`;
 }
@@ -247,7 +352,12 @@ export function createMemoryAnnotationOutbox() {
         checkpointUpdate: cloneBytes(checkpoint?.update),
         acceptedKeys: [...(checkpoint?.acceptedKeys || [])],
         records: listStore(accepted, documentId, actorUserId),
+        checkpointToken: checkpoint?.token ?? null,
+        snapshotIdentity: normalizeSnapshotIdentity(checkpoint?.snapshotIdentity),
       };
+    },
+    async compactionDue(documentId, actorUserId) {
+      return listStore(accepted, documentId, actorUserId).length >= COMPACT_AFTER_DELTAS;
     },
     async compactAccepted(
       documentId,
@@ -255,6 +365,7 @@ export function createMemoryAnnotationOutbox() {
       acceptedSnapshot,
       force = false,
       expectedIncarnation = 0,
+      options = {},
     ) {
       if ((Number(expectedIncarnation) || 0) !== (incarnations.get(documentId) || 0)) {
         throw staleIncarnationError(documentId);
@@ -262,14 +373,20 @@ export function createMemoryAnnotationOutbox() {
       const scopeKey = actorScopeKey(documentId, actorUserId);
       const records = listStore(accepted, documentId, actorUserId);
       if (!force && records.length < COMPACT_AFTER_DELTAS) return false;
-      const updates = [
-        checkpoints.get(scopeKey)?.update,
+      const plan = compactionPlan(
+        checkpoints.get(scopeKey),
         acceptedSnapshot,
-        ...records.map((record) => record.update),
-      ].filter(Boolean).map(cloneBytes);
+        records,
+        options || {},
+      );
+      if (plan.skip) return false;
+      const { update, identity, token } = plan;
+      if (options?.outcome) options.outcome.merged = plan.merged;
       checkpoints.set(scopeKey, {
         scopeKey,
-        update: Y.mergeUpdates(updates),
+        update: update || Y.mergeUpdates([]),
+        token,
+        snapshotIdentity: identity,
         acceptedKeys: [
           ...new Set([
             ...(checkpoints.get(scopeKey)?.acceptedKeys || []),
@@ -369,6 +486,9 @@ export async function createAnnotationOutbox({
   );
 
   return {
+    // The checkpoint worker opens this same database to save a checkpoint
+    // without a multi-MB IndexedDB read/write on the main thread (2026-10-06).
+    storage: 'indexeddb',
     async list(documentId, actorUserId) {
       return list(PENDING_STORE, documentId, actorUserId);
     },
@@ -534,6 +654,8 @@ export async function createAnnotationOutbox({
           return {
             checkpointUpdate: cloneBytes(checkpoint?.update),
             acceptedKeys: [...(checkpoint?.acceptedKeys || [])],
+            checkpointToken: checkpoint?.token ?? null,
+            snapshotIdentity: normalizeSnapshotIdentity(checkpoint?.snapshotIdentity),
             records: records
               .sort((left, right) => (
                 (left.ordinal || 0) - (right.ordinal || 0)
@@ -544,18 +666,43 @@ export async function createAnnotationOutbox({
         },
       );
     },
+    // Whether a non-forced compactAccepted would compact now (enough
+    // accepted records), without reading any record (2026-10-06).
+    async compactionDue(documentId, actorUserId) {
+      const scopeKey = actorScopeKey(documentId, actorUserId);
+      return run(ACCEPTED_STORE, 'readonly', async (stores, transaction) => (
+        (await requestResult(stores[ACCEPTED_STORE].index('scopeKey').count(scopeKey), transaction))
+          >= COMPACT_AFTER_DELTAS
+      ));
+    },
     async compactAccepted(
       documentId,
       actorUserId,
       acceptedSnapshot,
       force = false,
       expectedIncarnation = 0,
+      options = {},
     ) {
       const scopeKey = actorScopeKey(documentId, actorUserId);
       return run(
         [CHECKPOINT_STORE, ACCEPTED_STORE, INCARNATION_STORE],
         'readwrite',
         async (stores, transaction) => {
+          if (!force) {
+            // 2026-10-06: most accepted rows do not compact. Count them
+            // first instead of reading the stored multi-MB checkpoint (and
+            // every record) only to return false: that read cost the main
+            // thread 20-80 ms after every accepted row on Package 2.
+            const [incarnation, count] = await Promise.all([
+              requestResult(stores[INCARNATION_STORE].get(documentId), transaction),
+              requestResult(stores[ACCEPTED_STORE].index('scopeKey').count(scopeKey), transaction),
+            ]);
+            if (
+              (Number(expectedIncarnation) || 0)
+              !== (Number(incarnation?.incarnation) || 0)
+            ) throw staleIncarnationError(documentId);
+            if (count < COMPACT_AFTER_DELTAS) return false;
+          }
           const [incarnation, checkpoint, records] = await Promise.all([
             requestResult(
               stores[INCARNATION_STORE].get(documentId),
@@ -572,15 +719,21 @@ export async function createAnnotationOutbox({
             !== (Number(incarnation?.incarnation) || 0)
           ) throw staleIncarnationError(documentId);
           if (!force && records.length < COMPACT_AFTER_DELTAS) return false;
-          const updates = [
-            checkpoint?.update,
+          const plan = compactionPlan(
+            checkpoint,
             acceptedSnapshot,
-            ...records.map((record) => record.update),
-          ].filter(Boolean).map(cloneBytes);
-          if (updates.length) {
+            records,
+            options || {},
+          );
+          if (plan.skip) return false;
+          const { update, identity, token } = plan;
+          if (update && options?.outcome) options.outcome.merged = plan.merged;
+          if (update) {
             await requestResult(stores[CHECKPOINT_STORE].put({
               scopeKey,
-              update: Y.mergeUpdates(updates),
+              update,
+              token,
+              snapshotIdentity: identity,
               acceptedKeys: [
                 ...new Set([
                   ...(checkpoint?.acceptedKeys || []),

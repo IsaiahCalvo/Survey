@@ -83,15 +83,27 @@ test('author can delete their own marker (each author field resolves)', () => {
   }
 });
 
-test('non-owner CANNOT delete another user\'s marker', () => {
+test('non-owner CAN delete another user\'s marker, but nobody can delete a user-locked one', () => {
+  // RULED 2026-09-28 owner: open editing + lock — any editor may delete anyone's Survey Marker.
   strictEqual(
     canModifySurveyMarker({
       surveyMarker: { userId: OTHER_ID },
       viewerId: COLLAB_ID,
       documentOwnerId: OWNER_ID,
     }),
-    false,
+    true,
   );
+  // RULED 2026-09-28 owner: open editing + lock — the refusal moves to the user lock, which binds author and owner too.
+  for (const viewerId of [COLLAB_ID, OTHER_ID, OWNER_ID]) {
+    strictEqual(
+      canModifySurveyMarker({
+        surveyMarker: { userId: OTHER_ID, lockedBy: OTHER_ID },
+        viewerId,
+        documentOwnerId: OWNER_ID,
+      }),
+      false,
+    );
+  }
 });
 
 test('document owner CAN delete anyone\'s marker (owner override)', () => {
@@ -116,24 +128,34 @@ test('document owner CAN delete a marker with an unresolvable author', () => {
   );
 });
 
-test('unresolvable author DENIES for non-owners (fail closed)', () => {
+test('unresolvable author is open to non-owner editors once the owner is known; fails closed while the owner is unknown', () => {
+  // RULED 2026-09-28 owner: open editing + lock — unattributed markers are editable by any editor.
   strictEqual(
     canModifySurveyMarker({
       surveyMarker: { name: 'orphan marker' },
       viewerId: COLLAB_ID,
       documentOwnerId: OWNER_ID,
     }),
+    true,
+  );
+  strictEqual(
+    canModifySurveyMarker({
+      surveyMarker: { name: 'orphan marker' },
+      viewerId: COLLAB_ID,
+      documentOwnerId: null,
+    }),
     false,
   );
 });
 
-test('non-string author values deny for non-owners (fail closed)', () => {
+test('non-string author values deny for non-owners while the owner is unknown (fail closed)', () => {
   for (const userId of [0, false, {}, []]) {
+    // RULED 2026-09-28 owner: open editing + lock — with a known owner any editor is admitted, so fail-closed is pinned on the owner-unknown window.
     strictEqual(
       canModifySurveyMarker({
         surveyMarker: { userId },
         viewerId: COLLAB_ID,
-        documentOwnerId: OWNER_ID,
+        documentOwnerId: null,
       }),
       false,
     );
@@ -178,10 +200,20 @@ test('edit gate: author can move/resize their own marker', () => {
   );
 });
 
-test('edit gate: non-owner CANNOT move another user\'s marker', () => {
+test('edit gate: non-owner CAN move another user\'s marker, but not a user-locked one', () => {
+  // RULED 2026-09-28 owner: open editing + lock — any editor may move anyone's Survey Marker.
   strictEqual(
     canModifySurveyMarker({
       surveyMarker: makeMoveMarker({ userId: OTHER_ID }),
+      viewerId: COLLAB_ID,
+      documentOwnerId: OWNER_ID,
+    }),
+    true,
+  );
+  // RULED 2026-09-28 owner: open editing + lock — a user-locked marker refuses the move.
+  strictEqual(
+    canModifySurveyMarker({
+      surveyMarker: makeMoveMarker({ userId: OTHER_ID, lockedBy: OTHER_ID }),
       viewerId: COLLAB_ID,
       documentOwnerId: OWNER_ID,
     }),
@@ -200,12 +232,21 @@ test('edit gate: document owner CAN move anyone\'s marker (owner override)', () 
   );
 });
 
-test('edit gate: unresolvable author denies move for non-owners (fail closed)', () => {
+test('edit gate: unresolvable author denies move for non-owners while the owner is unknown (fail closed)', () => {
+  // RULED 2026-09-28 owner: open editing + lock — with a known owner an unattributed marker is movable; fail-closed stays for the owner-unknown window.
   strictEqual(
     canModifySurveyMarker({
       surveyMarker: makeMoveMarker(),
       viewerId: COLLAB_ID,
       documentOwnerId: OWNER_ID,
+    }),
+    true,
+  );
+  strictEqual(
+    canModifySurveyMarker({
+      surveyMarker: makeMoveMarker(),
+      viewerId: COLLAB_ID,
+      documentOwnerId: null,
     }),
     false,
   );

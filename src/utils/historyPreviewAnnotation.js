@@ -130,3 +130,33 @@ export function projectAnnotationForHistoryPreview(annotation) {
   }
   return preview;
 }
+
+// RULED 2026-09-28 owner: History option A. The "Before" copy a History row
+// keeps of an edited mark (for the Before / After peek) is only what the ghost
+// needs: where it was, its size, turn and color — plus its outline when that
+// is small. Keeps History rows small (Supabase storage, refresh downloads,
+// the device cache) and under the 12 KB row trim.
+const PREVIEW_BEFORE_SHAPE_CHARS = 1500;
+const PREVIEW_BEFORE_KEYS = ['type', 'tool', 'left', 'top', 'width', 'height', 'scaleX', 'scaleY', 'angle',
+  'originX', 'originY', 'x1', 'y1', 'x2', 'y2', 'stroke', 'fill', 'strokeWidth', 'strokeUniform', 'pathOffset'];
+export function slimHistoryPreviewBefore(annotation) {
+  if (!annotation || typeof annotation !== 'object') return null;
+  const out = {};
+  for (const key of PREVIEW_BEFORE_KEYS) {
+    if (annotation[key] !== undefined) out[key] = annotation[key];
+  }
+  const data = annotation.data || {};
+  const slimData = {};
+  for (const key of ['type', 'tool', 'color', 'strokeColor', 'fillColor']) {
+    if (data[key] !== undefined) slimData[key] = data[key];
+  }
+  if (data.style?.fontColor !== undefined) slimData.style = { fontColor: data.style.fontColor };
+  if (Object.keys(slimData).length) out.data = slimData;
+  for (const key of ['path', 'points']) {
+    if (!Array.isArray(annotation[key])) continue;
+    try {
+      if (JSON.stringify(annotation[key]).length <= PREVIEW_BEFORE_SHAPE_CHARS) out[key] = annotation[key];
+    } catch (_err) { /* skip the outline */ }
+  }
+  return out;
+}

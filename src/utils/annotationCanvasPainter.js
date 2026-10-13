@@ -35,7 +35,19 @@ import { resolveAnnotationCloudSpec } from './pdfAnnotationAppearance.js';
 // scale baked in, translate + rotate frame, crown outline, scalloped fill) so
 // the bitmap twin is the SVG layer's output, not a re-derivation of it.
 import { resolveCloudAnnotationGeometry } from './cloudAnnotationGeometry.js';
+// w52 (2026-09-28): image marks (imported stamps) and text markup paint here
+// too, from the same geometry the SVG layer uses, so thumbnails, the zoom
+// proxy and the eraser base show every mark type the screen shows.
+import { getPdfStampProxySvgProps, isPdfStampProxy } from './pdfStampProxy.js';
+import { getAnnotationImage } from './annotationImageCache.js';
+import {
+  buildTextMarkupRenderSpec,
+  groupUniformTextMarkupHighlights,
+  isUniformTextMarkupHighlight,
+} from './textMarkupRenderSpec.js';
+import { calloutBoxCloudStandIn, colorWithAlpha, textboxCloudStandIn } from './textCloudBorder.js';
 import { DRAWN_CENTERED_STROKE_CONTRACT } from './shapeCommitGeometry.js';
+import { insetRectForFill, shouldKnockOutShapeFill } from './shapeFillKnockout.js';
 import { createInkPathAffine } from './inkGeometryTransform.js';
 import { normalizeOperationalInkPath } from './inkPathNormalization.js';
 import { getCounterLabelLayout } from './counterGeometry.js';
@@ -235,57 +247,23 @@ function pathBounds(commands) {
   return { minX, minY, maxX, maxY };
 }
 
-function transformedPaperSourceBounds(source) {
-  if (
-    !Array.isArray(source?.path)
-    || !Array.isArray(source?.matrix)
-    || source.matrix.length !== 6
-  ) return null;
-  const [a, b, c, d, e, f] = source.matrix;
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  const boundsPath = (
-    Array.isArray(source.operationalPath) && source.operationalPath.length > 0
-      ? source.operationalPath
-      : normalizeOperationalInkPath(source.path)
-  );
-  for (const command of boundsPath) {
-    for (let index = 1; index + 1 < command.length; index += 2) {
-      const x = Number(command[index]);
-      const y = Number(command[index + 1]);
-      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-      const pageX = a * x + c * y + e;
-      const pageY = b * x + d * y + f;
-      if (!Number.isFinite(pageX) || !Number.isFinite(pageY)) continue;
-      minX = Math.min(minX, pageX);
-      minY = Math.min(minY, pageY);
-      maxX = Math.max(maxX, pageX);
-      maxY = Math.max(maxY, pageY);
-    }
-  }
-  if (!Number.isFinite(minX)) return null;
-  const strokeScale = Math.max(
-    Math.hypot(a, b),
-    Math.hypot(c, d),
-    Number.MIN_VALUE,
-  );
-  const pad = source.paintMode === 'fill'
-    ? 1
-    : Math.max(1, toNumber(source.strokeWidth) * strokeScale);
-  return {
-    x: minX - pad,
-    y: minY - pad,
-    width: Math.max(Number.MIN_VALUE, maxX - minX + pad * 2),
-    height: Math.max(Number.MIN_VALUE, maxY - minY + pad * 2),
-  };
+// A ring counts only with at least three points besides a repeated closing
+// point — exactly the SVG layer's rule (svgAnnotationRenderers
+// paperCutsToSvgD). A closed 3-point ring [a, b, a] is a line: the SVG layer
+// dropped it and the canvas traced it, so a survivor made only of such rings
+// rendered differently on the two (w38 review).
+function isClipRing(ring) {
+  if (!Array.isArray(ring) || ring.length < 3) return false;
+  const closed = ring.length > 1
+    && ring[0]?.[0] === ring.at(-1)?.[0]
+    && ring[0]?.[1] === ring.at(-1)?.[1];
+  return (closed ? ring.length - 1 : ring.length) >= 3;
 }
 
 function tracePolygonSetInto(context, polygons) {
   for (const polygon of polygons || []) {
     for (const ring of polygon || []) {
-      if (!Array.isArray(ring) || ring.length < 3) continue;
+      if (!isClipRing(ring)) continue;
       context.moveTo(toNumber(ring[0]?.[0]), toNumber(ring[0]?.[1]));
       for (let index = 1; index < ring.length; index += 1) {
         context.lineTo(toNumber(ring[index]?.[0]), toNumber(ring[index]?.[1]));
@@ -464,55 +442,32 @@ function drawPath(context, object, displayScale) {
   }
   context.lineDashOffset = toNumber(attrs.strokeDashoffset);
 
+  // Partially erased authored curve: fill the SURVIVOR polygons (even-odd),
+  // exactly like the SVG layer (svgAnnotationRenderers renderPath) and the PDF
+  // export. w38 (2026-09-25): survivors, never (bounds minus paperEraserCuts):
+  // the cuts come from a second polygon boolean whose operands share most of
+  // their edges, which Martinez gets wrong (slivers in holes, notches).
+  // 2026-10-06 (test plan 68): the survivors used to CLIP the authored source
+  // stroke. That clip edge lies on the stroke's own edge, so each edge pixel
+  // was anti-aliased twice and thin lines drew 10-30% lighter than the
+  // untouched original; a filled outline has one anti-aliased edge.
   const paperSource = object?.paperSourceStroke;
-  const paperCuts = object?.paperEraserCuts;
-  const paperBounds = transformedPaperSourceBounds(paperSource);
+  const paperSurvivors = object?.polygons;
   if (
-    paperBounds
-    && Array.isArray(paperCuts)
-    && paperCuts.length > 0
-    && typeof context.clip === 'function'
-    && typeof context.rect === 'function'
-    && typeof context.transform === 'function'
+    Array.isArray(paperSource?.path)
+    && paperSource.path.length > 0
+    && Array.isArray(paperSource.matrix)
+    && paperSource.matrix.length === 6
+    && Array.isArray(paperSurvivors)
+    // Same test as the SVG layer: at least one real ring.
+    && paperSurvivors.some((polygon) => Array.isArray(polygon) && polygon.some(isClipRing))
   ) {
-    context.save();
     context.beginPath();
-    context.rect(
-      paperBounds.x,
-      paperBounds.y,
-      paperBounds.width,
-      paperBounds.height,
+    tracePolygonSetInto(context, paperSurvivors);
+    context.fillStyle = object.fill || attrs.fill || (
+      paperSource.paintMode === 'fill' ? paperSource.fill : paperSource.stroke
     );
-    tracePolygonSetInto(context, paperCuts);
-    context.clip('evenodd');
-    context.transform(...paperSource.matrix);
-    context.lineCap = paperSource.strokeLineCap || 'round';
-    context.lineJoin = paperSource.strokeLineJoin || 'round';
-    context.miterLimit = toNumber(paperSource.strokeMiterLimit, 10);
-    if (typeof context.setLineDash === 'function') {
-      context.setLineDash(
-        Array.isArray(paperSource.strokeDashArray)
-          ? paperSource.strokeDashArray
-          : [],
-      );
-    }
-    context.lineDashOffset = toNumber(paperSource.strokeDashOffset);
-    context.beginPath();
-    traceCommandsInto(
-      context,
-      Array.isArray(paperSource.operationalPath)
-        ? paperSource.operationalPath
-        : normalizeOperationalInkPath(paperSource.path),
-    );
-    if (paperSource.paintMode === 'fill') {
-      context.fillStyle = object.fill || attrs.fill || paperSource.fill;
-      context.fill(paperSource.fillRule === 'evenodd' ? 'evenodd' : 'nonzero');
-    } else {
-      context.strokeStyle = object.fill || attrs.fill || paperSource.stroke;
-      context.lineWidth = toNumber(paperSource.strokeWidth);
-      context.stroke();
-    }
-    context.restore();
+    context.fill('evenodd');
     context.restore();
     return;
   }
@@ -755,6 +710,43 @@ function drawCloud(context, object, geometry, strokeFallback = null) {
   context.restore();
 }
 
+// Owner Test 15 (2026-10-02), twin of KnockoutMaskedShape (SVG): a shape
+// whose see-through border would show its fill under the inner half of the
+// stroke gets its fill painted on the scratch layer, the stroke band erased
+// from it (destination-out at the ink width, solid, the stroke's join) and
+// the layer composited back with the context's own alpha / blend - the cloud
+// knockout above, for any traced outline. `trace(ctx)` issues the outline
+// path. Returns false when there is no scratch layer, so the caller paints
+// the fill inline as it always did.
+const paintKnockedOutFill = (context, trace, { fill, strokeWidth, lineJoin = 'miter' }) => {
+  const layer = acquireScratchLayer(context);
+  if (!layer) return false;
+  const scratch = layer.context;
+  scratch.save();
+  scratch.setTransform(1, 0, 0, 1, 0, 0);
+  scratch.globalAlpha = 1;
+  scratch.globalCompositeOperation = 'source-over';
+  scratch.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
+  scratch.setTransform(context.getTransform());
+  scratch.beginPath();
+  trace(scratch);
+  scratch.fillStyle = fill;
+  scratch.fill('nonzero');
+  scratch.globalCompositeOperation = 'destination-out';
+  if (typeof scratch.setLineDash === 'function') scratch.setLineDash([]);
+  scratch.lineJoin = lineJoin;
+  scratch.lineCap = 'round';
+  scratch.lineWidth = strokeWidth;
+  scratch.strokeStyle = '#000';
+  scratch.stroke();
+  scratch.restore();
+  context.save();
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.drawImage(layer.canvas, 0, 0);
+  context.restore();
+  return true;
+};
+
 // Twin of renderPolygon / renderPolyline: the exact SVG transform chain
 // (translate → rotate about the pathOffset-corrected center → scale →
 // translate(−pathOffset)) so points land where the SVG puts them.
@@ -797,14 +789,26 @@ function drawPoints(context, object, close) {
   context.translate(-pathOffsetX, -pathOffsetY);
 
   const strokeWidth = toNumber(object.strokeWidth, 1);
+  const tracePoints = (target) => {
+    points.forEach((point, index) => {
+      const x = toNumber(point?.x);
+      const y = toNumber(point?.y);
+      if (index === 0) target.moveTo(x, y);
+      else target.lineTo(x, y);
+    });
+    if (close) target.closePath();
+  };
+  // Owner Test 15: a see-through border never shows the fill under it.
+  const knockedOut = close
+    && shouldKnockOutShapeFill({
+      fill: object.fill,
+      stroke: object.stroke,
+      strokeWidth,
+      opacity: context.globalAlpha,
+    })
+    && paintKnockedOutFill(context, tracePoints, { fill: object.fill, strokeWidth, lineJoin: 'round' });
   context.beginPath();
-  points.forEach((point, index) => {
-    const x = toNumber(point?.x);
-    const y = toNumber(point?.y);
-    if (index === 0) context.moveTo(x, y);
-    else context.lineTo(x, y);
-  });
-  if (close) context.closePath();
+  tracePoints(context);
 
   if (typeof context.setLineDash === 'function') {
     context.setLineDash(Array.isArray(object.strokeDashArray) && object.strokeDashArray.length > 0
@@ -816,7 +820,7 @@ function drawPoints(context, object, close) {
   paintCurrentPath(context, {
     // Polygon: stroke defaults to invisible like SVG (renderPolygon:780);
     // polyline defaults to '#000' (renderPolyline:858). Both honor fill.
-    fill: isVisiblePaint(object.fill) ? object.fill : null,
+    fill: !knockedOut && isVisiblePaint(object.fill) ? object.fill : null,
     stroke: isVisiblePaint(object.stroke) ? object.stroke : (close ? null : '#000'),
     strokeWidth,
   });
@@ -984,11 +988,32 @@ function drawText(context, object) {
   context.translate(toNumber(object.left), toNumber(object.top));
   applyRotation(context, toNumber(object.angle), effectiveWidth / 2, effectiveHeight / 2);
 
-  if (isVisiblePaint(object.backgroundColor)) {
-    context.fillStyle = object.backgroundColor;
-    context.fillRect(0, 0, effectiveWidth, effectiveHeight);
+  // w43: twin of renderText's cloud border - a text box with line style Cloud
+  // paints the house rectangle cloud (utils/textCloudBorder.js) in this local
+  // frame, its background filling the scalloped region.
+  const cloudBorder = textboxCloudStandIn(object, { left: 0, top: 0, width: effectiveWidth, height: effectiveHeight });
+  const cloudBorderGeometry = cloudBorder && resolveAnnotationCloudSpec({ ...cloudBorder, angle: 0 })
+    ? resolveCloudAnnotationGeometry({ ...cloudBorder, angle: 0 })
+    : null;
+  if (cloudBorderGeometry) {
+    drawCloud(context, { ...cloudBorder, angle: 0, opacity: object.opacity ?? 1, globalCompositeOperation: object.globalCompositeOperation }, cloudBorderGeometry);
   }
-  if (toNumber(object.strokeWidth) > 0 && isVisiblePaint(object.stroke)) {
+  if (!cloudBorderGeometry && isVisiblePaint(object.backgroundColor)) {
+    context.fillStyle = object.backgroundColor;
+    // Owner Test 15: under a see-through border the background stops at the
+    // border's inner edge (renderText twin).
+    const backgroundBox = toNumber(object.strokeWidth) > 0 && isVisiblePaint(object.stroke)
+      && shouldKnockOutShapeFill({
+        fill: object.backgroundColor,
+        stroke: object.stroke,
+        strokeWidth: object.strokeWidth,
+        opacity: context.globalAlpha,
+      })
+      ? insetRectForFill({ x: 0, y: 0, width: effectiveWidth, height: effectiveHeight }, toNumber(object.strokeWidth))
+      : { x: 0, y: 0, width: effectiveWidth, height: effectiveHeight };
+    context.fillRect(backgroundBox.x, backgroundBox.y, backgroundBox.width, backgroundBox.height);
+  }
+  if (!cloudBorderGeometry && toNumber(object.strokeWidth) > 0 && isVisiblePaint(object.stroke)) {
     context.strokeStyle = object.stroke;
     context.lineWidth = toNumber(object.strokeWidth);
     if (typeof context.setLineDash === 'function') context.setLineDash([]);
@@ -1206,6 +1231,77 @@ function drawGroup(context, object) {
   context.restore();
 }
 
+// Twin of SVGAnnotationLayer's stamp-proxy branch (<image
+// {...getPdfStampProxySvgProps(obj)}>): same box, opacity and rotation about
+// the box centre. The image comes from annotationImageCache; one that is still
+// decoding is counted as pending so the caller can repaint once it lands.
+let pendingImageCount = 0;
+function drawImageMark(context, object) {
+  const props = getPdfStampProxySvgProps(object);
+  if (!(props.width > 0 && props.height > 0)) return;
+  const image = getAnnotationImage(props.href);
+  if (!image) {
+    pendingImageCount += 1;
+    return;
+  }
+  context.save();
+  context.globalAlpha = clampOpacity(props.opacity);
+  context.globalCompositeOperation = 'source-over';
+  const angle = object?.data?.pdfStampAppearanceRotationBaked === true ? 0 : toNumber(object.angle);
+  applyRotation(context, angle, props.x + props.width / 2, props.y + props.height / 2);
+  context.drawImage(image, props.x, props.y, props.width, props.height);
+  context.restore();
+}
+
+function traceTextMarkupRuns(context, runs, closed) {
+  context.beginPath();
+  for (const points of runs) {
+    points.forEach(([x, y], index) => {
+      if (index === 0) context.moveTo(toNumber(x), toNumber(y));
+      else context.lineTo(toNumber(x), toNumber(y));
+    });
+    if (closed) context.closePath();
+  }
+}
+
+// Twin of renderTextMarkup (svgAnnotationRenderers.jsx) via
+// buildTextMarkupRenderSpec. A uniform-overlap highlight paints nothing here:
+// its colour comes from the merged mask paintUniformTextMarkupMasks lays
+// beneath every mark (the SVG layer renders it at opacity 0 the same way).
+function drawTextMarkup(context, object) {
+  if (isUniformTextMarkupHighlight(object)) return;
+  const spec = buildTextMarkupRenderSpec(object);
+  if (!spec) return;
+  context.save();
+  context.globalAlpha = clampOpacity(spec.opacity);
+  context.globalCompositeOperation = spec.multiply ? 'multiply' : 'source-over';
+  if (typeof context.setLineDash === 'function') context.setLineDash([]);
+  traceTextMarkupRuns(context, spec.runs, spec.closed);
+  if (spec.mode === 'stroke') {
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+  }
+  paintCurrentPath(context, {
+    fill: spec.fill,
+    stroke: spec.stroke,
+    strokeWidth: spec.strokeWidth || 0,
+  });
+  context.restore();
+}
+
+// Twin of SVGAnnotationLayer's uniformTextMarkupElements: one merged fill per
+// colour + opacity, painted first so it sits beneath every other mark.
+function paintUniformTextMarkupMasks(context, objects) {
+  for (const group of groupUniformTextMarkupHighlights(objects)) {
+    context.save();
+    context.globalAlpha = group.opacity;
+    context.globalCompositeOperation = 'source-over';
+    traceTextMarkupRuns(context, group.runs, true);
+    paintCurrentPath(context, { fill: group.color });
+    context.restore();
+  }
+}
+
 export function drawAnnotationObject(context, object, displayScale = 1) {
   if (!context || !object) return;
   // Dual-rep callout projections live in the callouts[] pipeline — the SVG
@@ -1214,6 +1310,14 @@ export function drawAnnotationObject(context, object, displayScale = 1) {
   if (object?.data?.type === 'callout') return;
   if (object?.data?.type === 'counter') {
     drawCounter(context, object);
+    return;
+  }
+  if (object?.data?.type === 'text-markup') {
+    drawTextMarkup(context, object);
+    return;
+  }
+  if (isPdfStampProxy(object)) {
+    drawImageMark(context, object);
     return;
   }
   const type = String(object.type || '').toLowerCase();
@@ -1273,7 +1377,6 @@ export function drawAnnotationObject(context, object, displayScale = 1) {
   applyRotation(context, toNumber(object.angle), effectiveWidth / 2, effectiveHeight / 2);
 
   const isEllipse = type === 'circle' || type === 'ellipse';
-  context.beginPath();
 
   // Inset-stroke contract (renderRect:324-393 / renderEllipse:933-952): drawn
   // shapes tagged drawn-centered-stroke keep a centered stroke; everything
@@ -1282,43 +1385,75 @@ export function drawAnnotationObject(context, object, displayScale = 1) {
     && strokeWidth > 0
     && object?.data?.strokeRenderContract !== DRAWN_CENTERED_STROKE_CONTRACT;
   const half = inset ? strokeWidth / 2 : 0;
-  if (isEllipse) {
-    const rx = object.radius != null
-      ? Math.abs(toNumber(object.radius)) * Math.abs(scaleX)
-      : Math.abs(toNumber(object.rx)) * Math.abs(scaleX);
-    const ry = object.radius != null
-      ? Math.abs(toNumber(object.radius)) * Math.abs(scaleY)
-      : Math.abs(toNumber(object.ry)) * Math.abs(scaleY);
-    context.ellipse(
-      rx,
-      ry,
-      Math.max(0.5, rx - half),
-      Math.max(0.5, ry - half),
-      0,
-      0,
-      Math.PI * 2,
-    );
-  } else if (type === 'triangle') {
-    context.moveTo(effectiveWidth / 2, 0);
-    context.lineTo(effectiveWidth, effectiveHeight);
-    context.lineTo(0, effectiveHeight);
-    context.closePath();
-  } else {
-    context.rect(half, half, Math.max(0, effectiveWidth - 2 * half), Math.max(0, effectiveHeight - 2 * half));
+  const ellipseRx = object.radius != null
+    ? Math.abs(toNumber(object.radius)) * Math.abs(scaleX)
+    : Math.abs(toNumber(object.rx)) * Math.abs(scaleX);
+  const ellipseRy = object.radius != null
+    ? Math.abs(toNumber(object.radius)) * Math.abs(scaleY)
+    : Math.abs(toNumber(object.ry)) * Math.abs(scaleY);
+  const rectBox = {
+    x: half,
+    y: half,
+    width: Math.max(0, effectiveWidth - 2 * half),
+    height: Math.max(0, effectiveHeight - 2 * half),
+  };
+  const traceShape = (target) => {
+    if (isEllipse) {
+      target.ellipse(
+        ellipseRx,
+        ellipseRy,
+        Math.max(0.5, ellipseRx - half),
+        Math.max(0.5, ellipseRy - half),
+        0,
+        0,
+        Math.PI * 2,
+      );
+    } else if (type === 'triangle') {
+      target.moveTo(effectiveWidth / 2, 0);
+      target.lineTo(effectiveWidth, effectiveHeight);
+      target.lineTo(0, effectiveHeight);
+      target.closePath();
+    } else {
+      target.rect(rectBox.x, rectBox.y, rectBox.width, rectBox.height);
+    }
+  };
+  // Survey-marker pseudo-rects mimic SVG vectorEffect non-scaling-stroke.
+  const lineWidth = object?.nonScalingStroke
+    ? strokeWidth / Math.max(0.01, displayScale)
+    : strokeWidth;
+  const strokePaint = isVisiblePaint(object.stroke) ? object.stroke : null;
+
+  // Owner Test 15 (2026-10-02), twin of renderRect / renderEllipse: a
+  // see-through border never shows the fill under its inner half - the fill
+  // stops at the stroke's inner edge (inset rect; knocked-out ellipse).
+  let fillPaint = object.fill;
+  if (type !== 'triangle' && strokePaint && shouldKnockOutShapeFill({
+    fill: object.fill,
+    stroke: strokePaint,
+    strokeWidth: lineWidth,
+    opacity: context.globalAlpha,
+  })) {
+    if (isEllipse) {
+      if (paintKnockedOutFill(context, traceShape, { fill: object.fill, strokeWidth: lineWidth })) fillPaint = null;
+    } else {
+      const inner = insetRectForFill(rectBox, lineWidth);
+      context.fillStyle = object.fill;
+      context.fillRect(inner.x, inner.y, inner.width, inner.height);
+      fillPaint = null;
+    }
   }
+
+  context.beginPath();
+  traceShape(context);
   if (typeof context.setLineDash === 'function' && !isEllipse) {
     // SVG never emits strokeDasharray on ellipses — rects/triangles only.
     if (Array.isArray(object.strokeDashArray) && object.strokeDashArray.length > 0) {
       context.setLineDash(object.strokeDashArray);
     }
   }
-  // Survey-marker pseudo-rects mimic SVG vectorEffect non-scaling-stroke.
-  const lineWidth = object?.nonScalingStroke
-    ? strokeWidth / Math.max(0.01, displayScale)
-    : strokeWidth;
   paintCurrentPath(context, {
-    fill: object.fill,
-    stroke: isVisiblePaint(object.stroke) ? object.stroke : null,
+    fill: fillPaint,
+    stroke: strokePaint,
     strokeWidth: lineWidth,
   });
   context.restore();
@@ -1408,7 +1543,25 @@ function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) 
   // every callout stroke scales with zoom now.
   paintArrowheadSpec(context, arrowheadSpec);
 
-  if (isVisiblePaint(fillColor)) {
+  // w43: twin of renderCallout - line style Cloud clouds ONLY the text box
+  // (the leaders above stay straight: calloutLineDashArray gives 'cloud' no
+  // dash). Same visible box, border width and fill as the plain branch.
+  const boxCloud = calloutBoxCloudStandIn(callout, {
+    x: textBox.x, y: textBox.y, width: textBox.width, height: boxHeightWithDescenders,
+  }, {
+    stroke: lineColor,
+    strokeWidth: Math.max(1, lineThickness * 0.7),
+    fill: colorWithAlpha(fillColor, fillOpacity),
+    opacity: borderOpacity,
+  });
+  const boxCloudGeometry = boxCloud && resolveAnnotationCloudSpec(boxCloud)
+    ? resolveCloudAnnotationGeometry(boxCloud)
+    : null;
+  if (boxCloudGeometry) {
+    drawCloud(context, boxCloud, boxCloudGeometry);
+    context.globalAlpha = borderOpacity;
+  }
+  if (!boxCloudGeometry && isVisiblePaint(fillColor)) {
     context.save();
     context.globalAlpha = borderOpacity * fillOpacity;
     context.fillStyle = fillColor;
@@ -1424,7 +1577,7 @@ function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) 
   // Box border shares the leader's line style (paintArrowheadSpec restored
   // its own dash state, so re-assert before the rect stroke).
   if (typeof context.setLineDash === 'function') context.setLineDash(leaderDash);
-  context.strokeRect(textBox.x, textBox.y, textBox.width, boxHeightWithDescenders);
+  if (!boxCloudGeometry) context.strokeRect(textBox.x, textBox.y, textBox.width, boxHeightWithDescenders);
   if (typeof context.setLineDash === 'function') context.setLineDash([]);
 
   const text = String(callout.text || '');
@@ -1550,8 +1703,34 @@ export function paintAnnotationCanvas(context, {
     -toNumber(offsetX) * drawScale,
     -toNumber(offsetY) * drawScaleY,
   );
-  objects.forEach((object) => drawAnnotationObject(context, object, displayScale));
-  callouts.forEach((callout) => drawCallout(context, callout, pageWidth, pageHeight, displayScale));
+  // w52 (2026-09-28): one stacking order per page. A callout is painted at
+  // the slot of its projected group in `objects` (same order as the SVG layer,
+  // export and print); a callout with no such slot paints on top, as before.
+  const calloutsById = new Map();
+  callouts.forEach((callout) => {
+    if (callout?.id != null && !calloutsById.has(String(callout.id))) {
+      calloutsById.set(String(callout.id), callout);
+    }
+  });
+  const painted = new Set();
+  pendingImageCount = 0;
+  paintUniformTextMarkupMasks(context, objects);
+  objects.forEach((object) => {
+    if (object?.data?.type === 'callout') {
+      const callout = object?.data?.id != null ? calloutsById.get(String(object.data.id)) : null;
+      if (callout && !painted.has(callout)) {
+        painted.add(callout);
+        drawCallout(context, callout, pageWidth, pageHeight, displayScale);
+      }
+      return;
+    }
+    drawAnnotationObject(context, object, displayScale);
+  });
+  callouts.forEach((callout) => {
+    if (!painted.has(callout)) drawCallout(context, callout, pageWidth, pageHeight, displayScale);
+  });
   context.setTransform(1, 0, 0, 1, 0, 0);
-  return { objectCount: objects.length, calloutCount: callouts.length };
+  // pendingImageCount: image marks skipped because their image is still
+  // decoding - repaint once preloadAnnotationImages(objects) resolves.
+  return { objectCount: objects.length, calloutCount: callouts.length, pendingImageCount };
 }

@@ -3,14 +3,22 @@ const ABSOLUTE_MAX_SCALE = 40;
 const WHEEL_LINE_HEIGHT_PX = 16;
 const WHEEL_NOTCH_PX = 100;
 // Keep equal travel chunk-independent within each input regime.
-// Drawboard measured 74% -> 97% over twelve 8px Ctrl-wheel ticks.
-const TRACKPAD_EXPONENT = 0.0029;
+// Owner 2026-10-02: "I want the zoom speed to be like my app" (Walkthu). Its
+// trackpad pinch (ctrl+wheel, |deltaY| < 50) zooms by exp(-deltaY * 0.0125)
+// per event (WHEEL_ZOOM_SENSITIVITY_PINCH, apps/web/src/components/viewer/
+// viewer-transform.ts), 4.3x the old Drawboard-measured 0.0029/px: thirty
+// 4px ticks now go 100% -> 448% instead of 100% -> 142%.
+const TRACKPAD_EXPONENT = 0.0125;
 // A wheel event counts as a discrete mouse-wheel NOTCH when it reports a
 // line/page delta mode, or a pixel delta of at least this much. Anything
 // smaller is a trackpad pinch / Ctrl-wheel stream and keeps the gentle
 // per-delta TRACKPAD_EXPONENT rate, so a pinch never turns twitchy.
 const TRACKPAD_THRESHOLD_PX = 50;
 /**
+ * Owner 2026-10-02 (Walkthu parity): one 100px mouse-wheel notch zooms by
+ * exp(100 * 0.00145) = x1.156, Walkthu's WHEEL_ZOOM_SENSITIVITY_MOUSE. The
+ * 2026-09-16 Drawboard notes below explain the old x1.3.
+ *
  * UX (2026-09-16): one detent of a real mouse wheel zooms by this factor.
  *
  * Reference behaviour — Drawboard PDF on the web moves x1.343 for one 120px
@@ -25,8 +33,8 @@ const TRACKPAD_THRESHOLD_PX = 50;
  * 1000 = ten notches) so one notch is never clipped; the small default cap is
  * only a guard for callers that do not say what device they are on.
  */
-export const WHEEL_NOTCH_STEP_FACTOR = 1.3;
-const WHEEL_NOTCH_EXPONENT = Math.log(WHEEL_NOTCH_STEP_FACTOR) / WHEEL_NOTCH_PX;
+const WHEEL_NOTCH_EXPONENT = 0.00145;
+export const WHEEL_NOTCH_STEP_FACTOR = Math.exp(WHEEL_NOTCH_EXPONENT * WHEEL_NOTCH_PX);
 
 
 export function getClampedZoomTranslation({

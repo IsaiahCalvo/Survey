@@ -20,6 +20,8 @@ import {
   appendQuadraticCurve,
   concatTransformationMatrix,
   closePath as closePathOperator,
+  clipEvenOdd as clipEvenOddOperator,
+  endPath as endPathOperator,
   fill as fillOperator,
   degrees,
   drawObject,
@@ -28,6 +30,7 @@ import {
   moveTo,
   popGraphicsState,
   pushGraphicsState,
+  rectangle as rectangleOperator,
   rgb,
   scale as scaleOperator,
   setFillingRgbColor,
@@ -122,7 +125,20 @@ import {
   stickyNoteOutlineColor,
 } from './pdfAnnotationAppearance.js';
 // UX 2026-09-09: printed clouds come from the same resolver the screen uses.
-import { cloudStrokeBandRings, resolveCloudAnnotationGeometry } from './cloudAnnotationGeometry.js';
+import { cloudOutlineBounds, cloudStrokeBandRings, resolveCloudAnnotationGeometry } from './cloudAnnotationGeometry.js';
+import {
+  insetRectForFill,
+  sampleEllipsePoints,
+  shouldKnockOutShapeFill,
+  strokeBandCapsuleRings,
+} from './shapeFillKnockout.js';
+import {
+  calloutBoxCloudStandIn,
+  calloutCloudIntensity,
+  colorWithAlpha,
+  textboxCloudIntensity,
+  textboxCloudStandIn,
+} from './textCloudBorder.js';
 import { calculateCalloutConnection } from './calloutGeometry.js';
 import { computeLineBboxCenter, getLineEndpoints } from './svgBoundingBox.js';
 import { isPdfStampProxy, pngDataUrlToBytes } from './pdfStampProxy.js';
@@ -657,7 +673,10 @@ export function buildPdfExportAnnotationPlan({
     }
 
     const isTextMarkupGroup = item.fabricType === 'group' && obj?.data?.type === 'text-markup';
-    if (!EXPORTABLE_FABRIC_TYPES.has(item.fabricType) && !isTextMarkupGroup && item.type !== 'callout' && !isSurveyMarkerType(item.type)) {
+    // w52: an edited imported stamp proxy is written as a /Stamp drawn by the
+    // print flattener (createStampAnnotation) - print already drew it.
+    const isStampProxy = isPdfStampProxy(obj);
+    if (!EXPORTABLE_FABRIC_TYPES.has(item.fabricType) && !isTextMarkupGroup && !isStampProxy && item.type !== 'callout' && !isSurveyMarkerType(item.type)) {
       recordSkip(diagnostics, item, 'unsupported-type');
       return;
     }
@@ -671,10 +690,58 @@ export function buildPdfExportAnnotationPlan({
     });
   };
 
+  // w52 (2026-09-28): one stacking order per page. A callout is written into
+  // /Annots at the slot of its projected group in the page's objects (PDF
+  // viewers paint /Annots in array order, later on top), so the exported file
+  // stacks callouts among the other marks exactly like the screen. Callouts
+  // with no projected slot are written after, as before.
+  const considerCallout = (callout, index) => {
+    const pageNumber = Number(callout?.pageNumber || 1);
+    const pageSize = pageSizes[String(pageNumber)] || pageSizes[pageNumber];
+    const obj = calloutToExportObject(callout, pageSize);
+    const scope = getObjectScope(callout);
+    const regionId = callout?.regionId ?? null;
+    const derivedSpaceId = regionId ? getSpaceIdForRegionFromSpaces(regionId, spaces) : null;
+    const item = {
+      source: 'callout',
+      pageNumber,
+      id: getObjectId(callout, `callout-${index}`),
+      type: 'callout',
+      fabricType: 'callout',
+      scope,
+      moduleId: callout?.moduleId ?? callout?.spaceId ?? null,
+      regionId,
+      spaceId: callout?.spaceId ?? derivedSpaceId ?? null,
+    };
+    if (!obj) {
+      recordConsidered(diagnostics, item);
+      recordSkip(diagnostics, item, 'invalid-callout-geometry');
+      return;
+    }
+    consider(item, obj);
+  };
+  const calloutList = Array.isArray(callouts) ? callouts : [];
+  const calloutSlots = new Map(); // `${page}:${id}` -> index in calloutList
+  calloutList.forEach((callout, index) => {
+    const id = callout?.id;
+    if (id == null) return;
+    const slotKey = `${Number(callout?.pageNumber || 1)}:${String(id)}`;
+    if (!calloutSlots.has(slotKey)) calloutSlots.set(slotKey, index);
+  });
+  const exportedCallouts = new Set();
+
   Object.entries(annotationsByPage || {}).forEach(([pageKey, pageData]) => {
     const pageNumber = Number.parseInt(pageKey, 10);
     const objects = Array.isArray(pageData?.objects) ? pageData.objects : [];
     objects.forEach((rawObj, index) => {
+      if (rawObj?.data?.type === 'callout' && rawObj?.data?.id != null) {
+        const calloutIndex = calloutSlots.get(`${pageNumber}:${String(rawObj.data.id)}`);
+        if (calloutIndex != null && !exportedCallouts.has(calloutIndex)) {
+          exportedCallouts.add(calloutIndex);
+          considerCallout(calloutList[calloutIndex], calloutIndex);
+          return;
+        }
+      }
       // UX 2026-07-17: legacy arrow groups export as their modern line form;
       // every other object passes through untouched (see legacyArrowGroupToLine).
       const obj = legacyArrowGroupToLine(rawObj) || rawObj;
@@ -721,30 +788,9 @@ export function buildPdfExportAnnotationPlan({
     consider(item, obj);
   });
 
-  (Array.isArray(callouts) ? callouts : []).forEach((callout, index) => {
-    const pageNumber = Number(callout?.pageNumber || 1);
-    const pageSize = pageSizes[String(pageNumber)] || pageSizes[pageNumber];
-    const obj = calloutToExportObject(callout, pageSize);
-    const scope = getObjectScope(callout);
-    const regionId = callout?.regionId ?? null;
-    const derivedSpaceId = regionId ? getSpaceIdForRegionFromSpaces(regionId, spaces) : null;
-    const item = {
-      source: 'callout',
-      pageNumber,
-      id: getObjectId(callout, `callout-${index}`),
-      type: 'callout',
-      fabricType: 'callout',
-      scope,
-      moduleId: callout?.moduleId ?? callout?.spaceId ?? null,
-      regionId,
-      spaceId: callout?.spaceId ?? derivedSpaceId ?? null,
-    };
-    if (!obj) {
-      recordConsidered(diagnostics, item);
-      recordSkip(diagnostics, item, 'invalid-callout-geometry');
-      return;
-    }
-    consider(item, obj);
+  calloutList.forEach((callout, index) => {
+    if (exportedCallouts.has(index)) return;
+    considerCallout(callout, index);
   });
 
   return {
@@ -1328,8 +1374,12 @@ const createFilledPaperInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, opt
     && paperSource.path.length > 0
     && Array.isArray(paperSource?.matrix)
     && paperSource.matrix.length === 6
-    && Array.isArray(fabricObj?.paperEraserCuts)
-    && fabricObj.paperEraserCuts.length > 0
+    // w38: the screens clip the source to the survivor polygons, so a stored
+    // survivor alone qualifies (cuts are only the no-polygon fallback clip).
+    && (
+      normalizeMultiPolygon(fabricObj?.polygons).length > 0
+      || (Array.isArray(fabricObj?.paperEraserCuts) && fabricObj.paperEraserCuts.length > 0)
+    )
   );
   const sourcePageMatrix = hasAnalyticPaperSource
     ? multiplyInkMatrices(transform.matrix, paperSource.matrix)
@@ -1365,18 +1415,60 @@ const createFilledPaperInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, opt
   const useMultiply = fabricObj.globalCompositeOperation === 'multiply'
     || fabricObj.tool === 'highlighter';
   const needsGraphicsState = alpha < 0.99999 || useMultiply;
+  // 2026-10-06 (test plan 68): a partially erased authored curve is drawn as
+  // its SURVIVOR polygons, filled even-odd, like the SVG layer and the canvas
+  // painter. Painting the source curve under a clip of those polygons put the
+  // clip edge on the curve's own edge, so viewers anti-aliased every edge
+  // pixel twice and thin lines printed 10-30% lighter than untouched ones.
+  const survivorFill = hasAnalyticPaperSource && normalizeMultiPolygon(polygons).some((polygon) => (
+    polygon.some((ring) => Array.isArray(ring) && ring.length >= 3)
+  ));
   const content = ['q'];
   if (needsGraphicsState) content.push('/GS0 gs');
   content.push(
     `${pdfNumberText(color.red)} ${pdfNumberText(color.green)} ${pdfNumberText(color.blue)} ${
-      hasAnalyticPaperSource && !sourceIsFill ? 'RG' : 'rg'
+      hasAnalyticPaperSource && !sourceIsFill && !survivorFill ? 'RG' : 'rg'
     }`,
   );
 
-  if (hasAnalyticPaperSource) {
-    const pageCuts = transformInkPolygons(fabricObj.paperEraserCuts, transform);
-    content.push(`0 0 ${pdfNumberText(width)} ${pdfNumberText(height)} re`);
-    for (const polygon of pageCuts) {
+  if (survivorFill) {
+    for (const polygon of polygons) {
+      for (const ring of polygon) {
+        if (!Array.isArray(ring) || ring.length < 3) continue;
+        const end = (
+          ring.length > 1
+          && ring[0][0] === ring.at(-1)[0]
+          && ring[0][1] === ring.at(-1)[1]
+        ) ? ring.length - 1 : ring.length;
+        content.push(
+          `${pdfNumberText(ring[0][0] - bounds.minX)} `
+          + `${pdfNumberText(bounds.maxY - ring[0][1])} m`,
+        );
+        for (let index = 1; index < end; index += 1) {
+          content.push(
+            `${pdfNumberText(ring[index][0] - bounds.minX)} `
+            + `${pdfNumberText(bounds.maxY - ring[index][1])} l`,
+          );
+        }
+        content.push('h');
+      }
+    }
+    content.push('f*');
+  } else if (hasAnalyticPaperSource) {
+    // Only a survivor with no polygons gets here: the authored source under
+    // a (box minus paperEraserCuts) clip. w38 (2026-09-25): the cuts
+    // are a second boolean between two polygons that share most edges and
+    // can be wrong: slivers inside erased holes, notches beside them.
+    const survivorClip = normalizeMultiPolygon(polygons).some((polygon) => (
+      polygon.some((ring) => Array.isArray(ring) && ring.length >= 3)
+    ));
+    const clipPolygons = survivorClip
+      ? polygons
+      : transformInkPolygons(fabricObj.paperEraserCuts, transform);
+    if (!survivorClip) {
+      content.push(`0 0 ${pdfNumberText(width)} ${pdfNumberText(height)} re`);
+    }
+    for (const polygon of clipPolygons) {
       for (const ring of polygon) {
         if (!Array.isArray(ring) || ring.length < 3) continue;
         const end = (
@@ -2326,6 +2418,36 @@ const inflateAppBounds = (bounds, pad) => ({
   maxY: bounds.maxY + pad,
 });
 
+/**
+ * w43: the app-space box an UN-ROTATED cloud stand-in's ink reaches (crowns
+ * plus half the ink width), for growing a text box's or a callout text part's
+ * appearance box around a clouded border. Null when it is not a cloud.
+ */
+const cloudStandInAppBounds = (standIn) => {
+  if (!standIn || !resolveAnnotationCloudSpec(standIn)) return null;
+  const geometry = resolveCloudAnnotationGeometry({ ...standIn, angle: 0 });
+  const local = geometry ? cloudOutlineBounds(geometry) : null;
+  if (!local) return null;
+  const pad = (Number(geometry.strokeWidth) || 0) / 2 + PLAIN_APPEARANCE_EXTRA_PAD + 0.5;
+  return {
+    minX: geometry.origin.x + local.left - pad,
+    minY: geometry.origin.y + local.top - pad,
+    maxX: geometry.origin.x + local.left + local.width + pad,
+    maxY: geometry.origin.y + local.top + local.height + pad,
+  };
+};
+
+const unionAppBounds = (a, b) => {
+  if (!a) return b;
+  if (!b) return a;
+  return {
+    minX: Math.min(a.minX, b.minX),
+    minY: Math.min(a.minY, b.minY),
+    maxX: Math.max(a.maxX, b.maxX),
+    maxY: Math.max(a.maxY, b.maxY),
+  };
+};
+
 const boundsOfPoints = (points, pad) => {
   // Linear, not `Math.min(...xs)`: an ink stroke or a many-vertex polygon can
   // carry more points than a spread can push onto the call stack.
@@ -2411,13 +2533,19 @@ const plainAppearanceGeometry = (obj, fonts = null) => {
     // keeps a third of an em of room on every side - then is grown to hold
     // whatever the glyphs REALLY reach, which for a box narrower than one
     // glyph is well past that allowance. See flattenedTextInkBounds.
+    // w43: a clouded border's crowns bulge past the box; the appearance box
+    // grows to hold them (the /RD still points back to the drawn box).
+    const cloudBounds = cloudStandInAppBounds(textboxCloudStandIn(
+      { ...obj, angle: 0 },
+      { left, top, width, height },
+    ));
     return {
       base,
-      bounds: boundsWithFlattenedTextInk(
+      bounds: unionAppBounds(boundsWithFlattenedTextInk(
         inflateAppBounds(base, halfStroke + fontSize * 0.35 + 1),
         obj,
         fonts,
-      ),
+      ), cloudBounds),
     };
   }
   return null;
@@ -2605,6 +2733,90 @@ const applyPlainShapeAppearanceToDict = (pdfDoc, annotationDict, fabricObj, page
     ];
   }
   return true;
+};
+
+/**
+ * w52 (2026-09-28): an EDITED imported stamp (the image proxy the app paints
+ * in place of a native /Stamp) is written back as a /Stamp whose /AP is the
+ * print flattener's own drawing of that image - the same routine
+ * savePDFWithFlattenedRegularAnnotationsForPrint runs, so export and print
+ * paint the stamp identically. Before this the export plan skipped image
+ * proxies as 'unsupported-type', so a moved / resized stamp never reached the
+ * exported file (and its stale native original stayed at the old spot).
+ *
+ * The rotation is drawn INTO the form (drawFlattenedObject rotates the image
+ * about its centre), the /BBox is the rotated box's page bounds and the
+ * /Matrix is identity - a re-import renders this /AP like any third-party
+ * stamp. No app metadata is written: a stamp proxy is rebuilt from its /AP on
+ * import, never from fabric geometry.
+ */
+const createStampAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
+  try {
+    const stampImages = options.stampImages;
+    const source = fabricObj?.src || fabricObj?.dataUrl;
+    if (!stampImages?.get?.(source)) return null;
+    const left = getObjNumber(fabricObj, 'left');
+    const top = getObjNumber(fabricObj, 'top');
+    const width = Math.max(0, getObjNumber(fabricObj, 'width') * Math.abs(Number(fabricObj?.scaleX ?? 1) || 1));
+    const height = Math.max(0, getObjNumber(fabricObj, 'height') * Math.abs(Number(fabricObj?.scaleY ?? 1) || 1));
+    if (!(width > 0 && height > 0)) return null;
+    const angle = fabricObj?.data?.pdfStampAppearanceRotationBaked === true
+      ? 0
+      : Number(fabricObj?.angle) || 0;
+    const centerX = left + width / 2;
+    const centerY = top + height / 2;
+    const radians = (angle * Math.PI) / 180;
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => ({
+      x: centerX + (sx * width / 2) * cos - (sy * height / 2) * sin,
+      y: centerY + (sx * width / 2) * sin + (sy * height / 2) * cos,
+    }));
+    const bounds = boundsOfPoints(corners, PLAIN_APPEARANCE_EXTRA_PAD);
+    const appearance = buildFlattenedAppearanceForm(pdfDoc, pageHeight, bounds, (scratch) => (
+      drawFlattenedObject(scratch, fabricObj, pageHeight, {}, { x: 0, y: 0 }, stampImages)
+    ));
+    if (!appearance) return null;
+    const annotationDict = {
+      Type: 'Annot',
+      Subtype: 'Stamp',
+      Rect: appearance.rect,
+      F: 4,
+      Contents: pdfTextString(''),
+      AP: pdfDoc.context.obj({ N: appearance.ref }),
+      P: page.ref,
+    };
+    // Same app metadata (NM name + SurveyApp data) every other writer adds,
+    // so a re-import recognises the stamp as this app's mark (review
+    // 2026-09-28: without it a round trip could bring it back twice).
+    applyAppAnnotationMetadataToDict(annotationDict, options);
+    return pdfDoc.context.register(pdfDoc.context.obj(annotationDict));
+  } catch (e) {
+    console.error('Error creating stamp annotation:', e);
+    return null;
+  }
+};
+
+/**
+ * Embed each imported-stamp PNG once per document (keyed by its data URL) -
+ * the lookup drawFlattenedObject draws stamp proxies from. Shared by print
+ * and export so both embed the same bytes the same way.
+ */
+const embedStampProxyImages = async (pdfDoc, objects, purpose) => {
+  const stampImages = new Map();
+  for (const obj of objects) {
+    if (!isPdfStampProxy(obj)) continue;
+    const source = obj.src || obj.dataUrl;
+    if (stampImages.has(source)) continue;
+    const pngBytes = pngDataUrlToBytes(source);
+    if (!pngBytes) continue;
+    try {
+      stampImages.set(source, await pdfDoc.embedPng(pngBytes));
+    } catch (error) {
+      console.warn(`Failed to embed imported stamp PNG for ${purpose}:`, error);
+    }
+  }
+  return stampImages;
 };
 
 /**
@@ -2878,25 +3090,53 @@ const createEllipseAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
       const kx = k * rx;
       const ky = k * ry;
       const n = pdfNumberText;
-      const content = ['q'];
-      if (alpha < 0.99999) content.push('/GS0 gs');
-      content.push(`${n(color.red)} ${n(color.green)} ${n(color.blue)} RG`);
-      if (fillColor) content.push(`${n(fillColor.red)} ${n(fillColor.green)} ${n(fillColor.blue)} rg`);
-      content.push(`${n(strokeWidth)} w`);
-      content.push(
+      // Owner Test 15 (2026-10-02): the fill keeps ITS OWN alpha (it used to
+      // take the border's, so a 40 % border also made the fill 40 %), and
+      // under a see-through border the fill stops at the stroke's inner edge
+      // - clipped off the stroke band, as the screen masks it.
+      const fillAlpha = fillColor ? paintAlpha(fabricObj.fill, fabricObj.opacity) : alpha;
+      const knockout = Boolean(fillColor) && shouldKnockOutShapeFill({
+        fill: fabricObj.fill,
+        stroke: strokePaint,
+        strokeWidth,
+        opacity: fabricObj.opacity,
+      });
+      const ellipsePath = [
         `${n(2 * rx)} ${n(ry)} m`,
         `${n(2 * rx)} ${n(ry + ky)} ${n(rx + kx)} ${n(2 * ry)} ${n(rx)} ${n(2 * ry)} c`,
         `${n(rx - kx)} ${n(2 * ry)} 0 ${n(ry + ky)} 0 ${n(ry)} c`,
         `0 ${n(ry - ky)} ${n(rx - kx)} 0 ${n(rx)} 0 c`,
         `${n(rx + kx)} 0 ${n(2 * rx)} ${n(ry - ky)} ${n(2 * rx)} ${n(ry)} c`,
         'h',
-        fillColor ? 'B' : 'S',
-        'Q',
-      );
+      ];
+      const content = ['q'];
+      if (alpha < 0.99999 || fillAlpha < 0.99999) content.push('/GS0 gs');
+      content.push(`${n(color.red)} ${n(color.green)} ${n(color.blue)} RG`);
+      if (fillColor) content.push(`${n(fillColor.red)} ${n(fillColor.green)} ${n(fillColor.blue)} rg`);
+      content.push(`${n(strokeWidth)} w`);
+      if (knockout) {
+        // Form space is y-up with the ellipse in [0, 2rx] x [0, 2ry]; the
+        // band is symmetric, so the y-down outline maps over unchanged.
+        const rings = strokeBandCapsuleRings(
+          sampleEllipsePoints({ cx: rx, cy: ry, rx, ry }),
+          { closed: true, halfWidth: strokeWidth / 2 },
+        );
+        const pad = strokeWidth + 2;
+        const box = `${n(-pad)} ${n(-pad)} ${n(2 * rx + 2 * pad)} ${n(2 * ry + 2 * pad)} re`;
+        content.push('q');
+        for (const ring of rings) {
+          content.push(box);
+          ring.forEach((point, index) => content.push(`${n(point.x)} ${n(point.y)} ${index === 0 ? 'm' : 'l'}`));
+          content.push('h', 'W*', 'n');
+        }
+        content.push(...ellipsePath, 'f', 'Q', ...ellipsePath, 'S', 'Q');
+      } else {
+        content.push(...ellipsePath, fillColor ? 'B' : 'S', 'Q');
+      }
 
       const resources = {};
-      if (alpha < 0.99999) {
-        resources.ExtGState = { GS0: { Type: 'ExtGState', ca: alpha, CA: alpha } };
+      if (alpha < 0.99999 || fillAlpha < 0.99999) {
+        resources.ExtGState = { GS0: { Type: 'ExtGState', ca: fillAlpha, CA: alpha } };
       }
       const appearance = pdfDoc.context.flateStream(`${content.join('\n')}\n`, {
         Type: 'XObject',
@@ -3642,6 +3882,13 @@ export const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, op
       Border: [0, 0, 0], // No border for text boxes
       P: page.ref,
     };
+    // w43: a clouded text box border carries the same /BE the cloud shapes
+    // write (/S /C /I <bump>), so a reader that understands border effects
+    // knows it is a cloud; the /AP below paints the house crowns.
+    const textCloud = options.isCalloutPart ? null : textboxCloudIntensity(fabricObj);
+    if (textCloud != null) {
+      annotationDict.BE = pdfDoc.context.obj({ S: PDFName.of('C'), I: PDFNumber.of(textCloud) });
+    }
 
     if (options.calloutMetadataJson) {
       annotationDict.NM = pdfTextString(options.name || `${options.calloutMetadata?.id || 'callout'}-${options.calloutMetadata?.part || 'text'}`);
@@ -5440,7 +5687,12 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
   const border = resolvedPdfPaint(obj?.stroke, 'transparent');
   const borderWidth = border ? Math.max(0, Number(obj?.strokeWidth) || 0) : 0;
   const center = { x: left + width / 2, y: top + height / 2 };
-  if (background || borderWidth > 0) {
+  // w43: line style Cloud - the border (and the background, over the
+  // scalloped region) prints through the shared cloud path as the house
+  // rectangle cloud, exactly what renderText / drawText draw on screen.
+  const cloudBorder = textboxCloudStandIn(obj, { left, top, width, height });
+  const cloudPainted = !!cloudBorder && drawFlattenedCloud(page, cloudBorder, pageHeight);
+  if (!cloudPainted && (background || borderWidth > 0)) {
     const common = {
       color: background?.color,
       opacity: background ? (background.opacity ?? 1) * objectOpacity : undefined,
@@ -5448,18 +5700,42 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
       borderWidth,
       borderOpacity: borderWidth > 0 ? (border?.opacity ?? 1) * objectOpacity : undefined,
     };
-    if (angle) {
-      const points = [
-        { x: left, y: top }, { x: left + width, y: top },
-        { x: left + width, y: top + height }, { x: left, y: top + height },
-      ].map((point) => rotateAppPoint(point, center, angle));
-      drawSvgPathLinear(page, `${points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')} Z`, {
-        x: 0, y: pageHeight, ...common,
+    const drawBox = (box, paint) => {
+      if (angle) {
+        const points = [
+          { x: box.x, y: box.y }, { x: box.x + box.width, y: box.y },
+          { x: box.x + box.width, y: box.y + box.height }, { x: box.x, y: box.y + box.height },
+        ].map((point) => rotateAppPoint(point, center, angle));
+        drawSvgPathLinear(page, `${points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')} Z`, {
+          x: 0, y: pageHeight, ...paint,
+        });
+      } else {
+        page.drawRectangle({
+          x: box.x, y: getPdfY(pageHeight, box.y + box.height), width: box.width, height: box.height, ...paint,
+        });
+      }
+    };
+    const outer = { x: left, y: top, width, height };
+    // Owner Test 15 (2026-10-02, renderText twin): under a see-through border
+    // the background stops at the border's inner edge.
+    if (background?.color && borderWidth > 0 && shouldKnockOutShapeFill({
+      fill: obj?.backgroundColor,
+      stroke: obj?.stroke,
+      strokeWidth: borderWidth,
+      opacity: objectOpacity,
+    })) {
+      const inner = insetRectForFill(outer, borderWidth);
+      if (inner.width > 0 && inner.height > 0) {
+        drawBox(inner, { color: common.color, opacity: common.opacity, borderWidth: 0 });
+      }
+      drawBox(outer, {
+        color: undefined,
+        borderColor: common.borderColor,
+        borderWidth,
+        borderOpacity: common.borderOpacity,
       });
     } else {
-      page.drawRectangle({
-        x: left, y: getPdfY(pageHeight, top + height), width, height, ...common,
-      });
+      drawBox(outer, common);
     }
   }
 
@@ -5948,6 +6224,49 @@ const drawFlattenedCloud = (page, obj, pageHeight) => {
   return true;
 };
 
+// Owner Test 15 (2026-10-02), the PDF twin of the screen's fill knockout
+// (shapeFillKnockout.js): clip what is drawn next to everything EXCEPT the
+// stroke band of `outline` (app-space, y-down points). One even-odd clip per
+// round-capped segment capsule - clip paths intersect (PDF 32000-1 8.5.4), so
+// clipping to each capsule's complement in turn is the complement of their
+// union, with no polygon boolean (the cloud writer's 'pieces' mode). The
+// caller fences it with q/Q so the stroke painted after is not clipped.
+const pushStrokeBandKnockoutClip = (page, outline, { closed = true, halfWidth, pageHeight }) => {
+  const rings = strokeBandCapsuleRings(outline, { closed, halfWidth });
+  if (rings.length === 0) return false;
+  let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+  for (const ring of rings) {
+    for (const point of ring) {
+      minX = Math.min(minX, point.x); maxX = Math.max(maxX, point.x);
+      minY = Math.min(minY, point.y); maxY = Math.max(maxY, point.y);
+    }
+  }
+  if (![minX, minY, maxX, maxY].every(Number.isFinite)) return false;
+  minX -= 1; minY -= 1; maxX += 1; maxY += 1;
+  const operators = [];
+  for (const ring of rings) {
+    operators.push(rectangleOperator(minX, pageHeight - maxY, maxX - minX, maxY - minY));
+    ring.forEach((point, index) => {
+      operators.push(index === 0
+        ? moveTo(point.x, pageHeight - point.y)
+        : lineTo(point.x, pageHeight - point.y));
+    });
+    operators.push(closePathOperator(), clipEvenOddOperator(), endPathOperator());
+  }
+  pushPdfOperators(page, operators);
+  return true;
+};
+
+// Paint `drawFill` through the knockout clip of `outline`, fenced in q/Q.
+// Returns false (nothing drawn) when no clip could be built.
+const drawFillOutsideStrokeBand = (page, outline, options, drawFill) => {
+  page.pushOperators(pushGraphicsState());
+  const clipped = pushStrokeBandKnockoutClip(page, outline, options);
+  if (clipped) drawFill();
+  page.pushOperators(popGraphicsState());
+  return clipped;
+};
+
 const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
   if (drawFlattenedCloud(page, obj, pageHeight)) return true;
   const rawPoints = fabricPolygonWorldPoints(obj);
@@ -5972,6 +6291,30 @@ const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
   const stroke = resolvedPdfPaint(obj?.stroke, '#000000');
   const fill = closePath ? resolvedPdfPaint(obj?.fill, 'transparent') : null;
   const strokeWidth = stroke ? Math.max(0, Number(obj?.strokeWidth) || 1) : 0;
+  const blendMode = obj?.globalCompositeOperation === 'multiply' ? BlendMode.Multiply : undefined;
+  // Owner Test 15: a see-through border never shows the fill under it - the
+  // fill is clipped off the stroke band (round joins, like the screen).
+  if (fill?.color && stroke && strokeWidth > 0 && shouldKnockOutShapeFill({
+    fill: obj?.fill,
+    stroke: obj?.stroke,
+    strokeWidth,
+    opacity: obj?.opacity,
+  }) && drawFillOutsideStrokeBand(page, points, { closed: true, halfWidth: strokeWidth / 2, pageHeight }, () => {
+    drawSvgPathLinear(page, d, {
+      x: 0, y: pageHeight, color: fill.color, opacity: fill.opacity ?? 1, borderWidth: 0, blendMode,
+    });
+  })) {
+    drawSvgPathLinear(page, d, {
+      x: 0,
+      y: pageHeight,
+      color: undefined,
+      borderColor: stroke.color,
+      borderWidth: strokeWidth,
+      borderOpacity: stroke.opacity,
+      blendMode,
+    });
+    return true;
+  }
   drawSvgPathLinear(page, d, {
     x: 0,
     y: pageHeight,
@@ -5980,7 +6323,7 @@ const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
     color: fill?.color,
     opacity: fill?.opacity ?? 1,
     borderOpacity: stroke?.opacity,
-    blendMode: obj?.globalCompositeOperation === 'multiply' ? BlendMode.Multiply : undefined,
+    blendMode,
   });
   return true;
 };
@@ -6234,7 +6577,53 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     // case falls through to the plain rectangle branches below).
     if (drawFlattenedCloud(page, shifted, pageHeight)) {
       return 1;
-    } else if (angle) {
+    }
+    // Owner Test 15 (2026-10-02): a see-through border never shows the fill
+    // under its inner half - the fill is the box pulled in by half the
+    // stroke width (shapeFillKnockout.js), painted first; the border is then
+    // stroked alone, exactly where it always was.
+    if (hasBorder && fill?.color && shouldKnockOutShapeFill({
+      fill: shifted?.fill,
+      stroke: rawStroke,
+      strokeWidth,
+      opacity: objectOpacity,
+    })) {
+      const inner = insetRectForFill({ x: left, y: top, width, height }, strokeWidth);
+      const fillOnly = { color: common.color, opacity: common.opacity, borderWidth: 0, blendMode: common.blendMode };
+      const strokeOnly = {
+        color: undefined,
+        borderColor: common.borderColor,
+        borderWidth: common.borderWidth,
+        borderOpacity: common.borderOpacity,
+        blendMode: common.blendMode,
+      };
+      if (angle) {
+        const center = { x: left + width / 2, y: top + height / 2 };
+        const pathOf = (box) => {
+          const points = [
+            { x: box.x, y: box.y }, { x: box.x + box.width, y: box.y },
+            { x: box.x + box.width, y: box.y + box.height }, { x: box.x, y: box.y + box.height },
+          ].map((point) => rotateAppPoint(point, center, angle));
+          return `${points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')} Z`;
+        };
+        if (inner.width > 0 && inner.height > 0) {
+          drawSvgPathLinear(page, pathOf(inner), { x: 0, y: pageHeight, ...fillOnly });
+        }
+        drawSvgPathLinear(page, pathOf({ x: left, y: top, width, height }), { x: 0, y: pageHeight, ...strokeOnly });
+      } else {
+        if (inner.width > 0 && inner.height > 0) {
+          page.drawRectangle({
+            x: inner.x, y: getPdfY(pageHeight, inner.y + inner.height), width: inner.width, height: inner.height, ...fillOnly,
+          });
+        }
+        page.drawRectangle({
+          x: left, y: getPdfY(pageHeight, top + height), width, height, ...strokeOnly,
+          ...(rectDash ? { borderDashArray: rectDash, borderDashPhase: 0 } : {}),
+        });
+      }
+      return 1;
+    }
+    if (angle) {
       const center = { x: left + width / 2, y: top + height / 2 };
       const points = [
         { x: left, y: top }, { x: left + width, y: top },
@@ -6261,6 +6650,44 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     // scalloped edge, exactly like a cloud rect - same shared resolver, same
     // outline and scalloped fill the screen shows.
     if (drawFlattenedCloud(page, shifted, pageHeight)) return 1;
+    // Owner Test 15 (2026-10-02): a see-through border never shows the fill
+    // under its inner half - the fill is clipped off the stroke band, then
+    // the border is stroked alone, where it always was.
+    if (fill?.color && stroke && strokeWidth > 0 && shouldKnockOutShapeFill({
+      fill: shifted?.fill,
+      stroke: shifted?.stroke,
+      strokeWidth,
+      opacity: shifted?.opacity,
+    })) {
+      // A tilted ellipse is stroked as the 48-gon below, so its band is
+      // that 48-gon's; an upright one is a true ellipse, finely sampled.
+      const outline = sampleEllipsePoints({ cx, cy, rx: xRadius, ry: yRadius }, angle ? 48 : 0)
+        .map((point) => rotateAppPoint(point, { x: cx, y: cy }, angle));
+      const fillOnly = { color: common.color, opacity: common.opacity, borderWidth: 0, blendMode: common.blendMode };
+      const strokeOnly = {
+        color: undefined,
+        borderColor: common.borderColor,
+        borderWidth: common.borderWidth,
+        borderOpacity: common.borderOpacity,
+        blendMode: common.blendMode,
+      };
+      const drawEllipseWith = (paint) => {
+        if (angle) {
+          const points = Array.from({ length: 48 }, (_, index) => {
+            const theta = index * Math.PI * 2 / 48;
+            return rotateAppPoint({ x: cx + Math.cos(theta) * xRadius, y: cy + Math.sin(theta) * yRadius }, { x: cx, y: cy }, angle);
+          });
+          const d = `${points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')} Z`;
+          drawSvgPathLinear(page, d, { x: 0, y: pageHeight, ...paint });
+        } else {
+          page.drawEllipse({ x: cx, y: getPdfY(pageHeight, cy), xScale: xRadius, yScale: yRadius, ...paint });
+        }
+      };
+      if (drawFillOutsideStrokeBand(page, outline, { closed: true, halfWidth: strokeWidth / 2, pageHeight }, () => drawEllipseWith(fillOnly))) {
+        drawEllipseWith(strokeOnly);
+        return 1;
+      }
+    }
     if (angle) {
       const points = Array.from({ length: 48 }, (_, index) => {
         const theta = index * Math.PI * 2 / 48;
@@ -6399,6 +6826,28 @@ const calloutFlattenParts = (calloutObj, fonts = null) => {
     ...leaderDashProps,
     fill: style.backgroundColor || '#ffffff',
   };
+  // w43: line style Cloud clouds ONLY the text box (the leaders above get no
+  // dash for 'cloud' and stay straight). The cloud is built from exactly the
+  // box the SCREEN clouds - renderCallout / drawCallout: the visible box with
+  // its fontSize*0.35 descender room, a 0.7x border, the fill at its own
+  // opacity and the callout's border opacity - so print and export fit the
+  // same crowns the page shows (the plain box keeps its historical print
+  // look). null when the callout is not clouded.
+  const screenFontSize = Number(style.fontSize || 12) || 12;
+  const boxCloud = calloutCloudIntensity(calloutObj) == null ? null : calloutBoxCloudStandIn(calloutObj, {
+    x: textBox.left,
+    y: textBox.top,
+    width: textBox.width,
+    height: textBox.height + screenFontSize * 0.35,
+  }, {
+    stroke,
+    strokeWidth: Math.max(1, strokeWidth * 0.7),
+    fill: colorWithAlpha(
+      style.fillColor || 'transparent',
+      Math.max(0.08, Math.min(1, Number(style.fillOpacity ?? 0.4))),
+    ),
+    opacity: Math.max(0.2, Math.min(1, Number(style.borderOpacity ?? 1))),
+  });
   const fontSize = style.fontSize || 14;
   const textObject = {
     type: 'textbox',
@@ -6462,7 +6911,7 @@ const calloutFlattenParts = (calloutObj, fonts = null) => {
       // Grown to hold the glyphs the label really paints, exactly as a plain
       // text box's appearance box is - a callout narrow enough to clip one
       // wide glyph is the same defect (see flattenedTextInkBounds).
-      bounds: boundsWithFlattenedTextInk(
+      bounds: unionAppBounds(boundsWithFlattenedTextInk(
         inflateAppBounds(
           {
             minX: textBox.left,
@@ -6474,9 +6923,11 @@ const calloutFlattenParts = (calloutObj, fonts = null) => {
         ),
         textObject,
         fonts,
-      ),
+      ), cloudStandInAppBounds(boxCloud)),
       draw: (page, pageHeight, fonts) => {
-        const drawn = drawFlattenedObject(page, boxObject, pageHeight, fonts);
+        const drawn = boxCloud && drawFlattenedCloud(page, boxCloud, pageHeight)
+          ? 1
+          : drawFlattenedObject(page, boxObject, pageHeight, fonts);
         drawFlattenedText(page, textObject, pageHeight, fonts);
         return drawn || 1;
       },
@@ -6938,21 +7389,12 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
       return 0;
     }
   };
-  const stampImages = new Map();
-  for (const pageData of Object.values(printablePayload.annotationsByPage || {})) {
-    for (const obj of (Array.isArray(pageData?.objects) ? pageData.objects : [])) {
-      if (!isPdfStampProxy(obj)) continue;
-      const source = obj.src || obj.dataUrl;
-      if (stampImages.has(source)) continue;
-      const pngBytes = pngDataUrlToBytes(source);
-      if (!pngBytes) continue;
-      try {
-        stampImages.set(source, await pdfDoc.embedPng(pngBytes));
-      } catch (error) {
-        console.warn('Failed to embed imported stamp PNG for print:', error);
-      }
-    }
-  }
+  const stampImages = await embedStampProxyImages(
+    pdfDoc,
+    Object.values(printablePayload.annotationsByPage || {})
+      .flatMap((pageData) => (Array.isArray(pageData?.objects) ? pageData.objects : [])),
+    'print',
+  );
 
   // KAL-91 — mirror of the export path's edited-replacement native
   // suppression: an imported object only reaches the printable payload when
@@ -6994,6 +7436,68 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
     if (drawnCount > 0) tracker.drawn += 1;
   };
 
+  // w52 (2026-09-28): one stacking order per page. The printable payload
+  // carries callouts in their own list; the screen's page (the caller's
+  // screenAnnotationsByPage) says where each sits among the other marks, so
+  // each callout is drawn in that slot — print stacks like the screen.
+  // Callouts with no slot are drawn after the page's marks, as before.
+  const drawnPrintCallouts = new Set();
+  const printCallouts = Array.isArray(printablePayload.callouts) ? printablePayload.callouts : [];
+  // insidePageTransform: called from inside the page loop's own
+  // withPrintPageTransform — draw directly (nesting would apply it twice).
+  const drawPrintCallout = (callout, { insidePageTransform = false } = {}) => {
+    if (drawnPrintCallouts.has(callout)) return;
+    drawnPrintCallouts.add(callout);
+    const pageNumber = Number(callout?.pageNumber || 1);
+    const pageIndex = pageNumber - 1;
+    if (pageIndex < 0 || pageIndex >= pdfDoc.getPageCount()) return;
+    const page = pdfDoc.getPage(pageIndex);
+    const fallbackSize = page.getSize();
+    const pageSize = pageSizes[String(pageNumber)] || pageSizes[pageNumber] || fallbackSize;
+    const pageHeight = Number(pageSize?.height) || fallbackSize.height;
+    const calloutObj = calloutToExportObject(callout, pageSize);
+    if (!calloutObj) return;
+    const draw = () => {
+      flattenedPrintAnnotationsAdded += drawFlattenedSafely('callout', calloutObj, () => (
+        drawFlattenedCallout(page, calloutObj, pageHeight, fonts)
+      ));
+    };
+    if (insidePageTransform) draw();
+    else withPrintPageTransform(page, pageHeight, draw);
+  };
+  // [ [rank, callout] ] per page, ranked by the screen's page order.
+  const printCalloutSlots = (pageNumber, printableObjects) => {
+    const screenObjects = screenAnnotationsByPage?.[pageNumber]?.objects
+      || screenAnnotationsByPage?.[String(pageNumber)]?.objects;
+    if (!Array.isArray(screenObjects) || screenObjects.length === 0) return null;
+    const pageCallouts = printCallouts.filter((callout) => (
+      Number(callout?.pageNumber || 1) === pageNumber && callout?.id != null
+    ));
+    if (pageCallouts.length === 0) return null;
+    const rankOf = new Map();
+    screenObjects.forEach((obj, rank) => {
+      const key = obj?.data?.type === 'callout'
+        ? (obj?.data?.id != null ? `callout:${String(obj.data.id)}` : null)
+        : getObjectId(obj);
+      if (key != null && !rankOf.has(String(key))) rankOf.set(String(key), rank);
+    });
+    const slots = [];
+    for (const callout of pageCallouts) {
+      const rank = rankOf.get(`callout:${String(callout.id)}`);
+      if (rank != null) slots.push([rank, callout]);
+    }
+    if (slots.length === 0) return null;
+    slots.sort((a, b) => a[0] - b[0]);
+    let lastRank = -1;
+    const objectRanks = printableObjects.map((obj) => {
+      const id = getObjectId(obj);
+      const rank = id != null ? rankOf.get(String(id)) : undefined;
+      if (rank != null) lastRank = rank;
+      return lastRank;
+    });
+    return { slots, objectRanks };
+  };
+
   Object.entries(printablePayload.annotationsByPage || {}).forEach(([pageKey, pageData]) => {
     const pageNumber = Number.parseInt(pageKey, 10);
     const pageIndex = pageNumber - 1;
@@ -7003,8 +7507,19 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
     const pageSize = pageSizes[String(pageNumber)] || pageSizes[pageNumber] || fallbackSize;
     const pageHeight = Number(pageSize?.height) || fallbackSize.height;
     const uniformHighlightGroups = new Map();
+    const pageObjects = Array.isArray(pageData?.objects) ? pageData.objects : [];
+    const calloutPlan = printCalloutSlots(pageNumber, pageObjects);
+    let nextSlot = 0;
+    const drawCalloutsBelowRank = (rank) => {
+      if (!calloutPlan) return;
+      while (nextSlot < calloutPlan.slots.length && calloutPlan.slots[nextSlot][0] < rank) {
+        drawPrintCallout(calloutPlan.slots[nextSlot][1], { insidePageTransform: true });
+        nextSlot += 1;
+      }
+    };
     withPrintPageTransform(page, pageHeight, () => {
-      (Array.isArray(pageData?.objects) ? pageData.objects : []).forEach((obj) => {
+      pageObjects.forEach((obj, position) => {
+        if (calloutPlan) drawCalloutsBelowRank(calloutPlan.objectRanks[position]);
         if (!importedObjectAllowsPrint(pdfDoc, pageIndex, obj)) return;
         const isUniformHighlight = obj?.data?.type === 'text-markup'
           && obj?.data?.markupType === 'highlight'
@@ -7029,24 +7544,13 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
         flattenedPrintAnnotationsAdded += drawnCount;
         printableObjects.forEach((obj) => trackEditedImportDraw(pageNumber, obj, drawnCount));
       });
+      // w52: callouts after the uniform highlight masks — the screen draws
+      // those masks beneath every mark.
+      drawCalloutsBelowRank(Number.POSITIVE_INFINITY);
     });
   });
 
-  (Array.isArray(printablePayload.callouts) ? printablePayload.callouts : []).forEach((callout, index) => {
-    const pageNumber = Number(callout?.pageNumber || 1);
-    const pageIndex = pageNumber - 1;
-    if (pageIndex < 0 || pageIndex >= pdfDoc.getPageCount()) return;
-    const page = pdfDoc.getPage(pageIndex);
-    const fallbackSize = page.getSize();
-    const pageSize = pageSizes[String(pageNumber)] || pageSizes[pageNumber] || fallbackSize;
-    const pageHeight = Number(pageSize?.height) || fallbackSize.height;
-    const calloutObj = calloutToExportObject(callout, pageSize);
-    if (calloutObj) withPrintPageTransform(page, pageHeight, () => {
-      flattenedPrintAnnotationsAdded += drawFlattenedSafely('callout', calloutObj, () => (
-        drawFlattenedCallout(page, calloutObj, pageHeight, fonts)
-      ));
-    });
-  });
+  printCallouts.forEach((callout) => drawPrintCallout(callout));
 
   Object.values(printablePayload.surveyMarkers || {}).forEach((marker) => {
     const pageNumber = Number(marker?.pageNumber || marker?.page || 1);
@@ -7215,6 +7719,12 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
     const flattenFonts = exportHasTextAnnotation
       ? await embedFlattenFonts(pdfDoc, collectDrawnTextSamples(exportPlan.items || []))
       : null;
+    // w52: the PNGs edited imported stamps are drawn from (same embed as print).
+    const stampImages = await embedStampProxyImages(
+      pdfDoc,
+      (exportPlan.items || []).map((item) => item?.object),
+      'export',
+    );
 
     const deletedPdfAnnotations = [
       ...new Map(
@@ -7418,6 +7928,11 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
         case 'text':
         case 'i-text':
           annotRef = createFreeTextAnnotation(pdfDoc, page, obj, pageHeight, appAnnotationOptions);
+          break;
+        case 'image':
+          if (isPdfStampProxy(obj)) {
+            annotRef = createStampAnnotation(pdfDoc, page, obj, pageHeight, { ...appAnnotationOptions, stampImages });
+          }
           break;
         case 'callout':
           annotRefs = createCalloutAnnotations(pdfDoc, page, obj, pageHeight, {

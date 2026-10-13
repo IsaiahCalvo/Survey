@@ -109,6 +109,13 @@ export function isSurveyMarkerRestoreAction(restoreAction) {
 export function applySurveyMarkerRestore(surveyMarkers, restoreAction, { restoredAt } = {}) {
   if (!isSurveyMarkerRestoreAction(restoreAction)) return null;
   const { markerId, surveyMarker } = restoreAction;
+  // w55: a marker that is already back (undo, a teammate, a second press) is
+  // left exactly as it is now — restoring over it would put back delete-time
+  // answers, name and notes and clear its Excel acknowledgment.
+  const live = surveyMarkers?.[markerId];
+  if (live && typeof live === 'object' && !live.deletedAt && !live.deleted) {
+    return { surveyMarkers, markerId, marker: live, alreadyPresent: true };
+  }
   // Clear the "received by Excel" stamp so the received-only import guard
   // protects the restored marker until it is exported again.
   const { exportedAt, exportAckEtag, ...rest } = surveyMarker || {};

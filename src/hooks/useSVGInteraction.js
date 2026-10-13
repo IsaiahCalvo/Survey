@@ -8,9 +8,10 @@
  * Phase 9 Plan 02: Drag-to-move, resize-by-handle, rotation.
  * Phase 9 Plan 03: Multi-select group ops (group-move, group-delete), double-click edit trigger.
  */
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { screenToSVG, normalizeAngle, getInverseScale, constrainToPage, snapAngleToNearest45, clampInverseScale } from '../utils/svgTransformMath';
-import { getAnnotationBBox, getGroupBBox, getLineEndpoints, computeLineBboxCenter, isImportedPath, isAbsoluteCoordPath } from '../utils/svgBoundingBox';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, startTransition } from 'react';
+import { flushSync } from 'react-dom';
+import { screenToSVG, normalizeAngle, getInverseScale, snapAngleToNearest45, clampInverseScale } from '../utils/svgTransformMath';
+import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, getLineEndpoints, computeLineBboxCenter, isImportedPath, isAbsoluteCoordPath } from '../utils/svgBoundingBox';
 import {
   applyPageAffineToInkObject,
   commitInkObjectMove,
@@ -24,6 +25,17 @@ import { buildCaretAnchor } from '../utils/doubleTapEditEntry.js';
 import { deepClone } from '../utils/deepClone.js';
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { roundCommittedAnnotationsGeometry } from '../utils/annotationCommitRounding.js';
+import { mergeDraggedMarksOntoPage } from '../utils/dragCommitMerge.js';
+import { remapSelectedIndices } from '../utils/selectionRemap.js';
+import { resizeCalloutBox } from '../utils/markBorderOutline.js';
+// w59: one rule for where a moved mark lands (preview === save).
+import {
+  markIdOf,
+  resolveMarkIndex,
+  clampMoveDelta,
+  isBeyondMoveThreshold,
+  reportDroppedMove,
+} from '../utils/moveCommit.js';
 // Phase 15 LINE-01/02/03 + ARROW-01/02/03 — midpoint drag mode + endpoint
 // auto-revert on collinear geometry. Pure-math from lineGeometry, drag
 // helpers from lineDragMath (unit-tested in tests/lineDragMath.test.mjs).
@@ -71,18 +83,14 @@ import {
   shouldSampleLassoPoint,
   simplifyLassoPoints,
 } from '../utils/lassoSelection.js';
-// Phase 35 Plan 03 — click hit-test gate, updated 2026-07-17 for the LOCKED
-// permissions model (contributors AND owners have full add/edit/delete on
-// everything; viewers look-only). Selection now gates on canDelete (any
-// authenticated write-capable session may select ANY annotation — the viewer
-// role wall is ReadOnlyGate: body[data-readonly] CSS kills pointer events on
-// this layer's SVG root and a capture-phase keydown listener swallows
-// Delete/Backspace, so viewers never reach these handlers). canModify is
-// retained for the DELETE-time partition: own deletes may direct-fire, but
-// cross-author deletes must ALWAYS route through the bulk-delete planner so
-// the collaborator-cross-author confirm modal fires (matches the callout
-// precedent landed in 9d8df592).
-import { canDelete, canModify } from '../lib/collab/permissionScope.js';
+// Selection / delete gates. RULED 2026-09-28 owner: open editing + lock —
+// any authenticated edit session may select ANY annotation (canSelect; the
+// viewer role wall is ReadOnlyGate: body[data-readonly] CSS kills pointer
+// events on this layer's SVG root and a capture-phase keydown listener
+// swallows Delete/Backspace) and delete / move / restyle any of them with no
+// confirmation (canModify), except user-locked marks, which stay selectable
+// but refuse every change until their author or the document owner unlocks.
+import { canModify, canSelect, isUserLocked } from '../lib/collab/permissionScope.js';
 // Phase 15 UAT-3 Issue 3 (2026-04-17) — distance rules for callout-part drag.
 // Values match combined-tools FabricPDFCanvas collision logic (reference at
 // ~/Desktop/combined-tools/src/lib/calloutGeometry.ts). See isCalloutDragSafe
@@ -100,14 +108,54 @@ import {
   isMovementLockedAnnotation,
   isTransformLockedAnnotation,
 } from '../utils/annotationSelectionEligibility.js';
+// w52 (2026-09-28) — "one annotation family": the move / orbit / pick rules
+// every mark type shares live in one module so the paths can't drift again.
+import {
+  canMoveAnnotation,
+  canOrbitCounter,
+  filterSelectableCallouts,
+  nudgeDeltaForKey,
+  isArrowKey,
+  isTypingTarget,
+  clampNudgeDelta,
+  getCalloutPageBox,
+  nudgeCalloutPatch,
+  buildNudgedPage,
+  getNudgeBoxes,
+  nudgePreviewTransform,
+  isArrowOwningPopoverOpen,
+  isNudgeKeyStillHeld,
+  registerPendingNudgeFlush,
+  NUDGE_IDLE_COMMIT_MS,
+} from '../utils/annotationFamilyRules.js';
+// w53 (2026-09-28) — Survey Markers join the family on the canvas: picked by
+// marquee / lasso / Shift-click with marks, moved and nudged with them.
+import {
+  applySelectionOp,
+  boxWorldBounds,
+  resolveSurveyMarkerLassoHits,
+  resolveSurveyMarkerMarqueeHits,
+} from '../utils/surveyMarkerFamily.js';
 import {
   finalizeTextMarkupHorizontalEdge,
   getTextMarkupRangeFixedOffset,
   getTextMarkupStackAtPoint,
   resizeTextMarkupHorizontalEdge,
 } from '../utils/pdfTextMarkup.js';
+import {
+  MIN_RESIZE_PAGE_UNITS,
+  buildPointsShapeResize,
+  clampResizeScale,
+} from '../utils/resizeMinimum.js';
+import { resolveTextDoubleClick } from '../utils/selectModes.js';
+import { useCrossPageMove } from './useCrossPageMove.js';
+import { isTextLikeAnnotation } from '../utils/toolPressRouting.js';
 
 const cloneAnnotations = (annotations) => deepClone(annotations);
+
+// Drawboard rule 7: a mark picked less than this long before a double-click
+// was picked BY that double-click's first click (it was not selected before).
+const DOUBLE_CLICK_PICK_MS = 600;
 
 const diagLog = (...args) => {
   if (!isAnnotationPreviewDiagEnabled()) return;
@@ -144,6 +192,43 @@ function readCaretAnchor(event) {
     y: event?.clientY,
     host: event?.target?.closest?.('[data-callout-id], [data-annotation-index]') || null,
   });
+}
+
+// w59 — drag-start facts a single-mark 'move' needs for BOTH its preview and
+// its save (utils/moveCommit.js): the mark's id (to find it again at release
+// even if the page list changed) and its drag-start box (for the one shared
+// page clamp). Filled on the first pointermove; reset with the drag state.
+function ensureMoveStart(ds, objects) {
+  const startObject = objects?.[ds.annotationIndex];
+  if (ds.markId === undefined) ds.markId = markIdOf(startObject);
+  if (!ds.moveBoxes) ds.moveBoxes = startObject ? [getAnnotationBBox(startObject)] : [];
+}
+
+// w59 — the same for a group move: every movable member's id and the boxes
+// of everything that moves (marks, callouts, Survey Markers), clamped as ONE
+// rigid piece so the members never slide apart at a page edge.
+function ensureGroupMoveStart(ds, { objects, callouts, pageWidth, pageHeight, markerBoxes }) {
+  if (!ds.groupIds) {
+    const ids = {};
+    for (const idxStr of Object.keys(ds.groupOriginals || {})) {
+      ids[idxStr] = markIdOf(objects?.[Number(idxStr)]);
+    }
+    ds.groupIds = ids;
+  }
+  if (!ds.groupBoxes) {
+    const boxes = [];
+    for (const idxStr of Object.keys(ds.groupOriginals || {})) {
+      const obj = objects?.[Number(idxStr)];
+      if (obj) boxes.push(getAnnotationBBox(obj));
+    }
+    for (const cid of Object.keys(ds.groupCalloutOriginals || {})) {
+      const callout = (callouts || []).find((c) => c && String(c.id) === String(cid));
+      const box = callout ? getCalloutPageBox(callout, pageWidth || 1, pageHeight || 1) : null;
+      if (box) boxes.push(box);
+    }
+    for (const box of markerBoxes || []) if (box) boxes.push(box);
+    ds.groupBoxes = boxes;
+  }
 }
 
 /**
@@ -218,6 +303,35 @@ export function useSVGInteraction({
   // App.jsx's mount), deleteSelected falls through to runDelete unconditionally
   // — preserves legacy behavior byte-identical.
   onRequestBulkDelete,
+  // w52 (2026-09-28) — (calloutId) => boolean: is this callout both visible
+  // in the current context (isAnnotationVisibleInContext) and interactive for
+  // the active space (isInteractiveForActiveSpace)? The layer owns both rules
+  // for shapes; callouts now pass through the same predicate for click,
+  // double-click, group expand, marquee and lasso. Absent → every callout
+  // passes (legacy mounts unchanged).
+  isCalloutSelectable,
+  // w52 — arrow-key nudge is live only while the layer says so (no inline
+  // text editor open on this page). Default on.
+  keyboardNudgeEnabled = true,
+  // w53 (2026-09-28) — Survey Markers as family members on this page.
+  // getSurveyMarkerMembers(): [{ id, box: { left, top, width, height, angle } }] —
+  // the saved markers this page shows and lets the user pick (the layer
+  // applies the same visibility / space rules it draws with).
+  // selectedSurveyMarkerIds: Set<string> (the layer owns it);
+  // onSelectedSurveyMarkerIdsChange(Set). A group drag or nudge previews
+  // them through visualTransform.affectedMarkerIds. Moves commit through
+  // onSaveAnnotations(…, { surveyMarkerFamily: { move } }) so marks and
+  // markers are one save and ONE undo step. Absent → markers never join
+  // (legacy mounts unchanged).
+  getSurveyMarkerMembers = null,
+  selectedSurveyMarkerIds = null,
+  onSelectedSurveyMarkerIdsChange = null,
+  // Owner after Test 46 (2026-10-06): a picked mark dragged 100 % off its page
+  // onto another page moves there (utils/crossPageMove.js). The viewer saves
+  // it: ({ toPage, marks: [{ id, object }] }) => true when moved. Absent ->
+  // marks stay clamped to their page (legacy mounts unchanged).
+  onMoveMarksToPage = null,
+  documentId = null,
 }) {
   // ---------------------------------------------------------------------------
   // State
@@ -345,6 +459,25 @@ export function useSVGInteraction({
   // if a drag just ended within a 400ms window. Mirrors the 300ms
   // `editModeCooldownRef` pattern in App.jsx:26690.
   const justDraggedAtRef = useRef(0);
+  const crossPageMove = useCrossPageMove({
+    svgRef, pageNumber, documentId, onMoveMarksToPage, setVisualTransform, selectedCount: selectedIds?.size ?? 0,
+  });
+  // Drawboard rule 7: the last two presses on marks ({ key, wasSelected, at,
+  // pointerType }, newest first) and when each picked mark joined the
+  // selection (key -> ms) — read by the double-click handler to tell text
+  // that was selected BEFORE a double-click from text its first click picked.
+  const pressLogRef = useRef([]);
+  const pickedAtRef = useRef(new Map());
+  useEffect(() => {
+    const now = Date.now();
+    const previous = pickedAtRef.current;
+    const next = new Map();
+    for (const index of selectedIds || []) next.set(`a:${index}`, previous.get(`a:${index}`) ?? now);
+    const calloutIds = selectedCalloutIds instanceof Set ? selectedCalloutIds
+      : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds : []);
+    for (const id of calloutIds) next.set(`c:${id}`, previous.get(`c:${id}`) ?? now);
+    pickedAtRef.current = next;
+  }, [selectedIds, selectedCalloutIds]);
 
   // Keep interactionStateRef in sync
   useEffect(() => {
@@ -447,14 +580,60 @@ export function useSVGInteraction({
     // Initial computation
     setInverseScale(getInverseScale(svgEl, pageWidth));
 
-    const observer = new ResizeObserver(() => {
-      setInverseScale(getInverseScale(svgEl, pageWidth));
-    });
+    // Owner 2026-10-07 (smooth zoom): a zoom commit resizes every mounted
+    // page's svg at once, and this update re-renders each whole layer (every
+    // mark, to retune a few hit pads). As a transition React renders it in
+    // slices between frames instead of one long freeze (~1 s on a phone with
+    // a set of marked drawings in view). The marks themselves never wait:
+    // the viewBox scales them.
+    //
+    // Owner 2026-10-07 (phone: a pinch started right after the last one
+    // stuttered while every layer re-rendered): the retune also waits while
+    // the page is still moving (a pinch, glide or scroll — the viewer marks
+    // its scroller data-pdfjs-moving) and runs once it is still, and a page
+    // off screen retunes after the ones on screen. Only hit pads and handle
+    // sizes wait; the marks are scaled by the viewBox, never by this.
+    let waitTimer = 0;
+    let stillChecks = 0;
+    const apply = () => {
+      waitTimer = 0;
+      if (!svgEl.isConnected) return;
+      const next = getInverseScale(svgEl, pageWidth);
+      startTransition(() => setInverseScale(next));
+    };
+    // Still means still for a moment: pinches often come one after another,
+    // and a retune that starts just before the next one competes with it.
+    const schedule = () => {
+      if (waitTimer) clearTimeout(waitTimer);
+      waitTimer = 0;
+      if (svgEl.closest?.('[data-pdfjs-moving="true"]')) {
+        stillChecks = 0;
+        waitTimer = setTimeout(schedule, 120);
+        return;
+      }
+      if (stillChecks < 2) {
+        stillChecks += 1;
+        waitTimer = setTimeout(schedule, 150);
+        return;
+      }
+      stillChecks = 0;
+      const rect = svgEl.getBoundingClientRect?.();
+      const vw = window.innerWidth || 0;
+      const vh = window.innerHeight || 0;
+      const offScreen = rect && vh > 0 && (rect.bottom < -vh * 0.5 || rect.top > vh * 1.5 || rect.right < 0 || rect.left > vw);
+      if (offScreen) {
+        waitTimer = setTimeout(apply, 400);
+        return;
+      }
+      apply();
+    };
+    const observer = new ResizeObserver(schedule);
 
     observer.observe(svgEl);
 
     return () => {
       observer.disconnect();
+      if (waitTimer) clearTimeout(waitTimer);
     };
   }, [svgRef, pageWidth]);
 
@@ -516,16 +695,36 @@ export function useSVGInteraction({
   // still points to a valid annotation, keep the selection. Drop it only when
   // the array shrinks past a selected index (deletion) or the page swaps.
   // ---------------------------------------------------------------------------
+  //
+  // w61 (2026-09-28): the selection follows the marks by id when the list
+  // changes (utils/selectionRemap.js). Before, positions still in range were
+  // kept, so another screen's delete / add / restack earlier in the list
+  // slid the selection onto a neighbouring mark and the next Delete removed
+  // a mark the user never picked. `selectionAnchorRef` remembers the list
+  // the current selection was made on: a selection set in the same render as
+  // a list change (paste, restack) was made for the new list and is trusted.
+  // A layout effect, so the remapped selection is what paints (no frame
+  // with handles on the neighbour, no key press acting on it) — including
+  // during a drag (ids are stable across drag frames, so that is a no-op).
+  // The functional update keeps a selection another layout effect set in the
+  // same pass (SVGAnnotationLayer's pendingSelection: paste, Delete clears).
+  const selectionAnchorRef = useRef({ selected: null, objects: null });
+  useLayoutEffect(() => {
+    const objects = annotations?.objects ?? null;
+    const anchor = selectionAnchorRef.current;
+    if (anchor.selected !== selectedIds) {
+      selectionAnchorRef.current = { selected: selectedIds, objects };
+      return;
+    }
+    if (anchor.objects === objects) return;
+    const next = remapSelectedIndices(selectedIds, anchor.objects, objects);
+    selectionAnchorRef.current = { selected: next, objects };
+    if (next === selectedIds) return;
+    const remappedFrom = selectedIds;
+    setSelectedIds((prev) => (prev === remappedFrom ? next : prev));
+  }, [annotations, selectedIds]);
   useEffect(() => {
     if (dragStateRef.current?.active) return;
-    const maxIdx = (annotations?.objects?.length ?? 0) - 1;
-    setSelectedIds((prev) => {
-      if (prev.size === 0) return prev;
-      for (const i of prev) {
-        if (i > maxIdx || i < 0) return new Set();
-      }
-      return prev;
-    });
     setHoveredId(null);
   }, [annotations]);
 
@@ -548,6 +747,54 @@ export function useSVGInteraction({
     setHoveredId(null);
   }, []);
 
+  // w53: the Survey Markers of the family selection on this page.
+  const selectedMarkerCount = selectedSurveyMarkerIds instanceof Set ? selectedSurveyMarkerIds.size : 0;
+  const clearSelectedMarkers = useCallback(() => {
+    if (typeof onSelectedSurveyMarkerIdsChange !== 'function') return;
+    if (!(selectedSurveyMarkerIds instanceof Set) || selectedSurveyMarkerIds.size === 0) return;
+    onSelectedSurveyMarkerIdsChange(new Set());
+  }, [onSelectedSurveyMarkerIdsChange, selectedSurveyMarkerIds]);
+  const updateSelectedMarkers = useCallback((hits, op) => {
+    if (typeof onSelectedSurveyMarkerIdsChange !== 'function') return;
+    if (op !== 'replace' && hits.length === 0) return;
+    const next = applySelectionOp(selectedSurveyMarkerIds, hits, op);
+    const prev = selectedSurveyMarkerIds instanceof Set ? selectedSurveyMarkerIds : new Set();
+    if (next.size === prev.size && [...next].every((id) => prev.has(id))) return;
+    onSelectedSurveyMarkerIdsChange(next);
+  }, [onSelectedSurveyMarkerIdsChange, selectedSurveyMarkerIds]);
+  // A group move's delta for the markers: the same pointer delta, held so
+  // every moved marker stays on the page (marks clamp themselves one by one).
+  const clampMarkerGroupDelta = useCallback((markerIds, dx, dy) => {
+    if (!Array.isArray(markerIds) || markerIds.length === 0) return { dx, dy };
+    const ids = new Set(markerIds);
+    const boxes = (getSurveyMarkerMembers?.() || [])
+      .filter((member) => member && ids.has(String(member.id)))
+      .map((member) => boxWorldBounds(member.box))
+      .filter(Boolean);
+    return clampNudgeDelta(boxes, dx, dy, pageWidth, pageHeight);
+  }, [getSurveyMarkerMembers, pageWidth, pageHeight]);
+  // w59: the page boxes of the given Survey Markers (for a group move's one
+  // shared clamp).
+  const getGroupMarkerBoxes = useCallback((markerIds) => {
+    if (!Array.isArray(markerIds) || markerIds.length === 0) return [];
+    const ids = new Set(markerIds.map(String));
+    return (getSurveyMarkerMembers?.() || [])
+      .filter((member) => member && ids.has(String(member.id)))
+      .map((member) => boxWorldBounds(member.box))
+      .filter(Boolean);
+  }, [getSurveyMarkerMembers]);
+  // Ids of the selected markers this page shows (only those move).
+  // `movableOnly`: leave out user-locked markers (owner ruling 2026-09-28 —
+  // a locked mark stays put while the rest of the selection moves).
+  const getGroupMarkerIds = useCallback((options = null) => {
+    if (!(selectedSurveyMarkerIds instanceof Set) || selectedSurveyMarkerIds.size === 0) return [];
+    const members = getSurveyMarkerMembers?.() || [];
+    return members
+      .filter((member) => member && selectedSurveyMarkerIds.has(String(member.id)))
+      .filter((member) => !(options?.movableOnly && member.locked))
+      .map((member) => String(member.id));
+  }, [selectedSurveyMarkerIds, getSurveyMarkerMembers]);
+
   // UX: 2026-04-20 — multi-index selection setter. Used by App.jsx via the
   // pendingSvgSelection.annotationIndices broadcast after Ungroup so the
   // freed members stay selected as a multi-selection. Replaces the entire
@@ -564,32 +811,328 @@ export function useSVGInteraction({
     return selectedIds.has(index);
   }, [selectedIds]);
 
-  // Per-user delete authority click hit-test gate — LOCKED permissions model
-  // (2026-07-17): contributors and owners can select/move/edit/delete ANY
-  // annotation, so this gate now runs canDelete (authenticated write-capable
-  // pair passes for every annotation) instead of canModify (author-or-owner
-  // only). Cross-author capability is safe to open at selection time because:
-  //   - viewers never reach this handler (ReadOnlyGate CSS blocks pointer
-  //     events on the SVG root + capture-phase keydown swallows Delete), and
-  //   - cross-author DELETES are re-partitioned in deleteSelected below and
-  //     always routed through the parent's bulk-delete planner, which shows
-  //     the collaborator-cross-author confirm modal (never direct-fires).
-  // Cross-author MOVES/EDITS commit through the normal save paths with no
-  // modal — matches the callout precedent (9d8df592) and the modal's
-  // delete-only copy. Original authorship survives foreign edits: the
-  // serializer treats meta.authorId as write-once-on-create
+  // Click hit-test gate. RULED 2026-09-28 owner: open editing + lock —
+  // canSelect passes every annotation (user-locked ones included) for an
+  // authenticated edit session. Original authorship survives other people's
+  // edits: the serializer treats meta.authorId as write-once-on-create
   // (annotationTypeSerializers.js).
   //
-  // Boot guard: when either viewerId or documentOwnerId is missing (App.jsx
-  // not yet threaded the new props, or the user signed out mid-session) the
-  // gate returns true so legacy behavior is byte-identical. The gate engages
-  // once both props resolve.
+  // Boot guard: when either viewerId or documentOwnerId is missing (not yet
+  // threaded, or the user signed out mid-session) the gate returns true so
+  // legacy behavior is byte-identical. The gate engages once both resolve.
   const canSelectAnnotationByIndex = useCallback((index) => {
     const a = annotations?.objects?.[index];
     if (!a) return false;
     if (!viewerId || !documentOwnerId) return true;
-    return canDelete({ annotation: a, viewerId, documentOwnerId });
+    return canSelect({ annotation: a, viewerId, documentOwnerId });
   }, [annotations, viewerId, documentOwnerId]);
+
+  // ---------------------------------------------------------------------------
+  // w52 (2026-09-28) — arrow-key nudge for the current selection
+  // ---------------------------------------------------------------------------
+  // UX: with any marks selected on this page (shapes, ink, counters, lines,
+  // callouts, Survey Markers — the whole family), each arrow press moves the
+  // selection one page unit; Shift moves ten (Acrobat / Drawboard / Figma
+  // convention; page units, so the step is the same at every zoom).
+  //
+  // w57 (2026-09-28): a burst of presses — holding a key (auto-repeat) or
+  // tapping it — is shown exactly like a drag: a render-time translate
+  // (setVisualTransform, flagged `nudge`) with NO store write per press, and
+  // ONE save + one undo step NUDGE_IDLE_COMMIT_MS after the last press (or on
+  // blur / selection change / teardown). Before w57 every press saved a 'skip'
+  // preview frame, i.e. one Supabase row per auto-repeat tick (~30 rows per
+  // second of a held key). Other screens get the move from that one save via
+  // the live overlay, the same moment they get a drag.
+  //
+  // Because the store holds the burst-start pose until the commit, any other
+  // input first ends the burst: a pointerdown anywhere or any non-arrow key
+  // commits it synchronously (flushSync) before this layer's own handlers and
+  // every listener registered after it see that input, so a click, drag,
+  // Delete or Copy acts on the nudged positions. The viewer's Undo / Redo key
+  // handler runs earlier, so it calls flushPendingNudges() itself.
+  //
+  // Locked marks (text markup, imported highlights, movement-locked and
+  // user-locked marks) stay put, exactly like a drag. Never hijacks keys when:
+  // nothing movable is selected on this page (arrow keys keep scrolling /
+  // turning pages), focus is in an input / text area / contentEditable editor
+  // or a widget that owns arrow keys, the right-click menu is open, a
+  // Cmd/Ctrl/Alt chord is held, the document is read-only, or a pointer
+  // gesture is in progress.
+  const nudgeLatestRef = useRef({});
+  nudgeLatestRef.current = {
+    annotations,
+    callouts,
+    selectedIds,
+    selectedCalloutIds,
+    pageWidth,
+    pageHeight,
+    pageNumber,
+    onSaveAnnotations,
+    onUpdateCalloutLive,
+    onUpdateCallout,
+    isCalloutSelectable,
+    getSurveyMarkerMembers,
+    selectedSurveyMarkerIds,
+  };
+  const nudgeBurstRef = useRef(null);
+
+  const commitNudgeBurst = useCallback(({ sync = false } = {}) => {
+    const burst = nudgeBurstRef.current;
+    if (!burst) return;
+    nudgeBurstRef.current = null;
+    if (burst.timer) clearTimeout(burst.timer);
+    // The preview ends in the same render as the save (no flash back).
+    const clearPreview = () => setVisualTransform((prev) => (prev?.nudge ? null : prev));
+    if (burst.dx === 0 && burst.dy === 0) {
+      clearPreview();
+      return;
+    }
+    const calloutEntries = Object.entries(burst.calloutOriginals);
+    // Callout poses go through the callout live path ('skip' frames: the
+    // first one opens the page's gesture baseline).
+    const writeCalloutPoses = () => {
+      const latest = nudgeLatestRef.current;
+      if (typeof latest.onUpdateCalloutLive !== 'function') return;
+      for (const [calloutId, original] of calloutEntries) {
+        latest.onUpdateCalloutLive(calloutId, nudgeCalloutPatch(original, burst.dx, burst.dy, latest.pageWidth || 0, latest.pageHeight || 0));
+      }
+    };
+    // Shapes (and w53 Survey Markers, same save) with checkpointPolicy
+    // 'normal': one undo step — covering the callout frames above when they
+    // were written first.
+    const saveShapesAndMarkers = () => {
+      const latest = nudgeLatestRef.current;
+      if (typeof latest.onSaveAnnotations !== 'function') return;
+      const hasShapes = Object.keys(burst.startObjects).length > 0;
+      const markerIds = Object.keys(burst.markerBoxes || {});
+      const markerFamily = markerIds.length > 0
+        ? { surveyMarkerFamily: { move: { ids: markerIds, dx: burst.dx, dy: burst.dy } } }
+        : null;
+      if (!hasShapes && !markerFamily) return;
+      const merged = hasShapes
+        ? buildNudgedPage(latest.annotations, burst.startObjects, burst.dx, burst.dy)
+        : null;
+      // Every nudged mark deleted meanwhile and no markers: nothing to save.
+      if (!merged && !markerFamily) return;
+      latest.onSaveAnnotations(merged ? merged.annotations : latest.annotations, {
+        source: 'object:modified',
+        action: 'nudge',
+        checkpointPolicy: 'normal',
+        ...(markerFamily || {}),
+      });
+    };
+    // The commit-only callout signal: records the step when no save above
+    // closed it already (a no-op otherwise).
+    const closeCalloutSteps = () => {
+      const latest = nudgeLatestRef.current;
+      if (typeof latest.onUpdateCallout !== 'function') return;
+      for (const [calloutId] of calloutEntries) latest.onUpdateCallout(calloutId, {});
+    };
+    // A tilted group frame (persisted group rotation) rides along, as it
+    // does for a group drag.
+    const moveTiltedFrame = () => {
+      const latest = nudgeLatestRef.current;
+      const sig = computeSelectionSig(latest.selectedIds, latest.selectedCalloutIds);
+      const persisted = persistedGroupTransformRef.current;
+      if (persisted && persisted.selectionSig === sig) {
+        setPersistedGroupTransform({
+          ...persisted,
+          dx: (persisted.dx || 0) + burst.dx,
+          dy: (persisted.dy || 0) + burst.dy,
+        });
+      }
+    };
+    if (sync) {
+      // From a native listener or the idle timer: callouts first, RENDERED
+      // (flushSync) so the shape save is built on a page that already holds
+      // them — shapes + callouts + markers are then ONE undo step. The final
+      // render also lands before the input that ended the burst reaches the
+      // rest of the app, so its handlers read the moved marks.
+      if (calloutEntries.length > 0) flushSync(writeCalloutPoses);
+      flushSync(() => {
+        clearPreview();
+        saveShapesAndMarkers();
+        closeCalloutSteps();
+        moveTiltedFrame();
+      });
+      return;
+    }
+    // From an effect (selection change, teardown) no synchronous render is
+    // possible: the group-drag release order — correct positions, though a
+    // selection mixing shapes and callouts may take one undo step per part.
+    clearPreview();
+    saveShapesAndMarkers();
+    for (const [calloutId, original] of calloutEntries) {
+      const latest = nudgeLatestRef.current;
+      latest.onUpdateCalloutLive?.(calloutId, nudgeCalloutPatch(original, burst.dx, burst.dy, latest.pageWidth || 0, latest.pageHeight || 0));
+      latest.onUpdateCallout?.(calloutId, {});
+    }
+    moveTiltedFrame();
+  }, [computeSelectionSig]);
+
+  // A selection change ends the burst (commits what already moved).
+  useEffect(() => {
+    commitNudgeBurst();
+  }, [selectedIds, selectedCalloutIds, selectedSurveyMarkerIds, commitNudgeBurst]);
+
+  useEffect(() => {
+    if (!keyboardNudgeEnabled) return undefined;
+
+    // w57: the burst saves NUDGE_IDLE_COMMIT_MS after the last press — but
+    // never while an arrow key is still held (a slow "delay until repeat"
+    // setting leaves up to ~2 s before the first auto-repeat; one hold is one
+    // undo step). isNudgeKeyStillHeld stops trusting a key whose release
+    // never arrived.
+    const scheduleIdleCommit = (burst) => {
+      if (burst.timer) clearTimeout(burst.timer);
+      burst.timer = setTimeout(() => {
+        if (nudgeBurstRef.current !== burst) return;
+        if (isNudgeKeyStillHeld(burst, Date.now())) {
+          scheduleIdleCommit(burst);
+          return;
+        }
+        commitNudgeBurst({ sync: true });
+      }, NUDGE_IDLE_COMMIT_MS);
+    };
+
+    const startBurst = () => {
+      const latest = nudgeLatestRef.current;
+      const startObjects = {};
+      for (const index of latest.selectedIds || []) {
+        const object = latest.annotations?.objects?.[index];
+        if (canMoveAnnotation(object)) startObjects[index] = deepClone(object);
+      }
+      const calloutOriginals = {};
+      const selectedCallouts = latest.selectedCalloutIds instanceof Set
+        ? Array.from(latest.selectedCalloutIds)
+        : (Array.isArray(latest.selectedCalloutIds) ? latest.selectedCalloutIds : []);
+      for (const calloutId of selectedCallouts) {
+        const callout = (latest.callouts || []).find((c) => c && String(c.id) === String(calloutId));
+        if (!callout) continue;
+        // Only the page that holds the callout acts (the callout selection
+        // set is shared by every page's layer).
+        if (latest.pageNumber != null && callout.pageNumber != null
+          && Number(callout.pageNumber) !== Number(latest.pageNumber)) continue;
+        if (typeof latest.isCalloutSelectable === 'function' && !latest.isCalloutSelectable(callout.id)) continue;
+        if (!canMoveAnnotation(callout)) continue;
+        calloutOriginals[callout.id] = {
+          arrowTip: { ...(callout.arrowTip || {}) },
+          knee: { ...(callout.knee || {}) },
+          textBoxPosition: { ...(callout.textBoxPosition || {}) },
+          textBoxWidth: callout.textBoxWidth,
+          textBoxHeight: callout.textBoxHeight,
+        };
+      }
+      // w53: selected Survey Markers on this page nudge with the rest — but
+      // only as part of a family selection; a lone marker keeps the layer's
+      // own nudge (it also serves markers still being placed).
+      const markerBoxes = {};
+      const selectedMarkers = latest.selectedSurveyMarkerIds instanceof Set ? latest.selectedSurveyMarkerIds : null;
+      const familySize = (latest.selectedIds?.size || 0) + selectedCallouts.length + (selectedMarkers?.size || 0);
+      if (selectedMarkers && selectedMarkers.size > 0 && familySize > 1) {
+        for (const member of latest.getSurveyMarkerMembers?.() || []) {
+          if (member && !member.locked && selectedMarkers.has(String(member.id))) markerBoxes[String(member.id)] = member.box;
+        }
+      }
+      if (Object.keys(startObjects).length === 0 && Object.keys(calloutOriginals).length === 0
+        && Object.keys(markerBoxes).length === 0) {
+        return null;
+      }
+      return {
+        startObjects,
+        calloutOriginals,
+        markerBoxes,
+        // One selected shape and nothing else: preview it like a single drag
+        // (its handles follow); anything more previews like a group drag.
+        singleShape: (latest.selectedIds?.size || 0) === 1 && selectedCallouts.length === 0
+          && !(selectedMarkers?.size > 0),
+        dx: 0,
+        dy: 0,
+        timer: null,
+        keysDown: new Set(),
+      };
+    };
+
+    const onKeyDown = (e) => {
+      const delta = nudgeDeltaForKey(e);
+      if (!delta) {
+        // Any other key (Cmd+Z, Delete, Cmd+C, a tool key) ends the burst
+        // first and renders it, so that key acts on the moved marks and Undo
+        // mid-burst undoes the nudge (review 2026-09-28).
+        if (nudgeBurstRef.current && !isArrowKey(e.key) && e.key !== 'Shift') commitNudgeBurst({ sync: true });
+        return;
+      }
+      if (e.defaultPrevented) return;
+      if (typeof document !== 'undefined') {
+        if (isTypingTarget(document.activeElement)) return;
+        if (isArrowOwningPopoverOpen(document)) return;
+        if (document.body?.getAttribute('data-readonly') === 'true') return;
+      }
+      if (dragStateRef.current?.active || marqueeStateRef.current || lassoStateRef.current) return;
+      let burst = nudgeBurstRef.current;
+      if (!burst) {
+        burst = startBurst();
+        if (!burst) return; // nothing movable here — leave the key alone
+        nudgeBurstRef.current = burst;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      burst.keysDown.add(e.key);
+      burst.lastKeyDownAt = Date.now();
+      scheduleIdleCommit(burst);
+
+      const latest = nudgeLatestRef.current;
+      const W = latest.pageWidth || 0;
+      const H = latest.pageHeight || 0;
+      const boxes = [
+        ...getNudgeBoxes(burst.startObjects),
+        ...Object.values(burst.calloutOriginals).map((c) => getCalloutPageBox(c, W, H)),
+        ...Object.values(burst.markerBoxes || {}).map((box) => boxWorldBounds(box)).filter(Boolean),
+      ];
+      const next = clampNudgeDelta(boxes, burst.dx + delta.dx, burst.dy + delta.dy, W, H);
+      if (next.dx === burst.dx && next.dy === burst.dy) return; // pinned at the page edge
+      burst.dx = next.dx;
+      burst.dy = next.dy;
+      setVisualTransform(nudgePreviewTransform(burst));
+    };
+
+    // Releasing a key does NOT end the burst: tapping an arrow key several
+    // times in a row is one move and one Undo step (verified live 2026-09-28 —
+    // committing on every release made each tap its own step). The burst ends
+    // NUDGE_IDLE_COMMIT_MS after the last press, on any other key or a
+    // pointerdown, on blur, on a selection change, or when the layer unmounts.
+    const onKeyUp = (e) => {
+      const burst = nudgeBurstRef.current;
+      if (!burst || !isArrowKey(e.key)) return;
+      burst.keysDown.delete(e.key);
+      // the idle gap counts from the release
+      if (burst.keysDown.size === 0) scheduleIdleCommit(burst);
+    };
+    const onPointerDown = () => {
+      if (nudgeBurstRef.current) commitNudgeBurst({ sync: true });
+    };
+    // Deferred a microtask: a window blur can fire synchronously inside a
+    // React commit (focus moved by an effect), where flushSync must not run.
+    const onBlur = () => queueMicrotask(() => commitNudgeBurst({ sync: true }));
+    // Undo / Redo (PDFViewer's key handler runs before this layer's
+    // listeners) saves a running burst first.
+    const unregisterFlush = registerPendingNudgeFlush(() => {
+      if (nudgeBurstRef.current) commitNudgeBurst({ sync: true });
+    });
+
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('keyup', onKeyUp, true);
+    window.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('keyup', onKeyUp, true);
+      window.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('blur', onBlur);
+      unregisterFlush();
+      commitNudgeBurst();
+    };
+  }, [keyboardNudgeEnabled, commitNudgeBurst]);
 
   // ---------------------------------------------------------------------------
   // Pointer event handlers
@@ -599,6 +1142,43 @@ export function useSVGInteraction({
    * Click on an annotation to select it.
    * Shift-click toggles in/out of selection (for multi-select in Plan 03).
    */
+  // Drawboard rule 3 (owner 2026-10-02, utils/selectModes.js
+  // resolveToolPress): under Select a press on a mark (or callout) that was
+  // NOT selected picks it, and a drag from there is a box / lasso select — it
+  // never moves a mark that was not already selected. keepOnClick: a release
+  // without travel keeps the pick that press made.
+  const beginAreaSelectFromMark = useCallback((e) => {
+    const startPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
+    if (selectionMode === 'lasso') {
+      const intent = getLassoGestureIntent(e, lassoTouchOperation, lassoTouchMode);
+      applyLassoState({
+        points: [{
+          x: Math.max(0, Math.min(pageWidth, startPoint.x)),
+          y: Math.max(0, Math.min(pageHeight, startPoint.y)),
+        }],
+        ...intent,
+        mode: null,
+        pointerId: e.pointerId,
+        pointerType: e.pointerType || 'mouse',
+        keepOnClick: true,
+      });
+    } else {
+      applyMarqueeState({
+        startX: startPoint.x,
+        startY: startPoint.y,
+        endX: startPoint.x,
+        endY: startPoint.y,
+        shiftHeld: false,
+        altHeld: false,
+        active: false,
+        pointerId: e.pointerId,
+        keepOnClick: true,
+      });
+    }
+    try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+    e.preventDefault?.();
+  }, [svgRef, selectionMode, lassoTouchOperation, lassoTouchMode, applyLassoState, applyMarqueeState, pageWidth, pageHeight]);
+
   const handleAnnotationPointerDown = useCallback((e, index) => {
     e.stopPropagation();
     if (dragStateRef.current?.active && dragStateRef.current.annotationIndex === index) {
@@ -642,9 +1222,12 @@ export function useSVGInteraction({
     // pointerup branch still lets a pure Shift-click act as a multi-select
     // toggle; anything past ~3 px commits as an orbit rotation.
     const _obj_precheck = annotations?.objects?.[index];
+    // w52: orbit moves AND turns the counter, so it obeys the same locks as
+    // the move + rotate handles. A locked counter falls through to the plain
+    // Shift-click (add to selection) below.
     if (
       e.shiftKey
-      && _obj_precheck?.data?.type === 'counter'
+      && canOrbitCounter(_obj_precheck)
       && !(selectedIds.size > 1 && selectedIds.has(index))
     ) {
       const ctm = svgRef.current?.getScreenCTM();
@@ -677,6 +1260,7 @@ export function useSVGInteraction({
         groupOriginals: null,
         counterRadius: radius,
         counterTipDistance: tipDistance,
+        startObjects: { [index]: deepClone(_obj_precheck) },
       };
       e.preventDefault();
       return;
@@ -728,6 +1312,7 @@ export function useSVGInteraction({
       };
       selectAnnotation(targetIndex, false);
       onSelectedCalloutIdsChange?.(new Set());
+      clearSelectedMarkers();
       dragStateRef.current = { ...dragStateRef.current, active: false };
       setVisualTransform(null);
       e.preventDefault();
@@ -735,6 +1320,13 @@ export function useSVGInteraction({
     }
 
     const wasAlreadySelected = selectedIds.has(index);
+    // Drawboard rule 7: remember whether each press found its mark already
+    // selected, so a double-click can tell "selected before" from "picked by
+    // the first click of this double-click".
+    pressLogRef.current = [
+      { key: `a:${index}`, wasSelected: wasAlreadySelected, at: Date.now(), pointerType: e.pointerType || 'mouse' },
+      pressLogRef.current[0],
+    ].filter(Boolean);
 
     // UX: 2026-04-20 — Group auto-expand-on-click (Stage 1 of the Group /
     // Ungroup design). When a plain (non-Shift) click lands on an
@@ -748,7 +1340,8 @@ export function useSVGInteraction({
     const _clickedObj = annotations?.objects?.[index];
     const _clickedGid = getAnnotationGroupId(_clickedObj);
     if (!wasAlreadySelected && _clickedGid) {
-      const pageCallouts = (callouts || []); // already page-scoped per layer mount
+      // w52: only callouts the page shows and lets the user pick join.
+      const pageCallouts = filterSelectableCallouts(callouts, isCalloutSelectable);
       const members = findGroupMembers(annotations, pageCallouts, [_clickedGid]);
       if (members.annotationIndices.length > 0 || members.calloutIds.length > 0) {
         // Per-user delete authority filter on group expand (2026-07-17
@@ -763,6 +1356,7 @@ export function useSVGInteraction({
         if (typeof onSelectedCalloutIdsChange === 'function') {
           onSelectedCalloutIdsChange(new Set(members.calloutIds));
         }
+        clearSelectedMarkers();
         return; // group selected — no drag, no further per-shape branches.
       }
     }
@@ -783,13 +1377,35 @@ export function useSVGInteraction({
     if (!wasAlreadySelected && onSelectedCalloutIdsChange) {
       onSelectedCalloutIdsChange(new Set());
     }
+    // w53: the same for Survey Markers in the selection.
+    if (!wasAlreadySelected) clearSelectedMarkers();
+
+    // Drawboard rule 3 (owner 2026-10-02, utils/selectModes.js
+    // resolveToolPress): under Select a press on a mark that was NOT selected
+    // picks it, but a drag from there is a box / lasso select — it never moves
+    // a mark that was not already selected. Drag the selection to move it.
+    if (!wasAlreadySelected && activeTool === 'select' && svgRef.current) {
+      beginAreaSelectFromMark(e);
+      return;
+    }
 
     // Initiate drag-to-move
     const obj = annotations?.objects?.[index];
     if (obj) {
       // Text markup is a range anchored to PDF text. It can change via its
       // two endpoint handles, but a body drag must never move the quads.
-      if (obj?.data?.type === 'text-markup' || isMovementLockedAnnotation(obj)) {
+      // A user-locked mark (owner ruling 2026-09-28) is selected but never
+      // moves — the same early stop as a movement-locked import. Grabbing it
+      // inside a bigger selection still drags the REST of the selection (the
+      // group move below skips locked members), like any group drag.
+      const lockedMemberStartsGroupMove = isUserLocked(obj)
+        && selectedIds.has(index)
+        && (selectedIds.size
+          + ((selectedCalloutIds instanceof Set) ? selectedCalloutIds.size
+            : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds.length : 0))
+          + selectedMarkerCount) > 1;
+      if (obj?.data?.type === 'text-markup' || isMovementLockedAnnotation(obj)
+        || (isUserLocked(obj) && !lockedMemberStartsGroupMove)) {
         dragStateRef.current = { ...dragStateRef.current, active: false };
         setVisualTransform(null);
         e.preventDefault();
@@ -821,16 +1437,15 @@ export function useSVGInteraction({
       const calSize = (selectedCalloutIds instanceof Set)
         ? selectedCalloutIds.size
         : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds.length : 0);
-      const totalSel = selectedIds.size + calSize;
+      const totalSel = selectedIds.size + calSize + selectedMarkerCount;
       if (totalSel > 1 && selectedIds.has(index)) {
         const originals = {};
         for (const selIdx of selectedIds) {
           const selObj = annotations?.objects?.[selIdx];
-          if (
-            selObj
-            && selObj?.data?.type !== 'text-markup'
-            && !isTransformLockedAnnotation(selObj)
-          ) {
+          // w52: same movable test the single-mark drag uses — a mark
+          // locked against movement (e.g. an imported highlight) stays put
+          // in a group drag too.
+          if (canMoveAnnotation(selObj)) {
             // Imported paths: use bbox position (from path data), not obj.left/top
             if (isImportedPath(selObj)) {
               const selBBox = getAnnotationBBox(selObj);
@@ -852,7 +1467,7 @@ export function useSVGInteraction({
           : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds : []);
         for (const cid of calIdsArr) {
           const c = (callouts || []).find((cc) => cc && cc.id === cid);
-          if (!c) continue;
+          if (!c || isUserLocked(c)) continue;
           calloutOriginals[cid] = {
             arrowTip: { x: c.arrowTip?.x ?? 0, y: c.arrowTip?.y ?? 0 },
             knee: { x: c.knee?.x ?? 0, y: c.knee?.y ?? 0 },
@@ -876,6 +1491,8 @@ export function useSVGInteraction({
           groupOriginals: originals,
           // UX: 2026-04-20 — callout originals for group-move ride-along.
           groupCalloutOriginals: calloutOriginals,
+          // w53: Survey Markers ride along too.
+          groupMarkerIds: getGroupMarkerIds({ movableOnly: true }),
         };
       } else {
         // Single annotation drag
@@ -906,9 +1523,11 @@ export function useSVGInteraction({
           currentAngle: undefined,
           groupOriginals: null,
         };
+        // w59: the mark's id and box as of the press (preview === save).
+        ensureMoveStart(dragStateRef.current, annotations?.objects);
       }
     }
-  }, [selectedIds, selectAnnotation, annotations, svgRef]);
+  }, [selectedIds, selectAnnotation, annotations, svgRef, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, selectedMarkerCount, activeTool, beginAreaSelectFromMark]);
 
   /**
    * Hover enter: show blue outline preview.
@@ -962,6 +1581,26 @@ export function useSVGInteraction({
       e.stopPropagation();
       return;
     }
+    // Drawboard rule 7 (utils/selectModes.js resolveTextDoubleClick): a mouse
+    // double-click on text that was NOT selected before it began only picks
+    // it (the first click did that); double-clicking selected text, or a
+    // double-tap, opens the editor. Only text boxes and callouts follow this.
+    {
+      const dblCalloutId = e.target?.closest?.('[data-callout-id]')?.getAttribute?.('data-callout-id');
+      const key = dblCalloutId != null ? `c:${dblCalloutId}` : `a:${index}`;
+      const isText = dblCalloutId != null || isTextLikeAnnotation(annotations?.objects?.[index]);
+      if (isText && !e.selectionDoublePress) {
+        const pickedAt = pickedAtRef.current.get(key);
+        const wasSelected = pickedAt != null && Date.now() - pickedAt > DOUBLE_CLICK_PICK_MS;
+        const latest = pressLogRef.current[0];
+        const pointerType = (latest && latest.key === key && Date.now() - latest.at < 1000 && latest.pointerType)
+          || (e.nativeEvent?.sourceCapabilities?.firesTouchEvents ? 'touch' : 'mouse');
+        if (resolveTextDoubleClick({ tool: activeTool, wasSelected, pointerType }) !== 'edit') {
+          e.stopPropagation();
+          return;
+        }
+      }
+    }
     // UX: Phase 14 CALL-10 — callout double-click enters edit mode via
     // FabricEditCanvas + calloutEditAdapter (see Plan 14-03 Task 3 in App.jsx).
     // Uses event-delegation via data-callout-id (same pattern as v2.2 EDIT-13
@@ -970,6 +1609,15 @@ export function useSVGInteraction({
     const calloutEl = e.target?.closest?.('[data-callout-id]');
     if (calloutEl) {
       const calloutId = calloutEl.getAttribute('data-callout-id');
+      if (typeof isCalloutSelectable === 'function' && calloutId && !isCalloutSelectable(calloutId)) {
+        e.stopPropagation();
+        return;
+      }
+      // A user-locked callout's text is not edited (owner ruling 2026-09-28).
+      if (calloutId && isUserLocked((callouts || []).find((c) => c && String(c.id) === String(calloutId)))) {
+        e.stopPropagation();
+        return;
+      }
       if (calloutId && onRequestEditMode) {
         e.stopPropagation();
         // UX: fire the dispatch with 'callout' type — App.jsx disambiguates
@@ -984,14 +1632,16 @@ export function useSVGInteraction({
     }
     e.stopPropagation();
     const annotation = annotations?.objects?.[index];
-    if (isTransformLockedAnnotation(annotation)) {
+    // A user-locked mark's text is not edited either (owner ruling
+    // 2026-09-28: unlock first).
+    if (isTransformLockedAnnotation(annotation) || isUserLocked(annotation)) {
       e.preventDefault();
       return;
     }
     if (onRequestEditMode && annotation) {
       onRequestEditMode(index, annotation.type, { caretAnchor: readCaretAnchor(e) });
     }
-  }, [onRequestEditMode, annotations]);
+  }, [onRequestEditMode, annotations, callouts, isCalloutSelectable, activeTool]);
 
   /**
    * Click on empty SVG background: deselect all.
@@ -1020,6 +1670,11 @@ export function useSVGInteraction({
     const calloutEl = e.target?.closest?.('[data-callout-id]');
     if (calloutEl) {
       const calloutId = calloutEl.getAttribute('data-callout-id');
+      // w52: a hidden or space-inert callout is never picked (the layer also
+      // stops painting its hit zone; this is the defence in depth).
+      if (typeof isCalloutSelectable === 'function' && !isCalloutSelectable(calloutId)) {
+        return;
+      }
       const partEl = e.target?.closest?.('[data-callout-part]');
       // UX: default to 'whole' if the click lands on the outer <g> without
       // an explicit part marker. Defensive — every visible callout child
@@ -1080,7 +1735,22 @@ export function useSVGInteraction({
       const _calAlreadyIn = (selectedCalloutIds instanceof Set)
         ? selectedCalloutIds.has(calloutId)
         : (Array.isArray(selectedCalloutIds) && selectedCalloutIds.indexOf(calloutId) >= 0);
-      if (!e.shiftKey && _calAlreadyIn && (selectedIds.size + _calCount) > 1) {
+      // Drawboard rule 7 (see pressLogRef).
+      pressLogRef.current = [
+        { key: `c:${calloutId}`, wasSelected: _calAlreadyIn, at: Date.now(), pointerType: e.pointerType || 'mouse' },
+        pressLogRef.current[0],
+      ].filter(Boolean);
+      // Drawboard rule 3: the same for a callout that was not selected (a
+      // grouped callout still picks its whole group below).
+      if (!e.shiftKey && !_calAlreadyIn && activeTool === 'select' && !getCalloutGroupId(callout) && svgRef.current) {
+        onSelectedCalloutIdsChange?.(new Set([calloutId]));
+        deselectAll();
+        clearSelectedMarkers();
+        e.stopPropagation();
+        beginAreaSelectFromMark(e);
+        return;
+      }
+      if (!e.shiftKey && _calAlreadyIn && (selectedIds.size + _calCount + selectedMarkerCount) > 1) {
         const ctmA = svgRef.current?.getScreenCTM();
         const ctmInverseA = ctmA ? ctmA.inverse() : null;
         const svgPointA = screenToSVG(svgRef.current, e.clientX, e.clientY);
@@ -1088,11 +1758,8 @@ export function useSVGInteraction({
         const annotationOriginalsCO = {};
         for (const selIdx of selectedIds) {
           const selObj = annotations?.objects?.[selIdx];
-          if (
-            !selObj
-            || selObj?.data?.type === 'text-markup'
-            || isTransformLockedAnnotation(selObj)
-          ) continue;
+          // w52: same movable test as the single-mark drag.
+          if (!canMoveAnnotation(selObj)) continue;
           if (isImportedPath(selObj)) {
             const selBBox = getAnnotationBBox(selObj);
             annotationOriginalsCO[selIdx] = { left: selBBox.left, top: selBBox.top };
@@ -1106,7 +1773,7 @@ export function useSVGInteraction({
           : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds : []);
         for (const cid of calIdsArrCO) {
           const c = (callouts || []).find((cc) => cc && cc.id === cid);
-          if (!c) continue;
+          if (!c || isUserLocked(c)) continue;
           calloutOriginalsCO[cid] = {
             arrowTip: { x: c.arrowTip?.x ?? 0, y: c.arrowTip?.y ?? 0 },
             knee: { x: c.knee?.x ?? 0, y: c.knee?.y ?? 0 },
@@ -1126,6 +1793,10 @@ export function useSVGInteraction({
           currentResize: null, currentAngle: undefined,
           groupOriginals: annotationOriginalsCO,
           groupCalloutOriginals: calloutOriginalsCO,
+          groupMarkerIds: getGroupMarkerIds({ movableOnly: true }),
+          // w59: never reuse a previous drag's facts (this start spreads the old state).
+          groupIds: null,
+          groupBoxes: null,
         };
         try {
           diagLog('[GroupTransformDiag] callout-pointerdown-group-move ' + JSON.stringify({
@@ -1171,12 +1842,17 @@ export function useSVGInteraction({
           ? selectedCalloutIds.has(calloutId)
           : Array.isArray(selectedCalloutIds) && selectedCalloutIds.indexOf(calloutId) >= 0;
         if (_calGid && !_alreadySel) {
-          const members = findGroupMembers(annotations, callouts || [], [_calGid]);
+          const members = findGroupMembers(
+            annotations,
+            filterSelectableCallouts(callouts, isCalloutSelectable),
+            [_calGid],
+          );
           if (members.annotationIndices.length > 0 || members.calloutIds.length > 0) {
             setSelectedIds(new Set(members.annotationIndices));
             if (onSelectedCalloutIdsChange) {
               onSelectedCalloutIdsChange(new Set(members.calloutIds));
             }
+            clearSelectedMarkers();
             // Skip the normal single-callout select path below; group is
             // already selected. Drag still arms because the rest of this
             // branch executes (callout-part dragstate, etc.).
@@ -1185,13 +1861,23 @@ export function useSVGInteraction({
             // Fall through to normal single-callout select.
             onSelectedCalloutIdsChange(new Set([calloutId]));
             deselectAll();
+            clearSelectedMarkers();
           }
         } else {
           if (onSelectedCalloutIdsChange) {
             onSelectedCalloutIdsChange(new Set([calloutId]));
           }
           deselectAll();
+          clearSelectedMarkers();
         }
+      }
+
+      // A user-locked callout (owner ruling 2026-09-28) is selected but no
+      // part of it drags (body, knee, tip or text-box corners).
+      if (isUserLocked(callout)) {
+        e.stopPropagation();
+        e.preventDefault();
+        return;
       }
 
       // UX: cache ctm inverse + start pointer for the pointermove branch.
@@ -1225,7 +1911,7 @@ export function useSVGInteraction({
         active: true,
         mode: 'callout-part',
         partType,
-        textBoxCorner,           // 'tl' | 'tr' | 'bl' | 'br' | null
+        textBoxCorner,           // 'tl' | 'mt' | 'tr' | 'mr' | 'br' | 'mb' | 'bl' | 'ml' | null
         calloutId,
         startSVGPoint: svgPoint,
         ctmInverse,
@@ -1255,17 +1941,24 @@ export function useSVGInteraction({
     // not only by clicking a specific member. Shift-click on empty space
     // keeps marquee semantics (union-adding a new region). Clicks outside
     // the union bbox fall through to the marquee branch below.
+    const groupMarkerIdsNow = getGroupMarkerIds();
     if (
       e.target === svgRef.current &&
       activeTool === 'select' &&
       !e.shiftKey &&
-      selectedIds.size > 1 &&
+      (selectedIds.size + groupMarkerIdsNow.length) > 1 &&
       annotations?.objects
     ) {
       const bboxes = [];
       for (const selIdx of selectedIds) {
         const selObj = annotations.objects[selIdx];
         if (selObj) bboxes.push(getAnnotationBBox(selObj));
+      }
+      // w53: selected Survey Markers widen the grab area like any member.
+      for (const member of getSurveyMarkerMembers?.() || []) {
+        if (!member || !groupMarkerIdsNow.includes(String(member.id))) continue;
+        const bounds = boxWorldBounds(member.box);
+        if (bounds) bboxes.push({ left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height });
       }
       if (bboxes.length > 0) {
         const groupBBox = getGroupBBox(bboxes);
@@ -1281,7 +1974,9 @@ export function useSVGInteraction({
           const originals = {};
           for (const selIdx of selectedIds) {
             const selObj = annotations.objects[selIdx];
-            if (!selObj) continue;
+            // w52: same movable test as the single-mark drag (this path had
+            // no lock check at all).
+            if (!canMoveAnnotation(selObj)) continue;
             if (isImportedPath(selObj)) {
               const selBBox = getAnnotationBBox(selObj);
               originals[selIdx] = { left: selBBox.left, top: selBBox.top };
@@ -1304,6 +1999,7 @@ export function useSVGInteraction({
             currentResize: null,
             currentAngle: undefined,
             groupOriginals: originals,
+            groupMarkerIds: getGroupMarkerIds({ movableOnly: true }),
           };
           try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* pointer capture optional */ }
           setInteractionState('dragging');
@@ -1376,8 +2072,9 @@ export function useSVGInteraction({
     // Not select tool (or tool didn't match) — existing deselect behavior.
     if (e.target === svgRef.current) {
       deselectAll();
+      clearSelectedMarkers();
     }
-  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, selectionMode, lassoTouchOperation, lassoTouchMode, applyMarqueeState, applyLassoState, cancelLasso, pageWidth, pageHeight, selectedIds, annotations]);
+  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, selectionMode, lassoTouchOperation, lassoTouchMode, applyMarqueeState, applyLassoState, cancelLasso, pageWidth, pageHeight, selectedIds, annotations, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, getSurveyMarkerMembers, selectedMarkerCount, beginAreaSelectFromMark]);
 
   /**
    * Pointer move on root SVG: update visual transform during drag.
@@ -1472,7 +2169,7 @@ export function useSVGInteraction({
       // snaps to the dragged-to spot (no visible jump) and compute the tip
       // from the new body center as the orbit anchor.
       const mvObj = annotations?.objects?.[ds.annotationIndex];
-      if (e.shiftKey && mvObj?.data?.type === 'counter') {
+      if (e.shiftKey && canOrbitCounter(mvObj)) {
         const radius = (mvObj.radius || 14) * Math.abs(mvObj.scaleX || 1);
         const newLeft = (ds.originalProps?.left ?? mvObj.left ?? 0) + dx;
         const newTop = (ds.originalProps?.top ?? mvObj.top ?? 0) + dy;
@@ -1498,6 +2195,7 @@ export function useSVGInteraction({
           });
         }
         ds.mode = 'counter-orbit';
+        ds.startObjects = { [ds.annotationIndex]: deepClone(mvObj) };
         ds.anchorX = tipX;
         ds.anchorY = tipY;
         ds.counterRadius = radius;
@@ -1506,8 +2204,35 @@ export function useSVGInteraction({
         setInteractionState('rotating');
         return;
       }
-      // Visual-only update via state (no annotation data mutation during drag)
-      setVisualTransform({ id: ds.annotationIndex, dx, dy });
+      // Visual-only update via state (no annotation data mutation during drag).
+      // w59: the preview shows the SAME page-clamped delta the release saves
+      // (utils/moveCommit.js), so the mark never jumps when it is let go.
+      ensureMoveStart(ds, annotations?.objects);
+      // Owner after Test 46: a mark that may change pages follows the pointer
+      // off its page (clipped) and jumps to the next page once fully off.
+      if (crossPageMove.preview(ds, e, annotations?.objects)) {
+        setInteractionState('dragging');
+        return;
+      }
+      const shown = clampMoveDelta(ds.moveBoxes, dx, dy, pageWidth, pageHeight);
+      if (ds.orbitBase) {
+        // After a Shift-orbit the stored counter is still the pre-orbit one:
+        // draw the orbited pose moved by the same delta the release saves.
+        setVisualTransform({
+          id: ds.annotationIndex,
+          dx: 0,
+          dy: 0,
+          previewObjects: {
+            [ds.annotationIndex]: {
+              ...ds.orbitBase,
+              left: (ds.orbitBase.left ?? 0) + shown.dx,
+              top: (ds.orbitBase.top ?? 0) + shown.dy,
+            },
+          },
+        });
+      } else {
+        setVisualTransform({ id: ds.annotationIndex, dx: shown.dx, dy: shown.dy });
+      }
       setInteractionState('dragging');
     } else if (ds.mode === 'counter-orbit') {
       // UX 2026-04-20: releasing Shift mid-orbit swaps back to move mode.
@@ -1518,6 +2243,11 @@ export function useSVGInteraction({
           || annotations?.objects?.[ds.annotationIndex];
         if (orbObj?.data?.type === 'counter') {
           ds.mode = 'move';
+          // w59: the move restarts from the orbited pose — its box for the
+          // page clamp, and the pose itself so the preview draws what the
+          // release saves (the orbit is not in the store yet).
+          ds.moveBoxes = [getAnnotationBBox(orbObj)];
+          ds.orbitBase = deepClone(orbObj);
           ds.startSVGPoint = { x: svgPoint.x, y: svgPoint.y };
           ds.originalProps = {
             left: orbObj.left ?? 0,
@@ -1562,9 +2292,27 @@ export function useSVGInteraction({
       }
       setInteractionState('rotating');
     } else if (ds.mode === 'group-move') {
-      // Group drag: compute totalDelta from start (not frameDelta) to prevent drift
-      const dx = svgPoint.x - ds.startSVGPoint.x;
-      const dy = svgPoint.y - ds.startSVGPoint.y;
+      // Group drag: compute totalDelta from start (not frameDelta) to prevent drift.
+      // w59: clamped as one rigid piece — the preview shows exactly the delta
+      // the release saves (utils/moveCommit.js).
+      ensureGroupMoveStart(ds, {
+        objects: annotations?.objects,
+        callouts,
+        pageWidth,
+        pageHeight,
+        markerBoxes: getGroupMarkerBoxes(ds.groupMarkerIds),
+      });
+      if (crossPageMove.preview(ds, e, annotations?.objects)) {
+        setInteractionState('dragging');
+        return;
+      }
+      const { dx, dy } = clampMoveDelta(
+        ds.groupBoxes,
+        svgPoint.x - ds.startSVGPoint.x,
+        svgPoint.y - ds.startSVGPoint.y,
+        pageWidth,
+        pageHeight,
+      );
       // UX: 2026-04-20 v2 — callouts now ride the same render-time
       // translate as annotations via affectedCalloutIds. This kills the
       // visible lag where callouts trailed behind shapes because their
@@ -1580,6 +2328,15 @@ export function useSVGInteraction({
         dx, dy,
         affectedIds: new Set(Object.keys(ds.groupOriginals).map(Number)),
         affectedCalloutIds: affectedCalloutIdsSet,
+        // w53: Survey Markers in the selection ride the same translate
+        // (held on the page).
+        affectedMarkerIds: Array.isArray(ds.groupMarkerIds) && ds.groupMarkerIds.length
+          ? new Set(ds.groupMarkerIds)
+          : null,
+        // w59: the markers ride the same (already clamped) delta.
+        markerDelta: Array.isArray(ds.groupMarkerIds) && ds.groupMarkerIds.length
+          ? { dx, dy }
+          : null,
       });
       // Throttled diag — same 120ms cadence as group rotate/resize.
       const nowMs3 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
@@ -1867,6 +2624,11 @@ export function useSVGInteraction({
         if (sx === 0) sx = Number.MIN_VALUE;
         if (sy === 0) sy = Number.MIN_VALUE;
       }
+      // w63: a group flips through the fixed corner like one mark does, and
+      // its frame never gets thinner than 4 page units (or its own starting
+      // size) — so it can't collapse to a dot on the way through.
+      if (affectsX) sx = clampResizeScale(sx, { rawSize: origDx, allowFlip: true });
+      if (affectsY) sy = clampResizeScale(sy, { rawSize: origDy, allowFlip: true });
 
       // Helper: take a WORLD point (wx, wy), rotate into local frame, scale
       // around the LOCAL anchor by (sx, sy), then rotate back to world.
@@ -2202,8 +2964,30 @@ export function useSVGInteraction({
       // user last saw them.
       const dxW_ep = svgPoint.x - ds.startSVGPoint.x;
       const dyW_ep = svgPoint.y - ds.startSVGPoint.y;
-      const W1target = movingP1 ? { x: W1old.x + dxW_ep, y: W1old.y + dyW_ep } : W1old;
-      const W2target = movingP1 ? W2old : { x: W2old.x + dxW_ep, y: W2old.y + dyW_ep };
+      let W1target = movingP1 ? { x: W1old.x + dxW_ep, y: W1old.y + dyW_ep } : W1old;
+      let W2target = movingP1 ? W2old : { x: W2old.x + dxW_ep, y: W2old.y + dyW_ep };
+      // w63: an end dragged onto (or through) the other end passes freely,
+      // but a line is never shorter than 4 page units (or its own starting
+      // length) — dropping one end on the other no longer leaves a zero-length
+      // line you cannot see or grab. The moving end is pushed out along the
+      // line's direction, so the preview is exactly what is saved.
+      {
+        const fixedW = movingP1 ? W2target : W1target;
+        const movingW = movingP1 ? W1target : W2target;
+        const startLen = Math.hypot(W2old.x - W1old.x, W2old.y - W1old.y);
+        const minLen = Math.min(MIN_RESIZE_PAGE_UNITS, startLen);
+        const vx = movingW.x - fixedW.x;
+        const vy = movingW.y - fixedW.y;
+        const len = Math.hypot(vx, vy);
+        if (minLen > 0 && len < minLen) {
+          const origMoving = movingP1 ? W1old : W2old;
+          const origFixed = movingP1 ? W2old : W1old;
+          const ux = len > 1e-9 ? vx / len : (origMoving.x - origFixed.x) / startLen;
+          const uy = len > 1e-9 ? vy / len : (origMoving.y - origFixed.y) / startLen;
+          const pushed = { x: fixedW.x + ux * minLen, y: fixedW.y + uy * minLen };
+          if (movingP1) W1target = pushed; else W2target = pushed;
+        }
+      }
       // Step 1: un-rotate targets around pivotOld to get NAIVE local
       // coords (before the pivot has re-landed on the new bbox center).
       const naiveP1 = rotAround(W1target.x, W1target.y, pivotOld.x, pivotOld.y, epCosA, -epSinA);
@@ -2483,7 +3267,11 @@ export function useSVGInteraction({
           : affectsX
             ? Math.abs(newScaleX)
             : Math.abs(newScaleY);
-        const safeUniformScale = Math.max(0.1, uniformScale || 1);
+        // w63: the preview stops where the save stops — a 4-unit radius (the
+        // commit's own floor) — instead of shrinking to 10 % and then
+        // jumping back up on release.
+        const counterBaseR = ds.originalProps?.counterBaseRadius || objForFlip?.radius || 14;
+        const safeUniformScale = Math.max(4 / counterBaseR, uniformScale || 1);
         newScaleX = safeUniformScale;
         newScaleY = safeUniformScale;
       }
@@ -2494,32 +3282,44 @@ export function useSVGInteraction({
       // types retain the historical positive-scale behavior.
       const typeForFlip = String(objForFlip?.type || '').toLowerCase();
       const isExactPathResize = typeForFlip === 'path';
+      // w63 (Acrobat / Figma / Drawboard): dragging a grabber past the
+      // opposite side FLIPS the mark — it mirrors and keeps growing on the
+      // other side of the fixed corner. Rect, ellipse, cloud, polygon /
+      // polyline and pen / highlighter ink mirror. A text box, a counter and
+      // anything else stop at the minimum on the fixed side (text never
+      // mirrors). Every mark keeps at least MIN_RESIZE_PAGE_UNITS (4) on each
+      // axis — or its own starting size, if it was already thinner — so a
+      // drag that ends on the opposite corner never leaves an unfindable dot.
+      const isPointsResize = !!ds.originalProps.isPointsShape;
+      const isTextResize = typeForFlip === 'textbox' || typeForFlip === 'i-text' || typeForFlip === 'text';
       const supportsFlip = !isCounterResize && (
         typeForFlip === 'rect'
         || typeForFlip === 'circle'
         || typeForFlip === 'ellipse'
         || isExactPathResize
+        || isPointsResize
       );
-      if (isExactPathResize) {
-        // Zero is the only singular affine. Do not impose a visible-size
-        // floor: imported microscopic geometry and legitimate 0.001-scale
-        // resizes must not snap to 10% of their previous size.
-        if (newScaleX === 0) {
-          newScaleX = ds.originalProps.scaleX < 0 ? -Number.MIN_VALUE : Number.MIN_VALUE;
+      if (!isCounterResize) {
+        // A text box keeps room for at least one character at its font size.
+        const textFloor = isTextResize
+          ? Math.max(MIN_RESIZE_PAGE_UNITS, Number(objForFlip?.fontSize) || 0)
+          : MIN_RESIZE_PAGE_UNITS;
+        if (affectsX) {
+          newScaleX = clampResizeScale(newScaleX, {
+            rawSize: ds.originalProps.width,
+            startScale: ds.originalProps.scaleX,
+            allowFlip: supportsFlip,
+            minSize: textFloor,
+          });
         }
-        if (newScaleY === 0) {
-          newScaleY = ds.originalProps.scaleY < 0 ? -Number.MIN_VALUE : Number.MIN_VALUE;
+        if (affectsY) {
+          newScaleY = clampResizeScale(newScaleY, {
+            rawSize: ds.originalProps.height,
+            startScale: ds.originalProps.scaleY,
+            allowFlip: supportsFlip,
+            minSize: textFloor,
+          });
         }
-      } else if (!supportsFlip) {
-        newScaleX = Math.max(0.1, newScaleX);
-        newScaleY = Math.max(0.1, newScaleY);
-      } else {
-        // Minimum MAGNITUDE (signed) to prevent zero-size while preserving
-        // flip direction. 0.01 mirrors the old 0.1 floor scaled down so a
-        // mid-flip zero-crossing doesn't snap-jump — visually the shape
-        // passes through a 1px sliver at the anchor.
-        if (Math.abs(newScaleX) < 0.01) newScaleX = (newScaleX < 0 ? -1 : 1) * 0.01;
-        if (Math.abs(newScaleY) < 0.01) newScaleY = (newScaleY < 0 ? -1 : 1) * 0.01;
       }
 
       // UX 2026-04-20: unified newLeft/newTop formula that pins the WORLD
@@ -2634,6 +3434,25 @@ export function useSVGInteraction({
         visualTop = resizeCommitTop;
       }
       if (ds.originalProps.isPointsShape) {
+        // w63: a points shape shows (and saves) its flip by mirroring its
+        // points, through the SAME builder the pointer-up commit uses, so the
+        // preview is exactly what gets saved.
+        const pointsSource = annotations?.objects?.[ds.annotationIndex];
+        if (pointsSource && (newScaleX < 0 || newScaleY < 0)) {
+          setVisualTransform({
+            id: ds.annotationIndex,
+            dx: 0,
+            dy: 0,
+            previewObjects: {
+              [ds.annotationIndex]: buildPointsShapeResize(
+                pointsSource,
+                { scaleX: newScaleX, scaleY: newScaleY, left: newLeft, top: newTop },
+                ds.originalProps,
+              ),
+            },
+          });
+          return;
+        }
         const sxAbs = Math.abs(newScaleX);
         const syAbs = Math.abs(newScaleY);
         visualLeft = newLeft - sxAbs * (ds.originalProps.pointsLocalMinX - ds.originalProps.pointsPathOffsetX);
@@ -2783,56 +3602,50 @@ export function useSVGInteraction({
             y: original.textBoxPosition.y + dyNorm,
           };
           break;
-        case 'whole':
+        case 'whole': {
+          // w59: a whole-callout move keeps the callout on the page with the
+          // same rigid rule as marks, the arrow-key nudge and group moves
+          // (utils/moveCommit.js). It used to follow the pointer off the
+          // page, where it could no longer be picked.
+          const wholeBox = getCalloutPageBox(original, W, H);
+          const kept = clampMoveDelta(wholeBox ? [wholeBox] : [], dxPage, dyPage, W, H);
+          const keptX = kept.dx / W;
+          const keptY = kept.dy / H;
           proposed.arrowTip = {
-            x: original.arrowTip.x + dxNorm,
-            y: original.arrowTip.y + dyNorm,
+            x: original.arrowTip.x + keptX,
+            y: original.arrowTip.y + keptY,
           };
           proposed.knee = {
-            x: original.knee.x + dxNorm,
-            y: original.knee.y + dyNorm,
+            x: original.knee.x + keptX,
+            y: original.knee.y + keptY,
           };
           proposed.textBoxPosition = {
-            x: original.textBoxPosition.x + dxNorm,
-            y: original.textBoxPosition.y + dyNorm,
+            x: original.textBoxPosition.x + keptX,
+            y: original.textBoxPosition.y + keptY,
           };
           break;
+        }
         case 'textBoxResize': {
           // UX: Phase 15 UAT-3 (2026-04-17) — corner-drag resize of the
           // callout textbox. Fixed-anchor math: the corner OPPOSITE the
           // grabbed corner stays put, the grabbed corner follows the
           // pointer. New rect dims fall out of that. Minimum size floor
           // (20px on each axis) matches the renderCallout min textBox dims.
-          const corner = ds.textBoxCorner || 'br';
-          const origLeft = original.textBoxPosition.x;
-          const origTop = original.textBoxPosition.y;
-          const origRight = origLeft + (original.textBoxWidth || 0);
-          const origBottom = origTop + (original.textBoxHeight || 0);
-          // Anchor point (opposite corner) in normalized coords.
-          let anchorX, anchorY;
-          if (corner === 'tl') { anchorX = origRight;  anchorY = origBottom; }
-          else if (corner === 'tr') { anchorX = origLeft;  anchorY = origBottom; }
-          else if (corner === 'bl') { anchorX = origRight; anchorY = origTop; }
-          else                      { anchorX = origLeft;  anchorY = origTop; }
-          // Moving corner = original corner + drag delta (in normalized).
-          let mvX, mvY;
-          if (corner === 'tl')      { mvX = origLeft + dxNorm;  mvY = origTop + dyNorm; }
-          else if (corner === 'tr') { mvX = origRight + dxNorm; mvY = origTop + dyNorm; }
-          else if (corner === 'bl') { mvX = origLeft + dxNorm;  mvY = origBottom + dyNorm; }
-          else                      { mvX = origRight + dxNorm; mvY = origBottom + dyNorm; }
-          const minW = 20 / W;
-          const minH = 20 / H;
-          const newLeft = Math.min(anchorX, mvX);
-          const newTop = Math.min(anchorY, mvY);
-          const newRight = Math.max(anchorX, mvX);
-          const newBottom = Math.max(anchorY, mvY);
-          const newWidth = Math.max(minW, newRight - newLeft);
-          const newHeight = Math.max(minH, newBottom - newTop);
-          const resizePatch = {
-            textBoxPosition: { x: newLeft, y: newTop },
-            textBoxWidth: newWidth,
-            textBoxHeight: newHeight,
-          };
+          // Owner Test 45 (2026-10-06): eight grabbers, rectangle-style - a
+          // corner moves both of its edges, an edge grabber only its own
+          // (utils/markBorderOutline.js resizeCalloutBox).
+          const resizePatch = resizeCalloutBox(
+            {
+              position: original.textBoxPosition,
+              width: original.textBoxWidth || 0,
+              height: original.textBoxHeight || 0,
+            },
+            ds.textBoxCorner || 'br',
+            dxNorm,
+            dyNorm,
+            20 / W,
+            20 / H,
+          );
           ds.currentCalloutPatch = resizePatch;
           setVisualTransform({
             id: 'callout',
@@ -3007,7 +3820,7 @@ export function useSVGInteraction({
       }
       setInteractionState('dragging');
     }
-  }, [svgRef, annotations, onSaveAnnotations, pageWidth, pageHeight, onUpdateCalloutLive, applyMarqueeState, applyLassoState, inverseScale]);
+  }, [svgRef, annotations, onSaveAnnotations, pageWidth, pageHeight, onUpdateCalloutLive, applyMarqueeState, applyLassoState, inverseScale, clampMarkerGroupDelta, callouts, getGroupMarkerBoxes]);
 
   /**
    * Pointer up on root SVG: commit drag changes to annotation data.
@@ -3036,17 +3849,23 @@ export function useSVGInteraction({
       cancelLasso(e.pointerId);
       if (!polygon) {
         if (validation.issue === 'self-intersection') return;
-        if (!lasso.shiftHeld) {
+        // keepOnClick: the lasso began on a mark it just picked (rule 3).
+        if (!lasso.shiftHeld && !lasso.keepOnClick) {
           deselectAll();
           onSelectedCalloutIdsChange?.(new Set());
+          clearSelectedMarkers();
         }
         return;
       }
+      // w53: Survey Markers the lasso caught (same window / crossing rule).
+      const lassoMarkerHits = resolveSurveyMarkerLassoHits(getSurveyMarkerMembers?.() || [], polygon, mode);
+      updateSelectedMarkers(lassoMarkerHits, lasso.altHeld ? 'subtract' : (lasso.shiftHeld ? 'add' : 'replace'));
       const rawHits = resolveLassoHits({
         lassoPolygon: polygon,
         mode,
         annotations,
-        callouts,
+        // w52: hidden / space-inert callouts are never caught.
+        callouts: filterSelectableCallouts(callouts, isCalloutSelectable),
         pageWidth,
         pageHeight,
         pageNumber,
@@ -3104,20 +3923,26 @@ export function useSVGInteraction({
       try { svgRef.current?.releasePointerCapture?.(mq.pointerId ?? e.pointerId); } catch (_) { /* optional */ }
 
       if (!wasActive) {
-        if (!mq.shiftHeld) {
+        // keepOnClick: the marquee began on a mark it just picked (rule 3).
+        if (!mq.shiftHeld && !mq.keepOnClick) {
           deselectAll();
           if (onSelectedCalloutIdsChange) onSelectedCalloutIdsChange(new Set());
+          clearSelectedMarkers();
         }
         return;
       }
 
       const marqueeRect = getMarqueeRect(mq);
       const direction = getMarqueeDirection(mq);
+      // w53: Survey Markers the marquee caught (same window / crossing rule).
+      const marqueeMarkerHits = resolveSurveyMarkerMarqueeHits(getSurveyMarkerMembers?.() || [], marqueeRect, direction);
+      updateSelectedMarkers(marqueeMarkerHits, mq.altHeld ? 'subtract' : (mq.shiftHeld ? 'add' : 'replace'));
       const rawHits = resolveMarqueeHits({
         marqueeRect,
         direction,
         annotations,
-        callouts,
+        // w52: hidden / space-inert callouts are never caught.
+        callouts: filterSelectableCallouts(callouts, isCalloutSelectable),
         pageWidth,
         pageHeight,
         pageNumber,
@@ -3229,7 +4054,13 @@ export function useSVGInteraction({
       partType: ds.partType || null,
     });
 
-    if (ds.mode === 'move') {
+    // Owner after Test 46: let go over another page -> the marks move there
+    // (one save, one undo step — PDFViewer handleMoveMarksToPage).
+    const crossPageDropped = (ds.mode === 'move' || ds.mode === 'group-move') && crossPageMove.drop(ds, e);
+    if (crossPageDropped) {
+      try { e.target?.releasePointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+      justDraggedAtRef.current = Date.now();
+    } else if (ds.mode === 'move') {
       const pt = new DOMPoint(e.clientX, e.clientY);
       const svgPoint = ds.ctmInverse
         ? pt.matrixTransform(ds.ctmInverse)
@@ -3238,26 +4069,35 @@ export function useSVGInteraction({
       const dx = svgPoint.x - ds.startSVGPoint.x;
       const dy = svgPoint.y - ds.startSVGPoint.y;
 
-      // Only commit if there was actual movement (> 2px threshold to avoid accidental micro-drags)
-      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
-        const obj = annotations?.objects?.[ds.annotationIndex];
-        if (obj) {
-          const bbox = getAnnotationBBox(obj);
-          // Constrain against the ABSOLUTE bbox. getAnnotationBBox returns world
-          // coords for every type — including user-drawn pen paths where obj.left
-          // is a move offset on top of absolute-coord path data. Feeding the raw
-          // offset (originalProps.left + dx) into constrainToPage produced
-          // spurious clamps to (0,0) for pen strokes drawn in the middle of the
-          // page, causing drag-left/up to snap back to origin.
-          const newAbsLeft = bbox.left + dx;
-          const newAbsTop = bbox.top + dy;
-          const constrained = constrainToPage(newAbsLeft, newAbsTop, bbox.width, bbox.height, pageWidth, pageHeight);
-          const actualDx = constrained.left - bbox.left;
-          const actualDy = constrained.top - bbox.top;
-
+      // Only commit a real drag, not a click (w59: 2 screen px at high zoom,
+      // never more than 2 page units — utils/moveCommit.js).
+      // A Shift-orbit that turned back into a move always saves (its pose is
+      // on screen even if the move part was tiny).
+      if (isBeyondMoveThreshold(dx, dy, inverseScale, e.pointerType) || ds.orbitBase) {
+        // w59: the drag-start facts the preview used (a drag released with
+        // no pointermove in between fills them here).
+        ensureMoveStart(ds, annotations?.objects);
+        // w59: find the mark by id — a collaborator's add / delete during
+        // the drag must not make the save miss it (or move another mark).
+        const moveIndex = resolveMarkIndex(annotations?.objects, ds.annotationIndex, ds.markId);
+        const obj = moveIndex >= 0 ? annotations?.objects?.[moveIndex] : null;
+        // w59: the SAME page clamp the preview showed (one rigid rule shared
+        // with the arrow-key nudge: never further off the page, a mark that
+        // already hangs over an edge is never yanked back in). The old
+        // per-release constrainToPage disagreed with the unclamped preview,
+        // so a mark let go past the edge visibly snapped back.
+        const { dx: actualDx, dy: actualDy } = clampMoveDelta(ds.moveBoxes, dx, dy, pageWidth, pageHeight);
+        if (!obj) {
+          reportDroppedMove({ reason: 'mark-gone', mode: 'move', id: ds.markId, dx, dy, pageNumber });
+        } else if (actualDx === 0 && actualDy === 0 && !ds.orbitBase) {
+          reportDroppedMove({
+            reason: 'held-at-page-edge', mode: 'move', type: obj?.data?.type || obj?.type, id: ds.markId, dx, dy, pageNumber,
+          });
+        }
+        if (obj && (actualDx !== 0 || actualDy !== 0 || ds.orbitBase)) {
           // Deep clone annotations and apply position update
           const updatedAnnotations = deepClone(annotations);
-          const targetObj = updatedAnnotations.objects[ds.annotationIndex];
+          const targetObj = updatedAnnotations.objects[moveIndex];
 
           // Absolute-coord path (user-drawn from FabricDrawingCanvas which
           // leaves left/top at zero + omits pathOffset): translate the path
@@ -3288,6 +4128,11 @@ export function useSVGInteraction({
             // bbox.left === obj.left for rect/circle/ellipse/line/text.
             targetObj.left = ds.originalProps.left + actualDx;
             targetObj.top = ds.originalProps.top + actualDy;
+            // w59: a Shift-orbit before this move turned the counter's
+            // pointer too — keep it (the preview showed it).
+            if (ds.orbitBase?.data && targetObj.data) {
+              targetObj.data = { ...targetObj.data, pointerAngle: ds.orbitBase.data.pointerAngle };
+            }
             // UX 2026-04-20: the line's curve midpoint (obj.data.midpoint)
             // is stored in ABSOLUTE page coords, not as an offset from
             // obj.left/top like the endpoints are. A plain-move drag
@@ -3311,7 +4156,9 @@ export function useSVGInteraction({
 
           // Save through existing pipeline (2 decimals, exactly like a
           // creation commit — see annotationCommitRounding).
-          roundCommittedAnnotationsGeometry(updatedAnnotations, [ds.annotationIndex]);
+          roundCommittedAnnotationsGeometry(updatedAnnotations, [moveIndex]);
+          // A save the lock guard puts back shows the lock notice and logs
+          // its own [MoveDiag] line (PDFViewer handleSaveAnnotations).
           onSaveAnnotations(updatedAnnotations, {
             source: 'object:modified',
             action: 'move',
@@ -3340,9 +4187,14 @@ export function useSVGInteraction({
       const moveDy = endPoint.y - ds.startSVGPoint.y;
       const movedFar = (moveDx * moveDx + moveDy * moveDy) > 9; // ~3px threshold
       if (movedFar) {
-        const finalAnnotations = ds.currentAnnotations || annotations;
-        if (finalAnnotations?.objects?.[ds.annotationIndex]) {
-          onSaveAnnotations(finalAnnotations, {
+        // Per-field sync (2026-09-24): the orbit's page copy was taken when it
+        // started; save the page as it is NOW with only this counter's own
+        // change, so a collaborator's edit made meanwhile is not put back.
+        const merged = ds.currentAnnotations
+          ? mergeDraggedMarksOntoPage(annotations, ds.currentAnnotations, ds.startObjects)
+          : null;
+        if (merged) {
+          onSaveAnnotations(merged.annotations, {
             source: 'counter:orbit-commit',
             action: 'counter-rotate',
             checkpointPolicy: 'normal',
@@ -3370,10 +4222,17 @@ export function useSVGInteraction({
         });
       }
     } else if (ds.mode === 'vertex') {
-      const finalAnnotations = ds.currentAnnotations || deepClone(annotations);
-      if (finalAnnotations?.objects?.[ds.annotationIndex]) {
-        roundCommittedAnnotationsGeometry(finalAnnotations, [ds.annotationIndex]);
-        onSaveAnnotations(finalAnnotations, {
+      // Per-field sync (2026-09-24): ds.currentAnnotations is a copy of the
+      // whole page taken at the last move frame. Saving it would put back
+      // anything a collaborator changed since (another mark, this mark's
+      // colour, a mark they added or deleted). Save the page as it is NOW
+      // with only the dragged corner's geometry written onto this mark.
+      const merged = ds.currentAnnotations
+        ? mergeDraggedMarksOntoPage(annotations, ds.currentAnnotations, ds.startObjects)
+        : null;
+      if (merged) {
+        roundCommittedAnnotationsGeometry(merged.annotations, merged.indexes);
+        onSaveAnnotations(merged.annotations, {
           source: 'object:modified',
           action: 'vertex-move',
           checkpointPolicy: 'normal',
@@ -3425,16 +4284,19 @@ export function useSVGInteraction({
       });
     } else if ((ds.mode === 'group-rotate' || ds.mode === 'group-resize')
                && ds.groupMemberOriginals) {
-      const finalAnnotations = ds.currentAnnotations || deepClone(annotations);
-      roundCommittedAnnotationsGeometry(
-        finalAnnotations,
-        Object.keys(ds.groupMemberOriginals).map(Number),
-      );
-      onSaveAnnotations(finalAnnotations, {
-        source: 'object:modified',
-        action: ds.mode,
-        checkpointPolicy: 'normal',
-      });
+      // Per-field sync (2026-09-24): only the members' own changes, written
+      // onto the page as it is now (see the vertex branch above).
+      const merged = ds.currentAnnotations
+        ? mergeDraggedMarksOntoPage(annotations, ds.currentAnnotations, ds.startObjects)
+        : null;
+      if (merged) {
+        roundCommittedAnnotationsGeometry(merged.annotations, merged.indexes);
+        onSaveAnnotations(merged.annotations, {
+          source: 'object:modified',
+          action: ds.mode,
+          checkpointPolicy: 'normal',
+        });
+      }
       // UX: 2026-04-21 v11 — PowerPoint approach for rotate too: the
       // tilted frame is a live-preview during the drag, but on pointerup
       // the outer dashed box snaps back to axis-aligned around the (now
@@ -3461,7 +4323,7 @@ export function useSVGInteraction({
           finalScale: ds.currentResize,
           memberFinal: Object.keys(ds.groupMemberOriginals).reduce((acc, idxStr) => {
             const idx = Number(idxStr);
-            const t = finalAnnotations.objects?.[idx];
+            const t = (ds.currentAnnotations || annotations)?.objects?.[idx];
             if (!t) return acc;
             acc[idx] = {
               type: t.type, dataType: t.data?.type,
@@ -3484,30 +4346,66 @@ export function useSVGInteraction({
         ? pt.matrixTransform(ds.ctmInverse)
         : screenToSVG(svgRef.current, e.clientX, e.clientY);
 
-      const dx = svgPoint.x - ds.startSVGPoint.x;
-      const dy = svgPoint.y - ds.startSVGPoint.y;
+      const rawGroupDx = svgPoint.x - ds.startSVGPoint.x;
+      const rawGroupDy = svgPoint.y - ds.startSVGPoint.y;
+      // w59: the same rigid page clamp the preview showed, for every member
+      // (marks, callouts, Survey Markers) — utils/moveCommit.js.
+      ensureGroupMoveStart(ds, {
+        objects: annotations?.objects,
+        callouts,
+        pageWidth,
+        pageHeight,
+        markerBoxes: getGroupMarkerBoxes(ds.groupMarkerIds),
+      });
+      const groupBeyond = isBeyondMoveThreshold(rawGroupDx, rawGroupDy, inverseScale, e.pointerType);
+      const { dx, dy } = groupBeyond
+        ? clampMoveDelta(ds.groupBoxes, rawGroupDx, rawGroupDy, pageWidth, pageHeight)
+        : { dx: 0, dy: 0 };
+      if (groupBeyond && dx === 0 && dy === 0) {
+        reportDroppedMove({ reason: 'held-at-page-edge', mode: 'group-move', dx: rawGroupDx, dy: rawGroupDy, pageNumber });
+      }
 
-      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
-        const updatedAnnotations = deepClone(annotations);
+      // TEST-PLAN item 55 (2026-10-06): the selected callouts are written
+      // FIRST and rendered (flushSync), so the page save below is built on a
+      // page that already holds them and closes ONE undo step for the whole
+      // selection — marks, callouts and Survey Markers — as the arrow-key
+      // nudge does (commitNudgeBurst). Writing them after the save made a
+      // second step: one Undo put the shapes back and left the callouts moved.
+      const groupCalloutEntries = (dx !== 0 || dy !== 0) && ds.groupCalloutOriginals
+        ? Object.entries(ds.groupCalloutOriginals)
+        : [];
+      if (groupCalloutEntries.length > 0 && typeof onUpdateCalloutLive === 'function') {
+        const W = pageWidth || 1;
+        const H = pageHeight || 1;
+        const dxNorm = dx / W;
+        const dyNorm = dy / H;
+        flushSync(() => {
+          for (const [cid, orig] of groupCalloutEntries) {
+            onUpdateCalloutLive(cid, {
+              arrowTip: { x: orig.arrowTip.x + dxNorm, y: orig.arrowTip.y + dyNorm },
+              knee: { x: orig.knee.x + dxNorm, y: orig.knee.y + dyNorm },
+              textBoxPosition: { x: orig.textBoxPosition.x + dxNorm, y: orig.textBoxPosition.y + dyNorm },
+            });
+          }
+        });
+      }
+      if (dx !== 0 || dy !== 0) {
+        const updatedAnnotations = deepClone(groupCalloutEntries.length > 0
+          ? (nudgeLatestRef.current.annotations || annotations)
+          : annotations);
+        const movedIndexes = [];
+        let missing = 0;
 
         for (const [idxStr, orig] of Object.entries(ds.groupOriginals)) {
-          const idx = Number(idxStr);
-          const obj = updatedAnnotations.objects[idx];
-          if (!obj) continue;
-          const bbox = getAnnotationBBox(obj);
-          // Constrain against the ABSOLUTE bbox per-annotation (same reasoning
-          // as the single-move branch above — user-drawn pen paths carry an
-          // offset in obj.left that is not a world coord, so feeding the raw
-          // offset into constrainToPage would snap them to (0,0) on left/up
-          // drags).
-          const newAbsLeft = bbox.left + dx;
-          const newAbsTop = bbox.top + dy;
-          const constrained = constrainToPage(
-            newAbsLeft, newAbsTop,
-            bbox.width, bbox.height, pageWidth, pageHeight
-          );
-          const actualDx = constrained.left - bbox.left;
-          const actualDy = constrained.top - bbox.top;
+          // w59: find each member by id (the page list may have changed).
+          const idx = resolveMarkIndex(updatedAnnotations.objects, Number(idxStr), ds.groupIds?.[idxStr] ?? null);
+          const obj = idx >= 0 ? updatedAnnotations.objects[idx] : null;
+          if (!obj) { missing += 1; continue; }
+          movedIndexes.push(idx);
+          // w59: one rigid delta for the whole selection (was a separate
+          // constrainToPage per member, so members slid apart at an edge).
+          const actualDx = dx;
+          const actualDy = dy;
 
           // Same dual-convention handling as the single-move branch above —
           // require left/top be null-or-zero so normalized imported paths
@@ -3543,14 +4441,25 @@ export function useSVGInteraction({
           }
         }
 
-        roundCommittedAnnotationsGeometry(
-          updatedAnnotations,
-          Object.keys(ds.groupOriginals).map(Number),
-        );
+        roundCommittedAnnotationsGeometry(updatedAnnotations, movedIndexes);
+        if (missing > 0) {
+          reportDroppedMove({
+            reason: `${missing}-member(s)-gone`, mode: 'group-move', dx, dy, pageNumber,
+          });
+        }
+        // w53: the selected Survey Markers move by the same delta in the SAME
+        // save (one undo step for the whole selection). w59: the one rigid
+        // delta above already keeps the markers on the page, so this marker
+        // clamp is a no-op kept as a second guard (it can only narrow).
+        const groupMarkerIds = Array.isArray(ds.groupMarkerIds) ? ds.groupMarkerIds : [];
+        const markerDelta = clampMarkerGroupDelta(groupMarkerIds, dx, dy);
         onSaveAnnotations(updatedAnnotations, {
           source: 'object:modified',
           action: 'group-move',
           checkpointPolicy: 'normal',
+          ...(groupMarkerIds.length > 0
+            ? { surveyMarkerFamily: { move: { ids: groupMarkerIds, dx: markerDelta.dx, dy: markerDelta.dy } } }
+            : {}),
         });
 
         // UX: see move-branch comment — same spurious-dblclick guard.
@@ -3569,34 +4478,14 @@ export function useSVGInteraction({
           });
         }
       }
-      // UX: 2026-04-20 v2 — callout commit for group-move. Live drag now
-      // uses render-time translate via affectedCalloutIds (no setCallouts
-      // round-trip per frame). On pointerup we compute the final delta
-      // and call onUpdateCalloutLive to write each callout's actual new
-      // position, then onUpdateCallout for the undo checkpoint.
-      if (ds.groupCalloutOriginals) {
-        const ptUp = new DOMPoint(e.clientX, e.clientY);
-        const svgPtUp = ds.ctmInverse
-          ? ptUp.matrixTransform(ds.ctmInverse)
-          : screenToSVG(svgRef.current, e.clientX, e.clientY);
-        const dxUp = svgPtUp.x - ds.startSVGPoint.x;
-        const dyUp = svgPtUp.y - ds.startSVGPoint.y;
-        const W = pageWidth || 1;
-        const H = pageHeight || 1;
-        const dxNorm = dxUp / W;
-        const dyNorm = dyUp / H;
-        for (const [cid, orig] of Object.entries(ds.groupCalloutOriginals)) {
-          if (typeof onUpdateCalloutLive === 'function') {
-            onUpdateCalloutLive(cid, {
-              arrowTip: { x: orig.arrowTip.x + dxNorm, y: orig.arrowTip.y + dyNorm },
-              knee: { x: orig.knee.x + dxNorm, y: orig.knee.y + dyNorm },
-              textBoxPosition: { x: orig.textBoxPosition.x + dxNorm, y: orig.textBoxPosition.y + dyNorm },
-            });
-          }
-          if (typeof onUpdateCallout === 'function') {
-            onUpdateCallout(cid, {});
-          }
-        }
+      // UX: 2026-04-20 v2 — callout commit for group-move. Live drag uses
+      // render-time translate via affectedCalloutIds (no setCallouts
+      // round-trip per frame); the release wrote each callout's new pose
+      // above, before the page save (w59: the SAME clamped delta as the rest
+      // of the selection). onUpdateCallout closes the callout step when no
+      // save above closed it already (a no-op otherwise).
+      if (typeof onUpdateCallout === 'function') {
+        for (const [cid] of groupCalloutEntries) onUpdateCallout(cid, {});
       }
     } else if (ds.mode === 'text-markup-horizontal') {
       const releasePoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
@@ -3758,14 +4647,13 @@ export function useSVGInteraction({
           // — lands the visible bbox at the target position. Derivation:
           //   visibleLeft = obj.left + sx*(localMinX - pathOffsetX)
           //   ⇒ obj.left = visibleLeft - sx*(localMinX - pathOffsetX)
-          // Scale is already clamped positive upstream (polygon does not
-          // support flip), so |newScaleX| === newScaleX here.
-          const sx = Math.abs(newScaleX);
-          const sy = Math.abs(newScaleY);
-          obj.scaleX = sx;
-          obj.scaleY = sy;
-          obj.left = newLeft - sx * (ds.originalProps.pointsLocalMinX - ds.originalProps.pointsPathOffsetX);
-          obj.top = newTop - sy * (ds.originalProps.pointsLocalMinY - ds.originalProps.pointsPathOffsetY);
+          // w63: a flip (negative scale) is saved as mirrored points with a
+          // positive scale — the same builder the live preview used.
+          Object.assign(obj, buildPointsShapeResize(
+            obj,
+            { scaleX: newScaleX, scaleY: newScaleY, left: newLeft, top: newTop },
+            ds.originalProps,
+          ));
         } else {
           // Bug #8: normalize flip to positive scale on commit. For rect/
           // circle/ellipse a mirrored shape is visually identical to a non-
@@ -4086,6 +4974,7 @@ export function useSVGInteraction({
       setActiveCalloutDrag(null);
     }
 
+    crossPageMove.end(ds);
     // Reset drag state
     dragStateRef.current = {
       active: false, mode: null, handleId: null, startSVGPoint: null,
@@ -4116,10 +5005,12 @@ export function useSVGInteraction({
       originalTextMarkup: null, currentTextMarkup: null, fixedTextOffset: null,
       currentAnnotations: null,
       diagGestureId: null,
+      // w59: move / group-move drag-start facts (preview === save).
+      markId: undefined, moveBoxes: null, groupIds: null, groupBoxes: null, orbitBase: null,
     };
     setVisualTransform(null);
     setInteractionState('idle');
-  }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, cancelLasso, deselectAll, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, viewerId, documentOwnerId, pageNumber, getSelectableAnnotationIndices, inverseScale]);
+  }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, cancelLasso, deselectAll, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, viewerId, documentOwnerId, pageNumber, getSelectableAnnotationIndices, inverseScale, isCalloutSelectable, getSurveyMarkerMembers, updateSelectedMarkers, clearSelectedMarkers, clampMarkerGroupDelta, getGroupMarkerBoxes]);
 
   const handlePointerCancel = useCallback((e) => {
     const ds = dragStateRef.current;
@@ -4137,6 +5028,53 @@ export function useSVGInteraction({
     setVisualTransform(null);
     setInteractionState('idle');
   }, []);
+
+  // Owner after Test 46 (2026-10-06): Escape mid-drag puts a moving mark back
+  // where it started (nothing is saved, the pick stays). And a mark carried
+  // over another page keeps answering to this page even if the browser hands
+  // the pointer to the other page (lost capture).
+  useEffect(() => {
+    if (interactionState !== 'dragging') return undefined;
+    const activeMoveDrag = () => {
+      const ds = dragStateRef.current;
+      return ds?.active && (ds.mode === 'move' || ds.mode === 'group-move') ? ds : null;
+    };
+    const cancelMoveDrag = () => {
+      const ds = activeMoveDrag();
+      if (!ds) return false;
+      crossPageMove.end(ds);
+      dragStateRef.current = { ...ds, active: false, mode: null, crossPage: undefined };
+      justDraggedAtRef.current = Date.now();
+      setVisualTransform(null);
+      setInteractionState('idle');
+      return true;
+    };
+    // The viewer's Escape asks live gestures to cancel first (its seam); the
+    // key listener covers tools where the viewer does not listen.
+    const onCancelGesture = (event) => {
+      if (cancelMoveDrag() && event?.detail) event.detail.cancelled = true;
+    };
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      if (cancelMoveDrag()) event.preventDefault();
+    };
+    const onWindowPointer = (event) => {
+      const ds = activeMoveDrag();
+      if (!ds?.crossPage || svgRef.current?.contains(event.target)) return;
+      if (event.type === 'pointermove') handlePointerMove(event);
+      else handlePointerUp(event);
+    };
+    window.addEventListener('survey-cancel-selection-gesture', onCancelGesture);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('pointermove', onWindowPointer, true);
+    window.addEventListener('pointerup', onWindowPointer, true);
+    return () => {
+      window.removeEventListener('survey-cancel-selection-gesture', onCancelGesture);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('pointermove', onWindowPointer, true);
+      window.removeEventListener('pointerup', onWindowPointer, true);
+    };
+  }, [interactionState, handlePointerMove, handlePointerUp, crossPageMove, svgRef]);
 
   // Pointer capture normally sends the release back to this page's SVG. At
   // low zoom, a drag can cross into a sibling page before the browser grants
@@ -4281,6 +5219,13 @@ export function useSVGInteraction({
         if (!aabb) {
           try { aabb = getAnnotationBBox(obj); } catch { aabb = null; }
         }
+        // w52: a mark locked against movement (imported highlight, text
+        // markup) keeps its place in a group rotate / resize exactly as in a
+        // group move — it still counts toward the frame, it just never moves.
+        if (!canMoveAnnotation(obj)) {
+          if (aabb) memberWorldAABBs.push(aabb);
+          continue;
+        }
         // Local bbox center = renderer's rotation pivot for this shape.
         let localBBox = null;
         try { localBBox = getAnnotationBBox(obj); } catch { localBBox = null; }
@@ -4407,6 +5352,9 @@ export function useSVGInteraction({
         // frame across N rotations; resize uses the actual current union
         // AABB since it reshapes the frame anyway.
         groupMemberOriginals: memberOriginals,
+        startObjects: Object.fromEntries(Object.keys(memberOriginals).map((idx) => (
+          [idx, deepClone(annotations?.objects?.[Number(idx)])]
+        ))),
         groupUnionOriginal: isRotate
           ? {
               left: pivotCx - lockedFrameW / 2,
@@ -4464,7 +5412,7 @@ export function useSVGInteraction({
     const obj = annotations?.objects?.[selectedIndex];
     if (!obj) return;
 
-    if (isAnnotationTransformHandleLocked(obj, handleId)) return;
+    if (isUserLocked(obj) || isAnnotationTransformHandleLocked(obj, handleId)) return;
 
     const ctm = svgRef.current?.getScreenCTM();
     const ctmInverse = ctm ? ctm.inverse() : null;
@@ -4580,6 +5528,9 @@ export function useSVGInteraction({
           ctmInverse,
           vertexIndex,
           cloudVertexEdit,
+          // Per-field sync (2026-09-24): the release writes only this mark's
+          // own change (drag start → last frame) onto the page as it is then.
+          startObjects: { [selectedIndex]: deepClone(obj) },
           // Snapshot the full transform chain so the move handler can invert
           // it on each tick. We copy obj.points so we don't mutate the real
           // annotation until pointerup.
@@ -4912,38 +5863,29 @@ export function useSVGInteraction({
   const deleteSelected = useCallback(() => {
     if (selectedIds.size === 0) return;
 
-    // Phase 35 hardening 2026-05-01, re-partitioned 2026-07-17 for the LOCKED
-    // permissions model — defense-in-depth delete-time gate. Selection now
-    // admits foreign-author shapes (canSelectAnnotationByIndex runs canDelete),
-    // so this filter is the wall that decides HOW each id may be deleted:
-    //   - own marks (canModify: author or document owner) — eligible on every
-    //     path, including the legacy direct-fire fallbacks below.
-    //   - foreign marks (canDelete but not canModify) — eligible ONLY when
-    //     they can route through the parent's bulk-delete planner
-    //     (onRequestBulkDelete present AND the object carries a stable id the
-    //     planner is keyed by). The planner's collaborator-cross-author mode
-    //     then ALWAYS shows the confirm modal — a foreign mark must never be
-    //     deleted by a direct-fire fallback, so id-less foreign marks and the
-    //     planner-absent mount (boot / test harness) drop foreign ids here.
-    const plannerAvailable = typeof onRequestBulkDelete === 'function';
+    // RULED 2026-09-28 owner: open editing + lock. Delete-time gate: every
+    // selected mark is deleted — own or someone else's, no confirmation —
+    // except user-locked ones (canModify refuses them; they stay selected
+    // and on the page). Selection admits locked marks (canSelect), so this
+    // filter is the wall for Delete.
     const indicesToDelete = Array.from(selectedIds)
       .filter((idx) => {
         const obj = annotations?.objects?.[idx];
         if (!obj) return false;
+        // A user lock holds even in the boot window below.
+        if (isUserLocked(obj)) return false;
         // Boot guard: mirror canSelectAnnotationByIndex's permissive
         // behavior during the brief window where viewerId / documentOwnerId
-        // aren't resolved yet. Once both populate, the strict partition
-        // below engages and is the single source of truth.
+        // aren't resolved yet.
         if (!viewerId || !documentOwnerId) return true;
-        if (canModify({ annotation: obj, viewerId, documentOwnerId })) return true;
-        // Foreign-author: only deletable behind the planner's confirm modal.
-        return plannerAvailable
-          && obj.id != null
-          && canDelete({ annotation: obj, viewerId, documentOwnerId });
+        return canModify({ annotation: obj, viewerId, documentOwnerId });
       })
       .sort((a, b) => b - a);
 
     if (indicesToDelete.length === 0) return;
+    // w53: selected Survey Markers go with the marks, in the same save (one
+    // undo step).
+    const markerIdsToDelete = getGroupMarkerIds();
 
     // Capture snapshot at request time — closure over CURRENT state. The
     // bulk-delete planner reads from snapshotObjects (NOT from a ref in
@@ -4972,8 +5914,12 @@ export function useSVGInteraction({
         deletedSnapshot: snapshotObjects,
         deletedPageNumber: pageNumber,
         checkpointPolicy: 'normal',
+        ...(markerIdsToDelete.length > 0
+          ? { surveyMarkerFamily: { deletes: markerIdsToDelete } }
+          : {}),
       });
       deselectAll();
+      if (markerIdsToDelete.length > 0) clearSelectedMarkers();
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('betasafe:clear-text-markup-selection'));
       }
@@ -4993,15 +5939,9 @@ export function useSVGInteraction({
     // documentOwnerId — it builds the BulkDeletePlan and decides modal vs
     // direct-fire.
     const candidateIds = snapshotObjects.map((o) => o?.id).filter(Boolean);
-    // Phase 35 regression fix 2026-05-01: the bulk-delete planner is keyed
-    // by stable annotation id, but legacy / freshly-loaded / not-yet-synced
-    // annotations have no id locally (data.id is stamped only on the first
-    // cloud upload via serializeFabricObjectToRow). When EVERY snapshot
-    // lacks an id the planner returns mode='no-op' and Delete becomes a
-    // silent dead key. Safe to fall through here because the delete-time
-    // partition above only admits id-less objects when they pass canModify
-    // (own/boot) — a foreign-author mark requires obj.id, so an all-id-less
-    // set is structurally own-only and may direct-fire without the modal.
+    // The bulk-delete planner is keyed by stable annotation id; legacy /
+    // not-yet-synced marks may have none. When EVERY snapshot lacks an id the
+    // delete fires directly (the lock filter above already ran).
     if (candidateIds.length === 0) {
       runDelete();
       return;
@@ -5012,7 +5952,7 @@ export function useSVGInteraction({
       pageNumber,
       runDelete,
     });
-  }, [selectedIds, annotations, onSaveAnnotations, deselectAll, onRequestBulkDelete, pageNumber, viewerId, documentOwnerId]);
+  }, [selectedIds, annotations, onSaveAnnotations, deselectAll, onRequestBulkDelete, pageNumber, viewerId, documentOwnerId, getGroupMarkerIds, clearSelectedMarkers]);
 
   // ---------------------------------------------------------------------------
   // EDIT-12 Gap 1 fix (Plan 12-03): optimistic rotation paint
@@ -5086,10 +6026,173 @@ export function useSVGInteraction({
     setVisualTransform(null);
   }, []);
 
+  // w53: a drag that starts ON a selected Survey Marker of a family selection
+  // moves the whole selection — marks, callouts and markers — exactly like a
+  // drag started on a selected mark (same originals, same commit, one step).
+  const startFamilyGroupMove = useCallback((e) => {
+    const svgEl = svgRef.current;
+    if (!svgEl) return false;
+    const ctm = svgEl.getScreenCTM?.();
+    const ctmInverse = ctm ? ctm.inverse() : null;
+    const svgPoint = screenToSVG(svgEl, e.clientX, e.clientY);
+    const originals = {};
+    for (const selIdx of selectedIds) {
+      const selObj = annotations?.objects?.[selIdx];
+      if (!canMoveAnnotation(selObj)) continue;
+      if (isImportedPath(selObj)) {
+        const selBBox = getAnnotationBBox(selObj);
+        originals[selIdx] = { left: selBBox.left, top: selBBox.top };
+      } else {
+        originals[selIdx] = { left: selObj.left ?? 0, top: selObj.top ?? 0 };
+      }
+    }
+    const calloutOriginals = {};
+    const calIds = (selectedCalloutIds instanceof Set)
+      ? Array.from(selectedCalloutIds)
+      : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds : []);
+    for (const cid of calIds) {
+      const c = (callouts || []).find((cc) => cc && cc.id === cid);
+      if (!c || isUserLocked(c)) continue;
+      if (typeof isCalloutSelectable === 'function' && !isCalloutSelectable(c.id)) continue;
+      calloutOriginals[cid] = {
+        arrowTip: { x: c.arrowTip?.x ?? 0, y: c.arrowTip?.y ?? 0 },
+        knee: { x: c.knee?.x ?? 0, y: c.knee?.y ?? 0 },
+        textBoxPosition: { x: c.textBoxPosition?.x ?? 0, y: c.textBoxPosition?.y ?? 0 },
+      };
+    }
+    dragStateRef.current = {
+      ...dragStateRef.current,
+      active: true,
+      mode: 'group-move',
+      handleId: null,
+      startSVGPoint: svgPoint,
+      originalProps: null,
+      annotationIndex: null,
+      ctmInverse,
+      anchorX: null, anchorY: null, centerX: null, centerY: null,
+      currentResize: null, currentAngle: undefined,
+      groupOriginals: originals,
+      groupCalloutOriginals: calloutOriginals,
+      groupMarkerIds: getGroupMarkerIds({ movableOnly: true }),
+      // w59: never reuse a previous drag's facts (this start spreads the old state).
+      groupIds: null,
+      groupBoxes: null,
+    };
+    try { svgEl.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+    setInteractionState('dragging');
+    return true;
+  }, [annotations, callouts, getGroupMarkerIds, isCalloutSelectable, selectedCalloutIds, selectedIds, svgRef]);
+
+  // w58 (owner 2026-09-28): Cmd (Mac) / Ctrl (Windows) + press inside the
+  // selection box moves the selection, wherever in the box the press lands —
+  // see src/utils/moveModifier.js for the full rule. Each case arms the SAME
+  // drag the plain body drag arms, so the move previews, clamps, syncs and
+  // undoes exactly like one:
+  //   - several members          -> the group move (locked members stay put)
+  //   - one mark                 -> the single-mark 'move'
+  //   - one callout              -> the whole-callout move
+  //   - one Survey Marker        -> not handled here; the layer runs its own
+  //                                 marker drag (returns 'survey-marker').
+  // Pointer capture goes on the page <svg> itself, so the drag survives the
+  // move zone unmounting when the key is let go mid-drag.
+  // Returns true when a move was armed, 'survey-marker' for the layer's case,
+  // false when nothing may move.
+  const startModifierMove = useCallback((e) => {
+    const svgEl = svgRef.current;
+    if (!svgEl) return false;
+    const calIds = (selectedCalloutIds instanceof Set)
+      ? Array.from(selectedCalloutIds)
+      : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds : []);
+    const total = selectedIds.size + calIds.length + selectedMarkerCount;
+    if (total === 0) return false;
+    if (total > 1) return startFamilyGroupMove(e);
+    if (selectedMarkerCount === 1) return 'survey-marker';
+
+    const ctm = svgEl.getScreenCTM?.();
+    const ctmInverse = ctm ? ctm.inverse() : null;
+    const svgPoint = screenToSVG(svgEl, e.clientX, e.clientY);
+
+    if (selectedIds.size === 1) {
+      const index = selectedIds.values().next().value;
+      const obj = annotations?.objects?.[index];
+      // Same stop as the body drag: text markup, movement-locked imports and
+      // user-locked marks never move.
+      if (!canMoveAnnotation(obj)) return false;
+      const imported = isImportedPath(obj);
+      const bbox = imported ? getAnnotationBBox(obj) : null;
+      dragStateRef.current = {
+        active: true,
+        mode: 'move',
+        handleId: null,
+        startSVGPoint: svgPoint,
+        originalProps: {
+          left: imported ? bbox.left : (obj.left ?? 0),
+          top: imported ? bbox.top : (obj.top ?? 0),
+          scaleX: imported ? 1 : (obj.scaleX ?? 1),
+          scaleY: imported ? 1 : (obj.scaleY ?? 1),
+          angle: obj.angle ?? 0,
+          width: imported ? bbox.width : (obj.width ?? 0),
+          height: imported ? bbox.height : (obj.height ?? 0),
+        },
+        annotationIndex: index,
+        ctmInverse,
+        anchorX: null,
+        anchorY: null,
+        centerX: null,
+        centerY: null,
+        currentResize: null,
+        currentAngle: undefined,
+        groupOriginals: null,
+      };
+      // w59: the mark's id and box as of the press (preview === save).
+      ensureMoveStart(dragStateRef.current, annotations?.objects);
+      try { svgEl.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+      return true;
+    }
+
+    if (calIds.length === 1) {
+      const calloutId = calIds[0];
+      const callout = (callouts || []).find((c) => c && c.id === calloutId);
+      if (!callout || isUserLocked(callout)) return false;
+      if (typeof isCalloutSelectable === 'function' && !isCalloutSelectable(calloutId)) return false;
+      dragStateRef.current = {
+        ...dragStateRef.current,
+        active: true,
+        mode: 'callout-part',
+        partType: 'whole',
+        textBoxCorner: null,
+        calloutId,
+        currentCalloutPatch: null,
+        startSVGPoint: svgPoint,
+        ctmInverse,
+        originalCalloutPositions: {
+          arrowTip: { ...callout.arrowTip },
+          knee: { ...callout.knee },
+          textBoxPosition: { ...callout.textBoxPosition },
+          textBoxWidth: callout.textBoxWidth,
+          textBoxHeight: callout.textBoxHeight,
+          fontSize: callout.style?.fontSize,
+        },
+        lastSafeCalloutPositions: {
+          arrowTip: { ...callout.arrowTip },
+          knee: { ...callout.knee },
+          textBoxPosition: { ...callout.textBoxPosition },
+        },
+      };
+      try { svgEl.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+      setInteractionState('dragging');
+      setActiveCalloutDrag({ id: calloutId, partType: 'whole' });
+      return true;
+    }
+    return false;
+  }, [annotations, callouts, isCalloutSelectable, selectedCalloutIds, selectedIds, selectedMarkerCount, startFamilyGroupMove, svgRef]);
+
   // ---------------------------------------------------------------------------
   // Return API
   // ---------------------------------------------------------------------------
   return {
+    startFamilyGroupMove,
+    startModifierMove,
     // Selection state
     selectedIds,
     hoveredId,

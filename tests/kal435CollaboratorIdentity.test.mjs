@@ -161,7 +161,8 @@ test('KAL-435 collaborator history and delete authority recognize own creates', 
     viewerId: COLLABORATOR_ID,
     documentOwnerId: OWNER_ID,
   });
-  assert.equal(plan.mode, 'collaborator-all-mine');
+  // RULED 2026-09-28 owner: open editing + lock — 'collaborator-all-mine' collapsed into 'direct' (no modal).
+  assert.equal(plan.mode, 'direct');
   assert.deepEqual(plan.ownIds, ['kal435-text', 'kal435-circle']);
   assert.deepEqual(plan.foreignIds, []);
 });
@@ -180,18 +181,17 @@ test('KAL-435 edit cannot erase or overwrite the original author', () => {
 
   assert.equal(committedEdit.left, 75);
   assert.equal(getAnnotationAuthorId(committedEdit), OWNER_ID);
+  const editAction = buildAnnotationHistoryAction({
+    pageNumber: 1,
+    previousPage: { objects: [original] },
+    nextPage: { objects: [committedEdit] },
+  });
+  // RULED 2026-09-28 owner: open editing + lock — the collaborator's edit of the owner's mark is the collaborator's own undo step (author still unchanged above).
   assert.equal(
-    filterAnnotationHistoryActionByOwner(
-      buildAnnotationHistoryAction({
-        pageNumber: 1,
-        previousPage: { objects: [original] },
-        nextPage: { objects: [committedEdit] },
-      }),
-      COLLABORATOR_ID,
-      OWNER_ID,
-    ),
-    null,
+    filterAnnotationHistoryActionByOwner(editAction, COLLABORATOR_ID, OWNER_ID),
+    editAction,
   );
+  assert.equal(getAnnotationAuthorId(editAction.after), OWNER_ID);
 });
 
 test('KAL-435 legacy render author is promoted without reauthoring delete authority', () => {

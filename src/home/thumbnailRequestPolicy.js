@@ -28,3 +28,21 @@ export function createThumbnailRequestPool() {
     },
   };
 }
+
+/* Row → backfill hand-off (2026-09-23). A row that finds no cached image
+ * still never downloads anything itself; it only tells the one idle backfill
+ * queue (services/thumbnailBackfill.js, started by the Documents list) that a
+ * VISIBLE row is waiting, so that document is done next. No queue running
+ * (e.g. the Archive screen) → a no-op, exactly the pre-backfill behaviour. */
+let activeBackfill = null;
+export function registerThumbnailBackfill(backfill) {
+  activeBackfill = backfill || null;
+  return () => { if (activeBackfill === backfill) activeBackfill = null; };
+}
+export function requestThumbnailBackfill(doc) {
+  if (!doc?.id || !activeBackfill) return false;
+  activeBackfill.prioritize(doc);
+  return true;
+}
+
+export { subscribeThumbnailUpdates } from '../services/thumbnailEvents.js';

@@ -68,7 +68,7 @@ test('local fabric undo then redo before reload reapplies the annotation', () =>
   deepStrictEqual(afterRedo[1].objects.map((obj) => obj.data.id), ['existing', 'new-rect']);
 });
 
-test('local fabric redo remains owner scoped after undo', () => {
+test('local fabric redo replays a step on another author\'s mark (open editing)', () => {
   const state = {
     1: {
       objects: [
@@ -86,8 +86,9 @@ test('local fabric redo remains owner scoped after undo', () => {
   const scoped = filterAnnotationHistoryActionByOwner(foreignRedo, 'user-a');
   const afterRedo = applyAnnotationHistoryAction(state, scoped);
 
-  deepStrictEqual(scoped, null);
-  deepStrictEqual(afterRedo[1].objects.map((obj) => obj.data.id), ['mine']);
+  // RULED 2026-09-28 owner: open editing + lock — a user's step on anyone's mark is their own Redo step.
+  deepStrictEqual(scoped, foreignRedo);
+  deepStrictEqual(afterRedo[1].objects.map((obj) => obj.data.id), ['mine', 'theirs']);
 });
 
 
@@ -598,7 +599,7 @@ test('mixed pen/highlighter carve plus atomic annotations stay one exact Undo/Re
   deepStrictEqual(redone[1].objects, nextPage.objects);
 });
 
-test('owner filter keeps local undo scoped to current user annotations', () => {
+test('owner filter keeps every entry of a mixed-author local undo batch (open editing)', () => {
   const action = {
     type: 'fabric:batch',
     pageNumber: 1,
@@ -627,12 +628,13 @@ test('owner filter keeps local undo scoped to current user annotations', () => {
   const scoped = filterAnnotationHistoryActionByOwner(action, 'user-a');
 
   equal(scoped.type, 'fabric:batch');
-  deepStrictEqual(scoped.created.map((entry) => entry.id), ['mine-new']);
-  deepStrictEqual(scoped.deleted.map((entry) => entry.id), ['mine-old']);
-  deepStrictEqual(scoped.updated.map((entry) => entry.id), ['mine-update']);
+  // RULED 2026-09-28 owner: open editing + lock — foreign entries are no longer trimmed from the user's own step.
+  deepStrictEqual(scoped.created.map((entry) => entry.id), ['mine-new', 'theirs-new']);
+  deepStrictEqual(scoped.deleted.map((entry) => entry.id), ['mine-old', 'theirs-old']);
+  deepStrictEqual(scoped.updated.map((entry) => entry.id), ['mine-update', 'theirs-update']);
 });
 
-test('owner filter drops foreign single-annotation undo actions', () => {
+test('owner filter keeps foreign single-annotation undo actions for a known viewer', () => {
   const action = {
     type: 'fabric:delete',
     pageNumber: 1,
@@ -640,7 +642,8 @@ test('owner filter drops foreign single-annotation undo actions', () => {
     annotation: { type: 'rect', data: { id: 'theirs', authorId: 'user-b' } },
   };
 
-  equal(filterAnnotationHistoryActionByOwner(action, 'user-a'), null);
+  // RULED 2026-09-28 owner: open editing + lock — deleting a colleague's mark is the user's own undoable step.
+  equal(filterAnnotationHistoryActionByOwner(action, 'user-a'), action);
 });
 
 test('history replay fails closed while viewer identity is unresolved', () => {
@@ -667,7 +670,7 @@ test('history replay fails closed while viewer identity is unresolved', () => {
   );
 });
 
-test('contributor history rejects missing-author single actions for both Undo and Redo', () => {
+test('contributor history keeps missing-author single actions for both Undo and Redo', () => {
   const legacyAnnotation = {
     type: 'path',
     data: { id: 'legacy-missing-author' },
@@ -683,13 +686,14 @@ test('contributor history rejects missing-author single actions for both Undo an
   };
   const undoCreate = invertAnnotationHistoryAction(redoDelete);
 
+  // RULED 2026-09-28 owner: open editing + lock — unattributed marks are editable by any editor, so their steps stay on the stack.
   equal(
     filterAnnotationHistoryActionByOwner(
       redoDelete,
       'cloud-contributor',
       'document-owner',
     ),
-    null,
+    redoDelete,
   );
   equal(
     filterAnnotationHistoryActionByOwner(
@@ -697,11 +701,11 @@ test('contributor history rejects missing-author single actions for both Undo an
       'cloud-contributor',
       'document-owner',
     ),
-    null,
+    undoCreate,
   );
 });
 
-test('contributor batch Undo/Redo keeps exact self-authored entries and drops missing-author entries', () => {
+test('contributor batch Undo/Redo keeps self-authored and missing-author entries together', () => {
   const own = {
     type: 'path',
     data: { id: 'own-ink', authorId: 'cloud-contributor' },
@@ -746,14 +750,15 @@ test('contributor batch Undo/Redo keeps exact self-authored entries and drops mi
     'document-owner',
   );
 
-  deepStrictEqual(scopedRedo.deleted.map((entry) => entry.id), ['own-ink']);
-  deepStrictEqual(scopedUndo.created.map((entry) => entry.id), ['own-ink']);
+  // RULED 2026-09-28 owner: open editing + lock — the whole batch replays; missing-author entries are no longer dropped.
+  deepStrictEqual(scopedRedo.deleted.map((entry) => entry.id), ['own-ink', 'legacy-ink']);
+  deepStrictEqual(scopedUndo.created.map((entry) => entry.id), ['own-ink', 'legacy-ink']);
   const afterRedo = applyAnnotationHistoryAction(
     { 1: { objects: [own, legacy] } },
     scopedRedo,
   );
   const afterUndo = applyAnnotationHistoryAction(afterRedo, scopedUndo);
-  deepStrictEqual(afterRedo[1].objects.map((object) => object.data.id), ['legacy-ink']);
+  deepStrictEqual(afterRedo[1].objects.map((object) => object.data.id), []);
   deepStrictEqual(
     afterUndo[1].objects.map((object) => object.data.id),
     ['own-ink', 'legacy-ink'],
@@ -794,7 +799,7 @@ test('document owner keeps one exact cross-author erase action for Undo and Redo
   deepStrictEqual(redone[1].objects, nextPage.objects);
 });
 
-test('filtered eraser undo restores only current user deleted annotations', () => {
+test('filtered eraser undo restores every annotation the user erased, including other authors\' marks', () => {
   const previousPage = {
     objects: [
       { type: 'path', data: { id: 'mine', authorId: 'user-a' }, path: [['M', 0, 0]] },
@@ -815,5 +820,6 @@ test('filtered eraser undo restores only current user deleted annotations', () =
   const scopedInverse = filterAnnotationHistoryActionByOwner(inverse, 'user-a');
   const undone = applyAnnotationHistoryAction({ 1: nextPage }, scopedInverse);
 
-  deepStrictEqual(undone[1].objects.map((obj) => obj.data.id), ['mine', 'survivor']);
+  // RULED 2026-09-28 owner: open editing + lock — the user may erase anyone's mark, so one Undo brings all of it back.
+  deepStrictEqual(undone[1].objects.map((obj) => obj.data.id), ['mine', 'theirs', 'survivor']);
 });

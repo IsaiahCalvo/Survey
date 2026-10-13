@@ -84,3 +84,83 @@ export const resolveTitleCommit = (rawValue, currentName) => {
   if (trimmed === currentName) return { action: 'noop', name: currentName };
   return { action: 'commit', name: trimmed };
 };
+
+/* "Only a real change asks to be saved" (owner 2026-10-02: "If I double-click
+   into a module to rename it and then click off without renaming it, I still
+   get prompted to save the template ... If I don't make a change, what's the
+   point in saving?").
+
+   The editor used to raise its Save / Cancel bar whenever ANY mutator ran,
+   even one that wrote back exactly what was there. Now the bar also needs the
+   working copy to differ from the last loaded / saved baseline. These helpers
+   build the comparison: one string per template holding exactly what Save
+   persists (names, module / category / item order and text, archive flags,
+   entity names and resolved colours), keyed by template id so the order of the
+   template LIST (a separate, instantly saved preference) never counts.
+
+   `ignoreItemIds` holds the blank placeholder checklist rows that "act like
+   they were never created" until the user types into them. */
+const lower = (v) => (typeof v === 'string' ? v.toLowerCase() : v ?? null);
+const roundOpacity = (v) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v * 1000) / 1000 : v ?? null);
+
+/* The colour an entity would be SAVED with: the picker maps win over the
+   entity's own fields. Mirrors TemplatesEditor's richToTemplate. */
+export const resolveEntityStyle = (entity, maps = {}) => {
+  const roleColors = maps.roleColors || {};
+  const borderColors = maps.borderColors || {};
+  const matchFill = maps.matchFill || {};
+  const fillColor = roleColors[entity.id]?.color || entity.color || '#8c8c8a';
+  const fillOpacity = roleColors[entity.id]?.opacity ?? entity.opacity ?? 0.35;
+  const matched = Object.prototype.hasOwnProperty.call(matchFill, entity.id)
+    ? !!matchFill[entity.id]
+    : !!entity.matchFill;
+  const border = matched
+    ? { color: fillColor, opacity: fillOpacity }
+    : (borderColors[entity.id] || {
+      color: entity.borderColor || fillColor,
+      opacity: entity.borderOpacity ?? fillOpacity,
+    });
+  return {
+    color: fillColor,
+    opacity: fillOpacity,
+    borderColor: border.color,
+    borderOpacity: border.opacity,
+    matchFill: matched,
+  };
+};
+
+export const templateFingerprint = (template, maps = {}, ignoreItemIds = null) => JSON.stringify([
+  template?.name ?? '',
+  (template?.modules || []).map((m) => [
+    m.id,
+    m.name,
+    (m.categories || []).map((c) => [
+      c.id,
+      c.name,
+      (c.items || [])
+        .filter((it) => !(ignoreItemIds && ignoreItemIds.has(it.id)))
+        .map((it) => (it.archived === true
+          ? [it.id, it.text ?? '', true, it.archivedAt ?? null, it.lastKnownLabel || it.text || null]
+          : [it.id, it.text ?? ''])),
+    ]),
+  ]),
+  (template?.roster || []).map((e) => {
+    const s = resolveEntityStyle(e, maps);
+    return [e.id, e.role, lower(s.color), roundOpacity(s.opacity), lower(s.borderColor), roundOpacity(s.borderOpacity), s.matchFill];
+  }),
+]);
+
+export const fingerprintTemplates = (templates, maps = {}, ignoreItemIds = null) => {
+  const out = {};
+  (templates || []).forEach((t) => { out[t.id] = templateFingerprint(t, maps, ignoreItemIds); });
+  return out;
+};
+
+/* True when the working copy is not what was last loaded or saved: a template
+   added or removed, or any template's content changed. */
+export const workingCopyDiffers = (current, baseline) => {
+  if (!baseline) return true;
+  const ids = Object.keys(current || {});
+  if (ids.length !== Object.keys(baseline).length) return true;
+  return ids.some((id) => !Object.prototype.hasOwnProperty.call(baseline, id) || baseline[id] !== current[id]);
+};

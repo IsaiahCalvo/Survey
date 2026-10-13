@@ -6,10 +6,9 @@
 //
 // 1. buildBulkDeletePlan over a byPage page containing PROJECTED callout group
 //    objects (calloutToAnnotationObject output — id lives at data.id, author at
-//    data.authorId) resolves the same modes shapes get:
-//      owner deleting a cross-author selection  → 'owner-cross-author' (modal)
-//      collaborator deleting their own callouts → 'collaborator-all-mine' (modal)
-//      owner deleting only their own            → 'owner-own-only' (silent direct-fire)
+//    data.authorId) resolves the same modes shapes get. RULED 2026-09-28
+//    owner: open editing + lock — every eligible delete is 'direct' (no
+//    modal, own or cross-author); a user-locked callout is refused ('no-op').
 //
 // 2. Mixed shape+callout marquee delete → ONE combined save produces ONE
 //    fabric:batch history action whose single inversion (one Cmd+Z) restores
@@ -97,41 +96,44 @@ describe('buildBulkDeletePlan over projected callout groups (Slice 4 parity)', (
     assert.notEqual(plan.mode, 'no-op', 'planner must find the group via data.id');
   });
 
-  it('owner deleting a cross-author callout selection → owner-cross-author (modal)', () => {
+  it('owner deleting a cross-author callout selection → direct (no modal)', () => {
     const plan = buildBulkDeletePlan({
       candidateIds: ['c-owner', 'c-collab'],
       annotations: pageObjects,
       viewerId: OWNER,
       documentOwnerId: OWNER,
     });
-    assert.equal(plan.mode, 'owner-cross-author');
+    // RULED 2026-09-28 owner: open editing + lock — cross-author callout deletes are direct.
+    assert.equal(plan.mode, 'direct');
     assert.equal(plan.count, 2);
     assert.deepEqual(plan.ownIds, ['c-owner']);
     assert.deepEqual(plan.foreignIds, ['c-collab']);
     assert.equal(plan.byAuthor[COLLABORATOR].count, 1);
   });
 
-  it('collaborator deleting a mixed-author callout selection → collaborator-cross-author (modal)', () => {
+  it('collaborator deleting a mixed-author callout selection → direct (no modal)', () => {
     const plan = buildBulkDeletePlan({
       candidateIds: ['c-owner', 'c-collab'],
       annotations: pageObjects,
       viewerId: COLLABORATOR,
       documentOwnerId: OWNER,
     });
-    assert.equal(plan.mode, 'collaborator-cross-author');
+    // RULED 2026-09-28 owner: open editing + lock — collaborators delete others' callouts directly.
+    assert.equal(plan.mode, 'direct');
     assert.equal(plan.count, 2);
     assert.deepEqual(plan.ownIds, ['c-collab']);
     assert.deepEqual(plan.foreignIds, ['c-owner']);
   });
 
-  it('owner deleting only their own callouts → owner-own-only (silent direct-fire)', () => {
+  it('owner deleting only their own callouts → direct (silent)', () => {
     const plan = buildBulkDeletePlan({
       candidateIds: ['c-owner'],
       annotations: pageObjects,
       viewerId: OWNER,
       documentOwnerId: OWNER,
     });
-    assert.equal(plan.mode, 'owner-own-only');
+    // RULED 2026-09-28 owner: open editing + lock — 'owner-own-only' collapsed into 'direct'.
+    assert.equal(plan.mode, 'direct');
     assert.equal(plan.count, 1);
     assert.deepEqual(plan.ownIds, ['c-owner']);
   });
@@ -144,7 +146,24 @@ describe('buildBulkDeletePlan over projected callout groups (Slice 4 parity)', (
       viewerId: OWNER,
       documentOwnerId: OWNER,
     });
-    assert.equal(plan.mode, 'owner-own-only');
+    // RULED 2026-09-28 owner: open editing + lock — 'owner-own-only' collapsed into 'direct'; unattributed still counts as own.
+    assert.equal(plan.mode, 'direct');
+    assert.deepEqual(plan.ownIds, ['c-legacy']);
+  });
+
+  it('a user-locked callout is refused for everyone (no-op, reported in lockedIds)', () => {
+    // RULED 2026-09-28 owner: open editing + lock — the lock is the only delete refusal; it binds the owner too.
+    const locked = projectGroup(makeCallout('c-locked', 1, COLLABORATOR, { lockedBy: COLLABORATOR }));
+    for (const viewerId of [OWNER, COLLABORATOR]) {
+      const plan = buildBulkDeletePlan({
+        candidateIds: ['c-locked'],
+        annotations: [locked],
+        viewerId,
+        documentOwnerId: OWNER,
+      });
+      assert.equal(plan.mode, 'no-op');
+      assert.deepEqual(plan.lockedIds, ['c-locked']);
+    }
   });
 
   it('mixed shape+callout candidate set plans across both kinds', () => {
@@ -155,7 +174,8 @@ describe('buildBulkDeletePlan over projected callout groups (Slice 4 parity)', (
       viewerId: OWNER,
       documentOwnerId: OWNER,
     });
-    assert.equal(plan.mode, 'owner-cross-author');
+    // RULED 2026-09-28 owner: open editing + lock — mixed shape+callout cross-author delete is direct.
+    assert.equal(plan.mode, 'direct');
     assert.equal(plan.count, 2);
     assert.deepEqual(plan.ownIds, ['c-owner']);
     assert.deepEqual(plan.foreignIds, ['rect-1']);

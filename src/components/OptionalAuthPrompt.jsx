@@ -120,6 +120,14 @@ export const useOptionalAuth = () => {
     }
   }, [loading, isAuthenticated, authPromptDismissed, showAuthModal]);
 
+  // 2026-10-07 (phone loading): once someone is signed in, the sign-in sheet
+  // has nothing left to do. A saved sign-in that only got through after the
+  // network came back (or a sign-in finished in another window) used to leave
+  // the sheet open over the signed-in home until it was tapped shut.
+  useEffect(() => {
+    if (isAuthenticated && showAuthModal) setShowAuthModal(false);
+  }, [isAuthenticated, showAuthModal]);
+
   const handleDismiss = () => {
     // For non-authenticated users: dismiss for current session only (don't persist)
     // For authenticated users: persist dismissal to localStorage

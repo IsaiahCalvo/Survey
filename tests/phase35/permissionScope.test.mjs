@@ -114,16 +114,26 @@ test(
 );
 
 test(
-  'permissionScope #5: canModify returns false when viewerId is non-owner AND annotation authorId !== viewerId (locked from interaction)',
+  "permissionScope #5: canModify lets a non-owner editor change another user's mark, but refuses a user-locked mark for everyone",
   { skip: !existsSync(TARGET) ? 'permissionScope module not yet present (Plan 35-02)' : false },
   async () => {
     const { canModify } = await import(TARGET_URL);
     const foreign = makeAnno(OTHER_ID);
+    // RULED 2026-09-28 owner: open editing + lock — any editor may change anyone's mark.
     strictEqual(
       canModify({ viewerId: COLLAB_ID, documentOwnerId: OWNER_ID, annotation: foreign }),
-      false,
-      "collaborator cannot modify another user's mark",
+      true,
+      "collaborator may modify another user's mark",
     );
+    // RULED 2026-09-28 owner: open editing + lock — the refusal now comes from the user lock, for author and owner alike.
+    const lockedForeign = makeAnno(OTHER_ID, { lockedBy: OTHER_ID });
+    for (const viewerId of [COLLAB_ID, OTHER_ID, OWNER_ID]) {
+      strictEqual(
+        canModify({ viewerId, documentOwnerId: OWNER_ID, annotation: lockedForeign }),
+        false,
+        `user-locked mark refuses modification for ${viewerId}`,
+      );
+    }
   },
 );
 
@@ -224,7 +234,9 @@ test(
 
     strictEqual(canErase(foreign, null, OWNER_ID), false, 'missing viewer denies');
     strictEqual(canErase(foreign, COLLAB_ID, null), false, 'missing owner denies foreign mark');
-    strictEqual(canErase(unknownAuthor, COLLAB_ID, OWNER_ID), false, 'missing author denies');
+    // RULED 2026-09-28 owner: open editing + lock — an unattributed mark is open to any editor once the owner is known.
+    strictEqual(canErase(unknownAuthor, COLLAB_ID, OWNER_ID), true, 'missing author is open to editors');
+    strictEqual(canErase(unknownAuthor, COLLAB_ID, null), false, 'missing author + missing owner still denies');
     strictEqual(
       canErase(missingIdentity, OWNER_ID, OWNER_ID),
       false,
@@ -271,12 +283,14 @@ test(
     const foreign = { id: 'foreign', data: { authorId: OTHER_ID } };
     const locked = { id: 'locked', locked: true, data: { authorId: COLLAB_ID } };
 
+    const userLocked = { id: 'user-locked', data: { authorId: OTHER_ID, lockedBy: OTHER_ID } };
+    // RULED 2026-09-28 owner: open editing + lock — foreign ids pass; the recheck still drops missing, system-locked and user-locked ids.
     deepStrictEqual(filterEraserCommitIds({
-      annotationIds: ['foreign', 'missing', 'locked', 'own'],
-      annotations: [own, foreign, locked],
+      annotationIds: ['foreign', 'missing', 'locked', 'user-locked', 'own'],
+      annotations: [own, foreign, locked, userLocked],
       viewerId: COLLAB_ID,
       documentOwnerId: OWNER_ID,
-    }), ['own'], 'commit rechecks a forged/stale preview hit list');
+    }), ['foreign', 'own'], 'commit rechecks a forged/stale preview hit list');
     deepStrictEqual(filterEraserCommitIds({
       annotationIds: ['own'],
       annotations: [own],
@@ -299,7 +313,7 @@ test(
 );
 
 test(
-  "permissionScope #6: filterByAuthor returns only annotations the viewer can modify (drops other authors' marks for collaborator role; returns input array unchanged for owner role)",
+  "permissionScope #6: filterByAuthor returns only annotations the viewer can modify (any editor keeps every unlocked mark, user-locked marks drop; input array returned unchanged when nothing drops)",
   { skip: !existsSync(TARGET) ? 'permissionScope module not yet present (Plan 35-02)' : false },
   async () => {
     const { filterByAuthor } = await import(TARGET_URL);
@@ -309,16 +323,22 @@ test(
     const theirs2 = makeAnno(OWNER_ID);
     const all = [mine1, theirs1, mine2, theirs2];
 
-    // Collaborator: only own marks survive.
+    // RULED 2026-09-28 owner: open editing + lock — collaborators keep every unlocked mark; only user-locked marks drop.
     const collabResult = filterByAuthor({
       viewerId: COLLAB_ID,
       documentOwnerId: OWNER_ID,
       annotations: all,
     });
+    strictEqual(collabResult, all, 'collaborator filter is identity when nothing is locked');
+    const lockedTheirs = makeAnno(OTHER_ID, { lockedBy: OTHER_ID });
     deepStrictEqual(
-      collabResult.map((a) => a.id),
-      [mine1.id, mine2.id],
-      'collaborator filter retains only own annotations, in input order',
+      filterByAuthor({
+        viewerId: COLLAB_ID,
+        documentOwnerId: OWNER_ID,
+        annotations: [mine1, lockedTheirs, mine2, theirs2],
+      }).map((a) => a.id),
+      [mine1.id, mine2.id, theirs2.id],
+      'collaborator filter drops only user-locked marks, in input order',
     );
 
     // Owner: input unchanged.

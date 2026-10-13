@@ -771,7 +771,9 @@ test('PDF export success path does not show a blocking exported alert', () => {
 });
 
 test('PDF export uses original PDF bytes as the source to avoid baked viewer annotation artifacts', () => {
-  assert.match(APP_SOURCE, /const sourcePdfForExport = pdfFile/);
+  // Original bytes — after any background page-operation save has landed
+  // (instant page operations, 2026-10-01), so the bytes match the pages.
+  assert.match(APP_SOURCE, /const sourcePdfForExport = \(await flushPageOperations\(\)\) \|\| pdfFile/);
   assert.equal(
     /sourcePdfForExport\s*=\s*blob/.test(APP_SOURCE),
     false,

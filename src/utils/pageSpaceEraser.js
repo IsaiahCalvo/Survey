@@ -4,12 +4,13 @@ import {
   commandsToPolygonSet,
   eraseAnnotations,
   filledOutlineCommandsToPolygonSet,
-  intersectPolygonSets,
+  intersectSharedOutlinePolygonSets,
   normalizeMultiPolygon,
+  polygonSetArea,
   polygonSetToCommands,
   roundCircleStepCount,
 } from './paperAnnotationGeometry.js';
-import { diff as polygonDifference, union } from 'martinez-polygon-clipping';
+import { diff as polygonDifference, union } from './polygonBooleans.js';
 import {
   eraserStrokeTouchesObject,
   getEraserCandidateId,
@@ -384,7 +385,43 @@ const styledStrokeCommandsToPolygonSet = (commands, {
   return mergePolygonGeometries(shapes);
 };
 
+// The source outline is the same for every bite on a mark, but was rebuilt
+// on each one (the cut mask is outline minus survivor): about half of each
+// bite's time on imported curve ink (w39 review). A few recent outlines are
+// kept, keyed by everything that shapes them. Callers treat the result as
+// read-only.
+const SOURCE_OUTLINE_CACHE_SIZE = 4;
+const sourceOutlineCache = new Map();
+
 const paperSourceStrokeOutlinePolygons = (source) => {
+  let key = null;
+  try {
+    key = JSON.stringify([
+      source?.path, source?.operationalPath, source?.matrix, source?.paintMode,
+      source?.fillRule, source?.strokeWidth, source?.strokeLineCap, source?.strokeLineJoin,
+      source?.strokeMiterLimit, source?.strokeDashArray, source?.strokeDashOffset,
+      source?.curveTolerance,
+    ]);
+  } catch {
+    key = null;
+  }
+  if (key !== null && sourceOutlineCache.has(key)) {
+    const cached = sourceOutlineCache.get(key);
+    sourceOutlineCache.delete(key);
+    sourceOutlineCache.set(key, cached);
+    return cached;
+  }
+  const outline = buildPaperSourceStrokeOutlinePolygons(source);
+  if (key !== null) {
+    sourceOutlineCache.set(key, outline);
+    if (sourceOutlineCache.size > SOURCE_OUTLINE_CACHE_SIZE) {
+      sourceOutlineCache.delete(sourceOutlineCache.keys().next().value);
+    }
+  }
+  return outline;
+};
+
+const buildPaperSourceStrokeOutlinePolygons = (source) => {
   if (
     !source
     || !Array.isArray(source.path)
@@ -507,10 +544,15 @@ const subtractPolygonGeometries = (subjectValue, clipValue) => {
   }
 };
 
+// paintOnly: the caller reads only the paint fields (fill, sourceWidth,
+// paperSourceStroke), never the outline. The outline build is then skipped:
+// on a big self-overlapping stroke it is a Martinez self-union of thousands
+// of commands (~4 s for a 1,600-point scribble, run twice per erase by the
+// lane rebase) whose result the rebase threw away (test plan item 68).
 function pathToPageAnnotation(
   object,
   internalId,
-  { forcePolygon = false, eraserRadius = null } = {},
+  { forcePolygon = false, eraserRadius = null, paintOnly = false } = {},
 ) {
   const persistedPolygons = normalizeMultiPolygon(object?.polygons);
   let exactAuthoredPath = null;
@@ -656,8 +698,7 @@ function pathToPageAnnotation(
   if (mustBakeStrokeOutline) {
     // This outline becomes permanent after the first bite. Keep it below the
     // visual-fidelity threshold and retain the authored cap/join/dash style.
-    const localPolygons = createLocalStrokeOutline();
-    const polygons = transformPolygons(localPolygons, transform);
+    const polygons = paintOnly ? [] : transformPolygons(createLocalStrokeOutline(), transform);
     const polygonCommands = polygonSetToCommands(polygons);
     return {
       id: internalId,
@@ -694,11 +735,10 @@ function pathToPageAnnotation(
     const hasAnalyticFillBoundary = localCommands.some((command) => (
       command?.[0] === 'Q' || command?.[0] === 'C'
     ));
-    const localPolygons = filledOutlineCommandsToPolygonSet(localCommands, {
+    const polygons = paintOnly ? [] : transformPolygons(filledOutlineCommandsToPolygonSet(localCommands, {
       curveTolerance: localCurveTolerance,
       fillRule: object?.fillRule === 'evenodd' ? 'evenodd' : 'nonzero',
-    });
-    const polygons = transformPolygons(localPolygons, transform);
+    }), transform);
     const polygonCommands = polygonSetToCommands(polygons);
     return {
       id: internalId,
@@ -741,8 +781,7 @@ function pathToPageAnnotation(
     // Partial erase must not globally reshape the untouched curve. Legacy
     // butt/square caps, bevel/miter joins, and dash gaps are promoted from
     // their exact visible stroke style instead of silently becoming round.
-    const localPolygons = createLocalStrokeOutline();
-    const polygons = transformPolygons(localPolygons, transform);
+    const polygons = paintOnly ? [] : transformPolygons(createLocalStrokeOutline(), transform);
     const polygonCommands = polygonSetToCommands(polygons);
     return {
       id: internalId,
@@ -818,12 +857,21 @@ function bakePagePathResult(object, result) {
   const bounds = boundsOfCommands(result.cmds);
   const filled = hasVisiblePaint(result.fill) && numberOr(result.strokeWidth) === 0;
   const paperSourceStroke = result.paperSourceStroke || object?.paperSourceStroke || null;
-  const paperEraserCuts = paperSourceStroke
-    ? subtractPolygonGeometries(
+  let paperEraserCuts = [];
+  if (paperSourceStroke) {
+    try {
+      paperEraserCuts = subtractPolygonGeometries(
         paperSourceStrokeOutlinePolygons(paperSourceStroke),
         result.polygons,
-      )
-    : [];
+      );
+    } catch (error) {
+      // The source outline itself could not be built (w39: an unverifiable
+      // round-stroke union throws). The survivor polygon is still exact; it
+      // renders as its own polygon, like a failed cut subtraction.
+      console.warn('Paper eraser cut-mask construction failed; polygon rendering retained:', error);
+      paperEraserCuts = [];
+    }
+  }
 
   const baked = {
     ...metadata,
@@ -846,9 +894,14 @@ function bakePagePathResult(object, result) {
       paperEraserGeometry: 'v1',
       polygons: normalizeMultiPolygon(result.polygons),
       sourceWidth: result.sourceWidth,
-      ...(paperEraserCuts.length > 0 ? {
+      // The renderers and the exporter clip the exact source to the survivor
+      // polygons (w38), so the source rides along whenever a survivor
+      // exists. It used to depend on the cut mask being non-empty, so a
+      // failed cut boolean silently switched the mark to polygon rendering
+      // (w38 review). The cuts are kept only as stored data for old readers.
+      ...(paperSourceStroke && normalizeMultiPolygon(result.polygons).length > 0 ? {
         paperSourceStroke,
-        paperEraserCuts,
+        ...(paperEraserCuts.length > 0 ? { paperEraserCuts } : {}),
       } : {}),
     } : {}),
   };
@@ -882,8 +935,13 @@ function bakePagePathResult(object, result) {
  * subset of the same stable base object, so their intersection is exactly
  * "apply every bite". One survivor is returned byte-for-byte; only concurrent
  * writer lanes require a polygon boolean operation.
+ * w38 (2026-09-25): those survivors share most edges bit for bit, so the
+ * intersection nudges one operand off the shared vertices first — a plain
+ * Martinez intersection painted erased dabs back in and dropped blocks of ink
+ * on the owner's Package 2 page-1 strokes
+ * (tests/eraserLaneCompositionRealData.test.mjs).
  */
-export function intersectErasedPathSurvivors(survivors) {
+export function intersectErasedPathSurvivors(survivors, { outlineArea = null } = {}) {
   const values = (survivors || []).filter((object) => (
     object
     && String(object.type || '').toLowerCase() === 'path'
@@ -894,7 +952,15 @@ export function intersectErasedPathSurvivors(survivors) {
 
   let polygons = normalizeMultiPolygon(values[0].polygons);
   for (let index = 1; index < values.length; index += 1) {
-    polygons = intersectPolygonSets(polygons, values[index].polygons);
+    const next = intersectSharedOutlinePolygonSets(polygons, values[index].polygons, { outlineArea });
+    if (next === null) {
+      // Every attempt threw (w38 review): that is not "fully erased". Show
+      // the lane with the least ink left, never hide the whole mark.
+      return values.reduce((smallest, value) => (
+        polygonSetArea(value.polygons) < polygonSetArea(smallest.polygons) ? value : smallest
+      ));
+    }
+    polygons = next;
     if (!polygons.length) return null;
   }
   const cmds = polygonSetToCommands(polygons);
@@ -1039,8 +1105,10 @@ export function rebaseErasedPathSurvivor(
         currentCommands,
       )
     : survivorPolygons;
+  // Only the paint fields are used below; the survivor brings its own outline.
   const currentGeometry = pathToPageAnnotation(currentBase, 'eraser-rebase', {
     forcePolygon: true,
+    paintOnly: true,
   });
   if (!currentGeometry) return null;
 
@@ -1085,6 +1153,48 @@ const getPdfAppearanceCompositeId = (object) => (
  * Applies one eraser gesture directly to the latest persisted page model.
  * Untouched objects retain their exact references and ordering.
  */
+// A mark whose geometry the polygon engine cannot process (it throws, or
+// hits the vendored engine's hard iteration bound) stays exactly as it was.
+// One eraser tap must never freeze the page or corrupt a mark (w39,
+// 2026-09-25: a self-crossing stroked curve spun Martinez forever).
+function skipMarkForFailedGeometry(object, index, stage, error) {
+  const annotationId = object ? getEraserCandidateId(object, index) : null;
+  console.warn('[EraserSkippedMark]', JSON.stringify({
+    annotationId,
+    stage,
+    error: error?.name === 'MartinezNonConvergenceError'
+      ? `${error.name}: ${error.stage}`
+      : String(error?.message || error),
+  }));
+  return { annotationId, failedStages: { [stage]: 1 }, recovered: false, skipped: true };
+}
+
+// Erase a group in one pass (the eraser mask is built once); if any mark's
+// geometry throws, redo the group one mark at a time so only that mark is
+// left unchanged.
+function eraseAnnotationsIsolatingFailures(annotations, points, radius, operation, onFailed) {
+  try {
+    return eraseAnnotations(annotations, points, radius, operation);
+  } catch {
+    const merged = { annotations: [], changedIds: [], deletedIds: [], failures: [] };
+    for (const annotation of annotations) {
+      let result;
+      try {
+        result = eraseAnnotations([annotation], points, radius, operation);
+      } catch (error) {
+        onFailed(annotation, error);
+        merged.annotations.push(annotation);
+        continue;
+      }
+      merged.annotations.push(...result.annotations);
+      merged.changedIds.push(...result.changedIds);
+      merged.deletedIds.push(...result.deletedIds);
+      merged.failures.push(...(result.failures || []));
+    }
+    return merged;
+  }
+}
+
 export function erasePageAnnotations({
   pageAnnotations,
   eraserPoints,
@@ -1124,14 +1234,42 @@ export function erasePageAnnotations({
     const operation = requestedMode === 'full'
       ? 'full'
       : (getEraserOperation(object, 'partial') === 'partial' ? 'partial' : 'full');
-    const annotation = pathToPageAnnotation(object, internalId, {
-      // Both modes hit-test the stroke's actual painted outline. Solid round
-      // strokes remain their authored centerlines because a radius-expanded
-      // capsule is their exact outline; styled strokes promote to polygons so
-      // dash gaps and butt/square/bevel/miter geometry remain exact.
-      forcePolygon: true,
-      eraserRadius: radius,
-    });
+    let annotation;
+    try {
+      annotation = pathToPageAnnotation(object, internalId, {
+        // Both modes hit-test the stroke's actual painted outline. Solid round
+        // strokes remain their authored centerlines because a radius-expanded
+        // capsule is their exact outline; styled strokes promote to polygons so
+        // dash gaps and butt/square/bevel/miter geometry remain exact.
+        forcePolygon: true,
+        eraserRadius: radius,
+      });
+    } catch (error) {
+      const failure = skipMarkForFailedGeometry(object, index, 'outline', error);
+      failedStages.push(failure);
+      // Whole-mark erase needs only "did the eraser touch it", not an exact
+      // outline, so a mark whose outline cannot be built is still erasable.
+      // Partial erase leaves the mark exactly as it was.
+      if (operation === 'full') {
+        let touched = false;
+        try {
+          touched = eraserStrokeTouchesObject({ eraserPoints: points, eraserRadius: radius, object });
+        } catch {
+          touched = false;
+        }
+        if (touched) {
+          const objectId = getEraserCandidateId(object, index);
+          touchedIds.push(objectId);
+          deletedIds.push(objectId);
+          deletedIndexes.add(index);
+          const compositeId = getPdfAppearanceCompositeId(object);
+          if (compositeId) fullyDeletedAppearanceGroups.add(compositeId);
+          failure.recovered = true;
+          failure.skipped = false;
+        }
+      }
+      return;
+    }
     if (!annotation) return;
     pathGroups[operation].push(annotation);
     pathRecords.set(internalId, { object, index });
@@ -1140,7 +1278,18 @@ export function erasePageAnnotations({
   for (const operation of ['partial', 'full']) {
     const annotations = pathGroups[operation];
     if (!annotations.length) continue;
-    const result = eraseAnnotations(annotations, points, radius, operation);
+    const result = eraseAnnotationsIsolatingFailures(
+      annotations,
+      points,
+      radius,
+      operation,
+      (annotation, error) => {
+        const record = pathRecords.get(annotation.id);
+        failedStages.push(skipMarkForFailedGeometry(
+          record?.object, record?.index, `${operation}-erase`, error,
+        ));
+      },
+    );
     failedStages.push(...(result.failures || []));
     if (!result.changedIds.length) continue;
     const survivorById = new Map(result.annotations.map((annotation) => [annotation.id, annotation]));
@@ -1163,7 +1312,13 @@ export function erasePageAnnotations({
       const survivor = survivorById.get(internalId);
       const originalGeometry = annotations.find((annotation) => annotation.id === internalId);
       if (!survivor || JSON.stringify(survivor.cmds) === JSON.stringify(originalGeometry?.cmds)) continue;
-      const replacement = bakePagePathResult(record.object, survivor);
+      let replacement;
+      try {
+        replacement = bakePagePathResult(record.object, survivor);
+      } catch (error) {
+        failedStages.push(skipMarkForFailedGeometry(record.object, record.index, 'bake', error));
+        continue;
+      }
       replacementByIndex.set(record.index, replacement);
       changedIds.push(objectId);
     }

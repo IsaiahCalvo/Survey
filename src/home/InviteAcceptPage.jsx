@@ -191,7 +191,7 @@ export default function InviteAcceptPage() {
       data-kal31-invite-page="true"
       style={{
         position: 'fixed', inset: 0, background: C.bg, color: C.ink,
-        fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+        fontFamily: 'var(--font-ui)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '24px',
       }}
@@ -199,15 +199,15 @@ export default function InviteAcceptPage() {
       <div
         style={{
           width: 460, maxWidth: '94vw', background: C.card,
-          border: `1px solid ${C.rule}`, borderRadius: 12,
-          boxShadow: '0 24px 60px rgba(0,0,0,0.55)', overflow: 'hidden',
+          border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)',
+          boxShadow: 'var(--shadow-dialog)', overflow: 'hidden',
         }}
         data-kal31-status={result?.status || phase}
       >
         <div style={{ padding: '20px 22px 14px', borderBottom: `1px solid ${C.rule}`, display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ width: 4, height: 32, background: accent, borderRadius: 2, flex: 'none' }} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>Survey · Invite</div>
+            <div style={{ fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600 }}>Survey · Invite</div>
             <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.015em', marginTop: 4 }}>{heading}</div>
           </div>
         </div>
@@ -216,13 +216,13 @@ export default function InviteAcceptPage() {
           <div style={{ color: C.inkSoft, fontSize: 13, lineHeight: 1.5 }}>{description}</div>
 
           {result?.status === 'accepted' && result.upgradeRequired && (
-            <div style={{ background: 'var(--accent-soft)', border: `1px solid ${C.gold}`, borderRadius: 8, padding: '10px 12px', color: C.gold, fontSize: 12.5, lineHeight: 1.45 }}>
+            <div style={{ background: 'var(--accent-soft)', border: `1px solid ${C.gold}`, borderRadius: 8, padding: '10px 12px', color: C.gold, fontSize: 13, lineHeight: 1.45 }}>
               Upgrade to use {(result.intendedRole || 'editor')} permissions. Your original role ({result.intendedRole}) is preserved and activates automatically after upgrade.
             </div>
           )}
 
           {error && (
-            <div style={{ background: 'var(--danger-soft)', borderLeft: `3px solid ${C.danger}`, borderRadius: 8, padding: '8px 10px', color: C.ink, fontSize: 12 }}>
+            <div style={{ background: 'var(--alert-danger-bg)', border: 'var(--alert-danger-border)', borderRadius: 'var(--alert-radius)', padding: '8px 10px', color: C.ink, fontSize: 12 }}>
               {error}
             </div>
           )}

@@ -16,22 +16,34 @@ test('selected annotation swatch colors come from the current saved annotation',
     viewerSource,
     /getAnnotationRenderIdentity\(\s*selectedToolbarAnnotation\?\.annotation,?\s*\)\.annotationId/,
   );
-  assert.match(viewerSource, /pageObjects\.find\(\(annotation\) =>/);
+  // RULED 2026-09-23 (w15 hardening): was /pageObjects\.find\(\(annotation\) =>/.
+  // The live object is now looked up through findSelectedAnnotationIndex,
+  // which still finds it BY ID (and re-verifies an id-less pick at its index
+  // instead of trusting it). What is guarded - the swatch reads the current
+  // saved object, not the stale click-time payload - is unchanged.
+  assert.match(viewerSource, /findSelectedAnnotationIndex\(pageObjects, selectedToolbarAnnotation\)/);
   assert.match(viewerSource, /selectedFillColor: selectedPreviewColors\.fill,/);
   assert.match(viewerSource, /selectedStrokeColor: selectedPreviewColors\.stroke,/);
   assert.match(viewerSource, /annotationsByPage,/);
 });
 
 test('selected text markup publishes its own base color and opacity to the edit controls', () => {
-  assert.match(viewerSource, /const selectedTextMarkupPaint = activeTool === 'select' && selectedAnnot\?\.data\?\.type === 'text-markup'/);
+  assert.match(viewerSource, /const selectedTextMarkupPaint = pickBarTool === 'select' && selectedAnnot\?\.data\?\.type === 'text-markup'/);
   assert.match(viewerSource, /resolveTextMarkupEditPaint\(selectedAnnot, strokeColor\)/);
   assert.match(viewerSource, /strokeColor: selectedTextMarkupPaint\?\.color \|\| counterToolStrokeColor,/);
   assert.match(viewerSource, /strokeOpacity: selectedTextMarkupPaint\?\.opacity \?\? counterToolStrokeOpacity,/);
   assert.match(viewerSource, /strokeColorStateRef\.current = paint\.color;[\s\S]*?strokeOpacityStateRef\.current = paint\.opacity;/);
   assert.match(viewerSource, /const color = getHexFromColor\(strokeColorStateRef\.current\) \|\| paint\.color;/);
-  assert.match(viewerSource, /handleTextMarkupPaintChange,/);
+  // RULED 2026-09-23 (owner: sliders must be smooth). Was `handleTextMarkupPaintChange,`
+  // and an exact `(hex, Math.round(alpha * 100))` call. The toolbar now gets the
+  // handler through its drag-phase wrapper, and the call also passes the colour
+  // picker's drag phase so a drag previews live and lands as one undo step. What
+  // is guarded is unchanged: the markup's own paint handler is what the toolbar
+  // calls, with the picker's colour and opacity.
+  assert.match(viewerSource, /handleTextMarkupPaintChange: handleTextMarkupPaintChangePhased,/);
+  assert.match(viewerSource, /runWithPaintPhase\(options, \(\) => handleTextMarkupPaintChange\(color, opacity\)\)/);
   assert.match(appShellSource, /isTextMarkupPalette && bottomToolbarApi\.handleTextMarkupPaintChange/);
-  assert.match(appShellSource, /handleTextMarkupPaintChange\(hex, Math\.round\(alpha \* 100\)\)/);
+  assert.match(appShellSource, /handleTextMarkupPaintChange\(hex, Math\.round\(alpha \* 100\)(, meta)?\)/);
 });
 
 test('live Text Select paint focus hands the active saved mark to the edit transaction', () => {
@@ -73,10 +85,10 @@ test('selected previews include renderer opacity and every editable rendered typ
 test('selected preview cannot override an armed drawing tool and only text markup hydrates picker bases', () => {
   assert.match(
     viewerSource,
-    /if \(activeTool !== 'select'\) return \{ fill: null, stroke: null \};/,
+    /if \(pickBarTool !== 'select'\) return \{ fill: null, stroke: null \};/,
   );
   assert.match(viewerSource, /strokeColor: selectedTextMarkupPaint\?\.color \|\| counterToolStrokeColor,/);
-  assert.match(viewerSource, /const selectedTextMarkupPaint = activeTool === 'select'/);
+  assert.match(viewerSource, /const selectedTextMarkupPaint = pickBarTool === 'select'/);
   assert.match(viewerSource, /fillColor: counterToolFillColor,/);
   assert.doesNotMatch(viewerSource, /strokeColor: selectedPreviewColors\.stroke/);
   assert.doesNotMatch(viewerSource, /fillColor: selectedPreviewColors\.fill/);
@@ -84,7 +96,7 @@ test('selected preview cannot override an armed drawing tool and only text marku
 
 test('counter draw mode previews the active series instead of unrelated tool defaults', () => {
   assert.match(viewerSource, /const activeCounterSeriesPaint = resolveCounterSeriesPaint\(/);
-  assert.match(viewerSource, /if \(activeTool === 'counter'\) \{/);
+  assert.match(viewerSource, /if \(pickBarTool === 'counter'\) \{/);
   assert.match(viewerSource, /fill: effectivePreviewColor\(activeCounterSeriesPaint\.fill\)/);
   assert.match(viewerSource, /stroke: effectivePreviewColor\(activeCounterSeriesPaint\.numberColor\)/);
   assert.match(
@@ -94,6 +106,9 @@ test('counter draw mode previews the active series instead of unrelated tool def
 });
 
 test('counter draw color edits patch only the active series and never a stale selection', () => {
+  // Owner 2026-10-04: the handlers branch on pickBarTool - the armed tool, or
+  // 'select' while the bar edits a pick (Select, Pan, an own-group pick, see
+  // toolPressMatrix.test.mjs) - so a Counter that picked a counter edits it.
   const handlerBlocks = [
     ['handleStrokeColorChange', 'handleStrokeOpacityChange', 'numberColor'],
     ['handleStrokeOpacityChange', 'handleFillColorChange', 'numberColor'],
@@ -110,10 +125,19 @@ test('counter draw color edits patch only the active series and never a stale se
     assert.match(block, /const activeSeriesId = activeCounterSeriesIdRef\.current;/);
     assert.match(block, /counterSeriesList\.some\(\(series\) => series\.seriesId === activeSeriesId && series\.count > 0\)/);
     assert.match(block, new RegExp(`handleCounterGroupUpdateRef\\.current\\?\\.\\(activeSeriesId, \\{ ${patchKey}:`));
-    assert.match(block, /if \(activeTool === 'counter'\) return;/);
-    assert.match(block, /if \(activeTool !== 'select'\) return;/);
+    assert.match(block, /if \(pickBarTool === 'counter'\) return;/);
+    // DELIBERATE ASSERTION CHANGE (owner Test 15, 2026-10-02). Was
+    // /if \(activeTool !== 'select'\) return;/. With a drawing tool armed the
+    // bar is still the tool's defaults, and a pick left behind still never
+    // takes them - but the mark JUST DRAWN (auto-selected, tool still armed)
+    // now takes the change too; before, the first colour / opacity / fill
+    // edit on it did nothing. Every other armed-tool case still returns.
+    assert.match(
+      block,
+      /if \(pickBarTool !== 'select'\) \{\s*if \(isJustDrawnMarkSelected\(\) && is(Editable|Fillable)ShapeSelected\(\)\) patchSelected(Stroke|Fill)\(next(NumberColor|FillColor)\);\s*return;\s*\}/,
+    );
     assert.ok(
-      block.indexOf("if (activeTool === 'counter') return;") < block.indexOf('isCalloutSelected()'),
+      block.indexOf("if (pickBarTool === 'counter') return;") < block.indexOf('isCalloutSelected()'),
       `${startName} exits counter draw mode before selected-object edits`,
     );
   });

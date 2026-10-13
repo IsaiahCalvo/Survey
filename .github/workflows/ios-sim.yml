@@ -1,0 +1,593 @@
+name: iOS simulator check
+
+# 2026-10-06 — Boots an iPhone simulator on a GitHub macOS runner and walks the
+# phone UI the way the owner's iPhone does (Mobile Safari, and Expo Go -> the
+# Survey WKWebView shell), so Claude can look at real iOS behaviour (safe
+# areas, the iOS keyboard, rubber-band scrolling, rotation) without the owner.
+#
+# HOW TO RUN IT
+#   - On a pull request: add the label `ios-sim`. It runs once on the label and
+#     again on every push while the label stays on. Remove the label to stop.
+#     Without the label every job is skipped, so ordinary pushes cost nothing.
+#     (workflow_dispatch only works for workflows on the default branch, so the
+#     label is the switch until this file reaches main.)
+#   - On main: Actions -> "iOS simulator check" -> Run workflow.
+#
+# WHAT RUNS is set by .github/ios-sim/config.json (device, iOS version, URLs,
+# which Maestro flows from .github/ios-sim/flows/, Expo Go on/off), so the run
+# can be changed by committing that file.
+#
+# RESULTS go to the `ios-sim-results` branch, one folder per run under runs/
+# (screenshots as JPEG, a compressed video, results.md with the logs), newest
+# 10 kept. That branch is rewritten as a single commit on every run so old
+# videos do not pile up in the repository's history; never commit to it by hand.
+#   git fetch origin ios-sim-results && git show origin/ios-sim-results:LATEST
+# The same files are also uploaded as a normal run artifact.
+#
+# The repository is public, so standard macOS runners are free.
+
+on:
+  pull_request:
+    types: [labeled, synchronize]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  plan:
+    name: Read iOS sim config
+    # Run only when the PR carries the `ios-sim` label. A different label being
+    # added must not start a run, so a `labeled` event counts only for ours.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (contains(github.event.pull_request.labels.*.name, 'ios-sim') &&
+       (github.event.action != 'labeled' || github.event.label.name == 'ios-sim'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      runner: ${{ steps.cfg.outputs.runner }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          sparse-checkout: .github/ios-sim
+      - id: cfg
+        run: |
+          runner=$(jq -r '.runner // "macos-15"' .github/ios-sim/config.json)
+          echo "runner=$runner" >> "$GITHUB_OUTPUT"
+          echo "::notice title=ios-sim plan::runner=$runner"
+
+  simulator:
+    name: iPhone simulator walk-through
+    needs: plan
+    runs-on: ${{ needs.plan.outputs.runner }}
+    timeout-minutes: 32
+    permissions:
+      contents: write # push screenshots to the ios-sim-results branch
+    concurrency:
+      group: ios-sim-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    env:
+      MAESTRO_CLI_NO_ANALYTICS: '1'
+      MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED: 'true'
+      MAESTRO_DRIVER_STARTUP_TIMEOUT: '240000'
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Read config
+        id: config
+        run: |
+          trap 'rc=$?; echo "::error title=Read config @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
+          OUT="$RUNNER_TEMP/ios-sim-out"
+          mkdir -p "$OUT/shots" "$OUT/maestro" "$OUT/raw"
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
+          echo "$(date +%s) start" >> "$OUT/timings.txt"
+          python3 -I - .github/ios-sim/config.json "$GITHUB_ENV" <<'PY'
+          import json, sys
+          cfg = json.load(open(sys.argv[1]))
+          expo = cfg.get("expoGo", {})
+          # URLs that start with "/" hang off baseUrl, or off this commit's own
+          # dev server when localDevServer is on.
+          local = bool(cfg.get("localDevServer", False))
+          base = "http://127.0.0.1:5173" if local else cfg.get("baseUrl", "").rstrip("/")
+          urls = {k: (base + v if v.startswith("/") else v) for k, v in cfg.get("urls", {}).items()}
+          env = {
+              "DEVICE": cfg.get("device", "iPhone 16"),
+              "IOS": str(cfg.get("ios", "latest")),
+              "LOCAL_DEV": "true" if local else "false",
+              "HOME_URL": urls.get("home", ""),
+              "DOC_URL": urls.get("doc", ""),
+              "FLOWS": " ".join(cfg.get("flows", ["smoke"])),
+              "EXPO_ENABLED": "true" if expo.get("enabled") else "false",
+              "EXPO_VERSION": expo.get("version", "57.0.9"),
+              "EXPO_URL": expo.get("url", ""),
+              "EXPO_FLOWS": " ".join(expo.get("flows", ["expo-go"])),
+              "VIDEO": "true" if cfg.get("video", True) else "false",
+              "MAX_VIDEO_MB": str(cfg.get("maxVideoMB", 8)),
+              "KEEP_RUNS": str(cfg.get("keepRuns", 10)),
+          }
+          with open(sys.argv[2], "a") as fh:
+              for k, v in env.items():
+                  fh.write(f"{k}={v}\n")
+                  print(f"{k}={v}")
+          PY
+          cp .github/ios-sim/config.json "$OUT/config.json"
+
+      - name: Create and boot the simulator
+        id: boot
+        run: |
+          trap 'rc=$?; echo "::error title=Create and boot the simulator @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
+          set +e
+          xcodebuild -version > "$OUT/raw/xcode.txt" 2>&1; cat "$OUT/raw/xcode.txt" | tee -a "$OUT/log.txt"
+          # Headless boot has no hardware keyboard, but make sure: the iOS
+          # on-screen keyboard is the thing we want to see.
+          defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false
+          xcrun simctl list -j runtimes devicetypes > "$OUT/raw/simctl-list.json" 2> "$OUT/raw/simctl-list.err"
+          xcrun simctl list runtimes > "$OUT/raw/runtimes.txt" 2>&1
+          echo "::notice title=ios-sim runtimes::$(grep -E '^iOS' "$OUT/raw/runtimes.txt" | tr '\n' ' ' | cut -c1-600)"
+          python3 -I - "$OUT/raw/simctl-list.json" "$IOS" "$DEVICE" > "$OUT/raw/pick.txt" 2> "$OUT/raw/pick.err" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1])); want_ios = sys.argv[2]; want_dev = sys.argv[3]
+          rts = [r for r in data["runtimes"] if r.get("isAvailable") and r["identifier"].split(".")[-1].startswith("iOS")]
+          key = lambda r: tuple(int(x) for x in r["version"].split("."))
+          rts.sort(key=key)
+          if want_ios != "latest":
+              m = [r for r in rts if r["version"].startswith(want_ios)]
+              rts = m or rts
+          rt = rts[-1]
+          supported = {d["identifier"] for d in rt.get("supportedDeviceTypes", [])} or None
+          dts = [d for d in data["devicetypes"] if "iPhone" in d["name"] and (supported is None or d["identifier"] in supported)]
+          dt = next((d for d in dts if d["name"] == want_dev), None) or next((d for d in dts if want_dev in d["name"]), None) or dts[-1]
+          print(rt["identifier"], rt["name"].replace(" ", "_"), dt["identifier"], dt["name"].replace(" ", "_"))
+          PY
+          echo "::notice title=ios-sim pick::$(cat "$OUT/raw/pick.txt") $(tr '\n' ' ' < "$OUT/raw/pick.err" | cut -c1-500)"
+          read -r RT_ID RT_NAME DT_ID DT_NAME < "$OUT/raw/pick.txt"
+          if [ -z "${DT_ID:-}" ]; then echo "::error title=ios-sim::could not pick a device/runtime"; exit 1; fi
+          UDID=$(xcrun simctl create "ios-sim" "$DT_ID" "$RT_ID" 2> "$OUT/raw/create.err")
+          if [ -z "$UDID" ]; then echo "::error title=ios-sim create::$(tr '\n' ' ' < "$OUT/raw/create.err" | cut -c1-500)"; exit 1; fi
+          if ! xcrun simctl boot "$UDID" 2> "$OUT/raw/boot.err"; then echo "::error title=ios-sim boot::$(tr '\n' ' ' < "$OUT/raw/boot.err" | cut -c1-500)"; exit 1; fi
+          {
+            echo "UDID=$UDID"
+            echo "RUNTIME_NAME=${RT_NAME//_/ }"
+            echo "DEVICE_NAME=${DT_NAME//_/ }"
+          } >> "$GITHUB_ENV"
+          echo "Booting ${DT_NAME//_/ } on ${RT_NAME//_/ } ($UDID)" | tee -a "$OUT/log.txt"
+          echo "::notice title=ios-sim device::${DT_NAME//_/ } / ${RT_NAME//_/ } / $(head -1 "$OUT/raw/xcode.txt")"
+          echo "$(date +%s) boot-requested" >> "$OUT/timings.txt"
+
+      # The ?testPdf= document route is dev-only, so the published build cannot
+      # open the test document. When localDevServer is on, run this commit's
+      # own Vite dev server on the Mac; the simulator shares the Mac's network,
+      # so Safari reaches it at http://127.0.0.1:5173. No dev auto-login secret
+      # exists on the runner, and nothing is exposed beyond the runner itself.
+      - uses: actions/setup-node@v7
+        if: env.LOCAL_DEV == 'true'
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Start this commit's dev server
+        id: devserver
+        if: env.LOCAL_DEV == 'true'
+        timeout-minutes: 8
+        run: |
+          trap 'rc=$?; echo "::error title=Start dev server @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
+          set +e
+          npm install --include=optional --no-audit --no-fund > "$OUT/raw/npm-install.log" 2>&1
+          echo "npm install exit $?" | tee -a "$OUT/log.txt"
+          tail -5 "$OUT/raw/npm-install.log"
+          nohup npx vite --host 127.0.0.1 --port 5173 --strictPort > "$OUT/raw/vite.log" 2>&1 &
+          for i in $(seq 1 90); do
+            if curl -fsS -o /dev/null http://127.0.0.1:5173/; then break; fi
+            sleep 1
+          done
+          code_root=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5173/)
+          code_pdf=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5173/debug-fixtures/clickable-link-test.pdf)
+          # Warm Vite's transform cache so Safari's first load is quicker.
+          curl -s -o /dev/null http://127.0.0.1:5173/src/main.jsx || true
+          echo "dev server: / -> $code_root, test pdf -> $code_pdf" | tee -a "$OUT/log.txt"
+          echo "::notice title=ios-sim dev server::/ -> $code_root, test pdf -> $code_pdf"
+          echo "$(date +%s) devserver" >> "$OUT/timings.txt"
+
+      - name: Cache Expo Go
+        if: env.EXPO_ENABLED == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/expo-go-cache
+          key: expo-go-sim-${{ env.EXPO_VERSION }}
+          restore-keys: expo-go-sim-
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Maestro
+        id: maestro_install
+        timeout-minutes: 4
+        run: |
+          trap 'rc=$?; echo "::error title=Install Maestro @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
+          set -euo pipefail
+          curl -fsSL "https://get.maestro.mobile.dev" | bash > "$OUT/raw/maestro-install.log" 2>&1
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+          MV=$("$HOME/.maestro/bin/maestro" --version 2>/dev/null | tail -1)
+          echo "MAESTRO_VERSION_USED=$MV" >> "$GITHUB_ENV"
+          echo "maestro $MV" | tee -a "$OUT/log.txt"
+
+      - name: Wait for boot, set the status bar
+        id: ready
+        timeout-minutes: 6
+        run: |
+          trap 'rc=$?; echo "::error title=Wait for boot, set the status bar @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
+          set -euo pipefail
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl status_bar "$UDID" override --time "9:41" --dataNetwork wifi --wifiMode active --wifiBars 3 --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 || true
+          # Skip the one-time "slide to type" keyboard intro card.
+          xcrun simctl spawn "$UDID" defaults write com.apple.keyboard.preferences DidShowContinuousPathIntroduction -bool true || true
+          xcrun simctl spawn "$UDID" defaults write com.apple.keyboard.preferences DidShowGestureKeyboardIntroduction -bool true || true
+          echo "$(date +%s) booted" >> "$OUT/timings.txt"
+          echo "booted" | tee -a "$OUT/log.txt"
+
+      - name: Install Expo Go
+        id: expo_install
+        if: env.EXPO_ENABLED == 'true'
+        timeout-minutes: 5
+        run: |
+          trap 'rc=$?; echo "::error title=Install Expo Go @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
+          set -euo pipefail
+          mkdir -p ~/expo-go-cache
+          TGZ=~/expo-go-cache/Expo-Go-$EXPO_VERSION.tar.gz
+          if [ ! -s "$TGZ" ]; then
+            curl -fsSL -o "$TGZ" "https://github.com/expo/expo-go-releases/releases/download/Expo-Go-$EXPO_VERSION/Expo-Go-$EXPO_VERSION.tar.gz"
+          fi
+          APP="$RUNNER_TEMP/ExpoGo.app"
+          rm -rf "$APP"; mkdir -p "$APP"
+          tar -xzf "$TGZ" -C "$APP"
+          xcrun simctl install "$UDID" "$APP"
+          echo "Expo Go $EXPO_VERSION installed" | tee -a "$OUT/log.txt"
+
+      - name: Start screen recording
+        if: env.VIDEO == 'true'
+        run: |
+          trap 'rc=$?; echo "::error title=Start screen recording @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
+          nohup xcrun simctl io "$UDID" recordVideo --codec=h264 --force "$OUT/raw/video.mov" > "$OUT/raw/video.log" 2>&1 &
+          echo $! > "$OUT/raw/video.pid"
+          sleep 2
+
+      # Plain simctl screenshots that do not depend on Maestro, so a broken
+      # Maestro still leaves pictures of the real iOS rendering.
+      - name: Safari baseline screenshots (simctl only)
+        id: baseline
+        timeout-minutes: 5
+        # Pictures only; a miss here must never stop the Maestro flows.
+        continue-on-error: true
+        run: |
+          set +e
+          shot() { xcrun simctl io "$UDID" screenshot "$OUT/shots/$1.png" > /dev/null 2>&1 && echo "shot $1" | tee -a "$OUT/log.txt"; }
+          # On a busy runner the first Safari launch can outlast openurl's own
+          # wait (exit 60 = timed out, seen in run 37521088396), so start Safari
+          # first and retry the link.
+          open_url() {
+            for try in 1 2 3; do
+              if xcrun simctl openurl "$UDID" "$1" 2>> "$OUT/raw/openurl.err"; then return 0; fi
+              rc=$?; echo "openurl try $try exit $rc" | tee -a "$OUT/log.txt"; sleep 8
+            done
+            echo "::warning title=ios-sim openurl::could not open $1 after 3 tries"
+            return 1
+          }
+          xcrun simctl launch "$UDID" com.apple.mobilesafari > /dev/null 2>> "$OUT/raw/openurl.err" || echo "safari launch exit $?" | tee -a "$OUT/log.txt"
+          sleep 5
+          if [ -n "$HOME_URL" ]; then
+            open_url "$HOME_URL" && { sleep 15; shot base-01-safari-home; }
+          fi
+          if [ -n "$DOC_URL" ]; then
+            open_url "$DOC_URL" && { sleep 20; shot base-02-safari-document; }
+          fi
+          echo "$(date +%s) baseline" >> "$OUT/timings.txt"
+
+      - name: Maestro flows in Safari
+        id: flows
+        timeout-minutes: 13
+        continue-on-error: true
+        run: |
+          set +e
+          rc_all=0
+          for f in $FLOWS; do
+            d="$OUT/maestro/$f"; mkdir -p "$d"
+            echo "== flow $f" | tee -a "$OUT/log.txt"
+            # Maestro's XCUITest driver sometimes misses its start-up window
+            # (run 37522390998) or drops its connection mid-flow ("Device
+            # became unreachable", run 37529661670) on a busy runner. Neither
+            # is a test result, so the flow gets one more try.
+            for attempt in 1 2; do
+              maestro --device "$UDID" test \
+                -e HOME_URL="$HOME_URL" -e DOC_URL="$DOC_URL" -e EXPO_URL="$EXPO_URL" \
+                --test-output-dir "$d" --debug-output "$d/debug" --flatten-debug-output \
+                --format junit --output "$d/report.xml" \
+                ".github/ios-sim/flows/$f.yaml" > "$d/stdout.txt" 2>&1
+              rc=$?
+              [ "$rc" -eq 0 ] && break
+              grep -qiE "IOSDriverTimeoutException|driver not ready|unreachable" "$d/stdout.txt" "$d/debug/maestro.log" 2>/dev/null || break
+              echo "flow $f: Maestro lost the iOS driver (attempt $attempt), retrying" | tee -a "$OUT/log.txt"
+              echo "::warning title=ios-sim flow $f::Maestro lost the iOS driver on attempt $attempt; retried"
+              [ -f "$d/debug/maestro.log" ] && mv "$d/debug/maestro.log" "$d/debug/maestro-attempt$attempt.log"
+            done
+            echo "$rc" > "$d/exit-code"
+            tail -25 "$d/stdout.txt"
+            echo "flow $f exit $rc" | tee -a "$OUT/log.txt"
+            echo "::notice title=ios-sim flow $f::exit $rc — $(grep -E 'FAILED|Failed|PASSED|Passed|COMPLETED' "$d/stdout.txt" | tail -1 | cut -c1-200)"
+            [ "$rc" -ne 0 ] && rc_all=$rc
+          done
+          echo "$(date +%s) flows" >> "$OUT/timings.txt"
+          exit $rc_all
+
+      - name: Expo Go walk-through
+        id: expo
+        if: env.EXPO_ENABLED == 'true' && steps.expo_install.outcome == 'success'
+        timeout-minutes: 9
+        continue-on-error: true
+        run: |
+          set +e
+          rc_all=0
+          for f in $EXPO_FLOWS; do
+            d="$OUT/maestro/$f"; mkdir -p "$d"
+            echo "== flow $f" | tee -a "$OUT/log.txt"
+            # Maestro's XCUITest driver sometimes misses its start-up window
+            # (run 37522390998) or drops its connection mid-flow ("Device
+            # became unreachable", run 37529661670) on a busy runner. Neither
+            # is a test result, so the flow gets one more try.
+            for attempt in 1 2; do
+              maestro --device "$UDID" test \
+                -e HOME_URL="$HOME_URL" -e DOC_URL="$DOC_URL" -e EXPO_URL="$EXPO_URL" \
+                --test-output-dir "$d" --debug-output "$d/debug" --flatten-debug-output \
+                --format junit --output "$d/report.xml" \
+                ".github/ios-sim/flows/$f.yaml" > "$d/stdout.txt" 2>&1
+              rc=$?
+              [ "$rc" -eq 0 ] && break
+              grep -qiE "IOSDriverTimeoutException|driver not ready|unreachable" "$d/stdout.txt" "$d/debug/maestro.log" 2>/dev/null || break
+              echo "flow $f: Maestro lost the iOS driver (attempt $attempt), retrying" | tee -a "$OUT/log.txt"
+              echo "::warning title=ios-sim flow $f::Maestro lost the iOS driver on attempt $attempt; retried"
+              [ -f "$d/debug/maestro.log" ] && mv "$d/debug/maestro.log" "$d/debug/maestro-attempt$attempt.log"
+            done
+            echo "$rc" > "$d/exit-code"
+            tail -25 "$d/stdout.txt"
+            echo "flow $f exit $rc" | tee -a "$OUT/log.txt"
+            echo "::notice title=ios-sim flow $f::exit $rc — $(grep -E 'FAILED|Failed|PASSED|Passed|COMPLETED' "$d/stdout.txt" | tail -1 | cut -c1-200)"
+            [ "$rc" -ne 0 ] && rc_all=$rc
+          done
+          xcrun simctl io "$UDID" screenshot "$OUT/shots/base-03-expo-go-end.png" > /dev/null 2>&1 || true
+          echo "$(date +%s) expo" >> "$OUT/timings.txt"
+          exit $rc_all
+
+      - name: Stop recording and build results
+        id: results
+        if: always() && env.OUT != ''
+        timeout-minutes: 4
+        env:
+          OUTCOMES: >-
+            boot=${{ steps.boot.outcome }} devserver=${{ steps.devserver.outcome }}
+            maestro_install=${{ steps.maestro_install.outcome }} ready=${{ steps.ready.outcome }}
+            expo_install=${{ steps.expo_install.outcome }} baseline=${{ steps.baseline.outcome }}
+            flows=${{ steps.flows.outcome }} expo=${{ steps.expo.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          trap 'rc=$?; echo "::error title=Stop recording and build results @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
+          set +e
+          echo "$(date +%s) end" >> "$OUT/timings.txt"
+          if [ -f "$OUT/raw/video.pid" ]; then
+            pid=$(cat "$OUT/raw/video.pid"); kill -INT "$pid" 2>/dev/null || true
+            for i in $(seq 1 30); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+          fi
+          export PUB="$OUT/publish"; rm -rf "$PUB"; mkdir -p "$PUB/shots" "$PUB/logs"
+          echo "PUB=$PUB" >> "$GITHUB_ENV"
+          # Screenshots: simctl ones plus every PNG Maestro wrote (named shots
+          # and failure shots), as JPEG to keep the results branch small.
+          python3 -I - <<'PY'
+          import os, re, subprocess
+          out = os.environ["OUT"]; dest = os.path.join(os.environ["PUB"], "shots")
+          pngs = []
+          for root, _, files in os.walk(out):
+              if root.startswith(os.path.join(out, "publish")):
+                  continue
+              pngs += [os.path.join(root, f) for f in files if f.lower().endswith(".png")]
+          for png in sorted(pngs):
+              base = os.path.splitext(os.path.basename(png))[0]
+              rel = os.path.relpath(png, out).split(os.sep)
+              if rel[0] == "maestro" and not base.startswith(rel[1]) and not re.match(r"(smoke|expo)-", base):
+                  base = rel[1] + "-" + base
+              base = re.sub(r"[^A-Za-z0-9._-]+", "_", base).strip("_")[:80]
+              target = os.path.join(dest, base + ".jpg")
+              r = subprocess.run(["sips", "-s", "format", "jpeg", "-s", "formatOptions", "72", "-Z", "1400", png, "--out", target], capture_output=True)
+              if r.returncode != 0:
+                  subprocess.run(["cp", png, os.path.join(dest, base + ".png")])
+          PY
+          # Video: shrink to fit the results branch.
+          VIDEO_NOTE="no video"
+          if [ -s "$OUT/raw/video.mov" ]; then
+            raw_mb=$(( $(stat -f%z "$OUT/raw/video.mov") / 1048576 ))
+            # The runner has no ffmpeg; the imageio-ffmpeg wheel carries a
+            # static one (seconds to install, unlike Homebrew). avconvert is
+            # the fallback but only has fixed-bitrate presets (~70 MB a run).
+            FF=$(command -v ffmpeg || true)
+            if [ -z "$FF" ]; then
+              python3 -m venv "$RUNNER_TEMP/ffvenv" > "$OUT/raw/ffmpeg-install.txt" 2>&1 \
+                && "$RUNNER_TEMP/ffvenv/bin/pip" install -q imageio-ffmpeg >> "$OUT/raw/ffmpeg-install.txt" 2>&1 \
+                && FF=$("$RUNNER_TEMP/ffvenv/bin/python" -c 'import imageio_ffmpeg as m; print(m.get_ffmpeg_exe())')
+            fi
+            if [ -n "$FF" ]; then
+              tool=ffmpeg
+              "$FF" -loglevel error -y -i "$OUT/raw/video.mov" -vf "fps=15,scale=-2:1000" -c:v libx264 -crf 30 -preset veryfast -pix_fmt yuv420p -movflags +faststart -an "$PUB/video.mp4" >> "$OUT/raw/ffmpeg-install.txt" 2>&1
+              if [ -s "$PUB/video.mp4" ] && [ $(( $(stat -f%z "$PUB/video.mp4") / 1048576 )) -ge "$MAX_VIDEO_MB" ]; then
+                "$FF" -loglevel error -y -i "$OUT/raw/video.mov" -vf "fps=6,scale=-2:600" -c:v libx264 -crf 40 -preset veryfast -pix_fmt yuv420p -movflags +faststart -an "$PUB/video.mp4" >> "$OUT/raw/ffmpeg-install.txt" 2>&1
+              fi
+            else
+              tool=avconvert
+              avconvert --source "$OUT/raw/video.mov" --output "$PUB/video.mp4" --preset Preset640x480 --replace > "$OUT/raw/avconvert.log" 2>&1
+            fi
+            if [ -s "$PUB/video.mp4" ]; then
+              kb=$(( $(stat -f%z "$PUB/video.mp4") / 1024 ))
+              mb=$(( kb / 1024 ))
+              if [ "$mb" -ge "$MAX_VIDEO_MB" ]; then
+                mv "$PUB/video.mp4" "$OUT/video-too-big.mp4"
+                VIDEO_NOTE="video ${mb} MB after $tool (raw ${raw_mb} MB) is over ${MAX_VIDEO_MB} MB: artifact only"
+              else
+                VIDEO_NOTE="[video.mp4](video.mp4) (${kb} KB via $tool, raw ${raw_mb} MB)"
+              fi
+            else
+              VIDEO_NOTE="video compression failed ($tool), raw ${raw_mb} MB in the artifact"
+            fi
+          fi
+          export VIDEO_NOTE
+          # Small text logs.
+          for f in "$OUT"/maestro/*/; do
+            n=$(basename "$f")
+            [ -f "$f/stdout.txt" ] && tail -n 200 "$f/stdout.txt" > "$PUB/logs/maestro-$n.txt"
+            for ml in "$f"/debug/maestro*.log; do
+              [ -f "$ml" ] || continue
+              b=$(basename "$ml" .log)
+              tail -n 400 "$ml" > "$PUB/logs/$n-$b-tail.log"
+              grep -E "onCommand(Start|Finished)|Unreachable|Exception" "$ml" | cut -c1-300 | tail -n 300 > "$PUB/logs/$n-$b-commands.txt"
+            done
+          done
+          [ -f "$OUT/raw/vite.log" ] && tail -n 80 "$OUT/raw/vite.log" > "$PUB/logs/vite.txt"
+          [ -f "$OUT/raw/npm-install.log" ] && tail -n 40 "$OUT/raw/npm-install.log" > "$PUB/logs/npm-install.txt"
+          [ -f "$OUT/raw/maestro-install.log" ] && tail -n 40 "$OUT/raw/maestro-install.log" > "$PUB/logs/maestro-install.txt"
+          [ -f "$OUT/raw/avconvert.log" ] && cp "$OUT/raw/avconvert.log" "$PUB/logs/"
+          cp "$OUT/log.txt" "$PUB/logs/steps.txt" 2>/dev/null || true
+          for f in "$OUT"/raw/*.txt "$OUT"/raw/*.err; do
+            [ -f "$f" ] && tail -n 60 "$f" > "$PUB/logs/raw-$(basename "$f").txt"
+          done
+          python3 -I - <<'PY'
+          import os, glob, json, time, re
+          out = os.environ["OUT"]; pub = os.environ["PUB"]
+          env = os.environ.get
+          t = {}
+          for line in open(os.path.join(out, "timings.txt")):
+              ts, name = line.split(); t.setdefault(name, int(ts))
+          start = t.get("start", 0)
+          L = []
+          L.append(f"# iOS simulator run {env('GITHUB_RUN_ID')}-{env('GITHUB_RUN_ATTEMPT')}\n")
+          L.append(f"- Run: {env('RUN_URL')}")
+          if env("PR_NUMBER"): L.append(f"- PR: #{env('PR_NUMBER')}")
+          L.append(f"- Commit: {env('HEAD_SHA')}")
+          L.append(f"- Device: {env('DEVICE_NAME','?')} / {env('RUNTIME_NAME','?')} (asked for {env('DEVICE')} / iOS {env('IOS')})")
+          L.append(f"- Maestro: {env('MAESTRO_VERSION_USED','not installed')}")
+          L.append(f"- Finished: {time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime())}")
+          L.append(f"- Step outcomes: {' '.join(env('OUTCOMES','').split())}")
+          L.append("- Timings (s from start): " + ", ".join(f"{k} {v - start}" for k, v in sorted(t.items(), key=lambda kv: kv[1])))
+          L.append(f"- Video: {env('VIDEO_NOTE')}")
+          L.append("")
+          L.append("## Flows\n")
+          for d in sorted(glob.glob(os.path.join(out, "maestro", "*"))):
+              n = os.path.basename(d)
+              rc = open(os.path.join(d, "exit-code")).read().strip() if os.path.exists(os.path.join(d, "exit-code")) else "did not run"
+              L.append(f"### {n}: exit {rc}\n")
+              # Optional steps that did not find their target still "pass";
+              # list them so a missed tap is visible.
+              dbg = os.path.join(d, "debug", "maestro.log")
+              if os.path.exists(dbg):
+                  warned = [l.split("CommandWarned:", 1)[1].strip() for l in open(dbg, errors="replace") if "CommandWarned:" in l]
+                  L.append("Skipped optional steps: " + ("; ".join(warned) if warned else "none") + "\n")
+              so = os.path.join(d, "stdout.txt")
+              if os.path.exists(so):
+                  lines = [re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", x.rstrip()) for x in open(so, errors="replace")]
+                  L.append("```"); L.extend(lines[-60:]); L.append("```\n")
+          L.append("## Screenshots\n")
+          for p in sorted(glob.glob(os.path.join(pub, "shots", "*"))):
+              rel = os.path.relpath(p, pub)
+              L.append(f"### {os.path.basename(p)}\n\n![{os.path.basename(p)}]({rel})\n")
+          L.append("## Step log\n")
+          lp = os.path.join(out, "log.txt")
+          if os.path.exists(lp):
+              L.append("```"); L.extend(x.rstrip() for x in open(lp, errors="replace").readlines()[-80:]); L.append("```")
+          open(os.path.join(pub, "results.md"), "w").write("\n".join(L) + "\n")
+          PY
+          cp "$PUB/results.md" "$GITHUB_STEP_SUMMARY" || true
+          n=$(ls "$PUB/shots" | wc -l | tr -d ' ')
+          size=$(du -sh "$PUB" | cut -f1)
+          echo "::notice title=ios-sim results::$n screenshots, $size, $VIDEO_NOTE"
+          ls -la "$PUB" "$PUB/shots"
+
+      - name: Upload artifact
+        if: always() && env.PUB != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-sim-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.PUB }}
+            ${{ env.OUT }}/raw/video.mov
+            ${{ env.OUT }}/maestro
+          retention-days: 7
+          if-no-files-found: warn
+
+      # Claude cannot download run artifacts from its container, so the same
+      # files also go to the `ios-sim-results` branch. The branch is kept as ONE
+      # commit (rebuilt from the previous tree + this run, newest KEEP_RUNS
+      # folders kept) and replaced with --force-with-lease, so its history
+      # never grows. Only this workflow writes to it.
+      - name: Publish to the ios-sim-results branch
+        if: always() && env.PUB != ''
+        timeout-minutes: 3
+        env:
+          TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          trap 'rc=$?; echo "::error title=Publish to the ios-sim-results branch @ line $LINENO::$BASH_COMMAND (exit $rc)"' ERR
+          set +e +o pipefail
+          NAME="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          AUTH="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 | tr -d '\n')"
+          for attempt in 1 2 3 4 5; do
+            W="$RUNNER_TEMP/results-branch"; rm -rf "$W"; mkdir -p "$W"; cd "$W"
+            git init -q -b ios-sim-results .
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git remote add origin "https://github.com/$REPO.git"
+            LEASE=""
+            if git -c http.extraheader="$AUTH" fetch -q --depth=1 origin ios-sim-results 2>/dev/null; then
+              LEASE=$(git rev-parse FETCH_HEAD)
+              git read-tree FETCH_HEAD && git checkout-index -a -f
+            fi
+            mkdir -p runs; rm -rf "runs/$NAME"; cp -R "$PUB" "runs/$NAME"
+            # Keep the newest KEEP_RUNS run folders (run ids only grow).
+            ls -1 runs | sort -t- -k1,1n -k2,2n | python3 -I -c "import sys; xs=[l.strip() for l in sys.stdin if l.strip()]; k=int(sys.argv[1]); print('\n'.join(xs[:-k] if len(xs)>k else []))" "$KEEP_RUNS" | while read -r old; do [ -n "$old" ] && rm -rf "runs/$old"; done
+            echo "runs/$NAME" > LATEST
+            {
+              echo "# iOS simulator results"
+              echo
+              echo "Written by .github/workflows/ios-sim.yml. Rewritten as one commit on every run; do not commit here."
+              echo "Newest first. \`LATEST\` holds the newest folder."
+              echo
+              for r in $(ls -1 runs | sort -t- -k1,1nr -k2,2nr); do
+                head -12 "runs/$r/results.md" 2>/dev/null | grep -E '^- (PR|Commit|Device|Finished|Step outcomes)' | tr '\n' ' ' | sed "s|^|- [$r](runs/$r/results.md): |"; echo
+              done
+            } > README.md
+            git add -A
+            git commit -q -m "iOS sim results: run $NAME" || true
+            if git -c http.extraheader="$AUTH" push -q --force-with-lease="ios-sim-results:$LEASE" origin HEAD:ios-sim-results; then
+              echo "::notice title=ios-sim published::branch ios-sim-results, folder runs/$NAME"
+              exit 0
+            fi
+            echo "push attempt $attempt lost a race; retrying"
+            sleep $((attempt * 3))
+          done
+          echo "::warning title=ios-sim publish::could not push to ios-sim-results"
+          exit 1
+
+      # The flow steps are continue-on-error so the pictures always get
+      # published; turn a failed flow back into a red job here, last.
+      - name: Fail the job if a flow failed
+        if: always() && (steps.flows.outcome == 'failure' || steps.expo.outcome == 'failure')
+        run: |
+          echo "::error title=ios-sim::a Maestro flow failed (flows=${{ steps.flows.outcome }}, expo=${{ steps.expo.outcome }}); see results.md"
+          exit 1

@@ -6,7 +6,10 @@ import {
   docToByPage,
   getAnnotationsMap,
   getEraserOpsMap,
+  readAnnotationEntry,
+  readAnnotationObject,
   syncByPageToDoc,
+  writeAnnotationMark,
 } from '../src/services/annotationDocStore.js';
 import { openAnnotationDoc } from '../src/services/annotationDocSync.js';
 import { isEraserPreviewFinishReady } from '../src/utils/eraserPreviewHandoff.js';
@@ -91,10 +94,11 @@ function commitPreparedErase(doc, before, prepared, writerId) {
 }
 
 function replaceDurableBase(doc, storageKey, object, origin = 'remote-base-edit') {
-  const map = getAnnotationsMap(doc);
-  const entry = map.get(storageKey);
+  // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
+  // — a remote base edit writes the mark's differing fields, not a whole entry.
+  const entry = readAnnotationEntry(doc, storageKey);
   doc.transact(() => {
-    map.set(storageKey, { ...entry, o: object });
+    writeAnnotationMark(doc, storageKey, entry.p, object);
   }, origin);
 }
 
@@ -210,7 +214,7 @@ test('held-pointer stale erase rebases onto a remote move/style edit and survive
   // While A still holds the pointer, B moves and restyles the same base.
   const beforeB = docToByPage(clientB);
   const remotelyMoved = {
-    ...getAnnotationsMap(clientB).get('moving').o,
+    ...readAnnotationObject(clientB, 'moving'), // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
     left: 120,
     fill: '#0055ff',
     data: { id: 'moving', tool: 'pen', remoteEdit: true },
@@ -265,7 +269,7 @@ test('a second held erase on baked geometry follows a remote base move exactly',
     points: [{ x: 70, y: 62 }],
   });
   const movedBase = {
-    ...getAnnotationsMap(clientB).get('twice').o,
+    ...readAnnotationObject(clientB, 'twice'), // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
     left: 120,
     fill: '#0055ff',
     data: { id: 'twice', tool: 'pen', remoteEdit: true },
@@ -308,7 +312,7 @@ test('compatible scale and rotation apply a full affine rebase to the stale surv
     points: [{ x: 35, y: 38 }],
   });
   const transformedBase = {
-    ...getAnnotationsMap(clientB).get('affine').o,
+    ...readAnnotationObject(clientB, 'affine'), // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
     left: 40,
     top: 15,
     scaleX: 1.4,

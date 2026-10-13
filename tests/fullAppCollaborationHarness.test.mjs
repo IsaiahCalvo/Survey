@@ -130,7 +130,9 @@ test('mobile collaboration opens the real project row, team surface, and rename 
      when the project is picked in Select mode — so the class names are matched
      without the closing quote that a fixed attribute used to have. */
   assert.match(projects, /data-project-id=\{p\.id\}[\s\S]*?role="button"[\s\S]*?className=\{`projects-mobile-folder-row drill reorderable/);
-  assert.match(projects, /aria-label="Manage team"[\s\S]*?setTeamModalProject\(mobileDrillProject\)/);
+  // The phone's Team action is a SectionIconButton now (owner 2026-10-02:
+  // header actions are icons); its `label` is the accessible name.
+  assert.match(projects, /label="Manage team"[\s\S]*?setTeamModalProject\(mobileDrillProject\)/);
   assert.match(runtime, /getByRole\('button', \{ name: 'Manage team', exact: true \}\)/);
   assert.match(runtime, /input\[title="Click to rename"\], input\[title="Tap to rename"\]/);
 });
@@ -142,8 +144,12 @@ test('mobile navigation exits transient surfaces and scopes tabs or the rail', (
   assert.match(runtime, /getByRole\('button', \{ name: 'Back to documents', exact: true \}\)/);
   assert.match(runtime, /locator\('\.projects-mobile-back-button'\)/);
   assert.match(runtime, /getByRole\('navigation', \{ name: 'Home sections', exact: true \}\)/);
-  assert.match(runtime, /getByRole\('button', \{ name: 'Open navigation', exact: true \}\)/);
-  assert.match(runtime, /getByRole\('complementary', \{ name: 'Mobile navigation', exact: true \}\)/);
+  // RULED 2026-09-23 (owner: title is the section switcher). The phone rail's
+  // menu button and "Mobile navigation" card are gone; the harness opens the
+  // title's section menu and picks the section from it.
+  assert.match(runtime, /locator\('\.hub-title-switch'\)/);
+  assert.match(runtime, /getByRole\('menu', \{ name: 'Go to', exact: true \}\)/);
+  assert.match(runtime, /getByRole\('menuitem', \{ name: title, exact: true \}\)/);
   assert.match(runtime, /desktopNavigation\.getByRole\('button', \{ name: title, exact: true \}\)/);
   assert.doesNotMatch(runtime, /clickVisible\(page\.getByRole\('button', \{ name: title/);
 });

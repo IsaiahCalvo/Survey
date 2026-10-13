@@ -37,6 +37,13 @@ const PASTE_STRIPPED_PROVENANCE_KEYS = [
   'pdfImportedEditedBy',
   'pdfImportedEditSource',
   'pdfNativeAnnotationIdentity',
+  // w30: the mark copied was another screen's in-flight stroke shown as a
+  // live preview (annotationDocSync.js LIVE_PREVIEW_FLAG). The paste is this
+  // user's own new mark and must be saved like one.
+  '__surveyLivePreview',
+  // w32: the same for another screen's in-flight edit shown as an overlay
+  // (annotationLiveOverlay.js LIVE_EDIT_FLAG).
+  '__surveyLiveEdit',
 ];
 
 function freshUuid() {
@@ -53,9 +60,16 @@ function freshUuid() {
 export function mintPastedCloneIdentity(clone, uuid) {
   if (!clone || typeof clone !== 'object') return clone;
   const freshId = uuid || freshUuid();
+  // w52 (2026-09-28): an image stamp's 'Stamp' subtype is WHAT it is, not
+  // where it came from — every renderer recognises a stamp by it
+  // (isPdfStampProxy). Stripping it with the import provenance made a pasted
+  // stamp an unrenderable plain image: it vanished on paste.
+  const isStamp = String(clone.type || '').toLowerCase() === 'image'
+    && (clone.pdfAnnotationType || clone.data?.pdfAnnotationType) === 'Stamp';
   for (const key of PASTE_STRIPPED_PROVENANCE_KEYS) {
     if (key in clone) delete clone[key];
   }
+  if (isStamp) clone.pdfAnnotationType = 'Stamp';
   // Mirror the fresh id onto aliases the source carried; never leave a stale
   // pointer at the source annotation.
   if ('id' in clone) clone.id = freshId;

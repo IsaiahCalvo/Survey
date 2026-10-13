@@ -6,8 +6,11 @@ import {
   deletedPdfAnnotationStorageKey,
   deriveWriterEraserLane,
   docToByPage,
+  getAnnotationsMap,
   getDeletedPdfAnnotationsMap,
   getEraserOpsMap,
+  readRawAnnotationEntry,
+  writeAnnotationMark,
 } from '../services/annotationDocStore.js';
 import { counterSeriesMembershipSnapshot } from './counterSeriesMembership.js';
 import {
@@ -33,24 +36,61 @@ function clone(value) {
   return value === undefined ? undefined : structuredClone(value);
 }
 
+// A fresh top-level object (no storage-key identity) sharing its nested
+// values. For read-only page copies; see buildEraseHistoryBeforeSnapshot.
+export function shallowCopyObject(object) {
+  if (!object || typeof object !== 'object') return object;
+  return Array.isArray(object) ? [...object] : { ...object };
+}
+
 function nativeAnnotationIdentity(object) {
   return clone(object?.data?.pdfNativeAnnotationIdentity || null);
 }
 
-function stableSerialize(value) {
-  if (value === undefined) return 'undefined';
-  if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(stableSerialize).join(',')}]`;
-  const keys = Object.keys(value).sort();
-  return `{${keys.map((key) => `${JSON.stringify(key)}:${stableSerialize(value[key])}`).join(',')}}`;
-}
+// w33: provenance the store does not keep (annotationMarkCodec.js
+// UNSTORED_DATA_FIELDS): a screen copy that still carries it is the same mark.
+const UNSTORED_KEYS = new Set(['pdfInkSourceGeometry']);
 
 function serializedByteLength(value) {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
 }
 
+const primitiveText = (value) => `${value === undefined ? 'undefined' : JSON.stringify(value)}`;
+
+/**
+ * Key-order-independent equality of two data values (plain objects, arrays,
+ * JSON values, undefined; UNSTORED_KEYS ignored). It used to compare two
+ * sorted-key serializations; a big detailed stroke serializes to ~0.7 MB,
+ * compared on every erase commit (test plan 68, 2026-10-06). Same answers:
+ * tests/eraserCommitPlanScope.test.mjs.
+ */
+export function stableValuesMatch(left, right) {
+  if (left === right) return true;
+  const leftObject = left !== null && typeof left === 'object';
+  const rightObject = right !== null && typeof right === 'object';
+  if (!leftObject || !rightObject) {
+    return !leftObject && !rightObject && primitiveText(left) === primitiveText(right);
+  }
+  const leftArray = Array.isArray(left);
+  if (leftArray !== Array.isArray(right)) return false;
+  if (leftArray) {
+    if (left.length !== right.length) return false;
+    for (let index = 0; index < left.length; index += 1) {
+      if (!stableValuesMatch(left[index], right[index])) return false;
+    }
+    return true;
+  }
+  const leftKeys = Object.keys(left).filter((key) => !UNSTORED_KEYS.has(key));
+  const rightKeys = new Set(Object.keys(right).filter((key) => !UNSTORED_KEYS.has(key)));
+  if (leftKeys.length !== rightKeys.size) return false;
+  for (const key of leftKeys) {
+    if (!rightKeys.has(key) || !stableValuesMatch(left[key], right[key])) return false;
+  }
+  return true;
+}
+
 function valuesMatch(left, right) {
-  return stableSerialize(left) === stableSerialize(right);
+  return stableValuesMatch(left, right);
 }
 
 function counterNumbering(object) {
@@ -92,11 +132,56 @@ function pruneAcknowledgedOutboxTombstones(outbox) {
   }
 }
 
+// Every object deepFreeze has finished freezing (it and all it holds).
+const DEEP_FROZEN = new WeakSet();
+
 function deepFreeze(value, seen = new WeakSet()) {
-  if (!value || typeof value !== 'object' || seen.has(value)) return value;
+  if (!value || typeof value !== 'object' || seen.has(value) || DEEP_FROZEN.has(value)) return value;
+  // A big stroke is tens of thousands of [x, y] arrays: freeze arrays of
+  // plain values without the bookkeeping (no cycles possible below them).
+  if (Array.isArray(value)) {
+    let leaf = true;
+    for (let index = 0; index < value.length; index += 1) {
+      const child = value[index];
+      if (child && typeof child === 'object') { leaf = false; break; }
+    }
+    if (leaf) return Object.freeze(value);
+  }
   seen.add(value);
-  for (const child of Object.values(value)) deepFreeze(child, seen);
-  return Object.freeze(value);
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index += 1) {
+      const child = value[index];
+      if (child && typeof child === 'object') deepFreeze(child, seen);
+    }
+  } else {
+    for (const child of Object.values(value)) {
+      if (child && typeof child === 'object') deepFreeze(child, seen);
+    }
+  }
+  Object.freeze(value);
+  DEEP_FROZEN.add(value);
+  return value;
+}
+
+// An intent's values are deep-frozen; building a new intent from an old one's
+// targets (prepareEraseIntentForCommit) can share them instead of cloning. A
+// big detailed stroke is ~0.7 MB per copy (test plan 68, 2026-10-06).
+export function cloneForIntent(value) {
+  return value && typeof value === 'object' && DEEP_FROZEN.has(value)
+    ? value
+    : clone(value);
+}
+
+// Clone several intent inputs in ONE structuredClone, so a value that two of
+// them hold (a target's survivor is also in diagnostics.objectMutations) is
+// copied once and stays one object. Deep-frozen values are shared as is.
+function createIntentCloner(values) {
+  const pending = [...new Set(values.filter((value) => (
+    value && typeof value === 'object' && !DEEP_FROZEN.has(value)
+  )))];
+  const cloned = pending.length > 0 ? structuredClone(pending) : [];
+  const byValue = new Map(pending.map((value, index) => [value, cloned[index]]));
+  return (value) => (byValue.has(value) ? byValue.get(value) : cloneForIntent(value));
 }
 
 function assertNonEmptyString(value, label) {
@@ -118,7 +203,7 @@ function isCounterRenumberReplacement(before, after) {
   return valuesMatch(withoutNumbering(before), withoutNumbering(after));
 }
 
-function normalizeTarget(target) {
+function normalizeTarget(target, cloneValue = cloneForIntent) {
   if (!target || typeof target !== 'object') {
     throw new TypeError('erase target must be an object');
   }
@@ -159,13 +244,13 @@ function normalizeTarget(target) {
     storageKey: target.storageKey,
     kind: target.kind,
     operation: target.operation,
-    before: clone(target.before),
+    before: cloneValue(target.before),
     ...(Number.isInteger(Number(target.pageNumber)) && Number(target.pageNumber) > 0
       ? { pageNumber: Number(target.pageNumber) }
       : {}),
     ...(Number.isInteger(target.index) && target.index >= 0 ? { index: target.index } : {}),
     ...(target.cause ? { cause: String(target.cause) } : {}),
-    ...(target.after === undefined ? {} : { after: clone(target.after) }),
+    ...(target.after === undefined ? {} : { after: cloneValue(target.after) }),
   };
 }
 
@@ -300,6 +385,21 @@ export function buildLocalCalloutEraseMutations(targets = []) {
     }));
 }
 
+// Diagnostics rebuilt from an older intent's (spread + a few new fields)
+// share that intent's frozen entries (its objectMutations carry survivors).
+const diagnosticsByEntry = (diagnostics) => (
+  Boolean(diagnostics)
+  && !DEEP_FROZEN.has(diagnostics)
+  && Object.getPrototypeOf(diagnostics) === Object.prototype
+);
+
+function cloneDiagnostics(diagnostics, cloneValue) {
+  if (!diagnosticsByEntry(diagnostics)) return cloneValue(diagnostics);
+  return Object.fromEntries(
+    Object.entries(diagnostics).map(([key, value]) => [key, cloneValue(value)]),
+  );
+}
+
 export function buildEraseIntent({
   mutationId,
   pageNumber,
@@ -319,20 +419,27 @@ export function buildEraseIntent({
     throw new TypeError('gesture.points must be an array');
   }
 
+  const cloneValue = createIntentCloner([
+    ...targets.flatMap((target) => [target?.before, target?.after]),
+    gesture,
+    ...(diagnosticsByEntry(diagnostics) ? Object.values(diagnostics) : [diagnostics]),
+  ]);
   const normalizedTargets = targets.map((target) => normalizeTarget({
     ...target,
     pageNumber: target?.pageNumber ?? pageNumber,
-  }));
+  }, cloneValue));
   const intent = {
     mutationId,
     pageNumber,
     renderer,
-    gesture: clone(gesture),
+    gesture: cloneValue(gesture),
     targets: normalizedTargets,
     sideEffects: sideEffects.map((effect) => {
       assertNonEmptyString(effect?.type, 'sideEffect.type');
       assertNonEmptyString(effect?.targetKey, 'sideEffect.targetKey');
-      const normalized = clone(effect);
+      const normalized = DEEP_FROZEN.has(effect) && effect.payload !== undefined
+        ? effect
+        : clone(effect);
       if (normalized.payload === undefined) {
         const target = normalizedTargets.find(
           (candidate) => candidate.storageKey === String(effect.targetKey),
@@ -347,7 +454,7 @@ export function buildEraseIntent({
       }
       return normalized;
     }),
-    ...(diagnostics ? { diagnostics: clone(diagnostics) } : {}),
+    ...(diagnostics ? { diagnostics: cloneDiagnostics(diagnostics, cloneValue) } : {}),
     ...(presentationRevision ? { presentationRevision: String(presentationRevision) } : {}),
   };
   return deepFreeze(intent);
@@ -358,9 +465,17 @@ export function buildEraseIntent({
  * targets. React state can lag a just-settled queued erase by one render; using
  * that stale snapshot directly would make two rapid gestures share one Undo
  * baseline. Target.before is the CAS-validated predecessor and is authoritative.
+ *
+ * Only the pages the erase touches are copied (test plan 68, 2026-10-06): a
+ * deep clone of the whole snapshot cost ~200 ms per erase on a document with
+ * ~3,000 imported marks. Untouched pages (and other snapshot keys) are shared
+ * by reference and must be treated as read-only by the caller. The touched
+ * pages' objects are shallow copies, so the storage-key resolver below sees
+ * the same id-only objects a clone would (no WeakMap identity) and never tags
+ * the caller's live objects.
  */
 export function buildEraseHistoryBeforeSnapshot(snapshot, intent) {
-  const next = clone(snapshot || {}) || {};
+  const next = { ...(snapshot || {}) };
   const pageTargets = (intent?.targets || []).filter(
     (target) => PAGE_DOMAINS.has(target?.domain) && target?.before,
   );
@@ -378,7 +493,9 @@ export function buildEraseHistoryBeforeSnapshot(snapshot, intent) {
       const currentPage = annotationsByPage[pageKey]
         || annotationsByPage[pageNumber]
         || { objects: [] };
-      const objects = Array.isArray(currentPage?.objects) ? [...currentPage.objects] : [];
+      const objects = Array.isArray(currentPage?.objects)
+        ? currentPage.objects.map(shallowCopyObject)
+        : [];
       const resolveStorageKey = createEraseStorageKeyResolver(pageNumber);
       const indexByStorageKey = new Map(
         objects.map((object, index) => [String(resolveStorageKey(object)), index]),
@@ -391,7 +508,7 @@ export function buildEraseHistoryBeforeSnapshot(snapshot, intent) {
           missing.push(target);
           continue;
         }
-        objects[index] = clone(target.before);
+        objects[index] = cloneForIntent(target.before);
       }
       missing
         .sort((left, right) => (left.index ?? objects.length) - (right.index ?? objects.length))
@@ -399,7 +516,7 @@ export function buildEraseHistoryBeforeSnapshot(snapshot, intent) {
           const index = Number.isInteger(target.index)
             ? Math.max(0, Math.min(target.index, objects.length))
             : objects.length;
-          objects.splice(index, 0, clone(target.before));
+          objects.splice(index, 0, cloneForIntent(target.before));
         });
       annotationsByPage[pageKey] = {
         ...currentPage,
@@ -412,8 +529,9 @@ export function buildEraseHistoryBeforeSnapshot(snapshot, intent) {
   return next;
 }
 
-function getStoredTarget(annotations, target, materializePageTarget) {
-  const stored = annotations.get(target.storageKey);
+// `stored` is the plain { p, o } view of the per-field mark (store v2).
+function getStoredTarget(doc, annotations, target, materializePageTarget) {
+  const stored = readRawAnnotationEntry(doc, target.storageKey);
   return {
     map: annotations,
     stored,
@@ -455,7 +573,7 @@ export async function commitEraseIntent({
     throw new TypeError('intent must be built by buildEraseIntent');
   }
 
-  const annotations = doc.getMap('annotations');
+  const annotations = getAnnotationsMap(doc);
   const outbox = doc.getMap(ERASE_OUTBOX_MAP);
   const eraserOps = getEraserOpsMap(doc);
   const deletedPdfAnnotations = getDeletedPdfAnnotationsMap(doc);
@@ -524,7 +642,7 @@ export async function commitEraseIntent({
       finishDomainPlan();
       activeDomain = target.domain;
     }
-    const snapshot = getStoredTarget(annotations, target, materializePageTarget);
+    const snapshot = getStoredTarget(doc, annotations, target, materializePageTarget);
     if (snapshot.current === undefined) {
       return cancelled(intent, 'conflict');
     }
@@ -718,6 +836,12 @@ export async function commitEraseIntent({
   const outboxEntry = {
     mutationId: intent.mutationId,
     actorUserId: initiatingActorId || null,
+    // w35 (2026-09-25): the screen that made the erase runs its follow-up
+    // work (History row, trash, Excel). Another open screen of the same user
+    // receives this entry with the erase's row and must not run it too (it
+    // used to: a second History POST and a second WAL row per erase on every
+    // other screen of that user). See drainEraseOutbox's deferEntry.
+    writerId: typeof eraserWriterId === 'string' && eraserWriterId ? eraserWriterId : null,
     status: effects.length === 0 ? 'acknowledged' : 'pending',
     committedAt: new Date().toISOString(),
     effects,
@@ -764,11 +888,15 @@ export async function commitEraseIntent({
       } else if (target.operation === 'delete') {
         map.delete(target.storageKey);
       } else {
-        map.set(target.storageKey, {
-          ...(stored && typeof stored === 'object' ? stored : {}),
-          p: stored?.p ?? target.pageNumber ?? intent.pageNumber,
-          o: clone(target.after),
-        });
+        // Only the fields the erase changed are written (per-field store), so
+        // a collaborator's concurrent edit to another field survives.
+        writeAnnotationMark(
+          doc,
+          target.storageKey,
+          stored?.p ?? target.pageNumber ?? intent.pageNumber,
+          clone(target.after),
+          stored?.o ? { base: stored.o, basePage: stored.p } : {},
+        );
       }
     }
     outbox.set(intent.mutationId, outboxEntry);
@@ -821,7 +949,6 @@ export function applyEraseHistoryTransitionOnDoc({
     throw new TypeError('direction must be undo or redo');
   }
   const eraserOps = getEraserOpsMap(doc);
-  const annotations = doc.getMap('annotations');
   const lanePlans = (transition.lanes || []).map((entry) => {
     const current = eraserOps.get(entry.laneKey) ?? null;
     const expected = direction === 'undo'
@@ -833,14 +960,28 @@ export function applyEraseHistoryTransitionOnDoc({
     return { ...entry, current, expected, desired };
   });
   const counterPlans = (transition.counterRenumbers || []).map((entry) => {
-    const stored = annotations.get(entry.storageKey);
-    const current = stored?.o ?? stored;
+    const stored = readRawAnnotationEntry(doc, entry.storageKey);
+    const current = stored?.o;
     const expected = direction === 'undo' ? entry.next : entry.previous;
     const desired = direction === 'undo' ? entry.previous : entry.next;
     return { ...entry, stored, current, expected, desired };
   });
   if (lanePlans.some((entry) => !valuesMatch(entry.current, entry.expected))) {
     return { status: 'conflict', reason: 'lane-conflict' };
+  }
+  // Owner ruling 2026-09-28 (open editing + lock): an Undo / Redo of an erase
+  // never changes a mark someone has user-locked since (a lane key is
+  // `<writer>\0<storageKey>`; the counter plans read the stored mark).
+  const isLockedEntry = (stored) => {
+    const object = stored?.o;
+    const lockedBy = object?.data?.lockedBy ?? object?.lockedBy ?? object?.data?.legacyCallout?.lockedBy;
+    return typeof lockedBy === 'string' && lockedBy.length > 0;
+  };
+  if (lanePlans.some((entry) => {
+    const storageKey = String(entry.laneKey || '').split('\u0000').slice(1).join('\u0000');
+    return storageKey && isLockedEntry(readRawAnnotationEntry(doc, storageKey));
+  }) || counterPlans.some((entry) => isLockedEntry(entry.stored))) {
+    return { status: 'conflict', reason: 'locked' };
   }
   if (counterPlans.some((entry) => (
     !entry.current
@@ -866,9 +1007,11 @@ export function applyEraseHistoryTransitionOnDoc({
           seriesStart: entry.desired.seriesStart,
         },
       };
-      annotations.set(entry.storageKey, entry.stored?.o
-        ? { ...entry.stored, o: nextObject }
-        : nextObject);
+      // Only the counter's numbering fields are written.
+      writeAnnotationMark(doc, entry.storageKey, entry.stored.p, nextObject, {
+        base: entry.current,
+        basePage: entry.stored.p,
+      });
     }
   }, origin);
   return {
@@ -898,7 +1041,6 @@ export function restoreEraseDeletionOnDoc({
   }
 
   const eraserOps = getEraserOpsMap(doc);
-  const annotations = doc.getMap('annotations');
   const plans = [];
   const seenLaneKeys = new Set();
 
@@ -915,8 +1057,8 @@ export function restoreEraseDeletionOnDoc({
     seenLaneKeys.add(laneKey);
 
     const lane = eraserOps.get(laneKey);
-    const stored = annotations.get(storageKey);
-    const annotation = clone(stored?.o ?? stored);
+    const stored = readRawAnnotationEntry(doc, storageKey);
+    const annotation = clone(stored?.o);
     if (!annotation) {
       return { status: 'conflict', reason: 'stable-base-missing' };
     }
@@ -981,6 +1123,7 @@ export async function drainEraseOutbox({
   validateEntry = null,
   actorUserId,
   origin = 'erase-outbox',
+  deferEntry = null,
   injectFailure,
 } = {}) {
   if (!doc || typeof doc.getMap !== 'function') {
@@ -1036,6 +1179,19 @@ export async function drainEraseOutbox({
         || entry.actorUserId !== drainingActorId
       )
     ) {
+      continue;
+    }
+    // Another live screen of this actor made the erase: its follow-up work is
+    // that screen's (the caller decides; it takes over after a grace period
+    // for a screen that closed before finishing). Still pending here, so the
+    // caller keeps its local retry timer until the owner's ack row arrives.
+    if (
+      effects.length > 0
+      && entry.status !== 'acknowledged'
+      && typeof deferEntry === 'function'
+      && deferEntry({ mutationId, entry: clone(entry) })
+    ) {
+      pending += 1;
       continue;
     }
 

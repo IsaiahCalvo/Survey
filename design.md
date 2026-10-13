@@ -133,10 +133,13 @@ Rules:
 
 ### Typography
 
-Primary font:
+Primary font (2026-10-02: one interface font everywhere, desktop, web and
+phone, as `var(--font-ui)` in `src/styles/tokens.css`; the old Helvetica Neue
+stack became Arial on Windows). Annotation text keeps its single-name fonts
+(CLAUDE.md rule) and is not affected:
 
 ```css
-"Helvetica Neue", Helvetica, Arial, sans-serif
+-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif
 ```
 
 Mono font:
@@ -145,14 +148,17 @@ Mono font:
 "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace
 ```
 
-Scale:
+Scale (whole pixels only; weights 400 / 500 / 600 / 700 only):
 
 - Page title: `20px`, bold.
 - Project/template editor title: `22px`, bold.
-- Row primary text: `12.5px`, semibold.
-- Body/control text: `11.5px` to `13px`.
-- Metadata: `10px` to `11.5px`.
-- Section labels: `10.5px`, uppercase, bold.
+- Row primary text: `13px`, semibold.
+- Body/control text: `12px` to `13px`.
+- Metadata: `11px` to `12px`. Nothing smaller than `11px`.
+- Section and column labels: `11px` / `600`, normal (sentence) case, no
+  letter-spacing - the viewer's label style. No tracked capitals.
+- Phone: `11 / 12 / 13 / 14 / 16 / 22`; name fields render at `16px` (iOS
+  zooms on a smaller field) at weight `500`.
 
 Implementation guard: keep new surfaces at `letter-spacing: 0`. The live home
 code has a few tight display values, but do not propagate negative tracking into
@@ -164,12 +170,16 @@ viewer or mobile work.
 - Panel gaps: `8px`.
 - Sidebar padding: `16px 10px`.
 - List row padding: usually `8px 8px` or `8px 10px`.
-- Major panel radius: visually small, around `8px` to `10px`.
-- Control radius: `2px` to `6px`.
-- Row heights:
-  - project/template rows: `50px`
-  - project file rows: `42px`
-  - document ledger rows: about `50px`
+- Radii: five tokens only - `4` (chip, menu item), `6` (control), `8`
+  (card, popup), `16` (phone sheet), `999` (pill): `--radius-xs/sm/md/lg/pill`.
+- Row heights, desktop (`--row-*` in `tokens.css`; divider lines sit INSIDE
+  the height):
+  - one-line row in a side panel: `32px`
+  - nested row, menu item: `28px`
+  - panel header, one-line row in the main area: `40px`
+  - two-line row (project/template/document): `50px`
+- Row heights, phone (`--sheet-*`): every one-line row a finger taps is `44px`
+  (nested rows and menu items too), two-line rows `64px`, module tabs `40px`.
 - Search and primary buttons: `28px` tall.
 
 Avoid decorative cards inside cards. Panels can be bordered, but the page should
@@ -269,8 +279,9 @@ More menus are compact portalled popups:
 - radius `8px`
 - padding `4px`
 - shadow `0 12px 30px rgba(0,0,0,0.45-0.55)`
-- menu item height around `32px` to `34px`
-- danger items use `#cf6f6f`
+- items are the shared `.hub-menu__item` (hub.css): `28px` at `12px` on
+  desktop, `44px` at `15px` on the phone
+- danger items use `--danger-text`
 
 Menus anchor to the trigger and flip inside the viewport.
 
@@ -298,7 +309,7 @@ Modal card:
 Modal header:
 
 - vertical accent bar, usually gold or item/member color
-- uppercase section label at `10.5px`
+- section label at `11px` / `600`, normal case
 - title around `17px`, bold
 - close button is a small bordered square
 
@@ -316,7 +327,7 @@ Modal controls:
 - textarea/input fields use `#12151c`, `#2a3140` border, bone text
 - primary footer action is gold unless destructive
 - destructive action uses `#cf6f6f`
-- inline errors use low-opacity danger background plus danger border/text
+- inline errors are the one calm alert (`--alert-*` in tokens.css): a soft danger tint inside a thin danger edge all the way round, `--text-1` words; no 3px coloured left bar
 - success/status uses low-opacity gold background plus gold border/text
 
 ### Avatars And Swatches
@@ -354,7 +365,7 @@ Desktop layout:
 - Main card grid: file ledger on left, preview pane on right.
 - Preview open: roughly `2.2fr 1fr`.
 - Preview closed: ledger fills the card.
-- Ledger header is sticky, uppercase, muted, and sortable.
+- Ledger header is sticky, muted, sortable, in the 11/600 normal-case label style.
 - Columns: action/select, thumbnail, file name, project, last edited, size.
 - Selected file row gets `--ink-600` and a gold left rule.
 - File thumbnails are fixed-size and centered in their own column.

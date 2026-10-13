@@ -216,6 +216,9 @@ test('BL-24 fix: a stale snapshot completing after a newer edit still leaves a t
   const handle = await openAnnotationDoc({ actorUserId: 'test-actor',
     documentId: 'doc-stale', supabase, clientId: 'clientG',
     enableLocal: false, enableRealtime: false, doc,
+    // w33: a tab-close checkpoint needs this screen's rows past a minimum
+    // tail; one uncaptured row is enough here.
+    checkpointPolicy: { minTailRows: 1 },
   });
   try {
     // Edit A → start a snapshot that will hang on the gate.

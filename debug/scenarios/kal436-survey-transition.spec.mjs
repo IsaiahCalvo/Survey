@@ -43,7 +43,11 @@ test('KAL-436: selecting a real template preserves the PDF and isolates Survey a
   await expect(page.getByRole('button', { name: /Walls/ })).toBeVisible();
   await page.getByRole('button', { name: /Walls/ }).click();
 
-  await expect(page.getByRole('button', { name: 'Expand Survey panel' })).toBeVisible();
+  // Owner 2026-10-07 (Drawboard rail + Survey chip): no "Expand / Close Survey
+  // panel" chevrons and no "Exit Survey" any more. The Survey tab opens and
+  // closes the panel; "Done" (Leave Survey) at the end of the survey bar
+  // leaves Survey (the floating Survey chip is gone, survey bar round).
+  await expect(page.getByRole('button', { name: 'Leave Survey' })).toBeVisible();
   await expect(pdfPage).toHaveAttribute('data-kal436-identity', 'same-mounted-pdf');
 
   const after = await page.evaluate(() => ({
@@ -87,11 +91,14 @@ test('KAL-436: selecting a real template preserves the PDF and isolates Survey a
   await moduleSelect.selectOption('kal436-module');
   await expect(surveyMarker).toHaveCount(1);
 
-  await page.getByRole('button', { name: 'Expand Survey panel' }).click();
+  {
+    const surveyTab = page.getByRole('button', { name: 'Survey', exact: true });
+    if ((await surveyTab.getAttribute('aria-expanded')) !== 'true') await surveyTab.click();
+  }
   await expect(page.getByText('Existing Survey Data', { exact: true })).toBeVisible();
   await expect(page.getByText('Walls', { exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Close Survey panel' }).click();
+  await page.getByRole('button', { name: 'Leave Survey' }).click();
   await expect(page.getByRole('button', { name: 'Survey', exact: true })).toBeVisible();
 
   const restored = await page.evaluate(() => ({

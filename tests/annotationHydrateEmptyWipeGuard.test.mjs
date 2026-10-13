@@ -251,9 +251,13 @@ test('useAnnotationDoc: a failed open sets an error status and applies NOTHING t
 });
 
 test('useAnnotationDoc: onChange lands remote state while preserving a local eraser presentation epoch', () => {
+  // RULED 2026-09-24 (per-field sync): the updater now reads the document when
+  // React applies it (a block body, not an expression body), so the pin allows
+  // `=> {`; the guarded behaviour — remote state lands through
+  // preserveTransientPagePresentationState — is unchanged.
   assert.match(
     HOOK_SOURCE,
-    /handle\.onChange\(\(byPage\) => \{[\s\S]*?setAnnotationsByPage\(\(previousByPage\) => \([\s\S]*?preserveTransientPagePresentationState\(previousByPage, nextByPage\)/,
+    /handle\.onChange\(\(byPage\) => \{[\s\S]*?setAnnotationsByPage\(\(previousByPage\) => [\s\S]*?preserveTransientPagePresentationState\(previousByPage, nextByPage\)/,
   );
 });
 
@@ -290,9 +294,16 @@ test('annotationDocSync: snapshots claim only a cloud-accepted or explicitly sta
     SYNC_SOURCE,
     /const epochAtStart = epoch \?\? \(\s*repairsGapAtStart \? state\.repairCheckpointEpoch : state\.acceptedEditEpoch\s*\);/,
   );
+  // 2026-10-06: the accepted-state bytes come from acceptedDoc itself, or from
+  // the checkpoint worker's mirror of acceptedDoc (requested in the same tick,
+  // checked against acceptedDoc's state vector there).
   assert.match(
     SYNC_SOURCE,
-    /const updateAtStart = snapshotUpdate \|\| \(\s*repairsGapAtStart \? encodeRepairCheckpoint\(state\) : encodeSnapshot\(state\.acceptedDoc\)\s*\);/,
+    /let updateAtStart = snapshotUpdate \|\| \(\s*repairsGapAtStart \? encodeRepairCheckpoint\(state\) : \(mirrorCheckpoint \? null : encodeSnapshot\(state\.acceptedDoc\)\)\s*\);/,
+  );
+  assert.match(
+    SYNC_SOURCE,
+    /requestMirrorCheckpoint\(state\.checkpointMirror, Y\.encodeStateVector\(state\.acceptedDoc\)[,)]/,
   );
   assert.doesNotMatch(SYNC_SOURCE, /gzip\(encodeSnapshot\(state\.doc\)\)/);
 });

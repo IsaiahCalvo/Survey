@@ -21,7 +21,12 @@ import { useState, useEffect, useRef } from 'react';
 import { loadPdfjs } from '../utils/pdfWorkerConfig';
 import { readBlobAsArrayBuffer } from '../utils/blobArrayBuffer';
 import { thumbnailStore, thumbCacheKey } from '../services/thumbnailStore';
-import { canResolveThumbnailBytes, createThumbnailRequestPool } from './thumbnailRequestPolicy';
+import {
+  canResolveThumbnailBytes,
+  createThumbnailRequestPool,
+  requestThumbnailBackfill,
+  subscribeThumbnailUpdates,
+} from './thumbnailRequestPolicy';
 
 /* Two tiers of cache.
 
@@ -222,6 +227,20 @@ export default function PdfPageThumb({
   const [nearViewport, setNearViewport] = useState(() => typeof IntersectionObserver === 'undefined');
   const [data, setData] = useState(null);
   const [failed, setFailed] = useState(false);
+  /* Bumped when this document's cached thumbnail is replaced — by the open
+     viewer after an edit settles, or by the idle backfill — in this tab or a
+     sibling tab. Pushed via services/thumbnailEvents.js; rows never poll. */
+  const [refreshTick, setRefreshTick] = useState(0);
+  const shownDocRef = useRef(null);
+
+  useEffect(() => {
+    if (!docId) return undefined;
+    return subscribeThumbnailUpdates((message) => {
+      if (message.docId !== String(docId)) return;
+      thumbCache.delete(docId);
+      setRefreshTick((tick) => tick + 1);
+    });
+  }, [docId]);
 
   useEffect(() => {
     const node = hostRef.current;
@@ -239,6 +258,7 @@ export default function PdfPageThumb({
 
   useEffect(() => {
     if (!nearViewport) {
+      shownDocRef.current = null;
       setData(null);
       setFailed(false);
       return undefined;
@@ -247,10 +267,15 @@ export default function PdfPageThumb({
 
     const existing = readCachedThumb(docId);
     if (existing === 'FAILED') { setData(null); setFailed(true); return undefined; }
-    if (existing) { setData(existing); setFailed(false); return undefined; }
+    if (existing) { shownDocRef.current = docId; setData(existing); setFailed(false); return undefined; }
 
-    setData(null);
-    setFailed(false);
+    // A refresh of the image already on screen keeps it up until the new one
+    // is read (a local IndexedDB read), so an update never flashes.
+    const refreshingShown = shownDocRef.current === docId;
+    if (!refreshingShown) {
+      setData(null);
+      setFailed(false);
+    }
 
     (async () => {
       try {
@@ -258,9 +283,17 @@ export default function PdfPageThumb({
            shared render queue, then persists newly rendered thumbnails. */
         const result = await loadThumb(docId, doc, downloadDocument, priority, () => cancelled);
         if (cancelled) return;
-        if (result === 'DEFERRED') { setFailed(true); return; }
+        if (result === 'DEFERRED') {
+          setFailed(true);
+          // Not cached on this device: ask the idle backfill to make it next
+          // (this row still downloads nothing itself).
+          requestThumbnailBackfill(doc);
+          return;
+        }
         cacheThumb(docId, result);
         if (result === 'FAILED') { setFailed(true); return; }
+        shownDocRef.current = docId;
+        setFailed(false);
         setData(result);
       } catch (error) {
         // Corrupt PDF, missing storage file, etc. — show the placeholder and
@@ -274,7 +307,7 @@ export default function PdfPageThumb({
     })();
 
     return () => { cancelled = true; };
-  }, [nearViewport, docId, doc?.file, doc?.file_path, doc?.filePath, doc?.dataUrl, downloadDocument, priority]);
+  }, [nearViewport, refreshTick, docId, doc?.file, doc?.file_path, doc?.filePath, doc?.dataUrl, downloadDocument, priority]);
 
   const isRow = variant === 'row';
   const aspect = data?.aspect || DEFAULT_ASPECT;

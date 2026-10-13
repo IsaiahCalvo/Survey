@@ -124,3 +124,26 @@ export function resolveHistoryEntryContext(event, { spaces = [] } = {}) {
 
   return any ? resolved : null;
 }
+
+/**
+ * w55: does this History row's MARK live in survey context (a Survey Marker,
+ * a module-scoped mark, a region/space)? Only those need the viewer switched
+ * into a space/template/module to be visible. For an ordinary mark, the
+ * author's screen setup at the time (survey panel open, a module selected) says
+ * nothing about the mark, and applying it would close the reader's survey
+ * panel or drop them into a module that hides ordinary markup.
+ */
+export function isSurveyScopedHistoryEvent(event) {
+  const payload = event?.payload && typeof event.payload === 'object' ? event.payload : {};
+  const restoreAction = payload.restoreAction && typeof payload.restoreAction === 'object' ? payload.restoreAction : null;
+  const preview = payload.previewAnnotation && typeof payload.previewAnnotation === 'object' ? payload.previewAnnotation : null;
+  if (event?.event_type === 'survey_marker_deleted'
+    || event?.event_type === 'region_deleted'
+    || event?.event_type === 'space_deleted') return true;
+  if (restoreAction?.type === 'surveyMarker' || restoreAction?.surveyMarker) return true;
+  const annotationType = String(payload.annotationType || '').toLowerCase();
+  if (annotationType.includes('survey') || annotationType === 'highlight') return true;
+  if (preview && (preview.moduleId != null || preview.regionId != null)) return true;
+  const reason = String(payload.reason || payload.rawActionType || '');
+  return reason.startsWith('highlight:') || reason.startsWith('survey-marker:') || reason.startsWith('space:');
+}

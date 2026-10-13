@@ -9,11 +9,49 @@
  * callout/space/survey-marker actions for the activity feed.
  */
 import { supabase } from '../supabaseClient.js';
+import { slimHistoryPreviewBefore } from '../utils/historyPreviewAnnotation.js';
+import { LIVE_EDIT_FLAG, LIVE_PREVIEW_FLAG } from './annotationLiveOverlay.js';
 
 const HISTORY_EVENT_LIMIT = 200;
 const MAX_PAYLOAD_CHARS = 12000;
 const LOCAL_HISTORY_STORAGE_KEY = 'survey_document_history_events_v1';
 let warnedMissingTable = false;
+
+// 2026-10-06 (real two-account run, TEST-PLAN 61): a mark recoloured while
+// another screen was dragging it is that screen's live overlay copy, which
+// carries LIVE_EDIT_FLAG = "writer\u0000seq\u0000key". It went into the History
+// row's preview, and Postgres refuses any text/jsonb holding U+0000 (22P05),
+// so the whole row was lost. Live flags are screen-only state (a restored mark
+// carrying one would be treated as an overlay), and NUL can never be stored:
+// clean every row before it is shown, cached or sent. Returns the same object
+// when there is nothing to clean.
+const SCREEN_ONLY_KEYS = new Set([LIVE_EDIT_FLAG, LIVE_PREVIEW_FLAG]);
+const NUL_RE = /\u0000/g;
+
+export function historyRowForStorage(value, depth = 0) {
+  if (typeof value === 'string') return value.includes('\u0000') ? value.replace(NUL_RE, '') : value;
+  if (!value || typeof value !== 'object' || depth > 64) return value;
+  if (Array.isArray(value)) {
+    let changed = false;
+    const out = value.map((item) => {
+      const next = historyRowForStorage(item, depth + 1);
+      if (next !== item) changed = true;
+      return next;
+    });
+    return changed ? out : value;
+  }
+  const proto = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null) return value;
+  let changed = false;
+  const out = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (SCREEN_ONLY_KEYS.has(key)) { changed = true; continue; }
+    const next = historyRowForStorage(item, depth + 1);
+    if (next !== item) changed = true;
+    out[key] = next;
+  }
+  return changed ? out : value;
+}
 
 function isMissingHistoryTableError(error) {
   return error?.code === '42P01' || String(error?.message || '').includes('document_history_events');
@@ -47,14 +85,26 @@ function normalizeActionType(value) {
 function labelAnnotationType(value) {
   const text = String(value || '').toLowerCase();
   if (text === 'path' || text === 'ink') return 'pen stroke';
-  if (text === 'textbox' || text === 'text' || text === 'freetext') return 'text';
+  // w56: "created a text box", never "created a text".
+  if (text === 'textbox' || text === 'text' || text === 'freetext') return 'text box';
   if (text === 'rect' || text === 'square') return 'rectangle';
   if (text === 'circle') return 'circle';
+  if (text === 'ellipse') return 'ellipse';
   if (text === 'line') return 'line';
+  if (text === 'arrow') return 'arrow';
+  if (text === 'polygon') return 'polygon';
+  if (text === 'polyline') return 'polyline';
+  if (text === 'counter') return 'counter';
   if (text === 'callout') return 'callout';
   if (text.includes('survey')) return 'survey marker';
   if (text === 'fabric') return 'annotation';
   return text || 'annotation';
+}
+
+// w55: "an ellipse", "an arrow", "a rectangle" — never "a ellipse".
+function withArticle(label) {
+  if (label === 'annotation') return 'an annotation';
+  return `${/^[aeiou]/i.test(label) ? 'an' : 'a'} ${label}`;
 }
 
 function buildSummary({ actorName, event }) {
@@ -85,15 +135,24 @@ function buildSummary({ actorName, event }) {
   if (action === 'ink' || (action === 'create' && annotationLabel === 'pen stroke')) {
     return `${actorName} drew a pen stroke${pageSuffix}`;
   }
-  if (action === 'create') return `${actorName} created ${annotationLabel === 'annotation' ? 'an annotation' : `a ${annotationLabel}`}${pageSuffix}`;
-  if (action === 'delete') return `${actorName} deleted ${count > 1 ? `${count} annotations` : annotationLabel === 'annotation' ? 'an annotation' : `a ${annotationLabel}`}${pageSuffix}`;
-  if (action === 'move') return `${actorName} moved ${annotationLabel === 'annotation' ? 'an annotation' : `a ${annotationLabel}`}${pageSuffix}`;
-  if (action === 'resize') return `${actorName} resized ${annotationLabel === 'annotation' ? 'an annotation' : `a ${annotationLabel}`}${pageSuffix}`;
-  if (action === 'rotate') return `${actorName} rotated ${annotationLabel === 'annotation' ? 'an annotation' : `a ${annotationLabel}`}${pageSuffix}`;
+  // w55: a History-panel Restore is logged as a restore, not as the
+  // create/move the re-save looks like.
+  if (event.restoredFromHistory === true) return `${actorName} restored ${count > 1 ? `${count} annotations` : withArticle(annotationLabel)}${pageSuffix}`;
+  if (action === 'create') return `${actorName} created ${withArticle(annotationLabel)}${pageSuffix}`;
+  if (action === 'delete') return `${actorName} deleted ${count > 1 ? `${count} annotations` : withArticle(annotationLabel)}${pageSuffix}`;
+  if (action === 'move') return `${actorName} moved ${withArticle(annotationLabel)}${pageSuffix}`;
+  if (action === 'resize') return `${actorName} resized ${withArticle(annotationLabel)}${pageSuffix}`;
+  if (action === 'rotate') return `${actorName} rotated ${withArticle(annotationLabel)}${pageSuffix}`;
   if (action === 'text edit') return `${actorName} edited text${pageSuffix}`;
+  // RULED 2026-09-28 owner: History option A wording.
+  if (action === 'recolor') return `${actorName} changed the color of ${withArticle(annotationLabel)}${pageSuffix}`;
+  if (action === 'erase') return `${actorName} erased part of ${withArticle(annotationLabel)}${pageSuffix}`;
+  // w56: the user lock (right-click Lock / Unlock).
+  if (action === 'lock') return `${actorName} locked ${count > 1 ? `${count} annotations` : withArticle(annotationLabel)}${pageSuffix}`;
+  if (action === 'unlock') return `${actorName} unlocked ${count > 1 ? `${count} annotations` : withArticle(annotationLabel)}${pageSuffix}`;
   if (action === 'callout edit') return `${actorName} edited a callout${pageSuffix}`;
 
-  return `${actorName} edited ${annotationLabel === 'annotation' ? 'an annotation' : `a ${annotationLabel}`}${pageSuffix}`;
+  return `${actorName} edited ${withArticle(annotationLabel)}${pageSuffix}`;
 }
 
 // History-audit P3: previewAnnotation drives the History panel's spotlight
@@ -166,6 +225,8 @@ function trimPayload(payload) {
     // History-audit P3: preserve the spotlight preview (bounded) so the
     // History highlight still works for large (path-heavy) events.
     previewAnnotation: clampPreviewAnnotation(payload?.previewAnnotation),
+    // History option A (2026-09-28): the "Before" ghost of an edit, bounded.
+    previewBefore: clampPreviewAnnotation(payload?.previewBefore),
     // Decision 10 (KAL-90): the context stamp is tiny and drives click-to-restore.
     uiContext: payload?.uiContext || null,
   };
@@ -191,6 +252,38 @@ function writeLocalHistoryStore(store) {
   }
 }
 
+// w55: the device copy is a fallback for rows the server has not taken yet,
+// not a second archive. It is capped so it can never fill localStorage (which
+// other features also write to): at most LOCAL_HISTORY_MAX_ROWS rows for each of
+// the LOCAL_HISTORY_MAX_DOCUMENTS most recently used documents, nothing older
+// than the server keeps (60 days, the prod prune window).
+const LOCAL_HISTORY_MAX_ROWS = 100;
+const LOCAL_HISTORY_MAX_DOCUMENTS = 10;
+const LOCAL_HISTORY_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000;
+
+function rowTimeMs(row) {
+  return Date.parse(row?.occurred_at || row?.created_at || 0) || 0;
+}
+
+// Trash rows (a deleted item's restore data) are capped separately from
+// activity, so a burst of ordinary edits never pushes out the only copy of a
+// delete row whose upload has not gone through yet.
+export function capLocalHistoryStore(store, { now = Date.now() } = {}) {
+  const cutoff = now - LOCAL_HISTORY_MAX_AGE_MS;
+  const newestFirst = (a, b) => rowTimeMs(b) - rowTimeMs(a);
+  const entries = Object.entries(store || {})
+    .map(([documentId, rows]) => {
+      const fresh = (Array.isArray(rows) ? rows : []).filter((row) => row && rowTimeMs(row) >= cutoff);
+      const trash = fresh.filter((row) => isTrashHistoryEvent(row)).sort(newestFirst).slice(0, LOCAL_HISTORY_MAX_ROWS);
+      const activity = fresh.filter((row) => !isTrashHistoryEvent(row)).sort(newestFirst).slice(0, LOCAL_HISTORY_MAX_ROWS);
+      return [documentId, [...trash, ...activity].sort(newestFirst)];
+    })
+    .filter(([, rows]) => rows.length > 0)
+    .sort((a, b) => rowTimeMs(b[1][0]) - rowTimeMs(a[1][0]))
+    .slice(0, LOCAL_HISTORY_MAX_DOCUMENTS);
+  return Object.fromEntries(entries);
+}
+
 function cacheLocalHistoryRow(row) {
   if (!row?.document_id || !row?.client_event_id) return;
   const store = getLocalHistoryStore();
@@ -202,14 +295,11 @@ function cacheLocalHistoryRow(row) {
     created_at: row.created_at || row.occurred_at || new Date().toISOString(),
     __local: true,
   };
-  const deduped = [
+  store[row.document_id] = [
     nextRow,
     ...existing.filter((entry) => entry?.client_event_id !== row.client_event_id),
-  ]
-    .sort((a, b) => (Date.parse(b.occurred_at || b.created_at || 0) || 0) - (Date.parse(a.occurred_at || a.created_at || 0) || 0))
-    .slice(0, 500);
-  store[row.document_id] = deduped;
-  writeLocalHistoryStore(store);
+  ];
+  writeLocalHistoryStore(capLocalHistoryStore(store));
 }
 
 function listLocalHistoryRows(documentId) {
@@ -276,7 +366,7 @@ export function buildHistoryEventRowFromDebugEvent(event, { documentId, user } =
 
   const actorName = getActorName(user);
   const pageNumber = Number(event.pageNumber ?? event.context?.pageNumber);
-  const compactPayload = trimPayload(event);
+  const compactPayload = historyRowForStorage(trimPayload(event));
   const order = event.order ?? event.checkpointId ?? event.seq ?? Date.now();
   const source = event.historySource || event.lane || event.chosenSource || null;
   const occurredAt = event.timestamp || event.at || new Date().toISOString();
@@ -313,11 +403,75 @@ export function buildHistoryEventRowFromDebugEvent(event, { documentId, user } =
   };
 }
 
-export async function recordDocumentHistoryEvent(row) {
-  if (!row?.document_id || !row?.client_event_id) return { data: null, error: null };
+/**
+ * RULED 2026-09-28 owner: History option A — a partial erase (the eraser trims
+ * part of a mark and the mark stays) is one History line: "erased part of a
+ * pen stroke", with the mark before and after so History can peek at it.
+ * The cloud erase lane commits outside the save pipeline, so it had no line.
+ * `targets` = the committed erase intent's 'replace' targets ({ before, after,
+ * storageKey }); `project` shrinks a mark to its History preview.
+ */
+export function buildPartialEraseHistoryRow({
+  targets,
+  documentId,
+  user,
+  mutationId,
+  pageNumber,
+  committedAt,
+  project = (annotation) => annotation,
+} = {}) {
+  const trimmed = (Array.isArray(targets) ? targets : [])
+    .filter((target) => target?.operation === 'replace' && target.cause !== 'counter-renumber'
+      && target.before && target.after);
+  if (!documentId || !mutationId || trimmed.length === 0) return null;
+  const first = trimmed[0];
+  const idOf = (target) => target.after?.data?.id ?? target.after?.id ?? target.after?.annotationId ?? target.storageKey ?? null;
+  const ids = [...new Set(trimmed.map(idOf).filter(Boolean).map(String))];
+  const annotationType = first.after?.data?.type || first.after?.type || null;
+  const page = Number(pageNumber);
+  const occurredAt = committedAt || new Date().toISOString();
+  const event = {
+    type: 'local_annotation_history_added',
+    actionType: 'erase',
+    rawActionType: 'eraser:partial',
+    annotationType,
+    annotationId: ids[0] || null,
+    annotationIds: ids.length > 1 ? ids : undefined,
+    itemCount: ids.length,
+    pageNumber: Number.isFinite(page) ? page : null,
+    historySource: 'eraser',
+    previewAnnotation: project(first.after),
+    previewBefore: slimHistoryPreviewBefore(project(first.before)),
+  };
+  const clientEventId = `annotation-erase:${mutationId}`;
+  return {
+    id: clientEventId,
+    document_id: documentId,
+    user_id: user?.id || null,
+    client_event_id: clientEventId,
+    event_type: 'local_annotation_history_added',
+    source: 'eraser',
+    page_number: Number.isFinite(page) ? page : null,
+    annotation_id: ids[0] || null,
+    summary: buildSummary({ actorName: getActorName(user), event }),
+    payload: trimPayload(event),
+    is_undoable: true,
+    is_checkpoint: false,
+    occurred_at: occurredAt,
+    created_at: occurredAt,
+  };
+}
+
+export async function recordDocumentHistoryEvent(rawRow) {
+  if (!rawRow?.document_id || !rawRow?.client_event_id) return { data: null, error: null };
+  const row = historyRowForStorage(rawRow);
   cacheLocalHistoryRow(row);
   if (!supabase) return { data: null, error: null };
-  const { id: _localId, __local: _localOnly, ...dbRow } = row;
+  // w55: created_at is left to the server (column default NOW()) so it is the
+  // time the row ARRIVED; the panel's refresh asks for rows by arrival time,
+  // which catches late uploads (offline work, retries, a slow clock) that an
+  // occurred_at filter would miss. occurred_at stays the time of the action.
+  const { id: _localId, __local: _localOnly, created_at: _clientCreatedAt, ...dbRow } = row;
   const { error } = await supabase
     .from('document_history_events')
     .upsert(dbRow, { onConflict: 'document_id,client_event_id', ignoreDuplicates: true });
@@ -365,25 +519,94 @@ export function notifyDocumentHistoryEventRecorded(row) {
   }
 }
 
-export async function recordAndNotifyDocumentHistoryEvent(row) {
-  if (!row?.document_id || !row?.client_event_id) return { data: null, error: null };
+export async function recordAndNotifyDocumentHistoryEvent(rawRow) {
+  if (!rawRow?.document_id || !rawRow?.client_event_id) return { data: null, error: null };
+  const row = historyRowForStorage(rawRow);
   notifyDocumentHistoryEventRecorded(row);
   return recordDocumentHistoryEvent(row);
 }
 
-export async function listDocumentHistoryEvents(documentId, { limit = HISTORY_EVENT_LIMIT } = {}) {
+// w55: History rows that hold a deleted item's restore data. These are the
+// trash: kept forever on the server (never pruned), and the only rows the
+// History panel offers Restore on. Undo/redo rows carry restore-like payloads
+// too, so the panel must key off the row type, never the summary text.
+export const TRASH_HISTORY_EVENT_TYPES = Object.freeze([
+  'annotation_deleted',
+  'callout_deleted',
+  'region_deleted',
+  'annotations_bulk_deleted',
+  'space_deleted',
+  'survey_marker_deleted',
+]);
+
+export function isTrashHistoryEvent(event) {
+  return TRASH_HISTORY_EVENT_TYPES.includes(event?.event_type);
+}
+
+const HISTORY_EVENT_COLUMNS = 'id, document_id, user_id, client_event_id, event_type, source, page_number, annotation_id, summary, payload, is_undoable, is_checkpoint, occurred_at, created_at';
+
+/**
+ * List a document's History rows, newest first.
+ *   limit   page size (1..500)
+ *   before/beforeId  keyset cursor = the oldest SERVER row shown: only rows
+ *           older than it ("Load older" paging; ties on time are ordered by id)
+ *   arrivedSince  ISO time: only rows that reached the server at or after
+ *           this (created_at, set by the server) — the incremental refresh
+ */
+export async function listDocumentHistoryEvents(documentId, {
+  limit = HISTORY_EVENT_LIMIT,
+  before = null,
+  beforeId = null,
+  arrivedSince = null,
+} = {}) {
   const safeLimit = Math.max(1, Math.min(500, Number(limit) || HISTORY_EVENT_LIMIT));
-  const localRows = listLocalHistoryRows(documentId);
+  const beforeMs = before ? Date.parse(before) : NaN;
+  const arrivedMs = arrivedSince ? Date.parse(arrivedSince) : NaN;
+  const localRows = listLocalHistoryRows(documentId).filter((row) => {
+    const at = rowTimeMs(row);
+    if (Number.isFinite(beforeMs) && !(at <= beforeMs)) return false;
+    if (Number.isFinite(arrivedMs) && !(at >= arrivedMs)) return false;
+    return true;
+  });
   if (!supabase || !documentId) return mergeHistoryRows([], localRows, safeLimit);
-  const { data, error } = await supabase
+  let query = supabase
     .from('document_history_events')
-    .select('id, document_id, user_id, client_event_id, event_type, source, page_number, annotation_id, summary, payload, is_undoable, is_checkpoint, occurred_at, created_at')
-    .eq('document_id', documentId)
+    .select(HISTORY_EVENT_COLUMNS)
+    .eq('document_id', documentId);
+  if (Number.isFinite(beforeMs)) {
+    const at = new Date(beforeMs).toISOString();
+    // Keyset paging on (occurred_at, id): rows that share the cut-off time
+    // (a bulk delete writes several rows with one timestamp) are never skipped.
+    query = beforeId
+      ? query.or(`occurred_at.lt."${at}",and(occurred_at.eq."${at}",id.lt.${beforeId})`)
+      : query.lte('occurred_at', at);
+  }
+  if (Number.isFinite(arrivedMs)) query = query.gte('created_at', new Date(arrivedMs).toISOString());
+  const { data, error } = await query
     .order('occurred_at', { ascending: false })
+    .order('id', { ascending: false })
     .limit(safeLimit);
   if (error) {
     if (isMissingHistoryTableError(error)) return mergeHistoryRows([], localRows, safeLimit);
     throw error;
   }
   return mergeHistoryRows(data || [], localRows, safeLimit);
+}
+
+/**
+ * w55: the newest space_deleted row for a space, looked up on the server when
+ * it is not among the rows the panel has loaded (region "Restore both?").
+ */
+export async function findDeletedSpaceHistoryEvent(documentId, spaceId) {
+  if (!supabase || !documentId || !spaceId) return null;
+  const { data, error } = await supabase
+    .from('document_history_events')
+    .select(HISTORY_EVENT_COLUMNS)
+    .eq('document_id', documentId)
+    .eq('event_type', 'space_deleted')
+    .eq('payload->restoreAction->>spaceId', String(spaceId))
+    .order('occurred_at', { ascending: false })
+    .limit(1);
+  if (error) return null;
+  return Array.isArray(data) && data.length > 0 ? data[0] : null;
 }

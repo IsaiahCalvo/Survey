@@ -70,7 +70,8 @@ describe('bulk-delete plan byAuthor name resolution (roster layer)', () => {
       resolveAuthorName: rosterResolver({ [ALICE]: 'alice@example.com', [BOB]: 'Bob B.' }),
     });
 
-    assert.equal(plan.mode, 'owner-cross-author');
+    // RULED 2026-09-28 owner: open editing + lock — no confirm modal; the plan is 'direct' and byAuthor stays for History/diagnostics.
+    assert.equal(plan.mode, 'direct');
     assert.equal(plan.byAuthor[ALICE].name, 'alice@example.com');
     assert.equal(plan.byAuthor[ALICE].count, 1);
     assert.equal(plan.byAuthor[BOB].name, 'Bob B.');
@@ -84,7 +85,8 @@ describe('bulk-delete plan byAuthor name resolution (roster layer)', () => {
       viewerId: OWNER,
       documentOwnerId: OWNER,
     });
-    assert.equal(plan.mode, 'owner-cross-author');
+    // RULED 2026-09-28 owner: open editing + lock — 'owner-cross-author' collapsed into 'direct'.
+    assert.equal(plan.mode, 'direct');
     assert.equal(plan.byAuthor[ALICE].name, 'Unknown');
   });
 
@@ -124,7 +126,7 @@ describe('bulk-delete plan byAuthor name resolution (roster layer)', () => {
     assert.equal(plan.byAuthor[ALICE].name, 'Unknown');
   });
 
-  it('collaborator-cross-author breakdown resolves roster names too', () => {
+  it('collaborator cross-author breakdown resolves roster names too', () => {
     const collab = 'user-collab-3333';
     const foreignCallout = calloutToAnnotationObject(makeCallout('callout-f', ALICE), PAGE_SIZE);
     const ownShape = makeShape('shape-own', collab);
@@ -135,7 +137,8 @@ describe('bulk-delete plan byAuthor name resolution (roster layer)', () => {
       documentOwnerId: OWNER,
       resolveAuthorName: rosterResolver({ [ALICE]: 'alice@example.com' }),
     });
-    assert.equal(plan.mode, 'collaborator-cross-author');
+    // RULED 2026-09-28 owner: open editing + lock — 'collaborator-cross-author' collapsed into 'direct'.
+    assert.equal(plan.mode, 'direct');
     assert.equal(plan.byAuthor[ALICE].name, 'alice@example.com');
   });
 
@@ -148,7 +151,8 @@ describe('bulk-delete plan byAuthor name resolution (roster layer)', () => {
       documentOwnerId: OWNER,
       resolveAuthorName: () => { throw new Error('roster unavailable'); },
     });
-    assert.equal(plan.mode, 'owner-cross-author');
+    // RULED 2026-09-28 owner: open editing + lock — 'owner-cross-author' collapsed into 'direct'.
+    assert.equal(plan.mode, 'direct');
     assert.equal(plan.byAuthor[ALICE].name, 'Unknown');
   });
 });

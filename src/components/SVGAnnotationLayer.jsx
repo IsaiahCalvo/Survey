@@ -20,7 +20,9 @@
  * Phase 9 Plan 02: Drag-to-move, resize-by-handle, rotation visual + pointer wiring
  * Phase 9 Plan 03: Multi-select group ops (group-move visual, group bbox, delete)
  */
-import { cloneElement, memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
+import { boxWorldBounds, markerIdsByGap } from '../utils/surveyMarkerFamily.js';
+import { cloneElement, memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback, useSyncExternalStore } from 'react';
+import { flushSync } from 'react-dom';
 import { deepClone } from '../utils/deepClone.js';
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { resolveEditEntryKind } from '../utils/annotationEditRoute.js';
@@ -39,7 +41,7 @@ import {
 } from '../utils/svgAnnotationRenderers';
 // UX 2026-09-09: cloud hover/hit geometry comes from the same resolver that
 // paints the cloud, so the grab surface is the scalloped outline itself.
-import { CLOUD_HIT_STROKE_WIDTH, resolveAnnotationCloudSpec } from '../utils/pdfAnnotationAppearance.js';
+import { resolveAnnotationCloudSpec } from '../utils/pdfAnnotationAppearance.js';
 // UX 2026-09-10 (round 4, defect 4): the glow is a RING around the ink — the
 // ink band is knocked out of it — so a translucent stroke keeps its own colour.
 import { buildCloudGlowPaint, cloudGlowMaskIdFor } from '../utils/cloudSvgPaint.js';
@@ -49,20 +51,39 @@ import {
   cloudSelectionChrome,
   resolveCloudAnnotationGeometry,
 } from '../utils/cloudAnnotationGeometry.js';
+// Owner Test 45 (2026-10-06): a clouded text box / callout box halos and
+// shows grabbers exactly like a clouded rectangle (one shared geometry).
+import {
+  calloutBoxCloudGeometry,
+  calloutBoxHandleLayout,
+  calloutVisibleBox,
+  markBorderCloudChrome,
+  markBorderCloudGeometry,
+} from '../utils/markBorderOutline.js';
 // UX 2026-09-09: Enter/Escape finish/cancel a click-to-place draft wherever
 // focus sits; only a real typing surface keeps those keys for itself — and
 // (2026-09-10) not even that when it is a numeric chrome field that opted out.
 import { draftOwnsKeyboard, releaseFocusForDraftTool } from '../utils/draftKeyboardTarget.js';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
+import { historyTypeKey } from '../utils/historyFeed.js';
+import { broadcastPageSelection } from '../utils/historyMarkFilter.js';
 // Callout rendering is owned entirely by the dedicated `filteredCallouts` loop
 // below (visible chrome + interaction + live preview), independent of the
 // callout-unification keystone flag. The flag governs only persistence/sync:
 // callout objects are projected into annotationsByPage for the shared Supabase
 // push, but the shared dispatch SKIPS them (no double-render) — they are never
-// rendered through the generic path.
+// rendered through the generic path. w52 (2026-09-28): the dedicated loop only
+// BUILDS each callout; it is drawn in its slot of the page's one stacking order
+// (stackedMarks), interleaved with every other mark.
 import { HANDLE_FILL, HANDLE_RING, HANDLE_RING_INVALID, HANDLE_RADIUS, HANDLE_RADIUS_SECONDARY } from '../utils/handleStyle';
-import { getMarkHitStrokePx, resolveHandleHitPadPageSize } from '../utils/handleHitPad.js';
+import { getMarkHitBandWidth, getSvgMatrixMaxScale, resolveHandleHitPadPageSize } from '../utils/handleHitPad.js';
+import { clampResizeScale } from '../utils/resizeMinimum.js';
 import { shouldAutoSelectAfterCommit } from '../utils/autoSelectAfterCommit.js';
+import { canToolGrabSelection, isSelectFamilyTool, shouldHideSelectionChrome } from '../utils/selectModes.js';
+import { classifySelectionGrabTarget, isPageCalloutSelected, pageSelectionMarkGroups, resolvePagePress } from '../utils/toolPressRouting.js';
+import { dropStashedSelection, peekStashedSelection, stashPageSelection } from '../utils/pageSelectionPresence.js';
+import { useSelectionGrabHandoff } from '../hooks/useSelectionGrabHandoff.js';
+import { DRAWN_CENTERED_STROKE_CONTRACT } from '../utils/shapeCommitGeometry.js';
 import { useSVGInteraction } from '../hooks/useSVGInteraction';
 // Plan 14-03 Task 3 (CREATE-01 callout half): factory for constructing a
 // new callout from the click-drag creation gesture. types.js is the
@@ -77,7 +98,6 @@ import {
   buildFreehandCommitJSON,
   buildLineCommitJSON,
   buildPolyShapeCommitJSON,
-  composeAnnotationColor,
 } from '../utils/annotationCreationCommit.js';
 import {
   POLY_DRAFT_TOOLS,
@@ -96,7 +116,6 @@ import {
   getAnnotationRenderIdentity,
   stampAnnotationCreationIdentity,
 } from '../utils/annotationStorageIdentity.js';
-import { computeDrawnBoundaryShapePreviewGeometry } from '../utils/shapeCommitGeometry.js';
 import {
   isBlockedFromAreaSelection,
 } from '../utils/annotationSelectionEligibility.js';
@@ -107,12 +126,13 @@ import {
   recordAnnotationCommit,
   updateAnnotationGesture,
 } from '../utils/annotationPreviewDiag';
-import SVGSelectionOverlay from './SVGSelectionOverlay';
+import SVGSelectionOverlay, { SelectionLockBadge } from './SVGSelectionOverlay';
+import { isUserLocked } from '../lib/collab/permissionScope.js';
 import { getTextMarkupRangeHandlePositions, getTextMarkupSelectionChrome } from '../utils/pdfTextMarkup.js';
 import RotationInputField from './RotationInputField';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, isImportedPath, isAbsoluteCoordPath, getLineEndpoints, computeLineBboxCenter } from '../utils/svgBoundingBox';
 import { resolveMidpointHandlePosition } from '../utils/lineDragMath.js';
-import { buildArrowheadRenderSpec } from '../utils/lineRenderHelpers.js';
+import { buildArrowheadRenderSpec, resolveLineEndingStyles } from '../utils/lineRenderHelpers.js';
 import { getCurvedPath, distanceToLineSegment, getCurveEndAngle } from '../utils/lineGeometry.js';
 import { ARROWHEAD_STYLES } from './Callout/types';
 import { renderPathToSvgAttrs, renderPathToSvgD, isFilledInkOutlineAttrs, getFilledInkHitTargetProps } from '../utils/svgPathAttrs.js';
@@ -120,6 +140,7 @@ import {
   applyPageAffineToInkObject,
   createInkPathAffine,
 } from '../utils/inkGeometryTransform.js';
+import { pureTranslationOf, translatePathSegmentsToD } from '../utils/svgPathBake.js';
 import {
   ANNOTATION_VISIBILITY_SCOPE,
   getAnnotationVisibilityScope,
@@ -132,9 +153,32 @@ import {
 // Diagnostic: record every SVG callout's source data + DOM rects so Save Log
 // can dump a full geometry comparison against the Fabric edit-mode capture.
 import { captureSvgCallout } from '../utils/calloutGeometryDiag.js';
+// w52 (2026-09-28) — shared "one annotation family" rules (space
+// interactivity, whole-selection z-order, nudge helpers).
+import {
+  isInteractiveForActiveSpace,
+  isAnnotationInteractiveInActiveSpace,
+  reorderSelectionInStack,
+  zOrderDirectionForKey,
+  nudgeDeltaForKey,
+  isArrowKey,
+  isTypingTarget,
+  isArrowOwningPopoverOpen,
+  isNudgeKeyStillHeld,
+  registerPendingNudgeFlush,
+  flushPendingNudges,
+  clampNudgeDelta,
+  NUDGE_IDLE_COMMIT_MS,
+  canMoveAnnotation,
+} from '../utils/annotationFamilyRules.js';
+// w58: hold Cmd (Mac) / Ctrl (Windows) to move the selection from anywhere in its box.
+import { useMoveModifierHeld, resolveModifierMoveZone, isPointInBoxes } from '../utils/moveModifier.js';
 import { getPdfStampProxySvgProps, isPdfStampProxy } from '../utils/pdfStampProxy.js';
 import { isClientPointNearRect } from '../utils/selectionPointerOwnership.js';
 import { forwardClickToFormWidget, liveFormWidgetAtPoint } from '../utils/formWidgetPointerTargets.js';
+import { beginLiveStroke } from '../services/annotationLiveStrokes.js';
+import LiveStrokeGhosts from './LiveStrokeGhosts.jsx';
+import { crossPageGhostFor, crossPageGhostKind, subscribeCrossPageGhost } from '../utils/crossPageMove.js';
 
 const svgAnnotationDebug = (...args) => {
   if (typeof window === 'undefined' || window.__SVG_ANNOTATION_DEBUG !== true) return;
@@ -176,6 +220,25 @@ export function buildFabricPathSvgTransform(obj) {
 }
 /* test-export:end buildFabricPathSvgTransform */
 
+// Owner 2026-10-06 (smooth zoom on heavily marked drawings): a path mark that
+// is only MOVED (pure translation) is drawn with the move written into its
+// path data and no transform of its own (utils/svgPathBake.js — each
+// transformed element was its own paint chunk, the main per-frame cost of a
+// zoomed-out set of drawings). { d } or null (keep the transform).
+function resolveBakedFabricPath(obj) {
+  const translation = pureTranslationOf(createInkPathAffine(obj, obj?.path).matrix);
+  if (!translation) return null;
+  const d = translatePathSegmentsToD(obj.path, translation.tx, translation.ty);
+  return d ? { d, path: obj.path, length: obj.path.length, last: obj.path[obj.path.length - 1] } : null;
+}
+// The cached result only while the path array is the one it was made from
+// (same guard as svgPathAttrs' d cache: an in-place append re-derives it).
+const isBakedPathCurrent = (baked, obj) => !baked || (
+  baked.path === obj?.path
+  && baked.length === obj.path.length
+  && baked.last === obj.path[obj.path.length - 1]
+);
+
 const hasVisiblePaint = (value) => {
   if (value == null) return false;
   const normalized = String(value).trim().toLowerCase();
@@ -189,7 +252,7 @@ const hasVisiblePaint = (value) => {
   return true;
 };
 
-const getShapeHitTargetProps = ({ fill, stroke, strokeWidth, minStrokeWidth = 12, isInteractive }) => {
+const getShapeHitTargetProps = ({ fill, stroke, strokeWidth, hitStrokeWidth, isInteractive }) => {
   const hasFill = hasVisiblePaint(fill);
   const hasStroke = hasVisiblePaint(stroke) && Number(strokeWidth || 0) > 0;
   // UX 2026-07-17 — the geometry paints (invisible fill / stroke band) are
@@ -202,7 +265,8 @@ const getShapeHitTargetProps = ({ fill, stroke, strokeWidth, minStrokeWidth = 12
   return {
     fill: hasFill ? 'rgba(0,0,0,0.001)' : 'none',
     stroke: hasStroke ? 'rgba(0,0,0,0.001)' : 'none',
-    strokeWidth: hasStroke ? Math.max(minStrokeWidth, Number(strokeWidth || 1) + 10) : 0,
+    // Owner 2026-10-04: the ink plus a fixed screen tolerance (markHitBand).
+    strokeWidth: hasStroke ? hitStrokeWidth : 0,
     pointerEvents: !isInteractive ? 'none' : hasFill ? 'all' : (hasStroke ? 'stroke' : 'none'),
   };
 };
@@ -298,9 +362,74 @@ const FREEHAND_CREATION_TOOLS = ['pen', 'highlighter'];
 // box, so they get their own draft state and their own finish rules
 // (src/utils/polyDraft.js) rather than riding the drag-out gesture above.
 const POLY_CREATION_TOOLS = POLY_DRAFT_TOOLS;
+// UX 2026-10-02 (owner): Line and Arrow take BOTH gestures — press-drag-release
+// draws one in a go, and a click (a press that travels less than this many
+// SCREEN pixels before release) sets the start, the end follows the pointer
+// with the button up, and a second click sets the end. Escape or a tool
+// switch abandons the draft. Rect/ellipse stay drag-only: a plain click with
+// them is how people click away from the mark they just drew.
+const CLICK_PLACE_SHAPE_TOOLS = ['line', 'arrow'];
+const CLICK_PLACE_MAX_TRAVEL_PX = 4;
+// Owner 2026-10-02: the translucency of every hover / selection halo. A halo
+// with more than one part (a line and its heads, a callout's box, leaders and
+// head) paints its parts OPAQUE inside one group carrying this opacity, so
+// overlapping parts never double up into darker seams.
+const HOVER_HALO_OPACITY = 0.4;
+// The halo of one arrowhead spec (buildArrowheadRenderSpec), as an opaque
+// outline that inherits the halo group's stroke colour. null for no head.
+const renderArrowheadHalo = (spec, strokeWidth) => {
+  if (!spec) return null;
+  switch (spec.kind) {
+    case 'solidTriangle':
+    case 'openTriangle':
+    case 'diamond':
+    case 'square':
+      return (
+        <polygon
+          points={spec.polygon.points}
+          transform={spec.polygon.transform}
+          fill="none"
+          strokeWidth={strokeWidth}
+          strokeLinejoin="round"
+        />
+      );
+    case 'openCircle':
+      return <circle cx={spec.circle.cx} cy={spec.circle.cy} r={spec.circle.r} fill="none" strokeWidth={strokeWidth} />;
+    case 'vShape':
+      return (
+        <polyline
+          points={spec.polyline.points}
+          fill="none"
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      );
+    case 'slash':
+    case 'horizontalLine':
+      return (
+        <line
+          x1={spec.line.x1} y1={spec.line.y1}
+          x2={spec.line.x2} y2={spec.line.y2}
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+        />
+      );
+    default:
+      return null;
+  }
+};
+// Owner Test 15 (2026-10-02): half the border width when renderRect /
+// renderEllipse pull an inset-contract border in (their shouldInsetStroke), so
+// the hover glow is centred on the border's own line; 0 for a centred border.
+const hoverGlowStrokeInset = (obj) => {
+  const sw = Number(obj?.strokeWidth);
+  if (!(sw > 0) || obj?.globalCompositeOperation === 'multiply') return 0;
+  return obj?.data?.strokeRenderContract === DRAWN_CENTERED_STROKE_CONTRACT ? 0 : sw / 2;
+};
 // UX 2026-09-16: every selection grabber carries an invisible hit pad — the
 // drawn dot keeps its size, a transparent disc behind it catches the press.
-// 32 px on a mouse (Drawboard PDF measures 34 x 34), 44 pt on a finger. The
+// On a mouse: the grabber + 4 px, min 20 (w63); 44 pt on a finger. The
 // polygon vertex grabber pioneered this in 2026-09-09 with a touch-only 44 pt
 // disc; the mouse now gets one too. Sizes live in utils/handleHitPad.js.
 const hasCoarsePointer = () => (
@@ -309,7 +438,10 @@ const hasCoarsePointer = () => (
   && window.matchMedia('(pointer: coarse)').matches
 );
 
-const SVGAnnotationLayer = memo(({
+// w53: shared empty selection (stable identity keeps memo deps quiet).
+const EMPTY_SURVEY_MARKER_IDS = new Set();
+
+const SVGAnnotationLayerBody = memo(({
   pageNumber,
   width,          // unscaled PDF page width (e.g., 612)
   height,         // unscaled PDF page height (e.g., 792)
@@ -339,8 +471,14 @@ const SVGAnnotationLayer = memo(({
   layerVisibility,
   // Selection / interaction props (Phase 9)
   onSaveAnnotations,   // (updatedJSON, saveContext) => void
+  // Owner after Test 46: a picked mark dragged onto another page moves there
+  // (utils/crossPageMove.js). ({ toPage, marks }) => true when saved.
+  onMoveMarksToPage = null,
   onRequestEditMode,   // (annotationIndex, annotationType) => void
   activeTool,          // string — current tool (e.g., 'pan', 'pen', etc.)
+  // w32: the open document's id — live ink (in-progress strokes) is sent on,
+  // and shown from, this document's channel only.
+  documentId = null,
   selectionMode = 'rectangle', // 'rectangle' | 'lasso'; text uses activeTool='text-select'
   // UX 2026-09-15 (Drawboard parity — Pan is a selection mode):
   // panEditEntryEnabled is set by PDFViewer when the PAN tool is armed. It does
@@ -362,6 +500,9 @@ const SVGAnnotationLayer = memo(({
   // instead of panning. Never put the latter on an annotation carrier: Drawboard
   // pans from an unselected annotation, so the drag has to reach the scroller.
   panEditEntryEnabled = false,
+  // Drawboard rule 12 (owner 2026-10-02): the viewer asks this layer to leave
+  // its pick behind when it unmounts and take it back when it mounts again.
+  keepSelectionAcrossRemount = false,
   lassoTouchOperation = 'replace',
   lassoTouchMode = 'window',
   editingAnnotationIndex, // number | null — index of annotation currently being edited in FabricEditCanvas (hidden in SVG)
@@ -443,6 +584,7 @@ const SVGAnnotationLayer = memo(({
   // without saving or deleting any annotation data.
   selectionClearToken = 0,
   selectionOwnerPageNumber = null,
+  pickOwnerPageNumber = null,
   onSelectionChange,
   onTextSelectManipulationChange,
   // UX: pan-mode hover glow — App.jsx runs a document-level mousemove
@@ -460,6 +602,10 @@ const SVGAnnotationLayer = memo(({
   // path owned by the parallel callout session — this handler only runs for
   // `annotations.objects[i]` selections (selectedIds), never for callouts.
   onCopyAnnotation,
+  // w52: Cmd+C / Cmd+X for a selected callout (PDFViewer handleCopyCallout /
+  // handleCutCallout — the same handlers as the callout right-click menu).
+  onCopyCallout,
+  onCutCallout,
   onCutAnnotation,
   // UX: z-order reorder handler. Signature: (pageNumber, fromIndex, toIndex).
   // Fired from the keydown useEffect below on Cmd+]/Cmd+[ (with Shift for
@@ -519,8 +665,22 @@ const SVGAnnotationLayer = memo(({
   // Zoom-start signal (CLAUDE.md invariant): commit in-flight freehand work
   // before the zoom re-lays-out the page — mirror of the fabric canvas flush.
   zoomGeneration = 0,
+  zoomGenerationSignal = null,
   // Survey-marker drag-out routes through the marker store, not page objects.
   onSurveyMarkerCreated,
+  // w53 (2026-09-28) — Survey Markers in the one annotation family.
+  // isSurveyMarkerFamilyMember(id): true for a SAVED marker (one still being
+  // placed / named is not a family member and keeps its own single path).
+  // onDeleteSurveyMarkers(ids): delete several markers as one step.
+  // onReorderFamily(pageNumber, { indices, calloutIds, markerIds, direction }):
+  // restack a selection that may hold markers (one save, one undo step).
+  isSurveyMarkerFamilyMember = null,
+  onDeleteSurveyMarkers = null,
+  onReorderFamily = null,
+  // w53: one clipboard for any selection + Duplicate
+  // (pageNumber, { indices, calloutIds, markerIds }, 'copy' | 'cut').
+  onCopyFamily = null,
+  onDuplicateFamily = null,
 }) => {
 
   // ---------------------------------------------------------------------------
@@ -536,6 +696,15 @@ const SVGAnnotationLayer = memo(({
   const counterHandlePreviewRef = useRef(null);
   const annotationsRef = useRef(annotations);
   const renderedAnnotationEntriesRef = useRef([]);
+  // w52: ids of the callouts this page shows AND lets the user pick (visible
+  // in context + interactive for the active space). Null until the first
+  // callout pass lands, which reads as "all pass" (boot parity).
+  const selectableCalloutIdsRef = useRef(null);
+  const isCalloutSelectable = useCallback((calloutId) => {
+    const ids = selectableCalloutIdsRef.current;
+    if (!ids) return true;
+    return ids.has(String(calloutId));
+  }, []);
   const surveyMarkerDragRef = useRef(null);
   // UX 2026-09-15 — a press that landed on blank SVG space with a LIVE PDF form
   // widget underneath. The widget layer paints under this overlay (markup is
@@ -581,7 +750,22 @@ const SVGAnnotationLayer = memo(({
   }, []);
   useEffect(() => releaseFormWidgetSelectionGuard, [releaseFormWidgetSelectionGuard]);
   const surveyMarkerClickRef = useRef({ annotationId: null, time: 0 });
-  const [selectedSurveyMarkerId, setSelectedSurveyMarkerId] = useState(null);
+  // w53: the Survey Markers in this page's selection (a Set of ids). With one
+  // marker and nothing else selected it is the classic single-marker
+  // selection (handles, resize / rotate, touch Delete chip); otherwise the
+  // markers are members of a family selection with marks and callouts.
+  const [selectedSurveyMarkerIds, setSelectedSurveyMarkerIds] = useState(EMPTY_SURVEY_MARKER_IDS);
+  const setSelectedSurveyMarkerId = useCallback((annotationId) => {
+    setSelectedSurveyMarkerIds((prev) => {
+      if (!annotationId) return prev.size === 0 ? prev : EMPTY_SURVEY_MARKER_IDS;
+      if (prev.size === 1 && prev.has(annotationId)) return prev;
+      return new Set([annotationId]);
+    });
+  }, []);
+  const surveyMarkerMembersRef = useRef([]);
+  const selectedSurveyMarkerIdsRef = useRef(selectedSurveyMarkerIds);
+  selectedSurveyMarkerIdsRef.current = selectedSurveyMarkerIds;
+  const getSurveyMarkerMembers = useCallback(() => surveyMarkerMembersRef.current, []);
   const [hoveredSurveyMarkerId, setHoveredSurveyMarkerId] = useState(null);
   const [surveyMarkerPreviewBounds, setSurveyMarkerPreviewBounds] = useState(null);
   useEffect(() => {
@@ -593,6 +777,7 @@ const SVGAnnotationLayer = memo(({
   // ---------------------------------------------------------------------------
   const {
     selectedIds, hoveredId, inverseScale, interactionState, activeCalloutDrag, visualTransform,
+    dragState,
     hoveredCalloutId, handleCalloutPointerEnter, handleCalloutPointerLeave,
     handleAnnotationPointerDown, handleAnnotationPointerEnter,
     handleAnnotationPointerLeave, handleAnnotationDoubleClick,
@@ -630,6 +815,10 @@ const SVGAnnotationLayer = memo(({
     cancelLasso,
     shouldHandoffLassoPointer,
     shouldIgnoreLassoPointer,
+    // w53: a drag started on a selected Survey Marker moves the family.
+    startFamilyGroupMove,
+    // w58: Cmd / Ctrl + press inside the selection box moves the selection.
+    startModifierMove,
   } = useSVGInteraction({
     svgRef, annotations, pageWidth: width, pageHeight: height,
     onSaveAnnotations, onRequestEditMode,
@@ -664,7 +853,25 @@ const SVGAnnotationLayer = memo(({
     // deleteSelected snapshot capture and App.jsx modal routing.
     pageNumber,
     onRequestBulkDelete,
+    // w52: callouts obey the same visibility + space-interactivity rules as
+    // every other mark for click / marquee / lasso.
+    isCalloutSelectable,
+    // w52: arrow-key nudge stays off while an inline editor owns the keys.
+    keyboardNudgeEnabled: editingAnnotationIndex == null && !editingCalloutId,
+    // w53: saved Survey Markers join marquee / lasso / Shift-click / group
+    // move / nudge with the rest of the selection.
+    getSurveyMarkerMembers,
+    selectedSurveyMarkerIds,
+    onSelectedSurveyMarkerIdsChange: setSelectedSurveyMarkerIds,
+    onMoveMarksToPage,
+    documentId,
   });
+  // The picture of a mark being carried over THIS page from another one.
+  const crossPageGhost = useSyncExternalStore(
+    subscribeCrossPageGhost,
+    () => crossPageGhostFor(documentId, pageNumber),
+    () => null,
+  );
 
   // UX: apply a pan-mode quick-click selection command from App.jsx. Matches
   // this layer's pageNumber, then calls the hook's selectAnnotation. The
@@ -680,16 +887,59 @@ const SVGAnnotationLayer = memo(({
   // this, the select-tool user sees a one-frame flash where the neighbor
   // shape (now occupying the deleted index) appears selected — the save and
   // the deselect arrive in separate renders otherwise.
+  // Drawboard rule 12 (owner 2026-10-02): a page change never drops the pick.
+  // This layer unmounts when its page leaves the mounted window, so it leaves
+  // its pick behind by id (utils/pageSelectionPresence) and takes it back on
+  // its next mount. The selection commands replayed on mount are not clears.
+  const mountPendingTickRef = useRef(pendingSelection?.tick);
+  const mountClearTokenRef = useRef(selectionClearToken);
+  const stashSourceRef = useRef(null);
+  stashSourceRef.current = { selectedIds, objects: annotations?.objects, markerIds: selectedSurveyMarkerIds };
+  useEffect(() => () => {
+    const source = stashSourceRef.current;
+    if (!source || !keepSelectionAcrossRemount) return;
+    const markIds = [...(source.selectedIds || [])]
+      .map((index) => getAnnotationRenderIdentity(source.objects?.[index]).annotationId)
+      .filter(Boolean);
+    stashPageSelection(pageNumber, { documentId, markIds, markerIds: [...(source.markerIds || [])] });
+  }, [pageNumber, documentId, keepSelectionAcrossRemount]);
+  useEffect(() => {
+    const stash = keepSelectionAcrossRemount ? peekStashedSelection(pageNumber, documentId) : null;
+    if (!stash) return;
+    const objects = annotations?.objects || [];
+    if (stash.markIds.size > 0 && objects.length === 0) return; // marks still loading
+    dropStashedSelection();
+    const indices = [];
+    objects.forEach((object, index) => {
+      if (stash.markIds.has(String(getAnnotationRenderIdentity(object).annotationId))) indices.push(index);
+    });
+    if (indices.length) selectAnnotations(indices);
+    if (stash.markerIds.size) setSelectedSurveyMarkerIds(new Set(stash.markerIds));
+  }, [annotations, pageNumber, documentId, selectAnnotations, keepSelectionAcrossRemount]);
+
   useLayoutEffect(() => {
     if (!pendingSelection) return;
     if (pendingSelection.clearAll === true) {
+      // Rule 12: a clear also drops a far page's kept pick (not the replay on mount).
+      if (pendingSelection.tick !== mountPendingTickRef.current) dropStashedSelection();
       deselectAll();
       setSelectedSurveyMarkerId(null);
       setSurveyMarkerPreviewBounds(null);
       surveyMarkerDragRef.current = null;
       return;
     }
-    if (pendingSelection.pageNumber !== pageNumber) return;
+    if (pendingSelection.pageNumber !== pageNumber) {
+      // w63: a paste's selection is the WHOLE selection — marks still picked
+      // on another page (the page you copied from) drop out, so the next
+      // arrow key moves only the copies.
+      if (pendingSelection.exclusive === true) {
+        deselectAll();
+        setSelectedSurveyMarkerId(null);
+        setSurveyMarkerPreviewBounds(null);
+        surveyMarkerDragRef.current = null;
+      }
+      return;
+    }
     // UX: 2026-04-20 — multi-index restore (Ungroup). When App broadcasts
     // an `annotationIndices` array (instead of the singular index), replace
     // the entire selection with that set so the freed group members stay
@@ -697,7 +947,16 @@ const SVGAnnotationLayer = memo(({
     // default for the older single-shape consumers (right-click delete /
     // pan-mode click).
     if (Array.isArray(pendingSelection.annotationIndices)) {
-      setSelectedSurveyMarkerId(null);
+      // w53: a family restack re-broadcasts the shapes' new slots; the
+      // Survey Markers in the selection stay selected (they are keyed by id).
+      if (Array.isArray(pendingSelection.surveyMarkerIds)) {
+        // w53: a paste / duplicate selects what it created, markers included.
+        setSelectedSurveyMarkerIds(pendingSelection.surveyMarkerIds.length
+          ? new Set(pendingSelection.surveyMarkerIds)
+          : EMPTY_SURVEY_MARKER_IDS);
+      } else if (pendingSelection.keepSurveyMarkers !== true) {
+        setSelectedSurveyMarkerId(null);
+      }
       setSurveyMarkerPreviewBounds(null);
       surveyMarkerDragRef.current = null;
       selectAnnotations(pendingSelection.annotationIndices);
@@ -723,6 +982,7 @@ const SVGAnnotationLayer = memo(({
 
   useLayoutEffect(() => {
     if (!selectionClearToken) return;
+    if (selectionClearToken !== mountClearTokenRef.current) dropStashedSelection();
     deselectAll();
     setSelectedSurveyMarkerId(null);
     setSurveyMarkerPreviewBounds(null);
@@ -737,6 +997,13 @@ const SVGAnnotationLayer = memo(({
       surveyMarkerDragRef.current = null;
     }
   }, [selectionOwnerPageNumber, pageNumber, deselectAll]);
+
+  // w41: a pick (one mark or several) made on another page replaces this
+  // page's marks pick, so the formatting bar never restyles marks on two
+  // pages that the user no longer sees as one selection.
+  useLayoutEffect(() => {
+    if (pickOwnerPageNumber != null && pickOwnerPageNumber !== pageNumber) deselectAll();
+  }, [pickOwnerPageNumber, pageNumber, deselectAll]);
 
   // UX: apply a pan-mode hover target from App.jsx. If pendingHover is null
   // OR targets a different page, clear this layer's hoveredId (a previously
@@ -809,9 +1076,82 @@ const SVGAnnotationLayer = memo(({
   // clicks, shape drags, and click-to-dismiss all keep working.
   const isBboxEditMode = editingAnnotationIndex != null && editingAnnotationEditType === 'bbox';
   const isCalloutTextEditMode = !!editingCalloutId;
-  const isSelectTool = (activeTool === 'select' || activeTool === 'text-select')
+  // Drawboard rules 3 / 4 / 7 (owner 2026-10-02, utils/selectModes.js): under
+  // ANY tool the selected mark and its handles still move / resize it, and a
+  // double press on selected text edits it. While a press on this page's
+  // selection is in hand the layer is "armed" and behaves exactly as under
+  // Select (see hooks/useSelectionGrabHandoff.js); every other press stays
+  // the tool's own.
+  const pageHasSelection = (selectedIds?.size || 0) > 0 || selectedSurveyMarkerIds.size > 0
+    || isPageCalloutSelected(callouts, selectedCalloutIds, pageNumber);
+  // Owner 2026-10-04 (own tool group only): only a tool that may pick every
+  // picked mark grabs it — never the Draw group, whose press always draws.
+  const selectionGrabbableByTool = pageHasSelection && canToolGrabSelection(activeTool, pageSelectionMarkGroups({
+    selectedIds,
+    objects: annotations?.objects,
+    calloutSelected: isPageCalloutSelected(callouts, selectedCalloutIds, pageNumber),
+    surveyMarkerSelected: selectedSurveyMarkerIds.size > 0,
+  }));
+  const { armed: selectionGrabArmed, armedRef: selectionGrabArmedRef, notePick: noteSelectionPick } = useSelectionGrabHandoff({
+    svgRef,
+    enabled: selectionGrabbableByTool && !isSelectFamilyTool(activeTool)
+      && !isCalloutTextEditMode && (editingAnnotationIndex == null || isBboxEditMode),
+    isSelectionTarget: (el) => classifySelectionGrabTarget(el, svgRef.current, {
+      selectedIds,
+      selectedCalloutIds,
+      selectedMarkerIds: selectedSurveyMarkerIds,
+      objects: annotations?.objects,
+    }),
+    onDoublePress: (info, event) => {
+      const fake = {
+        target: info.el,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        pointerType: event.pointerType,
+        // Both presses were on the text while it was selected (or the first
+        // was a tap that picked it): rule 7 says edit, skip the pick check.
+        selectionDoublePress: true,
+        stopPropagation: () => {},
+        preventDefault: () => {},
+      };
+      handleAnnotationDoubleClick(fake, info.index);
+    },
+  });
+  // Rule-table answers a drawing tool's press needs (see resolvePagePress in
+  // the root onPointerDown): drop this page's pick, add to it (Shift), or —
+  // when a press turns out to be a click — pick what it landed on.
+  const clearPageSelection = () => {
+    deselectAll();
+    setSelectedSurveyMarkerId(null);
+    if (isPageCalloutSelected(callouts, selectedCalloutIds, pageNumber)) onSelectedCalloutIdsChange?.(new Set());
+  };
+  const applyPressFallback = (press) => {
+    if (!press) return;
+    if (press.click === 'deselect') { clearPageSelection(); return; }
+    if (press.click !== 'select' && press.click !== 'add') return;
+    const add = press.click === 'add';
+    noteSelectionPick(press.calloutId != null ? `c:${press.calloutId}` : `a:${press.index}`, press);
+    if (press.calloutId != null) {
+      if (!add) { deselectAll(); setSelectedSurveyMarkerId(null); }
+      const next = new Set(add && selectedCalloutIds ? selectedCalloutIds : []);
+      next.add(press.calloutId);
+      onSelectedCalloutIdsChange?.(next);
+      return;
+    }
+    if (!Number.isInteger(press.index)) return;
+    if (!add) {
+      setSelectedSurveyMarkerId(null);
+      if (isPageCalloutSelected(callouts, selectedCalloutIds, pageNumber)) onSelectedCalloutIdsChange?.(new Set());
+    }
+    selectAnnotation(press.index, add);
+  };
+  const applyPressFallbackRef = useRef(applyPressFallback);
+  applyPressFallbackRef.current = applyPressFallback;
+  const isSelectTool = (activeTool === 'select' || activeTool === 'text-select' || selectionGrabArmed)
     && !isCalloutTextEditMode
     && (editingAnnotationIndex == null || isBboxEditMode);
+  // Drawboard rule 10: Delete removes the selection under any tool.
+  const selectionKeysLive = !isCalloutTextEditMode && (editingAnnotationIndex == null || isBboxEditMode);
   // UX: creation tools get pointerEvents=auto so the crosshair class shows
   // through and creation drags can start on the SVG surface. Gated on
   // editingAnnotationIndex == null so the creation surface disables during
@@ -879,6 +1219,15 @@ const SVGAnnotationLayer = memo(({
   const shapeCreationRef = useRef(null);
   useEffect(() => { shapeCreationRef.current = shapeCreation; }, [shapeCreation]);
   const freehandPointsRef = useRef([]);
+  // w32: the in-progress stroke streamed to other screens (ghost ink there,
+  // annotationLiveStrokes.js); ended on commit or cancel.
+  const liveStrokeRef = useRef(null);
+  const endLiveStroke = useCallback((committed, points = null) => {
+    const live = liveStrokeRef.current;
+    liveStrokeRef.current = null;
+    live?.end(committed, points);
+  }, []);
+  useEffect(() => () => endLiveStroke(false), [endLiveStroke]);
 
   // ---------------------------------------------------------------------------
   // Polygon / polyline click-to-place draft (page coords).
@@ -968,6 +1317,62 @@ const SVGAnnotationLayer = memo(({
       : Array.isArray(effectiveSelectedCalloutIds)
         ? effectiveSelectedCalloutIds.length
         : 0;
+  // w53: the classic single-marker selection — exactly one Survey Marker and
+  // nothing else. Any bigger selection holding markers is a family selection
+  // (group frame, group move / nudge / restack / delete / copy).
+  const surveyMarkerSelectionSize = selectedSurveyMarkerIds.size;
+  const familySelectionSize = (selectedIds?.size || 0) + calloutSelectionSize + surveyMarkerSelectionSize;
+  const selectedSurveyMarkerId = surveyMarkerSelectionSize === 1 && familySelectionSize === 1
+    ? selectedSurveyMarkerIds.values().next().value
+    : null;
+
+  // UX w58 (owner 2026-09-28): while Cmd (Mac) / Ctrl (Windows) is held with
+  // something selected, the resize grabbers (line ends, bend, corners, callout
+  // knee / tip / text-box corners, polyline corners) hide at once, the rotate
+  // grabber stays, and the whole selection box becomes a move handle (the
+  // move zone at the end of the page svg). Why: on a small mark seen
+  // zoomed out the grabbers cover the whole mark, so every press resized it.
+  // Drawboard PDF adds a drag grip for this; we use the modifier so no chrome
+  // is added. Rectangle / Lasso Select only (Text Select keeps the page for
+  // native text drags), never while a text box or callout is being typed in,
+  // and only when at least one selected member may move (a selection that is
+  // all locked or all text markup keeps its normal chrome). Full rule:
+  // src/utils/moveModifier.js.
+  const moveModifierHeld = useMoveModifierHeld(familySelectionSize > 0 && activeTool === 'select');
+  const modifierMoveActive = (() => {
+    if (!moveModifierHeld || activeTool !== 'select' || !isSelectTool) return false;
+    if (familySelectionSize === 0) return false;
+    // A read-only document never moves anything (and its page ignores the
+    // pointer; the zone must not bring it back).
+    if (typeof document !== 'undefined' && document.body?.getAttribute('data-readonly') === 'true') return false;
+    if (editingCalloutId || (editingAnnotationIndex != null && editingAnnotationEditType !== 'bbox')) return false;
+    // Never pull a grabber out from under a resize / rotate / bend already in
+    // progress (it holds the pointer); a move in progress is fine.
+    const ds = dragState?.current;
+    if (ds?.active && ds.mode !== 'move' && ds.mode !== 'group-move'
+      && !(ds.mode === 'callout-part' && ds.partType === 'whole')) return false;
+    if (surveyMarkerDragRef.current && surveyMarkerDragRef.current.mode !== 'move') return false;
+    if (counterRotateDragRef.current) return false;
+    for (const idx of selectedIds || []) {
+      if (canMoveAnnotation(annotations?.objects?.[idx])) return true;
+    }
+    if (calloutSelectionSize > 0 && Array.isArray(callouts)) {
+      for (const callout of callouts) {
+        if (!callout || callout.pageNumber !== pageNumber) continue;
+        if (!effectiveSelectedCalloutIds.has?.(callout.id)) continue;
+        // w52: a hidden / space-inert callout is never picked or moved.
+        const selectable = selectableCalloutIdsRef.current;
+        if (selectable instanceof Set && !selectable.has(callout.id)) continue;
+        if (!isUserLocked(callout)) return true;
+      }
+    }
+    if (surveyMarkerSelectionSize > 0) {
+      for (const member of surveyMarkerMembersRef.current || []) {
+        if (member && !member.locked && selectedSurveyMarkerIds.has(String(member.id))) return true;
+      }
+    }
+    return false;
+  })();
 
   // Text Select must leave blank page pixels with PDF.js so native text drag
   // keeps working. Once an annotation is selected, though, its body and edit
@@ -1022,10 +1427,10 @@ const SVGAnnotationLayer = memo(({
         }
       }
     }
-    if (selectedSurveyMarkerId) {
+    if (selectedSurveyMarkerIds.size > 0) {
       const markerNodes = root.querySelectorAll('[data-survey-marker-id]');
       for (const markerNode of markerNodes) {
-        if (markerNode.getAttribute('data-survey-marker-id') === selectedSurveyMarkerId) {
+        if (selectedSurveyMarkerIds.has(markerNode.getAttribute('data-survey-marker-id'))) {
           nodes.add(markerNode);
         }
       }
@@ -1037,7 +1442,7 @@ const SVGAnnotationLayer = memo(({
       }
     }
     return false;
-  }, [effectiveSelectedCalloutIds, selectedIds, selectedSurveyMarkerId]);
+  }, [effectiveSelectedCalloutIds, selectedIds, selectedSurveyMarkerIds]);
 
   useEffect(() => {
     if (activeTool !== 'text-select') {
@@ -1193,6 +1598,23 @@ const SVGAnnotationLayer = memo(({
     onBeginBatchDelete,
   ]);
 
+  // w52: how many of the selected callouts sit on THIS page (the callout
+  // selection set is shared by every page's layer).
+  const countPageSelectedCallouts = useCallback(() => {
+    const ids = effectiveSelectedCalloutIds instanceof Set
+      ? effectiveSelectedCalloutIds
+      : new Set(Array.isArray(effectiveSelectedCalloutIds) ? effectiveSelectedCalloutIds : []);
+    if (ids.size === 0) return 0;
+    const wanted = new Set(Array.from(ids).map(String));
+    const objects = annotationsRef.current?.objects;
+    if (!Array.isArray(objects)) return 0;
+    let count = 0;
+    for (const object of objects) {
+      if (object?.data?.type === 'callout' && wanted.has(String(object?.data?.id))) count += 1;
+    }
+    return count;
+  }, [effectiveSelectedCalloutIds]);
+
   // UX: KBD-02 — single-shape annotation hotkeys: Cmd+C (copy), Cmd+X (cut),
   // and the Illustrator/Figma/Photoshop z-order block:
   //   Cmd+]          → Bring Forward
@@ -1246,6 +1668,17 @@ const SVGAnnotationLayer = memo(({
       const annotationIndex = Array.from(selectedIds)[0];
       if (typeof annotationIndex !== 'number') return;
 
+      // w53: with a callout or a Survey Marker selected too, Copy / Cut take
+      // the whole selection (the family clipboard handler below).
+      if ((isCopy || isCut) && typeof onCopyFamily === 'function'
+        && (countPageSelectedCallouts() > 0 || selectedSurveyMarkerIdsRef.current.size > 0)) return;
+
+      // w52: one shape + a callout on this page is a MULTI-selection — the
+      // whole-selection z-order handler below moves both together.
+      if ((isBracketRight || isBracketLeft) && countPageSelectedCallouts() > 0) return;
+      // w53: …and so is one shape + a Survey Marker.
+      if ((isBracketRight || isBracketLeft) && selectedSurveyMarkerIdsRef.current.size > 0) return;
+
       // KAL-75 (G4): locked/read-only documents — Copy stays live (read
       // affordance), but Cut and z-order are mutations and must be inert.
       if (!isCopy && document.body.getAttribute('data-readonly') === 'true') return;
@@ -1271,7 +1704,213 @@ const SVGAnnotationLayer = memo(({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIds, editingAnnotationIndex, pageNumber, onCopyAnnotation, onCutAnnotation, onReorderAnnotation]);
+  }, [selectedIds, editingAnnotationIndex, pageNumber, onCopyAnnotation, onCutAnnotation, onReorderAnnotation, countPageSelectedCallouts]);
+
+  // UX: w52 (2026-09-28) — the same four z-order hotkeys for ONE selected
+  // callout (Cmd+] / Cmd+Shift+] / Cmd+[ / Cmd+Shift+[), routed through the
+  // same onReorderAnnotation as shapes via the callout's slot in this page's
+  // stacking order. Copy/Cut for callouts keep their own existing handlers.
+  // Only the page that holds the callout acts (the selection set is shared by
+  // every page's layer). Inert while the callout's text is being edited.
+  useEffect(() => {
+    if (selectedIds.size !== 0 || calloutSelectionSize !== 1) return;
+    if (selectedSurveyMarkerIds.size > 0) return; // w53: family handler (see the ref check below)
+    if (editingCalloutId) return;
+    if (typeof onReorderAnnotation !== 'function') return;
+    const [calloutId] = effectiveSelectedCalloutIds instanceof Set
+      ? Array.from(effectiveSelectedCalloutIds)
+      : effectiveSelectedCalloutIds;
+    if (calloutId == null) return;
+    const handleKeyDown = (e) => {
+      const isMeta = e.metaKey || e.ctrlKey;
+      if (!isMeta || e.altKey) return;
+      const isBracketRight = e.code === 'BracketRight';
+      const isBracketLeft = e.code === 'BracketLeft';
+      // w53: a Survey Marker added to the selection since this listener was
+      // armed makes it a family selection (the family handlers restack and
+      // copy the whole selection).
+      if (selectedSurveyMarkerIdsRef.current.size > 0) return;
+      // w52: Cmd+C / Cmd+X for ONE selected callout — the same handlers the
+      // callout right-click Copy / Cut use (before, callouts had no copy/cut
+      // shortcut at all). Cut stays own-marks-only inside onCutCallout.
+      const key = typeof e.key === 'string' ? e.key.toLowerCase() : '';
+      const isCopy = !e.shiftKey && key === 'c';
+      const isCut = !e.shiftKey && key === 'x';
+      if (!isBracketRight && !isBracketLeft && !isCopy && !isCut) return;
+      const el = document.activeElement;
+      if (el) {
+        if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') return;
+        if (el.isContentEditable === true || el.contentEditable === 'true') return;
+      }
+      if (!isCopy && document.body.getAttribute('data-readonly') === 'true') return;
+      const objects = annotationsRef.current?.objects;
+      if (!Array.isArray(objects)) return;
+      const index = objects.findIndex(
+        (o) => o?.data?.type === 'callout' && String(o?.data?.id) === String(calloutId)
+      );
+      if (index < 0) return;
+      if (isCopy || isCut) {
+        const handler = isCopy ? onCopyCallout : onCutCallout;
+        if (typeof handler !== 'function') return;
+        e.preventDefault();
+        handler(calloutId);
+        return;
+      }
+      e.preventDefault();
+      const direction = isBracketRight
+        ? (e.shiftKey ? 'front' : 'forward')
+        : (e.shiftKey ? 'back' : 'backward');
+      onReorderAnnotation(pageNumber, index, direction);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedIds, calloutSelectionSize, effectiveSelectedCalloutIds, editingCalloutId, pageNumber, onReorderAnnotation, onCopyCallout, onCutCallout]);
+
+  // UX: w52 (2026-09-28) — z-order hotkeys for a MULTI-selection (two or
+  // more marks on this page: shapes, callouts, or a mix). Cmd+] / Cmd+[ step
+  // the whole selection up / down one slot past its unselected neighbours;
+  // Cmd+Shift+] / Cmd+Shift+[ send it all the way to the front / back. The
+  // selected marks keep their order among themselves (Figma / Illustrator
+  // behaviour, and the same permutation as the right-click group menu —
+  // reorderSelectionInStack). One save, one undo step. Shapes stay selected
+  // at their new slots; callouts are selected by id and follow on their own.
+  // Single-mark selections keep the handlers above (overlap-aware stepping).
+  useEffect(() => {
+    if ((selectedIds?.size || 0) + calloutSelectionSize < 2) return undefined;
+    // w53: a selection holding Survey Markers restacks through the family
+    // handler below (markers have their own place in the stack).
+    if (selectedSurveyMarkerIds.size > 0) return undefined;
+    if (typeof onSaveAnnotations !== 'function') return undefined;
+    if (editingCalloutId) return undefined;
+    if (editingAnnotationIndex != null && editingAnnotationEditType !== 'bbox') return undefined;
+    const handleKeyDown = (e) => {
+      const direction = zOrderDirectionForKey(e);
+      if (!direction) return;
+      if (isTypingTarget(document.activeElement)) return;
+      if (document.body.getAttribute('data-readonly') === 'true') return;
+      const page = annotationsRef.current;
+      const objects = page?.objects;
+      if (!Array.isArray(objects)) return;
+      const calloutIds = new Set(
+        (effectiveSelectedCalloutIds instanceof Set
+          ? Array.from(effectiveSelectedCalloutIds)
+          : (Array.isArray(effectiveSelectedCalloutIds) ? effectiveSelectedCalloutIds : [])
+        ).map(String),
+      );
+      const picked = [];
+      objects.forEach((object, index) => {
+        if (object?.data?.type === 'callout') {
+          if (calloutIds.has(String(object?.data?.id))) picked.push(index);
+        } else if (selectedIds.has(index)) {
+          picked.push(index);
+        }
+      });
+      // One mark on this page (the rest of the selection lives elsewhere):
+      // the single-mark handlers above own it.
+      if (picked.length < 2) return;
+      e.preventDefault();
+      // w53: the family planner is the same permutation and also keeps the
+      // page's Survey Markers in their places (one save, one undo step).
+      if (typeof onReorderFamily === 'function') {
+        onReorderFamily(pageNumber, {
+          indices: Array.from(selectedIds || []),
+          calloutIds: Array.from(calloutIds),
+          direction,
+        });
+        return;
+      }
+      const result = reorderSelectionInStack(objects, picked, direction);
+      if (!result.changed) return;
+      onSaveAnnotations(deepClone({ ...page, objects: result.objects }), {
+        source: 'object:modified',
+        action: 'reorder-group',
+        checkpointPolicy: 'normal',
+      });
+      selectAnnotations(
+        result.selectedIndices.filter((index) => result.objects[index]?.data?.type !== 'callout'),
+      );
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedIds, calloutSelectionSize, effectiveSelectedCalloutIds, editingCalloutId, editingAnnotationIndex, editingAnnotationEditType, onSaveAnnotations, selectAnnotations, onReorderFamily, pageNumber, selectedSurveyMarkerIds]);
+
+  // UX: w53 (2026-09-28) — the four z-order hotkeys for any selection that
+  // holds Survey Markers (one marker alone, or markers with marks and
+  // callouts): Cmd+] / Cmd+[ step it, Shift sends it all the way. The
+  // markers take their place in the page's one stack (surveyMarkerFamily.js)
+  // — one save, one undo step, same permutation as the right-click menu.
+  useEffect(() => {
+    if (selectedSurveyMarkerIds.size === 0) return undefined;
+    if (typeof onReorderFamily !== 'function') return undefined;
+    if (editingCalloutId) return undefined;
+    if (editingAnnotationIndex != null && editingAnnotationEditType !== 'bbox') return undefined;
+    const handleKeyDown = (e) => {
+      const direction = zOrderDirectionForKey(e);
+      if (!direction) return;
+      if (isTypingTarget(document.activeElement)) return;
+      if (document.body.getAttribute('data-readonly') === 'true') return;
+      const calloutIds = (effectiveSelectedCalloutIds instanceof Set
+        ? Array.from(effectiveSelectedCalloutIds)
+        : (Array.isArray(effectiveSelectedCalloutIds) ? effectiveSelectedCalloutIds : []));
+      e.preventDefault();
+      onReorderFamily(pageNumber, {
+        indices: Array.from(selectedIds || []),
+        calloutIds,
+        markerIds: Array.from(selectedSurveyMarkerIds),
+        direction,
+      });
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedSurveyMarkerIds, selectedIds, effectiveSelectedCalloutIds, editingCalloutId, editingAnnotationIndex, editingAnnotationEditType, onReorderFamily, pageNumber]);
+
+  // UX: w53 (2026-09-28) — one clipboard for any selection. Cmd+C / Cmd+X
+  // copy / cut the WHOLE selection when it is more than one mark or holds a
+  // Survey Marker (one shape or one callout alone keep their own handlers
+  // above — same result); Cmd+D duplicates any selection (a copy 16 page
+  // units down-right, selected, one Undo step; the clipboard untouched).
+  // Cut stays own-marks-only (the locked Cut rule). Cmd+V pastes whatever
+  // the clipboard holds (PDFViewer's global handler).
+  useEffect(() => {
+    if (familySelectionSize === 0) return undefined;
+    if (typeof onCopyFamily !== 'function' && typeof onDuplicateFamily !== 'function') return undefined;
+    if (editingCalloutId) return undefined;
+    if (editingAnnotationIndex != null && editingAnnotationEditType !== 'bbox') return undefined;
+    const handleKeyDown = (e) => {
+      const isMeta = e.metaKey || e.ctrlKey;
+      if (!isMeta || e.altKey || e.shiftKey) return;
+      const key = typeof e.key === 'string' ? e.key.toLowerCase() : '';
+      if (key !== 'c' && key !== 'x' && key !== 'd') return;
+      if (isTypingTarget(document.activeElement)) return;
+      const calloutIds = (effectiveSelectedCalloutIds instanceof Set
+        ? Array.from(effectiveSelectedCalloutIds)
+        : (Array.isArray(effectiveSelectedCalloutIds) ? effectiveSelectedCalloutIds : []));
+      const pageCalloutIds = calloutIds.filter((id) => (annotationsRef.current?.objects || [])
+        .some((o) => o?.data?.type === 'callout' && String(o?.data?.id) === String(id)));
+      const selection = {
+        indices: Array.from(selectedIds || []),
+        calloutIds: pageCalloutIds,
+        markerIds: Array.from(selectedSurveyMarkerIds),
+      };
+      const onThisPage = selection.indices.length + selection.calloutIds.length + selection.markerIds.length;
+      if (onThisPage === 0) return;
+      if (key === 'd') {
+        if (typeof onDuplicateFamily !== 'function') return;
+        e.preventDefault(); // (the browser's own Cmd+D is "bookmark")
+        if (document.body.getAttribute('data-readonly') === 'true') return;
+        onDuplicateFamily(pageNumber, selection);
+        return;
+      }
+      // One shape or one callout alone: their own Copy / Cut handlers.
+      if (selection.markerIds.length === 0 && onThisPage < 2) return;
+      if (typeof onCopyFamily !== 'function') return;
+      if (key === 'x' && document.body.getAttribute('data-readonly') === 'true') return;
+      e.preventDefault();
+      onCopyFamily(pageNumber, selection, key === 'x' ? 'cut' : 'copy');
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [familySelectionSize, onCopyFamily, onDuplicateFamily, editingCalloutId, editingAnnotationIndex, editingAnnotationEditType, effectiveSelectedCalloutIds, selectedIds, selectedSurveyMarkerIds, pageNumber]);
 
   // UX: 2026-04-21 — Group / Ungroup feature is HIDDEN app-wide. The
   // Cmd+G and Cmd+Shift+G shortcuts are short-circuited below. Wiring
@@ -1409,7 +2048,11 @@ const SVGAnnotationLayer = memo(({
       // treated as cancels (no stray 0x0 callout committed).
       const dx = state.currentPointer.x - state.arrowTip.x;
       const dy = state.currentPointer.y - state.arrowTip.y;
-      if (dx * dx + dy * dy < 16) return;
+      if (dx * dx + dy * dy < 16) {
+        // Drawboard rule 2: a click picks the mark under it (or drops the pick).
+        applyPressFallbackRef.current?.(state.pressFallback);
+        return;
+      }
 
       const arrowTipNorm = { x: state.arrowTip.x / W, y: state.arrowTip.y / H };
       const textBoxNorm = { x: state.currentPointer.x / W, y: state.currentPointer.y / H };
@@ -1475,6 +2118,15 @@ const SVGAnnotationLayer = memo(({
     }
     if (!SHAPE_CREATION_TOOLS.includes(activeTool) && !FREEHAND_CREATION_TOOLS.includes(activeTool)) {
       freehandPointsRef.current = [];
+      endLiveStroke(false);
+      setShapeCreation(null);
+    } else if (shapeCreationRef.current
+      && !FREEHAND_CREATION_TOOLS.includes(shapeCreationRef.current.tool)
+      && shapeCreationRef.current.tool !== activeTool) {
+      // Line -> Arrow (or any shape -> another shape) mid-draft: a click-placed
+      // line waits with the button up, so the switch must drop it rather than
+      // let the next click finish it as the old tool.
+      shapeCreationRef.current = null;
       setShapeCreation(null);
     }
     // UX: leaving the Polygon/Polyline tool abandons an unfinished draft. A
@@ -1484,6 +2136,16 @@ const SVGAnnotationLayer = memo(({
       polyDraftRef.current = null;
       setPolyDraft(null);
     }
+  }, [activeTool]);
+
+  // UX 2026-10-02 (owner Test 15): the mark just drawn and auto-selected (see
+  // dispatchCommit) and the tool that drew it. Published with the selection
+  // as `justDrawn`, so the colour picker restyles THIS mark while its tool is
+  // still armed; a pick left behind under a drawing tool still never takes the
+  // tool's changes. Forgotten the moment the tool changes.
+  const justDrawnRef = useRef(null);
+  useEffect(() => {
+    if (justDrawnRef.current && justDrawnRef.current.tool !== activeTool) justDrawnRef.current = null;
   }, [activeTool]);
 
   // ---------------------------------------------------------------------------
@@ -1518,9 +2180,11 @@ const SVGAnnotationLayer = memo(({
       spaces,
       isRegionOverlayEnabled,
     });
-    const id = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+    // w32: a freehand stroke already has its id (other screens drew its ink
+    // under that id while it was drawn, and drop it when this mark arrives).
+    const id = state.liveId || ((typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
       ? crypto.randomUUID()
-      : `anno-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      : `anno-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
     const dispatchCommit = (rawJson) => {
       const json = stampAnnotationCreationIdentity(rawJson, { authorId: viewerId });
       updateAnnotationGesture(state.gestureId, { annotationId: id });
@@ -1533,6 +2197,7 @@ const SVGAnnotationLayer = memo(({
       // The selection is set in the same React batch as the save, so the layer
       // paints the committed shape and its handles in one frame.
       if (shouldAutoSelectAfterCommit(tool)) {
+        justDrawnRef.current = { id: getAnnotationRenderIdentity(json).annotationId, tool: activeTool };
         selectAnnotation((current?.objects?.length || 0));
       }
       // setShapeCreation(null) above + this save land in ONE batched React
@@ -1566,6 +2231,7 @@ const SVGAnnotationLayer = memo(({
         stampRegionId,
         activeRegionId,
       });
+      endLiveStroke(Boolean(json), points);
       if (json) dispatchCommit(json);
       return;
     }
@@ -1610,7 +2276,7 @@ const SVGAnnotationLayer = memo(({
       : buildBoundaryShapeCommitJSON({ ...shared, tool, fillColor, fillOpacity });
     if (json) dispatchCommit(json);
   }, [
-    activeRegionId, arrowheadStyle, arrowStartStyle, cloudIntensity, fillColor, fillOpacity,
+    activeRegionId, activeTool, arrowheadStyle, arrowStartStyle, cloudIntensity, fillColor, fillOpacity,
     isRegionOverlayEnabled, lineBorderStyle, onSaveAnnotations,
     onSurveyMarkerCreated, pageNumber, selectAnnotation, selectedModuleId, selectedSpaceId,
     spaces, strokeColor, strokeOpacity, strokeWidth, viewerId,
@@ -1673,6 +2339,7 @@ const SVGAnnotationLayer = memo(({
     // Same Drawboard contract as the drag-out shapes above: the finished
     // polygon / polyline is selected the instant it lands, tool still armed.
     if (shouldAutoSelectAfterCommit(tool)) {
+      justDrawnRef.current = { id: getAnnotationRenderIdentity(json).annotationId, tool: activeTool };
       selectAnnotation((current?.objects?.length || 0));
     }
     onSaveAnnotations(
@@ -1687,7 +2354,7 @@ const SVGAnnotationLayer = memo(({
     });
     return true;
   }, [
-    activeRegionId, cloudIntensity, fillColor, fillOpacity, isRegionOverlayEnabled,
+    activeRegionId, activeTool, cloudIntensity, fillColor, fillOpacity, isRegionOverlayEnabled,
     lineBorderStyle, onSaveAnnotations, pageNumber, selectAnnotation, selectedModuleId,
     selectedSpaceId, spaces, strokeColor, strokeOpacity, strokeWidth, viewerId,
   ]);
@@ -1718,7 +2385,13 @@ const SVGAnnotationLayer = memo(({
   // a 12-unit band made a hairline shape almost impossible to select by touch.
   // Drawboard's own web build selects on-stroke only; the wider band is the
   // touch concession, matching its phone build's far larger targets.
-  const markHitStrokeWidth = getMarkHitStrokePx(isCoarsePointer);
+  // Owner 2026-10-04 ("I get the blue ring way earlier than when my cursor
+  // touches it"): every mark's invisible hit stroke is its real ink width plus
+  // a fixed screen tolerance (4 CSS px a side, 12 for a finger), in the units
+  // that stroke is drawn in — never widened by zoom or by an enlarged mark's
+  // scale. Hover, click-select and the Pan / tool hit test
+  // (annotationHitTest.js) all read these same elements, so they agree.
+  const markHitBand = (inkWidth, unitsPerPx = inverseScale) => getMarkHitBandWidth({ inkWidth, unitsPerPx, isCoarsePointer });
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
     const coarseQuery = window.matchMedia('(pointer: coarse)');
@@ -1821,9 +2494,36 @@ const SVGAnnotationLayer = memo(({
     // dispatches window pointer events that must never splice into, commit,
     // or cancel the in-flight gesture.
     const isGesturePointer = (e) => e.pointerId === shapeCreation.pointerId;
+    // Click-to-place line/arrow (CLICK_PLACE_SHAPE_TOOLS): between the two
+    // clicks the button is UP, so the preview follows plain hover moves of the
+    // same kind of pointer; once the second press lands, only that press's
+    // pointer counts. Read from the ref — it is updated synchronously on
+    // every mode change, so a fast click cannot slip past a stale closure.
+    const clickPlace = () => {
+      const state = shapeCreationRef.current;
+      return state && state.mode === 'click' ? state : null;
+    };
+    const tracksPointer = (e) => {
+      const placing = clickPlace();
+      if (!placing) return isGesturePointer(e);
+      return placing.endPointerId != null
+        ? e.pointerId === placing.endPointerId
+        : e.pointerType === placing.pointerType;
+    };
+    const replaceDraft = (next) => {
+      shapeCreationRef.current = next;
+      setShapeCreation(next);
+    };
+    const cancelDraft = () => {
+      shapeCreationRef.current = null;
+      freehandPointsRef.current = [];
+      endLiveStroke(false);
+      markAnnotationPointerRelease(shapeCreation.gestureId, { action });
+      setShapeCreation(null);
+    };
     const onMove = (e) => {
-      if (!svgRef.current || !isGesturePointer(e)) return;
-      if (e.buttons === 0) {
+      if (!svgRef.current || !tracksPointer(e)) return;
+      if (e.buttons === 0 && !clickPlace()) {
         // Button released outside our listeners (e.g. over browser chrome) —
         // treat as release so no zombie preview survives.
         if (isFreehand) commitShapeCreationRef.current(null);
@@ -1833,6 +2533,7 @@ const SVGAnnotationLayer = memo(({
       markAnnotationPreviewFrame(shapeCreation.gestureId, { action });
       if (isFreehand) {
         appendCoalescedPagePoints(e);
+        liveStrokeRef.current?.push(freehandPointsRef.current);
         setShapeCreation((prev) => (prev ? { ...prev, tick: (prev.tick || 0) + 1 } : prev));
       } else {
         const point = screenToSVG(svgRef.current, e.clientX, e.clientY);
@@ -1840,48 +2541,124 @@ const SVGAnnotationLayer = memo(({
       }
     };
     const onUp = (e) => {
+      const placing = clickPlace();
+      if (placing) {
+        // The second click's release sets the end.
+        if (placing.endPointerId == null || e.pointerId !== placing.endPointerId) return;
+        commitShapeCreationRef.current({ x: e.clientX, y: e.clientY });
+        return;
+      }
       if (!isGesturePointer(e)) return;
       if (isFreehand) {
         appendCoalescedPagePoints(e);
         commitShapeCreationRef.current(null);
-      } else {
-        commitShapeCreationRef.current({ x: e.clientX, y: e.clientY });
+        return;
       }
+      const state = shapeCreationRef.current;
+      if (state && state.pressFallback && state.startClient
+        && Math.hypot(e.clientX - state.startClient.x, e.clientY - state.startClient.y) < CLICK_PLACE_MAX_TRAVEL_PX) {
+        // Drawboard rule 2: a click (not a drag) on a mark picks it; on empty
+        // page with something picked it only drops the pick. Nothing drawn.
+        cancelDraft();
+        applyPressFallbackRef.current?.(state.pressFallback);
+        return;
+      }
+      if (state && CLICK_PLACE_SHAPE_TOOLS.includes(state.tool) && state.startClient
+        && Math.hypot(e.clientX - state.startClient.x, e.clientY - state.startClient.y) < CLICK_PLACE_MAX_TRAVEL_PX) {
+        // A click, not a drag: the start is set, the end now follows the
+        // pointer until the next click.
+        replaceDraft({ ...state, mode: 'click', current: state.start, endPointerId: null });
+        return;
+      }
+      commitShapeCreationRef.current({ x: e.clientX, y: e.clientY });
+    };
+    // Click mode only: the second press. Window capture, so it is claimed
+    // before this layer's own pointerdown would start a NEW line under it.
+    const onDownCapture = (e) => {
+      const placing = clickPlace();
+      if (!placing || placing.endPointerId != null) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      const svg = svgRef.current;
+      if (!svg) return;
+      const ownPage = svg.closest?.('[data-page-number]') || svg;
+      const target = e.target;
+      if (!target || !ownPage.contains(target)) {
+        // A press on another page abandons this draft; a press on the
+        // toolbar (colour, width) keeps it, and the preview shows the change.
+        if (target?.closest?.('[data-page-number]')) cancelDraft();
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      const point = screenToSVG(svg, e.clientX, e.clientY);
+      replaceDraft({ ...placing, endPointerId: e.pointerId, ...(point ? { current: point } : {}) });
     };
     const onCancel = (e) => {
       // OS-level cancel (drawing touch converted to scroll/pinch, palm
       // rejection): never commit partial work. Foreign pointers' cancels
       // must not discard the gesture, hence the same pointerId filter.
-      if (!isGesturePointer(e)) return;
-      shapeCreationRef.current = null;
-      freehandPointsRef.current = [];
-      markAnnotationPointerRelease(shapeCreation.gestureId, { action });
-      setShapeCreation(null);
+      const placing = clickPlace();
+      if (placing ? e.pointerId !== placing.endPointerId : !isGesturePointer(e)) return;
+      cancelDraft();
     };
+    window.addEventListener('pointerdown', onDownCapture, true);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onCancel);
     return () => {
+      window.removeEventListener('pointerdown', onDownCapture, true);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
     };
-  }, [shapeCreation, appendCoalescedPagePoints]);
+  }, [shapeCreation, appendCoalescedPagePoints, endLiveStroke]);
+
+  // Escape abandons a drag-out / click-placed shape draft (freehand ink has
+  // its own rules). Capture phase + stopPropagation, like the polygon draft's
+  // keys, so the viewer's "clear selection" handler does not see it too.
+  const shapeDraftActive = !!shapeCreation && !FREEHAND_CREATION_TOOLS.includes(shapeCreation.tool);
+  useEffect(() => {
+    if (!shapeDraftActive) return undefined;
+    const onKeyDown = (e) => {
+      if (e.key !== 'Escape' || !draftOwnsKeyboard(e.target)) return;
+      const state = shapeCreationRef.current;
+      if (!state) return;
+      e.preventDefault();
+      e.stopPropagation();
+      releaseFocusForDraftTool(e.target);
+      shapeCreationRef.current = null;
+      markAnnotationPointerRelease(state.gestureId, { action: `${state.tool}-draw` });
+      setShapeCreation(null);
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [shapeDraftActive]);
 
   // zoomGeneration contract (CLAUDE.md invariant): a zoom gesture starting
   // mid-stroke commits the in-flight freehand work before the page re-lays
   // out — the exact behavior the fabric canvas flush provided. Drag-out
   // shapes keep tracking (they re-derive from live pointer coords).
+  // The bump arrives through `zoomGenerationSignal` (see the SVGAnnotationLayer
+  // wrapper at the end of this file), so a zoom start never re-renders the
+  // whole layer; the reaction here is the same as when it came as a prop.
   const initialZoomGenRef = useRef(zoomGeneration);
   useEffect(() => {
-    if (zoomGeneration === initialZoomGenRef.current) return;
-    initialZoomGenRef.current = zoomGeneration;
-    cancelLasso();
-    const state = shapeCreationRef.current;
-    if (state && FREEHAND_CREATION_TOOLS.includes(state.tool)) {
-      commitShapeCreationRef.current(null);
+    const onZoomGeneration = (next) => {
+      if (next === initialZoomGenRef.current) return;
+      initialZoomGenRef.current = next;
+      cancelLasso();
+      const state = shapeCreationRef.current;
+      if (state && FREEHAND_CREATION_TOOLS.includes(state.tool)) {
+        commitShapeCreationRef.current(null);
+      }
+    };
+    if (!zoomGenerationSignal) {
+      onZoomGeneration(zoomGeneration);
+      return undefined;
     }
-  }, [zoomGeneration, cancelLasso]);
+    onZoomGeneration(zoomGenerationSignal.get());
+    return zoomGenerationSignal.subscribe(onZoomGeneration);
+  }, [zoomGeneration, zoomGenerationSignal, cancelLasso]);
 
   // A second finger means the user is pinching the PDF, not finishing a mark —
   // cancel (never commit) the first finger's partial gesture. Parity with the
@@ -1894,6 +2671,7 @@ const SVGAnnotationLayer = memo(({
       // that flush would commit the drag-out shape the pinch just discarded.
       shapeCreationRef.current = null;
       freehandPointsRef.current = [];
+      endLiveStroke(false);
       setShapeCreation(null);
     };
     window.addEventListener('survey-pdfjs-pinch-start', cancelPinchGesture);
@@ -1951,7 +2729,7 @@ const SVGAnnotationLayer = memo(({
 
     // UX: only show input when exactly one shape is selected. Multi-select and
     // empty selection clear timers and hide the pill (visibility gate).
-    const hasSingleRegularSelection = selectedIds?.size === 1;
+    const hasSingleRegularSelection = selectedIds?.size === 1 && selectedSurveyMarkerIds.size === 0;
     const hasSurveyMarkerSelection = !!selectedSurveyMarkerId && (!selectedIds || selectedIds.size === 0);
     if (!hasSingleRegularSelection && !hasSurveyMarkerSelection) {
       setRotInputVisibleDbg(false, 'no single rotation target selected');
@@ -2046,7 +2824,7 @@ const SVGAnnotationLayer = memo(({
     // pointer events. The eslint-disable below is LOAD-BEARING. Do NOT add
     // annotations, visualTransform, or rotInputVisible to the dep array.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedIds, selectedSurveyMarkerId, setRotInputVisibleDbg, editingAnnotationIndex]);
+  }, [selectedIds, selectedSurveyMarkerId, selectedSurveyMarkerIds, setRotInputVisibleDbg, editingAnnotationIndex]);
 
   // ---------------------------------------------------------------------------
   // EDIT-12: Derived state for RotationInputField props
@@ -2064,15 +2842,88 @@ const SVGAnnotationLayer = memo(({
   const selectedAnnotationIndex = (selectedIds && selectedIds.size === 1)
     ? Array.from(selectedIds)[0]
     : null;
+  // w41 (restyle a selection): the WHOLE pick rides along as
+  // `annotationIndices` (sorted, stable string key below), so the formatting
+  // bar can show and change every selected mark, not only a single one.
+  const selectedIndicesKey = selectedIds && selectedIds.size > 1
+    ? Array.from(selectedIds).filter((index) => Number.isInteger(index)).sort((a, b) => a - b).join(',')
+    : '';
   useEffect(() => {
     if (typeof onSelectionChange !== 'function') return;
+    const annotationIndices = selectedIndicesKey
+      ? selectedIndicesKey.split(',').map(Number)
+      : [];
+    // The picked marks' ids, read from the SAME objects the indices point
+    // into (review 2026-09-25): the viewer later finds each mark by id, so a
+    // remote insert/delete cannot move a change onto an unpicked mark.
+    const idsFor = (indices) => indices.map((index) => (
+      getAnnotationRenderIdentity(annotations?.objects?.[index]).annotationId || ''
+    ));
     if (selectedAnnotationIndex == null) {
-      onSelectionChange({ pageNumber, annotationIndex: null, annotation: null });
+      // Review round 9: once the pick is dropped the mark is no longer "just
+      // drawn" - picking it again later is an ordinary pick, whose bar edits
+      // must not rewrite the tool's saved settings.
+      if (annotationIndices.length === 0) justDrawnRef.current = null;
+      onSelectionChange({
+        pageNumber,
+        annotationIndex: null,
+        annotation: null,
+        annotationIndices,
+        annotationIds: idsFor(annotationIndices),
+      });
       return;
     }
     const annotation = annotations?.objects?.[selectedAnnotationIndex] || null;
-    onSelectionChange({ pageNumber, annotationIndex: selectedAnnotationIndex, annotation });
-  }, [selectedAnnotationIndex, annotations, pageNumber, onSelectionChange]);
+    const annotationIds = idsFor([selectedAnnotationIndex]);
+    const drawn = justDrawnRef.current;
+    onSelectionChange({
+      pageNumber,
+      annotationIndex: selectedAnnotationIndex,
+      annotation,
+      annotationIndices: [selectedAnnotationIndex],
+      annotationIds,
+      justDrawn: Boolean(drawn && drawn.id && drawn.id === annotationIds[0] && drawn.tool === activeTool),
+    });
+  }, [selectedAnnotationIndex, selectedIndicesKey, annotations, pageNumber, onSelectionChange, activeTool]);
+  // w64 (owner 2026-09-29): tell the History panel what is picked on THIS
+  // page (marks, callouts, counters, Survey Markers) so, while it is open, it
+  // can jump to those marks' lines. One window event per change of the pick
+  // (never per drag frame: the key only holds ids and types); an empty pick
+  // is sent on deselect and when the page layer goes away.
+  const historyPickItems = useMemo(() => {
+    const items = [];
+    for (const index of selectedIds || []) {
+      const object = annotations?.objects?.[index];
+      const id = getAnnotationRenderIdentity(object).annotationId;
+      if (id) items.push({ id: String(id), typeKey: historyTypeKey(object?.data?.type || object?.type, object) });
+    }
+    if (calloutSelectionSize > 0 && Array.isArray(callouts)) {
+      // The callout selection set is shared by every page: keep this page's
+      // (read from the callouts list, so a callout not yet in the page's
+      // stacking order still counts).
+      const wanted = new Set(Array.from(effectiveSelectedCalloutIds instanceof Set
+        ? effectiveSelectedCalloutIds
+        : (Array.isArray(effectiveSelectedCalloutIds) ? effectiveSelectedCalloutIds : [])).map(String));
+      for (const callout of callouts) {
+        if (callout?.id != null && callout.pageNumber === pageNumber && wanted.has(String(callout.id))) {
+          items.push({ id: String(callout.id), typeKey: 'callout' });
+        }
+      }
+    }
+    for (const markerId of selectedSurveyMarkerIds) {
+      if (markerId) items.push({ id: String(markerId), typeKey: 'surveyMarker' });
+    }
+    return items;
+  }, [selectedIds, annotations, calloutSelectionSize, callouts, effectiveSelectedCalloutIds, pageNumber, selectedSurveyMarkerIds]);
+  const historyPickKey = historyPickItems.map((item) => `${item.id}:${item.typeKey}`).join('|');
+  const historyPickItemsRef = useRef(historyPickItems);
+  historyPickItemsRef.current = historyPickItems;
+  useEffect(() => {
+    broadcastPageSelection(typeof window === 'undefined' ? null : window, pageNumber, historyPickItemsRef.current);
+  }, [historyPickKey, pageNumber]);
+  useEffect(() => () => {
+    broadcastPageSelection(typeof window === 'undefined' ? null : window, pageNumber, []);
+  }, [pageNumber]);
   // UX 2026-04-20: counter pill reads data.pointerAngle + 90 so 0°
   // corresponds to "nub pointing straight up" (matches the mental model
   // the user described). Non-counter shapes read obj.angle as before.
@@ -2654,12 +3505,12 @@ const SVGAnnotationLayer = memo(({
       // - Background annotations stay visible in a space when the lightbulb is on,
       //   but they are not selectable/editable.
       // - Region-scoped annotations remain interactive only inside the active space.
-      const isObjectInteractive = (() => {
-        if (activeSpaceId !== null) {
-          return isScopedRegionAnnotation && derivedSpaceId === activeSpaceId;
-        }
-        return true;
-      })();
+      // w52: one shared rule (annotationFamilyRules) — callouts use it too.
+      const isObjectInteractive = isInteractiveForActiveSpace({
+        activeSpaceId,
+        isScopedRegionAnnotation,
+        derivedSpaceId,
+      });
 
       // --- Type dispatch ---
       const objectType = String(obj.type || '').toLowerCase();
@@ -2994,17 +3845,43 @@ const SVGAnnotationLayer = memo(({
     getSpaceIdForRegion,
   ]);
 
+  // w53: the saved markers this page shows are the family members the hook
+  // may pick with marquee / lasso and move with the selection.
+  surveyMarkerMembersRef.current = surveyMarkerElements
+    .filter((entry) => entry?.surveyMarker?.annotationId
+      && !entry.surveyMarker.liveOverlay
+      && (typeof isSurveyMarkerFamilyMember !== 'function'
+        || isSurveyMarkerFamilyMember(entry.surveyMarker.annotationId)))
+    .map((entry) => ({
+      id: String(entry.surveyMarker.annotationId),
+      box: {
+        left: entry.bbox.left,
+        top: entry.bbox.top,
+        width: entry.bbox.width,
+        height: entry.bbox.height,
+        angle: entry.bbox.angle || 0,
+      },
+      stack: entry.surveyMarker.stack || null,
+      // Owner ruling 2026-09-28: a user-locked marker stays put when the
+      // selection it belongs to is dragged or nudged.
+      locked: Boolean(entry.surveyMarker.lockedBy),
+    }));
+
+  // A selected marker the page stops showing (module switch, space change,
+  // deleted) leaves the selection.
   useEffect(() => {
-    if (!selectedSurveyMarkerId) return;
-    const stillVisible = surveyMarkerElements.some((entry) =>
-      entry?.surveyMarker?.annotationId === selectedSurveyMarkerId
-    );
-    if (!stillVisible) {
-      setSelectedSurveyMarkerId(null);
+    if (selectedSurveyMarkerIds.size === 0) return;
+    // (w53: one another screen is changing right now is look-only too.)
+    const visible = new Set(surveyMarkerElements
+      .filter((entry) => !entry?.surveyMarker?.liveOverlay)
+      .map((entry) => entry?.surveyMarker?.annotationId));
+    const kept = [...selectedSurveyMarkerIds].filter((id) => visible.has(id));
+    if (kept.length !== selectedSurveyMarkerIds.size) {
+      setSelectedSurveyMarkerIds(kept.length ? new Set(kept) : EMPTY_SURVEY_MARKER_IDS);
       setSurveyMarkerPreviewBounds(null);
       surveyMarkerDragRef.current = null;
     }
-  }, [selectedSurveyMarkerId, surveyMarkerElements]);
+  }, [selectedSurveyMarkerIds, surveyMarkerElements]);
 
   useEffect(() => {
     if (isSelectTool) return;
@@ -3023,8 +3900,31 @@ const SVGAnnotationLayer = memo(({
     surveyMarkerDragRef.current = null;
   }, [onDeleteSurveyMarker, selectedSurveyMarkerId]);
 
+  // UX: w53 — Delete / Backspace with Survey Markers in a family selection
+  // deletes those markers (one Undo step for the markers, the same ownership
+  // rule as a single marker delete) and lets the marks' own Delete handler
+  // run for the rest of the selection.
   useEffect(() => {
-    if (!isSelectTool || !selectedSurveyMarkerId) return;
+    if (!selectionKeysLive || selectedSurveyMarkerId || selectedSurveyMarkerIds.size === 0) return undefined;
+    if (typeof onDeleteSurveyMarkers !== 'function') return undefined;
+    // With marks selected too, the marks' Delete carries the markers (one
+    // step, and nothing is deleted if its cross-author confirm is cancelled).
+    if ((selectedIds?.size || 0) > 0) return undefined;
+    const handleKeyDown = (e) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      if (isTypingTarget(document.activeElement)) return;
+      if (document.body.getAttribute('data-readonly') === 'true') return;
+      const ids = [...selectedSurveyMarkerIds];
+      setSelectedSurveyMarkerIds(EMPTY_SURVEY_MARKER_IDS);
+      onDeleteSurveyMarkers(ids);
+      if ((selectedIds?.size || 0) + calloutSelectionSize === 0) e.preventDefault();
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [selectionKeysLive, selectedSurveyMarkerId, selectedSurveyMarkerIds, onDeleteSurveyMarkers, selectedIds, calloutSelectionSize]);
+
+  useEffect(() => {
+    if (!selectionKeysLive || !selectedSurveyMarkerId) return;
 
     const handleKeyDown = (e) => {
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
@@ -3039,12 +3939,14 @@ const SVGAnnotationLayer = memo(({
 
       e.preventDefault();
       e.stopPropagation();
+      // w57: a nudge still waiting to save lands first (its own undo step).
+      flushPendingNudges();
       deleteSelectedSurveyMarker();
     };
 
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [deleteSelectedSurveyMarker, isSelectTool, selectedSurveyMarkerId]);
+  }, [deleteSelectedSurveyMarker, selectionKeysLive, selectedSurveyMarkerId]);
 
   useLayoutEffect(() => {
     if (!pendingSurveyMarkerSelection) return;
@@ -3130,11 +4032,14 @@ const SVGAnnotationLayer = memo(({
       const signedLocalDy = isTopHandle ? -ptrDyLocal : ptrDyLocal;
       scaleY = signedLocalDy / bounds.height;
     }
-    if (Math.abs(scaleX) < 0.01) scaleX = (scaleX < 0 ? -1 : 1) * 0.01;
-    if (Math.abs(scaleY) < 0.01) scaleY = (scaleY < 0 ? -1 : 1) * 0.01;
+    // w63: a Survey Marker flips through its fixed corner and never gets
+    // thinner than 4 page units (or its own starting size) — the same rule as
+    // every other mark (utils/resizeMinimum.js).
+    if (affectsX) scaleX = clampResizeScale(scaleX, { rawSize: bounds.width, allowFlip: true });
+    if (affectsY) scaleY = clampResizeScale(scaleY, { rawSize: bounds.height, allowFlip: true });
 
-    const nextWidth = affectsX ? Math.max(1, bounds.width * Math.abs(scaleX)) : bounds.width;
-    const nextHeight = affectsY ? Math.max(1, bounds.height * Math.abs(scaleY)) : bounds.height;
+    const nextWidth = affectsX ? bounds.width * Math.abs(scaleX) : bounds.width;
+    const nextHeight = affectsY ? bounds.height * Math.abs(scaleY) : bounds.height;
 
     let offsetFromAnchorX = 0;
     let offsetFromAnchorY = 0;
@@ -3178,6 +4083,34 @@ const SVGAnnotationLayer = memo(({
     }
     surveyMarkerClickRef.current = { annotationId, time: now };
 
+    // UX: w53 (2026-09-28) — a saved Survey Marker is picked like any mark:
+    // Shift-click adds it to the selection (marks and callouts stay), Alt /
+    // Option-click takes it out, and dragging a marker that is part of a
+    // bigger selection moves the whole selection (Figma / Bluebeam rule). A
+    // plain click still makes it the only selection. A marker still being
+    // placed (not saved) keeps the single path.
+    const isFamilyMember = typeof isSurveyMarkerFamilyMember !== 'function'
+      || isSurveyMarkerFamilyMember(annotationId);
+    if (isFamilyMember && e.altKey) {
+      if (selectedSurveyMarkerIds.has(annotationId)) {
+        const next = new Set(selectedSurveyMarkerIds);
+        next.delete(annotationId);
+        setSelectedSurveyMarkerIds(next.size ? next : EMPTY_SURVEY_MARKER_IDS);
+      }
+      return;
+    }
+    if (isFamilyMember && e.shiftKey) {
+      if (!selectedSurveyMarkerIds.has(annotationId)) {
+        setSelectedSurveyMarkerIds(new Set([...selectedSurveyMarkerIds, annotationId]));
+      }
+      return;
+    }
+    if (isFamilyMember && selectedSurveyMarkerIds.has(annotationId) && familySelectionSize > 1
+      && typeof startFamilyGroupMove === 'function') {
+      startFamilyGroupMove(e);
+      return;
+    }
+
     const startPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
     const originalBounds = normalizeSurveyMarkerBounds({
       x: entry.bbox.left,
@@ -3189,6 +4122,8 @@ const SVGAnnotationLayer = memo(({
     deselectAll();
     onSelectedCalloutIdsChange?.(new Set());
     setSelectedSurveyMarkerId(annotationId);
+    // A user-locked marker (owner ruling 2026-09-28) is selected, not dragged.
+    if (entry.surveyMarker.lockedBy) return;
     surveyMarkerDragRef.current = {
       mode: 'move',
       annotationId,
@@ -3197,7 +4132,7 @@ const SVGAnnotationLayer = memo(({
     };
     setSurveyMarkerPreviewBounds(null);
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (_) {}
-  }, [deselectAll, isSelectTool, normalizeSurveyMarkerBounds, onSelectedCalloutIdsChange, onSurveyMarkerDoubleClick]);
+  }, [deselectAll, isSelectTool, normalizeSurveyMarkerBounds, onSelectedCalloutIdsChange, onSurveyMarkerDoubleClick, isSurveyMarkerFamilyMember, selectedSurveyMarkerIds, familySelectionSize, startFamilyGroupMove, setSelectedSurveyMarkerId]);
 
   const handleSurveyMarkerDoubleClick = useCallback((e, entry) => {
     if (!entry?.surveyMarker?.annotationId) return;
@@ -3208,6 +4143,8 @@ const SVGAnnotationLayer = memo(({
 
   const handleSurveyMarkerHandlePointerDown = useCallback((e, entry, handleId) => {
     if (!isSelectTool || !entry?.surveyMarker?.annotationId) return;
+    // A user-locked marker shows no grabbers; never resize / rotate it.
+    if (entry.surveyMarker.lockedBy) return;
     e.stopPropagation();
     e.preventDefault();
     const startPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
@@ -3283,9 +4220,151 @@ const SVGAnnotationLayer = memo(({
     return true;
   }, [onUpdateSurveyMarkerBounds, pageNumber, resizeSurveyMarkerBoundsRotated]);
 
+  // UX: w52 (2026-09-28) — arrow-key nudge for a selected Survey Marker, the
+  // same contract shapes and callouts get from useSVGInteraction: 1 page unit
+  // per press, Shift = 10, previewed live (local preview, no save per press),
+  // committed as ONE update (one undo step) after a short idle. w57: any other
+  // key or a pointerdown commits it first (rendered at once), so Undo, Delete
+  // or a click acts on the moved marker. Never hijacks the keys while typing,
+  // with the right-click menu open, on a read-only document, mid-drag, or when
+  // no Survey Marker is selected on this page.
+  const surveyMarkerNudgeRef = useRef(null);
+  const commitSurveyMarkerNudge = useCallback(({ sync = false } = {}) => {
+    const burst = surveyMarkerNudgeRef.current;
+    if (!burst) return;
+    surveyMarkerNudgeRef.current = null;
+    if (burst.timer) clearTimeout(burst.timer);
+    const run = () => {
+      setSurveyMarkerPreviewBounds(null);
+      if (burst.dx === 0 && burst.dy === 0) return;
+      onUpdateSurveyMarkerBounds?.(pageNumber, burst.annotationId, {
+        ...burst.originalBounds,
+        x: burst.originalBounds.x + burst.dx,
+        y: burst.originalBounds.y + burst.dy,
+      }, { action: 'move' });
+    };
+    if (sync) flushSync(run);
+    else run();
+  }, [onUpdateSurveyMarkerBounds, pageNumber]);
+
+  useEffect(() => {
+    if (!isSelectTool || !selectedSurveyMarkerId) return undefined;
+    if (selectedIds?.size > 0) return undefined;
+    // Same idle rule as the family nudge: never while an arrow is held.
+    const scheduleIdleCommit = (burst) => {
+      if (burst.timer) clearTimeout(burst.timer);
+      burst.timer = setTimeout(() => {
+        if (surveyMarkerNudgeRef.current !== burst) return;
+        if (isNudgeKeyStillHeld(burst, Date.now())) {
+          scheduleIdleCommit(burst);
+          return;
+        }
+        commitSurveyMarkerNudge({ sync: true });
+      }, NUDGE_IDLE_COMMIT_MS);
+    };
+    const onKeyDown = (e) => {
+      const delta = nudgeDeltaForKey(e);
+      if (!delta) {
+        if (surveyMarkerNudgeRef.current && !isArrowKey(e.key) && e.key !== 'Shift') {
+          commitSurveyMarkerNudge({ sync: true });
+        }
+        return;
+      }
+      if (e.defaultPrevented) return;
+      if (isTypingTarget(document.activeElement)) return;
+      if (isArrowOwningPopoverOpen(document)) return;
+      if (document.body.getAttribute('data-readonly') === 'true') return;
+      if (surveyMarkerDragRef.current) return;
+      let burst = surveyMarkerNudgeRef.current;
+      if (!burst || burst.annotationId !== selectedSurveyMarkerId) {
+        const entry = surveyMarkerElements.find((candidate) => (
+          candidate?.surveyMarker?.annotationId === selectedSurveyMarkerId
+        ));
+        if (!entry?.bbox) return;
+        // A user-locked marker does not nudge (owner ruling 2026-09-28).
+        if (entry.surveyMarker?.lockedBy) return;
+        burst = {
+          annotationId: selectedSurveyMarkerId,
+          originalBounds: normalizeSurveyMarkerBounds({
+            x: entry.bbox.left,
+            y: entry.bbox.top,
+            width: entry.bbox.width,
+            height: entry.bbox.height,
+            angle: entry.bbox.angle,
+          }),
+          dx: 0,
+          dy: 0,
+          timer: null,
+          keysDown: new Set(),
+        };
+        surveyMarkerNudgeRef.current = burst;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      burst.keysDown.add(e.key);
+      burst.lastKeyDownAt = Date.now();
+      scheduleIdleCommit(burst);
+      const b = burst.originalBounds;
+      const next = clampNudgeDelta(
+        [{ left: b.x, top: b.y, width: b.width, height: b.height }],
+        burst.dx + delta.dx,
+        burst.dy + delta.dy,
+        width,
+        height,
+      );
+      if (next.dx === burst.dx && next.dy === burst.dy) return;
+      burst.dx = next.dx;
+      burst.dy = next.dy;
+      setSurveyMarkerPreviewBounds({
+        annotationId: burst.annotationId,
+        bounds: { ...b, x: b.x + burst.dx, y: b.y + burst.dy },
+      });
+    };
+    // Taps in quick succession are one move (one bounds update, one Undo
+    // step); the burst commits after NUDGE_IDLE_COMMIT_MS, not per release.
+    const onKeyUp = (e) => {
+      const burst = surveyMarkerNudgeRef.current;
+      if (!burst || !isArrowKey(e.key)) return;
+      burst.keysDown.delete(e.key);
+      if (burst.keysDown.size === 0) scheduleIdleCommit(burst);
+    };
+    const onPointerDown = () => {
+      if (surveyMarkerNudgeRef.current) commitSurveyMarkerNudge({ sync: true });
+    };
+    // A microtask later: a window blur can fire inside a React commit.
+    const onBlur = () => queueMicrotask(() => commitSurveyMarkerNudge({ sync: true }));
+    // Undo / Redo and the marker Delete key (their listeners run before this
+    // one) save a running burst first.
+    const unregisterFlush = registerPendingNudgeFlush(() => {
+      if (surveyMarkerNudgeRef.current) commitSurveyMarkerNudge({ sync: true });
+    });
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('keyup', onKeyUp, true);
+    window.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('keyup', onKeyUp, true);
+      window.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('blur', onBlur);
+      unregisterFlush();
+      commitSurveyMarkerNudge();
+    };
+  }, [isSelectTool, selectedSurveyMarkerId, selectedIds, surveyMarkerElements, normalizeSurveyMarkerBounds, commitSurveyMarkerNudge, width, height]);
+
   const renderSurveyMarkerEntry = useCallback((entry) => {
     if (!entry?.surveyMarker?.annotationId) return null;
     const annotationId = entry.surveyMarker.annotationId;
+    // w53: a marker in a family selection rides the selection's live move
+    // (group drag translate, or a nudge burst's preview) and glows like the
+    // other selected members.
+    let liveDx = 0;
+    let liveDy = 0;
+    if (visualTransform?.id === 'group' && visualTransform.affectedMarkerIds?.has?.(String(annotationId))) {
+      liveDx = visualTransform.markerDelta?.dx ?? visualTransform.dx ?? 0;
+      liveDy = visualTransform.markerDelta?.dy ?? visualTransform.dy ?? 0;
+    }
+    const isFamilySelected = selectedSurveyMarkerIds.has(annotationId);
     const preview = surveyMarkerPreviewBounds?.annotationId === annotationId
       ? surveyMarkerPreviewBounds.bounds
       : null;
@@ -3300,7 +4379,7 @@ const SVGAnnotationLayer = memo(({
         }
       : entry.bbox;
     const isSelectedSurveyMarker = selectedSurveyMarkerId === annotationId;
-    const isHoveredSurveyMarker = hoveredSurveyMarkerId === annotationId;
+    const isHoveredSurveyMarker = hoveredSurveyMarkerId === annotationId || (isFamilySelected && !isSelectedSurveyMarker);
     const centerX = bbox.left + bbox.width / 2;
     const centerY = bbox.top + bbox.height / 2;
     const rotationTransform = bbox.angle
@@ -3308,7 +4387,12 @@ const SVGAnnotationLayer = memo(({
       : undefined;
 
     return (
-      <g key={entry.key} data-survey-marker-id={annotationId}>
+      <g
+        key={entry.key}
+        data-survey-marker-id={annotationId}
+        transform={liveDx || liveDy ? `translate(${liveDx} ${liveDy})` : undefined}
+        style={{ pointerEvents: isSelectTool ? 'auto' : 'none' }}
+      >
         <rect
           x={bbox.left}
           y={bbox.top}
@@ -3352,7 +4436,9 @@ const SVGAnnotationLayer = memo(({
           fill="rgba(0,0,0,0.001)"
           stroke="none"
           transform={rotationTransform}
-          pointerEvents={annotationHitTargetsInteractive ? 'all' : 'none'}
+          // w53: a marker drawn from another screen's in-flight change is
+          // look-only until its row lands (nothing is saved from it).
+          pointerEvents={annotationHitTargetsInteractive && !entry.surveyMarker.liveOverlay ? 'all' : 'none'}
           style={{ cursor: isSelectTool ? 'move' : undefined }}
           onPointerDown={(e) => handleSurveyMarkerPointerDown(e, entry)}
           onDoubleClick={(e) => handleSurveyMarkerDoubleClick(e, entry)}
@@ -3373,6 +4459,9 @@ const SVGAnnotationLayer = memo(({
             isGroupSelection={false}
             hideBoundingBox={false}
             padding={0}
+            // w58: Cmd / Ctrl held hides the resize grabbers (rotate stays).
+            hideResizeHandles={modifierMoveActive}
+            locked={Boolean(entry.surveyMarker.lockedBy)}
           />
         )}
       </g>
@@ -3386,6 +4475,9 @@ const SVGAnnotationLayer = memo(({
     isSelectTool,
     selectedSurveyMarkerId,
     surveyMarkerPreviewBounds,
+    visualTransform,
+    selectedSurveyMarkerIds,
+    modifierMoveActive,
   ]);
 
   const selectedSurveyMarkerEntry = useMemo(() => {
@@ -3409,27 +4501,6 @@ const SVGAnnotationLayer = memo(({
       angle: preview?.angle ?? selectedSurveyMarkerEntry.bbox.angle,
     });
   }, [selectedSurveyMarkerEntry, surveyMarkerPreviewBounds]);
-
-  const selectedSurveyMarkerDeleteBounds = useMemo(() => {
-    if (!selectedSurveyMarkerRotationBounds) return null;
-    // inverseScale is derived from the SVG element's measured client width,
-    // keeping this touch target 76x48 CSS px without coordinating zoom in JS.
-    const controlWidth = 76 * inverseScale;
-    // Four-pixel safety margin keeps the measured target >=44px after SVG
-    // subpixel rounding on high-DPR mobile viewports.
-    const controlHeight = 48 * inverseScale;
-    const gap = 8 * inverseScale;
-    const marker = selectedSurveyMarkerRotationBounds;
-    const preferredX = marker.x + marker.width + gap;
-    const preferredY = marker.y - controlHeight - gap;
-    const fallbackY = marker.y + marker.height + gap;
-    return {
-      x: Math.max(0, Math.min(width - controlWidth, preferredX)),
-      y: Math.max(0, Math.min(height - controlHeight, preferredY >= 0 ? preferredY : fallbackY)),
-      width: controlWidth,
-      height: controlHeight,
-    };
-  }, [height, inverseScale, selectedSurveyMarkerRotationBounds, width]);
 
   const rotationInputAnnotationIndex = selectedSurveyMarkerRotationBounds
     ? `survey:${selectedSurveyMarkerId}`
@@ -3463,7 +4534,7 @@ const SVGAnnotationLayer = memo(({
     // hidden and a soft blue outline glow replaces them (matching the
     // annotation hover-glow style). `showGlow` also drives the callout's
     // cursor-hover indicator for solo callouts.
-    const { showHandles = true, showGlow = false, dragInvalid = false, inverseScale = 1 } = options;
+    const { showHandles = true, showGlow = false, dragInvalid = false, inverseScale = 1, locked = false } = options;
     if (!callout || !callout.arrowTip || !callout.knee) return null;
     // UX: 2026-05-18 — handle ring colour. Normally the unified blue; while
     // the callout is being dragged to a spot that fails the rule check,
@@ -3486,7 +4557,7 @@ const SVGAnnotationLayer = memo(({
     // arrow keep a grab zone exactly the size of the dot, so passing near a
     // callout never snatches the arrow away from the click you meant. Once the
     // callout is selected the user is plainly aiming at its chrome, so the
-    // Drawboard-size pad is the right target.
+    // full pad is the right target.
     const calloutHitPad = (isSelected && showHandles)
       ? resolveHandleHitPadPageSize({
         isCoarsePointer: isCoarsePointer,
@@ -3495,20 +4566,6 @@ const SVGAnnotationLayer = memo(({
       })
       : calloutHandleR * 2;
     const calloutHitR = calloutHitPad / 2;
-    // The four text-box corners sit on a box that can be small, so their pads
-    // shrink to the shortest side's half-span and can never overlap each other.
-    const calloutCornerSpan = Math.min(
-      Math.max(0, (callout.textBoxWidth ?? 0.1) * pageSize.width),
-      Math.max(0, (callout.textBoxHeight ?? 0.05) * pageSize.height),
-    );
-    const calloutCornerHitPad = (isSelected && showHandles)
-      ? resolveHandleHitPadPageSize({
-        isCoarsePointer,
-        inverseScale: clampInverseScale(inverseScale),
-        neighbourSpacingPageUnits: calloutCornerSpan > 0 ? calloutCornerSpan : undefined,
-        minPadPageUnits: calloutHandleR * 2,
-      })
-      : calloutHandleR * 2;
     const { width: W, height: H } = pageSize;
     const atX = callout.arrowTip.x * W;
     const atY = callout.arrowTip.y * H;
@@ -3546,7 +4603,7 @@ const SVGAnnotationLayer = memo(({
             x2={conn.effectiveKnee.x}
             y2={conn.effectiveKnee.y}
             stroke="transparent"
-            strokeWidth={markHitStrokeWidth}
+            strokeWidth={markHitBand(Number(callout.style?.lineThickness) || 1, inverseScale)}
             strokeLinecap="round"
             style={{ cursor: 'move', pointerEvents: 'stroke' }}
           />
@@ -3559,7 +4616,7 @@ const SVGAnnotationLayer = memo(({
           x2={atX}
           y2={atY}
           stroke="transparent"
-          strokeWidth={markHitStrokeWidth}
+          strokeWidth={markHitBand(Number(callout.style?.lineThickness) || 1, inverseScale)}
           strokeLinecap="round"
           style={{ cursor: 'move', pointerEvents: 'stroke' }}
         />
@@ -3595,144 +4652,102 @@ const SVGAnnotationLayer = memo(({
         {/* UX: Phase 15 UAT-3 (2026-04-17) — visible drag chrome when the
             callout is selected. Knee + arrow tip use combined-tools'
             white/blue square look (distinguishes them from shape resize
-            handles). Four textbox corners use the SAME white circle + gray
-            stroke + drop shadow as regular shape corner handles (see
-            SVGSelectionOverlay) so callout resize chrome matches the app's
-            existing muscle memory. Corner circles carry
-            data-callout-part='textBox-tl' / 'tr' / 'bl' / 'br' so the
+            handles). The text box's eight grabbers are SVGSelectionOverlay's own
+            (Owner Test 45, 2026-10-06 - they were four corner circles)
+            so callout resize chrome is a rectangle's. Each grabber carries
+            data-callout-part='textBox-<tl|mt|tr|mr|br|mb|bl|ml>' so the
             interaction hook can route them to a resize drag mode. */}
-        {showGlow && (
-          <>
-            {/* UX: Phase 19 follow-up — callout hover / multi-select
-                glow. Same blue outline treatment annotations use, but
-                covering the whole callout: textbox border, line1 +
-                line2 connector segments, and a glow ring around the
-                arrow tip. pointer-events none so the glow never
-                intercepts drag / click.
-                2026-04-20: extend glow height by the same descender
-                buffer the renderer uses so the bottom of the glow sits
-                flush with the visible text-box border instead of
-                floating a few pixels above it. */}
-            {(() => {
-              const calloutFs = Number(callout?.style?.fontSize || 12);
-              const descenderBuffer = calloutFs * 0.35;
-              const glowH = tbH + descenderBuffer;
-              return (
-                <rect
-                  x={tbX - 2}
-                  y={tbY - 2}
-                  width={tbW + 4}
-                  height={glowH + 4}
-                  fill="none"
-                  stroke="#4a90e2"
-                  strokeOpacity={0.45}
-                  strokeWidth={3}
-                  style={{ pointerEvents: 'none' }}
-                />
-              );
-            })()}
-            {!conn.shouldHideLine1 && (
-              <line
-                x1={conn.line1Start.x}
-                y1={conn.line1Start.y}
-                x2={conn.effectiveKnee.x}
-                y2={conn.effectiveKnee.y}
-                stroke="#4a90e2"
-                strokeOpacity={0.45}
-                strokeWidth={5}
-                strokeLinecap="round"
-                style={{ pointerEvents: 'none' }}
-              />
-            )}
-            <line
-              x1={conn.line2Start.x}
-              y1={conn.line2Start.y}
-              x2={atX}
-              y2={atY}
+        {showGlow && (() => {
+          // UX: Phase 19 follow-up — callout hover / multi-select glow over
+          // the whole callout: text box border, both leader segments and the
+          // arrowhead. pointer-events none so it never takes a press.
+          //
+          // Owner 2026-10-02: ONE seamless halo. Every part is painted opaque
+          // inside a single group and the group carries the translucency, so
+          // where the leader, the head and the box overlap nothing doubles up
+          // into a darker seam. And it traces the INK: the same connection
+          // renderCallout draws (its box is taller by the descender buffer,
+          // and the leader's box end and auto-routed knee are computed from
+          // that taller box - the halo used the shorter one, so the leader's
+          // halo sat off the real line), the same line / head thickness, the
+          // box glow centred on the box's own border line.
+          const calloutFs = Number(callout?.style?.fontSize || 12);
+          const glowBoxH = tbH + calloutFs * 0.35;
+          const glowConn = calculateCalloutConnection(
+            tbX, tbY, tbW, glowBoxH,
+            { x: kX, y: kY },
+            { x: atX, y: atY },
+            0
+          );
+          const lineThickness = Math.max(1, callout.style?.lineThickness || 2);
+          const boxStroke = Math.max(1, lineThickness * 0.7);
+          const lineGlowSw = Math.max(5, lineThickness + 4);
+          const headStyle = callout.style?.arrowheadStyle ?? ARROWHEAD_STYLES.SOLID_TRIANGLE;
+          const angleDeg = (
+            Math.atan2(atY - glowConn.line2Start.y, atX - glowConn.line2Start.x)
+            * 180 / Math.PI
+          );
+          const spec = headStyle === ARROWHEAD_STYLES.NONE
+            ? null
+            : buildArrowheadRenderSpec(headStyle, atX, atY, angleDeg, '#4a90e2', lineThickness);
+          // Owner Test 45 (2026-10-06): a clouded box's halo follows its humps
+          // - the cloud renderCallout paints (utils/markBorderOutline.js).
+          const glowBoxCloud = calloutBoxCloudGeometry(callout, {
+            x: tbX, y: tbY, width: tbW, height: glowBoxH, borderWidth: boxStroke,
+          });
+          return (
+            <g
+              data-hover-halo="callout"
+              opacity={HOVER_HALO_OPACITY}
               stroke="#4a90e2"
-              strokeOpacity={0.45}
-              strokeWidth={5}
-              strokeLinecap="round"
+              fill="none"
               style={{ pointerEvents: 'none' }}
-            />
-            {/* UX: Phase 19 follow-up — arrow-shaped glow that follows
-                the actual triangle/V/circle/etc of the callout's
-                arrowhead style. Reuses buildArrowheadRenderSpec so the
-                glow geometry is exactly the same form-factor as the
-                visible arrowhead. lineThickness comes from the
-                callout's style when available, else the render default
-                used by renderCallout. */}
-            {(() => {
-              const style = callout.style?.arrowheadStyle ?? ARROWHEAD_STYLES.SOLID_TRIANGLE;
-              if (style === ARROWHEAD_STYLES.NONE) return null;
-              const lineThickness = callout.style?.lineThickness ?? 2;
-              const angleDeg = (
-                Math.atan2(atY - conn.line2Start.y, atX - conn.line2Start.x)
-                * 180 / Math.PI
-              );
-              const spec = buildArrowheadRenderSpec(style, atX, atY, angleDeg, '#4a90e2', lineThickness);
-              const glowSw = Math.max(3, lineThickness + 2);
-              switch (spec.kind) {
-                case 'solidTriangle':
-                case 'openTriangle':
-                case 'diamond':
-                case 'square':
-                  return (
-                    <polygon
-                      points={spec.polygon.points}
-                      transform={spec.polygon.transform}
-                      fill="none"
-                      stroke="#4a90e2"
-                      strokeOpacity={0.45}
-                      strokeWidth={glowSw}
-                      strokeLinejoin="round"
-                      style={{ pointerEvents: 'none' }}
-                    />
-                  );
-                case 'openCircle':
-                  return (
-                    <circle
-                      cx={spec.circle.cx}
-                      cy={spec.circle.cy}
-                      r={spec.circle.r}
-                      fill="none"
-                      stroke="#4a90e2"
-                      strokeOpacity={0.45}
-                      strokeWidth={glowSw}
-                      style={{ pointerEvents: 'none' }}
-                    />
-                  );
-                case 'vShape':
-                  return (
-                    <polyline
-                      points={spec.polyline.points}
-                      fill="none"
-                      stroke="#4a90e2"
-                      strokeOpacity={0.45}
-                      strokeWidth={glowSw}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      style={{ pointerEvents: 'none' }}
-                    />
-                  );
-                case 'slash':
-                case 'horizontalLine':
-                  return (
-                    <line
-                      x1={spec.line.x1} y1={spec.line.y1}
-                      x2={spec.line.x2} y2={spec.line.y2}
-                      stroke="#4a90e2"
-                      strokeOpacity={0.45}
-                      strokeWidth={glowSw}
-                      strokeLinecap="round"
-                      style={{ pointerEvents: 'none' }}
-                    />
-                  );
-                default:
-                  return null;
-              }
-            })()}
-          </>
+            >
+              {glowBoxCloud ? (
+                <path
+                  d={cloudCommandsToPathData(glowBoxCloud.outline)}
+                  transform={glowBoxCloud.transform}
+                  strokeWidth={boxStroke + 4}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              ) : (
+                <rect
+                  x={tbX}
+                  y={tbY}
+                  width={tbW}
+                  height={glowBoxH}
+                  strokeWidth={boxStroke + 4}
+                  strokeLinejoin="miter"
+                />
+              )}
+              {!glowConn.shouldHideLine1 && (
+                <line
+                  x1={glowConn.line1Start.x}
+                  y1={glowConn.line1Start.y}
+                  x2={glowConn.effectiveKnee.x}
+                  y2={glowConn.effectiveKnee.y}
+                  strokeWidth={lineGlowSw}
+                  strokeLinecap="round"
+                />
+              )}
+              <line
+                x1={glowConn.line2Start.x}
+                y1={glowConn.line2Start.y}
+                x2={atX}
+                y2={atY}
+                strokeWidth={lineGlowSw}
+                strokeLinecap="round"
+              />
+              {renderArrowheadHalo(spec, Math.max(3, lineThickness + 2))}
+            </g>
+          );
+        })()}
+        {/* Owner ruling 2026-09-28: a selected user-locked callout shows no
+            grabbers (it cannot be resized or re-routed) and a small lock
+            on its text box's top-right corner. */}
+        {isSelected && locked && (
+          <SelectionLockBadge x={tbX + tbW} y={tbY} radius={calloutHandleR * 1.25} />
         )}
         {isSelected && showHandles && (
           <>
@@ -3767,59 +4782,36 @@ const SVGAnnotationLayer = memo(({
                 pointerEvents: 'none',
               }}
             />
-            {/* Textbox corner handles — 4 corners only, interactive.
-                2026-04-20: bottom handles shifted down by the same
-                descender buffer the renderer applies, so the two
-                lower dots land exactly on the visible bottom border
-                instead of floating a few pixels above it. */}
+            {/* Owner Test 45 (2026-10-06): the text box's grabbers are a
+                rectangle's - all eight, on the drawn border (a clouded box:
+                on the outer hump edge with the dashed frame), drawn by the
+                same SVGSelectionOverlay. Callouts have no rotation in their
+                data, so no rotate grabber. Each carries data-callout-part
+                textBox-<id> and lets the press bubble to the delegated
+                callout handler (useSVGInteraction 'textBoxResize'). */}
             {(() => {
-              const calloutFs = Number(callout?.style?.fontSize || 12);
-              const descenderBuffer = calloutFs * 0.35;
-              const bottomY = tbY + tbH + descenderBuffer;
-              return [
-                { id: 'tl', x: tbX,       y: tbY,     cursor: 'nwse-resize' },
-                { id: 'tr', x: tbX + tbW, y: tbY,     cursor: 'nesw-resize' },
-                { id: 'bl', x: tbX,       y: bottomY, cursor: 'nesw-resize' },
-                { id: 'br', x: tbX + tbW, y: bottomY, cursor: 'nwse-resize' },
-              ];
-            })().map((p) => (
-              <g key={`cb-corner-${p.id}`}>
-                {/* Invisible hit pad, under the dot so a direct hit still
-                    lands on the dot itself. */}
-                <rect
-                  data-callout-part={`textBox-${p.id}`}
-                  data-handle-hit-pad={`textBox-${p.id}`}
-                  x={p.x - calloutCornerHitPad / 2}
-                  y={p.y - calloutCornerHitPad / 2}
-                  width={calloutCornerHitPad}
-                  height={calloutCornerHitPad}
-                  rx={calloutCornerHitPad / 4}
-                  fill="transparent"
-                  stroke="none"
-                  style={{ cursor: p.cursor, pointerEvents: 'all', touchAction: 'none' }}
+              const layout = calloutBoxHandleLayout(callout, calloutVisibleBox(callout, W, H));
+              if (!layout) return null;
+              return (
+                <SVGSelectionOverlay
+                  bbox={layout.bbox}
+                  handleAnchors={layout.anchors}
+                  frameRect={layout.frame}
+                  alwaysShowResizeHandles={!!layout.frame}
+                  hideBoundingBox={!layout.frame}
+                  padding={0}
+                  inverseScale={inverseScale}
+                  hideRotationHandle
+                  delegateHandlePress
+                  handlePartAttributes={(id) => ({ 'data-callout-part': `textBox-${id}` })}
                 />
-                <circle
-                  data-callout-part={`textBox-${p.id}`}
-                  cx={p.x}
-                  cy={p.y}
-                  r={calloutHandleR}
-                  fill={HANDLE_FILL}
-                  stroke={ringColor}
-                  strokeWidth={1.5}
-                  vectorEffect="non-scaling-stroke"
-                  style={{
-                    filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.15))',
-                    cursor: p.cursor,
-                    pointerEvents: 'all',
-                  }}
-                />
-              </g>
-            ))}
+              );
+            })()}
           </>
         )}
       </g>
     );
-    // isCoarsePointer sizes the invisible grabber pads (32 px mouse / 44 pt
+    // isCoarsePointer sizes the invisible grabber pads (grabber + 4 px mouse / 44 pt
     // finger), so a pointer-kind change has to rebuild the hit targets.
   }, [isCoarsePointer]);
 
@@ -3857,7 +4849,23 @@ const SVGAnnotationLayer = memo(({
     if (!Array.isArray(callouts) || callouts.length === 0) return [];
     const pageSize = { width, height };
     const elements = [];
+    const overlays = [];
+    // w52: callouts the user may pick on this page (visible + interactive).
+    const selectableIds = new Set();
     let count = 0;
+    // w52 (2026-09-28): each callout's slot in the page's ONE stacking order
+    // (annotations.objects, where its projected group lives). The render
+    // below interleaves callouts with every other mark by this slot, so a
+    // callout sits above or below any mark exactly as ordered — never forced
+    // above all of them. A callout with no slot (not projected yet) draws on
+    // top, as before.
+    const stackIndexById = new Map();
+    (Array.isArray(annotations?.objects) ? annotations.objects : []).forEach((object, index) => {
+      if (object?.data?.type === 'callout' && object?.data?.id != null) {
+        const key = String(object.data.id);
+        if (!stackIndexById.has(key)) stackIndexById.set(key, index);
+      }
+    });
 
     for (let i = 0; i < callouts.length; i++) {
       // 2026-05-03 — Callout render cap removed for parity with the per-page
@@ -3887,6 +4895,16 @@ const SVGAnnotationLayer = memo(({
       })) {
         continue;
       }
+
+      // w52: the space interactivity rule every other mark obeys — inside an
+      // active space only that space's region-scoped marks can be picked; the
+      // rest stay visible as background but inert (no hit zone, no hover).
+      const calloutInteractive = isAnnotationInteractiveInActiveSpace({
+        annotation: callout,
+        activeSpaceId,
+        getSpaceIdForRegion,
+      });
+      if (calloutInteractive) selectableIds.add(String(callout.id));
 
       const previewPatch = visualTransform?.calloutPreviews?.[callout.id] || null;
       const displayCallout = previewPatch ? { ...callout, ...previewPatch } : callout;
@@ -3974,8 +4992,13 @@ const SVGAnnotationLayer = memo(({
       // competing with the growing text box. Handles re-appear after
       // commit because editingCalloutId clears.
       const isEditingThisCallout = editingCalloutId === displayCallout.id;
-      const showHandles = isSelected && !isMultiSelect && !isEditingThisCallout;
-      const showGlow = (isSelected && isMultiSelect) || (!isSelected && isHovered);
+      const calloutLocked = isUserLocked(displayCallout);
+      // w58: Cmd / Ctrl held -> the knee, tip and text-box corner grabbers
+      // hide; the callout moves from anywhere in its box instead.
+      const showHandles = isSelected && !isMultiSelect && !isEditingThisCallout && !calloutLocked
+        && !modifierMoveActive;
+      const showGlow = (isSelected && isMultiSelect) || (!isSelected && isHovered)
+        || (isSelected && calloutLocked);
       // UX: 2026-05-18 — while THIS callout is being dragged, the live
       // preview carries `calloutDragInvalid` set by useSVGInteraction's
       // per-frame rule check. When true, the dragged handle's ring paints
@@ -3988,7 +5011,7 @@ const SVGAnnotationLayer = memo(({
         pageSize,
         isSelected,
         isKneeDragging,
-        { showHandles, showGlow, dragInvalid, inverseScale },
+        { showHandles, showGlow, dragInvalid, inverseScale, locked: calloutLocked && !isMultiSelect },
       );
 
       // UX: 2026-04-20 v2 — group-move callout ride-along. When this
@@ -4006,6 +5029,47 @@ const SVGAnnotationLayer = memo(({
         ? `translate(${visualTransform.dx || 0}, ${visualTransform.dy || 0})`
         : undefined;
 
+      // w52: a SELECTED callout's handles + hit zone are drawn above every
+      // mark (like shape handles), not in its stack slot, so a mark stacked
+      // over the callout never hides or steals its handles. The callout body
+      // stays in its slot.
+      const liftHandles = isSelected && calloutInteractive;
+      if (!calloutInteractive) {
+        // w52: inert background callout — chrome only, and pointer-events off
+        // on the wrap (the chrome sets none of its own) so clicks fall through
+        // to the page exactly as they do for an inert shape.
+        elements.push(
+          // eslint-disable-next-line react/jsx-key
+          <g
+            key={`callout-wrap-${displayCallout.id || i}`}
+            data-stack-index={stackIndexById.get(String(displayCallout.id))}
+            data-callout-inert="true"
+            pointerEvents="none"
+            style={{ pointerEvents: 'none' }}
+            transform={groupMoveTransform}
+          >
+            {element}
+          </g>
+        );
+        count++;
+        continue;
+      }
+      if (liftHandles) {
+        overlays.push(
+          <g
+            key={`callout-handles-${displayCallout.id || i}`}
+            data-callout-handle-overlay="true"
+            transform={groupMoveTransform}
+            data-edit-entry-kind={editEntryTargetsMounted ? 'callout' : undefined}
+            data-pan-edit-entry={editEntryTargetsMounted ? 'true' : undefined}
+            onPointerEnter={() => handleCalloutPointerEnter(displayCallout.id)}
+            onPointerLeave={() => handleCalloutPointerLeave(displayCallout.id)}
+          >
+            {hitTargets}
+          </g>
+        );
+      }
+
       elements.push(
         // UX: wrap visible element + invisible hit targets in a shared
         // fragment via an outer <g> so the hit targets render AFTER the
@@ -4013,6 +5077,7 @@ const SVGAnnotationLayer = memo(({
         // eslint-disable-next-line react/jsx-key
         <g
           key={`callout-wrap-${displayCallout.id || i}`}
+          data-stack-index={stackIndexById.get(String(displayCallout.id))}
           transform={groupMoveTransform}
           // UX 2026-09-15 (Drawboard parity — Pan is a selection mode): the
           // callout's edit-entry label. Mounted in Pan AND in every Select
@@ -4027,12 +5092,14 @@ const SVGAnnotationLayer = memo(({
           onPointerLeave={() => handleCalloutPointerLeave(displayCallout.id)}
         >
           {element}
-          {hitTargets}
+          {liftHandles ? null : hitTargets}
         </g>
       );
       count++;
     }
 
+    elements.selectedOverlays = overlays;
+    elements.selectableCalloutIds = selectableIds;
     return elements;
     // NOTE: activeTool removed from deps (it doesn't affect rendering, only
     // interaction). renderCallout and calculateCalloutConnection are
@@ -4051,7 +5118,13 @@ const SVGAnnotationLayer = memo(({
     // "1 callout + 1 annotation selected" multi-select glow never updated).
     // Per-hover recompute of this loop is cheap (callouts are few per page).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callouts, pageNumber, selectedModuleId, showSurveyPanel, selectedSpaceId, activeSpaceId, activeRegions, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, layerVisibility, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, inverseScale, isPageInRenderWindow, hoveredCalloutId, selectedIds, editEntryTargetsMounted]);
+  }, [callouts, annotations?.objects, pageNumber, selectedModuleId, showSurveyPanel, selectedSpaceId, activeSpaceId, activeRegions, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, layerVisibility, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, inverseScale, isPageInRenderWindow, hoveredCalloutId, selectedIds, editEntryTargetsMounted, getSpaceIdForRegion, modifierMoveActive]);
+
+  // w52: publish which callouts this page lets the user pick, for the
+  // interaction hook's click / marquee / lasso gates (isCalloutSelectable).
+  useLayoutEffect(() => {
+    selectableCalloutIdsRef.current = filteredCallouts?.selectableCalloutIds || new Set();
+  }, [filteredCallouts]);
 
   // Diagnostic: after the SVG callouts are laid out, walk the DOM and record
   // the source data + every rendered element's screen rect per callout id.
@@ -4189,6 +5262,24 @@ const SVGAnnotationLayer = memo(({
       `[SVG p${pageNumber}] render — ${objectCount} objs, viewBox=${width}x${height}`
     );
   }
+
+  // Perf (2026-09-30): the per-mark bbox and path matrix below were re-derived
+  // for every mark on every render (each zoom commit, zoomGeneration bump and
+  // scroll re-render) — most of the layer's cost on a heavily marked page.
+  // Cached only for the committed objects this layer was handed (immutable
+  // state); live previews build new objects and are always computed fresh.
+  const markGeometryCacheRef = useRef(null);
+  if (!markGeometryCacheRef.current) {
+    markGeometryCacheRef.current = { bbox: new WeakMap(), pathTransform: new WeakMap(), bakedPath: new WeakMap() };
+  }
+  const cachedMarkGeometry = (kind, target, committed, compute) => {
+    if (!committed || !target || typeof target !== 'object') return compute(target);
+    const cache = markGeometryCacheRef.current[kind];
+    if (cache.has(target)) return cache.get(target);
+    const value = compute(target);
+    cache.set(target, value);
+    return value;
+  };
 
   // ---------------------------------------------------------------------------
   // Render: wrap each annotation with hit-area, hover, and interaction handlers
@@ -4389,12 +5480,18 @@ const SVGAnnotationLayer = memo(({
       String(renderObj?.type || '').toLowerCase() === 'path'
       && renderElement
     ) {
-      renderElement = cloneElement(renderElement, {
-        transform: buildFabricPathSvgTransform(renderObj),
-      });
+      // A moved-only plain <path> gets the move written into its data instead
+      // (resolveBakedFabricPath); the drawn result is the same.
+      let baked = renderElement.type === 'path'
+        ? cachedMarkGeometry('bakedPath', renderObj, renderObj === obj, resolveBakedFabricPath)
+        : null;
+      if (!isBakedPathCurrent(baked, renderObj)) baked = null;
+      renderElement = cloneElement(renderElement, baked
+        ? { d: baked.d, transform: undefined }
+        : { transform: cachedMarkGeometry('pathTransform', renderObj, renderObj === obj, buildFabricPathSvgTransform) });
     }
 
-    const bbox = getAnnotationBBox(renderObj);
+    const bbox = cachedMarkGeometry('bbox', renderObj, renderObj === obj, getAnnotationBBox);
     const annotationIsSelected = selectedIds.has(i);
     // UX: Phase 19 follow-up — members of a multi-selection share the
     // same visual treatment as cursor-hover (blue glow) instead of each
@@ -4466,6 +5563,9 @@ const SVGAnnotationLayer = memo(({
     const objTypeForEdit = String(obj.type || '').toLowerCase();
     const isInPlaceEdit = isBeingEdited && EDIT_IN_PLACE_TYPES.has(objTypeForEdit);
     const hideForEdit = isBeingEdited && !isInPlaceEdit && !isBboxEdit;
+    // Owner after Test 46: carried onto another page -> hidden here.
+    const hideForCrossPage = visualTransform?.crossPageAway === true
+      && (visualTransform.id === i || (visualTransform.id === 'group' && visualTransform.affectedIds?.has(i)));
 
     // UX 2026-07-14 (same-surface editor): during edit, TextEditOverlay is
     // the visible glyph surface — caret and letters share ONE CSS layout, so
@@ -4499,7 +5599,12 @@ const SVGAnnotationLayer = memo(({
     const cloudRenderGeometry = resolveAnnotationCloudSpec(renderObj)
       ? resolveCloudAnnotationGeometry(renderObj)
       : null;
-    const cloudGlowVisible = !!cloudRenderGeometry && (annotationIsHovered || annotationIsSelected);
+    // Owner Test 45: a clouded text box glows along its humps like a clouded
+    // rectangle (its border IS that rectangle cloud); it keeps hit-testing by
+    // its whole box, so only the glow takes this geometry.
+    const cloudGlowGeometry = cloudRenderGeometry
+      || (objTypeForEdit === 'textbox' && !isBeingEdited ? markBorderCloudGeometry(renderObj) : null);
+    const cloudGlowVisible = !!cloudGlowGeometry && (annotationIsHovered || annotationIsSelected);
     // UX 2026-09-10 (round 4, defect 4): painting the glow UNDER the ink is
     // only safe while the ink is opaque. At the app's translucent cloud stroke
     // (rgba alpha 0.5) the 0.666-opacity blue showed straight THROUGH the
@@ -4509,7 +5614,7 @@ const SVGAnnotationLayer = memo(({
     // band (the outline stroked at the ink width) is masked OUT of it, so the
     // blue is a ring on either side of the stroke and never sits beneath it.
     const cloudGlowPaint = cloudGlowVisible
-      ? buildCloudGlowPaint(cloudRenderGeometry, {
+      ? buildCloudGlowPaint(cloudGlowGeometry, {
         maskId: cloudGlowMaskIdFor(`p${pageNumber}-${obj?.id || renderIdentity.annotationId || i}`),
       })
       : null;
@@ -4538,7 +5643,7 @@ const SVGAnnotationLayer = memo(({
         data-pan-edit-entry={editEntryKind ? 'true' : undefined}
         style={{
           cursor: annotationIsSelected ? 'move' : (annotationIsHovered ? 'pointer' : undefined),
-          opacity: hideForEdit ? 0 : undefined,
+          opacity: (hideForEdit || hideForCrossPage) ? 0 : undefined,
           // UX 2026-04-19: bbox edit mode keeps pointer events live so the
           // user can click the SVG handles (resize + rotate) and drag the
           // shape inside the uniform box. Without this, the handles render
@@ -4607,7 +5712,6 @@ const SVGAnnotationLayer = memo(({
           if (objTypeLower === 'line') {
             const ep = getLineEndpoints(renderObj);
             const isArrow = renderObj.tool === 'arrow';
-            const arrowStyle = renderObj.data?.arrowheadStyle ?? (isArrow ? ARROWHEAD_STYLES.SOLID_TRIANGLE : ARROWHEAD_STYLES.NONE);
             // UX 2026-04-20: the hover-glow arrowhead must point along the
             // same direction as the SVG arrowhead. For curved lines/arrows
             // the SVG arrowhead rotates to the bezier's tangent at t=1 (via
@@ -4651,90 +5755,46 @@ const SVGAnnotationLayer = memo(({
               : null;
             return (
               <g transform={lineRotate}>
-                {/* Hover surveyMarker along the line */}
-                {annotationIsHovered && (
-                  lineIsCurved ? (
-                    <path
-                      d={lineCurveD}
+                {/* Hover halo along the line and round its arrowheads.
+                    Owner 2026-10-02: ONE seamless shape - every part opaque
+                    inside one group that carries the translucency, so the
+                    shaft's halo and the head's halo never stack into a
+                    darker seam where they overlap. Both ends' heads, the
+                    same endings renderLine draws (resolveLineEndingStyles). */}
+                {annotationIsHovered && (() => {
+                  const lineSw = renderObj.strokeWidth || 2;
+                  const endings = resolveLineEndingStyles(renderObj);
+                  const headGlowSw = Math.max(3, lineSw + 2);
+                  const startAngleDeg = __isCurved
+                    ? getCurveEndAngle({ x: ep.x2, y: ep.y2 }, { x: ep.x1, y: ep.y1 }, __mp)
+                    : (Math.atan2(ep.y1 - ep.y2, ep.x1 - ep.x2) * 180 / Math.PI);
+                  const endSpec = endings.endStyle && endings.endStyle !== ARROWHEAD_STYLES.NONE
+                    ? buildArrowheadRenderSpec(endings.endStyle, ep.x2, ep.y2, arrowAngleDeg, '#4a90e2', lineSw)
+                    : null;
+                  const startSpec = endings.startStyle && endings.startStyle !== ARROWHEAD_STYLES.NONE
+                    ? buildArrowheadRenderSpec(endings.startStyle, ep.x1, ep.y1, startAngleDeg, '#4a90e2', lineSw)
+                    : null;
+                  return (
+                    <g
+                      data-hover-halo={isArrow ? 'arrow' : 'line'}
+                      opacity={HOVER_HALO_OPACITY}
                       stroke="#4a90e2"
-                      strokeOpacity={0.4}
-                      strokeWidth={Math.max(6, (renderObj.strokeWidth || 2) + 4)}
-                      strokeLinecap="round"
                       fill="none"
                       style={{ pointerEvents: 'none' }}
-                    />
-                  ) : (
-                    <line
-                      x1={ep.x1} y1={ep.y1} x2={ep.x2} y2={ep.y2}
-                      stroke="#4a90e2"
-                      strokeOpacity={0.4}
-                      strokeWidth={Math.max(6, (renderObj.strokeWidth || 2) + 4)}
-                      strokeLinecap="round"
-                      style={{ pointerEvents: 'none' }}
-                    />
-                  )
-                )}
-                {/* UX: Phase 19 follow-up — arrow tool gets a glow that
-                    follows the arrowhead's actual shape (triangle / V /
-                    open circle / etc) so the affordance matches the
-                    visible form-factor, not just a thick bar behind it. */}
-                {annotationIsHovered && isArrow && arrowStyle !== ARROWHEAD_STYLES.NONE && (() => {
-                  const spec = buildArrowheadRenderSpec(
-                    arrowStyle, ep.x2, ep.y2, arrowAngleDeg, '#4a90e2',
-                    renderObj.strokeWidth || 2,
-                  );
-                  const glowSw = Math.max(3, (renderObj.strokeWidth || 2) + 2);
-                  switch (spec.kind) {
-                    case 'solidTriangle':
-                    case 'openTriangle':
-                    case 'diamond':
-                    case 'square':
-                      return (
-                        <polygon
-                          points={spec.polygon.points}
-                          transform={spec.polygon.transform}
-                          fill="none"
-                          stroke="#4a90e2"
-                          strokeOpacity={0.45}
-                          strokeWidth={glowSw}
-                          strokeLinejoin="round"
-                          style={{ pointerEvents: 'none' }}
-                        />
-                      );
-                    case 'openCircle':
-                      return (
-                        <circle
-                          cx={spec.circle.cx} cy={spec.circle.cy} r={spec.circle.r}
-                          fill="none" stroke="#4a90e2" strokeOpacity={0.45}
-                          strokeWidth={glowSw}
-                          style={{ pointerEvents: 'none' }}
-                        />
-                      );
-                    case 'vShape':
-                      return (
-                        <polyline
-                          points={spec.polyline.points}
-                          fill="none" stroke="#4a90e2" strokeOpacity={0.45}
-                          strokeWidth={glowSw}
-                          strokeLinecap="round" strokeLinejoin="round"
-                          style={{ pointerEvents: 'none' }}
-                        />
-                      );
-                    case 'slash':
-                    case 'horizontalLine':
-                      return (
+                    >
+                      {lineIsCurved ? (
+                        <path d={lineCurveD} strokeWidth={Math.max(6, lineSw + 4)} strokeLinecap="round" />
+                      ) : (
                         <line
-                          x1={spec.line.x1} y1={spec.line.y1}
-                          x2={spec.line.x2} y2={spec.line.y2}
-                          stroke="#4a90e2" strokeOpacity={0.45}
-                          strokeWidth={glowSw}
+                          x1={ep.x1} y1={ep.y1} x2={ep.x2} y2={ep.y2}
+                          strokeWidth={Math.max(6, lineSw + 4)}
                           strokeLinecap="round"
-                          style={{ pointerEvents: 'none' }}
                         />
-                      );
-                    default:
-                      return null;
-                  }
+                      )}
+                      {renderArrowheadHalo(endSpec, headGlowSw)}
+                      {renderArrowheadHalo(startSpec, headGlowSw)}
+                    </g>
+                  );
                 })()}
                 {/* Invisible thick hit area — path when curved so clicks
                     along the bend register, line otherwise. */}
@@ -4743,7 +5803,7 @@ const SVGAnnotationLayer = memo(({
                     d={lineCurveD}
                     stroke="transparent"
                     fill="none"
-                    strokeWidth={Math.max(12, (renderObj.strokeWidth || 2) + 10)}
+                    strokeWidth={markHitBand((renderObj.strokeWidth || 2) / inverseScale, 1)}
                     strokeLinecap="round"
                     vectorEffect="non-scaling-stroke"
                     pointerEvents={annotationHitTargetsInteractive && isObjectInteractive ? 'stroke' : 'none'}
@@ -4757,7 +5817,7 @@ const SVGAnnotationLayer = memo(({
                   <line
                     x1={ep.x1} y1={ep.y1} x2={ep.x2} y2={ep.y2}
                     stroke="transparent"
-                    strokeWidth={Math.max(12, (renderObj.strokeWidth || 2) + 10)}
+                    strokeWidth={markHitBand((renderObj.strokeWidth || 2) / inverseScale, 1)}
                     strokeLinecap="round"
                     vectorEffect="non-scaling-stroke"
                     // UX: Plan 14-02 UX-01 — gate on isSelectTool (not
@@ -4805,7 +5865,7 @@ const SVGAnnotationLayer = memo(({
               fill: renderObj.fill,
               stroke: renderObj.stroke,
               strokeWidth: renderObj.strokeWidth || 1,
-              minStrokeWidth: markHitStrokeWidth,
+              hitStrokeWidth: markHitBand(renderObj.strokeWidth || 1),
               isInteractive: annotationHitTargetsInteractive && isObjectInteractive,
             });
             return (
@@ -4862,35 +5922,35 @@ const SVGAnnotationLayer = memo(({
               const headSize = Math.max(6, (renderObj.strokeWidth || 2) * 3);
               const lineEndX = arrowHead ? x2 - (headSize / 3) * Math.cos(angleDeg * Math.PI / 180) : x2;
               const lineEndY = arrowHead ? y2 - (headSize / 3) * Math.sin(angleDeg * Math.PI / 180) : y2;
-              const hitStrokeWidth = Math.max(markHitStrokeWidth, (renderObj.strokeWidth || 2) + 10);
+              const hitStrokeWidth = markHitBand((renderObj.strokeWidth || 2) / inverseScale, 1);
               return (
                 <g>
                   {annotationIsHovered && (
-                    <>
+                    // Owner 2026-10-02: one seamless halo (HOVER_HALO_OPACITY).
+                    <g
+                      data-hover-halo="arrow"
+                      opacity={HOVER_HALO_OPACITY}
+                      stroke="#4a90e2"
+                      fill="none"
+                      style={{ pointerEvents: 'none' }}
+                    >
                       <line
                         x1={x1}
                         y1={y1}
                         x2={lineEndX}
                         y2={lineEndY}
-                        stroke="#4a90e2"
-                        strokeOpacity={0.4}
                         strokeWidth={Math.max(6, (renderObj.strokeWidth || 2) + 4)}
                         strokeLinecap="round"
-                        style={{ pointerEvents: 'none' }}
                       />
                       {arrowHead && (
                         <polygon
                           points={`${-headSize / 3},${-headSize / 2} ${headSize * 2 / 3},0 ${-headSize / 3},${headSize / 2}`}
-                          fill="none"
-                          stroke="#4a90e2"
-                          strokeOpacity={0.45}
                           strokeWidth={Math.max(3, (renderObj.strokeWidth || 2) + 2)}
                           strokeLinejoin="round"
                           transform={`translate(${x2},${y2}) rotate(${angleDeg})`}
-                          style={{ pointerEvents: 'none' }}
                         />
                       )}
-                    </>
+                    </g>
                   )}
                   <line
                     x1={x1}
@@ -4968,7 +6028,7 @@ const SVGAnnotationLayer = memo(({
                   d={cloudD}
                   fill="none"
                   stroke="rgba(0,0,0,0.001)"
-                  strokeWidth={Math.max(CLOUD_HIT_STROKE_WIDTH, markHitStrokeWidth, sw + 10)}
+                  strokeWidth={markHitBand(sw, inverseScale / getSvgMatrixMaxScale(cloudHitGeometry.transform))}
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   pointerEvents={cloudInteractive ? 'stroke' : 'none'}
@@ -5031,7 +6091,7 @@ const SVGAnnotationLayer = memo(({
               fill: isPolygonShape ? renderObj.fill : 'none',
               stroke: renderObj.stroke,
               strokeWidth: sw,
-              minStrokeWidth: markHitStrokeWidth,
+              hitStrokeWidth: markHitBand(sw, inverseScale / (Math.max(Math.abs(shapeSx), Math.abs(shapeSy)) || 1)),
               isInteractive: annotationHitTargetsInteractive && isObjectInteractive,
             });
             return (
@@ -5041,6 +6101,7 @@ const SVGAnnotationLayer = memo(({
                     <polygon
                       points={pointsStr}
                       transform={shapeTransform}
+                      data-hover-glow="polygon"
                       fill="none"
                       stroke="#4a90e2"
                       strokeOpacity={0.4}
@@ -5053,6 +6114,7 @@ const SVGAnnotationLayer = memo(({
                     <polyline
                       points={pointsStr}
                       transform={shapeTransform}
+                      data-hover-glow="polyline"
                       fill="none"
                       stroke="#4a90e2"
                       strokeOpacity={0.4}
@@ -5120,23 +6182,31 @@ const SVGAnnotationLayer = memo(({
               fill: renderObj.fill,
               stroke: renderObj.stroke,
               strokeWidth: sw,
-              minStrokeWidth: markHitStrokeWidth,
+              hitStrokeWidth: markHitBand(sw),
               isInteractive: annotationHitTargetsInteractive && isObjectInteractive,
             });
+            // Owner Test 15 (2026-10-02): the glow traces the border itself -
+            // centred on the stroke's own line (renderRect pulls an inset-
+            // contract border in by half its width) with the stroke's sharp
+            // miter corners. It had round joins, so its corners were rounded
+            // while the rectangle's are square and it did not hug the outline.
+            const rectGlowInset = hoverGlowStrokeInset(renderObj);
             return (
               <g>
                 {annotationIsHovered && (
                   <rect
-                    x={rectL}
-                    y={rectT}
-                    width={rectW}
-                    height={rectH}
+                    x={rectL + rectGlowInset}
+                    y={rectT + rectGlowInset}
+                    width={Math.max(0, rectW - 2 * rectGlowInset)}
+                    height={Math.max(0, rectH - 2 * rectGlowInset)}
                     transform={rectRotate}
                     fill="none"
                     stroke="#4a90e2"
                     strokeOpacity={0.4}
                     strokeWidth={Math.max(6, sw + 4)}
-                    strokeLinejoin="round"
+                    strokeLinejoin="miter"
+                    strokeMiterlimit={4}
+                    data-hover-glow="rect"
                     style={{ pointerEvents: 'none' }}
                   />
                 )}
@@ -5183,18 +6253,21 @@ const SVGAnnotationLayer = memo(({
               fill: renderObj.fill,
               stroke: renderObj.stroke,
               strokeWidth: sw,
-              minStrokeWidth: markHitStrokeWidth,
+              hitStrokeWidth: markHitBand(sw),
               isInteractive: annotationHitTargetsInteractive && isObjectInteractive,
             });
+            // Owner Test 15: centred on the border's own line, like the rect.
+            const ellipseGlowInset = hoverGlowStrokeInset(renderObj);
             return (
               <g>
                 {annotationIsHovered && (
                   <ellipse
                     cx={cx}
                     cy={cy}
-                    rx={rx}
-                    ry={ry}
+                    rx={Math.max(0, rx - ellipseGlowInset)}
+                    ry={Math.max(0, ry - ellipseGlowInset)}
                     transform={ellipseRotate}
+                    data-hover-glow="ellipse"
                     fill="none"
                     stroke="#4a90e2"
                     strokeOpacity={0.4}
@@ -5234,7 +6307,13 @@ const SVGAnnotationLayer = memo(({
             // outline polygon, so the whole stroke body must hover/click —
             // not just its edges. Predicate lives in svgPathAttrs.js.
             const isFilledPdfInkOutline = isFilledInkOutlineAttrs(pathAttrs);
-            const pathTransform = buildFabricPathSvgTransform(renderObj);
+            const pathTransform = cachedMarkGeometry('pathTransform', renderObj, renderObj === obj, buildFabricPathSvgTransform);
+            // Same baked geometry as the visible path (resolveBakedFabricPath):
+            // hover halo and hit target stay exactly on the ink.
+            const cachedBakedPath = cachedMarkGeometry('bakedPath', renderObj, renderObj === obj, resolveBakedFabricPath);
+            const bakedPath = isBakedPathCurrent(cachedBakedPath, renderObj) ? cachedBakedPath : null;
+            const targetD = bakedPath ? bakedPath.d : pathD;
+            const targetTransform = bakedPath ? undefined : pathTransform;
             const sw = renderObj.strokeWidth || 1;
             // Zoom-out balloon fix: clamp inverseScale for the VISIBLE filled-ink
             // hover stroke so it stops growing on extreme zoom-out. The hit
@@ -5247,34 +6326,47 @@ const SVGAnnotationLayer = memo(({
             // transparent boundary band for native ink so hairline strokes
             // stay grabbable). Null for plain stroked paths.
             const inkHitProps = getFilledInkHitTargetProps(pathAttrs, { strokeWidth: sw, inverseScale });
+            // Owner 2026-10-04: the band is the ink at its current scale plus
+            // a fixed screen tolerance. A filled ink outline (the pen's own
+            // ink) counts its fill, and its edge band is a non-scaling stroke
+            // in CSS px, so an enlarged (even stretched) stroke never widens
+            // it. A stroked path's ink scales with its matrix, so the
+            // tolerance is divided back out by the most-stretched axis.
+            const hitVectorEffect = inkHitProps ? 'non-scaling-stroke' : pathAttrs.vectorEffect;
             const hitStrokeWidth = inkHitProps
-              ? inkHitProps.strokeWidth
-              : Math.max(markHitStrokeWidth, pathAttrs.strokeWidth || sw || 1, 3 * inverseScale);
+              ? markHitBand(0, 1)
+              : markHitBand(pathAttrs.strokeWidth || sw || 1, pathAttrs.vectorEffect === 'non-scaling-stroke'
+                ? 1
+                : inverseScale / getSvgMatrixMaxScale(pathTransform));
             const pathPointerEvents = annotationHitTargetsInteractive && isObjectInteractive
               ? (isFilledPdfInkOutline ? 'all' : 'stroke')
               : 'none';
             return (
               <g>
                 {annotationIsHovered && (
-                  <path
-                    d={pathD}
-                    transform={pathTransform}
-                    stroke="#4a90e2"
-                    strokeOpacity={0.4}
-                    strokeWidth={hoverStrokeWidth}
-                    fill={isFilledPdfInkOutline ? '#4a90e2' : 'none'}
-                    fillOpacity={isFilledPdfInkOutline ? 0.12 : undefined}
-                    // Eraser-carved ink is evenodd — forward the rule so
-                    // carved holes don't glow filled.
-                    fillRule={isFilledPdfInkOutline ? pathAttrs.fillRule : undefined}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    style={{ pointerEvents: 'none' }}
-                  />
+                  // Owner 2026-10-02: one seamless halo - the rim is opaque
+                  // inside a group carrying the translucency, so its inner
+                  // half never doubles over the light body (0.4 x 0.3 = the
+                  // same 0.12 body tint as before).
+                  <g opacity={HOVER_HALO_OPACITY} data-hover-halo="path" style={{ pointerEvents: 'none' }}>
+                    <path
+                      d={targetD}
+                      transform={targetTransform}
+                      stroke="#4a90e2"
+                      strokeWidth={hoverStrokeWidth}
+                      fill={isFilledPdfInkOutline ? '#4a90e2' : 'none'}
+                      fillOpacity={isFilledPdfInkOutline ? 0.3 : undefined}
+                      // Eraser-carved ink is evenodd — forward the rule so
+                      // carved holes don't glow filled.
+                      fillRule={isFilledPdfInkOutline ? pathAttrs.fillRule : undefined}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </g>
                 )}
                 <path
-                  d={pathD}
-                  transform={pathTransform}
+                  d={targetD}
+                  transform={targetTransform}
                   fill={inkHitProps ? inkHitProps.fill : 'none'}
                   fillRule={inkHitProps ? inkHitProps.fillRule : undefined}
                   stroke={inkHitProps ? inkHitProps.stroke : 'rgba(0,0,0,0.001)'}
@@ -5284,7 +6376,7 @@ const SVGAnnotationLayer = memo(({
                   strokeMiterlimit={pathAttrs.strokeMiterlimit}
                   strokeDasharray={pathAttrs.strokeDasharray?.join(' ')}
                   strokeDashoffset={pathAttrs.strokeDashoffset}
-                  vectorEffect={pathAttrs.vectorEffect}
+                  vectorEffect={hitVectorEffect}
                   pointerEvents={pathPointerEvents}
                   data-path-hit-target="true"
                   onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
@@ -5304,7 +6396,7 @@ const SVGAnnotationLayer = memo(({
           return (
             <g transform={bbox.angle ? `rotate(${bbox.angle}, ${bbox.left + bbox.width / 2}, ${bbox.top + bbox.height / 2})` : undefined}>
               {/* Hover outline (shown before click, not when already selected) */}
-              {annotationIsHovered && (
+              {annotationIsHovered && !cloudGlowGeometry && (
                 <rect
                   x={bbox.left}
                   y={bbox.top}
@@ -5346,6 +6438,216 @@ const SVGAnnotationLayer = memo(({
     );
   });
 
+  // w52 (2026-09-28): ONE stack per page. Callouts are drawn in their slot
+  // among every other mark (filteredCallouts carries each slot as
+  // data-stack-index), so Bring to front / Send to back work across types.
+  // w53 (2026-09-28): Survey Markers draw in their place in the same stack
+  // (their `stack` names the marks they sit between — surveyMarkerFamily.js).
+  // A marker with no place yet (every marker before w53) draws on top, as
+  // it always did.
+  const markerElementsByGap = (() => {
+    if (surveyMarkerElements.length === 0) return null;
+    const byId = new Map(surveyMarkerElements.map((entry) => [String(entry.surveyMarker.annotationId), entry]));
+    const gaps = markerIdsByGap(
+      annotations?.objects || [],
+      surveyMarkerElements.map((entry) => ({
+        id: String(entry.surveyMarker.annotationId),
+        stack: entry.surveyMarker.stack || null,
+      })),
+    );
+    const out = new Map();
+    for (const [gap, ids] of gaps) {
+      out.set(gap, ids.map((id) => renderSurveyMarkerEntry(byId.get(id))).filter(Boolean));
+    }
+    return out;
+  })();
+
+  // UX w58 (owner 2026-09-28): the move zone — while Cmd (Mac) / Ctrl
+  // (Windows) is held, the selection's whole box (grown to a comfortable
+  // minimum on a tiny mark) is one transparent move handle with the move
+  // cursor, drawn above everything on the page. A press ON the selected
+  // marks themselves always moves; a press on a rotate grabber where it lies
+  // outside the marks is handed to that grabber, so rotating with the key
+  // held still rotates (a tiny counter's nub grabber covers the counter at
+  // 25 % zoom, which is why the mark itself wins). Hidden while a drag /
+  // rotate / resize is running (the drag owns the pointer then).
+  const modifierMoveZone = (() => {
+    if (!modifierMoveActive || interactionState !== 'idle') return null;
+    const boxes = [];
+    for (const idx of selectedIds || []) {
+      const obj = annotations?.objects?.[idx];
+      if (obj) boxes.push(getAnnotationBBox(obj));
+    }
+    if (calloutSelectionSize > 0 && Array.isArray(callouts)) {
+      for (const callout of callouts) {
+        if (!callout || callout.pageNumber !== pageNumber) continue;
+        if (!effectiveSelectedCalloutIds.has?.(callout.id)) continue;
+        const at = callout.arrowTip;
+        const kn = callout.knee;
+        const tp = callout.textBoxPosition;
+        if (!at || !kn || !tp) continue;
+        const tbW = Number.isFinite(callout.textBoxWidth) ? callout.textBoxWidth : 0;
+        const tbH = Number.isFinite(callout.textBoxHeight) ? callout.textBoxHeight : 0;
+        const xs = [at.x, kn.x, tp.x, tp.x + tbW].map((n) => n * width);
+        const ys = [at.y, kn.y, tp.y, tp.y + tbH].map((n) => n * height);
+        boxes.push({
+          left: Math.min(...xs),
+          top: Math.min(...ys),
+          width: Math.max(...xs) - Math.min(...xs),
+          height: Math.max(...ys) - Math.min(...ys),
+        });
+      }
+    }
+    if (surveyMarkerSelectionSize > 0) {
+      for (const entry of surveyMarkerElements) {
+        const markerId = entry?.surveyMarker?.annotationId;
+        if (!markerId || !selectedSurveyMarkerIds.has(markerId) || !entry.bbox) continue;
+        boxes.push({
+          left: entry.bbox.left,
+          top: entry.bbox.top,
+          width: entry.bbox.width,
+          height: entry.bbox.height,
+          angle: entry.bbox.angle || 0,
+        });
+      }
+    }
+    const zone = resolveModifierMoveZone(boxes, { inverseScale });
+    return zone ? { ...zone, markBoxes: boxes } : null;
+  })();
+
+  // The rotate grabber under a point of the zone, unless the point is on
+  // the selected marks themselves (then the press is a move).
+  const ROTATE_GRABBER_SELECTOR = '[data-rotation-handle="mtr"], [data-handle-hit-pad="counter-rotate"]';
+  const rotateGrabberUnderZonePoint = (zoneEl, clientX, clientY) => {
+    if (typeof document === 'undefined' || typeof document.elementsFromPoint !== 'function') return null;
+    // Cheap bail-out: no rotate grabber on this page, nothing to hand off.
+    if (!svgRef.current?.querySelector?.(ROTATE_GRABBER_SELECTOR)) return null;
+    const pagePoint = screenToSVG(svgRef.current, clientX, clientY);
+    if (isPointInBoxes(pagePoint, modifierMoveZone?.markBoxes)) return null;
+    return document.elementsFromPoint(clientX, clientY).find((el) => (
+      el !== zoneEl
+      && svgRef.current?.contains?.(el)
+      && el.closest?.(ROTATE_GRABBER_SELECTOR)
+    )) || null;
+  };
+
+  const handleModifierMoveZonePointerMove = (e) => {
+    // Cursor: the rotate grabber's own cursor where a press would rotate.
+    const rotateEl = rotateGrabberUnderZonePoint(e.currentTarget, e.clientX, e.clientY);
+    const next = rotateEl ? (getComputedStyle(rotateEl).cursor || 'crosshair') : 'move';
+    if (e.currentTarget.style.cursor !== next) e.currentTarget.style.cursor = next;
+  };
+
+  const handleModifierMoveZonePointerDown = (e) => {
+    // Only the primary button moves; any other press falls through untouched.
+    if (e.button != null && e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    if (typeof document !== 'undefined' && document.body?.getAttribute('data-readonly') === 'true') return;
+    {
+      const rotateEl = rotateGrabberUnderZonePoint(e.currentTarget, e.clientX, e.clientY);
+      // The hand-off re-dispatches the press on the grabber. Window-level
+      // pointerdown listeners therefore see this press twice; they only read
+      // it (selection-dismiss ignores modifier presses, the key store reads
+      // the same modifier state), so that is harmless.
+      if (rotateEl && typeof PointerEvent === 'function') {
+        const n = e.nativeEvent || e;
+        rotateEl.dispatchEvent(new PointerEvent('pointerdown', {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          clientX: n.clientX,
+          clientY: n.clientY,
+          screenX: n.screenX,
+          screenY: n.screenY,
+          pointerId: n.pointerId,
+          pointerType: n.pointerType,
+          isPrimary: n.isPrimary,
+          button: n.button,
+          buttons: n.buttons,
+          metaKey: n.metaKey,
+          ctrlKey: n.ctrlKey,
+          shiftKey: n.shiftKey,
+          altKey: n.altKey,
+        }));
+        return;
+      }
+    }
+    const started = startModifierMove?.(e);
+    if (started !== 'survey-marker') return;
+    // One Survey Marker selected: its own move drag (the same one a press on
+    // the marker body starts), captured on the page <svg>.
+    const entry = surveyMarkerElements.find((candidate) => (
+      candidate?.surveyMarker?.annotationId === selectedSurveyMarkerId
+    ));
+    if (!entry?.bbox || entry.surveyMarker.lockedBy || entry.surveyMarker.liveOverlay) return;
+    // Land a pending arrow-key nudge first so the drag starts from where the
+    // marker is shown (and the nudge is not lost under the drag's commit).
+    commitSurveyMarkerNudge();
+    surveyMarkerDragRef.current = {
+      mode: 'move',
+      annotationId: entry.surveyMarker.annotationId,
+      startPoint: screenToSVG(svgRef.current, e.clientX, e.clientY),
+      originalBounds: normalizeSurveyMarkerBounds({
+        x: entry.bbox.left,
+        y: entry.bbox.top,
+        width: entry.bbox.width,
+        height: entry.bbox.height,
+        angle: entry.bbox.angle,
+      }),
+    };
+    setSurveyMarkerPreviewBounds(null);
+    try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+  };
+
+  const stackedMarks = (() => {
+    if (filteredCallouts.length === 0 && !markerElementsByGap) return wrappedAnnotations;
+    const slotted = [];
+    const unslotted = [];
+    for (const element of filteredCallouts) {
+      const slot = element?.props?.['data-stack-index'];
+      if (Number.isInteger(slot)) slotted.push([slot, element]);
+      else unslotted.push(element);
+    }
+    slotted.sort((a, b) => a[0] - b[0]);
+    const markerGaps = markerElementsByGap
+      ? [...markerElementsByGap.keys()].sort((a, b) => a - b)
+      : [];
+    let nextGap = 0;
+    const merged = [];
+    // Markers whose gap sits at or below `index` draw before the element in
+    // slot `index`.
+    const flushMarkersUpTo = (index) => {
+      while (nextGap < markerGaps.length && markerGaps[nextGap] <= index) {
+        merged.push(...markerElementsByGap.get(markerGaps[nextGap]));
+        nextGap += 1;
+      }
+    };
+    let next = 0;
+    wrappedAnnotations.forEach((element, position) => {
+      const index = stagedAnnotations[position]?.index;
+      while (next < slotted.length && Number.isInteger(index) && slotted[next][0] < index) {
+        flushMarkersUpTo(slotted[next][0]);
+        merged.push(slotted[next][1]);
+        next += 1;
+      }
+      if (Number.isInteger(index)) flushMarkersUpTo(index);
+      merged.push(element);
+    });
+    while (next < slotted.length) {
+      flushMarkersUpTo(slotted[next][0]);
+      merged.push(slotted[next][1]);
+      next += 1;
+    }
+    // Unslotted callouts, then markers with no place (on top), as before.
+    const out = unslotted.length ? merged.concat(unslotted) : merged;
+    while (nextGap < markerGaps.length) {
+      out.push(...markerElementsByGap.get(markerGaps[nextGap]));
+      nextGap += 1;
+    }
+    return out;
+  })();
+
   const uniformTextMarkupElements = useMemo(() => {
     const groups = new Map();
     for (const entry of stagedAnnotations) {
@@ -5373,6 +6675,15 @@ const SVGAnnotationLayer = memo(({
     <svg
       ref={svgRef}
       data-svg-annotation-layer={pageNumber}
+      // A press on the selection under Pan belongs to the selection, not the
+      // pan scroller (its documented opt-out seam).
+      data-pan-interactive={selectionGrabArmed ? 'true' : undefined}
+      // Drawboard rule 11: handles hide while the selection is moved,
+      // resized or rotated (styles.css), and come back on release.
+      data-selection-gesture={shouldHideSelectionChrome(interactionState) ? 'true' : undefined}
+      // Owner 2026-10-04: a tool that may not grab the pick presses through
+      // its handles (styles.css).
+      data-selection-chrome-inert={pageHasSelection && !isSelectTool && !selectionGrabbableByTool ? 'true' : undefined}
       viewBox={`0 0 ${width} ${height}`}
       width="100%"
       height="100%"
@@ -5445,13 +6756,50 @@ const SVGAnnotationLayer = memo(({
             return;
           }
           e.stopPropagation(); // Prevent Pdfjs from seeing SVG events (SVGAnimatedString crash)
+          // Drawboard rules 2-4 / 8 (owner 2026-10-02, utils/selectModes.js
+          // resolveToolPress): a drawing tool's press that is NOT on the
+          // selection (a press on the selection is handed to its move /
+          // resize machinery while the layer is armed). Shift-click adds the
+          // mark; a press that turns out to be a click picks the mark it
+          // landed on (or only drops the pick on empty page); a drag is the
+          // tool's own, even when it starts on a mark.
+          const grabbingSelection = selectionGrabArmedRef.current;
+          let pressFallback = null;
+          if (isCreationTool && !grabbingSelection && e.button === 0 && !polyDraftRef.current) {
+            const press = resolvePagePress(e.nativeEvent, {
+              tool: activeTool,
+              pageNumber,
+              objects: annotations?.objects,
+              hasSelection: pageHasSelection,
+            });
+            if (press.click === 'add') {
+              applyPressFallback(press);
+              e.preventDefault();
+              return;
+            }
+            if (press.clearsSelection) clearPageSelection();
+            if (press.drag === 'none' && press.click === 'deselect') {
+              e.preventDefault();
+              return;
+            }
+            // Polygon / Polyline before the first point: a click on a Shapes
+            // mark picks it (owner 2026-10-04) instead of starting a shape.
+            if (press.drag === 'none' && press.click === 'select') {
+              applyPressFallback({ ...press, pointerType: e.pointerType, x: e.clientX, y: e.clientY });
+              e.preventDefault();
+              return;
+            }
+            if (press.click === 'select' || press.click === 'deselect') {
+              pressFallback = { ...press, pointerType: e.pointerType, x: e.clientX, y: e.clientY };
+            }
+          }
           // UX: Phase 14 CREATE-01 (callout half) — when the callout tool
           // is active and the click lands on empty SVG space (NOT inside
           // an existing callout), start a transient creation drag. If the
           // click is inside an existing callout, fall through to
           // handleSvgPointerDown which dispatches the callout-part drag
           // via useSVGInteraction (Plan 14-03 Task 2).
-          if (activeTool === 'callout' && !e.target?.closest?.('[data-callout-id]')) {
+          if (activeTool === 'callout' && !grabbingSelection) {
             // UX: Phase 15 UAT-3 — clicking empty space with the callout
             // tool active also dismisses any currently-selected callout so
             // starting a new callout doesn't leave stale handles on the
@@ -5459,7 +6807,7 @@ const SVGAnnotationLayer = memo(({
             // empty space deselects.
             if (onSelectedCalloutIdsChange) onSelectedCalloutIdsChange(new Set());
             const pt = screenToSVG(svgRef.current, e.clientX, e.clientY);
-            setCalloutCreation({ arrowTip: pt, currentPointer: pt });
+            setCalloutCreation({ arrowTip: pt, currentPointer: pt, pressFallback });
             e.preventDefault();
             return;
           }
@@ -5467,7 +6815,7 @@ const SVGAnnotationLayer = memo(({
           // is always explicit — a checkmark control, Enter, or (polygon only)
           // a click back on the first point — so an accidental click never
           // ends the shape.
-          if (isPolyCreationTool && e.button === 0) {
+          if (isPolyCreationTool && e.button === 0 && !grabbingSelection) {
             const point = screenToSVG(svgRef.current, e.clientX, e.clientY);
             if (point) {
               const draft = polyDraftRef.current;
@@ -5507,7 +6855,7 @@ const SVGAnnotationLayer = memo(({
           // Unified renderer phase 2 — shape/freehand creation starts here,
           // on the same surface that renders the committed result. The
           // window-level effect above tracks the drag and commits.
-          if ((isShapeCreationTool || isFreehandCreationTool) && e.button === 0) {
+          if ((isShapeCreationTool || isFreehandCreationTool) && e.button === 0 && !grabbingSelection) {
             const point = screenToSVG(svgRef.current, e.clientX, e.clientY);
             if (point) {
               const tool = activeTool;
@@ -5527,9 +6875,39 @@ const SVGAnnotationLayer = memo(({
               if (isFreehandCreationTool) {
                 freehandPointsRef.current = [];
                 appendCoalescedPagePoints(e.nativeEvent);
-                setShapeCreation({ tool, gestureId, pointerId: e.pointerId, tick: 0 });
+                // w32: other screens see this stroke grow while it is drawn.
+                const liveId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+                  ? crypto.randomUUID()
+                  : `anno-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+                endLiveStroke(false);
+                liveStrokeRef.current = beginLiveStroke({
+                  documentId,
+                  id: liveId,
+                  page: pageNumber,
+                  tool,
+                  color: tool === 'highlighter' ? highlightColor : strokeColor,
+                  width: tool === 'highlighter'
+                    ? Math.max(Number(strokeWidth) || 3, 8)
+                    : (Number(strokeWidth) || 3),
+                });
+                setShapeCreation({ tool, gestureId, pointerId: e.pointerId, tick: 0, liveId });
               } else {
-                setShapeCreation({ tool, gestureId, start: point, current: point, pointerId: e.pointerId });
+                setShapeCreation({
+                  tool,
+                  gestureId,
+                  start: point,
+                  current: point,
+                  pointerId: e.pointerId,
+                  pointerType: e.pointerType,
+                  // screen point of the press: a release within
+                  // CLICK_PLACE_MAX_TRAVEL_PX of it turns a line/arrow into
+                  // click-to-place mode (see the window effect).
+                  startClient: { x: e.clientX, y: e.clientY },
+                  mode: 'drag',
+                  // A release within CLICK_PLACE_MAX_TRAVEL_PX picks the mark
+                  // pressed (or drops the pick) instead of drawing.
+                  pressFallback,
+                });
               }
               e.preventDefault();
             }
@@ -5539,14 +6917,15 @@ const SVGAnnotationLayer = memo(({
           if (annotationWrapper && svgRef.current?.contains?.(annotationWrapper)) {
             const annotationIndex = Number(annotationWrapper.getAttribute('data-annotation-index'));
             if (Number.isInteger(annotationIndex)) {
-              setSelectedSurveyMarkerId(null);
+              // w53: the hook decides whether the Survey Markers in the
+              // selection stay (Shift / Alt click, dragging the selection)
+              // or go (a plain click on another mark).
               setSurveyMarkerPreviewBounds(null);
               surveyMarkerDragRef.current = null;
               handleAnnotationPointerDown(e, annotationIndex);
               return;
             }
           }
-          setSelectedSurveyMarkerId(null);
           setSurveyMarkerPreviewBounds(null);
           surveyMarkerDragRef.current = null;
           handleSvgPointerDown(e);
@@ -5603,65 +6982,17 @@ const SVGAnnotationLayer = memo(({
       onDoubleClick={(isSelectTool || panEditEntryEnabled) ? handleAnnotationDoubleClick : undefined}
     >
       {uniformTextMarkupElements}
-      {wrappedAnnotations}
-      {/* Survey markers are stored outside annotations.objects, so this
-          path owns their click, move, and resize behavior. */}
-      {surveyMarkerElements.length > 0 && (
-        <g className="survey-markers" style={{ pointerEvents: isSelectTool ? 'auto' : 'none' }}>
-          {surveyMarkerElements.map(renderSurveyMarkerEntry)}
-        </g>
-      )}
-      {isSelectTool && selectedSurveyMarkerDeleteBounds && typeof onDeleteSurveyMarker === 'function' && (
-        <g
-          className="survey-marker-touch-delete"
-          role="button"
-          aria-label="Delete Survey Marker"
-          tabIndex={0}
-          transform={`translate(${selectedSurveyMarkerDeleteBounds.x} ${selectedSurveyMarkerDeleteBounds.y})`}
-          pointerEvents="all"
-          style={{ cursor: 'pointer' }}
-          onPointerDown={(e) => e.stopPropagation()}
-          onPointerUp={(e) => {
-            // One pointer release owns touch/mouse activation. Avoid also
-            // handling the synthetic click a touch release may emit.
-            e.preventDefault();
-            e.stopPropagation();
-            deleteSelectedSurveyMarker();
-          }}
-          onKeyDown={(e) => {
-            if (e.key !== 'Enter' && e.key !== ' ') return;
-            e.preventDefault();
-            e.stopPropagation();
-            deleteSelectedSurveyMarker();
-          }}
-        >
-          {/* UX 2026-09-22: the Delete chip's own red comes from the palette
-              now instead of two literals (#6f3037 / #8c3a42). var() is only
-              valid in a CSS declaration, never in an SVG presentation
-              attribute, so it travels on `style`, not on `fill`. */}
-          <rect
-            width={selectedSurveyMarkerDeleteBounds.width}
-            height={selectedSurveyMarkerDeleteBounds.height}
-            rx={8 * inverseScale}
-            style={{ fill: 'var(--danger-fill)', stroke: 'var(--danger)' }}
-            strokeWidth={inverseScale}
-          />
-          <text
-            x={selectedSurveyMarkerDeleteBounds.width / 2}
-            y={selectedSurveyMarkerDeleteBounds.height / 2}
-            fill="#fff"
-            fontFamily="Helvetica"
-            fontSize={12 * inverseScale}
-            fontWeight="800"
-            textAnchor="middle"
-            dominantBaseline="central"
-            pointerEvents="none"
-          >
-            Delete
-          </text>
-        </g>
-      )}
-      {filteredCallouts}
+      {/* w53: Survey Markers draw inside stackedMarks, each in its place in
+          the page's one stack. They are stored outside annotations.objects,
+          so renderSurveyMarkerEntry owns their click, move and resize. */}
+      {stackedMarks}
+      {/* Owner 2026-10-01: selecting a Survey Marker never shows a floating
+          Delete chip beside it (phone or desktop, one or many). Delete stays
+          on the long-press / right-click menu, the Delete key and the Survey
+          panel. */}
+      {/* w52: callouts are drawn inside stackedMarks above (one stack); a
+          selected callout's handles sit here, above every mark. */}
+      {filteredCallouts.selectedOverlays}
       {/* UX: Plan 15-04 Issue 2 — new-text creation preview. FabricEditCanvas
           paints the in-flight textbox transparent during create (same pattern
           as existing-text edit) and broadcasts live bounds with
@@ -5687,6 +7018,11 @@ const SVGAnnotationLayer = memo(({
             strokeWidth: liveTextEditBounds.strokeWidth ?? 1,
             text: liveTextEditBounds.text || '',
             opacity: 1,
+            // w43: a box drawn with the Style picker on Cloud previews its
+            // cloud border while it is typed into.
+            ...(liveTextEditBounds.cloudIntensity != null
+              ? { data: { pdfCloudIntensity: liveTextEditBounds.cloudIntensity } }
+              : {}),
             // hideText=true (4th arg): TextEditOverlay shows the typed
             // glyphs + caret during creation; this preview contributes only
             // the box chrome (border/background) so text never double-paints.
@@ -5804,71 +7140,89 @@ const SVGAnnotationLayer = memo(({
         // because the crowns bulge past the box anyway and the studio places
         // corner crowns on the raw pointer positions. Same rule as the commit
         // builder, so the preview frame and the committed frame coincide.
-        const previewIsCloud = lineBorderStyle === 'cloud';
-        const geometry = computeDrawnBoundaryShapePreviewGeometry({
+        // UX 2026-10-02 (owner): built by the commit builder itself, so the
+        // dash style (dashed / dotted) shows while dragging too — before, the
+        // preview hand-copied the geometry and fill but not the dash.
+        const previewObj = buildBoundaryShapeCommitJSON({
           tool: shapeCreation.tool,
-          startX: shapeCreation.start.x,
-          startY: shapeCreation.start.y,
-          pointerX: shapeCreation.current.x,
-          pointerY: shapeCreation.current.y,
-          strokeWidth: previewIsCloud ? 0 : (Number(strokeWidth) || 3),
-        });
-        const previewObj = {
-          type: shapeCreation.tool === 'ellipse' ? 'ellipse' : 'rect',
-          ...geometry.fabricProps,
-          ...(shapeCreation.tool === 'ellipse'
-            ? { width: (geometry.fabricProps.rx || 0) * 2, height: (geometry.fabricProps.ry || 0) * 2 }
-            : {}),
-          scaleX: 1,
-          scaleY: 1,
-          angle: 0,
-          fill: composeAnnotationColor(fillColor, fillOpacity),
-          stroke: composeAnnotationColor(strokeColor, strokeOpacity),
+          id: `creation-preview-p${pageNumber}`,
+          start: shapeCreation.start,
+          end: shapeCreation.current,
+          strokeColor,
+          strokeOpacity,
+          fillColor,
+          fillOpacity,
           strokeWidth: Number(strokeWidth) || 3,
-          strokeUniform: true,
-          opacity: 1,
-          data: {
-            strokeRenderContract: 'drawn-centered-stroke',
-            ...(previewIsCloud ? { pdfCloudIntensity: Math.max(1, Number(cloudIntensity) || 2) } : {}),
-          },
-        };
+          lineBorderStyle,
+          cloudIntensity,
+        });
         return (
           <g className="shape-creation-preview" style={{ pointerEvents: 'none' }}>
-            {shapeCreation.tool === 'ellipse'
+            {!previewObj ? null : shapeCreation.tool === 'ellipse'
               ? renderEllipse(previewObj, 'creation-preview')
               : renderRect(previewObj, 'creation-preview')}
           </g>
         );
       })()}
-      {shapeCreation && (shapeCreation.tool === 'line' || shapeCreation.tool === 'arrow') && (
-        <line
-          className="shape-creation-preview"
-          x1={shapeCreation.start.x}
-          y1={shapeCreation.start.y}
-          x2={shapeCreation.current.x}
-          y2={shapeCreation.current.y}
-          stroke={composeAnnotationColor(strokeColor, strokeOpacity)}
-          strokeWidth={Number(strokeWidth) || 3}
-          strokeLinecap="round"
-          strokeDasharray="5,5"
-          opacity={0.6}
-          style={{ pointerEvents: 'none' }}
-        />
-      )}
+      {shapeCreation && (shapeCreation.tool === 'line' || shapeCreation.tool === 'arrow') && (() => {
+        // UX 2026-10-02 (owner): the preview IS the mark — built by the same
+        // commit builder and painted by the same renderer, so its colour,
+        // width, dash style and arrowheads are what lands on release. The
+        // group is always mounted (even before the line has length) so the
+        // draft is visible to the overlay watchdog in PDFViewer.
+        const previewJson = buildLineCommitJSON({
+          tool: shapeCreation.tool,
+          id: `creation-preview-p${pageNumber}`,
+          start: shapeCreation.start,
+          end: shapeCreation.current,
+          strokeColor,
+          strokeOpacity,
+          strokeWidth: Number(strokeWidth) || 3,
+          arrowheadStyle,
+          arrowStartStyle,
+          lineBorderStyle,
+          cloudIntensity,
+        });
+        return (
+          <g
+            className="shape-creation-preview"
+            data-shape-draft-mode={shapeCreation.mode || 'drag'}
+            style={{ pointerEvents: 'none' }}
+          >
+            {previewJson ? renderLine(previewJson, 'creation-preview') : null}
+          </g>
+        );
+      })()}
       {/* Polygon / polyline click-to-place preview.
-          UX: the committed edges render at full strength in the live stroke
-          colour and width (what you see IS what commits), while the edge that
-          chases the cursor is dashed and half-opaque so the user can always
-          tell which segment is not placed yet. The finish checkmarks — latest
+          UX 2026-10-02 (owner): the whole run — placed corners PLUS the edge
+          to the cursor — is the real mark, built by the commit builder and
+          painted by the committed renderer: stroke colour, width, dash style
+          and (polygon, from 3 points) the fill and closing edge, exactly what
+          finishing here would commit. No dashed placeholder edge. The
+          vertex dots still mark which corners are placed. The finish checkmarks — latest
           vertex (finish here) always, plus first vertex (close) on a POLYGON
           draft only — are the only interactive parts; everything else is
           pointer-transparent so a click in the middle of the run still drops a
           vertex. */}
       {polyDraft && polyDraft.points.length > 0 && (() => {
-        const previewStroke = composeAnnotationColor(strokeColor, strokeOpacity);
-        const previewWidth = Number(strokeWidth) || 3;
-        const placed = polyDraft.points.map((p) => `${p.x},${p.y}`).join(' ');
-        const last = polyDraft.points[polyDraft.points.length - 1];
+        const runPoints = polyDraft.preview
+          ? [...polyDraft.points, polyDraft.preview]
+          : polyDraft.points;
+        // A polygon is only a polygon from 3 corners; before that the run is
+        // drawn as the open line it currently is, in the polygon's stroke.
+        const runTool = polyDraft.tool === 'polygon' && runPoints.length >= 3 ? 'polygon' : 'polyline';
+        const runJson = buildPolyShapeCommitJSON({
+          tool: runTool,
+          id: `creation-preview-p${pageNumber}`,
+          points: runPoints,
+          strokeColor,
+          strokeOpacity,
+          fillColor,
+          fillOpacity,
+          strokeWidth: Number(strokeWidth) || 3,
+          lineBorderStyle,
+          cloudIntensity,
+        });
         const controls = polyDraftFinishControlPoints(polyDraft);
         const canClose = canClosePolyDraft(polyDraft);
         const canFinish = canFinishPolyDraft(polyDraft);
@@ -5917,30 +7271,12 @@ const SVGAnnotationLayer = memo(({
         );
         return (
           <g className="poly-creation-preview">
-            {polyDraft.points.length > 1 && (
-              <polyline
-                points={placed}
-                fill="none"
-                stroke={previewStroke}
-                strokeWidth={previewWidth}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{ pointerEvents: 'none' }}
-              />
-            )}
-            {polyDraft.preview && (
-              <line
-                x1={last.x}
-                y1={last.y}
-                x2={polyDraft.preview.x}
-                y2={polyDraft.preview.y}
-                stroke={previewStroke}
-                strokeWidth={previewWidth}
-                strokeLinecap="round"
-                strokeDasharray="5,5"
-                opacity={0.6}
-                style={{ pointerEvents: 'none' }}
-              />
+            {runJson && (
+              <g style={{ pointerEvents: 'none' }}>
+                {runTool === 'polygon'
+                  ? renderPolygon(runJson, 'creation-preview')
+                  : renderPolyline(runJson, 'creation-preview')}
+              </g>
             )}
             {polyDraft.points.map((p, i) => (
               <circle
@@ -5978,6 +7314,33 @@ const SVGAnnotationLayer = memo(({
           strokeDasharray="5,5"
           style={{ pointerEvents: 'none' }}
         />
+      )}
+      {/* w32: other screens' strokes while they are being drawn. */}
+      <LiveStrokeGhosts documentId={documentId} pageNumber={pageNumber} />
+      {/* Owner after Test 46: a mark carried over from another page, at the
+          pointer, clipped by this page. Only a picture until it is let go. */}
+      {crossPageGhost && (
+        <g
+          data-cross-page-ghost="true"
+          transform={`translate(${crossPageGhost.dx}, ${crossPageGhost.dy})`}
+          style={{ pointerEvents: 'none' }}
+        >
+          {crossPageGhost.objects.map((ghostObj, k) => {
+            const ghostIndex = -1000 - k;
+            const kind = crossPageGhostKind(ghostObj);
+            let el = kind === 'path' ? renderPath(ghostObj, ghostIndex)
+              : kind === 'rect' ? renderRect(ghostObj, ghostIndex)
+              : kind === 'line' ? renderLine(ghostObj, ghostIndex)
+              : kind === 'arrow' ? renderArrow(ghostObj, ghostIndex)
+              : kind === 'ellipse' ? renderEllipse(ghostObj, ghostIndex)
+              : kind === 'polygon' ? renderPolygon(ghostObj, ghostIndex)
+              : kind === 'polyline' ? renderPolyline(ghostObj, ghostIndex)
+              : kind === 'text' ? renderText(ghostObj, ghostIndex)
+              : null;
+            if (el && kind === 'path') el = cloneElement(el, { transform: buildFabricPathSvgTransform(ghostObj) });
+            return el ? <g key={`cross-page-ghost-${k}`}>{el}</g> : null;
+          })}
+        </g>
       )}
       {shapeCreation && FREEHAND_CREATION_TOOLS.includes(shapeCreation.tool)
         && freehandPointsRef.current.length > 0 && (
@@ -6053,7 +7416,7 @@ const SVGAnnotationLayer = memo(({
           selected. With one annotation + one callout the combined count
           is > 1, which means the outer group union bbox should be the
           only chrome — same as two annotations. */}
-      {selectedIds.size === 1 && (effectiveSelectedCalloutIds?.size || 0) === 0 && Array.from(selectedIds).map((selectedIndex) => {
+      {selectedIds.size === 1 && (effectiveSelectedCalloutIds?.size || 0) === 0 && selectedSurveyMarkerIds.size === 0 && Array.from(selectedIds).map((selectedIndex) => {
         const obj = visualTransform?.previewObjects?.[selectedIndex]
           || annotations?.objects?.[selectedIndex];
         if (!obj) return null;
@@ -6114,8 +7477,7 @@ const SVGAnnotationLayer = memo(({
           const is = Math.sqrt(clampInverseScale(inverseScale));
           const handleR = HANDLE_RADIUS * is;
           // UX 2026-09-16: invisible hit pad behind the counter's rotate
-          // grabber — 32 px on a mouse (Drawboard PDF measures 34 x 34 on its
-          // handles), 44 pt on a finger. It is the only grabber on a selected
+          // grabber — the grabber + 4 px on a mouse (w63), 44 pt on a finger. It is the only grabber on a selected
           // counter, so nothing crowds it. The drag handlers live on both the
           // pad and the visible dot because this grabber captures the pointer
           // on whichever element was pressed.
@@ -6382,6 +7744,22 @@ const SVGAnnotationLayer = memo(({
         // resize + rotate chrome appears instead of the endpoint handles.
         const isLineType = String(selectionObj.type || '').toLowerCase() === 'line';
         const lineInBboxMode = isLineType && isBeingEditedNow && editingAnnotationEditType === 'bbox';
+        // w58: Cmd / Ctrl held -> no end or bend grabbers (a line has no
+        // rotate grabber here); the line moves from anywhere in its box.
+        // A plain dashed frame keeps it visibly selected.
+        if (isLineType && !lineInBboxMode && modifierMoveActive) {
+          return (
+            <g key={`selection-wrapper-${selectedIndex}`} transform={overlayTransform}>
+              <SVGSelectionOverlay
+                key={`selection-${selectedIndex}`}
+                bbox={bbox}
+                inverseScale={inverseScale}
+                isGroupSelection={false}
+                moveOnly={true}
+              />
+            </g>
+          );
+        }
         if (isLineType && !lineInBboxMode) {
           const ep = getLineEndpoints(selectionObj);
           const dx = overlayTransform ? (visualTransform?.dx || 0) : 0;
@@ -6401,7 +7779,7 @@ const SVGAnnotationLayer = memo(({
           };
           // UX 2026-09-16: an invisible pad behind each endpoint / bend grabber
           // so a line can be re-aimed without pixel-hunting the 11 px dot —
-          // 32 px on a mouse (Drawboard PDF measures 34 x 34), 44 pt on a
+          // The grabber + 4 px on a mouse (w63), 44 pt on a
           // finger. It shrinks on a short line so the two ends and the bend
           // grabber never fight over the same press.
           const lineHandleSpan = Math.hypot(ep.x2 - ep.x1, ep.y2 - ep.y1);
@@ -6624,7 +8002,8 @@ const SVGAnnotationLayer = memo(({
                   style={{ pointerEvents: 'none' }}
                 />
               )}
-              {worldPoints.map((wp, i) => (
+              {/* w58: Cmd / Ctrl held -> corner grabbers hide (move instead). */}
+              {!modifierMoveActive && worldPoints.map((wp, i) => (
                 <g key={`vertex-${i}`}>
                   {vTouchHitR > 0 && (
                     <circle
@@ -6767,8 +8146,10 @@ const SVGAnnotationLayer = memo(({
         // and never stacked on a crown. Resolved from the live resize preview
         // so the frame tracks the crowns re-fitting during a drag. Non-cloud
         // shapes pass null through.
+        // Owner Test 45: a clouded text box gets the same chrome (its border
+        // is the rectangle cloud - utils/markBorderOutline.js).
         const cloudChrome = !isLockedStampProxy && !counterInBboxMode
-          ? cloudSelectionChrome(selectionChromeObj)
+          ? markBorderCloudChrome(selectionChromeObj)
           : null;
         if (cloudChrome) overlayRotationCenter = cloudChrome.rotationCenter;
 
@@ -6803,17 +8184,19 @@ const SVGAnnotationLayer = memo(({
               rotationCenter={overlayRotationCenter}
               // Legacy marks have no safe character-offset model for range
               // handles, so their standard box supplies visible selection feedback.
-              hideResizeHandles={textMarkupSelectionChrome.hideResizeHandles}
+              // w58: Cmd / Ctrl held hides the resize grabbers (rotate stays).
+              hideResizeHandles={textMarkupSelectionChrome.hideResizeHandles || modifierMoveActive}
               horizontalResizeOnly={selectionObj?.data?.type === 'text-markup'}
               horizontalHandlePositions={selectionObj?.data?.type === 'text-markup'
                 ? getTextMarkupRangeHandlePositions(selectionObj)
                 : null}
+              locked={isUserLocked(selectionObj)}
             />
           </g>
         );
       })}
       {/* Multi-select: individual dashed boxes (no handles) + group union box with handles */}
-      {(selectedIds.size + (effectiveSelectedCalloutIds?.size || 0)) > 1 && (
+      {familySelectionSize > 1 && (
         <>
           {/* UX: Phase 19 follow-up — individual dashed boxes per member
               were removed. Each selected annotation now picks up the
@@ -6888,6 +8271,20 @@ const SVGAnnotationLayer = memo(({
                   height: Math.max(...ys) - Math.min(...ys),
                 });
               }
+            }
+            // w53: selected Survey Markers widen the frame like any member
+            // (a drag or nudge preview moves the whole frame by translate).
+            for (const entry of surveyMarkerElements) {
+              const markerId = entry?.surveyMarker?.annotationId;
+              if (!markerId || !selectedSurveyMarkerIds.has(markerId)) continue;
+              const bounds = boxWorldBounds({
+                left: entry.bbox.left,
+                top: entry.bbox.top,
+                width: entry.bbox.width,
+                height: entry.bbox.height,
+                angle: entry.bbox.angle || 0,
+              });
+              if (bounds) bboxes.push({ left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height });
             }
             if (bboxes.length === 0) return null;
             // UX: 2026-04-21 — three sources of bbox geometry, in priority:
@@ -7014,12 +8411,30 @@ const SVGAnnotationLayer = memo(({
             // Indices are serialized as CSV so the dispatcher can read
             // them without cross-boundary state sharing.
             const groupIndicesCsv = Array.from(selectedIds).join(',');
+            // w53: the Survey Markers in the selection, for the group menu.
+            const groupMarkerIdsCsv = Array.from(selectedSurveyMarkerIds).join(',');
+            // Owner ruling 2026-09-28: is any selected member user-locked?
+            const groupCalloutIdSet = new Set(
+              selectedCalloutIds instanceof Set
+                ? Array.from(selectedCalloutIds).map(String)
+                : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds.map(String) : []),
+            );
+            const groupHasLockedMember = Array.from(selectedIds)
+              .some((idx) => isUserLocked(annotations?.objects?.[idx]))
+              || (Array.isArray(callouts) && callouts
+                .some((c) => c && groupCalloutIdSet.has(String(c.id)) && isUserLocked(c)))
+              || (surveyMarkerMembersRef.current || [])
+                .some((member) => member?.locked && selectedSurveyMarkerIds.has(String(member.id)));
             return (
               <g
                 key="group-selection-wrapper"
                 transform={groupDragTransform}
                 data-group-selection-bbox="true"
                 data-group-selection-indices={groupIndicesCsv}
+                data-group-selection-marker-ids={groupMarkerIdsCsv || undefined}
+                // w56: the selected callouts, so a right-click ON one of them
+                // opens this selection's menu (contextMenuDiagnostics).
+                data-group-selection-callout-ids={Array.from(groupCalloutIdSet).join(',') || undefined}
               >
                 <SVGSelectionOverlay
                   key="group-selection"
@@ -7037,6 +8452,9 @@ const SVGAnnotationLayer = memo(({
                   // overlay's handles). Do NOT re-enable without an explicit
                   // user waiver — see handoff 2026-04-21.
                   moveOnly={true}
+                  // Owner ruling 2026-09-28: a lock on the group frame when
+                  // any selected member is locked (it stays put in a move).
+                  locked={groupHasLockedMember}
                 />
                 {/* Invisible hit-test rect so the resolver's
                     getBoundingClientRect fallback has a concrete
@@ -7056,6 +8474,25 @@ const SVGAnnotationLayer = memo(({
             );
           })()}
         </>
+      )}
+      {/* w58: Cmd / Ctrl move zone — on top of everything on the page; a
+          press on a rotate grabber outside the marks is handed to it. */}
+      {modifierMoveZone && (
+        <rect
+          data-modifier-move-zone="true"
+          x={modifierMoveZone.left}
+          y={modifierMoveZone.top}
+          width={modifierMoveZone.width}
+          height={modifierMoveZone.height}
+          transform={modifierMoveZone.angle
+            ? `rotate(${modifierMoveZone.angle}, ${modifierMoveZone.cx}, ${modifierMoveZone.cy})`
+            : undefined}
+          fill="transparent"
+          stroke="none"
+          style={{ cursor: 'move', pointerEvents: 'all', touchAction: 'none' }}
+          onPointerDown={handleModifierMoveZonePointerDown}
+          onPointerMove={handleModifierMoveZonePointerMove}
+        />
       )}
     </svg>
     {/* EDIT-12 (Phase 12 Plan 02): RotationInputField portals into the
@@ -7078,6 +8515,51 @@ const SVGAnnotationLayer = memo(({
     />
     </>
   );
+}, (prev, next) => {
+  // zoomGeneration reaches the body through zoomGenerationSignal (below); a
+  // change of it alone does not re-render the marks.
+  for (const key in next) {
+    if (key !== 'zoomGeneration' && !Object.is(prev[key], next[key])) return false;
+  }
+  for (const key in prev) {
+    if (!(key in next)) return false;
+  }
+  return true;
+});
+SVGAnnotationLayerBody.displayName = 'SVGAnnotationLayerBody';
+
+// Owner 2026-10-07 (smooth zoom on heavily marked drawings): every zoom
+// gesture bumps zoomGeneration (CLAUDE.md invariant: the layer commits
+// in-flight freehand work and drops a lasso before the page re-lays out). As
+// a plain prop that bump re-rendered every mounted layer: on a phone with
+// 36 marked drawings in view, one 1.2-1.8 s freeze at the first touch of each
+// pinch. This thin wrapper keeps the same prop and hands the new value to
+// the layer through a stable signal, so only the reaction runs.
+function createZoomGenerationSignal(initial) {
+  let value = initial;
+  const listeners = new Set();
+  return {
+    get: () => value,
+    set(next) {
+      if (Object.is(next, value)) return;
+      value = next;
+      for (const listener of [...listeners]) listener(next);
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
+  };
+}
+
+const SVGAnnotationLayer = memo((props) => {
+  const { zoomGeneration = 0 } = props;
+  const signalRef = useRef(null);
+  if (!signalRef.current) signalRef.current = createZoomGenerationSignal(zoomGeneration);
+  useEffect(() => {
+    signalRef.current.set(zoomGeneration);
+  }, [zoomGeneration]);
+  return <SVGAnnotationLayerBody {...props} zoomGenerationSignal={signalRef.current} />;
 });
 
 SVGAnnotationLayer.displayName = 'SVGAnnotationLayer';

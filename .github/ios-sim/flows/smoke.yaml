@@ -1,0 +1,122 @@
+# Smoke check in Mobile Safari on the iOS simulator.
+# HOME_URL / DOC_URL come from .github/ios-sim/config.json (the workflow passes
+# them with `maestro test -e`). Every step after the first page load is
+# optional, so one missing button still leaves the rest of the screenshots.
+appId: com.apple.mobilesafari
+name: smoke
+---
+# 1. Home (the published phone build). Not signed in, so the sign-in card shows.
+- openLink: ${HOME_URL}
+- extendedWaitUntil:
+    visible: "Welcome back|Documents|Sign in"
+    timeout: 45000
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: smoke-01-home
+
+# 2. Focus the e-mail field so the iOS keyboard opens.
+- tapOn:
+    text: "you@example.com"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: smoke-02-keyboard
+- inputText: "ios-sim@example.com"
+- tapOn:
+    text: "Continue"
+    optional: true
+- takeScreenshot: smoke-03-keyboard-typed
+- tapOn:
+    text: "Welcome back"
+    optional: true
+- tapOn:
+    text: "Continue without an account"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: smoke-04-home-guest
+- tapOn:
+    text: "Templates"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: smoke-05-templates-tab
+
+# 3. The test document (needs the job's local dev server; ?testPdf is dev-only).
+- openLink: ${DOC_URL}
+- extendedWaitUntil:
+    visible: "Draw"
+    timeout: 120000
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: smoke-06-document
+
+# 4. Pick a tool.
+- tapOn:
+    text: "Draw"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: smoke-07-draw-tool
+- tapOn:
+    text: "Pan"
+    optional: true
+
+# 5. Pages sheet open and closed again.
+- tapOn:
+    text: "Open pages, search, and bookmarks"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: smoke-08-pages-sheet
+# Close it by tapping the dimmed page above the sheet. ("Close document
+# panel" is a full-screen backdrop; Maestro taps its centre, which is the
+# sheet itself, so that does nothing.)
+- tapOn:
+    point: "50%, 18%"
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# 5b. The PDF's own form field ("Type your name in the box"): the keyboard
+#     over the document. The field has no accessible name, so tap where it
+#     sits at the default fit on an iPhone 16 (move this if the layout moves).
+- tapOn:
+    point: "43%, 39%"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: smoke-09-form-field-keyboard
+- inputText: "iOS sim"
+- takeScreenshot: smoke-09b-form-field-typed
+- tapOn:
+    text: "Done"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# 6. Scroll hard to the bottom (rubber-band shows in the video).
+- swipe:
+    start: 50%, 80%
+    end: 50%, 15%
+    duration: 250
+- swipe:
+    start: 50%, 80%
+    end: 50%, 15%
+    duration: 250
+- swipe:
+    start: 50%, 85%
+    end: 50%, 10%
+    duration: 150
+- takeScreenshot: smoke-10-after-scroll
+
+# 7. Rotate to landscape and back (last on purpose: setOrientation cannot be
+#    marked optional, so if it fails only these two shots are lost).
+- setOrientation: LANDSCAPE_LEFT
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: smoke-11-landscape
+- setOrientation: PORTRAIT
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: smoke-12-portrait-again

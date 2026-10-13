@@ -45,7 +45,15 @@ const focusableWithin = (container) => (
   container ? Array.from(container.querySelectorAll(FOCUSABLE_SELECTOR)).filter(isReachable) : []
 );
 
+// Open dialogs, oldest first. Dismiss rule R5 (owner 2026-09-23,
+// src/components/dismissRules.js): Escape closes only the TOPMOST window, so
+// only the last-opened trap answers Escape and Tab. Before this, every open
+// trap listened on window/capture and two stacked dialogs closed together.
+const openTraps = [];
+
 export const useFocusTrap = (containerRef, isOpen, { onEscape, autoFocus = true } = {}) => {
+  const trapTokenRef = useRef(null);
+  if (!trapTokenRef.current) trapTokenRef.current = {};
   // Callers commonly pass an inline arrow for onEscape, so the key effect below
   // re-runs on most renders. Opener capture and the initial focus move live in
   // their own isOpen-only effect so neither repeats mid-dialog.
@@ -55,6 +63,8 @@ export const useFocusTrap = (containerRef, isOpen, { onEscape, autoFocus = true 
     if (!isOpen) return undefined;
 
     openerRef.current = document.activeElement;
+    const token = trapTokenRef.current;
+    openTraps.push(token);
 
     // Move focus in. Tried synchronously first, then retried on a timer for
     // dialogs whose content arrives a tick late (portals, lazy panels).
@@ -76,6 +86,8 @@ export const useFocusTrap = (containerRef, isOpen, { onEscape, autoFocus = true 
     }
 
     return () => {
+      const index = openTraps.indexOf(token);
+      if (index !== -1) openTraps.splice(index, 1);
       if (retryTimer) clearTimeout(retryTimer);
       openerRef.current?.focus?.();
       openerRef.current = null;
@@ -89,8 +101,12 @@ export const useFocusTrap = (containerRef, isOpen, { onEscape, autoFocus = true 
     // stopPropagation so an Escape aimed at this dialog doesn't also cancel
     // whatever tool/selection is live underneath it.
     const handleKey = (e) => {
+      if (openTraps.length && openTraps[openTraps.length - 1] !== trapTokenRef.current) return;
       if (e.key === 'Escape') {
+        // stopImmediatePropagation: a dialog underneath listens on this same
+        // window/capture phase and must not close with it (R5).
         e.stopPropagation();
+        e.stopImmediatePropagation?.();
         onEscape?.();
         return;
       }

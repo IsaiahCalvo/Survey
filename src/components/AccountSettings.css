@@ -6,7 +6,7 @@
      text      --text-1 (primary) / --text-3 (muted) / --text-disabled (quiet)
      accent    --accent (gold); --accent-text is the dark ink ON gold
      danger    --danger
-   Fonts: "Helvetica Neue", Helvetica, Arial; mono "JetBrains Mono". */
+   Fonts: the one interface font (--font-ui); mono "JetBrains Mono". */
 
 .account-settings-overlay {
   position: fixed;
@@ -17,7 +17,7 @@
   /* UX (KAL-62): the app's one modal scrim — warm-dark dim plus an 8px blur.
      Account Settings used to dim harder (0.78) and blur less than every other
      dialog, which made it feel like a heavier, separate surface. */
-  background: rgba(13, 15, 20, 0.55);
+  background: var(--overlay-scrim);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   display: flex;
@@ -26,12 +26,12 @@
   z-index: 10000;
   animation: fadeIn 0.2s ease-out;
   padding: 20px;
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: var(--font-ui);
 }
 
 .account-settings-modal {
   background: var(--surface-1);
-  border-radius: 12px;
+  border-radius: var(--radius-dialog);
   width: 95%;
   max-width: 900px;
   /* UX (owner request 2026-08-20): the modal must NOT resize as the user moves
@@ -44,7 +44,7 @@
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--shadow-dialog);
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -86,7 +86,7 @@
   font-weight: 700;
   letter-spacing: -0.03em;
   color: var(--text-1);
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: var(--font-ui);
 }
 
 .account-settings-close {
@@ -225,14 +225,14 @@
   line-height: 1.5;
 }
 
-/* UX (KAL-72): the app's one error-banner treatment — 10%-opacity destructive
-   fill, a 3px destructive left border as the accent, 8px radius, and bone-cream
-   body text. Red is the accent, not the text colour. Same shape as .auth-error. */
+/* UX (KAL-72, revised 2026-10-02): the app's one calm alert (tokens.css
+   --alert-*) — a soft destructive tint inside a thin red edge all the way
+   round, 8px radius, --text-1 words. Same shape as .auth-error. */
 .account-error {
-  background: var(--danger-soft);
-  border-left: 3px solid var(--danger);
+  background: var(--alert-danger-bg);
+  border: var(--alert-danger-border);
   color: var(--text-1);
-  border-radius: 8px;
+  border-radius: var(--alert-radius);
   padding: 9px 12px;
   font-size: 12.5px;
   margin-bottom: 14px;
@@ -297,9 +297,9 @@
 
 .account-form-group input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--text-3); /* owner 2026-09-23: no gold on a text field */
   background: var(--surface-3);
-  box-shadow: 0 0 0 2px var(--accent-soft-strong);
+  box-shadow: none;
 }
 
 .account-form-group input:disabled {
@@ -324,6 +324,17 @@
 .account-field-display-empty {
   color: var(--text-3);
   font-style: italic;
+}
+
+/* "Forgot your current password? Email me a reset link": a calm underlined
+   text link (--link), never gold (owner 2026-10-04). */
+.account-text-link {
+  color: var(--link);
+  transition: color 0.15s ease;
+}
+
+.account-text-link:hover:not(:disabled) {
+  color: var(--link-hover);
 }
 
 .account-field-hint {
@@ -747,12 +758,46 @@
 
 /* Mobile */
 @media (max-width: 768px) {
+  /* Polish round 5: the page below is full-screen, but the overlay's 20px
+     padding left it floating as a square-cornered card with a sliver of the
+     hub showing round it. On a phone the overlay has no padding; the page
+     clears the notch and the home indicator itself (Expo pads its WebView
+     top natively, so only the bottom inset is added there). */
+  .account-settings-overlay {
+    padding: 0;
+  }
+
   .account-settings-modal {
     width: 100%;
     height: 100%;
     max-width: none;
     max-height: none;
     border-radius: 0;
+    border: 0;
+    box-shadow: none;
+  }
+
+  .account-settings-header {
+    padding-top: calc(14px + env(safe-area-inset-top, 0px));
+  }
+
+  html[data-native-shell="expo"] .account-settings-header {
+    padding-top: 14px;
+  }
+
+  .account-settings-content {
+    padding-bottom: calc(18px + var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+  }
+
+  /* The 32px close keeps its look; a transparent pad makes it 44px to a finger. */
+  .account-settings-close {
+    position: relative;
+  }
+
+  .account-settings-close::after {
+    content: '';
+    position: absolute;
+    inset: -7px;
   }
 
   .account-settings-body {
@@ -775,18 +820,22 @@
     gap: 0;
   }
 
+  /* Four tabs since Crash reports (2026-10-07): each a quarter, and a long
+     name ("Connected services") takes two short lines instead of running
+     off the strip. */
   .account-sidebar-btn {
     flex: 1 1 0;
-    width: 33.333%;
+    width: 25%;
     min-width: 0;
     max-width: none;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0 8px;
+    padding: 0 6px;
     text-align: center;
     border-radius: 0;
-    white-space: nowrap;
+    white-space: normal;
+    line-height: 1.15;
   }
 
   .account-sidebar-btn.active {
@@ -800,5 +849,96 @@
 
   .account-form-row {
     grid-template-columns: 1fr;
+  }
+
+  /* The surface rule (tokens.css, owner 2026-10-02), as Sign in already does:
+     the full-screen page is a sheet (--panel-bg) and what sits in it — fields,
+     the connected-service rows, the plan cards — are wells (--panel-well).
+     It was backwards here: a darker page under lighter fields, and a still
+     darker tab strip. The Change password box stays the page's own colour
+     (its edge marks it) so its fields read as wells too. Desktop unchanged. */
+  .account-settings-modal,
+  .account-settings-sidebar,
+  .account-settings-content,
+  .account-subsection {
+    background: var(--panel-bg);
+  }
+
+  .account-form-group input,
+  .account-field-display,
+  .account-connected-account,
+  .account-subscription-card {
+    background: var(--panel-well);
+  }
+}
+
+/* Crash reports (crash hunt 2026-10-07): a calm list, newest first. */
+.crash-reports-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.crash-reports-note {
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.crash-reports-empty {
+  font-size: 12.5px;
+  color: var(--text-3);
+  margin: 0;
+}
+.crash-reports-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.crash-reports-item details {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.crash-reports-item summary {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 8px;
+  align-items: baseline;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--text-1);
+  min-width: 0;
+}
+.crash-reports-when,
+.crash-reports-kind {
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.crash-reports-what {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.crash-reports-text {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+  -webkit-user-select: text;
+}
+@media (max-width: 768px) {
+  .crash-reports-item summary {
+    grid-template-columns: auto 1fr;
+  }
+  .crash-reports-what {
+    grid-column: 1 / -1;
+    white-space: normal;
   }
 }

@@ -316,7 +316,11 @@ test('SVG layer: cloud hover halo + hit target are the crowns; glow stays on whi
   // guarding are both still asserted, they just no longer live next to a
   // local `sw` inside the hit group. Paint order itself is pinned in
   // tests/cloudChromeDrawboardParity.test.mjs.
-  assert.match(layer, /const cloudGlowVisible = !!cloudRenderGeometry && \(annotationIsHovered \|\| annotationIsSelected\);/);
+  // Contract change 2026-10-06 (owner Test 45): the glow geometry is the cloud
+  // shape's own OR a clouded text box's rectangle stand-in (markBorderOutline);
+  // the hover-OR-selected gate is unchanged.
+  assert.match(layer, /const cloudGlowGeometry = cloudRenderGeometry\s*\|\|/);
+  assert.match(layer, /const cloudGlowVisible = !!cloudGlowGeometry && \(annotationIsHovered \|\| annotationIsSelected\);/);
   // CONTRACT CHANGE 2026-09-10 (round 4, defect 10): the glow's geometry moved
   // out of inline JSX and into the shared paint model (cloudSvgPaint's
   // buildCloudGlowPaint) so the RING — the ink band knocked out of the glow —
@@ -330,7 +334,10 @@ test('SVG layer: cloud hover halo + hit target are the crowns; glow stays on whi
     'the visible glow is still the 2.85x band cloudHoverGlowWidth computes');
   assert.match(layer, /strokeWidth=\{cloudGlowPaint\.inkWidth\}/,
     'and the knockout is the ink band, so a translucent stroke keeps its colour');
-  assert.match(layer, /cloudSelectionChrome\(selectionChromeObj\)/);
+  // Owner Test 45: the chrome comes from markBorderCloudChrome, which is
+  // cloudSelectionChrome(obj) for a cloud shape and the same chrome built on
+  // the rectangle stand-in for a clouded text box.
+  assert.match(layer, /markBorderCloudChrome\(selectionChromeObj\)/);
   assert.match(layer, /handleAnchors=\{cloudChrome \? cloudChrome\.anchors : null\}/);
   assert.match(layer, /frameRect=\{cloudChrome \? cloudChrome\.frame : null\}/);
   const overlay = read('src/components/SVGSelectionOverlay.jsx');

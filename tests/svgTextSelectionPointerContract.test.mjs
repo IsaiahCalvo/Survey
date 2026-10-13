@@ -6,7 +6,10 @@ import { getTextMarkupSelectionChrome } from '../src/utils/pdfTextMarkup.js';
 const source = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
 
 test('Text Select enables annotation selection but leaves the blank SVG surface inert for native text drags', () => {
-  assert.match(source, /const isSelectTool = \(activeTool === 'select' \|\| activeTool === 'text-select'\)/);
+  // 2026-10-02 (Drawboard rule 3/4): the same gate also opens while a press
+  // on the selection is in hand under another tool (selectionGrabArmed), so
+  // the pin stops at the select-family half of the condition.
+  assert.match(source, /const isSelectTool = \(activeTool === 'select' \|\| activeTool === 'text-select'/);
   assert.match(source, /activeTool !== 'text-select' \|\| textSelectManipulationArmed \|\| interactionState !== 'idle'/);
 });
 

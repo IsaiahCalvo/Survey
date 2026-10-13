@@ -61,12 +61,16 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { HubShell, Icon, Search, EmptyState } from './HubShell';
+import SectionIconButton, { SectionIconActions, SelectModeButtons } from '../components/SectionIconButton.jsx';
+import SwipeToDeleteRow from '../components/SwipeToDeleteRow.jsx';
 import {
   resolveTemplatesReload,
   createStableIdMint,
   createOccurrenceKeyer,
   seedColorMaps,
   resolveTitleCommit,
+  fingerprintTemplates,
+  workingCopyDiffers,
 } from './templatesEditorReload';
 import CompactColorPicker from '../components/CompactColorPicker';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
@@ -88,10 +92,13 @@ import {
   toHex6,
 } from '../services/templateConfigShape';
 import { moveItemById } from '../reorder/flatReorderUtils.js';
+import { CALM_STRIP_AUTO_SCROLL } from '../reorder/dragAutoScroll.js';
 import { pickByIds, removeByIds, duplicateAfterByIds } from './selectionById.js';
+import { countLabel } from './countLabel.js';
 import { flagRequiredInput, isBlank } from '../components/requiredInput';
 import './TemplatesEditor.css';
 import DismissBarrier from '../components/DismissBarrier';
+import SharedTemplateBadge from '../components/SharedTemplateBadge.jsx';
 
 /* Desktop/web already use this quiet chevron for category disclosure. Keep
    one shared glyph so mobile cannot drift to a different arrow treatment.
@@ -107,6 +114,31 @@ import DismissBarrier from '../components/DismissBarrier';
 const CategoryDisclosureGlyph = () => (
   <Icon name="chevronRight" size={18} style={{ display: 'block', flex: 'none' }} />
 );
+
+/* Owner 2026-10-01 ("the name's hit box is too long"): a name field is as
+   wide as its text. The wrapper's hidden twin (hub.css .hub-autowidth::after,
+   fed by data-value) sets the width, so this works in every engine without
+   `field-sizing`. Uncontrolled inputs push each keystroke into data-value. */
+const syncAutoWidth = (event) => {
+  const wrap = event?.currentTarget?.parentElement;
+  if (wrap?.classList?.contains('hub-autowidth')) wrap.dataset.value = event.currentTarget.value;
+};
+/* Focus the copy of a field the user can SEE (the desktop and phone trees are
+   both mounted; one is hidden by CSS) and select its text - the "Rename" menu
+   items land here. It runs synchronously inside the menu tap, which is what
+   lets iOS raise the keyboard. */
+const focusVisibleField = (selector) => {
+  if (typeof document === 'undefined') return false;
+  const el = [...document.querySelectorAll(selector)].find((node) => node.getClientRects().length > 0);
+  if (!el) return false;
+  el.focus();
+  el.select?.();
+  return true;
+};
+
+/* The phone tree is the one on screen (hub.css swaps the layouts at 720px). */
+const mobileLayoutActive = () => typeof document !== 'undefined'
+  && [...document.querySelectorAll('.templates-mobile-layout')].some((node) => node.getClientRects().length > 0);
 
 const CATEGORY_COLLAPSE_TRANSITION = 'grid-template-rows 0.18s ease, opacity 0.16s ease';
 const TEMPLATE_ORDER_STORAGE_KEY = 'surveyHub.templateOrder';
@@ -135,8 +167,12 @@ const restrictSortableToHorizontalAxis = ({ transform }) => ({
 
 const getModuleTabClampBounds = (activeId) => {
   if (typeof document === 'undefined') return null;
+  // The desktop editor stays mounted (hidden) on phones, so the same tab id
+  // exists twice. Use the copy that is actually on screen: the hidden one
+  // measures 0 wide, which left the drag with no limit on phones.
   const activeNode = Array.from(document.querySelectorAll('[data-module-tab-id]'))
-    .find((node) => node.getAttribute('data-module-tab-id') === String(activeId ?? ''));
+    .find((node) => node.getAttribute('data-module-tab-id') === String(activeId ?? '')
+      && node.getBoundingClientRect().width > 0);
   const listNode = activeNode?.closest?.('[data-module-tab-list]');
   if (!activeNode || !listNode) return null;
 
@@ -165,13 +201,18 @@ const getModuleTabClampBounds = (activeId) => {
   };
 };
 
-/* Accent ribbon — templates may not store an accent colour. */
-const ACCENTS = ['#e07a5e', '#7ab7e6', '#c293e6', '#a6e07a', '#d8a84e', '#9aa3b2'];
+/* Accent ribbon — templates may not store an accent colour.
+   Survey calm gold (2026-10-01): no user colour equals the app's accent gold
+   (#d8a84e) any more - a gold marker or entity read as app chrome. Its slot is
+   a distinct orange, #f0883e. */
+const ACCENTS = ['#e07a5e', '#7ab7e6', '#c293e6', '#a6e07a', '#f0883e', '#9aa3b2'];
 
-/* Entity colours cycled through when a brand-new entity is created. */
+/* Entity colours cycled through when a brand-new entity is created. Real hex
+   only: the last slot was 'var(--text-3)', which hexToRgba, the page's marker
+   fill and the Excel export cannot read (it became rgba(NaN...)). */
 const ENTITY_COLORS = [
-  '#e07a5e', '#7ab7e6', '#c293e6', '#a6e07a', '#d8a84e', '#ec8a9a',
-  '#5fc7b0', 'var(--text-3)',
+  '#e07a5e', '#7ab7e6', '#c293e6', '#a6e07a', '#f0883e', '#ec8a9a',
+  '#5fc7b0', '#959eae',
 ];
 
 /* Monotonic id generator — every new module/category/item/entity gets a
@@ -243,6 +284,8 @@ const buildRich = (templates, mint = (_key, prefix) => newId(prefix)) => templat
     accent: t?.accent || ACCENTS[i % ACCENTS.length],
     modules: mods,
     roster,
+    // A template someone shared with me: its owner's face shows on the row.
+    ...(t?.sharedFrom ? { sharedFrom: t.sharedFrom } : {}),
   };
 });
 
@@ -291,7 +334,13 @@ function SortableModuleTab({
   onStartRename,
   onRename,
   onCancelRename,
+  onOpenMenu,
 }) {
+  /* How the last press on the label arrived. A touch screen has no
+     double-click, so on touch a tap on the tab that is ALREADY open opens its
+     menu (Rename / Delete) instead (owner 2026-10-01: module tabs could not be
+     renamed on a phone at all). */
+  const pointerTypeRef = useRef('mouse');
   const {
     attributes,
     listeners,
@@ -319,6 +368,10 @@ function SortableModuleTab({
       {...(!isRenaming ? attributes : {})}
       {...(!isRenaming ? listeners : {})}
       data-module-tab-id={mod.id}
+      // Owner 2026-10-01: the held tab takes the app's one picked-up look
+      // (states.css [data-drag-lifted]) - one solid surface, soft shadow, no
+      // gold, no scale, no inner block behind its label or count.
+      data-drag-lifted={isDragging ? '' : undefined}
       style={{
         transform: CSS.Transform.toString(transform),
         transition: tabTransition || undefined,
@@ -327,70 +380,88 @@ function SortableModuleTab({
         marginBottom: -1,
         borderBottom: isOn ? '2px solid var(--ink)' : '2px solid transparent',
         borderRadius: '5px 5px 0 0',
-        background: isDragging ? 'var(--accent-soft)' : (isOn ? 'var(--hover)' : 'transparent'),
-        boxShadow: isDragging ? '0 12px 26px rgba(0,0,0,0.35), inset 0 0 0 1px var(--accent-press)' : 'none',
+        background: isOn ? 'var(--hover)' : 'transparent',
         cursor: isRenaming ? 'text' : (isDragging ? 'grabbing' : 'grab'),
-        flex: '1 1 0',
-        minWidth: 32,
-        maxWidth: 140,
+        /* Owner 2026-10-01 ("module tab titles not centred"): every tab hugs
+           its own label - 12px each side, the count 6px after it - so the
+           label is centred in its tab by construction. The tabs used to
+           stretch to 140px with the name pushed left and the count right. */
+        flex: '0 0 auto',
+        gap: 6,
+        padding: '0 12px',
+        height: 32,
+        boxSizing: 'border-box',
+        justifyContent: 'center',
+        minWidth: 0,
+        maxWidth: 220,
         overflow: 'hidden',
         position: 'relative',
         zIndex: isDragging ? 4 : (isOn ? 1 : 0),
-        opacity: isDragging ? 0.94 : 1,
         touchAction: 'none',
         userSelect: isDragging || isSorting ? 'none' : undefined,
       }}
     >
       {isRenaming ? (
-        <input
-          className="inline-edit"
-          defaultValue={mod.name}
-          autoFocus
-          onFocus={(e) => e.currentTarget.select()}
-          onBlur={(e) => onRename(mod.id, e.currentTarget.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') e.currentTarget.blur();
-            else if (e.key === 'Escape') onCancelRename();
-          }}
-          style={{
-            background: 'transparent',
-            border: 0,
-            padding: '3px 6px',
-            fontSize: 12,
-            fontWeight: isOn ? 500 : 400,
-            color: activeInk,
-            width: '100%',
-            borderBottom: '1px solid var(--accent)',
-            outline: 'none',
-          }}
-        />
+        <span className="hub-autowidth module-tab-name" data-value={mod.name} style={{ fontSize: 12, fontWeight: isOn ? 500 : 400 }}>
+          <input
+            size={1}
+            className="inline-edit hub-rename"
+            defaultValue={mod.name}
+            autoFocus
+            onFocus={(e) => e.currentTarget.select()}
+            onInput={syncAutoWidth}
+            onBlur={(e) => onRename(mod.id, e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+              else if (e.key === 'Escape') onCancelRename();
+            }}
+            /* The dotted rename line is .hub-rename (hub.css), shared with
+               every other rename field. */
+            style={{
+              padding: '3px 0',
+              color: activeInk,
+            }}
+          />
+        </span>
       ) : (
         <button
-          onClick={() => onOpen(index)}
+          type="button"
+          onPointerDown={(e) => { pointerTypeRef.current = e.pointerType || 'mouse'; }}
+          onClick={(e) => {
+            if (isOn && pointerTypeRef.current === 'touch' && onOpenMenu) {
+              onOpenMenu(mod.id, (e.currentTarget.closest('[data-module-tab-id]') || e.currentTarget).getBoundingClientRect());
+              return;
+            }
+            onOpen(index);
+          }}
           onDoubleClick={() => onStartRename(mod.id)}
+          onContextMenu={onOpenMenu ? (e) => {
+            e.preventDefault();
+            onOpenMenu(mod.id, (e.currentTarget.closest('[data-module-tab-id]') || e.currentTarget).getBoundingClientRect());
+          } : undefined}
           title={`${mod.name} · drag to reorder · double-click to rename`}
           style={{
             background: 'transparent',
             border: 0,
-            padding: '3px 6px',
+            padding: 0,
             fontFamily: 'inherit',
             color: activeInk,
             fontSize: 12,
             fontWeight: isOn ? 500 : 400,
             cursor: isDragging ? 'grabbing' : 'grab',
-            flex: 1,
+            flex: '0 1 auto',
             minWidth: 0,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
-            textAlign: 'left',
+            textAlign: 'center',
           }}
         >
           {mod.name}
         </button>
       )}
       {showCount ? (
-        <span className="mono" style={{ fontSize: 9.5, color: 'var(--text-3)', padding: '0 6px 0 2px', flex: 'none' }}>
+        <span className="module-tab-count" style={{ fontSize: 11, color: 'var(--text-3)', fontVariantNumeric: 'tabular-nums', flex: 'none' }}>
           {catCount}
         </span>
       ) : null}
@@ -407,6 +478,7 @@ function SortableModuleTabs({
   onRenameModule,
   onCancelRename,
   onReorderModules,
+  onOpenMenu,
   showCounts = true,
   children,
 }) {
@@ -447,6 +519,7 @@ function SortableModuleTabs({
       sensors={sensors}
       collisionDetection={closestCenter}
       modifiers={modifiers}
+      autoScroll={CALM_STRIP_AUTO_SCROLL}
       onDragStart={({ active }) => {
         dragClampBoundsRef.current = getModuleTabClampBounds(active.id);
         setActiveId(active.id);
@@ -475,6 +548,7 @@ function SortableModuleTabs({
               onStartRename={onStartRename}
               onRename={onRenameModule}
               onCancelRename={onCancelRename}
+              onOpenMenu={onOpenMenu}
             />
           ))}
           {children}
@@ -536,8 +610,9 @@ function MoreMenu({ anchorRect, items, onClose }) {
         {items.map(({ label, danger, onClick }) => (
           <button
             key={label}
+            type="button"
             role="menuitem"
-            className={danger ? 'danger' : undefined}
+            className={`hub-menu__item${danger ? ' is-danger' : ''}`}
             onClick={() => { onClick(); onClose(); }}
           >
             {label}
@@ -560,7 +635,7 @@ function MoreMenu({ anchorRect, items, onClose }) {
    Palette / font are hard hex/literal because the popup renders
    outside the .ed-scope CSS-variable root:
      card #181c24 · deep #12151c · rule #2a3140 · ink #f4f1ea
-     muted var(--text-3) · gold var(--accent) · font Helvetica Neue stack
+     muted var(--text-3) · gold var(--accent) · font var(--font-ui)
    ============================================================ */
 function CustomSelect({ value, options, onChange, placeholder = 'Select…', disabled = false }) {
   const [open, setOpen] = useState(false);
@@ -609,7 +684,7 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
           color: disabled ? 'var(--text-disabled)' : (selected ? 'var(--text-1)' : 'var(--text-3)'),
           font: 'inherit', fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer',
           background: disabled ? 'var(--disabled-fill)' : 'var(--surface-1)',
-          fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif', textAlign: 'left',
+          fontFamily: 'var(--font-ui)', textAlign: 'left',
           outline: 'none',
         }}
       >
@@ -627,7 +702,7 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
             background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8,
             padding: 4, boxShadow: '0 12px 30px rgba(0,0,0,0.55)',
             maxHeight: 240, overflowY: 'auto',
-            fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+            fontFamily: 'var(--font-ui)',
           }}
         >
           {options.length === 0 && (
@@ -661,6 +736,14 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
     </>
   );
 }
+
+/* A colour pick that lands on the colour the layer already has is not an
+   edit (owner 2026-10-02: only a real change asks to be saved). */
+const sameEntityColour = (current, color, opacity) => (
+  !!current
+  && String(current.color || '').toLowerCase() === String(color || '').toLowerCase()
+  && Math.abs((current.opacity ?? 0) - (opacity ?? 0)) < 0.0005
+);
 
 const PALETTE = [
   '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e', '#10b981', '#14b8a6',
@@ -700,9 +783,15 @@ export default function TemplatesEditor({
   const [rich, setRich] = useState(() => buildRich(applyTemplateOrderPreference(templates, user), mintId));
   const [search, setSearch] = useState('');
   const [modSearch, setModSearch] = useState('');
-  /* True once the user edits anything; drives the Save / Cancel bar. Reset
-     whenever the editor reloads from props, or on Save / Cancel. */
-  const [dirty, setDirty] = useState(false);
+  /* `editFlag` turns on once any edit action runs and is reset whenever the
+     editor reloads from props, or on Save / Cancel (all the BL-23 rules below
+     still govern it). It is NOT the Save bar on its own any more: `dirty`
+     (declared after the colour maps) is editFlag AND a real difference from
+     `baseline` — the last loaded / saved copy, one fingerprint per template.
+     Owner 2026-10-02: double-clicking a module and clicking off, or dragging
+     a row away and back, must not ask to save; only a real change does. */
+  const [editFlag, setDirty] = useState(false);
+  const [baseline, setBaseline] = useState(() => fingerprintTemplates(rich));
   /* BL-23 — monotonically increasing edit revision. Save/Delete capture it at
      dispatch and clear (or restore) dirty only if no newer edit happened while
      the request was in flight; otherwise an older promise settling would clear
@@ -743,10 +832,100 @@ export default function TemplatesEditor({
   const toggleTplSel = (id) => setSelTpls((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const [tplMenu, setTplMenu] = useState(null);       // { id, rect }
   const [entityMenu, setEntityMenu] = useState(null); // { id, rect }
+  const [catMenu, setCatMenu] = useState(null);       // { id, rect } category row "more" menu
+  const [modMenu, setModMenu] = useState(null);       // { id, rect } module tab menu (touch / right-click)
   const [entityEdit, setEntityEdit] = useState(false);
   const [selEntities, setSelEntities] = useState(() => new Set());
   const toggleEntitySel = (id) => setSelEntities((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const [openColor, setOpenColor] = useState(null);   // entity id whose picker is open
+  // UX 2026-09-23 (owner: the collapse was "too abrupt"). A user fold keeps the
+  // panel mounted for 260ms while it shrinks away (hub.css
+  // hub-color-panel-fold), from its own measured height, then unmounts it.
+  // Programmatic closes (switching template, deleting) stay instant.
+  const [foldingColor, setFoldingColor] = useState(null);
+  const [foldIsSwitch, setFoldIsSwitch] = useState(false);
+  const foldTimerRef = useRef(0);
+  const markPanelHeights = () => {
+    // Only the panel you can SEE: the phone and desktop trees both render,
+    // and the hidden twin measures 0, which made the new panel drop to 0 and
+    // then pop open at the end of the motion.
+    document.querySelectorAll('[data-entity-color-panel]').forEach((el) => {
+      if (el.getBoundingClientRect().height <= 0 || el.dataset.folding) return;
+      el.style.setProperty('--panel-h', `${el.getBoundingClientRect().height}px`);
+      // The next panel to open is the same picker, so it drops to this height:
+      // fold and drop then trade pixels one for one.
+      document.documentElement.style.setProperty('--entity-panel-h', `${el.getBoundingClientRect().height}px`);
+    });
+  };
+  // SWITCHING straight from one entity's panel to another's (owner
+  // 2026-09-23: "one collapse while the other one expands ... is very
+  // disorienting"). Both run at once — the old panel folds, the new one drops
+  // — and the row you tapped is held still on screen for the whole motion:
+  // each frame, whatever the fold above it removed is scrolled back, so only
+  // the panels move and your row never jumps.
+  const holdRowStill = (anchorEl) => {
+    const row = anchorEl?.closest?.('[data-sortable-rearrange-item]') || anchorEl;
+    if (!row) return;
+    let scroller = row.parentElement;
+    while (scroller && !(/(auto|scroll)/.test(getComputedStyle(scroller).overflowY) && scroller.scrollHeight > scroller.clientHeight)) {
+      scroller = scroller.parentElement;
+    }
+    const startTop = row.getBoundingClientRect().top;
+    const began = performance.now();
+    const step = () => {
+      if (!row.isConnected) return;
+      const drift = row.getBoundingClientRect().top - startTop;
+      if (scroller && Math.abs(drift) > 0.5) scroller.scrollTop += drift;
+      if (performance.now() - began < 420) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  };
+  /* A press that will become a click on another entity's dot or row (both
+     open that entity's panel) must not fold the open one first. A press on a
+     row's name, grip or More is an ordinary outside press. */
+  const isEntitySwitchPress = (event) => {
+    const target = event?.target;
+    if (!target?.closest) return false;
+    if (target.closest('button[title="Edit color"]')) return true;
+    return !!(target.closest('[data-entity-row]')
+      && !target.closest('input, button[title="More"], [data-drag-rearrange-handle]'));
+  };
+  const foldColor = (next, anchorEl) => {
+    clearTimeout(foldTimerRef.current);
+    if (next === null && openColor) {
+      markPanelHeights();
+      setFoldIsSwitch(false);
+      setFoldingColor(openColor);
+      foldTimerRef.current = setTimeout(() => { setOpenColor(null); setFoldingColor(null); }, 260);
+      return;
+    }
+    if (next && openColor && next !== openColor) {
+      markPanelHeights();
+      setFoldIsSwitch(true);
+      setFoldingColor(openColor);
+      setOpenColor(next);
+      holdRowStill(anchorEl);
+      foldTimerRef.current = setTimeout(() => setFoldingColor(null), 340);
+      return;
+    }
+    setFoldingColor(null);
+    setOpenColor(next);
+  };
+  useEffect(() => () => clearTimeout(foldTimerRef.current), []);
+  // UX 2026-09-23 (owner: the phone colour panel "overflows/clips at the
+  // bottom of the modal"). Opening a colour panel under a low row scrolls the
+  // Entities sheet just enough to show the whole panel, once, on open.
+  useEffect(() => {
+    if (!openColor || !mobileEntitiesOpen) return undefined;
+    // Wait for the panel's drop-down (280ms, hub.css) so the user first
+    // SEES the rows below slide down — the sheet reads as one scrolling list
+    // growing, not a new window (owner 2026-09-23) — then nudge it into view.
+    const timer = setTimeout(() => {
+      const panel = mobileEntitiesModalRef.current?.querySelector('.templates-mobile-color-panel');
+      panel?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+    }, 380);
+    return () => clearTimeout(timer);
+  }, [openColor, mobileEntitiesOpen]);
   const [roleColors, setRoleColors] = useState({});   // { entityId: { color, opacity } } picker fill state
   const [openMod, setOpenMod] = useState(0);
   const [modEdit, setModEdit] = useState(false);
@@ -760,7 +939,7 @@ export default function TemplatesEditor({
   const [selCats, setSelCats] = useState(() => new Set());
   const pendingCategoryFocusRef = useRef(null);
   const toggleCatSel = (id) => setSelCats((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const [moveModal, setMoveModal] = useState(null);  // { count, kind: 'category'|'module'|'entity' }
+  const [moveModal, setMoveModal] = useState(null);  // { count, kind: 'category'|'module'|'entity', mode: 'move'|'copy' }
   const moveModalRef = useRef(null);
   const moveModalCloseRef = useRef(null);
   /* Move/Copy modal destination picks — destTpl is always meaningful;
@@ -771,6 +950,20 @@ export default function TemplatesEditor({
   const [layerTab, setLayerTab] = useState({});       // { entityId: 'fill' | 'border' }
   const [borderColors, setBorderColors] = useState({});
   const [matchFill, setMatchFill] = useState({});     // { entityId: bool }
+  /* Ids of the blank placeholder checklist rows THIS session added and the
+     user has not typed into yet (rules at addItemToModule / discardFreshItem).
+     Declared here because the real-change check below leaves them out. */
+  const freshBlankItemsRef = useRef(new Set());
+  /* The Save / Cancel bar, the reload guard and Cancel all read `dirty`: an
+     edit happened AND the working copy (with its colour maps) differs from
+     the baseline. Change-then-change-back is clean again. */
+  const workingFingerprint = useMemo(
+    () => fingerprintTemplates(rich, { roleColors, borderColors, matchFill }, freshBlankItemsRef.current),
+    [rich, roleColors, borderColors, matchFill],
+  );
+  const dirty = editFlag && workingCopyDiffers(workingFingerprint, baseline);
+  /* The baseline a save makes once it lands: exactly the copy it sent. */
+  const fingerprintOf = (list) => fingerprintTemplates(list, { roleColors, borderColors, matchFill }, freshBlankItemsRef.current);
 
   const closeMobileTemplate = useCallback(() => {
     setMobileTemplateOpen(false);
@@ -830,6 +1023,7 @@ export default function TemplatesEditor({
     setSelMods(new Set());
     setModRename(null);
     setDirty(false);
+    setBaseline(fingerprintTemplates(next, seeded, freshBlankItemsRef.current));
     setPersistenceError('');
   }, [user?.id, user?.email, mintId]);
   const reloadFromProps = useCallback(() => {
@@ -861,6 +1055,9 @@ export default function TemplatesEditor({
       return add.length ? [...prev, ...add] : prev;
     });
     const seeded = seedColorMaps(res.appended);
+    /* A template the host added is part of what is saved, not a local edit. */
+    const appendedBaseline = fingerprintTemplates(res.appended, seeded);
+    setBaseline((prev) => ({ ...appendedBaseline, ...prev }));
     setRoleColors((prev) => ({ ...seeded.roleColors, ...prev }));
     setBorderColors((prev) => ({ ...seeded.borderColors, ...prev }));
     setMatchFill((prev) => ({ ...seeded.matchFill, ...prev }));
@@ -1091,11 +1288,14 @@ export default function TemplatesEditor({
     markEdited();
     setRich(next);
     seedClonedEntityStyles(clonedEntities);
+    const savedBaseline = fingerprintOf(next);
     if (onSaveTemplates) {
       const rev = editRevisionRef.current;
       const req = ++saveReqSeqRef.current;
       dispatchTemplatesSave(next.map(richToTemplate))
         .then(() => {
+          // What landed is the new baseline, even if newer edits followed.
+          if (saveReqSeqRef.current === req) setBaseline(savedBaseline);
           if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
             setDirty(false);
             setPersistenceError('');
@@ -1110,6 +1310,7 @@ export default function TemplatesEditor({
         });
     } else {
       setDirty(false);
+      setBaseline(savedBaseline);
     }
   };
   /* The five entities every new template starts with. Same set the hub used to
@@ -1181,6 +1382,13 @@ export default function TemplatesEditor({
       const done = Array.isArray(archived) ? new Set(archived) : ids;
       if (done.size === 0) return;
       setRich((prev) => prev.filter((t) => !done.has(t.id)));
+      /* Archived by the hub, so gone from the saved set too — the list
+         shrinking must not read as an unsaved change. */
+      setBaseline((prev) => {
+        const nextBaseline = { ...prev };
+        done.forEach((id) => { delete nextBaseline[id]; });
+        return nextBaseline;
+      });
       return;
     }
     /* Signed-out / local-only fallback keeps the original bundle-save delete.
@@ -1194,11 +1402,13 @@ export default function TemplatesEditor({
     const next = rich.filter((t) => !ids.has(t.id));
     markEdited();
     setRich(next);
+    const savedBaseline = fingerprintOf(next);
     if (onSaveTemplates) {
       const rev = editRevisionRef.current;
       const req = ++saveReqSeqRef.current;
       dispatchTemplatesSave(next.map(richToTemplate))
         .then(() => {
+          if (saveReqSeqRef.current === req) setBaseline(savedBaseline);
           if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
             setDirty(false);
             setPersistenceError('');
@@ -1213,6 +1423,7 @@ export default function TemplatesEditor({
         });
     } else {
       setDirty(false);
+      setBaseline(savedBaseline);
     }
   };
 
@@ -1236,6 +1447,8 @@ export default function TemplatesEditor({
   const renameModule = (id, name) => {
     const v = name.trim();
     if (!v || !tpl) { setModRename(null); return; }
+    // Same name (a double-click and click away): nothing to save.
+    if (!tpl.modules.some((m) => m.id === id && m.name !== v)) { setModRename(null); return; }
     mutateTpl(tpl.id, (t) => {
       const modules = t.modules.map((m) => (
         m.id === id && m.name !== v ? { ...m, name: v } : m
@@ -1340,6 +1553,7 @@ export default function TemplatesEditor({
   const renameCategoryInModule = (moduleIndex, ci, name) => {
     const v = name.trim();
     if (!v) return;
+    if (tpl?.modules?.[moduleIndex]?.categories?.[ci]?.name === v) return;
     mutateModuleAt(moduleIndex, (m) => {
       const categories = m.categories.slice();
       if (categories[ci] && categories[ci].name !== v) categories[ci] = { ...categories[ci], name: v };
@@ -1375,6 +1589,7 @@ export default function TemplatesEditor({
     const categories = orderedMods[moduleIndex]?.categories || [];
     const from = categories.findIndex((category) => category.id === activeId);
     const to = categories.findIndex((category) => category.id === overId);
+    if (moveItemById(categories, activeId, overId) === categories) return;   // dropped where it was
 
     mutateModuleAt(moduleIndex, (module) => {
       const nextCategories = moveItemById(module.categories || [], activeId, overId);
@@ -1404,7 +1619,7 @@ export default function TemplatesEditor({
      from such a row deletes it silently, and neither adding nor deleting it
      raises the Save bar. A blank row that arrived from the backend is not in the
      set, so it keeps the old behaviour and its removal is a real edit. */
-  const freshBlankItemsRef = useRef(new Set());
+  /* (freshBlankItemsRef is declared with the colour maps, above.) */
   const isFreshBlankItem = (itemId) => freshBlankItemsRef.current.has(itemId);
   /* Put the caret in a checklist row by id. The fresh blank row MUST be focused
      the moment it appears: the only thing that dismisses it is losing focus
@@ -1438,6 +1653,8 @@ export default function TemplatesEditor({
   };
   const addItem = (ci) => addItemToModule(openMod, ci);
   const renameItemInModule = (moduleIndex, ci, itemId, text) => {
+    const current = tpl?.modules?.[moduleIndex]?.categories?.[ci]?.items?.find((it) => it.id === itemId);
+    if (current && current.text === text) return;   // unchanged: nothing to save
     // Real text: the row has graduated from placeholder to content, so it loses
     // the silent-discard exemption and this edit does raise the Save bar.
     freshBlankItemsRef.current.delete(itemId);
@@ -1506,6 +1723,8 @@ export default function TemplatesEditor({
   };
   const reorderItemsInModule = (moduleIndex, ci, activeId, overId) => {
     if (!activeId || !overId || activeId === overId) return;
+    const currentItems = (tpl?.modules?.[moduleIndex]?.categories?.[ci]?.items || []).filter(isActiveChecklistItem);
+    if (moveItemById(currentItems, activeId, overId) === currentItems) return;   // dropped where it was
     mutateCategoryInModule(moduleIndex, ci, (c) => {
       const activeItems = (c.items || []).filter(isActiveChecklistItem);
       const archivedItems = (c.items || []).filter(isArchivedChecklistItem);
@@ -1595,12 +1814,14 @@ export default function TemplatesEditor({
   const renameEntity = (eid, role) => {
     const v = role.trim();
     if (!v || !tpl) return;
+    if (tpl.roster.some((r) => r.id === eid && r.role === v)) return;   // unchanged
     mutateTpl(tpl.id, (t) => ({
       ...t, roster: t.roster.map((r) => (r.id === eid ? (r.role === v ? r : { ...r, role: v }) : r)),
     }));
   };
   const setEntityColor = (eid, color) => {
     if (!tpl) return;
+    if (tpl.roster.some((r) => r.id === eid && r.color === color)) return;   // unchanged
     mutateTpl(tpl.id, (t) => ({
       ...t, roster: t.roster.map((r) => (r.id === eid ? { ...r, color } : r)),
     }));
@@ -1636,6 +1857,7 @@ export default function TemplatesEditor({
   };
   const reorderEntities = (activeId, overId) => {
     if (!activeId || !overId || activeId === overId || !tpl) return;
+    if (moveItemById(tpl.roster || [], activeId, overId) === tpl.roster) return;   // dropped where it was
     mutateTpl(tpl.id, (t) => {
       const nextRoster = moveItemById(t.roster || [], activeId, overId);
       return nextRoster === t.roster ? t : { ...t, roster: nextRoster };
@@ -1730,11 +1952,20 @@ export default function TemplatesEditor({
        unsaved edits (then-branch) or re-dirty an editor whose newer save
        already succeeded (catch-branch). On failure the edits and the Save bar
        survive, so the user can retry. */
-    if (!onSaveTemplates) { setDirty(false); return; }
+    /* The saved copy becomes the baseline once it lands, so a newer edit that
+       puts a field back the way it was before this save still counts. */
+    const savedBaseline = fingerprintOf(payload);
+    if (!onSaveTemplates) { setDirty(false); setBaseline(savedBaseline); return; }
     const rev = editRevisionRef.current;
     const req = ++saveReqSeqRef.current;
-    dispatchTemplatesSave(payload.map(richToTemplate))
+    /* A template shared with me saves to its own row, and only when it really
+       changed (shared templates, owner 2026-10-07); my own templates always
+       go as one whole list. */
+    const currentPrints = fingerprintOf(payload);
+    const toSave = payload.filter((r) => !r.sharedFrom || !baseline || baseline[r.id] !== currentPrints[r.id]);
+    dispatchTemplatesSave(toSave.map(richToTemplate))
       .then(() => {
+        if (saveReqSeqRef.current === req) setBaseline(savedBaseline);
         if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
           setDirty(false);
           setPersistenceError('');
@@ -1794,20 +2025,25 @@ export default function TemplatesEditor({
 
   const mobileTemplateSelectRow = (
     <div className="templates-mobile-select-row mobile-header-select-row">
-      <button
-        className="mobile-header-select-button hub-btn hub-btn--tertiary"
+      <SectionIconButton
+        action="select"
+        label={tplEdit ? 'Done' : 'Select'}
+        nothingToSelect={visibleTemplates.length === 0}
+        active={tplEdit}
+        className="mobile-header-select-button"
         onClick={() => { const next = !tplEdit; setTplEdit(next); if (!next) setSelTpls(new Set()); }}
-      >
-        {tplEdit ? 'Done' : 'Select'}
-      </button>
+      />
       {tplEdit && (() => {
         const visibleSelectedIds = new Set(visibleTemplates.filter((t) => selTpls.has(t.id)).map((t) => t.id));
         const visibleSelCount = visibleSelectedIds.size;
         const allSel = visibleSelCount === visibleTemplates.length && visibleTemplates.length > 0;
         return (
           <span className="documents-select-actions templates-mobile-select-actions mobile-header-select-actions">
-            <button
-              onClick={() => {
+            <SelectModeButtons
+              phone
+              count={visibleSelCount}
+              allSelected={allSel}
+              onToggleAll={() => {
                 setSelTpls((prev) => {
                   const next = new Set(prev);
                   visibleTemplates.forEach((template) => {
@@ -1817,11 +2053,11 @@ export default function TemplatesEditor({
                   return next;
                 });
               }}
-              className="hub-btn"
-            >{allSel ? 'None' : 'All'}</button>
-            <button onClick={() => { if (visibleSelCount) { duplicateTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} className="hub-btn">Duplicate</button>
-            <button disabled={!visibleSelCount} onClick={() => { const first = visibleTemplates.find((t) => visibleSelectedIds.has(t.id)); if (first) onShare && onShare(first); }} className="hub-btn hub-btn--icon" title="Share" aria-label="Share"><Icon name="share" size={12} /></button>
-            <button onClick={() => { if (visibleSelCount) { deleteTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={12} /></button>
+              onDuplicate={() => { duplicateTemplates(visibleSelectedIds); setSelTpls(new Set()); }}
+              can={{ share: visibleSelCount > 1 ? 'Share one template at a time' : true }}
+              onShare={() => { const first = visibleTemplates.find((t) => visibleSelectedIds.has(t.id)); if (first) onShare && onShare(first); }}
+              onDelete={() => { deleteTemplates(visibleSelectedIds); setSelTpls(new Set()); }}
+            />
           </span>
         );
       })()}
@@ -1832,12 +2068,14 @@ export default function TemplatesEditor({
       {/* Owner 2026-09-22: the tagline is gone; when the template has unsaved
           edits, Cancel / Save sit right here in the subtitle row instead. */}
       <span className="templates-desktop-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-        <span><b>{visibleTemplates.length}</b> templates</span>
+        <span><b>{visibleTemplates.length}</b> {visibleTemplates.length === 1 ? 'template' : 'templates'}</span>
         {saveRow('templates-desktop-save-row')}
       </span>
       <span className="templates-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
         <span className="templates-mobile-count">
-          <b>{mobileTemplateOpen && tpl ? orderedMods.length : visibleTemplates.length}</b> {mobileTemplateOpen && tpl ? 'modules' : 'templates'}
+          <b>{mobileTemplateOpen && tpl ? orderedMods.length : visibleTemplates.length}</b> {mobileTemplateOpen && tpl
+            ? (orderedMods.length === 1 ? 'module' : 'modules')
+            : (visibleTemplates.length === 1 ? 'template' : 'templates')}
         </span>
         {!mobileTemplateOpen ? mobileTemplateSelectRow : null}
       </span>
@@ -1852,7 +2090,9 @@ export default function TemplatesEditor({
             className="templates-mobile-back-button"
             onClick={closeMobileTemplate}
           >
-            <span className="templates-mobile-back-icon"><Icon name="arrow-r" size={13} /></span>Templates
+            {/* Owner 2026-10-02: back is chevronLeft, as everywhere else (it
+                was a right arrow turned round by .templates-mobile-back-icon). */}
+            <span style={{ display: 'inline-flex' }}><Icon name="chevronLeft" size={13} /></span>Templates
           </button>
         ) : null}
         <Search
@@ -1932,7 +2172,7 @@ export default function TemplatesEditor({
         {/* KAL-72: unified error-banner pattern (docs/ui/colors.md) — red is
             the accent edge, not the text colour. */}
         {persistenceError ? (
-          <div role="alert" style={{ position: 'absolute', zIndex: 20, top: 6, left: '50%', transform: 'translateX(-50%)', maxWidth: 'calc(100% - 24px)', padding: '6px 10px', borderRadius: 8, borderLeft: '3px solid var(--accent-red)', background: 'var(--danger-soft)', color: 'var(--text-1)', fontSize: 11.5, lineHeight: 1.35, textAlign: 'center' }}>
+          <div role="alert" style={{ position: 'absolute', zIndex: 20, top: 6, left: '50%', transform: 'translateX(-50%)', maxWidth: 'calc(100% - 24px)', padding: '6px 10px', borderRadius: 'var(--alert-radius)', border: 'var(--alert-danger-border)', background: 'var(--alert-danger-bg)', color: 'var(--text-1)', fontSize: 12, lineHeight: 1.35, textAlign: 'center' }}>
             {persistenceError}
           </div>
         ) : null}
@@ -1945,21 +2185,20 @@ export default function TemplatesEditor({
             overflow: 'hidden', minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%',
             background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: 8,
           }}>
-            <div style={{ padding: '4px 6px 6px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <button
-                className="hub-btn hub-btn--primary"
-                onClick={createTemplate}
-                style={{ alignSelf: 'flex-start' }}
-              >
-                <Icon name="plus" size={11} />New template
-              </button>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'nowrap', height: 22, overflow: 'hidden' }}>
+            {/* Owner 2026-10-01: one header line - the page's one gold action
+                on the left, the quiet Select on the right. In select mode the
+                bulk actions take the gold button's place and Done stays exactly
+                where Select was, so nothing under the header moves. */}
+            <div className="hub-section-head hub-panel-head">
+              {!tplEdit ? (
                 <button
-                  onClick={() => { const next = !tplEdit; setTplEdit(next); if (!next) setSelTpls(new Set()); }}
-                  className="hub-btn hub-btn--tertiary"
+                  className="hub-btn hub-btn--primary"
+                  onClick={createTemplate}
                 >
-                  {tplEdit ? 'Done' : 'Select'}
+                  <Icon name="plus" size={11} />New template
                 </button>
+              ) : null}
+              <div className="hub-select-actions hub-section-actions">
                 {tplEdit && (
                   <>
                     {(() => {
@@ -1967,34 +2206,45 @@ export default function TemplatesEditor({
                       const visibleSelCount = visibleSelectedIds.size;
                       const allSel = visibleSelCount === visibleTemplates.length && visibleTemplates.length > 0;
                       return (
-                        <>
-                          <button
-                            onClick={() => {
-                              setSelTpls((prev) => {
-                                const next = new Set(prev);
-                                visibleTemplates.forEach((template) => {
-                                  if (allSel) next.delete(template.id);
-                                  else next.add(template.id);
-                                });
-                                return next;
+                        <SelectModeButtons
+                          count={visibleSelCount}
+                          allSelected={allSel}
+                          onToggleAll={() => {
+                            setSelTpls((prev) => {
+                              const next = new Set(prev);
+                              visibleTemplates.forEach((template) => {
+                                if (allSel) next.delete(template.id);
+                                else next.add(template.id);
                               });
-                            }}
-                            className="hub-btn"
-                          >{allSel ? 'None' : 'All'}</button>
-                          <button onClick={() => { if (visibleSelCount) { duplicateTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} className="hub-btn">Duplicate</button>
-                          <button disabled={!visibleSelCount} onClick={() => { const first = visibleTemplates.find((t) => visibleSelectedIds.has(t.id)); if (first) onShare && onShare(first); }} className="hub-btn hub-btn--icon" title="Share" aria-label="Share"><Icon name="share" size={11} /></button>
-                          <button onClick={() => { if (visibleSelCount) { deleteTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={11} /></button>
-                        </>
+                              return next;
+                            });
+                          }}
+                          onDuplicate={() => { duplicateTemplates(visibleSelectedIds); setSelTpls(new Set()); }}
+                          can={{ share: visibleSelCount > 1 ? 'Share one template at a time' : true }}
+              onShare={() => { const first = visibleTemplates.find((t) => visibleSelectedIds.has(t.id)); if (first) onShare && onShare(first); }}
+                          onDelete={() => { deleteTemplates(visibleSelectedIds); setSelTpls(new Set()); }}
+                        />
                       );
                     })()}
                   </>
                 )}
+                <SectionIconButton
+                  action="select"
+                  label={tplEdit ? 'Done' : 'Select'}
+                  nothingToSelect={visibleTemplates.length === 0}
+                  active={tplEdit}
+                  onClick={() => { const next = !tplEdit; setTplEdit(next); if (!next) setSelTpls(new Set()); }}
+                />
               </div>
             </div>
-            <div className="slim-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
-              {visibleTemplates.length === 0 && (
-                <div className="meta" style={{ padding: '20px 8px', fontSize: 11.5 }}>
-                  {rich.length === 0 ? 'No templates yet.' : 'No templates match your search.'}
+            <div className="slim-scroll hub-side-list" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
+              {/* Polish round 2 (2026-10-04): with no templates at all the
+                  centre empty state already says "No templates yet", so the
+                  list stays quiet (as on the phone); it still says when a
+                  search matches nothing. */}
+              {visibleTemplates.length === 0 && rich.length > 0 && (
+                <div className="meta" style={{ padding: '20px 8px', fontSize: 12 }}>
+                  No templates match your search.
                 </div>
               )}
               <SortableRearrangeList ids={visibleTemplates.map((t) => t.id)} onReorder={reorderTemplates}>
@@ -2014,7 +2264,10 @@ export default function TemplatesEditor({
                         display: 'grid',
                         gridTemplateColumns: '28px 1fr auto',
                         gap: 8, alignItems: 'center',
-                        padding: '8px 8px', borderRadius: 6,
+                        /* UX 2026-09-23 (vertical symmetry): the 50px height
+                           sets the row; an 8px vertical pad left 34px for a
+                           34.5px stack, which pushed every child down. */
+                        padding: '0 8px', borderRadius: 6,
                         height: 50, boxSizing: 'border-box',
                         background: tplEdit ? (isSel ? 'var(--ink-600)' : 'transparent') : (active ? 'var(--ink-600)' : 'transparent'),
                         cursor: 'pointer',
@@ -2028,7 +2281,22 @@ export default function TemplatesEditor({
                         isDragging={isDragging}
                       />
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{t.name}</div>
+                        {/* lineHeight 1.2: the line box hugs the glyphs, so the
+                            name + swatches stack is centred by its ink, not by
+                            spare leading above the name. */}
+                        {t.sharedFrom ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', minWidth: 0 }}>{t.name}</div>
+                            <SharedTemplateBadge sharedFrom={t.sharedFrom} size={16} />
+                          </div>
+                        ) : (
+                        <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{t.name}</div>
+                        )}
+                        {/* Polish round 2 (2026-10-04): a template with no
+                            entities shows no second line at all (it used to
+                            show a lone "0"); the name then sits centred in
+                            the row, the same as the phone list. */}
+                        {t.roster.length > 0 && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                             {/* Up to 10 entity swatches fit before the row gets crowded;
@@ -2036,25 +2304,27 @@ export default function TemplatesEditor({
                             {t.roster.slice(0, 10).map((r) => {
                               const sw = entitySwatch(r);
                               return (
-                                <span key={r.id} style={{ width: 14, height: 14, borderRadius: '50%', background: sw.fill, border: `1.5px solid ${sw.border}` }}></span>
+                                <span key={r.id} data-drag-keep-fill style={{ width: 14, height: 14, borderRadius: '50%', background: sw.fill, border: `1.5px solid ${sw.border}` }}></span>
                               );
                             })}
                             {t.roster.length > 10 && (
-                              <span className="mono meta" style={{ fontSize: 9.5 }}>+{t.roster.length - 10}</span>
+                              <span className="mono meta" style={{ fontSize: 11 }}>+{t.roster.length - 10}</span>
                             )}
                           </div>
-                          <span className="mono meta" style={{ fontSize: 9.5 }}>{t.roster.length}</span>
+                          <span className="mono meta" style={{ fontSize: 11 }}>{t.roster.length}</span>
                         </div>
+                        )}
                       </div>
                       {tplEdit ? (
                         <span
                           onClick={(e) => { e.stopPropagation(); toggleTplSel(t.id); }}
-                          style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--rule-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 4 }}
+                          data-drag-keep-fill style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--rule-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 4 }}
                         >
                           {isSel && <Icon name="check" size={10} color="var(--paper)" />}
                         </span>
                       ) : (
                         <button
+                          aria-haspopup="menu"
                           onClick={(e) => {
                             e.stopPropagation();
                             const rect = e.currentTarget.getBoundingClientRect();
@@ -2098,14 +2368,20 @@ export default function TemplatesEditor({
                 {/* Inline rename field. Typing raises Cancel / Save in the
                     header's subtitle row; Enter saves, Escape backs out. Blur
                     deliberately does NOT commit. */}
-                <input
-                  key={tpl.id}
-                  className="inline-edit cat-title"
-                  {...templateTitleField(tpl)}
-                  title="Click to rename"
-                  onDoubleClick={(e) => e.currentTarget.select()}
-                  style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.015em', lineHeight: 1.2, width: '100%' }}
-                />
+                {/* Text-width field (owner 2026-10-01): the rename target is
+                    the name itself, not the whole header line. */}
+                <span className="hub-autowidth hub-title-field" data-value={templateTitleField(tpl).value} style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.015em', lineHeight: 1.2 }}>
+                  <input
+                    size={1}
+                    key={tpl.id}
+                    className="inline-edit cat-title hub-rename"
+                    data-template-title
+                    {...templateTitleField(tpl)}
+                    title="Click to rename"
+                    aria-label="Template name"
+                    onDoubleClick={(e) => e.currentTarget.select()}
+                  />
+                </span>
               </div>
               <div className="micro" style={{ textAlign: 'right' }}>
                 <div>{orderedMods.length} {orderedMods.length === 1 ? 'module' : 'modules'}</div>
@@ -2116,14 +2392,21 @@ export default function TemplatesEditor({
 
               {/* Module tabs */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <p className="micro" style={{ margin: 0 }}>Module</p>
-                  <button
-                    onClick={() => { setModEdit(true); setSelMods(new Set()); }}
-                    className="hub-btn hub-btn--tertiary"
-                  >
-                    Select
-                  </button>
+                {/* LABEL count ...... [Select] [Add] (owner 2026-10-02:
+                    icons). The header's Add is the one way to add a module;
+                    the old "+" after the tabs is gone so there is no
+                    duplicate. */}
+                <div className="hub-section-head">
+                  <p className="micro hub-section-label" style={{ margin: 0 }}>Modules<span className="hub-section-count">{orderedMods.length}</span></p>
+                  <SectionIconActions className="hub-section-actions">
+                    <SectionIconButton
+                      action="select"
+                      label="Select"
+                      onClick={() => { setModEdit(true); setSelMods(new Set()); }}
+                      nothingToSelect={orderedMods.length === 0}
+                    />
+                    <SectionIconButton action="add" label="Add module" onClick={addModule} />
+                  </SectionIconActions>
                 </div>
                 <SortableModuleTabs
                   modules={orderedMods}
@@ -2134,51 +2417,47 @@ export default function TemplatesEditor({
                   onRenameModule={renameModule}
                   onCancelRename={() => setModRename(null)}
                   onReorderModules={reorderMods}
-                >
-                  <button
-                    onClick={addModule}
-                    title="New module"
-                    className="hub-icon-btn"
-                    style={{ marginLeft: 4, marginBottom: 2, alignSelf: 'center' }}
-                  ><Icon name="plus" size={12} /></button>
-                </SortableModuleTabs>
+                  onOpenMenu={(id, rect) => setModMenu({ id, rect })}
+                />
               </div>
 
               {/* Categories header */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, marginBottom: 8, gap: 8 }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flex: 1 }}>
-                  <p className="micro" style={{ margin: 0 }}>Categories</p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, height: 20, overflow: 'hidden', flexWrap: 'nowrap' }}>
-                  <button
-                    onClick={() => { const next = !catEdit; setCatEdit(next); if (!next) setSelCats(new Set()); }}
-                    className="hub-btn hub-btn--tertiary"
-                  >
-                      {catEdit ? 'Done' : 'Select'}
-                    </button>
+              <div className="hub-section-head" style={{ marginTop: 12, marginBottom: 8 }}>
+                <p className="micro hub-section-label" style={{ margin: 0 }}>Categories<span className="hub-section-count">{visibleCats.length}</span></p>
+                <div className="hub-section-actions">
                     {catEdit && (() => {
                       const c = selCats.size;
                       const allSel = c === visibleCats.length && visibleCats.length > 0;
                       return (
-                        <>
-                          <button onClick={() => setSelCats(allSel ? new Set() : new Set(visibleCats.map((cat) => cat.id)))} className="hub-btn">{allSel ? 'None' : 'All'}</button>
-                          <button disabled={!c} onClick={() => duplicateCategories(selCats)} className="hub-btn">Duplicate</button>
-                          <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'category' })} className="hub-btn">Move/Copy</button>
-                          <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} className="hub-btn hub-btn--icon" title="Share" aria-label="Share"><Icon name="share" size={11} /></button>
-                          <button disabled={!c} onClick={() => deleteCategories(selCats)} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={11} /></button>
-                        </>
+                        <SelectModeButtons
+                          count={c}
+                          allSelected={allSel}
+                          onToggleAll={() => setSelCats(allSel ? new Set() : new Set(visibleCats.map((cat) => cat.id)))}
+                          onDuplicate={() => duplicateCategories(selCats)}
+                          onMove={() => setMoveModal({ count: c, kind: 'category', mode: 'move' })}
+                          onCopy={() => setMoveModal({ count: c, kind: 'category', mode: 'copy' })}
+                          onShare={() => { if (tpl) onShare && onShare(tpl); }}
+                          onDelete={() => deleteCategories(selCats)}
+                        />
                       );
                     })()}
-                  </div>
+                  <SectionIconButton
+                    action="select"
+                    label={catEdit ? 'Done' : 'Select'}
+                    nothingToSelect={visibleCats.length === 0}
+                    active={catEdit}
+                    onClick={() => { const next = !catEdit; setCatEdit(next); if (!next) setSelCats(new Set()); }}
+                  />
+                  {!catEdit ? (
+                    <SectionIconButton action="add" label="Add category" onClick={addCategory} />
+                  ) : null}
                 </div>
-                <button onClick={addCategory} className="hub-btn hub-btn--primary">
-                  <Icon name="plus" size={11} />New category
-                </button>
               </div>
 
               {/* Expandable category list */}
               <div className="slim-scroll" style={{ overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 6, paddingRight: 4, flex: 1, minHeight: 0 }}>
                 {visibleCats.length === 0 && (
-                  <div className="meta" style={{ padding: '16px 4px', fontSize: 11.5 }}>This module has no categories yet.</div>
+                  <div className="meta" style={{ padding: '16px 4px', fontSize: 12 }}>This module has no categories yet.</div>
                 )}
                 <SortableRearrangeList
                   ids={visibleCats.map((c) => c.id)}
@@ -2212,64 +2491,78 @@ export default function TemplatesEditor({
                         transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                       }}
                     >
-                      {/* Row header */}
+                      {/* Row header. Owner 2026-10-01: a click ANYWHERE on the
+                          row opens or closes it (the chevron is only the cue);
+                          the grip only drags; the name renames, and its hit
+                          box is just its text; ⋮ holds Rename / Delete. In
+                          Select mode a click anywhere ticks the row.
+                          [grip 24][chevron 22][name][...][count][⋮ 28] */}
                       <div
                         data-drag-rearrange-row
-                        onClick={() => { if (catEdit) toggleCatSel(c.id); }}
-                        style={{
-                          width: '100%', display: 'grid', gridTemplateColumns: catEdit ? '24px 20px 1fr auto 16px' : '24px 20px 1fr auto', gap: 8,
-                          alignItems: 'center', padding: '3px 10px',
-                          cursor: catEdit ? 'pointer' : 'default',
-                          // UX 2026-09-17 (owner ruling): a ticked row lifts a surface
-                          // step; it does not take a warm gold wash.
-                          background: catEdit && isSel ? 'var(--surface-3)' : 'transparent',
-                        }}
+                        className={`tpl-cat-row${open ? ' is-open' : ''}${catEdit ? ' is-selecting' : ''}${catEdit && isSel ? ' is-selected' : ''}`}
+                        aria-expanded={catEdit ? undefined : open}
+                        onClick={() => { if (catEdit) toggleCatSel(c.id); else setOpenCat(open ? -1 : i); }}
                       >
                         <DragRearrangeHandle
                           {...attributes}
                           {...listeners}
                           isDragging={isDragging}
-                          style={{ width: 24, height: 24 }}
+                          style={{ width: 24, height: 28 }}
                         />
                         <button
-                          onClick={(e) => { e.stopPropagation(); setOpenCat(open ? -1 : i); }}
+                          type="button"
+                          className="tpl-cat-chevron"
                           title={open ? 'Collapse' : 'Expand'}
-                          style={{
-                            background: 'transparent', border: 0, padding: 0, cursor: 'pointer',
-                            color: 'var(--ink-muted)', fontSize: 13, lineHeight: 1, fontFamily: 'inherit',
-                            transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s',
-                            width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          }}
+                          aria-label={`${open ? 'Collapse' : 'Expand'} ${c.name}`}
                         ><CategoryDisclosureGlyph /></button>
-                        <input
-                          className="inline-edit cat-title"
-                          defaultValue={c.name}
-                          key={c.id + ':' + c.name}
-                          title="Click to rename"
-                          onClick={(e) => e.stopPropagation()}
-                          onDoubleClick={(e) => e.currentTarget.select()}
-                          onBlur={(e) => {
-                            /* BL-23: empty titles snap back visibly to the old
-                               name (the model never accepted them), and an
-                               unchanged title is a no-op that must not dirty
-                               the editor (incl. the Escape-then-blur path). */
-                            const r = resolveTitleCommit(e.currentTarget.value, c.name);
-                            if (r.action === 'commit') renameCategory(i, r.name);
-                            e.currentTarget.value = r.name;
-                          }}
-                          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = c.name; e.currentTarget.blur(); } }}
-                          style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.2, width: 'max-content', maxWidth: '100%', minWidth: 40 }}
-                        />
-                        <span className="mono" style={{ fontSize: 9.5, color: 'var(--text-3)', lineHeight: 1.2, whiteSpace: 'nowrap' }}>
+                        <span className="hub-autowidth tpl-cat-name" data-value={c.name}>
+                          <input
+                            size={1}
+                            className="inline-edit cat-title hub-rename"
+                            data-category-name-id={c.id}
+                            defaultValue={c.name}
+                            key={c.id + ':' + c.name}
+                            title="Rename"
+                            aria-label={`Category name, ${c.name}`}
+                            onClick={(e) => e.stopPropagation()}
+                            onDoubleClick={(e) => e.currentTarget.select()}
+                            onInput={syncAutoWidth}
+                            onBlur={(e) => {
+                              /* BL-23: empty titles snap back visibly to the old
+                                 name (the model never accepted them), and an
+                                 unchanged title is a no-op that must not dirty
+                                 the editor (incl. the Escape-then-blur path). */
+                              const r = resolveTitleCommit(e.currentTarget.value, c.name);
+                              if (r.action === 'commit') renameCategory(i, r.name);
+                              e.currentTarget.value = r.name;
+                              syncAutoWidth(e);
+                            }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = c.name; e.currentTarget.blur(); } }}
+                          />
+                        </span>
+                        <span className="tpl-cat-count" title={`${items.length} ${items.length === 1 ? 'item' : 'items'}${archivedItems.length > 0 ? `, ${archivedItems.length} archived` : ''}`}>
                           {items.length} {items.length === 1 ? 'item' : 'items'}{archivedItems.length > 0 ? ` (+${archivedItems.length} archived)` : ''}
                         </span>
-                        {catEdit && (
+                        {catEdit ? (
                           <span
+                            className="tpl-cat-check"
                             onClick={(e) => { e.stopPropagation(); toggleCatSel(c.id); }}
-                            style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--rule-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            data-drag-keep-fill style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--rule-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           >
                             {isSel && <Icon name="check" size={10} color="var(--paper)" />}
                           </span>
+                        ) : (
+                          <button
+                            aria-haspopup="menu"
+                            type="button"
+                            className="hub-icon-btn tpl-cat-more"
+                            title="More" aria-label="More"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setCatMenu((m) => (m && m.id === c.id ? null : { id: c.id, rect }));
+                            }}
+                          ><Icon name="more" size={14} /></button>
                         )}
                       </div>
 
@@ -2286,7 +2579,8 @@ export default function TemplatesEditor({
                         }}
                       >
                         <div style={{ overflow: 'hidden', minHeight: 0 }}>
-                          <div style={{ padding: '4px 14px 12px 50px', background: 'var(--paper-deep)' }}>
+                          {/* 26 + grip 24 + gap 6 = 56: item text starts under the category name. */}
+                          <div style={{ padding: '4px 14px 12px 26px', background: 'var(--paper-deep)' }}>
                           <div style={{ display: 'grid', gap: 1, marginTop: 6 }}>
                             {items.length === 0 && (
                               <div className="meta" style={{ fontSize: 11, padding: '3px 0' }}>No checklist items yet.</div>
@@ -2313,7 +2607,7 @@ export default function TemplatesEditor({
                                   style={{ width: 18, height: 18 }}
                                 />
                                 <input
-                                  className="inline-edit"
+                                  className="inline-edit hub-rename"
                                   data-checklist-item-id={it.id}
                                   defaultValue={it.text}
                                   placeholder="Add checklist item"
@@ -2336,7 +2630,7 @@ export default function TemplatesEditor({
                               style={{
                                 width: '100%', padding: '6px 10px', marginTop: 6,
                                 border: '1px dashed var(--rule-strong)', background: 'transparent',
-                                color: 'var(--ink-muted)', borderRadius: 2, fontSize: 11.5,
+                                color: 'var(--ink-muted)', borderRadius: 2, fontSize: 12,
                                 cursor: 'pointer', fontFamily: 'inherit',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                               }}
@@ -2355,7 +2649,7 @@ export default function TemplatesEditor({
                                 data-testid={`archived-items-${c.id}`}
                                 style={{ marginTop: 14, paddingTop: 10, borderTop: '1px dashed var(--rule)' }}
                               >
-                                <div className="meta" style={{ fontSize: 10.5, marginBottom: 6, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--text-3)' }}>
+                                <div className="meta" style={{ fontSize: 11, marginBottom: 6, letterSpacing: 0, color: 'var(--text-3)' }}>
                                   Archived ({archivedItems.length})
                                 </div>
                                 {archivedItems.map((it, j) => (
@@ -2404,41 +2698,50 @@ export default function TemplatesEditor({
           {/* ---------- RIGHT: Entities rail ---------- */}
           <aside style={{ minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div className="card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-              <div style={{ padding: '8px 8px 8px 8px', borderBottom: '1px solid var(--rule)', flex: 'none', minHeight: 64, boxSizing: 'border-box', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
-                <div style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
-                  <p className="micro" style={{ margin: 0 }}>Entities <span className="mono" style={{ fontSize: 10, color: 'var(--text-3)', letterSpacing: 0, fontWeight: 500, marginLeft: 4 }}>{tpl ? tpl.roster.length : 0}</span></p>
-                </div>
-                <button onClick={addEntity} disabled={!tpl} className="hub-btn hub-btn--primary">
-                  <Icon name="plus" size={11} />New entity
-                </button>
-              </div>
-              <div style={{ padding: '6px 8px 4px', display: 'flex', alignItems: 'center', gap: 2, height: 28, flexWrap: 'nowrap', flex: 'none' }}>
-              <button
-                onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
-                className="hub-btn hub-btn--tertiary"
-              >
-                  {entityEdit ? 'Done' : 'Select'}
-                </button>
+              {/* One header line (owner 2026-10-01): ENTITIES n ... [Select] [+ Entity].
+                  In select mode the bulk actions fill the line and Done keeps
+                  the right edge; the label steps aside so they fit the rail. */}
+              <div className="hub-section-head" style={{ padding: '8px 8px 8px 8px', borderBottom: '1px solid var(--rule)', flex: 'none', minHeight: 64, boxSizing: 'border-box' }}>
+                {!entityEdit ? (
+                  <p className="micro hub-section-label" style={{ margin: 0 }}>Entities<span className="hub-section-count">{tpl ? tpl.roster.length : 0}</span></p>
+                ) : null}
+                <div className="hub-section-actions">
                 {entityEdit && tpl && (() => {
                   const c = selEntities.size;
                   const allSel = c === tpl.roster.length && tpl.roster.length > 0;
                   return (
-                    <>
-                      <button onClick={() => setSelEntities(allSel ? new Set() : new Set(tpl.roster.map((r) => r.id)))} className="hub-btn">{allSel ? 'None' : 'All'}</button>
-                      <button disabled={!c} onClick={() => duplicateEntities(selEntities)} className="hub-btn">Duplicate</button>
-                      <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'entity' })} className="hub-btn">Move/Copy</button>
-                      <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} className="hub-btn hub-btn--icon" title="Share" aria-label="Share"><Icon name="share" size={10} /></button>
-                      <button disabled={!c} onClick={() => deleteEntities(selEntities)} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={10} /></button>
-                    </>
+                    <SelectModeButtons
+                      count={c}
+                      allSelected={allSel}
+                      onToggleAll={() => setSelEntities(allSel ? new Set() : new Set(tpl.roster.map((r) => r.id)))}
+                      onDuplicate={() => duplicateEntities(selEntities)}
+                      onMove={() => setMoveModal({ count: c, kind: 'entity', mode: 'move' })}
+                      onCopy={() => setMoveModal({ count: c, kind: 'entity', mode: 'copy' })}
+                      onShare={() => { if (tpl) onShare && onShare(tpl); }}
+                      onDelete={() => deleteEntities(selEntities)}
+                    />
                   );
                 })()}
+                <SectionIconButton
+                  action="select"
+                  label={entityEdit ? 'Done' : 'Select'}
+                  nothingToSelect={!tpl || (tpl.roster || []).length === 0}
+                  active={entityEdit}
+                  onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
+                />
+                {!entityEdit ? (
+                  <SectionIconButton action="add" label="Add entity" onClick={addEntity} disabled={!tpl} />
+                ) : null}
                 {/* Save / Cancel moved to the header's subtitle row (owner,
                     2026-09-22) - see `subtitle` above. */}
+                </div>
               </div>
 
               <div className="slim-scroll" style={{ padding: '8px 8px 12px', display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto', flex: 1, minHeight: 0 }}>
-                {(!tpl || tpl.roster.length === 0) && (
-                  <div className="meta" style={{ fontSize: 11.5, padding: '12px 2px' }}>No entities on this template yet.</div>
+                {/* Only an open template can have no entities; with no
+                    template open there is nothing to say here. */}
+                {tpl && tpl.roster.length === 0 && (
+                  <div className="meta" style={{ fontSize: 12, padding: '12px 2px' }}>No entities on this template yet.</div>
                 )}
                 {tpl && (
                 <SortableRearrangeList ids={tpl.roster.map((r) => r.id)} onReorder={reorderEntities} gap={4}>
@@ -2452,6 +2755,7 @@ export default function TemplatesEditor({
                     ? c
                     : ((borderColors[r.id] || {}).color || c);
                   const isOpen = openColor === r.id;
+                  const showPanel = isOpen || foldingColor === r.id;
                   const isSel = selEntities.has(r.id);
                   return (
                     <SortableRearrangeRow
@@ -2460,63 +2764,84 @@ export default function TemplatesEditor({
                     >
                       {({ attributes, listeners, isDragging }) => (
                       <>
-                      <div data-drag-rearrange-row className="card-line" style={{
-                        display: 'grid', gridTemplateColumns: '24px 18px 1fr 16px', gap: 10,
-                        padding: '8px 10px', alignItems: 'center',
-                        height: 38, boxSizing: 'border-box',
-                        transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
-                      }}>
+                      {/* Same row rules as a category (owner 2026-10-01):
+                          a click on the row opens / closes its colour panel,
+                          the name renames (text-width hit box), the grip
+                          drags; in Select mode a click ticks the row.
+                          [grip 24][dot 22][name][...][⋮ 28] */}
+                      <div
+                        data-drag-rearrange-row
+                        data-entity-row
+                        className={`card-line tpl-entity-row${isOpen ? ' is-open' : ''}${entityEdit ? ' is-selecting' : ''}${entityEdit && isSel ? ' is-selected' : ''}`}
+                        aria-expanded={entityEdit ? undefined : isOpen}
+                        onClick={(e) => { if (entityEdit) toggleEntitySel(r.id); else foldColor(isOpen ? null : r.id, e.currentTarget); }}
+                        style={{
+                          transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
+                        }}
+                      >
                         <DragRearrangeHandle
                           {...attributes}
                           {...listeners}
                           isDragging={isDragging}
-                          style={{ width: 24, height: 24 }}
+                          style={{ width: 24, height: 28 }}
+                          collapseOpen={isOpen && foldingColor !== r.id}
+                          onCollapse={() => foldColor(null)}
                         />
                         <button
-                          onClick={() => setOpenColor(isOpen ? null : r.id)}
+                          onClick={(e) => { if (entityEdit) return; e.stopPropagation(); foldColor(isOpen ? null : r.id, e.currentTarget); }}
                           title="Edit color" aria-label="Edit color"
                           style={{
-                            width: 18, height: 18, borderRadius: '50%',
+                            width: 18, height: 18, borderRadius: '50%', margin: '0 2px',
                             /* Solid full-strength chip (Drawboard-style) so entity
                                colours stay vibrant and easy to tell apart — the picked
                                opacity drives the PDF annotation, not this identifier. */
                             background: c,
-                            border: `1.5px solid ${rowBorderColor}`,
+                            /* No edge (owner 2026-09-23): no other template
+                               colour dot has one. */
+                            border: 0,
                             cursor: 'pointer', padding: 0,
                           }}
                         ></button>
-                        <input
-                          className="inline-edit cat-title"
-                          defaultValue={r.role}
-                          key={r.id + ':' + r.role}
-                          placeholder="Entity name"
-                          onDoubleClick={(e) => e.currentTarget.select()}
-                          onBlur={(e) => commitRequiredRow(e.currentTarget, r.role, ENTITY_BLANK_HINT, (v) => renameEntity(r.id, v))}
-                          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = r.role; e.currentTarget.blur(); } }}
-                          style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.2 }}
-                        />
+                        <span className="hub-autowidth tpl-entity-name" data-value={r.role || 'Entity name'}>
+                          <input
+                            size={1}
+                            className="inline-edit cat-title hub-rename"
+                            data-entity-name-id={r.id}
+                            defaultValue={r.role}
+                            key={r.id + ':' + r.role}
+                            placeholder="Entity name"
+                            title="Rename"
+                            onClick={(e) => e.stopPropagation()}
+                            onDoubleClick={(e) => e.currentTarget.select()}
+                            onInput={syncAutoWidth}
+                            onBlur={(e) => { commitRequiredRow(e.currentTarget, r.role, ENTITY_BLANK_HINT, (v) => renameEntity(r.id, v)); syncAutoWidth(e); }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = r.role; e.currentTarget.blur(); } }}
+                          />
+                        </span>
                         {!isOpen && (
                           entityEdit ? (
                             <span
+                              className="tpl-entity-check"
                               onClick={(e) => { e.stopPropagation(); toggleEntitySel(r.id); }}
-                              style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--rule-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
+                              data-drag-keep-fill style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--rule-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
                             >
                               {isSel && <Icon name="check" size={10} color="var(--paper)" />}
                             </span>
                           ) : (
                             <button
+                              aria-haspopup="menu"
                               title="More" aria-label="More"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 const rect = e.currentTarget.getBoundingClientRect();
                                 setEntityMenu((m) => (m && m.id === r.id ? null : { id: r.id, rect }));
                               }}
-                              className="hub-icon-btn"
+                              className="hub-icon-btn tpl-entity-more"
                             ><Icon name="more" size={14} /></button>
                           )
                         )}
                       </div>
-                      {isOpen && (() => {
+                      {showPanel && (() => {
                         const tab = colorTab[r.id] || 'presets';
                         const layer = layerTab[r.id] || 'fill';
                         const match = !!matchFill[r.id];
@@ -2532,6 +2857,8 @@ export default function TemplatesEditor({
                            updates live. No-op while a border is matched to the fill. */
                         const applyColor = (color, opacity) => {
                           if (isBorderMatched) return;
+                          // The colour it already is (a click on the current swatch): no edit.
+                          if (sameEntityColour(activeData, color, opacity)) return;
                           if (layer === 'border') {
                             setBorderColors({ ...borderColors, [r.id]: { color, opacity } });
                           } else {
@@ -2541,54 +2868,52 @@ export default function TemplatesEditor({
                           markEdited();
                         };
                         return (
-                          <div data-entity-color-panel style={{
+                          <div data-entity-color-panel data-folding={foldingColor === r.id ? (foldIsSwitch ? 'switch' : 'true') : undefined} style={{
                             margin: '-4px 0 6px', padding: 0,
                             background: 'var(--paper-deep)', border: '1px solid var(--rule)', borderTop: 0, borderRadius: '0 0 4px 4px',
                             display: 'flex', flexDirection: 'column',
                             overflow: 'hidden',
                           }}>
-                            {/* Fill / Border tabs */}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: '1px solid var(--rule)' }}>
-                              {[['fill', 'Fill'], ['border', 'Border']].map(([k, label], i) => (
-                                <button
-                                  key={k}
-                                  onClick={() => setLayerTab({ ...layerTab, [r.id]: k })}
-                                  style={{
-                                    position: 'relative', padding: '7px 0', fontSize: 11,
-                                    background: layer === k ? 'rgba(20,30,43,0.65)' : 'rgba(12,18,27,0.35)',
-                                    color: layer === k ? 'var(--ink)' : 'var(--ink-muted)',
-                                    fontWeight: 600, border: 0,
-                                    borderRight: i === 0 ? '1px solid var(--rule)' : 0,
-                                    cursor: 'pointer', fontFamily: 'inherit',
-                                  }}
-                                >{label}
-                                  {layer === k && <span style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 2, background: 'var(--accent)' }} />}
-                                </button>
-                              ))}
-                            </div>
-                            <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                              {/* Match Fill row — only on Border tab */}
-                              {layer === 'border' && (
-                                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
-                                  <input
-                                    type="checkbox"
-                                    checked={match}
-                                    onChange={(e) => { setMatchFill({ ...matchFill, [r.id]: e.target.checked }); markEdited(); }}
-                                    style={{ width: 13, height: 13, margin: 0, accentColor: 'var(--accent)' }}
-                                  />
-                                  <span style={{ fontSize: 11, fontWeight: 600, color: match ? 'var(--ink)' : 'var(--ink-soft)' }}>Match fill</span>
-                                  {match && <span style={{ fontSize: 10, color: 'var(--ink-muted)', marginLeft: 'auto' }}>using fill color &amp; opacity</span>}
-                                </label>
-                              )}
+                            <div style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
                               {/* Shared colour picker — the app's one picker. Dimmed +
                                   read-only while a border is matched to the fill. */}
-                              <div style={{ opacity: isBorderMatched ? 0.4 : 1, pointerEvents: isBorderMatched ? 'none' : 'auto' }}>
+                              <div>
                                 <CompactColorPicker
                                   color={activeColor}
                                   opacity={activeOp}
                                   onChange={applyColor}
-                                  onClose={() => setOpenColor(null)}
-                                  dismissInsideSelector="[data-entity-color-panel]"
+                                  onClose={(event) => {
+                                    // A press on ANOTHER entity's colour dot is a switch, not a
+                                    // close: its click follows ~100ms later and runs the switch.
+                                    // Folding here first made the click restart the fold (a jump).
+                                    if (isEntitySwitchPress(event)) return;
+                                    foldColor(null);
+                                  }}
+                                  dismissInsideSelector="[data-entity-color-panel], [data-sortable-rearrange-item]:has([data-entity-color-panel])"
+                                  /* The entity panel is already the box (owner
+                                     2026-09-23: "not a box within a box"). */
+                                  chrome={false}
+                                  /* The picker's own Fill / Border tabs — the
+                                     same segmented control the canvas picker
+                                     uses (owner 2026-09-23: "look like that"). */
+                                  tabs={{
+                                    items: [{ id: 'fill', label: 'Fill' }, { id: 'border', label: 'Border' }],
+                                    active: layer,
+                                    onSelect: (k) => setLayerTab({ ...layerTab, [r.id]: k }),
+                                  }}
+                                  /* UX 2026-09-23 (owner: the "Match fill"
+                                     row "shoves things out of the way"). Match
+                                     fill is the Border tab's first grid cell,
+                                     where the Fill tab keeps Transparent, so
+                                     the panel is the same height on both tabs.
+                                     It is a link: while on, the border takes
+                                     the fill's colour and opacity and the rest
+                                     of the picker dims; click it to unlink. */
+                                  firstPreset={layer === 'border' ? {
+                                    kind: 'match', color: c, opacity: op, linked: match,
+                                    onToggle: () => { setMatchFill({ ...matchFill, [r.id]: !match }); markEdited(); },
+                                  } : 'transparent'}
+                                  locked={isBorderMatched}
                                 />
                               </div>
                             </div>
@@ -2664,8 +2989,13 @@ export default function TemplatesEditor({
                                 style={{ width: 24, height: 24 }}
                               />
                               <span className="templates-mobile-copy">
-                                <strong>{t.name}</strong>
-                                <small>{t.modules.length} modules · {t.modules.reduce((sum, mod) => sum + (mod.categories || []).length, 0)} categories · {t.roster.length} entities</small>
+                                {t.sharedFrom ? (
+                                  <strong style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+                                    <SharedTemplateBadge sharedFrom={t.sharedFrom} size={16} />
+                                  </strong>
+                                ) : <strong>{t.name}</strong>}
+                                <small>{countLabel(t.modules.length, 'module')} · {countLabel(t.modules.reduce((sum, mod) => sum + (mod.categories || []).length, 0), 'category', 'categories')} · {countLabel(t.roster.length, 'entity', 'entities')}</small>
                                 <span className="templates-mobile-swatches">
                                   {t.roster.slice(0, 8).map((r) => {
                                     const sw = entitySwatch(r);
@@ -2678,6 +3008,7 @@ export default function TemplatesEditor({
                                 <span className={`templates-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? <Icon name="check" size={11} /> : null}</span>
                               ) : (
                                 <button
+                                  aria-haspopup="menu"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     const rect = e.currentTarget.getBoundingClientRect();
@@ -2698,14 +3029,25 @@ export default function TemplatesEditor({
             </div>
           ) : tpl ? (
             <div className="templates-mobile-detail">
+              {/* Owner 2026-09-23 picked layout B, "one card, divided": the
+                  template name, Modules and Categories share ONE panel (the
+                  phone list panel's fill, edge and radius), parted by
+                  full-width hairlines, with no card nested inside it. Section
+                  actions are quiet words (no gold since 2026-10-01) in each header row. */}
+              <div className="templates-mobile-detail-card">
               <div className="templates-mobile-template-card">
                 <div className="templates-mobile-title-stack">
-                  <input
-                    key={`mobile-template-title-${tpl.id}`}
-                    className="templates-mobile-title-input"
-                    {...templateTitleField(tpl)}
-                    title="Tap to rename"
-                  />
+                  <span className="hub-autowidth templates-mobile-title-field" data-value={templateTitleField(tpl).value}>
+                    <input
+                      size={1}
+                      key={`mobile-template-title-${tpl.id}`}
+                      className="templates-mobile-title-input hub-rename"
+                      data-template-title
+                      {...templateTitleField(tpl)}
+                      title="Tap to rename"
+                      aria-label="Template name"
+                    />
+                  </span>
                   <span>{orderedMods.length} {orderedMods.length === 1 ? 'module' : 'modules'} · {totalCategoryCount} {totalCategoryCount === 1 ? 'category' : 'categories'} · {tpl.roster.length} {tpl.roster.length === 1 ? 'entity' : 'entities'}</span>
                 </div>
                 <button
@@ -2724,14 +3066,19 @@ export default function TemplatesEditor({
 
               <section className="templates-mobile-section templates-mobile-modules-section">
                 <div className="templates-mobile-section-head">
-                  <span>Modules</span>
+                  <span>Modules<b className="hub-section-count">{orderedMods.length}</b></span>
                   <div className="templates-mobile-section-actions">
-                    <button
-                      type="button"
-                      className="templates-mobile-section-select"
-                      onClick={() => { setModEdit(true); setSelMods(new Set()); }}
-                    >Select</button>
-                    <button type="button" onClick={addModule}><Icon name="plus" size={11} />New module</button>
+                    <SectionIconActions phone>
+                      <SectionIconButton
+                        phone
+                        action="select"
+                        label="Select"
+                        className="templates-mobile-section-select"
+                        onClick={() => { setModEdit(true); setSelMods(new Set()); }}
+                        nothingToSelect={orderedMods.length === 0}
+                      />
+                      <SectionIconButton phone action="add" label="Add module" data-search-dismiss-action onClick={addModule} />
+                    </SectionIconActions>
                   </div>
                 </div>
                 <div className="templates-mobile-module-tabs">
@@ -2747,47 +3094,67 @@ export default function TemplatesEditor({
                     onRenameModule={renameModule}
                     onCancelRename={() => setModRename(null)}
                     onReorderModules={reorderMods}
+                    onOpenMenu={(id, rect) => setModMenu({ id, rect })}
                     showCounts={false}
                   />
                 </div>
               </section>
 
               <section className="templates-mobile-section templates-mobile-categories-section">
+                {/* Select swaps the header's right side for the selection
+                    actions in place, so the row keeps its height and nothing
+                    under it moves when select mode starts or ends. */}
                 <div className="templates-mobile-section-head">
-                  <span>Categories</span>
-                  <button type="button" data-search-dismiss-action onClick={addCategory}><Icon name="plus" size={11} />New category</button>
-                </div>
-                <div className="templates-mobile-select-inline">
-                  <button
-                    className="hub-btn hub-btn--tertiary"
-                    onClick={() => { const next = !catEdit; setCatEdit(next); if (!next) setSelCats(new Set()); }}
-                  >
-                    {catEdit ? 'Done' : 'Select'}
-                  </button>
-                  {catEdit && (() => {
-                    const visibleSelectedIds = new Set(mobileVisibleCats.filter((cat) => selCats.has(cat.id)).map((cat) => cat.id));
-                    const c = visibleSelectedIds.size;
-                    const allSel = c === mobileVisibleCats.length && mobileVisibleCats.length > 0;
-                    return (
-                      <span className="templates-mobile-select-actions">
-                        <button
-                          onClick={() => setSelCats((prev) => {
-                            const next = new Set(prev);
-                            mobileVisibleCats.forEach((cat) => {
-                              if (allSel) next.delete(cat.id);
-                              else next.add(cat.id);
-                            });
-                            return next;
-                          })}
-                          className="hub-btn"
-                        >{allSel ? 'None' : 'All'}</button>
-                        <button disabled={!c} onClick={() => duplicateCategories(visibleSelectedIds)} className="hub-btn">Duplicate</button>
-                        <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'category' })} className="hub-btn">Move/Copy</button>
-                        <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} className="hub-btn hub-btn--icon" title="Share" aria-label="Share"><Icon name="share" size={11} /></button>
-                        <button disabled={!c} onClick={() => deleteCategories(visibleSelectedIds)} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={11} /></button>
-                      </span>
-                    );
-                  })()}
+                  <span>Categories<b className="hub-section-count">{visibleCats.length}</b></span>
+                  <div className={`templates-mobile-section-actions${catEdit ? ' templates-mobile-select-actions' : ''}`}>
+                    {catEdit ? (() => {
+                      const visibleSelectedIds = new Set(mobileVisibleCats.filter((cat) => selCats.has(cat.id)).map((cat) => cat.id));
+                      const c = visibleSelectedIds.size;
+                      const allSel = c === mobileVisibleCats.length && mobileVisibleCats.length > 0;
+                      return (
+                        <>
+                          <SelectModeButtons
+                            phone
+                            count={c}
+                            allSelected={allSel}
+                            onToggleAll={() => setSelCats((prev) => {
+                              const next = new Set(prev);
+                              mobileVisibleCats.forEach((cat) => {
+                                if (allSel) next.delete(cat.id);
+                                else next.add(cat.id);
+                              });
+                              return next;
+                            })}
+                            onDuplicate={() => duplicateCategories(visibleSelectedIds)}
+                            onMove={() => setMoveModal({ count: c, kind: 'category', mode: 'move' })}
+                            onCopy={() => setMoveModal({ count: c, kind: 'category', mode: 'copy' })}
+                            onShare={() => { if (tpl) onShare && onShare(tpl); }}
+                            onDelete={() => deleteCategories(visibleSelectedIds)}
+                          />
+                          <SectionIconButton
+                            phone
+                            action="select"
+                            label="Done"
+                            active
+                            className="templates-mobile-section-select"
+                            onClick={() => { setCatEdit(false); setSelCats(new Set()); }}
+                          />
+                        </>
+                      );
+                    })() : (
+                      <SectionIconActions phone>
+                        <SectionIconButton
+                          phone
+                          action="select"
+                          label="Select"
+                          className="templates-mobile-section-select"
+                          onClick={() => { setCatEdit(true); }}
+                          nothingToSelect={mobileVisibleCats.length === 0}
+                        />
+                        <SectionIconButton phone action="add" label="Add category" data-search-dismiss-action onClick={addCategory} />
+                      </SectionIconActions>
+                    )}
+                  </div>
                 </div>
                 {mobileVisibleCats.length === 0 ? (
                   <div className="templates-mobile-empty">No categories match this view.</div>
@@ -2804,39 +3171,76 @@ export default function TemplatesEditor({
                         <SortableRearrangeRow key={`mobile-category-${c.id}`} id={c.id}>
                           {({ attributes, listeners, isDragging }) => (
                             <div className="templates-mobile-category-card">
+                              {/* Owner 2026-10-01: a tap anywhere on the row opens
+                                  or closes it; the grip only drags; the name
+                                  renames ONLY once the row is open (a quick tap
+                                  on a closed row never raises the keyboard - the
+                                  input ignores taps until then, see hub.css);
+                                  ⋮ holds Rename / Delete; in Select mode a tap
+                                  ticks the row.
+                                  [grip 32][chevron 26][name][...][count][⋮ 36]
+                                  Owner 2026-10-02: swipe the row left for a
+                                  trash behind it - the ⋮ menu's Delete (off
+                                  in Select mode, where a tap ticks). */}
+                              <SwipeToDeleteRow
+                                label={`Delete ${c.name}`}
+                                disabled={catEdit}
+                                onDelete={() => deleteCategories(new Set([c.id]))}
+                              >
                               <div
                                 data-drag-rearrange-row
-                                className={`templates-mobile-category-row${catEdit && isSel ? ' is-selected' : ''}`}
-                                onClick={() => { if (catEdit) toggleCatSel(c.id); }}
+                                className={`templates-mobile-category-row${open ? ' is-open' : ''}${catEdit ? ' is-selecting' : ''}${catEdit && isSel ? ' is-selected' : ''}`}
+                                aria-expanded={catEdit ? undefined : open}
+                                onClick={() => { if (catEdit) toggleCatSel(c.id); else setOpenCat(open ? -1 : ci); }}
                               >
                                 <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 24, height: 24 }} />
                                 <button
                                   type="button"
                                   className={`templates-mobile-category-toggle ${open ? 'open' : ''}`}
                                   aria-label={`${open ? 'Collapse' : 'Expand'} ${c.name}`}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setOpenCat(open ? -1 : ci);
-                                  }}
                                 ><CategoryDisclosureGlyph /></button>
-                                <input
-                                  className="templates-mobile-inline-input"
-                                  data-mobile-category-id={c.id}
-                                  defaultValue={c.name}
-                                  key={`mobile-cat-${c.id}:${c.name}`}
-                                  onClick={(e) => e.stopPropagation()}
-                                  onBlur={(e) => {
-                                    const r = resolveTitleCommit(e.currentTarget.value, c.name);
-                                    if (r.action === 'commit') renameCategory(ci, r.name);
-                                    e.currentTarget.value = r.name;
-                                  }}
-                                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = c.name; e.currentTarget.blur(); } }}
-                                />
-                                <span title={archivedItems.length ? `${items.length} active ${items.length === 1 ? 'item' : 'items'}, ${archivedItems.length} archived` : `${items.length} active ${items.length === 1 ? 'item' : 'items'}`}>{items.length}{archivedItems.length ? ` +${archivedItems.length}` : ''}</span>
+                                <span className="hub-autowidth templates-mobile-category-name" data-value={c.name}>
+                                  <input
+                                    size={1}
+                                    className="templates-mobile-inline-input hub-rename"
+                                    data-mobile-category-id={c.id}
+                                    data-category-name-id={c.id}
+                                    defaultValue={c.name}
+                                    key={`mobile-cat-${c.id}:${c.name}`}
+                                    aria-label={`Category name, ${c.name}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onInput={syncAutoWidth}
+                                    onBlur={(e) => {
+                                      const r = resolveTitleCommit(e.currentTarget.value, c.name);
+                                      if (r.action === 'commit') renameCategory(ci, r.name);
+                                      e.currentTarget.value = r.name;
+                                      syncAutoWidth(e);
+                                    }}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = c.name; e.currentTarget.blur(); } }}
+                                  />
+                                </span>
+                                <span className="templates-mobile-category-count" title={archivedItems.length ? `${items.length} active ${items.length === 1 ? 'item' : 'items'}, ${archivedItems.length} archived` : `${items.length} active ${items.length === 1 ? 'item' : 'items'}`}>{items.length} {items.length === 1 ? 'item' : 'items'}{archivedItems.length ? ` +${archivedItems.length}` : ''}</span>
                                 {catEdit ? (
                                   <i className={`templates-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? <Icon name="check" size={11} /> : null}</i>
-                                ) : null}
+                                ) : (
+                                  /* Wrapped so `.templates-mobile-category-row > button`
+                                     stays the one disclosure button. */
+                                  <span className="templates-mobile-category-more">
+                                    <button
+                                      aria-haspopup="menu"
+                                      type="button"
+                                      className="templates-mobile-more"
+                                      title="More" aria-label="More"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        setCatMenu((m) => (m && m.id === c.id ? null : { id: c.id, rect }));
+                                      }}
+                                    ><Icon name="more" size={14} /></button>
+                                  </span>
+                                )}
                               </div>
+                              </SwipeToDeleteRow>
                               {open ? (
                                 <div className="templates-mobile-items">
                                   {items.length === 0 ? <div className="templates-mobile-empty">No checklist items yet.</div> : null}
@@ -2844,10 +3248,13 @@ export default function TemplatesEditor({
                                     {items.map((it) => (
                                       <SortableRearrangeRow key={`mobile-item-${it.id}`} id={it.id}>
                                         {({ attributes, listeners, isDragging }) => (
+                                          /* Owner 2026-10-02: swipe left for a trash
+                                             behind the row - the same delete as its x. */
+                                          <SwipeToDeleteRow label="Delete item" onDelete={() => deleteItem(ci, it.id)}>
                                           <div data-drag-rearrange-row className="templates-mobile-item-row">
                                             <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 20, height: 20 }} />
                                             <input
-                                              className="templates-mobile-inline-input"
+                                              className="templates-mobile-inline-input hub-rename"
                                               data-checklist-item-id={it.id}
                                               defaultValue={it.text}
                                               placeholder="Add checklist item"
@@ -2857,6 +3264,7 @@ export default function TemplatesEditor({
                                             />
                                             <button type="button" title="Delete item" aria-label="Delete item" onClick={(e) => { e.stopPropagation(); deleteItem(ci, it.id); }}><Icon name="close" size={11} /></button>
                                           </div>
+                                          </SwipeToDeleteRow>
                                         )}
                                       </SortableRearrangeRow>
                                     ))}
@@ -2887,6 +3295,7 @@ export default function TemplatesEditor({
                   </SortableRearrangeList>
                 )}
               </section>
+              </div>
 
               {mobileEntitiesOpen ? (
                 <div
@@ -2903,51 +3312,71 @@ export default function TemplatesEditor({
                     onClick={(e) => e.stopPropagation()}
                   >
                     <div className="templates-mobile-entity-modal-head">
+                      {/* UX 2026-09-23 (owner: "slim this down, and change the
+                          close button to an exit button"): one line — the
+                          title, the count beside it in grey, and the app's
+                          standard X, the same one every hub modal uses. */}
                       <div>
                         <strong>Entities</strong>
-                        <span>{tpl.roster.length} entities in {tpl.name}</span>
+                        <span>{tpl.roster.length} in {tpl.name}</span>
                       </div>
                       <button
                         ref={mobileEntitiesCloseRef}
                         type="button"
                         onClick={closeMobileEntities}
+                        className="hub-icon-btn"
+                        title="Close"
+                        aria-label="Close"
                       >
-                        Close
+                        <Icon name="close" size={13} />
                       </button>
                     </div>
                     <section className="templates-mobile-section templates-mobile-entity-panel">
-                <div className="templates-mobile-section-head">
-                  <span>Entities</span>
-                  <button type="button" onClick={addEntity}><Icon name="plus" size={11} />New entity</button>
-                </div>
-                <div className="templates-mobile-select-inline">
-                  <button
-                    className="hub-btn hub-btn--tertiary"
-                    onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
-                  >
-                    {entityEdit ? 'Done' : 'Select'}
-                  </button>
+                {/* UX 2026-09-23 (owner: the "Entities / New entity" row and the
+                    Select row "need to be one header that is way slimmer"). The
+                    sheet's own title already says Entities, so the label goes;
+                    Select sits left and New entity right on one row. */}
+                <div className="templates-mobile-select-inline templates-mobile-entity-toolbar">
                   {entityEdit && (() => {
                     const visibleSelectedIds = new Set(mobileVisibleEntities.filter((entity) => selEntities.has(entity.id)).map((entity) => entity.id));
                     const c = visibleSelectedIds.size;
                     const allSel = c === mobileVisibleEntities.length && mobileVisibleEntities.length > 0;
                     return (
                       <span className="templates-mobile-select-actions">
-                        <button onClick={() => setSelEntities((prev) => {
-                          const next = new Set(prev);
-                          mobileVisibleEntities.forEach((entity) => {
-                            if (allSel) next.delete(entity.id);
-                            else next.add(entity.id);
-                          });
-                          return next;
-                        })} className="hub-btn">{allSel ? 'None' : 'All'}</button>
-                        <button disabled={!c} onClick={() => duplicateEntities(visibleSelectedIds)} className="hub-btn">Duplicate</button>
-                        <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'entity' })} className="hub-btn">Move/Copy</button>
-                        <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} className="hub-btn hub-btn--icon" title="Share" aria-label="Share"><Icon name="share" size={11} /></button>
-                        <button disabled={!c} onClick={() => deleteEntities(visibleSelectedIds)} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={11} /></button>
+                        <SelectModeButtons
+                          phone
+                          count={c}
+                          allSelected={allSel}
+                          onToggleAll={() => setSelEntities((prev) => {
+                            const next = new Set(prev);
+                            mobileVisibleEntities.forEach((entity) => {
+                              if (allSel) next.delete(entity.id);
+                              else next.add(entity.id);
+                            });
+                            return next;
+                          })}
+                          onDuplicate={() => duplicateEntities(visibleSelectedIds)}
+                          onMove={() => setMoveModal({ count: c, kind: 'entity', mode: 'move' })}
+                          onCopy={() => setMoveModal({ count: c, kind: 'entity', mode: 'copy' })}
+                          onShare={() => { if (tpl) onShare && onShare(tpl); }}
+                          onDelete={() => deleteEntities(visibleSelectedIds)}
+                        />
                       </span>
                     );
                   })()}
+                  <SectionIconActions phone>
+                    <SectionIconButton
+                      phone
+                      action="select"
+                      label={entityEdit ? 'Done' : 'Select'}
+                      nothingToSelect={mobileVisibleEntities.length === 0}
+                      active={entityEdit}
+                      onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
+                    />
+                    {!entityEdit && (
+                      <SectionIconButton phone action="add" label="Add entity" className="templates-mobile-new-entity" onClick={addEntity} />
+                    )}
+                  </SectionIconActions>
                 </div>
                 {mobileVisibleEntities.length === 0 ? (
                   <div className="templates-mobile-empty">No entities match this view.</div>
@@ -2958,27 +3387,44 @@ export default function TemplatesEditor({
                       const op = roleColors[r.id]?.opacity ?? 0.35;
                       const rowBorderColor = !!matchFill[r.id] ? c : ((borderColors[r.id] || {}).color || c);
                       const isOpen = openColor === r.id;
+                      const showPanel = isOpen || foldingColor === r.id;
                       const isSel = selEntities.has(r.id);
                       return (
                         <SortableRearrangeRow key={`mobile-entity-${r.id}`} id={r.id}>
                           {({ attributes, listeners, isDragging }) => (
                             <>
-                              <div data-drag-rearrange-row className={`templates-mobile-entity-row${entityEdit && isSel ? ' is-selected' : ''}`}>
-                                <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 24, height: 24 }} />
+                              {/* Same rules as a category row (owner 2026-10-01):
+                                  a tap on the row opens / closes its colour
+                                  panel; the name renames only while the panel
+                                  is open; Select mode ticks the row. */}
+                              <div
+                                data-drag-rearrange-row
+                                data-entity-row
+                                className={`templates-mobile-entity-row${isOpen ? ' is-open' : ''}${entityEdit ? ' is-selecting' : ''}${entityEdit && isSel ? ' is-selected' : ''}`}
+                                aria-expanded={entityEdit ? undefined : isOpen}
+                                onClick={(e) => { if (entityEdit) toggleEntitySel(r.id); else foldColor(isOpen ? null : r.id, e.currentTarget); }}
+                              >
+                                <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 24, height: 24 }} collapseOpen={isOpen && foldingColor !== r.id} onCollapse={() => foldColor(null)} />
                                 <button
                                   type="button"
                                   title="Edit color" aria-label="Edit color"
-                                  onClick={() => setOpenColor(isOpen ? null : r.id)}
+                                  onClick={(e) => { if (entityEdit) return; e.stopPropagation(); foldColor(isOpen ? null : r.id, e.currentTarget); }}
                                   style={{ '--entity-color': c, '--entity-border-color': rowBorderColor }}
                                 ><span aria-hidden="true" /></button>
-                                <input
-                                  className="templates-mobile-inline-input"
-                                  defaultValue={r.role}
-                                  key={`mobile-entity-${r.id}:${r.role}`}
-                                  placeholder="Entity name"
-                                  onBlur={(e) => commitRequiredRow(e.currentTarget, r.role, ENTITY_BLANK_HINT, (v) => renameEntity(r.id, v))}
-                                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = r.role; e.currentTarget.blur(); } }}
-                                />
+                                <span className="hub-autowidth templates-mobile-entity-name" data-value={r.role || 'Entity name'}>
+                                  <input
+                                    size={1}
+                                    className="templates-mobile-inline-input hub-rename"
+                                    data-entity-name-id={r.id}
+                                    defaultValue={r.role}
+                                    key={`mobile-entity-${r.id}:${r.role}`}
+                                    placeholder="Entity name"
+                                    onClick={(e) => e.stopPropagation()}
+                                    onInput={syncAutoWidth}
+                                    onBlur={(e) => { commitRequiredRow(e.currentTarget, r.role, ENTITY_BLANK_HINT, (v) => renameEntity(r.id, v)); syncAutoWidth(e); }}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = r.role; e.currentTarget.blur(); } }}
+                                  />
+                                </span>
                                 {entityEdit ? (
                                   <i className={`templates-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? <Icon name="check" size={11} /> : null}</i>
                                 ) : (
@@ -2988,6 +3434,7 @@ export default function TemplatesEditor({
                                      44px pad, which is what holds the entity
                                      row to the 36px the owner asked for. */
                                   <button
+                                    aria-haspopup="menu"
                                     type="button"
                                     className="templates-mobile-more"
                                     title="More" aria-label="More"
@@ -2999,7 +3446,7 @@ export default function TemplatesEditor({
                                   ><Icon name="more" size={14} /></button>
                                 )}
                               </div>
-                              {isOpen ? (() => {
+                              {showPanel ? (() => {
                                 const layer = layerTab[r.id] || 'fill';
                                 const match = !!matchFill[r.id];
                                 const fillData = { color: c, opacity: op };
@@ -3008,6 +3455,7 @@ export default function TemplatesEditor({
                                 const activeData = isBorderMatched ? fillData : (layer === 'border' ? borderData : fillData);
                                 const applyColor = (color, opacity) => {
                                   if (isBorderMatched) return;
+                                  if (sameEntityColour(activeData, color, opacity)) return;
                                   if (layer === 'border') setBorderColors({ ...borderColors, [r.id]: { color, opacity } });
                                   else {
                                     setRoleColors({ ...roleColors, [r.id]: { color, opacity } });
@@ -3016,21 +3464,41 @@ export default function TemplatesEditor({
                                   markEdited();
                                 };
                                 return (
-                                  <div className="templates-mobile-color-panel" data-entity-color-panel>
-                                    <div className="templates-mobile-color-tabs">
-                                      {['fill', 'border'].map((k) => (
-                                        <button key={k} type="button" className={layer === k ? 'active' : ''} onClick={() => setLayerTab({ ...layerTab, [r.id]: k })}>{k === 'fill' ? 'Fill' : 'Border'}</button>
-                                      ))}
-                                    </div>
-                                    {layer === 'border' ? (
-                                      <label className="templates-mobile-match-fill">
-                                        <input type="checkbox" checked={match} onChange={(e) => { setMatchFill({ ...matchFill, [r.id]: e.target.checked }); markEdited(); }} />
-                                        <span>Match fill</span>
-                                      </label>
-                                    ) : null}
-                                    <div style={{ opacity: isBorderMatched ? 0.4 : 1, pointerEvents: isBorderMatched ? 'none' : 'auto' }}>
-                                      <CompactColorPicker color={activeData.color} opacity={activeData.opacity} onChange={applyColor} onClose={() => setOpenColor(null)} dismissInsideSelector="[data-entity-color-panel]" />
-                                    </div>
+                                  /* UX 2026-09-23 (owner: the phone picker
+                                     and its tabs must "match desktop, where
+                                     it's not a box within a box"). The same
+                                     picker as the desktop panel: the row's
+                                     panel paints the surface (chrome off), the
+                                     picker draws its own Fill / Border tabs,
+                                     and Match fill is the Border tab's first
+                                     grid cell, so nothing moves between tabs. */
+                                  <div className="templates-mobile-color-panel" data-entity-color-panel data-folding={foldingColor === r.id ? (foldIsSwitch ? 'switch' : 'true') : undefined}>
+                                    <CompactColorPicker
+                                      color={activeData.color}
+                                      opacity={activeData.opacity}
+                                      onChange={applyColor}
+                                      onClose={(event) => {
+                                    // A press on ANOTHER entity's colour dot is a switch, not a
+                                    // close: its click follows ~100ms later and runs the switch.
+                                    // Folding here first made the click restart the fold (a jump).
+                                    if (isEntitySwitchPress(event)) return;
+                                    foldColor(null);
+                                  }}
+                                      dismissInsideSelector="[data-entity-color-panel], [data-sortable-rearrange-item]:has([data-entity-color-panel])"
+                                      platform="phone"
+                                      denseLayout
+                                      chrome={false}
+                                      tabs={{
+                                        items: [{ id: 'fill', label: 'Fill' }, { id: 'border', label: 'Border' }],
+                                        active: layer,
+                                        onSelect: (k) => setLayerTab({ ...layerTab, [r.id]: k }),
+                                      }}
+                                      firstPreset={layer === 'border' ? {
+                                        kind: 'match', color: c, opacity: op, linked: match,
+                                        onToggle: () => { setMatchFill({ ...matchFill, [r.id]: !match }); markEdited(); },
+                                      } : 'transparent'}
+                                      locked={isBorderMatched}
+                                    />
                                   </div>
                                 );
                               })() : null}
@@ -3070,7 +3538,17 @@ export default function TemplatesEditor({
           onClose={() => setTplMenu(null)}
           items={[
             { label: 'Copy', onClick: () => duplicateTemplates(new Set([t.id])) },
-            { label: 'Rename', onClick: () => { setSelected(t.id); setTplEdit(false); } },
+            { label: 'Rename', onClick: () => {
+              setTplEdit(false);
+              if (t.id === tpl?.id && (!mobileLayoutActive() || mobileTemplateOpen)) { focusVisibleField('input[data-template-title]'); return; }
+              flushSync(() => {
+                setSelected(t.id);
+                setOpenCat(-1);
+                setOpenMod(0);
+                if (mobileLayoutActive()) { captureMobileTemplateList(); setTemplateContentSearch(''); setMobileTemplateOpen(true); }
+              });
+              focusVisibleField('input[data-template-title]');
+            } },
             { label: 'Share', onClick: () => onShare && onShare(t) },
             { label: 'Delete', danger: true, onClick: () => deleteTemplates(new Set([t.id])) },
           ]}
@@ -3086,10 +3564,51 @@ export default function TemplatesEditor({
           onClose={() => setEntityMenu(null)}
           items={[
             { label: 'Duplicate', onClick: () => duplicateEntities(new Set([ent.id])) },
-            { label: 'Move/Copy', onClick: () => setMoveModal({ count: 1, kind: 'entity' }) },
+            { label: 'Move', onClick: () => setMoveModal({ count: 1, kind: 'entity', mode: 'move' }) },
+            { label: 'Copy', onClick: () => setMoveModal({ count: 1, kind: 'entity', mode: 'copy' }) },
             { label: 'Share', onClick: () => { if (tpl) onShare && onShare(tpl); } },
-            { label: 'Rename', onClick: () => setOpenColor(null) },
+            { label: 'Rename', onClick: () => { focusVisibleField(`input[data-entity-name-id="${ent.id}"]`); } },
             { label: 'Delete', danger: true, onClick: () => deleteEntities(new Set([ent.id])) },
+          ]}
+        />
+      );
+    })()}
+
+    {catMenu && tpl && (() => {
+      const ci = visibleCats.findIndex((x) => x.id === catMenu.id);
+      if (ci < 0) return null;
+      const cat = visibleCats[ci];
+      return (
+        <MoreMenu
+          anchorRect={catMenu.rect}
+          onClose={() => setCatMenu(null)}
+          items={[
+            { label: 'Rename', onClick: () => {
+              // A closed phone row ignores taps on its name; opening it first
+              // makes the field live for the next tap too.
+              if (openCat !== ci && mobileLayoutActive()) flushSync(() => setOpenCat(ci));
+              focusVisibleField(`input[data-category-name-id="${cat.id}"]`);
+            } },
+            { label: 'Duplicate', onClick: () => duplicateCategories(new Set([cat.id])) },
+            { label: 'Move', onClick: () => setMoveModal({ count: 1, kind: 'category', mode: 'move' }) },
+            { label: 'Copy', onClick: () => setMoveModal({ count: 1, kind: 'category', mode: 'copy' }) },
+            { label: 'Delete', danger: true, onClick: () => deleteCategories(new Set([cat.id])) },
+          ]}
+        />
+      );
+    })()}
+    {modMenu && tpl && (() => {
+      const mod = orderedMods.find((x) => x.id === modMenu.id);
+      if (!mod) return null;
+      return (
+        <MoreMenu
+          anchorRect={modMenu.rect}
+          onClose={() => setModMenu(null)}
+          items={[
+            // flushSync: the rename field mounts and takes focus inside this
+            // tap, so a phone raises its keyboard.
+            { label: 'Rename', onClick: () => flushSync(() => setModRename(mod.id)) },
+            { label: 'Delete', danger: true, onClick: () => deleteModules(new Set([mod.id])) },
           ]}
         />
       );
@@ -3104,27 +3623,27 @@ export default function TemplatesEditor({
       <div
         data-testid="archive-confirm-modal"
         onClick={() => setArchiveConfirm(null)}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(13, 15, 20, 0.55)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5100 }}
+        style={{ position: 'fixed', inset: 0, background: 'var(--overlay-scrim)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5100 }}
       >
         <div
           onClick={(e) => e.stopPropagation()}
           style={{
             width: 440, maxWidth: 'calc(100vw - 32px)',
-            background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10,
-            padding: '18px 20px 14px', boxShadow: '0 18px 60px rgba(0,0,0,0.55)',
-            fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif', color: 'var(--text-1)',
+            background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-dialog)',
+            padding: '18px 20px 14px', boxShadow: 'var(--shadow-dialog)',
+            fontFamily: 'var(--font-ui)', color: 'var(--text-1)',
           }}
         >
           <h3 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-1)' }}>
             Archive checklist item?
           </h3>
-          <p style={{ margin: '0 0 6px', fontSize: 12.5, lineHeight: 1.55, color: 'var(--text-2)' }}>
+          <p style={{ margin: '0 0 6px', fontSize: 13, lineHeight: 1.55, color: 'var(--text-2)' }}>
             <strong style={{ color: 'var(--text-1)' }}>{archiveConfirm.usage}</strong>
             {' '}
             {archiveConfirm.usage === 1 ? 'survey marker has' : 'survey markers have'}
             {' '}responses for <em style={{ color: 'var(--text-1)' }}>{archiveConfirm.label || 'this item'}</em>.
           </p>
-          <p style={{ margin: '0 0 16px', fontSize: 12.5, lineHeight: 1.55, color: 'var(--text-3)' }}>
+          <p style={{ margin: '0 0 16px', fontSize: 13, lineHeight: 1.55, color: 'var(--text-3)' }}>
             Archiving keeps those responses as historical data, but the item won't appear for new markers. You can permanently delete the archived item later from the Archived section.
           </p>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -3168,28 +3687,28 @@ export default function TemplatesEditor({
       return (
         <div
           onClick={() => setModEdit(false)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(13, 15, 20, 0.55)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
+          style={{ position: 'fixed', inset: 0, background: 'var(--overlay-scrim)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
         >
           <div
             className="templates-module-edit-modal"
             onClick={(e) => e.stopPropagation()}
-            style={{ width: 400, maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100dvh - 32px)', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10 }}
+            style={{ width: 400, maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100dvh - 32px)', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-dialog)' }}
           >
             <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-              <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, letterSpacing: '-0.025em', flex: 'none', color: 'var(--text-1)', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' }}>Edit modules</h3>
+              <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, letterSpacing: '-0.025em', flex: 'none', color: 'var(--text-1)', fontFamily: 'var(--font-ui)' }}>Edit modules</h3>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface-0)', border: '1px solid var(--border-strong)', borderRadius: 6, padding: '4px 8px', height: 26, boxSizing: 'border-box', flex: 1, maxWidth: 220 }}>
                 <Icon name="search" size={12} color="var(--text-3)" />
                 <input
                   value={modSearch}
                   onChange={(e) => setModSearch(e.currentTarget.value)}
                   placeholder="Search modules..."
-                  style={{ background: 'transparent', border: 0, outline: 'none', color: 'var(--text-1)', fontFamily: 'inherit', fontSize: 11.5, flex: 1, width: '100%', padding: 0 }}
+                  style={{ background: 'transparent', border: 0, outline: 'none', color: 'var(--text-1)', fontFamily: 'inherit', fontSize: 12, flex: 1, width: '100%', padding: 0 }}
                 />
               </div>
             </div>
             <div className="slim-scroll" style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 420, overflowY: 'auto', flex: '0 1 auto', minHeight: 0 }}>
               {visibleMods.length === 0 && (
-                <div className="meta" style={{ padding: '14px 4px', fontSize: 11.5, color: 'var(--text-3)' }}>
+                <div className="meta" style={{ padding: '14px 4px', fontSize: 12, color: 'var(--text-3)' }}>
                   {mods.length === 0 ? 'No modules yet.' : 'No modules match your search.'}
                 </div>
               )}
@@ -3222,7 +3741,7 @@ export default function TemplatesEditor({
                           {...listeners}
                           isDragging={isDragging}
                         />
-                        <span onClick={() => toggleModSel(mod.id)} style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--border-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span onClick={() => toggleModSel(mod.id)} data-drag-keep-fill style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--border-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           {isSel && <Icon name="check" size={10} color="var(--accent-text)" />}
                         </span>
                         <input
@@ -3230,7 +3749,7 @@ export default function TemplatesEditor({
                           key={mod.id + ':' + mod.name}
                           onBlur={(e) => renameModule(mod.id, e.currentTarget.value)}
                           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = mod.name; e.currentTarget.blur(); } }}
-                          style={{ background: 'transparent', border: 0, borderBottom: '1px solid transparent', color: 'var(--text-1)', font: 'inherit', fontSize: 12.5, fontWeight: 500, padding: '4px 0', width: '100%', outline: 'none' }}
+                          style={{ background: 'transparent', border: 0, borderBottom: '1px solid transparent', borderTop: '1px solid transparent' /* matches the underline so the name sits on the row's centre line, 2026-09-23 */, color: 'var(--text-1)', font: 'inherit', fontSize: 13, fontWeight: 500, padding: '4px 0', width: '100%', outline: 'none' }}
                         />
                         <span style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>{(mod.categories || []).length}</span>
                       </div>
@@ -3241,16 +3760,23 @@ export default function TemplatesEditor({
               </SortableRearrangeList>
             </div>
             <div style={{ padding: '0 10px 8px', flex: 'none' }}>
-              <button onClick={addModule} style={{ width: '100%', padding: '6px 10px', border: '1px dashed var(--border-strong)', background: 'transparent', color: 'var(--text-3)', borderRadius: 2, fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <button onClick={addModule} style={{ width: '100%', padding: '6px 10px', border: '1px dashed var(--border-strong)', background: 'transparent', color: 'var(--text-3)', borderRadius: 2, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                 <Icon name="plus" size={13} /> New module
               </button>
             </div>
             <div className="templates-module-edit-actions" style={{ padding: '10px 12px', borderTop: '1px solid var(--border)', background: 'var(--surface-1)', display: 'flex', gap: 6, alignItems: 'center', flex: 'none' }}>
-              <button onClick={() => { const allSel = selectedMods.length === mods.length; setSelMods(allSel ? new Set() : new Set(mods.map((m) => m.id))); }} className="hub-btn">{selectedMods.length === mods.length && mods.length > 0 ? 'None' : 'All'}</button>
-              <button onClick={() => duplicateModules(selMods)} disabled={!selCount} className="hub-btn">Duplicate</button>
-              <button onClick={() => { if (selCount) setMoveModal({ count: selCount, kind: 'module' }); }} disabled={!selCount} className="hub-btn">Move/Copy</button>
-              <button disabled={!selCount} onClick={() => { if (selCount && tpl) onShare && onShare(tpl); }} className="hub-btn hub-btn--icon" title="Share" aria-label="Share"><Icon name="share" size={12} /></button>
-              <button onClick={() => deleteModules(selMods)} disabled={!selCount} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={12} /></button>
+              <SelectModeButtons
+                phone={mobileLayoutActive()}
+                tooltipPlacement="above"
+                count={selCount}
+                allSelected={selectedMods.length === mods.length && mods.length > 0}
+                onToggleAll={() => { const allSel = selectedMods.length === mods.length; setSelMods(allSel ? new Set() : new Set(mods.map((m) => m.id))); }}
+                onDuplicate={() => duplicateModules(selMods)}
+                onMove={() => setMoveModal({ count: selCount, kind: 'module', mode: 'move' })}
+                onCopy={() => setMoveModal({ count: selCount, kind: 'module', mode: 'copy' })}
+                onShare={() => { if (tpl) onShare && onShare(tpl); }}
+                onDelete={() => deleteModules(selMods)}
+              />
               <span style={{ flex: 1 }} />
               <button onClick={() => setModEdit(false)} className="hub-btn hub-btn--primary">Done</button>
             </div>
@@ -3259,26 +3785,27 @@ export default function TemplatesEditor({
       );
     })()}
 
-    {/* Move/Copy modal */}
+    {/* Move or Copy modal - opened already set to the button that opened it
+        (owner 2026-10-02 split the one Move/Copy action into Move and Copy). */}
     {moveModal && tpl && (
       <div
         onClick={closeMoveModal}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(13, 15, 20, 0.55)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5400 }}
+        style={{ position: 'fixed', inset: 0, background: 'var(--overlay-scrim)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5400 }}
       >
         <div
           ref={moveModalRef}
           role="dialog"
           aria-modal="true"
-          aria-label="Move or copy items"
+          aria-label={moveModal.mode === 'copy' ? 'Copy items' : 'Move items'}
           data-modal-focus-layer="true"
           tabIndex={-1}
           onClick={(e) => e.stopPropagation()}
-          style={{ width: 420, overflow: 'hidden', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10 }}
+          style={{ width: 420, overflow: 'hidden', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-dialog)' }}
         >
           <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <p style={{ margin: 0, fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-3)', fontWeight: 700, fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>Move/Copy</p>
-              <h3 style={{ fontSize: 14, fontWeight: 700, margin: '2px 0 0', color: 'var(--text-1)', letterSpacing: '-0.025em', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' }}>{moveModal.count} item{moveModal.count === 1 ? '' : 's'}</h3>
+              <p style={{ margin: 0, fontSize: 11, letterSpacing: 0, color: 'var(--text-3)', fontWeight: 600, fontFamily: 'var(--font-ui)' }}>{moveModal.mode === 'copy' ? 'Copy' : 'Move'}</p>
+              <h3 style={{ fontSize: 14, fontWeight: 700, margin: '2px 0 0', color: 'var(--text-1)', letterSpacing: '-0.025em', fontFamily: 'var(--font-ui)' }}>{moveModal.count} item{moveModal.count === 1 ? '' : 's'}</h3>
             </div>
             <button ref={moveModalCloseRef} onClick={closeMoveModal} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={13} /></button>
           </div>
@@ -3318,8 +3845,7 @@ export default function TemplatesEditor({
           </div>
           <div style={{ padding: '12px 14px', borderTop: '1px solid var(--border)', background: 'var(--surface-1)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button onClick={closeMoveModal} className="hub-btn">Cancel</button>
-            <button onClick={closeMoveModal} className="hub-btn">Copy</button>
-            <button onClick={closeMoveModal} className="hub-btn hub-btn--primary">Move</button>
+            <button onClick={closeMoveModal} className="hub-btn hub-btn--primary">{moveModal.mode === 'copy' ? 'Copy' : 'Move'}</button>
           </div>
         </div>
       </div>

@@ -1,5 +1,18 @@
 # Annotation Parity Map — verified 2026-07-16
 
+> **Partly superseded 2026-09-28 (w52)** — the current per-type × per-action
+> state is `docs/ANNOTATION-CAPABILITY-MATRIX.md`. Claims below that are no
+> longer true:
+> - `callouts[]` is no longer its own state: it is derived from
+>   `annotationsByPage` (R2.2 flip), and callouts now sit in the page's ONE
+>   stacking order (persisted per mark, `src/services/annotationStackOrder.js`).
+> - The callout context menu is not "4 items, all z-order missing": it has
+>   Cut / Copy / Paste / Delete + the four z-order items, same handlers as shapes.
+> - The callout delete path now routes through the ownership gate and the
+>   bulk-delete planner (cross-author confirm).
+> - Print draws Survey Markers; legacy arrow groups export as lines.
+> - Stamps DO exist now (imported PDF image stamps render as stamp proxies).
+
 > Mapping pass only. No application code was modified.
 > Supersedes the stale per-type table in `docs/ANNOTATION-CONTRACT.md` (verified 2026-05-29).
 > Method: two independent read-only source-verification agents + graphify + fallow (audit:code/dead/dupes/health) + codegraph call-path analysis. Every claim below is source-cited; tool findings were validated against source and several were rejected as false positives.

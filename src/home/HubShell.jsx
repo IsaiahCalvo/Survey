@@ -5,6 +5,8 @@ import { useState, useRef, useEffect, useLayoutEffect, useContext, createContext
 import { useAuth } from '../contexts/AuthContext';
 import AppIcon from '../Icons';
 import DismissBarrier from '../components/DismissBarrier';
+import { presenceInitials } from '../components/presenceIdentity.js';
+import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
 
 const HUB_BUILD_STAMP = (
   typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STAMP__
@@ -37,19 +39,25 @@ const HUB_ICON_ALIASES = {
   "arrow-r": "arrowRight",
 };
 
-export const Icon = ({ name, size = 14, color, style, className }) => (
+export const Icon = ({ name, size = 14, color, contentType, style, className }) => (
   <AppIcon
     name={HUB_ICON_ALIASES[name] || name}
     size={size}
     color={color}
+    contentType={contentType}
     style={style}
     className={className}
   />
 );
 
-/* Round initials badge. */
-export const Avatar = ({ initials, color = 'var(--gold)', size = 22 }) => (
-  <div style={{ width: size, height: size, borderRadius: '50%', background: color, color: 'var(--accent-text)', display: 'grid', placeItems: 'center', fontSize: size * 0.42, fontWeight: 800, flex: 'none' }}>{initials}</div>
+/* Round initials badge. Owner 2026-10-07: a person's face is their own soft
+   pastel with dark initials (utils/userColors.js), picked from their user id
+   so they wear the same colour on every screen and device. Pass `id` (the
+   user id); `color` overrides it only where a screen has already resolved
+   colours for a group. Never gold (gold = selected), never grey (grey =
+   inactive). Weight 600 like the viewer's presence faces. */
+export const Avatar = ({ initials, id = null, color = null, ink = USER_INITIALS_INK, size = 22 }) => (
+  <div data-drag-keep-fill data-user-avatar="" style={{ width: size, height: size, borderRadius: '50%', background: color || userColorFill(id ?? initials), color: ink, display: 'grid', placeItems: 'center', fontSize: size * 0.42, fontWeight: 600, flex: 'none' }}>{initials}</div>
 );
 
 /* Overlapping row of avatars — used to preview a team compactly.
@@ -58,11 +66,17 @@ export const Avatar = ({ initials, color = 'var(--gold)', size = 22 }) => (
    sits on, so it measured 1.00:1 and was literally invisible: the avatars ran
    into each other with no edge at all. It is --border now (3.60:1 on that card),
    which is the token for a hairline that has to be seen. */
-export const AvatarStack = ({ members, size = 22 }) => (
+/* Owner 2026-10-07: each face is that person's own pastel (by `ids[i]`, the
+   user id; the initials stand in when no id is known) instead of a colour by
+   position, so a person keeps one colour here and everywhere else. A "+N"
+   entry is the neutral overflow chip, not a person. */
+export const AvatarStack = ({ members, ids = [], size = 22 }) => (
   <div style={{ display: 'flex' }}>
     {members.map((m, i) => (
       <div key={i} style={{ marginLeft: i === 0 ? 0 : -6, border: '2px solid var(--border)', borderRadius: '50%' }}>
-        <Avatar initials={m} color={['var(--gold)', 'var(--blue)', 'var(--slate)', 'var(--lilac)'][i % 4]} size={size} />
+        {/^\+\d+$/.test(String(m))
+          ? <Avatar initials={m} color="var(--surface-3)" ink="var(--text-2)" size={size} />
+          : <Avatar initials={m} id={ids[i] ?? null} size={size} />}
       </div>
     ))}
   </div>
@@ -91,8 +105,13 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
 
   return (
     <>
+      {/* R3 (dismiss rules, owner 2026-09-23): while you type here, the first
+          press elsewhere only ends the typing — except other text fields,
+          popover openers and the caller's own dismiss actions, which work at
+          once. */}
       <DismissBarrier
         active={focused}
+        mode="typing"
         insideRefs={[rootRef]}
         passthroughSelector={dismissActionSelector}
         onDismiss={() => {
@@ -100,7 +119,16 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
           setFocused(false);
         }}
       />
-      <div ref={rootRef} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--ink-700)', border: '1px solid var(--border-strong)', borderRadius: 6, padding: '5px 9px', width, fontSize: 11.5, height: 28, boxSizing: 'border-box' }}>
+      {/* Polish round 5: a tap anywhere on the box (the glyph, the padding, or
+          on a phone the 44px pad round it, see hub.css .hub-search) puts the
+          caret in the field; only the 22px input itself used to. A placeholder
+          that does not fit ends in an ellipsis instead of being cut mid-word. */}
+      <div
+        ref={rootRef}
+        className="hub-search"
+        onClick={(event) => { if (event.target !== inputRef.current) inputRef.current?.focus(); }}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--ink-700)', border: '1px solid var(--border-strong)', borderRadius: 6, padding: '5px 9px', width, fontSize: 12, height: 28, boxSizing: 'border-box', cursor: 'text' }}
+      >
         <Icon name="search" size={13} color="var(--ink-200)" />
         <input
           ref={inputRef}
@@ -109,7 +137,7 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           placeholder={placeholder}
-          style={{ background: 'transparent', border: 0, outline: 'none', color: 'var(--bone-100)', font: 'inherit', flex: 1, minWidth: 0 }}
+          style={{ background: 'transparent', border: 0, outline: 'none', color: 'var(--bone-100)', font: 'inherit', flex: 1, minWidth: 0, textOverflow: 'ellipsis' }}
         />
         <span className="kbd">⌘K</span>
       </div>
@@ -134,10 +162,13 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
    "Nothing in Archive" needs no coaching, and Archive's layout was signed off
    as-is, so it must keep rendering identically. Any change here has to leave
    the no-description path byte-for-byte the same. */
+const EMPTY_STATE_CONTENT_TYPE = { doc: 'document', template: 'template' };
 export const EmptyState = ({ icon, line, description, actionLabel, actionIcon = 'plus', onAction }) => (
   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '40px 16px', textAlign: 'center', letterSpacing: 0 }}>
     <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--ink-600)', border: '1px solid var(--ink-500)', display: 'grid', placeItems: 'center' }}>
-      <Icon name={icon} size={20} />
+      {/* The tile keeps the content-type colour (blue document, purple
+          template); the button's glyph below draws in its own ink. */}
+      <Icon name={icon} size={20} contentType={EMPTY_STATE_CONTENT_TYPE[icon]} />
     </div>
     {description ? (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 320 }}>
@@ -145,7 +176,7 @@ export const EmptyState = ({ icon, line, description, actionLabel, actionIcon = 
         <div style={{ fontSize: 12, color: 'var(--ink-200)', lineHeight: 1.5 }}>{description}</div>
       </div>
     ) : (
-      <div style={{ fontSize: 12.5, color: 'var(--ink-200)' }}>{line}</div>
+      <div style={{ fontSize: 13, color: 'var(--ink-200)' }}>{line}</div>
     )}
     <button className="btn primary" type="button" onClick={() => onAction && onAction()}>
       <Icon name={actionIcon} size={12} />{actionLabel}
@@ -153,9 +184,9 @@ export const EmptyState = ({ icon, line, description, actionLabel, actionIcon = 
   </div>
 );
 
-/* Word-initials, e.g. "Isaiah Calvo" -> "IC". */
-const initialsOf = (name) => (name || 'You')
-  .trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase() || 'YOU';
+/* Owner 2026-10-02: one initials rule app-wide (presenceIdentity.js), so the
+   account avatar reads the same as your face in the viewer's presence row. */
+const initialsOf = (name) => presenceInitials(name || 'You');
 
 const mobileNavModeFromUrl = () => {
   if (typeof window === 'undefined') return 'tabs';
@@ -198,6 +229,14 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [open]);
 
+  // 2026-10-07 (phone loading): until the saved sign-in has been read, neither
+  // the account button nor "Sign in" is known to be right. A signed-in phone
+  // flashed "Sign in" here on every start; the corner now stays empty for that
+  // moment and fills with the right one.
+  if (!user && auth?.loading) {
+    return <div className="who who-guest" aria-hidden="true" />;
+  }
+
   if (!user) {
     return (
       <div className="who who-guest">
@@ -211,7 +250,6 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
   const name = user?.name || user?.email?.split('@')[0] || userName;
   const email = user?.email || '';
   const initials = initialsOf(name);
-  const itemStyle = { display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', background: 'transparent', border: 0, color: 'var(--bone-100)', padding: '8px 10px', fontSize: 12.5, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' };
   return (
     <div className="who" ref={ref} style={{ position: 'relative' }}>
       <button
@@ -226,7 +264,7 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
         title={email || name}
         style={{ display: 'flex', alignItems: 'center', gap: 7, width: '100%', background: open ? 'var(--ink-600)' : 'transparent', border: 0, borderRadius: 6, padding: '4px 6px', cursor: 'pointer', fontFamily: 'inherit', color: 'inherit', textAlign: 'left' }}
       >
-        <Avatar initials={initials} size={24} />
+        <Avatar initials={initials} id={user?.id || email || name} size={24} />
         <div style={{ minWidth: 0 }}>
           <div className="name">{name}</div>
           <div className="who-meta">{resolvedMeta}</div>
@@ -246,24 +284,25 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
           />
           <div className="profile-menu-popup" role="menu" aria-label="Account menu" style={{ position: 'absolute', bottom: 'calc(100% + 6px)', left: 0, width: 270, background: 'var(--ink-700)', border: '1px solid var(--ink-500)', borderRadius: 10, boxShadow: '0 16px 40px rgba(0,0,0,0.5)', overflow: 'hidden', zIndex: 50 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12 }}>
-              <Avatar initials={initials} size={34} />
+              <Avatar initials={initials} id={user?.id || email || name} size={34} />
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
-                {email ? <div style={{ fontSize: 10.5, color: 'var(--ink-200)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{email}</div> : null}
+                <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
+                {email ? <div style={{ fontSize: 11, color: 'var(--ink-200)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{email}</div> : null}
               </div>
             </div>
             <div style={{ height: 1, background: 'var(--ink-500)' }} />
             <div className="profile-menu-actions" style={{ padding: 4 }}>
               {showArchive && (
                 <button
-                  className={tab === 'archive' ? 'active' : ''}
-                  style={{ ...itemStyle, color: tab === 'archive' ? 'var(--gold)' : itemStyle.color }}
+                  type="button"
+                  className={`hub-menu__item${tab === 'archive' ? ' active' : ''}`}
+                  style={tab === 'archive' ? { color: 'var(--gold)' } : undefined}
                   onClick={() => { setOpen(false); setConfirmSignOut(false); onNav && onNav('archive'); }}
                 >
                   <Icon name="clock" size={15} color={tab === 'archive' ? 'var(--gold)' : 'var(--ink-200)'} />Archive
                 </button>
               )}
-              <button style={itemStyle} onClick={() => { setOpen(false); setConfirmSignOut(false); onSettings && onSettings(); }}>
+              <button type="button" className="hub-menu__item" onClick={() => { setOpen(false); setConfirmSignOut(false); onSettings && onSettings(); }}>
                 <Icon name="settings" size={15} color="var(--ink-200)" />Settings
               </button>
               {confirmSignOut ? (
@@ -275,7 +314,7 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
                   </div>
                 </div>
               ) : (
-                <button className="profile-menu-signout" style={{ ...itemStyle, color: 'var(--danger-text)' }} onClick={() => setConfirmSignOut(true)}>
+                <button type="button" className="hub-menu__item is-danger profile-menu-signout" onClick={() => setConfirmSignOut(true)}>
                   <Icon name="signout" size={15} color="var(--danger)" />Sign out
                 </button>
               )}
@@ -291,9 +330,50 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
   );
 };
 
+/* Phone section switcher (owner 2026-09-23, replacing the header's menu
+   button and its floating "Navigate" card). UX: the page TITLE is the switcher.
+   "Documents" plus a small chevron is one button; tapping it drops a quiet menu
+   straight out of the title, listing only the OTHER sections — the current one
+   is already the word you tapped, so repeating it (or badging it gold) is noise.
+   Why: the owner found a separate hamburger plus a card of coloured icons too
+   busy; tying the menu to the title reads as one integrated control. Reference:
+   the title-as-menu pattern of iOS Files / Notes folder pickers and Linear's
+   workspace title. Rows use the app's dropdown skin (the phone styled-select
+   menu: surface-2, 1px border, 9px radius, the same soft shadow), with grey
+   outline icons so nothing in the menu competes with the page.
+   Rendered in `?mobileNav=rail` only (the phone web default); the tabs mode
+   keeps its bottom bar, and desktop hides this and shows the plain title. */
 const MobileRailNav = ({ mode, title, tab, navItems, onNav }) => {
   const [open, setOpen] = useState(false);
-  const touchStart = useRef(null);
+  const rootRef = useRef(null);
+  const buttonRef = useRef(null);
+  const itemRefs = useRef([]);
+  const menuId = `hub-section-menu-${tab}`;
+  const options = (navItems || []).filter(([key]) => key !== tab);
+  itemRefs.current.length = options.length;
+
+  const focusItem = (index) => {
+    const items = itemRefs.current.filter(Boolean);
+    if (!items.length) return;
+    items[(index + items.length) % items.length].focus();
+  };
+
+  // Focus moves into the menu when it opens, so arrow keys work at once.
+  useEffect(() => {
+    if (!open) return undefined;
+    const frame = requestAnimationFrame(() => focusItem(0));
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setOpen(false);
+      buttonRef.current?.focus();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
 
   if (mode !== 'rail') return null;
 
@@ -303,61 +383,66 @@ const MobileRailNav = ({ mode, title, tab, navItems, onNav }) => {
     onNav && onNav(key);
   };
 
-  const onTouchStart = (e) => {
-    const touch = e.touches?.[0];
-    if (touch) touchStart.current = { x: touch.clientX, y: touch.clientY };
+  const onButtonKeyDown = (event) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      setOpen(true);
+    }
   };
 
-  const onTouchEnd = (e) => {
-    const start = touchStart.current;
-    const touch = e.changedTouches?.[0];
-    touchStart.current = null;
-    if (!start || !touch) return;
-    const dx = touch.clientX - start.x;
-    const dy = touch.clientY - start.y;
-    if (dx < -36 && Math.abs(dx) > Math.abs(dy)) setOpen(false);
+  const onMenuKeyDown = (event) => {
+    const items = itemRefs.current.filter(Boolean);
+    const current = items.indexOf(document.activeElement);
+    if (event.key === 'ArrowDown') { event.preventDefault(); focusItem(current + 1); }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); focusItem(current - 1); }
+    else if (event.key === 'Home') { event.preventDefault(); focusItem(0); }
+    else if (event.key === 'End') { event.preventDefault(); focusItem(items.length - 1); }
+    else if (event.key === 'Tab') setOpen(false);
   };
 
   return (
-    <div className="mobile-rail-nav">
-      <button
-        type="button"
-        className="mobile-rail-nav-trigger"
-        aria-label="Open navigation"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
+    <div className={`mobile-rail-nav${open ? ' is-open' : ''}`} ref={rootRef}>
+      <DismissBarrier active={open} insideRefs={[rootRef]} dismissOnEscape={false} onDismiss={() => setOpen(false)} />
+      <h1 className="title">
+        <button
+          ref={buttonRef}
+          type="button"
+          className="hub-title-switch"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-controls={menuId}
+          onClick={() => setOpen((value) => !value)}
+          onKeyDown={onButtonKeyDown}
+        >
+          {/* Owner 2026-09-23: the menu glyph sits LEFT of the title, not a
+              thin chevron after it; the glyph and the word are one button. */}
+          <Icon name="menu" size={20} color="currentColor" className="hub-title-switch__menu" />
+          <span className="hub-title-switch__label">{title}</span>
+        </button>
+      </h1>
+      <div
+        id={menuId}
+        className="hub-section-menu"
+        role="menu"
+        aria-label="Go to"
+        onKeyDown={onMenuKeyDown}
       >
-        <Icon name="menu" size={16} />
-      </button>
-      {open && (
-        <div className="mobile-rail-nav-scrim" onClick={() => setOpen(false)}>
-          <aside
-            className="mobile-rail-nav-panel"
-            aria-label="Mobile navigation"
-            onClick={(e) => e.stopPropagation()}
-            onTouchStart={onTouchStart}
-            onTouchEnd={onTouchEnd}
+        {options.map(([key, icon, label, disabled], index) => (
+          <button
+            key={key}
+            ref={(node) => { itemRefs.current[index] = node; }}
+            type="button"
+            role="menuitem"
+            tabIndex={-1}
+            aria-disabled={disabled || undefined}
+            onClick={() => choose(key, disabled)}
           >
-            <div className="mobile-rail-nav-label">Navigate</div>
-            <div className="mobile-rail-nav-title">{title}</div>
-            <div className="mobile-rail-nav-options">
-              {navItems.map(([key, icon, label, disabled]) => (
-                <button
-                  key={key}
-                  type="button"
-                  className={tab === key ? 'active' : ''}
-                  disabled={disabled}
-                  onClick={() => choose(key, disabled)}
-                >
-                  <Icon name={icon} size={15} />
-                  <span>{label}</span>
-                  {disabled ? <Icon name="lock" size={12} color="var(--ink-200)" /> : null}
-                </button>
-              ))}
-            </div>
-          </aside>
-        </div>
-      )}
+            <Icon name={icon} size={14} color="var(--text-3)" />
+            <span>{label}</span>
+            {disabled ? <Icon name="lock" size={11} color="var(--text-3)" /> : null}
+          </button>
+        ))}
+      </div>
     </div>
   );
 };

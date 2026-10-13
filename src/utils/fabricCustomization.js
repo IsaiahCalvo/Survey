@@ -295,6 +295,8 @@ export const configureFabricOverrides = () => {
         standardControls.mtr.render = renderRotationControl;
         standardControls.mtr.cornerSize = 24;
         standardControls.mtr.offsetY = -40; // Position 40px above the top edge
+        // UX 2026-10-02 (owner): no connector line from the box to the grabber.
+        standardControls.mtr.withConnection = false;
     }
 
     const createControls = () => ({ ...standardControls });

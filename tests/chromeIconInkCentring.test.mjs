@@ -62,23 +62,31 @@ test('the Fit glyph cannot be squeezed by the label beside it', () => {
 test('the Fit menu is the same kind of menu as its two siblings', () => {
   const menu = /const fitMenu = \(anchorStyle\) => \([\s\S]*?\n              \);/.exec(appShell);
   assert.notEqual(menu, null, 'fitMenu not found in AppShell.jsx');
-  assert.match(menu[0], /minHeight: 'var\(--chrome-menu-row-h\)'/, 'its rows take the shared row height');
-  assert.match(menu[0], /renderFitIcon\(option\.id, RAIL_CONTROL_GLYPH\)/, 'its glyph is the token, not a literal');
-  assert.match(menu[0], /borderRadius: 'var\(--chrome-radius\)'/, 'its container takes the shared radius');
+  // CHANGED 2026-10-02 (owner, phone/desktop consistency): the Fit menu is the
+  // phone's - a label and a check on the chosen row, 28px rows, no fit glyphs
+  // on either platform. The check glyph still takes the token size.
+  assert.match(menu[0], /minHeight: '28px'/, 'its rows are 28px');
+  assert.doesNotMatch(menu[0], /renderFitIcon/, 'no fit glyph in the menu rows (the phone has none)');
+  assert.match(menu[0], /isActive && <Icon name="check" size=\{RAIL_CONTROL_GLYPH\}/, 'the chosen row carries the check, at the token size');
+  // CHANGED 2026-10-04 (polish 3): the shared POPUP corner is --radius-md, the
+  // one AnnotationDropdown's popover (its line-style sibling) already takes,
+  // with --shadow-popover; --chrome-radius (6) is the corner of a chrome button.
+  assert.match(menu[0], /borderRadius: 'var\(--radius-md\)'/, 'its container takes the shared popup radius');
+  assert.match(menu[0], /boxShadow: 'var\(--shadow-popover\)'/, 'and the shared popup shadow');
   assert.doesNotMatch(menu[0], /padding: '6px 8px'/, 'its row inset matches the other menus (4px 9px)');
 });
 
+// DELIBERATE ASSERTION CHANGE (owner 2026-10-07, Drawboard rail): the desktop
+// has no tab strip any more - the 48px rail stays and IS the tabs, open or
+// closed - so there is one desktop size to pin (RAIL_GLYPH) and the strip's
+// desktop padding is gone. The phone's hub row keeps its 22px glyphs.
 test('the panel tabs are one glyph size, open or collapsed', () => {
+  assert.match(sidebar, /<Icon\s+name=\{tab\.icon\}\s+size=\{RAIL_GLYPH\}/, 'the desktop rail tabs draw RAIL_GLYPH');
   assert.match(
     sidebar,
-    /size=\{mobileMode \? 16 : RAIL_GLYPH\}/,
-    'the expanded tab strip draws the same four tabs as the collapsed rail, so on the desktop it '
-    + 'takes the same RAIL_GLYPH; the phone keeps its own tier\'s 16',
+    /<Icon\s+name=\{tab\.icon\}\s+size=\{22\}/,
+    'the phone hub draws 22 (owner 2026-10-01: bigger Pages / Search / Bookmarks icons in the same '
+    + '34x32 tab, the row does not grow)',
   );
-  assert.match(
-    sidebar,
-    /padding: mobileMode \? '10px 2px' : '9px 2px'/,
-    'the desktop tab pads 1px less top and bottom, so the 2px the glyph gained does not make the '
-    + 'tab strip taller and push the panel\'s content down',
-  );
+  assert.doesNotMatch(sidebar, /'9px 2px'/, 'no desktop tab strip');
 });

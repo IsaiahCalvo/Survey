@@ -284,6 +284,9 @@ async function runBookmarksAndPages(page, baseUrl) {
   await page.getByRole('textbox', { name: 'Bookmark name', exact: true }).fill('Field entrance');
   await page.getByRole('spinbutton', { name: 'Bookmark page', exact: true }).fill('1');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
+  // RULED 2026-09-23 (owner: phone bookmarks match desktop) — a row's rename
+  // and delete glyphs show in Edit mode only, as on desktop, so enter it first.
+  await page.getByRole('button', { name: 'Edit bookmarks', exact: true }).click();
   await page.getByRole('button', { name: 'Edit bookmark Field entrance', exact: true }).click();
   await page.getByRole('textbox', { name: 'Bookmark name', exact: true }).fill('Main entrance');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
@@ -380,12 +383,16 @@ async function runBookmarksAndPages(page, baseUrl) {
   assert(snapshot.sidebar.bookmarks.every((bookmark) => JSON.stringify(bookmark.pageIds) === '[1]'));
 
   await page.getByTitle('Bookmarks', { exact: true }).click();
+  // RULED 2026-09-23 (owner: phone bookmarks match desktop) — delete lives in
+  // Edit mode; the panel remounted with the tab switch, so enter it again.
+  await page.getByRole('button', { name: 'Edit bookmarks', exact: true }).click();
   await page.getByRole('button', { name: 'Delete bookmark Main entrance', exact: true }).click();
   await page.getByRole('button', { name: 'Delete bookmark Roof', exact: true }).click();
   await page.getByText('No bookmarks yet', { exact: true }).waitFor();
   snapshot = await persistedSnapshot(page, storageKeys);
   assert.deepEqual(snapshot.sidebar.bookmarks, []);
-  await page.getByRole('button', { name: 'Close document hub', exact: true }).click();
+  // Owner 2026-09-30: phone sheets have no close X; a tap outside closes them.
+  await page.getByRole('button', { name: 'Close document panel', exact: true }).click({ position: { x: 195, y: 150 } });
   await reloadViewer(page, baseUrl);
   const reloaded = await persistedSnapshot(page, storageKeys);
   assert.deepEqual(reloaded.sidebar.bookmarks, []);

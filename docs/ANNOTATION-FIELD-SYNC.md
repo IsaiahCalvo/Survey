@@ -1,0 +1,1081 @@
+Written: 2026-09-24 10:15 (revised 2026-09-24 11:30 after reviews A and B; "Opening fast" added 2026-09-24 19:45; "Small snapshots" and "Fewer checkpoints" added 2026-09-25 by w33)
+
+# Per-field sync for annotation marks (store version 3)
+
+Replaces the 2026-09-23 dual-format design (base object + field registers +
+repair passes; kept for reference at git tag
+`reference/field-sync-dual-format-attempt`). Owner ruling 2026-09-24: there
+are no users besides the owner, so there is no compatibility with older builds
+and only one storage format.
+
+## Problem
+
+The durable store (`src/services/annotationDocStore.js`, Y.Doc map
+`annotations`) held each mark as ONE plain value `{ p, o }`. Yjs resolves
+concurrent `set`s on a key last-writer-wins on the whole value, so when A
+changed a mark's colour while B changed its size, one change was lost. The
+same loss hit field-level Undo when the other person's edit was still in
+flight, and drag/slider frames written as whole marks overwrote a
+collaborator's concurrent change.
+
+## Layout
+
+```
+marks[storageKey] = Y.Map {
+  p: <page number>,
+  o: Y.Map { ...the mark's fields... }
+}
+```
+
+Marks live in a NEW root map, `marks`. The map's name is the store version
+(v3); nothing else is stamped. The old whole-object `annotations` map is left
+untouched in every document for the reference build, and this build never
+writes it. It reads it once per document: marks drawn on older builds are
+carried into `marks` by a one-time carry-over (w28, see "Marks drawn on older
+builds" below). Everything else in the
+document is unchanged and shared: eraser lanes, deletion tombstones, survey
+markers, meta (spaces, callout list), the erase outbox.
+
+Inside `o` (`src/services/annotationMarkStore.js`):
+
+* every plain-object value is a nested Y.Map, all the way down (`data`,
+  `meta`, a callout's `data.legacyCallout` and its `style`, ...). Yjs resolves
+  each key on its own, so two people changing different keys both keep them;
+* a field whose own name starts with `#` or `\` is stored with a `\` in
+  front, so it can never be mistaken for a linked-group key;
+* these stay ONE stored value, exactly as field-level Undo treats them
+  (`annotationLocalHistory.js`):
+  * arrays (`points`, `path`, `quads`, a callout's drawn `objects`);
+  * `ANNOTATION_ATOMIC_FIELD_PATHS` (`data.textRange`, `data.textRangeModel`);
+  * a linked field group (`getAnnotationLinkedFieldGroup`, shared with Undo):
+    a point shape's geometry (`points`/`path` + position/size/transform) or a
+    text markup's range + drawn box. It is stored under one key
+    (`#pointGeometry` / `#textMarkup`) holding `{ 'left': .., 'data.quads': .. }`,
+    so two concurrent corner drags can never leave one person's points with
+    the other's box.
+
+## Writes
+
+`writeAnnotationMark(doc, key, page, next, { base, echoVersions })` writes
+only the keys that differ between `base` and `next` (the Undo diff:
+`diffAnnotationFields`), and only when the stored value differs, inside the
+caller's transaction (a standalone call is its own single transaction). No
+base = make the stored mark equal `next`. Creating a
+mark sets the whole nested map. Deleting deletes the whole entry, so a delete
+wins over a concurrent field edit (and a field edit never brings a deleted
+mark back).
+
+Every writer goes through it: the viewer capture (`syncByPageToDoc`), the
+eraser-lane stable-base edit (`applyByPage`), the erase commit and counter
+renumber Undo (`annotationEraseTransaction.js`), and the callout meta
+migration.
+
+## Which fields the viewer changed (capture)
+
+The viewer pushes its whole render state after every change. Writing every
+field that differs from the document would put back a collaborator's change
+the screen has not painted yet, so the capture compares each mark with what
+the viewer had, never with the document (`createViewerCaptureState`, kept per
+open handle):
+
+* The viewer's own copy from the previous capture, or the newest copy the
+  store handed it, is untouched: nothing is written.
+* Any other object is intent (an edit, an Undo, a revert). Its base is the
+  copy it was made from: normally the viewer's previous copy. An edit written
+  as `{ ...older, left }` keeps the older copy's nested objects (`data`,
+  `meta`) by reference, so when every shared nested object belongs to one
+  older copy of that mark, the edit was made from it (a drag rebuilding each
+  frame from its drag-start object) and only what differs from THAT copy is
+  written. Otherwise a frame would put back a collaborator's change painted
+  mid-drag.
+* Echo: a changed field whose value equals a copy handed to the viewer since
+  its previous capture is the screen repainting a collaborator's value inside
+  an edited object (a drag frame built from the latest state). It is not
+  written back, so it can never overwrite a newer value. The window is one
+  capture: the hook reads the document inside its React state update, so the
+  capture right after that render sees every copy it painted. Older equal
+  values are the user's own choice and are written.
+* A mark is deleted only if the viewer had it at the previous capture and no
+  longer has it. A mark the viewer never painted is never deleted.
+* A mark the viewer knew that is gone from the document was deleted by
+  someone else: an edit to it is not written (delete wins) and the screen
+  drops it.
+* After writing, marks whose stored value differs from the viewer's copy (the
+  viewer was behind on another field) come back as `reconcile` swaps.
+  `useAnnotationDoc` applies them only where the screen still holds the exact
+  object the capture saw (`annotationReconcile.js`), so a newer local edit is
+  never overwritten.
+
+Remote updates repaint the screen from a fresh read taken when React applies
+the update (not when the notification fired), so a local edit captured in
+between is never painted over by an older copy.
+
+A gesture that saves a whole page copied earlier cannot be told apart from a
+deliberate revert by value, so the gestures save only their own marks.
+`mergeDraggedMarksOntoPage` (`src/utils/dragCommitMerge.js`) writes each
+dragged mark's own change (drag start → last frame) onto the page as it is at
+release. It is used by polygon/polyline corner drags, counter Shift-orbit, and
+group rotate/resize (`useSVGInteraction.js`).
+
+Editors work the same way. The text box and callout text editors build their
+result from the object captured when editing STARTED; `mergeEditOntoCurrent`
+writes only what the edit changed (edit start → result, ignoring float tails
+from geometry the callout editor re-derives from page pixels) onto the mark as
+it is at commit. A move or restyle a collaborator made while the user typed
+survives; a mark deleted meanwhile is not brought back
+(`TextEditOverlay.jsx`, the callout commit in `PDFViewer.jsx`).
+
+## Reads
+
+`readAnnotationEntry(doc, key)` returns a plain `{ p, o }` with identity
+normalized (map key promoted into `data.id`). It is cached per mark and
+rebuilt only when that mark changed: a `beforeObserverCalls` listener walks
+each transaction's changed types up to their root key. That runs before any
+observer, so nothing can read a stale mark; reads inside an open transaction
+bypass the cache. `docToByPage` builds the page lists from the cache, then
+applies eraser lanes and counter numbering as before. When the viewer's own
+object equals what it just wrote, the cache adopts it (no re-render, no
+key-order churn). `readRawAnnotationEntry` (uncached, not normalized) is for
+compare-and-swap checks (the erase commit).
+
+## The PDF's own embedded annotations
+
+The owner accepted losing their own old markup, not the markup that ships
+inside the PDF file. Older builds imported a PDF's embedded annotations into
+the old `annotations` map and stamped `documents.embedded_import_completed_at`,
+so that column can no longer gate the import. The gate is now a marker in the
+document's Y.Doc meta, `embeddedImportedIntoMarks`, written only by this store
+version (`src/utils/embeddedImportGate.js`, the import effect in
+`PDFViewer.jsx`):
+
+* The first EDITOR open of a document on this build imports the PDF's
+  embedded annotations into `marks` once; viewers (and a role not resolved
+  yet, unless the user owns the document) never write — the PDF's own layer
+  still shows for them.
+* Ids are the PDF annotation's own id (else page + position in the file), so
+  two editors opening at the same moment both import the same keys with the
+  same content and Yjs keeps one of each (verified live: two identical
+  imports, 9 marks, no duplicates).
+* Deletion tombstones (shared by every build) are honoured: an embedded
+  annotation deleted in any build is not brought back.
+* The marker is written only after every imported mark is in the store (a tab
+  closed mid-import retries next open), and once written, deleting an
+  imported mark is final.
+* The server column is still stamped for the reference build.
+* w27 (2026-09-24): a page pdf.js cannot read at all is skipped by the
+  importer while the rest imports. If the file lists markup the app imports
+  on that page (or its raw index could not be built, e.g. no raw bytes), the
+  marker is held back and the attempt recorded in meta
+  `embeddedImportIncomplete` `{ attempts, pages }`; the next open retries
+  (present marks are skipped by id, deleted ones are tombstoned). After 3
+  attempts (one per time a screen opens the document) the marker is written
+  with `incompletePages`: that page's markup is then not imported (recorded
+  and logged only, the user is not told), so a page that always fails cannot
+  make every open re-parse the file. A single annotation the converter
+  cannot read is not retried; it is only logged.
+* "In the store" means this screen's document. The marker is a later write
+  by the same screen as the marks it imported, and Yjs applies one writer's
+  changes in order, so a peer holds the marker back until those marks have
+  arrived (see the split-row section below).
+
+What an open of a document edited by older builds shows: the PDF's own
+markup (re-imported) plus marks made on this build, plus (w28) the marks
+drawn with an older build, carried over once (next section). The
+home list thumbnail is a per-browser cache; one captured by an older build
+still shows those old marks until the document is opened on this build
+(it is refreshed ~2.5 s after the open). Seen on "Package 2 - Rev 4 -- IC.pdf"
+(w27): its page-1 red marks (a rectangle, pen strokes, counters, text) were
+drawn with an older build; the PDF file itself has markup only on pages 6-11.
+
+## Marks drawn on older builds (w28, 2026-09-24)
+
+The owner saw the cost of dropping them ("Package 2 - Rev 4 -- IC.pdf": 12
+marks on page 1, 3 pen strokes on page 11 no longer showed) and wants them
+back. `src/services/legacyMarksCarryOver.js` copies them into `marks` once
+per document; `useAnnotationDoc` runs it on a writable open.
+
+* Marks the user drew: carried under their OLD key, so a mark keeps its id,
+  its eraser lanes (shared by every build, keyed by storage key) and its
+  counter numbering. Written through `writeAnnotationMark`, the same writer
+  as any new mark; the read side normalizes identity exactly as the old read
+  did, so every type reads back with the same fields
+  (tests/legacyMarksCarryOver.test.mjs; Package 2's 15 and all 3,071 old
+  entries round-trip equal). A key already in `marks` is never written.
+* The PDF file's own markup (`isPdfImported`, `pdfAnnotationId`,
+  `pdfAnnotationType`, or the same under `data`; paste clones drop all of
+  them) is left to the embedded import above, which re-imports the file's
+  markup and honours tombstones. Older builds keyed some of those
+  differently (Package 2: 886 of 3,056 under the bare PDF id, the new import
+  uses `pdf-appearance:<id>:layer:0`), so carrying them would draw them twice.
+* Except a PDF mark the user EDITED on the old build
+  (`pdfImportedEditState: 'edited'`; Package 2 has 3: one resized, two partly
+  erased). Once the embedded import has run, the old edited fields replace
+  the re-imported copy's fields under the copy's key and identity, but only
+  while that copy is untouched since the import (exactly one copy, not
+  stamped edited, no eraser lane). A copy the user deleted (tombstone) stays
+  deleted; with no copy and no tombstone the old edited mark is carried
+  under its old key. Unedited PDF marks the new importer did not recreate
+  (a page it could not read, `incompletePages`, or one annotation its
+  converter dropped) are NOT carried: which layer shows such a page's
+  markup is the importer's call (w27), and carrying could draw it twice.
+  Package 2 has none.
+* The carry-over itself deletes nothing. Once it is finished (its marker is
+  there, or it has nothing to carry) the old map's entries are deleted by the
+  one-time store compaction (w33, "Small snapshots" below).
+* Each batch (~192 KB of mark JSON, one transaction) first writes a record of
+  the old keys it handles (`legacyMarksCarriedBatch:<client>:<clock>` in
+  annoMeta), then the marks. The record has the lower clocks, so any screen
+  that holds a carried mark also holds its record, and a recorded key is
+  never handled again: a carried mark deleted later stays deleted even if
+  the marker row has not landed yet (review A). The WAL split cuts any
+  update over 256 KB into chained parts as for any edit.
+* The marker `legacyMarksCarriedIntoMarks` (annoMeta) is written in its own
+  transaction after everything is handled; with it present nothing is
+  scanned again. It is held back while edited PDF marks wait for the
+  embedded import. A document with no old user-drawn or edited PDF marks
+  gets no writes and no marker.
+* When: after realtime has caught up following the subscribe, plus a random
+  0-1.5 s (also after the import pass), then re-checked (another screen's carry-over that already landed
+  is seen first). If the embedded import has not run yet, it waits for THIS
+  screen's import pass (its marker or "incomplete" record, written locally):
+  the import saves whole pages built from what the screen held a moment
+  earlier and would paint over a carry-over published meanwhile. A marker
+  from another screen is not a trigger (that screen carries after its own
+  import). After 60 s without a local pass it carries anyway. The marks
+  appear a moment after the document opens.
+* Viewers and an unresolved role never write; the next writable open (or
+  the role resolving to writable) does it. Until then a viewer does not see
+  the old marks.
+* Paint order: a page paints in store order, which after a reload follows
+  the writer, not the time (Yjs rebuilds a map writer by writer). The
+  reference build behaved the same way: loading Package 2 it painted the
+  page-11 strokes underneath the PDF's markup (positions 0-2 of 260).
+
+Limits: two screens carrying the same document at the same moment each
+create the mark's map; Yjs keeps one, so an edit or delete made on the other
+screen's copy in the short window before the two see each other is lost (a
+deleted mark comes back once). The timing rules above make this need two
+opens within about a second. Same class as two editors running the embedded
+import at once. A true single writer would need a server-side claim. An
+edited PDF mark's replace writes every field; if another screen moves that
+re-imported copy in the same short window, the two merge key by key and the
+mark can land in the wrong place until someone moves it again. A PDF mark the
+new importer split into several layers is not replaced (ambiguous); its old
+edit is dropped (Package 2 has none). With a permission rollback in play the
+sync layer re-encodes changes; it copies meta first so the carry record
+still comes before the marks. Marks
+an older build writes after the carry-over are not carried (older builds are
+unsupported).
+
+## Older builds
+
+Unsupported. They read and write only the old `annotations` map, so they
+neither see nor touch new marks, and this build neither sees nor touches
+theirs. Every device must update.
+
+## No save is huge (w26, 2026-09-24)
+
+Opening "Package 2 - Rev 4 -- IC.pdf" (3,055 embedded ink marks) ran the
+embedded import as one transaction per page, so one WAL row per page: 0.8 to
+8.8 MB (17.9 MB in all). The old whole-object store made the same rows at
+0.8 to 7.9 MB (16.3 MB): the per-field layout adds ~10%, the bulk is the
+imported ink itself (source appearance geometry, path, outline polygons).
+Realtime could not carry those rows, a 1,000-row tail read that included
+them hit the statement timeout (the document could not open), and the
+database went unhealthy.
+
+* `enqueueAppend` cuts any update over 256 KB (`WAL_UPDATE_MAX_BYTES`) into
+  parts (`src/services/annotationUpdateSplit.js`), each its own row and
+  client_seq, queued back to back. Parts are runs of whole structs, cut at
+  the start of a new root entry where possible (a peer applying them one by
+  one sees whole marks), with the delete set on the last part. Applying the
+  parts in order gives exactly the whole update's state; Yjs holds a part
+  back until the earlier parts of the same client arrived, so a later row
+  (the embedded-import marker) is never visible without every part before
+  it. The Package 2 import is now 74 rows, the largest 256 KB. A part is
+  re-checked after an unfinished mark is carried into it; only a single
+  value bigger than the budget can make a part larger (one value cannot be
+  cut). Each part depends on the part before it (and a deletion on the
+  record holding what it deletes), so no part reaches the log ahead of an
+  earlier part that failed. A denial on some parts after earlier parts were
+  accepted asks for a full history reset.
+* Tail, catch-up and snapshot-refresh reads page 16 rows and, when a page
+  times out, retry after a short wait with a quarter of the rows down to one
+  (`readWalRowsAfter`), aborting the abandoned request. The smallest working
+  size is remembered per document (and in localStorage), so a reopen does
+  not repeat the failing big read. Other failures are not retried smaller.
+* A Realtime row that arrives without its data (over the message limit) or
+  fails to apply turns sync red and is read back from THAT row on, with
+  backoff, unless a reconnect catch-up is already doing it; sync turns green
+  only once it is in.
+* The 40-row checkpoint does not stop the append queue while more rows are
+  queued behind it (w33: see "Fewer checkpoints" for when checkpoints run).
+  Checkpoint uploads get ~3 s more per MB (capped at 60 s). The outbox
+  encodes its accepted-state checkpoint only when it actually compacts.
+* A failed open no longer leaves the page covered: hydration becomes
+  `unavailable` (nothing imports or writes), the PDF shows read-only (the
+  same layer a viewer gets, so nothing drawn can be lost), and the open is
+  retried with backoff: 2 s doubling to 60 s, 8 tries (`useAnnotationDoc`).
+
+Still large: the checkpoint of such a document is one row (~4.3 MB gzipped
+for Package 2; the old format was ~3.75 MB). Splitting checkpoints needs a
+schema change. Recovery for a document that already has oversized rows:
+`scripts/w26-reset-document-annotation-store.mjs` (dry run by default).
+
+## Opening fast (w29, 2026-09-24)
+
+"Package 2 - Rev 4 -- IC.pdf" (3,071 marks: a ~21 MB store, a ~6 MB
+snapshot row on the wire) showed its marks 6-10 s after the open started; the
+first page sat under the grey loading cover all that time. Now:
+
+* The marks paint early (`openAnnotationDoc({ onPreview })`, display only):
+  from this device's saved copy (the outbox's clean checkpoint) before any
+  network, and from the cloud snapshot as soon as it is applied to the live
+  doc. `useAnnotationDoc` sets hydration `{ ready: false, source: 'preview' }`;
+  the first page then shows the PDF and the marks with a see-through blocker
+  instead of the grey cover (`annotationHydrationGate.js`,
+  `isFirstVisibleAnnotationPagePreviewing`), and the document is read-only
+  (the body layer 'unavailable' uses) until hydration is ready, because
+  nothing drawn then could be saved. Nothing imports or writes until the
+  real hydrate, which replaces the preview. An empty store never seeds
+  itself from a preview; what the viewer held before the first preview is
+  kept across failed-open retries of the same document.
+* The saved copy records which snapshot row it contains
+  (`snapshotIdentity` = at_seq, writer_id, writer_epoch; the RPC's CAS makes
+  writer_epoch strictly increase, so the triple names one row). An open that
+  has it reads only the row's identity; if unchanged, the ~6 MB body is not
+  downloaded or applied again (the tail after at_seq is still read). A
+  snapshot this handle writes becomes the saved copy (stored as-is when the
+  outbox still holds only what the bytes contain, merged otherwise), so the
+  owner's own reopen also skips it. Any mismatch or failed identity read
+  downloads the row as before.
+* Compaction fast path: the outbox stores the accepted state as-is instead of
+  merging two ~20 MB updates when its checkpoint is the one the caller loaded
+  or last wrote (checkpoint `token`) and every stored record is one the
+  caller already applied.
+* Work removed from every open: the second publish pass when the live doc
+  already equals the accepted state (same Yjs snapshot), the empty legacy
+  IndexedDB merge (and opening that database when the browser lists it as
+  absent), the probe copy when the local copy holds no new structs and only
+  deletions staged already has, a second full encode for the staged seed, the
+  staged copy of the saved checkpoint (staged is seeded from acceptedDoc), and
+  the frozen copy of the IndexedDB doc (it is used directly until
+  reconciliation; a rotation first freezes a real copy).
+* The writer-sequence and snapshot reads start with the open, in parallel with
+  IndexedDB, and the open yields between its heavy steps so the PDF page and
+  input get turns.
+
+## Live sync latency (w30, 2026-09-24)
+
+The owner drew a pen stroke in one tab on "Package 2 - Rev 4 -- IC.pdf" and
+it took ~8-10 s to show in the other. Measured hop by hop
+(`agent-cli/sync-latency-probe.mjs`, opt-in trace `src/services/syncTrace.js`):
+the sender encoded the whole staged doc (17.7 MB) on every edit (~165 ms)
+before queueing; a 4.5 MB gzipped checkpoint was uploaded 1.2 s after every
+stroke (~5 s each) and held the document lock, so the next stroke's WAL insert
+waited (seen: 1.8 s); every 40th row the append queue itself waited for that
+upload; the row then took 0.2-0.6 s through Postgres Changes; and each change
+ran two full JSON.stringify passes over every mark on both screens (fixed by
+w29). Result before: 0.4 s on a small document, 1-2.7 s on Package 2, far more
+while checkpoints piled up.
+
+What changed:
+
+* No per-edit checkpoint. A record carries no checkpoint; the repair
+  checkpoint a failed append (or a gap) needs is rebuilt on demand:
+  `localPrefixThrough` merges the pending, non-refused local records up to that
+  record (plus its split siblings) and `encodeRepairCheckpoint` adds the
+  accepted state, which only grows. Outbox replay does the same (it used to
+  checkpoint the whole staged doc, which already held later edits).
+* The 40-row compaction checkpoint runs off the append queue
+  (`state.compactionChain`, encoding the accepted state only); `drain()` still
+  waits for it. With a durability gap it stays inline as before.
+* (Replaced by w33, "Fewer checkpoints": there is no per-edit checkpoint
+  debounce any more.) The WAL row is what makes an edit durable; the
+  checkpoint only shortens reopen.
+* A realtime row that changes nothing on this screen (its own echo) no longer
+  re-renders the page list.
+* Live previews (`src/services/annotationLiveBus.js`). Each small local edit
+  that only adds (48 KB or less, no deletions) is broadcast as it is made, on
+  a private Realtime Broadcast channel `anno-live:<document id>`, under its WAL
+  row's key (writer id, client_seq). A receiver accepts one only if it is
+  self-contained: every struct it points at is its own, it touches only the
+  marks map, and it adds marks this screen does not hold. That is a brand-new
+  mark; an edit of an existing mark waits for its row. It is decoded in a
+  throwaway doc (seeded with a placeholder for the sender's earlier clocks) and
+  shown BESIDE the document: `getLivePreviewByPage()`, merged by
+  `useAnnotationDoc`. It never enters the Y.Doc, so nothing can build on it,
+  persist it, checkpoint it or send it back; `applyByPage` and
+  `applyEraserMutation` drop preview marks (and expired ones, in case an Undo
+  brings one back) that the doc does not hold. Every preview object carries a
+  `__surveyLivePreview` flag, so ANY copy of one (a JSON clone in the display
+  cache or a Save backup that seeds a reopened empty store, an Undo snapshot, a
+  re-keyed duplicate) is recognised and dropped; if the doc holds that mark by
+  then, the copy stands for the mark as last delivered (nothing written,
+  nothing deleted) and the screen is swapped back to it (an edit made on a
+  preview is never shown as saved). Eraser envelopes are cleaned the same way;
+  an erase intent that involves a preview in any way (target, history or side
+  effect) is cancelled as a conflict, as it was before previews existed. A
+  paste of a preview drops the flag (it is the user's own new mark). A key
+  another preview already announced is refused. A preview leaves when its row
+  is applied (the real mark then comes from the doc) or after 20 s. Receivers
+  cap previews per writer (50 a second) and in total (200).
+* The channel is private: only people who can open the document may listen,
+  and only its editors may send, while it is unlocked
+  (`supabase/migrations/20260924230000_live_preview_channel_policies.sql`,
+  NOT applied yet). Without those policies the join is refused; the app backs
+  off (one join a minute per document) and every edit uses the log path. A dev build can measure
+  on a public topic with localStorage `survey:livePreviewPublicChannel` = `1`.
+
+Measured after (two headless tabs, this machine, prod database; paint = the
+frame that shows the stroke on the other screen): small document 40-130 ms,
+Package 2 70-110 ms with previews (same profile and separate profiles alike);
+0.3-0.6 s on the log path alone (no channel policies).
+
+Limits (w30; the first one is lifted by w32, next section): an edit of an existing mark (move, recolour, erase, delete) still
+arrives with its WAL row (~0.3-0.7 s). A stroke edited on another screen in
+the ~0.3 s before its row lands is shown as drawn (the edit is not written: it
+was made on a preview). A preview's counter number is computed on its own
+until its row lands. A refused stroke shows elsewhere for up to 20 s, and an
+export, print or survey-data upload made in that window includes it. Realtime
+checks the channel policies when a screen joins, so a lock or role change
+takes effect on previews at the next join (the WAL still refuses at once, and
+a refused sender stops broadcasting). The receive cap is per announced writer
+id, which a document editor could vary.
+
+Reviews: two adversarial passes (plus a check of the fixes). The first found
+that previews applied INTO the Y.Doc let local edits depend on structs the log
+might never accept, and let refused content be laundered back through rebase
+mode or saving repairs; that design was replaced by the display-only overlay
+above. The second found a checkpoint clearing a refusal's red status (fixed:
+a compaction that finishes after a refusal cannot mark the handle healthy),
+preview copies written through cached lists, duplicates or eraser lanes
+(fixed: the flag and envelope cleaning), and a replayed recovery record not
+repainting (fixed: it repaints when accepted). A third pass on those fixes
+found an erase's history effect still carrying a preview into the erase
+outbox (fixed: such a gesture is cancelled), the flag riding into pastes and
+into edits finished after the row landed (fixed: paste strips it; the screen
+is swapped back), and any checkpoint (not only compaction) turning a refusal
+green (fixed: every snapshot result carries the refusal generation it
+started under). Still open (low): erasing a counter while a same-series
+preview counter is on screen cancels as a conflict.
+
+## Small snapshots (w33, 2026-09-25)
+
+Every fresh open (new device, cleared cache) downloads the checkpoint row, and
+downloads cost Supabase egress. "Package 2 - Rev 4 -- IC.pdf" stored 21.6 MB
+(5.5 MB gzipped, ~11 MB as the hex PostgREST sends). ~3.5 MB of it was the old
+`annotations` map, already carried into `marks` (w28); most of the rest was
+imported ink stored 4-5 ways per mark: the live `path`, `polygons` derived from
+it, and the PDF's source geometry (`data.pdfInkSourceGeometry`: InkList, the
+appearance path, and each paint operation with its path again).
+
+* One geometry per imported mark (`src/services/annotationMarkCodec.js`,
+  applied by `writeAnnotationMark` and every decode in
+  `annotationMarkStore.js`):
+  * `data.pdfInkSourceGeometry` is not stored. It is provenance only: the
+    importer classifies its own output from it before anything is stored, and
+    no renderer, editor, eraser or exporter reads it from a stored mark; the
+    PDF file still carries it. The importer itself is unchanged (its tests pin
+    its output); the embedded import strips the field before the screen sees
+    the marks (`withoutUnstoredFieldsByPage`), so the screen's copy equals
+    what the store reads back (an erase compares the two).
+  * `polygons` that `filledOutlineCommandsToPolygonSet(path, rule)` gives back
+    EXACTLY, with the mark's own `fillRule` ('evenodd', else 'nonzero'), are
+    stored as the marker `~polygons-from-path:v1` (checked number for number
+    with Object.is when written) and rebuilt on read; anything else (a user
+    pen stroke, float differences, polygons made with the other rule) stays an
+    explicit array. Erased outlines usually do derive exactly (evenodd), so
+    they get the marker too. Package 2: 2,559 of 2,922 polygon sets derive
+    exactly; rebuilding all of them takes ~90 ms (Node). A marker a build does
+    not know reads as "no polygons" (the renderer draws from `path`). If that
+    function ever changes its output, bump the marker version.
+  * The marker names no rule: `path` (in `#pointGeometry`), `fillRule` and
+    `polygons` are separate keys, so after concurrent edits it always rebuilds
+    from the path and rule that won (review A: a compaction racing an erase
+    that made a hole keeps the hole).
+  * Writes compare compact forms, so an untouched mark writes nothing and a
+    field the store does not keep never reads as a change. A base or echo copy
+    takes the marker only while the store already holds one; a mark still
+    stored with an explicit array (not compacted yet) gets its new polygons
+    written when its path changes (review A).
+  * Hardening: the erase compare-and-swap and the "imported mark edited"
+    check ignore the dropped field, so a screen copy that still carries it is
+    the same mark.
+* One-time compaction of stores written before this
+  (`src/services/annotationStoreCompaction.js`, `useAnnotationDoc`): on a
+  writable, unlocked open, ~6-9 s after realtime is ready, once the embedded
+  import has run and the w28 carry-over is finished, ONE transaction deletes
+  the old map's entries and, per mark, deletes the dropped field and turns
+  derivable polygons into the marker (no other key is touched). It then asks
+  for one checkpoint (its row owes one), so the next fresh open gets the small
+  one. Package 2: one 128 KB WAL row.
+* Why plain deletes are enough (no fresh-doc rewrite, no change to the WAL,
+  the checkpoint RPC, at_seq or the checkpoint rules): every Y.Doc here
+  garbage-collects deleted content, so the next checkpoint of the live doc no
+  longer carries it; only a small tombstone per deleted key stays. Measured on
+  Package 2: in-place deletes 5.85 MB raw / 2.03 MB gzipped, a fresh-doc
+  rewrite of the same content 5.60 / 1.97.
+* Concurrent screens: deletes commute, so two screens compacting at once
+  converge; a concurrent edit of any other field survives; a concurrent write
+  of `polygons` competes with the marker last-writer-wins, as two polygon
+  writes always did (the marker then reads as the polygons of whichever path
+  and fill rule won).
+* After a permission refusal (rebase mode) the old-map deletes stay local
+  (only the durable maps are re-staged): no loss, just no shrink until a later
+  open. Old-map entries an out-of-date build writes after the carry-over are
+  deleted too (older builds are unsupported).
+
+Package 2 (the owner's store, Node, same bytes): snapshot 21.6 MB -> 6.3 MB
+raw, 5.50 -> 2.17 MB gzipped (11.0 -> 4.3 MB of hex on the wire); an imported
+ink mark 7.3 -> 2.7 KB of JSON, 5.8 -> 1.9 KB stored, 1.4 -> 0.65 KB gzipped.
+Applying the snapshot: 330-950 ms -> 210-320 ms. Every one of its 3,078 marks
+reads back identical apart from the dropped field, with the same SVG path and
+attributes (`tests/annotationStoreCompaction.test.mjs` imports the real PDF).
+
+Limits: the remaining bulk is the live `path` itself (~2.7 MB raw); storing it
+more compactly would either round its numbers (a visible-parity risk) or
+re-derive it from the PDF's authored coordinates (float-exactness needs the
+importer's exact arithmetic). Eraser lanes still carry a copy of their base
+mark as it was (Package 2: 280 KB raw).
+
+## Fewer checkpoints (w33, 2026-09-25)
+
+w32 measured main: 3 screens drawing 45 strokes made 45 WAL rows but 85
+checkpoint uploads (every screen ~1.2 s after each of its own edits; each
+refused upload also re-downloaded the whole stored checkpoint). w34: 5 paced
+strokes -> 5 checkpoints. A checkpoint only shortens reopen (the WAL row makes
+an edit durable and live), so now (`annotationDocSync.js`,
+`CHECKPOINT_EVERY_ROWS` and neighbours):
+
+* No checkpoint per edit.
+* The screen whose OWN row gets a document seq that is a multiple of 40
+  checkpoints; seqs are document-local and gapless (allocated under the
+  document lock), so exactly one screen owns each boundary with no
+  coordination. Or a screen whose own rows since its last checkpoint reach
+  512 KB (an import). Either waits until that screen's appends have been quiet
+  for 2 s (at most ~30 s), so an import written page by page checkpoints once,
+  at its end.
+* Idle: after 60 s without an own edit, only the author of the newest row, and
+  only when it wrote rows since its last checkpoint and the tail a reopen
+  would read is at least 8 rows.
+* Close and tab hide: the same rule without the newest-author condition. A
+  screen that only watched, or wrote a few rows, writes nothing: a reopen reads
+  that short tail after the existing checkpoint (and w29's saved copy still
+  skips the unchanged checkpoint row).
+* Unchanged: the repair checkpoint after a failed append / a gap found on
+  reconnect, the explicit save (Cmd+S), and the one after the store
+  compaction.
+* Before a routine upload, one small identity read (review B): if another
+  screen checkpointed since the row this screen built on and fewer than
+  2 x 40 rows followed it, this screen skips (that checkpoint covers it);
+  past that it takes the stored checkpoint in (one download, it may hold
+  repaired edits the WAL lacks) and writes on top of it. Rows this screen saw
+  by Realtime but has not read in order are read first, so at_seq is the WAL
+  head (otherwise the upload is refused).
+* A refused upload whose stored checkpoint is still the one this screen built
+  on (only the WAL head moved) reads the new rows and retries; it no longer
+  downloads the whole stored checkpoint. A routine upload refused because
+  another screen just checkpointed gives up. A changed stored checkpoint still
+  takes the full refresh on the repair and save paths.
+* at_seq never claims a row the bytes lack: bytes encoded before the snapshot
+  chain reached them (the chain serializes uploads) are merged with the
+  accepted state in the same tick as at_seq whenever rows were covered in
+  between (review B found an idle checkpoint queued behind a slow upload
+  losing a stroke on reopen); retries do the same.
+* Another screen's recent checkpoint never stands in for one this screen
+  owes after writing 512 KB of its own rows (an import) or after the store
+  compaction: those take the stored checkpoint in (if it moved) and write.
+  One routine checkpoint runs at a time per screen (drawing during its
+  identity read cannot start a second upload).
+* A failed routine upload stays owed (next own append, idle or close writes
+  it). A live re-send row that owns a boundary counts too.
+* Only a store compacted by the first w33 build (marker `...:v1:<rule>`)
+  would read without polygons; the only such store was a throwaway copy on
+  the dev server, since deleted.
+
+Pinned by `tests/annotationCheckpointPolicy.test.mjs` against a stand-in with
+the real RPC rules: 5 paced strokes -> 0 checkpoints (8 -> exactly one idle
+one); a receiver -> 0, close included; 3 screens x 45 strokes -> 1-3
+checkpoints, only the writer of row 40, no re-download; 3 screens x 125
+strokes -> at most one download, tail under 80 rows, a failed one retried on
+close; an import page by page -> 1; a checkpoint queued behind a slow one
+keeps every stroke. In the real app (dev server, tiny throwaway PDF): 5 paced
+strokes -> 5 WAL rows, 0 checkpoints on the drawing and the watching tab,
+closing both -> still 0.
+
+Limits: with several editors, the tail a reopen reads can reach ~80 rows
+(before, a checkpoint followed nearly every edit). A tab killed before its
+owed checkpoint leaves it to the next boundary.
+
+## Live edits and live ink (w32, 2026-09-25)
+
+w30 made a NEW mark show elsewhere in ~50-150 ms. Every other change (move,
+resize, recolour, partial or whole erase, delete) still waited for its WAL
+row (~0.3-0.7 s), and a pen stroke appeared on the other screen only after
+the pen lifted. Now, on the same private channel `anno-live:<doc>`:
+
+* **Edits (v2 message, `src/services/annotationLiveOverlay.js`).** Any
+  small local edit that changes how a mark looks is broadcast, keyed by the
+  edit's WAL row (writer id + client_seq) like a v1 preview:
+  `{ v: 2, w, s, e: [...] }`, one entry per mark it touched: `{ k, p, o }`
+  = the whole mark; `{ k, p, s, u }` = only the top-level fields that
+  changed (`s`) or went away (`u`), sent ONLY when this screen's
+  immediately previous message (client_seq - 1) carried that mark, and
+  applied by receivers onto that previous message's object (never onto
+  their own copy); a whole copy again at least every 8th message or every
+  500 ms per mark, so one lost message never ends live display of it for long;
+  `{ k, d: 1 }` = gone. An entry with nothing new is not sent. The mark is what `materializeAnnotationKeys` builds (stored fields +
+  eraser lanes, the same code docToByPage uses, now shared as
+  `applyEraserLanesToObject`). A pure addition of whole new marks still goes
+  as v1 (Yjs bytes); a lane-only change (partial erase) no longer sends a v1
+  message every receiver dropped. Over 32 KB of JSON or 64 marks: the row
+  only.
+* **Receiver.** Validated (key = the mark's own id; a patch cannot change
+  identity; incoming live flags stripped; over 64 KB refused), rate-capped
+  with v1 (50/s per writer, 200 in flight), ignored once its row (or a later
+  row of that writer) is in. A patch whose previous message is not here is
+  not shown (its row brings the change). Shown
+  BESIDE the document: `handle.withLiveOverlays` (used by `useAnnotationDoc`)
+  replaces the mark in place (z-order kept) or hides it; an edit of a mark
+  this screen does not hold is not shown (no resurrection). Newest message
+  per mark wins. An overlay leaves when its row is applied (kept while Yjs
+  holds that row back), its marks leave when a later row of the same writer
+  changes them, after 12 s, or when the channel closes. Screen updates are
+  batched to one per frame.
+* **Never written.** Every overlay object carries `__surveyLiveEdit` = a
+  token naming the message and mark. The capture (`applyByPage`,
+  `applyEraserMutation`, `commitEraseIntent`) takes overlays back out
+  (`stripLiveEditObjects`):
+  * an untouched overlay copy (or its counter-number copy) is replaced by
+    the copy of the mark the document last handed the screen: nothing is
+    written; a mark an overlay hides is put back for the capture, so hiding
+    is never captured as this screen deleting it;
+  * an edit the user made ON an overlay copy is written as only the user's
+    own change onto the document's copy (`mergeEditOntoCurrent`), the screen
+    is swapped to what was saved and that mark's overlay is dropped (the
+    other change shows when its row lands) — UNLESS it would write a field
+    path (as the merge writes them: `diffAnnotationFields`, linked geometry
+    groups included) that the other screen's in-flight edit changed,
+    measured against this screen's own copy when the overlay arrived
+    (dragging a stroke someone is partly erasing, moving a mark someone is
+    moving): then it is not applied and the screen goes back to the saved
+    mark (review A: otherwise the other screen's unsaved erase was baked into
+    the mark). A callout or counter edit touching other nested fields is
+    applied; a counter's number shown from this screen is not an edit;
+  * an eraser gesture planned on an overlay copy is not applied to that mark
+    (`commitEraseIntent` cancels as a conflict, the page-mutation path drops
+    that mark's entry);
+  * a flagged copy of a mark the document no longer holds (an Undo of a
+    delete made while an overlay showed it) is rebuilt from this screen's own
+    copy when the overlay arrived (kept for the last 1,500 overlays, longer
+    than the overlays themselves), plus the user's own changes unless they
+    touch what the other screen was changing (then the own copy alone);
+    never the other screen's in-flight fields. The capture's own rules then
+    decide (a mark deleted by someone else stays deleted). The own copy is
+    the one from the first overlay of that writer, refreshed whenever a row
+    changes the mark. One spread into a mark with another id is that mark,
+    without the flag. A paste strips the flag. A copy renumbered by a page insert/delete here stays on
+    this screen's page.
+* **Live ink (v3 message, `src/services/annotationLiveStrokes.js`).** While
+  a pen or highlighter stroke is drawn, the new points go out at most every
+  125 ms (≤ 8 messages a second per drawing screen, w34 review: Realtime
+  caps a whole project at 100 messages/s on Free, 500 on Pro, and each
+  broadcast is delivered to every other screen; nothing while the pen is
+  still): `{ v: 3, w, g: stroke id, p, t, c, sw, i, pts, f?, x? }`. The
+  stroke id is the id the finished mark gets. Points count as sent only
+  when a message went out (a channel that is rejoining loses none). A stroke that ends inside the
+  first 125 ms sends nothing extra (its v1 preview covers it). Other screens
+  draw a ghost polyline (`LiveStrokeGhosts`, inside the page SVG, looks like
+  the local in-progress stroke, no pointer events, not an annotation) until
+  the finished mark is on screen (its preview or its row) plus 120 ms so it
+  never blinks, on cancel, 20 s after the pen lifted, or 10 s after the last
+  points. Lost messages are joined straight. Caps: 4,000 points per ghost,
+  24 ghosts. One sender and one ghost list per document (the app keeps
+  several documents mounted).
+* **No "who is here" gating.** An earlier cut of w32 sent nothing when a
+  screen believed it was alone (Realtime Presence, then a hello protocol).
+  Verification found it made editors go quiet for viewers (viewers cannot
+  send hellos) and for screens whose join timed out, so it was removed
+  (coordinator decision): live messages always go out under the rate caps.
+  A send to an empty channel is 1 billed message and 0 deliveries; the caps
+  bound everything else.
+* The saved-row path itself was already direct: capture ~4 ms after the
+  input, enqueue in the same tick, the WAL insert starts ~15-20 ms later
+  (after the local outbox write), the receiver applies a row as it arrives.
+  The rest (~0.2-0.6 s) is the database insert plus Postgres Changes, which
+  the live messages now hide.
+
+Measured (headless, this machine, prod, small document, two separate
+profiles; from the frame the actor's own screen shows the change to the
+frame the other screen does; before = w30 main, measured from pointer-up):
+new stroke 37-98 ms [41-172], and the ink starts growing ~33 ms after the
+pen touches down [only after the pen lifted]; move 37 ms [365-628];
+recolour 48-67 ms [498-557]; partial erase 23-25 ms [410-430]; whole erase
+18-30 ms, before the eraser lifts [166-651]; delete 32-35 ms [435-532].
+Three profiles drawing at once for 20 s (45 strokes): every stroke on every
+screen, all converged, median 62 ms, p90 143 ms, max 161 ms.
+
+Realtime cost (billed messages sent by the actor → delivered to the other
+screen; WAL rows, REST/RPC calls, bytes and checkpoints are unchanged): a
+~0.5 s stroke 1 → 8 sent (7 ink + 1 preview); move, recolour, delete 0 → 1;
+partial erase 1 → 1 (was a wasted v1); whole erase 0 → 2-3. Working alone
+the messages are still sent: each is 1 billed message with 0 deliveries. Three people drawing non-stop: ~45 billed messages/s for the
+whole project (sent + delivered), under Free's 100/s; a fourth and fifth
+non-stop drawer would approach it (each extra screen adds its own ink and
+receives everyone's).
+
+Limits: an overlay that arrives while the receiver's copy of the mark is
+behind shows the sender's changed fields early, and a patch applied onto
+that older copy can show a mix until the rows land (display only). A
+counter overlay keeps this screen's number until the row lands. Exports,
+prints and survey uploads made in the ~0.5 s window include what the
+screen shows. An edit made on a mark while another screen is changing the
+same fields of it is not applied (the user redoes it after ~0.5 s). A mark
+hidden by a delete overlay is put back on its old page number if this
+screen renumbers pages in that ~0.5 s. An editor can make other screens
+show made-up content or hide a mark for up to 12 s at a time (only editors
+may send on the channel; nothing is saved). Edits over the budget (>32 KB,
+e.g. a very long partly erased stroke) arrive with their row only.
+
+Reviews: two adversarial passes (write safety; delivery, ordering and
+cost) plus three checks of the fixes. Later checks found and fixed: the
+"alone" gating silencing editors for viewers (gating removed), an Undo that
+could still save the other screen's in-flight colour or lose an untouched
+mark, patches applied onto a different copy than the sender diffed against
+(now only against the previous message, whole copy every 8 / 500 ms),
+conflict checks too coarse for callouts and counters (now per field path),
+and arrival copies reused across writers or after the mark changed. Found and fixed: an edit on an overlay copy
+could save the other screen's unsaved erase into the mark; an Undo of a
+delete made on an overlay copy was lost; page renumbering moved an overlaid
+mark back; live ink was global (could go out on another document's
+channel); counter overlays were treated as edits; a stroke ghost could
+vanish before a slow row; older overlays were dropped on any later row of
+the writer (rows are not always in order); per-message full-document
+re-reads on receivers; no
+receive-side size cap.
+
+## w32 + w33 + w34 together (w35, 2026-09-25)
+
+Each of the three branches was reviewed alone; this pass checked them merged
+(two adversarial reviews of the interaction, a third of the fixes, live runs).
+
+* **A whole-stroke erase wrote on every screen.** The erase is a delete lane
+  over a kept stored mark (so Undo and Revisions can restore it). The next
+  capture on the erasing screen AND on every other open screen took the
+  lane-hidden mark's absence for a selection delete: it deleted the stored
+  mark (one extra row per screen, plus a tombstone for an imported mark), and
+  Undo of the erase then reported "applied" with nothing to show (Revisions:
+  `stable-base-missing`). Now a mark any delete lane hides is never taken for
+  a user's delete (the same rule that hides it); a delete lane that does not
+  name its imported mark (the page-mutation eraser path) is read from the
+  stored mark it keeps (`docToDeletedPdfAnnotations`). Predates w32/w33
+  (per-field sync); found here because the viewing screen wrote rows.
+* **Erase follow-up work ran on every screen of the same user.** The History
+  row (and trash / Excel for Survey Markers) is the erasing screen's job: the
+  outbox entry now carries `writerId`, and another open screen of that user
+  waits for its ack, taking over only if it is still pending 60 s after this
+  screen first saw it (the screen closed or went offline; every effect is
+  idempotent by key). Entries found at open are recovery work and run as
+  before.
+* **The store compaction went out as a live edit** (a small store fits the
+  v2 budget): other screens showed those marks as this screen's in-flight
+  edit, cancelled an erase of them as a conflict and reverted their own unsaved
+  change of them until the row landed. It is never broadcast now.
+* **The compaction's checkpoint could be lost for good:** a routine checkpoint
+  already encoding reset the owed flags and its acceptance cleared "must
+  write". Now only a checkpoint whose bytes hold the compaction's rows clears
+  it, and one that does not re-arms it while those rows are still on their
+  way (a row that ended in error never will be: no re-arm, no upload loop).
+* A recolour of a mark the compaction has not reached writes only its colour
+  (it also rewrote `polygons` as the marker, a write the live-edit conflict
+  check never saw). A stored checkpoint taken in without its rows (w33's
+  routine rebase) now refreshes live-edit arrival copies like a row, and
+  their per-mark epochs survive eviction (one clock, a floor on eviction).
+
+Measured (dev server, prod database, small throwaway document, persistent
+headless profiles, every other stored file blocked). Per action, actor's
+screen to the other screen's: new stroke 32-49 ms (first live ink 31-136 ms
+after pen down), move 32-37, recolour 31-42, partial erase 22-35, whole erase
+27 (before the eraser lifts), delete 35-38. The watching screen writes
+nothing on any action (before: a whole erase cost 5 rows, 1-2 of them on the
+watching screen, and a second History POST when both screens were the same
+user; now 2 rows: the erase and its follow-up ack). Three screens drawing
+for 20 s: 43 strokes, all converged, median 73 ms, p90 112 ms. Usage probe
+(`agent-cli/usage-budget.json`, re-measured): 1 user 0 checkpoints in the
+whole session; 3 users 0-1 per user per phase (was up to 14), an erase phase
+12 rows per user (10 erases). Live ink raised the draw phase's messages (w32,
+owner request): ~3 sent per quick probe stroke, 248 billable per user with 3
+drawing.
+
+Pinned by `tests/annotationWholeEraseUndo.test.mjs`,
+`tests/annotationCompactionCombined.test.mjs` and
+`tests/supabaseUsageBudget.test.mjs` (w33 target is a real test now: 5 paced
+strokes, watchers 0 checkpoints, writer at most 2; erase follow-up only on the
+erasing screen, takeover after the grace period).
+
+Limits: entries that arrive in the catch-up right after this screen opened
+count as "new", so work left by a screen that closed just before waits up to
+~60-90 s (nothing is lost). If B deletes a mark in the same frame that A's
+whole-erase row for it lands, B's delete is skipped and A's Undo brings the
+mark back. A v2 whole copy still carries the sender's values for fields it
+did not change: a receiver whose copy is AHEAD (its own row not yet at the
+sender) sees that field revert until the rows land, and an edit of that field
+meanwhile is refused (w32 limit, now also when the receiver is ahead).
+Overlays and ghosts for rows a taken-in checkpoint covered still leave by
+expiry (12 / 20 s), not at once; a new mark's v1 preview vanishes while Yjs
+holds its row back (w30).
+
+## Undo and Redo as one timeline (w37, 2026-09-25)
+
+Owner report: pen strokes, then eraser strokes; Undo of the erasures did not
+bring every stroke back, and Undo of a new stroke took older strokes too.
+Replayed live (`agent-cli/undo-redo-probe.mjs`): before w35 a whole-stroke
+erase's Undo showed nothing (the capture had deleted the stored mark), so
+presses looked dead and later presses took pen strokes; w35 fixed that. On
+today's main the rest was in how the viewer keeps its two undo lanes (the
+field-level "local" lane for marks, the "legacy" lane for eraser gestures
+and Survey Marker / space snapshots, interleaved by one checkpoint counter):
+
+* **A new step clears Redo in both lanes.** Each lane cleared only its own,
+  so after "erase, Undo it, draw" Redo re-applied the old erase over the new
+  stroke.
+* **One press = one visible step** (`historyStacks.runHistoryPress`). A step
+  that can no longer change anything (someone deleted or changed back what it
+  touched, its erase lanes were replaced, a checkpoint kind Undo does not
+  restore) is dropped and the same press takes the next step. Before, a dead
+  local step stayed on top while presses fell through to OLDER steps of the
+  other lane, and an unrestorable checkpoint on top ('excel:auto-sync') made
+  every older step unreachable.
+  An erase Undo that fails only because the store is not open yet (it closes
+  while its tab is hidden) keeps the step and stops the press; a real conflict
+  drops that one step, stops the press and says so. Neither ever runs on into
+  older work (review finding: a failed erase Undo used to take the previous
+  pen stroke back in the same press).
+* **Survey Marker / space Undo restores only what the step owns**
+  (`scopeLegacyRestoreToOwnSlices`): that Survey Marker; that space plus
+  exactly the marks, callouts and markers its delete / region replace removed
+  (the cascade's ids are recorded on the step; a rename touches no marks). It used to put back
+  every mark, marker and space as they were: the capture then deleted a
+  collaborator's newer stroke or marker, and reverted an Excel sync.
+* **A new callout is one step:** its first text commit, a style picked while
+  typing it, or its removal when left blank / Esc, folds into the create step
+  (`foldIntoCreateStep`).
+* **A counter series recoloured / renumbered across pages is one step** (a
+  document batch). Only the last page used to be undoable, and the other
+  pages' leftovers folded into their next unrelated step.
+* **Undo of a delete on a mark someone partly erased** keeps the user's own
+  changes to it (the capture stored the eraser lane's old copy, so a recolour
+  made before the delete was lost).
+* **Cmd+Z acts on the visible document only.** Every open document tab stays
+  mounted and each registered a window key handler; the first one opened
+  stopped the event for the rest.
+* The Excel file-watcher sync is no longer an undo step; a Survey Marker
+  checkpoint is taken only when a marker is really created.
+
+History is in memory only (not kept across reloads, like Figma / Acrobat).
+
+Pinned by `tests/undoRedoTimeline.test.mjs` (the real store and history
+engine through `tests/helpers/historyTimelineHarness.mjs`: the owner's
+sequence, every tool x create / move / resize / recolour / text edit / paste
+/ delete, multi-select, partial / whole / multi-stroke erases, interleaved
+lanes, a collaborator mid-sequence, reload, erase Undo failing or hidden,
+Survey Markers and space cascades, plus a source contract for the PDFViewer
+wiring) and live by `agent-cli/undo-redo-probe.mjs` (`--extra`, `--second`,
+`--matrix`, `--tabs`).
+
+Limits: one eraser drag that hits ink AND a Survey Marker is still two steps
+(the marker delete is its own snapshot step). Within the ~0.5 s a live overlay
+of someone else's in-flight edit is on screen, an Undo of the same mark can be
+judged by the overlay copy. A new callout removed by the fold (left blank)
+keeps its "created" History row. A hidden tab left mid region edit still
+listens for Cmd+Z (region editor only). A Survey Marker Undo puts that whole
+marker back as it was (a collaborator's later rename of the same marker is
+reverted); a Survey Marker delete that recorded no id brings back every
+missing marker. An erase Undo pressed while the document is still opening
+does nothing (no message) until it has opened.
+
+## Staying inside Supabase Free (w36, 2026-09-25)
+
+Prod "Survey" is on the Free plan (5 GB of downloads a month, 500 MB
+database, read-only at the cap, 1 GB file storage, 2M Realtime messages).
+This month's overage (~70 GB) was the helper test browsers; w34 put real use
+at 5 users at ~4.5 GB a month, mostly the PDF downloaded again on every open.
+
+* **Device PDF cache** (`src/services/pdfByteCache.js`, used by
+  `useStorage().downloadDocument`, so the viewer open, copies and thumbnails
+  all go through it; the same code runs in the browser, Electron and the
+  Capacitor apps). The 2026-09-07 rule (`storageDownloads.js`, #802) was "keep
+  no settled private PDF bytes: every open must pass the server's current
+  access check". It still holds: every open asks Storage for the object's
+  metadata (`info`, ~1 KB, same access rules as a download) and uses the cached
+  bytes only when that answer names exactly the cached version (version id,
+  etag, size, modified time). No answer (offline, error) = download as before,
+  never cached bytes; "not found / not allowed" also drops the copy. Entries
+  are per account; sign-out (and a signed-out start, and another account
+  signing in) empties it; a local upload/replace/delete drops the path; an
+  upload of a content-addressed path is kept at once (the uploader's first
+  reopen is free); an in-place replace is not seeded (a same-size replace
+  racing it could leave the wrong bytes under the new version). Bounded:
+  256 MB (or a fifth of the browser's quota), least recently used first, no
+  single file over 48 MB. A read that started before a sign-out or an account
+  change is never stored after it; an offline start whose token has not
+  refreshed yet (session still stored) keeps the cache. A document someone
+  lost access to stays cached until it is read again (then dropped), evicted,
+  or the account signs out.
+* **Pruning old rows** (proposed, NOT applied:
+  `supabase/proposed/20260925_w36_prune_annotation_wal_and_history.sql`, a
+  daily pg_cron job). WAL rows a stored checkpoint covers go once they are a
+  week old and 80 rows below its `at_seq` (all covered rows after 30 days);
+  never the head row (the next seq is MAX+1), never a row at or after `at_seq`
+  (every open reads from there), never while the checkpoint changed in the
+  last hour (an open may still be paging from the previous one). History rows
+  beyond the newest 200 per document (what the panel shows) go after 14 days;
+  trash rows are never touched (their KAL-313 30-day sweep exists but stays
+  unscheduled: owner's call, as is an optional age cap on history). The WAL
+  prune always removes a seq prefix per document (never a hole), and the file
+  refuses to install unless run as the tables' owner. Pinned by `tests/annotationWalPrunePostgres.test.mjs`
+  (real WAL migration, disposable local Postgres).
+* **A tab that slept past the retention window** replays from an older
+  baseline. Its catch-up now sees the first row past `cursor + 1` (seqs are
+  gapless per document), confirms with one small identity read that the
+  stored checkpoint is past its cursor (the prune never deletes at or after
+  `at_seq`), and takes that checkpoint in (`recoverFromPrunedTail`: applied
+  like a cloud row, baselines and the checkpoint base moved to it) instead of
+  applying the rest and missing the pruned edits. A gap the checkpoint does
+  not explain (identity gaps from before the July WAL migration) reads on as
+  before, with no download. Pinned by `tests/annotationWalPruneRecovery.test.mjs`
+  (the recovery tests fail without the change). Ship this client before
+  turning the prune on.
+* Known limits of the prune: an open that sleeps between reading the
+  checkpoint and its tail across a prune shows the missed edits only after
+  its next catch-up (the one-hour quiet window makes this unlikely); an append
+  whose reply was lost, on a device then closed longer than a week while the
+  document is locked or the person loses edit access, replays into a refusal
+  on reopen and shows as a rejected local change although the checkpoint
+  holds it.
+* **Legacy tables** (proposed, owner decision:
+  `supabase/proposed/20260925_w36_legacy_annotation_tables_cleanup.sql`):
+  `document_annotations` is 193 MB for ~20 MB of rows (dead space from the
+  dual-write era + a 61 MB index used 11 times); its 11,506 non-marker rows
+  (last written 2026-08-21) feed nothing anyone sees; its 523 Survey Marker
+  rows are live (the viewer re-copies markers there; the Templates editor
+  counts them) and stay. `doc_yjs_state` (18 MB) has no live reader. Together
+  ~208 MB back. Separately, 61 stored PDFs (380 MB of 562 MB) are referenced
+  by no document, template or survey (uploaded Feb-Jun 2026 under the old
+  timestamp paths): `scripts/w36-orphan-pdf-storage.mjs` (dry run by default).
+
+Measured (dev server, prod database, 23 KB throwaway PDF, persistent headless
+profiles, other stored files blocked, every throwaway deleted): a reopen
+downloaded the whole PDF every time before (1 download, 23.9 KB per reopen),
+0 downloads and 0 PDF bytes after (one ~1 KB metadata check, fetched with
+`cache: 'no-store'` so the browser's HTTP cache never answers it). Each other
+device downloaded the file once, then 0. The uploader's copy is kept when its
+upload finishes (capped at 2 s); a read racing that (the selected-document
+preview) can still download it once (seen in 1 of 2 runs). `agent-cli/usage-budget.json` pins it (`reopen1`: 0 downloads,
+1 check); `tests/supabaseUsageBudget.test.mjs` pins a month of one user's
+opens (252 opens of 20 files on 2 devices: at most 40 downloads, was 252).
+
+Monthly estimate (per the probe's per-unit costs; assumptions, per active
+user: 12 opens a working day, 21 working days, 20 new or changed drawings
+opened a month on 1.5 devices, 2 MB a drawing, 4 h a day with a document on
+screen, 80 edits a day, each seen by one other open screen; per team: 4
+uploads per user a month):
+
+| per month | 5 users before | 5 users after | 25 users before | 25 users after | Free |
+|---|---|---|---|---|---|
+| downloads: PDFs | 2.5 GB | 0.30 GB | 12.6 GB | 1.5 GB | |
+| downloads: opens (lists, checkpoint, tail) | 0.19 GB | 0.19 GB | 0.95 GB | 0.95 GB | |
+| downloads: live sync, idle, edits, thumbnails | 0.30 GB | 0.30 GB | 1.5 GB | 1.5 GB | |
+| **downloads total** | **3.0 GB (60%)** | **0.79 GB (16%)** | **15 GB (301%)** | **3.95 GB (79%)** | 5 GB |
+| Realtime messages | ~85k | ~85k | ~420k (21%) | ~420k (21%) | 2M |
+| database | 318 MB now | ~110 MB after cleanup, +~20 MB/month | | ~150-250 MB steady with a history age cap; +~80 MB/month without one | 500 MB |
+| file storage | 562 MB now | 182 MB after orphans, +40 MB/month | | +200 MB/month | 1 GB |
+
+Limits: at 25 users downloads fit Free but not under half; what is left is
+the per-open checkpoint/tail reads (~38 MB a user a month) and live sync
+(~34 MB: every WAL row reaches every open screen as hex, the author's own
+screen included, next to its live preview). File storage at 25 users is
+set by how many drawings are uploaded, not by the app: ~200 MB a month fills
+Free in about four months.
+
+## Offline edits reach peers that are already open
+
+Open peers only receive WAL rows (realtime inserts + catch-up), never
+snapshots. An update whose WAL append failed and that a gap-repair checkpoint
+then covered used to be settled by the snapshot alone, so already-open peers
+never saw it until they reopened. `settleSnapshotCoveredRecords` now queues
+each such update for a live re-send (`queueLiveResend`): the exact bytes under
+the same writer id and sequence (the append RPC returns the existing row for
+an exact replay, so this is idempotent). The re-send runs right away, again
+when realtime re-subscribes after a reconnect, with backoff on failure, and
+once more on close. It is bounded: an update over ~900 KB (Realtime's
+Postgres-changes payload limit is ~1 MB) is never re-sent, and one that fails
+is given up after 6 tries, or at once on a payload-too-large, permission or
+sequence-collision answer. The snapshot still carries it for every later open.
+
+What this does NOT cover: an edit made offline in a tab that is closed right
+after reconnecting, before any checkpoint (or re-send) lands, reaches others
+only when that device opens the document again (its local copy is replayed
+then); already-open peers see it at that point, not before.
+
+## Cross-doc copies in the sync layer
+
+A Y type lives in one doc, so the permission-rollback projection, rebased
+staging, and legacy IndexedDB recovery copy values with
+`copyDurableMapValue` (syncs nested maps key by key, rebuilds missing ones).
+Rebased staging collects changed ROOT keys with
+`rootKeysChangedByTransaction`, because a field edit changes
+`marks[key].o`, not the root map.
+
+## Measured (Node, this machine)
+
+* Drag frame on a 5,000-mark page: 2.6–3.3 ms per frame, 40 bytes per rect
+  frame (two numbers). Polyline frame: 606 bytes (its geometry group is one
+  value, and is still smaller than the old whole-mark write).
+* Recolour all 5,000 marks: 90–107 ms, 113 KB of updates.
+* List rebuild of 5,000 marks: 9–19 ms cold, 3–6 ms warm, 2–3 ms after one
+  remote change.
+* Snapshot size costs more: 5,000 rects are 1.0 MB → 1.9 MB raw (38 KB →
+  267 KB gzipped); 5,000 200-point pen strokes are 11.7 → 12.4 MB raw (175 →
+  383 KB gzipped). Applying a 5,000-rect snapshot takes 88 ms (was 25 ms).
+  A document edited by older builds also still carries its old
+  `annotations` map, untouched.
+
+## Limits
+
+* Same field, concurrent: last writer wins (per key). The rare case of three
+  or more concurrent writers on a nested bag (e.g. `knee.x`/`knee.y`) can mix
+  keys from two writers; linked groups never mix.
+* A nested bag that did NOT exist when the mark was created and is then added
+  by two people at the same moment (each creating it) keeps only one person's
+  bag: Yjs cannot merge two new maps under one key. Bags present at creation
+  (`data`, `meta`, a callout's `legacyCallout` and `style`, ...) are created
+  with the mark and never re-created, so this only affects bags a feature adds
+  later (e.g. a line's `data.midpoint`, where one whole value is the right
+  result anyway).
+* Survey Markers are unchanged: each marker is still one whole record in its
+  own map (last writer wins per marker).
+* A callout's drawn `objects` array is one value derived from
+  `data.legacyCallout`. After two people change different callout fields the
+  merged `legacyCallout` is right (the screen, export and print draw from
+  it), but the stored `objects` are one person's projection until the next
+  re-projection (any callout edit, or the next open with measured page sizes).
+* Echo filter: a user deliberately setting a field to exactly the value a
+  collaborator's change delivered in the same render is not written (the
+  document already holds that value unless a third change raced it).
+* A gesture that deep-clones a stale page and saves it whole still puts back
+  what changed since the copy was taken; the known ones are fixed at the
+  source (see above).
+* Deleting a mark discards a collaborator's concurrent edits to it (delete
+  wins). Undo of the delete restores the deleter's copy.
+* The live re-send queue is in memory and bounded (see above): if the tab
+  closes before the re-send lands, or the update is too large or keeps
+  failing, open peers get the edit when they reopen.
+* Marks drawn on older builds are carried over once (w28, above); edits an
+  older build makes after that are not.
+
+### w36 applied on prod (2026-09-25, owner approved)
+- Legacy cleanup (`supabase/proposed/20260925_w36_legacy_annotation_tables_cleanup.sql`) applied, then `VACUUM FULL` on both tables: database 318 MB -> 107 MB. 523 Survey Marker rows kept. Backup of the 11,506 deleted rows and all 107 `doc_yjs_state` rows: `~/Documents/Survey-backups/2026-09-25/` on the owner's Mac.
+- 61 orphan PDFs (380 MB) backed up to the same folder (`orphan-pdfs/`) and removed with `scripts/w36-orphan-pdf-storage.mjs --apply --confirm 61 --backup-dir ...`.
+- Prune file applied with ONE change: the history job runs `prune_document_history_events(200, 14, 50000, 60)` (owner: keep History to 60 days). Jobs `w36-prune-annotation-wal` 03:20 and `w36-prune-history-events` 03:25 daily. The 30-day trash sweep stays off.

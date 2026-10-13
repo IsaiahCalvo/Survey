@@ -33,7 +33,7 @@
  * Reference behavior matched: the Draw/Shapes/Text category buttons, which had
  * the instant chip from the start.
  */
-import { createContext, useContext, useLayoutEffect, useMemo, useRef } from 'react';
+import { createContext, useContext, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { FONT_FAMILY } from '../viewerShared.js';
 import { viewportClampDelta } from '../utils/floatingUiGeometry.js';
@@ -238,11 +238,6 @@ export function makeTooltipBinding(setTooltip) {
  */
 export const TooltipContext = createContext(null);
 
-export function TooltipProvider({ setTooltip, children }) {
-  const binding = useMemo(() => makeTooltipBinding(setTooltip), [setTooltip]);
-  return <TooltipContext.Provider value={binding}>{children}</TooltipContext.Provider>;
-}
-
 /**
  * Returns the `tip(text, placement)` binder. Safe to call outside a provider —
  * it degrades to a no-op bundle rather than throwing, so a component can be
@@ -273,6 +268,9 @@ export function AnchoredTooltip({ visible = true, side = 'right', position = nul
   return (
     <div
       aria-hidden="true"
+      // Lets states.css section 5 leave the hint out when the chrome icon it
+      // sits inside grows or tightens (owner 2026-10-02).
+      data-anchored-tooltip=""
       style={{
         position: 'absolute',
         ...(position || ANCHORED_POSITION[side] || ANCHORED_POSITION.right),

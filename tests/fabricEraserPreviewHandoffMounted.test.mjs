@@ -137,6 +137,38 @@ after(async () => {
   dom?.window.close();
 });
 
+// 2026-10-04 (test-reliability pass) — wait on what the component does, not
+// on the wall clock. An exact repaint reaches the component through a
+// MutationObserver (a microtask) whose check schedules the before-paint swap
+// with requestAnimationFrame — shimmed above as setTimeout(0). The old fixed
+// 10 ms sleep was armed BEFORE that frame was queued, so whenever the check
+// itself took more than ~9 ms (a loaded machine: 1 run in 5 under load) the
+// sleep ended first and the clone was still there. afterNextFrame() lets the
+// observer run (setImmediate drains every pending microtask first), then waits
+// for a frame queued AFTER the component's own: same-delay timers fire in the
+// order they were queued, so on any machine speed the component's frame has
+// run when this resolves. Nothing is retried and no deadline grows: the
+// assertion still demands the swap within one frame of the exact repaint.
+async function afterNextFrame() {
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+// The safe-hold bound is a watchdog armed when the release's commit hands off
+// (state 'active' -> 'waiting'), at the end of an async commit chain. A sleep
+// of HANDOFF_BOUND_MS only outlasts it if the watchdog was armed before the
+// sleep started; started together with the pointer-up, a slow erase (a loaded
+// machine) could arm it late and the sleep ended first. So: wait - frame by
+// frame, not by the clock - for the hand-off, then sleep past the bound.
+async function sleepPastHandoffBound() {
+  const clone = document.querySelector('[data-eraser-mask-clone="1"]');
+  for (let frame = 0; frame < 500 && clone?.dataset.eraserHandoffState === 'active'; frame += 1) {
+    await afterNextFrame();
+  }
+  assert.equal(clone?.dataset.eraserHandoffState, 'waiting', 'the commit armed the handoff watchdog');
+  await new Promise((resolve) => setTimeout(resolve, HANDOFF_BOUND_MS));
+}
+
 const pathObject = ({
   id,
   authorId = 'collaborator',
@@ -350,8 +382,11 @@ test('missing SVG disables the unsafe flattened-canvas approximation but still c
   await mounted.unmount();
 });
 
-test('safe SVG preview carves only permitted ink and preserves foreign/locked content', async () => {
-  const mounted = await mountEraser();
+// RULED 2026-09-28 owner: open editing + lock — title: foreign ink is now permitted; the preserved case is user-locked (and system-locked) ink.
+test('safe SVG preview carves only permitted ink and preserves user-locked/locked content', async () => {
+  const userLockedInk = pathObject({ id: 'user-locked-ink', authorId: 'other-user' });
+  userLockedInk.data = { ...userLockedInk.data, lockedBy: 'other-user' };
+  const mounted = await mountEraser({ pageObjects: [...objects(), userLockedInk] });
   await drag(mounted);
 
   const clone = document.querySelector('[data-eraser-mask-clone="1"]');
@@ -360,8 +395,14 @@ test('safe SVG preview carves only permitted ink and preserves foreign/locked co
     clone.querySelector('[data-annotation-id="own-ink"]').getAttribute('mask') || '',
     /^url\(#eraser-carve-mask-/,
   );
-  assert.equal(clone.querySelector('[data-annotation-id="foreign-ink"]').getAttribute('mask'), null);
-  assert.equal(clone.querySelector('[data-annotation-id="foreign-ink"]').style.display, '');
+  // RULED 2026-09-28 owner: open editing + lock — another author's ink is carved like the viewer's own.
+  assert.match(
+    clone.querySelector('[data-annotation-id="foreign-ink"]').getAttribute('mask') || '',
+    /^url\(#eraser-carve-mask-/,
+  );
+  // RULED 2026-09-28 owner: open editing + lock — the refusal moves to a user-locked foreign ink.
+  assert.equal(clone.querySelector('[data-annotation-id="user-locked-ink"]').getAttribute('mask'), null);
+  assert.equal(clone.querySelector('[data-annotation-id="user-locked-ink"]').style.display, '');
   assert.equal(clone.querySelector('[data-annotation-id="locked-ink"]').getAttribute('mask'), null);
   assert.equal(clone.querySelector('[data-annotation-id="locked-ink"]').style.display, '');
   assert.equal(clone.querySelector('[data-annotation-id="shape"]').style.display, 'none');
@@ -644,7 +685,7 @@ test('missing repaint enters bounded safe-hold; zoom cannot reveal stale geometr
   assert.equal(mounted.commits.length, 1);
 
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, HANDOFF_BOUND_MS));
+    await sleepPastHandoffBound();
   });
   const clone = document.querySelector('[data-eraser-mask-clone="1"]');
   assert.ok(clone, 'missing repaint must retain the safe carved presentation');
@@ -659,7 +700,7 @@ test('missing repaint enters bounded safe-hold; zoom cannot reveal stale geometr
   const expectedRevision = mounted.commits[0].eraserPresentationRevision;
   await act(async () => {
     document.querySelector('[data-diag-svg-wrapper]').dataset.svgAnnotationRevision = expectedRevision;
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await afterNextFrame();
   });
   assert.equal(
     document.querySelectorAll('[data-eraser-mask-clone]').length,
@@ -688,7 +729,7 @@ test('last-item source removal cannot end handoff before exact empty SVG arrives
   const wrapper = document.querySelector('[data-diag-svg-wrapper]');
   wrapper.querySelector('svg').replaceChildren();
   wrapper.dataset.svgAnnotationRevision = expectedRevision;
-  await act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
+  await act(async () => afterNextFrame());
 
   assert.equal(document.querySelectorAll('[data-eraser-mask-clone]').length, 0);
   assert.equal(wrapper.style.visibility, '');
@@ -702,7 +743,7 @@ test('a second erase after safe-hold commits against the latest remote model wit
   });
   await drag(mounted, { release: true });
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, HANDOFF_BOUND_MS));
+    await sleepPastHandoffBound();
   });
 
   const heldClone = document.querySelector('[data-eraser-mask-clone="1"]');
@@ -740,7 +781,7 @@ test('a second erase after safe-hold commits against the latest remote model wit
   const secondRevision = mounted.commits[1].eraserPresentationRevision;
   await act(async () => {
     document.querySelector('[data-diag-svg-wrapper]').dataset.svgAnnotationRevision = secondRevision;
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await afterNextFrame();
   });
   assert.equal(document.querySelectorAll('[data-eraser-mask-clone]').length, 0);
   await mounted.unmount();
@@ -766,7 +807,7 @@ test('SVG wrapper replacement stays hidden during active and safe-hold until exa
       y: 50,
       buttons: 0,
     }));
-    await new Promise((resolve) => setTimeout(resolve, HANDOFF_BOUND_MS));
+    await sleepPastHandoffBound();
   });
   assert.equal(clone.dataset.eraserHandoffState, 'safe-hold');
 
@@ -779,7 +820,7 @@ test('SVG wrapper replacement stays hidden during active and safe-hold until exa
     safeHoldReplacement.dataset.svgAnnotationRevision = (
       mounted.commits[0].eraserPresentationRevision
     );
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await afterNextFrame();
   });
   assert.equal(document.querySelectorAll('[data-eraser-mask-clone]').length, 0);
   assert.equal(safeHoldReplacement.style.visibility, '');

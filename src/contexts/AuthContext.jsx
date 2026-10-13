@@ -14,10 +14,11 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
   supabase,
   isSupabaseAvailable,
-  getSupabaseSession,
+  readStartupSession,
   recoverSupabaseAuthSession,
 } from '../supabaseClient';
 import { requestAccountDeletion, unlinkOAuthProvider } from '../utils/accountPlatform';
+import { pdfByteCache } from '../services/pdfByteCache.js';
 
 export const AuthContext = createContext({});
 
@@ -433,19 +434,60 @@ export const AuthProvider = ({ children }) => {
 
     // Get initial session. If the cached refresh token is corrupted, clear it
     // and continue boot instead of leaving the app stuck half-signed-out.
-    getSupabaseSession('AuthProvider.getSession')
-      .then(async (session) => {
-        await finishAuthBoot(session);
-      })
-      .catch(async (error) => {
-        const recovered = await recoverSupabaseAuthSession(error, 'AuthProvider.getSession');
-        if (!recovered) {
-          console.warn('[Auth] initial session read failed ' + JSON.stringify({
-            message: error?.message || String(error),
-          }));
-        }
-        await finishAuthBoot(null);
-      });
+    //
+    // 2026-10-07 (phone loading): a saved sign-in whose refresh could not
+    // reach the network is NOT a signed-out start. `loading` stays true (the
+    // home keeps its quiet "Loading documents…") and the read is tried again
+    // when the connection returns, the app comes back to the front, or every
+    // 5 s - so the app finishes loading by itself, signed in, instead of
+    // showing the sign-in sheet to someone who is already signed in.
+    let bootDone = false;
+    let bootRetryTimer = null;
+    let bootReading = false;
+    const stopBootRetry = () => {
+      if (bootRetryTimer) clearInterval(bootRetryTimer);
+      bootRetryTimer = null;
+      window.removeEventListener('online', readBootSession);
+      document.removeEventListener('visibilitychange', readBootSessionWhenVisible);
+    };
+    function readBootSessionWhenVisible() {
+      if (document.visibilityState === 'visible') readBootSession();
+    }
+    function readBootSession() {
+      if (bootDone || bootReading) return;
+      bootReading = true;
+      readStartupSession('AuthProvider.getSession')
+        .then(async ({ session, offline }) => {
+          bootReading = false;
+          if (bootDone) return;
+          if (!session && offline) {
+            if (!bootRetryTimer) {
+              authDebug('initial session read is waiting for the network');
+              bootRetryTimer = setInterval(readBootSession, 5_000);
+              window.addEventListener('online', readBootSession);
+              document.addEventListener('visibilitychange', readBootSessionWhenVisible);
+            }
+            return;
+          }
+          bootDone = true;
+          stopBootRetry();
+          await finishAuthBoot(session);
+        })
+        .catch(async (error) => {
+          bootReading = false;
+          if (bootDone) return;
+          bootDone = true;
+          stopBootRetry();
+          const recovered = await recoverSupabaseAuthSession(error, 'AuthProvider.getSession');
+          if (!recovered) {
+            console.warn('[Auth] initial session read failed ' + JSON.stringify({
+              message: error?.message || String(error),
+            }));
+          }
+          await finishAuthBoot(null);
+        });
+    }
+    readBootSession();
 
     // Listen for auth changes. Supabase fires an INITIAL_SESSION event
     // during boot which can briefly hand us a null session BEFORE the dev
@@ -459,6 +501,13 @@ export const AuthProvider = ({ children }) => {
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'INITIAL_SESSION') {
         return;
+      }
+      // A real auth event (the token refresh that finally got through, a
+      // sign-in, a sign-out) settles a start-up that was waiting for the
+      // network; the handler below then sets the user and ends `loading`.
+      if (bootRetryTimer) {
+        bootDone = true;
+        stopBootRetry();
       }
       // Always keep `session` fresh so the latest JWT is available to anything
       // that reads it. But only swap the `user` reference when the user's
@@ -478,7 +527,11 @@ export const AuthProvider = ({ children }) => {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      bootDone = true;
+      stopBootRetry();
+      subscription.unsubscribe();
+    };
   }, []);
 
   // 2026-04-26 — Tell the Electron main process whether to enable
@@ -655,6 +708,16 @@ export const AuthProvider = ({ children }) => {
       console.warn('Sign out API call failed, clearing local session anyway:', error);
     }
 
+    // w36: cloud PDFs this device kept for fast reopen must not outlive the
+    // account on a shared computer. Awaited (at most 1.5 s): the reload below
+    // would cut an unfinished IndexedDB clear short. (The next signed-out
+    // start clears it too - except after an OFFLINE sign-out, which auth-js
+    // abandons with the session still stored; the cache is then emptied by
+    // the next real sign-out or another account signing in.)
+    try {
+      await Promise.race([pdfByteCache().clear(), new Promise((resolve) => setTimeout(resolve, 1_500))]);
+    } catch { /* cache only */ }
+
     // Always clear local state and refresh, even if API call failed
     userRef.current = null;
     setUser(null);
@@ -687,6 +750,9 @@ export const AuthProvider = ({ children }) => {
     // The server has removed the Auth user. Clear the local refresh token even
     // when GoTrue can no longer accept a normal sign-out for that deleted user.
     try { await supabase.auth.signOut({ scope: 'local' }); } catch { /* local state below is authoritative */ }
+    try {
+      await Promise.race([pdfByteCache().clear(), new Promise((resolve) => setTimeout(resolve, 1_500))]);
+    } catch { /* cache only */ }
     userRef.current = null;
     setUser(null);
     setSession(null);

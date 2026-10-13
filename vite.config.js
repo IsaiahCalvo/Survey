@@ -305,6 +305,16 @@ export default defineConfig(({ mode }) => {
       // (anti-DNS-rebinding). Leading-dot = suffix match on any tailnet host.
       // Dev-server only; production ships static files, so this has no prod effect.
       allowedHosts: ['.ts.net'],
+      // Helper agents create and delete whole-repo copies under .claude/worktrees
+      // (plus graphify output). Watching them made the main dev server reload
+      // every open tab and clear its dependency cache each time one was removed,
+      // which left Chrome on a blank page (2026-09-24). Dev-server only.
+      // Anchored to THIS checkout: a bare '**/.claude/**' also matched every
+      // file of a dev server running inside a helper worktree, so it never
+      // picked up edits (w34, 2026-09-25).
+      watch: {
+        ignored: [path.join(__dirname, '.claude', '**'), path.join(__dirname, 'graphify-out', '**')],
+      },
       headers: {
         // Allow MSAL popup authentication to work properly
         // Using 'same-origin-allow-popups' allows the popup to communicate back to the parent
@@ -325,6 +335,10 @@ export default defineConfig(({ mode }) => {
           // instead of re-downloading multiple MB every release. App code and
           // everything else keep Vite's default chunking.
           manualChunks(id) {
+            // Vite's tiny lazy-load helper. pdf.js imports it, so without this
+            // line it was swept into vendor-pdfjs and the home screen had to
+            // download and run all of pdf.js (~470 KB) just to get the helper.
+            if (id.includes('vite/preload-helper')) return 'preload-helper';
             if (!id.includes('node_modules')) return undefined;
             if (id.includes('/pdfjs-dist/')) return 'vendor-pdfjs';
             if (id.includes('/pdf-lib/')) return 'vendor-pdflib';

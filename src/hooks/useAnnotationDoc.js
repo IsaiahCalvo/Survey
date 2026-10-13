@@ -14,13 +14,22 @@
 // edits do NOT echo back from the store (the sync layer only notifies on REMOTE
 // ops), so the viewer's per-page render metadata is never clobbered.
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { supabase } from '../supabaseClient.js';
 import { openAnnotationDoc, getClientId } from '../services/annotationDocSync.js';
 import {
+  META_MAP,
+  getAnnotationsMap,
   preserveTransientPagePresentationState,
   setMetaValue as setMetaValueOnDoc,
 } from '../services/annotationDocStore.js';
+import { applyReconcileSwaps } from '../utils/annotationReconcile.js';
+import {
+  ANNOTATION_HYDRATION_PREVIEW_SOURCE,
+  ANNOTATION_HYDRATION_UNAVAILABLE_SOURCE,
+} from '../utils/annotationHydrationGate.js';
+import { claimBodyReadOnly } from '../utils/readOnlyBodyReasons.js';
+import { syncTrace, syncTraceEnabled } from '../services/syncTrace.js';
 import {
   migrateCalloutsMetaToAnnotationsMap,
   getUnmigratedMetaCallouts,
@@ -29,8 +38,67 @@ import {
   projectCalloutsIntoByPage as projectCalloutsIntoByPageShared,
   deriveCalloutsFromByPage,
 } from '../utils/calloutAnnotationBridge.js';
+import {
+  legacyCarryOverWaitsForEmbeddedImport,
+  legacyMarksCarryOverPending,
+} from '../services/legacyMarksCarryOver.js';
+import {
+  EMBEDDED_IMPORT_INCOMPLETE_KEY,
+  EMBEDDED_IMPORT_MARKER_KEY,
+} from '../utils/embeddedImportGate.js';
+import {
+  annotationStoreCompactionPending,
+  annotationStoreCompactionReady,
+} from '../services/annotationStoreCompaction.js';
 
 const SPACES_KEY = 'spaces';
+function livePreviewPublicChannelInDev() {
+  if (!import.meta.env?.DEV) return false;
+  try { return globalThis.localStorage?.getItem('survey:livePreviewPublicChannel') === '1'; } catch { return false; }
+}
+
+// w30: add other screens' in-flight new marks (handle.getLivePreviewByPage)
+// to a page list read from the document. A mark the document already holds
+// wins; the page list is returned unchanged when there is nothing to add.
+const EMPTY_LIVE_MARKER_OVERLAY = Object.freeze({ markers: new Map(), spaces: null });
+
+function withLivePreviews(byPage, handle) {
+  // w32: the handle also applies other screens' in-flight EDITS (a move,
+  // restyle, erase or delete shows before its WAL row) — display only, the
+  // handle's applyByPage takes them back out of every capture.
+  if (typeof handle?.withLiveOverlays === 'function') return handle.withLiveOverlays(byPage);
+  const overlay = handle?.getLivePreviewByPage?.();
+  if (!overlay || Object.keys(overlay).length === 0) return byPage;
+  const next = { ...(byPage || {}) };
+  for (const [pageNumber, objects] of Object.entries(overlay)) {
+    const page = next[pageNumber] || { objects: [] };
+    const present = new Set((page.objects || []).map((object) => (
+      object?.data?.id ?? object?.id ?? null
+    )).filter((id) => id != null).map(String));
+    const added = objects.filter((object) => {
+      const id = object?.data?.id ?? object?.id ?? null;
+      return id == null || !present.has(String(id));
+    });
+    if (added.length > 0) next[pageNumber] = { ...page, objects: [...(page.objects || []), ...added] };
+  }
+  return next;
+}
+
+// w28: how long a writable open waits for the PDF's own embedded import
+// before carrying old marks anyway (see the carry-over effect below).
+const LEGACY_CARRY_WAIT_MS = 60_000;
+// ...and the random spread before carrying, so two screens that open at once
+// rarely carry at once.
+const LEGACY_CARRY_JITTER_MS = 1_500;
+// w33: the one-time store compaction runs this long after realtime is ready
+// (plus a random spread): after the carry-over and away from the open's own
+// work (first paint, embedded import).
+const STORE_COMPACTION_DELAY_MS = 6_000;
+const STORE_COMPACTION_JITTER_MS = 3_000;
+// Failed-open retry (w26): 2 s, 4 s, 8 s ... capped at 60 s, 8 tries per document.
+const OPEN_RETRY_BASE_DELAY_MS = 2_000;
+const OPEN_RETRY_MAX_DELAY_MS = 60_000;
+const OPEN_RETRY_MAX_ATTEMPTS = 8;
 
 function pageCount(byPage) {
   let n = 0;
@@ -173,6 +241,41 @@ function runDurableStackedInkRepair(handle, documentId, opts = {}) {
   }
 }
 
+// w28 (2026-09-24): marks drawn on older builds live in the old `annotations`
+// map, which the per-field store does not read. The owner wants them shown,
+// so the first writable open of each document copies them into `marks` once
+// (legacyMarksCarryOver.js: old ids, never overwrites, marker last). Viewers
+// and an unresolved role never write. Returns the result, or null on error
+// (never blocks hydration; the next writable open retries).
+function runLegacyMarksCarryOver(handle, documentId, { notify, reason }) {
+  if (typeof handle?.carryOverLegacyMarks !== 'function') return null;
+  try {
+    const result = handle.carryOverLegacyMarks({ notify });
+    if (result?.status === 'done') {
+      console.log('[useAnnotationDoc] carried marks from older builds', {
+        documentId,
+        reason,
+        carried: result.carried,
+        alreadyPresent: result.alreadyPresent,
+        alreadyCarried: result.alreadyCarried,
+        editedPdfReplaced: result.editedPdfReplaced,
+        editedPdfCreated: result.editedPdfCreated,
+        editedPdfSkipped: result.editedPdfSkipped,
+        editedPdfDeferred: result.editedPdfDeferred,
+        markerWritten: result.markerWritten,
+        eligible: result.eligible,
+        skippedPdfImported: result.skippedPdf,
+        skippedUnreadable: result.skippedInvalid,
+        batches: result.batches,
+      });
+    }
+    return result;
+  } catch (err) {
+    console.error('[useAnnotationDoc] carrying marks from older builds failed', err?.message);
+    return null;
+  }
+}
+
 export function useAnnotationDoc({
   documentId,
   userId,
@@ -197,6 +300,15 @@ export function useAnnotationDoc({
   docRole = null,
   eraseEffectConsumer = null,
   onHistoryQuarantine = null,
+  // Optional { current: { until } }: while Date.now() < until the capture
+  // below skips writing. PDFViewer holds it during a colour-slider drag so
+  // only the released value reaches the document (UX 2026-09-23, smooth
+  // sliders); it always lifts on release or after 1.5s and then re-renders,
+  // so the next capture writes the full current state.
+  capturePauseRef = null,
+  // w33: a locked document refuses every write (WAL lock gate); the one-time
+  // store compaction below never runs while it is locked.
+  documentLocked = false,
 }) {
   const handleRef = useRef(null);
   const eraseEffectConsumerRef = useRef(eraseEffectConsumer);
@@ -225,9 +337,29 @@ export function useAnnotationDoc({
   // the module's job; this just avoids re-running on unrelated re-renders).
   const migrationDoneRef = useRef(null);
   const inkRepairDoneRef = useRef(null);
+  // 2026-10-07 (first-open save): ids of the PDF's own marks being imported
+  // (beginBulkImport). The capture hands them to the store as a bulk import:
+  // saved as one checkpoint, never ahead of (or in the way of) the user's
+  // own edits. Each id leaves the set once the store has it.
+  const bulkImportKeysRef = useRef(new Set());
+  // w29 preview: what the viewer held before the first early paint for this
+  // document (byPage null = no preview shown since the last successful
+  // hydrate). Kept across failed-open retries of the same document, so marks
+  // painted by a failed attempt are never taken for the viewer's own. The
+  // early paint is display-only: an empty store is never seeded from it.
+  const prePreviewRef = useRef({ documentId: null, byPage: null });
   const [initialHydration, setInitialHydration] = useState({ ready: false, source: 'pending', count: 0, documentId: null });
+  // A failed open (e.g. the WAL tail read timing out) is retried with backoff
+  // instead of leaving the page covered forever (w26). Bumping the tick re-runs
+  // the open effect; the failure count is per document.
+  const [openRetryTick, setOpenRetryTick] = useState(0);
+  const openFailuresRef = useRef({ documentId: null, count: 0 });
   const [deletedPdfAnnotations, setDeletedPdfAnnotations] = useState([]);
   const [syncStatus, setSyncStatus] = useState({ stage: 'idle', healthy: true, error: null });
+  // w53: other screens' in-flight Survey Marker / spaces changes, DRAWN only
+  // (never written to surveyMarkers / spaces, so the capture never saves
+  // them): { markers: Map<id, record|null>, spaces: Array|null }.
+  const [liveMarkerOverlay, setLiveMarkerOverlay] = useState(EMPTY_LIVE_MARKER_OVERLAY);
   const [syncQueueSize, setSyncQueueSize] = useState(0);
 
   byPageRef.current = annotationsByPage;
@@ -248,11 +380,26 @@ export function useAnnotationDoc({
     let cancelled = false;
     let unsubscribeSync = null;
     let unsubscribeHistoryQuarantine = null;
+    let unsubscribeLivePreview = null;
+    let retryTimer = null;
     readyRef.current = false;
     metaFallbackIdsRef.current = new Set();
     migrationDoneRef.current = null;
     inkRepairDoneRef.current = null;
-    setInitialHydration({ ready: false, source: 'pending', count: 0, documentId });
+    bulkImportKeysRef.current = new Set();
+    if (prePreviewRef.current.documentId !== documentId) {
+      prePreviewRef.current = { documentId, byPage: null };
+    }
+    if (openFailuresRef.current.documentId !== documentId) {
+      openFailuresRef.current = { documentId, count: 0 };
+    }
+    // A retry keeps the 'unavailable' state: the PDF stays visible while the
+    // marks are fetched again (see annotationHydrationGate.js).
+    setInitialHydration((previous) => (
+      previous?.source === ANNOTATION_HYDRATION_UNAVAILABLE_SOURCE && previous.documentId === documentId
+        ? previous
+        : { ready: false, source: 'pending', count: 0, documentId }
+    ));
     setDeletedPdfAnnotations([]);
     setSyncStatus({ stage: 'hydrating', healthy: true, error: null });
     setSyncQueueSize(0);
@@ -265,18 +412,93 @@ export function useAnnotationDoc({
           supabase,
           clientId: getClientId(),
           actorUserId: userId,
+          // UX (w30, 2026-09-24): a mark drawn on one screen shows on every
+          // other screen with the document open in a few hundred ms, the way
+          // Figma and Drawboard feel, instead of after its database round
+          // trip (~1 s, several seconds on a big document). Each small edit
+          // is also broadcast; the log still decides what is saved.
+          livePreview: true,
+          // Private channel (document members only). A dev build can use a
+          // public topic for measuring before the channel policies exist:
+          // localStorage 'survey:livePreviewPublicChannel' = '1'.
+          livePreviewPrivate: !livePreviewPublicChannelInDev(),
           eraseEffectConsumer: typeof eraseEffectConsumerRef.current === 'function'
             ? eraseEffectConsumerProxyRef.current
             : null,
+          // UX (w29, open speed): the document's marks paint as soon as this
+          // device's saved copy (or the cloud snapshot) is read, instead of
+          // after the whole open (seconds on a big document). Display only:
+          // hydration stays not-ready, so nothing is written or imported and
+          // the first page keeps blocking input (see annotationHydrationGate)
+          // until the real hydrate below replaces this with the same marks.
+          onPreview: (previewByPage) => {
+            if (cancelled) return;
+            if (prePreviewRef.current.byPage === null) {
+              prePreviewRef.current = { documentId, byPage: byPageRef.current || {} };
+            }
+            const calloutList = deriveCalloutsFromByPage(previewByPage);
+            const projected = calloutList.length > 0
+              ? projectCalloutsIntoByPage(
+                previewByPage,
+                calloutList,
+                pageSizesRef?.current || {},
+                { preserveUnmeasured: true },
+              )
+              : previewByPage;
+            setAnnotationsByPage((previousByPage) => (
+              preserveTransientPagePresentationState(previousByPage, projected)
+            ));
+            setInitialHydration((previous) => (
+              previous?.ready && previous.documentId === documentId
+                ? previous
+                : {
+                  ready: false,
+                  source: ANNOTATION_HYDRATION_PREVIEW_SOURCE,
+                  count: pageCount(projected),
+                  documentId,
+                }
+            ));
+          },
         });
       } catch (err) {
         console.error('[useAnnotationDoc] open failed', err?.message);
         if (!cancelled) {
           setSyncStatus({ stage: 'error', healthy: false, error: err?.message || 'sync failed' });
           setSyncQueueSize(0);
+          // UX (w26, 2026-09-24): a document whose marks cannot be read right
+          // now (a database timeout, the network) still shows its PDF: the
+          // hydration becomes 'unavailable' (not ready — nothing imports into
+          // or writes to the store, the sync status shows the error) and the
+          // first-page cover lifts. The open is retried with backoff and the
+          // marks appear when it succeeds. Before, the page sat on loading
+          // dots forever. A deleted document or a permission denial is final.
+          const failures = openFailuresRef.current;
+          failures.count += 1;
+          setInitialHydration({
+            ready: false,
+            source: ANNOTATION_HYDRATION_UNAVAILABLE_SOURCE,
+            count: 0,
+            documentId,
+            error: err?.message || 'annotation store unavailable',
+          });
+          const code = String(err?.code || '');
+          const permanent = code === 'ANNOTATION_DOCUMENT_DELETED'
+            || code === '42501'
+            || /permission denied|row.level security/i.test(err?.message || '');
+          if (!permanent && failures.count <= OPEN_RETRY_MAX_ATTEMPTS) {
+            const delayMs = Math.min(
+              OPEN_RETRY_MAX_DELAY_MS,
+              OPEN_RETRY_BASE_DELAY_MS * (2 ** (failures.count - 1)),
+            );
+            retryTimer = setTimeout(() => {
+              retryTimer = null;
+              if (!cancelled) setOpenRetryTick((tick) => tick + 1);
+            }, delayMs);
+          }
         }
         return;
       }
+      openFailuresRef.current = { documentId, count: 0 };
       if (cancelled) { try { await handle.destroy(); } catch { /* */ } return; }
       handleRef.current = handle;
       const updateSyncStatus = (next) => {
@@ -298,34 +520,41 @@ export function useAnnotationDoc({
       // Remote ops (other devices) → reflect into React state.
       handle.onChange((byPage) => {
         if (cancelled) return;
+        syncTrace('onchange');
         // Slice 6: callout groups ride INSIDE `byPage` (they live in the same
         // `annotations` Y.Map as every other object), carrying their verbatim
         // data.legacyCallout payloads. PDFViewer derives callouts[] from
         // annotationsByPage (R2.2 flip), so this single set delivers them —
         // no meta-list projection, no dual write.
         //
-        // Read-only fallback upkeep: while unmigrated legacy meta callouts are
-        // being rendered from a LOCAL projection, re-merge them here so a
-        // remote op doesn't wipe them from view. When a remote editor's
-        // migration lands (map entries + tombstone arrive as remote ops), the
-        // recompute empties naturally and the fallback ends.
-        let nextByPage = byPage;
         // A duplicate can land in the hydrate→realtime subscribe gap, after
         // the one-time first-paint repair. Re-run the exact-only repair on
         // every remote materialization while writable. Suppress its nested
-        // notification and publish the cleaned materialization in this pass.
+        // notification; the read below picks up the cleaned state.
         if (isWritableDocRole(docRoleRef.current)) {
-          const repair = runDurableStackedInkRepair(
-            handle,
-            documentId,
-            { notify: false },
-          );
-          if (repair?.removed > 0) nextByPage = handle.getByPage();
+          runDurableStackedInkRepair(handle, documentId, { notify: false });
         }
-        if (metaFallbackIdsRef.current.size > 0) {
-          const fallback = getUnmigratedMetaCallouts(handle.doc);
-          metaFallbackIdsRef.current = new Set(fallback.ids);
-          if (fallback.callouts.length > 0) {
+        // Read-only fallback upkeep: while unmigrated legacy meta callouts are
+        // being rendered from a LOCAL projection, re-merge them so a remote op
+        // doesn't wipe them from view. When a remote editor's migration lands
+        // (map entries + tombstone arrive as remote ops), the recompute
+        // empties naturally and the fallback ends.
+        const fallback = metaFallbackIdsRef.current.size > 0
+          ? getUnmigratedMetaCallouts(handle.doc)
+          : null;
+        if (fallback) metaFallbackIdsRef.current = new Set(fallback.ids);
+        setAnnotationsByPage((previousByPage) => {
+          if (cancelled) return previousByPage;
+          // Per-field sync (2026-09-24): read the document when React applies
+          // this update, not when the notification fired. A local edit
+          // captured in between is then part of what the screen shows instead
+          // of being painted over by an older copy.
+          syncTrace('react-update-start');
+          let nextByPage = byPage;
+          try { nextByPage = handle.getByPage(); } catch { /* closed handle: keep the notified copy */ }
+          syncTrace('react-update-read');
+          nextByPage = withLivePreviews(nextByPage, handle);
+          if (fallback && fallback.callouts.length > 0) {
             nextByPage = projectCalloutsIntoByPage(
               nextByPage,
               [...deriveCalloutsFromByPage(nextByPage), ...fallback.callouts],
@@ -333,16 +562,46 @@ export function useAnnotationDoc({
               { preserveUnmeasured: true },
             );
           }
-        }
-        setAnnotationsByPage((previousByPage) => (
-          preserveTransientPagePresentationState(previousByPage, nextByPage)
-        ));
+          return preserveTransientPagePresentationState(previousByPage, nextByPage);
+        });
         const s = handle.getMeta(SPACES_KEY);
         if (Array.isArray(s)) setSpaces(s);
         const sm = handle.getSurveyMarkers();
         if (sm && typeof sm === 'object') setSurveyMarkers(sm);
         setDeletedPdfAnnotations(handle.getDeletedPdfAnnotations?.() || []);
       });
+
+      // w30: another screen's new mark, broadcast before its WAL row, shows
+      // at once (display only; the handle drops it again from every capture)
+      // and leaves when its row brings the real mark or it never comes.
+      unsubscribeLivePreview = handle.onLivePreviewChange?.(() => {
+        if (cancelled) return;
+        const markerOverlay = handle.getLiveMarkerOverlay?.();
+        setLiveMarkerOverlay((previous) => {
+          const empty = !markerOverlay || (markerOverlay.markers.size === 0 && !markerOverlay.spaces);
+          if (empty) return previous === EMPTY_LIVE_MARKER_OVERLAY ? previous : EMPTY_LIVE_MARKER_OVERLAY;
+          return markerOverlay; // the handle returns the same object while unchanged
+        });
+        // Same read-only fallback upkeep as a remote change (above).
+        const fallback = metaFallbackIdsRef.current.size > 0
+          ? getUnmigratedMetaCallouts(handle.doc)
+          : null;
+        if (fallback) metaFallbackIdsRef.current = new Set(fallback.ids);
+        setAnnotationsByPage((previousByPage) => {
+          if (cancelled) return previousByPage;
+          let nextByPage = previousByPage;
+          try { nextByPage = withLivePreviews(handle.getByPage(), handle); } catch { return previousByPage; }
+          if (fallback && fallback.callouts.length > 0) {
+            nextByPage = projectCalloutsIntoByPage(
+              nextByPage,
+              [...deriveCalloutsFromByPage(nextByPage), ...fallback.callouts],
+              pageSizesRef?.current || {},
+              { preserveUnmeasured: true },
+            );
+          }
+          return preserveTransientPagePresentationState(previousByPage, nextByPage);
+        });
+      }) || null;
 
       // Old import/sync races could save one path repeatedly under fresh ids.
       // After partial erase those copies become identical hairline fragments:
@@ -420,6 +679,9 @@ export function useAnnotationDoc({
               preserveTransientPagePresentationState(previousByPage, projectedByPage)
             ));
           }
+        } else if (prePreviewRef.current.byPage !== null) {
+          // w29: an early paint showed marks that are gone from the store now.
+          setAnnotationsByPage(prePreviewRef.current.byPage);
         }
         if (hasSpaces) setSpaces(storeSpaces);
         if (hasSurvey) setSurveyMarkers(storeSurvey);
@@ -439,7 +701,12 @@ export function useAnnotationDoc({
         // drawn (or imported) before this point is captured durably. Callout
         // groups already ride inside byPage (post-flip in-memory truth), so
         // applyByPage seeds them per-id too — no separate callout seed.
-        const curByPage = byPageRef.current;
+        // w29: marks shown by an early paint came from the store itself and are
+        // gone from it now (deleted meanwhile); take them off the screen and
+        // seed only what the viewer held before that paint.
+        const prePreview = prePreviewRef.current.byPage;
+        if (prePreview !== null) setAnnotationsByPage(prePreview);
+        const curByPage = prePreview !== null ? prePreview : byPageRef.current;
         if (curByPage && pageCount(curByPage) > 0) {
           const result = handle.applyByPage(curByPage);
           if (result?.identityChanged && result.normalizedByPage) {
@@ -453,6 +720,7 @@ export function useAnnotationDoc({
       }
 
       readyRef.current = true;
+      prePreviewRef.current = { documentId, byPage: null };
       // Drives the existing "import embedded marks when empty" effect: a
       // never-imported PDF hydrates empty (count 0) → that effect runs the
       // importer → its marks flow back through capture below → durable.
@@ -461,14 +729,43 @@ export function useAnnotationDoc({
 
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
       const h = handleRef.current;
       handleRef.current = null;
       readyRef.current = false;
       unsubscribeSync?.();
       unsubscribeHistoryQuarantine?.();
+      unsubscribeLivePreview?.();
+      setLiveMarkerOverlay(EMPTY_LIVE_MARKER_OVERLAY);
       if (h) { h.destroy().catch(() => {}); }
     };
-  }, [enabled, documentId, userId, setAnnotationsByPage, setSpaces, setSurveyMarkers]);
+  }, [enabled, documentId, userId, setAnnotationsByPage, setSpaces, setSurveyMarkers, openRetryTick]);
+
+  // UX (w26 review, 2026-09-24): while the store is 'unavailable' the PDF
+  // shows but nothing can be saved, and a later successful open would paint
+  // the stored marks over anything drawn meanwhile. So the document is
+  // read-only until the open succeeds — the same body[data-readonly] layer a
+  // viewer or a locked document gets (toolbar dimmed, drawing keys and page
+  // hit targets off). The sync status shows why.
+  const storeUnavailable = initialHydration?.source === ANNOTATION_HYDRATION_UNAVAILABLE_SOURCE
+    && initialHydration?.documentId === documentId;
+  useEffect(() => {
+    if (!storeUnavailable) return undefined;
+    return claimBodyReadOnly(`annotation-store-unavailable:${documentId}`);
+  }, [storeUnavailable, documentId]);
+
+  // UX (w29, open speed): while early-painted marks are showing and the store
+  // is still opening, nothing drawn could be saved (the capture waits for
+  // hydration, which then replaces the page). Same read-only layer as above,
+  // on every page and for the keyboard too, for the second or two until the
+  // open finishes; the marks are already visible meanwhile.
+  const storePreviewing = initialHydration?.source === ANNOTATION_HYDRATION_PREVIEW_SOURCE
+    && initialHydration?.ready !== true
+    && initialHydration?.documentId === documentId;
+  useEffect(() => {
+    if (!storePreviewing) return undefined;
+    return claimBodyReadOnly(`annotation-store-opening:${documentId}`);
+  }, [storePreviewing, documentId]);
 
   // The executor closes over document/template/user state and can legitimately
   // change after the durable handle opened. Reinstalling it also triggers an
@@ -491,9 +788,20 @@ export function useAnnotationDoc({
   // legacy callouts are STRIPPED first: there is no role gate in this capture
   // path (server RLS is the only write enforcement), so the local projection
   // must never become the first diff a viewer-tier client pushes.
+  // w30 latency trace (opt-in, see syncTrace.js): when React put a new page
+  // list in the DOM, and the start of the frame that paints it.
+  useLayoutEffect(() => {
+    if (!syncTraceEnabled()) return;
+    syncTrace('react-commit');
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => syncTrace('paint-frame'));
+    }
+  }, [annotationsByPage]);
+
   useEffect(() => {
     const h = handleRef.current;
     if (!h || !readyRef.current) return;
+    if (capturePauseRef?.current?.until && Date.now() < capturePauseRef.current.until) return;
     const capturedByPage = stripMetaFallbackCallouts(
       annotationsByPage,
       metaFallbackIdsRef.current,
@@ -501,20 +809,31 @@ export function useAnnotationDoc({
     const hasEraserMutation = Object.values(capturedByPage || {}).some(
       (page) => page?.eraserMutation?.id,
     );
-    const result = h.applyByPage(capturedByPage);
+    const bulkKeys = bulkImportKeysRef.current.size > 0 ? bulkImportKeysRef.current : null;
+    const result = h.applyByPage(capturedByPage, bulkKeys ? { bulkKeys } : undefined);
+    if (bulkKeys) for (const key of result?.bulkWritten || []) bulkKeys.delete(key);
     setDeletedPdfAnnotations(h.getDeletedPdfAnnotations?.() || []);
     if (hasEraserMutation) {
       // eraserMutation is a one-render transport envelope, not page content.
       // Replace it immediately with the operation-materialized Y.Doc view so
       // localStorage/export never retain the raw gesture payload.
-      const materialized = h.getByPage();
+      const materialized = withLivePreviews(h.getByPage(), h);
       setAnnotationsByPage((previousByPage) => (
         preserveTransientPagePresentationState(previousByPage, materialized)
       ));
-    } else if (result?.identityChanged && result.normalizedByPage) {
-      setAnnotationsByPage((previousByPage) => (
-        preserveTransientPagePresentationState(previousByPage, result.normalizedByPage)
-      ));
+    } else if ((result?.identityChanged && result.normalizedByPage) || result?.reconcile) {
+      setAnnotationsByPage((previousByPage) => {
+        let nextByPage = previousByPage;
+        if (result.identityChanged && result.normalizedByPage) {
+          nextByPage = preserveTransientPagePresentationState(
+            previousByPage,
+            withLivePreviews(result.normalizedByPage, h),
+          );
+        }
+        // The screen was behind the document for some marks (see
+        // applyReconcileSwaps): show the document's copy.
+        return applyReconcileSwaps(nextByPage, result.reconcile);
+      });
     }
   }, [annotationsByPage]);
 
@@ -544,6 +863,169 @@ export function useAnnotationDoc({
     // pageSizesRef is a ref (stable identity) — intentionally not a dep.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docRole, initialHydration, documentId]);
+
+  // w28: carry marks drawn on older builds into the per-field store, once per
+  // document (legacyMarksCarryOver.js), on a writable open that is ready.
+  // UX: the old marks appear a moment after the document opens, looking
+  // exactly as they did.
+  // When (review A, w28): two screens that carry the same document at the
+  // same moment each create the marks; Yjs keeps one copy, so an edit made on
+  // the other copy in that short window is lost. To keep that window small:
+  //   * wait until realtime has caught up after subscribing (so another
+  //     screen's carry-over that already landed is seen first), plus a random
+  //     0-1.5 s, then re-check;
+  //   * if the PDF's own embedded import has not run yet, wait for THIS
+  //     screen's import pass (its local marker or "incomplete" record): the
+  //     import saves whole pages built from what the screen held a moment
+  //     earlier and would paint over a carry-over published meanwhile. A
+  //     marker written by another screen is not a trigger (that screen
+  //     carries right after its own import; triggering here too would make
+  //     every open screen carry at once). After LEGACY_CARRY_WAIT_MS without
+  //     a local pass, carry if still needed.
+  // The carried marks reach the screen through the normal change path.
+  useEffect(() => {
+    if (!isWritableDocRole(docRole)) return undefined;
+    if (!initialHydration.ready || initialHydration.documentId !== documentId) return undefined;
+    const h = handleRef.current;
+    if (!h || !readyRef.current || typeof h.carryOverLegacyMarks !== 'function') return undefined;
+    if (!legacyMarksCarryOverPending(h.doc)) return undefined;
+    let finished = false;
+    let observing = false;
+    let unsubscribeStatus = null;
+    const timers = new Set();
+    const later = (fn, ms) => {
+      const timer = setTimeout(() => { timers.delete(timer); fn(); }, ms);
+      timers.add(timer);
+    };
+    const meta = h.doc.getMap(META_MAP);
+    const stop = () => {
+      finished = true;
+      if (observing) meta.unobserve(onMeta);
+      observing = false;
+      unsubscribeStatus?.();
+      unsubscribeStatus = null;
+      timers.forEach((timer) => clearTimeout(timer));
+      timers.clear();
+    };
+    const run = (reason) => {
+      if (finished) return;
+      stop();
+      if (handleRef.current !== h || !readyRef.current) return;
+      if (!legacyMarksCarryOverPending(h.doc)) return;
+      runLegacyMarksCarryOver(h, documentId, { notify: true, reason });
+    };
+    // Observers run inside Yjs's transaction cleanup: write from a fresh task.
+    let importPassSeen = false;
+    function onMeta(event) {
+      if (finished || importPassSeen || !event.transaction.local) return;
+      if (
+        !event.keysChanged.has(EMBEDDED_IMPORT_MARKER_KEY)
+        && !event.keysChanged.has(EMBEDDED_IMPORT_INCOMPLETE_KEY)
+      ) return;
+      importPassSeen = true;
+      later(() => run('after-embedded-import'), Math.floor(Math.random() * LEGACY_CARRY_JITTER_MS));
+    }
+    let begun = false;
+    const begin = () => {
+      if (finished || begun) return;
+      begun = true;
+      unsubscribeStatus?.();
+      unsubscribeStatus = null;
+      if (!legacyCarryOverWaitsForEmbeddedImport(h.doc)) {
+        later(() => run('open'), Math.floor(Math.random() * LEGACY_CARRY_JITTER_MS));
+        return;
+      }
+      meta.observe(onMeta);
+      observing = true;
+      later(() => run('wait-timeout'), LEGACY_CARRY_WAIT_MS);
+    };
+    if (typeof h.isRealtimeReady !== 'function' || h.isRealtimeReady()) {
+      begin();
+    } else {
+      unsubscribeStatus = h.onSyncStatus?.(() => {
+        if (h.isRealtimeReady()) later(begin, 0);
+      }) || null;
+    }
+    return stop;
+  }, [docRole, initialHydration.ready, initialHydration.documentId, documentId]);
+
+  // w33 (2026-09-25): shrink what this document already stores, once
+  // (annotationStoreCompaction.js): delete the old `annotations` map after the
+  // w28 carry-over finished, and rewrite marks still holding the dropped
+  // provenance field or derivable polygons. Writable, unlocked opens only,
+  // after the embedded import and the carry-over (it re-checks both, and
+  // waits on meta changes when either is not done yet). Idempotent: a second
+  // screen doing the same converges; with nothing to shrink nothing is
+  // written. The next checkpoint of the live doc is then small, so every
+  // later open downloads less.
+  const documentLockedRef = useRef(documentLocked);
+  documentLockedRef.current = documentLocked;
+  useEffect(() => {
+    if (!isWritableDocRole(docRole) || documentLocked) return undefined;
+    if (!initialHydration.ready || initialHydration.documentId !== documentId) return undefined;
+    const h = handleRef.current;
+    if (!h || !readyRef.current || typeof h.compactAnnotationStore !== 'function') return undefined;
+    let finished = false;
+    let timer = null;
+    let unsubscribeStatus = null;
+    // Only unobserve what begin() observed: stop() runs again on unmount after
+    // run() already stopped (or before begin), and Yjs logs an error for an
+    // unknown handler ("[yjs] Tried to remove event handler that doesn't exist").
+    let observing = false;
+    const meta = h.doc.getMap(META_MAP);
+    const stop = () => {
+      finished = true;
+      if (observing) meta.unobserve(onMeta);
+      observing = false;
+      unsubscribeStatus?.();
+      unsubscribeStatus = null;
+      if (timer) clearTimeout(timer);
+      timer = null;
+    };
+    const schedule = (ms) => {
+      if (finished || timer) return;
+      timer = setTimeout(() => { timer = null; run(); }, ms);
+    };
+    function onMeta() {
+      // Observers run inside Yjs's transaction cleanup: act from a fresh task.
+      schedule(Math.floor(Math.random() * STORE_COMPACTION_JITTER_MS));
+    }
+    function run() {
+      if (finished) return;
+      if (handleRef.current !== h || !readyRef.current || documentLockedRef.current) { stop(); return; }
+      // Not yet: the embedded import or the carry-over is still to come.
+      // A meta change (their markers) brings us back here.
+      if (!annotationStoreCompactionReady(h.doc) || legacyMarksCarryOverPending(h.doc)) return;
+      let pending = false;
+      try { pending = annotationStoreCompactionPending(h.doc); } catch { pending = false; }
+      stop();
+      if (!pending) return;
+      try {
+        const result = h.compactAnnotationStore({ notify: true });
+        console.log('[useAnnotationDoc] compacted the stored annotations', { documentId, ...result });
+      } catch (err) {
+        console.error('[useAnnotationDoc] compacting the stored annotations failed', err?.message);
+      }
+    }
+    let begun = false;
+    const begin = () => {
+      if (finished || begun) return;
+      begun = true;
+      unsubscribeStatus?.();
+      unsubscribeStatus = null;
+      meta.observe(onMeta);
+      observing = true;
+      schedule(STORE_COMPACTION_DELAY_MS + Math.floor(Math.random() * STORE_COMPACTION_JITTER_MS));
+    };
+    if (typeof h.isRealtimeReady !== 'function' || h.isRealtimeReady()) {
+      begin();
+    } else {
+      unsubscribeStatus = h.onSyncStatus?.(() => {
+        if (h.isRealtimeReady()) setTimeout(begin, 0);
+      }) || null;
+    }
+    return stop;
+  }, [docRole, documentLocked, initialHydration.ready, initialHydration.documentId, documentId]);
 
   // Capture space changes (document-level; coarse whole-array, no-op when
   // unchanged). Spaces + their region polygons now live durably in the Y.Doc
@@ -613,6 +1095,32 @@ export function useAnnotationDoc({
     return setMetaValueOnDoc(h.doc, key, value, origin);
   }, []);
 
+  // 2026-10-07: the embedded import names its marks before saving them (see
+  // bulkImportKeysRef), then waits for them to be stored in the cloud before
+  // writing its once-only marker: true once they are, false if this screen
+  // could not store them (the next open tries again; ids are stable).
+  const beginBulkImport = useCallback((keys) => {
+    for (const key of keys || []) if (key != null) bulkImportKeysRef.current.add(String(key));
+  }, []);
+  const whenBulkImportSaved = useCallback(async () => {
+    const h = handleRef.current;
+    if (!h || typeof h.whenBulkSaved !== 'function') return true;
+    try {
+      return await h.whenBulkSaved();
+    } finally {
+      if (handleRef.current === h) bulkImportKeysRef.current.clear();
+    }
+  }, []);
+
+  // True when every key is stored in the durable mark map (the embedded
+  // import writes its once-only marker only after its marks landed).
+  const hasStoredMarks = useCallback((keys) => {
+    const h = handleRef.current;
+    if (!h || !h.doc) return false;
+    const map = getAnnotationsMap(h.doc);
+    return (keys || []).every((key) => map.has(String(key)));
+  }, []);
+
   const commitEraseIntent = useCallback(async (intent, options = {}) => {
     const cloudHandle = handleRef.current;
     if (!cloudHandle || !readyRef.current) {
@@ -665,7 +1173,10 @@ export function useAnnotationDoc({
         },
       };
     }
-    nextByPage = preserveTransientPagePresentationState(byPageRef.current, nextByPage);
+    nextByPage = preserveTransientPagePresentationState(
+      byPageRef.current,
+      withLivePreviews(nextByPage, ownerHandle),
+    );
     const nextSurveyMarkers = result.surveyMarkers || ownerHandle.getSurveyMarkers();
     setDeletedPdfAnnotations(ownerHandle.getDeletedPdfAnnotations?.() || []);
     byPageRef.current = nextByPage;
@@ -691,7 +1202,7 @@ export function useAnnotationDoc({
     if (result.status !== 'applied' && result.status !== 'noop') return result;
     const nextByPage = preserveTransientPagePresentationState(
       byPageRef.current,
-      result.byPage || ownerHandle.getByPage(),
+      withLivePreviews(result.byPage || ownerHandle.getByPage(), ownerHandle),
     );
     byPageRef.current = nextByPage;
     setDeletedPdfAnnotations(
@@ -712,7 +1223,7 @@ export function useAnnotationDoc({
     if (result.status !== 'applied' && result.status !== 'noop') return result;
     const nextByPage = preserveTransientPagePresentationState(
       byPageRef.current,
-      result.byPage || ownerHandle.getByPage(),
+      withLivePreviews(result.byPage || ownerHandle.getByPage(), ownerHandle),
     );
     byPageRef.current = nextByPage;
     setDeletedPdfAnnotations(
@@ -739,7 +1250,11 @@ export function useAnnotationDoc({
     commitEraserMutation,
     metaGet,
     metaSet,
+    hasStoredMarks,
+    beginBulkImport,
+    whenBulkImportSaved,
     status: syncStatus,
     queueSize: syncQueueSize,
+    liveMarkerOverlay,
   };
 }

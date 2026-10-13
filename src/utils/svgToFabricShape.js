@@ -94,6 +94,11 @@ export function toFabricShape(annotation, options = {}) {
         y1: a.y1 ?? 0,
         x2: a.x2 ?? 0,
         y2: a.y2 ?? 0,
+        // w41: the endpoints are offsets from the bbox CENTER, so the
+        // geometry tests need the size (and a curved line's midpoint).
+        width: a.width ?? 0,
+        height: a.height ?? 0,
+        ...(a.data?.midpoint ? { data: { midpoint: a.data.midpoint } } : {}),
       };
 
     case 'polyline':

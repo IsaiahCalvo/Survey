@@ -49,28 +49,41 @@ test('custom name is trimmed on commit', () => {
 
 // ---- Layer 2: source-contract tripwires ----
 
-const modalStart = src.indexOf('{/* Name Prompt Modal');
-const modalEnd = src.indexOf('{/* Note Dialog */}', modalStart);
-const modalBlock = src.slice(modalStart, modalEnd);
+// Owner 2026-10-01 ("Yes, inline like phone"): the desktop Name and Entity
+// placement pop-ups were removed. A placed Survey Marker commits with its
+// category-derived default name and opens in the Survey rail with the name
+// field focused; the rail's rename commit uses the same BL-22 resolver. These
+// tripwires replace the old modal-block ones (value binding, two resolver
+// calls, select-on-focus), which pinned the pop-up that no longer exists.
+const railSrc = readFileSync(join(root, 'src', 'SurveySpacesRail.jsx'), 'utf8');
 
-test('the Name Prompt Modal block exists and is delimited', () => {
-  assert.ok(modalStart !== -1, 'Name Prompt Modal comment marker missing');
-  assert.ok(modalEnd > modalStart, 'Note Dialog end marker missing after the modal');
+test('desktop placement opens no Name / Entity pop-up', () => {
+  assert.ok(!src.includes('{/* Name Prompt Modal'), 'the Name pop-up is back');
+  assert.ok(!src.includes('{/* Entity Selection Dialog */}'), 'the Entity pop-up is back');
+  assert.ok(!src.includes('Name highlight'), '"highlight" wording is back');
 });
 
-test('modal input displays via the null-coalescing sentinel, exactly once', () => {
-  const uses = modalBlock.match(/value=\{surveyMarkerNameInput \?\? defaultName\}/g) || [];
-  assert.equal(uses.length, 1, `expected exactly 1 ?? display binding, found ${uses.length}`);
+test('a placed marker commits inline and asks the rail to focus its name', () => {
+  const start = src.indexOf('const handleSurveyMarkerCreated = useCallback(');
+  const block = src.slice(start, src.indexOf('}, [addHistoryCheckpoint,', start));
+  assert.match(block, /commitMobileSurveyMarker\(\{/);
+  assert.match(block, /setSurveyMarkerNameFocusRequest\(\{ id: annotationId/);
+  assert.ok(!/setPendingEntitySelection\(\{|setPendingSurveyMarkerName\(\{/.test(block), 'placement must not open the old pop-ups');
+});
+
+test('the rail rename commit uses the shared BL-22 resolver', () => {
+  assert.match(railSrc, /const nextName = resolveSurveyMarkerPromptName\(nextRawName/);
+});
+
+test('Escape on a just-placed, untouched name takes the placement back as one Undo step', () => {
+  assert.match(railSrc, /justPlacedSurveyMarkerIdRef\.current === String\(annotationId\)\s*&& e\.currentTarget\.value === surveyMarkerName/);
+  assert.match(railSrc, /if \(undoSurveyMarkerPlacement\(annotationId\)\) return;/);
+  assert.match(src, /topMeta\?\.reason !== 'highlight:create'/, 'the undo is only taken when the newest step is this placement');
 });
 
 test('the falsy display fallback never returns (whole file)', () => {
   assert.ok(!src.includes('surveyMarkerNameInput || defaultName'),
     'falsy fallback `surveyMarkerNameInput || defaultName` is back — this reintroduces BL-22');
-});
-
-test('both live commit paths (Enter + Save) use the shared resolver, exactly twice', () => {
-  const calls = modalBlock.match(/resolveSurveyMarkerPromptName\(surveyMarkerNameInput, defaultName\)/g) || [];
-  assert.equal(calls.length, 2, `expected exactly 2 resolver calls in the modal block, found ${calls.length}`);
 });
 
 test('input state initializes to the null sentinel', () => {
@@ -80,10 +93,6 @@ test('input state initializes to the null sentinel', () => {
 test("no reset site uses '' — '' must mean \"user cleared the field\", never \"untouched\"", () => {
   assert.ok(!src.includes("setSurveyMarkerNameInput('')"),
     "a setSurveyMarkerNameInput('') reset is back — '' would display verbatim and leak as user text");
-});
-
-test('untouched default is selected on focus so typing replaces it in one stroke', () => {
-  assert.match(modalBlock, /onFocus=\{\(e\) => \{ if \(surveyMarkerNameInput === null\) e\.target\.select\(\); \}\}/);
 });
 
 test('deleting a pending-name marker clears the stale input (guard + clear pair)', () => {

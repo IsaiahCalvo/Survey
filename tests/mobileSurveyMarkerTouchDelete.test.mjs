@@ -6,17 +6,22 @@ const SVG_SOURCE = readFileSync(
   new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url),
   'utf8',
 );
+const MOBILE_CSS = readFileSync(
+  new URL('../src/mobile/mobilePdfViewer.css', import.meta.url),
+  'utf8',
+);
 
-test('mobile Survey Marker Delete has one pointer activation path and keyboard activation', () => {
-  const start = SVG_SOURCE.indexOf('className="survey-marker-touch-delete"');
-  const end = SVG_SOURCE.indexOf('{filteredCallouts}', start);
-  const control = SVG_SOURCE.slice(start, end);
+// Owner 2026-10-01: selecting a Survey Marker must never show a floating
+// Delete chip beside it. Delete stays on the long-press / right-click menu,
+// the Delete key and the Survey panel.
+test('a selected Survey Marker draws no floating Delete chip', () => {
+  assert.doesNotMatch(SVG_SOURCE, /survey-marker-touch-delete/);
+  assert.doesNotMatch(SVG_SOURCE, /aria-label="Delete Survey Marker"/);
+  assert.doesNotMatch(SVG_SOURCE, /selectedSurveyMarkerDeleteBounds/);
+  assert.doesNotMatch(MOBILE_CSS, /survey-marker-touch-delete/);
+});
 
-  assert.ok(start > -1, 'touch Delete control is rendered');
-  assert.match(control, /role="button"/);
-  assert.match(control, /aria-label="Delete Survey Marker"/);
-  assert.match(control, /onPointerUp=/);
-  assert.match(control, /onKeyDown=/);
-  assert.doesNotMatch(control, /onClick=/, 'touch release must not also synthesize a second delete');
-  assert.equal((control.match(/deleteSelectedSurveyMarker\(\)/g) || []).length, 2);
+test('the Delete key still deletes the selected Survey Marker', () => {
+  assert.match(SVG_SOURCE, /flushPendingNudges\(\);\s*deleteSelectedSurveyMarker\(\);/);
+  assert.match(SVG_SOURCE, /onDeleteSurveyMarkers\(ids\)/);
 });

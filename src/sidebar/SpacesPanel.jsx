@@ -3,12 +3,18 @@
  * regions and per-page annotation visibility).
  *
  * Default-exports the SpacesPanel component; internal SpaceSortableCard renders
- * each card with expand, inline rename, toggle, page-range add (parsePageRangeInput),
- * region rename/edit, and canvas/survey annotation-visibility
- * toggles (gated on the Pro `features` flags). Cards reorder via dnd-kit
- * SortableRearrangeList with optimistic ordering and frame-capture debug hooks.
+ * each space as a flat line in the panel, like a Survey category (owner
+ * 2026-10-02, "integrated within the panel as separate rows"): grip, page
+ * count, fold arrow, click-to-rename name, switch and delete; open, an
+ * "Add pages" line (parsePageRangeInput) with a quiet [+], then one nested
+ * line per page ("region") with page number, outline switch, name, edit
+ * areas, marks bulb and remove.
+ * SpacesExportPanel is the "Export <space>" menu (desktop) / sheet (phone).
+ * Spaces reorder via dnd-kit SortableRearrangeList with optimistic ordering
+ * and frame-capture debug hooks.
  */
 import React, { useState, useCallback, useRef } from 'react';
+import { createPortal, flushSync } from 'react-dom';
 import Icon from '../Icons';
 import { parsePageRangeInput, sanitizePageRangeInput } from '../utils/pageRangeParser';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
@@ -20,6 +26,15 @@ import {
 } from '../utils/annotationVisibilityRules';
 import { showToast } from '../utils/toast';
 import { useTooltip } from '../components/Tooltip';
+import SectionIconButton from '../components/SectionIconButton.jsx';
+import { watchLightPopover } from '../components/dismissRules.js';
+import AnchoredPopover from '../components/AnchoredPopover';
+import { useConfirmDialog } from '../components/dialogPrompts';
+import {
+  buildDeleteSpaceConfirm,
+  buildRemovePageConfirm,
+  formatSpaceCountLabel,
+} from '../utils/spaceCascadeImpact.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const animateSpaceLayoutChanges = () => false;
@@ -60,10 +75,6 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   isRegionOverlayToggleEnabled = null,
   showSurveyPanel = false,
   selectedModuleId = null,
-  // UX 2026-07-12 — in the mobile Spaces sheet the space activate toggle grows to
-  // the demo's touch size (40x24 track, 18px knob; SpaceRow.tsx toggle / styles.ts
-  // 2104-2123). Desktop keeps the compact 28x16 toggle. Gold active track, never
-  // the demo's blue. Region mini-toggles stay 28x16 (already demo-correct).
   mobileMode = false,
 }) {
   // KAL-65: sidebar controls use the app's instant shared tooltip, never a
@@ -72,7 +83,11 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   const tip = useTooltip();
   const [editingRegionId, setEditingRegionId] = useState(null);
   const [editingRegionValue, setEditingRegionValue] = useState('');
+  // The name the field opened with: committing it unchanged is not a rename
+  // (owner 2026-10-02: only a real change is saved).
+  const editingRegionStartRef = useRef('');
   const editingRegionInputRef = useRef(null);
+  const spaceNameInputRef = useRef(null);
   React.useEffect(() => {
     if (!isExpanded) {
       setEditingRegionId(null);
@@ -92,7 +107,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
     }
     const labelToSave = editingRegionValue.trim();
 
-    onRenameRegion?.(space.id, pageId, labelToSave);
+    if (labelToSave !== editingRegionStartRef.current.trim()) {
+      onRenameRegion?.(space.id, pageId, labelToSave);
+    }
     setEditingRegionId(null);
     setEditingRegionValue('');
   }, [editingRegionId, editingRegionValue, onRenameRegion, space.id]);
@@ -112,16 +129,18 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   }, [editingRegionId]);
 
   const handleRegionEditClick = useCallback((pageId, currentLabel) => {
-    setEditingRegionId(pageId);
-    setEditingRegionValue(currentLabel);
+    // Spaces chunk A: render the field and focus it inside the tap itself -
+    // iOS only raises the keyboard for a focus() made in the user's gesture,
+    // and the rAF focus below came a frame too late for that.
+    editingRegionStartRef.current = currentLabel || '';
+    flushSync(() => {
+      setEditingRegionId(pageId);
+      setEditingRegionValue(currentLabel);
+    });
+    editingRegionInputRef.current?.focus();
+    editingRegionInputRef.current?.select();
   }, []);
 
-  const isHighlighted = isSelected || isActive;
-  const headerBackground = isHighlighted ? 'var(--surface-3)' : 'transparent';
-  const headerHoverBackground = isHighlighted ? 'var(--surface-3)' : 'var(--surface-2)';
-  const regionCountText = String(regionCount);
-  const regionCountDigits = regionCountText.length;
-  const regionCountFontSize = regionCountDigits >= 4 ? '6px' : (regionCountDigits >= 3 ? '7.5px' : '10px');
   const commitSpaceName = useCallback((input) => {
     if (!input) return;
     const fallbackName = space.name?.trim() || 'Space';
@@ -130,136 +149,145 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
     if (input.parentElement) {
       input.parentElement.dataset.value = nextName || ' ';
     }
-    if (nextName !== space.name) {
-      onRenameSpace?.(space.id, nextName);
+    // Only a real change is a rename (owner 2026-10-02). A refused rename
+    // (duplicate name, no permission) leaves space.name, and so this
+    // uncontrolled input's key, unchanged: put the real name back instead of
+    // leaving the refused text showing as a second "Space 2".
+    if (nextName !== space.name && onRenameSpace?.(space.id, nextName) !== true) {
+      input.value = space.name || '';
+      if (input.parentElement) {
+        input.parentElement.dataset.value = space.name || ' ';
+      }
     }
   }, [onRenameSpace, space.id, space.name]);
 
+  /*
+   * Owner 2026-10-02 ("I want it back to the way I had it, except slightly
+   * cleaner"), then the same day: "it's like boxes within boxes ... I want
+   * it integrated within the panel as separate rows, just like we updated
+   * the survey panel." Every control of the card layout (d6b8563) is kept,
+   * with every later behaviour fix (empty-space guard, honest delete
+   * confirms, rename only on a real change, refused rename restores, iOS
+   * keyboard focus, drag); only the cards are gone.
+   *   - a space is a LINE in the panel, a hairline under it: grip · page
+   *     count · fold arrow · name (click to rename) · switch · delete;
+   *   - open, one step in: "Add pages (e.g. 3, 6-9, 12)" in the panel's one
+   *     recessed well with a quiet [+] joined to it, then one line per page
+   *     ("region"), hairlines between: page number (goes to the page) ·
+   *     outline switch · name (click to rename) · edit areas · light bulb
+   *     (survey icon in survey mode) · remove;
+   *   - cleaner than before: numbers are plain small muted figures (no
+   *     circles), switches turn ON in the app's calm neutral ink (the Survey
+   *     "Reuse" switch), never gold; the [+] is grey, never a gold square.
+   * Sizes: the .spaces-panel custom properties in styles.css (desktop rows
+   * 32) and mobilePdfViewer.css (phone rows 44).
+   */
+  const visibilityControlMode = getPageVisibilityControlMode({ showSurveyPanel, selectedModuleId });
+  const isSurveyVisibilityContext =
+    activeSpaceId !== null && visibilityControlMode === PAGE_VISIBILITY_CONTROL_MODE.SURVEY;
+  const getVisibilityState = isSurveyVisibilityContext
+    ? getSurveyAnnotationVisibilityState
+    : getCanvasAnnotationVisibilityState;
+  const onToggleVisibility = isSurveyVisibilityContext
+    ? onToggleSurveyAnnotations
+    : onToggleCanvasAnnotations;
+  // Spaces chunk A: the row counts PAGES (it counted drawn areas, so a space
+  // listing two pages could read 0); the full "3 pages · 2 areas" is its name.
+  const regionCountLabel = formatSpaceCountLabel(pageCount, regionCount);
+  // A space with no pages would hide every page: it cannot be turned on until
+  // it has some (an active one can always be turned off).
+  const isSwitchBlocked = !isActive && pageCount === 0;
+  const spaceSwitchLabel = isActive ? 'Turn off space' : (isSwitchBlocked ? 'Add pages first' : 'Turn on space');
+  const toggleThisSpace = () => {
+    if (isSwitchBlocked) {
+      if (!isExpanded) onToggleExpand(space.id);
+      showToast(`Add pages to ${space.name || 'this space'} first.`, 'info');
+      return;
+    }
+    onToggleSpace?.(space.id, !isActive);
+  };
+  const switchKeyDown = (handler) => (e) => {
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      handler();
+    }
+  };
+  const spaceName = space.name || 'Space';
+
   return (
-    <div data-space-sortable-row-id={space.id}>
-      <div
-        data-drag-rearrange-row
-        style={{
-          background: 'var(--surface-2)',
-          border: isHighlighted ? '1px solid transparent' : '1px solid var(--border)',
-          borderRadius: '5px',
-          overflow: isExpanded ? 'visible' : 'hidden',
-          boxShadow: isHighlighted
-            ? '0 4px 16px rgba(0, 0, 0, 0.18)'
-            : '0 1px 2px rgba(0, 0, 0, 0.05)',
-        }}
-      >
+    <div
+      data-space-sortable-row-id={space.id}
+      className={`space-card${isExpanded ? ' is-expanded' : ''}${isDragging ? ' is-dragging' : ''}${isActive ? ' is-active' : ''}`}
+    >
+      <div data-drag-rearrange-row className="space-card__block">
         <div
+          className="space-card__head"
+          aria-expanded={isExpanded}
           onClick={() => onToggleExpand(space.id)}
-          style={{
-            padding: '2px 5px',
-            cursor: 'pointer',
-            background: headerBackground,
-            transition: isDragging || isRearranging ? 'none' : 'background 0.15s ease',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px'
-          }}
-          onMouseEnter={(e) => {
-            if (isDragging || isRearranging) return;
-            if (!isSelected && !isActive) {
-              e.currentTarget.style.background = headerHoverBackground;
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (isDragging || isRearranging) return;
-            if (!isSelected && !isActive) {
-              e.currentTarget.style.background = 'transparent';
-            }
-          }}
         >
-          <div className="space-card-leading-controls">
-            <DragRearrangeHandle
-              {...dragHandleProps}
-              className="space-card-drag-handle"
-              data-space-drag-handle
-              isDragging={isDragging}
-              title="Drag to rearrange"
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                width: '24px',
-                height: '24px',
-                color: 'var(--text-disabled)',
-              }}
-            />
+          <DragRearrangeHandle
+            {...dragHandleProps}
+            className="space-card__grip"
+            data-space-drag-handle
+            isDragging={isDragging}
+            title="Drag to rearrange"
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: undefined, height: undefined, color: 'var(--text-3)' }}
+          />
 
-            <span
-              className="space-region-count"
-              {...tip(`${regionCount} region${regionCount !== 1 ? 's' : ''}`, 'below')}
-              aria-label={`${regionCount} region${regionCount !== 1 ? 's' : ''}`}
-              style={{ fontSize: regionCountFontSize }}
-            >
-              {regionCountText}
-            </span>
+          {/* The page count, a plain muted figure (no circle). Its name and
+              tooltip say "3 pages · 2 areas". */}
+          <span
+            className="space-card__count"
+            data-space-meta
+            aria-label={regionCountLabel}
+            {...tip(regionCountLabel, 'below')}
+          >
+            {pageCount}
+          </span>
 
-            <button
-              className="space-card-expand-button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleExpand(space.id);
-              }}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--text-disabled)',
-                cursor: 'pointer',
-                padding: '2px 4px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: '4px'
-              }}
-              {...tip(isExpanded ? 'Collapse' : 'Expand', 'below')}
-              aria-label={isExpanded ? 'Collapse' : 'Expand'}
-              onMouseEnter={(e) => {
-                tip(isExpanded ? 'Collapse' : 'Expand', 'below').onMouseEnter(e);
-                e.currentTarget.style.background = 'var(--hover)';
-              }}
-              onMouseLeave={(e) => {
-                tip(isExpanded ? 'Collapse' : 'Expand', 'below').onMouseLeave(e);
-                e.currentTarget.style.background = 'transparent';
-              }}
-            >
-              <Icon
-                name={isExpanded ? 'chevronDown' : 'chevronRight'}
-                size={12}
-              />
-            </button>
-          </div>
+          <button
+            type="button"
+            className="space-card__chevron"
+            aria-label={isExpanded ? `Fold ${spaceName}` : `Open ${spaceName}`}
+            aria-expanded={isExpanded}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleExpand(space.id);
+            }}
+          >
+            <Icon name="chevronRight" size={12} color="currentColor" />
+          </button>
 
-          <span className="space-name-fit" data-value={space.name || ' '}>
+          {/* Click to rename (the layout the owner had). Enter or a click
+              away saves; Escape puts the name back; an unchanged or refused
+              name is not saved. */}
+          <span className="space-card__name-fit" data-value={space.name || ' '}>
             <input
+              ref={spaceNameInputRef}
               type="text"
               size={1}
-              className="space-name-inline"
+              className="space-card__name"
               defaultValue={space.name}
               key={`${space.id}:${space.name}`}
+              aria-label={`Rename ${spaceName}`}
               {...tip('Click to rename', 'below')}
-              aria-label={`Rename ${space.name || 'Space'}`}
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
-              onDoubleClick={(e) => {
-                e.stopPropagation();
-                e.currentTarget.select();
-              }}
               onInput={(e) => {
                 if (e.currentTarget.parentElement) {
                   e.currentTarget.parentElement.dataset.value = e.currentTarget.value || ' ';
                 }
               }}
-              onBlur={(e) => {
-                tip('Click to rename', 'below').onBlur(e);
-                commitSpaceName(e.currentTarget);
-              }}
+              onBlur={(e) => commitSpaceName(e.currentTarget)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
+                  e.preventDefault();
                   e.currentTarget.blur();
                 } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  e.stopPropagation();
                   e.currentTarget.value = space.name || '';
                   if (e.currentTarget.parentElement) {
                     e.currentTarget.parentElement.dataset.value = space.name || ' ';
@@ -269,117 +297,51 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               }}
             />
           </span>
-          <div className="space-card-header-controls">
-            {/* Toggle Switch - Always visible */}
-            <div
-              className="space-toggle-control"
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleSpace?.(space.id, !isActive);
-              }}
-              style={{
-                position: 'relative',
-                width: mobileMode ? '40px' : '28px',
-                height: mobileMode ? '24px' : '16px',
-                borderRadius: mobileMode ? '12px' : '8px',
-                background: isActive ? 'var(--accent)' : 'var(--surface-3)',
-                cursor: 'pointer',
-                transition: 'background 0.2s ease',
-                border: isActive ? '1px solid var(--accent-press)' : '1px solid var(--border-strong)',
-                display: 'flex',
-                alignItems: 'center',
-                padding: '2px',
-                flexShrink: 0
-              }}
-              {...tip(isActive ? 'Turn off space' : 'Turn on space', 'below')}
-              aria-label={isActive ? 'Turn off space' : 'Turn on space'}
-              onMouseEnter={(e) => {
-                tip(isActive ? 'Turn off space' : 'Turn on space', 'below').onMouseEnter(e);
-                if (!isActive) {
-                  e.currentTarget.style.background = 'var(--hover)';
-                } else {
-                  // UX: gold hovers UP to --accent-light; --accent-press is the pressed step.
-                  e.currentTarget.style.background = 'var(--accent-light)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                tip(isActive ? 'Turn off space' : 'Turn on space', 'below').onMouseLeave(e);
-                e.currentTarget.style.background = isActive ? 'var(--accent)' : 'var(--surface-3)';
-              }}
-            >
-              <div
-                style={{
-                  position: 'absolute',
-                  width: mobileMode ? '18px' : '12px',
-                  height: mobileMode ? '18px' : '12px',
-                  borderRadius: '50%',
-                  background: '#ffffff',
-                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
-                  transition: 'transform 0.2s ease',
-                  transform: isActive
-                    ? (mobileMode ? 'translate(18px, -50%)' : 'translate(12px, -50%)')
-                    : 'translate(0px, -50%)',
-                  left: '2px',
-                  top: '50%'
-                }}
-              />
-            </div>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(space.id);
-              }}
-              className="space-card-delete-button"
-              style={{
-                background: 'transparent',
-                border: 'none',
-                padding: '4px',
-                cursor: 'pointer',
-                borderRadius: '4px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-              {...tip('Delete', 'below')}
-              aria-label="Delete"
-              onMouseEnter={(e) => {
-                tip('Delete', 'below').onMouseEnter(e);
-                e.currentTarget.style.background = 'var(--danger-soft)';
-              }}
-              onMouseLeave={(e) => {
-                tip('Delete', 'below').onMouseLeave(e);
-                e.currentTarget.style.background = 'transparent';
-              }}
-            >
-              <Icon name="trash" size={12} color="var(--danger)" />
-            </button>
+
+          <span className="space-card__fill" aria-hidden="true" />
+
+          <div
+            role="switch"
+            tabIndex={0}
+            aria-checked={isActive}
+            aria-disabled={isSwitchBlocked || undefined}
+            aria-label={spaceSwitchLabel}
+            className="spaces-switch"
+            {...tip(spaceSwitchLabel, 'below')}
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleThisSpace();
+            }}
+            onKeyDown={switchKeyDown(toggleThisSpace)}
+          >
+            <span className="spaces-switch__knob" />
           </div>
+
+          <button
+            type="button"
+            className="space-card__icon space-card__delete"
+            data-glyph-only=""
+            aria-label={`Delete ${spaceName}`}
+            {...tip('Delete space', 'below')}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(space.id);
+            }}
+          >
+            <Icon name="trash" size={14} color="currentColor" />
+          </button>
         </div>
 
         {isExpanded && (
-          <div
-            style={{
-            padding: '10px 12px 16px 12px',
-            background: 'var(--surface-2)',
-            borderTop: '1px solid var(--border)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '12px',
-            fontSize: '12px',
-            color: 'var(--text-3)',
-            position: 'relative'
-          }}>
-            <div className="space-add-pages-row" style={{ position: 'relative', height: '24px', flex: '0 0 24px' }}>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}>
+          <div className="space-card__body">
+            <div className="space-card__add-line">
+              <div className="space-card__add">
                 <input
                   type="text"
-                  className="space-add-pages-input"
+                  className="space-card__add-input"
                   value={pageInputValue}
                   placeholder="Add pages (e.g. 3, 6-9, 12)"
+                  aria-label="Add pages (e.g. 3, 6-9, 12)"
                   onChange={(e) => onPageInputChange(space.id, sanitizePageRangeInput(e.target.value))}
                   inputMode="numeric"
                   pattern="[0-9,-]*"
@@ -389,370 +351,289 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                       onAssignPages(space.id);
                     }
                   }}
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                    height: '24px',
-                    padding: '2px 8px',
-                    background: 'var(--surface-1)',
-                    color: 'var(--text-2)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '4px',
-                    fontSize: '11px',
-                    fontFamily: FONT_FAMILY,
-                    boxSizing: 'border-box'
-                  }}
                 />
+                {/* Quiet grey, joined to the field - never a gold square. */}
                 <button
                   type="button"
+                  className="space-card__add-go"
+                  data-glyph-only=""
+                  aria-label="Add pages"
+                  {...tip('Add pages', 'below')}
                   onClick={(e) => {
                     e.stopPropagation();
                     onAssignPages(space.id);
                   }}
-                  className="space-add-pages-icon-button"
-                  {...tip('Add pages', 'below')}
-                  aria-label="Add pages"
                 >
-                  <Icon name="plus" size={13} />
+                  <Icon name="plus" size={14} color="currentColor" />
                 </button>
               </div>
-              {pageError && (
-                <div className="space-page-range-error" {...tip(pageError, 'below')}>
-                  {pageError}
-                </div>
-              )}
             </div>
+            {pageError && (
+              <div className="space-card__error" role="alert">
+                {pageError}
+              </div>
+            )}
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {pageCount === 0 ? (
-                <div style={{ color: 'var(--text-3)', fontSize: '12px' }}>
-                  No pages added yet.
-                </div>
-              ) : (
-                <ul style={{
-                  listStyle: 'none',
-                  margin: 0,
-                  padding: 0,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '6px'
-                }}>
-                  {space.assignedPages
-                    ?.slice()
-                    .sort((a, b) => (a.pageId || 0) - (b.pageId || 0))
-                    .map(page => {
-                      const regionLabel = typeof page.label === 'string' && page.label.trim().length > 0
-                        ? page.label.trim()
-                        : `Region ${page.pageId}`;
-                      const isEditingRegion = editingRegionId === page.pageId;
+            {pageCount === 0 ? (
+              <div className="space-card__empty">No pages added yet.</div>
+            ) : (
+              <ul className="space-card__regions">
+                {space.assignedPages
+                  ?.slice()
+                  .sort((a, b) => (a.pageId || 0) - (b.pageId || 0))
+                  .map((page) => {
+                    const regionLabel = typeof page.label === 'string' && page.label.trim().length > 0
+                      ? page.label.trim()
+                      : `Region ${page.pageId}`;
+                    const isEditingRegion = editingRegionId === page.pageId;
 
-                      return (
-                        <li
-                          key={page.pageId}
-                          className="space-region-row"
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            padding: '4px 8px',
-                            minHeight: '34px',
-                            background: 'var(--surface-1)',
-                            border: '1px solid var(--border)',
-                            borderRadius: '6px'
+                    // Region outline (the hatching outside the drawn areas).
+                    const hasOverlayProps = onToggleRegionOverlay && getRegionOverlayEnabled && isRegionOverlayToggleEnabled;
+                    const isOverlayEnabled = hasOverlayProps ? getRegionOverlayEnabled(space.id, page.pageId, page) : false;
+                    const isOverlayToggleEnabled = hasOverlayProps ? isRegionOverlayToggleEnabled(space.id, page.pageId, page) : false;
+                    const overlayLabel = !hasOverlayProps
+                      ? 'Outline not available here'
+                      : !isActive
+                        ? 'Turn the space on to show its outline'
+                        : !isOverlayToggleEnabled
+                          ? 'Draw an area first to show its outline'
+                          : (isOverlayEnabled ? 'Hide the outline' : 'Show the outline');
+                    const toggleOverlay = () => {
+                      if (!isOverlayToggleEnabled) return;
+                      onToggleRegionOverlay?.(space.id, page.pageId);
+                    };
+
+                    // KAL-313 / history F1 (2026-06-11): the region-edit entry
+                    // point. Without it the Region Selection Tool — and the
+                    // commit-time region-delete journaling — is unreachable.
+                    const isActiveRegionEdit =
+                      isRegionSelectionActive &&
+                      regionSelectionPage === page.pageId &&
+                      activeSpaceId === space.id;
+                    const areaCount = Array.isArray(page.regions) ? page.regions.length : 0;
+                    const regionEditLabel = isActiveRegionEdit
+                      ? 'Stop editing areas'
+                      : (areaCount > 0 ? `Edit the areas on page ${page.pageId}` : `Draw an area on page ${page.pageId}`);
+
+                    // One visible control, separate canvas/survey features in code.
+                    const hasVisibility = Boolean(getVisibilityState && onToggleVisibility);
+                    const visibilityState = hasVisibility ? getVisibilityState(space.id, page.pageId) : true;
+                    const isVisibilityDisabled = !isActive || activeSpaceId === null;
+                    const visibilityLabel = isVisibilityDisabled
+                      ? 'Turn the space on to show or hide marks'
+                      : isSurveyVisibilityContext
+                        ? (visibilityState ? 'Hide survey markers' : 'Show survey markers')
+                        : (visibilityState ? 'Hide marks' : 'Show marks');
+
+                    return (
+                      <li key={page.pageId} className={`space-region-card${isActiveRegionEdit ? ' is-editing' : ''}`}>
+                        <button
+                          type="button"
+                          className="spaces-region__page"
+                          {...tip(`Go to page ${page.pageId}`, 'below')}
+                          aria-label={`Go to page ${page.pageId}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onNavigateToPage?.(page.pageId);
                           }}
                         >
-                          <div className="region-leading-controls">
+                          {page.pageId}
+                        </button>
+
+                        <div
+                          role="switch"
+                          tabIndex={isOverlayToggleEnabled ? 0 : -1}
+                          aria-checked={Boolean(isOverlayToggleEnabled && isOverlayEnabled)}
+                          aria-disabled={!isOverlayToggleEnabled || undefined}
+                          aria-label={overlayLabel}
+                          className="spaces-switch spaces-switch--sm"
+                          {...tip(overlayLabel, 'below')}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleOverlay();
+                          }}
+                          onKeyDown={switchKeyDown(toggleOverlay)}
+                        >
+                          <span className="spaces-switch__knob" />
+                        </div>
+
+                        <div className="spaces-region__name">
+                          {isEditingRegion ? (
+                            <input
+                              ref={editingRegionInputRef}
+                              type="text"
+                              value={editingRegionValue}
+                              aria-label="Region name"
+                              onChange={(e) => setEditingRegionValue(e.target.value)}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => e.stopPropagation()}
+                              // No onFocus stopPropagation: the window focusin
+                              // listener in mobile/keyboardViewport.js is what
+                              // lifts the field above the phone keyboard.
+                              onBlur={() => {
+                                if (isRegionSelectionActive) return;
+                                commitRegionRename(page.pageId);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  commitRegionRename(page.pageId);
+                                } else if (e.key === 'Escape') {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  cancelRegionRename();
+                                }
+                              }}
+                              className="spaces-region__name-input"
+                            />
+                          ) : (
                             <button
                               type="button"
-                              className="region-page-pill region-page-pill-leading"
-                              {...tip(`Go to page ${page.pageId}`, 'below')}
-                              aria-label={`Go to page ${page.pageId}`}
+                              className="spaces-region__label"
+                              {...tip('Click to rename', 'below')}
+                              aria-label={`Rename ${regionLabel}`}
                               onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                onNavigateToPage?.(page.pageId);
+                                handleRegionEditClick(page.pageId, regionLabel);
                               }}
                             >
-                              {page.pageId}
+                              {regionLabel}
                             </button>
+                          )}
+                        </div>
 
-                            {/* Region Overlay Toggle Switch - Always visible, dimmed when disabled */}
-                            {(() => {
-                              const hasProps = onToggleRegionOverlay && getRegionOverlayEnabled && isRegionOverlayToggleEnabled;
-                              const isOverlayEnabled = hasProps && getRegionOverlayEnabled ? getRegionOverlayEnabled(space.id, page.pageId, page) : false;
-                              const isToggleEnabled = hasProps && isRegionOverlayToggleEnabled ? isRegionOverlayToggleEnabled(space.id, page.pageId, page) : false;
-                              const isSpaceActive = isActive;
-                              const overlayTooltipText = !hasProps
-                                ? 'Overlay toggle'
-                                : !isSpaceActive
-                                  ? 'Enable space to toggle overlay'
-                                  : !isToggleEnabled
-                                    ? 'Define regions first to enable overlay'
-                                    : (isOverlayEnabled ? 'Hide overlay for this region' : 'Show overlay for this region');
+                        <button
+                          type="button"
+                          className={`space-card__icon spaces-region__edit${isActiveRegionEdit ? ' is-on' : ''}`}
+                          data-glyph-only=""
+                          aria-pressed={isActiveRegionEdit}
+                          aria-label={regionEditLabel}
+                          {...tip(regionEditLabel, 'below')}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (isActiveRegionEdit) {
+                              onCancelRegionEdit?.(space.id, page.pageId);
+                            } else {
+                              onRequestRegionEdit?.(space.id, page.pageId);
+                            }
+                          }}
+                        >
+                          <Icon name="regionEdit" size={14} color="currentColor" />
+                        </button>
 
-                              return (
-                                <div
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (!isToggleEnabled || !onToggleRegionOverlay) {
-                                      return;
-                                    }
-                                    onToggleRegionOverlay(space.id, page.pageId);
-                                  }}
-                                  style={{
-                                    position: 'relative',
-                                    width: '28px',
-                                    height: '16px',
-                                    borderRadius: '8px',
-                                    background: isToggleEnabled && isOverlayEnabled ? 'var(--accent)' : 'var(--surface-3)',
-                                    cursor: isToggleEnabled ? 'pointer' : 'not-allowed',
-                                    transition: 'background 0.2s ease',
-                                    border: isToggleEnabled && isOverlayEnabled ? '1px solid var(--accent-press)' : '1px solid var(--border-strong)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    padding: '2px',
-                                    flexShrink: 0,
-                                    opacity: isToggleEnabled ? 1 : 0.5
-                                  }}
-                                  {...tip(overlayTooltipText, 'below')}
-                                  aria-label={overlayTooltipText}
-                                  onMouseEnter={(e) => {
-                                    tip(overlayTooltipText, 'below').onMouseEnter(e);
-                                    if (!isToggleEnabled) return;
-                                    if (!isOverlayEnabled) {
-                                      e.currentTarget.style.background = 'var(--hover)';
-                                    } else {
-                                      // UX: gold hovers UP to --accent-light; --accent-press is the pressed step.
-                  e.currentTarget.style.background = 'var(--accent-light)';
-                                    }
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    tip(overlayTooltipText, 'below').onMouseLeave(e);
-                                    if (!isToggleEnabled) return;
-                                    e.currentTarget.style.background = isOverlayEnabled ? 'var(--accent)' : 'var(--surface-3)';
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      position: 'absolute',
-                                      width: '12px',
-                                      height: '12px',
-                                      borderRadius: '50%',
-                                      background: '#ffffff',
-                                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
-                                      transition: 'transform 0.2s ease',
-                                      transform: isToggleEnabled && isOverlayEnabled ? 'translate(12px, -50%)' : 'translate(0px, -50%)',
-                                      left: '2px',
-                                      top: '50%'
-                                    }}
-                                  />
-                                </div>
-                              );
-                            })()}
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <div className="region-name-line">
-                              {isEditingRegion ? (
-                                <input
-                                  ref={editingRegionInputRef}
-                                  type="text"
-                                  value={editingRegionValue}
-                                  onChange={(e) => setEditingRegionValue(e.target.value)}
-                                  onMouseDown={(e) => {
-                                    e.stopPropagation();
-                                  }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                  }}
-                                  onFocus={(e) => {
-                                    e.stopPropagation();
-                                  }}
-                                  onBlur={() => {
-                                    if (isRegionSelectionActive) {
-                                      return;
-                                    }
-                                    commitRegionRename(page.pageId);
-                                  }}
-                                  onKeyDown={(e) => {
+                        {hasVisibility && (
+                          <button
+                            type="button"
+                            className={`space-card__icon spaces-region__marks${visibilityState ? ' is-on' : ''}`}
+                            data-glyph-only=""
+                            aria-pressed={Boolean(visibilityState)}
+                            aria-disabled={isVisibilityDisabled || undefined}
+                            aria-label={visibilityLabel}
+                            {...tip(visibilityLabel, 'below')}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (isVisibilityDisabled) return;
+                              onToggleVisibility(space.id, page.pageId, !visibilityState);
+                            }}
+                          >
+                            {isSurveyVisibilityContext ? (
+                              <Icon name="survey" size={14} color="currentColor" />
+                            ) : (
+                              <Icon name={visibilityState ? 'lightbulbOn' : 'lightbulbOff'} size={14} color="currentColor" />
+                            )}
+                          </button>
+                        )}
 
-                                    if (e.key === 'Enter') {
-                                      e.preventDefault();
-                                      commitRegionRename(page.pageId);
-                                    } else if (e.key === 'Escape') {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      cancelRegionRename();
-                                    }
-                                  }}
-                                  className="region-name-inline"
-                                  style={{
-                                    width: '100%',
-                                  }}
-                                />
-                              ) : (
-                                <button
-                                  type="button"
-                                  className="region-name-display"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    handleRegionEditClick(page.pageId, regionLabel);
-                                  }}
-                                  {...tip('Click to rename', 'below')}
-                                  aria-label="Click to rename"
-                                >
-                                  {regionLabel}
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                          <div className="region-action-controls">
-                            {/* KAL-313 / history F1 (2026-06-11): region-edit entry point.
-                                The 2026-06-11 panel rewrite ("Polish spaces sidebar controls")
-                                dropped the only call site of onRequestRegionEdit, making the
-                                Region Selection Tool unreachable from the UI — and with it the
-                                commit-time region-delete journaling. This button restores it. */}
-                            {(() => {
-                              const isActiveRegionEdit =
-                                isRegionSelectionActive &&
-                                regionSelectionPage === page.pageId &&
-                                activeSpaceId === space.id;
-                              return (
-                                <button
-                                  type="button"
-                                  className="region-edit-button"
-                                  {...tip(isActiveRegionEdit ? 'Exit region edit' : 'Edit region areas on the page', 'below')}
-                                  aria-label={isActiveRegionEdit ? 'Exit region edit' : 'Edit region areas on the page'}
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    if (isActiveRegionEdit) {
-                                      onCancelRegionEdit?.(space.id, page.pageId);
-                                    } else {
-                                      onRequestRegionEdit?.(space.id, page.pageId);
-                                    }
-                                  }}
-                                  style={{
-                                    /* UX 2026-09-17 (owner ruling): region-edit ON turns the
-                                       pencil gold and leaves its chrome alone — no wash, no
-                                       gold outline. The 1px transparent border stays so the
-                                       button's box never changes size. */
-                                    background: 'transparent',
-                                    border: '1px solid transparent',
-                                    borderRadius: '4px',
-                                    padding: '2px',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    cursor: 'pointer',
-                                    color: isActiveRegionEdit ? 'var(--accent)' : 'var(--text-3)'
-                                  }}
-                                >
-                                  <Icon name="edit" size={12} color="currentColor" />
-                                </button>
-                              );
-                            })()}
-                            {/* One visible control on screen, but separate canvas/survey features in code. */}
-                            {isExpanded && (() => {
-                              const controlMode = getPageVisibilityControlMode({ showSurveyPanel, selectedModuleId });
-                              const isSurveyContext =
-                                activeSpaceId !== null &&
-                                controlMode === PAGE_VISIBILITY_CONTROL_MODE.SURVEY;
-                              const getVisibilityState = isSurveyContext
-                                ? getSurveyAnnotationVisibilityState
-                                : getCanvasAnnotationVisibilityState;
-                              const onToggleVisibility = isSurveyContext
-                                ? onToggleSurveyAnnotations
-                                : onToggleCanvasAnnotations;
-
-                              if (!getVisibilityState || !onToggleVisibility) {
-                                return null;
-                              }
-
-                              const visibilityState = getVisibilityState(space.id, page.pageId);
-                              const isDisabled = !isActive || activeSpaceId === null;
-                              const title = !isDisabled
-                                ? (isSurveyContext
-                                  ? (visibilityState ? 'Hide survey annotations' : 'Show survey annotations')
-                                  : (visibilityState ? 'Hide canvas annotations' : 'Show canvas annotations'))
-                                : 'Toggle is only available when a space is active';
-
-                              return (
-                                <button
-                                  onClick={(e) => {
-                                    const now = Date.now();
-                                    const lastClick = parseInt(e.currentTarget.dataset.lastClick || '0', 10);
-                                    if (now - lastClick < 300) {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      return;
-                                    }
-                                    e.currentTarget.dataset.lastClick = now.toString();
-
-                                    if (isDisabled) {
-                                      return;
-                                    }
-
-                                    e.stopPropagation();
-                                    onToggleVisibility(space.id, page.pageId, !visibilityState);
-                                  }}
-                                  className="region-visibility-button"
-                                  style={{
-                                    cursor: isDisabled ? 'not-allowed' : 'pointer',
-                                    color: isDisabled ? 'var(--text-disabled)' : (visibilityState ? 'var(--accent)' : 'var(--text-3)'),
-                                    pointerEvents: isDisabled ? 'none' : 'auto'
-                                  }}
-                                  {...tip(title, 'below')}
-                                  aria-label={title}
-                                  onMouseEnter={(e) => {
-                                    tip(title, 'below').onMouseEnter(e);
-                                    if (!isDisabled) {
-                                      e.currentTarget.style.color = visibilityState ? '#5ba1f0' : 'var(--text-3)';
-                                    }
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    tip(title, 'below').onMouseLeave(e);
-                                    e.currentTarget.style.color = visibilityState ? 'var(--accent)' : 'var(--text-3)';
-                                  }}
-                                >
-                                  {isSurveyContext ? (
-                                    <Icon
-                                      name="survey"
-                                      size={12}
-                                      style={{ width: '15px', height: '15px', flexShrink: 0 }}
-                                    />
-                                  ) : (
-                                    <Icon
-                                      name={visibilityState ? 'lightbulbOn' : 'lightbulbOff'}
-                                      size={14}
-                                      color="currentColor"
-                                      style={{ width: '14px', height: '14px', flexShrink: 0 }}
-                                    />
-                                  )}
-                                </button>
-                              );
-                            })()}
-                            <button
-                              {...tip('Delete', 'below')}
-                              aria-label="Delete"
-                              onClick={() => onRemovePage(space.id, page.pageId)}
-                              className="region-delete-button"
-                            >
-                              <Icon name="trash" size={12} color="var(--danger)" />
-                            </button>
-                          </div>
-                        </li>
-                      );
-                    })}
-                </ul>
-              )}
-            </div>
+                        <button
+                          type="button"
+                          className="space-card__icon space-card__delete"
+                          data-glyph-only=""
+                          aria-label={`Remove page ${page.pageId} from ${spaceName}`}
+                          {...tip('Remove from space', 'below')}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onRemovePage(space.id, page.pageId);
+                          }}
+                        >
+                          <Icon name="trash" size={14} color="currentColor" />
+                        </button>
+                      </li>
+                    );
+                  })}
+              </ul>
+            )}
           </div>
         )}
       </div>
     </div>
   );
 });
+
+/*
+ * Spaces chunk B: "Export <space>" - which space, then CSV or PDF pages. The
+ * desktop shows it as a menu under Export; the phone as its own small sheet
+ * (portalled above the Spaces sheet), never the desktop popover.
+ */
+function SpacesExportPanel({ spaces, spaceId, onSpaceChange, onExportCSV, onExportPDF, onClose }) {
+  const target = spaces.find((space) => space.id === spaceId) || null;
+  const title = `Export ${target?.name || 'space'}`;
+  return (
+    <>
+      <div className="spaces-export__head">
+        <strong>{title}</strong>
+        {onClose ? (
+          <button type="button" className="spaces-export__close tertiary" onClick={onClose}>Cancel</button>
+        ) : null}
+      </div>
+      <div className="spaces-export__label">Space</div>
+      <div className="spaces-export__spaces" role="radiogroup" aria-label="Space to export">
+        {spaces.map((space) => {
+          const chosen = space.id === spaceId;
+          const pages = space.assignedPages?.length || 0;
+          return (
+            <button
+              key={space.id}
+              type="button"
+              role="radio"
+              aria-checked={chosen}
+              className={`spaces-export__space${chosen ? ' is-chosen' : ''}`}
+              onClick={() => onSpaceChange(space.id)}
+            >
+              <span>{space.name || 'Space'}</span>
+              <small>{pages} {pages === 1 ? 'page' : 'pages'}</small>
+              {chosen ? <Icon name="check" size={14} color="currentColor" /> : <i aria-hidden="true" />}
+            </button>
+          );
+        })}
+      </div>
+      <div className="spaces-export__actions">
+        <button
+          type="button"
+          className="spaces-export__action"
+          disabled={!target}
+          onClick={() => onExportCSV(target.id)}
+        >
+          <span>CSV</span>
+          <small>One row per mark in this space</small>
+        </button>
+        <button
+          type="button"
+          className="spaces-export__action"
+          disabled={!target}
+          onClick={() => onExportPDF(target.id)}
+        >
+          <span>PDF Pages</span>
+          <small>Exports base PDF pages only; app annotations are not embedded.</small>
+        </button>
+      </div>
+    </>
+  );
+}
 
 const SpacesPanel = ({
   spaces,
@@ -789,14 +670,38 @@ const SpacesPanel = ({
   mobileMode = false,
   mobilePanelVisible = false,
   onMobilePanelMetricsChange = null,
+  // Phone only: exits space mode and closes the sheet (PDFSidebar owns both).
+  onExitSpacesAction = null,
+  // Desktop (owner 2026-10-07, rail headers round): the rail's title row slot
+  // the header actions are drawn into, in line with the "Spaces" title.
+  headActionsHost = null,
+  // Spaces chunk A: counts what a page removal / space delete would delete
+  // (PDFViewer.getSpaceRemovalImpact), for the confirm.
+  getSpaceRemovalImpact = null,
+  // Phone: the space whose areas were just edited opens again with the sheet.
+  initiallyExpandedSpaceId = null,
+  // Spaces chunk B: a ref owned by PDFSidebar (which outlives this panel) that
+  // remembers which spaces are open, so closing and reopening the phone sheet
+  // (or the desktop panel) brings them back as they were.
+  expandedSpacesStoreRef = null,
 }) => {
   const tip = useTooltip();
-  const [expandedSpaces, setExpandedSpaces] = useState(() => new Set());
+  const [askConfirm, confirmDialogElement] = useConfirmDialog();
+  const [expandedSpaces, setExpandedSpaces] = useState(() => new Set([
+    ...(expandedSpacesStoreRef?.current || []),
+    ...(initiallyExpandedSpaceId ? [initiallyExpandedSpaceId] : []),
+  ]));
+  React.useEffect(() => {
+    if (expandedSpacesStoreRef) expandedSpacesStoreRef.current = expandedSpaces;
+  }, [expandedSpaces, expandedSpacesStoreRef]);
   const [selectedSpaceId, setSelectedSpaceId] = useState(null);
   const [isRearrangingSpaces, setIsRearrangingSpaces] = useState(false);
   const [optimisticSpaceIds, setOptimisticSpaceIds] = useState(() => spaces.map(space => space.id));
-  const [isSpacesExportMenuOpen, setIsSpacesExportMenuOpen] = useState(false);
-  const [isSpacesExportHovered, setIsSpacesExportHovered] = useState(false);
+  // Spaces chunk B: the space the Export menu / sheet is open for (null =
+  // closed).
+  const [exportSpaceId, setExportSpaceId] = useState(null);
+  const isSpacesExportMenuOpen = exportSpaceId !== null;
+  const spacesExportMenuRef = useRef(null);
 
   // Sync external selectedSpaceId prop with internal state
   React.useEffect(() => {
@@ -876,23 +781,18 @@ const SpacesPanel = ({
   const spacesExportAnchorRef = useRef(null);
 
   React.useEffect(() => {
-    if (!isSpacesExportMenuOpen) return;
-
-    const handleOutsideClick = (event) => {
-      if (!spacesExportAnchorRef.current) return;
-      if (!spacesExportAnchorRef.current.contains(event.target)) {
-        setIsSpacesExportMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleOutsideClick);
-    document.addEventListener('touchstart', handleOutsideClick, { passive: true });
-
-    return () => {
-      document.removeEventListener('mousedown', handleOutsideClick);
-      document.removeEventListener('touchstart', handleOutsideClick);
-    };
-  }, [isSpacesExportMenuOpen]);
+    // The phone sheet has its own backdrop (a blocking window, R4).
+    if (!isSpacesExportMenuOpen || mobileMode) return undefined;
+    // Light popover — shared dismiss rules R1/R2/R5 (src/components/dismissRules.js).
+    return watchLightPopover({
+      contains: (target) => Boolean(
+        !spacesExportAnchorRef.current
+        || spacesExportAnchorRef.current.contains(target)
+        || spacesExportMenuRef.current?.contains(target)
+      ),
+      close: () => setExportSpaceId(null),
+    });
+  }, [isSpacesExportMenuOpen, mobileMode]);
 
   const captureSpacesDropFrame = useCallback((label, details = {}) => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return null;
@@ -922,15 +822,13 @@ const SpacesPanel = ({
       const wrapper = node.closest('[data-sortable-rearrange-item]');
       const card = node.querySelector('[data-drag-rearrange-row]');
       const header = card?.firstElementChild || null;
-      // KAL-65: the expand/collapse button no longer carries a native title=
-      // (see the shared tip() binder above), so this debug-capture selector
-      // now keys off aria-label, which still carries 'Expand'/'Collapse'.
-      const expandButton = node.querySelector('button[aria-label="Expand"], button[aria-label="Collapse"]');
+      // The space row itself carries aria-expanded.
+      const expandButton = node.querySelector('.space-card__head[aria-expanded]');
 
       return {
         id: node.getAttribute('data-space-sortable-row-id'),
         text: (node.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 120),
-        expanded: expandButton?.getAttribute('aria-label') === 'Collapse',
+        expanded: expandButton?.getAttribute('aria-expanded') === 'true',
         wrapper: sampleStyle(wrapper),
         rowRoot: sampleStyle(node),
         card: sampleStyle(card),
@@ -1054,14 +952,14 @@ const SpacesPanel = ({
       const item = node.querySelector('[data-sortable-rearrange-item]') || node;
       const rect = item.getBoundingClientRect();
       const outerRect = node.getBoundingClientRect();
-      // KAL-65: aria-label, not title=, now carries 'Expand'/'Collapse'.
-      const expandButton = node.querySelector('button[aria-label="Expand"], button[aria-label="Collapse"]');
+      // The space row itself carries aria-expanded.
+      const expandButton = node.querySelector('.space-card__head[aria-expanded]');
       const style = window.getComputedStyle(node);
 
       return {
         id: node.getAttribute('data-space-sortable-row-id'),
         text: (item.innerText || node.innerText || '').replace(/\s+/g, ' ').trim(),
-        expanded: expandButton?.getAttribute('aria-label') === 'Collapse',
+        expanded: expandButton?.getAttribute('aria-expanded') === 'true',
         y: Number(rect.y.toFixed(1)),
         height: Number(rect.height.toFixed(1)),
         outerY: Number(outerRect.y.toFixed(1)),
@@ -1102,31 +1000,55 @@ const SpacesPanel = ({
 
   const handleCreateSpace = useCallback(() => {
     if (!requireSpaceManagement()) return;
-    const name = `Space ${spaces.length + 1}`;
+    // Next UNUSED number, not the count: after a delete, `Space ${length + 1}`
+    // can equal a surviving space's name ("Space 2") and the create was refused
+    // with a duplicate-name toast (owner's phone report 2026-09-30).
+    const takenNames = new Set((spaces || []).map((space) => (
+      typeof space?.name === 'string' ? space.name.trim().toLowerCase() : ''
+    )));
+    let counter = (spaces || []).length + 1;
+    while (takenNames.has(`space ${counter}`)) counter += 1;
+    const name = `Space ${counter}`;
     if (onSpaceCreate) {
       onSpaceCreate({
         name,
         assignedPages: []
       });
     }
-  }, [requireSpaceManagement, spaces.length, onSpaceCreate]);
+  }, [requireSpaceManagement, spaces, onSpaceCreate]);
 
   const handleRenameSpace = useCallback((spaceId, nextName) => {
     if (!requireSpaceManagement()) return;
     const name = nextName?.trim();
-    if (spaceId && name && onSpaceUpdate) {
+    if (!name) return false;
+    // Same rule as PDFViewer's handleSpaceUpdate (which keeps the final say);
+    // checked here too so the row knows to put the old name back.
+    const lowered = name.toLowerCase();
+    if ((spaces || []).some((space) => space?.id !== spaceId
+      && typeof space?.name === 'string' && space.name.trim().toLowerCase() === lowered)) {
+      showToast('A space with this name already exists. Please choose a different name.', 'error');
+      return false;
+    }
+    if (spaceId && onSpaceUpdate) {
       onSpaceUpdate(spaceId, { name });
     }
-  }, [onSpaceUpdate, requireSpaceManagement]);
+    return true;
+  }, [onSpaceUpdate, requireSpaceManagement, spaces]);
 
+  // Spaces chunk A: deleting a space also deletes what was placed in it (the
+  // cascade), so the confirm says so, with counts. Undo restores it all.
   const handleDelete = useCallback((spaceId) => {
     if (!requireSpaceManagement()) return;
-    if (window.confirm('Delete this space? This will not delete the pages, only the space assignment.')) {
-      if (onSpaceDelete) {
-        onSpaceDelete(spaceId);
-      }
-    }
-  }, [onSpaceDelete, requireSpaceManagement]);
+    const space = (spaces || []).find((entry) => entry?.id === spaceId);
+    const impact = getSpaceRemovalImpact?.(spaceId, null) || null;
+    askConfirm(buildDeleteSpaceConfirm({
+      spaceName: space?.name,
+      pageCount: space?.assignedPages?.length || 0,
+      impact,
+    })).then((confirmed) => {
+      if (confirmed && onSpaceDelete) onSpaceDelete(spaceId);
+    });
+  }, [askConfirm, getSpaceRemovalImpact, onSpaceDelete, requireSpaceManagement, spaces]);
 
   const handleToggleExpand = useCallback((spaceId) => {
     setExpandedSpaces(prev => {
@@ -1238,6 +1160,16 @@ const SpacesPanel = ({
     setOptimisticSpaceIds(spaces.map(space => space.id));
   }, [spaces]);
 
+  // Spaces chunk A: an active space with no pages (the viewer's "No pages in
+  // ..." card sends the user here) opens on its Add pages field.
+  const activeSpaceIsEmpty = Boolean(activeSpaceId) && (spaces || []).some((space) => (
+    space?.id === activeSpaceId && (space.assignedPages?.length || 0) === 0
+  ));
+  React.useEffect(() => {
+    if (!activeSpaceIsEmpty) return;
+    setExpandedSpaces((prev) => (prev.has(activeSpaceId) ? prev : new Set(prev).add(activeSpaceId)));
+  }, [activeSpaceId, activeSpaceIsEmpty]);
+
   const orderedSpaces = React.useMemo(() => {
     const byId = new Map(spaces.map(space => [space.id, space]));
     const seen = new Set();
@@ -1259,11 +1191,26 @@ const SpacesPanel = ({
     return ordered;
   }, [optimisticSpaceIds, spaces]);
 
+  // Spaces chunk A: removing a page also deletes the marks placed in this
+  // space on it and its drawn areas - ask first when there is any, with the
+  // counts. A bare page assignment goes without a question (one Undo step).
   const handleRemovePage = useCallback((spaceId, pageId) => {
     if (!requireSpaceManagement()) return;
     if (!onSpaceRemovePage) return;
-    onSpaceRemovePage(spaceId, pageId);
-  }, [onSpaceRemovePage, requireSpaceManagement]);
+    const space = (spaces || []).find((entry) => entry?.id === spaceId);
+    const prompt = buildRemovePageConfirm({
+      spaceName: space?.name,
+      pageId,
+      impact: getSpaceRemovalImpact?.(spaceId, [pageId]) || null,
+    });
+    if (!prompt) {
+      onSpaceRemovePage(spaceId, pageId);
+      return;
+    }
+    askConfirm(prompt).then((confirmed) => {
+      if (confirmed) onSpaceRemovePage(spaceId, pageId);
+    });
+  }, [askConfirm, getSpaceRemovalImpact, onSpaceRemovePage, requireSpaceManagement, spaces]);
 
   const handleRenameRegion = useCallback((spaceId, pageId, label) => {
     if (!requireSpaceManagement()) return;
@@ -1337,129 +1284,160 @@ const SpacesPanel = ({
   const expandedSpaceId = Array.from(expandedSpaces)[0] || null;
   const spacesExportTargetId = selectedSpaceId || activeSpaceId || expandedSpaceId || orderedSpaces[0]?.id || null;
   const spacesExportTarget = orderedSpaces.find((space) => space.id === spacesExportTargetId) || null;
-  const isSpacesExportActive = isSpacesExportHovered || isSpacesExportMenuOpen;
+  const createSpaceLabel = canManageSpaces ? 'Create space' : 'Upgrade to Pro to create spaces';
+  const exportSpaceLabel = spacesExportTarget ? `Export ${spacesExportTarget.name || 'space'}` : 'Create a space to export';
+  const activeSpace = activeSpaceId ? orderedSpaces.find((space) => space.id === activeSpaceId) || null : null;
+
+  // Chunk B: Export opens on a chosen space (the row's `⋯` passes its own;
+  // the header's Export the selected / active / open / first one) and the
+  // menu lets you pick another.
+  const openSpacesExport = useCallback((spaceId) => {
+    if (!spaceId) return;
+    if (!features?.excelExport) {
+      showToast('Exporting spaces is a Pro feature.', 'error');
+      return;
+    }
+    setExportSpaceId(spaceId);
+  }, [features?.excelExport]);
+  const runSpacesExport = (kind, spaceId) => {
+    setExportSpaceId(null);
+    if (kind === 'csv') onExportSpaceCSV?.(spaceId);
+    else onExportSpacePDF?.(spaceId);
+  };
+  const exportPanel = isSpacesExportMenuOpen ? (
+    <SpacesExportPanel
+      spaces={orderedSpaces}
+      spaceId={exportSpaceId}
+      onSpaceChange={setExportSpaceId}
+      onExportCSV={(spaceId) => runSpacesExport('csv', spaceId)}
+      onExportPDF={(spaceId) => runSpacesExport('pdf', spaceId)}
+      onClose={mobileMode ? () => setExportSpaceId(null) : null}
+    />
+  ) : null;
+
+  // The header's controls, drawn either in the panel's own header (phone)
+  // or in the rail's title row (desktop, owner 2026-10-07 rail headers).
+  const exportControl = (
+    <div
+      ref={spacesExportAnchorRef}
+      className="spaces-panel__export-anchor"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <SectionIconButton
+        phone={mobileMode}
+        action="export"
+        /* Owner 2026-10-02: every export that hands you a file draws
+           `download` (arrow into the tray); `upload` means putting files
+           INTO the app. */
+        icon="download"
+        className="spaces-panel__head-icon spaces-panel__head-icon--export"
+        label={exportSpaceLabel}
+        aria-haspopup={mobileMode ? 'dialog' : 'menu'}
+        aria-expanded={isSpacesExportMenuOpen}
+        disabled={!spacesExportTarget}
+        onClick={() => {
+          if (!spacesExportTarget) return;
+          if (isSpacesExportMenuOpen) {
+            setExportSpaceId(null);
+            return;
+          }
+          openSpacesExport(spacesExportTarget.id);
+        }}
+      />
+      {!mobileMode && exportPanel && (
+        <AnchoredPopover getAnchor={() => spacesExportAnchorRef.current} gap={2} zIndex={7000}>
+          <div ref={spacesExportMenuRef} className="spaces-export spaces-export--menu" role="menu" aria-label={`Export ${orderedSpaces.find((space) => space.id === exportSpaceId)?.name || 'space'}`}>
+            {exportPanel}
+          </div>
+        </AnchoredPopover>
+      )}
+    </div>
+  );
+  const addControl = (
+    <SectionIconButton
+      phone={mobileMode}
+      action="add"
+      className="spaces-panel__head-icon spaces-panel__head-icon--add"
+      label={createSpaceLabel}
+      onClick={handleCreateSpace}
+    />
+  );
+  const exitSpaceChip = !mobileMode && activeSpace && (
+    <button
+      type="button"
+      className="spaces-panel__exit-chip"
+      onClick={() => handleExitSpace(activeSpace.id)}
+      {...tip(`Turn off ${activeSpace.name || 'the space'} and show every page`, 'below')}
+      aria-label={`Exit ${activeSpace.name || 'space'}`}
+    >
+      <span>Exit space</span>
+      <Icon name="close" size={10} color="currentColor" />
+    </button>
+  );
 
   return (
-    <div ref={mobilePanelRootRef} className={mobileMode ? 'mobile-spaces-panel' : undefined} style={{
-      display: 'flex',
-      flexDirection: 'column',
-      height: mobileMode ? 'auto' : '100%',
-      flex: mobileMode ? 1 : undefined,
-      minHeight: 0,
-      fontFamily: FONT_FAMILY,
-      background: mobileMode ? 'var(--surface-2)' : 'var(--surface-1)'
-    }}>
-      {/* Header */}
-      <div className={mobileMode ? 'mobile-spaces-header' : undefined} style={{
-        padding: '12px',
-        height: '50px',
-        boxSizing: 'border-box',
-        background: 'var(--surface-1)',
-        borderBottom: '1px solid var(--border)',
+    <div
+      ref={mobilePanelRootRef}
+      className={`spaces-panel${mobileMode ? ' mobile-spaces-panel' : ''}`}
+      style={{
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexShrink: 0
-      }}>
-        <div className={mobileMode ? 'mobile-spaces-title' : undefined}>
-          <h3 style={{
-            margin: 0,
-            fontSize: '13px',
-            fontWeight: '600',
-            color: 'var(--text-2)',
-            lineHeight: 1
-          }}>
-            Spaces
-          </h3>
-          {mobileMode ? (
-            <span>{isRegionSelectionActive ? 'Region active' : (activeSpaceId || selectedSpaceId) ? 'Space active' : 'No space active'}</span>
-          ) : null}
-        </div>
+        flexDirection: 'column',
+        height: mobileMode ? 'auto' : '100%',
+        flex: mobileMode ? 1 : undefined,
+        minHeight: 0,
+        fontFamily: FONT_FAMILY,
+        background: 'var(--panel-bg)'
+      }}
+    >
+      {/* UX 2026-09-23 (owner): the Bookmarks header pattern - [+ Add] on the
+          left and [Export] on the right, quiet words of equal weight.
+          Spaces chunk B: the phone header is the Survey sheet's - a "Spaces"
+          title, then Add, the export glyph and a neutral "Done" (it leaves
+          Spaces mode and closes the sheet, as the red "Exit Spaces / Regions"
+          link at the foot of the list did). The desktop header gains an
+          "Exit space" chip while a space is on.
+          Owner 2026-10-02: section header actions are ICONS ("The icons
+          looked way better"), right-aligned, Add last - the [Select] [Add]
+          order of every list header: [Export] [Add] (desktop: after the
+          Exit space chip; phone: before Done). */}
+      {/* Owner 2026-10-07 (rail headers round): on desktop these actions sit
+          in the rail's title row, right after "Spaces" ("in line with the
+          title, but on the left") - [Export] [Add], then the Exit space chip
+          while a space is on - so the panel's own header row is gone there. */}
+      {!mobileMode && headActionsHost ? createPortal(
+        <>
+          {exportControl}
+          {addControl}
+          {exitSpaceChip}
+        </>,
+        headActionsHost
+      ) : (
+      <div className="spaces-panel__head">
+        {mobileMode && <h2 className="spaces-panel__heading">Spaces</h2>}
 
-        <div className="spaces-header-actions">
+        {!mobileMode && <span className="spaces-panel__head-fill" aria-hidden="true" />}
+
+        {exitSpaceChip}
+        {exportControl}
+        {addControl}
+
+        {typeof onExitSpacesAction === 'function' && (
           <button
             type="button"
-            onClick={handleCreateSpace}
-            className="survey-marker-category-create-button"
-            {...tip(canManageSpaces ? 'Create space' : 'Upgrade to Pro to create spaces', 'below')}
-            aria-label={canManageSpaces ? 'Create space' : 'Upgrade to Pro to create spaces'}
+            className="spaces-panel__done tertiary"
+            onClick={onExitSpacesAction}
           >
-            <Icon name="plus" size={14} />
+            Done
           </button>
-          <div
-            ref={spacesExportAnchorRef}
-            style={{ position: 'relative', display: 'inline-flex' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Future: replace this compact menu with a custom Spaces export panel that lets users choose which space to export. */}
-            <button
-              type="button"
-              className={`spaces-header-export-button${isSpacesExportActive ? ' is-active' : ''}`}
-              {...tip(spacesExportTarget ? `Export ${spacesExportTarget.name || 'space'}` : 'Create a space to export', 'below')}
-              aria-label={spacesExportTarget ? `Export ${spacesExportTarget.name || 'space'}` : 'Create a space to export'}
-              aria-expanded={isSpacesExportMenuOpen}
-              disabled={!spacesExportTarget}
-              onClick={() => {
-                if (!spacesExportTarget) return;
-                if (!features?.excelExport) {
-                  showToast('Exporting spaces is a Pro feature.', 'error');
-                  return;
-                }
-                setIsSpacesExportMenuOpen((open) => !open);
-              }}
-              onMouseEnter={(e) => {
-                tip(spacesExportTarget ? `Export ${spacesExportTarget.name || 'space'}` : 'Create a space to export', 'below').onMouseEnter(e);
-                setIsSpacesExportHovered(true);
-              }}
-              onMouseLeave={(e) => {
-                tip(spacesExportTarget ? `Export ${spacesExportTarget.name || 'space'}` : 'Create a space to export', 'below').onMouseLeave(e);
-                setIsSpacesExportHovered(false);
-              }}
-            >
-              <Icon name="upload" size={14} />
-            </button>
-            {isSpacesExportMenuOpen && spacesExportTarget && (
-              <div className="spaces-header-export-menu" role="menu">
-                <button
-                  type="button"
-                  className="spaces-header-export-menu-button"
-                  onClick={() => {
-                    setIsSpacesExportMenuOpen(false);
-                    onExportSpaceCSV?.(spacesExportTarget.id);
-                  }}
-                >
-                  CSV
-                </button>
-                <button
-                  type="button"
-                  className="spaces-header-export-menu-button"
-                  {...tip('Exports base PDF pages only; app annotations are not embedded.', 'below')}
-                  onClick={() => {
-                    setIsSpacesExportMenuOpen(false);
-                    onExportSpacePDF?.(spacesExportTarget.id);
-                  }}
-                >
-                  PDF Pages
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+        )}
       </div>
+      )}
 
-      {/* Spaces List */}
-      <div ref={mobileSpacesListRef} style={{
-        flex: 1,
-        overflowY: 'auto',
-        padding: '8px'
-      }}>
+      {/* Spaces List — one line per space, no gaps: each line carries its
+          own hairline, like the Survey categories (owner 2026-10-02). */}
+      <div ref={mobileSpacesListRef} className="spaces-list">
         {spaces.length === 0 ? (
-          <div style={{
-            textAlign: 'center',
-            padding: '40px 20px',
-            color: 'var(--text-3)',
-            fontSize: '13px'
-          }}>
+          <div className="spaces-list__empty">
             No spaces yet. Create a space to filter pages by visibility.
           </div>
         ) : (
@@ -1472,7 +1450,7 @@ const SpacesPanel = ({
             onDragEnd={restoreCollapsedSpaceAfterDrag}
             onDragCancel={restoreCollapsedSpaceAfterDrag}
             variableHeight
-            gap={8}
+            gap={0}
           >
             {orderedSpaces.map((space) => {
               const isActive = activeSpaceId === space.id;
@@ -1535,6 +1513,29 @@ const SpacesPanel = ({
           </SortableRearrangeList>
         )}
       </div>
+      {/* Rendered on <body>, above the phone sheet (z 6500): inside the sheet a
+          fixed overlay is caught by the sheet's transform. */}
+      {typeof document !== 'undefined' && createPortal(
+        <div style={{ position: 'relative', zIndex: 7000 }}>
+          {confirmDialogElement}
+          {/* Chunk B (phone): Export is its own small sheet over the Spaces
+              sheet, standing on the dock like every phone sheet. */}
+          {mobileMode && exportPanel && (
+            <>
+              <button
+                type="button"
+                className="spaces-export-sheet__backdrop"
+                aria-label="Close export"
+                onClick={() => setExportSpaceId(null)}
+              />
+              <div className="spaces-export spaces-export-sheet" role="dialog" aria-label={`Export ${orderedSpaces.find((space) => space.id === exportSpaceId)?.name || 'space'}`}>
+                {exportPanel}
+              </div>
+            </>
+          )}
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

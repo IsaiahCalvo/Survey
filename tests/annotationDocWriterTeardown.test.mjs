@@ -1,3 +1,6 @@
+// RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
+// — the flat store's durable mark map is `marks` (store v3); these tests use it
+// as a generic durable map.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as Y from 'yjs';
@@ -58,6 +61,10 @@ function args(t, supabase) {
   t.after(() => purgeYDoc(`annoflat:${documentId}:${actorUserId}`));
   return { documentId, actorUserId, supabase, enableLocal: false, enableRealtime: false,
     outboxStore: createMemoryAnnotationOutbox(),
+    // w33 (checkpoint policy ruled 2026-09-25): a close checkpoints only when
+    // the closing screen wrote rows and the tail is long enough; these tests
+    // pin what happens around that final checkpoint, so any own row counts.
+    checkpointPolicy: { minTailRows: 1 },
   };
 }
 
@@ -65,6 +72,10 @@ test('closing registry handle never writes a new owner edit while its final snap
   const supabase = backend({ blockFirstSnapshot: true });
   const options = args(t, supabase);
   const first = await openAnnotationDoc(options);
+  // w33: a close with nothing written writes no checkpoint, so the closing
+  // handle has one edit of its own for its final checkpoint to capture.
+  first.applyByPage(shape('before-close'));
+  await first.drain();
   const closing = first.destroy();
   await supabase.snapshotEntered.promise;
   const second = await openAnnotationDoc(options);
@@ -81,8 +92,13 @@ test('closing registry handle never writes a new owner edit while its final snap
     await assert.rejects(first.flushSnapshot(), { code: 'ANNOTATION_HANDLE_CLOSED' });
     second.applyByPage(shape('new-owner'));
     await second.drain();
-    assert.equal(supabase.updates.length, 1, 'one edit must produce one WAL write');
-    assert.equal(supabase.updates[0].client_id, second.writerId);
+    // w33: the closing handle's own pre-close edit is its only row.
+    assert.equal(supabase.updates.filter((row) => row.client_id === first.writerId).length, 1);
+    assert.equal(
+      supabase.updates.filter((row) => row.client_id === second.writerId).length,
+      1,
+      'one edit must produce one WAL write',
+    );
   } finally {
     supabase.snapshotGate.resolve();
     await closing;
@@ -109,13 +125,16 @@ test('close drains edits queued before teardown and captures them in its final s
   const cold = new Y.Doc();
   try {
     Y.applyUpdate(cold, decoded);
-    assert.ok(cold.getMap('annotations').size > 0, 'final snapshot retains queued edit');
+    assert.ok(cold.getMap('marks').size > 0, 'final snapshot retains queued edit');
   } finally { cold.destroy(); }
 });
 
 test('repeated destroy requests share one close and one final snapshot', async (t) => {
   const supabase = backend({ blockFirstSnapshot: true });
   const handle = await openAnnotationDoc(args(t, supabase));
+  // w33: something to capture (a close with nothing written writes none).
+  handle.applyByPage(shape('before-close'));
+  await handle.drain();
   const first = handle.destroy();
   await supabase.snapshotEntered.promise;
   const second = handle.destroy();

@@ -18,7 +18,9 @@ test('delete confirmation uses the shared app modal shell', () => {
   assert.match(source, /data-autofocus/);
 
   assert.match(styles, /z-index:\s*1300/);
-  assert.match(styles, /background:\s*rgba\(13,\s*15,\s*20,\s*0\.55\)/);
+  // 2026-10-04: the scrim names the one modal-scrim token (same value,
+  // rgba(13, 15, 20, 0.55)) instead of re-typing it.
+  assert.match(styles, /background:\s*var\(--overlay-scrim\)/);
   assert.match(styles, /backdrop-filter:\s*blur\(8px\)/);
 
   assert.match(styles, /width:\s*380px/);
@@ -28,8 +30,11 @@ test('delete confirmation uses the shared app modal shell', () => {
   // makes the two places this test compares unable to drift apart; a literal
   // here would pass while the rest of the app moved.
   assert.match(styles, /background:\s*var\(--surface-2\)/);
-  assert.match(styles, /border-radius:\s*10px/);
-  assert.match(styles, /box-shadow:\s*0 24px 60px rgba\(0,\s*0,\s*0,\s*0\.55\)/);
+  // 2026-10-04 (polish round 2): the card corner names the one dialog corner
+  // token (--radius-dialog, 10px) so every dialog shares it.
+  assert.match(styles, /border-radius:\s*var\(--radius-dialog\)/);
+  // 2026-10-04 (polish round 2): the one dialog shadow token, same value.
+  assert.match(styles, /box-shadow:\s*var\(--shadow-dialog\)/);
   assert.match(styles, /overflow:\s*hidden/);
 
   assert.match(styles, /confirm-delete-modal__content[\s\S]*padding:\s*18px 18px 14px/);

@@ -16,6 +16,37 @@ import { lookup as lookupPalHandler, listRegistered } from './contextMenuBridge.
 import { resolveAnnotationAt } from './annotationHitTest.js';
 import { selectionUsesPdfTextLayer } from './pdfNativeTextInteraction.js';
 
+/**
+ * w56 (live two-user test 2026-09-28): right-clicking a mark that is PART of
+ * the current multi-selection opens the selection's (group) menu — the rule
+ * Survey Markers already follow below — so Lock / Unlock / Cut / Copy /
+ * Delete act on everything that shows as selected, not only on the one mark
+ * under the cursor (Figma / Bluebeam / Acrobat behaviour). Before this, the
+ * one mark's own menu opened while the whole selection stayed highlighted,
+ * and "Lock" locked just that mark. A mark outside the selection keeps its
+ * own menu. Pure: reads only the selection frame's data attributes.
+ *
+ * @param {{kind: string, annotationIndex: number|null, calloutId: string|null}} hit
+ * @param {Element|null} groupBox  the page's [data-group-selection-bbox] frame
+ * @returns {{groupIndices: number[], groupMarkerIds: string[]}|null}
+ */
+export function groupMenuForSelectedMember(hit, groupBox) {
+  if (!hit || !groupBox || typeof groupBox.getAttribute !== 'function') return null;
+  const { kind, annotationIndex, calloutId } = hit;
+  if (kind !== 'annotation' && kind !== 'counter' && kind !== 'callout') return null;
+  const csv = (name) => String(groupBox.getAttribute(name) || '').split(',').filter((s) => s !== '');
+  const groupIndices = csv('data-group-selection-indices').map(Number).filter(Number.isFinite);
+  const groupMarkerIds = csv('data-group-selection-marker-ids');
+  const groupCalloutIds = csv('data-group-selection-callout-ids');
+  // A group = at least two selected members: marks, Survey Markers and
+  // callouts all count (the group menu counts selected callouts too).
+  if (groupIndices.length + groupMarkerIds.length + groupCalloutIds.length < 2) return null;
+  const isMember = kind === 'callout'
+    ? calloutId != null && groupCalloutIds.includes(String(calloutId))
+    : Number.isInteger(annotationIndex) && groupIndices.includes(annotationIndex);
+  return isMember ? { groupIndices, groupMarkerIds } : null;
+}
+
 // 2026-04-25 — Build stamp so save-logs reveal which version of this
 // dispatcher is actually live. If HMR mis-replaces the listener, the
 // stamp in the install log will still match the stale build's value.
@@ -154,6 +185,19 @@ function diag(line) {
       return;
     }
 
+    // A panel that covers the viewer (the left Pages / Search / Bookmarks
+    // panel, the Survey panel, a phone sheet: [data-viewer-occluder]) is never
+    // a page. The hit-test below falls back to elementsFromPoint, which also
+    // returns the PDF page lying BEHIND the panel, so a right-click on a Pages
+    // thumbnail over a wide sheet opened the viewer's menu (and cancelled the
+    // thumbnail's own page menu) - owner 2026-10-07: "sometimes I don't see
+    // the option to manipulate". Let the panel handle its own right-click.
+    if (e.target && typeof e.target.closest === 'function'
+        && e.target.closest('[data-viewer-occluder]')) {
+      diag('[CTXDIAG] skipped — inside a panel over the viewer');
+      return;
+    }
+
     // Region Editor owns its own right-click menu. This dispatcher runs in
     // capture phase, so without this guard it opens the page-level disabled
     // Paste menu before RegionSelectionTool can show Copy/Cut/Paste/Merge.
@@ -163,19 +207,61 @@ function diag(line) {
       return;
     }
 
-    // Survey Markers have no right-click menu in this release. A right-click
-    // that lands on a Survey Marker's interactive hit area is fully swallowed
-    // here — no annotation/page menu and no native browser menu — so nothing
-    // happens, matching the counter-series suppression above.
-    if (e.target && typeof e.target.closest === 'function'
-        && e.target.closest('[data-survey-marker-id]')) {
-      diag('[CTXDIAG] suppressed — on survey marker');
+    // UX: w53 (2026-09-28, owner: "annotations are annotations") — a Survey
+    // Marker gets the normal annotation right-click menu (Cut, Copy, Paste,
+    // Duplicate, Delete, Bring / Send). Right-clicking a marker that is part
+    // of a bigger selection opens the selection's (group) menu, exactly like
+    // right-clicking inside any multi-selection's frame. (Until w53 a
+    // right-click on a marker was swallowed: no menu at all.)
+    const markerNode = e.target && typeof e.target.closest === 'function'
+      ? e.target.closest('[data-survey-marker-id]')
+      : null;
+    if (markerNode) {
+      const surveyMarkerId = markerNode.getAttribute('data-survey-marker-id');
+      const wrapper = markerNode.closest('[data-diag-svg-wrapper]');
+      const markerPage = wrapper ? Number(wrapper.getAttribute('data-diag-svg-wrapper')) : null;
+      const svgLayer = markerNode.closest('[data-svg-annotation-layer]');
+      const groupBox = svgLayer?.querySelector?.('[data-group-selection-bbox="true"]') || null;
+      const groupMarkerIds = (groupBox?.getAttribute('data-group-selection-marker-ids') || '')
+        .split(',').filter(Boolean);
+      const handler = typeof window.__onAnnotationContextMenu === 'function'
+        ? window.__onAnnotationContextMenu
+        : null;
+      diag(`[CTXDIAG] survey marker ${surveyMarkerId} page=${markerPage} inGroup=${groupMarkerIds.includes(surveyMarkerId)}`);
       e.preventDefault();
       e.stopPropagation();
+      if (!handler || markerPage == null || !surveyMarkerId) return;
+      if (groupMarkerIds.includes(surveyMarkerId)) {
+        const groupIndices = (groupBox.getAttribute('data-group-selection-indices') || '')
+          .split(',').filter((s) => s !== '').map(Number).filter(Number.isFinite);
+        handler({ pageNumber: markerPage, annotationIndex: null, calloutId: null, kind: 'group', groupIndices, groupMarkerIds, event: e });
+      } else {
+        handler({ pageNumber: markerPage, annotationIndex: null, calloutId: null, kind: 'surveyMarker', surveyMarkerId, event: e });
+      }
       return;
     }
 
-    const { pageNumber, annotationIndex, calloutId, kind, groupIndices } = resolveAnnotationAt(e);
+    const hit = resolveAnnotationAt(e);
+    const { pageNumber } = hit;
+    let { annotationIndex, calloutId, kind, groupIndices } = hit;
+    const groupBox = pageNumber != null
+      ? document.querySelector(`[data-svg-annotation-layer="${pageNumber}"] [data-group-selection-bbox="true"]`)
+      : null;
+    // w56: a right-click on a selected member of a multi-selection opens the
+    // selection's menu (see groupMenuForSelectedMember).
+    const promoted = groupMenuForSelectedMember({ kind, annotationIndex, calloutId }, groupBox);
+    if (promoted) {
+      kind = 'group';
+      groupIndices = promoted.groupIndices;
+      annotationIndex = null;
+      calloutId = null;
+    }
+    // w53: Survey Markers in a right-clicked selection frame.
+    const groupMarkerIds = promoted
+      ? promoted.groupMarkerIds
+      : (kind === 'group' && groupBox
+        ? (groupBox.getAttribute('data-group-selection-marker-ids') || '').split(',').filter(Boolean)
+        : []);
     const globalHandler = typeof window.__onAnnotationContextMenu === 'function'
       ? window.__onAnnotationContextMenu
       : null;
@@ -195,7 +281,7 @@ function diag(line) {
       e.preventDefault();
       e.stopPropagation();
       try {
-        handler({ pageNumber, annotationIndex, calloutId, kind, groupIndices, event: e });
+        handler({ pageNumber, annotationIndex, calloutId, kind, groupIndices, groupMarkerIds, event: e });
       } catch (err) {
         diag(`[CTXDIAG dispatch] handler threw: ${err?.message || err}`);
       }

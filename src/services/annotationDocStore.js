@@ -9,8 +9,12 @@
 // annotation_updates WAL, Realtime) lives in annotationDocSync.js on top of this.
 //
 // Model — exactly the Google-Docs/Figma shape:
-//   * One Y.Doc per document. Annotations live in a single Y.Map keyed by a
-//     STABLE annotation id; each value is { p: <pageNumber>, o: <fabricObject> }.
+//   * One Y.Doc per document. Annotations live in a single Y.Map (`marks`)
+//     keyed by a STABLE annotation id; each value is a nested Y.Map { p: <page>,
+//     o: Y.Map of the mark's fields } (store version 3, 2026-09-24 — per-field sync, see
+//     annotationMarkStore.js and docs/ANNOTATION-FIELD-SYNC.md). Readers never
+//     touch that layout directly: docToByPage / readAnnotationEntry build plain
+//     objects, writes go through writeAnnotationMark.
 //   * Every mutation is a Yjs update; persistence is an append-only log of those
 //     updates plus a periodic full-state snapshot. Open = applyUpdate(snapshot)
 //     then replay the tail updates. No "latest-state row" to lose-update on.
@@ -30,12 +34,39 @@ import {
 import {
   createAnnotationStorageKeyResolver,
   getAnnotationStorageKey,
-  normalizeAnnotationIdentity,
   normalizeByPageAnnotationIdentities,
   setAnnotationStorageKey,
 } from '../utils/annotationStorageIdentity.js';
+import {
+  MARKS_MAP,
+  adoptCachedAnnotationObject,
+  decodeAnnotationEntry,
+  readAnnotationEntry,
+  readAnnotationZ,
+  writeAnnotationMark,
+  writeAnnotationZ,
+} from './annotationMarkStore.js';
+import {
+  planStackOrderWrites,
+  sortStackEntries,
+  viewerChangedStackOrder,
+} from './annotationStackOrder.js';
 
-export const ANNOTATIONS_MAP = 'annotations';
+export {
+  ANNOTATION_STORE_VERSION,
+  LEGACY_ANNOTATIONS_MAP,
+  MARKS_MAP,
+  patchAnnotationMark,
+  readAnnotationEntry,
+  readAnnotationObject,
+  readRawAnnotationEntry,
+  writeAnnotationMark,
+} from './annotationMarkStore.js';
+
+// Store version 3 (2026-09-24): per-field marks live in the `marks` root map.
+// The v1 whole-object `annotations` map is never written by this build; its
+// user-drawn marks are carried into `marks` once (w28, legacyMarksCarryOver.js).
+export const ANNOTATIONS_MAP = MARKS_MAP;
 export const ERASER_OPS_MAP = 'annotationEraserOps';
 export const META_MAP = 'annoMeta';
 export const DELETED_PDF_ANNOTATIONS_MAP = 'deletedPdfAnnotations';
@@ -83,7 +114,17 @@ export function docToDeletedPdfAnnotations(doc) {
     );
   });
   getEraserOpsMap(doc).forEach((lane) => {
-    const entry = lane?.deleted === true ? lane.deletedPdfAnnotation : null;
+    // A delete lane names the imported mark it hides; one written without
+    // that field (the page-mutation eraser path) is read from the stored
+    // mark it keeps (w35: the capture no longer deletes that mark).
+    const entry = lane?.deleted === true
+      ? (lane.deletedPdfAnnotation || (lane.storageKey != null
+        ? (() => {
+          const stored = readAnnotationEntry(doc, String(lane.storageKey));
+          return stored ? deletedPdfAnnotationEntry(stored.o, stored.p) : null;
+        })()
+        : null))
+      : null;
     if (!entry?.pdfAnnotationId) return;
     active.set(
       deletedPdfAnnotationStorageKey(entry.pageNumber, entry.pdfAnnotationId),
@@ -413,11 +454,17 @@ export function deriveWriterEraserLane({
       mode: 'partial',
     });
     const mutation = rebased.objectMutations?.find((item) => item?.index === 0);
-    if (!mutation) {
+    if (mutation) {
+      laneDeleted = mutation.deleted === true;
+      laneSurvivor = laneDeleted ? null : mutation.survivor;
+    } else if (previousSurvivor && !rebased.failedStages?.some((failure) => !failure?.recovered)) {
+      // The gesture removes nothing from this writer's own survivor (w38
+      // review: the same spot erased again while another session's lane is
+      // on the stroke). The lane is unchanged; only the gesture is recorded.
+      laneSurvivor = previousSurvivor;
+    } else {
       throw new Error(`partial eraser lane could not be replayed for ${String(storageKey)}`);
     }
-    laneDeleted = mutation.deleted === true;
-    laneSurvivor = laneDeleted ? null : mutation.survivor;
   }
 
   return {
@@ -685,24 +732,31 @@ export function docToByPage(doc, { replayStats = null } = {}) {
   const map = getAnnotationsMap(doc);
   const byPage = {};
   const baseLocations = new Map();
-  map.forEach((entry, storageKey) => {
-    if (!entry || typeof entry !== 'object') return;
+  // w52: each page reads in its stacking order (annotationStackOrder.js) —
+  // stored z first, then marks without one in the map's own order.
+  const stacks = {};
+  let arrival = 0;
+  map.forEach((_stored, storageKey) => {
+    // Cached per mark (rebuilt only when that mark changed) with its identity
+    // already normalized: the map key is authoritative provenance and is
+    // promoted into data.id so it survives cloning and z-order changes.
+    const entry = readAnnotationEntry(doc, storageKey);
+    if (!entry) return;
     const page = entry.p;
-    const storedObject = entry.o;
-    if (page == null || !storedObject) return;
-    if (!byPage[page]) byPage[page] = { objects: [] };
-    // The Y.Map key is authoritative provenance for legacy sentinel/duplicate
-    // entries. Promote it into serialized data.id on materialization so the
-    // identity survives JSON cloning and z-order changes; WeakMap is cache only.
-    setAnnotationStorageKey(storedObject, storageKey);
-    const obj = normalizeAnnotationIdentity(storedObject).object;
-    setAnnotationStorageKey(obj, storageKey);
-    baseLocations.set(String(storageKey), {
-      page: Number(page),
-      index: byPage[page].objects.length,
-    });
-    byPage[page].objects.push(obj);
+    const obj = entry.o;
+    if (page == null || !obj) return;
+    if (!stacks[page]) stacks[page] = [];
+    stacks[page].push({ key: storageKey, z: entry.z ?? null, arrival: arrival++, obj });
   });
+  for (const page of Object.keys(stacks)) {
+    const stack = sortStackEntries(stacks[page]);
+    const objects = [];
+    for (const item of stack) {
+      baseLocations.set(String(item.key), { page: Number(page), index: objects.length });
+      objects.push(item.obj);
+    }
+    byPage[page] = { objects };
+  }
 
   // Each writer owns one replaceable survivor lane per annotation. Sequential
   // gestures update that lane instead of appending replayable operations;
@@ -728,7 +782,7 @@ export function docToByPage(doc, { replayStats = null } = {}) {
   let polygonIntersections = 0;
   for (const [storageKey, lanes] of lanesByAnnotation) {
     annotationsWithLanes += 1;
-    lanes.sort(([a], [b]) => a.localeCompare(b));
+    lanes.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
     const location = baseLocations.get(storageKey);
     const page = location?.page ?? Number(lanes[0][1].pageNumber);
     const pageAnnotations = byPage[page];
@@ -737,50 +791,11 @@ export function docToByPage(doc, { replayStats = null } = {}) {
       (object) => getAnnotationStorageKey(object) === storageKey,
     );
     if (objectIndex < 0) continue;
-    if (lanes.some(([, lane]) => lane.deleted === true)) {
-      byPage[page] = {
-        ...pageAnnotations,
-        objects: pageAnnotations.objects.filter((_object, index) => index !== objectIndex),
-      };
-      continue;
-    }
     const baseObject = pageAnnotations.objects[objectIndex];
-    const survivors = lanes.map(([, lane]) => (
-      rebaseStoredEraserSurvivor(baseObject, lane.base, lane.survivor)
-    )).filter(Boolean);
-    if (!survivors.length) continue;
-    const onlyAnalyticSurvivors = survivors.every(
-      (value) => !Array.isArray(value?.polygons) || value.polygons.length === 0,
-    );
-    if (!onlyAnalyticSurvivors) {
-      polygonIntersections += Math.max(0, survivors.length - 1);
-    }
-    // A single analytic hairline survivor has no polygon carrier by design.
-    // Preserve it directly; the polygon intersection helper intentionally
-    // accepts only filled-outline survivors.
-    let intersected;
-    if (survivors.length === 1) {
-      [intersected] = survivors;
-    } else if (onlyAnalyticSurvivors) {
-      const combined = intersectAnalyticEraserLanes(baseObject, lanes);
-      // Old lanes predate gesture retention. Fail closed by keeping one real
-      // survivor instead of treating an unsupported analytic intersection as
-      // a full deletion.
-      intersected = combined.supported ? combined.survivor : survivors[0];
-    } else if (survivors.some(
-      (value) => !Array.isArray(value?.polygons) || value.polygons.length === 0,
-    )) {
-      intersected = survivors[0];
-    } else {
-      intersected = intersectErasedPathSurvivors(survivors);
-    }
-    const survivor = intersected
-      ? projectEraserGeometryOntoCurrentBase(
-        pageAnnotations.objects[objectIndex],
-        intersected,
-      )
-      : null;
-    if (survivor) setAnnotationStorageKey(survivor, storageKey);
+    const applied = applyEraserLanesToObject(baseObject, lanes, storageKey);
+    polygonIntersections += applied.polygonIntersections;
+    if (applied.object === baseObject) continue;
+    const survivor = applied.object;
     byPage[page] = {
       ...pageAnnotations,
       objects: survivor
@@ -794,6 +809,107 @@ export function docToByPage(doc, { replayStats = null } = {}) {
     replayStats.polygonIntersections = polygonIntersections;
   }
   return deriveCounterPresentationNumbers(byPage);
+}
+
+/**
+ * w37: how `baseObject` shows under the eraser lanes the document holds for
+ * `storageKey` right now (every writer's lanes, in docToByPage's order), or
+ * null when a delete lane hides it. Used when a deleted mark comes back
+ * (Undo of a delete) to tell the user's own edits apart from erase geometry.
+ */
+export function materializeObjectUnderLanes(doc, storageKey, baseObject) {
+  const key = String(storageKey);
+  const pairs = [];
+  getEraserOpsMap(doc).forEach((lane, laneKey) => {
+    if (lane && typeof lane === 'object' && String(lane.storageKey) === key) {
+      pairs.push([String(laneKey), lane]);
+    }
+  });
+  if (pairs.length === 0 || !baseObject) return baseObject || null;
+  pairs.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return applyEraserLanesToObject(baseObject, pairs, key).object;
+}
+
+// One mark's eraser lanes (sorted [laneKey, lane] pairs) applied to its
+// stored object: { object } is the object to show — the base itself when no
+// lane changes it, null when the lanes remove it — keyed like the base.
+function applyEraserLanesToObject(baseObject, lanes, storageKey) {
+  if (lanes.some(([, lane]) => lane.deleted === true)) {
+    return { object: null, polygonIntersections: 0 };
+  }
+  const survivors = lanes.map(([, lane]) => (
+    rebaseStoredEraserSurvivor(baseObject, lane.base, lane.survivor)
+  )).filter(Boolean);
+  if (!survivors.length) return { object: baseObject, polygonIntersections: 0 };
+  const onlyAnalyticSurvivors = survivors.every(
+    (value) => !Array.isArray(value?.polygons) || value.polygons.length === 0,
+  );
+  const polygonIntersections = onlyAnalyticSurvivors ? 0 : Math.max(0, survivors.length - 1);
+  // A single analytic hairline survivor has no polygon carrier by design.
+  // Preserve it directly; the polygon intersection helper intentionally
+  // accepts only filled-outline survivors.
+  let intersected;
+  if (survivors.length === 1) {
+    [intersected] = survivors;
+  } else if (onlyAnalyticSurvivors) {
+    const combined = intersectAnalyticEraserLanes(baseObject, lanes);
+    // Old lanes predate gesture retention. Fail closed by keeping one real
+    // survivor instead of treating an unsupported analytic intersection as
+    // a full deletion.
+    intersected = combined.supported ? combined.survivor : survivors[0];
+  } else if (survivors.some(
+    (value) => !Array.isArray(value?.polygons) || value.polygons.length === 0,
+  )) {
+    intersected = survivors[0];
+  } else {
+    // w39: no base-outline area any more. It was rebuilt at a different
+    // curve tolerance than the lanes (w38 review: an eraser radius under 1
+    // gives lanes a finer outline), which made the intersection's area check
+    // reject correct answers; the check now uses only the lanes themselves.
+    intersected = intersectErasedPathSurvivors(survivors);
+  }
+  const survivor = intersected
+    ? projectEraserGeometryOntoCurrentBase(baseObject, intersected)
+    : null;
+  if (survivor) setAnnotationStorageKey(survivor, storageKey);
+  return { object: survivor, polygonIntersections };
+}
+
+/**
+ * w32 live edits: what the screen shows for a few marks, exactly as
+ * docToByPage would build it (stored object + eraser lanes), without
+ * building every page. Map<storageKey, { page, object } | null> — null when
+ * the mark is gone (deleted, or erased by a delete lane). Counter numbers are
+ * NOT derived here (they depend on the whole series).
+ */
+export function materializeAnnotationKeys(doc, storageKeys) {
+  const wanted = new Set([...(storageKeys || [])].map(String));
+  const result = new Map();
+  if (wanted.size === 0) return result;
+  const lanesByKey = new Map();
+  getEraserOpsMap(doc).forEach((lane, laneKey) => {
+    if (!lane || typeof lane !== 'object' || lane.storageKey == null) return;
+    const key = String(lane.storageKey);
+    if (!wanted.has(key)) return;
+    if (!lanesByKey.has(key)) lanesByKey.set(key, []);
+    lanesByKey.get(key).push([String(laneKey), lane]);
+  });
+  for (const key of wanted) {
+    const entry = readAnnotationEntry(doc, key);
+    if (!entry || entry.p == null || !entry.o) {
+      result.set(key, null);
+      continue;
+    }
+    const lanes = lanesByKey.get(key);
+    if (!lanes) {
+      result.set(key, { page: Number(entry.p), object: entry.o });
+      continue;
+    }
+    lanes.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    const { object } = applyEraserLanesToObject(entry.o, lanes, key);
+    result.set(key, object ? { page: Number(entry.p), object } : null);
+  }
+  return result;
 }
 
 function collectEraserMutations(byPage, writerId) {
@@ -918,15 +1034,13 @@ export function repairStackedInkDuplicates(
   const map = getAnnotationsMap(doc);
   const groups = new Map();
   let scanned = 0;
-  map.forEach((entry, id) => {
+  map.forEach((_stored, id) => {
+    const entry = readAnnotationEntry(doc, id);
     const signature = exactInkDuplicateSignature(entry);
     if (!signature) return;
     scanned += 1;
     if (!groups.has(signature)) groups.set(signature, []);
-    groups.get(signature).push({
-      id,
-      hasCanonicalKey: String(id) === String(extractAnnotationId(entry?.o)),
-    });
+    groups.get(signature).push({ id });
   });
 
   const removedIds = [];
@@ -934,6 +1048,12 @@ export function repairStackedInkDuplicates(
   for (const entries of groups.values()) {
     if (entries.length < 2) continue;
     duplicateGroups += 1;
+    // The cached read promotes the map key into data.id, so compare the key
+    // with the id embedded in the STORED object (only for real duplicates).
+    for (const entry of entries) {
+      const raw = decodeAnnotationEntry(map.get(entry.id));
+      entry.hasCanonicalKey = String(entry.id) === String(extractAnnotationId(raw?.o));
+    }
     // A mismatched map key would be recreated by the next capture under the
     // object's embedded id. Prefer a copy whose key already matches that id.
     const survivor = entries.find((entry) => entry.hasCanonicalKey) || entries[0];
@@ -981,26 +1101,199 @@ export function preserveTransientPagePresentationState(previousByPage, nextByPag
   return merged;
 }
 
+// ---------------------------------------------------------------------------
+// Viewer capture state (2026-09-24, per-field sync).
+//
+// The viewer pushes its WHOLE render state on every change; the store has to
+// work out which fields the viewer itself changed. Writing every field that
+// differs from the document would put back a collaborator's change the screen
+// has not painted yet, so the capture compares each mark with what the viewer
+// had before, never with the document:
+//   * The viewer's own copy from the previous capture, or the newest copy the
+//     store handed it (a remote change it just painted), is untouched —
+//     nothing is written.
+//   * Any other object is the viewer's intent (an edit, an Undo, a revert).
+//     Only the fields that differ from the copy it was MADE FROM are written,
+//     and only when the stored value differs. That copy is normally the
+//     viewer's object at the previous capture (or the first copy it was
+//     handed). But an edit written as `{ ...older, left }` keeps the older
+//     copy's nested objects (data, meta, ...) by reference: when every shared
+//     nested object belongs to one OLDER copy of this mark, the edit was made
+//     from that copy (a drag rebuilding each frame from its drag-start
+//     object), so only what differs from it is written — never the
+//     collaborator's change the screen painted after that copy was taken.
+//   * Echo: a changed field whose value equals a copy delivered to the viewer
+//     since the previous capture is the screen repainting a collaborator's
+//     value inside an edited object (a drag frame built from the latest
+//     state), not an edit — it is not written back, so it can never put back
+//     an older value over a newer one.
+//   * A mark is deleted only if the viewer had it at the previous capture and
+//     no longer has it; a mark the viewer never painted is never deleted.
+//   * A mark the viewer knew that is gone from the document was deleted by
+//     someone else: an edit to it never brings it back (delete wins).
+// After writing, marks whose stored value differs from the viewer's copy are
+// returned as `reconcile` swaps so the screen catches up.
+//
+// Stale page snapshots (a gesture saving a whole page it copied before a
+// collaborator's edit) cannot be told apart from a deliberate revert by
+// value, so the gestures themselves save only their own mark
+// (dragCommitMerge.js); the store treats viewer output as intent.
+// ---------------------------------------------------------------------------
+
+const DELIVERY_RING_SIZE = 4;
+
+function objectStorageKey(object) {
+  if (!object || typeof object !== 'object') return null;
+  const key = getAnnotationStorageKey(object) ?? extractAnnotationId(object);
+  return key == null ? null : String(key);
+}
+
+export function createViewerCaptureState() {
+  return {
+    base: new Map(),          // key -> { page, object } the viewer's last copy
+    had: new Set(),           // keys present at the previous capture
+    pageKeys: new Map(),      // pageKey -> Set(keys) at the previous capture
+    lastPages: new Map(),     // pageKey -> bucket ref at the previous capture
+    lastDelivered: new Map(), // key -> newest object handed to the viewer
+    deliveries: new Map(),    // key -> [object] handed out since the previous capture
+    nested: new WeakMap(),    // nested object/array -> { key, object } newest copy holding it
+    pageOrders: new Map(),    // pageKey -> [keys] bottom → top at the previous capture (w52)
+    deliveredPageOrders: new Map(), // pageKey -> [[keys]] handed out since the previous capture (w52)
+  };
+}
+
+// Remember which copy of a mark each nested object (data, meta, points...)
+// belongs to, so an edit spread from that copy can be traced back to it.
+function registerViewerVersion(viewer, key, object) {
+  for (const value of Object.values(object)) {
+    if (value && typeof value === 'object') viewer.nested.set(value, { key, object });
+  }
+}
+
+// The older copy `object` was spread from, or null when it was made from the
+// viewer's current copy (or cannot be traced to exactly one copy).
+function derivedFromOlderCopy(viewer, key, object, current) {
+  let found = null;
+  for (const value of Object.values(object)) {
+    if (!value || typeof value !== 'object') continue;
+    const hit = viewer.nested.get(value);
+    if (!hit || hit.key !== key) continue;
+    if (hit.object === current) return null;
+    if (found && found !== hit.object) return null;
+    found = hit.object;
+  }
+  return found;
+}
+
+function recordDeliveredObject(viewer, key, pageNumber, object) {
+  viewer.lastDelivered.set(key, object);
+  registerViewerVersion(viewer, key, object);
+  const ring = viewer.deliveries.get(key) || [];
+  if (!ring.includes(object)) {
+    ring.push(object);
+    while (ring.length > DELIVERY_RING_SIZE) ring.shift();
+    viewer.deliveries.set(key, ring);
+  }
+  if (!viewer.base.has(key)) viewer.base.set(key, { page: Number(pageNumber), object });
+}
+
+// w52: the page orders handed to the viewer since its previous capture, so a
+// page array built from one of them is not read as the viewer's own reorder.
+function recordDeliveredPageOrder(viewer, pageKey, order) {
+  if (!viewer.deliveredPageOrders) viewer.deliveredPageOrders = new Map();
+  const ring = viewer.deliveredPageOrders.get(pageKey) || [];
+  const last = ring[ring.length - 1];
+  if (last && last.length === order.length && last.every((key, index) => key === order[index])) return;
+  ring.push(order);
+  while (ring.length > DELIVERY_RING_SIZE) ring.shift();
+  viewer.deliveredPageOrders.set(pageKey, ring);
+}
+
+/** Record every object the store hands to the viewer (reads, remote changes). */
+export function recordViewerDelivery(viewer, byPage) {
+  if (!viewer) return;
+  const seen = new Set();
+  for (const [pageKey, page] of Object.entries(byPage || {})) {
+    const order = [];
+    for (const object of page?.objects || []) {
+      const key = objectStorageKey(object);
+      if (key == null) continue;
+      seen.add(key);
+      order.push(key);
+      recordDeliveredObject(viewer, key, pageKey, object);
+    }
+    recordDeliveredPageOrder(viewer, pageKey, order);
+  }
+  // Every delivery is the whole document: a mark missing from it is gone.
+  for (const key of [...viewer.lastDelivered.keys()]) {
+    if (!seen.has(key)) {
+      viewer.lastDelivered.delete(key);
+      viewer.deliveries.delete(key);
+    }
+  }
+}
+
+/** Copies of `key` handed to the viewer since its previous capture (newest last). */
+export function getViewerEchoVersions(viewer, key) {
+  return viewer ? echoVersionsFor(viewer, key) : null;
+}
+
+// Only copies handed out since the previous capture can be echoed: every
+// copy is handed out when React applies it (the hook reads the document
+// inside its state update), so the capture right after that render sees it.
+// Anything older was painted and captured already — a value equal to it now
+// is the user's own choice and is written.
+function echoVersionsFor(viewer, key) {
+  const ring = viewer.deliveries.get(key);
+  return ring && ring.length ? [...ring] : null;
+}
+
+function isViewerUntouched(viewer, key, object) {
+  return viewer.base.get(key)?.object === object
+    || viewer.lastDelivered.get(key) === object;
+}
+
+function tombstoneFor(entry) {
+  return entry ? deletedPdfAnnotationEntry(entry.o, entry.p) : null;
+}
+
 /**
- * Reconcile the Y.Doc to match a render-shape `annotationsByPage`. Computes the
- * minimal set of set/delete operations (so re-saving identical state produces
- * ZERO Yjs updates — never spams the durable log) and applies them in one
- * transaction. Returns { added, updated, removed, skipped } for diagnostics.
+ * Reconcile the Y.Doc to match a render-shape `annotationsByPage`, writing
+ * only changed fields (per-field storage, annotationMarkStore.js). Re-saving
+ * identical state produces ZERO Yjs updates.
  *
- * Performance: when `prevByPage` is supplied, a page whose bucket is the SAME
- * object reference as last time is treated as unchanged — its ids are protected
- * from deletion but its objects are not re-compared (no per-mark stringify). The
- * viewer replaces only the edited page's array, so on a 24k-mark document a
- * single draw re-checks one page, not all of them.
+ * Without `viewer` (seeding, tools, tests) the document is made equal to
+ * `byPage`: every differing field is written and every stored mark missing
+ * from `byPage` is deleted. With `viewer` (createViewerCaptureState — the
+ * live screen's capture) only the viewer's own edits are written; see the
+ * block comment above.
  *
- * `origin` tags the transaction so the local update observer can tell its own
- * writes apart from remote ones.
+ * Performance: a page whose bucket is the same reference as at the previous
+ * capture (`viewer.lastPages`, or `prevByPage` without a viewer) is skipped
+ * without comparing its marks. Adds/updates run one transaction per page.
+ *
+ * `onlyPages` limits writes and deletes to those page keys (an eraser commit
+ * that carries one page). Returns { added, updated, removed, skipped,
+ * reconcile?, normalizedByPage?, identityChanged? }.
  */
 export function syncByPageToDoc(doc, byPage, {
   getId = extractAnnotationId,
   origin = 'local',
   prevByPage = null,
   eraserWriterId = null,
+  viewer = null,
+  onlyPages = null,
+  // w52: keys whose place in the page array is not the viewer's (a mark a
+  // live overlay hid, put back at the end) — left out of the stacking order.
+  stackOrderIgnoreKeys = null,
+  // 2026-10-07 (first-open save): NEW marks whose key (or own id) is in
+  // `bulkKeys` — a PDF's own markup being imported — are written in their own
+  // transaction(s) with `bulkOrigin`, run through `bulkTransact(run)` (the
+  // sync layer runs it under a separate Yjs client and saves it as one
+  // checkpoint instead of WAL rows). Everything else is written as before.
+  bulkKeys = null,
+  bulkOrigin = null,
+  bulkTransact = null,
 } = {}) {
   const identityNormalization = normalizeByPageAnnotationIdentities(byPage);
   byPage = identityNormalization.byPage;
@@ -1030,7 +1323,7 @@ export function syncByPageToDoc(doc, byPage, {
         }));
       for (const item of items) {
         const laneKey = `${mutation.writerId}\u0000${item.storageKey}`;
-        const baseEntry = map.get(item.storageKey);
+        const baseEntry = readAnnotationEntry(doc, item.storageKey);
         const previous = pendingLanesByKey.has(laneKey)
           ? pendingLanesByKey.get(laneKey)
           : eraserOpsMap.get(laneKey);
@@ -1067,10 +1360,15 @@ export function syncByPageToDoc(doc, byPage, {
     if (lane?.annotationId) eraserProtectedIds.add(String(lane.annotationId));
     if (lane?.storageKey != null) eraserProtectedStorageKeys.add(String(lane.storageKey));
   });
+  const isLaneProtected = (key) => (
+    eraserProtectedIds.has(String(key)) || eraserProtectedStorageKeys.has(String(key))
+  );
 
-  const desired = new Map();          // id -> {p,o} for CHANGED pages (full compare)
-  const desiredByPage = new Map();    // page -> [[id,{p,o}], ...] for per-page transactions
-  const keepIds = new Set();          // ids on UNCHANGED pages (protect from delete only)
+  const onlyPageSet = onlyPages ? new Set([...onlyPages].map(String)) : null;
+  const writesByPage = new Map();     // page -> [{ key, object, pageKey }]
+  const present = new Set();          // keys the viewer holds now (all pages)
+  const presentPageKeys = new Map();  // pageKey -> Set(keys) (changed pages)
+  const changedPages = new Set();
   let skipped = 0;
   const resolveStorageKey = createAnnotationStorageKeyResolver();
 
@@ -1078,58 +1376,68 @@ export function syncByPageToDoc(doc, byPage, {
     const page = Number(pageKey);
     const bucket = byPage[pageKey];
     const objects = (bucket && Array.isArray(bucket.objects)) ? bucket.objects : [];
-    const unchanged = prevByPage && prevByPage[pageKey] === bucket;
+    const outOfScope = onlyPageSet && !onlyPageSet.has(String(pageKey));
+    const unchanged = outOfScope || (viewer
+      ? viewer.lastPages.get(String(pageKey)) === bucket
+      : Boolean(prevByPage) && prevByPage[pageKey] === bucket);
+    if (!unchanged) changedPages.add(String(pageKey));
+    const keysOnPage = unchanged ? null : new Set();
     for (const obj of objects) {
-      // Callout-unification Slice 6 (2026-07-17): the historical write-
-      // contamination guard (`data.type==='callout'` skipped here) is GONE.
-      // annotationsByPage is the single in-memory truth post-flip (R2.2 Slice 2),
-      // and projected callout groups now persist per-id in this same `annotations`
-      // Y.Map like every other object — carrying their verbatim
-      // `data.legacyCallout` payload, so the byPage⇄doc round-trip is lossless.
-      // The coarse `calloutsList` META blob is retired (one-time migration +
-      // tombstone in calloutMetaMigration.js).
+      // Callout-unification Slice 6 (2026-07-17): projected callout groups
+      // persist per-id in this same `annotations` map like every other object,
+      // carrying their verbatim `data.legacyCallout` payload.
       if (!obj || typeof obj !== 'object') { skipped += 1; continue; }
       const embeddedId = getId(obj);
-      const id = resolveStorageKey(obj, page, embeddedId);
-      if (eraserProtectedIds.has(String(id)) || eraserProtectedStorageKeys.has(String(id))) {
-        keepIds.add(String(id));
-        continue;
-      }
-      if (unchanged) { keepIds.add(id); continue; }
-      const entry = { p: page, o: obj };
-      desired.set(id, entry);
-      if (!desiredByPage.has(page)) desiredByPage.set(page, []);
-      desiredByPage.get(page).push([id, entry]);
+      const id = String(resolveStorageKey(obj, page, embeddedId));
+      present.add(id);
+      keysOnPage?.add(id);
+      if (unchanged || isLaneProtected(id)) continue;
+      if (viewer && isViewerUntouched(viewer, id, obj)) continue;
+      if (!writesByPage.has(page)) writesByPage.set(page, []);
+      writesByPage.get(page).push({
+        key: id,
+        object: obj,
+        pageKey: String(pageKey),
+        ...(bulkKeys && (bulkKeys.has(id) || (embeddedId != null && bulkKeys.has(String(embeddedId))))
+          ? { bulk: true }
+          : {}),
+      });
     }
+    if (keysOnPage) presentPageKeys.set(String(pageKey), keysOnPage);
   }
 
   let added = 0;
   let updated = 0;
   let removed = 0;
+  const reconcile = [];
 
-  // Deletes in their own transaction (one op): keys neither desired nor kept.
+  // Deletes in their own transaction (one op).
   const toDelete = [];
-  map.forEach((_value, key) => {
-    if (
-      !desired.has(key)
-      && !keepIds.has(key)
-      && !eraserProtectedIds.has(String(key))
-      && !eraserProtectedStorageKeys.has(String(key))
-    ) {
+  if (viewer) {
+    const candidates = onlyPageSet
+      ? [...onlyPageSet].flatMap((pageKey) => [...(viewer.pageKeys.get(pageKey) || [])])
+      : [...viewer.had];
+    for (const key of candidates) {
+      if (present.has(key) || isLaneProtected(key) || !map.has(key)) continue;
       toDelete.push(key);
     }
-  });
+  } else {
+    map.forEach((_value, key) => {
+      if (present.has(key) || isLaneProtected(key)) return;
+      if (onlyPageSet) {
+        const entry = readAnnotationEntry(doc, key);
+        if (!entry || !onlyPageSet.has(String(entry.p))) return;
+      }
+      toDelete.push(key);
+    });
+  }
   if (toDelete.length) {
     doc.transact(() => {
       for (const key of toDelete) {
-        const previous = map.get(key);
-        const tombstone = deletedPdfAnnotationEntry(previous?.o, previous?.p);
+        const tombstone = tombstoneFor(readAnnotationEntry(doc, key));
         if (tombstone) {
           deletedPdfAnnotations.set(
-            deletedPdfAnnotationStorageKey(
-              tombstone.pageNumber,
-              tombstone.pdfAnnotationId,
-            ),
+            deletedPdfAnnotationStorageKey(tombstone.pageNumber, tombstone.pdfAnnotationId),
             tombstone,
           );
         }
@@ -1142,38 +1450,173 @@ export function syncByPageToDoc(doc, byPage, {
   // Adds/updates ONE PAGE PER TRANSACTION → one bounded op per page, so a 3000-
   // mark import becomes several resilient writes instead of one giant fragile
   // one. A page with no real changes emits no Yjs update at all.
-  for (const [, entries] of desiredByPage) {
-    doc.transact(() => {
-      for (const [id, next] of entries) {
-        const prev = map.get(id);
-        const previousTombstone = deletedPdfAnnotationEntry(prev?.o, prev?.p);
-        const nextPdfAnnotationId = next?.o?.pdfAnnotationId
-          ? String(next.o.pdfAnnotationId)
-          : null;
-        if (
-          previousTombstone
-          && (
-            previousTombstone.pdfAnnotationId !== nextPdfAnnotationId
-            || Number(previousTombstone.pageNumber) !== Number(next.p)
-          )
-        ) {
-          deletedPdfAnnotations.set(
-            deletedPdfAnnotationStorageKey(
-              previousTombstone.pageNumber,
-              previousTombstone.pdfAnnotationId,
-            ),
-            previousTombstone,
-          );
-        }
-        if (nextPdfAnnotationId) {
-          deletedPdfAnnotations.delete(
-            deletedPdfAnnotationStorageKey(next.p, nextPdfAnnotationId),
-          );
-        }
-        if (prev === undefined) { map.set(id, next); added += 1; }
-        else if (!shallowEntryEqual(prev, next)) { map.set(id, next); updated += 1; }
+  const written = [];
+  const createdKeys = new Set(); // w52: marks this call created
+  // w52: the highest z on each page this call creates marks on, so a new
+  // mark is stacked on top with its z in the SAME write that creates it (no
+  // extra update per mark; every screen and every reload agree on its place).
+  const topZByPage = new Map();
+  const nextTopZ = (pageKey) => {
+    if (!topZByPage.has(pageKey)) {
+      let top = 0;
+      for (const key of presentPageKeys.get(pageKey) || []) {
+        const z = readAnnotationZ(doc, key); // the z key only, no decode
+        if (typeof z === 'number' && z > top) top = z;
       }
+      topZByPage.set(pageKey, top);
+    }
+    const next = Math.floor(topZByPage.get(pageKey)) + 1;
+    topZByPage.set(pageKey, next);
+    return next;
+  };
+  const writeEntry = (page, { key, object, pageKey }) => {
+    const stored = readAnnotationEntry(doc, key);
+    let base;
+    let basePage;
+    let echoVersions = null;
+    if (viewer) {
+      const known = viewer.base.get(key);
+      if (!stored && known) {
+        // The viewer knew this mark and the document no longer has it:
+        // someone else deleted it. Their delete wins over this edit.
+        reconcile.push({ pageKey, from: object, to: null, key });
+        return false;
+      }
+      if (stored) {
+        base = known
+          ? (derivedFromOlderCopy(viewer, key, object, known.object) || known.object)
+          : stored.o;
+        basePage = known ? known.page : stored.p;
+        echoVersions = echoVersionsFor(viewer, key);
+      }
+    }
+    const previousTombstone = tombstoneFor(stored);
+    const nextPdfAnnotationId = object?.pdfAnnotationId
+      ? String(object.pdfAnnotationId)
+      : null;
+    if (
+      previousTombstone
+      && (
+        previousTombstone.pdfAnnotationId !== nextPdfAnnotationId
+        || Number(previousTombstone.pageNumber) !== Number(page)
+      )
+    ) {
+      deletedPdfAnnotations.set(
+        deletedPdfAnnotationStorageKey(
+          previousTombstone.pageNumber,
+          previousTombstone.pdfAnnotationId,
+        ),
+        previousTombstone,
+      );
+    }
+    if (nextPdfAnnotationId) {
+      const tombstoneKey = deletedPdfAnnotationStorageKey(page, nextPdfAnnotationId);
+      if (deletedPdfAnnotations.has(tombstoneKey)) deletedPdfAnnotations.delete(tombstoneKey);
+    }
+    const result = writeAnnotationMark(doc, key, page, object, {
+      base: stored ? base : undefined,
+      basePage,
+      echoVersions,
+    });
+    if (!stored) {
+      added += 1;
+      createdKeys.add(key);
+      writeAnnotationZ(doc, key, nextTopZ(String(pageKey)));
+    } else if (String(stored.p) !== String(page)) {
+      // Moved to this page: the store dropped its old page's z; it goes
+      // on top here, where the moving screen shows it.
+      createdKeys.add(key);
+      writeAnnotationZ(doc, key, nextTopZ(String(pageKey)));
+    }
+    else if (result.writes > 0) updated += 1;
+    written.push({ key, object, pageKey });
+    return true;
+  };
+  // 2026-10-07: a bulk import's new marks go first, in their own
+  // transaction under the caller's bulk lane (see bulkKeys above).
+  const bulkWritten = [];
+  for (const [page, entries] of writesByPage) {
+    const bulkEntries = bulkTransact ? entries.filter((entry) => entry.bulk && !map.has(entry.key)) : [];
+    const bulkSet = bulkEntries.length > 0 ? new Set(bulkEntries) : null;
+    const normalEntries = bulkSet ? entries.filter((entry) => !bulkSet.has(entry)) : entries;
+    if (bulkEntries.length > 0) {
+      bulkTransact(() => {
+        doc.transact(() => {
+          for (const entry of bulkEntries) {
+            if (writeEntry(page, entry)) bulkWritten.push(entry.key);
+          }
+        }, bulkOrigin ?? origin);
+      });
+    }
+    if (normalEntries.length > 0) {
+      doc.transact(() => {
+        for (const entry of normalEntries) writeEntry(page, entry);
+      }, origin);
+    }
+  }
+
+  // w52: the page's stacking order. The array order of each changed page is
+  // the order the viewer shows; write z only where the stored order differs
+  // (annotationStackOrder.js). With a viewer, only an order the viewer itself
+  // changed is written — a page array still in an older order (a capture
+  // taken before a collaborator's reorder was painted) never puts that older
+  // order back.
+  let reordered = 0;
+  let arrivalIndex = null;
+  const arrivalOf = (key) => {
+    if (!arrivalIndex) {
+      arrivalIndex = new Map();
+      let position = 0;
+      map.forEach((_value, storedKey) => { arrivalIndex.set(storedKey, position++); });
+    }
+    return arrivalIndex.get(key) ?? Number.MAX_SAFE_INTEGER;
+  };
+  for (const [pageKey, keySet] of presentPageKeys) {
+    if (keySet.size < 2) continue;
+    const ignored = stackOrderIgnoreKeys && stackOrderIgnoreKeys.length
+      ? new Set(stackOrderIgnoreKeys.map(String))
+      : null;
+    const desiredKeys = ignored ? [...keySet].filter((key) => !ignored.has(key)) : [...keySet];
+    if (desiredKeys.length < 2) continue;
+    if (viewer && !viewerChangedStackOrder(desiredKeys, [
+      viewer.pageOrders?.get(pageKey),
+      ...(viewer.deliveredPageOrders?.get(pageKey) || []),
+    ], createdKeys)) continue;
+    const entries = [];
+    for (const key of desiredKeys) {
+      const entry = readAnnotationEntry(doc, key);
+      if (!entry || String(entry.p) !== String(pageKey)) continue;
+      entries.push({ key, z: entry.z ?? null, arrival: 0 });
+    }
+    if (entries.length < 2) continue;
+    for (const entry of entries) {
+      if (entry.z == null) entry.arrival = arrivalOf(entry.key);
+    }
+    const zWrites = planStackOrderWrites(entries);
+    if (zWrites.size === 0) continue;
+    doc.transact(() => {
+      for (const [key, z] of zWrites) reordered += writeAnnotationZ(doc, key, z);
     }, origin);
+  }
+
+  if (viewer) {
+    // The screen catches up: an edited mark whose stored value now differs
+    // from the viewer's copy (it was behind a collaborator's other field).
+    for (const { key, object, pageKey } of written) {
+      const current = readAnnotationEntry(doc, key);
+      if (!current) continue;
+      if (current.o === object) continue;
+      if (String(current.p) === String(pageKey) && adoptCachedAnnotationObject(doc, key, object)) continue;
+      reconcile.push({ pageKey, from: object, to: current.o, toPage: current.p, key });
+    }
+    commitViewerCapture(viewer, {
+      byPage,
+      present,
+      presentPageKeys,
+      changedPages,
+      onlyPageSet,
+      deleted: toDelete,
+    });
   }
 
   return {
@@ -1181,19 +1624,72 @@ export function syncByPageToDoc(doc, byPage, {
     updated,
     removed,
     skipped,
+    ...(reordered ? { reordered } : {}),
+    ...(reconcile.length ? { reconcile } : {}),
+    ...(bulkWritten.length ? { bulkWritten } : {}),
     ...(identityNormalization.changed
       ? { normalizedByPage: byPage, identityChanged: true }
       : {}),
   };
 }
 
-// Compare two { p, o } entries cheaply. Page must match and the object payload
-// must be JSON-identical. (Fabric objects are plain JSON here, so stringify is a
-// correct and fast equality for "did this annotation actually change".)
-function shallowEntryEqual(a, b) {
-  if (!a || !b) return false;
-  if (a.p !== b.p) return false;
-  return stableStringify(a.o) === stableStringify(b.o);
+function commitViewerCapture(viewer, {
+  byPage,
+  present,
+  presentPageKeys,
+  changedPages,
+  onlyPageSet,
+  deleted,
+}) {
+  for (const pageKey of changedPages) {
+    const bucket = byPage[pageKey];
+    viewer.lastPages.set(pageKey, bucket);
+    viewer.pageKeys.set(pageKey, presentPageKeys.get(pageKey) || new Set());
+    viewer.pageOrders?.set(pageKey, [...(presentPageKeys.get(pageKey) || [])]);
+    const page = Number(pageKey);
+    for (const object of bucket?.objects || []) {
+      const key = objectStorageKey(object);
+      if (key == null) continue;
+      viewer.base.set(key, { page, object });
+      registerViewerVersion(viewer, key, object);
+    }
+  }
+  if (!onlyPageSet) {
+    for (const pageKey of [...viewer.lastPages.keys()]) {
+      if (!Object.prototype.hasOwnProperty.call(byPage || {}, pageKey)) {
+        viewer.lastPages.delete(pageKey);
+        viewer.pageKeys.delete(pageKey);
+        viewer.pageOrders?.delete(pageKey);
+      }
+    }
+    viewer.had = new Set(present);
+    // Marks the viewer no longer holds lose their base (a later re-add is a
+    // create); marks handed out but not painted yet get it back on delivery.
+    for (const key of [...viewer.base.keys()]) {
+      if (!present.has(key)) viewer.base.delete(key);
+    }
+  } else {
+    for (const pageKey of onlyPageSet) {
+      for (const key of presentPageKeys.get(pageKey) || []) viewer.had.add(key);
+    }
+    for (const key of deleted) {
+      viewer.had.delete(key);
+      viewer.base.delete(key);
+    }
+  }
+  for (const key of deleted) {
+    viewer.lastDelivered.delete(key);
+    viewer.deliveries.delete(key);
+  }
+  // Everything handed out so far has now been painted or superseded.
+  viewer.deliveries.clear();
+  viewer.deliveredPageOrders?.clear();
+}
+
+/** Tell the capture state the viewer now holds `object` for `key` (a reconcile swap). */
+export function recordViewerObject(viewer, key, pageNumber, object) {
+  if (!viewer || !object || key == null) return;
+  recordDeliveredObject(viewer, String(key), pageNumber, object);
 }
 
 // Order-insensitive JSON stringify so key ordering differences don't read as a

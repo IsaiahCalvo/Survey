@@ -34,10 +34,17 @@ test('top toolbar group glyphs carry no translateY optical nudge', () => {
   }
 });
 
-test('the deliberate text-select drop is the only kept vertical nudge', () => {
-  // Owner rule: the text-select glyph is top-heavy and is asked to sit ~2px
-  // lower than the rest of the selection trio. That one nudge stays.
-  assert.match(source, /textSelect: \(size, color, style, className\)[\s\S]{0,260}translateY\(2px\)/);
+test('no glyph in the set carries a translateY nudge — text-select included', () => {
+  // DELIBERATE ASSERTION CHANGE (2026-10-02, Select-trio optical balance; owner:
+  // "Lasso looks smaller than Rectangular, Text Select looks even smaller").
+  // This test used to REQUIRE textSelect's translateY(2px): the owner had asked
+  // for the top-heavy text-select glyph to sit lower. A fixed 2 CSS px is 3 grid
+  // units at the 16px tool bar but 4 at the 12px phone strip, so it sat the
+  // glyph visibly low and made it read smaller. The asset is now redrawn larger
+  // and centred on the grid (ink 2.25..22 x 2..22, the same box as Box Select),
+  // which keeps the owner's intent — it no longer sits high — and scales with
+  // the glyph. So the rule is now the plain one: no nudges anywhere.
+  assert.match(source, /textSelect: \(size, color, style, className\) => renderMaskIcon\(textSelectUrl, size, color, style, className\),/);
   const code = source.split('\n').filter((line) => !line.trim().startsWith('//')).join('\n');
-  assert.equal((code.match(/translateY\(/g) || []).length, 1);
+  assert.equal((code.match(/translateY\(/g) || []).length, 0);
 });

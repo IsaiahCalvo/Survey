@@ -6,9 +6,24 @@ import {
   deriveWriterEraserLane,
   docToByPage,
   getAnnotationsMap,
+  writeAnnotationMark,
   getEraserOpsMap,
   syncByPageToDoc,
 } from '../src/services/annotationDocStore.js';
+
+// RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
+// — marks are nested per-field maps in the `marks` map (store v3). Tests that
+// seeded a whole { p, o } value write it through the store instead; reads and
+// deletes still go to the real map.
+function markWriter(doc) {
+  const map = getAnnotationsMap(doc);
+  return {
+    set(key, entry) { writeAnnotationMark(doc, key, entry.p, entry.o); },
+    has: (key) => map.has(key),
+    delete: (key) => map.delete(key),
+    get size() { return map.size; },
+  };
+}
 import { erasePageAnnotations } from '../src/utils/pageSpaceEraser.js';
 
 test('materialized partial-erase survivor stays page-space after durable lane replay', () => {
@@ -176,7 +191,7 @@ test('materialized dashed hairline never regains source dash attributes during l
       'the original gap stays empty instead of restarting the old dash phase',
     );
 
-    getAnnotationsMap(doc).set('durable-dashed-hairline', {
+    markWriter(doc).set('durable-dashed-hairline', { // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
       p: 1,
       o: {
         ...base,

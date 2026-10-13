@@ -344,7 +344,8 @@ async function main() {
           : m.body?.data,
       ));
     }
-    expect(replay.getMap('annotations').size === 12, `S3 decode: fixture WAL + recorded inserts replay to 12 entries (got ${replay.getMap('annotations').size})`);
+    // Store v3 (2026-09-24): marks live in the `marks` map.
+    expect(replay.getMap('marks').size === 12, `S3 decode: fixture WAL + recorded inserts replay to 12 entries (got ${replay.getMap('marks').size})`);
     const s3Snaps = mock.mutationsIn('S3').filter(isSnapshotWrite);
     if (s3Snaps.length) {
       const last = s3Snaps[s3Snaps.length - 1].body || {};
@@ -353,7 +354,7 @@ async function main() {
       const encodingVersion = last.p_encoding_version ?? last.encoding_version;
       const raw = pgHexToBytes(snapshot);
       Y.applyUpdate(snapDoc, encodingVersion === 2 ? new Uint8Array(gunzipSync(raw)) : raw);
-      expect(snapDoc.getMap('annotations').size === 12, `S3 decode: final snapshot holds 12 entries (got ${snapDoc.getMap('annotations').size})`);
+      expect(snapDoc.getMap('marks').size === 12, `S3 decode: final snapshot holds 12 entries (got ${snapDoc.getMap('marks').size})`);
     } else {
       log('  [note] no snapshot write recorded in S3 window (debounce did not fire before window close)');
     }

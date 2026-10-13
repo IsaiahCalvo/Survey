@@ -27,7 +27,10 @@ function labelFabricType(fabricType) {
   if (t === 'textbox' || t === 'i-text') return 'text';
   if (t === 'rect') return 'rectangle';
   if (t === 'circle') return 'circle';
+  if (t === 'ellipse') return 'ellipse';
   if (t === 'line') return 'line';
+  if (t === 'arrow') return 'arrow';
+  if (t === 'counter') return 'counter';
   if (t === 'polygon') return 'polygon';
   if (t === 'polyline') return 'polyline';
   return 'annotation';
@@ -38,6 +41,10 @@ function labelFromAnnotation(annotation) {
   // group object, type 'group' + data.type 'callout') through the shared bulk
   // path — keep the human summary saying "callout", not "annotation".
   if (annotation?.data?.type === 'callout') return 'callout';
+  // w55: marks whose fabric type is generic (a group, a path) name themselves
+  // by their own kind first, so an erased counter never reads "annotation".
+  const ownKind = labelFabricType(annotation?.data?.annotationType || annotation?.data?.type || '');
+  if (ownKind !== 'annotation') return ownKind;
   const fabricType = annotation?.type || annotation?.data?.type || '';
   return labelFabricType(fabricType);
 }
@@ -99,7 +106,7 @@ export function buildAnnotationDeleteHistoryRow({
     source: 'annotation-trash',
     page_number: Number.isFinite(pageNumber) ? pageNumber : null,
     annotation_id: annotationId,
-    summary: `${actorName} deleted ${label === 'annotation' ? 'an annotation' : `a ${label}`}${pageSuffix}`,
+    summary: `${actorName} deleted ${/^[aeiou]/.test(label) ? 'an' : 'a'} ${label}${pageSuffix}`,
     payload: {
       actionType: 'delete',
       rawActionType: 'annotation_deleted',
@@ -703,5 +710,6 @@ export function describeHistoryEventSubject(event) {
     return spaceName ? `Region in "${spaceName}"` : 'Region in a space';
   }
   if (event.event_type === 'annotations_bulk_deleted') return null;
-  return event.annotation_id ? `Annotation: ${event.annotation_id}` : null;
+  // w55: never show a raw id to the person reading History.
+  return null;
 }

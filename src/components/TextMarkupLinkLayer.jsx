@@ -6,6 +6,16 @@ const activateLink = (region, onPageNavigate) => {
   else void openExternalDestination(region.url).catch(() => {});
 };
 
+// Only a TAP is the link's (Appetize iOS run 2026-10-06 / Chromium phone
+// repro: a one-finger pull past the top edge that started on a text link
+// panned the page AND opened the link when the finger lifted). The press is
+// remembered per button; a release that travelled past this slop was a drag
+// of the page, so it neither opens nor selects.
+export const LINK_TAP_SLOP_PX = 8;
+const pressStarts = new WeakMap();
+export const isLinkTap = (start, event) => !start
+  || Math.hypot((event?.clientX ?? 0) - start.x, (event?.clientY ?? 0) - start.y) <= LINK_TAP_SLOP_PX;
+
 export default function TextMarkupLinkLayer({ annotations, pageSize, interactionMode = 'disabled', nativeTextSelection = false, onPageNavigate, onSelectLink }) {
   const regions = buildTextMarkupLinkRegions(annotations, pageSize);
   if (!regions.length) return null;
@@ -26,6 +36,7 @@ export default function TextMarkupLinkLayer({ annotations, pageSize, interaction
             if (!interactive || event.button !== 0) return;
             event.preventDefault();
             event.stopPropagation();
+            pressStarts.set(event.currentTarget, { x: event.clientX ?? 0, y: event.clientY ?? 0 });
             event.currentTarget.setPointerCapture?.(event.pointerId);
           }}
           onPointerUpCapture={(event) => {
@@ -33,6 +44,9 @@ export default function TextMarkupLinkLayer({ annotations, pageSize, interaction
             event.preventDefault();
             event.stopPropagation();
             event.currentTarget.releasePointerCapture?.(event.pointerId);
+            const start = pressStarts.get(event.currentTarget);
+            pressStarts.delete(event.currentTarget);
+            if (!isLinkTap(start, event)) return;
             if (interactionMode === 'open' || event.metaKey || event.ctrlKey) {
               activateLink(region, onPageNavigate);
               return;

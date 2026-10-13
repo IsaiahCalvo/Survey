@@ -9,6 +9,8 @@
  * Items are the normalized Archive items from src/services/archiveContract.js.
  */
 
+import { presenceInitials } from '../components/presenceIdentity.js';
+
 /* Filter chips, in display order. 'all' is first and is the default because
    Archive is a small, mixed list — the user usually wants to see everything
    that is about to expire, not one type at a time. */
@@ -418,11 +420,18 @@ export function teamAvatarSlots(collaborators = [], slots = TEAM_AVATAR_SLOTS) {
   return { shown: ordered.slice(0, slots - 1), overflow: ordered.length - (slots - 1) };
 }
 
-/** Two-letter initials for an avatar glyph, matching the Documents ledger. */
+/** Two-letter initials for an avatar glyph: the one app-wide rule
+ *  (presenceIdentity.js), the same as the Documents ledger and the viewer. */
 export function collaboratorInitials(person) {
   const source = (person && (person.name || person.email)) || '';
-  return source
-    .trim().split(/\s+/).map((word) => word[0] || '').join('').slice(0, 2).toUpperCase() || '—';
+  return String(source).trim() ? presenceInitials(source) : '—';
+}
+
+/** What a collaborator's face colour is keyed on (utils/userColors.js): their
+ *  user id, so they wear the same pastel here as everywhere else; the email
+ *  when an invite has no account yet. */
+export function collaboratorColorId(person) {
+  return (person && (person.user_id || person.userId || person.email)) || null;
 }
 
 /** Short archived-on date, matching the Documents ledger's date formatting. */

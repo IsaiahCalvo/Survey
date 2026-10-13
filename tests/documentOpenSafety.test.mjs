@@ -48,6 +48,8 @@ test('real tab handler opens distinct IDs and reuses an ID after name or size ch
       setTabs: update => { tabs = update(tabs); },
       setActiveTabId: id => { activeTab = id; },
       setSelectedPDF() {}, setCurrentView() {}, setIsLoading() {},
+      // 2026-10-07: the handler also clears the home's "Opening <file>…" cover.
+      setPendingDocumentOpen() {},
       generateTabId: () => `new-${++nextId}`,
       setTimeout: callback => callback(),
     })(incoming);
@@ -65,7 +67,7 @@ for (const error of [
   new Error('offline'),
 ]) {
   test(`real document-open failure preserves all records: ${error.message}`, async () => {
-    const calls = { deletes: 0, listUpdates: 0, opens: 0, toasts: [] };
+    const calls = { deletes: 0, listUpdates: 0, opens: 0, toasts: [], openStarts: 0, openEnds: 0 };
     const doc = { id: 'pending-upload', name: 'plan.pdf', file_path: 'owner/hash.pdf' };
     const original = structuredClone(doc);
     const handler = extractHandler(dashboardSource,
@@ -75,6 +77,10 @@ for (const error of [
         isStorageFileNotFoundError,
         showToast: (...args) => calls.toasts.push(args),
         onDocumentSelect: () => { calls.opens++; },
+        // 2026-10-07: the tap shows "Opening <file>…" at once; a failed read
+        // must take it away again so the home is usable.
+        onDocumentOpenStart: () => { calls.openStarts++; },
+        onDocumentOpenEnd: () => { calls.openEnds++; },
         deleteDocumentEverywhere: () => { calls.deletes++; },
         handleFileNotFound: () => { calls.deletes++; },
         setDocuments: () => { calls.listUpdates++; },
@@ -84,6 +90,8 @@ for (const error of [
     assert.equal(calls.deletes, 0, 'opening a file never deletes the document or annotations');
     assert.equal(calls.listUpdates, 0, 'failed reads keep the document visible for recovery');
     assert.equal(calls.opens, 0);
+    assert.equal(calls.openStarts, 1);
+    assert.equal(calls.openEnds, 1, 'a failed open removes the opening cover');
     assert.equal(calls.toasts.length, 1);
     if (isStorageFileNotFoundError(error)) assert.match(calls.toasts[0][0], /annotations were kept/);
   });

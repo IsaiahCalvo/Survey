@@ -8,12 +8,13 @@ const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const DASHBOARD = read('../src/Dashboard.jsx');
 const HUB = read('../src/home/SurveyHub.jsx');
 const HUB_SHELL = read('../src/home/HubShell.jsx');
-const SKELETONS = read('../src/home/HubLoadingSkeletons.jsx');
+const LOADING = read('../src/home/HubLoading.jsx');
+const QUIET = read('../src/components/QuietLoading.jsx');
 const CSS = read('../src/home/hub.css');
 const PREVIEW = read('../src/home/HubPreview.jsx');
 const DATABASE_HOOKS = read('../src/hooks/useDatabase.js');
 
-test('home skeletons appear only during an empty first load, never a later refetch', () => {
+test('home loading state appears only during an empty first load, never a later refetch', () => {
   const cold = resolveHubInitialLoading({
     documentsInitialLoading: true,
     projectsInitialLoading: true,
@@ -114,46 +115,33 @@ test('primary tab navigation never waits on a first-visit code split', () => {
   assert.match(shellFrameEffect, /useLayoutEffect\(\(\) => \{[\s\S]*?document\.documentElement\.classList\.add\(pageClass\)/);
 });
 
-test('skeletons mirror real desktop and mobile row geometry', () => {
-  assert.match(SKELETONS, /documents-desktop-card/);
-  assert.match(SKELETONS, /projects-desktop-layout/);
-  assert.match(SKELETONS, /templates-editor-grid/);
-  assert.match(SKELETONS, /mobile-doc-card/);
-  assert.match(SKELETONS, /projects-mobile-folder-row drill reorderable/);
-  assert.match(SKELETONS, /templates-mobile-row reorderable/);
-  assert.match(SKELETONS, /const grid = '32px 54px minmax\(150px,1fr\) 124px 124px 72px'/);
-  assert.match(SKELETONS, /gridTemplateColumns:\s*'260px 1fr'/);
-  assert.match(SKELETONS, /gridTemplateColumns:\s*'260px 1fr 268px'/);
-  assert.match(SKELETONS, /hub-loading-project-columns/);
-  assert.match(SKELETONS, /hub-loading-project-files/);
-  assert.match(SKELETONS, /hub-loading-project-team/);
-  assert.match(SKELETONS, /hub-loading-template-content/);
-  assert.match(SKELETONS, /hub-loading-entities-rail/);
-  assert.doesNotMatch(SKELETONS, /projects-mobile-browser-label hub-loading-mobile-label/);
-  assert.doesNotMatch(SKELETONS, /templates-mobile-label hub-loading-mobile-label/);
-  assert.match(CSS, /--mobile-list-card-h:\s*64px/);
-  assert.match(CSS, /\.survey-hub \.templates-editor-body\s*\{[\s\S]*?padding:\s*8px 10px 10px !important/);
-  assert.match(CSS, /\.survey-hub \.hub-loading-document-row\s*\{[\s\S]*?height:\s*50px/);
-  assert.match(CSS, /\.survey-hub \.hub-loading-project-columns\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) 148px/);
-  assert.match(CSS, /\.survey-hub \.hub-loading-project-header\s*\{[\s\S]*?min-height:\s*65px/);
-  assert.match(CSS, /\.survey-hub \.hub-loading-project-file-row\s*\{[\s\S]*?height:\s*42px/);
-  assert.match(CSS, /\.survey-hub \.hub-loading-template-header\s*\{[\s\S]*?min-height:\s*65px/);
-  assert.match(CSS, /\.survey-hub \.hub-loading-entities-header\s*\{[\s\S]*?min-height:\s*64px/);
-  assert.match(CSS, /\.survey-hub \.hub-loading-entity-row\s*\{[\s\S]*?height:\s*38px/);
+// Owner 2026-10-04: one calm loading state everywhere. The pulsing grey
+// placeholder rows are gone; the list area shows the app's one quiet line and
+// the header keeps the real controls' room with invisible spacers.
+test('first load shows the one quiet line, not placeholder rows, and keeps the header still', () => {
+  assert.match(LOADING, /<QuietLoading label=\{`Loading \$\{title\.toLowerCase\(\)\}…`\} \/>/);
+  assert.match(LOADING, /className="hub-loading-region" aria-busy="true"/);
+  assert.doesNotMatch(LOADING, /DocumentsSkeleton|ProjectsSkeleton|TemplatesSkeleton|hub-skeleton-block/);
+  assert.match(LOADING, /hub-loading-space/);
+  assert.match(CSS, /\.survey-hub \.hub-loading-space\s*\{[\s\S]*?background:\s*transparent/);
+  assert.match(CSS, /\.survey-hub \.hub-loading-region\s*\{[\s\S]*?position:\s*relative/);
+  assert.doesNotMatch(CSS, /hubSkeletonPulse|hub-skeleton-block/);
+  assert.doesNotMatch(CSS, /hub-loading-(?:document-row|mobile-panel|mobile-row|sidebar|project-|template-|entit)/,
+    'the old placeholder-row rules are removed with the rows');
 });
 
 test('loading treatment fits the app palette and accessibility settings', () => {
-  assert.match(SKELETONS, /aria-busy="true"/);
-  assert.match(SKELETONS, /role="status"/);
-  assert.match(SKELETONS, /aria-label=\{`Loading \$\{title\.toLowerCase\(\)\}`\}/);
-  assert.match(SKELETONS, /documents-mobile-summary[^>]*aria-hidden="true"/);
-  assert.match(SKELETONS, /desktop-summary hub-loading-metric-cell`} aria-hidden="true"/);
-  assert.doesNotMatch(SKELETONS, /var\(--gold\)|#d8a84e|#fff(?:fff)?\b/i);
-  assert.match(CSS, /\.survey-hub \.hub-skeleton-block\s*\{[\s\S]*?background:\s*var\(--ink-500\)/);
-  assert.match(CSS, /@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.survey-hub \.hub-skeleton-block[\s\S]*?animation:\s*none/);
+  assert.match(LOADING, /documents-mobile-summary[^>]*aria-hidden="true"/);
+  assert.match(LOADING, /desktop-summary hub-loading-metric-cell`} aria-hidden="true"/);
+  assert.doesNotMatch(LOADING, /var\(--gold\)|#d8a84e|#fff(?:fff)?\b/i);
+  assert.match(QUIET, /role="status"/);
+  assert.match(QUIET, /aria-live="polite"/);
+  assert.match(QUIET, /color: var\(--text-3\)/);
+  assert.match(QUIET, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.doesNotMatch(QUIET, /infinite/, 'nothing pulses or spins');
 });
 
-test('dev preview can hold each real skeleton on screen for visual QA', () => {
+test('dev preview can hold each loading state on screen for visual QA', () => {
   assert.match(PREVIEW, /params\.get\('hubLoading'\)/);
   assert.match(PREVIEW, /documentsInitialLoading=\{loadingFixture === 'documents'\}/);
   assert.match(PREVIEW, /projectsInitialLoading=\{loadingFixture === 'projects'\}/);

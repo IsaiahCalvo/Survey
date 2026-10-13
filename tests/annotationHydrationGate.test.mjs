@@ -150,3 +150,28 @@ describe('annotation hydration first-paint gate', () => {
     }), 7);
   });
 });
+
+// w26 (2026-09-24): a document whose marks cannot be read (the WAL tail read
+// timed out) must still show its PDF instead of loading dots forever.
+describe('annotation store unavailable', () => {
+  const unavailable = { ready: false, source: 'unavailable', documentId: 'doc-1', error: 'tail read: timeout' };
+  const survey = { ready: true, source: 'annotation-doc', documentId: 'doc-1' };
+  it('uncovers the first page while the store is unavailable for this document', () => {
+    assert.equal(
+      shouldGateFirstVisibleAnnotationPage({
+        documentId: 'doc-1', isCloudBackedDocument: true, pageNumber: 1, firstVisiblePageNumber: 1,
+        normalHydration: unavailable, surveyHydration: survey,
+      }),
+      false,
+    );
+  });
+  it('an unavailable state left over from another document never uncovers this one', () => {
+    assert.equal(
+      shouldGateFirstVisibleAnnotationPage({
+        documentId: 'doc-2', isCloudBackedDocument: true, pageNumber: 1, firstVisiblePageNumber: 1,
+        normalHydration: unavailable, surveyHydration: { ...survey, documentId: 'doc-2' },
+      }),
+      true,
+    );
+  });
+});

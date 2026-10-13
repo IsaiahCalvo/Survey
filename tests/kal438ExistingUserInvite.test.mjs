@@ -96,8 +96,8 @@ async function loadDocumentInviteService({ supabase, sendInviteEmailSmart }) {
       `const sendInviteEmailSmart = globalThis[${JSON.stringify(senderKey)}];
 const inviteEmailFailureMessage = (result, { completedAction, retryInstruction }) =>
   result?.deliveryUncertain || result?.retryable === false
-    ? \`\${completedAction}. The email may already have been delivered. Use Resend only if you intentionally want to send another copy.\`
-    : \`\${completedAction}, but the email was not sent. \${retryInstruction}\`;`,
+    ? \`\${completedAction}, but we couldn't confirm the email was sent.\`
+    : \`\${completedAction}, but the email didn't send. \${retryInstruction}\`;`,
     );
 
   try {
@@ -315,7 +315,7 @@ test('KAL-438: client treats {sent:false} honestly and warns on uncertain delive
   match(documentService, /emailSent:\s*false/);
   match(documentService, /inviteEmailFailureMessage/);
   match(shareService, /deliveryUncertain/);
-  match(shareService, /may already have been delivered/);
+  match(shareService, /couldn't confirm the email was sent/);
   match(shareService, /retryable:\s*false/);
 
   const createStart = documentService.indexOf('export async function createDocumentInvite');

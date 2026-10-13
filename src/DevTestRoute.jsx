@@ -5,7 +5,6 @@ import { useEffect, useState } from 'react';
 import { AuthContext } from './contexts/AuthContext';
 import { MSGraphContext } from './contexts/MSGraphContext';
 import ErrorBoundary from './components/ErrorBoundary';
-import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
 import App from './AppShell';
 
 const noop = () => {};
@@ -96,7 +95,20 @@ const readSurveyTemplateWorkflowTemplates = () => {
   }
 };
 
+// Two-account walks (test plan item 62, shared templates): a test may sign
+// this route in as a second person by setting window.__devTestUser before the
+// app loads. Dev-only file; never in a production bundle.
+const resolveDevAuthValue = () => {
+  const override = typeof window !== 'undefined' ? window.__devTestUser : null;
+  if (!override || typeof override.id !== 'string' || !override.id) return mockAuthValue;
+  return {
+    ...mockAuthValue,
+    user: { ...mockUser, ...override, user_metadata: { ...mockUser.user_metadata, ...(override.user_metadata || {}) } },
+  };
+};
+
 export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) {
+  const [authValue] = useState(resolveDevAuthValue);
   const [status, setStatus] = useState('loading');
   const [error, setError] = useState(null);
   const surveyTransitionE2E = new URLSearchParams(window.location.search)
@@ -197,10 +209,12 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
   // status === 'ready'
   return (
     <ErrorBoundary>
-      <AuthContext.Provider value={mockAuthValue}>
+      <AuthContext.Provider value={authValue}>
         <MSGraphContext.Provider value={mockMSGraphValue}>
+          {/* App mounts the shortcuts sheet itself (Home only, as main.jsx
+              does since 2026-05-13); a second copy here opened two stacked
+              sheets on "?" and Escape closed only one (polish round 6). */}
           <App devPreviewReturnTab={returnTab} />
-          <KeyboardShortcutsOverlay />
         </MSGraphContext.Provider>
       </AuthContext.Provider>
     </ErrorBoundary>

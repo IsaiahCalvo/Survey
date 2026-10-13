@@ -56,12 +56,14 @@ import {
   captureShape as __captureShape,
 } from './shapeBleedDiagnostics';
 import { DRAWN_CENTERED_STROKE_CONTRACT } from './shapeCommitGeometry.js';
+import { insetRectForFill, shouldKnockOutShapeFill } from './shapeFillKnockout.js';
 // UX 2026-04-21 (import-normalization Chunk 2): pure attr derivation for
 // path-type Fabric objects lives in svgPathAttrs.js so node-test suites
 // can import it without the JSX loader. The renderer uses it too to
 // guarantee import vs internal paths produce byte-identical SVG output
 // when their Fabric input fields match.
 import { renderPathToSvgAttrs, renderPathToSvgD } from './svgPathAttrs.js';
+import { calloutBoxCloudStandIn, colorWithAlpha, textboxCloudStandIn } from './textCloudBorder.js';
 import { getCounterLabelLayout } from './counterGeometry.js';
 import { getTextMarkupUnderlineInset } from './pdfTextMarkup.js';
 
@@ -161,6 +163,76 @@ const CloudOutline = ({
   );
 };
 
+// Owner Test 15 (2026-10-02): a see-through border must not show the fill
+// under its inner half (shapeFillKnockout.js). These two paint a shape whose
+// fill stops at the stroke's inner edge; they are used ONLY when
+// shouldKnockOutShapeFill says so, so every opaque border renders as before.
+//
+// Rect / text box: the fill is the stroke rect pulled in by half the stroke
+// width - exact for any join, so no mask is needed.
+const KnockoutRect = ({
+  x, y, width, height, transform, fill, stroke, strokeWidth, strokeDasharray,
+  opacity, style, shapeId, shapeKind, onClick,
+}) => {
+  const inner = insetRectForFill({ x, y, width, height }, strokeWidth);
+  return (
+    <g
+      transform={transform}
+      opacity={opacity}
+      style={style}
+      data-shape-id={shapeId}
+      data-shape-kind={shapeKind}
+      data-fill-knockout="inset"
+      onClick={onClick}
+    >
+      <rect x={inner.x} y={inner.y} width={inner.width} height={inner.height} fill={fill} stroke="none" data-knockout-fill="true" />
+      <rect x={x} y={y} width={width} height={height} fill="none" stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={strokeDasharray} />
+    </g>
+  );
+};
+
+// Ellipse / polygon: the fill carries a mask = the shape filled white with its
+// outline stroked black at the ink width (the cloud's knockout), so the fill
+// ends exactly on the stroke's inner edge for any curve or join.
+const KnockoutMaskedShape = ({
+  tag: Tag, geometry, bounds, transform, fill, stroke, strokeWidth, strokeDasharray,
+  strokeLinejoin, opacity, style, shapeId, shapeKind, onClick,
+}) => {
+  const maskId = `shape-fill-knockout-${String(React.useId()).replace(/[^a-zA-Z0-9_-]/g, '') || 'x'}`;
+  const pad = strokeWidth + 2;
+  return (
+    <g
+      transform={transform}
+      opacity={opacity}
+      style={style}
+      data-shape-id={shapeId}
+      data-shape-kind={shapeKind}
+      data-fill-knockout="mask"
+      onClick={onClick}
+    >
+      <mask
+        id={maskId}
+        maskUnits="userSpaceOnUse"
+        x={bounds.minX - pad}
+        y={bounds.minY - pad}
+        width={bounds.maxX - bounds.minX + pad * 2}
+        height={bounds.maxY - bounds.minY + pad * 2}
+      >
+        <Tag {...geometry} fill="#fff" stroke="#000" strokeWidth={strokeWidth} strokeLinejoin={strokeLinejoin} />
+      </mask>
+      <Tag {...geometry} fill={fill} stroke="none" mask={`url(#${maskId})`} data-knockout-fill="true" />
+      <Tag
+        {...geometry}
+        fill="none"
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+        strokeDasharray={strokeDasharray}
+        strokeLinejoin={strokeLinejoin}
+      />
+    </g>
+  );
+};
+
 // UX (Plan 15-04 Issue 4, 2026-04-17): text gutter inside the textbox / callout
 // border. Chosen value 6 — breathier than the pre-fix 0 (text hugged border,
 // descenders cut through bottom edge) without becoming a visually large margin.
@@ -240,16 +312,6 @@ const paperCutsToSvgD = (polygons) => (polygons || [])
   })
   .filter(Boolean)
   .join(' ');
-
-const stablePaperClipId = (key, source, cutD) => {
-  const value = `${key}|${JSON.stringify(source?.path)}|${JSON.stringify(source?.matrix)}|${cutD}`;
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return `paper-eraser-clip-${(hash >>> 0).toString(36)}`;
-};
 
 // ---------------------------------------------------------------------------
 // Render Functions
@@ -373,39 +435,30 @@ export const renderPath = (obj, index) => {
     && Array.isArray(paperSource?.path)
     && paperSource.path.length > 0
   ) {
-    const sourceD = paperSource.path.map((command) => command.join(' ')).join(' ');
-    const [a, b, c, d, e, f] = paperSource.matrix;
+    // Partially erased authored curve (imported PDF ink, legacy curves): fill
+    // the SURVIVOR polygons, the eraser's own verified output (even-odd).
+    // 2026-10-06 (test plan 68): this used to paint the authored source curve
+    // under a clipPath of those same polygons. The clip's edge lies exactly on
+    // the curve's own edge along the whole line, so every edge pixel was
+    // anti-aliased twice (coverage x coverage): thin imported lines came out
+    // 10-30% lighter than the untouched original. One filled outline has one
+    // anti-aliased edge, like the original paint. The survivor follows the
+    // authored curve to its 0.05 pt flattening tolerance; the clipped curve
+    // was already cut to those chords on its outer side.
     const sourceIsFill = paperSource.paintMode === 'fill';
-    const clipId = stablePaperClipId(key, paperSource, paperSurvivorD);
     return (
-      <g
+      <path
         key={key}
+        d={paperSurvivorD}
         transform={transform}
+        stroke="none"
+        strokeWidth={0}
+        fill={obj.fill || attrs.fill || (sourceIsFill ? paperSource.fill : paperSource.stroke)}
+        fillRule="evenodd"
+        opacity={attrs.opacity}
+        shapeRendering="geometricPrecision"
         style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
-      >
-        <defs>
-          <clipPath id={clipId} clipPathUnits="userSpaceOnUse">
-            <path d={paperSurvivorD} fillRule="evenodd" clipRule="evenodd" />
-          </clipPath>
-        </defs>
-        <g clipPath={`url(#${clipId})`}>
-          <path
-            d={sourceD}
-            transform={`matrix(${a} ${b} ${c} ${d} ${e} ${f})`}
-            stroke={sourceIsFill ? 'none' : (obj.fill || attrs.fill || paperSource.stroke)}
-            strokeWidth={sourceIsFill ? 0 : paperSource.strokeWidth}
-            fill={sourceIsFill ? (obj.fill || attrs.fill || paperSource.fill) : 'none'}
-            fillRule={sourceIsFill ? (paperSource.fillRule || 'nonzero') : undefined}
-            opacity={attrs.opacity}
-            strokeLinecap={paperSource.strokeLineCap || 'round'}
-            strokeLinejoin={paperSource.strokeLineJoin || 'round'}
-            strokeMiterlimit={paperSource.strokeMiterLimit}
-            strokeDasharray={paperSource.strokeDashArray?.join(' ')}
-            strokeDashoffset={paperSource.strokeDashOffset}
-            shapeRendering="geometricPrecision"
-          />
-        </g>
-      </g>
+      />
     );
   }
 
@@ -533,6 +586,34 @@ export const renderRect = (obj, index) => {
   const dashArrayAttr = Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length > 0
     ? obj.strokeDashArray.join(' ')
     : undefined;
+
+  // Owner Test 15 (2026-10-02): a see-through border over a fill - the fill
+  // stops at the stroke's inner edge (shapeFillKnockout.js). The stroke keeps
+  // the exact rect it has below (inset contract or centred), so its outer
+  // edge does not move.
+  if (shouldKnockOutShapeFill({ fill: obj.fill, stroke: obj.stroke, strokeWidth: obj.strokeWidth })) {
+    const knockSw = Math.max(0, Number(obj.strokeWidth) || 0);
+    const off = inset ? knockSw / 2 : 0;
+    return (
+      <KnockoutRect
+        key={key}
+        x={off}
+        y={off}
+        width={Math.max(0, effectiveWidth - 2 * off)}
+        height={Math.max(0, effectiveHeight - 2 * off)}
+        transform={positionTransform}
+        fill={obj.fill}
+        stroke={obj.stroke}
+        strokeWidth={knockSw}
+        strokeDasharray={dashArrayAttr}
+        opacity={obj.opacity ?? 1}
+        style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
+        shapeId={shapeId}
+        shapeKind="rect"
+        onClick={__shapeClick}
+      />
+    );
+  }
 
   const rectEl = (
     <rect
@@ -1065,6 +1146,31 @@ export const renderPolygon = (obj, index) => {
     ? obj.strokeDashArray.join(' ')
     : undefined;
 
+  // Owner Test 15 (2026-10-02): a see-through border over a fill - the fill
+  // is masked off under the stroke band (shapeFillKnockout.js), round joins
+  // like the stroke.
+  if (shouldKnockOutShapeFill({ fill: obj.fill, stroke: obj.stroke, strokeWidth: obj.strokeWidth || 1 })) {
+    return (
+      <KnockoutMaskedShape
+        key={key}
+        tag="polygon"
+        geometry={{ points: pointsStr }}
+        bounds={{ minX, minY, maxX, maxY }}
+        transform={transform}
+        fill={obj.fill}
+        stroke={obj.stroke}
+        strokeWidth={Number(obj.strokeWidth) || 1}
+        strokeDasharray={polyDashArrayAttr}
+        strokeLinejoin="round"
+        opacity={obj.opacity ?? 1}
+        style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
+        shapeId={shapeId}
+        shapeKind="polygon"
+        onClick={__shapeClick}
+      />
+    );
+  }
+
   return (
     <polygon
       key={key}
@@ -1287,6 +1393,34 @@ export const renderEllipse = (obj, index) => {
   const rotateTransform = obj.angle ? `rotate(${obj.angle}, ${cx}, ${cy})` : undefined;
   const inset = !isHighlight && shouldInsetStroke(obj);
   const clipId = inset ? `clip-${shapeId}` : undefined;
+
+  // Owner Test 15 (2026-10-02): a see-through border over a fill - the fill
+  // is masked off under the stroke band (shapeFillKnockout.js); the stroke
+  // keeps the exact radii it has below, so its outer edge does not move.
+  if (shouldKnockOutShapeFill({ fill: obj.fill, stroke: obj.stroke, strokeWidth: obj.strokeWidth })) {
+    const knockSw = Math.max(0, Number(obj.strokeWidth) || 0);
+    const off = inset ? knockSw / 2 : 0;
+    const krx = Math.max(0, rx - off);
+    const kry = Math.max(0, ry - off);
+    return (
+      <KnockoutMaskedShape
+        key={key}
+        tag="ellipse"
+        geometry={{ cx, cy, rx: krx, ry: kry }}
+        bounds={{ minX: cx - krx, minY: cy - kry, maxX: cx + krx, maxY: cy + kry }}
+        transform={rotateTransform}
+        fill={obj.fill}
+        stroke={obj.stroke}
+        strokeWidth={knockSw}
+        strokeDasharray={Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length ? obj.strokeDashArray.join(' ') : undefined}
+        opacity={obj.opacity ?? 1}
+        style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
+        shapeId={shapeId}
+        shapeKind="ellipse"
+        onClick={__shapeClick}
+      />
+    );
+  }
 
   const ellEl = (
     <ellipse
@@ -1518,14 +1652,43 @@ export const renderText = (obj, index, liveBounds = null, hideText = false) => {
     angle !== 0 ? ` rotate(${angle}, ${effectiveWidth / 2}, ${effectiveHeight / 2})` : ''
   }`;
 
+  // w43 (2026-09-26, owner request): a text box whose line style is Cloud
+  // draws its border as the house revision cloud - the same rectangle cloud a
+  // clouded rect draws (utils/textCloudBorder.js) - in this group's LOCAL
+  // frame (the group already carries translate + rotate + opacity). Its
+  // background fills the scalloped region, humps included, like a filled
+  // cloud rect; the text keeps its box.
+  const cloudBorder = textboxCloudStandIn(obj, { left: 0, top: 0, width: effectiveWidth, height: effectiveHeight });
+  if (cloudBorder) {
+    cloudBorder.angle = 0;
+    cloudBorder.opacity = 1;
+  }
+  const cloudBorderGeometry = cloudBorder && resolveAnnotationCloudSpec(cloudBorder)
+    ? resolveCloudAnnotationGeometry(cloudBorder)
+    : null;
+
   return (
     <g key={key} opacity={obj.opacity ?? 1} transform={positionTransform}>
-      {obj.backgroundColor && obj.backgroundColor !== 'transparent' ? (
+      {cloudBorderGeometry ? (
+        <CloudOutline
+          shapeId={obj.id || key}
+          shapeKind="cloud-text-border"
+          geometryKind="rectangle"
+          geometry={cloudBorderGeometry}
+          fill={cloudBorder.fill}
+          stroke={cloudBorder.stroke}
+          opacity={1}
+        />
+      ) : null}
+      {!cloudBorderGeometry && obj.backgroundColor && obj.backgroundColor !== 'transparent' ? (
+        // Owner Test 15 (2026-10-02): under a see-through border the
+        // background stops at the border's inner edge (shapeFillKnockout.js).
         <rect
-          x={0}
-          y={0}
-          width={effectiveWidth}
-          height={effectiveHeight}
+          {...(obj.strokeWidth > 0 && obj.stroke && shouldKnockOutShapeFill({
+            fill: obj.backgroundColor, stroke: obj.stroke, strokeWidth: obj.strokeWidth,
+          })
+            ? { ...insetRectForFill({ x: 0, y: 0, width: effectiveWidth, height: effectiveHeight }, obj.strokeWidth), 'data-knockout-fill': 'true' }
+            : { x: 0, y: 0, width: effectiveWidth, height: effectiveHeight })}
           fill={obj.backgroundColor}
         />
       ) : null}
@@ -1536,7 +1699,7 @@ export const renderText = (obj, index, liveBounds = null, hideText = false) => {
           land here. Textboxes with strokeWidth=0 render borderless. Uses
           effectiveHeight (not displayHeight with descenderBuffer) so the border
           hugs Fabric's logical bounds and matches the eraser-canvas render. */}
-      {obj.strokeWidth > 0 && obj.stroke ? (
+      {!cloudBorderGeometry && obj.strokeWidth > 0 && obj.stroke ? (
         <rect
           x={0}
           y={0}
@@ -1850,19 +2013,51 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
         // the growing box while editing. Only the inner text foreignObject
         // is gated by hideText — Fabric paints the live letters during
         // edit and the SVG copy would just create a ghost behind them.
+        // w43 (2026-09-26, owner request): line style Cloud clouds ONLY the
+        // text box - the house rectangle cloud (utils/textCloudBorder.js) on
+        // the same visible box, border width and fill. The leaders above stay
+        // straight and solid and the arrowhead stays a head
+        // (calloutLineDashArray has no dash for 'cloud'). The plain rect is
+        // kept, unpainted, as the textBox drag / hit surface.
+        const boxCloud = calloutBoxCloudStandIn(callout, {
+          x: textBox.x, y: textBox.y, width: textBox.width, height: boxHeightWithDescenders,
+        }, {
+          stroke: lineColor,
+          strokeWidth: Math.max(1, lineThickness * 0.7),
+          fill: colorWithAlpha(fillColor, fillOpacity),
+        });
+        const boxCloudGeometry = boxCloud && resolveAnnotationCloudSpec(boxCloud)
+          ? resolveCloudAnnotationGeometry(boxCloud)
+          : null;
         return (
         <>
+          {boxCloudGeometry && (
+            // The crowns stand past the box; a press on one acts on the text
+            // box part (drag the box), the same as a press inside it.
+            <g data-callout-part="textBox">
+              <CloudOutline
+                shapeId={callout.id || key}
+                shapeKind="cloud-callout-box"
+                geometryKind="rectangle"
+                geometry={boxCloudGeometry}
+                fill={boxCloud.fill}
+                stroke={boxCloud.stroke}
+                opacity={1}
+              />
+            </g>
+          )}
           <rect
             // UX: data-callout-part='textBox' — Phase 14 drag target + Phase 17
             // collision clamp hit-test surface. (CALL-10)
             data-callout-part="textBox"
+            data-callout-box-cloud={boxCloudGeometry ? 'true' : undefined}
             x={textBox.x}
             y={textBox.y}
             width={textBox.width}
             height={boxHeightWithDescenders}
-            fill={fillColor}
-            fillOpacity={fillOpacity}
-            stroke={lineColor}
+            fill={boxCloudGeometry ? 'transparent' : fillColor}
+            fillOpacity={boxCloudGeometry ? undefined : fillOpacity}
+            stroke={boxCloudGeometry ? 'none' : lineColor}
             // UX 2026-07-14 (zoom-scaling unification): page-unit border that
             // scales with zoom (no vector-effect pin). The 0.7 ratio keeps the
             // box border visually lighter than the leader lines at any zoom.
