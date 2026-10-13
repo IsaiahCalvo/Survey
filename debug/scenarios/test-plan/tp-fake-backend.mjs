@@ -55,6 +55,11 @@
 // only into your own folder (first path segment = you); reads your own folder
 // or a file a document you can see points at (20260703030000 + the
 // collaborator read policy). Without the option storage answers {} as before.
+// With the bucket on, the documents rows also follow (2026-10-13, #812 shared-
+// object page edits): file_path immutable for a client UPDATE (20260703020000),
+// the unique fingerprint index on UPDATE too, and public.fork_document_file
+// (20261013211724) in memory; `forkDocumentFile: false` answers that function
+// as missing (PGRST202), like a server without it.
 
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -213,6 +218,7 @@ export class FakeBackend {
     latencyMs = 0,
     storage = false,
     annotationWritePolicy = 'author',
+    forkDocumentFile = true,
   } = {}) {
     this.documentId = documentId;
     this.ownerId = ownerId;
@@ -220,6 +226,7 @@ export class FakeBackend {
     this.latencyMs = latencyMs;
     this.storageObjects = storage ? new Map() : null;
     this.annotationWritePolicy = annotationWritePolicy;
+    this.forkDocumentFile = forkDocumentFile;
     this.tables = new Map();
     this.counts = new Map();
     this.sockets = new Set();
@@ -478,7 +485,7 @@ export class FakeBackend {
         }
       }
       const answer = this.rpc(rpc[1], args, caller);
-      if (answer && answer.__rpcError) return reply(400, { code: 'P0001', message: answer.__rpcError });
+      if (answer && answer.__rpcError) return reply(answer.__rpcStatus || 400, { code: answer.__rpcCode || 'P0001', message: answer.__rpcError });
       return reply(200, answer);
     }
     const tableMatch = path.match(/^\/rest\/v1\/([^/]+)$/);
@@ -545,6 +552,14 @@ export class FakeBackend {
     if (method === 'PATCH') {
       const matched = applyFilters(rows.filter((r) => this.canSee(caller, name, r) && this.canUpdate(caller, name, r)), params);
       if (wantsObject && matched.length === 0) return reply(406, { code: 'PGRST116', message: 'JSON object requested, multiple (or no) rows returned' });
+      if (name === 'documents' && this.storageObjects) {
+        if (body && 'file_path' in body && matched.some((row) => row.file_path !== body.file_path)) {
+          return reply(400, { code: 'P0001', message: 'documents.file_path is immutable (set once at upload)' });
+        }
+        if (matched.some((row) => this.violatesDocumentShaIndex({ ...row, ...(body || {}) }))) {
+          return reply(409, { code: '23505', message: 'duplicate key value violates unique constraint "documents_user_project_sha_uidx"' });
+        }
+      }
       for (const row of matched) {
         const old = { ...row };
         Object.assign(row, body || {});
@@ -626,7 +641,7 @@ export class FakeBackend {
       this.storageObjects.set(key(objectPath), { bytes, type, owner: caller, updated_at: nowIso(), version: fakeUuid() });
       return reply(200, { Key: key(objectPath), Id: key(objectPath) });
     }
-    if (method === 'GET' && objectPath) {
+    if ((method === 'GET' || method === 'HEAD') && objectPath) {
       const object = this.storageObjects.get(key(objectPath));
       if (!object || !this.canReadObject(caller, objectPath)) {
         return reply(400, { statusCode: '404', error: 'not_found', message: 'Object not found' });
@@ -645,6 +660,32 @@ export class FakeBackend {
       return reply(200, removed);
     }
     return reply(400, { statusCode: '400', error: 'unsupported', message: `fake storage: ${method} ${path}` });
+  }
+
+  /** A stored file's bytes (Buffer), or null. */
+  objectBytes(objectPath, { bucket = 'documents' } = {}) {
+    return this.storageObjects?.get(`${bucket}/${objectPath}`)?.bytes ?? null;
+  }
+
+  /** public.fork_document_file (20261013211724_fork_document_file.sql), in memory. */
+  forkDocumentFileRpc(args, caller) {
+    if (!this.forkDocumentFile) {
+      return { __rpcError: 'Could not find the function public.fork_document_file(p_content_sha256, p_document_id) in the schema cache', __rpcStatus: 404, __rpcCode: 'PGRST202' };
+    }
+    const sha = args.p_content_sha256 ? String(args.p_content_sha256).trim().toLowerCase() : null;
+    if (sha && !/^[0-9a-f]{64}$/.test(sha)) return { __rpcError: 'content_sha256 must be a SHA-256 hex digest', __rpcCode: '22023' };
+    const doc = this.table('documents').find((r) => r.id === args.p_document_id);
+    if (!doc || doc.user_id !== caller) return { __rpcError: 'Document not found', __rpcStatus: 403, __rpcCode: '42501' };
+    const path = `${caller}/${doc.id}.pdf`;
+    if (!this.storageObjects.has(`documents/${path}`)) return { __rpcError: "Upload the document's own copy before moving it", __rpcCode: '22023' };
+    if (this.table('documents').some((r) => r.file_path === path && r.id !== doc.id)) {
+      return { __rpcError: 'That storage object belongs to another document', __rpcStatus: 403, __rpcCode: '42501' };
+    }
+    const old = { ...doc };
+    doc.file_path = path;
+    doc.content_sha256 = this.violatesDocumentShaIndex({ ...doc, content_sha256: sha }) ? null : sha;
+    this.emitChange('documents', 'UPDATE', doc, old);
+    return doc;
   }
 
   /** Put a stored file in the bucket (as its owner had uploaded it). */
@@ -720,6 +761,7 @@ export class FakeBackend {
     if (name === 'store_annotation_snapshot') return this.storeSnapshot(args);
     if (name === 'get_my_document_role') return this.documentRoleFor(caller);
     if (name === 'replace_my_templates') return this.replaceMyTemplates(args.p_templates, caller);
+    if (name === 'fork_document_file' && this.storageObjects) return this.forkDocumentFileRpc(args, caller);
     return null;
   }
 
