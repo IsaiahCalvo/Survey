@@ -3271,6 +3271,13 @@ textarea:focus-visible,
   cursor: crosshair;
 }
 
+/* Drawboard canvas audit 2026-10-13: over a selected mark that a press would
+   move (hooks/useSelectionMoveCursor.js) the pointer is `move`, whatever tool
+   is armed. Beats .tool-crosshair; a drag's inline `grabbing` still wins. */
+svg[data-svg-annotation-layer][data-selection-hover="move"] {
+  cursor: move;
+}
+
 /* Drawboard rule 11 (owner 2026-10-02, utils/selectModes.js): while the
    selection is being moved, resized or rotated its frame and handles step out
    of the way, and come back on release. Opacity (not display) so the grabber
@@ -3279,6 +3286,36 @@ textarea:focus-visible,
 [data-selection-gesture="true"] [data-group-selection-bbox],
 [data-selection-gesture="true"] [data-callout-handle-overlay] {
   opacity: 0;
+}
+
+/* Drawboard canvas audit 2026-10-13 (chunk 5): a selection grabber grows to
+   1.1x over 100 ms ease-in-out while the pointer is on it — on the dot itself
+   or anywhere on its invisible grab pad — and while it is pressed, so you can
+   see you have got it before you drag (Drawboard: activeScale 1.1, transform
+   100ms ease-in-out). Pads are drawn before the dots in the same group
+   (SVGSelectionOverlay), so a hovered pad reaches its dot with `~`; the
+   rotate grabber's pad sits inside its own group. */
+.svg-selection-overlay :is([data-resize-handle], [data-rotation-handle] > circle, [data-rotation-handle] > image) {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 100ms ease-in-out;
+}
+.svg-selection-overlay [data-resize-handle]:is(:hover, :active),
+.svg-selection-overlay [data-handle-hit-pad="tl"]:is(:hover, :active) ~ [data-resize-handle="tl"],
+.svg-selection-overlay [data-handle-hit-pad="tr"]:is(:hover, :active) ~ [data-resize-handle="tr"],
+.svg-selection-overlay [data-handle-hit-pad="bl"]:is(:hover, :active) ~ [data-resize-handle="bl"],
+.svg-selection-overlay [data-handle-hit-pad="br"]:is(:hover, :active) ~ [data-resize-handle="br"],
+.svg-selection-overlay [data-handle-hit-pad="mt"]:is(:hover, :active) ~ [data-resize-handle="mt"],
+.svg-selection-overlay [data-handle-hit-pad="mb"]:is(:hover, :active) ~ [data-resize-handle="mb"],
+.svg-selection-overlay [data-handle-hit-pad="ml"]:is(:hover, :active) ~ g > [data-resize-handle="ml"],
+.svg-selection-overlay [data-handle-hit-pad="mr"]:is(:hover, :active) ~ g > [data-resize-handle="mr"],
+.svg-selection-overlay [data-rotation-handle]:is(:hover, :active) > :is(circle, image) {
+  transform: scale(1.1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .svg-selection-overlay :is([data-resize-handle], [data-rotation-handle] > circle, [data-rotation-handle] > image) {
+    transition: none;
+  }
 }
 
 /* Owner 2026-10-04 (own tool group only): under a tool that may not grab the

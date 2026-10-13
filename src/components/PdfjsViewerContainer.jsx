@@ -5084,6 +5084,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       )}
       <style>{`
         [data-space-pan='armed'], [data-space-pan='armed'] * { cursor: grab !important; }
+        /* Pan opens links on a click, so a link shows the hand (utils/linkClickPolicy.js). */
+        [data-space-pan='armed'] :is([data-text-markup-link], [data-pdfjs-link-layer] a) { cursor: pointer !important; }
         [data-space-pan='dragging'], [data-space-pan='dragging'] * { cursor: grabbing !important; }
         html[data-survey-pdfjs-pan-active='true'] [data-eraser-cursor] { display: none !important; }
         .survey-pdfjs-mobile-surface,

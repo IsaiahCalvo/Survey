@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { resolvePdfOutlinePageNumber } from '../utils/bookmarkOutline';
+import { useMoveModifierHeld } from '../utils/moveModifier.js';
 
 /**
  * PdfjsLinkLayer — clickable hyperlink overlay for one page under the owned
@@ -18,7 +19,10 @@ import { resolvePdfOutlinePageNumber } from '../utils/bookmarkOutline';
  * intrinsic rotation only (matching PdfjsViewerContainer exactly).
  *
  * `interactive` should be true only in viewing/selection modes (pan/select) so
- * link boxes never steal clicks from an active drawing/markup tool.
+ * link boxes never steal clicks from an active drawing/markup tool. Under any
+ * other tool Cmd (Mac) / Ctrl + click still opens a link: while that key is
+ * held the boxes take the pointer (utils/linkClickPolicy.js, Drawboard canvas
+ * audit 2026-10-13).
  */
 export default function PdfjsLinkLayer({
   pdf,
@@ -31,6 +35,8 @@ export default function PdfjsLinkLayer({
   const pdfRef = useRef(pdf);
   pdfRef.current = pdf;
   const excludedIdsKey = excludedAnnotationIds.map(String).sort().join('\u0000');
+  const modifierHeld = useMoveModifierHeld(!interactive && links.length > 0);
+  const live = interactive || modifierHeld;
 
   useEffect(() => {
     let cancelled = false;
@@ -116,7 +122,7 @@ export default function PdfjsLinkLayer({
             top: `${link.top}%`,
             width: `${link.width}%`,
             height: `${link.height}%`,
-            pointerEvents: interactive ? 'auto' : 'none',
+            pointerEvents: live ? 'auto' : 'none',
             cursor: 'pointer',
             display: 'block',
             background: 'transparent',

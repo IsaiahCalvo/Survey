@@ -3723,11 +3723,11 @@ export function useSVGInteraction({
       };
 
       // Collision distances must match the handle the user actually sees.
-      // Handles render at HANDLE_RADIUS * sqrt(clampInverseScale(inverseScale))
+      // Handles render at HANDLE_RADIUS * clampInverseScale(inverseScale)
       // in page units (the clamp is the zoom-out balloon fix), so the rule uses
       // that same clamped effective radius — a static radius only lines up at
       // 100% zoom and otherwise leaves a gap that can never be closed.
-      const effHandleR = HANDLE_RADIUS * Math.sqrt(clampInverseScale(inverseScale));
+      const effHandleR = HANDLE_RADIUS * clampInverseScale(inverseScale);
       const minHandleToBox = effHandleR;        // handle edge meets the border
       const minHandleToHandle = effHandleR * 2; // two handle circles edge-to-edge
       // Knee / arrow handles must also clear the four textbox CORNER handles.
@@ -4858,7 +4858,7 @@ export function useSVGInteraction({
           };
 
           // Same zoom-aware (clamped) effective handle radius the live drag check uses.
-          const effHandleR = HANDLE_RADIUS * Math.sqrt(clampInverseScale(inverseScale));
+          const effHandleR = HANDLE_RADIUS * clampInverseScale(inverseScale);
           const minHandleToBox = effHandleR;
           const minHandleToHandle = effHandleR * 2;
           // Knee / arrow handles must also clear the four textbox corner
