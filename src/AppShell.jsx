@@ -185,7 +185,11 @@ function ViewerLoadFailed() {
         const last = Number(window.sessionStorage.getItem('__vite_preload_reloaded_at') || 0);
         if (Number.isFinite(last) && Date.now() - last < 20000) return;
         window.sessionStorage.setItem('__vite_preload_reloaded_at', String(Date.now()));
-      } catch { /* storage unavailable: still reload once */ }
+      } catch {
+        // Storage unavailable: the guard can't be recorded, so an automatic
+        // reload could loop. Leave it to the tap below.
+        return;
+      }
       window.location.reload();
     };
     if (window.navigator?.onLine !== false) {

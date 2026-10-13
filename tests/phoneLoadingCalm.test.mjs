@@ -136,6 +136,14 @@ test('offline, the viewer prefetch waits and no stale-deploy reload fires', () =
   assert.match(APP_SHELL, /function ViewerLoadFailed\(\) \{[\s\S]*?window\.addEventListener\('online', reload\)/);
 });
 
+test('the viewer fallback never auto-reloads when its loop guard cannot be stored', () => {
+  // Codex review (#811): with sessionStorage blocked, reloading anyway could
+  // loop forever on a viewer that keeps failing; only the tap reloads then.
+  const body = /function ViewerLoadFailed\(\) \{([\s\S]*?)\n\}/.exec(APP_SHELL)[1];
+  assert.match(body, /catch \{[\s\S]*?return;\s*\}\s*window\.location\.reload\(\);/);
+  assert.doesNotMatch(body, /still reload once/);
+});
+
 test('the phone rail opens on your own initials, not a placeholder', () => {
   assert.match(APP_SHELL, /leftRailApi=\{leftRailApi\}\s*signedInUser=\{user\}/);
   assert.match(RAIL, /currentUserId: leftRailApi\?\.currentUserId \?\? signedInUser\?\.id \?\? null/);
