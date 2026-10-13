@@ -1,4 +1,5 @@
-import { eraserStrokeTouchesObject } from './eraserHitTest.js';
+import { eraserStrokeTouchesObject, sampleEraserStroke } from './eraserHitTest.js';
+import { getMarkerShape, markerShapeHitTest, projectMarkerShape } from '../survey/markerShapes.js';
 
 const normalizeAngle = (value) => {
   const angle = Number(value);
@@ -64,7 +65,38 @@ export function getSurveyMarkerEraserHitIds({
     if (typeof boundsAllow === 'function' && !boundsAllow(id)) continue;
     const object = surveyMarkerToEraserObject(marker);
     if (!object || !eraserStrokeTouchesObject({ eraserPoints, eraserRadius, object })) continue;
+    if (!eraserTouchesMarkerOutline(marker, eraserPoints, eraserRadius)) continue;
     hits.push(id);
   }
   return hits;
+}
+
+// Owner 2026-10-13: a freehand / smart-fill marker (src/survey/markerShapes.js)
+// is only erased where its outline is — a pass through the empty part of its
+// box leaves it alone. A plain box marker always passes (the box IS its ink).
+function eraserTouchesMarkerOutline(marker, eraserPoints, eraserRadius) {
+  const shape = getMarkerShape(marker);
+  if (!shape) return true;
+  const box = {
+    x: Number(marker.x) || 0,
+    y: Number(marker.y) || 0,
+    width: Number(marker.width) || 0,
+    height: Number(marker.height) || 0,
+  };
+  const projected = projectMarkerShape(shape, box);
+  if (!projected) return true;
+  const angle = normalizeAngle(marker.angle);
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  const rad = (-angle * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const toBoxFrame = (pt) => {
+    if (!angle) return pt;
+    const dx = Number(pt.x) - cx;
+    const dy = Number(pt.y) - cy;
+    return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
+  };
+  return sampleEraserStroke(eraserPoints, eraserRadius)
+    .some((pt) => markerShapeHitTest(projected, toBoxFrame(pt), Math.max(0, Number(eraserRadius) || 0)));
 }

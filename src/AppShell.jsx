@@ -16,6 +16,7 @@
 import Dashboard from './Dashboard';
 import DocumentLockBanner from './components/DocumentLockBanner.jsx';
 import Icon from './Icons';
+import SurveyMarkerModeTools from './survey/SurveyMarkerModeTools.jsx';
 import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
 import SaveLogBanner from './components/SaveLogBanner';
 import QuietLoading, { openingLabel } from './components/QuietLoading';
@@ -1854,6 +1855,10 @@ export default function App({ devPreviewReturnTab = null }) {
     ? (bottomToolbarApi.regionToolbarApi || REGION_TOOLBAR_OPENING_STATE)
     : null;
   const areasMode = Boolean(regionApi);
+  // Owner 2026-10-13: with the Survey Marker tool armed, its drawing modes
+  // (Rectangle / Freehand / Smart fill) stand where a group's tools go.
+  const surveyMarkerModesInToolBar = !areasMode && !isMobileViewer
+    && bottomToolbarApi?.activeTool === 'survey-marker' && Boolean(rightRailApi?.showSurveyPanel);
   const areasPanArmed = areasMode && bottomToolbarApi?.activeTool === 'pan';
   // A group left open from before (Draw's row) must not draw its tools beside
   // the Areas tools.
@@ -2714,10 +2719,13 @@ export default function App({ devPreviewReturnTab = null }) {
                 {/* The rule between the group icons and the group's tools —
                     the same shared rule, same 8px inset, as the one on the
                     cluster's other edge. Only there when tools follow it. */}
-                {((toolBarGroup && toolBarGroup !== 'select') || selectModesInToolBar || areasMode) && (
+                {((toolBarGroup && toolBarGroup !== 'select') || selectModesInToolBar || areasMode || surveyMarkerModesInToolBar) && (
                   <div className="chrome-divider" />
                 )}
                 {areasMode && renderAreaTools()}
+                {surveyMarkerModesInToolBar && (
+                  <SurveyMarkerModeTools chromeTip={chromeTip} glyphSize={CHROME_GLYPH} />
+                )}
                 {/* RULED 2026-09-26 owner: select modes in top bar (w46).
                     Select's Box / Lasso / Text modes stand where a group's
                     tools go — with nothing picked, or a pick no drawing group

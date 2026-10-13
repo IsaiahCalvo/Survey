@@ -147,7 +147,10 @@ test('Select mode: the modes sit in the tool bar with nothing picked, or for a m
   assert.match(toolBar, /\{selectModesInToolBar && renderSelectModeToggle\(\)\}/);
   // The same rule before them as before a group's tools.
   // (2026-10-01, Spaces toolbar: the Areas tools take the same rule.)
-  assert.match(toolBar, /\(\(toolBarGroup && toolBarGroup !== 'select'\) \|\| selectModesInToolBar \|\| areasMode\) && \(\s*<div className="chrome-divider" \/>/);
+  assert.match(toolBar, /\(\(toolBarGroup && toolBarGroup !== 'select'\) \|\| selectModesInToolBar \|\| areasMode \|\| surveyMarkerModesInToolBar\) && \(\s*<div className="chrome-divider" \/>/);
+  // Owner 2026-10-13: the Survey Marker draw modes (Rectangle / Freehand /
+  // Smart fill) stand after the same rule while that tool is armed.
+  assert.match(toolBar, /\{surveyMarkerModesInToolBar && \(\s*<SurveyMarkerModeTools /);
   // They answer the pointer exactly as the group tools beside them do.
   // DELIBERATE ASSERTION CHANGE (owner 2026-10-02, test plan U2: "the icons
   // in the toolbar ... get a grey box around it ... There's no consistency"):

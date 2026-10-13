@@ -415,7 +415,8 @@ button,
 #chrome-sub-toolbar-host .btn:not(:disabled):hover,
 #chrome-subtools-host .btn:not(:disabled):hover,
 [data-select-mode-toggle] .btn:not(:disabled):hover,
-[data-area-tools] .btn:not(:disabled):hover {
+[data-area-tools] .btn:not(:disabled):hover,
+[data-marker-draw-modes] .btn:not(:disabled):hover {
   transform: none;
 }
 

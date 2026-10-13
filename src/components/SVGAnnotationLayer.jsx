@@ -179,6 +179,17 @@ import { forwardClickToFormWidget, liveFormWidgetAtPoint } from '../utils/formWi
 import { beginLiveStroke } from '../services/annotationLiveStrokes.js';
 import LiveStrokeGhosts from './LiveStrokeGhosts.jsx';
 import { crossPageGhostFor, crossPageGhostKind, subscribeCrossPageGhost } from '../utils/crossPageMove.js';
+// Owner 2026-10-13: Survey Marker draw modes — Rectangle / Freehand / Smart fill.
+import { buildPolygonMarkerBounds, buildStrokeMarkerBounds, MARKER_STROKE_DEFAULT_WIDTH } from '../survey/markerShapes.js';
+import { useEffectiveMarkerDrawMode } from '../survey/markerDrawMode.js';
+import { runMarkerShapeProvider } from '../survey/markerShapeProviders.js';
+import {
+  MARKER_FREEHAND_PREVIEW_COLOR,
+  projectSurveyMarkerEntryShape,
+  SurveyMarkerShapeGlow,
+  SurveyMarkerShapePaint,
+  surveyMarkerShapeHitProps,
+} from '../survey/markerShapeSvg.jsx';
 
 const svgAnnotationDebug = (...args) => {
   if (typeof window === 'undefined' || window.__SVG_ANNOTATION_DEBUG !== true) return;
@@ -357,7 +368,9 @@ const normalizeSurveyMarkerBoundsValue = (bounds) => {
 // on this layer (previews render through the SAME committed renderers below,
 // so what you see while dragging IS what commits — no cross-renderer seam).
 const SHAPE_CREATION_TOOLS = ['rect', 'ellipse', 'line', 'arrow', 'survey-marker'];
-const FREEHAND_CREATION_TOOLS = ['pen', 'highlighter'];
+// 'survey-marker-freehand' is the Survey Marker tool in its Freehand mode (owner
+// 2026-10-13): drawn with the same freehand gesture, committed as a marker.
+const FREEHAND_CREATION_TOOLS = ['pen', 'highlighter', 'survey-marker-freehand'];
 // Click-to-place tools: each click drops a vertex instead of dragging out a
 // box, so they get their own draft state and their own finish rules
 // (src/utils/polyDraft.js) rather than riding the drag-out gesture above.
@@ -1182,6 +1195,9 @@ const SVGAnnotationLayerBody = memo(({
     || isFreehandCreationTool
     || isPolyCreationTool;
   const isInteractive = isSelectTool || isCreationTool;
+  // Owner 2026-10-13: how the Survey Marker tool draws (the tool-bar marker
+  // group; always 'rectangle' where no picker is on screen, e.g. the phone).
+  const markerDrawMode = useEffectiveMarkerDrawMode();
 
   // ---------------------------------------------------------------------------
   // EDIT-12: RotationInputField visibility state machine (Phase 12 Plan 02)
@@ -2219,6 +2235,24 @@ const SVGAnnotationLayerBody = memo(({
     if (FREEHAND_CREATION_TOOLS.includes(tool)) {
       const points = freehandPointsRef.current;
       freehandPointsRef.current = [];
+      if (tool === 'survey-marker-freehand') {
+        // A freehand Survey Marker: its box plus the stroke it was drawn with
+        // (src/survey/markerShapes.js). A press that never moved draws
+        // nothing — and, like the rectangle, picks the mark it landed on.
+        const markerBounds = buildStrokeMarkerBounds(points, { width: MARKER_STROKE_DEFAULT_WIDTH });
+        if (markerBounds && typeof onSurveyMarkerCreated === 'function') {
+          recordAnnotationCommit({
+            surface: 'SVGAnnotationLayer',
+            source: 'survey-marker:create',
+            action: 'survey-marker-freehand-draw',
+            pageNumber,
+          });
+          onSurveyMarkerCreated(markerBounds);
+        } else if (!markerBounds && state.pressFallback) {
+          applyPressFallbackRef.current?.(state.pressFallback);
+        }
+        return;
+      }
       const json = buildFreehandCommitJSON({
         tool,
         id,
@@ -2281,6 +2315,47 @@ const SVGAnnotationLayerBody = memo(({
     onSurveyMarkerCreated, pageNumber, selectAnnotation, selectedModuleId, selectedSpaceId,
     spaces, strokeColor, strokeOpacity, strokeWidth, viewerId,
   ]);
+
+  // Owner 2026-10-13: Smart fill. A press asks the registered provider
+  // (src/survey/markerShapeProviders.js) for the outline under it; an answer
+  // becomes a polygon marker through the same path a drawn box takes.
+  const [smartFillPending, setSmartFillPending] = useState(null);
+  const smartFillAbortRef = useRef(null);
+  useEffect(() => () => smartFillAbortRef.current?.abort?.(), []);
+  useEffect(() => {
+    if (activeTool !== 'survey-marker') smartFillAbortRef.current?.abort?.();
+  }, [activeTool]);
+  const startSmartFill = useCallback((point) => {
+    smartFillAbortRef.current?.abort?.();
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    smartFillAbortRef.current = controller;
+    setSmartFillPending(point);
+    const pageEl = svgRef.current?.closest?.('[data-page-number]');
+    const pageCanvas = pageEl?.querySelector?.('canvas') || null;
+    runMarkerShapeProvider('smartFill', {
+      pageNumber,
+      point,
+      pageSize: { width, height },
+      pageCanvas,
+      signal: controller?.signal || null,
+    }).then((result) => {
+      if (controller?.signal?.aborted) return;
+      const markerBounds = result ? buildPolygonMarkerBounds(result) : null;
+      if (markerBounds && typeof onSurveyMarkerCreated === 'function') {
+        recordAnnotationCommit({
+          surface: 'SVGAnnotationLayer',
+          source: 'survey-marker:create',
+          action: 'survey-marker-smart-fill',
+          pageNumber,
+        });
+        onSurveyMarkerCreated(markerBounds);
+      }
+    }).finally(() => {
+      if (smartFillAbortRef.current !== controller) return;
+      smartFillAbortRef.current = null;
+      setSmartFillPending(null);
+    });
+  }, [height, onSurveyMarkerCreated, pageNumber, width]);
 
   // ---------------------------------------------------------------------------
   // Polygon / polyline click-to-place commit + cancel.
@@ -4385,14 +4460,29 @@ const SVGAnnotationLayerBody = memo(({
     const rotationTransform = bbox.angle
       ? `rotate(${bbox.angle}, ${centerX}, ${centerY})`
       : undefined;
+    // Owner 2026-10-13: a freehand / smart-fill marker paints, glows and takes
+    // presses on its outline (src/survey/markerShapeSvg.jsx); its box still
+    // carries the selection handles.
+    const projectedShape = projectSurveyMarkerEntryShape(entry.surveyMarker, bbox);
+    const hitInteractive = annotationHitTargetsInteractive && !entry.surveyMarker.liveOverlay;
 
     return (
       <g
         key={entry.key}
         data-survey-marker-id={annotationId}
+        data-survey-marker-kind={projectedShape ? projectedShape.type : undefined}
         transform={liveDx || liveDy ? `translate(${liveDx} ${liveDy})` : undefined}
         style={{ pointerEvents: isSelectTool ? 'auto' : 'none' }}
       >
+        {projectedShape ? (
+          <SurveyMarkerShapePaint
+            projected={projectedShape}
+            needsEntity={Boolean(entry.surveyMarker.needsEntity)}
+            color={bbox.fill}
+            opacity={bbox.opacity}
+            transform={rotationTransform}
+          />
+        ) : (
         <rect
           x={bbox.left}
           y={bbox.top}
@@ -4409,7 +4499,11 @@ const SVGAnnotationLayerBody = memo(({
             mixBlendMode: bbox.globalCompositeOperation === 'multiply' ? 'multiply' : undefined,
           }}
         />
-        {isHoveredSurveyMarker && !isSelectedSurveyMarker && (
+        )}
+        {isHoveredSurveyMarker && !isSelectedSurveyMarker && projectedShape && (
+          <SurveyMarkerShapeGlow projected={projectedShape} transform={rotationTransform} />
+        )}
+        {isHoveredSurveyMarker && !isSelectedSurveyMarker && !projectedShape && (
           <rect
             x={bbox.left}
             y={bbox.top}
@@ -4427,6 +4521,21 @@ const SVGAnnotationLayerBody = memo(({
             style={{ pointerEvents: 'none' }}
           />
         )}
+        {projectedShape ? (
+          <path
+            data-survey-marker-hit-target="true"
+            {...surveyMarkerShapeHitProps(projectedShape, {
+              interactive: hitInteractive,
+              hitBand: markHitBand(projectedShape.type === 'stroke' ? projectedShape.width : 1),
+            })}
+            transform={rotationTransform}
+            style={{ cursor: isSelectTool ? 'move' : undefined }}
+            onPointerDown={(e) => handleSurveyMarkerPointerDown(e, entry)}
+            onDoubleClick={(e) => handleSurveyMarkerDoubleClick(e, entry)}
+            onPointerEnter={() => setHoveredSurveyMarkerId(annotationId)}
+            onPointerLeave={() => setHoveredSurveyMarkerId((prev) => (prev === annotationId ? null : prev))}
+          />
+        ) : (
         <rect
           data-survey-marker-hit-target="true"
           x={bbox.left}
@@ -4438,13 +4547,14 @@ const SVGAnnotationLayerBody = memo(({
           transform={rotationTransform}
           // w53: a marker drawn from another screen's in-flight change is
           // look-only until its row lands (nothing is saved from it).
-          pointerEvents={annotationHitTargetsInteractive && !entry.surveyMarker.liveOverlay ? 'all' : 'none'}
+          pointerEvents={hitInteractive ? 'all' : 'none'}
           style={{ cursor: isSelectTool ? 'move' : undefined }}
           onPointerDown={(e) => handleSurveyMarkerPointerDown(e, entry)}
           onDoubleClick={(e) => handleSurveyMarkerDoubleClick(e, entry)}
           onPointerEnter={() => setHoveredSurveyMarkerId(annotationId)}
           onPointerLeave={() => setHoveredSurveyMarkerId((prev) => (prev === annotationId ? null : prev))}
         />
+        )}
         {isSelectedSurveyMarker && (
           <SVGSelectionOverlay
             bbox={{
@@ -6852,6 +6962,31 @@ const SVGAnnotationLayerBody = memo(({
             }
             return;
           }
+          // Owner 2026-10-13: the Survey Marker tool's Freehand and Smart fill
+          // modes (src/survey). Rectangle falls through to the drag-out below.
+          if (activeTool === 'survey-marker' && isShapeCreationTool && markerDrawMode !== 'rectangle'
+            && e.button === 0 && !grabbingSelection) {
+            const point = screenToSVG(svgRef.current, e.clientX, e.clientY);
+            if (point && markerDrawMode === 'freehand') {
+              const gestureId = beginAnnotationGesture({
+                surface: 'SVGAnnotationLayer',
+                tool: 'survey-marker',
+                type: 'survey-marker',
+                action: 'survey-marker-freehand-draw',
+                pointerDown: true,
+                pageNumber,
+              });
+              freehandPointsRef.current = [];
+              appendCoalescedPagePoints(e.nativeEvent);
+              setShapeCreation({
+                tool: 'survey-marker-freehand', gestureId, pointerId: e.pointerId, tick: 0, pressFallback,
+              });
+            } else if (point && markerDrawMode === 'smartFill') {
+              startSmartFill(point);
+            }
+            e.preventDefault();
+            return;
+          }
           // Unified renderer phase 2 — shape/freehand creation starts here,
           // on the same surface that renders the committed result. The
           // window-level effect above tracks the drag and commits.
@@ -7315,6 +7450,20 @@ const SVGAnnotationLayerBody = memo(({
           style={{ pointerEvents: 'none' }}
         />
       )}
+      {/* Smart fill: where the press landed, while the provider works. */}
+      {smartFillPending && (
+        <circle
+          data-smart-fill-pending="true"
+          cx={smartFillPending.x}
+          cy={smartFillPending.y}
+          r={8 * clampInverseScale(inverseScale)}
+          fill="none"
+          stroke="#4A90E2"
+          strokeWidth={2 * clampInverseScale(inverseScale)}
+          strokeDasharray="4,3"
+          style={{ pointerEvents: 'none' }}
+        />
+      )}
       {/* w32: other screens' strokes while they are being drawn. */}
       <LiveStrokeGhosts documentId={documentId} pageNumber={pageNumber} />
       {/* Owner after Test 46: a mark carried over from another page, at the
@@ -7349,15 +7498,19 @@ const SVGAnnotationLayerBody = memo(({
           data-preview-tick={shapeCreation.tick}
           points={freehandPointsRef.current.map((point) => `${point.x},${point.y}`).join(' ')}
           fill="none"
-          stroke={shapeCreation.tool === 'highlighter' ? highlightColor : strokeColor}
+          stroke={shapeCreation.tool === 'highlighter' ? highlightColor
+            : shapeCreation.tool === 'survey-marker-freehand' ? MARKER_FREEHAND_PREVIEW_COLOR
+              : strokeColor}
           strokeWidth={shapeCreation.tool === 'highlighter'
             ? Math.max(Number(strokeWidth) || 3, 8)
-            : (Number(strokeWidth) || 3)}
+            : shapeCreation.tool === 'survey-marker-freehand' ? MARKER_STROKE_DEFAULT_WIDTH
+              : (Number(strokeWidth) || 3)}
           strokeLinecap="round"
           strokeLinejoin="round"
           style={{
             pointerEvents: 'none',
-            ...(shapeCreation.tool === 'highlighter' ? { mixBlendMode: 'multiply' } : {}),
+            ...(shapeCreation.tool === 'highlighter' || shapeCreation.tool === 'survey-marker-freehand'
+              ? { mixBlendMode: 'multiply' } : {}),
           }}
         />
       )}

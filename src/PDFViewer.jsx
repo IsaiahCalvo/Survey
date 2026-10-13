@@ -495,6 +495,8 @@ import { getExportErrorMessage, isFileLocked } from './utils/exportHelpers';
 import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } from './utils/overlayDebug';
 import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './utils/excelWritebackGate';
 import { rememberLastSurveyTemplate, resolveLastSurveyTemplate, surveyMemoryDocumentKey } from './utils/surveyLastTemplate.js';
+import { carryMarkerShape } from './survey/markerShapes.js';
+import { setMarkerShapePdfDocument } from './survey/markerShapeProviders.js';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
 import { createTextMarkupAnnotation, getExcludedPdfTextMarkupIds, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection, TEXT_MARKUP_DEFAULT_PAINT } from './utils/pdfTextMarkup.js';
 import {
@@ -24398,6 +24400,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // A page view (instant page operations) shares its base document, so only a
   // different base is destroyed.
   const pdfBaseDoc = getPageViewBase(pdfDoc);
+  // Smart fill (survey/markerShapeProviders): a provider is handed the pdf.js
+  // page it was pressed on (the active tab's document).
+  useEffect(() => { if (isActive) setMarkerShapePdfDocument(pdfDoc); }, [isActive, pdfDoc]);
   useEffect(() => () => {
     if (!pdfBaseDoc) return;
     try { pdfBaseDoc.destroy(); } catch { /* noop */ }
@@ -30540,10 +30545,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         [annotationId]: {
           ...existing,
           pageNumber,
-          bounds: {
+          // Owner 2026-10-13: a freehand / smart-fill marker keeps its outline
+          // (drawn in the old box, mapped onto the new one — survey/markerShapes).
+          bounds: carryMarkerShape({
             ...normalizedBounds,
             angle: nextAngle,
-          },
+          }, existing?.bounds),
         },
       };
     });
