@@ -54,6 +54,7 @@ test('phone settings: page is --panel-bg, fields and cards are --panel-well', ()
 
 test('account settings nav exposes tab semantics', () => {
   assert.match(jsx, /className="account-settings-sidebar"[\s\S]{0,120}role="tablist"/);
-  assert.equal((jsx.match(/role="tab"/g) || []).length, 4); // + Crash reports (crash hunt 2026-10-07)
-  assert.equal((jsx.match(/aria-selected=\{/g) || []).length, 4);
+  // + Crash reports (crash hunt 2026-10-07), + Annotations (KAL-397)
+  assert.equal((jsx.match(/role="tab"/g) || []).length, 5);
+  assert.equal((jsx.match(/aria-selected=\{/g) || []).length, 5);
 });
