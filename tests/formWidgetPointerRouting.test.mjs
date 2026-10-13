@@ -193,7 +193,9 @@ test('a pan drag never starts on a form control', () => {
 
 test('a mobile tap on a widget is not preventDefaulted into a pan', () => {
   const guard = containerSource.slice(
-    containerSource.indexOf('const isNativeInteractionTarget = (target) => {'),
+    // (drawboardAudit C2, 2026-10-13: the guard also takes the event, so a
+    // Pencil-only finger can be told apart: `(target, event) => {`.)
+    containerSource.indexOf('const isNativeInteractionTarget = (target'),
     containerSource.indexOf('const onTouchStart = (event) => {'),
   );
   assert.match(guard, /isLiveFormWidgetTarget\(nativeTarget\)/);
@@ -213,9 +215,9 @@ test('a mobile tap on a widget is not preventDefaulted into a pan', () => {
     palmBail,
     containerSource.indexOf('event.preventDefault();', palmBail),
   );
-  assert.match(touchStartHead, /if \(isNativeInteractionTarget\(event\.target\)\) \{/,
+  assert.match(touchStartHead, /if \(isNativeInteractionTarget\(event\.target, event\)\) \{/,
     'a touch on a widget must reach the control, never be cancelled into a pan');
-  assert.match(touchStartHead, /if \(isNativeInteractionTarget\(event\.target\)\) \{[\s\S]*?return;\s*\}/,
+  assert.match(touchStartHead, /if \(isNativeInteractionTarget\(event\.target, event\)\) \{[\s\S]*?return;\s*\}/,
     'the widget bail returns before the first preventDefault');
 });
 

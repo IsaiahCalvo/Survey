@@ -411,8 +411,10 @@ test('rule 2: Select / Pan pick any mark; group tools pick their own group; the 
   assert.match(SVG_LAYER_SOURCE, /const clicked = Boolean\(state && state\.mode === 'drag' && !state\.dragging\s*&& !hasPassedShapeDragThreshold\(state\.startClient/);
   assert.match(SVG_LAYER_SOURCE, /if \(clicked && state\.pressFallback\) \{[\s\S]{0,300}applyPressFallbackRef\.current\?\.\(state\.pressFallback\)/);
   // Pan picks and STAYS Pan; the group tools' halo comes from the same hover
-  // effect, filtered by the hovered mark's group
-  assert.match(PDF_VIEWER_SOURCE, /const haloByPosition = activeTool === 'pan' \|\| activeTool === 'eraser'/);
+  // effect, filtered by the hovered mark's group.
+  // DELIBERATE ASSERTION CHANGE (owner 2026-10-13, docs/GESTURE-CONTRACT.md
+  // P7): Pan shows no hover halo and no pointer hand any more.
+  assert.match(PDF_VIEWER_SOURCE, /const haloByPosition = activeTool === 'eraser'\s*\|\| \(shouldShowHoverHalo\(activeTool\) && activeTool !== 'pan'/);
   assert.match(PDF_VIEWER_SOURCE, /shouldShowHoverHalo\(activeTool, hit\?\.kind === 'callout'\s*\? CALLOUT_MARK_GROUP\s*: getMarkGroup\(/);
 });
 
