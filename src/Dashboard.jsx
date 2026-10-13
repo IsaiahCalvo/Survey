@@ -35,7 +35,10 @@ import { lockDocument, unlockDocument } from './services/documentLockService.js'
 import { resolveDocumentMetadata } from './services/documentMetadataResolver.js';
 import { perfUpload } from './utils/performanceLogger';
 import { showToast } from './utils/toast';
-import { archiveItems } from './services/archiveService';
+import { archiveItems, restoreArchiveItems } from './services/archiveService';
+import { useUndoToast } from './hooks/useUndoToast.js';
+import { UndoToast } from './components/collab/UndoToast.jsx';
+import { archivedMessage } from './home/documentSelection.js';
 import { notifyLibraryChanged } from './hooks/libraryChangeBus';
 import { useConfirmDialog, usePromptDialog } from './components/dialogPrompts';
 import { readBlobAsArrayBuffer } from './utils/blobArrayBuffer.js';
@@ -89,6 +92,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // control flow — nothing runs until the user actually answers.
   const [askConfirm, confirmDialogElement] = useConfirmDialog();
   const [askPrompt, promptDialogElement] = usePromptDialog();
+  // "Moved to Archive · Undo" after a document delete (hubDeleteDocuments).
+  const {
+    toast: archiveUndoToast,
+    enqueue: enqueueArchiveUndo,
+    dismiss: dismissArchiveUndo,
+  } = useUndoToast();
   // Auth state and user dropdown menu
   const { user, isAuthenticated, signOut, signInWithGoogle, features, loading: authLoading } = useAuth();
   const { isAuthenticated: isMSAuthenticated, login: msLogin, logout: msLogout, account: msAccount, needsReconnect: msNeedsReconnect } = useMSGraph();
@@ -1714,7 +1723,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
      use (no refactor). */
 
   // Open a document in the PDF viewer — reuse the existing open path.
-  const hubOpenDocument = (doc) => { if (doc) handleDocumentClick(doc); };
+  const hubOpenDocument = (doc) => { if (doc) { dismissArchiveUndo(); handleDocumentClick(doc); } };
 
   /* KAL-44 — count survey markers that reference a checklist item id across
      every document, so the templates editor can decide to archive vs hard-
@@ -1874,41 +1883,76 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // purge job removes them for good. The copy says so explicitly — promising
   // "cannot be undone" when the item is in fact recoverable would train users to
   // fear a safe action. Permanent deletion now lives only on the Archive screen.
+  // Shell audit 2026-10-13 (Drawboard feel): Archive is reversible for 30
+  // days, so Delete no longer asks first. The rows leave the list at once and
+  // an "Undo" toast (the viewer's UndoToast, 5 s / 6 s for several) puts them
+  // back through the Archive screen's own restore. Every document delete on
+  // Home lands here (row menu, right-click, the bulk pane, the phone's Select
+  // mode, a project's files), so none of them confirms any more.
   const hubDeleteDocuments = async (docs) => {
     const list = Array.isArray(docs) ? docs.filter(Boolean) : [];
     if (list.length === 0) return false;
     if (!user) { showToast('Please sign in to archive documents', 'warn'); return false; }
-    const confirmed = await askConfirm({
-      title: list.length === 1 ? 'Move this document to Archive?' : `Move these ${list.length} documents to Archive?`,
-      message: list.length === 1
-        ? 'You can restore it from Archive for the next 30 days.'
-        : 'You can restore them from Archive for the next 30 days.',
-      confirmLabel: list.length === 1 ? 'Move to Archive' : `Move ${list.length} to Archive`,
-    });
-    if (!confirmed) return false;
     // Unsaved local-only rows have no server row to archive; drop them as before.
     const archivable = list.filter(d => !(typeof d.id === 'string' && d.id.startsWith('temp-')));
     const ids = list.map(d => d.id);
     setDocuments(prev => prev.filter(d => !ids.includes(d.id)));
+    const archiveRun = (async () => {
+      try {
+        const { succeeded, failed } = await archiveItems(
+          archivable.map(doc => ({ type: 'document', id: doc.id, name: doc.name || doc.title || 'Document' }))
+        );
+        if (failed.length) {
+          console.error('[DocumentArchive] survey-hub:partial', JSON.stringify(failed.map(f => f.error)));
+          if (!succeeded.length) dismissArchiveUndo();
+          showToast(failed[0].error, 'error');
+        }
+        await refetchDocuments();
+        notifyLibraryChanged();
+        return succeeded;
+      } catch (err) {
+        console.error('[DocumentArchive] survey-hub:error', serializeError(err));
+        dismissArchiveUndo();
+        showToast('Failed to archive documents: ' + (err.message || 'Unknown error'), 'error');
+        await refetchDocuments();
+        return [];
+      }
+    })();
+    if (archivable.length) {
+      enqueueArchiveUndo({
+        kind: archivable.length > 1 ? 'bulk' : 'single',
+        message: archivedMessage(archivable.length),
+        count: archivable.length,
+        onUndo: () => { void undoArchivedDocuments(archiveRun, archivable); },
+      });
+    }
+    await archiveRun;
+    return true;
+  };
+
+  // Undo for the toast above: waits for the archive to finish, shows the rows
+  // again at once, then restores them (restore_document) and re-reads.
+  const undoArchivedDocuments = async (archiveRun, list) => {
+    const succeeded = await archiveRun;
+    if (!succeeded.length) return;
+    const restoredIds = new Set(succeeded.map((item) => item.id));
+    setDocuments((prev) => {
+      const have = new Set(prev.map((d) => d.id));
+      return [...list.filter((d) => restoredIds.has(d.id) && !have.has(d.id)), ...prev];
+    });
     try {
-      const { failed } = await archiveItems(
-        archivable.map(doc => ({ type: 'document', id: doc.id, name: doc.name || doc.title || 'Document' }))
-      );
-      // UX: no success toast. The row leaving the list IS the confirmation, and
-      // a banner that lingers for seconds over a routine action is noise. Only
-      // a failure is worth interrupting for.
+      const { failed } = await restoreArchiveItems(succeeded);
       if (failed.length) {
-        console.error('[DocumentArchive] survey-hub:partial', JSON.stringify(failed.map(f => f.error)));
+        console.error('[DocumentArchive] survey-hub:undo-partial', JSON.stringify(failed.map(f => f.error)));
         showToast(failed[0].error, 'error');
       }
-      await refetchDocuments();
-      notifyLibraryChanged();
     } catch (err) {
-      console.error('[DocumentArchive] survey-hub:error', serializeError(err));
-      showToast('Failed to archive documents: ' + (err.message || 'Unknown error'), 'error');
-      await refetchDocuments();
+      console.error('[DocumentArchive] survey-hub:undo-error', serializeError(err));
+      showToast('Couldn’t restore from Archive: ' + (err.message || 'Unknown error'), 'error');
     }
-    return true;
+    await refetchDocuments();
+    await refetchAllDocuments();
+    notifyLibraryChanged();
   };
 
   const hubDeleteProjects = async (items) => {
@@ -2474,6 +2518,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           above the hub chrome. Both are inert until a handler awaits them. */}
       {confirmDialogElement}
       {promptDialogElement}
+      {/* hub.css places it above the phone's bottom tab bar. */}
+      <div className="hub-undo-toast">
+        <UndoToast toast={archiveUndoToast} onDismiss={dismissArchiveUndo} />
+      </div>
     </>
   );
 });
