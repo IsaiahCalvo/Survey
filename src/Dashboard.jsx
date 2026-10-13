@@ -1948,7 +1948,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   };
 
   // KAL-443: the copy carries the REAL content fingerprint of its bytes and
-  // shares the content-addressed stored object (see copyDocumentToProject).
+  // gets its own stored object (see copyDocumentToProject).
   const hasSameBytesInProject = async (contentSha, projectId) => {
     let lookup = supabase
       .from('documents')
@@ -1970,9 +1970,11 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       operationId: operation?.operationId || null,
       keepBoth,
       download: downloadFromStorage,
-      upload: (file, destinationId, contentSha) => uploadToStorage(file, destinationId, undefined, contentSha),
+      // The copy's own object, {user}/{copy id}.pdf (never shared).
+      upload: (file, destinationId, objectId) => uploadToStorage(file, destinationId, undefined, objectId),
       createDocument: createSupabaseDocument,
       hasSameBytesInProject,
+      removeUpload: deleteFromStorage,
     });
   };
 

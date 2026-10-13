@@ -1,5 +1,5 @@
 // KAL-443: copying a document into a project must write the REAL content
-// fingerprint and use the real content-addressed storage path, so the copy is
+// fingerprint and give the copy its own stored object, so the copy is
 // seen by the same duplicate check as a normal upload.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -36,8 +36,8 @@ function makeBackend() {
     rows.push(row);
     return row;
   };
-  const upload = async (file, projectId, contentSha) => {
-    const path = `${USER}/${contentSha}.pdf`;
+  const upload = async (file, projectId, objectId) => {
+    const path = `${USER}/${objectId}.pdf`;
     objects.set(path, new Uint8Array(await file.arrayBuffer()));
     return path;
   };
@@ -55,8 +55,9 @@ function makeBackend() {
     return row;
   };
   let nextId = 0;
+  const removeUpload = async (path) => { objects.delete(path); };
   const deps = {
-    download, upload, createDocument, hasSameBytesInProject,
+    download, upload, createDocument, hasSameBytesInProject, removeUpload,
     makeId: () => `copy-${++nextId}`,
   };
   return { rows, objects, deps, normalUpload };
@@ -68,11 +69,14 @@ test('a copy into another project carries the real fingerprint and the real cont
   const copy = await copyDocumentToProject({ ...backend.deps, source, projectId: 'project-b' });
 
   assert.equal(copy.content_sha256, sha(PDF));
-  assert.equal(copy.file_path, `${USER}/${sha(PDF)}.pdf`);
-  assert.equal(copy.file_path, source.file_path, 'the copy shares the stored object, no second upload path');
+  assert.equal(copy.file_path, `${USER}/${copy.id}.pdf`, 'the copy has its own object');
+  assert.notEqual(copy.file_path, source.file_path);
   assert.equal(copy.project_id, 'project-b');
   assert.equal(copy.name, 'Riser (Copy).pdf');
-  assert.equal(backend.objects.size, 1, 'one stored object for one set of bytes');
+  // A page edit overwrites a document's own object in place; it must not
+  // reach the original (PR #812's shared-object bug).
+  backend.objects.set(copy.file_path, OTHER_PDF);
+  assert.equal(sha(backend.objects.get(source.file_path)), sha(PDF));
   assert.equal(isReusedCopy(copy), false);
 });
 
@@ -85,6 +89,8 @@ test('copying the same PDF twice into a project is caught by the normal duplicat
   assert.equal(second.id, first.id);
   assert.equal(isReusedCopy(second), true);
   assert.equal(backend.rows.filter((row) => row.project_id === 'project-b').length, 1);
+  assert.equal(backend.objects.has(`${USER}/${second.id}.pdf`), true, 'the first copy keeps its object');
+  assert.equal(backend.objects.size, 2, 'the second copy left no orphan object behind');
 });
 
 test('a normal upload of the same bytes finds the copy, and a copy finds an upload', async () => {
@@ -108,7 +114,7 @@ test('an explicit Duplicate in the same project still makes a second document', 
 
   assert.notEqual(dup.id, source.id);
   assert.equal(isReusedCopy(dup), false);
-  assert.equal(dup.file_path, `${USER}/${sha(PDF)}.pdf`, 'still the real content path, never a random one');
+  assert.equal(dup.file_path, `${USER}/${dup.id}.pdf`, 'its own object');
   assert.equal(dup.content_sha256, null, 'the database allows one fingerprint per project; the original holds it');
   assert.equal(backend.rows.filter((row) => row.project_id === 'project-a').length, 2);
 });
@@ -120,7 +126,7 @@ test('a plain copy into the project the source lives in also makes a second docu
   assert.notEqual(copy.id, source.id);
   assert.equal(isReusedCopy(copy), false);
   assert.equal(copy.content_sha256, null);
-  assert.equal(copy.file_path, source.file_path);
+  assert.equal(copy.file_path, `${USER}/${copy.id}.pdf`);
 });
 
 test('an explicit Duplicate into a project without those bytes gets the real fingerprint', async () => {
@@ -136,7 +142,7 @@ test('a copy of a legacy document (fake path, no fingerprint) gets the real fing
   const legacy = { id: 'legacy', name: 'Old.pdf', file_path: `${USER}/3f1c-random-uuid.pdf`, project_id: 'project-a' };
   const copy = await copyDocumentToProject({ ...backend.deps, source: legacy, projectId: 'project-b' });
   assert.equal(copy.content_sha256, sha(PDF));
-  assert.equal(copy.file_path, `${USER}/${sha(PDF)}.pdf`);
+  assert.equal(copy.file_path, `${USER}/${copy.id}.pdf`);
 });
 
 test('a batch id stays the row id, and a lost reply leaves a recovery value on the real path', async () => {
@@ -152,7 +158,7 @@ test('a batch id stays the row id, and a lost reply leaves a recovery value on t
     ...backend.deps, source, projectId: 'project-c', operationId: 'op-2',
     createDocument: async () => { throw lost; },
   }), (error) => {
-    assert.deepEqual(error.recoveryValue, { id: 'op-2', file_path: `${USER}/${sha(PDF)}.pdf` });
+    assert.deepEqual(error.recoveryValue, { id: 'op-2', file_path: `${USER}/op-2.pdf` });
     return true;
   });
 });
