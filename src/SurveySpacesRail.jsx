@@ -4166,6 +4166,7 @@ const SurveySpacesRail = ({
                             }}
                             role="menuitem"
                             className="survey-rail__menu-item"
+                            {...keyboardControlProps(null, { role: 'menuitem' })}
                           >
                             <Icon name="document" size={14} color="currentColor" />
                             Open Excel
@@ -4177,6 +4178,7 @@ const SurveySpacesRail = ({
                             }}
                             role="menuitem"
                             className="survey-rail__menu-item"
+                            {...keyboardControlProps(null, { role: 'menuitem' })}
                           >
                             <Icon name="upload" size={14} color="currentColor" />
                             Push to Excel
@@ -4192,6 +4194,7 @@ const SurveySpacesRail = ({
                             }}
                             role="menuitem"
                             className="survey-rail__menu-item"
+                            {...keyboardControlProps(null, { role: 'menuitem' })}
                           >
                             <Icon name="download" size={14} color="currentColor" />
                             Pull from Excel
@@ -4213,6 +4216,7 @@ const SurveySpacesRail = ({
                               }}
                               role="menuitem"
                               className="survey-rail__menu-item"
+                              {...keyboardControlProps(null, { role: 'menuitem' })}
                               style={{
                                 // Calm gold (2026-10-01): a live link is the house
                                 // "ok" green, beside warning amber and error red.
@@ -4269,6 +4273,7 @@ const SurveySpacesRail = ({
                               }}
                               role="menuitem"
                               className="survey-rail__menu-item"
+                              {...keyboardControlProps(null, { role: 'menuitem' })}
                               style={{
                                 color: verifying ? 'var(--warning)' : (verdictColor || 'var(--text-2)'),
                                 cursor: verifying ? 'wait' : 'pointer'

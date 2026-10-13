@@ -28,6 +28,7 @@
 //     can mistake a dismissal for a confirmation.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import { ConfirmModal } from '../home/BulkModals';
 import { closeButtonStyle } from '../home/hubControls';
 import { Icon } from '../home/HubShell';
@@ -70,7 +71,7 @@ export function PromptModal({
 }) {
   const [value, setValue] = useState(defaultValue);
   const inputRef = useRef(null);
-  const previouslyFocusedRef = useRef(null);
+  const cardRef = useRef(null);
 
   // Reset the field every time the dialog opens so a previous answer never
   // leaks into the next one.
@@ -78,26 +79,11 @@ export function PromptModal({
     if (open) setValue(defaultValue);
   }, [open, defaultValue]);
 
-  // Accessibility: Escape cancels, the text field takes focus on open, and
-  // focus returns to whatever triggered the dialog once it closes. Mirrors the
-  // per-modal pattern in BulkModals (no shared modal primitive / focus trap).
-  useEffect(() => {
-    if (!open) return undefined;
-    previouslyFocusedRef.current = document.activeElement;
-    inputRef.current?.focus?.();
-    const handleKey = (e) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onCancel?.();
-      }
-    };
-    window.addEventListener('keydown', handleKey, true);
-    return () => {
-      window.removeEventListener('keydown', handleKey, true);
-      previouslyFocusedRef.current?.focus?.();
-      previouslyFocusedRef.current = null;
-    };
-  }, [open, onCancel]);
+  // Accessibility (KAL-66): the shared modal primitive ConfirmModal uses. Tab
+  // and Shift+Tab stay inside the dialog, Escape cancels, the text field takes
+  // focus on open, and focus returns to whatever opened the dialog once it
+  // closes.
+  useFocusTrap(cardRef, open, { onEscape: onCancel });
 
   if (!open) return null;
 
@@ -106,9 +92,11 @@ export function PromptModal({
   return (
     <div onClick={onCancel} style={overlay}>
       <div
+        ref={cardRef}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
+        aria-label={title || undefined}
         style={{ width: 400, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden' }}
       >
         <div style={{ padding: '18px 18px 14px', display: 'flex', justifyContent: 'space-between', gap: 12 }}>

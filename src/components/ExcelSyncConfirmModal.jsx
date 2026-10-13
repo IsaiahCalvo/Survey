@@ -9,6 +9,7 @@
  */
 import { useRef, useState } from 'react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { keyboardControlProps } from '../utils/keyboardActivation.js';
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 
 const ExcelSyncConfirmModal = ({
@@ -108,11 +109,12 @@ const ExcelSyncConfirmModal = ({
         </div>
 
         {/* Options */}
-        <div style={{ marginBottom: '24px' }}>
+        <div role="radiogroup" aria-label="Update Excel file?" style={{ marginBottom: '24px' }}>
           {options.map((option) => (
             <div
               key={option.id}
               onClick={() => setSelectedOption(option.id)}
+              {...keyboardControlProps(null, { role: 'radio', checked: selectedOption === option.id })}
               onMouseEnter={(e) => {
                 if (selectedOption !== option.id) {
                   e.currentTarget.style.background = COLORS.modal.panelHover;
