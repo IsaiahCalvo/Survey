@@ -1,0 +1,11 @@
+-- History placeholder (2026-10-13, before the first production deploy since
+-- 2026-09-23). The survey-media bucket change was applied to prod BY HAND on
+-- 2026-10-01 and recorded in supabase_migrations as version 20261001131413.
+-- Its real SQL stays in supabase/proposed/20261001_survey_media_bucket.sql
+-- (rollback: supabase/rollbacks/20261001_survey_media_bucket.down.sql).
+--
+-- This file exists only so the local migration list matches the remote
+-- history: `supabase db push` (deploy-production.yml) refuses to run when the
+-- remote has a version the repo does not. The version is already recorded, so
+-- db push never runs this file; it does nothing if it ever is.
+SELECT 1;
