@@ -12,14 +12,14 @@ export async function activate(locator, touch, device) {
 export async function openProject(page, touch, device, projectId) {
   const row = page.locator(`[data-project-id="${projectId}"]:visible`).first();
   await activate(row, touch, device);
-  const title = device === 'mobile' ? 'Tap to rename' : 'Click to rename';
-  await page.getByTitle(title).waitFor({ state: 'visible', timeout: 10_000 });
+  // KAL-65: the rename hint is a tooltip now; the field's name is its label.
+  await page.locator('input[aria-label="Project name"]:visible').waitFor({ state: 'visible', timeout: 10_000 });
 }
 
 export async function openDocumentMenu(page, touch, device, documentId) {
   const row = page.locator(`[data-document-id="${documentId}"]:visible`).first();
   await row.waitFor({ state: 'visible', timeout: 10_000 });
-  await activate(row.getByTitle('More'), touch, device);
+  await activate(row.getByLabel('More', { exact: true }), touch, device);
   await page.getByRole('menuitem', { name: 'Rename', exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
 }
 

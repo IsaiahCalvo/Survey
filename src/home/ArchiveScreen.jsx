@@ -60,6 +60,7 @@ import {
   toggleSelection,
   visibleArchiveItems,
 } from './archiveScreenModel';
+import { useTooltip } from '../components/Tooltip';
 
 const ledgerHeader = {
   background: 'var(--ink-700)',
@@ -153,6 +154,7 @@ export default function ArchiveScreen({
   user,
   templatesLocked = false,
 }) {
+  const tip = useTooltip();
   const [filter, setFilter] = useState('all');
   const [sortKey, setSortKey] = useState(DEFAULT_ARCHIVE_SORT.sortKey);
   const [sortDir, setSortDir] = useState(DEFAULT_ARCHIVE_SORT.sortDir);
@@ -484,7 +486,8 @@ export default function ArchiveScreen({
   const disclosureButton = (open, onToggle, label = 'documents') => (
     <button
       type="button"
-      title={open ? `Hide ${label}` : `Show ${label}`}
+      {...tip(open ? `Hide ${label}` : `Show ${label}`, 'below')}
+      aria-label={open ? `Hide ${label}` : `Show ${label}`}
       aria-expanded={open}
       onClick={(e) => { e.stopPropagation(); onToggle(); }}
       style={{
@@ -573,7 +576,7 @@ export default function ArchiveScreen({
             {entities.slice(0, TEMPLATE_SWATCH_CAP).map((entity) => (
               <span
                 key={entity.id}
-                title={entity.name}
+                {...tip(entity.name, 'below', { name: true })}
                 style={{
                   width: SUBLINE_GLYPH, height: SUBLINE_GLYPH, borderRadius: '50%', flex: 'none',
                   background: entity.color, border: `1.5px solid ${entity.borderColor}`,
@@ -936,7 +939,8 @@ export default function ArchiveScreen({
                 type="button"
                 className="archive-mobile-disclosure"
                 aria-expanded={expanded}
-                title={expanded ? 'Hide documents' : 'Show documents'}
+                {...tip(expanded ? 'Hide documents' : 'Show documents', 'below')}
+                aria-label={expanded ? 'Hide documents' : 'Show documents'}
                 onClick={(e) => { e.stopPropagation(); setExpandedIds((prev) => toggleExpanded(prev, item.id)); }}
               >{chevron(expanded, MOBILE_CHEVRON_SIZE)}</button>
             ) : null)}
@@ -1064,7 +1068,7 @@ export default function ArchiveScreen({
               <aside style={{ padding: 18, position: 'relative', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: 'none' }}>
                   <div className="section-label">Preview</div>
-                  <button onClick={() => setPreviewOpen(false)} title="Close preview" className="hub-icon-btn">
+                  <button onClick={() => setPreviewOpen(false)} {...tip('Close preview', 'below')} aria-label="Close preview" className="hub-icon-btn">
                     <Icon name="close" size={14} />
                   </button>
                 </div>

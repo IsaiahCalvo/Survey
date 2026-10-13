@@ -37,6 +37,7 @@ import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/Sortable
 import { pickByIds } from './selectionById';
 import useMobileEdgeSwipeBack from './useMobileEdgeSwipeBack';
 import DismissBarrier from '../components/DismissBarrier';
+import { useTooltip } from '../components/Tooltip';
 
 /* Literal palette — used by the portal popups, which render outside the
    `.survey-hub` root and therefore cannot inherit its CSS variables. */
@@ -189,6 +190,7 @@ export default function ProjectsFolderTree({
   onShare,
   onShareDocument,
 }) {
+  const tip = useTooltip();
   const [search, setSearch] = useState('');
   const [fileSearch, setFileSearch] = useState('');
 
@@ -564,6 +566,9 @@ export default function ProjectsFolderTree({
     setNameDraft((draft) => (draft && !draftOwnerIds.split('|').includes(String(draft.id)) ? null : draft));
   }, [draftOwnerIds]);
   const projectNameField = (project) => ({
+    // KAL-65: the rename hint is now the shared tooltip, so the field names
+    // itself here (the native title used to double as its name).
+    'aria-label': 'Project name',
     value: nameDraft && nameDraft.id === project.id ? nameDraft.value : project.name,
     onChange: (e) => editProjectName(project.id, e.target.value),
     onKeyDown: (e) => {
@@ -896,7 +901,7 @@ export default function ProjectsFolderTree({
               setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
             }}
             className="hub-icon-btn"
-            title="More" aria-label="More"
+            {...tip('More', 'below')} aria-label="More"
           ><Icon name="more" size={14} /></button>
         )}
       </div>
@@ -1005,7 +1010,7 @@ export default function ProjectsFolderTree({
                         or select-mode selection. When the project is pinned,
                         the grabber is replaced by a gold pin icon. */}
                     {isPinned ? (
-                      <span title="Pinned" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                      <span role="img" aria-label="Pinned" {...tip('Pinned', 'below')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
                         <PinIcon size={12} color="var(--gold)" />
                       </span>
                     ) : (
@@ -1048,7 +1053,7 @@ export default function ProjectsFolderTree({
                           setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
                         }}
                         className="hub-icon-btn"
-                        title="More" aria-label="More"
+                        {...tip('More', 'below')} aria-label="More"
                       ><Icon name="more" size={14} /></button>
                     )}
                   </div>
@@ -1076,7 +1081,7 @@ export default function ProjectsFolderTree({
                     size={1}
                     key={open.id}
                     {...projectNameField(open)}
-                    title="Click to rename"
+                    {...tip('Click to rename', 'below')}
                     onDoubleClick={(e) => e.currentTarget.select()}
                     /* Same dotted rename line as the Templates editor
                        (.hub-rename); it used to turn gold while typing. */
@@ -1220,7 +1225,7 @@ export default function ProjectsFolderTree({
                                   setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
                                 }}
                                 className="hub-icon-btn"
-                                title="More" aria-label="More"
+                                {...tip('More', 'below')} aria-label="More"
                               ><Icon name="more" size={14} /></button>
                             )}
                           </div>
@@ -1319,7 +1324,7 @@ export default function ProjectsFolderTree({
                         key={`mobile-project-name-${mobileDrillProject.id}`}
                         className="projects-mobile-title-input hub-rename"
                         {...projectNameField(mobileDrillProject)}
-                        title="Tap to rename"
+                        {...tip('Tap to rename', 'below')}
                       />
                     </span>
                     <span>{mobileDrillAllFiles.length} {mobileDrillAllFiles.length === 1 ? 'file' : 'files'} · {projectLastEditedLabel(mobileDrillProject.id)}</span>
@@ -1402,7 +1407,7 @@ export default function ProjectsFolderTree({
                             }}
                           >
                             {isPinned ? (
-                              <span title="Pinned" className="projects-mobile-drag-slot">
+                              <span role="img" aria-label="Pinned" {...tip('Pinned', 'below')} className="projects-mobile-drag-slot">
                                 <PinIcon size={12} color="var(--gold)" />
                               </span>
                             ) : (
@@ -1429,7 +1434,7 @@ export default function ProjectsFolderTree({
                                   setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
                                 }}
                                 className="hub-icon-btn"
-                                title="More" aria-label="More"
+                                {...tip('More', 'below')} aria-label="More"
                               ><Icon name="more" size={14} /></button>
                             )}
                           </div>
@@ -1705,7 +1710,7 @@ export default function ProjectsFolderTree({
                     setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
                   }}
                   className="hub-icon-btn"
-                  title="More" aria-label="More"
+                  {...tip('More', 'below')} aria-label="More"
                 ><Icon name="more" size={14} /></button>
               )}
             </div>
@@ -1798,7 +1803,7 @@ export default function ProjectsFolderTree({
               <input
                 key={`mobile-${open.id}`}
                 {...projectNameField(open)}
-                title="Click to rename"
+                {...tip('Click to rename', 'below')}
                 style={{
                   background: 'transparent',
                   color: 'var(--bone-100)',
@@ -1865,7 +1870,7 @@ export default function ProjectsFolderTree({
                           setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
                         }}
                         className="hub-icon-btn"
-                        title="More" aria-label="More"
+                        {...tip('More', 'below')} aria-label="More"
                       ><Icon name="more" size={14} /></button>
                     )}
                   </div>

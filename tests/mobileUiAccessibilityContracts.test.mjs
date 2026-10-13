@@ -226,10 +226,10 @@ test('named compact mobile controls expose 44px hit areas without resizing heade
   // Owner ruling 2026-09-22: phone list rows are 36px one-liners. The grip and
   // the More button paint 36px tall so they cannot prop the row up, and a
   // ::after pad of 4px above and below restores the 44px touch target.
-  assert.match(hubCss, /\.survey-hub button\[title="More"\] \{[\s\S]{0,100}width: 44px !important;[\s\S]{0,50}height: 36px !important/);
+  assert.match(hubCss, /\.survey-hub button\[aria-label="More"\] \{[\s\S]{0,100}width: 44px !important;[\s\S]{0,50}height: 36px !important/);
   assert.match(hubCss, /\.survey-hub \[data-drag-rearrange-handle\] \{[\s\S]{0,100}width: 44px !important;[\s\S]{0,50}height: 36px !important/);
-  assert.match(hubCss, /\.survey-hub \[data-drag-rearrange-handle\]::after,[\s\S]{0,80}\.survey-hub button\[title="More"\]::after \{[\s\S]{0,120}inset: -4px 0/);
-  assert.match(hubCss, /button\[title="Edit color"\] \{[\s\S]{0,100}width: 44px;[\s\S]{0,50}height: 44px/);
+  assert.match(hubCss, /\.survey-hub \[data-drag-rearrange-handle\]::after,[\s\S]{0,80}\.survey-hub button\[aria-label="More"\]::after \{[\s\S]{0,120}inset: -4px 0/);
+  assert.match(hubCss, /button\[aria-label="Edit color"\] \{[\s\S]{0,100}width: 44px;[\s\S]{0,50}height: 44px/);
   assert.match(hubCss, /\.survey-hub \.mobile-header-select-row \{[\s\S]{0,120}height: 44px;[\s\S]{0,80}margin-block: -8px/);
   assert.match(hubCss, /\.survey-hub \.documents-mobile-select-main \{[\s\S]{0,100}height: 44px;[\s\S]{0,80}margin-block: -8px/);
 });
@@ -240,6 +240,6 @@ test('mobile list lead controls align by role without moving row copy', () => {
 });
 
 test('desktop Documents preview uses Share, not an ellipsis glyph', () => {
-  assert.match(documents, /title="Share"[\s\S]{0,120}<Icon name="share"/);
-  assert.doesNotMatch(documents, /title="Share"[\s\S]{0,120}<Icon name="more"/);
+  assert.match(documents, /aria-label="Share"[\s\S]{0,120}<Icon name="share"/);
+  assert.doesNotMatch(documents, /aria-label="Share"[\s\S]{0,120}<Icon name="more"/);
 });

@@ -43,7 +43,10 @@ test('the pair and its sizes live in one place', () => {
 
 test('the word is the accessible name and the tooltip', () => {
   assert.match(component, /aria-label=\{label\}/);
-  assert.match(component, /bindTooltip \? bindTooltip\(tip, tooltipPlacement\) : \{ title: tip \}/);
+  // KAL-65: the shared chip on the hub too (useTooltip falls back to a
+  // native title only with no host above it).
+  assert.match(component, /const bindTooltip = useTooltip\(\);/);
+  assert.match(component, /const tipProps = bindTooltip\(tip, tooltipPlacement\);/);
   // Marked glyph-only from the first paint, so states.css's no-plate press
   // applies before the DOM watcher runs.
   assert.match(component, /data-glyph-only=""/);

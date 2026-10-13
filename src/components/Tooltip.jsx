@@ -33,7 +33,7 @@
  * Reference behavior matched: the Draw/Shapes/Text category buttons, which had
  * the instant chip from the start.
  */
-import { createContext, useContext, useLayoutEffect, useRef } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { FONT_FAMILY } from '../viewerShared.js';
 import { viewportClampDelta } from '../utils/floatingUiGeometry.js';
@@ -179,17 +179,27 @@ export function makeTooltipBinding(setTooltip) {
   // pressed control quiet until the pointer leaves it, then allow a fresh hover.
   const pressedControls = new WeakSet();
   let anchorObserver = null;
+  // The control whose chip is up. A disabled control shows through
+  // pointerenter, which the browser sends BEFORE the previous control's
+  // mouseleave; that late leave must not hide the newer control's chip.
+  let shownBy = null;
   const stopWatchingAnchor = () => { anchorObserver?.disconnect(); anchorObserver = null; };
-  return (rawText, placement = 'below') => {
-    const text = tooltipForLabel(rawText);
+  // `{ name: true }` marks text the user typed (a tab, template or entity
+  // name): it is shown as-is, so a document called "Line" never grows an L.
+  return (rawText, placement = 'below', { name = false } = {}) => {
+    const text = name ? rawText : tooltipForLabel(rawText);
     if (!text) return {};
     const show = (e) => {
       const el = e?.currentTarget;
       if (!el?.getBoundingClientRect) return;
       if (pressedControls.has(el)) return;
+      // A pointer that arrives with a button held is mid-drag (a reorder grip
+      // sliding under a dragged row, a slider swept across the bar): no hint.
+      if (e?.type === 'mouseenter' && e.buttons) return;
       if (e?.type === 'focus' && !el.matches?.(':focus-visible')) return;
       const { x, y } = tooltipAnchorFor(el.getBoundingClientRect(), placement);
       stopWatchingAnchor();
+      shownBy = el;
       setTooltip?.({ visible: true, text, x, y, placement });
       // UX: a shortcut may unmount the hovered control without mouseleave.
       // Watch that anchor without replacing the control's own React ref.
@@ -217,11 +227,27 @@ export function makeTooltipBinding(setTooltip) {
       if (el && (typeof el === 'object' || typeof el === 'function')) {
         pressedControls.delete(el);
       }
+      if (shownBy && el && shownBy !== el) return;
+      shownBy = null;
       hide();
+    };
+    // React never fires onMouseEnter on a disabled button, yet a disabled
+    // control's tooltip is the one that says WHY it is off ("Nothing to
+    // select"). The browser still sends pointerenter, so a mouse arriving on a
+    // disabled control shows the chip through that instead.
+    const showIfDisabled = (e) => {
+      if (e?.pointerType !== 'mouse' || !e.currentTarget?.disabled) return;
+      if (e.buttons) return;
+      show(e);
+    };
+    const hideIfDisabled = (e) => {
+      if (e?.pointerType === 'mouse' && e.currentTarget?.disabled) resetAfterLeave(e);
     };
     return {
       onMouseEnter: show,
       onMouseLeave: resetAfterLeave,
+      onPointerEnter: showIfDisabled,
+      onPointerLeave: hideIfDisabled,
       onFocus: show,
       onBlur: resetAfterLeave,
       onMouseDown: hideOnPress,
@@ -239,13 +265,47 @@ export function makeTooltipBinding(setTooltip) {
 export const TooltipContext = createContext(null);
 
 /**
- * Returns the `tip(text, placement)` binder. Safe to call outside a provider —
- * it degrades to a no-op bundle rather than throwing, so a component can be
- * rendered on the hub (where there is no viewer tooltip host) unchanged.
+ * Returns the `tip(text, placement)` binder. Safe to call outside a provider:
+ * with no host above it, it falls back to the native `title=` so the control
+ * still names itself on hover instead of losing its hint. Every real screen
+ * (viewer, hub, tab bar) sits under a host, so the fallback only shows in an
+ * isolated harness.
  */
-const NOOP_BINDING = () => ({});
+const NATIVE_TITLE_BINDING = (text) => (text ? { title: text } : {});
 export function useTooltip() {
-  return useContext(TooltipContext) || NOOP_BINDING;
+  return useContext(TooltipContext) || NATIVE_TITLE_BINDING;
+}
+
+/**
+ * A self-contained tooltip host: owns the chip state, publishes the binder
+ * through TooltipContext and renders the one FloatingTooltip. For surfaces
+ * with no PDFViewer to own the chip (the hub preview harness).
+ */
+export function TooltipHost({ children }) {
+  const [tooltip, setTooltip] = useState(TOOLTIP_HIDDEN);
+  const tip = useMemo(() => makeTooltipBinding(setTooltip), []);
+  useTooltipDismissal(tooltip.visible, setTooltip);
+  return (
+    <TooltipContext.Provider value={tip}>
+      {children}
+      <FloatingTooltip tooltip={tooltip} />
+    </TooltipContext.Provider>
+  );
+}
+
+/**
+ * While a chip is up, Esc hides it (keyboard users dismiss a hint without
+ * moving focus). Scroll is deliberately NOT a dismiss: focusing a control in a
+ * scrolled list scrolls it into view a frame later, which would hide the very
+ * hint the focus just showed.
+ */
+export function useTooltipDismissal(visible, setTooltip) {
+  useEffect(() => {
+    if (!visible || typeof window === 'undefined') return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setTooltip({ ...TOOLTIP_HIDDEN }); };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [visible, setTooltip]);
 }
 
 /**

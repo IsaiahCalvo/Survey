@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from 'react';
 import SurveyHub from './SurveyHub';
 import CreateProjectModal from './CreateProjectModal';
 import ToastHost from '../components/ToastHost';
+import { TooltipHost } from '../components/Tooltip';
 import { AuthContext } from '../contexts/AuthContext';
 import { MSGraphContext } from '../contexts/MSGraphContext';
 
@@ -430,6 +431,9 @@ export default function HubPreview() {
   return (
     <AuthContext.Provider value={mockAuthValue}>
       <MSGraphContext.Provider value={mockMSGraphValue}>
+        {/* KAL-65: in the real app AppShell hosts the hub's tooltip chip;
+            host it here too so the preview shows the same tooltips. */}
+        <TooltipHost>
         <div style={{ width: '100vw', height: '100vh' }}>
           <SurveyHub
             documents={documents}
@@ -494,6 +498,7 @@ export default function HubPreview() {
               here too so hub actions (and design review) can show toasts. */}
           <ToastHost />
         </div>
+        </TooltipHost>
       </MSGraphContext.Provider>
     </AuthContext.Provider>
   );

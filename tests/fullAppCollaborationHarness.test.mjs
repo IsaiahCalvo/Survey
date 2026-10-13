@@ -134,7 +134,7 @@ test('mobile collaboration opens the real project row, team surface, and rename 
   // header actions are icons); its `label` is the accessible name.
   assert.match(projects, /label="Manage team"[\s\S]*?setTeamModalProject\(mobileDrillProject\)/);
   assert.match(runtime, /getByRole\('button', \{ name: 'Manage team', exact: true \}\)/);
-  assert.match(runtime, /input\[title="Click to rename"\], input\[title="Tap to rename"\]/);
+  assert.match(runtime, /input\[aria-label="Project name"\]/);
 });
 
 test('mobile navigation exits transient surfaces and scopes tabs or the rail', () => {
@@ -172,7 +172,7 @@ test('collaborator removal targets the exact leased user-id row and scopes its a
   assert.match(runtime, /removeInvitee\(page, inviteeEmail, inviteeUserId\)/);
   assert.match(runtime, /row\.getByRole\('button', \{ name: 'Remove from team', exact: true \}\)/);
   assert.match(runtime, /removeInvitee\(ownerPage, inviteeAccount\.email, inviteeAccount\.userId\)/);
-  assert.doesNotMatch(runtime, /findAncestorWith\(email, 'button\[title="More"\]', 'collaborator row'\)/);
+  assert.doesNotMatch(runtime, /findAncestorWith\(email, 'button\[(title|aria-label)="More"\]', 'collaborator row'\)/);
 });
 
 test('invite revocation targets the exact invite UUID row and scopes its action menu', () => {
@@ -194,7 +194,7 @@ test('all collaboration modal actions use deterministic scoped surfaces, not anc
   assert.match(modal, /data-kal31-manage-team="true"/);
   assert.match(runtime, /manageTeam\.getByRole\('button', \{ name: 'Invite', exact: true \}\)/);
   assert.match(runtime, /inviteModal\.getByRole\('button', \{ name: 'Copy link', exact: true \}\)/);
-  assert.match(runtime, /inviteModal\.locator\('button\[title="Close"\]'\)/);
+  assert.match(runtime, /inviteModal\.locator\('button\[aria-label="Close"\]'\)/);
   assert.match(runtime, /data-kal31-invite-page="true"/);
   assert.match(runtime, /manageTeam\.getByRole\('button', \{ name: 'Done', exact: true \}\)/);
   assert.match(runtime, /manageTeam\.waitFor\(\{ state: 'hidden'/);

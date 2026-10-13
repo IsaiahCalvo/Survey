@@ -28,6 +28,7 @@ import {
 import { CALM_STRIP_AUTO_SCROLL } from './reorder/dragAutoScroll.js';
 import { CSS } from '@dnd-kit/utilities';
 import Icon from './Icons';
+import { useTooltip } from './components/Tooltip';
 // Phase 30 — per-tab subscription to the dual-write retry queue. Each tab
 // renders its own dot independently when its documentId has at least one
 // non-quarantined queue entry. CONTEXT.md AC-13 / 30-UI-SPEC.md Surface 3.
@@ -130,6 +131,9 @@ function TabItem({
     e.stopPropagation();
     onTabClose(tab.id);
   };
+  // KAL-65: the tab bar's hints use the app's shared tooltip chip, not the
+  // native title (the shell hosts the chip over the hub and the viewer alike).
+  const tip = useTooltip();
 
   return (
     <div
@@ -216,7 +220,9 @@ function TabItem({
             marginRight: '7px',
             flexShrink: 0
           }}
-          title="Unsaved changes (Cmd/Ctrl+S to save)"
+          role="img"
+          aria-label="Unsaved changes (Cmd/Ctrl+S to save)"
+          {...tip('Unsaved changes (Cmd/Ctrl+S to save)', 'below')}
           data-drag-keep-fill
         />
       ) : (
@@ -231,7 +237,7 @@ function TabItem({
           whiteSpace: 'nowrap',
           fontWeight: isActive ? '500' : '400'
         }}
-        title={tab.name}
+        {...tip(tab.name, 'below', { name: true })}
       >
         {tab.name}
       </span>
@@ -240,7 +246,7 @@ function TabItem({
         <span
           role="status"
           aria-label="This document has unsaved changes"
-          title="This document has unsaved changes"
+          {...tip('This document has unsaved changes', 'below')}
           data-drag-keep-fill
           style={{
             width: '6px',

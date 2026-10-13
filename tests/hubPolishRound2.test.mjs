@@ -33,7 +33,7 @@ test('desktop Documents: a file in no project shows an empty Project cell, not "
 test('New project dialog: the file picker button wears the outlined hub button look', async () => {
   const modal = await read('home/CreateProjectModal.jsx');
   assert.match(modal, /className="create-project-file-input"/);
-  assert.match(modal, /title="Close" aria-label="Close"/);
+  assert.match(modal, /\{\.\.\.tip\('Close', 'below'\)\} aria-label="Close"/);
   const css = await read('home/hub.css');
   assert.match(css, /\.create-project-file-input::file-selector-button \{[^}]*border: 1px solid var\(--border-strong\);[^}]*background: transparent;/);
 });
@@ -59,7 +59,7 @@ test('icon-only buttons carry a name: rail tabs, tab close X, project More', asy
   const tabs = await read('TabBar.jsx');
   assert.match(tabs, /aria-label=\{`Close \$\{tab\.name\}`\}/);
   const projects = await read('home/ProjectsFolderTree.jsx');
-  assert.doesNotMatch(projects, /title="More"\s*\n/);
+  assert.doesNotMatch(projects, /\{\.\.\.tip\('More', 'below'\)\}\s*\n/);
 });
 
 test('phone Document details: Open file and Share get a 44px tap pad', async () => {

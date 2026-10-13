@@ -21,12 +21,11 @@
  * `word` swaps the glyph for a short word on the same box, ink and states
  * ("All" / "None" in a select-mode row, 13px/500).
  *
- * Tooltip: inside the PDF viewer the app's shared chip (TooltipContext); on
- * the home hub, which has no chip host, the native title.
+ * Tooltip: the app's shared chip (useTooltip) on the hub and in the viewer
+ * alike; the shell hosts the chip on the hub since KAL-65.
  */
-import { useContext } from 'react';
 import Icon from '../Icons.jsx';
-import { TooltipContext } from './Tooltip.jsx';
+import { useTooltip } from './Tooltip.jsx';
 import { selectAllState, selectModeActionState } from '../utils/disabledActions.js';
 import './SectionIconButton.css';
 
@@ -67,12 +66,12 @@ export default function SectionIconButton({
   nothingToSelect = false,
   ...rest
 }) {
-  const bindTooltip = useContext(TooltipContext);
+  const bindTooltip = useTooltip();
   const empty = Boolean(nothingToSelect) && !active;
   const tip = empty
     ? (typeof nothingToSelect === 'string' ? nothingToSelect : 'Nothing to select')
     : (tooltip || label);
-  const tipProps = bindTooltip ? bindTooltip(tip, tooltipPlacement) : { title: tip };
+  const tipProps = bindTooltip(tip, tooltipPlacement);
   const size = phone ? SECTION_ICON_SIZES.phone : SECTION_ICON_SIZES.desktop;
   return (
     <button

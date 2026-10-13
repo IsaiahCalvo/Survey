@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import Spinner from '../components/Spinner';
 import Icon from '../Icons';
 import { C } from '../uiPalette';
+import { useTooltip } from '../components/Tooltip';
 
 const COLORS = C;
 
@@ -16,6 +17,7 @@ export default function CreateProjectModal({
   onRemoveFile,
   open,
 }) {
+  const tip = useTooltip();
   const inputRef = useRef(null);
   const previousFocusRef = useRef(null);
 
@@ -58,7 +60,7 @@ export default function CreateProjectModal({
             <h2 style={{ margin: 0, fontSize: 18 }}>Create project</h2>
             <p style={{ margin: '6px 0 0', color: COLORS.muted, fontSize: 12 }}>Add PDFs now or start with an empty project.</p>
           </div>
-          <button type="button" title="Close" aria-label="Close" disabled={busy} onClick={onCancel} className="hub-icon-btn"><Icon name="close" size={16} /></button>
+          <button type="button" {...tip('Close', 'below')} aria-label="Close" disabled={busy} onClick={onCancel} className="hub-icon-btn"><Icon name="close" size={16} /></button>
         </header>
 
         <div style={{ display: 'grid', gap: 16, padding: 18 }}>

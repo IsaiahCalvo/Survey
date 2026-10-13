@@ -28,6 +28,7 @@ import useAutoRetryLoad from './useAutoRetryLoad';
 import { installOverlayScrollbars } from '../utils/overlayScrollbars';
 const AccountSettings = lazy(() => import('../components/AccountSettings').then(m => ({ default: m.AccountSettings })));
 import './hub.css';
+import { useTooltip } from '../components/Tooltip';
 
 const TAB_KEY = 'survey-hub-tab';
 
@@ -75,6 +76,7 @@ export default function SurveyHub({
   onSignOut,
   onSignIn,
 }) {
+  const tip = useTooltip();
   const [tab, setTab] = useState(() => {
     if (initialTab) return initialTab;
     try { return localStorage.getItem(TAB_KEY) || 'documents'; } catch { return 'documents'; }
@@ -157,7 +159,7 @@ export default function SurveyHub({
             type="button"
             className="btn primary"
             onClick={() => { void Promise.resolve(onRetry?.()).catch(() => undefined); }}
-            title={error || undefined}
+            {...tip(error || undefined, 'below')}
           >Try again</button>
         </div>
       </div>
