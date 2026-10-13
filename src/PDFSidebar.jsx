@@ -921,6 +921,7 @@ const PDFSidebar = React.forwardRef(({
                 pageNum={pageNum}
                 numPages={numPages}
                 mobileMode={mobileMode}
+                draftKey={pdfDocumentKey}
                 headActionsHost={mobileMode ? null : bookmarksHeadHost}
               />
             </div>

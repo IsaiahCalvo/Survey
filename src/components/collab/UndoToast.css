@@ -26,7 +26,11 @@
   bottom: 8px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 100;
+  /* KAL-461: the toast is portalled to <body> (UndoToast.jsx), so it must
+     clear the viewer tab wrapper (a z 5000 stacking context) and the chrome
+     hosts (5400-5600) on its own; at the old z 100 it sat behind the page.
+     Still below menus, popovers and dialogs (6750+), so a modal covers it. */
+  z-index: 5700;
 
   display: inline-flex;
   align-items: center;

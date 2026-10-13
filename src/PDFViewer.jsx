@@ -333,6 +333,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useDocumentPresenceList } from './hooks/useDocumentPresenceList.js';
 import { useDocumentToolPreferences, useDocuments, useStorage, useTemplates } from './hooks/useDatabase';
 import { useUndoToast } from './hooks/useUndoToast.js';
+import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBookmarks } from './utils/bookmarkDeleteUndo.js';
 import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
@@ -14928,27 +14929,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
   }, []);
 
+  // KAL-461: a delete (a folder takes everything in it) happens at once and
+  // the Undo toast puts the rows back where they were. The toast hook is
+  // declared further down, hence the ref.
+  const bookmarkUndoToastRef = useRef(null);
   const handleBookmarkDelete = useCallback((id) => {
-    setBookmarks(prev => {
-      // First, collect all IDs to delete (the folder itself and all its descendants)
-      const idsToDelete = new Set([id]);
-      let foundNew = true;
-
-      // Recursively find all bookmarks that belong to this folder or its subfolders
-      while (foundNew) {
-        foundNew = false;
-        prev.forEach(b => {
-          if (b.parentId && idsToDelete.has(b.parentId) && !idsToDelete.has(b.id)) {
-            idsToDelete.add(b.id);
-            foundNew = true;
-          }
-        });
-      }
-
-      // Filter out all bookmarks with IDs in the set
-      return prev.filter(b => !idsToDelete.has(b.id));
-    });
-  }, []);
+    const { removed } = removeBookmarkWithDescendants(bookmarks, id);
+    setBookmarks(prev => removeBookmarkWithDescendants(prev, id).next);
+    if (removed.length) {
+      bookmarkUndoToastRef.current?.({
+        kind: 'single',
+        message: bookmarkDeleteMessage(removed),
+        onUndo: () => setBookmarks(prev => restoreRemovedBookmarks(prev, removed)),
+      });
+    }
+  }, [bookmarks]);
 
   // w37: { spaceId, ids } of the last space cascade, read once by the space
   // step that owns it (space:update for a region replace, space:delete).
@@ -20727,6 +20722,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     enqueue: enqueueUndoToast,
     dismiss: dismissUndoToast,
   } = useUndoToast();
+  bookmarkUndoToastRef.current = enqueueUndoToast;
 
   // Owner 2026-10-07 (survey bar round): "Done" at the right end of the survey
   // bar leaves Survey at once - no confirmation - and the app's undo toast
