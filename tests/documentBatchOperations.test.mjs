@@ -181,6 +181,11 @@ test('project move/copy returns its promise and modal stays open with an error o
   assert.match(dashboard, /survey-duplicate-projects-recovery:/);
   assert.match(dashboard, /retryCompensatingCleanup\([\s\S]+duplicateDocumentsRecoveryRef\.current/);
   assert.match(dashboard, /retryCompensatingCleanup\([\s\S]+duplicateProjectsRecoveryRef\.current/);
-  assert.match(dashboard, /id: stableCopyId/);
+  // KAL-443: the copy itself lives in copyDocumentToProject.js; the batch's
+  // stable operation id still becomes the copied row's id.
+  const copyModule = readFileSync(new URL('../src/home/copyDocumentToProject.js', import.meta.url), 'utf8');
+  assert.match(dashboard, /operationId: operation\?\.operationId/);
+  assert.match(copyModule, /const copyId = operationId \|\| makeId\(\);/);
+  assert.match(copyModule, /id: copyId/);
   assert.match(dashboard, /id: stableProjectId/);
 });
