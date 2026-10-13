@@ -2507,6 +2507,7 @@ export default function TemplatesEditor({
                         aria-expanded={catEdit ? undefined : open}
                         onClick={() => { if (catEdit) toggleCatSel(c.id); else setOpenCat(open ? -1 : i); }}
                         {...keyboardControlProps()}
+                        aria-label={c.name}
                       >
                         <DragRearrangeHandle
                           {...attributes}
@@ -2783,6 +2784,7 @@ export default function TemplatesEditor({
                         aria-expanded={entityEdit ? undefined : isOpen}
                         onClick={(e) => { if (entityEdit) toggleEntitySel(r.id); else foldColor(isOpen ? null : r.id, e.currentTarget); }}
                         {...keyboardControlProps()}
+                        aria-label={r.role}
                         style={{
                           transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                         }}
@@ -3203,6 +3205,7 @@ export default function TemplatesEditor({
                                 aria-expanded={catEdit ? undefined : open}
                                 onClick={() => { if (catEdit) toggleCatSel(c.id); else setOpenCat(open ? -1 : ci); }}
                                 {...keyboardControlProps()}
+                                aria-label={c.name}
                               >
                                 <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 24, height: 24 }} />
                                 <button
@@ -3415,6 +3418,7 @@ export default function TemplatesEditor({
                                 aria-expanded={entityEdit ? undefined : isOpen}
                                 onClick={(e) => { if (entityEdit) toggleEntitySel(r.id); else foldColor(isOpen ? null : r.id, e.currentTarget); }}
                                 {...keyboardControlProps()}
+                                aria-label={r.role}
                               >
                                 <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 24, height: 24 }} collapseOpen={isOpen && foldingColor !== r.id} onCollapse={() => foldColor(null)} />
                                 <button
