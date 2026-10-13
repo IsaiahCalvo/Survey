@@ -41,7 +41,7 @@ import { extractPdfOutlineBookmarks } from '../utils/bookmarkOutline';
 import { resolvePinchCommitCursor, resolvePinchEndTransition } from '../utils/mobilePinchGesture';
 import { isPalmContact, withoutPalmTouches } from '../utils/touchContact';
 import { isSpaceTap, isSpaceTapBlockedTarget } from '../utils/spaceTapToggle';
-import { createPointerFocusTracker, spaceBelongsToFocusedControl } from '../utils/spaceKeyControls';
+import { createFocusModalityTracker, spaceBelongsToFocusedControl } from '../utils/spaceKeyControls';
 import { createPanMomentumRunner, createPanVelocityTracker, isGlideSlowEnoughToSharpen, PAN_MOMENTUM_DEFAULTS, panEventTime } from '../utils/panMomentum';
 import {
   ELASTIC_ZOOM_EASE_MS,
@@ -3603,14 +3603,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
 
   useEffect(() => {
     // KAL-503: Space presses a focused button, tab, switch or menu item in a
-    // dialog or menu, or a button the keyboard moved to (spaceKeyControls.js).
-    const pointerFocus = createPointerFocusTracker();
+    // dialog or menu, or a button reached with Tab (spaceKeyControls.js).
+    const focusModality = createFocusModalityTracker();
     let spaceForControl = false;
     const activateSpacePan = (event) => {
       if (!isSpaceKey(event)) return;
       if (isEditableTarget(event.target) || isEditableTarget(document.activeElement)) return;
-      const focused = document.activeElement;
-      if (!spacePanRef.current && spaceBelongsToFocusedControl(focused, { pointerFocused: pointerFocus.isPointerFocused(focused) })) {
+      if (!spacePanRef.current && spaceBelongsToFocusedControl(document.activeElement, { tabbedTo: focusModality.tabbedTo() })) {
         spaceForControl = true;
         return;
       }
@@ -3651,16 +3650,16 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
     window.addEventListener('keydown', activateSpacePan, true);
     window.addEventListener('keyup', releaseSpacePan, true);
-    window.addEventListener('pointerdown', pointerFocus.onPointerDown, true);
-    window.addEventListener('focusin', pointerFocus.onFocusIn, true);
+    window.addEventListener('pointerdown', focusModality.onPointerDown, true);
+    window.addEventListener('keydown', focusModality.onKeyDown, true);
     window.addEventListener('blur', releaseSpacePan);
     window.addEventListener('pagehide', releaseSpacePan);
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       window.removeEventListener('keydown', activateSpacePan, true);
       window.removeEventListener('keyup', releaseSpacePan, true);
-      window.removeEventListener('pointerdown', pointerFocus.onPointerDown, true);
-      window.removeEventListener('focusin', pointerFocus.onFocusIn, true);
+      window.removeEventListener('pointerdown', focusModality.onPointerDown, true);
+      window.removeEventListener('keydown', focusModality.onKeyDown, true);
       window.removeEventListener('blur', releaseSpacePan);
       window.removeEventListener('pagehide', releaseSpacePan);
       document.removeEventListener('visibilitychange', onVisibilityChange);

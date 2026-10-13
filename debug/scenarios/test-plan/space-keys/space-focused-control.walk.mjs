@@ -70,19 +70,56 @@ await step('mouseClickedTool', async () => {
   await holdSpacePan('panWithClickedToolFocused', { blur: false });
   out.selectStillOnAfterPan = await pressed('Rectangle Select');
 });
-// Toolbar: a button the keyboard moved to. Pan first (mouse), then focus
-// Rectangle Select from the keyboard side and press Space.
+// Toolbar: a button reached with Tab. Click Pan (mouse), press Tab to move
+// to Rectangle Select, press Space -> Rectangle Select is chosen.
 await step('keyboardTool', async () => {
   await page.getByRole('button', { name: 'Pan', exact: true }).filter({ visible: true }).first().click();
   await page.waitForTimeout(300);
   out.panOnBeforeKeyboard = await pressed('Pan');
-  await page.getByRole('button', { name: 'Rectangle Select', exact: true }).filter({ visible: true }).first().focus();
+  await page.keyboard.press('Tab');
+  out.focusAfterTab = await page.evaluate(() => document.activeElement?.getAttribute('aria-label'));
   await page.keyboard.press('Space');
   await page.waitForTimeout(400);
-  out.selectPressedBySpace = await pressed('Rectangle Select');
+  out.selectPressedBySpaceAfterTab = await pressed('Rectangle Select');
   out.docScrolledAfterToolSpace = await docScroll();
 });
+// Then press on the page: focus stays on the button (the viewer keeps it),
+// but Space must pan again, not press the button.
+await step('clickPageAfterTab', async () => {
+  await page.getByRole('button', { name: 'Pan', exact: true }).filter({ visible: true }).first().click();
+  await page.keyboard.press('Tab'); // focus Rectangle Select from the keyboard
+  await page.keyboard.press('Space'); // choose it
+  await page.waitForTimeout(300);
+  await page.mouse.click(phone ? 300 : 1300, phone ? 300 : 400);
+  out.focusAfterPageClick = await page.evaluate(() => document.activeElement?.getAttribute('aria-label') || document.activeElement?.tagName);
+  await holdSpacePan('panAfterTabThenPageClick', { blur: false });
+  out.selectStillOnAfterThatPan = await pressed('Rectangle Select');
+});
+// A tool shortcut key after a mouse click does not make Space press the
+// clicked button.
+await step('shortcutAfterClick', async () => {
+  await page.getByRole('button', { name: 'Rectangle Select', exact: true }).filter({ visible: true }).first().click();
+  await page.keyboard.press('Shift');
+  await holdSpacePan('panAfterClickAndShortcutKey', { blur: false });
+});
 await shot('2-toolbar');
+
+// Open the shortcuts sheet with the mouse and close it with the mouse:
+// focus goes back to its button, but holding Space must pan, not reopen it.
+if (!phone) {
+  await step('focusReturn', async () => {
+    await page.getByRole('button', { name: 'Keyboard shortcuts' }).filter({ visible: true }).first().click();
+    await page.waitForTimeout(800);
+    const sheet = page.locator('[role="dialog"]').filter({ visible: true }).first();
+    out.shortcutsOpened = (await sheet.count()) > 0;
+    await sheet.getByRole('button', { name: /close/i }).first().click();
+    await page.waitForTimeout(600);
+    out.focusAfterSheetClosed = await page.evaluate(() => document.activeElement?.getAttribute('aria-label') || document.activeElement?.tagName);
+    await holdSpacePan('panAfterSheetClosedByMouse', { blur: false });
+    out.sheetReopenedBySpace = (await page.locator('[role="dialog"]').filter({ visible: true }).count()) > 0;
+    if (out.sheetReopenedBySpace) { await page.keyboard.press('Escape'); await page.waitForTimeout(400); }
+  });
+}
 
 // A quick Space TAP on the page still swaps to Pan and back (Drawboard C6).
 await step('spaceTap', async () => {

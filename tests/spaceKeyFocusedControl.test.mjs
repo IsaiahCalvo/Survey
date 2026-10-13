@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { JSDOM } from 'jsdom';
-import { createPointerFocusTracker, spaceBelongsToFocusedControl } from '../src/utils/spaceKeyControls.js';
+import { createFocusModalityTracker, spaceBelongsToFocusedControl } from '../src/utils/spaceKeyControls.js';
 
 const CONTAINER = readFileSync(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
 
@@ -30,31 +30,34 @@ const $ = (id) => document.getElementById(id);
 test('Space goes to controls in a dialog or menu, however they got focus', () => {
   for (const id of ['close', 'tab', 'toggle', 'box', 'item', 'div-item']) {
     assert.equal(spaceBelongsToFocusedControl($(id)), true, id);
-    assert.equal(spaceBelongsToFocusedControl($(id), { pointerFocused: true }), true, `${id} clicked`);
+    assert.equal(spaceBelongsToFocusedControl($(id), { tabbedTo: true }), true, `${id} tabbed to`);
   }
 });
 
-test('a real button or summary the keyboard moved to gets Space; one just clicked does not', () => {
-  assert.equal(spaceBelongsToFocusedControl($('tool')), true);
-  assert.equal(spaceBelongsToFocusedControl($('sum')), true);
-  assert.equal(spaceBelongsToFocusedControl($('tool'), { pointerFocused: true }), false, 'clicked tool: Space pans');
+test('a real button or summary reached with Tab gets Space; one reached by mouse does not', () => {
+  assert.equal(spaceBelongsToFocusedControl($('tool'), { tabbedTo: true }), true);
+  assert.equal(spaceBelongsToFocusedControl($('sum'), { tabbedTo: true }), true);
+  assert.equal(spaceBelongsToFocusedControl($('tool')), false, 'clicked tool, or a click on the page since: Space pans');
 });
 
 test('the page, plain containers and role-only rows beside the page keep Space for panning', () => {
   for (const el of [$('page'), $('dialog-body'), $('row'), $('side-switch'), document.body, null, undefined]) {
-    assert.equal(spaceBelongsToFocusedControl(el), false, el?.id || String(el));
+    assert.equal(spaceBelongsToFocusedControl(el, { tabbedTo: true }), false, el?.id || String(el));
   }
 });
 
-test('the tracker knows a button was focused by a click until focus moves elsewhere', () => {
-  const t = createPointerFocusTracker();
-  t.onPointerDown({ target: $('tool-glyph') });
-  t.onFocusIn({ target: $('tool') });
-  assert.equal(t.isPointerFocused($('tool')), true, 'press on the glyph inside the button');
-  t.onFocusIn({ target: $('close') });
-  assert.equal(t.isPointerFocused($('tool')), false, 'Tab away forgets the click');
-  assert.equal(t.isPointerFocused($('close')), false);
-  assert.equal(t.isPointerFocused(null), false);
+test('the tracker: the last of a Tab press and a mouse/touch press wins; other keys change nothing', () => {
+  const t = createFocusModalityTracker();
+  assert.equal(t.tabbedTo(), false, 'starts as pointer');
+  t.onKeyDown({ key: 'Tab' });
+  assert.equal(t.tabbedTo(), true);
+  t.onKeyDown({ key: 'v' }); // a tool shortcut is not keyboard focus
+  t.onKeyDown({ key: ' ' });
+  assert.equal(t.tabbedTo(), true);
+  t.onPointerDown({ target: $('page') }); // a press on the page gives Space back to panning
+  assert.equal(t.tabbedTo(), false);
+  t.onKeyDown({ key: 'r' });
+  assert.equal(t.tabbedTo(), false, 'a shortcut after a click still pans');
 });
 
 test('the viewer lets those presses through and keeps the rest for panning', () => {
@@ -66,10 +69,11 @@ test('the viewer lets those presses through and keeps the rest for panning', () 
   const keyup = CONTAINER.slice(CONTAINER.indexOf('const releaseSpacePan', start), CONTAINER.indexOf('const onVisibilityChange', start));
   assert.match(keyup, /if \(event\?\.type === 'keyup' && !passedToControl\) \{\s*event\.preventDefault\(\);/,
     'the key-up of a press that went to a control is not cancelled (a button clicks on key-up)');
-  for (const type of ['pointerdown', 'focusin']) {
-    assert.match(CONTAINER, new RegExp(`window\\.addEventListener\\('${type}', pointerFocus\\.\\w+, true\\)`));
-    assert.match(CONTAINER, new RegExp(`window\\.removeEventListener\\('${type}', pointerFocus\\.\\w+, true\\)`));
+  for (const type of ['pointerdown', 'keydown']) {
+    assert.match(CONTAINER, new RegExp(`window\\.addEventListener\\('${type}', focusModality\\.\\w+, true\\)`));
+    assert.match(CONTAINER, new RegExp(`window\\.removeEventListener\\('${type}', focusModality\\.\\w+, true\\)`));
   }
+  assert.match(keydown, /spaceBelongsToFocusedControl\(document\.activeElement, \{ tabbedTo: focusModality\.tabbedTo\(\) \}\)/);
   // Text fields were already left alone, and still are.
   assert.match(keydown, /if \(isEditableTarget\(event\.target\) \|\| isEditableTarget\(document\.activeElement\)\) return;/);
 });
