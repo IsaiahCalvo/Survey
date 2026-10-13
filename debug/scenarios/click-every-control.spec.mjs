@@ -415,6 +415,27 @@ test.describe('desktop 1440x900', () => {
     await step('Undo button', () => button(page, 'Undo').click({ timeout: 5000 }), () => button(page, 'Redo').isEnabled());
     await step('Redo button', () => button(page, 'Redo').click({ timeout: 5000 }), () => button(page, 'Redo').isDisabled());
 
+    // KAL-444: the shortcuts sheet opens inside a document — "?", Cmd/Ctrl+/
+    // and the keyboard button at the foot of the left rail — and a "?" typed
+    // into a field stays a question mark.
+    const sheetOpen = async () => (await page.getByText('Keyboard shortcuts', { exact: true }).filter({ visible: true }).count()) > 0;
+    await page.mouse.click(30, 600);
+    await step('viewer: key ? opens the shortcuts sheet', () => page.keyboard.press('Shift+?'), sheetOpen);
+    await step('viewer: ? again closes it', () => page.keyboard.press('Shift+?'), async () => !(await sheetOpen()));
+    await step('viewer: Ctrl/Cmd+/ opens it', () => page.keyboard.press(`${mod}+/`), sheetOpen);
+    await step('viewer: Escape closes it', () => page.keyboard.press('Escape'), async () => !(await sheetOpen()));
+    await step('left rail: Keyboard shortcuts', () => button(page, 'Keyboard shortcuts').click({ timeout: 5000 }), sheetOpen);
+    await step('viewer sheet: close X', () => button(page, 'Close keyboard shortcuts').click({ timeout: 5000 }), async () => !(await sheetOpen()));
+    await step('viewer: ? typed into search stays text', async () => {
+      await button(page, 'Search text').click({ timeout: 5000 });
+      await page.locator('.search-text-panel__input').filter({ visible: true }).first().click({ timeout: 5000 });
+      await page.keyboard.press('Shift+?');
+    }, async () => !(await sheetOpen())
+      && (await page.locator('.search-text-panel__input').filter({ visible: true }).first().inputValue()).includes('?'));
+    await page.locator('.search-text-panel__input').filter({ visible: true }).first().fill('').catch(() => {});
+    await button(page, 'Search text').click({ timeout: 5000 }).catch(() => {});
+    await page.mouse.click(30, 600);
+
     // A link on the PDF opens a new window.
     await step('PDF link opens in a new window', async () => {
       const popup = context.waitForEvent('page', { timeout: 10_000 });
@@ -425,8 +446,8 @@ test.describe('desktop 1440x900', () => {
     // Tabs: Home and back, then close the document.
     await step('tab: Home', () => page.getByText('Home', { exact: true }).filter({ visible: true }).first().click({ timeout: 5000 }),
       () => page.locator('.survey-hub').isVisible());
-    // ? toggles the shortcut sheet (Home only, by design: on the viewer it
-    // used to cover the zoom controls).
+    // ? toggles the shortcut sheet on Home too (KAL-444: one sheet, Home and
+    // the viewer).
     await step('key ? opens the shortcuts sheet', () => page.keyboard.press('Shift+?'),
       () => page.getByText('Keyboard shortcuts', { exact: true }).filter({ visible: true }).count());
     await step('Escape closes the shortcuts sheet', () => page.keyboard.press('Escape'),
@@ -437,8 +458,14 @@ test.describe('desktop 1440x900', () => {
       async () => (await page.getByText('Keyboard shortcuts', { exact: true }).filter({ visible: true }).count()) === 0);
     await step('tab: back to the document', () => page.getByText('clickable-link-test.pdf', { exact: true }).filter({ visible: true }).first().click({ timeout: 5000 }),
       () => button(page, 'Pan').isVisible());
-    await step('tab: close the document', () => button(page, 'Close clickable-link-test.pdf').click({ timeout: 5000 }),
-      async () => (await page.locator('.survey-hub').isVisible()) && !(await button(page, 'Pan').isVisible()));
+    // The pen stroke above is unsaved work in a local file, so the close asks
+    // first (tab strip, Chunk C 2026-10-13: the same rule as the reload
+    // warning); the walk confirms it.
+    await step('tab: close the document', async () => {
+      await button(page, 'Close clickable-link-test.pdf').click({ timeout: 5000 });
+      const discard = page.getByRole('button', { name: 'Close without saving', exact: true });
+      await discard.waitFor({ state: 'visible', timeout: 2000 }).then(() => discard.click()).catch(() => {});
+    }, async () => (await page.locator('.survey-hub').isVisible()) && !(await button(page, 'Pan').isVisible()));
 
     });
   });

@@ -10,8 +10,12 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const overlay = readFileSync(path.join(root, 'src/components/KeyboardShortcutsOverlay.jsx'), 'utf8');
 
-test('the shortcuts sheet does not list a B shortcut', () => {
+// KAL-444: the rows moved from the overlay into src/utils/keyboardShortcuts.js
+// (tests/keyboardShortcutsSheet.test.mjs checks every row against a handler).
+test('the shortcuts sheet does not list a B shortcut', async () => {
   assert.doesNotMatch(overlay, /keys:\s*\[\s*'B'\s*\]/);
+  const { documentedChords } = await import('../src/utils/keyboardShortcuts.js');
+  assert.ok(!documentedChords().some((chord) => chord.split('+').pop() === 'b'));
 });
 
 test('…and indeed nothing in the app handles a bare B key', () => {

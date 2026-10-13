@@ -17,6 +17,7 @@ import { getCursorForHandle, clampInverseScale } from '../utils/svgTransformMath
 import { getHandlePositions } from '../utils/svgBoundingBox';
 import {
   getAdaptiveSelectionHandleSpec,
+  getHandleZoomScale,
   getSelectionHandleVisualMetrics,
 } from '../utils/selectionHandleVisibility.js';
 import rotateIconSvg from '../assets/rotate-icon.svg';
@@ -104,9 +105,10 @@ const SVGSelectionOverlay = memo(({
   // appearance is unchanged there. The tier/visibility math below intentionally
   // keeps the RAW inverseScale so crowded handles still hide on zoom-out.
   const visualInverseScale = clampInverseScale(inverseScale);
-  // Dampened inverse scale: sqrt curve softens handle sizing at extreme zooms
-  // so handles don't balloon at low zoom or vanish at high zoom.
-  const is = Math.sqrt(visualInverseScale);
+  // Drawboard canvas audit 2026-10-13: handles are one size on screen at every
+  // zoom (the old sqrt curve grew them 1.4x per zoom doubling). The clamp
+  // above still caps them on extreme zoom-out.
+  const is = getHandleZoomScale(inverseScale);
   const handleMetrics = getSelectionHandleVisualMetrics(visualInverseScale);
   // The frame the grabbers are actually DRAWN on. For every ordinary shape it
   // IS the bbox; a revision cloud passes the padded outer hull of its humps

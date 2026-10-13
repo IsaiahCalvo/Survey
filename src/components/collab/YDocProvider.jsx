@@ -1310,6 +1310,13 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
         writeDismissedDocIds(dismissed);
         setCleanupResidueIds([]);
         setReviewPanelOpen(false);
+      } else if (Array.isArray(result?.refusedIds) && result.refusedIds.length > 0) {
+        // KAL-440: the server removed what this account may remove and kept
+        // the rest (other people's rows). Keep offering only those — never
+        // report the whole cleanup as done.
+        // eslint-disable-next-line no-console
+        console.warn('[Phase35][cleanup] server kept rows it refused to delete', result.refusedIds);
+        setCleanupResidueIds(result.refusedIds);
       } else {
         // eslint-disable-next-line no-console
         console.warn('[Phase35][cleanup] deleteAnnotations failed', result?.error?.message);

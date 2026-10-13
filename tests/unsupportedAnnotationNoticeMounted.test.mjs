@@ -22,6 +22,9 @@ async function loadNotice() {
   const geometryUrl = pathToFileURL(
     path.join(repoRoot, 'src/utils/floatingUiGeometry.js'),
   ).href;
+  const phoneLayoutUrl = pathToFileURL(
+    path.join(repoRoot, 'src/hooks/usePhoneLayout.js'),
+  ).href;
   const reactUrl = pathToFileURL(require.resolve('react')).href;
   const reactDomUrl = pathToFileURL(require.resolve('react-dom')).href;
   const jsxRuntimeUrl = pathToFileURL(require.resolve('react/jsx-runtime')).href;
@@ -43,6 +46,10 @@ async function loadNotice() {
     .replace(
       "import BodyPortal from './BodyPortal.js';",
       `import { createPortal } from ${JSON.stringify(reactDomUrl)};\nconst BodyPortal = ({ children }) => createPortal(children, document.body);`,
+    )
+    .replace(
+      "import usePhoneLayout from '../hooks/usePhoneLayout.js';",
+      `import usePhoneLayout from ${JSON.stringify(phoneLayoutUrl)};`,
     )
     .replace(
       "import Icon from '../Icons';",

@@ -10,6 +10,7 @@ import { QuickColourDots, QuickPaintSwatch } from '../components/QuickStyleContr
 import { isPaintSelectionMixed } from '../utils/selectionRestyle.js';
 import { SheetOpacitySlider, SheetPreview, SheetRow, SheetScaleSlider, SheetSection, SheetSegmented, SheetSizeField, SheetSwatchRow } from './MobileToolSheetControls';
 import DismissBarrier from '../components/DismissBarrier';
+import PencilModeControl from '../components/PencilModeControl.jsx';
 import Spinner from '../components/Spinner';
 import ActiveSpaceChip from '../sidebar/ActiveSpaceChip';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from '../components/Callout/types';
@@ -19,6 +20,7 @@ import { withDevFakePresence } from '../components/presenceIdentity.js';
 import { getSelectFamilyLabel, getSelectFamilyTransition, getSelectModeIconName, SELECT_MODE_OPTIONS } from '../utils/selectModes.js';
 import { tooltipForLabel } from '../utils/toolShortcuts.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
+import { commitPanelTyping } from './keyboardViewport.js';
 import useRailGroupMotion from './useRailGroupMotion.js';
 import { useViewerTopOverlayRef } from '../utils/viewerTopOverlay.js';
 import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE } from '../utils/toolbarRows.js';
@@ -1024,7 +1026,11 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
             controls to its right. The zoom disclosure caret stays smaller on
             purpose: it reads as a caret beside a label, not as an action
             icon. */}
-        <button type="button" className="mobile-pdf-header__icon" aria-label="Back to documents" onClick={onBack}>
+        <button type="button" className="mobile-pdf-header__icon" aria-label="Back to documents" onClick={(event) => {
+          // KAL-461: what you were typing in a panel is saved before you leave.
+          commitPanelTyping();
+          onBack?.(event);
+        }}>
           <Icon name="chevronLeft" size={HEADER_GLYPH} color="currentColor" />
         </button>
       </div>
@@ -2939,6 +2945,15 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
               never turns gold (gold = the active tool, owner 2026-10-02). The
               trigger says it is open (aria-expanded) and its glyph lights to
               --text-1, as the Spaces export icon does (styles.css). */}
+          {/* drawboardAudit C2: the Pencil-only switch, at the utility end of
+              the rail as Drawboard has it beside its More button. It renders
+              nothing until a pen has been used on this device. */}
+          <PencilModeControl
+            surface="phone"
+            className="mobile-pdf-tools__button"
+            glyph={RAIL_GLYPH}
+            onOpen={() => { setMoreOpen(false); setPresenceOpen(false); }}
+          />
           <RailButton
             icon="more"
             label="More document options"

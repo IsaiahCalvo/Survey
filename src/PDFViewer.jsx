@@ -20,6 +20,7 @@ import { mergeEditOntoCurrent } from './utils/dragCommitMerge.js';
 import { countSpaceCascadeImpact, isSpaceScopedEntry, resolveSpaceCascadeScope } from './utils/spaceCascadeImpact.js';
 import { EMBEDDED_IMPORT_INCOMPLETE_KEY, EMBEDDED_IMPORT_MARKER_KEY, embeddedImportDecision, embeddedImportFailedPages, embeddedImportMarkerDecision, selectEmbeddedImportObjects } from './utils/embeddedImportGate.js';
 import { READ_ONLY_BLOCKED_KEYS } from './utils/toolShortcuts.js';
+import { resolveSpaceTap } from './utils/spaceTapToggle.js';
 import { sanitizeTemplateConfig } from './utils/templateConfig.js';
 import useSharedDocumentTemplates from './hooks/useSharedDocumentTemplates.js';
 import { migrateSidebarData } from './utils/sidebarPersistence.js';
@@ -71,6 +72,9 @@ import AnnotationDropdown from './components/AnnotationDropdown';
 import ToolbarOverflowMenu from './components/ToolbarOverflowMenu';
 import useSurveyBarFit from './hooks/useSurveyBarFit';
 import { surveyBarLook } from './utils/responsiveToolbar.js';
+import SurveyCategoryChips from './components/SurveyCategoryChips';
+import SurveyEntityBar from './components/SurveyEntityBar';
+import SurveyTemplateMenu from './components/SurveyTemplateMenu';
 import Icon from './Icons';
 import LightweightAnnotationOverlay from './components/LightweightAnnotationOverlay';
 import { useDocumentThumbnailCapture } from './hooks/useDocumentThumbnailCapture';
@@ -99,6 +103,8 @@ import PdfjsRedactionMarkLayer from './components/PdfjsRedactionMarkLayer';
 import TextMarkupLinkLayer from './components/TextMarkupLinkLayer';
 import PdfjsFormLayer from './components/PdfjsFormLayer';
 import TextSelectionActionBar from './components/TextSelectionActionBar';
+import TextSelectionQuickMenu from './components/TextSelectionQuickMenu';
+import { copyTextSelection } from './utils/textSelectionQuickMenu.js';
 import ApplyRedactionsModal from './components/ApplyRedactionsModal';
 import OcrTextLayer from './components/OcrTextLayer';
 import SpaceRegionOverlay from './SpaceRegionOverlay';
@@ -227,6 +233,7 @@ import { deferUntilEraseCommitsFinish } from './utils/pendingEraseCommits.js';
 
 import { debugMark } from './utils/debugBridge';
 import { deleteAnnotations, removeDocumentPresence, subscribeToDocumentAnnotations, syncAnnotationsToSupabase, updateDocumentPresence } from './services/documentAnnotationService';
+import { isRefusedAnnotationDelete, reportAnnotationDeleteOutcome } from './services/annotationDeleteOutcome.js';
 import { createPresenceActivityBump, PRESENCE_ACTIVITY_EVENTS } from './utils/presenceActivity.js';
 import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
 import { getActivePageRegionId, getPageAnnotationVisibilityState, isAnnotationVisibleInSurveyMode, isSurveyVisibilityContext, normalizePageRegions, normalizeRegionVisibility, shouldStampActiveRegionId } from './utils/annotationVisibilityRules';
@@ -327,6 +334,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useDocumentPresenceList } from './hooks/useDocumentPresenceList.js';
 import { useDocumentToolPreferences, useDocuments, useStorage, useTemplates } from './hooks/useDatabase';
 import { useUndoToast } from './hooks/useUndoToast.js';
+import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBookmarks } from './utils/bookmarkDeleteUndo.js';
 import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
@@ -493,6 +501,8 @@ import { getExportErrorMessage, isFileLocked } from './utils/exportHelpers';
 import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } from './utils/overlayDebug';
 import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './utils/excelWritebackGate';
 import { rememberLastSurveyTemplate, resolveLastSurveyTemplate, surveyMemoryDocumentKey } from './utils/surveyLastTemplate.js';
+import { carryMarkerShape } from './survey/markerShapes.js';
+import { setMarkerShapePdfDocument } from './survey/markerShapeProviders.js';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
 import { createTextMarkupAnnotation, getExcludedPdfTextMarkupIds, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection, TEXT_MARKUP_DEFAULT_PAINT } from './utils/pdfTextMarkup.js';
 import {
@@ -3323,6 +3333,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setActiveTool(next);
   }, []);
 
+  // Drawboard audit C6: a quick Space tap (PdfjsViewerContainer -> onSpaceTap)
+  // toggles Pan and back to the tool you had; a Space hold still pans only
+  // while held. The saved tool is forgotten once another tool is picked.
+  const spaceTapSavedToolRef = useRef(null);
+  useEffect(() => {
+    if (activeTool !== 'pan') spaceTapSavedToolRef.current = null;
+  }, [activeTool]);
+  const handleSpaceTap = useCallback(() => {
+    const { nextTool, savedTool } = resolveSpaceTap({ tool: activeToolRef.current, savedTool: spaceTapSavedToolRef.current });
+    if (!nextTool) return;
+    setActiveTool(nextTool);
+    spaceTapSavedToolRef.current = savedTool;
+  }, []);
+
   const [strokeColor, setStrokeColor] = useState('#ff0000');
   const [strokeOpacity, setStrokeOpacity] = useState(100);
   const [fillColor, setFillColor] = useState('#ff0000');
@@ -4399,9 +4423,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // kept (no pointer hand).
   const eraserWholeModeRef = useRef(false);
   useEffect(() => {
-    const haloByPosition = activeTool === 'pan' || activeTool === 'eraser'
-      || (shouldShowHoverHalo(activeTool) && activeTool !== 'select' && activeTool !== 'text-select');
-    const pointerCursor = activeTool === 'pan';
+    // Owner 2026-10-13: Pan shows no hover halo and no pointer hand - a
+    // press-drag under Pan always pans (docs/GESTURE-CONTRACT.md P7).
+    const haloByPosition = activeTool === 'eraser'
+      || (shouldShowHoverHalo(activeTool) && activeTool !== 'pan' && activeTool !== 'select' && activeTool !== 'text-select');
     if (!haloByPosition) {
       // Tool changed away from pan — clear any lingering hover state + cursor.
       setPendingSvgHover((prev) => (prev == null ? prev : null));
@@ -4420,7 +4445,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (!e) return;
       // A drawing tool mid-stroke shows no halo; the eraser previews only in
       // Whole mode (Partial carves, it does not delete the mark).
-      if ((!pointerCursor && e.buttons !== 0) || (activeTool === 'eraser' && !eraserWholeModeRef.current)) {
+      if (e.buttons !== 0 || (activeTool === 'eraser' && !eraserWholeModeRef.current)) {
         if (lastKey !== '') {
           lastKey = '';
           setPendingSvgHover((prev) => (prev == null ? prev : null));
@@ -4471,12 +4496,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setPendingSvgHover(isAnnotation
           ? { pageNumber: hit.pageNumber, annotationIndex: hit.annotationIndex }
           : { pageNumber: hit.pageNumber, calloutId: hit.calloutId });
-        // UX: pointer cursor over annotations in pan mode. document.body is
-        // the lowest-priority target so Pdfjs-level pan cursor wins
-        // everywhere else. Cleared on no-hit and on tool-change cleanup.
-        if (pointerCursor && document.body.style.cursor !== 'pointer') {
-          document.body.style.cursor = 'pointer';
-        }
       } else {
         setPendingSvgHover((prev) => (prev == null ? prev : null));
         if (document.body.style.cursor === 'pointer') {
@@ -8267,14 +8286,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // 2026-10-07 (survey bar, narrow windows): how far the survey bar gives
   // ground so nothing in it overlaps (hooks/useSurveyBarFit.js).
   const surveyBarModules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
+  const surveyBarCategories = (surveyBarModules.find((module) => module.id === selectedModuleId) || surveyBarModules[0])?.categories || [];
   const surveyBarFit = useSurveyBarFit({
     enabled: Boolean(showSurveyPanel && selectedTemplate),
     insetLeft: isLeftSidebarCollapsed ? 0 : 272,
     insetRight: rightRailCollapsed ? 0 : 320,
     templateName: selectedTemplate?.name || 'Survey',
     moduleNames: surveyBarModules.length ? surveyBarModules.map((module) => module.name || 'Untitled module') : ['No modules'],
-    categoriesKey: ((surveyBarModules.find((module) => module.id === selectedModuleId) || surveyBarModules[0])?.categories || [])
-      .map((category) => `${category.id}:${category.name}`).join('|'),
+    categoriesKey: surveyBarCategories.map((category) => `${category.id}:${category.name}`).join('|'),
+    categoryCount: surveyBarCategories.length,
+    entityCount: (selectedTemplate?.entities || []).length,
   });
   const [selectedSpaceId, setSelectedSpaceId] = useState(null); // Currently selected space for survey interactions
   const [pendingSurveyMarkerName, setPendingSurveyMarkerName] = useState(null); // { surveyMarker, categoryId } when prompting for name
@@ -8287,10 +8308,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // The entity last picked for a Survey Marker on desktop (the rail's Entity
   // menu); a new desktop marker starts with it, like the phone's entity disc.
   const lastSurveyEntityIdRef = useRef(null);
+  // 2026-10-13 (entity bar): the bar rings it, and on desktop it is also the
+  // entity disc's pick, so the bar, the panel and the next marker agree.
+  const [lastSurveyEntityId, setLastSurveyEntityId] = useState(null);
   const rememberSurveyEntity = useCallback((entityId) => {
     lastSurveyEntityIdRef.current = entityId || null;
-  }, []);
+    setLastSurveyEntityId(entityId || null);
+    if (!mobileMode) setMobileSurveyEntityId(entityId || null);
+  }, [mobileMode]);
   const [mobileSurveyEntityId, setMobileSurveyEntityId] = useState(null);
+  // The Survey panel's own Entity-menu write (SurveySpacesRail
+  // applyEntitySelectionForMarker), handed up so the entity bar changes a
+  // selected marker's entity through the same save / sync / undo path.
+  const surveyEntityApplyRef = useRef(null);
+  const handleSurveyEntityBarPick = useCallback((entityId, markerIds = []) => {
+    rememberSurveyEntity(entityId);
+    markerIds.forEach((markerId) => surveyEntityApplyRef.current?.(markerId, entityId));
+  }, [rememberSurveyEntity]);
   // Pending Survey Marker deletion participates in legacy Undo/Redo. Keep the
   // entire transient prompt/preview slice together so restoring the marker
   // cannot leave its modal, name input, or selection in the post-delete state.
@@ -13428,6 +13462,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return 'unchanged';
     }
 
+    // The lock guard runs BEFORE counter renumbering: renumbering is now
+    // copy-on-write (counterNumbering.js), so a locked counter whose number
+    // only follows its series must not read as an Undo edit of a locked mark.
+    // RULED 2026-09-28 owner: open editing + lock — Undo / Redo never change
+    // a locked mark either (only the lock toggle itself, for its author or
+    // the document owner). utils/markLock.js.
+    {
+      const pagesNow = annotationsByPageRef.current || {};
+      for (const pageKey of Object.keys(nextAnnotationsByPage || {})) {
+        const nextPage = nextAnnotationsByPage[pageKey];
+        const prevPage = pagesNow[pageKey];
+        if (!Array.isArray(nextPage?.objects) || nextPage === prevPage) continue;
+        const lockGuard = guardLockedMarksOnSave({
+          previousObjects: prevPage?.objects || [],
+          nextObjects: nextPage.objects,
+          viewerId,
+          documentOwnerId,
+        });
+        if (lockGuard.changed) {
+          nextAnnotationsByPage[pageKey] = { ...nextPage, objects: lockGuard.objects };
+          notifyLockedMarkBlocked();
+        }
+      }
+    }
+
     const counterRenumberDecision = shouldRenumberCountersForSave({
       source: scopedAction.type,
       action: scopedAction.type,
@@ -13456,28 +13515,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           reason: counterRenumberDecision.reason,
         }));
       } catch (_) {}
-    }
-
-    // RULED 2026-09-28 owner: open editing + lock — Undo / Redo never change
-    // a locked mark either (only the lock toggle itself, for its author or
-    // the document owner). utils/markLock.js.
-    {
-      const pagesNow = annotationsByPageRef.current || {};
-      for (const pageKey of Object.keys(nextAnnotationsByPage || {})) {
-        const nextPage = nextAnnotationsByPage[pageKey];
-        const prevPage = pagesNow[pageKey];
-        if (!Array.isArray(nextPage?.objects) || nextPage === prevPage) continue;
-        const lockGuard = guardLockedMarksOnSave({
-          previousObjects: prevPage?.objects || [],
-          nextObjects: nextPage.objects,
-          viewerId,
-          documentOwnerId,
-        });
-        if (lockGuard.changed) {
-          nextAnnotationsByPage[pageKey] = { ...nextPage, objects: lockGuard.objects };
-          notifyLockedMarkBlocked();
-        }
-      }
     }
 
     annotationsByPageRef.current = nextAnnotationsByPage;
@@ -14888,27 +14925,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
   }, []);
 
+  // KAL-461: a delete (a folder takes everything in it) happens at once and
+  // the Undo toast puts the rows back where they were. The toast hook is
+  // declared further down, hence the ref.
+  const bookmarkUndoToastRef = useRef(null);
   const handleBookmarkDelete = useCallback((id) => {
-    setBookmarks(prev => {
-      // First, collect all IDs to delete (the folder itself and all its descendants)
-      const idsToDelete = new Set([id]);
-      let foundNew = true;
-
-      // Recursively find all bookmarks that belong to this folder or its subfolders
-      while (foundNew) {
-        foundNew = false;
-        prev.forEach(b => {
-          if (b.parentId && idsToDelete.has(b.parentId) && !idsToDelete.has(b.id)) {
-            idsToDelete.add(b.id);
-            foundNew = true;
-          }
-        });
-      }
-
-      // Filter out all bookmarks with IDs in the set
-      return prev.filter(b => !idsToDelete.has(b.id));
-    });
-  }, []);
+    const { removed } = removeBookmarkWithDescendants(bookmarks, id);
+    setBookmarks(prev => removeBookmarkWithDescendants(prev, id).next);
+    if (removed.length) {
+      bookmarkUndoToastRef.current?.({
+        kind: 'single',
+        message: bookmarkDeleteMessage(removed),
+        onUndo: () => setBookmarks(prev => restoreRemovedBookmarks(prev, removed)),
+      });
+    }
+  }, [bookmarks]);
 
   // w37: { spaceId, ids } of the last space cascade, read once by the space
   // step that owns it (space:update for a region replace, space:delete).
@@ -15167,9 +15198,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     const ids = Array.from(cloudDeleteIds).filter(Boolean);
     if (pdfFile?.id && ids.length > 0) {
-      deleteAnnotations(pdfFile.id, ids).catch((err) => {
-        console.error('[SpaceCascadeDelete] cloud delete failed:', err);
-      });
+      deleteAnnotations(pdfFile.id, ids)
+        .then((result) => reportAnnotationDeleteOutcome(result, { showToast, source: 'space-cascade', onceKey: pdfFile.id }))
+        .catch((err) => {
+          console.error('[SpaceCascadeDelete] cloud delete failed:', err);
+        });
     }
     appDebug('[SpaceCascadeDelete] deleted scoped app state ' + JSON.stringify({
       reason,
@@ -20687,6 +20720,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     enqueue: enqueueUndoToast,
     dismiss: dismissUndoToast,
   } = useUndoToast();
+  bookmarkUndoToastRef.current = enqueueUndoToast;
 
   // Owner 2026-10-07 (survey bar round): "Done" at the right end of the survey
   // bar leaves Survey at once - no confirmation - and the app's undo toast
@@ -21118,6 +21152,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         ? effect.payload.markerIds.map(String)
         : [markerId];
       const result = await deleteAnnotations(pdfFile.id, markerIds);
+      // KAL-440: a refusal is the server's permission rule, not a network
+      // blip — say so once instead of retrying it forever.
+      if (isRefusedAnnotationDelete(result)) {
+        reportAnnotationDeleteOutcome(result, { showToast, source: 'erase-legacy-marker', onceKey: pdfFile.id });
+        return;
+      }
       if (result?.success === false) {
         throw result.error || new Error(`legacy marker delete failed for ${markerIds.join(',')}`);
       }
@@ -24393,6 +24433,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // A page view (instant page operations) shares its base document, so only a
   // different base is destroyed.
   const pdfBaseDoc = getPageViewBase(pdfDoc);
+  // Smart fill (survey/markerShapeProviders): a provider is handed the pdf.js
+  // page it was pressed on (the active tab's document).
+  useEffect(() => { if (isActive) setMarkerShapePdfDocument(pdfDoc); }, [isActive, pdfDoc]);
   useEffect(() => () => {
     if (!pdfBaseDoc) return;
     try { pdfBaseDoc.destroy(); } catch { /* noop */ }
@@ -26609,7 +26652,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const { direction } = e.detail || {};
       if (direction === 'in') zoomIn();
       else if (direction === 'out') zoomOut();
-      else if (direction === 'reset') resetZoom();
+      // KAL-444: Cmd/Ctrl+0 is Fit page, as it is in the browser build's key
+      // handler above (0 / 1 / 2 = fit page / width / height). The desktop
+      // app's version of the key used to reset to the default zoom instead.
+      else if (direction === 'reset') zoomControllerRef.current?.setMode(ZOOM_MODES.FIT_PAGE);
     };
     window.addEventListener('pdf-zoom', handlePdfZoom);
     return () => window.removeEventListener('pdf-zoom', handlePdfZoom);
@@ -30532,10 +30578,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         [annotationId]: {
           ...existing,
           pageNumber,
-          bounds: {
+          // Owner 2026-10-13: a freehand / smart-fill marker keeps its outline
+          // (drawn in the old box, mapped onto the new one — survey/markerShapes).
+          bounds: carryMarkerShape({
             ...normalizedBounds,
             angle: nextAngle,
-          },
+          }, existing?.bounds),
         },
       };
     });
@@ -31011,9 +31059,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // Delete from Supabase to persist the deletion
       const documentId = pdfFile?.id;
       if (documentId && user?.id && documentSyncEnabled) {
-        deleteAnnotations(documentId, permittedSurveyMarkerIds).catch(err => {
-          console.error('[App] Error deleting annotations from Supabase:', err);
-        });
+        deleteAnnotations(documentId, permittedSurveyMarkerIds)
+          .then((result) => reportAnnotationDeleteOutcome(result, { showToast, source: 'survey-marker-delete', onceKey: documentId }))
+          .catch(err => {
+            console.error('[App] Error deleting annotations from Supabase:', err);
+          });
       }
 
       // Clear the removal queue after a short delay
@@ -32521,7 +32571,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     let timer = 0;
     const captureSoon = (event) => {
       const target = event?.target instanceof Element ? event.target : null;
-      if (target?.closest?.('[data-text-selection-action-bar], [data-annotation-color-picker]')) return;
+      if (target?.closest?.('[data-text-selection-action-bar], [data-text-selection-quick-menu], [data-annotation-color-picker]')) return;
       window.clearTimeout(timer);
       timer = window.setTimeout(capturePdfjsTextSelection, 0);
     };
@@ -32941,7 +32991,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         action: 'text-markup-delete',
         selectionGroupIds: toggleOff.removedSelectionGroupIds,
       });
-      if (committed) {
+      // KAL-240: the floating quick menu lets go of the range once its action
+      // lands, so the result shows without the blue selection over it.
+      if (committed && options.keepSelection === false) {
+        clearLiveTextSelection();
+      } else if (committed) {
         window.requestAnimationFrame(() => {
           restorePdfjsTextSelection(selection);
           capturePdfjsTextSelection();
@@ -32966,13 +33020,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         action: 'text-markup-create',
         selectionGroupId,
       });
-    if (committed) {
+    if (committed && options.keepSelection === false) {
+      clearLiveTextSelection();
+    } else if (committed) {
       window.requestAnimationFrame(() => {
         restorePdfjsTextSelection(selection);
         capturePdfjsTextSelection();
       });
     }
-  }, [activeTool, capturePdfjsTextSelection, commitTextMarkupDocumentTransaction, liveTextSelectionActionSelection, numPages, queuePermanentRedactionConfirmation, selectedTextMarkupActionSelection, textMarkupOverlapMode, textMarkupPaintByType, user?.id, selectedModuleId, activeRegionId, annotationSpaceId, spaces, isRegionOverlayEnabled]);
+  }, [activeTool, capturePdfjsTextSelection, clearLiveTextSelection, commitTextMarkupDocumentTransaction, liveTextSelectionActionSelection, numPages, queuePermanentRedactionConfirmation, selectedTextMarkupActionSelection, textMarkupOverlapMode, textMarkupPaintByType, user?.id, selectedModuleId, activeRegionId, annotationSpaceId, spaces, isRegionOverlayEnabled]);
+
+  // KAL-240: the floating quick menu's two entry points. Its marks run the
+  // same handler as the docked bar; Copy copies the selected PDF text.
+  const handleTextSelectionQuickAction = useCallback((action) => (
+    handleTextSelectionAction(action, { keepSelection: false })
+  ), [handleTextSelectionAction]);
+  const handleTextSelectionCopy = useCallback(async (selection) => {
+    const copied = await copyTextSelection(selection?.text);
+    showToast(copied ? 'Copied' : 'Could not copy the text.', copied ? 'success' : 'error');
+  }, []);
 
   const isImportedSelectDeleteOnlyTextMarkupSelection = useCallback((pageNumber, selectedId, selectedType) => {
     if (!selectedId) return false;
@@ -35033,6 +35099,7 @@ ${pageBlocks}
       surveyMarkerNameFocusRequest,
       undoSurveyMarkerPlacement,
       rememberSurveyEntity,
+      surveyEntityApplyRef,
       selectedItemsInCategory,
       selectedModuleId,
       selectedSpaceId,
@@ -35775,6 +35842,7 @@ ${pageBlocks}
                     initialRenderPages={PDFJS_INITIAL_RENDER_PAGES}
                     scrollDelayMs={PDFJS_SCROLL_DELAY_MS}
                     interactionMode={activeTool === 'pan' ? 'Pan' : 'TextSelection'}
+                    onSpaceTap={handleSpaceTap}
                     /* UX: mobile parity (Phase D) — a still-finger long-press on
                        the PDF surface opens the touch context menu, but ONLY
                        under the pan or select tool (demo App.tsx:1555/1579 gate
@@ -38468,7 +38536,6 @@ ${pageBlocks}
             {subRowCategory === 'survey' && (() => {
               const modules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
               const selectedModule = modules.find((module) => module.id === selectedModuleId) || modules[0] || null;
-              const categories = selectedModule?.categories || [];
 
               /* UX 2026-09-23 (owner: desktop survey polish - "this dropdown
                  doesn't look like the rest of the dropdowns within the app ... make
@@ -38494,33 +38561,19 @@ ${pageBlocks}
                  The category chips stay on the bar's centre and the two side groups
                  hang off them, as before, so the chips never move when the module
                  name changes. Rules are the shared .chrome-divider. */
-              /* 2026-10-07 (survey bar, narrow windows): the bar gives ground in
-                 a fixed order so nothing ever overlaps or runs under an open
-                 panel - the template name shortens, then goes (glyph stays);
-                 the module name shortens; then Reuse, the module menu and the
-                 template menu move, in that order, into a "..." menu before
-                 Done. The chips and Done always stay (planSurveyBarStep in
-                 utils/responsiveToolbar.js; measured by useSurveyBarFit). */
-              const look = surveyBarLook(surveyBarFit.step);
-              const templateMenu = (inMore) => (
-                <AnnotationDropdown
-                  open={surveyTemplateMenuOpen}
-                  onOpenChange={setSurveyTemplateMenuOpen}
-                  label={`Survey template: ${selectedTemplate?.name || 'Survey'}. Switch template`}
-                  className={inMore ? 'survey-more__pill' : 'survey-subrow__template'}
-                  value={selectedTemplate?.id || ''}
-                  preview={<Icon name="survey" size={14} color="var(--accent)" />}
-                  triggerContent={selectedTemplate?.name || 'Survey'}
-                  options={(appTemplates || []).map((template) => ({
-                    value: template.id,
-                    label: template.name || 'Untitled template'
-                  }))}
-                  onSelect={handleSwitchSurveyTemplateById}
-                  width="auto"
-                  compact={!inMore && look.template === 'glyph'}
-                  dataMarker="data-survey-template-menu"
-                />
-              );
+              /* Owner 2026-10-13 ("the panel pushes the sub-toolbar out of
+                 place ... The things in the center should stay in the center"):
+                 the CENTRE group - module menu, category chips, Reuse - sits on
+                 the tool bar's centre and never moves when a side panel opens or
+                 closes; only the two END pieces (template menu, Done) move in and
+                 out with the panels, and give ground first in a narrow window
+                 (template name -> glyph, Done -> check). Then the centre:
+                 shorter module name, Reuse without its word, module + Reuse into
+                 a More menu beside the template menu, tighter chips, and last
+                 fewer chips before "All N" - nothing hidden (planSurveyBar in
+                 utils/responsiveToolbar.js; measured by useSurveyBarFit). Which
+                 chips show is decided by count (SurveyCategoryChips). */
+              const look = surveyBarLook(surveyBarFit.plan.step);
               const moduleMenu = (inMore) => (
                 <AnnotationDropdown
                   open={surveyModuleMenuOpen}
@@ -38573,90 +38626,85 @@ ${pageBlocks}
                   <span className="survey-subrow__track" aria-hidden="true" />
                   {/* Owner 2026-09-30: "Keep active" -> "Repeat"; 2026-10-01:
                       "Repeat" -> "Reuse" (it keeps the CATEGORY armed), same
-                      word as the phone bar. In More the row names it. */}
-                  {inMore ? null : <span>Reuse</span>}
+                      word as the phone bar. In More the row names it; the
+                      compact bar keeps the switch alone. */}
+                  {inMore || look.reuse === 'compact' ? null : <span>Reuse</span>}
                 </button>
               );
-              const moreItems = [
-                look.template === 'more' && { id: 'survey-template', label: 'Template', node: templateMenu(true) },
-                look.module === 'more' && { id: 'survey-module', label: 'Module', node: moduleMenu(true) },
-                look.reuse === 'more' && { id: 'survey-reuse', label: 'Reuse category', node: reuseSwitch(true) },
-              ].filter(Boolean);
+              const moreItems = look.more ? [
+                { id: 'survey-module', label: 'Module', node: moduleMenu(true) },
+                { id: 'survey-reuse', label: 'Reuse category', node: reuseSwitch(true) },
+              ] : [];
 
               return (
                 <div
                   ref={surveyBarFit.ref}
                   className="survey-subrow"
                   data-survey-bar-step={look.step}
+                  data-survey-template={surveyBarFit.plan.template}
+                  data-survey-done={surveyBarFit.plan.done}
                   // The left rail's open panel (272px) and the Survey panel
-                  // (320px) are drawn OVER this row, so the bar keeps its
-                  // template name and Done clear of whichever is open.
+                  // (320px) are drawn OVER this row: the end pieces keep clear
+                  // of whichever is open; the centre group does not move.
                   style={{
                     '--survey-bar-inset-l': isLeftSidebarCollapsed ? '0px' : '272px',
                     '--survey-bar-inset-r': rightRailCollapsed ? '0px' : '320px',
                   }}
                 >
-                  {/* Owner 2026-10-07 (survey bar round, after a debate): the
-                      bar names the mode itself - the floating Survey chip is
-                      gone. FIRST item: [gold survey glyph] <template> v, a
-                      menu that switches template (ellipsis when long). LAST
-                      item, at the right end: "Done" (Leave Survey), with an
-                      Undo toast. The bar only shows in Survey, so the bar IS
-                      the "you are in Survey" signal. */}
+                  {/* Owner 2026-10-07 (survey bar round): FIRST item, the
+                      template menu ([gold survey glyph] <template> v); LAST
+                      item, "Done" (Leave Survey), with an Undo toast. The bar
+                      only shows in Survey, so the bar IS the "you are in
+                      Survey" signal. */}
                   <div className="survey-subrow__side survey-subrow__side--start">
-                    {look.template !== 'more' && templateMenu(false)}
-                    {look.module !== 'more' ? (
+                    <SurveyTemplateMenu
+                      open={surveyTemplateMenuOpen}
+                      onOpenChange={setSurveyTemplateMenuOpen}
+                      templates={appTemplates || []}
+                      selectedTemplate={selectedTemplate}
+                      onSelect={handleSwitchSurveyTemplateById}
+                      compact={surveyBarFit.plan.template === 'glyph'}
+                      className="survey-subrow__template"
+                    />
+                    {/* Narrow: the module menu and Reuse wait in More, beside
+                        the template menu, so the centre is the chips alone. */}
+                    {look.more && (
+                      <div className="survey-subrow__more">
+                        <ToolbarOverflowMenu items={moreItems} tooltip={chromeTip('More', 'below')} />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="survey-subrow__centre" data-survey-bar-centre="true">
+                    {!look.more && (
                       <div className="survey-subrow__module">
                         {moduleMenu(false)}
                         <div className="chrome-divider" aria-hidden="true" />
                       </div>
-                    ) : look.template !== 'more' && (
-                      <div className="chrome-divider" aria-hidden="true" />
                     )}
-                  </div>
-
-                  <div className="survey-subrow__cats">
-                    {categories.length > 0 ? categories.map((category) => {
-                      const isActive = selectedCategoryId === category.id && activeTool === 'survey-marker';
-                      const glyph = getCategoryGlyphLabel(category.name);
-
-                      return (
-                        <button
-                          key={category.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedCategoryId(category.id);
-                            setActiveTool('survey-marker');
-                          }}
-                          {...chromeTip(category.name || 'Untitled category', 'below')}
-                          className={`btn chrome-subcontrol ${isActive ? 'btn-active' : 'btn-ghost'}`}
-                          // KAL-65: instant chip above is the tooltip; a native
-                          // title= would stack the OS tooltip on top of it.
-                          aria-label={category.name || 'Untitled category'}
-                          aria-pressed={isActive}
-                        >
-                          <span className={`survey-subrow__glyph${glyph.length > 1 ? ' is-wide' : ''}`} aria-hidden="true">
-                            {glyph}
-                          </span>
-                        </button>
-                      );
-                    }) : (
-                      <span className="survey-subrow__empty">No categories</span>
-                    )}
-                  </div>
-
-                  <div className="survey-subrow__side survey-subrow__side--end">
-                    {look.reuse === 'bar' ? (
+                    <SurveyCategoryChips
+                      templateId={selectedTemplate?.id}
+                      modules={modules}
+                      selectedModuleId={selectedModule?.id}
+                      selectedCategoryId={selectedCategoryId}
+                      armed={activeTool === 'survey-marker'}
+                      tip={chromeTip}
+                      max={surveyBarFit.plan.rowMax}
+                      onPick={(categoryId, moduleId) => {
+                        if (moduleId && moduleId !== selectedModule?.id) setSelectedModuleId(moduleId);
+                        setSelectedCategoryId(categoryId);
+                        setActiveTool('survey-marker');
+                      }}
+                    />
+                    {!look.more && (
                       <div className="survey-subrow__reuse">
                         <div className="chrome-divider" aria-hidden="true" />
                         {reuseSwitch(false)}
                       </div>
-                    ) : (
-                      <div className="survey-subrow__more">
-                        {look.template !== 'more' && <div className="chrome-divider" aria-hidden="true" />}
-                        <ToolbarOverflowMenu items={moreItems} tooltip={chromeTip('More', 'below')} />
-                      </div>
                     )}
+                  </div>
+
+                  <div className="survey-subrow__side survey-subrow__side--end">
                     <button
                       type="button"
                       className="survey-subrow__done"
@@ -38664,7 +38712,7 @@ ${pageBlocks}
                       onClick={handleLeaveSurvey}
                       {...chromeTip('Leave Survey', 'below')}
                     >
-                      Done
+                      {surveyBarFit.plan.done === 'glyph' ? <Icon name="check" size={16} color="currentColor" /> : 'Done'}
                     </button>
                   </div>
                 </div>
@@ -38719,6 +38767,23 @@ ${pageBlocks}
             : (activeCategoryDropdown && !TOOL_BAR_GROUPS.includes(activeCategoryDropdown) ? activeCategoryDropdown : null);
           if (subRowGroup && subRowHost) {
             rows.push(renderSubRow(subRowGroup, subRowHost, false));
+          }
+          // Owner 2026-10-13: the template's entities as swatches in a third
+          // bar under the survey bar (desktop; none when it has no entities).
+          if (subRowGroup === 'survey' && subRowHost && !mobileMode && (selectedTemplate?.entities || []).length > 0) {
+            rows.push(createPortal(
+              <SurveyEntityBar
+                templateId={selectedTemplate.id}
+                entities={selectedTemplate.entities}
+                nextEntityId={mobileSurveyEntityId || lastSurveyEntityId}
+                surveyMarkers={surveyMarkers}
+                onPick={handleSurveyEntityBarPick}
+                tip={chromeTip}
+                max={surveyBarFit.plan.entityRowMax}
+              />,
+              subRowHost,
+              'survey-entity-row'
+            ));
           }
           return rows;
         })()}
@@ -40958,6 +41023,15 @@ ${pageBlocks}
         />,
         document.getElementById('chrome-sub-toolbar-host'),
       )}
+      <TextSelectionQuickMenu
+        selection={activeTool === 'text-select' && !selectedTextMarkupActionSelection && !showAnnotationColorPicker && !textLinkEditorOpen
+          ? liveTextSelectionActionSelection
+          : null}
+        activeMarkupTypes={liveTextSelectionActionSelection?.activeMarkupTypes || []}
+        paintByMark={textMarkupPaintByType}
+        onAction={handleTextSelectionQuickAction}
+        onCopy={handleTextSelectionCopy}
+      />
       <UndoToast toast={undoToast} onDismiss={dismissUndoToast} />
 
       {/* Renderer toggle badge (hidden dev tool — Ctrl+Shift+V to toggle, ?renderer=canvas to force) */}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
+import { isPhoneLayout } from '../utils/layoutMode.js';
 
 export const MOBILE_EDGE_SWIPE_START_PX = 24;
 export const MOBILE_EDGE_SWIPE_CLAIM_PX = 12;
@@ -63,7 +64,7 @@ export default function useMobileEdgeSwipeBack({ enabled, onBack, surfaceRef }) 
 
   useEffect(() => {
     if (!enabled || typeof window === 'undefined') return undefined;
-    if (!window.matchMedia('(max-width: 720px)').matches) return undefined;
+    if (!isPhoneLayout()) return undefined;
 
     let gesture = null;
     let frame = 0;

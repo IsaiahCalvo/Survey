@@ -39,6 +39,9 @@ export const NO_AUTO_SELECT_TOOLS = Object.freeze([
   'pen',
   'highlighter',
   'survey-marker',
+  // The Survey Marker tool in its Freehand mode (owner 2026-10-13): like the
+  // box, the new marker opens in the Survey panel instead.
+  'survey-marker-freehand',
   'text',
   'callout',
 ]);

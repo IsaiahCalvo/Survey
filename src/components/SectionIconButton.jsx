@@ -21,8 +21,9 @@
  * `word` swaps the glyph for a short word on the same box, ink and states
  * ("All" / "None" in a select-mode row, 13px/500).
  *
- * Tooltip: inside the PDF viewer the app's shared chip (TooltipContext); on
- * the home hub, which has no chip host, the native title.
+ * Tooltip: the app's shared chip (TooltipContext) - the viewer's host inside
+ * a document, the hub's own host on the home screen (KAL-65). Only a render
+ * with no host at all (a unit test) falls back to the native title.
  */
 import { useContext } from 'react';
 import Icon from '../Icons.jsx';

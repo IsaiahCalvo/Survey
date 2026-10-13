@@ -20,7 +20,7 @@ import { supabase } from '../supabaseClient';
 import { pdfByteCache } from './pdfByteCache.js';
 import { purgeAnnotationDoc } from './annotationDocSync';
 import { normalizeProjectItem } from './archiveContract';
-import { removeSurveyMediaForDocument } from './surveyMediaService.js';
+import { purgeWithSurveyMedia, survivingDocumentsFinder } from './surveyMediaPurge.js';
 
 const PROJECT_ARCHIVE_COLUMNS =
   'id, user_id, name, user_archived_at, user_archive_expires_at, user_archived_by, archive_group_id';
@@ -83,14 +83,24 @@ export async function deleteProjectForever(projectId) {
   if (!projectId) return { success: false, error: 'No project selected.' };
 
   // Captured BEFORE the purge: once the rows are gone we can no longer discover
-  // which documents need their local durable copy cleared.
+  // which documents need their local durable copy cleared. Only ARCHIVED
+  // children are purged (purge_archived_project detaches live ones), so only
+  // those lose their media and local copy.
   const { data: childRows } = await supabase
     .from('documents')
-    .select('id')
-    .eq('project_id', projectId);
+    .select('id, user_id, user_archived_at')
+    .eq('project_id', projectId)
+    .not('user_archived_at', 'is', null);
   const childIds = (childRows || []).map((row) => row.id);
 
-  const result = await callArchiveRpc('purge_archived_project', { p_project_id: projectId });
+  // Survey media of the purged (archived) children is cleaned up only AFTER the
+  // purge has succeeded (surveyMediaPurge.js): this user's own uploads now,
+  // everyone else's by the server sweep (list_orphaned_survey_media).
+  const result = await purgeWithSurveyMedia({
+    documents: childRows || [],
+    purge: () => callArchiveRpc('purge_archived_project', { p_project_id: projectId }),
+    findSurvivingDocuments: survivingDocumentsFinder(supabase),
+  });
   if (!result.success) return result;
 
   const orphanedPaths = result.data?.orphaned_paths || [];
@@ -108,8 +118,6 @@ export async function deleteProjectForever(projectId) {
   // Best-effort, same as the single-document path: the rows are already gone, so
   // a local-cache hiccup must not report the delete as failed.
   for (const childId of childIds) {
-    // Survey media (best-effort, never throws); the rest is swept server-side.
-    await removeSurveyMediaForDocument(childId);
     try {
       await purgeAnnotationDoc(childId);
     } catch (err) {

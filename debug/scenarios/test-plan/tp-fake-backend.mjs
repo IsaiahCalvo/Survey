@@ -34,6 +34,25 @@
 // get_my_document_role answers per person (the document's owner, else their
 // document_collaborators row). Without a userId everything acts as the owner,
 // exactly as before.
+//
+// Documents and their marks (2026-10-13, KAL-440 / KAL-443) follow the real
+// rules too:
+//   documents             SELECT owner or active collaborator; INSERT only as
+//                         yourself; the unique index documents_user_project_sha_uidx
+//                         (same user + project + content_sha256 -> 23505)
+//                         (20260606120000_rebuild_yjs_source_of_truth.sql)
+//   document_annotations  SELECT viewer+; INSERT own row, editor+, unlocked;
+//                         UPDATE / DELETE own row as editor+ OR document owner,
+//                         unlocked (20260522000000_kal49_document_lock_state.sql).
+//                         A refused UPDATE/DELETE matches zero rows and is NOT
+//                         an error, exactly like Postgres row-level security.
+//                         `annotationWritePolicy: 'role'` switches UPDATE /
+//                         DELETE to the PROPOSED rule (any editor+, any author)
+//                         so a test can show both sides of the decision.
+// Storage (opt-in, `storage: true`): an in-memory documents bucket. Writes
+// only into your own folder (first path segment = you); reads your own folder
+// or a file a document you can see points at (20260703030000 + the
+// collaborator read policy). Without the option storage answers {} as before.
 
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -185,11 +204,20 @@ function applyFilters(rows, params) {
 }
 
 export class FakeBackend {
-  constructor({ documentId, ownerId = 'dev-test-user', role = 'owner', latencyMs = 0 } = {}) {
+  constructor({
+    documentId,
+    ownerId = 'dev-test-user',
+    role = 'owner',
+    latencyMs = 0,
+    storage = false,
+    annotationWritePolicy = 'author',
+  } = {}) {
     this.documentId = documentId;
     this.ownerId = ownerId;
     this.role = role;
     this.latencyMs = latencyMs;
+    this.storageObjects = storage ? new Map() : null;
+    this.annotationWritePolicy = annotationWritePolicy;
     this.tables = new Map();
     this.counts = new Map();
     this.sockets = new Set();
@@ -273,7 +301,33 @@ export class FakeBackend {
     return (rank[role] || 0) >= rank[need];
   }
 
+  /** public.user_can_access_document(doc_id, required_role), in memory. */
+  canAccessDocument(caller, documentId, need = 'viewer') {
+    const doc = this.table('documents').find((d) => d.id === documentId);
+    if (!doc || !doc.user_id) return false;
+    if (doc.user_archived_at) return doc.user_id === caller;
+    if (doc.user_id === caller) return true;
+    const row = this.table('document_collaborators')
+      .find((r) => r.document_id === documentId && r.user_id === caller && (r.status ?? 'active') === 'active');
+    const rank = { viewer: 1, editor: 2, owner: 3 };
+    return Boolean(row) && (rank[row.role] || 0) >= rank[need];
+  }
+
+  documentLocked(documentId) {
+    return Boolean(this.table('documents').find((d) => d.id === documentId)?.locked_at);
+  }
+
+  /** document_annotations UPDATE / DELETE USING clause (current or proposed rule). */
+  canWriteAnnotation(caller, row) {
+    if (this.documentLocked(row.document_id)) return false;
+    if (this.annotationWritePolicy === 'role') return this.canAccessDocument(caller, row.document_id, 'editor');
+    return (row.user_id === caller && this.canAccessDocument(caller, row.document_id, 'editor'))
+      || this.canAccessDocument(caller, row.document_id, 'owner');
+  }
+
   canSee(caller, name, row) {
+    if (name === 'documents') return this.canAccessDocument(caller, row.id, 'viewer');
+    if (name === 'document_annotations') return this.canAccessDocument(caller, row.document_id, 'viewer');
     if (name === 'templates') return this.canAccessTemplate(caller, row.id, 'viewer');
     if (name === 'template_collaborators') return this.canAccessTemplate(caller, row.template_id, 'viewer');
     if (name === 'template_invites') return this.canAccessTemplate(caller, row.template_id, 'owner');
@@ -281,18 +335,28 @@ export class FakeBackend {
   }
 
   canInsert(caller, name, row) {
+    if (name === 'documents') return row.user_id === caller;
+    if (name === 'document_annotations') {
+      return row.user_id === caller
+        && this.canAccessDocument(caller, row.document_id, 'editor')
+        && !this.documentLocked(row.document_id);
+    }
     if (name === 'templates') return row.user_id === caller;
     if (name === 'template_collaborators' || name === 'template_invites') return this.canAccessTemplate(caller, row.template_id, 'owner');
     return true;
   }
 
   canUpdate(caller, name, row) {
+    if (name === 'documents') return row.user_id === caller;
+    if (name === 'document_annotations') return this.canWriteAnnotation(caller, row);
     if (name === 'templates') return row.user_id === caller || this.canAccessTemplate(caller, row.id, 'editor');
     if (name === 'template_collaborators' || name === 'template_invites') return this.canAccessTemplate(caller, row.template_id, 'owner');
     return true;
   }
 
   canDelete(caller, name, row) {
+    if (name === 'documents') return row.user_id === caller;
+    if (name === 'document_annotations') return this.canWriteAnnotation(caller, row);
     if (name === 'templates') return row.user_id === caller || this.canAccessTemplate(caller, row.id, 'owner');
     if (name === 'template_collaborators') return row.user_id === caller || this.canAccessTemplate(caller, row.template_id, 'owner');
     if (name === 'template_invites') return this.canAccessTemplate(caller, row.template_id, 'owner');
@@ -370,6 +434,7 @@ export class FakeBackend {
     if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: cors, body: '' });
 
     if (path.startsWith('/auth/')) { this.count(`${method} ${path}`); return reply(401, { message: 'no session (fake backend)' }); }
+    if (path.startsWith('/storage/') && this.storageObjects) return this.handleStorage(route, { method, path, caller, reply, cors });
     if (path.startsWith('/storage/') || path.startsWith('/functions/')) { this.count(`${method} ${path}`); return reply(200, {}); }
 
     const rpc = path.match(/^\/rest\/v1\/rpc\/(.+)$/);
@@ -422,6 +487,19 @@ export class FakeBackend {
         const existingIndex = conflict
           ? rows.findIndex((r) => conflict.every((c) => String(r[c]) === String(row[c])))
           : rows.findIndex((r) => r.id === row.id);
+        if (name === 'documents' && existingIndex < 0 && this.violatesDocumentShaIndex(row)) {
+          this.count('refused INSERT documents (unique content hash)');
+          return reply(409, {
+            code: '23505',
+            message: 'duplicate key value violates unique constraint "documents_user_project_sha_uidx"',
+          });
+        }
+        if (existingIndex >= 0 && !ignore && !this.canUpdate(caller, name, rows[existingIndex])) {
+          // INSERT ... ON CONFLICT DO UPDATE needs the UPDATE policy on the
+          // existing row; Postgres raises rather than skipping it.
+          this.count(`refused UPSERT ${name} (row-level security)`);
+          return reply(403, { code: '42501', message: `new row violates row-level security policy (USING expression) for table "${name}"` });
+        }
         if (existingIndex >= 0) {
           if (!ignore) {
             const old = rows[existingIndex];
@@ -458,8 +536,99 @@ export class FakeBackend {
     return reply(405, { message: 'method' });
   }
 
+  /** documents_user_project_sha_uidx: same user + project + content hash. */
+  violatesDocumentShaIndex(row) {
+    if (!row.content_sha256) return false;
+    return this.table('documents').some((d) => d.id !== row.id
+      && d.content_sha256 === row.content_sha256
+      && d.user_id === row.user_id
+      && (d.project_id ?? null) === (row.project_id ?? null));
+  }
+
+  /** Storage reads: your own folder, or a file a document you can see points at. */
+  canReadObject(caller, objectPath) {
+    if (objectPath.split('/')[0] === caller) return true;
+    return this.table('documents').some((d) => d.file_path === objectPath && this.canSee(caller, 'documents', d));
+  }
+
+  /** The in-memory documents bucket (constructor option `storage: true`). */
+  async handleStorage(route, { method, path, caller, reply, cors }) {
+    const req = route.request();
+    this.count(`STORAGE ${method}`);
+    const infoMatch = method === 'GET' && path.match(/^\/storage\/v1\/object\/info\/(?:authenticated\/)?([^/]+)\/(.+)$/);
+    if (infoMatch) {
+      // Object metadata (the app's PDF cache checks it before every read).
+      const infoPath = decodeURIComponent(infoMatch[2]);
+      const object = this.storageObjects.get(`${infoMatch[1]}/${infoPath}`);
+      if (!object || !this.canReadObject(caller, infoPath)) {
+        return reply(400, { statusCode: '404', error: 'not_found', message: 'Object not found' });
+      }
+      return reply(200, {
+        id: `${infoMatch[1]}/${infoPath}`,
+        name: infoPath,
+        bucket_id: infoMatch[1],
+        version: object.version,
+        etag: `"${object.version}"`,
+        size: object.bytes.length,
+        content_type: object.type,
+        last_modified: object.updated_at,
+        created_at: object.updated_at,
+      });
+    }
+    const objectMatch = path.match(/^\/storage\/v1\/object\/(?:authenticated\/)?([^/]+)(?:\/(.+))?$/);
+    if (!objectMatch) return reply(400, { statusCode: '400', error: 'unsupported', message: `fake storage: ${method} ${path}` });
+    const bucket = objectMatch[1];
+    const objectPath = objectMatch[2] ? decodeURIComponent(objectMatch[2]) : null;
+    const key = (p) => `${bucket}/${p}`;
+    const ownFolder = (p) => p.split('/')[0] === caller;
+    if ((method === 'POST' || method === 'PUT') && objectPath) {
+      if (!ownFolder(objectPath)) return reply(403, { statusCode: '403', error: 'Unauthorized', message: 'new row violates row-level security policy' });
+      const upsert = method === 'PUT' || String(req.headers()['x-upsert']) === 'true';
+      if (!upsert && this.storageObjects.has(key(objectPath))) {
+        return reply(400, { statusCode: '409', error: 'Duplicate', message: 'The resource already exists' });
+      }
+      const contentType = req.headers()['content-type'] || 'application/octet-stream';
+      const raw = (req.postDataBuffer && req.postDataBuffer()) || Buffer.from(req.postData() || '', 'latin1');
+      let bytes = raw;
+      let type = contentType;
+      if (contentType.startsWith('multipart/form-data')) {
+        const form = await new Response(raw, { headers: { 'content-type': contentType } }).formData();
+        const file = [...form.values()].find((v) => typeof v === 'object' && v && typeof v.arrayBuffer === 'function');
+        bytes = file ? Buffer.from(await file.arrayBuffer()) : Buffer.alloc(0);
+        type = file?.type || 'application/pdf';
+      }
+      this.storageObjects.set(key(objectPath), { bytes, type, owner: caller, updated_at: nowIso(), version: fakeUuid() });
+      return reply(200, { Key: key(objectPath), Id: key(objectPath) });
+    }
+    if (method === 'GET' && objectPath) {
+      const object = this.storageObjects.get(key(objectPath));
+      if (!object || !this.canReadObject(caller, objectPath)) {
+        return reply(400, { statusCode: '404', error: 'not_found', message: 'Object not found' });
+      }
+      return route.fulfill({ status: 200, headers: cors, contentType: object.type, body: object.bytes });
+    }
+    if (method === 'DELETE' && !objectPath) {
+      let body = {};
+      try { body = JSON.parse(req.postData() || '{}') || {}; } catch { body = {}; }
+      const removed = [];
+      for (const p of body.prefixes || []) {
+        if (!ownFolder(p) || !this.storageObjects.has(key(p))) continue; // RLS: silently not yours
+        this.storageObjects.delete(key(p));
+        removed.push({ name: p, bucket_id: bucket });
+      }
+      return reply(200, removed);
+    }
+    return reply(400, { statusCode: '400', error: 'unsupported', message: `fake storage: ${method} ${path}` });
+  }
+
+  /** Put a stored file in the bucket (as its owner had uploaded it). */
+  seedStorageObject(objectPath, bytes, { bucket = 'documents', type = 'application/pdf' } = {}) {
+    if (!this.storageObjects) throw new Error('construct FakeBackend with { storage: true }');
+    this.storageObjects.set(`${bucket}/${objectPath}`, { bytes: Buffer.from(bytes), type, owner: objectPath.split('/')[0], updated_at: nowIso(), version: fakeUuid() });
+  }
+
   /**
-   * Put marks (and optional eraser lanes) in the document "on the server"
+   * Put marks (and optional eraser lanes) in the document "on the server\"
    * before a window opens it: one write-ahead-log row built with the app's own
    * store code, exactly as another device would have written it.
    */

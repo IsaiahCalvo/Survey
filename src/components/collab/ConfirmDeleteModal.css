@@ -20,7 +20,7 @@
    under the mobile viewer's header/dock (5850-5900) and bottom sheets
    (7200-7400), so a delete confirmation asked from a sheet opened BEHIND it.
    On a phone it clears all of them (still under the toasts at 100000). */
-@media screen and (max-width: 720px) {
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   .confirm-delete-modal__backdrop {
     z-index: 9000;
   }

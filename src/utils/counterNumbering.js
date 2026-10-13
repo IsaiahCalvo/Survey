@@ -16,8 +16,18 @@
  *       (seriesStart || 1) + i
  *     so the first pin shows seriesStart and subsequent pins increment by 1.
  *
- * Mutates the passed annotationsByPage map in place (each counter's
- * `data.displayNumber` is reassigned). Returns the same reference.
+ * Copy-on-write: page objects are never edited. A page whose counters get a
+ * new number is replaced IN THE PASSED MAP by a new page object (new objects
+ * array, new counter objects; every other mark shared). Pages whose numbers
+ * are already right keep their identity. Returns the same map reference, so
+ * callers must pass a map they own (every caller passes a fresh shallow copy).
+ *
+ * Why (Codex review, release PR, 2026-10-13): undo / redo snapshots share
+ * unchanged pages by object identity (utils/historySnapshotShare.js). The old
+ * version reassigned `obj.data` on the live counter objects, so a page whose
+ * numbers changed (a counter added or removed on another page) kept its
+ * identity and the next snapshot reused its stale copy — undo / redo could
+ * then restore old numbers. It could also edit a restored snapshot page.
  */
 
 const LEGACY_KEY = '__legacy__';
@@ -31,34 +41,48 @@ export function renumberCounters(annotationsByPage) {
   for (const pageKey of Object.keys(annotationsByPage)) {
     const page = annotationsByPage[pageKey];
     if (!page || !Array.isArray(page.objects)) continue;
-    for (const obj of page.objects) {
+    page.objects.forEach((obj, index) => {
       if (obj && obj.data && obj.data.type === 'counter') {
         const key = obj.data.seriesId || LEGACY_KEY;
         if (!groups.has(key)) groups.set(key, []);
-        groups.get(key).push(obj);
+        groups.get(key).push({ obj, pageKey, index });
       }
-    }
+    });
   }
 
+  // pageKey -> objects array copy, made the first time a counter on that page
+  // needs a new number.
+  const replacedObjects = new Map();
   for (const [, list] of groups) {
     list.sort((a, b) => {
-      const at = (a.data && a.data.createdAt) || 0;
-      const bt = (b.data && b.data.createdAt) || 0;
+      const at = (a.obj.data && a.obj.data.createdAt) || 0;
+      const bt = (b.obj.data && b.obj.data.createdAt) || 0;
       return at - bt;
     });
 
     // seriesStart of the EARLIEST pin in the group is the source of truth.
     // We mirror it onto every pin so any one is sufficient to reconstruct
     // the series start (defensive against partial deletes).
-    const startBasis = (list[0] && list[0].data && Number(list[0].data.seriesStart)) || 1;
+    const first = list[0] && list[0].obj;
+    const startBasis = (first && first.data && Number(first.data.seriesStart)) || 1;
 
-    list.forEach((obj, i) => {
-      obj.data = {
-        ...obj.data,
-        displayNumber: startBasis + i,
-        seriesStart: startBasis,
+    list.forEach(({ obj, pageKey, index }, i) => {
+      const displayNumber = startBasis + i;
+      if (obj.data.displayNumber === displayNumber && obj.data.seriesStart === startBasis) return;
+      let objects = replacedObjects.get(pageKey);
+      if (!objects) {
+        objects = annotationsByPage[pageKey].objects.slice();
+        replacedObjects.set(pageKey, objects);
+      }
+      objects[index] = {
+        ...obj,
+        data: { ...obj.data, displayNumber, seriesStart: startBasis },
       };
     });
+  }
+
+  for (const [pageKey, objects] of replacedObjects) {
+    annotationsByPage[pageKey] = { ...annotationsByPage[pageKey], objects };
   }
 
   return annotationsByPage;

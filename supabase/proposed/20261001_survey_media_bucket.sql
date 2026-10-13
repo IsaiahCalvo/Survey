@@ -5,6 +5,10 @@
 -- hand-managed (apply in the SQL editor / Management API, then record the
 -- version). Kept out of supabase/migrations/ because deploy-production runs
 -- `supabase db push`. Rollback: supabase/rollbacks/20261001_survey_media_bucket.down.sql
+-- Since 2026-10-13 the same statements also live in the versioned migration
+-- supabase/migrations/20261001131413_survey_media_bucket_20261001.sql (the
+-- version prod recorded, so db push skips it there; fresh / local / staging
+-- databases that replay migrations get the bucket). Keep the two identical.
 --
 -- Survey media (photos, videos, audio) as real files - owner approval
 -- 2026-10-01, see the media contract and src/services/surveyMediaService.js.
@@ -43,12 +47,12 @@
 --     its media stays readable to the owner and comes back on restore. Nothing
 --     to do.
 --   * "Delete forever" in the app (deleteDocumentForever /
---     deleteProjectForever) now removes the purged documents' media right after
---     the purge RPC succeeds (best-effort, like the PDF unlink). Once the row is
---     gone the "document owner" half of survey_media_delete no longer matches,
---     so that client pass removes the media the purging user uploaded
---     (survey_media_read/delete let an uploader see and remove their own
---     objects); a collaborator's media in that document is left for the sweep.
+--     deleteProjectForever) removes ALL of the document's media BEFORE the
+--     purge RPC, while the purging user still owns the row (the "document
+--     owner" half of survey_media_delete stops matching once the row is gone),
+--     then purges (src/services/surveyMediaPurge.js, 2026-10-13). Paths that
+--     could not be removed are queued for a client retry; the ones only the
+--     owner could have removed then fall to the sweep.
 --   * The nightly sweep (sweep_expired_archives via the archive-purge-sweep
 --     Edge Function), account deletion (delete-account cascades documents) and
 --     any other row delete leave media behind as orphans. list_orphaned_survey_media()

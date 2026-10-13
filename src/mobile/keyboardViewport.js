@@ -527,6 +527,20 @@ export function isKeyboardEditable(el) {
   return false;
 }
 
+/**
+ * KAL-461: end the typing in a phone sheet or a dialog (its field saves when
+ * you leave it). Used when the app goes to the background and when the
+ * viewer is left. Typing on the page itself (the PDF text box) is left alone:
+ * it has its own commit rules. Returns true when it ended something.
+ */
+export function commitPanelTyping(doc = typeof document !== 'undefined' ? document : null) {
+  const active = doc?.activeElement;
+  if (!isKeyboardEditable(active)) return false;
+  if (!active.closest?.('[data-mobile-sheet], [role="dialog"], [role="alertdialog"]')) return false;
+  active.blur?.();
+  return true;
+}
+
 function hasOnScreenKeyboard(win) {
   try {
     if (Number(win?.navigator?.maxTouchPoints) > 0) return true;
@@ -1204,6 +1218,19 @@ export function createKeyboardViewportController(options = {}) {
     schedule();
   };
 
+  // KAL-461: leaving the app (home swipe, app switcher, a call) ends the typing
+  // in a sheet or a dialog, so a field that saves when you leave it (a Survey
+  // Marker's name, a space or region name) saves now. iOS may close a page that
+  // sits in the background - the Expo shell then reloads it - and an unsaved
+  // field would be gone. Typing on the page itself (the PDF text box) is left
+  // alone: it has its own commit rules.
+  const onAppHidden = (event) => {
+    if (event?.type === 'visibilitychange' && win.document?.visibilityState !== 'hidden') return;
+    commitPanelTyping(win.document);
+  };
+  win.document?.addEventListener?.('visibilitychange', onAppHidden);
+  win.addEventListener?.('pagehide', onAppHidden);
+
   const vv = win.visualViewport || null;
   vv?.addEventListener?.('resize', schedule);
   vv?.addEventListener?.('scroll', schedule);
@@ -1247,6 +1274,8 @@ export function createKeyboardViewportController(options = {}) {
     revealedScrollers.clear();
     dropScrollRoom();
     resetKeyboardClock();
+    win.document?.removeEventListener?.('visibilitychange', onAppHidden);
+    win.removeEventListener?.('pagehide', onAppHidden);
     vv?.removeEventListener?.('resize', schedule);
     vv?.removeEventListener?.('scroll', schedule);
     win.removeEventListener?.('resize', schedule);
