@@ -164,6 +164,14 @@ await step('settings', async () => {
   await page.waitForTimeout(600);
   out.editProfileBySpace = await dialog.evaluate((d) => [...d.querySelectorAll('input')].some((i) => !i.disabled && !i.readOnly && i.getBoundingClientRect().width > 0));
   await shot('6-edit-profile-by-space');
+  // A text field still types a space (never taken for panning).
+  const first = dialog.locator('input:not([disabled]):not([readonly])').first();
+  if (await first.count()) {
+    await first.focus();
+    await page.keyboard.press('End');
+    await page.keyboard.type(' X');
+    out.textFieldTypesSpace = (await first.inputValue()).endsWith(' X');
+  }
   const cancel = dialog.getByRole('button', { name: /^Cancel$/ });
   if (await cancel.count()) { await cancel.focus(); await page.keyboard.press('Space'); await page.waitForTimeout(400); }
   const close = dialog.getByRole('button', { name: 'Close' }).first();
