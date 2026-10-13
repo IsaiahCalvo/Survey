@@ -5,6 +5,10 @@
 -- hand-managed (apply in the SQL editor / Management API, then record the
 -- version). Kept out of supabase/migrations/ because deploy-production runs
 -- `supabase db push`. Rollback: supabase/rollbacks/20261001_survey_media_bucket.down.sql
+-- Since 2026-10-13 the same statements also live in the versioned migration
+-- supabase/migrations/20261001131413_survey_media_bucket_20261001.sql (the
+-- version prod recorded, so db push skips it there; fresh / local / staging
+-- databases that replay migrations get the bucket). Keep the two identical.
 --
 -- Survey media (photos, videos, audio) as real files - owner approval
 -- 2026-10-01, see the media contract and src/services/surveyMediaService.js.
