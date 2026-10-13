@@ -7,6 +7,7 @@
  * for cut/copy/paste/duplicate/rotate/mirror/reset/delete. Honors pageTransformations.
  */
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
+import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import { createPortal } from 'react-dom';
 import {
   DndContext,
@@ -941,6 +942,9 @@ const PagesPanel = ({
   // (src/components/dismissRules.js, owner 2026-09-23) — an outside press
   // closes it and still does its job (R1), a press on the bare page only
   // closes it (R2), Escape closes it (R5).
+  // KAL-66: keyboard focus goes into this menu as it opens, Up/Down move,
+  // and focus returns to its button when it closes (mouse/touch unchanged).
+  useMenuFocus(contextMenuRef, Boolean(contextMenu));
   useEffect(() => {
     if (!contextMenu) return undefined;
     return watchLightPopover({

@@ -497,6 +497,12 @@ const PDFSidebar = React.forwardRef(({
       // Phone: swipe down anywhere on the sheet + the keyboard lift (owner
       // 2026-09-30, see useMobileSheetMotion).
       {...(mobileMode ? sheetProps : null)}
+      // KAL-66: on the phone this bottom sheet is a named region (VoiceOver
+      // reads "Pages", "Spaces"...). Not role="dialog": several viewer key
+      // and press rules treat [role="dialog"] as "a modal owns this", and
+      // the sheet is not modal. The desktop rail has its own region inside.
+      role={mobileMode && !isCollapsed ? 'region' : undefined}
+      aria-label={mobileMode && !isCollapsed ? PANEL_TITLES[activeTab] : undefined}
       className={`${mobileMode ? 'mobile-pdf-sheet ' : 'left-rail '}${mobileMode && sheetFullscreen ? 'is-fullscreen ' : ''}${isCollapsed ? 'is-collapsed' : ''}`} style={{
       // The two heights (owner 2026-10-01: "the small one and the big one").
       // Full has to be written here, not only from the stylesheet: this inline

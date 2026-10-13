@@ -25,6 +25,14 @@ import { appDebug } from '../viewerShared.js';
 import { deepClone } from '../utils/deepClone.js';
 import { zOrderMenuState } from '../utils/disabledActions.js';
 import { watchLightPopover } from '../components/dismissRules.js';
+import { useMenuFocus } from './useMenuFocus.js';
+
+// The menu renders elsewhere (PDFViewer) and is found by its marker.
+const ANNOTATION_MENU_REF = {
+  get current() {
+    return typeof document === 'undefined' ? null : document.querySelector('[data-annotation-context-menu]');
+  },
+};
 import {
   clampFloatingMenuPosition,
   DESKTOP_RIGHT_RAIL_WIDTH,
@@ -130,6 +138,9 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
   // still does its job (R1 — select the mark pressed, press the button); a
   // press on the bare page only closes it (R2); Escape closes it and nothing
   // under it (R5). Still capture phase, so descendants cannot stop it.
+  // KAL-66: keyboard focus goes into the annotation menu as it opens, Up/Down move,
+  // and focus returns to its button when it closes (mouse/touch unchanged).
+  useMenuFocus(ANNOTATION_MENU_REF, Boolean(annotationContextMenu));
   useEffect(() => {
     if (!annotationContextMenu) return undefined;
     let stop = null;

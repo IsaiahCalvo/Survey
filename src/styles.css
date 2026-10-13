@@ -3120,6 +3120,22 @@ input[type="text"].spaces-region__name-input:focus-visible {
   outline-offset: 2px;
 }
 
+/* KAL-66: the same ring, drawn INSIDE the edge, for controls that sit flush
+   against a clipping edge — the document tab strip, the Survey panel's module
+   tabs and header buttons, the phone header, the phone document cards. With
+   the outer 2px gap the clip cut most of the ring away (a focused tab showed
+   9-16% of it; measured with the a11y scan), so a keyboard user could not see
+   where they were. Same colour and width, only the offset differs. */
+[data-app-tab]:focus-visible,
+.survey-rail__tabs [role="tab"]:focus-visible,
+.section-icon-btn:focus-visible,
+[data-drag-rearrange-handle]:focus-visible,
+.survey-subrow__done:focus-visible,
+.mobile-pdf-header__icon:focus-visible,
+.mobile-doc-card:focus-visible {
+  outline-offset: -2px;
+}
+
 /* UX 2026-09-23 (owner: "When I click in here, I shouldn't see any gold
    bars ... that shouldn't ever happen in any input field"). Browsers mark a
    TEXT field :focus-visible on a plain mouse click, so every typing field drew
@@ -3443,7 +3459,7 @@ textarea:focus-visible,
   box-shadow: 0 0 0 1px var(--border-strong), 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 .pages-panel-more:focus-visible > span {
-  box-shadow: 0 0 0 2px var(--focus-ring, var(--accent));
+  box-shadow: 0 0 0 2px var(--focus-ring, var(--text-2));
 }
 @media (prefers-reduced-motion: reduce) {
   .pages-panel-more > span { transition: none; }
@@ -3501,6 +3517,6 @@ textarea:focus-visible,
 }
 /* Keyboard: a focused card shows where focus is (it is the drag target). */
 [data-page-card]:focus-visible {
-  outline: 2px solid var(--focus-ring, var(--accent));
+  outline: 2px solid var(--focus-ring, var(--text-2));
   outline-offset: -2px;
 }

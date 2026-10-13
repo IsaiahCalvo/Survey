@@ -137,6 +137,7 @@ function TabItem({
       {...sortableAttributes}
       {...sortableListeners}
       data-pdf-tab-id={!isHome ? tab.id : undefined}
+      data-app-tab=""
       // Owner 2026-10-01: the held tab takes the app's one picked-up look
       // (states.css [data-drag-lifted]): solid raised surface, soft shadow,
       // no gold edge, fully opaque so no neighbour shows through.

@@ -2990,7 +2990,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
           </div>
 
           {moreOpen && (
-            <div className="mobile-pdf-tools__popover is-more">
+            <div className="mobile-pdf-tools__popover is-more" role="group" aria-label="More document options">
               <button
                 type="button"
                 disabled={!bottomToolbarApi?.exportAnnotatedPdf}

@@ -1955,6 +1955,10 @@ const SurveySpacesRail = ({
               data-viewer-occluder={isSurveyPanelCollapsed ? undefined : (mobileMode ? 'sheet' : 'side')}
               // Phone: swipe down anywhere + the keyboard lift (owner 2026-09-30).
               {...(mobileMode ? surveySheetProps : null)}
+              // KAL-66: the phone Survey sheet is a named region (not a dialog:
+              // Escape here must still put the Survey Marker tool down).
+              role={mobileMode && !isSurveyPanelCollapsed ? 'region' : undefined}
+              aria-label={mobileMode && !isSurveyPanelCollapsed ? 'Survey' : undefined}
               className={`${mobileMode ? 'mobile-pdf-sheet mobile-survey-sheet ' : 'survey-rail '}${mobileMode && surveySheetExpanded ? 'is-expanded ' : ''}${mobileMode && surveySheetFullscreen ? 'is-fullscreen ' : ''}${isSurveyPanelCollapsed ? 'is-collapsed' : ''}`}
               style={{
                 // PASS 7 (DESIGN-SYSTEM.md, owner): every phone panel opens at
