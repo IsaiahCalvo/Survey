@@ -4760,7 +4760,7 @@ export default function App({ devPreviewReturnTab = null }) {
               // popup tokens (--radius-md / --shadow-popover) that
               // AnnotationDropdown's popover uses.
               const fitMenu = (anchorStyle) => (
-                <div style={{ position: 'absolute', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-popover)', minWidth: '140px', zIndex: 6000, padding: '2px', ...anchorStyle }}>
+                <div role="menu" aria-label="Fit modes" style={{ position: 'absolute', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-popover)', minWidth: '140px', zIndex: 6000, padding: '2px', ...anchorStyle }}>
                   <DismissBarrier active insideRefs={railFitMenuRefs} onDismiss={dismissRailFitMenu} />
                   {ZOOM_MODE_OPTIONS.map((option) => {
                     if (option.id === ZOOM_MODES.MANUAL) return null;
@@ -4770,6 +4770,10 @@ export default function App({ devPreviewReturnTab = null }) {
                         key={option.id}
                         onClick={() => api.handleZoomModeSelect(option.id)}
                         data-active={isActive}
+                        // A menu row (touch audit 2026-10-13: 44px rows by
+                        // finger, styles/touchTargets.css).
+                        role="menuitemradio"
+                        aria-checked={isActive}
                         /* Owner 2026-10-02 (phone/desktop consistency): the
                            phone's menu - a label, and a check on the chosen
                            row (which steps up to --text-1). No fit glyphs on
