@@ -136,7 +136,8 @@ const focusVisibleField = (selector) => {
   return true;
 };
 
-/* The phone tree is the one on screen (hub.css swaps the layouts at 720px). */
+/* The phone tree is the one on screen (hub.css swaps the layouts on the
+   phone-layout media query, utils/layoutMode.js). */
 const mobileLayoutActive = () => typeof document !== 'undefined'
   && [...document.querySelectorAll('.templates-mobile-layout')].some((node) => node.getClientRects().length > 0);
 

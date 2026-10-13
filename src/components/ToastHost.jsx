@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { isPhoneLayout } from '../utils/layoutMode.js';
 
 // KAL-57 — single mounted host for the in-app toast bus (see utils/toast.js).
 // Listens for 'app-toast' events, stacks them bottom-center, auto-dismisses
@@ -63,7 +64,7 @@ export default function ToastHost() {
 
   useLayoutEffect(() => {
     const host = hostRef.current;
-    if (!host || !window.matchMedia?.('(max-width: 720px)').matches) return;
+    if (!host || !isPhoneLayout()) return;
     let chromeBottom = 0;
     PHONE_TOP_CHROME_SELECTORS.forEach((selector) => {
       document.querySelectorAll(selector).forEach((el) => {

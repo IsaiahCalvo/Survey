@@ -883,12 +883,14 @@ test('the dev build stamp is logged to the console, never rendered on screen', (
   assert.match(VITE, /__BUILD_STAMP__: JSON\.stringify\(buildStamp\)/);
 });
 
-test('the mobile card list is hidden on desktop and shown under 720px', () => {
+// The phone layout follows the screen since 2026-10-13 (utils/layoutMode.js),
+// no longer a 720px window.
+test('the mobile card list is hidden on desktop and shown on a phone screen', () => {
   assert.match(SCREEN, /className="archive-mobile-list slim-scroll"/);
   assert.match(SCREEN, /className="card archive-desktop-card"/);
   assert.match(CSS, /\.survey-hub \.archive-mobile-list \{\s*\n\s*display: none;/);
-  assert.match(CSS, /@media screen and \(max-width: 720px\)[\s\S]*?\.survey-hub \.archive-desktop-card \{[\s\S]*?display: none !important/);
-  assert.match(CSS, /@media screen and \(max-width: 720px\)[\s\S]*?\.survey-hub \.archive-mobile-list \{[\s\S]*?display: flex/);
+  assert.match(CSS, /@media screen and \(max-device-width: 599px\), screen and \(max-device-height: 599px\)[\s\S]*?\.survey-hub \.archive-desktop-card \{[\s\S]*?display: none !important/);
+  assert.match(CSS, /@media screen and \(max-device-width: 599px\), screen and \(max-device-height: 599px\)[\s\S]*?\.survey-hub \.archive-mobile-list \{[\s\S]*?display: flex/);
 });
 
 test('Archive transient controls follow the shared home interaction contract', () => {

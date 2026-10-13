@@ -42,7 +42,6 @@ import {
   centredRowLeft,
   rowWidth,
   DESKTOP_RAIL_WIDTH,
-  PHONE_LAYOUT_MAX_WIDTH,
   TEXT_ROW_STEPS,
   minDesktopWindowWidth,
   planTextRowStep,
@@ -481,9 +480,13 @@ test('Test 41: which step the text bar takes for the room it has', () => {
   }
 });
 
-test('Test 41: the text bar fits every desktop width above the phone switch', () => {
+// The rows were tuned to fit beside an open side panel from 720px up (where
+// the old window-width phone switch sat).
+const ROWS_TUNED_MIN_WIDTH = 720;
+
+test('Test 41: the text bar fits every desktop width from 721px up', () => {
   // No side panel: the row spans the window less the two 48px rails.
-  for (let width = PHONE_LAYOUT_MAX_WIDTH + 1; width <= 1440; width += 1) {
+  for (let width = ROWS_TUNED_MIN_WIDTH + 1; width <= 1440; width += 1) {
     const span = width - 2 * DESKTOP_RAIL_WIDTH;
     const plan = planTextRowStep(span);
     assert.ok(plan.fits, `${width}px`);
@@ -491,9 +494,9 @@ test('Test 41: the text bar fits every desktop width above the phone switch', ()
     assert.ok(plan.index <= 1, `${width}px uses ${plan.step}`);
   }
   // With the Pages (224) or Survey (272) panel open, it still fits all the
-  // way down to the switch.
+  // way down to 721px.
   for (const panel of [224, 272]) {
-    for (let width = PHONE_LAYOUT_MAX_WIDTH + 1; width <= 1440; width += 1) {
+    for (let width = ROWS_TUNED_MIN_WIDTH + 1; width <= 1440; width += 1) {
       assert.ok(planTextRowStep(width - 2 * DESKTOP_RAIL_WIDTH - panel).fits, `${width}px beside a ${panel}px panel`);
     }
   }
@@ -505,19 +508,16 @@ test('Test 41: the text bar fits every desktop width above the phone switch', ()
   assert.ok(left + plan.width <= span.usableRight - ROW_INSET);
 });
 
-test('Test 41: the phone switch stays at 720px, below which the desktop rows would still fit', () => {
-  // DELIBERATE: the brief asked for the switch to move to where even the most
-  // compact desktop rows stop fitting. That is 554px (the tool bar: Undo/Redo,
-  // Pan/Select, the group icons, the widest loadout and Export), but at 720px
-  // the viewer itself turns into the phone's touch surface (page gaps, pinch,
-  // no trackpad overscroll — PdfjsViewerContainer, out of scope), and ~20
-  // stylesheet rules switch with it. So the switch stays at 720, and every
-  // width above it now fits: no dead zone where a rail covers a control.
-  assert.equal(PHONE_LAYOUT_MAX_WIDTH, 720);
+test('Test 41: the desktop rows fit down to 554px; the screen, not the window, picks the phone layout', () => {
+  // The phone switch used to sit here at 720px (a window width). Since
+  // 2026-10-13 the layout follows the screen (utils/layoutMode.js: a short
+  // side under 600px is a phone), so a desktop window keeps these rows at
+  // every width; with no side panel they still fit down to 554px (the tool
+  // bar: Undo/Redo, Pan/Select, the group icons, the widest loadout, Export).
   assert.equal(minDesktopWindowWidth(), 554);
-  assert.ok(minDesktopWindowWidth() < PHONE_LAYOUT_MAX_WIDTH);
-  // The tool bar's own plan agrees at the switch: the widest loadout ends
-  // clear of Export.
-  const plan = planTopBar(bar(PHONE_LAYOUT_MAX_WIDTH + 1));
-  assert.ok(plan.clusterLeft + 96 + WIDEST_SUBTOOLS_WIDTH + EDGE_CLEARANCE <= PHONE_LAYOUT_MAX_WIDTH + 1 - 38);
+  assert.ok(minDesktopWindowWidth() < ROWS_TUNED_MIN_WIDTH);
+  // The tool bar's own plan agrees at 721px: the widest loadout ends clear of
+  // Export.
+  const plan = planTopBar(bar(ROWS_TUNED_MIN_WIDTH + 1));
+  assert.ok(plan.clusterLeft + 96 + WIDEST_SUBTOOLS_WIDTH + EDGE_CLEARANCE <= ROWS_TUNED_MIN_WIDTH + 1 - 38);
 });

@@ -3379,7 +3379,7 @@ textarea:focus-visible,
    The stack spans the width (16px gutters) so a sentence wraps to 1-2 lines
    instead of a 3-line column; `!important` beats the host's desktop inline
    placement (bottom: 24, centred by translateX). Desktop is untouched. */
-@media screen and (max-width: 720px) {
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   .app-toast-host {
     --app-toast-chrome-fallback: calc(env(safe-area-inset-top, 0px) + 96px);
     top: calc(max(
@@ -3409,7 +3409,7 @@ textarea:focus-visible,
    their taps) and, outside the Expo shell, sat under the status bar. Hang it
    from the bottom of the top chrome instead (--app-chrome-top, measured by
    AppShell; it already includes the header's safe-area padding). */
-@media screen and (max-width: 720px) {
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   html.survey-viewer-open .document-lock-banner {
     top: var(--app-chrome-top, 34px) !important;
   }

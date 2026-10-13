@@ -89,6 +89,9 @@ import {
   classifyRaster, pickRasterSource, planThumbPrefetch, resolveWantedRasterScale, thumbRasterScale,
 } from '../utils/pageRasterLod.js';
 import QuietLoading from './QuietLoading.jsx';
+import usePhoneLayout from '../hooks/usePhoneLayout.js';
+import useCoarsePointer from '../hooks/useCoarsePointer.js';
+import { hasTouchInput } from '../utils/layoutMode.js';
 import { notePageDrawn, pageMounted, pageUnmounted, PAGE_CACHE_KEEP_MOBILE, PAGE_CACHE_KEEP_DESKTOP } from '../utils/pdfPageCacheTrim';
 import {
   compensateScrollLeftForColumnWidth,
@@ -203,10 +206,6 @@ const DESKTOP_MAX_OVERSCAN_PAGES = 3;
 // MOBILE_MAX_CANVAS_AREA-clamped raster (~12 MiB), and the deep-zoom window
 // still tops out at three pages.
 const MOBILE_MAX_OVERSCAN_PAGES = 2;
-function isMobilePdfSurfaceViewport() {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
-  return window.matchMedia('(max-width: 720px), (pointer: coarse)').matches;
-}
 function resolveLayoutMetrics(isMobileSurface) {
   return isMobileSurface
     ? {
@@ -1425,7 +1424,20 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const [range, setRange] = useState([0, -1]);
   const [containerW, setContainerW] = useState(800);
   const [containerH, setContainerH] = useState(600);
-  const [isMobileSurface, setIsMobileSurface] = useState(() => isMobilePdfSurfaceViewport());
+  // Three separate questions (owner 2026-10-13: touch must never pick the
+  // phone layout):
+  //  - phoneLayout: the phone's page layout (narrow gaps, the 390px page cap,
+  //    the page shadow). The screen decides, utils/layoutMode.js.
+  //  - isMobileSurface: a phone or a touch-first device (iPad, Android
+  //    tablet): the tight raster/memory budgets, the 8x zoom ceiling and the
+  //    iOS callout/selection guards those devices always had.
+  //  - touchSurface: any touch screen, a touchscreen laptop's too: one finger
+  //    runs the tool, two fingers pan and pinch the PDF (not the page).
+  const phoneLayout = usePhoneLayout();
+  const coarsePointer = useCoarsePointer();
+  const isMobileSurface = phoneLayout || coarsePointer;
+  const [touchInput] = useState(() => hasTouchInput());
+  const touchSurface = isMobileSurface || touchInput;
   // imperative document source (prop-driven, overridable via load())
   const [activeSource, setActiveSource] = useState(documentSource);
   const [activePassword, setActivePassword] = useState('');
@@ -1606,7 +1618,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     scheduleRasterQuietPump();
   }, [scheduleRasterQuietPump]);
   useEffect(() => () => { if (rasterQuietTimerRef.current) clearTimeout(rasterQuietTimerRef.current); }, []);
-  const layoutMetrics = useMemo(() => resolveLayoutMetrics(isMobileSurface), [isMobileSurface]);
+  const layoutMetrics = useMemo(() => resolveLayoutMetrics(phoneLayout), [phoneLayout]);
   const layoutMetricsRef = useRef(layoutMetrics);
   layoutMetricsRef.current = layoutMetrics;
 
@@ -1648,28 +1660,6 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const nextLeft = Math.min(Math.max(0, el.scrollLeft), maxLeft);
     if (Math.abs(el.scrollLeft - nextLeft) > 0.5) el.scrollLeft = nextLeft;
   }, [getHorizontalScrollMax]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
-    const mediaQueries = [
-      window.matchMedia('(max-width: 720px)'),
-      window.matchMedia('(pointer: coarse)'),
-    ];
-    const updateMobileSurface = () => {
-      setIsMobileSurface(mediaQueries.some((mq) => mq.matches));
-    };
-    updateMobileSurface();
-    mediaQueries.forEach((mq) => {
-      if (mq.addEventListener) mq.addEventListener('change', updateMobileSurface);
-      else mq.addListener(updateMobileSurface);
-    });
-    return () => {
-      mediaQueries.forEach((mq) => {
-        if (mq.removeEventListener) mq.removeEventListener('change', updateMobileSurface);
-        else mq.removeListener(updateMobileSurface);
-      });
-    };
-  }, []);
 
   // ---- load document --------------------------------------------------------
   // Owner 2026-10-01 (instant page operations): when the new source is a page
@@ -3750,7 +3740,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // callouts are cancelled only inside this viewer surface.
   useEffect(() => {
     const el = scrollerRef.current;
-    if (!el || !isMobileSurface) return undefined;
+    if (!el || !touchSurface) return undefined;
 
     const setMobileTouchMode = (mode) => {
       if (mode) el.dataset.mobileTouchMode = mode;
@@ -4151,9 +4141,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       target.addEventListener('gesturestart', stopNativeGesture, { capture: true, passive: false });
       target.addEventListener('gesturechange', stopNativeGesture, { capture: true, passive: false });
       target.addEventListener('gestureend', stopNativeGesture, { capture: true, passive: false });
-      target.addEventListener('selectstart', stopNativeSelection, true);
-      target.addEventListener('contextmenu', stopNativeSelection, true);
-      target.addEventListener('dragstart', stopNativeSelection, true);
+      // A touchscreen laptop's mouse keeps its own selection, right-click
+      // and drag; these guards are for touch-first devices.
+      if (isMobileSurface) {
+        target.addEventListener('selectstart', stopNativeSelection, true);
+        target.addEventListener('contextmenu', stopNativeSelection, true);
+        target.addEventListener('dragstart', stopNativeSelection, true);
+      }
       target.addEventListener('click', stopPostGestureClick, true);
       target.addEventListener('pointermove', stopPinchPointer, true);
       target.addEventListener('pointerup', stopPinchPointer, true);
@@ -4187,7 +4181,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       setMobileTouchMode(null);
       cancelPanInertia();
     };
-  }, [applyWheelZoom, beginElasticPan, cancelPanInertia, catchElastic, checkpointPinchGesture, commitGesture, flushPan, isMobileSurface, releaseElastic, releaseElasticPan, releaseLayoutShift, schedulePan, setPanInteraction, setZoomInteraction, startPanInertia, stopElastic]);
+  }, [applyWheelZoom, beginElasticPan, cancelPanInertia, catchElastic, checkpointPinchGesture, commitGesture, flushPan, isMobileSurface, releaseElastic, releaseElasticPan, releaseLayoutShift, schedulePan, setPanInteraction, setZoomInteraction, startPanInertia, stopElastic, touchSurface]);
 
   // Mobile long-press → context menu (Phase D parity). Isolated, additive,
   // and passive: this effect only OBSERVES touches (it never preventDefaults or
@@ -4869,7 +4863,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
           width: dim.w * scale,
           height: dim.h * scale,
           background: '#fff',
-          boxShadow: isMobileSurface
+          boxShadow: phoneLayout
             ? '0 0 0 1px var(--text-2), 0 10px 28px rgba(0,0,0,0.35)'
             : undefined,
         }}
@@ -4926,7 +4920,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         />
       </div>
     );
-  }), [pageSizes, layout, scale, range, viewerId, isMobileSurface, onRaster, rotation,
+  }), [pageSizes, layout, scale, range, viewerId, isMobileSurface, phoneLayout, onRaster, rotation,
     textSelectionLayerActive, textSelectionLayerInteractive, onTextAvailability, tileLiveZoomSignal,
     getPageLeftAtScale]);
 
@@ -4966,7 +4960,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       ref={scrollerRef}
       id={viewerId}
       className={`${className}${isMobileSurface ? ' survey-pdfjs-mobile-surface' : ''}`}
-      data-mobile-pdf-surface={isMobileSurface ? 'true' : 'false'}
+      data-mobile-pdf-surface={phoneLayout ? 'true' : 'false'}
+      data-touch-pdf-surface={touchSurface ? 'true' : 'false'}
       data-text-selection={interactionMode === 'TextSelection' ? 'true' : 'false'}
       // Read by the shared dismiss rules (src/components/dismissRules.js, R2):
       // with a popover open, a press on the bare page only closes it — except
@@ -4984,7 +4979,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         // the browser's own (Safari) rubber band is off to avoid a double one.
         overscrollBehavior: finePointer && !isMobileSurface ? 'none' : 'contain',
         WebkitOverflowScrolling: 'touch',
-        touchAction: isMobileSurface ? 'none' : 'pan-x pan-y pinch-zoom',
+        touchAction: touchSurface ? 'none' : 'pan-x pan-y pinch-zoom',
         WebkitTouchCallout: isMobileSurface ? 'none' : undefined,
         WebkitUserSelect: isMobileSurface && interactionMode !== 'TextSelection' ? 'none' : undefined,
         WebkitUserDrag: isMobileSurface ? 'none' : undefined,

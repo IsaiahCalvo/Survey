@@ -107,7 +107,7 @@
    bottom sheet (z 7200+), so an eraser "Undo" was invisible. On a phone it
    sits just above the dock and above every sheet; --mobile-viewer-dock-height
    already includes the home-indicator inset (mobilePdfViewer.css). */
-@media screen and (max-width: 720px) {
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   html.survey-viewer-open .undo-toast {
     bottom: calc(var(--mobile-viewer-dock-height, 62px) + 8px);
     z-index: 100000;
