@@ -73,6 +73,7 @@ import { getViewportScrollbarAxis } from '../utils/pdfViewportScrollbar';
 import { computeDetailTileBox, resolveDetailTileStyle } from '../utils/pdfDetailTileGeometry.js';
 import { LIVE_ZOOM_EVENT } from '../utils/liveZoomEvents.js';
 import { createZoomGlide, retargetZoomGlide, stepZoomGlide } from '../utils/zoomGlide.js';
+import { startPageGlide } from '../utils/pageScrollGlide.js';
 import { isLiveFormWidgetTarget } from '../utils/formWidgetPointerTargets.js';
 import { isSelectionGrabPress } from '../hooks/useSelectionGrabHandoff.js';
 import {
@@ -1486,6 +1487,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const zoomGlideCancelRef = useRef(null);
   const zoomGlideFinishRef = useRef(null);
   const zoomGlideScheduleRef = useRef(null);
+  // Smooth page moves (Drawboard canvas audit chunk 6, utils/pageScrollGlide.js):
+  // the running glide's controller, and whether it is a page jump (the page you
+  // asked for stays the current page while it glides, so the page number never
+  // flickers through the pages it passes).
+  const pageGlideRef = useRef(null);
+  const pageGlideHoldsPageRef = useRef(false);
   const dimsPtRef = useRef([]);
   // Widest page in PDF points (rotation applied): sizes the shared column.
   const widestPagePtRef = useRef(0);
@@ -2000,6 +2007,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       currentPage: currentPageRef.current,
     });
     clampHorizontalScroll();
+    // A page jump still gliding keeps the page it is heading to (set by goToPage).
+    if (pageGlideHoldsPageRef.current) return;
     if (page !== currentPageRef.current) {
       const prev = currentPageRef.current;
       currentPageRef.current = page;
@@ -4553,7 +4562,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         pageIndex,
       };
     } else {
-      if (landTop != null) el.scrollTop = Math.max(0, landTop);
+      // Chunk 6: the typed page jump glides; the Fit page it asks for right
+      // after (same zoom) moves where that glide ends instead of jumping.
+      if (landTop != null) {
+        if (pageGlideRef.current?.isRunning()) pageGlideRef.current.retarget(Math.max(0, landTop));
+        else el.scrollTop = Math.max(0, landTop);
+      }
       el.scrollLeft = landLeft;
     }
   }, [applyAnchoredScale, getPageLeftAtScale, getHorizontalScrollMax]);
@@ -4622,13 +4636,58 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     return true;
   }, [applyAnchoredScale, cancelPanInertia, getPageLeftAtScale, getHorizontalScrollMax, isMobileSurface]);
 
-  const goToPage = useCallback((n) => {
+  // Drawboard canvas audit chunk 6: glide scrollTop to `top` over 250 ms
+  // (utils/pageScrollGlide.js has the rules), or point a glide already running
+  // at it. `holdsPage`: a page jump, whose target page stays the current page
+  // while it glides. Stops by itself on a wheel, press, touch, zoom or any
+  // other scroll write; reduced motion lands at once.
+  const glideScrollTopTo = useCallback((top, { holdsPage = false } = {}) => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const running = pageGlideRef.current;
+    if (running?.isRunning()) {
+      pageGlideHoldsPageRef.current = holdsPage;
+      if (running.retarget(top)) return;
+    }
+    const startScale = scaleRef.current;
+    const startAnchor = pendingAnchorRef.current;
+    let controller = null;
+    pageGlideHoldsPageRef.current = holdsPage;
+    controller = startPageGlide({
+      el,
+      to: top,
+      // The part of the view below any tool strips.
+      screen: Math.max(1, el.clientHeight - Math.min(topInsetRef.current, el.clientHeight)),
+      // A zoom took over (its anchor or its glide now owns the scroll position).
+      shouldStop: () => Math.abs(scaleRef.current - startScale) > 1e-4
+        || Boolean(zoomGlideRef.current)
+        || Boolean(pendingAnchorRef.current && pendingAnchorRef.current !== startAnchor),
+      onEnd: () => {
+        if (pageGlideRef.current === controller) pageGlideRef.current = null;
+        pageGlideHoldsPageRef.current = false;
+        detectCurrentPage();
+      },
+    });
+    pageGlideRef.current = controller;
+  }, [detectCurrentPage]);
+
+  const cancelPageGlide = useCallback(() => {
+    pageGlideRef.current?.cancel('cancel');
+    pageGlideRef.current = null;
+    pageGlideHoldsPageRef.current = false;
+  }, []);
+
+  // `options.smooth`: glide there (Previous / Next page, the typed page jump, a
+  // page thumbnail, PageUp / PageDown). Everything else lands at once, as before.
+  const goToPage = useCallback((n, options) => {
     // A zoom glide still playing lands first (where it is shown), so the jump
     // is measured on the laid-out page and the glide's commit cannot undo it.
     zoomGlideFinishRef.current?.();
     const el = scrollerRef.current;
     const tops = topsRef.current;
     if (!el || !tops.length) return false;
+    const smooth = options?.smooth === true;
+    if (!smooth) cancelPageGlide();
     // UX: Previous/Next page, the page-number field, a sidebar thumbnail, a
     // bookmark jump and a search hit all land here. A coast still writing
     // scrollTop every frame would drag the page straight back off the target,
@@ -4641,12 +4700,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // UX 2026-09-23: the page lands with its own (zoom-proportional) top gap
     // showing (owner: right rail audit), just BELOW any tool strips over the
     // viewer (owner: scroll the page out from under toolbars).
-    el.scrollTop = resolvePageLandingScrollTop({
+    const landingTop = resolvePageLandingScrollTop({
       padTop: padTopRef.current,
       pageTop: (tops[i] - layoutMetricsRef.current.gap * scaleRef.current),
       fixedTopInset: layoutMetricsRef.current.padTop,
       overlayInset: topInsetRef.current,
     });
+    if (!smooth) el.scrollTop = landingTop;
     el.scrollLeft = Math.min(el.scrollLeft, getHorizontalScrollMax(scaleRef.current));
     // The page you asked for IS the current page (the scroll event that
     // follows keeps it while it stays fully visible), so the rail never shows
@@ -4662,8 +4722,46 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         raw: { scrollTop: el.scrollTop },
       });
     }
+    if (smooth) glideScrollTopTo(landingTop, { holdsPage: true });
     return true;
-  }, [cancelPanInertia, getHorizontalScrollMax]);
+  }, [cancelPanInertia, cancelPageGlide, getHorizontalScrollMax, glideScrollTopTo]);
+
+  // Chunk 6: PageUp / PageDown move one view (the part below the tool strips)
+  // on the same 250 ms glide, wherever the focus is - unless it is in a field,
+  // a menu or another scrolling list, which keep the key. Drawboard does the
+  // same; before this the key did nothing once a toolbar button had focus.
+  // Presses while gliding add up (each counts from where the glide is going).
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key !== 'PageDown' && event.key !== 'PageUp') return;
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+      const el = scrollerRef.current;
+      if (!el || !el.isConnected || el.clientHeight <= 0 || el.getClientRects().length === 0) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target && target !== document.body && target !== document.documentElement && !el.contains(target)) {
+        if (isEditableTarget(target)) return;
+        if (target.closest('[role="menu"], [role="listbox"], [role="slider"], [role="dialog"], [role="tree"], [role="grid"]')) return;
+        for (let node = target; node && node !== document.body; node = node.parentElement) {
+          const overflowY = window.getComputedStyle(node).overflowY;
+          if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight + 1) return;
+        }
+      }
+      event.preventDefault();
+      zoomGlideFinishRef.current?.();
+      cancelPanInertia(false);
+      const screen = Math.max(1, el.clientHeight - Math.min(topInsetRef.current, el.clientHeight));
+      const running = pageGlideRef.current;
+      const from = running?.isRunning() ? running.target : el.scrollTop;
+      const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+      const to = Math.min(maxTop, Math.max(0, from + (event.key === 'PageDown' ? screen : -screen)));
+      glideScrollTopTo(to, { holdsPage: false });
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [cancelPanInertia, glideScrollTopTo]);
+
+  // A glide never outlives the viewer.
+  useEffect(() => () => { pageGlideRef.current?.cancel('cancel'); }, []);
 
   // ---- onZoomChanged (settle only — scale changes only on commit) ----------
   useLayoutEffect(() => {

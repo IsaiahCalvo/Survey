@@ -1178,13 +1178,16 @@ const PagesPanel = ({
     setSelection({ keys: key ? [key] : [], anchor: key || null });
     setSelectedPage(pageNumber);
     if (onNavigateToPage) {
-      onNavigateToPage(pageNumber);
+      // Drawboard canvas audit chunk 6: a thumbnail click glides to the page.
+      onNavigateToPage(pageNumber, { smooth: true });
     }
   }, [cardKeys, flushPendingDrop, mobileMode, onNavigateToPage, selectMode, selectRange, togglePage]);
 
   const handlePageDoubleClick = useCallback((pageNumber) => {
     if (onNavigateToPage) {
-      onNavigateToPage(pageNumber);
+      // Smooth too, so the second click of a double-click does not cut the
+      // glide its first click started short.
+      onNavigateToPage(pageNumber, { smooth: true });
     }
   }, [onNavigateToPage]);
 

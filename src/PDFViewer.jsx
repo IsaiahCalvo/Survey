@@ -22125,7 +22125,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       preferBookmarkSource = false,
       bookmarkSourceId = null,
       bookmarkDest = null,
-      bookmarkFallbackPage = null
+      bookmarkFallbackPage = null,
+      // Drawboard canvas audit chunk 6: glide there (~250 ms) instead of jumping.
+      smooth = false
     } = options;
     const viewerPageCount = usePdfjsRenderer
       ? coercePageNumber(
@@ -22253,15 +22255,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         );
       };
 
+      const navOptions = { smooth };
       const navigateWithPrimary = () => {
-        if (invokeNavigation(viewer, viewer?.goToPage, desiredPage)) return true;
-        if (invokeNavigation(viewer?.navigationModule, viewer?.navigationModule?.goToPage, desiredPage)) return true;
+        if (invokeNavigation(viewer, viewer?.goToPage, desiredPage, navOptions)) return true;
+        if (invokeNavigation(viewer?.navigationModule, viewer?.navigationModule?.goToPage, desiredPage, navOptions)) return true;
         return tryBookmarkNavigation();
       };
 
       const navigateWithSecondary = () => {
-        if (invokeNavigation(viewer?.navigationModule, viewer?.navigationModule?.goToPage, desiredPage)) return true;
-        if (invokeNavigation(viewer, viewer?.goToPage, desiredPage)) return true;
+        if (invokeNavigation(viewer?.navigationModule, viewer?.navigationModule?.goToPage, desiredPage, navOptions)) return true;
+        if (invokeNavigation(viewer, viewer?.goToPage, desiredPage, navOptions)) return true;
         return tryBookmarkNavigation();
       };
 
@@ -24542,11 +24545,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const zoomDataRef = useRef(null);
 
   const goToPreviousPage = useCallback(() => {
-    goToPage(pageNum - 1, { fallback: 'previous' });
+    goToPage(pageNum - 1, { fallback: 'previous', smooth: true });
   }, [goToPage, pageNum]);
 
   const goToNextPage = useCallback(() => {
-    goToPage(pageNum + 1, { fallback: 'next' });
+    goToPage(pageNum + 1, { fallback: 'next', smooth: true });
   }, [goToPage, pageNum]);
 
   /**
@@ -25536,7 +25539,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const value = resolvePageInput(typeof typed === 'string' ? typed : pageInputValue, numPages);
     if (value !== null) {
       // Navigate first, then update input value will be synced by useEffect when pageNum updates
-      goToPage(value);
+      goToPage(value, { smooth: true });
       // Drawboard parity (measured 2026-10-04): a typed jump zooms to Fit page
       // for that page — top at the top of the view, centred across, page 1 and
       // the last page resting against the document ends. See pageNavigationMath.
