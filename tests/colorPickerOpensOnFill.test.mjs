@@ -9,5 +9,13 @@ const shell = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf
 test('the shape colour picker opens on the Fill tab', () => {
   assert.match(shell, /const quickPaintTab = annotationPaint\?\.isShape \? 'fill' : annotationPaint\?\.quick\?\.tab;/);
   assert.doesNotMatch(shell, /setColorPickerTab\(annotationPaint\.quick\.tab\)/);
-  assert.equal((shell.match(/setColorPickerTab\(annotationPaint\.isShape \? 'fill' : annotationPaint\.quick\.tab\)/g) || []).length, 2);
+  // DELIBERATE CHANGE (2026-10-13, selection quick bar): the custom disc and
+  // the combined swatch used to write this tab rule out once each; they (and
+  // the quick bar's copies of them) now share ONE toggle, so the rule is
+  // written once and every opener goes through it.
+  assert.equal((shell.match(/setColorPickerTab\(annotationPaint\.isShape \? 'fill' : annotationPaint\.quick\.tab\)/g) || []).length, 1);
+  assert.match(shell, /const toggleAnnotationColourPicker = \(\) => \{\s*if \(!annotationPaint \|\| !bottomToolbarApi\) return;\s*setColorPickerTab\(annotationPaint\.isShape \? 'fill' : annotationPaint\.quick\.tab\);/);
+  assert.equal((shell.match(/onOpenPicker=\{toggleAnnotationColourPicker\}/g) || []).length, 1);
+  assert.equal((shell.match(/onOpen=\{toggleAnnotationColourPicker\}/g) || []).length, 1);
+  assert.equal((shell.match(/onOpenColourPicker=\{toggleAnnotationColourPicker\}/g) || []).length, 1);
 });

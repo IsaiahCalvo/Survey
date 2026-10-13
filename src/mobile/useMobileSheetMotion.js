@@ -287,6 +287,25 @@ export function springKeyframes(from, to, velocity = 0, { omega = SHEET_SPRING_O
 // somewhere without a DOM.
 const useSheetLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
+/*
+ * KAL-461 (a sheet never loses what you typed): closing a sheet - a tap
+ * outside, a swipe down, Done, a dock button, another panel taking over -
+ * first ends the typing in it. On an iPhone a tap on the dim or a swipe does
+ * not take the focus from the field, so a field that saves when you leave it
+ * (a Survey Marker's name, a space or region name, a note) never heard that
+ * you left: the sheet slid away and the words went with it. Ending the typing
+ * here fires the field's own save, the same as tapping Done on the keyboard.
+ * Returns true when it ended something.
+ */
+export function commitTypingIn(container) {
+  if (!container || typeof document === 'undefined') return false;
+  const active = document.activeElement;
+  if (!active || active === document.body || !container.contains?.(active)) return false;
+  if (!isKeyboardEditable(active)) return false;
+  active.blur();
+  return true;
+}
+
 function prefersReducedMotion() {
   return (
     typeof window !== 'undefined'
@@ -454,6 +473,9 @@ export function useMobileSheetMotion(onClose, options = {}) {
     sheetElRef.current = el;
     setSheetEl(el);
   }, []);
+  // KAL-461: a sheet taken away without its own close (its owner unmounted
+  // it) still ends the typing in it first, while the field is in the page.
+  useSheetLayoutEffect(() => () => { commitTypingIn(sheetElRef.current); }, []);
   const gestureRef = useRef({ mode: null });
   // Why the sheet stands taller than it was (WHEN A SHEET CHANGES HEIGHT ON
   // ITS OWN, header): `reasons` holds 'typing' / 'reveal' while they last,
@@ -505,6 +527,7 @@ export function useMobileSheetMotion(onClose, options = {}) {
   // The old sheet of a swap: gone at once, with no slide, and its real close
   // fires now (its backdrop goes with it, so the dim never doubles or blinks).
   const finishCloseNow = () => {
+    commitTypingIn(sheetElRef.current);
     window.clearTimeout(closeTimerRef.current);
     registry.closeTick = -1;
     registry.closeFromTop = null;
@@ -664,6 +687,8 @@ export function useMobileSheetMotion(onClose, options = {}) {
    */
   const requestClose = useCallback((fling) => {
     if (closing || registry.handingOver) return;
+    // KAL-461: what you were typing is saved before the sheet goes.
+    commitTypingIn(sheetElRef.current);
     // Already down (a dock button closing "whatever is open"): just collapse.
     // Sliding an invisible sheet would only delay the close and would read as
     // a leaving sheet to a swap in the same tick.

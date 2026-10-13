@@ -1,0 +1,240 @@
+/* Drawboard canvas audit, chunk 4 — the floating quick bar over a selection
+   (components/SelectionQuickBar.jsx).
+
+   The look is the app's floating-menu card, the same as the text-selection
+   quick menu and the right-click menu: --surface-2 with the subtle --border
+   edge, --radius-md corners and --shadow-popover. Glyphs are --text-2; no gold
+   anywhere (the colour discs carry their own chosen ring). 36px tall like
+   Drawboard's bar: 32px buttons on a 2px inset.
+
+   Timing is Drawboard's: the bar shows and hides AT ONCE (no fade — it must
+   be gone the instant a drag starts and back the instant it ends); its Line
+   popover slides 8px with a fade over 100ms. */
+.selection-quick-bar {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 5700;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 36px;
+  padding: 0 2px;
+  box-sizing: border-box;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: var(--shadow-popover);
+  color: var(--text-2);
+  /* The colour discs paint their chosen-state gap in the bar's own colour. */
+  --quick-style-gap: var(--surface-2);
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+  white-space: nowrap;
+}
+
+/* Hidden: still laid out (so it can be measured and placed before it shows),
+   never seen, never pressed. */
+.selection-quick-bar[data-visible='false'] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.selection-quick-bar__group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* The colour discs and the combined swatch keep their own 22px size; a little
+   air either side stops them touching the dividers. */
+.selection-quick-bar__group[data-annotation-color-trigger],
+.selection-quick-bar__group[data-selection-quick-entities] {
+  padding: 0 5px;
+  gap: 4px;
+}
+
+.selection-quick-bar__divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 2px;
+  background: var(--border);
+  flex: 0 0 auto;
+}
+
+.selection-quick-bar__button {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (hover: hover) {
+  .selection-quick-bar__button:hover {
+    background: var(--hover);
+    color: var(--text-1);
+  }
+}
+
+.selection-quick-bar__button:active,
+.selection-quick-bar__button.is-open {
+  background: var(--pressed);
+  color: var(--text-1);
+}
+
+.selection-quick-bar__button:focus-visible,
+.selection-quick-bar__width:focus-visible,
+.selection-quick-bar__style:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+/* ------------------------------------------------------------ Line popover */
+
+.selection-quick-bar__popover {
+  position: absolute;
+  left: 50%;
+  translate: -50% 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 196px;
+  padding: 6px;
+  box-sizing: border-box;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: var(--shadow-popover);
+  animation: selection-quick-bar-pop-below 100ms linear;
+}
+
+/* It opens AWAY from the selection, so the mark stays in view while its line
+   is changed: above the bar when the bar is above the selection. */
+.selection-quick-bar__popover[data-side='above'] {
+  bottom: calc(100% + 6px);
+  animation-name: selection-quick-bar-pop-above;
+}
+
+.selection-quick-bar__popover[data-side='below'] {
+  top: calc(100% + 6px);
+}
+
+.selection-quick-bar__widths {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 2px;
+}
+
+.selection-quick-bar__width {
+  height: 36px;
+  padding: 4px 0 3px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-2);
+  font: 500 10px/1 var(--font-ui, -apple-system, system-ui, sans-serif);
+  cursor: pointer;
+}
+
+.selection-quick-bar__width-line {
+  display: block;
+  width: 18px;
+  margin-top: 6px;
+  border-radius: 3px;
+  background: currentColor;
+}
+
+.selection-quick-bar__style {
+  height: 30px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-2);
+  font: 400 13px/1 var(--font-ui, -apple-system, system-ui, sans-serif);
+  text-align: left;
+  cursor: pointer;
+}
+
+.selection-quick-bar__styles {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.selection-quick-bar__widths:last-child + .selection-quick-bar__styles,
+.selection-quick-bar__styles:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+@media (hover: hover) {
+  .selection-quick-bar__width:hover,
+  .selection-quick-bar__style:hover {
+    background: var(--hover);
+    color: var(--text-1);
+  }
+}
+
+/* The chosen width / style: a quiet pressed well and full-strength ink (the
+   app's "selected = no gold fill" rule for menu rows). */
+.selection-quick-bar__width.is-current,
+.selection-quick-bar__style.is-current {
+  background: var(--pressed);
+  color: var(--text-1);
+}
+
+/* Touch (iPad, touch laptops): 44px targets, the app's touch minimum. */
+@media (pointer: coarse) {
+  .selection-quick-bar {
+    height: 48px;
+  }
+
+  .selection-quick-bar__button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .selection-quick-bar__width {
+    height: 44px;
+  }
+
+  .selection-quick-bar__style {
+    height: 44px;
+  }
+}
+
+@keyframes selection-quick-bar-pop-below {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes selection-quick-bar-pop-above {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .selection-quick-bar__popover {
+    animation: none;
+  }
+}

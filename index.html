@@ -70,8 +70,9 @@
       /* UX 2026-07-12 (S1, PWA/plain-browser case): when the MOBILE viewer is
          active, its header consumes the top inset and its dock/sheets consume
          the bottom inset, so #root padding would double-count both edges.
-         Scoped to <=720px so desktop/iPad rendering is untouched. */
-      @media (max-width: 720px) {
+         Scoped to the phone layout (a screen whose short side is under
+         600px, src/utils/layoutMode.js) so desktop/iPad rendering is untouched. */
+      @media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
         html.survey-viewer-open #root {
           padding-top: 0;
           padding-bottom: 0;

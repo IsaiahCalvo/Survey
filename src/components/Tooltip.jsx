@@ -33,7 +33,7 @@
  * Reference behavior matched: the Draw/Shapes/Text category buttons, which had
  * the instant chip from the start.
  */
-import { createContext, useContext, useLayoutEffect, useRef } from 'react';
+import { createContext, useContext, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { FONT_FAMILY } from '../viewerShared.js';
 import { viewportClampDelta } from '../utils/floatingUiGeometry.js';
@@ -187,6 +187,10 @@ export function makeTooltipBinding(setTooltip) {
       const el = e?.currentTarget;
       if (!el?.getBoundingClientRect) return;
       if (pressedControls.has(el)) return;
+      // KAL-65: a button held down means something is being dragged (a row
+      // by its grip, a slider, a text selection). Rows slide under the
+      // pointer while they reorder; their grips must not pop chips mid-drag.
+      if (e?.buttons) return;
       if (e?.type === 'focus' && !el.matches?.(':focus-visible')) return;
       const { x, y } = tooltipAnchorFor(el.getBoundingClientRect(), placement);
       stopWatchingAnchor();
@@ -219,15 +223,54 @@ export function makeTooltipBinding(setTooltip) {
       }
       hide();
     };
+    // KAL-65 (2026-10-13): React drops onMouseEnter on a DISABLED button, so a
+    // control whose hint explains why it is off ("Nothing to select",
+    // "Templates is a Pro feature") never showed its chip - the native title=
+    // it replaced did. Pointer events still reach a disabled control, so a
+    // mouse pointer entering or leaving drives the chip too. Touch and pen are
+    // ignored here exactly as before: a finger never raises a chip.
+    const fromMouse = (handler) => (e) => {
+      if (e?.pointerType && e.pointerType !== 'mouse') return;
+      handler(e);
+    };
     return {
       onMouseEnter: show,
       onMouseLeave: resetAfterLeave,
+      onPointerEnter: fromMouse(show),
+      onPointerLeave: fromMouse(resetAfterLeave),
       onFocus: show,
       onBlur: resetAfterLeave,
       onMouseDown: hideOnPress,
       onPointerDown: hideOnPress,
     };
   };
+}
+
+/**
+ * Join a tooltip bundle with a control's own handlers of the same names
+ * (a drag grip's pointerdown, a hover colour change), so spreading the bundle
+ * never silently drops either side. The tooltip runs first, then the control.
+ */
+export function withOwnHandlers(bundle, own = {}) {
+  const merged = { ...(bundle || {}) };
+  Object.entries(own).forEach(([name, handler]) => {
+    if (typeof handler !== 'function') return;
+    const tipHandler = merged[name];
+    merged[name] = tipHandler
+      ? (event) => { tipHandler(event); handler(event); }
+      : handler;
+  });
+  return merged;
+}
+
+/**
+ * Hover-only bundle, for a text field whose hint ("Click to rename") is about
+ * the pointer: once the caret is in the field the chip would only sit over
+ * what the user is typing next to.
+ */
+export function hoverOnly(bundle) {
+  const { onFocus, onBlur, ...rest } = bundle || {};
+  return rest;
 }
 
 /**
@@ -241,11 +284,50 @@ export const TooltipContext = createContext(null);
 /**
  * Returns the `tip(text, placement)` binder. Safe to call outside a provider —
  * it degrades to a no-op bundle rather than throwing, so a component can be
- * rendered on the hub (where there is no viewer tooltip host) unchanged.
+ * rendered somewhere with no tooltip host at all (a test, a dev route) unchanged.
  */
 const NOOP_BINDING = () => ({});
 export function useTooltip() {
   return useContext(TooltipContext) || NOOP_BINDING;
+}
+
+/**
+ * A self-contained tooltip host: owns the chip state, renders one
+ * <FloatingTooltip>, and publishes the binder to everything inside it.
+ *
+ * KAL-65 (2026-10-13): the viewer's chip lives in PDFViewer, so it only exists
+ * while a document is mounted. The home hub and the tab strip are on screen
+ * without one, which is why they kept native `title=` tooltips. They now sit
+ * inside one of these, so a hub control and a viewer control show the same
+ * chip, with the same instant timing, whether or not a document is open.
+ *
+ * The state lives in a child (<TooltipChipHost>), not here, so a hover only
+ * re-renders the chip — never the hub or tab strip wrapped by this provider.
+ * The binder is created once and stays stable for the provider's lifetime.
+ *
+ * Touch: nothing extra is needed here. The binder's press guard (see
+ * makeTooltipBinding) marks a control on pointerdown, and a tap's emulated
+ * mouseenter/focus arrive after it, so a tap never raises a chip over the
+ * thing the finger just pressed.
+ */
+function TooltipChipHost({ setterRef }) {
+  const [tooltip, setTooltip] = useState(TOOLTIP_HIDDEN);
+  setterRef.current = setTooltip;
+  return <FloatingTooltip tooltip={tooltip} />;
+}
+
+export function TooltipProvider({ children }) {
+  const setterRef = useRef(null);
+  const tip = useMemo(
+    () => makeTooltipBinding((next) => setterRef.current?.(next)),
+    [],
+  );
+  return (
+    <TooltipContext.Provider value={tip}>
+      {children}
+      <TooltipChipHost setterRef={setterRef} />
+    </TooltipContext.Provider>
+  );
 }
 
 /**

@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, isSupabaseAvailable, isSchemaError, isConnectedServicesAvailable, setConnectedServicesAvailable } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import { buildDocumentProvenance } from '../utils/documentProvenance.js';
+import { createOrReuseDocumentRow } from '../services/documentRowDedupe.js';
 import { coalesceRead } from './requestCoalescer.js';
 import { resolveDocumentMetadata, invalidateDocumentMetadata } from '../services/documentMetadataResolver.js';
 import { isScopedRequestCurrent } from './scopedRequestGuard.js';
@@ -415,73 +416,21 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
     const provenance = buildDocumentProvenance({ subscriptionTier: tier });
 
     try {
-      // Content-addressed dedup: the same bytes in the same project are ONE
-      // document. If a matching row already exists (even archived), reuse it —
-      // un-archiving as needed — instead of spawning a duplicate/blank copy.
-      const sha = documentData.content_sha256;
-      if (sha) {
-        let lookup = supabase
-          .from('documents')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('content_sha256', sha)
-          .limit(1);
-        lookup = (documentData.project_id == null)
-          ? lookup.is('project_id', null)
-          : lookup.eq('project_id', documentData.project_id);
-        const { data: existing, error: lookupErr } = await lookup.maybeSingle();
-        if (lookupErr && !isSupabaseNotFoundError(lookupErr)) throw lookupErr;
-        if (existing) {
-          if (existing.archived) {
-            const { data: revived, error: reviveErr } = await supabase
-              .from('documents')
-              .update({ archived: false, updated_at: new Date().toISOString() })
-              .eq('id', existing.id)
-              .select()
-              .single();
-            if (reviveErr) throw reviveErr;
-            setDocuments((current) => [revived, ...current.filter((d) => d.id !== revived.id)]);
-            return revived;
-          }
-          setDocuments((current) => [existing, ...current.filter((d) => d.id !== existing.id)]);
-          return existing;
-        }
-      }
-
-      const { data, error } = await supabase
-        .from('documents')
-        .insert({
-          user_id: user.id,
-          ...provenance,
-          ...documentData,
-        })
-        .select()
-        .single();
-
-      // KAL-267: two near-simultaneous uploads of identical bytes can both pass
-      // the SELECT dedup check above; the loser's insert then trips the unique
-      // content-hash index (23505). That's a dedup HIT, not a failure — fetch
-      // and reuse the winner's row.
-      if (error && error.code === '23505' && sha) {
-        let retry = supabase
-          .from('documents')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('content_sha256', sha)
-          .limit(1);
-        retry = (documentData.project_id == null)
-          ? retry.is('project_id', null)
-          : retry.eq('project_id', documentData.project_id);
-        const { data: winner, error: retryErr } = await retry.maybeSingle();
-        if (!retryErr && winner) {
-          setDocuments((current) => [winner, ...current.filter((d) => d.id !== winner.id)]);
-          return winner;
-        }
-      }
-
-      if (error) throw error;
-      setDocuments((current) => [data, ...current]);
-      return data;
+      // Content-addressed dedup (KAL-267): the same bytes in the same project
+      // are ONE document — reuse it (un-archiving as needed) instead of
+      // spawning a duplicate/blank copy. One shared rule for every path that
+      // creates a row (services/documentRowDedupe.js).
+      const { row, reused } = await createOrReuseDocumentRow({
+        supabase,
+        userId: user.id,
+        documentData,
+        provenance,
+        isNotFoundError: isSupabaseNotFoundError,
+      });
+      setDocuments((current) => (reused
+        ? [row, ...current.filter((d) => d.id !== row.id)]
+        : [row, ...current]));
+      return row;
     } catch (err) {
       setError(err.message);
       throw err;
@@ -831,7 +780,7 @@ export async function getOtherSurveysUsingTemplate(templateId, currentSurveyId) 
 export const useStorage = () => {
   const { user } = useAuth();
 
-  const uploadDocument = useCallback(async (file, projectId, onProgress, contentSha = null) => {
+  const uploadDocument = useCallback(async (file, projectId, onProgress, contentSha = null, { objectPath = null } = {}) => {
     if (!user || !isSupabaseAvailable()) {
       throw new Error('User not authenticated or Supabase not available');
     }
@@ -839,9 +788,15 @@ export const useStorage = () => {
     // Content-addressed path when we know the file's fingerprint: re-uploading
     // identical bytes overwrites the same object (idempotent, no duplicate).
     // Falls back to the legacy timestamp path when no hash is provided.
+    // `objectPath` (KAL-443 copies): a caller-chosen path in the user's own
+    // folder, written with an idempotent upsert.
     let filePath;
     let upsert = false;
-    if (contentSha) {
+    if (objectPath) {
+      if (!String(objectPath).startsWith(`${user.id}/`)) throw new Error('Upload path must be in your own folder');
+      filePath = objectPath;
+      upsert = true;
+    } else if (contentSha) {
       filePath = `${user.id}/${contentSha}.pdf`;
       upsert = true;
     } else {

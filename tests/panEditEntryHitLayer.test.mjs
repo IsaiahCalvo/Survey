@@ -201,7 +201,8 @@ test('Pan does not swallow a pointer or touch that lands on a live form widget',
   assert.match(panPointerDown[0], escapeMarker);
   // Mobile: touchstart preventDefault would stop the field ever focusing.
   const nativeTargetFn = containerSource.match(
-    /const isNativeInteractionTarget = \(target\) => \{[\s\S]*?\n\s*\};/,
+    // (drawboardAudit C2, 2026-10-13: the guard also takes the event.)
+    /const isNativeInteractionTarget = \(target(?:, event)?\) => \{[\s\S]*?\n\s*\};/,
   );
   assert.ok(nativeTargetFn, 'isNativeInteractionTarget not found');
   assert.match(nativeTargetFn[0], /isLiveFormWidgetTarget\(nativeTarget\)/);

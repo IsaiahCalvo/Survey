@@ -356,7 +356,16 @@ function createWindow() {
   win.webContents.on('will-navigate', (event, navigationUrl) => {
     try {
       const parsedUrl = new URL(navigationUrl);
-      
+
+      // 2026-10-13 (drag-and-drop upload): a file dragged onto the window must
+      // never replace the app with that file. The renderer already refuses
+      // stray drops (src/utils/fileDrop.js); this is the backstop. Only the
+      // app's own index.html may be navigated to over file://.
+      if (parsedUrl.protocol === 'file:' && !/\/dist\/index\.html$/.test(decodeURIComponent(parsedUrl.pathname))) {
+        event.preventDefault();
+        return;
+      }
+
       // Check if this is an OAuth callback (contains hash with access_token or code)
       if (parsedUrl.hash && (parsedUrl.hash.includes('access_token') || parsedUrl.hash.includes('code') || parsedUrl.hash.includes('error'))) {
         event.preventDefault();
@@ -653,6 +662,20 @@ function createAppMenu() {
       role: 'help',
       label: 'Help',
       submenu: [
+        // KAL-444: the shortcuts sheet, from the menu people look in for
+        // help. No accelerator on purpose: a menu accelerator fires even while
+        // typing in a field, and "?" / Cmd+/ must stay text there — the
+        // renderer owns those keys and checks focus first.
+        {
+          label: 'Keyboard Shortcuts',
+          click: () => {
+            const win = getTargetWindow();
+            if (win && !win.isDestroyed()) {
+              win.webContents.send('menu:keyboard-shortcuts');
+            }
+          }
+        },
+        { type: 'separator' },
         {
           label: `About ${app.getName()}`,
           click: showAboutDialog

@@ -40,7 +40,7 @@ try {
   });
   await page.keyboard.press('Meta+s');
   await page.getByText('Could not save a local copy. Keep this document open and retry Save.', { exact: true }).waitFor();
-  assert.equal(await page.getByTitle('Unsaved changes (Cmd/Ctrl+S to save)', { exact: true }).count(), 1);
+  assert.equal(await page.getByLabel('Unsaved changes (Cmd/Ctrl+S to save)', { exact: true }).count(), 1);
   await desktop.evaluate(({ app }) => app.quit());
   // The old code always quit after five seconds, even after a save failed.
   await new Promise(resolve => setTimeout(resolve, 5400));
@@ -48,7 +48,7 @@ try {
   assert.equal(await page.evaluate(() => localStorage.getItem('annotationsByPage_qa-neighbor')), '{"keep":true}');
   await page.evaluate(() => window.__restoreQaStorage());
   await page.keyboard.press('Meta+s');
-  await page.waitForFunction(() => !document.querySelector('[title="Unsaved changes (Cmd/Ctrl+S to save)"]'));
+  await page.waitForFunction(() => !document.querySelector('[aria-label="Unsaved changes (Cmd/Ctrl+S to save)"]'));
   console.log(JSON.stringify({ nativeAtomicWrite: 'passed', localQuotaPreservesDirtyAndNeighbor: 'passed', nativeQuitVeto: 'passed', saveRetry: 'passed' }));
 } finally {
   if (desktop) await desktop.close();

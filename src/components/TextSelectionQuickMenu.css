@@ -1,0 +1,106 @@
+/* KAL-240 — floating quick menu next to a PDF text selection.
+   The look is the app's floating-menu card (the desktop right-click menu in
+   hooks/useAnnotationContextMenu.jsx): --surface-2 with the subtle --border
+   edge, --radius-md corners and --shadow-popover. Glyphs are --text-2, a mark
+   already on the selected text shows a gold glyph with no fill (tokens.css:
+   "selected = a gold GLYPH"), and each mark carries a short bar of the
+   colour it will paint, so the menu says what a press will do. */
+.text-selection-quick-menu {
+  position: fixed;
+  z-index: 5900;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: var(--shadow-popover);
+  color: var(--text-2);
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+
+/* Fades in each time it shows (it stays mounted, hidden, between shows). */
+.text-selection-quick-menu[data-visible='true'] {
+  animation: text-selection-quick-menu-in 120ms ease-out;
+}
+
+.text-selection-quick-menu__button {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (hover: hover) {
+  .text-selection-quick-menu__button:hover {
+    background: var(--hover);
+  }
+}
+
+.text-selection-quick-menu__button:active {
+  background: var(--pressed);
+}
+
+.text-selection-quick-menu__button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.text-selection-quick-menu__paint {
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  width: 14px;
+  height: 3px;
+  margin-left: -7px;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px var(--ink-ring);
+}
+
+.text-selection-quick-menu__divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 3px;
+  background: var(--border);
+  flex: 0 0 auto;
+}
+
+/* Phone: 44px touch targets, the same as the docked strip's buttons. */
+@media (pointer: coarse) {
+  .text-selection-quick-menu {
+    gap: 0;
+    padding: 2px;
+  }
+
+  .text-selection-quick-menu__button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .text-selection-quick-menu__paint {
+    bottom: 7px;
+  }
+}
+
+@keyframes text-selection-quick-menu-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .text-selection-quick-menu[data-visible='true'] {
+    animation: none;
+  }
+}

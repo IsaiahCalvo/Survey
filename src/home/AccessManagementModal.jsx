@@ -39,6 +39,7 @@ import { presenceInitials } from '../components/presenceIdentity.js';
 import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
 import { Icon } from './HubShell';
 import { C } from '../uiPalette';
+import { useTooltip } from '../components/Tooltip';
 
 
 const ROLES = ['Owner', 'Editor', 'Viewer'];
@@ -70,6 +71,7 @@ function labelForKind(kind) {
 }
 
 export default function AccessManagementModal({ open, onClose, kind = 'document', item = null, user = null }) {
+  const tip = useTooltip();
   const auth = useContext(AuthContext) || {};
   const currentUser = auth?.user || user || null;
 
@@ -245,7 +247,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
               <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{documentName}</div>
             </div>
             <button onClick={() => setInviteOpen(true)} data-kal31-invite-btn="true" className="hub-btn hub-btn--primary">Invite</button>
-            <button onClick={onClose} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={13} /></button>
+            <button onClick={onClose} aria-label="Close" {...tip('Close')} className="hub-icon-btn"><Icon name="close" size={13} /></button>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 18px 6px', borderBottom: `1px solid ${C.rule}`, fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600 }}>
@@ -287,7 +289,9 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                   <button
                     disabled={busy || isLastOwner}
                     onClick={() => handleRemove(m)}
-                    title={isLastOwner ? 'At least one owner must remain' : 'Remove'}
+                    // KAL-65: the visible word is the name; the chip only says
+                    // why the button is off (a bare "Remove" chip just echoed it).
+                    {...(isLastOwner ? tip('At least one owner must remain') : {})}
                     data-kal31-remove="true"
                     className="hub-btn is-danger"
                     style={{ justifySelf: 'end' }}

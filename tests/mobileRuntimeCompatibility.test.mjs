@@ -217,7 +217,10 @@ test('mobile shells lock page zoom without disabling app-controlled PDF pinch', 
   assert.match(INDEX_HTML_SOURCE, /addEventListener\('gesturechange', preventPageZoom, \{ passive: false \}\)/);
   assert.match(INDEX_HTML_SOURCE, /addEventListener\('gestureend', preventPageZoom, \{ passive: false \}\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /source: 'pinch'/);
-  assert.match(PDFJS_VIEWER_SOURCE, /event\.touches\.length >= 2/);
+  // (2026-10-13, Drawboard audit C1) two FINGERS pinch; palm-sized contacts
+  // are left out of the count (touches = withoutPalmTouches(event.touches)).
+  assert.match(PDFJS_VIEWER_SOURCE, /const touches = withoutPalmTouches\(event\.touches\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(touches\.length >= 2\) \{/);
 });
 
 test('mobile selected text exposes the shared toolbar and its shared color picker', () => {
@@ -490,7 +493,8 @@ test('redaction warning is compact, persistent, and expands for details', () => 
 test('mobile pinch settles at the latest centroid and suppresses a staggered release', () => {
   assert.match(PDFJS_VIEWER_SOURCE, /resolvePinchCommitCursor\(g\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /gestureRef\.current\.currentCursorX = center\.x/);
-  assert.match(PDFJS_VIEWER_SOURCE, /resolvePinchEndTransition\(touchState\.mode, event\.touches\.length\)/);
+  // (2026-10-13) palms are not counted as fingers left on the glass.
+  assert.match(PDFJS_VIEWER_SOURCE, /resolvePinchEndTransition\(touchState\.mode, touches\.length\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /mode === 'pinch-release'/);
 });
 
