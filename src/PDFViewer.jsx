@@ -71,6 +71,9 @@ import AnnotationDropdown from './components/AnnotationDropdown';
 import ToolbarOverflowMenu from './components/ToolbarOverflowMenu';
 import useSurveyBarFit from './hooks/useSurveyBarFit';
 import { surveyBarLook } from './utils/responsiveToolbar.js';
+import SurveyCategoryChips from './components/SurveyCategoryChips';
+import SurveyEntityBar from './components/SurveyEntityBar';
+import SurveyTemplateMenu from './components/SurveyTemplateMenu';
 import Icon from './Icons';
 import LightweightAnnotationOverlay from './components/LightweightAnnotationOverlay';
 import { useDocumentThumbnailCapture } from './hooks/useDocumentThumbnailCapture';
@@ -8267,14 +8270,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // 2026-10-07 (survey bar, narrow windows): how far the survey bar gives
   // ground so nothing in it overlaps (hooks/useSurveyBarFit.js).
   const surveyBarModules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
+  const surveyBarCategories = (surveyBarModules.find((module) => module.id === selectedModuleId) || surveyBarModules[0])?.categories || [];
   const surveyBarFit = useSurveyBarFit({
     enabled: Boolean(showSurveyPanel && selectedTemplate),
     insetLeft: isLeftSidebarCollapsed ? 0 : 272,
     insetRight: rightRailCollapsed ? 0 : 320,
     templateName: selectedTemplate?.name || 'Survey',
     moduleNames: surveyBarModules.length ? surveyBarModules.map((module) => module.name || 'Untitled module') : ['No modules'],
-    categoriesKey: ((surveyBarModules.find((module) => module.id === selectedModuleId) || surveyBarModules[0])?.categories || [])
-      .map((category) => `${category.id}:${category.name}`).join('|'),
+    categoriesKey: surveyBarCategories.map((category) => `${category.id}:${category.name}`).join('|'),
+    categoryCount: surveyBarCategories.length,
+    entityCount: (selectedTemplate?.entities || []).length,
   });
   const [selectedSpaceId, setSelectedSpaceId] = useState(null); // Currently selected space for survey interactions
   const [pendingSurveyMarkerName, setPendingSurveyMarkerName] = useState(null); // { surveyMarker, categoryId } when prompting for name
@@ -8287,10 +8292,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // The entity last picked for a Survey Marker on desktop (the rail's Entity
   // menu); a new desktop marker starts with it, like the phone's entity disc.
   const lastSurveyEntityIdRef = useRef(null);
+  // 2026-10-13 (entity bar): the bar rings it, and on desktop it is also the
+  // entity disc's pick, so the bar, the panel and the next marker agree.
+  const [lastSurveyEntityId, setLastSurveyEntityId] = useState(null);
   const rememberSurveyEntity = useCallback((entityId) => {
     lastSurveyEntityIdRef.current = entityId || null;
-  }, []);
+    setLastSurveyEntityId(entityId || null);
+    if (!mobileMode) setMobileSurveyEntityId(entityId || null);
+  }, [mobileMode]);
   const [mobileSurveyEntityId, setMobileSurveyEntityId] = useState(null);
+  // The Survey panel's own Entity-menu write (SurveySpacesRail
+  // applyEntitySelectionForMarker), handed up so the entity bar changes a
+  // selected marker's entity through the same save / sync / undo path.
+  const surveyEntityApplyRef = useRef(null);
+  const handleSurveyEntityBarPick = useCallback((entityId, markerIds = []) => {
+    rememberSurveyEntity(entityId);
+    markerIds.forEach((markerId) => surveyEntityApplyRef.current?.(markerId, entityId));
+  }, [rememberSurveyEntity]);
   // Pending Survey Marker deletion participates in legacy Undo/Redo. Keep the
   // entire transient prompt/preview slice together so restoring the marker
   // cannot leave its modal, name input, or selection in the post-delete state.
@@ -35033,6 +35051,7 @@ ${pageBlocks}
       surveyMarkerNameFocusRequest,
       undoSurveyMarkerPlacement,
       rememberSurveyEntity,
+      surveyEntityApplyRef,
       selectedItemsInCategory,
       selectedModuleId,
       selectedSpaceId,
@@ -38465,7 +38484,6 @@ ${pageBlocks}
             {subRowCategory === 'survey' && (() => {
               const modules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
               const selectedModule = modules.find((module) => module.id === selectedModuleId) || modules[0] || null;
-              const categories = selectedModule?.categories || [];
 
               /* UX 2026-09-23 (owner: desktop survey polish - "this dropdown
                  doesn't look like the rest of the dropdowns within the app ... make
@@ -38491,33 +38509,19 @@ ${pageBlocks}
                  The category chips stay on the bar's centre and the two side groups
                  hang off them, as before, so the chips never move when the module
                  name changes. Rules are the shared .chrome-divider. */
-              /* 2026-10-07 (survey bar, narrow windows): the bar gives ground in
-                 a fixed order so nothing ever overlaps or runs under an open
-                 panel - the template name shortens, then goes (glyph stays);
-                 the module name shortens; then Reuse, the module menu and the
-                 template menu move, in that order, into a "..." menu before
-                 Done. The chips and Done always stay (planSurveyBarStep in
-                 utils/responsiveToolbar.js; measured by useSurveyBarFit). */
-              const look = surveyBarLook(surveyBarFit.step);
-              const templateMenu = (inMore) => (
-                <AnnotationDropdown
-                  open={surveyTemplateMenuOpen}
-                  onOpenChange={setSurveyTemplateMenuOpen}
-                  label={`Survey template: ${selectedTemplate?.name || 'Survey'}. Switch template`}
-                  className={inMore ? 'survey-more__pill' : 'survey-subrow__template'}
-                  value={selectedTemplate?.id || ''}
-                  preview={<Icon name="survey" size={14} color="var(--accent)" />}
-                  triggerContent={selectedTemplate?.name || 'Survey'}
-                  options={(appTemplates || []).map((template) => ({
-                    value: template.id,
-                    label: template.name || 'Untitled template'
-                  }))}
-                  onSelect={handleSwitchSurveyTemplateById}
-                  width="auto"
-                  compact={!inMore && look.template === 'glyph'}
-                  dataMarker="data-survey-template-menu"
-                />
-              );
+              /* Owner 2026-10-13 ("the panel pushes the sub-toolbar out of
+                 place ... The things in the center should stay in the center"):
+                 the CENTRE group - module menu, category chips, Reuse - sits on
+                 the tool bar's centre and never moves when a side panel opens or
+                 closes; only the two END pieces (template menu, Done) move in and
+                 out with the panels, and give ground first in a narrow window
+                 (template name -> glyph, Done -> check). Then the centre:
+                 shorter module name, Reuse without its word, module + Reuse into
+                 a More menu beside the template menu, tighter chips, and last
+                 fewer chips before "All N" - nothing hidden (planSurveyBar in
+                 utils/responsiveToolbar.js; measured by useSurveyBarFit). Which
+                 chips show is decided by count (SurveyCategoryChips). */
+              const look = surveyBarLook(surveyBarFit.plan.step);
               const moduleMenu = (inMore) => (
                 <AnnotationDropdown
                   open={surveyModuleMenuOpen}
@@ -38570,90 +38574,85 @@ ${pageBlocks}
                   <span className="survey-subrow__track" aria-hidden="true" />
                   {/* Owner 2026-09-30: "Keep active" -> "Repeat"; 2026-10-01:
                       "Repeat" -> "Reuse" (it keeps the CATEGORY armed), same
-                      word as the phone bar. In More the row names it. */}
-                  {inMore ? null : <span>Reuse</span>}
+                      word as the phone bar. In More the row names it; the
+                      compact bar keeps the switch alone. */}
+                  {inMore || look.reuse === 'compact' ? null : <span>Reuse</span>}
                 </button>
               );
-              const moreItems = [
-                look.template === 'more' && { id: 'survey-template', label: 'Template', node: templateMenu(true) },
-                look.module === 'more' && { id: 'survey-module', label: 'Module', node: moduleMenu(true) },
-                look.reuse === 'more' && { id: 'survey-reuse', label: 'Reuse category', node: reuseSwitch(true) },
-              ].filter(Boolean);
+              const moreItems = look.more ? [
+                { id: 'survey-module', label: 'Module', node: moduleMenu(true) },
+                { id: 'survey-reuse', label: 'Reuse category', node: reuseSwitch(true) },
+              ] : [];
 
               return (
                 <div
                   ref={surveyBarFit.ref}
                   className="survey-subrow"
                   data-survey-bar-step={look.step}
+                  data-survey-template={surveyBarFit.plan.template}
+                  data-survey-done={surveyBarFit.plan.done}
                   // The left rail's open panel (272px) and the Survey panel
-                  // (320px) are drawn OVER this row, so the bar keeps its
-                  // template name and Done clear of whichever is open.
+                  // (320px) are drawn OVER this row: the end pieces keep clear
+                  // of whichever is open; the centre group does not move.
                   style={{
                     '--survey-bar-inset-l': isLeftSidebarCollapsed ? '0px' : '272px',
                     '--survey-bar-inset-r': rightRailCollapsed ? '0px' : '320px',
                   }}
                 >
-                  {/* Owner 2026-10-07 (survey bar round, after a debate): the
-                      bar names the mode itself - the floating Survey chip is
-                      gone. FIRST item: [gold survey glyph] <template> v, a
-                      menu that switches template (ellipsis when long). LAST
-                      item, at the right end: "Done" (Leave Survey), with an
-                      Undo toast. The bar only shows in Survey, so the bar IS
-                      the "you are in Survey" signal. */}
+                  {/* Owner 2026-10-07 (survey bar round): FIRST item, the
+                      template menu ([gold survey glyph] <template> v); LAST
+                      item, "Done" (Leave Survey), with an Undo toast. The bar
+                      only shows in Survey, so the bar IS the "you are in
+                      Survey" signal. */}
                   <div className="survey-subrow__side survey-subrow__side--start">
-                    {look.template !== 'more' && templateMenu(false)}
-                    {look.module !== 'more' ? (
+                    <SurveyTemplateMenu
+                      open={surveyTemplateMenuOpen}
+                      onOpenChange={setSurveyTemplateMenuOpen}
+                      templates={appTemplates || []}
+                      selectedTemplate={selectedTemplate}
+                      onSelect={handleSwitchSurveyTemplateById}
+                      compact={surveyBarFit.plan.template === 'glyph'}
+                      className="survey-subrow__template"
+                    />
+                    {/* Narrow: the module menu and Reuse wait in More, beside
+                        the template menu, so the centre is the chips alone. */}
+                    {look.more && (
+                      <div className="survey-subrow__more">
+                        <ToolbarOverflowMenu items={moreItems} tooltip={chromeTip('More', 'below')} />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="survey-subrow__centre" data-survey-bar-centre="true">
+                    {!look.more && (
                       <div className="survey-subrow__module">
                         {moduleMenu(false)}
                         <div className="chrome-divider" aria-hidden="true" />
                       </div>
-                    ) : look.template !== 'more' && (
-                      <div className="chrome-divider" aria-hidden="true" />
                     )}
-                  </div>
-
-                  <div className="survey-subrow__cats">
-                    {categories.length > 0 ? categories.map((category) => {
-                      const isActive = selectedCategoryId === category.id && activeTool === 'survey-marker';
-                      const glyph = getCategoryGlyphLabel(category.name);
-
-                      return (
-                        <button
-                          key={category.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedCategoryId(category.id);
-                            setActiveTool('survey-marker');
-                          }}
-                          {...chromeTip(category.name || 'Untitled category', 'below')}
-                          className={`btn chrome-subcontrol ${isActive ? 'btn-active' : 'btn-ghost'}`}
-                          // KAL-65: instant chip above is the tooltip; a native
-                          // title= would stack the OS tooltip on top of it.
-                          aria-label={category.name || 'Untitled category'}
-                          aria-pressed={isActive}
-                        >
-                          <span className={`survey-subrow__glyph${glyph.length > 1 ? ' is-wide' : ''}`} aria-hidden="true">
-                            {glyph}
-                          </span>
-                        </button>
-                      );
-                    }) : (
-                      <span className="survey-subrow__empty">No categories</span>
-                    )}
-                  </div>
-
-                  <div className="survey-subrow__side survey-subrow__side--end">
-                    {look.reuse === 'bar' ? (
+                    <SurveyCategoryChips
+                      templateId={selectedTemplate?.id}
+                      modules={modules}
+                      selectedModuleId={selectedModule?.id}
+                      selectedCategoryId={selectedCategoryId}
+                      armed={activeTool === 'survey-marker'}
+                      tip={chromeTip}
+                      max={surveyBarFit.plan.rowMax}
+                      onPick={(categoryId, moduleId) => {
+                        if (moduleId && moduleId !== selectedModule?.id) setSelectedModuleId(moduleId);
+                        setSelectedCategoryId(categoryId);
+                        setActiveTool('survey-marker');
+                      }}
+                    />
+                    {!look.more && (
                       <div className="survey-subrow__reuse">
                         <div className="chrome-divider" aria-hidden="true" />
                         {reuseSwitch(false)}
                       </div>
-                    ) : (
-                      <div className="survey-subrow__more">
-                        {look.template !== 'more' && <div className="chrome-divider" aria-hidden="true" />}
-                        <ToolbarOverflowMenu items={moreItems} tooltip={chromeTip('More', 'below')} />
-                      </div>
                     )}
+                  </div>
+
+                  <div className="survey-subrow__side survey-subrow__side--end">
                     <button
                       type="button"
                       className="survey-subrow__done"
@@ -38661,7 +38660,7 @@ ${pageBlocks}
                       onClick={handleLeaveSurvey}
                       {...chromeTip('Leave Survey', 'below')}
                     >
-                      Done
+                      {surveyBarFit.plan.done === 'glyph' ? <Icon name="check" size={16} color="currentColor" /> : 'Done'}
                     </button>
                   </div>
                 </div>
@@ -38716,6 +38715,23 @@ ${pageBlocks}
             : (activeCategoryDropdown && !TOOL_BAR_GROUPS.includes(activeCategoryDropdown) ? activeCategoryDropdown : null);
           if (subRowGroup && subRowHost) {
             rows.push(renderSubRow(subRowGroup, subRowHost, false));
+          }
+          // Owner 2026-10-13: the template's entities as swatches in a third
+          // bar under the survey bar (desktop; none when it has no entities).
+          if (subRowGroup === 'survey' && subRowHost && !mobileMode && (selectedTemplate?.entities || []).length > 0) {
+            rows.push(createPortal(
+              <SurveyEntityBar
+                templateId={selectedTemplate.id}
+                entities={selectedTemplate.entities}
+                nextEntityId={mobileSurveyEntityId || lastSurveyEntityId}
+                surveyMarkers={surveyMarkers}
+                onPick={handleSurveyEntityBarPick}
+                tip={chromeTip}
+                max={surveyBarFit.plan.entityRowMax}
+              />,
+              subRowHost,
+              'survey-entity-row'
+            ));
           }
           return rows;
         })()}
