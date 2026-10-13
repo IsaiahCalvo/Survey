@@ -36769,6 +36769,7 @@ ${pageBlocks}
                                 <SVGAnnotationLayer
                                   key={`svg-layer-${pageNumber}-${annotationOverlayRecoveryTick}`}
                                   documentId={pdfFile?.id || null}
+                                  isTabActive={isActive !== false}
                                   pageNumber={pageNumber}
                                   // visiblePagesSet is never updated past page 1, so a pinch-out
                                   // left newly visible pages with no marks until the current page
