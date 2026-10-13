@@ -508,7 +508,11 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     // user's own). Runs only when a new list lands - never on the render where
     // `user` changes but the old account's list is still here - so `user` is
     // deliberately not a dependency.
-    onLibraryUserChange?.(user?.id || null);
+    // Only the WHOLE library counts: inside a project this list is that
+    // project's documents alone, and restoring against it would skip saved
+    // tabs from other projects and then save the shortened set over the
+    // user's session (Bugbot, #817). Report "not the full library" instead.
+    onLibraryUserChange?.(selectedProjectId ? null : (user?.id || null));
   }, [supabaseDocuments]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {

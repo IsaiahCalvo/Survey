@@ -235,6 +235,14 @@ test('the library is stamped with its owner where it loads, and the restore read
   const dashboard = readFileSync(new URL('../src/Dashboard.jsx', import.meta.url), 'utf8');
   assert.match(appShell, /onLibraryUserChange=\{setDocumentsUserId\}/);
   assert.match(appShell, /useTabSession\(\{[\s\S]{0,200}documentsUserId,/);
-  assert.match(dashboard, /onLibraryUserChange\?\.\(user\?\.id \|\| null\);\n\s*\}, \[supabaseDocuments\]\)/,
+  assert.match(dashboard, /onLibraryUserChange\?\.\([^;]*user\?\.id \|\| null\)\);\n\s*\}, \[supabaseDocuments\]\)/,
     'stamped only when a new list lands, never on the user change alone');
+});
+
+test('the open-tabs restore only runs against the whole library, never one project', () => {
+  // Bugbot (#817): inside a project the Dashboard list holds that project's
+  // documents only; restoring against it skipped other projects' saved tabs
+  // and the next save overwrote the session with the shortened set.
+  const dashboard = readFileSync(new URL('../src/Dashboard.jsx', import.meta.url), 'utf8');
+  assert.match(dashboard, /onLibraryUserChange\?\.\(selectedProjectId \? null : \(user\?\.id \|\| null\)\)/);
 });
