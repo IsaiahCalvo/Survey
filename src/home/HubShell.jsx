@@ -9,6 +9,7 @@ import { presenceInitials } from '../components/presenceIdentity.js';
 import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
 import { openKeyboardShortcuts } from '../utils/keyboardShortcuts.js';
 import { useTooltip } from '../components/Tooltip';
+import { isDocumentDrag, readDocumentDragIds } from './documentSelection.js';
 
 const HUB_BUILD_STAMP = (
   typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STAMP__
@@ -459,12 +460,58 @@ const MobileRailNav = ({ mode, title, tab, navItems, onNav }) => {
   );
 };
 
+/* Projects as drop targets in the left rail, shown only while documents are
+   being dragged from the Documents list (shell audit 2026-10-13: Drawboard
+   moves rows by dropping them on a folder in its side bar). The list opens
+   under "Projects" when the drag starts and closes when it ends, so the rail
+   looks as it always does the rest of the time. */
+const ProjectDropList = ({ projects = [], onDrop }) => {
+  const [hoverId, setHoverId] = useState(null);
+  const over = (event, project) => {
+    if (!isDocumentDrag(event.dataTransfer)) return;
+    event.preventDefault();
+    try { event.dataTransfer.dropEffect = 'move'; } catch { /* read-only */ }
+    if (hoverId !== project.id) setHoverId(project.id);
+  };
+  return (
+    <div className="hub-project-drop-list" role="list" aria-label="Move to project">
+      {projects.length === 0 ? (
+        <div className="hub-project-drop-list__empty">No projects yet</div>
+      ) : projects.map((project) => (
+        <div
+          key={project.id}
+          role="listitem"
+          data-project-drop-id={project.id}
+          className={`hub-project-drop-list__item${hoverId === project.id ? ' is-over' : ''}`}
+          onDragEnter={(event) => over(event, project)}
+          onDragOver={(event) => over(event, project)}
+          onDragLeave={(event) => {
+            if (event.relatedTarget && event.currentTarget.contains(event.relatedTarget)) return;
+            setHoverId((id) => (id === project.id ? null : id));
+          }}
+          onDrop={(event) => {
+            if (!isDocumentDrag(event.dataTransfer)) return;
+            event.preventDefault();
+            setHoverId(null);
+            onDrop?.(readDocumentDragIds(event.dataTransfer), project);
+          }}
+        >
+          <Icon name="folder" size={13} color="currentColor" />
+          <span className="hub-project-drop-list__name">{project.name || 'Untitled project'}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 /* Sidebar + header frame. SurveyHub swaps complete tab shells atomically, so
    this component owns the shared viewport and chrome contract for each tab. */
 // dropProps (optional): drag-and-drop handlers for PDFs dragged in from the
 // computer (useFileDropZone). They go on the whole home screen, so a file let
 // go over the side bar still lands where the overlay says.
-export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userName = 'You', userMeta = undefined, templatesLocked = false, mobileSwipeSurfaceRef = undefined, dropProps = undefined }) => {
+// projectDrop (optional): { projects, onDrop(ids, project) } while documents
+// are dragged; the rail then lists the projects as drop targets.
+export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userName = 'You', userMeta = undefined, templatesLocked = false, mobileSwipeSurfaceRef = undefined, dropProps = undefined, projectDrop = null }) => {
   const tip = useTooltip();
   const expoNativeShell = isExpoNativeShell();
 
@@ -534,7 +581,11 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
         <aside className="side">
           <div className="brand"><span className="brand-dot"></span>Survey</div>
           <nav className="nav">
-            {primaryNavItems.map(([key, icon, label, disabled]) => navBtn(key, icon, label, disabled))}
+            {primaryNavItems.map(([key, icon, label, disabled]) => (
+              key === 'projects' && projectDrop
+                ? [navBtn(key, icon, label, disabled), <ProjectDropList key="project-drop" projects={projectDrop.projects} onDrop={projectDrop.onDrop} />]
+                : navBtn(key, icon, label, disabled)
+            ))}
           </nav>
           <nav className="nav nav-bottom">
             {navBtn(...archiveNavItem)}

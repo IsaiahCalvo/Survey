@@ -13,6 +13,7 @@ import { useFocusTrap } from '../hooks/useFocusTrap';
 import Spinner from '../components/Spinner';
 import { C } from '../uiPalette';
 import { useTooltip } from '../components/Tooltip';
+import { renameSelectionRange } from './documentSelection.js';
 
 
 const overlay = {
@@ -202,19 +203,40 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
   const [name, setName] = useState(initialName);
   const inputRef = useRef(null);
   const previouslyFocusedRef = useRef(null);
+  // Callers pass a fresh onClose each render; reading it through a ref keeps
+  // the open effect below from re-running (it used to reset the typed name
+  // and lose the preselection on any parent render).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  // The field gets the name in the SAME render that opens the dialog. It
+  // used to be set from the effect below, one render late: the preselection
+  // was made on the empty field and React then wrote the name in, which puts
+  // the caret at the end (measured: 15,15 on "Sheet A-103.pdf").
+  const [openedWith, setOpenedWith] = useState(null);
+  if (open && openedWith !== initialName) {
+    setOpenedWith(initialName);
+    setName(initialName);
+  } else if (!open && openedWith !== null) {
+    setOpenedWith(null);
+  }
 
   useEffect(() => {
     if (!open) return undefined;
-    setName(initialName);
     previouslyFocusedRef.current = document.activeElement;
+    // Shell audit 2026-10-13 (Drawboard, Finder): the name is preselected
+    // WITHOUT its ".pdf", so typing replaces the name and keeps the type.
+    const [start, end] = renameSelectionRange(initialName);
     const frame = requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      inputRef.current?.select();
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus();
+      try { input.setSelectionRange(start, end); } catch { input.select(); }
     });
     const handleKey = (event) => {
       if (event.key === 'Escape') {
         event.stopPropagation();
-        onClose?.();
+        onCloseRef.current?.();
       }
     };
     window.addEventListener('keydown', handleKey, true);
@@ -224,7 +246,7 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
       previouslyFocusedRef.current?.focus?.();
       previouslyFocusedRef.current = null;
     };
-  }, [initialName, onClose, open]);
+  }, [initialName, open]);
 
   if (!open) return null;
   const trimmed = name.trim();
