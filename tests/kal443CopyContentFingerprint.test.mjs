@@ -142,17 +142,32 @@ test('copying the same PDF twice into a project is recognised as a duplicate (sa
   assert.equal(uploaded.row.id, first.id);
 });
 
-test('duplicating inside the same project lands on the existing document and never creates a blank copy', async () => {
+test('Duplicate inside the same project still makes a real second copy (own object, outside the duplicate check)', async () => {
   const backend = new FakeBackend({ documentId: 'unused-doc', ownerId: OWNER, storage: true });
   const source = seedSource(backend);
   const app = appFor(backend, OWNER);
 
-  const copy = await app.copy(source, PROJECT_1);
-  assert.equal(copy.id, source.id);
-  assert.equal(isReusedCopy(copy), true);
-  assert.equal(rowsIn(backend, PROJECT_1).length, 1);
-  assert.equal(backend.storageObjects.size, 1, 'no stray object left behind');
-  assert.match(describeReusedCopies([copy], { projectName: 'North block' }), /already in “North block”/);
+  const copy = await app.copy(source, PROJECT_1, 'op-dup');
+  assert.notEqual(copy.id, source.id, 'a new document, not the original');
+  assert.equal(isReusedCopy(copy), false);
+  assert.equal(copy.name, 'Site plan (Copy).pdf');
+  assert.equal(copy.content_sha256 ?? null, null, 'the one fingerprinted row per file per project stays the original');
+  assert.equal(copy.file_path, `${OWNER}/${PROJECT_1}/copy-op-dup.pdf`, 'its own object, not a fake content address');
+  assert.deepEqual(storedBytes(backend, copy.file_path), PDF);
+  assert.equal(rowsIn(backend, PROJECT_1).length, 2);
+
+  // A second Duplicate makes a third document; an upload of the same file
+  // still lands on the original.
+  const again = await app.copy(source, PROJECT_1, 'op-dup-2');
+  assert.notEqual(again.id, copy.id);
+  assert.equal(rowsIn(backend, PROJECT_1).length, 3);
+  const uploaded = await createOrReuseDocumentRow({
+    supabase: app.client,
+    userId: OWNER,
+    documentData: { name: 'Site plan.pdf', file_path: source.file_path, project_id: PROJECT_1, content_sha256: sha(PDF) },
+  });
+  assert.equal(uploaded.reused, true);
+  assert.equal(uploaded.row.id, source.id);
 });
 
 test('a legacy source without a fingerprint gives a copy with its real fingerprint', async () => {

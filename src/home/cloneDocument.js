@@ -22,6 +22,13 @@
 //     a document's stored file IN PLACE, so a shared object would let editing
 //     the original silently change the copy. The path is keyed by the copy's
 //     stable id, so a retried batch overwrites the same object.
+//   * Duplicate INSIDE the same project is the one exception to the
+//     fingerprint: the person asked for a second copy right next to the
+//     original, and the database allows only one fingerprinted row per file
+//     per person per project (documents_user_project_sha_uidx). Such a copy is
+//     written without content_sha256 so Duplicate keeps working; it still gets
+//     its own honest `copy-{id}` object, and later uploads of the same file
+//     keep deduping against the original.
 //
 // Pure: storage, row creation and hashing are injected.
 
@@ -76,8 +83,11 @@ export async function cloneDocumentIntoProject({
   if (!sourcePath) throw new Error(`Document "${source?.name || 'Untitled'}" has no stored PDF.`);
 
   const blob = await download(sourcePath);
-  const bytes = new Uint8Array(await blob.arrayBuffer());
-  const contentSha = await computeSha(bytes);
+  const sourceProjectId = source.project_id ?? source.projectId ?? null;
+  const secondCopyInPlace = sourceProjectId === (projectId ?? null);
+  const contentSha = secondCopyInPlace
+    ? null
+    : await computeSha(new Uint8Array(await blob.arrayBuffer()));
   const copyName = copyNameFor(source.name);
 
   // A batch copy supplies a stable UUID. The same key makes both the storage

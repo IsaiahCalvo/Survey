@@ -1,8 +1,9 @@
 // KAL-443 end to end on the in-memory backend: copy a document into another
 // project from Home > Projects, then copy it again, then Duplicate it inside
-// its own project. The stored rows must carry the real content fingerprint,
-// and repeats must land on the existing document (one row per file per
-// project), with a calm note saying so. Desktop (1440x900) and phone
+// its own project. The copy must carry the real content fingerprint, a
+// repeat copy must land on the existing document (one row per file per
+// project) with a calm note saying so, and Duplicate inside the same project
+// must still make a real second copy (its own object, no fingerprint). Desktop (1440x900) and phone
 // (390x844, touch). No network, no database.
 // Run (.env needs VITE_SUPABASE_URL/KEY so the client exists):
 //   PW_CHROMIUM_PATH=/opt/pw-browsers/chromium PLAYWRIGHT_BASE_URL=http://127.0.0.1:5491 \
@@ -52,15 +53,22 @@ const toasts = (page) => page.evaluate(() => window.__kalToasts || []);
 
 async function openProject(page, name, { phone }) {
   if (phone) {
-    await page.getByRole('button', { name: 'Home' }).or(page.getByText('Home', { exact: true })).first().click();
+    // The phone opens in the viewer; its back button leads to the library.
+    await page.getByRole('button', { name: 'Back to documents' }).first().click();
+    await page.waitForTimeout(1500);
   } else {
     await page.getByText('Home', { exact: true }).first().click();
   }
   await page.waitForTimeout(1500);
   await page.getByRole('button', { name: 'Projects', exact: true }).or(page.getByRole('tab', { name: 'Projects' })).first().click();
   await page.waitForTimeout(1500);
-  await page.getByText(name, { exact: true }).first().click();
+  await page.getByText(name, { exact: true }).locator('visible=true').first().click();
   await page.waitForTimeout(1500);
+  if (process.env.KAL443_PROBE) {
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(process.env.KAL443_PROBE, await page.locator('body').ariaSnapshot());
+    await page.screenshot({ path: `${process.env.KAL443_PROBE}.png` });
+  }
 }
 
 async function selectFile(page, fileName) {
@@ -70,8 +78,12 @@ async function selectFile(page, fileName) {
     await page.locator('button[aria-label="Select"]:visible').last().click();
     await page.waitForTimeout(500);
   }
-  await page.getByText(fileName, { exact: true }).first().click();
+  await page.getByText(fileName, { exact: true }).locator('visible=true').first().click();
   await page.waitForTimeout(500);
+  if (process.env.KAL443_PROBE) {
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(`${process.env.KAL443_PROBE}.selected.yml`, await page.locator('body').ariaSnapshot());
+  }
 }
 
 async function copyTo(page, fileName, destination) {
@@ -106,10 +118,11 @@ for (const device of ['desktop', 'phone']) {
     const noteAfterRepeat = await waitFor(async () => (await toasts(page)).find((m) => /already in “South block”/.test(m)) || null, { timeout: 20_000 });
     await page.screenshot({ path: `${OUT_DIR}/kal443-${device}-3-after-repeat.png` });
 
-    // 3) Duplicate inside North block.
+    // 3) Duplicate inside North block: a real second copy.
     await selectFile(page, 'Landscape sheets.pdf');
     await page.locator('button[aria-label="Duplicate"]:visible').first().click();
-    const noteAfterDuplicate = await waitFor(async () => (await toasts(page)).find((m) => /already in “North block”/.test(m)) || null, { timeout: 20_000 });
+    const duplicate = await waitFor(() => rowsIn(backend, P1).find((d) => d.id !== docId) || null, { timeout: 20_000 });
+    await page.getByText('Landscape sheets (Copy).pdf', { exact: true }).locator('visible=true').first().waitFor({ timeout: 20_000 });
     await page.screenshot({ path: `${OUT_DIR}/kal443-${device}-4-after-duplicate.png` });
 
     const southRows = rowsIn(backend, P2);
@@ -120,8 +133,8 @@ for (const device of ['desktop', 'phone']) {
       southRows: southRows.length,
       northRows: northRows.length,
       storageObjects: objects,
+      duplicate: duplicate && { content_sha256: duplicate.content_sha256 ?? null, file_path: duplicate.file_path, name: duplicate.name },
       noteAfterRepeat,
-      noteAfterDuplicate,
       toasts: await toasts(page),
       errors: win.errors,
     };
@@ -132,10 +145,17 @@ for (const device of ['desktop', 'phone']) {
     // The copy's own object (never the original's), in the copier's folder.
     expect(firstCopy?.file_path).toBe(`${USER}/${P2}/copy-${firstCopy?.id}.pdf`);
     expect(southRows.length).toBe(1);
-    expect(northRows.length).toBe(1);
-    // The original + the one copy; repeats leave nothing behind.
-    expect(objects.sort()).toEqual([`documents/${USER}/${P2}/copy-${firstCopy?.id}.pdf`, `documents/${USER}/${SHA}.pdf`].sort());
+    expect(northRows.length).toBe(2);
+    expect(duplicate?.name).toBe('Landscape sheets (Copy).pdf');
+    expect(duplicate?.content_sha256 ?? null).toBe(null);
+    expect(duplicate?.file_path).toBe(`${USER}/${P1}/copy-${duplicate?.id}.pdf`);
+    // The original, the one copy and the duplicate; the repeat leaves nothing behind.
+    expect(objects.sort()).toEqual([
+      `documents/${USER}/${P2}/copy-${firstCopy?.id}.pdf`,
+      `documents/${USER}/${P1}/copy-${duplicate?.id}.pdf`,
+      `documents/${USER}/${SHA}.pdf`,
+    ].sort());
     expect(noteAfterRepeat).toBeTruthy();
-    expect(noteAfterDuplicate).toBeTruthy();
+    expect(evidence.toasts.some((m) => /already in “North block”/.test(m))).toBe(false);
   });
 }
