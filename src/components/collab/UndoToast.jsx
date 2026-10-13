@@ -40,7 +40,7 @@ function markOpen(delta) {
   else document.documentElement.removeAttribute('data-undo-toast-open');
 }
 
-export function UndoToast({ toast, onDismiss }) {
+export function UndoToast({ toast, onDismiss, className = '' }) {
   // `shown` is what is on screen: the live toast, or the last one while it
   // plays its exit.
   const [shown, setShown] = useState(toast);
@@ -98,7 +98,9 @@ export function UndoToast({ toast, onDismiss }) {
   // sheet: a delete made in an open sheet showed its Undo behind the sheet.
   const node = (
     <div
-      className={`undo-toast${leaving ? ' undo-toast--leaving' : ''}`}
+      // `className` lets a host style its own toast (the home's: hub.css
+      // .undo-toast.hub-undo-toast) — a wrapper class cannot reach it in <body>.
+      className={`undo-toast${className ? ` ${className}` : ''}${leaving ? ' undo-toast--leaving' : ''}`}
       role="alert"
       aria-live="polite"
       aria-hidden={leaving ? 'true' : undefined}
