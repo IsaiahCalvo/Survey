@@ -20,6 +20,7 @@ import { withDevFakePresence } from '../components/presenceIdentity.js';
 import { getSelectFamilyLabel, getSelectFamilyTransition, getSelectModeIconName, SELECT_MODE_OPTIONS } from '../utils/selectModes.js';
 import { tooltipForLabel } from '../utils/toolShortcuts.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
+import { useSheetFocus } from './useSheetFocus';
 import { commitPanelTyping } from './keyboardViewport.js';
 import useRailGroupMotion from './useRailGroupMotion.js';
 import { useViewerTopOverlayRef } from '../utils/viewerTopOverlay.js';
@@ -2647,6 +2648,9 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
     sheetProps: usersSheetProps,
     requestClose: requestUsersSheetClose,
   } = useMobileSheetMotion(() => setPresenceOpen(false), { open: presenceOpen });
+  // KAL-66 / KAL-460: the sheet is modal (dimmed page behind it) - focus goes
+  // in, Tab stays in, Escape slides it away and focus comes back.
+  const usersSheetFocusRef = useSheetFocus(presenceOpen, requestUsersSheetClose, usersSheetProps.ref);
   const popoverRef = useRef(null);
   const syncButtonRef = useRef(null);
   const syncDetailsRef = useRef(null);
@@ -3166,7 +3170,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
             onClick={requestUsersSheetClose}
             style={usersBackdropStyle}
           />
-          <section className="mobile-pdf-sheet mobile-pdf-users-sheet" aria-label="Active users" {...usersSheetProps} style={usersSheetMotionStyle}>
+          <section className="mobile-pdf-sheet mobile-pdf-users-sheet" role="dialog" aria-modal="true" aria-label="Active users" {...usersSheetProps} ref={usersSheetFocusRef} tabIndex={-1} style={usersSheetMotionStyle}>
             <div className="mobile-pdf-sheet__handle" />
             {/* Owner 2026-09-30: no close X - a tap outside or a swipe down
                 (anywhere on the sheet) closes it. */}

@@ -20,6 +20,11 @@
  * is `autoFocus: false`. To choose which control gets that initial focus, mark
  * it `data-autofocus` — otherwise the first text field wins, then the first
  * focusable element of any kind (close buttons included, as a last resort).
+ *
+ * `avoidTextFields: true` (phone bottom sheets, KAL-66/KAL-460): focus lands
+ * on the first control that is NOT a text field, else on the container itself
+ * (give it tabIndex={-1}) — on a phone, focusing a field throws the keyboard
+ * up over the sheet before the person asked to type.
  */
 import { useEffect, useRef } from 'react';
 import { openModalStack } from './modalStack.js';
@@ -53,7 +58,9 @@ const focusableWithin = (container) => (
 // The list is shared with src/home/useModalFocusTrap.js (see modalStack.js).
 const openTraps = openModalStack;
 
-export const useFocusTrap = (containerRef, isOpen, { onEscape, autoFocus = true } = {}) => {
+const TEXT_FIELD = /^(INPUT|TEXTAREA|SELECT)$/;
+
+export const useFocusTrap = (containerRef, isOpen, { onEscape, autoFocus = true, avoidTextFields = false } = {}) => {
   const trapTokenRef = useRef(null);
   if (!trapTokenRef.current) trapTokenRef.current = { containerRef };
   // Callers commonly pass an inline arrow for onEscape, so the key effect below
@@ -78,9 +85,12 @@ export const useFocusTrap = (containerRef, isOpen, { onEscape, autoFocus = true 
       if (!container || container.contains(document.activeElement)) return true;
       const focusable = focusableWithin(container);
       const preferred = container.querySelector('[data-autofocus]')
-        || focusable.find((el) => /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))
-        || focusable[0];
-      preferred?.focus?.();
+        || (avoidTextFields
+          ? (focusable.find((el) => !TEXT_FIELD.test(el.tagName))
+            || (container.hasAttribute('tabindex') ? container : null))
+          : (focusable.find((el) => TEXT_FIELD.test(el.tagName)) || focusable[0]));
+      // A sheet still sliding in must not be scrolled by the focus move.
+      preferred?.focus?.(avoidTextFields ? { preventScroll: true } : undefined);
       return Boolean(preferred);
     };
     if (autoFocus && !moveFocusIn()) {
@@ -94,7 +104,7 @@ export const useFocusTrap = (containerRef, isOpen, { onEscape, autoFocus = true 
       openerRef.current?.focus?.();
       openerRef.current = null;
     };
-  }, [containerRef, isOpen, autoFocus]);
+  }, [containerRef, isOpen, autoFocus, avoidTextFields]);
 
   useEffect(() => {
     if (!isOpen) return undefined;

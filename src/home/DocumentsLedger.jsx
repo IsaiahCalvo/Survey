@@ -118,7 +118,7 @@ function DocumentActionMenu({ anchorRect, point = null, items, onClose, returnFo
 
   return createPortal(
     <>
-      <DismissBarrier insideRefs={[ref]} onDismiss={onClose} menu />
+      <DismissBarrier insideRefs={[ref]} onDismiss={onClose} />
       <div
         ref={ref}
         role="menu"

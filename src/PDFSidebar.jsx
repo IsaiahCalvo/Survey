@@ -22,6 +22,7 @@ import PresenceAvatars from './components/PresenceAvatars';
 import { withDevFakePresence } from './components/presenceIdentity.js';
 import RevisionsPanel from './components/revisions/RevisionsPanel';
 import { useMobileSheetMotion } from './mobile/useMobileSheetMotion';
+import { useSheetFocus } from './mobile/useSheetFocus';
 import { useTooltip } from './components/Tooltip';
 import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH } from './viewerShared';
 import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
@@ -574,6 +575,14 @@ const PDFSidebar = React.forwardRef(({
       contentKey: activeTab === 'spaces' || activeTab === 'history' ? activeTab : 'hub',
     });
   mobileSheetCloseRef.current = mobileMode ? requestSheetClose : null;
+  // KAL-66 / KAL-460: with its dimmed backdrop up (every tab but History,
+  // which leaves the page live) the phone sheet is modal - focus goes in, Tab
+  // stays in, Escape slides it away, and focus comes back after.
+  const sheetFocusRef = useSheetFocus(
+    mobileMode && !isCollapsed && activeTab !== 'history',
+    requestSheetClose,
+    sheetProps.ref,
+  );
   // The phone hub's three tabs (Spaces has its own dock button).
   const expandedNavigationTabs = tabs.filter((tab) => tab.id !== 'spaces');
   // RULED CHANGE 2026-09-21 (pass 7 / DESIGN-SYSTEM.md "Standard is the starting
@@ -658,14 +667,17 @@ const PDFSidebar = React.forwardRef(({
       // desktop, a bottom sheet on the phone (see utils/searchMatchNavigation).
       // Desktop: while the panel is laid out (open, or still sliding closed).
       data-viewer-occluder={mobileMode ? (isCollapsed ? undefined : 'sheet') : (layoutOpen ? 'side' : undefined)}
-      ref={mobileMode ? undefined : setRailEl}
       // Phone: swipe down anywhere on the sheet + the keyboard lift (owner
-      // 2026-09-30, see useMobileSheetMotion).
+      // 2026-09-30, see useMobileSheetMotion). The ref is set after the
+      // spread below (sheetFocusRef also feeds the sheet motion's ref).
       {...(mobileMode ? sheetProps : null)}
+      ref={mobileMode ? sheetFocusRef : setRailEl}
+      tabIndex={mobileMode && !isCollapsed ? -1 : undefined}
       // KAL-66: on the phone this bottom sheet is a named region (VoiceOver
       // reads "Pages", "Spaces"...). Not role="dialog": several viewer key
-      // and press rules treat [role="dialog"] as "a modal owns this", and
-      // the sheet is not modal. The desktop rail has its own region inside.
+      // and press rules treat [role="dialog"] as "a modal owns this" (the
+      // History tab leaves the page live). The desktop rail has its own
+      // region inside.
       role={mobileMode && !isCollapsed ? 'region' : undefined}
       aria-label={mobileMode && !isCollapsed ? PANEL_TITLES[activeTab] : undefined}
       className={`${mobileMode ? 'mobile-pdf-sheet ' : 'left-rail '}${mobileMode && sheetFullscreen ? 'is-fullscreen ' : ''}${isCollapsed ? 'is-collapsed' : ''}`} style={{
