@@ -94,6 +94,7 @@ import {
 } from '../services/templateConfigShape';
 import { moveItemById } from '../reorder/flatReorderUtils.js';
 import { CALM_STRIP_AUTO_SCROLL } from '../reorder/dragAutoScroll.js';
+import { restrictToHorizontalAxis } from '../reorder/axisLock.js';
 import { pickByIds, removeByIds, duplicateAfterByIds } from './selectionById.js';
 import { countLabel } from './countLabel.js';
 import { flagRequiredInput, isBlank } from '../components/requiredInput';
@@ -162,11 +163,6 @@ const templateMatchesSearch = (template, query) => {
   ];
   return haystack.some((value) => String(value || '').toLowerCase().includes(query));
 };
-
-const restrictSortableToHorizontalAxis = ({ transform }) => ({
-  ...transform,
-  y: 0,
-});
 
 const getModuleTabClampBounds = (activeId) => {
   if (typeof document === 'undefined') return null;
@@ -498,7 +494,7 @@ function SortableModuleTabs({
   );
 
   const modifiers = useMemo(() => [
-    restrictSortableToHorizontalAxis,
+    restrictToHorizontalAxis,
     ({ transform }) => {
       const bounds = dragClampBoundsRef.current;
       if (!bounds) return transform;

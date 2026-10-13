@@ -36,6 +36,8 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CALM_STRIP_AUTO_SCROLL } from './reorder/dragAutoScroll.js';
+import { restrictToHorizontalAxis } from './reorder/axisLock.js';
+import { moveItem } from './reorder/flatReorderUtils.js';
 import { CSS } from '@dnd-kit/utilities';
 import Icon from './Icons';
 import { useTooltip } from './components/Tooltip';
@@ -66,11 +68,6 @@ const TAB_BORDER = 'var(--border)';
 const TAB_TEXT = 'var(--text-3)';
 const TAB_TEXT_ACTIVE = 'var(--text-1)';
 const TAB_ACCENT = 'var(--accent)';
-
-const restrictTabsToHorizontalAxis = ({ transform }) => ({
-  ...transform,
-  y: 0,
-});
 
 const createTabBoundsModifier = () => ({ active, activeNodeRect, transform }) => {
   const activeIdValue = String(active?.id ?? '');
@@ -103,23 +100,6 @@ const createTabBoundsModifier = () => ({ active, activeNodeRect, transform }) =>
       right - (activeNode.offsetLeft + activeNode.offsetWidth)
     ),
   };
-};
-
-const moveArrayItem = (items, fromIndex, toIndex) => {
-  if (
-    fromIndex === toIndex ||
-    fromIndex < 0 ||
-    toIndex < 0 ||
-    fromIndex >= items.length ||
-    toIndex >= items.length
-  ) {
-    return items;
-  }
-
-  const nextItems = items.slice();
-  const [moved] = nextItems.splice(fromIndex, 1);
-  nextItems.splice(toIndex, 0, moved);
-  return nextItems;
 };
 
 function TabItem({
@@ -633,7 +613,7 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onTab
     })
   );
   const tabModifiers = useMemo(() => [
-    restrictTabsToHorizontalAxis,
+    restrictToHorizontalAxis,
     createTabBoundsModifier(),
   ], []);
 
@@ -642,7 +622,7 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onTab
 
     const fromIndex = pdfTabs.findIndex((tab) => tab.id === active.id);
     const toIndex = pdfTabs.findIndex((tab) => tab.id === over.id);
-    const reorderedPdfTabs = moveArrayItem(pdfTabs, fromIndex, toIndex);
+    const reorderedPdfTabs = moveItem(pdfTabs, fromIndex, toIndex);
 
     if (reorderedPdfTabs === pdfTabs) return;
 
