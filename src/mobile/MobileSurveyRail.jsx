@@ -370,7 +370,7 @@ export function MobileMarkerShapeChip({ armed, onArm, glyph = 17 }) {
     return () => setMarkerModeToolsShown(false);
   }, []);
   const shapes = smartFill
-    ? [...BUILT_IN_SHAPES, { mode: 'smartFill', label: smartFill.label || 'Smart fill', icon: smartFill.icon || 'paintBucket' }]
+    ? [...BUILT_IN_SHAPES, { mode: 'smartFill', label: smartFill.label || 'Smart fill', icon: smartFill.icon || 'smartFillDrop' }]
     : BUILT_IN_SHAPES;
   const current = shapes.find((shape) => shape.mode === shown) || shapes[0];
   const toggle = () => {

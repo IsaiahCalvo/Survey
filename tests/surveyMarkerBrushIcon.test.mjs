@@ -31,7 +31,7 @@ test('freehand marker mode uses the brush icon on desktop and phone', async () =
   // Rectangle and Smart fill are unchanged by this pass.
   assert.match(desktop, /\{ mode: 'rectangle', label: 'Rectangle marker', icon: 'selectionPlus' \}/);
   assert.match(phone, /\{ mode: 'rectangle', label: 'Rectangle', icon: 'selectionPlus' \}/);
-  assert.match(phone, /icon: smartFill\.icon \|\| 'paintBucket'/);
+  assert.match(phone, /icon: smartFill\.icon \|\| 'smartFillDrop'/);
   // The Highlighter TOOL keeps its own glyph; only the marker mode moved.
   for (const source of [desktop, phone]) {
     assert.doesNotMatch(source, /mode: 'freehand'[^}]*icon: 'highlighter'/);
@@ -42,4 +42,13 @@ test('the Rectangle marker uses the owner\'s selection-plus icon (owner 2026-10-
   const icons = await read('../src/Icons.jsx');
   assert.match(icons, /selectionPlus: \(size, color, style, className\) => \(\s*<svg[^>]*viewBox="0 0 256 256"/);
   assert.match(icons, /M240,208H224V192a8,8,0,0,0-16,0v16H192/);
+});
+
+test('Smart fill uses the owner\'s drop icon, glyph only, by default (owner 2026-10-14)', async () => {
+  const icons = await read('../src/Icons.jsx');
+  const block = icons.slice(icons.indexOf('smartFillDrop: (size'), icons.indexOf('listChecks: (size'));
+  assert.match(block, /viewBox="237\.5 201 620 620"/);
+  assert.match(block, /d="M543\.76 239\.31C554\.88 235\.84/, 'the glyph path');
+  assert.doesNotMatch(block, /M0\.25 0\.25C365\.08/, 'not the dark backing square');
+  assert.doesNotMatch(block, /#19212e|#fefefd/, 'drawn in the current colour');
 });

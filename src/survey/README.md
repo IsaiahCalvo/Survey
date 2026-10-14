@@ -22,7 +22,7 @@ import { registerMarkerShapeProvider } from './markerShapeProviders.js';
 const unregister = registerMarkerShapeProvider({
   id: 'smartFill',          // must be exactly this to drive the Smart fill button
   label: 'Smart fill',      // tooltip / accessible name
-  icon: 'paintBucket',      // any <Icon> name in src/Icons.jsx
+  icon: 'smartFillDrop',    // any <Icon> name in src/Icons.jsx (default: smartFillDrop)
   async onPagePointerDown({ pageIndex, pageNumber, point, pageSize, pdfPage, viewport, pageCanvas, signal }) {
     // point: { x, y } where the user pressed, PDF page units (see below)
     // pdfPage: the pdf.js PDFPageProxy (pdfPage.getOperatorList(), getTextContent() …)

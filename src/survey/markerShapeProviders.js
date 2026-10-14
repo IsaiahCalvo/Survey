@@ -12,7 +12,7 @@
  *   registerMarkerShapeProvider({
  *     id: 'smartFill',              // the tool-bar mode this provider drives
  *     label: 'Smart fill',          // tooltip + accessible name
- *     icon: 'paintBucket',          // an <Icon> name from src/Icons.jsx
+ *     icon: 'smartFillDrop',        // an <Icon> name from src/Icons.jsx
  *     onPagePointerDown: async ({
  *       pageIndex,                  // 0-based page index
  *       pageNumber,                 // 1-based (the app's own numbering)
@@ -67,7 +67,7 @@ export function registerMarkerShapeProvider(provider) {
   const entry = Object.freeze({
     id: provider.id,
     label: typeof provider.label === 'string' && provider.label ? provider.label : provider.id,
-    icon: typeof provider.icon === 'string' && provider.icon ? provider.icon : 'paintBucket',
+    icon: typeof provider.icon === 'string' && provider.icon ? provider.icon : 'smartFillDrop',
     onPagePointerDown: provider.onPagePointerDown,
   });
   providers.set(entry.id, entry);
