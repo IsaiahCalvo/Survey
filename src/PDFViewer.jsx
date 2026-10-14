@@ -104,6 +104,7 @@ import TextMarkupLinkLayer from './components/TextMarkupLinkLayer';
 import PdfjsFormLayer from './components/PdfjsFormLayer';
 import TextSelectionActionBar from './components/TextSelectionActionBar';
 import TextSelectionQuickMenu from './components/TextSelectionQuickMenu';
+import { deviceCanHover, isTextSelectionCaptureTool, shouldMountPanTextLayer } from './utils/panTextSelect.js';
 import { copyTextSelection } from './utils/textSelectionQuickMenu.js';
 import ApplyRedactionsModal from './components/ApplyRedactionsModal';
 import OcrTextLayer from './components/OcrTextLayer';
@@ -4425,9 +4426,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // kept (no pointer hand).
   const eraserWholeModeRef = useRef(false);
   useEffect(() => {
-    // Owner 2026-10-13: Pan shows no hover halo and no pointer hand - a
-    // press-drag under Pan always pans (docs/GESTURE-CONTRACT.md P7).
-    const haloByPosition = activeTool === 'eraser'
+    // Pan shows the blue halo over a mark a click would pick, as Drawboard's
+    // Pan does (owner 2026-10-14 reversed 10-13), but keeps the grab hand: a
+    // press-drag from an unselected mark still pans (GESTURE-CONTRACT P7).
+    const haloByPosition = activeTool === 'eraser' || activeTool === 'pan'
       || (shouldShowHoverHalo(activeTool) && activeTool !== 'pan' && activeTool !== 'select' && activeTool !== 'text-select');
     if (!haloByPosition) {
       // Tool changed away from pan — clear any lingering hover state + cursor.
@@ -32552,7 +32554,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, []);
 
   const capturePdfjsTextSelection = useCallback(() => {
-    if (activeToolRef.current !== 'text-select') return null;
+    if (!isTextSelectionCaptureTool(activeToolRef.current)) return null;
     const selection = window.getSelection?.();
     const pages = getSelectionPageRanges(selection, pageSizesRef.current || {});
     if (pages.length === 0) {
@@ -32592,7 +32594,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [showAnnotationColorPicker, textLinkEditorOpen]);
 
   useEffect(() => {
-    if (activeTool !== 'text-select') {
+    // Pan selects text too once a mouse / pen rests on it (owner 2026-10-14).
+    if (!isTextSelectionCaptureTool(activeTool)) {
       // Owner 2026-10-02: a just-drawn callout opens its text editor and the
       // tool flips back to Select in the same pass, so this ran right after
       // the editor took focus and wiped its caret - the box looked dead until
@@ -35898,6 +35901,7 @@ ${pageBlocks}
                     textMarkupOpacity={Math.max(0, Math.min(1, Number(strokeOpacity) / 100 || 1))}
                     textSelectionLayerActive={activeTool === 'text-select'}
                     textSelectionLayerInteractive={activeTool === 'text-select' && textSelectManipulationPageNumber == null}
+                    panTextHoverSelect={shouldMountPanTextLayer({ toolIsPan: activeTool === 'pan', canHover: deviceCanHover() })}
                     onDocumentLoaded={handlePdfjsDocumentLoad}
                     onDocumentLoadFailed={handlePdfjsDocumentLoadFailed}
                     onPageChanged={handlePdfjsPageChange}
@@ -41068,7 +41072,7 @@ ${pageBlocks}
         document.getElementById('chrome-sub-toolbar-host'),
       )}
       <TextSelectionQuickMenu
-        selection={activeTool === 'text-select' && !selectedTextMarkupActionSelection && !showAnnotationColorPicker && !textLinkEditorOpen
+        selection={isTextSelectionCaptureTool(activeTool) && !selectedTextMarkupActionSelection && !showAnnotationColorPicker && !textLinkEditorOpen
           ? liveTextSelectionActionSelection
           : null}
         activeMarkupTypes={liveTextSelectionActionSelection?.activeMarkupTypes || []}

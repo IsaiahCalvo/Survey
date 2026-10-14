@@ -79,6 +79,10 @@ import { isSelectionGrabPress } from '../hooks/useSelectionGrabHandoff.js';
 import {
   DRAW_MODES, hasStylusTouch, isPenDown, isPencilOnly, resolveTouchStartRoute, resolveViewerPressRoute, subscribeGatedPointers,
 } from '../utils/pencilMode.js';
+import {
+  PAN_TEXT_CLICK_SLOP_PX, PAN_TEXT_HOVER_MS, hasLivePdfTextSelection, isPanTextTarget,
+  panTextOwnsPress, resolvePanTextHover, resolvePanTextSelectionChange,
+} from '../utils/panTextSelect.js';
 import { createLongPressTracker, longPressMayArm, markLongPressEvent } from '../utils/touchLongPress.js';
 import {
   compensateScrollTopForRoom,
@@ -1366,6 +1370,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   textMarkupOpacity = null,
   textSelectionLayerActive = false,
   textSelectionLayerInteractive = textSelectionLayerActive,
+  // Pan over text (utils/panTextSelect.js): mount the text layer under Pan so a
+  // mouse / pen resting on text can select it, as Drawboard's Pan does.
+  panTextHoverSelect = false,
   className = '',
   style = {},
   // eslint-disable-next-line no-unused-vars
@@ -1560,6 +1567,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const spacePressRef = useRef(null);
   const panInteractionRef = useRef(false);
   const panPointerRef = useRef(null);
+  // 'off' | 'on' | 'keep' (utils/panTextSelect.js); mirrored to data-pan-text.
+  const panTextStateRef = useRef('off');
   const panDeltaRef = useRef({ x: 0, y: 0 });
   const panRafRef = useRef(0);
   // Shared flick physics (src/utils/panMomentum.js) drives BOTH the mobile
@@ -3287,9 +3296,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const armed = spacePanRef.current || interactionModeRef.current === 'Pan';
     el.dataset.spacePan = dragging ? 'dragging' : (armed ? 'armed' : 'off');
     el.style.cursor = dragging ? 'grabbing' : (armed ? 'grab' : '');
-    el.style.userSelect = armed ? 'none' : '';
+    // Pan over text: while the I-beam shows (or a Pan text selection is live)
+    // no ancestor of the text may be user-select:none, or the browser refuses
+    // or drops the selection. Presses that pan still preventDefault.
+    const noSelect = armed && panTextStateRef.current === 'off';
+    el.style.userSelect = noSelect ? 'none' : '';
     // Owner 2026-10-13: Safari / iPad WebKit only honour the prefixed form.
-    el.style.webkitUserSelect = armed ? 'none' : '';
+    el.style.webkitUserSelect = noSelect ? 'none' : '';
   }, []);
 
   // Phone one-finger pan past an edge (owner 2026-10-02, Drawboard parity):
@@ -3669,6 +3682,81 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
   }, [finishPan, setPanInteraction, updatePanPresentation]);
 
+  // Pan over text (owner 2026-10-14, Drawboard parity; utils/panTextSelect.js):
+  // a mouse or pen resting 200 ms on text shows the I-beam and its press-drag
+  // selects text; off the text, or before the rest, a press pans as before.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el || !panTextHoverSelect) return undefined;
+    let timer = 0;
+    let overText = false;
+    let press = null;
+    const setState = (next) => {
+      if (panTextStateRef.current === next) return;
+      panTextStateRef.current = next;
+      if (next === 'off') delete el.dataset.panText; else el.dataset.panText = next;
+      updatePanPresentation();
+    };
+    const stopTimer = () => { window.clearTimeout(timer); timer = 0; };
+    const onMove = (event) => {
+      overText = isPanTextTarget(event.target);
+      const next = resolvePanTextHover({
+        toolIsPan: interactionModeRef.current === 'Pan',
+        spaceHeld: spacePanRef.current || Boolean(panPointerRef.current),
+        pointerType: event.pointerType,
+        buttons: event.buttons,
+        overText,
+        state: panTextStateRef.current,
+        selectionLive: hasLivePdfTextSelection(window.getSelection?.()),
+      });
+      if (next.stopTimer) stopTimer();
+      setState(next.state);
+      if (next.startTimer && !timer) {
+        timer = window.setTimeout(() => {
+          timer = 0;
+          if (overText && !spacePanRef.current && !panPointerRef.current) setState('on');
+        }, PAN_TEXT_HOVER_MS);
+      }
+    };
+    const onLeave = () => {
+      overText = false;
+      stopTimer();
+      if (panTextStateRef.current === 'on') {
+        setState(hasLivePdfTextSelection(window.getSelection?.()) ? 'keep' : 'off');
+      }
+    };
+    // A click (no drag) on the page away from the text clears a Pan selection,
+    // like a click on the page under Text Select.
+    const onDown = (event) => {
+      press = { x: event.clientX, y: event.clientY, onText: isPanTextTarget(event.target) };
+    };
+    const onUp = (event) => {
+      const start = press;
+      press = null;
+      if (!start || start.onText || panTextStateRef.current !== 'keep') return;
+      if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > PAN_TEXT_CLICK_SLOP_PX) return;
+      try { window.getSelection?.()?.removeAllRanges?.(); } catch { /* noop */ }
+    };
+    const onSelectionChange = () => {
+      const live = hasLivePdfTextSelection(window.getSelection?.());
+      setState(resolvePanTextSelectionChange({ state: panTextStateRef.current, selectionLive: live }));
+    };
+    el.addEventListener('pointermove', onMove, { capture: true, passive: true });
+    el.addEventListener('pointerleave', onLeave);
+    el.addEventListener('pointerdown', onDown, { capture: true, passive: true });
+    el.addEventListener('pointerup', onUp, { capture: true, passive: true });
+    document.addEventListener('selectionchange', onSelectionChange);
+    return () => {
+      stopTimer();
+      el.removeEventListener('pointermove', onMove, true);
+      el.removeEventListener('pointerleave', onLeave);
+      el.removeEventListener('pointerdown', onDown, true);
+      el.removeEventListener('pointerup', onUp, true);
+      document.removeEventListener('selectionchange', onSelectionChange);
+      setState('off');
+    };
+  }, [panTextHoverSelect, updatePanPresentation]);
+
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return undefined;
@@ -3683,6 +3771,15 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       || (event.target === contentRef.current && contentRef.current != null);
     const isMiddlePress = (event) => event.pointerType === 'mouse' && event.button === 1;
     const onPointerDown = (event) => {
+      // Pan over text with the I-beam showing: the press selects text.
+      if (panTextOwnsPress({
+        toolIsPan: interactionModeRef.current === 'Pan',
+        spaceHeld: spacePanRef.current,
+        state: panTextStateRef.current,
+        pointerType: event.pointerType,
+        button: event.button,
+        onTextLayer: Boolean(event.target?.closest?.('.pdfjsTextLayer')),
+      })) return;
       const armed = spacePanRef.current || interactionModeRef.current === 'Pan';
       const route = resolveViewerPressRoute({
         pointerType: event.pointerType,
@@ -4272,6 +4369,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
     const stopNativeSelection = (event) => {
       if (isNativeInteractionTarget(event.target)) return;
+      // Pan over text: a resting mouse / pen (an iPad trackpad) selects text.
+      if (event.type === 'selectstart' && panTextStateRef.current === 'on') return;
       event.preventDefault();
     };
     const stopPostGestureClick = (event) => {
@@ -5180,13 +5279,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
               scrollerRef={scrollerRef}
               isMobileSurface={isMobileSurface}
             />
-            {textSelectionLayerActive && (
+            {(textSelectionLayerActive || panTextHoverSelect) && (
               <PdfjsTextLayer
                 pdf={pdfRef.current}
                 pageNumber={i + 1}
                 scale={scale}
                 rotation={rotation}
                 interactive={textSelectionLayerInteractive}
+                panHover={panTextHoverSelect && !textSelectionLayerActive}
                 onTextAvailability={onTextAvailability}
               />
             )}
@@ -5208,7 +5308,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       </div>
     );
   }), [pageSizes, layout, scale, range, viewerId, isMobileSurface, phoneLayout, onRaster, rotation,
-    textSelectionLayerActive, textSelectionLayerInteractive, onTextAvailability, tileLiveZoomSignal,
+    textSelectionLayerActive, textSelectionLayerInteractive, panTextHoverSelect, onTextAvailability, tileLiveZoomSignal,
     getPageLeftAtScale]);
 
   const scrollbarPreviewMetrics = livePreview ? (() => {
@@ -5327,10 +5427,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         /* Pan opens links on a click, so a link shows the hand (utils/linkClickPolicy.js). */
         [data-space-pan='armed'] :is([data-text-markup-link], [data-pdfjs-link-layer] a) { cursor: pointer !important; }
         [data-space-pan='dragging'], [data-space-pan='dragging'] * { cursor: grabbing !important; }
-        /* Owner 2026-10-13 (docs/GESTURE-CONTRACT.md P7): with Pan (or Space)
-           nothing on the page is selectable text - a press-drag always pans.
-           Fields and the text editor keep their own caret. */
-        :is([data-space-pan='armed'], [data-space-pan='dragging']) :not(input, textarea, select, [contenteditable='true'], [contenteditable='true'] *) {
+        /* docs/GESTURE-CONTRACT.md P7: with Pan (or Space) a press-drag pans and
+           selects nothing, except under Pan once a mouse / pen has rested on
+           text (data-pan-text, utils/panTextSelect.js - owner 2026-10-14,
+           Drawboard parity). Fields and the text editor keep their own caret. */
+        :is([data-space-pan='armed'], [data-space-pan='dragging']):not([data-pan-text]) :not(input, textarea, select, [contenteditable='true'], [contenteditable='true'] *) {
           -webkit-user-select: none !important;
           user-select: none !important;
         }
@@ -5345,7 +5446,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
           -webkit-touch-callout: none !important;
           -webkit-user-drag: none !important;
         }
-        .survey-pdfjs-mobile-surface[data-text-selection='true'] {
+        .survey-pdfjs-mobile-surface[data-text-selection='true'],
+        .survey-pdfjs-mobile-surface[data-pan-text] {
           -webkit-user-select: text !important;
           user-select: text !important;
           -webkit-touch-callout: default !important;
