@@ -738,7 +738,8 @@ export function getSelectionPageRanges(selection, pageSizes) {
   if (!selectedText.trim()) return [];
   const range = selection.getRangeAt(0);
   const pages = [];
-  const textLayers = Array.from(document.querySelectorAll('.pdfjsTextLayer.is-interactive'));
+  // Text Select's live layer, or Pan's (utils/panTextSelect.js).
+  const textLayers = Array.from(document.querySelectorAll('.pdfjsTextLayer.is-interactive, .pdfjsTextLayer.is-pan-text'));
   for (const textLayer of textLayers) {
     try {
       if (!range.intersectsNode(textLayer)) continue;
@@ -807,8 +808,8 @@ export function restorePdfjsTextSelection(selectionPayload) {
   if (!pages.length) return false;
   const first = pages[0];
   const last = pages.at(-1);
-  const firstLayer = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${first.pageNumber}"] .pdfjsTextLayer.is-interactive`);
-  const lastLayer = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${last.pageNumber}"] .pdfjsTextLayer.is-interactive`);
+  const firstLayer = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${first.pageNumber}"] .pdfjsTextLayer:is(.is-interactive, .is-pan-text)`);
+  const lastLayer = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${last.pageNumber}"] .pdfjsTextLayer:is(.is-interactive, .is-pan-text)`);
   const start = boundaryAtTextOffset(firstLayer, first.textRange.start);
   const end = boundaryAtTextOffset(lastLayer, last.textRange.end);
   if (!start || !end) return false;
