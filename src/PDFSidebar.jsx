@@ -31,14 +31,10 @@ import { openKeyboardShortcuts } from './utils/keyboardShortcuts.js';
 import {
   DEFAULT_PANEL_LAYOUT,
   browserStorage,
-  clampPanelWidth,
   getSideRoom,
-  panelMaxWidth,
-  panelWidthSpec,
+  leftPanelWidth,
   readPanelLayout,
   subscribeSideRoom,
-  widthFromDrag,
-  widthFromKey,
   writePanelLayout,
 } from './sidebar/panelLayoutStore.js';
 
@@ -122,9 +118,9 @@ const HistoryButton = ({ isActive, onClick, round = false }) => {
 // the open tab pressed again closes it, another tab swaps the panel in place.
 // There is no collapse row and no chevron any more, open or closed.
 const LEFT_RAIL_W = 48;
-// Owner 2026-10-13 (Drawboard shell audit, Chunk D): each panel has its own
-// width now, dragged at its edge and remembered per user
-// (sidebar/panelLayoutStore.js). Opening and closing slide the panel with a
+// Owner 2026-10-14: every panel is one fixed width (260px, chosen so all the
+// tabs fit; sidebar/panelLayoutStore.js) - no drag edge, no remembered width.
+// Opening and closing (Chunk D, 2026-10-13) slide the panel with a
 // transform (200ms, Drawboard's side-panel slide) instead of tweening the
 // rail's width, so nothing is laid out again on each frame: the rail takes
 // its open width once as a panel opens, and gives it back once the closing
@@ -244,7 +240,7 @@ const PDFSidebar = React.forwardRef(({
   onPanelStateChange = null,
 }, ref) => {
   // Chunk D (owner 2026-10-13): the desktop rail comes back as it was left -
-  // which panel, whether it was open, and every panel's width - per user
+  // which panel and whether it was open - per user
   // (sidebar/panelLayoutStore.js). The phone's sheet always starts closed.
   const layoutUserKey = currentUserId || user?.id || null;
   const initialLayoutRef = React.useRef(null);
@@ -256,7 +252,6 @@ const PDFSidebar = React.forwardRef(({
   }
   const [isCollapsed, setIsCollapsed] = useState(() => !initialLayoutRef.current.open);
   const [activeTab, setActiveTab] = useState(() => initialLayoutRef.current.panel); // 'pages' | 'search' | 'bookmarks' | 'spaces' | 'history'
-  const [panelWidths, setPanelWidths] = useState(() => initialLayoutRef.current.widths);
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : 1440));
   React.useEffect(() => {
     if (mobileMode || typeof window === 'undefined') return undefined;
@@ -265,13 +260,12 @@ const PDFSidebar = React.forwardRef(({
     return () => window.removeEventListener('resize', onResize);
   }, [mobileMode]);
   // What covers the window's right side (the right rail, the Survey panel)
-  // and, in Survey, the survey bar's centre spot: the panel stops short of
-  // both (panelLayoutStore.js panelMaxWidth).
+  // and, in Survey, the survey bar's centre spot: on a small window the panel
+  // stops short of both (panelLayoutStore.js leftPanelWidth).
   const sideRoom = useSyncExternalStore(subscribeSideRoom, getSideRoom, getSideRoom);
-  // The open panel's width: its remembered width, inside its limits for this
-  // window (a narrower window or the Survey panel opening clamps what is
-  // shown, not what is stored).
-  const panelWidth = clampPanelWidth(activeTab, panelWidths[activeTab], viewportWidth, sideRoom);
+  // The open panel's width: the one fixed width (260), the same for every
+  // tab; only a window too small for it narrows it.
+  const panelWidth = leftPanelWidth(viewportWidth, sideRoom);
   // Desktop (owner 2026-10-07, Drawboard rail): a closed panel stays drawn for
   // the slide that carries it back under the rail, instead of vanishing in
   // one frame. A timer, not animationend, ends it, so reduced motion (no
@@ -317,7 +311,6 @@ const PDFSidebar = React.forwardRef(({
     if (mobileMode || loadedLayoutKeyRef.current === layoutUserKey) return;
     loadedLayoutKeyRef.current = layoutUserKey;
     const stored = readPanelLayout(browserStorage(), layoutUserKey);
-    setPanelWidths(stored.widths);
     if (!userTouchedLayoutRef.current) {
       setIsCollapsed(!stored.open);
       setActiveTab(stored.panel === 'history' && !documentId ? 'pages' : stored.panel);
@@ -333,19 +326,14 @@ const PDFSidebar = React.forwardRef(({
       persistLayoutKeyRef.current = layoutUserKey;
       return;
     }
-    writePanelLayout(browserStorage(), layoutUserKey, { widths: panelWidths, open: !isCollapsed, panel: activeTab });
-  }, [panelWidths, isCollapsed, activeTab, mobileMode, layoutUserKey]);
+    writePanelLayout(browserStorage(), layoutUserKey, { open: !isCollapsed, panel: activeTab });
+  }, [isCollapsed, activeTab, mobileMode, layoutUserKey]);
   const footerPresence = withDevFakePresence({ presence, currentUserId, currentUserEmail, currentUserDisplayName });
   const tip = useTooltip();
   // RULED 2026-09-23 (coordinator: auto refits keep the view; fits use the
-  // band between panels): the open desktop panel covers the left ~224px of the
+  // band between panels): the open desktop panel covers the left 260px of the
   // PDF; fits size and centre the page beside it (utils/viewerSideOverlay.js).
   const sideOccluderRef = useViewerSideOccluderRef();
-  const railElRef = React.useRef(null);
-  const setRailEl = useCallback((element) => {
-    railElRef.current = element;
-    sideOccluderRef(element);
-  }, [sideOccluderRef]);
   const [searchFocusRequestToken, setSearchFocusRequestToken] = useState(0);
   // Owner 2026-10-07 (rail headers round): "the title row should be centered
   // when there are options, like in bookmarks and spaces to export or create.
@@ -426,71 +414,6 @@ const PDFSidebar = React.forwardRef(({
     }
     openPanel(panelId, options);
   }, [activeTab, closePanelSmoothly, isCollapsed, openPanel]);
-
-  // Chunk D (owner 2026-10-13, Drawboard audit): the open panel's right edge
-  // is a drag handle. While dragging, only the rail's --left-panel-w changes
-  // (no React render per move); the width is saved when the press ends.
-  // Double-click (or Enter on the focused edge) puts the starting width back.
-  const [isResizing, setIsResizing] = useState(false);
-  const resizeDragRef = React.useRef(null);
-  const commitPanelWidth = useCallback((panelId, width) => {
-    userTouchedLayoutRef.current = true;
-    setPanelWidths((prev) => (prev[panelId] === width ? prev : { ...prev, [panelId]: width }));
-  }, []);
-  const handleResizePointerDown = useCallback((event) => {
-    if (event.pointerType === 'mouse' && event.button !== 0) return;
-    event.preventDefault();
-    event.stopPropagation();
-    try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch { /* not capturable */ }
-    resizeDragRef.current = {
-      panelId: activeTab,
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startWidth: panelWidth,
-      width: panelWidth,
-    };
-    setIsResizing(true);
-  }, [activeTab, panelWidth]);
-  const handleResizePointerMove = useCallback((event) => {
-    const drag = resizeDragRef.current;
-    if (!drag || event.pointerId !== drag.pointerId) return;
-    const width = widthFromDrag({ ...drag, x: event.clientX, viewportWidth: window.innerWidth, room: getSideRoom() });
-    if (width === drag.width) return;
-    drag.width = width;
-    railElRef.current?.style.setProperty('--left-panel-w', `${width}px`);
-  }, []);
-  const handleResizePointerEnd = useCallback((event) => {
-    const drag = resizeDragRef.current;
-    if (!drag || event.pointerId !== drag.pointerId) return;
-    resizeDragRef.current = null;
-    try { event.currentTarget.releasePointerCapture?.(event.pointerId); } catch { /* already released */ }
-    setIsResizing(false);
-    commitPanelWidth(drag.panelId, drag.width);
-  }, [commitPanelWidth]);
-  const resetPanelWidth = useCallback(() => {
-    commitPanelWidth(activeTab, clampPanelWidth(activeTab, panelWidthSpec(activeTab).initial, window.innerWidth, getSideRoom()));
-  }, [activeTab, commitPanelWidth]);
-  const handleResizeKeyDown = useCallback((event) => {
-    const width = widthFromKey({
-      panelId: activeTab,
-      width: panelWidth,
-      key: event.key,
-      shiftKey: event.shiftKey,
-      viewportWidth: window.innerWidth,
-      room: getSideRoom(),
-    });
-    if (width === null) return;
-    event.preventDefault();
-    event.stopPropagation();
-    commitPanelWidth(activeTab, width);
-  }, [activeTab, commitPanelWidth, panelWidth]);
-  // The whole window shows the resize cursor and selects no text while a drag
-  // is on, however far the pointer strays from the 8px edge.
-  React.useEffect(() => {
-    if (!isResizing || typeof document === 'undefined') return undefined;
-    document.documentElement.classList.add('is-resizing-side-panel');
-    return () => document.documentElement.classList.remove('is-resizing-side-panel');
-  }, [isResizing]);
 
   // Spaces chunk A (phone): Edit areas draws on the page, so the Spaces sheet
   // and its backdrop leave while the region tool is on (the backdrop swallowed
@@ -679,7 +602,7 @@ const PDFSidebar = React.forwardRef(({
       // 2026-09-30, see useMobileSheetMotion). The ref is set after the
       // spread below (sheetFocusRef also feeds the sheet motion's ref).
       {...(mobileMode ? sheetProps : null)}
-      ref={mobileMode ? sheetFocusRef : setRailEl}
+      ref={mobileMode ? sheetFocusRef : sideOccluderRef}
       tabIndex={mobileMode && !isCollapsed ? -1 : undefined}
       // KAL-66: on the phone this bottom sheet is a named region (VoiceOver
       // reads "Pages", "Spaces"...). Not role="dialog": several viewer key
@@ -696,9 +619,9 @@ const PDFSidebar = React.forwardRef(({
         ? (sheetFullscreen ? 'var(--mobile-panel-full)' : MOBILE_PANEL_STANDARD)
         : undefined,
       // Desktop (owner 2026-10-07, Drawboard rail): the 48px icon column, plus
-      // the open panel beside it (its own width, Chunk D). The width changes
-      // once as a panel opens and once after it has slid closed - never per
-      // frame. During a drag only --left-panel-w moves.
+      // the open panel beside it (one fixed width, 2026-10-14). The width
+      // changes once as a panel opens and once after it has slid closed -
+      // never per frame.
       '--left-panel-w': mobileMode ? undefined : `${panelWidth}px`,
       width: mobileMode
         ? (isCollapsed ? '0px' : '100%')
@@ -935,34 +858,6 @@ const PDFSidebar = React.forwardRef(({
         // the hub tabs and the panel stay the sheet's own children, which its
         // panel-to-panel fade animates one by one (mobilePdfViewer.css).
         <PanelFrame {...panelFrameProps}>
-          {/* Chunk D (owner 2026-10-13): the panel's right edge resizes it.
-              Drawboard's own handle is 4-8px and shows only on hover, which a
-              finger can neither find nor hit (touch audit S5), so this one is
-              8px for a mouse and 24px on any touch screen, and on a touch
-              screen its grip is always drawn (styles.css .left-rail__resize).
-              Double-click resets; from the keyboard it is a separator:
-              arrows, Home / End, Enter resets. */}
-          {!mobileMode && !isCollapsed && (
-            <div
-              className={`left-rail__resize${isResizing ? ' is-resizing' : ''}`}
-              role="separator"
-              aria-orientation="vertical"
-              aria-label={`Resize ${PANEL_TITLES[activeTab]} panel`}
-              aria-controls="left-rail-panel"
-              aria-valuenow={panelWidth}
-              aria-valuemin={panelWidthSpec(activeTab).min}
-              aria-valuemax={panelMaxWidth(activeTab, viewportWidth, sideRoom)}
-              tabIndex={0}
-              data-left-rail-resize=""
-              onPointerDown={handleResizePointerDown}
-              onPointerMove={handleResizePointerMove}
-              onPointerUp={handleResizePointerEnd}
-              onPointerCancel={handleResizePointerEnd}
-              onLostPointerCapture={handleResizePointerEnd}
-              onDoubleClick={resetPanelWidth}
-              onKeyDown={handleResizeKeyDown}
-            />
-          )}
           {/* Desktop: the open panel says what it is, where Drawboard puts its
               panel title ("Pages", "Search"...); the rail's gold tab is the
               other half of that answer. The same 40px band as the Survey

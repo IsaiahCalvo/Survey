@@ -28,7 +28,7 @@ test('register / replace / unregister, with change notices', () => {
   const off = providers.subscribeMarkerShapeProviders(() => { notices += 1; });
   const unregister = providers.registerMarkerShapeProvider({ id: 'smartFill', label: 'Smart fill', onPagePointerDown: async () => null });
   assert.equal(providers.getMarkerShapeProvider('smartFill').label, 'Smart fill');
-  assert.equal(providers.getMarkerShapeProvider('smartFill').icon, 'paintBucket', 'default icon');
+  assert.equal(providers.getMarkerShapeProvider('smartFill').icon, 'smartFillDrop', 'default icon');
   const first = providers.getMarkerShapeProviders();
   assert.equal(first, providers.getMarkerShapeProviders(), 'stable snapshot between changes');
   const unregisterB = providers.registerMarkerShapeProvider({ id: 'smartFill', label: 'B', onPagePointerDown: async () => null });

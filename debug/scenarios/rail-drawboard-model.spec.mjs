@@ -88,6 +88,9 @@ test.describe('desktop 1440x900', () => {
       await expect(button(page, name)).toHaveClass(/is-active/);
       expect(await panelTitle(page)).toBe(title);
       expect(await railX(), 'the rail does not move when a panel opens').toBe(x0);
+      // Owner 2026-10-14: one fixed width for every panel, no drag edge.
+      expect(Math.round((await page.locator('#left-rail-panel').filter({ visible: true }).first().boundingBox()).width), `${name} panel width`).toBe(260);
+      expect(await page.locator('.left-rail__resize, [role="separator"][aria-controls="left-rail-panel"]').count()).toBe(0);
       // Open -> closed by the same tab.
       await button(page, name).click();
       await expect(button(page, name)).toHaveAttribute('aria-expanded', 'false');

@@ -3480,102 +3480,10 @@ svg[data-svg-annotation-layer][data-selection-hover="move"] {
   animation: leftRailPanelOut 200ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
-/* The panel's resize edge: a thin strip over its right hairline. A mouse
-   finds it by the ew-resize cursor and sees a line + grip on hover; it sits
-   mostly over the page so the panel's own scrollbar stays grabbable. */
-.left-rail__resize {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  right: -6px;
-  width: 8px;
-  z-index: 2;
-  cursor: ew-resize;
-  touch-action: none;
-  pointer-events: auto;
-  outline: none;
-}
-
-.left-rail__resize::before,
-.left-rail__resize::after {
-  content: '';
-  position: absolute;
-  left: calc(100% - 6px);
-  pointer-events: none;
-  transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), opacity 150ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* The line: the panel's own hairline, drawn brighter while the edge is live. */
-.left-rail__resize::before {
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  transform: translateX(-50%);
-  background: transparent;
-}
-
-/* The grip: a short pill in the middle of the edge. */
-.left-rail__resize::after {
-  top: 50%;
-  width: 4px;
-  height: 32px;
-  border-radius: 2px;
-  transform: translate(-50%, -50%);
-  background: var(--text-3);
-  opacity: 0;
-}
-
-.left-rail__resize:hover::before,
-.left-rail__resize.is-resizing::before,
-.left-rail__resize:focus-visible::before {
-  background: var(--border-strong);
-}
-
-.left-rail__resize:hover::after,
-.left-rail__resize.is-resizing::after,
-.left-rail__resize:focus-visible::after {
-  opacity: 1;
-}
-
-/* Any touch screen (a touch laptop too): a finger-sized 24px strip. */
-@media (any-pointer: coarse) {
-  .left-rail__resize {
-    right: -16px;
-    width: 24px;
-  }
-  .left-rail__resize::before,
-  .left-rail__resize::after {
-    left: calc(100% - 16px);
-  }
-}
-
-/* A finger cannot hover, so where touch is the main input the grip is
-   always drawn (Drawboard's hover-only 8px handle is the one thing the touch
-   audit said not to copy, S5). */
-@media (pointer: coarse) {
-  .left-rail__resize::after {
-    opacity: 0.7;
-    height: 36px;
-  }
-}
-
-/* While a drag is on, the whole window keeps the resize cursor and selects
-   no text, however far the pointer strays from the edge. */
-html.is-resizing-side-panel,
-html.is-resizing-side-panel * {
-  cursor: ew-resize !important;
-  user-select: none !important;
-  -webkit-user-select: none !important;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .left-rail__panel,
   .left-rail__panel.is-leaving {
     animation: none;
-  }
-  .left-rail__resize::before,
-  .left-rail__resize::after {
-    transition: none;
   }
 }
 
