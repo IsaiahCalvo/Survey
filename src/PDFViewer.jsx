@@ -25,6 +25,7 @@ import { sanitizeTemplateConfig } from './utils/templateConfig.js';
 import useSharedDocumentTemplates from './hooks/useSharedDocumentTemplates.js';
 import { migrateSidebarData } from './utils/sidebarPersistence.js';
 import { resolveMarkerEntityFromName } from './utils/surveyMarkerEntityResolver.js';
+import { removeCategoriesFromModules, toCategoryIdList } from './utils/surveyCategoryDelete.js';
 import {
   capturePendingSurveyMarkerUi,
   deletePendingSurveyMarkerUi,
@@ -31207,18 +31208,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [selectedTemplate, handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig]);
 
-  const handleDeleteSurveyCategoryDefinition = useCallback((moduleId, categoryId) => {
-    if (!selectedTemplate || !moduleId || !categoryId) return;
+  // Takes one category id or a list. The rail deletes every ticked category in
+  // ONE call: separate calls each started from the same old template, so the
+  // last one won and the earlier categories came back.
+  const handleDeleteSurveyCategoryDefinition = useCallback((moduleId, categoryIdOrIds) => {
+    const categoryIds = toCategoryIdList(categoryIdOrIds);
+    if (!selectedTemplate || !moduleId || categoryIds.length === 0) return;
     const sourceModules = selectedTemplate.modules || selectedTemplate.spaces || [];
-    let changed = false;
-    const updatedModules = sourceModules.map((module) => {
-      if (module.id !== moduleId) return module;
-      const categories = module.categories || [];
-      const nextCategories = categories.filter((category) => category.id !== categoryId);
-      if (nextCategories.length === categories.length) return module;
-      changed = true;
-      return { ...module, categories: nextCategories };
-    });
+    const { modules: updatedModules, changed } = removeCategoriesFromModules(sourceModules, moduleId, categoryIds);
     if (!changed) return;
 
     const updatedAt = new Date().toISOString();
@@ -31230,7 +31227,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
     const templateId = selectedTemplate.supabaseId || selectedTemplate.id;
     setSelectedTemplate(updatedTemplate);
-    setSelectedCategoryId((current) => current === categoryId ? null : current);
+    setSelectedCategoryId((current) => categoryIds.includes(current) ? null : current);
 
     if (handleTemplatesChange && appTemplates) {
       handleTemplatesChange(appTemplates.map((template) => (
