@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { openModalStack } from '../hooks/modalStack.js';
 
 const FOCUSABLE_SELECTOR = [
   'a[href]',
@@ -9,7 +10,9 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
 
-const activeTrapStack = [];
+// Shared with src/hooks/useFocusTrap.js so the two hook families agree on
+// which dialog is on top (KAL-66, see src/hooks/modalStack.js).
+const activeTrapStack = openModalStack;
 const NESTED_LAYER_SELECTOR = [
   '[data-modal-focus-layer="true"]',
   '[role="dialog"][aria-modal="true"]',
@@ -32,7 +35,7 @@ export default function useModalFocusTrap({ active, containerRef, initialFocusRe
     const isLayerAboveTrap = (layer) => {
       const trapIndex = activeTrapStack.indexOf(trap);
       const registeredIndex = activeTrapStack.findIndex((entry) => (
-        entry.containerRef.current === layer || layer.contains(entry.containerRef.current)
+        entry.containerRef?.current === layer || layer.contains(entry.containerRef?.current)
       ));
       if (registeredIndex >= 0) return registeredIndex > trapIndex;
       // Unregistered menus, listboxes, and pickers only exist while open and
@@ -43,8 +46,14 @@ export default function useModalFocusTrap({ active, containerRef, initialFocusRe
       const layer = target?.closest?.(NESTED_LAYER_SELECTOR);
       return Boolean(layer && layer !== containerRef.current && isLayerAboveTrap(layer));
     };
+    // Only a layer that is actually on screen counts. The hub keeps its
+    // "Go to" section menu (role="menu") mounted but display:none, and
+    // counting it made every hub dialog (Share, Documents details) yield
+    // forever: Tab walked out onto the page and Escape did nothing (KAL-66).
+    const isRendered = (layer) => layer.getClientRects().length > 0
+      && window.getComputedStyle(layer).visibility !== 'hidden';
     const hasActiveNestedLayer = () => Array.from(document.querySelectorAll(NESTED_LAYER_SELECTOR))
-      .some((layer) => layer !== containerRef.current && isLayerAboveTrap(layer));
+      .some((layer) => layer !== containerRef.current && isRendered(layer) && isLayerAboveTrap(layer));
     const focusInitial = () => {
       const target = initialFocusRef?.current
         || containerRef.current?.querySelector(FOCUSABLE_SELECTOR)

@@ -30,6 +30,7 @@ import AnchoredPopover from './components/AnchoredPopover';
 import ToolbarOverflowMenu from './components/ToolbarOverflowMenu';
 import useResponsiveToolbar from './hooks/useResponsiveToolbar.js';
 import usePhoneLayout from './hooks/usePhoneLayout.js';
+import { hasTouchInput, isElectronApp } from './utils/layoutMode.js';
 import useLoadoutTransition, { useDropInRow, useLeavingRow, useRowCrossfade } from './hooks/useLoadoutTransition.js';
 import { placeUnderOpenerAvoiding, slotDefinition, TEXT_ROW_CAPTION_ROOM, TEXT_ROW_PARTS, textRowLook, TIGHT_SPACING } from './utils/responsiveToolbar.js';
 import { recentPressedControl, registerLightPopover } from './components/dismissRules.js';
@@ -42,7 +43,7 @@ import ActiveSpaceChip from './sidebar/ActiveSpaceChip';
 import TabBar from './TabBar';
 import { RenameModal } from './home/BulkModals';
 import { useConfirmDialog } from './components/dialogPrompts';
-import { closeConfirmFor, persistableDocumentId, pickActiveTabAfterClose, tabIdsForCloseAction } from './tabs/tabStrip.js';
+import { DISCARD_LOCAL_DRAFT_EVENT, closeConfirmFor, persistableDocumentId, pickActiveTabAfterClose, tabIdsForCloseAction, tabIdsToDiscardOnClose } from './tabs/tabStrip.js';
 import { useTabSession } from './tabs/useTabSession.js';
 import {
   MobilePdfViewerDock,
@@ -1587,8 +1588,14 @@ export default function App({ devPreviewReturnTab = null }) {
   // Memoized callback to update PDF file
   const handleUpdatePDFFile = useCallback(async (newFile, targetTabId) => {
     const durablePath = newFile?.supabaseFilePath || newFile?.filePath || null;
+    let saved = null;
     if (newFile?.id && durablePath) {
-      await replaceDocument(newFile, durablePath);
+      saved = await replaceDocument(newFile, durablePath, { documentId: newFile.id });
+      // The row may now read its own object (its old one is shared with
+      // another document) and has a new fingerprint. Carry both, so the next
+      // page edit writes there and thumbnails key on the new bytes.
+      if (saved.filePath !== durablePath) newFile.supabaseFilePath = saved.filePath;
+      newFile.contentSha256 = saved.contentSha256;
     }
     setTabs(prev => {
       if (targetTabId) {
@@ -1613,6 +1620,7 @@ export default function App({ devPreviewReturnTab = null }) {
           ...document,
           size: newFile.size,
           file_size: newFile.size,
+          ...(saved ? { file_path: saved.filePath, content_sha256: saved.contentSha256 } : {}),
           updated_at: new Date().toISOString(),
         }
         : document
@@ -1668,6 +1676,11 @@ export default function App({ devPreviewReturnTab = null }) {
     if (!ids.length) return;
     const confirm = closeConfirmFor({ tabs: tabsRef.current, closingIds: ids, action });
     if (confirm && !(await askTabConfirm(confirm))) return;
+    // "Close without saving": the closing viewers drop their unsaved local
+    // copy first (they are still mounted), so a reload does not bring it back.
+    for (const tabId of tabIdsToDiscardOnClose(tabsRef.current, ids)) {
+      window.dispatchEvent(new CustomEvent(DISCARD_LOCAL_DRAFT_EVENT, { detail: { tabId } }));
+    }
     closeTabsNow(ids);
   };
 
@@ -2153,14 +2166,23 @@ export default function App({ devPreviewReturnTab = null }) {
   //
   // The controller publishes --keyboard-inset on <html> and re-pins the
   // document to 0,0 on every viewport event; mobilePdfViewer.css pins body and
-  // spends the inset on the PDF scroller alone. Mounted only for the phone
-  // viewer, which is the only surface with page-level text editing and fixed
-  // chrome; it tears itself down (clearing the var) when the viewer closes.
+  // spends the inset on the PDF scroller alone. It tears itself down
+  // (clearing the var) when the viewer closes.
+  //
+  // Owner 2026-10-13 (Drawboard touch audit, K1): iPads and touch laptops use
+  // the DESKTOP layout, and their on-screen keyboard covered text boxes low on
+  // the page, Survey Marker names low in the right rail and dialog fields. The
+  // same controller now runs for the desktop viewer on any touch device, in
+  // its `desktop` mode (keyboardViewport.js header: no predicted keyboard, so
+  // a hardware keyboard changes nothing). A mouse-only desktop and Electron
+  // never mount it.
+  const [touchDesktop] = useState(() => hasTouchInput() && !isElectronApp());
+  const isTouchDesktopViewer = Boolean(touchDesktop && isViewerVisible && !isNarrowShell);
   useEffect(() => {
-    if (!isMobileViewer) return undefined;
-    const controller = createKeyboardViewportController();
+    if (!isMobileViewer && !isTouchDesktopViewer) return undefined;
+    const controller = createKeyboardViewportController(isMobileViewer ? undefined : { desktop: true });
     return () => controller.dispose();
-  }, [isMobileViewer]);
+  }, [isMobileViewer, isTouchDesktopViewer]);
 
   // The sub-toolbar host lies over the top of the PDF scroll area; registering it
   // lets the viewer add scroll room so the page can be scrolled out from under
@@ -4770,8 +4792,11 @@ export default function App({ devPreviewReturnTab = null }) {
               // popup tokens (--radius-md / --shadow-popover) that
               // AnnotationDropdown's popover uses.
               const fitMenu = (anchorStyle) => (
-                <div style={{ position: 'absolute', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-popover)', minWidth: '140px', zIndex: 6000, padding: '2px', ...anchorStyle }}>
-                  <DismissBarrier active insideRefs={railFitMenuRefs} onDismiss={dismissRailFitMenu} />
+                <div role="menu" aria-label="Fit modes" style={{ position: 'absolute', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-popover)', minWidth: '140px', zIndex: 6000, padding: '2px', ...anchorStyle }}>
+                  {/* KAL-66: `menu` — opened from the keyboard, focus goes to
+                      the current fit, arrows move, and focus returns to the
+                      Fit options button when it closes. */}
+                  <DismissBarrier active insideRefs={railFitMenuRefs} onDismiss={dismissRailFitMenu} menu />
                   {ZOOM_MODE_OPTIONS.map((option) => {
                     if (option.id === ZOOM_MODES.MANUAL) return null;
                     const isActive = option.id === api.zoomMode;
@@ -4780,6 +4805,10 @@ export default function App({ devPreviewReturnTab = null }) {
                         key={option.id}
                         onClick={() => api.handleZoomModeSelect(option.id)}
                         data-active={isActive}
+                        // A menu row (touch audit 2026-10-13: 44px rows by
+                        // finger, styles/touchTargets.css).
+                        role="menuitemradio"
+                        aria-checked={isActive}
                         /* Owner 2026-10-02 (phone/desktop consistency): the
                            phone's menu - a label, and a check on the chosen
                            row (which steps up to --text-1). No fit glyphs on
@@ -4803,7 +4832,12 @@ export default function App({ devPreviewReturnTab = null }) {
               // rail's full height; a transparent background lets the strip's
               // --panel-bg show through.
                 return (
-                  <div data-chrome-rail="true" style={{ position: 'relative', zIndex: 2, width: '100%', borderTop: '1px solid var(--border)', padding: '8px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: 'transparent' }}>
+                  <div data-chrome-rail="true" data-keyboard-lift="" style={{ position: 'relative', zIndex: 2, width: '100%', borderTop: '1px solid var(--border)', padding: '8px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: 'transparent' }}>
+                    {/* data-keyboard-lift (owner 2026-10-13, touch audit K1):
+                        on an iPad these zoom / page fields sit where the
+                        on-screen keyboard lands, so while one is typed in the
+                        stack stands on the keyboard and goes back down with
+                        it (keyboardViewport.js). */}
                     <button
                       onClick={api.zoomIn}
                       {...chromeTip('Zoom in', 'left')}

@@ -230,9 +230,9 @@ async function attemptProjectRename(page, fromName, toName) {
   await navigateHub(page, 'Projects');
   await clickProjectControl(page, fromName);
   let input = null;
-  const inputs = page.locator('input[aria-label="Click to rename"], input[aria-label="Tap to rename"]');
+  const inputs = page.locator('input[aria-label="Project name"], input[aria-label="Click to rename"], input[aria-label="Tap to rename"]');
   await page.waitForFunction(() => [...document.querySelectorAll(
-    'input[aria-label="Click to rename"], input[aria-label="Tap to rename"]',
+    'input[aria-label="Project name"], input[aria-label="Click to rename"], input[aria-label="Tap to rename"]',
   )].some((candidate) => candidate.getClientRects().length > 0), null, { timeout: 20_000 });
   for (let index = 0; index < await inputs.count(); index += 1) {
     const candidate = inputs.nth(index);

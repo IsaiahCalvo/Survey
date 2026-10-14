@@ -7,6 +7,7 @@
  * for cut/copy/paste/duplicate/rotate/mirror/reset/delete. Honors pageTransformations.
  */
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
+import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import { createPortal } from 'react-dom';
 import {
   DndContext,
@@ -30,6 +31,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { CALM_LIST_AUTO_SCROLL } from '../reorder/dragAutoScroll.js';
+import { restrictToVerticalAxis } from '../reorder/axisLock.js';
 import { pageHasTransform } from '../utils/disabledActions.js';
 import Icon from '../Icons';
 import Spinner from '../components/Spinner';
@@ -92,9 +94,6 @@ const PAGE_SLIDE = { duration: 180, easing: 'cubic-bezier(0.2, 0, 0, 1)' };
 // scrolls under a carried page, and a slot measured before that would send
 // the drop to the wrong place ("dragging during a thumbnail load").
 const PAGE_DRAG_MEASURING = { droppable: { strategy: MeasuringStrategy.WhileDragging, frequency: 100 } };
-
-// Desktop: the strip is one column, so a carried page only moves up / down.
-const restrictToVerticalAxis = ({ transform }) => ({ ...transform, x: 0 });
 
 function usePrefersReducedMotion() {
   const query = '(prefers-reduced-motion: reduce)';
@@ -941,6 +940,9 @@ const PagesPanel = ({
   // (src/components/dismissRules.js, owner 2026-09-23) — an outside press
   // closes it and still does its job (R1), a press on the bare page only
   // closes it (R2), Escape closes it (R5).
+  // KAL-66: keyboard focus goes into this menu as it opens, Up/Down move,
+  // and focus returns to its button when it closes (mouse/touch unchanged).
+  useMenuFocus(contextMenuRef, Boolean(contextMenu));
   useEffect(() => {
     if (!contextMenu) return undefined;
     return watchLightPopover({
@@ -1178,13 +1180,16 @@ const PagesPanel = ({
     setSelection({ keys: key ? [key] : [], anchor: key || null });
     setSelectedPage(pageNumber);
     if (onNavigateToPage) {
-      onNavigateToPage(pageNumber);
+      // Drawboard canvas audit chunk 6: a thumbnail click glides to the page.
+      onNavigateToPage(pageNumber, { smooth: true });
     }
   }, [cardKeys, flushPendingDrop, mobileMode, onNavigateToPage, selectMode, selectRange, togglePage]);
 
   const handlePageDoubleClick = useCallback((pageNumber) => {
     if (onNavigateToPage) {
-      onNavigateToPage(pageNumber);
+      // Smooth too, so the second click of a double-click does not cut the
+      // glide its first click started short.
+      onNavigateToPage(pageNumber, { smooth: true });
     }
   }, [onNavigateToPage]);
 
@@ -1474,6 +1479,7 @@ const PagesPanel = ({
     sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0' } } }),
   }), [reducedMotion, dropGlide]);
 
+  // Desktop: the strip is one column, so a carried page only moves up / down.
   const dragModifiers = useMemo(() => (mobileMode ? [] : [restrictToVerticalAxis]), [mobileMode]);
 
   // Let go outside the strip (over the page, the toolbar, off the sheet):

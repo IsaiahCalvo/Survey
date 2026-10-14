@@ -8,6 +8,7 @@ import {
   planTopBar,
   textRowWidth,
   slotDefinition,
+  widestSubtoolsWidth,
 } from '../utils/responsiveToolbar.js';
 import { getViewerSideOccluders, subscribeViewerSideOccluders } from '../utils/viewerSideOverlay.js';
 
@@ -241,6 +242,8 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
       leftBlockWidth: leftBlock ? leftBlock.getBoundingClientRect().width : 0,
       exportLeft: rel(exportButton, 'left') ?? hostRect.width - 10,
       clusterWidth: clusterRect.width,
+      // The tool gutter drawn now (wider on a touch-first screen).
+      loadoutReserve: widestSubtoolsWidth(parseFloat(window.getComputedStyle(host).getPropertyValue('--chrome-tool-gap'))),
       spanLeft: canvasLeft,
       spanRight: canvasRight,
       clusterNaturalLeft: clusterRect.left - hostRect.left + drawnShift,

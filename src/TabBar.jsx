@@ -36,6 +36,8 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CALM_STRIP_AUTO_SCROLL } from './reorder/dragAutoScroll.js';
+import { restrictToHorizontalAxis } from './reorder/axisLock.js';
+import { moveItem } from './reorder/flatReorderUtils.js';
 import { CSS } from '@dnd-kit/utilities';
 import Icon from './Icons';
 import { useTooltip } from './components/Tooltip';
@@ -66,11 +68,6 @@ const TAB_BORDER = 'var(--border)';
 const TAB_TEXT = 'var(--text-3)';
 const TAB_TEXT_ACTIVE = 'var(--text-1)';
 const TAB_ACCENT = 'var(--accent)';
-
-const restrictTabsToHorizontalAxis = ({ transform }) => ({
-  ...transform,
-  y: 0,
-});
 
 const createTabBoundsModifier = () => ({ active, activeNodeRect, transform }) => {
   const activeIdValue = String(active?.id ?? '');
@@ -103,23 +100,6 @@ const createTabBoundsModifier = () => ({ active, activeNodeRect, transform }) =>
       right - (activeNode.offsetLeft + activeNode.offsetWidth)
     ),
   };
-};
-
-const moveArrayItem = (items, fromIndex, toIndex) => {
-  if (
-    fromIndex === toIndex ||
-    fromIndex < 0 ||
-    toIndex < 0 ||
-    fromIndex >= items.length ||
-    toIndex >= items.length
-  ) {
-    return items;
-  }
-
-  const nextItems = items.slice();
-  const [moved] = nextItems.splice(fromIndex, 1);
-  nextItems.splice(toIndex, 0, moved);
-  return nextItems;
 };
 
 function TabItem({
@@ -167,12 +147,20 @@ function TabItem({
       {...sortableAttributes}
       {...sortableListeners}
       data-pdf-tab-id={!isHome ? tab.id : undefined}
+      data-app-tab=""
       data-tab-active={isActive ? 'true' : undefined}
       // Owner 2026-10-01: the held tab takes the app's one picked-up look
       // (states.css [data-drag-lifted]): solid raised surface, soft shadow,
       // no gold edge, fully opaque so no neighbour shows through.
       data-drag-lifted={isDragging ? '' : undefined}
       onClick={() => onTabClick(tab.id)}
+      // KAL-66: a keyboard user can reach and open every tab. The Home tab
+      // has no sortable attributes, so it gets its own role and tab stop.
+      // Enter opens a tab; Space stays the keyboard "pick up to reorder" key
+      // (the KeyboardSensor below starts a drag on Space only).
+      role={isHome ? 'button' : sortableAttributes.role}
+      tabIndex={isHome ? 0 : sortableAttributes.tabIndex}
+      aria-current={isActive ? 'page' : undefined}
       // Chunk C: right-click opens the tab menu at the pointer (Drawboard).
       onContextMenu={isHome ? undefined : (e) => {
         e.preventDefault();
@@ -198,6 +186,11 @@ function TabItem({
           return;
         }
         sortableListeners.onKeyDown?.(e);
+        if (e.defaultPrevented || e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || (isHome && e.key === ' ')) {
+          e.preventDefault();
+          onTabClick(tab.id);
+        }
       }}
       style={{
         ...sortableStyle,
@@ -613,10 +606,14 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onTab
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 160, tolerance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    // Space picks a tab up to reorder it; Enter is left free to open the tab.
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+      keyboardCodes: { start: ['Space'], cancel: ['Escape'], end: ['Space', 'Enter'] },
+    })
   );
   const tabModifiers = useMemo(() => [
-    restrictTabsToHorizontalAxis,
+    restrictToHorizontalAxis,
     createTabBoundsModifier(),
   ], []);
 
@@ -625,7 +622,7 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onTab
 
     const fromIndex = pdfTabs.findIndex((tab) => tab.id === active.id);
     const toIndex = pdfTabs.findIndex((tab) => tab.id === over.id);
-    const reorderedPdfTabs = moveArrayItem(pdfTabs, fromIndex, toIndex);
+    const reorderedPdfTabs = moveItem(pdfTabs, fromIndex, toIndex);
 
     if (reorderedPdfTabs === pdfTabs) return;
 

@@ -442,3 +442,59 @@
 button {
   font-family: inherit;
 }
+
+/* ============================================================================
+   MOTION (Drawboard shell audit, Chunk A, 2026-10-13)
+   ============================================================================
+   One small set of durations and curves for the chrome: menus, popovers,
+   dialogs, toasts, panels and folding sections. Measured on Drawboard PDF
+   5.9.3: menus 100 ms with an 8 px slide from the side they open on, dialogs
+   150 ms fade + 0.98 scale (and the same back out), panels 200 ms, folding
+   sections 300 ms. Exits are a little faster than entries, so a closed thing
+   gets out of the way. The keyframes and the shared enter / exit rules that
+   use these live in motion.css.
+
+   NOT for gesture-driven motion (pan momentum, elastic edges, the phone
+   sheets' drag springs, zoom glide, drag-and-drop glides) or anything drawn
+   inside the PDF canvas: those keep their own tuned numbers.
+
+   The JS mirror is src/utils/motion.js (MOTION_MS); tests/motionTokens.test.mjs
+   keeps the two in step. Reduced motion sets every duration to 0 below, so
+   anything built on these tokens becomes instant without a rule of its own. */
+:root {
+  --motion-menu: 100ms;          /* menus, popovers, context menus: enter */
+  --motion-menu-exit: 80ms;
+  --motion-dialog: 150ms;        /* dialogs and their scrim: enter */
+  --motion-dialog-exit: 120ms;
+  --motion-toast: 150ms;         /* toasts: enter */
+  --motion-toast-exit: 120ms;
+  --motion-panel: 200ms;         /* side panels, a second toolbar row */
+  --motion-collapse: 300ms;      /* a folding section */
+  --motion-state: 150ms;         /* hover / pressed / selected colour changes */
+
+  --motion-menu-shift: 8px;      /* how far a menu slides in */
+  --motion-toast-shift: 8px;
+  --motion-dialog-scale: 0.98;
+
+  /* Curves. --ease-out is Survey's own settle curve (it was already on 52
+     rules), --ease-standard is Drawboard's (Tailwind's) state-change curve,
+     --ease-in is for things leaving, --ease-emphasized for folding sections. */
+  --ease-out: cubic-bezier(0.33, 1, 0.68, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.32, 0, 0.67, 0);
+  --ease-emphasized: cubic-bezier(0.87, 0, 0.13, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-menu: 0ms;
+    --motion-menu-exit: 0ms;
+    --motion-dialog: 0ms;
+    --motion-dialog-exit: 0ms;
+    --motion-toast: 0ms;
+    --motion-toast-exit: 0ms;
+    --motion-panel: 0ms;
+    --motion-collapse: 0ms;
+    --motion-state: 0ms;
+  }
+}

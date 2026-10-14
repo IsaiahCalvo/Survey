@@ -53,6 +53,9 @@ export const SHORTCUT_SECTIONS = [
       // the zoom where it is instead.
       { chords: ['mod+m'], label: 'Keep this zoom (stop fitting)' },
       { chords: ['space'], label: 'Hold to pan' },
+      // Drawboard canvas audit chunk 6: one view at a time, gliding.
+      { chords: ['pageup'], label: 'Scroll up one screen' },
+      { chords: ['pagedown'], label: 'Scroll down one screen' },
     ],
   },
   {
@@ -142,6 +145,8 @@ const NAMED_KEYS = {
   delete: 'Delete',
   backspace: 'Backspace',
   arrows: 'Arrow keys',
+  pageup: 'Page Up',
+  pagedown: 'Page Down',
   click: 'Click',
   '=': '+',
 };
