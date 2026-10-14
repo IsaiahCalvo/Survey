@@ -23,6 +23,7 @@
 //     message reaches the other screen and nothing is ever written.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   LIVE_CURSOR_FADE_MS,
   LIVE_CURSOR_IDENTITY_MS,
@@ -238,6 +239,40 @@ test('presence gate: alone = 0 messages during a sweep; someone joins -> it star
   assert.equal(sent.at(-1).u, 'me');
   again.dispose();
   __liveCursorsTest.reset();
+});
+
+test('presence gate: leave and rejoin under a still pointer sends the point again (Codex #831)', () => {
+  __liveCursorsTest.reset();
+  const sent = [];
+  setLiveCursorSink({ documentId: 'd', writerId: 'w1', send: (payload) => { sent.push(payload); return true; } });
+  const clock = fakeClock();
+  let presence = [{ user_id: 'me' }, { user_id: 'bo' }];
+  const sender = createLiveCursorSender({
+    documentId: 'd',
+    resolve: () => ({ page: 1, x: 10, y: 20 }),
+    isWanted: () => hasOtherPeoplePresent(presence, 'me'),
+    ...clock,
+  });
+  sender.poke();
+  clock.advance(0);
+  assert.equal(sent.length, 1);
+  // Bo leaves: the hook pokes on that change too.
+  presence = [{ user_id: 'me' }];
+  sender.poke();
+  clock.advance(LIVE_CURSOR_INTERVAL_MS);
+  // Cy joins; the pointer has not moved.
+  presence = [{ user_id: 'me' }, { user_id: 'cy' }];
+  sender.poke();
+  clock.advance(LIVE_CURSOR_INTERVAL_MS);
+  assert.equal(sent.length, 2, 'the new person gets the still point');
+  assert.equal(sent[1].p, 1);
+  sender.dispose();
+  __liveCursorsTest.reset();
+});
+
+test('the hook pokes the sender on both presence changes, join and leave', () => {
+  const src = readFileSync(new URL('../src/hooks/useLiveCursorBroadcast.js', import.meta.url), 'utf8');
+  assert.match(src, /useEffect\(\(\) => \{\s*senderRef\.current\?\.poke\(\);\s*\}, \[othersPresent\]\);/);
 });
 
 test('the sender: who-this-is rides on the first message and every few seconds, not on each', () => {

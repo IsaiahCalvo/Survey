@@ -61,9 +61,11 @@ export function useLiveCursorBroadcast({ documentId, enabled = true, userId = nu
   const senderRef = useRef(null);
 
   // Someone joined: send where the pointer is now (if it is on a page), so
-  // they see it within one interval, not at the next mouse move.
+  // they see it within one interval, not at the next mouse move. The last one
+  // left: the poke finds nobody and forgets the last point sent, so the next
+  // join sends it again even if the pointer never moved.
   useEffect(() => {
-    if (othersPresent) senderRef.current?.poke();
+    senderRef.current?.poke();
   }, [othersPresent]);
 
   useEffect(() => {
