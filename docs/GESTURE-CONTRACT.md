@@ -108,19 +108,26 @@ Pan.
 trackpad pinch zoom about the cursor (eased, symmetric steps). Edges give
 with a rubber band and spring back (`utils/elasticEdges.js`).
 
-**P7 The Pan tool only pans** (owner 2026-10-13: "even though I have the
-pan tool enabled, I can still hover over text and select text"). With Pan
-(or Space held) the page shows the grab hand, and the grabbing hand while
-dragging, everywhere on the page: no I-beam, no pointer hand, no blue hover
-halo over marks, and nothing on the page can be selected as text (Safari and
-iPad need the `-webkit-` form of `user-select`, which is now set too). A
-press-drag pans, also when it starts on text or on an unselected mark. A
-click on a mark still picks it and stays Pan (`utils/selectModes.js`). Form
-fields and the text editor keep their own caret. The pdf.js text layer is
-only live under Text Select, so search highlights, copy and text markup work
-there and in the Select family exactly as before.
-(`PdfjsViewerContainer.jsx` `updatePanPresentation` + the `data-space-pan`
-style rule; the hover halo effect in `PDFViewer.jsx` skips Pan.)
+**P7 Pan pans - and selects text after a rest** (owner 2026-10-14, Drawboard
+parity; this replaces the 2026-10-13 "Pan never selects text", which misread
+the owner). With Pan the page shows the grab hand and a press-drag pans, also
+when it starts on an unselected mark. Over a mark Pan shows the blue hover
+halo (still the grab hand, no pointer hand); a click picks the mark and stays
+Pan (`utils/selectModes.js`). Over PDF text, a mouse or pen that RESTS 200 ms
+turns the cursor into an I-beam; a press-drag then selects text, a double-click
+picks a word, a triple-click a line, and the text quick menu (Highlight,
+Underline, Squiggle, Strike, Copy) shows, as under Text Select. A drag that
+starts on text before the rest, or anywhere off the text, pans as before. A
+click on blank page clears the selection; Escape closes the menu first. Space
+held is a pure pan (never text). A finger always pans (no hover), so on a
+phone or a finger-only iPad Pan does not even mount the text layer; an iPad
+with a trackpad or a touch laptop's mouse gets the rest-to-select rule. Form
+fields and the text editor keep their own caret.
+(`utils/panTextSelect.js` - the pure rule; `PdfjsViewerContainer.jsx` - the
+rest timer, the `data-pan-text` state and the pan press yielding to text;
+`PdfjsTextLayer.jsx` - the `is-pan-text` layer; `PDFViewer.jsx` - mounts it
+where a pointer can hover and feeds the quick menu; the hover halo effect
+includes Pan.)
 
 ### Two fingers and more
 
@@ -195,10 +202,13 @@ The page never claims a gesture that starts outside the viewer.
   marker, Select) — margin drag pans and adds nothing; middle drag pans and
   keeps the tool; Pencil-only finger pans and adds nothing while the pen
   draws; pinch never leaves a partial mark; long press never fires mid-drag;
-  Pan tool never selects text, shows no hover halo and keeps the grab hand;
-  Text Select still selects. Each tool first proves it is armed (one finger
+  Pan pans from text at once and selects it only after a 200 ms rest (I-beam,
+  quick menu), shows the hover halo and keeps the grab hand; blank page pans;
+  a phone finger pans; Text Select still selects. Each tool first proves it is armed (one finger
   makes a mark) so a "nothing was added" result means something.
-- `tests/selectModes.test.mjs` — Pan has no hover halo (P7).
+- `tests/selectModes.test.mjs` — Pan shows the hover halo, no pointer hand (P7).
+- `tests/panTextSelect.test.mjs` — P7 Pan over text: the rest, who may select,
+  Space / finger / middle button pan, and the wiring.
 - `tests/touchLongPress.test.mjs` — L1: the timer and slop, who may arm it
   (finger / pen / mouse, Pencil only), the input carried to the menu, and the
   viewer wiring (every touch surface, not the phone flag).

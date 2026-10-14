@@ -1,17 +1,20 @@
 /**
- * Chunk D (owner 2026-10-13, Drawboard app-shell audit, scratchpad
- * drawboardDeep/SHELL.md §4): the desktop left rail's panels.
+ * The desktop left rail's panels (Pages, Search, Bookmarks, Spaces, History).
  *
  * Intended UX:
- *   - each panel's right edge resizes it (mouse 8px strip, 24px on touch
- *     screens with an always-drawn grip), inside per-panel limits
- *     (Pages 224 120-480; Search / Bookmarks / Spaces / History 340 280-1200),
- *     never leaving less than 400px of document beside whatever covers the
- *     right side (the right rail, the Survey panel), and in Survey never
- *     reaching into the survey bar's centre group; double-click (or Enter on
- *     the focused edge) resets;
- *   - every panel keeps its own width, and which panel was open, per user,
- *     across reloads (localStorage, never throwing);
+ *   - owner 2026-10-14 ("It can barely be resized ... just pick one size ...
+ *     the smallest size that makes sense for all the tabs"): every panel is
+ *     one fixed width, 260px - History's colour key needs 252 to stay on one
+ *     line, the widest need of the five tabs (measured in Chromium at
+ *     1440x900). No drag edge, no remembered width (an old saved width is
+ *     ignored).
+ *   - a small window may narrow it: it never leaves less than 400px of
+ *     document beside whatever covers the right side (the right rail, the
+ *     Survey panel), and in Survey never reaches into the survey bar's centre
+ *     group (batch-7 tablet check) - never below 200px. On a 1180px iPad and
+ *     wider it is always 260.
+ *   - which panel was open, and whether, comes back per user across reloads
+ *     (localStorage, never throwing) - Chunk D, 2026-10-13;
  *   - opening / closing slides the panel with a transform, so the page is not
  *     laid out again every frame: the rail changes width once as a panel opens
  *     and once after the closing slide;
@@ -20,25 +23,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import {
+import * as store from '../src/sidebar/panelLayoutStore.js';
+
+const {
   LEFT_RAIL_WIDTH,
+  LEFT_PANEL_WIDTH,
+  LEFT_PANEL_MIN_WIDTH,
   MIN_VIEWER_VISIBLE,
-  PANEL_WIDTHS,
   SURVEY_CENTRE_CLEARANCE,
   getSideRoom,
   publishSideRoom,
   subscribeSideRoom,
   DEFAULT_PANEL_LAYOUT,
-  clampPanelWidth,
+  leftPanelWidth,
   normalizePanelLayout,
-  panelMaxWidth,
-  panelWidthSpec,
   readPanelLayout,
   storageKeyForUser,
-  widthFromDrag,
-  widthFromKey,
   writePanelLayout,
-} from '../src/sidebar/panelLayoutStore.js';
+} = store;
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
@@ -51,77 +53,38 @@ const memoryStorage = () => {
   };
 };
 
-test('per-panel widths: Pages narrow, the reading panels wide (Drawboard)', () => {
-  assert.deepEqual({ ...PANEL_WIDTHS.pages }, { initial: 224, min: 120, max: 480 });
-  for (const id of ['search', 'bookmarks', 'spaces', 'history']) {
-    assert.deepEqual({ ...PANEL_WIDTHS[id] }, { initial: 340, min: 280, max: 1200 }, id);
+test('one fixed width: every panel is 260px (owner 2026-10-14)', () => {
+  assert.equal(LEFT_PANEL_WIDTH, 260);
+  assert.equal(LEFT_RAIL_WIDTH, 48);
+  // Desktop windows and the 1180px iPad: always the one width, Survey or not.
+  for (const vw of [1180, 1280, 1366, 1440, 1920, 2560]) {
+    assert.equal(leftPanelWidth(vw), 260, `${vw}`);
+    assert.equal(leftPanelWidth(vw, { rightCover: 48, surveyCentreX: null }), 260, `${vw} rail only`);
+    assert.equal(leftPanelWidth(vw, { rightCover: 368, surveyCentreX: vw / 2 }), 260, `${vw} Survey panel open`);
   }
-  assert.equal(panelWidthSpec('nonsense'), PANEL_WIDTHS.pages);
+  // No width given (server render, a test): the one width.
+  assert.equal(leftPanelWidth(undefined), 260);
+  assert.equal(leftPanelWidth(0), 260);
+  // The resize feature is gone: no per-panel limits, drag or key handlers.
+  for (const gone of ['PANEL_WIDTHS', 'panelWidthSpec', 'panelMaxWidth', 'clampPanelWidth', 'widthFromDrag', 'widthFromKey', 'KEYBOARD_STEP']) {
+    assert.equal(gone in store, false, gone);
+  }
 });
 
-test('clamp: inside the limits, and never more than the window leaves room for', () => {
-  assert.equal(clampPanelWidth('pages', undefined, 1440), 224);
-  assert.equal(clampPanelWidth('search', null, 1440), 340);
-  assert.equal(clampPanelWidth('search', 'abc', 1440), 340);
-  assert.equal(clampPanelWidth('pages', 50, 1440), 120);
-  // A drag that ran off the window's left edge is the narrowest, not a reset.
-  assert.equal(clampPanelWidth('pages', -56, 1440), 120);
-  assert.equal(clampPanelWidth('pages', 5000, 1440), 480);
-  assert.equal(clampPanelWidth('search', 300.6, 1440), 301);
-  // 1440 window (nothing given for the right side): 1440 - 48 - 400 = 992 is
-  // the widest a Search panel gets. (Was 360 / 1032 before the batch-7 tablet
-  // check raised the document's floor.)
+test('a small window narrows the panel so the document and the survey bar keep room', () => {
+  // iPad 1024 with the Survey panel open (48 rail + 320 panel): 1024 - 48 - 368 - 400.
   assert.equal(MIN_VIEWER_VISIBLE, 400);
-  assert.equal(panelMaxWidth('search', 1440), 1440 - LEFT_RAIL_WIDTH - MIN_VIEWER_VISIBLE);
-  assert.equal(clampPanelWidth('search', 1200, 1440), 992);
-  // A tiny window still gets the panel's min, never less.
-  assert.equal(panelMaxWidth('search', 500), 280);
-  assert.equal(clampPanelWidth('search', 900, 500), 280);
-  assert.equal(panelMaxWidth('pages', undefined), 480);
-});
-
-test('drag: the width follows the pointer from where the press started', () => {
-  const drag = { panelId: 'pages', startWidth: 224, startX: 272, viewportWidth: 1440 };
-  assert.equal(widthFromDrag({ ...drag, x: 352 }), 304);
-  assert.equal(widthFromDrag({ ...drag, x: 200 }), 152);
-  assert.equal(widthFromDrag({ ...drag, x: -7 }), 120);
-  assert.equal(widthFromDrag({ ...drag, x: 2000 }), 480);
-});
-
-test('keyboard on the edge: arrows step, Shift steps more, Home/End, Enter resets', () => {
-  const at = (key, width = 340, shiftKey = false) => widthFromKey({ panelId: 'search', width, key, shiftKey, viewportWidth: 1440 });
-  assert.equal(at('ArrowRight'), 356);
-  assert.equal(at('ArrowLeft'), 324);
-  assert.equal(at('ArrowRight', 340, true), 404);
-  assert.equal(at('ArrowLeft', 290, true), 280);
-  assert.equal(at('Home'), 280);
-  assert.equal(at('End'), 992);
-  assert.equal(at('Enter', 600), 340);
-  assert.equal(at('a'), null);
-  assert.equal(at('ArrowUp'), null);
-});
-
-test('the right side and the survey bar limit the panel (batch-7 tablet check)', () => {
-  // iPad portrait, Survey panel open (48 rail + 320 panel): 1024 - 48 - 368 - 400.
-  const open = { rightCover: 368, surveyCentreX: 512 };
-  assert.equal(panelMaxWidth('pages', 1024, open), 208);
-  assert.equal(clampPanelWidth('pages', 480, 1024, open), 208);
-  assert.equal(widthFromDrag({ panelId: 'pages', startWidth: 224, startX: 272, x: 1000, viewportWidth: 1024, room: open }), 208);
-  assert.equal(widthFromKey({ panelId: 'pages', width: 208, key: 'End', viewportWidth: 1024, room: open }), 208);
+  assert.equal(leftPanelWidth(1024, { rightCover: 368, surveyCentreX: 512 }), 208);
   // Survey panel closed: the survey bar's centre spot is the limit (it stops
   // SURVEY_CENTRE_CLEARANCE short: start piece, gutter, 4 chips + "All N").
   assert.equal(SURVEY_CENTRE_CLEARANCE, 176);
-  assert.equal(panelMaxWidth('pages', 1024, { rightCover: 48, surveyCentreX: 512 }), 512 - 48 - 176);
-  // Not in Survey: only the document's floor.
-  assert.equal(panelMaxWidth('pages', 1024, { rightCover: 48, surveyCentreX: null }), 480);
-  // iPad landscape: 1366 - 48 - 368 - 400 = 550, centre 683 - 48 - 176 = 459.
-  assert.equal(panelMaxWidth('pages', 1366, { rightCover: 368, surveyCentreX: 683 }), 459);
-  // Desktop 1440 in Survey with the Survey panel open: Pages keeps its 480.
-  assert.equal(panelMaxWidth('pages', 1440, { rightCover: 368, surveyCentreX: 720 }), 480);
-  // Never below the panel's own min, however little room.
-  assert.equal(panelMaxWidth('search', 1024, open), 280);
-  // The stored width is not touched: room coming back gives it back.
-  assert.equal(clampPanelWidth('pages', 400, 1024, { rightCover: 48 }), 400);
+  assert.equal(leftPanelWidth(1024, { rightCover: 48, surveyCentreX: 512 }), 260);
+  assert.equal(leftPanelWidth(900, { rightCover: 48, surveyCentreX: 450 }), 450 - 48 - 176);
+  // Not in Survey on a 1024 iPad: the full width.
+  assert.equal(leftPanelWidth(1024, { rightCover: 48, surveyCentreX: null }), 260);
+  // Never below the floor, however little room.
+  assert.equal(LEFT_PANEL_MIN_WIDTH, 200);
+  assert.equal(leftPanelWidth(500, { rightCover: 368 }), 200);
 });
 
 test('side room store: merges, whole px, notifies only on a change', () => {
@@ -149,27 +112,28 @@ test('wiring: the right rail and the survey bar publish their room; the sidebar 
   const rail = read('../src/SurveySpacesRail.jsx');
   const fit = read('../src/hooks/useSurveyBarFit.js');
   assert.match(sidebar, /useSyncExternalStore\(subscribeSideRoom, getSideRoom, getSideRoom\)/);
-  assert.match(sidebar, /clampPanelWidth\(activeTab, panelWidths\[activeTab\], viewportWidth, sideRoom\)/);
-  assert.match(sidebar, /widthFromDrag\(\{ \.\.\.drag, x: event\.clientX, viewportWidth: window\.innerWidth, room: getSideRoom\(\) \}\)/);
+  assert.match(sidebar, /const panelWidth = leftPanelWidth\(viewportWidth, sideRoom\);/);
   assert.match(rail, /publishSideRoom\(\{ rightCover: mobileMode \? 0 : \(desktopSurveyPanelShown \? 48 \+ 320 : 48\) \}\)/);
   assert.match(fit, /publishSideRoom\(\{ surveyCentreX: barRect\.left \+ centre \}\)/);
   assert.match(fit, /publishSideRoom\(\{ surveyCentreX: null \}\)/);
 });
 
 test('storage: per user, round trips, never throws, ignores junk', () => {
-  const store = memoryStorage();
+  const mem = memoryStorage();
   assert.equal(storageKeyForUser('u1'), 'survey.leftPanelLayout.v1:u1');
   assert.equal(storageKeyForUser(null), 'survey.leftPanelLayout.v1:local');
-  assert.equal(readPanelLayout(store, 'u1'), DEFAULT_PANEL_LAYOUT);
-  assert.equal(writePanelLayout(store, 'u1', { widths: { pages: 300, search: 410.4 }, open: true, panel: 'search' }), true);
-  assert.deepEqual(readPanelLayout(store, 'u1'), { widths: { pages: 300, search: 410 }, open: true, panel: 'search' });
+  assert.equal(readPanelLayout(mem, 'u1'), DEFAULT_PANEL_LAYOUT);
+  // A width handed in (or saved by the old resizable panel) is not kept.
+  assert.equal(writePanelLayout(mem, 'u1', { widths: { pages: 300, search: 410.4 }, open: true, panel: 'search' }), true);
+  assert.deepEqual(JSON.parse(mem.map.get(storageKeyForUser('u1'))), { open: true, panel: 'search' });
+  assert.deepEqual(readPanelLayout(mem, 'u1'), { open: true, panel: 'search' });
   // Another user does not see it.
-  assert.equal(readPanelLayout(store, 'u2'), DEFAULT_PANEL_LAYOUT);
+  assert.equal(readPanelLayout(mem, 'u2'), DEFAULT_PANEL_LAYOUT);
   // Junk in storage falls back field by field.
-  store.setItem(storageKeyForUser('u3'), JSON.stringify({ widths: { pages: 'x', search: -4, bogus: 500, spaces: 360 }, open: 'yes', panel: 'nope' }));
-  assert.deepEqual(readPanelLayout(store, 'u3'), { widths: { spaces: 360 }, open: false, panel: 'pages' });
-  store.setItem(storageKeyForUser('u4'), '{not json');
-  assert.equal(readPanelLayout(store, 'u4'), DEFAULT_PANEL_LAYOUT);
+  mem.setItem(storageKeyForUser('u3'), JSON.stringify({ widths: { pages: 'x', search: -4, bogus: 500, spaces: 360 }, open: 'yes', panel: 'nope' }));
+  assert.deepEqual(readPanelLayout(mem, 'u3'), { open: false, panel: 'pages' });
+  mem.setItem(storageKeyForUser('u4'), '{not json');
+  assert.equal(readPanelLayout(mem, 'u4'), DEFAULT_PANEL_LAYOUT);
   // Blocked storage (private window / quota) never throws.
   const blocked = { getItem() { throw new Error('SecurityError'); }, setItem() { throw new Error('QuotaExceeded'); } };
   assert.equal(readPanelLayout(blocked, 'u1'), DEFAULT_PANEL_LAYOUT);
@@ -203,17 +167,18 @@ test('wiring: the rail slides its panel by transform and changes width once per 
   assert.match(viewer, /const handleLeftRailToggleCollapse = useCallback\(\(isCollapsed, panelWidth\) => \{/);
 });
 
-test('wiring: the resize edge - mouse 8px, touch 24px with a drawn grip, drag writes only a CSS variable', () => {
+test('wiring: no resize edge, no remembered width; the phone keeps its sheet', () => {
   const sidebar = read('../src/PDFSidebar.jsx');
   const css = read('../src/styles.css');
-  assert.match(sidebar, /role="separator"\s*aria-orientation="vertical"/);
-  assert.match(sidebar, /onDoubleClick=\{resetPanelWidth\}/);
-  assert.match(sidebar, /railElRef\.current\?\.style\.setProperty\('--left-panel-w', `\$\{width\}px`\);/);
-  assert.match(css, /\.left-rail__resize \{[^}]*width: 8px;[^}]*cursor: ew-resize;[^}]*touch-action: none;/);
-  assert.match(css, /@media \(any-pointer: coarse\) \{\s*\.left-rail__resize \{\s*right: -16px;\s*width: 24px;/);
-  assert.match(css, /@media \(pointer: coarse\) \{\s*\.left-rail__resize::after \{\s*opacity: 0\.7;/);
-  // The phone keeps its sheet: no handle, no stored open state.
-  assert.match(sidebar, /\{!mobileMode && !isCollapsed && \(\s*<div\s*className=\{`left-rail__resize/);
+  assert.doesNotMatch(sidebar, /left-rail__resize|role="separator"|onDoubleClick=\{resetPanelWidth\}|is-resizing-side-panel|panelWidths/);
+  assert.doesNotMatch(css, /\.left-rail__resize|is-resizing-side-panel/);
+  // Only which panel and whether it was open are saved.
+  assert.match(sidebar, /writePanelLayout\(browserStorage\(\), layoutUserKey, \{ open: !isCollapsed, panel: activeTab \}\);/);
+  // The rail is the 48px column plus the one panel width while laid out open,
+  // and --app-sidebar-width (the storage notice's left edge) says the same.
+  assert.match(sidebar, /'--left-panel-w': mobileMode \? undefined : `\$\{panelWidth\}px`,/);
+  assert.match(sidebar, /setProperty\('--app-sidebar-width', mobileMode \? '44px' : `\$\{layoutOpen \? LEFT_RAIL_W \+ panelWidth : LEFT_RAIL_W\}px`\)/);
+  // The phone keeps its sheet: no stored open state.
   assert.match(sidebar, /const stored = mobileMode \? DEFAULT_PANEL_LAYOUT : readPanelLayout\(browserStorage\(\), layoutUserKey\);/);
 });
 
