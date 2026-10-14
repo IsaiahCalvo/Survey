@@ -313,7 +313,15 @@ export function runGuardedTestFile(file, {
     let verdict = null;
     let sampling = false;
 
-    const killTree = () => {
+    const killTree = async () => {
+      // Read the tree once more before killing: a kill on the wall-clock limit
+      // can come before (or without) any CPU sample, and stopping only the
+      // `node --test` wrapper would leave the test process running.
+      try {
+        const rows = await readRows(child.pid);
+        const tree = rows ? processTreeCpu(child.pid, rows) : null;
+        if (tree) lastPids = [...new Set([...lastPids, ...tree.pids])];
+      } catch { /* kill what we know */ }
       for (const pid of [...lastPids].reverse()) {
         if (pid === child.pid) continue;
         try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
@@ -350,7 +358,7 @@ export function runGuardedTestFile(file, {
       });
       if (decision.kill) {
         verdict = decision;
-        killTree();
+        await killTree();
       }
     };
     const timer = setInterval(tick, sampleEveryMs);

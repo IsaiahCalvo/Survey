@@ -155,3 +155,8 @@ test('DocumentsLedger: desktop rows are checkable, draggable and right-clickable
   const desktop = css.split('@media screen and (min-device-width: 600px) and (min-device-height: 600px) {').slice(1).map((b) => b.split('\n}\n')[0]).join('\n');
   assert.match(desktop, /\.survey-hub\.hub-tab-documents \.documents-mobile-select-main > \.mobile-header-select-button \{\s*display: none;/, 'hidden on the desktop layout only');
 });
+
+test('Dashboard bulk project upload: a failed row create removes the object it just stored (Bugbot #831)', () => {
+  const src = read('src/Dashboard.jsx');
+  assert.match(src, /doc = await createSupabaseDocument\(\{[\s\S]*?\}\);\s*\} catch \(createErr\) \{[\s\S]{0,240}deleteFromStorage\(filePath\)[\s\S]{0,160}throw createErr;/);
+});

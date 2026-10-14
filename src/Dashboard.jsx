@@ -1092,15 +1092,23 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
 
         // Create document record immediately after upload
         // Use null for page_count initially, will update in background
-        const doc = await createSupabaseDocument({
-          id: newDocId,
-          name,
-          file_path: filePath,
-          file_size: file.size,
-          page_count: null,
-          project_id: newProject.id,
-          content_sha256: contentSha,
-        });
+        let doc;
+        try {
+          doc = await createSupabaseDocument({
+            id: newDocId,
+            name,
+            file_path: filePath,
+            file_size: file.size,
+            page_count: null,
+            project_id: newProject.id,
+            content_sha256: contentSha,
+          });
+        } catch (createErr) {
+          // No row points at the object (its path is this attempt's own id,
+          // so a retry never reuses it): remove it (best effort).
+          deleteFromStorage(filePath).catch((err) => console.warn(`Could not remove unused upload ${filePath}:`, err?.message));
+          throw createErr;
+        }
 
         // Deduped to another picked file's row: nothing reads the object we
         // just stored, so remove it (best effort).

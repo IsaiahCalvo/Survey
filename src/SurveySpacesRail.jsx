@@ -620,7 +620,11 @@ const SurveySpacesRail = ({
     // The left panel's width limit reads the same cover (panelLayoutStore.js).
     publishSideRoom({ rightCover: mobileMode ? 0 : (desktopSurveyPanelShown ? 48 + 320 : 48) });
   }, [mobileMode, desktopSurveyPanelShown]);
-  useEffect(() => () => { publishSideRoom({ rightCover: 48 }); }, []);
+  useEffect(() => () => {
+    publishSideRoom({ rightCover: 48 });
+    // Gone: later UI reading the token falls back to its own default.
+    if (typeof document !== 'undefined') document.documentElement?.style.removeProperty('--app-right-rail-width');
+  }, []);
   const [openEntityDropdownId, setOpenEntityDropdownId] = useState(null);
   // The template switcher (owner 2026-10-01, "hybrid" design): the template
   // name in the panel header is a button. Phone: it swaps the category list

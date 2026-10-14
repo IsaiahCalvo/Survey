@@ -87,6 +87,8 @@ test('the notice keeps its z-index and stops at the right rail', () => {
   assert.match(banner, /left:\s*var\(--app-sidebar-width, 48px\);/);
   const rail = read('src/SurveySpacesRail.jsx');
   assert.match(rail, /'--app-right-rail-width',\s*\n\s*mobileMode \? '0px' : `\$\{desktopSurveyPanelShown \? 48 \+ 320 : 48\}px`/);
+  // Unmount clears the token so later UI falls back to its default (Bugbot #831).
+  assert.match(rail, /publishSideRoom\(\{ rightCover: 48 \}\);[\s\S]{0,160}removeProperty\('--app-right-rail-width'\)/);
 });
 
 test('on a phone the notice links drop under the text', () => {
