@@ -29,7 +29,7 @@ if (import.meta.env?.DEV && typeof window !== 'undefined') {
 }
 
 const BUILT_IN_MODES = [
-  { mode: 'rectangle', label: 'Rectangle marker', icon: 'rect' },
+  { mode: 'rectangle', label: 'Rectangle marker', icon: 'selectionPlus' },
   { mode: 'freehand', label: 'Freehand marker', icon: 'brush' },
 ];
 

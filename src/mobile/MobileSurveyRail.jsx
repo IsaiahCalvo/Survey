@@ -344,7 +344,7 @@ export function MobileSurveyAllSheet({ kind, toolbar, armed, closeKey = 0, onClo
 }
 
 const BUILT_IN_SHAPES = [
-  { mode: 'rectangle', label: 'Rectangle', icon: 'rect' },
+  { mode: 'rectangle', label: 'Rectangle', icon: 'selectionPlus' },
   { mode: 'freehand', label: 'Freehand', icon: 'brush' },
 ];
 

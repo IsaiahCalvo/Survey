@@ -29,11 +29,17 @@ test('freehand marker mode uses the brush icon on desktop and phone', async () =
   assert.match(desktop, /\{ mode: 'freehand', label: 'Freehand marker', icon: 'brush' \}/);
   assert.match(phone, /\{ mode: 'freehand', label: 'Freehand', icon: 'brush' \}/);
   // Rectangle and Smart fill are unchanged by this pass.
-  assert.match(desktop, /\{ mode: 'rectangle', label: 'Rectangle marker', icon: 'rect' \}/);
-  assert.match(phone, /\{ mode: 'rectangle', label: 'Rectangle', icon: 'rect' \}/);
+  assert.match(desktop, /\{ mode: 'rectangle', label: 'Rectangle marker', icon: 'selectionPlus' \}/);
+  assert.match(phone, /\{ mode: 'rectangle', label: 'Rectangle', icon: 'selectionPlus' \}/);
   assert.match(phone, /icon: smartFill\.icon \|\| 'paintBucket'/);
   // The Highlighter TOOL keeps its own glyph; only the marker mode moved.
   for (const source of [desktop, phone]) {
     assert.doesNotMatch(source, /mode: 'freehand'[^}]*icon: 'highlighter'/);
   }
+});
+
+test('the Rectangle marker uses the owner\'s selection-plus icon (owner 2026-10-14)', async () => {
+  const icons = await read('../src/Icons.jsx');
+  assert.match(icons, /selectionPlus: \(size, color, style, className\) => \(\s*<svg[^>]*viewBox="0 0 256 256"/);
+  assert.match(icons, /M240,208H224V192a8,8,0,0,0-16,0v16H192/);
 });
