@@ -130,3 +130,14 @@ test('wiring: the viewer, the pan press, the text layer and the quick menu follo
   // Selection capture reads Pan's layer as well as Text Select's.
   assert.match(MARKUP, /querySelectorAll\('\.pdfjsTextLayer\.is-interactive, \.pdfjsTextLayer\.is-pan-text'\)/);
 });
+
+test('a press is handed to text selection only on a glyph, and scrolling drops the I-beam (Codex #832)', () => {
+  const src = read('../src/components/PdfjsViewerContainer.jsx');
+  // The text layer root takes presses while the I-beam shows; its blank part must still pan.
+  assert.match(src, /onTextLayer: isPanTextTarget\(event\.target\),/);
+  assert.doesNotMatch(src, /onTextLayer: Boolean\(event\.target\?\.closest\?\.\('\.pdfjsTextLayer'\)\)/);
+  // Scroll / zoom under a still pointer: back to off (or keep), never mid-press.
+  assert.match(src, /const onScroll = \(\) => \{\s*if \(press \|\| panTextStateRef\.current !== 'on'\) return;[\s\S]{0,160}setState\(hasLivePdfTextSelection\(window\.getSelection\?\.\(\)\) \? 'keep' : 'off'\);/);
+  assert.match(src, /el\.addEventListener\('scroll', onScroll, \{ passive: true \}\);/);
+  assert.match(src, /el\.removeEventListener\('scroll', onScroll\);/);
+});

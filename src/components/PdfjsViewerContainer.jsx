@@ -3741,8 +3741,18 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const live = hasLivePdfTextSelection(window.getSelection?.());
       setState(resolvePanTextSelectionChange({ state: panTextStateRef.current, selectionLive: live }));
     };
+    // Scroll or zoom under a still pointer moves the text away from it, and
+    // no pointermove says so: drop the I-beam until the next move re-checks
+    // (Codex #832). Not mid-press: a text drag that autoscrolls keeps going.
+    const onScroll = () => {
+      if (press || panTextStateRef.current !== 'on') return;
+      overText = false;
+      stopTimer();
+      setState(hasLivePdfTextSelection(window.getSelection?.()) ? 'keep' : 'off');
+    };
     el.addEventListener('pointermove', onMove, { capture: true, passive: true });
     el.addEventListener('pointerleave', onLeave);
+    el.addEventListener('scroll', onScroll, { passive: true });
     el.addEventListener('pointerdown', onDown, { capture: true, passive: true });
     el.addEventListener('pointerup', onUp, { capture: true, passive: true });
     document.addEventListener('selectionchange', onSelectionChange);
@@ -3750,6 +3760,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       stopTimer();
       el.removeEventListener('pointermove', onMove, true);
       el.removeEventListener('pointerleave', onLeave);
+      el.removeEventListener('scroll', onScroll);
       el.removeEventListener('pointerdown', onDown, true);
       el.removeEventListener('pointerup', onUp, true);
       document.removeEventListener('selectionchange', onSelectionChange);
@@ -3778,7 +3789,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         state: panTextStateRef.current,
         pointerType: event.pointerType,
         button: event.button,
-        onTextLayer: Boolean(event.target?.closest?.('.pdfjsTextLayer')),
+        // A glyph only: the text layer root also takes presses while the
+        // I-beam shows, and a press on its blank part must still pan (Codex #832).
+        onTextLayer: isPanTextTarget(event.target),
       })) return;
       const armed = spacePanRef.current || interactionModeRef.current === 'Pan';
       const route = resolveViewerPressRoute({
