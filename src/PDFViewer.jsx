@@ -178,6 +178,8 @@ import { toolSupportsCloudBorderStyle } from './utils/pdfAnnotationAppearance.js
 import { toolOffersCloudLineStyle } from './utils/textCloudBorder.js';
 import { trackSurveyAnalyticsEvent } from './utils/surveyAnalytics';
 import { mintPastedCloneIdentity } from './utils/pasteCloneIdentity';
+import SymbolStampTool from './components/SymbolStampTool';
+import { createSymbolStampObject } from './utils/symbolLibrary';
 import { areViewStatesEqual, normalizeViewState } from './utils/viewState';
 import { arrayMove } from '@dnd-kit/sortable';
 import { buildAnnotationSelectionContextKey, didAnnotationSelectionContextChange } from './utils/annotationSelectionContext';
@@ -5454,6 +5456,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       try {
         localStorage.setItem('lastShapeTool', activeTool);
       } catch (e) { }
+    } else if (activeTool === 'symbol') {
+      // KAL-407: Symbols sits in the Text group's row; it opens a panel, so
+      // it does not become the group's remembered tool.
+      setActiveCategoryDropdown((prev) => (prev === 'review' ? prev : 'review'));
     } else if (REVIEW_TOOL_IDS.includes(activeTool)) {
       setLastReviewTool(activeTool);
       setActiveCategoryDropdown((prev) => (prev === 'review' ? prev : 'review'));
@@ -29612,6 +29618,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // pasteAnnotationAt) can call it without TDZ'ing on the dep array.
   pasteAnnotationAtRef.current = pasteAnnotationAt;
 
+  // KAL-407: the Symbols tool places a library symbol where the page was
+  // clicked — one new mark, saved and undoable like a paste, with the same
+  // scope and author a paste gets.
+  const handlePlaceSymbol = useCallback(({ pageNumber, x, y, symbolId, color }) => {
+    const mark = createSymbolStampObject({ symbolId, color, centerX: x, centerY: y });
+    if (!mark || pageNumber == null) return;
+    makePastedMarkOwn(mark, user?.id || null);
+    applyPasteScope(mark, currentPasteScope(pageNumber));
+    const next = deepClone(annotationsByPageRef.current?.[pageNumber] || { objects: [] });
+    if (!Array.isArray(next.objects)) next.objects = [];
+    next.objects.push(mark);
+    handleSaveAnnotations(pageNumber, next, {
+      source: 'object:modified',
+      action: 'symbol-stamp',
+      checkpointPolicy: 'normal',
+    });
+  }, [handleSaveAnnotations, selectedModuleId, activeRegionId, annotationSpaceId, spaces, isRegionOverlayEnabled, user?.id]);
+
   // UX: Shared annotation Copy handler — called by the Cmd+C hotkey wired
   // from SVGAnnotationLayer's per-page keydown useEffect (and available for
   // future reuse). Deep-clones the targeted shape onto clipboardAnnotation
@@ -35572,6 +35596,13 @@ ${pageBlocks}
         },
       })}
 
+      {/* KAL-407: the Symbols panel; a click on the page places the symbol. */}
+      <SymbolStampTool
+        active={activeTool === 'symbol'}
+        onPlace={handlePlaceSymbol}
+        onClose={() => setActiveToolLogged('pan', { source: 'symbol-panel-close' })}
+      />
+
       {/* Unsupported Annotations Notice — see UnsupportedAnnotationsNotice.jsx
           for the owner-approved UX (friendly names, once per document open,
           dismissible, non-blocking). */}
@@ -38384,7 +38415,11 @@ ${pageBlocks}
               <>
                 {[
                   { id: 'text', label: 'Text', iconName: 'textBox' },
-                  { id: 'callout', label: 'Callout', iconName: 'callout' }
+                  { id: 'callout', label: 'Callout', iconName: 'callout' },
+                  // KAL-407: engineering symbols (opens the Symbols panel).
+                  // In the Text group, which has room: a Shapes row of eight
+                  // would outgrow the loadout space kept on desktop and phone.
+                  { id: 'symbol', label: 'Symbols', iconName: 'library' }
                   // TODO: Revisit the user-created Note tool later. Imported
                   // PDF Text/sticky-note annotations still render through
                   // pdfAnnotationImporter + the normal PDF annotation layers.

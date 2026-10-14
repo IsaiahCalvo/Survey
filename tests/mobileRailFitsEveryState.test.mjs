@@ -282,11 +282,14 @@ const states = () => {
   // 565px an iPhone 17 Pro allows. This arithmetic reproduced all six of the
   // previously recorded live numbers to the pixel before the change, which is
   // what makes recomputing them trustworthy.
-  const live = { draw: 295, shape: 423, review: 263 };
+  // CHANGE 2026-10-13 (KAL-407): the Text group gained a third tool, Symbols,
+  // so its open state is Draw's height (3 chips): 263 -> 295, and beside the
+  // survey rows 501 -> 533. Re-measured live at 390x844 in the KAL-407 walk.
+  const live = { draw: 295, shape: 423, review: 295 };
   // RULED CHANGE 2026-10-01: the same pitch as every other state (no dense
   // override), re-measured live at 390x844 with 2 categories + 5 entities:
   // Draw 533, Shapes 661, Text 501 (scrollHeight of the tool column).
-  const liveDense = { draw: 533, shape: 661, review: 501 };
+  const liveDense = { draw: 533, shape: 661, review: 533 };
   for (const [id, tools] of Object.entries(TOOL_GROUPS)) {
     out.push([
       `${id} group open`,
