@@ -378,6 +378,18 @@ test.describe('desktop + phone: the Pan tool selects text only after a mouse res
         await H.mouse('mouseReleased', blank.x, blank.y);
         await sleep(400);
         expect(await selected(), 'a click on blank page clears the selection').toBe('');
+        // 3b. The same click at once, inside the 150 ms leave grace, clears too (Bugbot #832).
+        await H.mouse('mouseMoved', span.x + 4, span.y, { button: 'none', buttons: 0 });
+        await sleep(400);
+        await H.drag(span.x, span.y, span.x + span.w - 4, span.y, { n: 12 });
+        await sleep(300);
+        expect((await selected()).length, 'selected again').toBeGreaterThan(2);
+        await H.mouse('mouseMoved', blank.x, blank.y, { button: 'none', buttons: 0 });
+        await H.mouse('mousePressed', blank.x, blank.y);
+        await H.mouse('mouseReleased', blank.x, blank.y);
+        await sleep(400);
+        record('desk.pan.fastClickOffClears', await selected());
+        expect(await selected(), 'a click right after leaving the text clears too').toBe('');
         // 4. A drag on blank page pans and selects nothing.
         const e0 = await H.pos();
         // (Upward: the page sits at its top since step 2.)

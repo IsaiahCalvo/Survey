@@ -160,3 +160,9 @@ test('a word gap between text boxes does not drop the I-beam or restart the rest
   assert.match(src, /\}, PAN_TEXT_LEAVE_GRACE_MS\);/);
   assert.match(src, /stopLeave\(\);\s*overText = onText;/, 'back on text cancels the pending leave');
 });
+
+test('a click off text clears a Pan selection even inside the leave grace (Bugbot #832)', () => {
+  const src = read('../src/components/PdfjsViewerContainer.jsx');
+  assert.match(src, /if \(!start \|\| start\.onText \|\| panTextStateRef\.current === 'off'\) return;\s*if \(!hasLivePdfTextSelection\(window\.getSelection\?\.\(\)\)\) return;/);
+  assert.doesNotMatch(src, /panTextStateRef\.current !== 'keep'\) return;/);
+});

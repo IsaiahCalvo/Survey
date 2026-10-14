@@ -3760,7 +3760,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const onUp = (event) => {
       const start = press;
       press = null;
-      if (!start || start.onText || panTextStateRef.current !== 'keep') return;
+      // Any live Pan selection, not only in 'keep': within the leave grace the
+      // state can still read 'on' when the click lands off text (Bugbot #832).
+      if (!start || start.onText || panTextStateRef.current === 'off') return;
+      if (!hasLivePdfTextSelection(window.getSelection?.())) return;
       if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > PAN_TEXT_CLICK_SLOP_PX) return;
       try { window.getSelection?.()?.removeAllRanges?.(); } catch { /* noop */ }
     };
