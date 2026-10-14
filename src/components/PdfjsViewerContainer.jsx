@@ -80,8 +80,8 @@ import {
   DRAW_MODES, hasStylusTouch, isPenDown, isPencilOnly, resolveTouchStartRoute, resolveViewerPressRoute, subscribeGatedPointers,
 } from '../utils/pencilMode.js';
 import {
-  PAN_TEXT_CLICK_SLOP_PX, PAN_TEXT_HOVER_MS, hasLivePdfTextSelection, isPanTextTarget,
-  panTextOwnsPress, resolvePanTextHover, resolvePanTextSelectionChange,
+  PAN_TEXT_CLICK_SLOP_PX, PAN_TEXT_HOVER_MS, PAN_TEXT_LEAVE_GRACE_MS, hasLivePdfTextSelection, isPanTextTarget,
+  panTextLeaveWaits, panTextOwnsPress, resolvePanTextHover, resolvePanTextSelectionChange,
 } from '../utils/panTextSelect.js';
 import { createLongPressTracker, longPressMayArm, markLongPressEvent } from '../utils/touchLongPress.js';
 import {
@@ -3697,18 +3697,44 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       if (next === 'off') delete el.dataset.panText; else el.dataset.panText = next;
       updatePanPresentation();
     };
+    let leaveTimer = 0;
+    const stopLeave = () => { window.clearTimeout(leaveTimer); leaveTimer = 0; };
     const stopTimer = () => { window.clearTimeout(timer); timer = 0; };
+    const hoverFor = (event, onText) => resolvePanTextHover({
+      toolIsPan: interactionModeRef.current === 'Pan',
+      spaceHeld: spacePanRef.current || Boolean(panPointerRef.current),
+      pointerType: event.pointerType,
+      buttons: event.buttons,
+      overText: onText,
+      state: panTextStateRef.current,
+      selectionLive: hasLivePdfTextSelection(window.getSelection?.()),
+    });
     const onMove = (event) => {
-      overText = isPanTextTarget(event.target);
-      const next = resolvePanTextHover({
+      const onText = isPanTextTarget(event.target);
+      // A gap between text boxes on a line: off text only once the pointer
+      // stays off it for PAN_TEXT_LEAVE_GRACE_MS (Bugbot #832).
+      if (panTextLeaveWaits({
         toolIsPan: interactionModeRef.current === 'Pan',
         spaceHeld: spacePanRef.current || Boolean(panPointerRef.current),
         pointerType: event.pointerType,
         buttons: event.buttons,
-        overText,
-        state: panTextStateRef.current,
-        selectionLive: hasLivePdfTextSelection(window.getSelection?.()),
-      });
+        overText: onText,
+      }) && (overText || timer || panTextStateRef.current === 'on')) {
+        if (!leaveTimer) {
+          const { pointerType } = event;
+          leaveTimer = window.setTimeout(() => {
+            leaveTimer = 0;
+            overText = false;
+            const late = hoverFor({ pointerType, buttons: 0 }, false);
+            if (late.stopTimer) stopTimer();
+            setState(late.state);
+          }, PAN_TEXT_LEAVE_GRACE_MS);
+        }
+        return;
+      }
+      stopLeave();
+      overText = onText;
+      const next = hoverFor(event, overText);
       if (next.stopTimer) stopTimer();
       setState(next.state);
       if (next.startTimer && !timer) {
@@ -3720,6 +3746,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
     const onLeave = () => {
       overText = false;
+      stopLeave();
       stopTimer();
       if (panTextStateRef.current === 'on') {
         setState(hasLivePdfTextSelection(window.getSelection?.()) ? 'keep' : 'off');
@@ -3747,6 +3774,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const onScroll = () => {
       if (press || panTextStateRef.current !== 'on') return;
       overText = false;
+      stopLeave();
       stopTimer();
       setState(hasLivePdfTextSelection(window.getSelection?.()) ? 'keep' : 'off');
     };
@@ -3758,6 +3786,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     document.addEventListener('selectionchange', onSelectionChange);
     return () => {
       stopTimer();
+      stopLeave();
       el.removeEventListener('pointermove', onMove, true);
       el.removeEventListener('pointerleave', onLeave);
       el.removeEventListener('scroll', onScroll);

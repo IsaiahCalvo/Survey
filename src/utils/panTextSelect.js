@@ -17,6 +17,13 @@
 /** How long the pointer must rest on text before Pan selects text (Drawboard: 200 ms). */
 export const PAN_TEXT_HOVER_MS = 200;
 
+/**
+ * pdf.js draws one tight box per text run, so moving along a line crosses
+ * small gaps between boxes. Leaving text counts only after this long off it,
+ * so the I-beam (and the rest timer) survive a word gap (Bugbot #832).
+ */
+export const PAN_TEXT_LEAVE_GRACE_MS = 150;
+
 /** A click shorter than this (px) on the blank page clears a text selection. */
 export const PAN_TEXT_CLICK_SLOP_PX = 4;
 
@@ -110,4 +117,14 @@ export function hasLivePdfTextSelection(selection) {
   const node = selection.anchorNode;
   const el = node?.nodeType === 3 ? node.parentElement : node;
   return Boolean(el?.closest?.('.pdfjsTextLayer'));
+}
+
+/**
+ * Is this hover move "off text" in a way that should wait PAN_TEXT_LEAVE_GRACE_MS
+ * before it counts (a gap between text boxes), rather than act at once?
+ * Only a plain hover (Pan armed, mouse or pen, no button, no Space) waits;
+ * anything else applies straight away.
+ */
+export function panTextLeaveWaits({ toolIsPan, spaceHeld, pointerType, buttons = 0, overText }) {
+  return Boolean(toolIsPan && !spaceHeld && isHoverPointer(pointerType) && buttons === 0 && !overText);
 }

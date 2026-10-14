@@ -10,11 +10,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   PAN_TEXT_HOVER_MS,
+  PAN_TEXT_LEAVE_GRACE_MS,
   deviceCanHover,
   hasLivePdfTextSelection,
   isHoverPointer,
   isPanTextTarget,
   isTextSelectionCaptureTool,
+  panTextLeaveWaits,
   panTextOwnsPress,
   resolvePanTextHover,
   resolvePanTextSelectionChange,
@@ -140,4 +142,21 @@ test('a press is handed to text selection only on a glyph, and scrolling drops t
   assert.match(src, /const onScroll = \(\) => \{\s*if \(press \|\| panTextStateRef\.current !== 'on'\) return;[\s\S]{0,160}setState\(hasLivePdfTextSelection\(window\.getSelection\?\.\(\)\) \? 'keep' : 'off'\);/);
   assert.match(src, /el\.addEventListener\('scroll', onScroll, \{ passive: true \}\);/);
   assert.match(src, /el\.removeEventListener\('scroll', onScroll\);/);
+});
+
+test('a word gap between text boxes does not drop the I-beam or restart the rest (Bugbot #832)', () => {
+  assert.equal(PAN_TEXT_LEAVE_GRACE_MS, 150);
+  const hover = { toolIsPan: true, spaceHeld: false, pointerType: 'mouse', buttons: 0, overText: false };
+  assert.equal(panTextLeaveWaits(hover), true, 'plain hover off text waits');
+  assert.equal(panTextLeaveWaits({ ...hover, pointerType: 'pen' }), true);
+  assert.equal(panTextLeaveWaits({ ...hover, overText: true }), false, 'on text: nothing to wait for');
+  assert.equal(panTextLeaveWaits({ ...hover, buttons: 1 }), false, 'mid-drag acts at once');
+  assert.equal(panTextLeaveWaits({ ...hover, spaceHeld: true }), false, 'Space acts at once');
+  assert.equal(panTextLeaveWaits({ ...hover, pointerType: 'touch' }), false, 'a finger never hovers');
+  assert.equal(panTextLeaveWaits({ ...hover, toolIsPan: false }), false);
+  const src = read('../src/components/PdfjsViewerContainer.jsx');
+  // Only near text (on it, resting, or I-beam showing) is the leave deferred, then applied once.
+  assert.match(src, /\}\) && \(overText \|\| timer \|\| panTextStateRef\.current === 'on'\)\) \{\s*if \(!leaveTimer\) \{/);
+  assert.match(src, /\}, PAN_TEXT_LEAVE_GRACE_MS\);/);
+  assert.match(src, /stopLeave\(\);\s*overText = onText;/, 'back on text cancels the pending leave');
 });
