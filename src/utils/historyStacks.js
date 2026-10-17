@@ -271,6 +271,21 @@ export function scopeLegacyRestoreToOwnSlices(meta, currentState, target, { dire
     }
     return out;
   }
+  if (reason === 'space:transfer-region') {
+    for (const ownedSpaceId of context.spaceIds || []) out.spaces = mergeSpaces(out.spaces, target.spaces, ownedSpaceId);
+    const ids = new Set((context.transferIds || []).map(String));
+    // Relocation owns these IDs on both pages; restore their position while
+    // leaving every unrelated mark, including newer collaborator work, intact.
+    out.annotationsByPage = mergeCascadeMarks(out.annotationsByPage, target.annotationsByPage, ids, 'redo');
+    out.annotationsByPage = mergeCascadeMarks(out.annotationsByPage, target.annotationsByPage, ids, 'undo');
+    out.surveyMarkers = { ...out.surveyMarkers };
+    for (const id of ids) {
+      if (hasOwnKey(target.surveyMarkers, id)) out.surveyMarkers[id] = target.surveyMarkers[id];
+      else delete out.surveyMarkers[id];
+    }
+    if (typeof deriveCallouts === 'function') out.callouts = deriveCallouts(out.annotationsByPage);
+    return out;
+  }
   const spaceId = context.spaceId != null ? String(context.spaceId) : null;
   // No space recorded: only the spaces list goes back; marks and markers stay.
   if (!spaceId) return { ...out, spaces: target.spaces || out.spaces };

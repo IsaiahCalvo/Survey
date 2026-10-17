@@ -497,6 +497,7 @@ import {
   writeOverlayLagRecorderAutoEnabled,
   writePdfjsDualLayerEnabled
 } from './viewerShared';
+import { planSpaceRegionTransfer } from './utils/spaceRegionTransfer.js';
 import { getBoundsCenter, hasValidRegionAreas, resolvePageContentElement, sortPdfjsPagesByDistance } from './utils/regionGeometry';
 import { composeColorForPatch, materializeFabricAnnotationFromYMap } from './utils/annotationData';
 import { renderPathToSvgAttrs } from './utils/svgPathAttrs';
@@ -33990,6 +33991,68 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [numPages, activeSpaceId, shouldShowPage, spaces]);
 
   // Get regions for a page in the active space
+  const handleSpaceTransferRegion = useCallback((request) => {
+    if (!requireSpaceManagement()) return false;
+    if (!request.copy && (pendingEntitySelection || pendingSurveyMarkerName)) {
+      showToast('Finish the current Survey marker before moving a region.', 'info');
+      return false;
+    }
+    try {
+      const plan = planSpaceRegionTransfer({
+        ...request,
+        spaces: spacesRef.current || [],
+        annotationsByPage: annotationsByPageRef.current || {},
+        surveyMarkers: surveyMarkersRef.current || {},
+        sourceSize: pageSizesRef.current?.[request.sourcePageId],
+        targetSize: pageSizesRef.current?.[request.targetPageId],
+      });
+      const movingIds = new Set(plan.movedIds);
+      const locked = Object.values(annotationsByPageRef.current || {}).flatMap((page) => page.objects || [])
+        .some((mark) => movingIds.has(String(mark?.data?.id ?? mark?.id ?? '')) && getMarkLockedBy(mark))
+        || Object.entries(surveyMarkersRef.current || {}).some(([id, marker]) => movingIds.has(id) && (marker.locked === true || getMarkLockedBy(marker)));
+      if (locked) {
+        notifyLockedMarkBlocked();
+        return false;
+      }
+      addHistoryCheckpoint('space:transfer-region', {
+        spaceIds: [...new Set([request.sourceSpaceId, request.targetSpaceId])],
+        transferIds: plan.movedIds,
+      });
+      clearAnnotationSelectionForContextChange('region-transfer');
+      if (plan.changedPages.length) {
+        const action = { type: 'fabric:document-batch', actions: plan.changedPages.map((pageNumber) => buildAnnotationHistoryAction({
+          pageNumber, previousPage: annotationsByPageRef.current?.[pageNumber] || { objects: [] },
+          nextPage: plan.annotationsByPage[pageNumber] || { objects: [] },
+        })).filter(Boolean) };
+        if (!commitTextMarkupDocumentTransaction({ action, nextByPage: plan.annotationsByPage }, {
+          source: 'space-region-transfer', action: 'move-region', skipHistory: true, applyWithoutOwnedStep: true,
+        })) return false;
+      }
+      setSpaces(plan.spaces);
+      if (plan.surveyMarkers !== surveyMarkersRef.current) {
+        setSurveyMarkers(plan.surveyMarkers);
+        setNewSurveyMarkersByPage((previous) => {
+          const renderedIds = new Set(Object.values(previous || {}).flatMap((markers) => markers || []).map((marker) => marker.annotationId));
+          const next = Object.fromEntries(Object.entries(previous || {}).map(([page, markers]) => [page, markers.filter((marker) => !movingIds.has(marker.annotationId))]));
+          for (const id of plan.movedIds) {
+            const marker = plan.surveyMarkers[id];
+            if (!marker || !renderedIds.has(id)) continue;
+            const entry = surveyMarkerRenderEntry(id, marker, normalizeSurveyMarkerColor);
+            if (entry) next[marker.pageNumber] = [...(next[marker.pageNumber] || []), entry];
+          }
+          return next;
+        });
+      }
+      if (activeSpaceId === request.sourceSpaceId && !(plan.spaces.find((space) => space.id === activeSpaceId)?.assignedPages || []).length) {
+        setActiveSpaceId(request.targetSpaceId);
+      }
+      return true;
+    } catch (error) {
+      showToast(error.message || 'Could not transfer that region.', 'error');
+      return false;
+    }
+  }, [activeSpaceId, addHistoryCheckpoint, clearAnnotationSelectionForContextChange, commitTextMarkupDocumentTransaction, notifyLockedMarkBlocked, pendingEntitySelection, pendingSurveyMarkerName, requireSpaceManagement]);
+
   const getPageRegions = useCallback((pageNumber) => {
     if (!activeSpaceId) {
       return null;
@@ -34904,6 +34967,7 @@ ${pageBlocks}
       onSpaceAssignPages: handleSpaceAssignPages,
       onSpaceRenamePage: handleSpaceRenamePage,
       onSpaceRemovePage: handleSpaceRemovePage,
+      onSpaceTransferRegion: handleSpaceTransferRegion,
       getSpaceRemovalImpact,
       onNavigateToSpacePage: handleNavigateToSpacePage,
       onReorderSpaces: handleReorderSpaces,
@@ -34921,6 +34985,8 @@ ${pageBlocks}
       getSurveyAnnotationVisibilityState,
       onToggleSurveyAnnotations: handleToggleSurveyAnnotations,
       selectedSpaceId,
+      // Publish actual toggle state: function-only changes are deliberately ignored.
+      regionOverlayDisabled,
       onToggleRegionOverlay: handleToggleRegionOverlay,
       getRegionOverlayEnabled: isRegionOverlayEnabled,
       isRegionOverlayToggleEnabled,
@@ -35010,6 +35076,7 @@ ${pageBlocks}
     handleSpaceAssignPages,
     handleSpaceRenamePage,
     handleSpaceRemovePage,
+    handleSpaceTransferRegion,
     getSpaceRemovalImpact,
     handleNavigateToSpacePage,
     handleReorderSpaces,
@@ -35883,6 +35950,7 @@ ${pageBlocks}
                     ref={pdfjsViewerRef}
                     className={`survey-pdfjs-viewer ${activeTool === 'select' ? 'survey-pdfjs-select-mode' : 'survey-pdfjs-standard-mode'}`}
                     documentSource={pdfDoc}
+                    visiblePageNumbers={activeSpacePages}
                     style={{ width: '100%', height: '100%' }}
                     initialRenderPages={PDFJS_INITIAL_RENDER_PAGES}
                     scrollDelayMs={PDFJS_SCROLL_DELAY_MS}

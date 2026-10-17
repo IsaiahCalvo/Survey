@@ -1275,7 +1275,8 @@ const ICON_ALIASES = {
    `contentType` (Archive rows, project file rows, the hub empty states). */
 const Icon = ({ name, size = 16, color, contentType, style, className }) => {
   const rendererName = ICON_ALIASES[name] || name;
-  const resolvedColor = color || getContentTypeIconColor(contentType, 'currentColor');
+  const resolvedColor = rendererName === 'trash' ? 'currentColor' : (color || getContentTypeIconColor(contentType, 'currentColor'));
+  if (rendererName === 'trash') className = `${className || ''} app-trash-icon`.trim();
   return ICON_RENDERERS[rendererName]?.(size, resolvedColor, style, className) ?? null;
 };
 

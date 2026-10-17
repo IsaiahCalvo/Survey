@@ -3739,3 +3739,7 @@ svg[data-svg-annotation-layer][data-selection-hover="move"] {
   outline: 2px solid var(--focus-ring, var(--text-2));
   outline-offset: -2px;
 }
+
+/* Delete glyphs share the same red; disabled actions retain their quiet state. */
+.app-trash-icon { color: var(--danger); }
+:is([disabled], [aria-disabled='true']) .app-trash-icon { color: var(--disabled-ink); }

@@ -16,6 +16,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import Icon from '../Icons';
+import SpaceSelectionDialog from '../components/SpaceSelectionDialog.jsx';
 import { parsePageRangeInput, sanitizePageRangeInput } from '../utils/pageRangeParser';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
 import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/SortableRearrangeList';
@@ -59,6 +60,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   onAssignPages,
   onRenameRegion,
   onRemovePage,
+  onTransferRegion,
   onNavigateToPage,
   onExitSpace,
   onToggleSpace,
@@ -494,7 +496,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                             <button
                               type="button"
                               className="spaces-region__label"
-                              {...tip('Click to rename', 'below')}
+                              {...tip(editMode ? 'Click to rename' : `Go to page ${page.pageId}`, 'below')}
                               aria-label={editMode ? `Rename ${regionLabel}` : regionLabel}
                               onClick={(e) => {
                                 e.preventDefault();
@@ -552,6 +554,10 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                           </button>
                         )}
 
+                        {editMode && onTransferRegion && <>
+                          <button type="button" className="space-card__icon" data-glyph-only="" aria-label={`Move region on page ${page.pageId}`} {...tip('Change page or space', 'below')} onClick={() => onTransferRegion(space.id, page.pageId, false)}><Icon name="moveTo" size={14} color="currentColor" /></button>
+                          <button type="button" className="space-card__icon" data-glyph-only="" aria-label={`Copy region on page ${page.pageId}`} {...tip('Copy region to another page or space', 'below')} onClick={() => onTransferRegion(space.id, page.pageId, true)}><Icon name="copy" size={14} color="currentColor" /></button>
+                        </>}
                         {editMode && <button
                           type="button"
                           className="space-card__icon space-card__delete"
@@ -652,6 +658,7 @@ const SpacesPanel = ({
   onSpaceAssignPages,
   onSpaceRenamePage,
   onSpaceRemovePage,
+  onSpaceTransferRegion,
   onNavigateToPage = null,
   onReorderSpaces,
   onExportSpaceCSV,
@@ -700,6 +707,7 @@ const SpacesPanel = ({
   }, [expandedSpaces, expandedSpacesStoreRef]);
   const [selectedSpaceId, setSelectedSpaceId] = useState(null);
   const [editMode, setEditMode] = useState(false);
+  const [transfer, setTransfer] = useState(null);
   const [isRearrangingSpaces, setIsRearrangingSpaces] = useState(false);
   const [optimisticSpaceIds, setOptimisticSpaceIds] = useState(() => spaces.map(space => space.id));
   // Spaces chunk B: the space the Export menu / sheet is open for (null =
@@ -1018,6 +1026,7 @@ const SpacesPanel = ({
     while (takenNames.has(`space ${counter}`)) counter += 1;
     const name = `Space ${counter}`;
     if (onSpaceCreate) {
+      setEditMode(true);
       onSpaceCreate({
         name,
         assignedPages: []
@@ -1496,6 +1505,7 @@ const SpacesPanel = ({
                       onAssignPages={handleAssignPages}
                       onRenameRegion={handleRenameRegion}
                       onRemovePage={handleRemovePage}
+                      onTransferRegion={onSpaceTransferRegion ? (sourceSpaceId, sourcePageId, copy) => setTransfer({ sourceSpaceId, sourcePageId, targetSpaceId: sourceSpaceId, targetPageId: String(sourcePageId), copy }) : null}
                       onNavigateToPage={onNavigateToPage}
                       onRequestRegionEdit={handleRequestRegionEdit}
                       onCancelRegionEdit={onCancelRegionEdit}
@@ -1520,6 +1530,19 @@ const SpacesPanel = ({
           </SortableRearrangeList>
         )}
       </div>
+      <SpaceSelectionDialog open={Boolean(transfer)} onClose={() => setTransfer(null)} title={transfer?.copy ? 'Copy region' : 'Move region'}>
+        {transfer && <form onSubmit={(event) => {
+          event.preventDefault();
+          const targetPageId = Number(transfer.targetPageId);
+          if (!Number.isInteger(targetPageId) || targetPageId < 1 || targetPageId > numPages) return;
+          if (onSpaceTransferRegion?.({ ...transfer, targetPageId }) === true) setTransfer(null);
+        }} style={{ display: 'grid', gap: 16 }}>
+          <p style={{ margin: 0, color: 'var(--text-2)', fontSize: 13 }}>{transfer.copy ? 'Copy the region outlines. Marks stay on their current page.' : 'Move the region and its marks together.'}</p>
+          <label style={{ display: 'grid', gap: 6 }}>Space<select aria-label="Destination space" value={transfer.targetSpaceId} onChange={(event) => setTransfer((current) => ({ ...current, targetSpaceId: event.target.value }))}>{spaces.map((space) => <option key={space.id} value={space.id}>{space.name}</option>)}</select></label>
+          <label style={{ display: 'grid', gap: 6 }}>Page<input aria-label="Destination page" type="number" min={1} max={numPages} required value={transfer.targetPageId} onChange={(event) => setTransfer((current) => ({ ...current, targetPageId: event.target.value }))} /></label>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}><button type="button" className="btn btn-default" onClick={() => setTransfer(null)}>Cancel</button><button type="submit" className="btn btn-primary">{transfer.copy ? 'Copy region' : 'Move region'}</button></div>
+        </form>}
+      </SpaceSelectionDialog>
       {/* Rendered on <body>, above the phone sheet (z 6500): inside the sheet a
           fixed overlay is caught by the sheet's transform. */}
       {typeof document !== 'undefined' && createPortal(

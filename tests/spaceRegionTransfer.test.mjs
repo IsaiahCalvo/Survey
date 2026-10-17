@@ -1,0 +1,22 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { planSpaceRegionTransfer } from '../src/utils/spaceRegionTransfer.js';
+import { calloutToAnnotationObject, deriveCalloutsFromByPage } from '../src/utils/calloutAnnotationBridge.js';
+import { scopeLegacyRestoreToOwnSlices } from '../src/utils/historyStacks.js';
+const source = () => ({ spaces:[{id:'a',assignedPages:[{pageId:1,regions:[{regionId:'r',pageId:1,shapeType:'polygon',coordinates:[100,100,200,100,200,200]}]}]},{id:'b',assignedPages:[{pageId:3,regions:[{regionId:'other',coordinates:[1,1,10,1,10,10]}]}]}], annotationsByPage:{1:{objects:[{id:'mark',left:100,top:100,regionId:'r'},{id:'plain',left:20,top:30}]},3:{objects:[{id:'collaborator'}]}},surveyMarkers:{sm:{pageNumber:1,regionId:'r',bounds:{x:140,y:140,width:20,height:20}}}});
+const plan=(model,extra={})=>planSpaceRegionTransfer({...model,sourceSpaceId:'a',sourcePageId:1,targetSpaceId:'b',targetPageId:3,...extra});
+test('move keeps region and mark identity, target marks, and source ordinary marks',()=>{ const m=source(), p=plan(m); assert.equal(p.spaces[0].assignedPages.length,0); assert.deepEqual(p.spaces[1].assignedPages[0].regions.map(r=>r.regionId),['other','r']); assert.equal(p.annotationsByPage[1].objects[0].id,'plain'); assert.deepEqual(p.annotationsByPage[3].objects.map(m=>m.id),['collaborator','mark']); assert.equal(p.surveyMarkers.sm.pageNumber,3); assert.equal(p.surveyMarkers.sm.spaceId,'b'); assert.equal(m.spaces[0].assignedPages.length,1); });
+test('copy keeps marks on their source and mints outline identity',()=>{ const m=source(),p=plan(m,{copy:true,createId:()=> 'copy'}); assert.equal(p.spaces[0].assignedPages.length,1); assert.equal(p.spaces[1].assignedPages[0].regions[1].regionId,'copy'); assert.equal(p.annotationsByPage,m.annotationsByPage); assert.equal(p.surveyMarkers,m.surveyMarkers); });
+test('smaller host translates outlines and marks together without changing their size',()=>{const p=plan(source(),{targetSize:{width:150,height:150}});assert.deepEqual(p.spaces[1].assignedPages[0].regions[1].coordinates,[50,50,150,50,150,150]);assert.equal(p.annotationsByPage[3].objects[1].left,50);assert.equal(p.surveyMarkers.sm.bounds.x,90);});
+test('an outline that cannot fit is rejected before any data changes',()=>{ const m=source(),before=structuredClone(m);assert.throws(()=>plan(m,{targetSize:{width:50,height:50}}),/larger/);assert.deepEqual(m,before); });
+test('move between spaces on the same page does not drop ordinary marks',()=>{const p=plan(source(),{targetPageId:1});assert.deepEqual(p.annotationsByPage[1].objects.map(m=>m.id),['plain','mark']);assert.equal(p.annotationsByPage[1].objects[1].spaceId,'b');});
+test('region transfer undo and redo affect its own spaces/marks, keep newer collaborator edits',()=>{const m=source(),p=plan(m);const current={...p,annotationsByPage:{...p.annotationsByPage,3:{objects:[...p.annotationsByPage[3].objects,{id:'newer'}]}}};const meta={reason:'space:transfer-region',context:{spaceIds:['a','b'],transferIds:p.movedIds}};const undone=scopeLegacyRestoreToOwnSlices(meta,current,m);assert.deepEqual(undone.annotationsByPage[1].objects.map(m=>m.id),['mark','plain']);assert.deepEqual(undone.annotationsByPage[3].objects.map(m=>m.id),['collaborator','newer']);assert.equal(undone.surveyMarkers.sm.pageNumber,1);const redone=scopeLegacyRestoreToOwnSlices(meta,undone,current,{direction:'redo'});assert.deepEqual(redone.annotationsByPage[3].objects.map(m=>m.id),['collaborator','mark','newer']);assert.equal(redone.spaces[0].assignedPages.length,0);});
+
+test('callouts keep physical geometry and author metadata on a different-size page',()=>{
+  const m=source(); const callout={id:'callout',pageNumber:1,regionId:'r',meta:{authorId:'author'},text:'Room note',arrowTip:{x:.2,y:.2},knee:{x:.25,y:.25},textBoxPosition:{x:.3,y:.3},textBoxWidth:.1,textBoxHeight:.05,style:{fontFamily:'Helvetica',fontSize:14}};
+  m.annotationsByPage[1].objects.push(calloutToAnnotationObject(callout,{width:600,height:800}));
+  const p=plan(m,{sourceSize:{width:600,height:800},targetSize:{width:400,height:600}});
+  const result=deriveCalloutsFromByPage(p.annotationsByPage)[0];
+  assert.equal(result.pageNumber,3); assert.equal(result.meta.authorId,'author'); assert.equal(result.text,'Room note');
+  assert.equal(result.arrowTip.x*400,120);assert.equal(result.arrowTip.y*600,160);assert.equal(result.textBoxWidth*400,60);
+});

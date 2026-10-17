@@ -94,6 +94,7 @@ import {
   resolveVerticalPlacement,
   subscribeViewerTopOverlays,
 } from '../utils/viewerTopOverlay.js';
+import { buildVisiblePageStack } from '../utils/visiblePageLayout.js';
 import { computeFitScale, pickCurrentPage, resolveFitPageLanding } from '../utils/pageNavigationMath.js';
 import { createPageRasterQueue } from '../utils/pageRasterQueue.js';
 import {
@@ -1338,6 +1339,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // eslint-disable-next-line no-unused-vars -- accepted for older callsites; pdf.js needs no resource path
   resourceUrl,
   documentSource,
+  visiblePageNumbers = null,
   // The following props are accepted for compatibility with older PDFViewer callsites.
   // pdf.js handles these concerns differently; do not crash on a forwarded prop.
   // interactionMode === 'Pan' drives the drag-to-pan handler below (Pdfjs
@@ -1887,27 +1889,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // ---- layout: cumulative offsets ------------------------------------------
   const layout = useMemo(() => {
     const metrics = layoutMetrics;
-    const rot90 = rotation === 90 || rotation === 270;
-    const dims = pageSizes.map((s) => (rot90 ? { w: s.h, h: s.w } : { w: s.w, h: s.h }));
-    // UX intent: the white space between pages must stay PROPORTIONAL to page
-    // size at every zoom — the same visual breathing room the pdf.js reference
-    // viewer shows. A fixed screen-space gap looks oversized between shrunken
-    // pages when zoomed out and cramped between enlarged pages when zoomed in.
-    // Page heights already scale (dims[i].h * scale), so the gap scales the same
-    // way: metrics.gap is the base at 100% (scale = 1), so 100% is unchanged and
-    // the gap-to-page ratio is held constant across all zoom levels.
-    const gapPx = metrics.gap * scale;
-    // The document's outer top/bottom margins use the exact same proportional
-    // gap as the space between pages. This makes the minimum zoom a geometric
-    // boundary instead of an arbitrary percentage, including for one-page PDFs.
-    let y = metrics.padTop + gapPx;
-    const tops = [];
-    let widestPt = 0;
-    for (let i = 0; i < dims.length; i += 1) {
-      tops.push(y);
-      y += dims[i].h * scale + gapPx;
-      widestPt = Math.max(widestPt, dims[i].w);
-    }
+    const { dims, tops, widestPt, height: y } = buildVisiblePageStack({
+      pageSizes, visiblePageNumbers, rotation, scale,
+      padTop: metrics.padTop, gap: metrics.gap,
+    });
     // One column for every page (src/utils/pdfPageColumn.js).
     const columnW = resolveDocumentColumnWidth({
       viewportWidth: containerW,
@@ -1930,7 +1915,30 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       topRoom,
     });
     return { tops, dims, widestPt, columnW, totalH: rawTotalH, rawTotalH, padTop, contentHeight, contentW };
-  }, [pageSizes, scale, rotation, containerW, containerH, layoutMetrics, topRoom, sideRoom]);
+  }, [pageSizes, visiblePageNumbers, scale, rotation, containerW, containerH, layoutMetrics, topRoom, sideRoom]);
+
+  // A Space changes the page stack, not the physical page being read.
+  // Capture its old scroll offset before React applies the filtered layout.
+  const previousSpaceLayoutRef = useRef(null);
+  const spaceLayoutAnchorRef = useRef(null);
+  const previousSpaceLayout = previousSpaceLayoutRef.current;
+  if (previousSpaceLayout && previousSpaceLayout.visiblePages !== visiblePageNumbers) {
+    const el = scrollerRef.current;
+    const index = Math.max(0, (currentPageRef.current || 1) - 1);
+    if (el && !previousSpaceLayout.layout.dims[index]?.hidden && !layout.dims[index]?.hidden) {
+      spaceLayoutAnchorRef.current = { index,
+        offset: el.scrollTop - previousSpaceLayout.layout.tops[index] - previousSpaceLayout.layout.padTop,
+      };
+    }
+  }
+  previousSpaceLayoutRef.current = { visiblePages: visiblePageNumbers, layout };
+  useLayoutEffect(() => {
+    const anchor = spaceLayoutAnchorRef.current;
+    spaceLayoutAnchorRef.current = null;
+    const el = scrollerRef.current;
+    if (!anchor || !el) return;
+    el.scrollTop = Math.max(0, layout.tops[anchor.index] + layout.padTop + anchor.offset);
+  }, [layout]);
 
   dimsPtRef.current = layout.dims;
   widestPagePtRef.current = layout.widestPt;
@@ -2050,6 +2058,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     let first = -1; let last = -1;
     let visibleFirst = -1; let visibleLast = -1;
     for (let i = 0; i < layout.tops.length; i += 1) {
+      if (layout.dims[i].hidden) continue;
       const t = layout.tops[i];
       const b = t + layout.dims[i].h * scale;
       if (b >= lo && t <= hi) { if (first === -1) first = i; last = i; }
@@ -2398,7 +2407,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // arbitrary scale sc uses metrics.gap * sc to match the layout it commits to.
     const gapPx = metrics.gap * sc;
     let y = metrics.padTop + gapPx;
-    for (let k = 0; k < dims.length; k += 1) y += dims[k].h * sc + gapPx;
+    for (let k = 0; k < dims.length; k += 1) if (!dims[k].hidden) y += dims[k].h * sc + gapPx;
     const rawTotalH = y + metrics.padBottom;
     return Math.max(0, (containerHRef.current - rawTotalH) / 2);
   };
@@ -2412,7 +2421,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const dims = dimsPtRef.current;
     // Zoom-proportional gap (see layout memo): stack with metrics.gap * sc.
     let y = metrics.padTop + (metrics.gap * sc) + padTopFor(sc);
-    for (let k = 0; k < i; k += 1) y += dims[k].h * sc + metrics.gap * sc;
+    for (let k = 0; k < i; k += 1) if (!dims[k].hidden) y += dims[k].h * sc + metrics.gap * sc;
     return y;
   };
   const leftAt = (i, sc) => getPageLeftAtScale(i, sc);
@@ -2423,11 +2432,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const gapPx = metrics.gap * sc;
     let y = metrics.padTop + gapPx + padTopFor(sc);
     for (let i = 0; i < dims.length; i += 1) {
+      if (dims[i].hidden) continue;
       const h = dims[i].h * sc;
       if (cY < y + h + gapPx) return i;
       y += h + gapPx;
     }
-    return Math.max(0, dims.length - 1);
+    for (let i = dims.length - 1; i >= 0; i -= 1) if (!dims[i].hidden) return i;
+    return 0;
   };
 
   const resolveGesturePreview = useCallback((gesture, requestedScale) => {
@@ -2483,6 +2494,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const gapPx = metrics.gap * sc;
       let height = metrics.padTop + gapPx + metrics.padBottom;
       dims.forEach((dim) => {
+        if (dim.hidden) return;
         height += dim.h * sc + gapPx;
       });
       // With strip room the bottom centring pad is part of the content too
@@ -4644,7 +4656,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // a panel does not halve the zoom.
     const lastFit = lastFitRef.current;
     const fitPageNumber = auto && lastFit ? lastFit.pageIndex + 1 : (currentPageRef.current || 1);
-    const pageIndex = Math.max(0, Math.min(dimsPtRef.current.length - 1, fitPageNumber - 1));
+    const requestedIndex = Math.max(0, Math.min(dimsPtRef.current.length - 1, fitPageNumber - 1));
+    const pageIndex = dimsPtRef.current[requestedIndex]?.hidden
+      ? Math.max(0, dimsPtRef.current.findIndex((dim) => !dim.hidden))
+      : requestedIndex;
     if (isFit) {
       const metrics = layoutMetricsRef.current;
       const d = dimsPtRef.current[pageIndex] || { w: 612, h: 792 };
@@ -5279,7 +5294,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const dim = layout.dims[i];
     const left = getPageLeftAtScale(i, scale);
     const top = layout.tops[i];
-    const mounted = i >= range[0] && i <= range[1];
+    const mounted = !dim.hidden && i >= range[0] && i <= range[1];
     return (
       <div
         key={i}
@@ -5289,6 +5304,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         id={`${viewerId}_pageDiv_${i}`}
         style={{
           position: 'absolute',
+          display: dim.hidden ? 'none' : undefined,
           left,
           top,
           width: dim.w * scale,
@@ -5362,6 +5378,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const gapPx = metrics.gap * targetScale;
     let rawHeight = metrics.padTop + gapPx;
     layout.dims.forEach((dim) => {
+      if (dim.hidden) return;
       rawHeight += dim.h * targetScale + gapPx;
     });
     rawHeight += metrics.padBottom;
