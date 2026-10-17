@@ -92,6 +92,9 @@ for (const width of [1400, 900]) {
     const checkChoices = async () => {
       await expect(surveyButton).toHaveAttribute('aria-pressed', 'true');
       await expect(surveyRow.getByRole('button', { name: /^Survey template: Work Survey/ })).toBeVisible();
+      // Wait for the narrow-window plan before deciding whether settings moved.
+      // Otherwise a resize can fold Reuse just after the visibility check.
+      if (width === 900) await expect(surveyRow).toHaveAttribute('data-survey-bar-step', /^(fold|tight|fewer)$/);
       const more = surveyRow.getByRole('button', { name: 'More settings', exact: true });
       if (await more.isVisible()) await more.click();
       await expect(page.locator('.survey-subrow__fit > span:not(.is-ghost)')).toHaveText('Proposed');
