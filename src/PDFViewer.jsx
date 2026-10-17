@@ -15,6 +15,7 @@
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
+import { mergeLegacyEntities } from './utils/mergeLegacyEntities.js';
 import { jsonEqual } from './utils/jsonEqual.js';
 import { mergeEditOntoCurrent } from './utils/dragCommitMerge.js';
 import { countSpaceCascadeImpact, isSpaceScopedEntry, resolveSpaceCascadeScope } from './utils/spaceCascadeImpact.js';
@@ -23281,9 +23282,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [pdfFile, pdfId, annotationsByPage, callouts, entities, scale, pageNum, uploadDataFile, updateSupabaseDocument]);
 
+  // Legacy reads may finish after a tab switch. Keep their definitions local
+  // until this viewer is active, then add missing ids without replacing edits.
+  const sidecarEntitiesRef = useRef(entities);
+  sidecarEntitiesRef.current = entities;
+  const [pendingLegacyEntities, setPendingLegacyEntities] = useState(null);
+  useEffect(() => {
+    if (!isActive || !pendingLegacyEntities || typeof setEntities !== 'function') return;
+    setEntities((current) => mergeLegacyEntities(current, pendingLegacyEntities.definitions, pendingLegacyEntities.initialIds));
+    setPendingLegacyEntities(null);
+  }, [isActive, pendingLegacyEntities, setEntities]);
+
   // Load survey data from Supabase Storage
   const loadSurveyDataFromSupabase = useCallback(async (doc, prefetchedDataBlob, { restoreViewState = true, isCurrent = () => true } = {}) => {
     if (!doc || !doc.projectId) return;
+    const initialEntityIds = (sidecarEntitiesRef.current || []).map((entity) => entity?.id).filter((id) => id != null);
 
     try {
       const filePath = `${doc.projectId}/${doc.id}_data.json`;
@@ -23339,7 +23352,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (data.spaces && shouldRestoreLegacyAnnotationBlob) {
         setSpaces(Array.isArray(data.spaces) ? data.spaces : []);
       }
-      if (data.entities) setEntities(data.entities);
+      if (Array.isArray(data.entities)) setPendingLegacyEntities({ definitions: data.entities, initialIds: initialEntityIds });
 
       // Restore view state if available
       if (restoreViewState) {
