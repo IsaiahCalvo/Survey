@@ -34264,12 +34264,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         notifyLockedMarkBlocked();
         return false;
       }
-      addHistoryCheckpoint('space:transfer-region', {
-        spaceIds: [...new Set([request.sourceSpaceId, request.targetSpaceId])],
-        transferIds: plan.movedIds,
-        transferState: plan.transferState,
-      });
-      clearAnnotationSelectionForContextChange('region-transfer');
+      // The accepted transaction replaces annotation refs synchronously.
+      // Keep the before-state, but append no Undo step for a refused transfer.
+      const historyBefore = getHistorySnapshot();
       if (plan.changedPages.length) {
         const action = { type: 'fabric:document-batch', actions: plan.changedPages.map((pageNumber) => buildAnnotationHistoryAction({
           pageNumber, previousPage: annotationsByPageRef.current?.[pageNumber] || { objects: [] },
@@ -34279,6 +34276,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           source: 'space-region-transfer', action: 'move-region', skipHistory: true, applyWithoutOwnedStep: true,
         })) return false;
       }
+      addHistoryCheckpoint('space:transfer-region', {
+        spaceIds: [...new Set([request.sourceSpaceId, request.targetSpaceId])],
+        transferIds: plan.movedIds,
+        transferState: plan.transferState,
+      }, historyBefore);
+      clearAnnotationSelectionForContextChange('region-transfer');
       setSpaces(plan.spaces);
       if (plan.surveyMarkers !== surveyMarkersRef.current) {
         setSurveyMarkers(plan.surveyMarkers);
@@ -34302,7 +34305,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       showToast(error.message || 'Could not transfer that region.', 'error');
       return false;
     }
-  }, [activeSpaceId, addHistoryCheckpoint, clearAnnotationSelectionForContextChange, commitTextMarkupDocumentTransaction, notifyLockedMarkBlocked, pendingEntitySelection, pendingSurveyMarkerName, requireSpaceManagement]);
+  }, [activeSpaceId, addHistoryCheckpoint, clearAnnotationSelectionForContextChange, commitTextMarkupDocumentTransaction, getHistorySnapshot, notifyLockedMarkBlocked, pendingEntitySelection, pendingSurveyMarkerName, requireSpaceManagement]);
 
   const getPageRegions = useCallback((pageNumber) => {
     if (!activeSpaceId) {
