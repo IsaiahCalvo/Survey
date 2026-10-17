@@ -14,6 +14,7 @@ import {
   isAreaEditing,
   resolveToolBarGroup,
   showsFormatRow,
+  showsSurveyRow,
 } from '../src/utils/toolbarRows.js';
 import { WIDEST_SUBTOOLS_WIDTH } from '../src/utils/responsiveToolbar.js';
 
@@ -79,15 +80,34 @@ test('PDFViewer draws a group\'s tools into the tool bar, keyed on the picked ma
   assert.match(pdfViewer, /setSubToolContextTool\(\(prev\) => \(prev === subToolTool \? prev : subToolTool\)\)/);
   assert.match(pdfViewer, /document\.getElementById\('chrome-subtools-host'\)/);
   assert.match(pdfViewer, /TOOL_BAR_GROUPS\.includes\(toolBarGroup\) && subToolsHostEl/);
-  // The Survey row keeps its own bar under the tool bar. Survey audit P1-1
-  // (2026-10-01): it shows whenever survey mode is on with a template chosen
-  // (it used to follow activeCategoryDropdown === 'survey', which Select / Pan
-  // cleared, so the bar vanished for good).
-  assert.match(pdfViewer, /const subRowGroup = \(showSurveyPanel && selectedTemplate\)\s*\? 'survey'\s*: \(activeCategoryDropdown && !TOOL_BAR_GROUPS\.includes\(activeCategoryDropdown\) \? activeCategoryDropdown : null\);/);
+  // Desktop Survey controls yield to the picked annotation's formatting.
+  // The phone keeps its Survey rail; its controls do not use these rows.
+  assert.match(pdfViewer, /mobileMode \|\| showsSurveyRow\(\{ activeTool, showSurveyPanel, regionEditing: showRegionSelection \}\)/);
   assert.match(pdfViewer, /if \(subRowGroup && subRowHost\) \{\s*rows\.push\(renderSubRow\(subRowGroup, subRowHost, false\)\);/);
   for (const group of ['draw', 'shape', 'review', 'survey']) {
     assert.match(pdfViewer, new RegExp(`\\{subRowCategory === '${group}' && `), group);
   }
+});
+
+test('Survey and annotation controls take turns, including stale selection context', () => {
+  const survey = { showSurveyPanel: true, activeTool: 'survey-marker', contextTool: 'rect' };
+  assert.equal(showsSurveyRow(survey), true);
+  assert.equal(showsFormatRow(survey), false, 'Survey wins even before the old rectangle context clears');
+  assert.equal(resolveToolBarGroup({ ...survey, activeCategoryDropdown: 'shape' }), null, 'old shape tools do not remain beside marker tools');
+  for (const state of [
+    { activeTool: 'pen', contextTool: 'pen' },
+    { activeTool: 'rect', contextTool: 'rect' },
+    { activeTool: 'select', contextTool: 'rect' },
+    { activeTool: 'pan', contextTool: 'callout' },
+    { activeTool: 'text-select', contextTool: 'text-select' },
+  ]) {
+    const annotation = { ...survey, ...state };
+    assert.equal(showsSurveyRow(annotation), false);
+    assert.equal(showsFormatRow(annotation), true);
+  }
+  assert.equal(showsSurveyRow({ ...survey, showSurveyPanel: false }), false);
+  assert.equal(showsSurveyRow({ ...survey, regionEditing: true }), false);
+  assert.equal(showsFormatRow({ ...survey, regionEditing: true }), true, 'region editing still owns its actions');
 });
 
 test('pressing a group tool while Select is armed arms that tool and shows its group', () => {
@@ -116,14 +136,14 @@ test('AppShell: tools up top, settings in row 2, the Aa bar in row 3', () => {
   // groups + animated loadouts (w47). Row 2 now also stays drawn for its
   // 140ms fade-out after it has nothing to show (formatRowLeaving), instead
   // of vanishing in one frame; it is still hidden the rest of the time.
-  assert.match(appShell, /display: formatRowShown \|\| formatRowLeaving \? 'block' : 'none'/);
+  assert.match(appShell, /display: !surveyRowShown && \(formatRowShown \|\| formatRowLeaving\) \? 'block' : 'none'/);
   const slots = appShell.slice(appShell.indexOf('id="chrome-sub-toolbar-host"'), appShell.indexOf('<Dashboard'));
   assert.ok(slots.indexOf('data-chrome-format-row="true"') > 0);
   assert.ok(slots.indexOf('data-chrome-format-row="true"') < slots.indexOf('data-chrome-text-format-row="true"'),
     'row 2 comes before row 3');
   assert.match(slots, /height: 'var\(--chrome-bar-h\)'/);
   // Row 3: the Aa bar drops into its own slot under row 2.
-  assert.match(appShell, /\{showTextFormatting && textFormatRowEl && createPortal\(/);
+  assert.match(appShell, /\{showTextFormatting && !surveyRowShown && textFormatRowEl && createPortal\(/);
   // Both slots are always drawn (never re-added after the Survey row or the
   // text-selection bar); the phone keeps row 2 hidden (formatRowShown is false
   // there) and row 3 empty.

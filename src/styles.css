@@ -623,6 +623,38 @@ button,
   min-width: var(--chrome-control-split-w);
 }
 
+/* Survey is inserted after Text without entering the icon morph sequence. */
+[data-survey-tool-slot] {
+  visibility: hidden;
+  pointer-events: none;
+  transition: visibility 0s var(--toolbar-insert-duration);
+}
+[data-survey-tool-slot][data-shown="true"] {
+  visibility: visible;
+  pointer-events: auto;
+  transition-delay: 0s;
+}
+[data-survey-tool-slot] > button {
+  opacity: 0;
+  scale: var(--toolbar-insert-scale);
+  transition: opacity var(--toolbar-insert-duration) var(--toolbar-insert-easing),
+    scale var(--toolbar-insert-duration) var(--toolbar-insert-easing);
+}
+[data-survey-tool-slot][data-shown="true"] > button {
+  opacity: 1;
+  scale: 1;
+}
+[data-toolbar-subtools] {
+  transition: left var(--toolbar-insert-duration) var(--toolbar-insert-easing);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-survey-tool-slot],
+  [data-survey-tool-slot] > button,
+  [data-toolbar-subtools] {
+    transition: none;
+  }
+}
+
 .chrome-subcontrol {
   width: var(--chrome-sub-control-w);
   min-width: var(--chrome-sub-control-w);

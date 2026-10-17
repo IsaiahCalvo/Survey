@@ -349,7 +349,7 @@ import { classifyPagePress, ownGroupMarkFilter } from './utils/toolPressRouting.
 import { CALLOUT_MARK_GROUP, getMarkGroup } from './utils/markToolGroup.js';
 import { dropStashedSelection, hasAnyPageSelection, isItemSelected, pageHasSelection } from './utils/pageSelectionPresence.js';
 import { isSelectionGrabPress, noteOverlayTapPick } from './hooks/useSelectionGrabHandoff.js';
-import { resolveToolBarGroup, TOOL_BAR_GROUPS } from './utils/toolbarRows.js';
+import { resolveToolBarGroup, showsSurveyRow, TOOL_BAR_GROUPS } from './utils/toolbarRows.js';
 import { cycleLassoMode } from './utils/lassoSelection.js';
 import { pageCountChange, pageNumberAfterOperation } from './utils/pageAnnotationReindex.js';
 import { usePdfjsFormFieldPersistence } from './hooks/usePdfjsFormFieldPersistence.js';
@@ -25735,6 +25735,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleSurveyEntityBarPick(entityId, markerIds);
   }, [handleSurveyEntityBarPick]);
   const handleMobileSurveyArmMarker = useCallback(() => {
+    setActiveCategoryDropdown('survey');
     setActiveToolLogged('survey-marker');
   }, [setActiveToolLogged]);
 
@@ -38805,14 +38806,12 @@ ${pageBlocks}
           if (TOOL_BAR_GROUPS.includes(toolBarGroup) && subToolsHostEl) {
             rows.push(renderSubRow(toolBarGroup, subToolsHostEl, true));
           }
-          // Survey audit P1-1 (2026-10-01): the Survey row shows whenever survey
-          // mode is on with a template chosen. It used to follow
-          // activeCategoryDropdown === 'survey', which Select / Pan / "Jump to
-          // marker" cleared and nothing restored, so a rail category could arm
-          // placement with no bar on screen.
-          const subRowGroup = (showSurveyPanel && selectedTemplate)
+          // Desktop: Survey placement and annotation formatting share the
+          // subtoolbar. The Survey button restores placement without changing
+          // the template, module, category, entity, or Reuse choice.
+          const subRowGroup = (showSurveyPanel && selectedTemplate && (mobileMode || showsSurveyRow({ activeTool, showSurveyPanel, regionEditing: showRegionSelection })))
             ? 'survey'
-            : (activeCategoryDropdown && !TOOL_BAR_GROUPS.includes(activeCategoryDropdown) ? activeCategoryDropdown : null);
+            : (activeCategoryDropdown && activeCategoryDropdown !== 'survey' && !TOOL_BAR_GROUPS.includes(activeCategoryDropdown) ? activeCategoryDropdown : null);
           if (subRowGroup && subRowHost) {
             rows.push(renderSubRow(subRowGroup, subRowHost, false));
           }

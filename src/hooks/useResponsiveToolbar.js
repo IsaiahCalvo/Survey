@@ -236,6 +236,9 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
     }
     // Where the icons sit with no shift: their box less the shift drawn now.
     const drawnShift = -(parseFloat(cluster.style.left) || 0);
+    const hostStyle = window.getComputedStyle(host);
+    const toolGap = parseFloat(hostStyle.getPropertyValue('--chrome-tool-gap')) || 6;
+    const surveyRoom = (parseFloat(hostStyle.getPropertyValue('--chrome-control-w')) || 28) + toolGap;
     const top = planTopBar({
       barWidth: hostRect.width,
       startRight: rel(undo, 'right') ?? 0,
@@ -243,7 +246,9 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
       exportLeft: rel(exportButton, 'left') ?? hostRect.width - 10,
       clusterWidth: clusterRect.width,
       // The tool gutter drawn now (wider on a touch-first screen).
-      loadoutReserve: widestSubtoolsWidth(parseFloat(window.getComputedStyle(host).getPropertyValue('--chrome-tool-gap'))),
+      // Reserve Survey's room even while hidden, so its appearance shifts
+      // only the loadout, never Draw / Shapes / Text, at narrow widths too.
+      loadoutReserve: widestSubtoolsWidth(toolGap) + surveyRoom,
       spanLeft: canvasLeft,
       spanRight: canvasRight,
       clusterNaturalLeft: clusterRect.left - hostRect.left + drawnShift,
