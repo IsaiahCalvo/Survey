@@ -130,3 +130,43 @@ test('bend handle stays on the tightest part of an off-centre line curve', async
   });
   expect(error).toBeLessThan(0.1);
 });
+
+const bendCenter = async handle => { const b=await handle.boundingBox();return {x:b.x+b.width/2,y:b.y+b.height/2}; };
+const bendGeometry = page => page.evaluate(()=>{
+  const handle=document.querySelector('circle[data-handle="midpoint"]');
+  const endpoints=[...handle.parentElement.querySelectorAll(':scope > circle')].slice(0,2).map(circle=>{const p=new DOMPoint(Number(circle.getAttribute('cx')),Number(circle.getAttribute('cy'))).matrixTransform(circle.getScreenCTM());return{x:p.x,y:p.y};});
+  const path=[...document.querySelectorAll('[data-svg-annotation-layer="1"] path')].find(element=>/Q/.test(element.getAttribute('d')||''));
+  return {endpoints,d:path?.getAttribute('d'),heads:document.querySelectorAll('[data-svg-annotation-layer="1"] polygon').length};
+});
+for (const [tool,key] of [['line','l'],['arrow','a']]) test(`off-centre ${tool} peak follows a second drag, keeps endpoints and supports Undo`,async({page})=>{
+  await page.keyboard.press(key);
+  const box=await page.locator('[data-svg-annotation-layer="1"]').boundingBox();
+  await page.mouse.move(box.x+180,box.y+230);await page.mouse.down();await page.mouse.move(box.x+420,box.y+260,{steps:8});await page.mouse.up();
+  await page.keyboard.press('v');
+  const handle=page.locator('circle[data-handle="midpoint"]');await expect(handle).toBeVisible();
+  const straight=await bendCenter(handle);
+  await page.mouse.move(straight.x,straight.y);await page.mouse.down();await page.mouse.move(box.x+390,box.y+335,{steps:12});await page.mouse.up();
+  const before=await bendGeometry(page),start=await bendCenter(handle);
+  if(tool==='arrow')expect(before.heads).toBeGreaterThan(0);
+  const grab={x:2,y:-1};
+  await page.mouse.move(start.x+grab.x,start.y+grab.y);await page.mouse.down();
+  for(const delta of [{x:-10,y:5},{x:-25,y:15},{x:-40,y:20},{x:20,y:-10},{x:50,y:-15}]) {
+    const target={x:start.x+delta.x,y:start.y+delta.y};await page.mouse.move(target.x+grab.x,target.y+grab.y,{steps:4});
+    await expect.poll(async()=>{const current=await bendCenter(handle);return Math.hypot(current.x-target.x,current.y-target.y);}).toBeLessThan(1.2);
+  }
+  const chord={x:(before.endpoints[0].x+before.endpoints[1].x)/2,y:(before.endpoints[0].y+before.endpoints[1].y)/2};
+  await page.mouse.move(chord.x+grab.x,chord.y+grab.y,{steps:8});
+  await expect.poll(async()=>{const current=await bendCenter(handle);return Math.hypot(current.x-chord.x,current.y-chord.y);}).toBeLessThan(1.2);
+  const finalTarget={x:box.x+405,y:box.y+300};
+  await page.mouse.move(finalTarget.x+grab.x,finalTarget.y+grab.y,{steps:12});
+  await expect.poll(async()=>{const current=await bendCenter(handle);return Math.hypot(current.x-finalTarget.x,current.y-finalTarget.y);}).toBeLessThan(1.2);
+  await page.mouse.up();
+  const final=await bendCenter(handle),after=await bendGeometry(page);
+  expect(Math.hypot(final.x-finalTarget.x,final.y-finalTarget.y)).toBeLessThan(1.2);
+  before.endpoints.forEach((point,index)=>expect(Math.hypot(after.endpoints[index].x-point.x,after.endpoints[index].y-point.y)).toBeLessThan(0.5));
+  expect(after.heads).toBe(before.heads);
+  await page.getByRole('button',{name:'Undo',exact:true}).click();
+  await expect.poll(async()=>(await bendGeometry(page)).d).toBe(before.d);
+  await page.getByRole('button',{name:'Redo',exact:true}).click();
+  await expect.poll(async()=>(await bendGeometry(page)).d).toBe(after.d);
+});

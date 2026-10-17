@@ -11,7 +11,7 @@ import { shouldSnapToLinear, getMidpoint, getControlPoint, getPointOnCurve } fro
 
 /**
  * Translate the original midpoint by the drag delta.
- * Used by the 'midpoint' drag-move handler on every pointermove.
+ * Retained for edits that move the stored through-point directly.
  *
  * @param {{x:number,y:number}} startSVGPoint - pointer position at drag start
  * @param {{x:number,y:number}} currentSVGPoint - pointer position now
@@ -107,4 +107,27 @@ export function resolveMidpointHandlePosition(start, end, dataMidpoint) {
   const denominator = ax * ax + ay * ay;
   const t = denominator > 1e-12 ? Math.max(0, Math.min(1, -(vx * ax + vy * ay) / denominator)) : 0.5;
   return getPointOnCurve(start, end, dataMidpoint, t);
+}
+
+/** Solve the stored t=0.5 through-point for a requested curvature peak.
+ * An exact endpoint has no interior peak; return the straight through-point. */
+export function midpointForCurveHandle(start, end, handle) {
+  const dx = end.x - start.x, dy = end.y - start.y;
+  const px = handle.x - start.x, py = handle.y - start.y;
+  const dd = dx * dx + dy * dy, pd = px * dx + py * dy, pp = px * px + py * py;
+  if (dd === 0) return { ...handle };
+  if (px * dy - py * dx === 0) return getMidpoint(start, end);
+  // At the peak, Q'(t) · Q''(t) = 0. Substituting Q(t)=handle gives
+  // dd*t^3 - 3*pd*t^2 + (pd+2*pp)*t - pp = 0, bracketed by [0,1].
+  let low = 0, high = 1;
+  for (let iteration = 0; iteration < 60; iteration += 1) {
+    const t = (low + high) / 2;
+    const value = ((dd * t - 3 * pd) * t + pd + 2 * pp) * t - pp;
+    if (value < 0) low = t;
+    else high = t;
+  }
+  const t = (low + high) / 2, denominator = 2 * t * (1 - t);
+  if (denominator < 1e-12) return getMidpoint(start, end);
+  const control = { x: start.x + (px - t * t * dx) / denominator, y: start.y + (py - t * t * dy) / denominator };
+  return { x: (start.x + end.x) / 4 + control.x / 2, y: (start.y + end.y) / 4 + control.y / 2 };
 }
