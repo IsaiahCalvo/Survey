@@ -446,7 +446,8 @@ export default function RevisionsPanel({
     const serverRows = historyEventsRef.current.filter((row) => !row?.__local);
     const oldest = serverRows[serverRows.length - 1] || historyEventsRef.current[historyEventsRef.current.length - 1];
     if (!oldest) return;
-    olderRequestRef.current = true;
+    const request = Symbol('older-history');
+    olderRequestRef.current = request;
     setOlderError(false);
     setLoadingOlder(true);
     try {
@@ -457,15 +458,19 @@ export default function RevisionsPanel({
         beforeClientEventId: oldest.client_event_id,
         loadedClientEventIds: historyEventsRef.current.map((row) => row.client_event_id).filter(Boolean),
       });
-      if (currentDocumentIdRef.current !== documentId) return;
+      if (currentDocumentIdRef.current !== documentId || olderRequestRef.current !== request) return;
       setHistoryEvents((prev) => mergeHistoryRowLists(prev, older));
       setHasOlder(Array.isArray(older) && older.length >= HISTORY_PAGE_SIZE);
     } catch (e) {
-      setOlderError(true);
-      setStatusMsg('Couldn’t load older changes. Try again.');
+      if (currentDocumentIdRef.current === documentId && olderRequestRef.current === request) {
+        setOlderError(true);
+        setStatusMsg('Couldn’t load older changes. Try again.');
+      }
     } finally {
-      olderRequestRef.current = false;
-      setLoadingOlder(false);
+      if (olderRequestRef.current === request) {
+        olderRequestRef.current = false;
+        setLoadingOlder(false);
+      }
     }
   }, [documentId]);
 
@@ -487,6 +492,9 @@ export default function RevisionsPanel({
     hasLoadedRef.current = false;
     setHistoryEvents([]);
     setHasOlder(false);
+    olderRequestRef.current = false;
+    setOlderError(false);
+    setLoadingOlder(false);
     setSelectedKey(null);
     setOpenFolds(new Set());
     setLinkedMarkId(null);
