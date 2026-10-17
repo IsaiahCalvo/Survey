@@ -112,7 +112,7 @@ import OcrTextLayer from './components/OcrTextLayer';
 import SpaceRegionOverlay from './SpaceRegionOverlay';
 import PdfjsViewerContainer from './components/PdfjsViewerContainer';
 import SurveyTemplateVersionDialog from './components/SurveyTemplateVersionDialog';
-import { acceptTemplateVersion, bindUsedTemplate, needsTemplateVersionChoice, isRetainedSurveyTemplate, unusedSurveyTemplateUpdate, readTemplateBinding, templateBindingKey, templateFingerprint, writeTemplateBinding } from './utils/surveyTemplateBinding';
+import { acceptTemplateVersion, bindUsedTemplate, needsTemplateVersionChoice, isRetainedSurveyTemplate, isSurveyTemplateRestorationReady, hasSurveyTemplateMarks, observeUnusedSurveyTemplateUpdate, readTemplateBinding, templateBindingKey, templateFingerprint, writeTemplateBinding } from './utils/surveyTemplateBinding';
 import { planSurveyCategoryTransferRestore, surveyCategoryTransferCheckpoint, surveyCategoryTransferStepId } from './utils/surveyCategoryTransferHistory';
 import { moveSurveyCategories } from './utils/surveyCategoryMove';
 import SurveyMarkerPlacementDialog from './components/SurveyMarkerPlacementDialog';
@@ -5268,6 +5268,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [activeRegionId, setActiveRegionId] = useState(null);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [pendingTemplateVersion, setPendingTemplateVersion] = useState(null);
+  const surveyTemplateObservationRef = useRef(null);
   const surveyCategoryTransfersRef = useRef(new Map());
   const applySurveyCategoryTransferRef = useRef(null);
   const surveyCategoryTransferItemsRef = useRef({});
@@ -6080,10 +6081,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [toolbarHeights, setToolbarHeights] = useState({ top: 56, bottom: 56 });
   const [middleAreaBounds, setMiddleAreaBounds] = useState({ top: 56, height: 500 });
   const appTemplates = templates;
-  const surveyTemplateIsRetained = useMemo(() => {
-    const latest = appTemplates.find((template) => template.id === selectedTemplate?.id);
-    return isRetainedSurveyTemplate(readSurveyTemplateBinding(selectedTemplate?.id), selectedTemplate, latest);
-  }, [appTemplates, selectedTemplate, readSurveyTemplateBinding]);
   const handleTemplatesChange = useCallback((nextTemplates) => {
     const latest = templates.find((template) => template.id === selectedTemplate?.id);
     const retained = latest && templateFingerprint(latest) !== templateFingerprint(selectedTemplate);
@@ -21402,12 +21399,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     get: excelSyncMetaGet,
     set: (...args) => !documentLocked && yjsDocRole !== 'viewer' && excelSyncMetaSet(...args),
   };
+  const surveyTemplateRestorationReady = isSurveyTemplateRestorationReady({
+    isLoadingPDF, loadFailed: Boolean(pdfLoadError), documentId: pdfFile?.id, hydration: normalAnnotationHydration,
+  });
+  const currentSurveyTemplateHasMarks = hasSurveyTemplateMarks(selectedTemplate, surveyMarkers, annotationsByPage);
+  const surveyTemplateIsRetained = isRetainedSurveyTemplate(
+    readSurveyTemplateBinding(selectedTemplate?.id) || { used: currentSurveyTemplateHasMarks },
+    selectedTemplate, appTemplates.find((template) => template.id === selectedTemplate?.id),
+  );
   useEffect(() => {
-    if (!selectedTemplate || !normalAnnotationHydration?.ready) return;
-    const modules = new Set((selectedTemplate.modules || selectedTemplate.spaces || []).map((module) => module.id));
-    const used = Object.values(surveyMarkers || {}).some((marker) => modules.has(marker?.moduleId))
-      || Object.values(annotationsByPage || {}).some((page) => (page?.objects || []).some((mark) => modules.has(mark?.moduleId)));
-    if (!used) return;
+    if (!selectedTemplate || !surveyTemplateRestorationReady || !currentSurveyTemplateHasMarks) return;
     const binding = readSurveyTemplateBinding(selectedTemplate.id);
     const latest = appTemplates.find((template) => template.id === selectedTemplate.id);
     // Edits made in this viewer (e.g. moving its category) are already an
@@ -21418,7 +21419,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     storeSurveyTemplateBinding(selectedTemplate.id, activeEdit
       ? acceptTemplateVersion(binding, selectedTemplate, true)
       : bindUsedTemplate(selectedTemplate, binding));
-  }, [selectedTemplate, surveyMarkers, annotationsByPage, appTemplates, normalAnnotationHydration?.ready, storeSurveyTemplateBinding, readSurveyTemplateBinding]);
+  }, [selectedTemplate, currentSurveyTemplateHasMarks, appTemplates, surveyTemplateRestorationReady, storeSurveyTemplateBinding, readSurveyTemplateBinding]);
   pagePresentationMetaSetRef.current = normalAnnotationHydration?.ready
     && normalAnnotationHydration.documentId === pdfFile?.id
     && canRestoreFromHistory ? excelSyncMetaSet : null;
@@ -21434,22 +21435,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [normalAnnotationHydration, pdfFile?.id, canRestoreFromHistory, excelSyncMetaGet, excelSyncMetaSet, subscribeDocumentMeta]);
 
   useLayoutEffect(() => {
-    if (!selectedTemplate || !showSurveyPanel) return;
-    // Wait for saved marks before treating a cloud document as unused. Local
-    // fixture/files have no document hydration and can update straight away.
-    if (pdfFile?.id && !normalAnnotationHydration?.ready) return;
-    const moduleIds = new Set((selectedTemplate.modules || selectedTemplate.spaces || []).map((module) => module.id));
-    const hasMarks = Object.values(surveyMarkers || {}).some((marker) => moduleIds.has(marker?.moduleId))
-      || Object.values(annotationsByPage || {}).some((page) => (page?.objects || []).some((mark) => moduleIds.has(mark?.moduleId)));
+    if (!selectedTemplate || !showSurveyPanel) { surveyTemplateObservationRef.current = null; return; }
     const latest = appTemplates.find((template) => template.id === selectedTemplate.id);
-    const update = unusedSurveyTemplateUpdate(readSurveyTemplateBinding(selectedTemplate.id), selectedTemplate, latest, hasMarks);
+    const result = observeUnusedSurveyTemplateUpdate(surveyTemplateObservationRef.current, {
+      binding: readSurveyTemplateBinding(selectedTemplate.id), active: selectedTemplate, latest,
+      restorationReady: surveyTemplateRestorationReady, hasMarks: currentSurveyTemplateHasMarks,
+    });
+    surveyTemplateObservationRef.current = result.observation;
+    const update = result.update;
     if (!update) return;
     const modules = update.modules || update.spaces || [];
     const module = modules.find((entry) => entry.id === selectedModuleId) || modules[0];
     setSelectedTemplate(update);
     setSelectedModuleId(module?.id || null);
     setSelectedCategoryId((id) => (module?.categories || []).some((category) => category.id === id) ? id : null);
-  }, [selectedTemplate, showSurveyPanel, appTemplates, selectedModuleId, surveyMarkers, annotationsByPage, normalAnnotationHydration?.ready, pdfFile?.id, readSurveyTemplateBinding]);
+  }, [selectedTemplate, showSurveyPanel, appTemplates, selectedModuleId, currentSurveyTemplateHasMarks, surveyTemplateRestorationReady, readSurveyTemplateBinding]);
   const deletedPdfAnnotations = useMemo(() => filterRestoredPdfAnnotationTombstones([
     ...new Map(
       [...durableDeletedPdfAnnotations, ...locallyDeletedPdfAnnotations]

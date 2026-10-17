@@ -28,7 +28,32 @@ export function isRetainedSurveyTemplate(binding, active, latest) {
   return Boolean(binding?.used && active && latest && active.id === latest.id
     && templateFingerprint(active) !== templateFingerprint(latest));
 }
-export function unusedSurveyTemplateUpdate(binding, active, latest, hasMarks = false) {
-  if (binding?.used || hasMarks || !active || !latest || active.id !== latest.id) return null;
-  return templateFingerprint(active) === templateFingerprint(latest) ? null : latest;
+export function isSurveyTemplateRestorationReady({ isLoadingPDF, loadFailed = false, documentId, hydration }) {
+  return !isLoadingPDF && !loadFailed && (!documentId || (hydration?.ready === true && hydration.documentId === documentId));
+}
+export function hasSurveyTemplateMarks(template, markers = {}, annotationsByPage = {}) {
+  const modules = new Set((template?.modules || template?.spaces || []).map((module) => module.id));
+  return Object.values(markers || {}).some((marker) => modules.has(marker?.moduleId))
+    || Object.values(annotationsByPage || {}).some((page) => (page?.objects || []).some((mark) => modules.has(mark?.moduleId)));
+}
+export function observeUnusedSurveyTemplateUpdate(observation, { binding, active, latest, restorationReady, hasMarks = false }) {
+  if (!active || !latest || active.id !== latest.id) return { observation: null, update: null };
+  const activeFingerprint = templateFingerprint(active);
+  const latestFingerprint = templateFingerprint(latest);
+  if (!observation || observation.templateId !== active.id) {
+    return { observation: { templateId: active.id, latestFingerprint, pendingBase: null }, update: null };
+  }
+  let pendingBase = observation.pendingBase;
+  if (latestFingerprint !== observation.latestFingerprint) {
+    // Only a shared revision changing under an unchanged selection qualifies.
+    // A local draft differs from its last shared base and must stay local.
+    pendingBase = activeFingerprint === observation.latestFingerprint
+      ? activeFingerprint : pendingBase;
+  }
+  if (binding?.used || hasMarks || (pendingBase && activeFingerprint !== pendingBase)) pendingBase = null;
+  const update = restorationReady && pendingBase && activeFingerprint !== latestFingerprint ? latest : null;
+  return {
+    observation: { templateId: active.id, latestFingerprint, pendingBase: update ? null : pendingBase },
+    update,
+  };
 }
