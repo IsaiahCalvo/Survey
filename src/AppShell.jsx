@@ -1258,6 +1258,7 @@ export default function App({ devPreviewReturnTab = null }) {
   const [mobileSurveyRequestKey, setMobileSurveyRequestKey] = useState(0);
   const [mobileSurveyCollapseRequestKey, setMobileSurveyCollapseRequestKey] = useState(0);
   const [mobileSurveyPanelOpen, setMobileSurveyPanelOpen] = useState(false);
+  const pendingMobilePanelRequestRef = useRef(null);
   const [mobileDocumentPanelState, setMobileDocumentPanelState] = useState({ isOpen: false, activePanel: 'pages' });
   const [mobileAuxPanel, setMobileAuxPanel] = useState(null);
 
@@ -2083,10 +2084,17 @@ export default function App({ devPreviewReturnTab = null }) {
   const [mobileAuxCloseRequestKey, setMobileAuxCloseRequestKey] = useState(0);
 
   const openMobileDocumentPanel = useCallback((panelId) => {
+    if (rightRailApi?.pdfFile !== activeTab?.file || typeof leftRailApi?.ref?.current?.togglePanel !== 'function') {
+      const pending = pendingMobilePanelRequestRef.current;
+      pendingMobilePanelRequestRef.current = pending?.tabId === activeTabId && pending.panelId === panelId
+        ? null : { tabId: activeTabId, panelId };
+      return;
+    }
+    pendingMobilePanelRequestRef.current = null;
     setMobileSurveyCollapseRequestKey((key) => key + 1);
     setMobileAuxCloseRequestKey((key) => key + 1);
-    leftRailApi?.ref?.current?.togglePanel?.(panelId);
-  }, [leftRailApi]);
+    leftRailApi.ref.current.togglePanel(panelId);
+  }, [leftRailApi, rightRailApi, activeTabId, activeTab?.file]);
 
   const toggleMobileDocumentHub = useCallback(() => {
     const activePanel = ['pages', 'search', 'bookmarks'].includes(mobileDocumentPanelState.activePanel)
@@ -2096,6 +2104,15 @@ export default function App({ devPreviewReturnTab = null }) {
   }, [mobileDocumentPanelState.activePanel, openMobileDocumentPanel]);
 
   const openMobileSurveyPanel = useCallback(() => {
+    // The dock is visible while PDFViewer still loads. Keep that tap for this
+    // document only; a second tap cancels it before the viewer registers.
+    if (rightRailApi?.pdfFile !== activeTab?.file || typeof rightRailApi?.handleSurveyToggle !== 'function') {
+      const pending = pendingMobilePanelRequestRef.current;
+      pendingMobilePanelRequestRef.current = pending?.tabId === activeTabId && pending.panelId === 'survey'
+        ? null : { tabId: activeTabId, panelId: 'survey' };
+      return;
+    }
+    pendingMobilePanelRequestRef.current = null;
     // Opening Survey over an open Pages / Spaces sheet: that sheet holds still
     // until Survey takes its place (a dock switch keeps the sheet standing and
     // fades the content, see useMobileSheetMotion PANEL TO PANEL). Survey opens
@@ -2110,7 +2127,31 @@ export default function App({ devPreviewReturnTab = null }) {
     if (!rightRailApi?.showSurveyPanel) {
       rightRailApi?.handleSurveyToggle?.();
     }
-  }, [leftRailApi, mobileSurveyPanelOpen, rightRailApi]);
+  }, [leftRailApi, mobileSurveyPanelOpen, rightRailApi, activeTabId, activeTab?.file]);
+
+  useEffect(() => {
+    const pending = pendingMobilePanelRequestRef.current;
+    if (!pending) return;
+    if (!isMobileViewer || pending.tabId !== activeTabId) {
+      pendingMobilePanelRequestRef.current = null;
+      return;
+    }
+    if (rightRailApi?.pdfFile !== activeTab?.file) return;
+    if (pending.panelId !== 'survey') {
+      if (typeof leftRailApi?.ref?.current?.togglePanel !== 'function') return;
+      pendingMobilePanelRequestRef.current = null;
+      setMobileSurveyCollapseRequestKey((key) => key + 1);
+      setMobileAuxCloseRequestKey((key) => key + 1);
+      leftRailApi.ref.current.togglePanel(pending.panelId);
+      return;
+    }
+    if (typeof rightRailApi?.handleSurveyToggle !== 'function') return;
+    pendingMobilePanelRequestRef.current = null;
+    leftRailApi?.ref?.current?.closePanel?.({ handover: true });
+    setMobileAuxCloseRequestKey((key) => key + 1);
+    setMobileSurveyRequestKey((key) => key + 1);
+    if (!rightRailApi.showSurveyPanel) rightRailApi.handleSurveyToggle();
+  }, [isMobileViewer, activeTabId, activeTab?.file, leftRailApi, rightRailApi]);
 
   // Spaces chunk B: the active space, named outside the Spaces panel - a chip
   // in the desktop tool bar and under the phone's top bar. Its words open the
@@ -2147,6 +2188,7 @@ export default function App({ devPreviewReturnTab = null }) {
 
   useEffect(() => {
     if (!mobileAuxPanel) return;
+    pendingMobilePanelRequestRef.current = null;
     leftRailApi?.ref?.current?.closePanel?.();
     setMobileSurveyCollapseRequestKey((key) => key + 1);
   }, [mobileAuxPanel]);
@@ -2370,30 +2412,30 @@ export default function App({ devPreviewReturnTab = null }) {
     if (regionApi.fullPageConfirmPending) {
       return (
         <div data-area-actions="confirm-full-page" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-gap)' }}>
-          <span style={{ color: 'var(--text-2)', fontSize: '12px' }}>Replace these areas with the full page?</span>
-          <button type="button" className="btn btn-sm btn-default" onClick={regionApi.cancelFullPage}>Keep areas</button>
+          <span style={{ color: 'var(--text-2)', fontSize: '12px' }}>Replace these regions with the full page?</span>
+          <button type="button" className="btn btn-sm btn-default" onClick={regionApi.cancelFullPage}>Keep regions</button>
           <button type="button" className="btn btn-sm btn-secondary" style={AREA_CONFIRM_STYLE} onClick={regionApi.confirmFullPage}>Use full page</button>
         </div>
       );
     }
     return (
       <div data-area-actions="true" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-gap)' }}>
-        <span style={{ color: 'var(--text-2)', fontSize: '12px', fontWeight: 600, marginRight: '4px' }}>Areas</span>
+        <span style={{ color: 'var(--text-2)', fontSize: '12px', fontWeight: 600, marginRight: '4px' }}>Regions</span>
         <button
           type="button"
           className="btn btn-sm btn-default"
           disabled={!regionApi.canDelete}
           onClick={regionApi.deleteSelected}
-          {...chromeTip(regionApi.canDelete ? 'Delete the picked areas' : 'Pick an area with Select to delete it', 'below')}
+          {...chromeTip(regionApi.canDelete ? 'Delete the picked regions' : 'Pick a region with Select to delete it', 'below')}
         >
-          Delete area
+          Delete region
         </button>
         {regionApi.canSetFullPage && (
           <button
             type="button"
             className="btn btn-sm btn-default"
             onClick={regionApi.setFullPage}
-            {...chromeTip('Use the whole page as the area', 'below')}
+            {...chromeTip('Use the whole page as the region', 'below')}
           >
             Full page
           </button>
@@ -2402,7 +2444,7 @@ export default function App({ devPreviewReturnTab = null }) {
         <button type="button" className="btn btn-sm btn-default" onClick={regionApi.cancel} {...chromeTip('Leave without saving', 'below')}>
           Cancel
         </button>
-        <button type="button" className="btn btn-sm btn-secondary" style={AREA_CONFIRM_STYLE} onClick={regionApi.confirm} {...chromeTip('Save the areas (Enter)', 'below')}>
+        <button type="button" className="btn btn-sm btn-secondary" style={AREA_CONFIRM_STYLE} onClick={regionApi.confirm} {...chromeTip('Save the regions (Enter)', 'below')}>
           Done
         </button>
       </div>
@@ -4378,6 +4420,7 @@ export default function App({ devPreviewReturnTab = null }) {
             )}
             {leftRailApi && (
               <PDFSidebar
+                key={leftRailApi.documentId || activeTabId}
                 {...leftRailApi}
                 mobileMode={isMobileViewer}
                 onPanelStateChange={setMobileDocumentPanelState}
@@ -4620,6 +4663,7 @@ export default function App({ devPreviewReturnTab = null }) {
           >
             {rightRailApi && (
               <SurveySpacesRail
+                key={rightRailApi.pdfFile?.id || activeTabId}
                 {...rightRailApi}
                 mobileMode={isMobileViewer}
                 expandRequestKey={(rightRailApi.expandRequestKey || 0) + mobileSurveyRequestKey}

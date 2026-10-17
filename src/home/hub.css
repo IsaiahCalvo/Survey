@@ -4840,12 +4840,7 @@ button[aria-label="Edit color"]:active > span,
     position: absolute;
     inset: -3px 0;
   }
-  /* Shell audit 2026-10-13 (Chunk B): desktop Documents retires the
-     Select-mode button, its rows have always-on checkboxes (Drawboard). The
-     phone keeps it (its cards have no checkbox column). */
-  .survey-hub.hub-tab-documents .documents-mobile-select-main > .mobile-header-select-button {
-    display: none;
-  }
+
 }
 
 /* ==========================================================================
@@ -5550,4 +5545,12 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 }
 [data-tab-strip-dialogs] > * {
   pointer-events: auto;
+}
+
+/* Documents use an explicit Select mode on desktop too. Normal rows preview
+   the file; selection checks only appear when the user asks for them. */
+@media (min-width: 821px) {
+  .survey-hub.hub-tab-documents .documents-select-toolbar { display: inline-flex !important; margin-left: 10px; }
+  .survey-hub.hub-tab-documents .documents-select-toolbar .documents-mobile-select-main { display: inline-flex; align-items: center; }
+  .survey-hub.hub-tab-documents .documents-select-toolbar .mobile-header-select-button { display: inline-grid !important; }
 }

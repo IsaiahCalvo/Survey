@@ -57,6 +57,7 @@ import { cloudPolyEnginePoints } from '../utils/cloudAnnotationGeometry.js';
 import { resizeGrabOffset, rotationGrabOffsetDeg } from '../utils/offsetPreservingResize.js';
 import {
   isSnapFreeModifier,
+  isAnnotationSnapFree,
   snapThreshold,
   shiftBox,
   unionBox,
@@ -78,7 +79,7 @@ import {
 // every member of that group on the page. Same helper module powers App's
 // Group / Ungroup actions; storage model documented at the top of the file.
 import { getAnnotationGroupId, getCalloutGroupId, findGroupMembers } from '../utils/annotationGroups.js';
-import { shouldRevertEndpointCurve, applyMidpointToAnnotation, clearMidpointFromAnnotation } from '../utils/lineDragMath.js';
+import { shouldRevertEndpointCurve, applyMidpointToAnnotation, clearMidpointFromAnnotation, resolveMidpointHandlePosition, midpointForCurveHandle } from '../utils/lineDragMath.js';
 // Phase 19 — AutoCAD Window + Crossing marquee selection.
 // Pure math lives in marqueeSelection.js (unit-tested in
 // tests/marqueeSelection.test.mjs). This hook owns the React state,
@@ -897,13 +898,13 @@ export function useSVGInteraction({
   // for the delta that is really shown (`shownDelta`, after the page clamp).
   // `ds.snapBox` / `ds.snapTargets` are filled once per drag by the caller.
   const snapMoveDelta = useCallback((ds, dx, dy, e) => {
-    if (!ds?.snapBox || isSnapFreeModifier(e)) return { dx, dy };
+    if (!ds?.snapBox || isAnnotationSnapFree(e)) return { dx, dy };
     const env = snapEnvRef.current || {};
     const off = snapMoveBox(shiftBox(ds.snapBox, dx, dy), ds.snapTargets, snapThreshold(env.inverseScale));
     return { dx: dx + off.dx, dy: dy + off.dy };
   }, []);
   const showMoveGuides = useCallback((ds, shownDx, shownDy, e) => {
-    if (!ds?.snapBox || isSnapFreeModifier(e)) {
+    if (!ds?.snapBox || isAnnotationSnapFree(e)) {
       applySnapGuides(null);
       return;
     }
@@ -2550,7 +2551,7 @@ export function useSVGInteraction({
       // Canvas audit chunk 3: the same feel as one mark — the group's turn
       // (from where the drag began) pulls to quarter turns within 4°; Shift
       // = hard 15° steps; Alt = free.
-      delta = snapRotationDegrees(delta, { shift: e.shiftKey, free: e.altKey });
+      delta = snapRotationDegrees(delta, { shift: e.shiftKey, free: isSnapFreeModifier(e) });
       const rad = (delta * Math.PI) / 180;
       const cos = Math.cos(rad);
       const sin = Math.sin(rad);
@@ -3290,7 +3291,7 @@ export function useSVGInteraction({
       });
       setInteractionState('dragging');
     } else if (ds.mode === 'midpoint') {
-      // Phase 15 LINE-01 / ARROW-01 — live-paint midpoint translate.
+      // Phase 15 LINE-01 / ARROW-01 — live-paint curve peak drag.
       // Snap-to-straight happens LIVE during drag (not on pointerup) so the
       // user sees the line go straight as soon as the handle enters the 10px
       // threshold zone. Dragging back out re-curves it instantly.
@@ -3304,8 +3305,8 @@ export function useSVGInteraction({
       // Apply the same (R - I) · (pivotNaive - pivotOld) shift used
       // by the endpoint-drag branch so the endpoints stay pinned in
       // world while only the midpoint's visible position tracks the
-      // pointer. Snap-to-straight still fires when the naive new
-      // midpoint is within 10 px of the chord.
+      // pointer. Snap-to-straight fires when the grabbed peak is
+      // within 10 px of the chord.
       const mpAngle = ds.originalProps?.angle || 0;
       const mpRad = (mpAngle * Math.PI) / 180;
       const mpCosA = Math.cos(mpRad);
@@ -3319,27 +3320,25 @@ export function useSVGInteraction({
         x: cx + (px - cx) * cA - (py - cy) * sA,
         y: cy + (px - cx) * sA + (py - cy) * cA,
       });
-      // Old world positions of both endpoints + the midpoint (around pivotOldM).
+      // Move the displayed peak, then solve its stored through-point.
       const W1oldM = rotAroundM(ep.x1, ep.y1, pivotOldM.x, pivotOldM.y, mpCosA, mpSinA);
       const W2oldM = rotAroundM(ep.x2, ep.y2, pivotOldM.x, pivotOldM.y, mpCosA, mpSinA);
-      const WMoldM = ds.originalMidpoint
-        ? rotAroundM(ds.originalMidpoint.x, ds.originalMidpoint.y, pivotOldM.x, pivotOldM.y, mpCosA, mpSinA)
-        // Straight-line drag: the "midpoint" handle visually sits on
-        // the chord midpoint, so treat the chord midpoint as the old
-        // world midpoint when obj.data.midpoint hasn't been set yet.
-        : { x: (W1oldM.x + W2oldM.x) / 2, y: (W1oldM.y + W2oldM.y) / 2 };
-      // Target world midpoint: pointer delta applied; endpoints stay put.
+      const oldHandleM = resolveMidpointHandlePosition({ x: ep.x1, y: ep.y1 }, { x: ep.x2, y: ep.y2 }, ds.originalMidpoint);
+      const WMoldM = rotAroundM(oldHandleM.x, oldHandleM.y, pivotOldM.x, pivotOldM.y, mpCosA, mpSinA);
+      // Preserve the grab offset while keeping both endpoints pinned.
       const mpDxW = svgPoint.x - ds.startSVGPoint.x;
       const mpDyW = svgPoint.y - ds.startSVGPoint.y;
       const WMtarget = { x: WMoldM.x + mpDxW, y: WMoldM.y + mpDyW };
       // Step 1: un-rotate around pivotOldM to get naive local points.
       const naiveP1M = rotAroundM(W1oldM.x, W1oldM.y, pivotOldM.x, pivotOldM.y, mpCosA, -mpSinA);
       const naiveP2M = rotAroundM(W2oldM.x, W2oldM.y, pivotOldM.x, pivotOldM.y, mpCosA, -mpSinA);
-      const naiveMidM = rotAroundM(WMtarget.x, WMtarget.y, pivotOldM.x, pivotOldM.y, mpCosA, -mpSinA);
+      const naiveHandleM = rotAroundM(WMtarget.x, WMtarget.y, pivotOldM.x, pivotOldM.y, mpCosA, -mpSinA);
+      const snappedToLinear = shouldSnapToLinear(naiveHandleM, naiveP1M, naiveP2M, 10);
+      const naiveMidM = snappedToLinear ? naiveHandleM : midpointForCurveHandle(naiveP1M, naiveP2M, naiveHandleM);
       // Step 2: naive new bbox center.
       const pivotNaiveM = computeLineBboxCenter(
         { x1: naiveP1M.x, y1: naiveP1M.y, x2: naiveP2M.x, y2: naiveP2M.y },
-        naiveMidM,
+        snappedToLinear ? null : naiveMidM,
       );
       // Step 3: compensation shift.
       const dXm = pivotNaiveM.x - pivotOldM.x;
@@ -3369,12 +3368,7 @@ export function useSVGInteraction({
         x2: finalP2M.x - newCxM,
         y2: finalP2M.y - newCyM,
       };
-      // Live snap: clear midpoint when within threshold, re-apply when outside.
-      // Use the SHIFTED final midpoint + endpoints so the snap threshold
-      // is evaluated in the same frame the renderer will consume.
-      const startPM = { x: finalP1M.x, y: finalP1M.y };
-      const endPM = { x: finalP2M.x, y: finalP2M.y };
-      const snappedToLinear = shouldSnapToLinear(finalMidM, startPM, endPM, 10);
+      // Live snap uses the grabbed peak's distance from the chord.
       ds.currentMidpoint = { ...midpointData, midpoint: snappedToLinear ? null : finalMidM };
       setVisualTransform({
         id: ds.annotationIndex,
@@ -3447,7 +3441,7 @@ export function useSVGInteraction({
       // (proportions win), Alt (free), a counter, a tilted mark, ink, or a
       // photo's corner (it keeps its proportions).
       const resizeAngleMod = ((origAngleDeg % 360) + 360) % 360;
-      const resizeSnapOn = !e.shiftKey && !e.altKey && !resizeIsCounter
+      const resizeSnapOn = !e.shiftKey && !isAnnotationSnapFree(e) && !resizeIsCounter
         && (resizeAngleMod < 0.01 || resizeAngleMod > 359.99)
         && isSnappableMark(resizeObj)
         && !(keepsProportions(resizeObj) && affectsX && affectsY);
@@ -3756,7 +3750,7 @@ export function useSVGInteraction({
       // Canvas audit chunk 3 (Drawboard): whole degrees, pulled to 0 / 90 /
       // 180 / 270 within 4°; Shift = hard 15° steps (was a soft 45° snap
       // that only caught within 3°); Alt = free.
-      newAngle = snapRotationDegrees(newAngle, { shift: e.shiftKey, free: e.altKey });
+      newAngle = snapRotationDegrees(newAngle, { shift: e.shiftKey, free: isSnapFreeModifier(e) });
       newAngle = ((newAngle % 360) + 360) % 360;
 
       // UX 2026-04-20: counters don't rotate their bubble or number — the
@@ -3941,7 +3935,7 @@ export function useSVGInteraction({
         default:
           return;
       }
-      if ((ds.partType === 'textBox' || ds.partType === 'whole') && ds.snapBox && !isSnapFreeModifier(e)) {
+      if ((ds.partType === 'textBox' || ds.partType === 'whole') && ds.snapBox && !isAnnotationSnapFree(e)) {
         const shownBox = calloutSnapBox({ ...original, textBoxPosition: proposed.textBoxPosition }, W, H);
         applySnapGuides(shownBox ? buildSnapGuides(shownBox, snapFeatures(shownBox), ds.snapTargets) : null);
       } else {
@@ -4528,7 +4522,7 @@ export function useSVGInteraction({
         roundCommittedAnnotationsGeometry(merged.annotations, merged.indexes);
         onSaveAnnotations(merged.annotations, {
           source: 'object:modified',
-          action: 'vertex-move',
+          action: ds.insertedVertex ? 'vertex-add' : 'vertex-move',
           checkpointPolicy: 'normal',
         });
       }
@@ -5307,7 +5301,7 @@ export function useSVGInteraction({
       originalMidpoint: null, currentMidpoint: null,
       // UX 2026-04-20: vertex-drag fields (polygon/polyline per-point drag).
       // Reset alongside the rest so the next drag starts clean.
-      originalPoints: null, vertexIndex: null,
+      originalPoints: null, vertexIndex: null, insertedVertex: false,
       originalTextMarkup: null, currentTextMarkup: null, fixedTextOffset: null,
       currentAnnotations: null,
       diagGestureId: null,
@@ -5722,10 +5716,25 @@ export function useSVGInteraction({
 
     const selectedIndex = Array.from(selectedIds)[0]; // Single-select resize only
     if (selectedIndex === undefined) return;
-    const obj = annotations?.objects?.[selectedIndex];
+    let obj = annotations?.objects?.[selectedIndex];
     if (!obj) return;
 
     if (isUserLocked(obj) || isAnnotationTransformHandleLocked(obj, handleId)) return;
+    const beforeVertexInsert = obj;
+    const insertion = typeof handleId === 'string' && handleId.startsWith('insert-vertex-');
+    if (insertion) {
+      const segmentIndex = Number(handleId.slice('insert-vertex-'.length));
+      const count = obj.points?.length || 0;
+      const closed = String(obj.type).toLowerCase() === 'polygon';
+      if (!Number.isInteger(segmentIndex) || segmentIndex < 0 || segmentIndex >= count - (closed ? 0 : 1)) return;
+      obj = deepClone(obj);
+      const from = obj.points[segmentIndex];
+      const to = obj.points[(segmentIndex + 1) % count];
+      obj.points.splice(segmentIndex + 1, 0, { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 });
+      if (obj.data?.pdfCloudVertexState) delete obj.data.pdfCloudVertexState;
+      handleId = `vertex-${segmentIndex + 1}`;
+      try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch { /* optional */ }
+    }
 
     const ctm = svgRef.current?.getScreenCTM();
     const ctmInverse = ctm ? ctm.inverse() : null;
@@ -5770,11 +5779,9 @@ export function useSVGInteraction({
     }
 
     // Phase 15 LINE-01 / ARROW-01 — midpoint curvature drag.
-    // Capture the ORIGINAL midpoint (either data.midpoint if the line was
-    // already curved, or the geometric midpoint if straight). On pointermove
-    // we translate this by the pointer delta (see deriveMidpointFromPointer).
-    // On pointerup we snap to straight when within 10px of the baseline
-    // (silent snap — no visual indicator during drag per 15-UI-SPEC §E).
+    // Capture the stored through-point, or chord centre if straight.
+    // Pointermove places the visible peak and solves the through-point.
+    // The handle snaps to the chord centre inside the 10px straight zone.
     if (handleId === 'midpoint') {
       const ep = getLineEndpoints(obj);
       const start = { x: ep.x1, y: ep.y1 };
@@ -5843,7 +5850,9 @@ export function useSVGInteraction({
           cloudVertexEdit,
           // Per-field sync (2026-09-24): the release writes only this mark's
           // own change (drag start → last frame) onto the page as it is then.
-          startObjects: { [selectedIndex]: deepClone(obj) },
+          startObjects: { [selectedIndex]: deepClone(beforeVertexInsert) },
+          insertedVertex: insertion,
+          currentAnnotations: insertion ? { ...annotations, objects: annotations.objects.map((mark, index) => index === selectedIndex ? obj : mark) } : null,
           // Snapshot the full transform chain so the move handler can invert
           // it on each tick. We copy obj.points so we don't mutate the real
           // annotation until pointerup.

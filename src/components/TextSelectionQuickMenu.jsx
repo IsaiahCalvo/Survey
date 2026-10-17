@@ -136,13 +136,14 @@ function QuickMenuButton({ label, tip, icon, pressed, paintColor, onActivate }) 
 }
 
 export default function TextSelectionQuickMenu({
+  active = true,
   selection,
   activeMarkupTypes = [],
   paintByMark = {},
   onAction,
   onCopy,
 }) {
-  const key = textSelectionQuickMenuKey(selection);
+  const key = active ? textSelectionQuickMenuKey(selection) : '';
   const keyRef = useRef(key);
   keyRef.current = key;
   const [settledKey, setSettledKey] = useState('');
@@ -166,6 +167,21 @@ export default function TextSelectionQuickMenu({
     return () => window.clearTimeout(timer);
   }, [key]);
 
+  // Right-click reopens the same markup actions, including after a dismissal.
+  useEffect(() => {
+    if (!key) return undefined;
+    const openContextMenu = (event) => {
+      const owner = selectionViewer();
+      if (!owner || owner.getClientRects().length === 0) return;
+      event.preventDefault();
+      setPressing(false);
+      setDismissedKey('');
+      setSettledKey(keyRef.current);
+    };
+    window.addEventListener('survey-pdf-text-context-menu', openContextMenu);
+    return () => window.removeEventListener('survey-pdf-text-context-menu', openContextMenu);
+  }, [key]);
+
   // A dismissal belongs to one selection; a new one may show the menu again.
   useEffect(() => {
     if (dismissedKey && key !== dismissedKey) setDismissedKey('');
@@ -183,7 +199,7 @@ export default function TextSelectionQuickMenu({
     let down = null;
     let timer = 0;
     const onDown = (event) => {
-      if (menuRef.current?.contains(event.target)) return;
+      if (event.button === 2 || menuRef.current?.contains(event.target)) return;
       down = { x: event.clientX, y: event.clientY, key: keyRef.current };
       setPressing(true);
     };

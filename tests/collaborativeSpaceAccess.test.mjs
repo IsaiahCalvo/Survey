@@ -144,7 +144,7 @@ test('every Space and Region mutation path uses the document-scoped grant', () =
       `${handlerName} must deny plan/role bypasses`,
     );
   }
-  assert.match(panelSource, /disabled=\{!canManageSpaces \|\| !onReorderSpaces\}/);
+  assert.match(panelSource, /disabled=\{!editMode \|\| !canManageSpaces \|\| !onReorderSpaces\}/);
 
   assert.match(viewerSource, /const requireSpaceManagement = useCallback/);
   for (const handlerName of [

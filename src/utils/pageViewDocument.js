@@ -257,6 +257,7 @@ const slotIndexOf = (value, count, label) => {
 // Returns a NEW view with `operation` applied (same op shapes as
 // mutatePdfPages). `doc` may be the base document or a previous view.
 export function applyPageViewOperation(doc, operation, options = {}) {
+  if (operation?.type === 'presentation') return doc;
   // Several pages at once (utils/pageSelectionOperations.js): its steps in
   // order, shown as ONE new view.
   if (operation?.type === 'batch') {

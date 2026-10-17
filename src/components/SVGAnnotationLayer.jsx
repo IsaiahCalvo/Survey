@@ -197,7 +197,7 @@ import { isPalmContact } from '../utils/touchContact.js';
 import { hasPassedShapeDragThreshold } from '../utils/dragThreshold.js';
 import SnapGuidesLayer from './SnapGuidesLayer.jsx';
 import {
-  isSnapFreeModifier, snapThreshold, snapMoveFrame, snapResizePoint, buildSnapGuides, snapRotationDegrees,
+  isSnapFreeModifier, isAnnotationSnapFree, snapThreshold, snapMoveFrame, snapResizePoint, buildSnapGuides, snapRotationDegrees,
 } from '../utils/snapGuides.js';
 
 const svgAnnotationDebug = (...args) => {
@@ -4348,6 +4348,7 @@ const SVGAnnotationLayerBody = memo(({
     // other mark (snapGuides.js); Alt = free.
     const ob = drag.originalBounds;
     const snapFree = isSnapFreeModifier(e);
+    const annotationSnapFree = isAnnotationSnapFree(e);
     if (drag.snapTargets === undefined) {
       drag.snapTargets = collectSnapTargets({ markerIds: [drag.annotationId] });
     }
@@ -4360,7 +4361,7 @@ const SVGAnnotationLayerBody = memo(({
       };
     } else if (drag.mode === 'resize') {
       const upright = Math.abs(normalizeDegreesValue(ob.angle || 0)) < 0.01;
-      const snapped = upright && !snapFree && !e.shiftKey
+      const snapped = upright && !annotationSnapFree && !e.shiftKey
         ? snapResizePoint(point, drag.handleId, drag.snapTargets, snapThreshold(inverseScale))
         : null;
       nextBounds = resizeSurveyMarkerBoundsRotated(ob, drag.handleId, snapped || point);
@@ -4371,7 +4372,7 @@ const SVGAnnotationLayerBody = memo(({
       let mdx = dx;
       let mdy = dy;
       const box = boxWorldBounds({ left: ob.x, top: ob.y, width: ob.width, height: ob.height, angle: ob.angle || 0 });
-      if (box && !snapFree) {
+      if (box && !annotationSnapFree) {
         const frame = snapMoveFrame(box, dx, dy, drag.snapTargets, snapThreshold(inverseScale));
         mdx = frame.dx;
         mdy = frame.dy;
@@ -7781,14 +7782,9 @@ const SVGAnnotationLayerBody = memo(({
                   if (!drag || drag.annotationIndex !== selectedIndex) return;
                   const svgEl = svgRef.current;
                   if (!svgEl) return;
-                  // Convert client coords to viewBox (page-space) coords.
-                  // The SVG viewBox is "0 0 width height" with preserveAspectRatio:'none',
-                  // so a simple linear mapping works.
-                  const rect = svgEl.getBoundingClientRect();
-                  if (rect.width === 0 || rect.height === 0) return;
-                  const px = ((e.clientX - rect.left) / rect.width) * width;
-                  const py = ((e.clientY - rect.top) / rect.height) * height;
-                  const newAngleDeg = Math.atan2(py - drag.centerY, px - drag.centerX) * 180 / Math.PI;
+                  const point = screenToSVG(svgEl, e.clientX, e.clientY);
+                  if (!point) return;
+                  const newAngleDeg = Math.atan2(point.y - drag.centerY, point.x - drag.centerX) * 180 / Math.PI;
                   const preview = {
                     annotationIndex: selectedIndex,
                     pointerAngle: newAngleDeg,
@@ -8079,8 +8075,7 @@ const SVGAnnotationLayerBody = memo(({
             />
           );
           // Phase 15 LINE-01 / ARROW-01 — midpoint curvature handle.
-          // Position: saved data.midpoint if curved (the bezier passes through
-          // it at t=0.5 by construction), geometric midpoint if straight.
+          // Position: the peak of the bend when curved, the chord centre when straight.
           // Offset by the same visual-drag transform (dx, dy) as the endpoints
           // so all three handles move together during a 'move' drag.
           const dataMidpoint = selectionObj.data?.midpoint;
@@ -8275,6 +8270,17 @@ const SVGAnnotationLayerBody = memo(({
                   style={{ pointerEvents: 'none' }}
                 />
               )}
+              {/* Midsegment handles insert one point, then use the normal vertex drag. */}
+              {!modifierMoveActive && worldPoints.slice(0, String(obj.type).toLowerCase() === 'polygon' ? worldPoints.length : -1).map((wp, i) => {
+                const next = worldPoints[(i + 1) % worldPoints.length];
+                const x = (wp.x + next.x) / 2;
+                const y = (wp.y + next.y) / 2;
+                return <g key={`insert-vertex-${i}`} role="button" aria-label="Add vertex" data-add-vertex={i} onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, `insert-vertex-${i}`); }} style={{ cursor: 'crosshair', pointerEvents: 'auto' }}>
+                  <circle cx={x} cy={y} r={vTouchHitR || vHandleR * 2} fill="transparent" />
+                  <circle cx={x} cy={y} r={vHandleR * 0.75} fill={HANDLE_FILL} stroke={HANDLE_RING} strokeWidth={vHandleIs} />
+                  <path d={`M ${x - vHandleR * 0.35} ${y} H ${x + vHandleR * 0.35} M ${x} ${y - vHandleR * 0.35} V ${y + vHandleR * 0.35}`} stroke={HANDLE_RING} strokeWidth={vHandleIs} pointerEvents="none" />
+                </g>;
+              })}
               {/* w58: Cmd / Ctrl held -> corner grabbers hide (move instead). */}
               {!modifierMoveActive && worldPoints.map((wp, i) => (
                 <g key={`vertex-${i}`}>
@@ -8427,7 +8433,8 @@ const SVGAnnotationLayerBody = memo(({
         if (cloudChrome) overlayRotationCenter = cloudChrome.rotationCenter;
 
         return (
-          <g key={`selection-wrapper-${selectedIndex}`} transform={overlayTransform}>
+          <g key={`selection-wrapper-${selectedIndex}`} transform={overlayTransform} data-selection-context-index={selectedIndex}>
+            <rect data-selection-context-hitbox="true" x={bbox.left} y={bbox.top} width={bbox.width} height={bbox.height} fill="none" pointerEvents="none" />
             <SVGSelectionOverlay
               key={`selection-${selectedIndex}`}
               bbox={bbox}

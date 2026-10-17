@@ -1,3 +1,4 @@
+import { clientPointInPageFrame } from '../utils/pagePresentation.js';
 // src/services/annotationLiveCursors.js
 //
 // KAL-399 (2026-10-13): live cursors — see where the other people in the same
@@ -123,7 +124,8 @@ export function clientPointToPagePoint(clientX, clientY, pages) {
     if (fx < 0 || fx > 1 || fy < 0 || fy > 1) continue;
     const page = Number(entry.page);
     if (!Number.isInteger(page) || page < 1) continue;
-    return { page, x: round(fx * size.width), y: round(fy * size.height) };
+    const point = clientPointInPageFrame({ clientX, clientY }, rect, size);
+    if (point) return { page, x: round(point.x), y: round(point.y) };
   }
   return null;
 }

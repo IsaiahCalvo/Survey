@@ -12,6 +12,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import Icon from './Icons';
+import ListItemContextMenu from './components/ListItemContextMenu';
+import SurveyCategoryMoveDialog from './components/SurveyCategoryMoveDialog';
 import CreateCategoryModal from './components/CreateCategoryModal';
 import Spinner from './components/Spinner';
 import { useTooltip } from './components/Tooltip';
@@ -441,6 +443,10 @@ const SurveySpacesRail = ({
   DEFAULT_SURVEY_MARKER_OPACITY,
   deleteAnnotations,
   deleteCategory = () => {},
+  handleMoveSurveyCategories,
+  duplicateSurveyMarker,
+  canEditSurveyCategories = false,
+  canModifySurveyMarkerItem,
   documentSyncEnabled,
   expandedCategories,
   expandedSurveyMarkers,
@@ -556,6 +562,7 @@ const SurveySpacesRail = ({
   onDismissAllUnplacedRows = null,
   onResolveExcelConflict = null,
   user,
+  initialCollapsed = true,
   expandRequestKey = 0,
   collapseRequestKey = 0,
   onCollapseChange = null,
@@ -582,7 +589,7 @@ const SurveySpacesRail = ({
   // items). Promise-based so each handler keeps its original
   // `if (!confirmed) return;` shape and nothing deletes before the user answers.
   const [askConfirm, confirmDialogElement] = useConfirmDialog();
-  const [isSurveyPanelCollapsed, setIsSurveyPanelCollapsed] = useState(true);
+  const [isSurveyPanelCollapsed, setIsSurveyPanelCollapsed] = useState(initialCollapsed);
   // Desktop panel motion (owner 2026-09-30 "the expand animation isn't
   // smooth"; 2026-10-07 Drawboard rail): the open panel slides out from under
   // the Survey rail (surveyRailExpand) and, once closed, stays drawn for the
@@ -653,6 +660,8 @@ const SurveySpacesRail = ({
   const mobileExportMenuRef = useRef(null);
   const surveyMarkerDragRestoreRef = useRef(null);
   const availableSurveyTemplates = Array.isArray(surveyTemplates) ? surveyTemplates : [];
+  const [listContextMenu, setListContextMenu] = useState(null);
+  const [movingCategoryIds, setMovingCategoryIds] = useState(null);
   // The templates used most recently on this device (the desktop template
   // menu's own list - same storage key), for the phone switch list's "Recent".
   const recentTemplateIds = useSurveyRecents('template', 'all', selectedTemplate?.id ?? null);
@@ -909,6 +918,9 @@ const SurveySpacesRail = ({
     const wasOn = surveyWasOnRef.current;
     surveyWasOnRef.current = Boolean(showSurveyPanel);
     if (showSurveyPanel) {
+      // A document switch remounts the shared rail with its saved collapse
+      // state. Only entering Survey opens it; an already-on mode restores it.
+      if (wasOn) return;
       // Owner 2026-10-07 (survey bar round): an Undo of "Left Survey" puts
       // the panel back the way it was - closed, when it was closed.
       if (surveyReenterCollapsedRef?.current) {
@@ -983,10 +995,12 @@ const SurveySpacesRail = ({
     />
   );
 
+  const lastExpandRequestRef = useRef(expandRequestKey);
   useEffect(() => {
-    if (expandRequestKey > 0) {
+    if (expandRequestKey !== lastExpandRequestRef.current && expandRequestKey > 0) {
       setIsSurveyPanelCollapsed(false);
     }
+    lastExpandRequestRef.current = expandRequestKey;
   }, [expandRequestKey]);
 
   useEffect(() => {
@@ -2602,12 +2616,12 @@ const SurveySpacesRail = ({
                                           });
                                           setSelectedCategories(newSelection);
                                         }}
-                                        // There is no move flow for categories yet (owner
-                                        // 2026-10-06: a button that cannot act is disabled and
-                                        // says why, instead of answering a tap with a notice).
+                                        // Move preserves category and marker identities; the
+                                        // destination picker rejects missing/conflicting modules.
                                         total={categoriesForModule.length}
                                         can={{
-                                          move: 'Moving categories is not available yet',
+                                          delete: canEditSurveyCategories || 'Use the latest template in an editable document to delete categories',
+                                          move: canEditSurveyCategories && ((selectedTemplate.modules || selectedTemplate.spaces || []).length > 1) || 'Choose an editable document with another module',
                                           // Copy copies the categories' Survey Markers, so a
                                           // selection with none has nothing to copy.
                                           copy: Object.values(surveyMarkers || {}).some((marker) => (
@@ -2615,7 +2629,7 @@ const SurveySpacesRail = ({
                                           )) || 'The selected categories have no items to copy',
                                         }}
                                         onMove={() => {
-                                          showToast(`Moving ${selectedCategoryCount} categor${selectedCategoryCount === 1 ? 'y' : 'ies'} to another module is not available yet.`, 'info');
+                                          setMovingCategoryIds(Object.keys(selectedCategories).filter((id) => selectedCategories[id]));
                                         }}
                                         // The survey's copy flow: the "Select space" picker,
                                         // which copies the selected categories' Survey Markers.
@@ -2635,7 +2649,7 @@ const SurveySpacesRail = ({
                                           setSelectedCategories({});
                                         }}
                                       />
-                                      <SectionIconButton action="add" label="Add category" onClick={openCreateCategoryModal} />
+                                      <SectionIconButton action="add" label="Add category" disabled={!canEditSurveyCategories} onClick={openCreateCategoryModal} />
                                     </>
                                   )}
                                 </SectionIconActions>
@@ -3001,7 +3015,7 @@ const SurveySpacesRail = ({
                               <span>Categories</span>
                               {!mobileMode && (
                                 <SectionIconActions className="survey-rail__cats-actions">
-                                  <SectionIconButton action="add" label="Add category" onClick={openCreateCategoryModal} />
+                                  <SectionIconButton action="add" label="Add category" disabled={!canEditSurveyCategories} onClick={openCreateCategoryModal} />
                                 </SectionIconActions>
                               )}
                             </CategoriesHeadingTag>
@@ -3095,6 +3109,7 @@ const SurveySpacesRail = ({
                                       <div
                                         data-drag-rearrange-row
                                         className="survey-marker-category-row"
+                                        onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setListContextMenu({ type: 'category', id: category.id, name: category.name, x: event.clientX, y: event.clientY }); }}
                                       >
                                         {/* Owner 2026-10-02 (phone = desktop): the grip shows on
                                             both platforms wherever a row can be reordered. The
@@ -3449,6 +3464,7 @@ const SurveySpacesRail = ({
                                                   return (
                                               <div
                                                 id={`highlight-item-${surveyMarker.id}`}
+                                                onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setListContextMenu({ type: 'marker', id: surveyMarker.id, name: surveyMarker.name, x: event.clientX, y: event.clientY }); }}
                                                 data-drag-rearrange-row
                                                 style={{
                                                 // Phone (2026-09-23, layout B): a Survey Marker is a
@@ -3571,9 +3587,6 @@ const SurveySpacesRail = ({
                                                             className={`survey-rail__entity-dot${selectedEntityColor ? '' : ' is-empty'}`}
                                                             style={selectedEntityColor ? { background: selectedEntityColor } : undefined}
                                                           />
-                                                          <span className="survey-rail__entity-caret" aria-hidden="true">
-                                                            <Icon name="chevronDown" size={10} color="currentColor" />
-                                                          </span>
                                                         </button>
                                                         {isEntityDropdownOpen && (
                                                           <div
@@ -4556,8 +4569,34 @@ const SurveySpacesRail = ({
                 plus button). Duplicate-name data comes straight from props the
                 rail already receives: the selected module's categories and the
                 app template list. */}
+            {listContextMenu && <ListItemContextMenu
+              point={listContextMenu}
+              onClose={() => setListContextMenu(null)}
+              items={listContextMenu.type === 'category' ? [
+                { label: 'Move', disabled: !canEditSurveyCategories || (selectedTemplate?.modules || selectedTemplate?.spaces || []).length < 2, onClick: () => setMovingCategoryIds([listContextMenu.id]) },
+                { label: 'Copy Survey Markers', disabled: !Object.values(surveyMarkers || {}).some((marker) => marker.moduleId === selectedModuleId && marker.categoryId === listContextMenu.id), onClick: () => { setSelectedCategories({ [listContextMenu.id]: true }); setShowSpaceSelection(true); } },
+                { label: 'Delete', danger: true, disabled: !canEditSurveyCategories || Object.entries(surveyMarkers || {}).some(([id, marker]) => marker.moduleId === selectedModuleId && marker.categoryId === listContextMenu.id && !canModifySurveyMarkerItem?.(id)), onClick: async () => {
+                  if (!await askConfirm({ title: `Delete ${listContextMenu.name || 'category'}?`, message: 'This deletes the category and its Survey Markers.', confirmLabel: 'Delete', danger: true })) return;
+                  Object.entries(surveyMarkers || {}).filter(([, marker]) => marker.moduleId === selectedModuleId && marker.categoryId === listContextMenu.id).forEach(([id]) => handleDeleteSurveyMarkerItem(id));
+                  deleteCategory(selectedModuleId, listContextMenu.id);
+                } },
+              ] : [
+                { label: 'Duplicate', disabled: !surveyMarkers[listContextMenu.id]?.pageNumber, onClick: () => duplicateSurveyMarker?.(listContextMenu.id) },
+                { label: 'Copy to module', onClick: () => { setCopiedItemSelection({ [listContextMenu.id]: true }); setShowSpaceSelection(true); } },
+                { label: 'Delete', danger: true, disabled: !canModifySurveyMarkerItem?.(listContextMenu.id), onClick: async () => {
+                  if (await askConfirm({ title: `Delete ${listContextMenu.name || 'Survey Marker'}?`, message: 'Delete this Survey Marker?', confirmLabel: 'Delete', danger: true })) handleDeleteSurveyMarkerItem(listContextMenu.id);
+                } },
+              ]}
+            />}
+            {movingCategoryIds && <SurveyCategoryMoveDialog
+        modules={selectedTemplate?.modules || selectedTemplate?.spaces || []}
+        sourceId={selectedModuleId}
+        count={movingCategoryIds.length}
+        onMove={(destinationId) => handleMoveSurveyCategories?.(movingCategoryIds, destinationId)}
+        onClose={() => setMovingCategoryIds(null)}
+      />}
             {!mobileMode && (
-              <CreateCategoryModal
+      <CreateCategoryModal
                 isOpen={isCreateCategoryModalOpen}
                 onClose={() => setIsCreateCategoryModalOpen(false)}
                 onConfirm={handleCreateCategoryConfirm}

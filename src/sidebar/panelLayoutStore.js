@@ -80,9 +80,9 @@ export function leftPanelWidth(viewportWidth, room = null) {
   return Math.max(LEFT_PANEL_MIN_WIDTH, Math.min(LEFT_PANEL_WIDTH, limit));
 }
 
-export function storageKeyForUser(userId) {
+export function storageKeyForUser(userId, documentId = null) {
   const id = typeof userId === 'string' && userId.trim() ? userId.trim() : 'local';
-  return `${STORAGE_PREFIX}:${id}`;
+  return `${STORAGE_PREFIX}:${id}${documentId ? `:document:${encodeURIComponent(String(documentId))}` : ''}`;
 }
 
 export const DEFAULT_PANEL_LAYOUT = Object.freeze({ open: false, panel: 'pages' });
@@ -99,9 +99,9 @@ export function normalizePanelLayout(value) {
   };
 }
 
-export function readPanelLayout(storage, userId) {
+export function readPanelLayout(storage, userId, documentId = null) {
   try {
-    const raw = storage?.getItem?.(storageKeyForUser(userId));
+    const raw = storage?.getItem?.(storageKeyForUser(userId, documentId));
     if (!raw) return DEFAULT_PANEL_LAYOUT;
     return normalizePanelLayout(JSON.parse(raw));
   } catch {
@@ -109,10 +109,10 @@ export function readPanelLayout(storage, userId) {
   }
 }
 
-export function writePanelLayout(storage, userId, layout) {
+export function writePanelLayout(storage, userId, layout, documentId = null) {
   try {
     if (!storage?.setItem) return false;
-    storage.setItem(storageKeyForUser(userId), JSON.stringify(normalizePanelLayout(layout)));
+    storage.setItem(storageKeyForUser(userId, documentId), JSON.stringify(normalizePanelLayout(layout)));
     return true;
   } catch {
     return false;

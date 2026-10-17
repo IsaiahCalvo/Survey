@@ -439,3 +439,10 @@ test('end to end: a cursor reaches the other screen over the live channel and le
   assert.equal(hasLiveCursorSink(documentId), false, 'closing the document removes the sink');
   __liveCursorsTest.reset();
 });
+
+
+test('live cursor points use the reflected page frame before remote overlay placement',()=>{
+  const pages=[{page:1,rect:{left:10,top:20,width:200,height:100,mirrorH:true,mirrorV:true},size:{width:400,height:200}}];
+  assert.deepEqual(clientPointToPagePoint(50,50,pages),{page:1,x:320,y:140});
+  assert.equal(clientPointToPagePoint(500,50,pages),null);
+});

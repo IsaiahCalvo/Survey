@@ -62,6 +62,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { HubShell, Icon, Search, EmptyState } from './HubShell';
+import { transferTemplateItems } from './templateItemTransfer';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from '../components/SectionIconButton.jsx';
 import SwipeToDeleteRow from '../components/SwipeToDeleteRow.jsx';
 import {
@@ -678,6 +679,8 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
       <button
         ref={triggerRef}
         type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
         disabled={disabled}
         onClick={() => { if (!disabled) setOpen((v) => !v); }}
         style={{
@@ -699,8 +702,10 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
       {open && pos && createPortal(
         <div
           ref={popRef}
+          role="listbox"
+          data-modal-focus-layer="true"
           style={{
-            position: 'fixed', zIndex: 4100,
+            position: 'fixed', zIndex: 5501,
             left: pos.left, top: pos.top, width: pos.width,
             background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8,
             padding: 4, boxShadow: '0 12px 30px rgba(0,0,0,0.55)',
@@ -717,6 +722,8 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
               <button
                 key={o.value}
                 type="button"
+                role="option"
+                aria-selected={isSel}
                 onClick={() => { onChange(o.value); setOpen(false); }}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
@@ -943,6 +950,7 @@ export default function TemplatesEditor({
   const [selCats, setSelCats] = useState(() => new Set());
   const pendingCategoryFocusRef = useRef(null);
   const toggleCatSel = (id) => setSelCats((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const [moveError, setMoveError] = useState('');
   const [moveModal, setMoveModal] = useState(null);  // { count, kind: 'category'|'module'|'entity', mode: 'move'|'copy' }
   const moveModalRef = useRef(null);
   const moveModalCloseRef = useRef(null);
@@ -985,7 +993,7 @@ export default function TemplatesEditor({
     setEntityEdit(false);
     setSelEntities(new Set());
   }, []);
-  const closeMoveModal = useCallback(() => setMoveModal(null), []);
+  const closeMoveModal = useCallback(() => { setMoveModal(null); setMoveError(''); }, []);
   useModalFocusTrap({
     active: mobileEntitiesOpen,
     containerRef: mobileEntitiesModalRef,
@@ -2281,6 +2289,7 @@ export default function TemplatesEditor({
                     {({ attributes, listeners, isDragging }) => (
                     <div
                       data-drag-rearrange-row
+                      onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setTplMenu({ id: t.id, rect: { left: event.clientX, right: event.clientX + 150, top: event.clientY, bottom: event.clientY } }); }}
                       onClick={() => { if (tplEdit) toggleTplSel(t.id); else { setSelected(t.id); setOpenCat(-1); setOpenMod(0); } }}
                       style={{
                         display: 'grid',
@@ -2522,6 +2531,7 @@ export default function TemplatesEditor({
                           [grip 24][chevron 22][name][...][count][⋮ 28] */}
                       <div
                         data-drag-rearrange-row
+                        onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setCatMenu({ id: c.id, rect: { left: event.clientX, right: event.clientX + 150, top: event.clientY, bottom: event.clientY } }); }}
                         className={`tpl-cat-row${open ? ' is-open' : ''}${catEdit ? ' is-selecting' : ''}${catEdit && isSel ? ' is-selected' : ''}`}
                         onClick={() => { if (catEdit) toggleCatSel(c.id); else setOpenCat(open ? -1 : i); }}
                       >
@@ -2798,6 +2808,7 @@ export default function TemplatesEditor({
                       <div
                         data-drag-rearrange-row
                         data-entity-row
+                        onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setEntityMenu({ id: r.id, rect: { left: event.clientX, right: event.clientX + 150, top: event.clientY, bottom: event.clientY } }); }}
                         className={`card-line tpl-entity-row${isOpen ? ' is-open' : ''}${entityEdit ? ' is-selecting' : ''}${entityEdit && isSel ? ' is-selected' : ''}`}
                         aria-expanded={entityEdit ? undefined : isOpen}
                         onClick={(e) => { if (entityEdit) toggleEntitySel(r.id); else foldColor(isOpen ? null : r.id, e.currentTarget); }}
@@ -2990,6 +3001,7 @@ export default function TemplatesEditor({
                               /* Selected takes the panel's cue: a --surface-3
                                  step and a 2px gold left edge, matching the
                                  desktop template list. */
+                              onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setTplMenu({ id: t.id, rect: { left: event.clientX, right: event.clientX + 150, top: event.clientY, bottom: event.clientY } }); }}
                               className={`templates-mobile-row reorderable${tplEdit && isSel ? ' is-selected' : ''}`}
                               onClick={() => {
                                 if (tplEdit) {
@@ -3217,6 +3229,7 @@ export default function TemplatesEditor({
                               >
                               <div
                                 data-drag-rearrange-row
+                                onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setCatMenu({ id: c.id, rect: { left: event.clientX, right: event.clientX + 150, top: event.clientY, bottom: event.clientY } }); }}
                                 className={`templates-mobile-category-row${open ? ' is-open' : ''}${catEdit ? ' is-selecting' : ''}${catEdit && isSel ? ' is-selected' : ''}`}
                                 aria-expanded={catEdit ? undefined : open}
                                 onClick={() => { if (catEdit) toggleCatSel(c.id); else setOpenCat(open ? -1 : ci); }}
@@ -3428,6 +3441,7 @@ export default function TemplatesEditor({
                               <div
                                 data-drag-rearrange-row
                                 data-entity-row
+                                onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setEntityMenu({ id: r.id, rect: { left: event.clientX, right: event.clientX + 150, top: event.clientY, bottom: event.clientY } }); }}
                                 className={`templates-mobile-entity-row${isOpen ? ' is-open' : ''}${entityEdit ? ' is-selecting' : ''}${entityEdit && isSel ? ' is-selected' : ''}`}
                                 aria-expanded={entityEdit ? undefined : isOpen}
                                 onClick={(e) => { if (entityEdit) toggleEntitySel(r.id); else foldColor(isOpen ? null : r.id, e.currentTarget); }}
@@ -3566,6 +3580,7 @@ export default function TemplatesEditor({
           onClose={() => setTplMenu(null)}
           items={[
             { label: 'Copy', onClick: () => duplicateTemplates(new Set([t.id])) },
+            { label: 'Duplicate', onClick: () => duplicateTemplates(new Set([t.id])) },
             { label: 'Rename', onClick: () => {
               setTplEdit(false);
               if (t.id === tpl?.id && (!mobileLayoutActive() || mobileTemplateOpen)) { focusVisibleField('input[data-template-title]'); return; }
@@ -3592,8 +3607,8 @@ export default function TemplatesEditor({
           onClose={() => setEntityMenu(null)}
           items={[
             { label: 'Duplicate', onClick: () => duplicateEntities(new Set([ent.id])) },
-            { label: 'Move', onClick: () => setMoveModal({ count: 1, kind: 'entity', mode: 'move' }) },
-            { label: 'Copy', onClick: () => setMoveModal({ count: 1, kind: 'entity', mode: 'copy' }) },
+            { label: 'Move', onClick: () => { setSelEntities(new Set([ent.id])); setMoveModal({ count: 1, kind: 'entity', mode: 'move' }); } },
+            { label: 'Copy', onClick: () => { setSelEntities(new Set([ent.id])); setMoveModal({ count: 1, kind: 'entity', mode: 'copy' }); } },
             { label: 'Share', onClick: () => { if (tpl) onShare && onShare(tpl); } },
             { label: 'Rename', onClick: () => { focusVisibleField(`input[data-entity-name-id="${ent.id}"]`); } },
             { label: 'Delete', danger: true, onClick: () => deleteEntities(new Set([ent.id])) },
@@ -3618,8 +3633,9 @@ export default function TemplatesEditor({
               focusVisibleField(`input[data-category-name-id="${cat.id}"]`);
             } },
             { label: 'Duplicate', onClick: () => duplicateCategories(new Set([cat.id])) },
-            { label: 'Move', onClick: () => setMoveModal({ count: 1, kind: 'category', mode: 'move' }) },
-            { label: 'Copy', onClick: () => setMoveModal({ count: 1, kind: 'category', mode: 'copy' }) },
+            { label: 'Move', onClick: () => { setSelCats(new Set([cat.id])); setMoveModal({ count: 1, kind: 'category', mode: 'move' }); } },
+            { label: 'Copy', onClick: () => { setSelCats(new Set([cat.id])); setMoveModal({ count: 1, kind: 'category', mode: 'copy' }); } },
+            { label: 'Share', onClick: () => onShare?.(tpl) },
             { label: 'Delete', danger: true, onClick: () => deleteCategories(new Set([cat.id])) },
           ]}
         />
@@ -3636,6 +3652,10 @@ export default function TemplatesEditor({
             // flushSync: the rename field mounts and takes focus inside this
             // tap, so a phone raises its keyboard.
             { label: 'Rename', onClick: () => flushSync(() => setModRename(mod.id)) },
+            { label: 'Duplicate', onClick: () => duplicateModules(new Set([mod.id])) },
+            { label: 'Move', onClick: () => { setSelMods(new Set([mod.id])); setMoveModal({ count: 1, kind: 'module', mode: 'move' }); } },
+            { label: 'Copy', onClick: () => { setSelMods(new Set([mod.id])); setMoveModal({ count: 1, kind: 'module', mode: 'copy' }); } },
+            { label: 'Share', onClick: () => onShare?.(tpl) },
             { label: 'Delete', danger: true, onClick: () => deleteModules(new Set([mod.id])) },
           ]}
         />
@@ -3871,9 +3891,18 @@ export default function TemplatesEditor({
               );
             })()}
           </div>
+          {moveError && <p role="alert" style={{ color: 'var(--danger)', padding: '0 16px', fontSize: 13 }}>{moveError}</p>}
           <div style={{ padding: '12px 14px', borderTop: '1px solid var(--border)', background: 'var(--surface-1)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button onClick={closeMoveModal} className="hub-btn">Cancel</button>
-            <button onClick={closeMoveModal} className="hub-btn hub-btn--primary">{moveModal.mode === 'copy' ? 'Copy' : 'Move'}</button>
+            <button onClick={() => {
+              const ids = moveModal.kind === 'category' ? selCats : moveModal.kind === 'module' ? selMods : selEntities;
+              const result = transferTemplateItems(rich, { kind: moveModal.kind, mode: moveModal.mode, sourceTemplateId: tpl.id, sourceModuleId: orderedMods[openMod]?.id, destinationTemplateId: moveDestTpl, destinationModuleId: moveDestMod, ids: [...ids] }, newId, liveEntityStyle);
+              if (!result.ok) { setMoveError(result.reason); return; }
+              setRich(result.templates); markEdited();
+              seedClonedEntityStyles(result.entities.map((entity) => ({ id: entity.id, style: entity })));
+              setSelCats(new Set()); setSelMods(new Set()); setSelEntities(new Set());
+              setOpenCat(-1); closeMoveModal();
+            }} className="hub-btn hub-btn--primary">{moveModal.mode === 'copy' ? 'Copy' : 'Move'}</button>
           </div>
         </div>
       </div>

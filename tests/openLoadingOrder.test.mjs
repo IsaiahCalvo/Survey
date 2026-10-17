@@ -168,6 +168,8 @@ test('one quiet loading state: a short wait, one line of text, nothing spinning'
 
 test('the project data read starts with the PDF download, not after it', () => {
   assert.match(VIEWER, /const surveyDataBlobPromise = pdfFile\.projectId/);
-  assert.match(VIEWER, /await loadSurveyDataFromSupabase\(pdfFile, surveyDataBlobPromise\);/);
+  assert.match(VIEWER, /const sidecarRestore = loadSurveyDataFromSupabase\(pdfFile, surveyDataBlobPromise/);
+  assert.match(VIEWER, /if \(!pdfFile\.id\) await sidecarRestore;/, 'local legacy imports finish restoration before paint');
+  assert.match(VIEWER, /restoreViewState: !pdfFile\.id/, 'a stale cloud sidecar cannot override the current document view');
   assert.match(VIEWER, /prefetchedDataBlob !== undefined\s*\n\s*\? await prefetchedDataBlob/);
 });
