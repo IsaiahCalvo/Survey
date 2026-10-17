@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { acceptTemplateVersion, bindUsedTemplate, needsTemplateVersionChoice, templateFingerprint, templateBindingKey, isRetainedSurveyTemplate, isSurveyTemplateRestorationReady, hasSurveyTemplateMarks, observeUnusedSurveyTemplateUpdate } from '../src/utils/surveyTemplateBinding.js';
+import { acceptTemplateVersion, bindUsedTemplate, needsTemplateVersionChoice, templateFingerprint, templateBindingKey, isRetainedSurveyTemplate, isSurveyTemplateRestorationReady, hasSurveyTemplateMarks, startSurveyTemplateObservation, observeUnusedSurveyTemplateUpdate } from '../src/utils/surveyTemplateBinding.js';
 const original = { id:'t', name:'Test', modules:[{id:'m', categories:[{id:'c',name:'Wall',checklist:[]}]}], entities:[] };
 const revised = { ...original, name: 'Revised' };
 test('never used templates do not prompt, meaningful used versions do',()=>{
@@ -70,4 +70,28 @@ test('restoration requires PDF data/import and the current cloud document snapsh
   assert.equal(hasSurveyTemplateMarks(original, marks), true);
   assert.equal(hasSurveyTemplateMarks(original, {}, { 1: { objects: [{ moduleId: 'm' }] } }), true);
   assert.equal(hasSurveyTemplateMarks(original, { unrelated: { moduleId: 'other' } }), false);
+});
+
+test('a temporary missing shared list preserves the exact observed selection base', () => {
+  const selected = startSurveyTemplateObservation(original);
+  const missing = observeUnusedSurveyTemplateUpdate(selected, { active: original, latest: null, restorationReady: true });
+  assert.strictEqual(missing.observation, selected);
+  assert.equal(missing.update, null);
+  assert.strictEqual(observe(missing.observation, original, revised).update, revised);
+  const pending = observe(selected, original, revised, { restorationReady: false });
+  const pendingMissing = observeUnusedSurveyTemplateUpdate(pending.observation, { active: original, latest: null });
+  assert.strictEqual(observe(pendingMissing.observation, original, revised).update, revised);
+  assert.equal(observe(missing.observation, original, revised, { binding: bindUsedTemplate(original) }).update, null);
+  assert.equal(observe(missing.observation, original, revised, { hasMarks: true }).update, null);
+});
+test('explicit entry anchors a cold update but never overrides an unknown selection or local draft', () => {
+  const selected = startSurveyTemplateObservation(original);
+  assert.strictEqual(observe(selected, original, revised).update, revised);
+  assert.equal(observe(null, original, revised).update, null);
+  assert.equal(observe(selected, { ...original, name: 'Local draft' }, revised).update, null);
+  assert.equal(observe(selected, original, revised, { restorationReady: false }).update, null);
+  assert.equal(startSurveyTemplateObservation(null), null);
+  const other = { ...original, id: 'other' };
+  const missingOther = observeUnusedSurveyTemplateUpdate(selected, { active: other, latest: null });
+  assert.equal(missingOther.observation, null);
 });

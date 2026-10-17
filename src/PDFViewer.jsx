@@ -112,7 +112,7 @@ import OcrTextLayer from './components/OcrTextLayer';
 import SpaceRegionOverlay from './SpaceRegionOverlay';
 import PdfjsViewerContainer from './components/PdfjsViewerContainer';
 import SurveyTemplateVersionDialog from './components/SurveyTemplateVersionDialog';
-import { acceptTemplateVersion, bindUsedTemplate, needsTemplateVersionChoice, isRetainedSurveyTemplate, isSurveyTemplateRestorationReady, hasSurveyTemplateMarks, observeUnusedSurveyTemplateUpdate, readTemplateBinding, templateBindingKey, templateFingerprint, writeTemplateBinding } from './utils/surveyTemplateBinding';
+import { acceptTemplateVersion, bindUsedTemplate, needsTemplateVersionChoice, isRetainedSurveyTemplate, isSurveyTemplateRestorationReady, hasSurveyTemplateMarks, startSurveyTemplateObservation, observeUnusedSurveyTemplateUpdate, readTemplateBinding, templateBindingKey, templateFingerprint, writeTemplateBinding } from './utils/surveyTemplateBinding';
 import { planSurveyCategoryTransferRestore, surveyCategoryTransferCheckpoint, surveyCategoryTransferStepId } from './utils/surveyCategoryTransferHistory';
 import { moveSurveyCategories } from './utils/surveyCategoryMove';
 import SurveyMarkerPlacementDialog from './components/SurveyMarkerPlacementDialog';
@@ -6089,6 +6089,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const enterSurveyTemplateVersion = useCallback((template) => {
     if (!template) return;
+    surveyTemplateObservationRef.current = startSurveyTemplateObservation(template);
     const firstModuleId = (template.modules || template.spaces || [])?.[0]?.id || null;
     setSelectedTemplate(template);
     setSelectedModuleId(firstModuleId);

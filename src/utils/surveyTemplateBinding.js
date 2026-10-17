@@ -36,8 +36,14 @@ export function hasSurveyTemplateMarks(template, markers = {}, annotationsByPage
   return Object.values(markers || {}).some((marker) => modules.has(marker?.moduleId))
     || Object.values(annotationsByPage || {}).some((page) => (page?.objects || []).some((mark) => modules.has(mark?.moduleId)));
 }
+export function startSurveyTemplateObservation(template) {
+  return template?.id ? { templateId: template.id, latestFingerprint: templateFingerprint(template), pendingBase: null } : null;
+}
 export function observeUnusedSurveyTemplateUpdate(observation, { binding, active, latest, restorationReady, hasMarks = false }) {
-  if (!active || !latest || active.id !== latest.id) return { observation: null, update: null };
+  if (!active) return { observation: null, update: null };
+  if (!latest || active.id !== latest.id) {
+    return { observation: observation?.templateId === active.id ? observation : null, update: null };
+  }
   const activeFingerprint = templateFingerprint(active);
   const latestFingerprint = templateFingerprint(latest);
   if (!observation || observation.templateId !== active.id) {
