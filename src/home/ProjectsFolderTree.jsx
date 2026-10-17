@@ -901,6 +901,7 @@ export default function ProjectsFolderTree({
       <div
         key={`${keyPrefix}-${f.id}`}
         data-document-id={f.id}
+        onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setFileMenu({ id: f.id, rect: { left: event.clientX, right: event.clientX + 168, top: event.clientY, bottom: event.clientY } }); setTeamMenu(null); }}
         className={`projects-mobile-file-row ${dragHandle ? 'reorderable' : ''}${fileSelect && isChecked ? ' is-selected' : ''}`}
         onClick={() => { if (fileSelect) { toggleFileSel(f.id); return; } onOpenDocument && onOpenDocument(f); }}
       >
@@ -1017,6 +1018,7 @@ export default function ProjectsFolderTree({
                   <div
                     data-drag-rearrange-row
                     data-project-id={p.id}
+                    onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setTeamMenu({ id: p.id, rect: { left: event.clientX, right: event.clientX + 184, top: event.clientY, bottom: event.clientY } }); setFileMenu(null); }}
                     onClick={() => { if (jobsEdit) toggleProjSel(p.id); else setOpenId(p.id); }}
                     style={{
                       display: 'grid',
@@ -1200,6 +1202,7 @@ export default function ProjectsFolderTree({
                           <div
                             data-drag-rearrange-row
                             data-document-id={f.id}
+        onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setFileMenu({ id: f.id, rect: { left: event.clientX, right: event.clientX + 168, top: event.clientY, bottom: event.clientY } }); setTeamMenu(null); }}
                             onClick={() => { if (fileSelect) { toggleFileSel(f.id); return; } onOpenDocument && onOpenDocument(f); }}
                             style={{
                               // UX 2026-09-17 (owner ruling): a ticked row lifts a
@@ -1413,6 +1416,7 @@ export default function ProjectsFolderTree({
                           <div
                             data-drag-rearrange-row
                             data-project-id={p.id}
+                    onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setTeamMenu({ id: p.id, rect: { left: event.clientX, right: event.clientX + 184, top: event.clientY, bottom: event.clientY } }); setFileMenu(null); }}
                             role="button"
                             tabIndex={0}
                             /* Selected takes the panel's cue — a --surface-3
@@ -1998,6 +2002,9 @@ export default function ProjectsFolderTree({
             items={[
               // "Add member" opens the invite/share popup — same flow as
               // "Get link to project". Only "Manage project" opens the modal.
+              { label: 'Duplicate', onClick: () => duplicateProjects([proj.id]) },
+              { label: 'Share', onClick: () => onShare?.(proj) },
+              { label: 'Delete', danger: true, onClick: () => { void deleteProjects([proj.id]); } },
               { icon: 'users', label: 'Add member', onClick: () => onShare && onShare(proj) },
               { icon: 'arrow-r', label: 'Get link to project', onClick: () => onShare && onShare(proj) },
               { icon: 'upload', label: 'Upload files', onClick: () => { setOpenId(proj.id); addFiles(proj); } },
@@ -2029,6 +2036,9 @@ export default function ProjectsFolderTree({
             onClose={() => setFileMenu(null)}
             minWidth={168}
             items={[
+              { label: 'Duplicate', onClick: () => duplicateFiles([f.id]) },
+              { label: 'Move to project', onClick: () => openMoveCopy([f], 'move') },
+              { label: 'Copy to project', onClick: () => openMoveCopy([f], 'copy') },
               { label: 'Copy', onClick: () => copyFile(f) },
               { label: 'Paste', disabled: !clipboard, onClick: () => pasteFile() },
               { label: 'Delete', danger: true, onClick: () => deleteFiles([fileMenu.id]) },
