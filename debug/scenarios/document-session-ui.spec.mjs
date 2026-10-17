@@ -9,8 +9,7 @@ await page.route('**/*', r => new URL(r.request().url()).hostname === '127.0.0.1
 await page.goto('/?testPdf=clickable-link-test.pdf');
 await page.waitForSelector('[data-app-tab]');
 await page.evaluate(async () => {
-  const React = (await import('/node_modules/.vite/deps/react.js')).default;
-  const { createRoot } = (await import('/node_modules/.vite/deps/react-dom_client.js')).default;
+  const { React, createRoot } = await import('/debug/scenarios/document-session-ui-harness.js');
   const host = document.createElement('div'); host.id = 'session-check';
   Object.assign(host.style, { position: 'fixed', inset: '0', zIndex: '20000', background: 'var(--surface-0)' });
   document.body.append(host);
