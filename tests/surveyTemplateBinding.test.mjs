@@ -25,3 +25,20 @@ test('using latest replaces the binding without mutating either version; documen
   assert.notEqual(templateBindingKey('a','u','t'),templateBindingKey('b','u','t'));
   assert.notEqual(templateBindingKey('a','u','t'),templateBindingKey('a','v','t'));
 });
+
+test('an unused active Survey adopts live shared edits without becoming retained', async () => {
+  const { isRetainedSurveyTemplate, unusedSurveyTemplateUpdate } = await import('../src/utils/surveyTemplateBinding.js');
+  assert.equal(isRetainedSurveyTemplate(null, original, revised), false);
+  assert.strictEqual(unusedSurveyTemplateUpdate(null, original, revised), revised);
+  assert.equal(unusedSurveyTemplateUpdate(null, original, { ...original, updatedAt: 'later' }), null);
+  assert.equal(unusedSurveyTemplateUpdate(null, original, { ...revised, id: 'another' }), null);
+  assert.equal(unusedSurveyTemplateUpdate(null, original, revised, true), null);
+  const used = bindUsedTemplate(original);
+  assert.equal(isRetainedSurveyTemplate(used, original, revised), true);
+  assert.equal(unusedSurveyTemplateUpdate(used, original, revised), null);
+  const retained = acceptTemplateVersion(used, revised, false);
+  assert.equal(unusedSurveyTemplateUpdate(retained, original, revised), null);
+  assert.deepEqual(retained.snapshot, original);
+  const latest = acceptTemplateVersion(used, revised, true);
+  assert.equal(isRetainedSurveyTemplate(latest, revised, revised), false);
+});

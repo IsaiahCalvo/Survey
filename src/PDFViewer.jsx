@@ -112,7 +112,7 @@ import OcrTextLayer from './components/OcrTextLayer';
 import SpaceRegionOverlay from './SpaceRegionOverlay';
 import PdfjsViewerContainer from './components/PdfjsViewerContainer';
 import SurveyTemplateVersionDialog from './components/SurveyTemplateVersionDialog';
-import { acceptTemplateVersion, bindUsedTemplate, needsTemplateVersionChoice, readTemplateBinding, templateBindingKey, templateFingerprint, writeTemplateBinding } from './utils/surveyTemplateBinding';
+import { acceptTemplateVersion, bindUsedTemplate, needsTemplateVersionChoice, isRetainedSurveyTemplate, unusedSurveyTemplateUpdate, readTemplateBinding, templateBindingKey, templateFingerprint, writeTemplateBinding } from './utils/surveyTemplateBinding';
 import { planSurveyCategoryTransferRestore, surveyCategoryTransferCheckpoint, surveyCategoryTransferStepId } from './utils/surveyCategoryTransferHistory';
 import { moveSurveyCategories } from './utils/surveyCategoryMove';
 import SurveyMarkerPlacementDialog from './components/SurveyMarkerPlacementDialog';
@@ -6082,8 +6082,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const appTemplates = templates;
   const surveyTemplateIsRetained = useMemo(() => {
     const latest = appTemplates.find((template) => template.id === selectedTemplate?.id);
-    return Boolean(latest && selectedTemplate && templateFingerprint(latest) !== templateFingerprint(selectedTemplate));
-  }, [appTemplates, selectedTemplate]);
+    return isRetainedSurveyTemplate(readSurveyTemplateBinding(selectedTemplate?.id), selectedTemplate, latest);
+  }, [appTemplates, selectedTemplate, readSurveyTemplateBinding]);
   const handleTemplatesChange = useCallback((nextTemplates) => {
     const latest = templates.find((template) => template.id === selectedTemplate?.id);
     const retained = latest && templateFingerprint(latest) !== templateFingerprint(selectedTemplate);
@@ -6115,6 +6115,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!latest || templateFingerprint(latest) === templateFingerprint(selectedTemplate)) return true;
     const binding = readSurveyTemplateBinding(latest.id);
     if (binding?.used) setPendingTemplateVersion({ binding, latest });
+    // An unused selection adopts latest before paint. Do not let an old
+    // callback write its stale definitions while that update is pending.
     return false;
   }, [appTemplates, selectedTemplate, readSurveyTemplateBinding]);
 
@@ -21431,6 +21433,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return subscribeDocumentMeta(PAGE_PRESENTATION_META_KEY, apply);
   }, [normalAnnotationHydration, pdfFile?.id, canRestoreFromHistory, excelSyncMetaGet, excelSyncMetaSet, subscribeDocumentMeta]);
 
+  useLayoutEffect(() => {
+    if (!selectedTemplate || !showSurveyPanel) return;
+    // Wait for saved marks before treating a cloud document as unused. Local
+    // fixture/files have no document hydration and can update straight away.
+    if (pdfFile?.id && !normalAnnotationHydration?.ready) return;
+    const moduleIds = new Set((selectedTemplate.modules || selectedTemplate.spaces || []).map((module) => module.id));
+    const hasMarks = Object.values(surveyMarkers || {}).some((marker) => moduleIds.has(marker?.moduleId))
+      || Object.values(annotationsByPage || {}).some((page) => (page?.objects || []).some((mark) => moduleIds.has(mark?.moduleId)));
+    const latest = appTemplates.find((template) => template.id === selectedTemplate.id);
+    const update = unusedSurveyTemplateUpdate(readSurveyTemplateBinding(selectedTemplate.id), selectedTemplate, latest, hasMarks);
+    if (!update) return;
+    const modules = update.modules || update.spaces || [];
+    const module = modules.find((entry) => entry.id === selectedModuleId) || modules[0];
+    setSelectedTemplate(update);
+    setSelectedModuleId(module?.id || null);
+    setSelectedCategoryId((id) => (module?.categories || []).some((category) => category.id === id) ? id : null);
+  }, [selectedTemplate, showSurveyPanel, appTemplates, selectedModuleId, surveyMarkers, annotationsByPage, normalAnnotationHydration?.ready, pdfFile?.id, readSurveyTemplateBinding]);
   const deletedPdfAnnotations = useMemo(() => filterRestoredPdfAnnotationTombstones([
     ...new Map(
       [...durableDeletedPdfAnnotations, ...locallyDeletedPdfAnnotations]

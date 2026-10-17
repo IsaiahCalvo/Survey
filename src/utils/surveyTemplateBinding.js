@@ -23,3 +23,12 @@ export function acceptTemplateVersion(binding, latest, useLatest) {
     ? { used: true, snapshot: JSON.parse(JSON.stringify(latest)), fingerprint: templateFingerprint(latest), reviewedFingerprint: null }
     : { ...binding, reviewedFingerprint: templateFingerprint(latest) };
 }
+
+export function isRetainedSurveyTemplate(binding, active, latest) {
+  return Boolean(binding?.used && active && latest && active.id === latest.id
+    && templateFingerprint(active) !== templateFingerprint(latest));
+}
+export function unusedSurveyTemplateUpdate(binding, active, latest, hasMarks = false) {
+  if (binding?.used || hasMarks || !active || !latest || active.id !== latest.id) return null;
+  return templateFingerprint(active) === templateFingerprint(latest) ? null : latest;
+}
