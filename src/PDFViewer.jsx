@@ -6061,12 +6061,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // past where handleUndo / handleRedo are declared — those are const arrow
   // useCallbacks defined much later in the function body, so referencing them
   // up here threw a temporal-dead-zone error when PDFViewer first rendered.
-  const { updateTemplate: updateSupabaseTemplate, createTemplate: createSupabaseTemplate } = useTemplates();
+  const { updateTemplate: updateSupabaseTemplateRow, createTemplate: createSupabaseTemplate } = useTemplates();
+  const updateSupabaseTemplate = useCallback((id, changes) => {
+    const latest = templates.find((template) => template.id === id || template.supabaseId === id);
+    const editingSelected = selectedTemplate && (selectedTemplate.id === id || selectedTemplate.supabaseId === id);
+    if (editingSelected && latest && templateFingerprint(latest) !== templateFingerprint(selectedTemplate)) return Promise.reject(new Error('Use the latest template before updating its shared definition.'));
+    return updateSupabaseTemplateRow(id, changes);
+  }, [templates, selectedTemplate, updateSupabaseTemplateRow]);
   const hasSwitchedToSurveyMarkerRef = useRef(false);
   const [toolbarHeights, setToolbarHeights] = useState({ top: 56, bottom: 56 });
   const [middleAreaBounds, setMiddleAreaBounds] = useState({ top: 56, height: 500 });
   const appTemplates = templates;
-  const handleTemplatesChange = onTemplatesChange;
+  const surveyTemplateIsRetained = useMemo(() => {
+    const latest = appTemplates.find((template) => template.id === selectedTemplate?.id);
+    return Boolean(latest && selectedTemplate && templateFingerprint(latest) !== templateFingerprint(selectedTemplate));
+  }, [appTemplates, selectedTemplate]);
+  const handleTemplatesChange = useCallback((nextTemplates) => {
+    const latest = templates.find((template) => template.id === selectedTemplate?.id);
+    const retained = latest && templateFingerprint(latest) !== templateFingerprint(selectedTemplate);
+    onTemplatesChange?.(retained ? nextTemplates.map((template) => template.id === latest.id ? latest : template) : nextTemplates);
+  }, [templates, selectedTemplate, onTemplatesChange]);
 
   const enterSurveyTemplateVersion = useCallback((template) => {
     if (!template) return;
@@ -6078,15 +6092,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setActiveTool('survey-marker');
     setShowSurveyPanel(true);
   }, []);
-  const handleSelectSurveyTemplate = useCallback((template) => {
+  const handleSelectSurveyTemplate = useCallback((template, options = {}) => {
     if (!template) return;
     const binding = readSurveyTemplateBinding(template.id);
-    if (needsTemplateVersionChoice(binding, template)) {
+    if (needsTemplateVersionChoice(binding, template) || (options.forceVersionChoice && binding?.used && templateFingerprint(template) !== binding.fingerprint)) {
       setPendingTemplateVersion({ binding, latest: template });
       return;
     }
     enterSurveyTemplateVersion(binding?.used ? binding.snapshot : template);
   }, [readSurveyTemplateBinding, enterSurveyTemplateVersion]);
+
+  const requireCurrentSurveyTemplate = useCallback(() => {
+    const latest = appTemplates.find((template) => template.id === selectedTemplate?.id);
+    if (!latest || templateFingerprint(latest) === templateFingerprint(selectedTemplate)) return true;
+    const binding = readSurveyTemplateBinding(latest.id);
+    if (binding?.used) setPendingTemplateVersion({ binding, latest });
+    return false;
+  }, [appTemplates, selectedTemplate, readSurveyTemplateBinding]);
 
   // UX 2026-05-29: Survey entry now belongs to the always-visible right rail.
   // The handler stays in PDFViewer because it owns the survey/template state.
@@ -6120,15 +6142,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [showSurveyPanel, selectedTemplate?.id, surveyMemoryDocKey]);
 
   // The survey bar's template menu (desktop and phone): switch template in
-  // place; the current one is a no-op.
+  // place; picking a retained version can reopen its update choice.
   // The published tool-bar / rail APIs keep a callback's first identity while
   // only functions change, so the bar's handlers read Survey's live state here.
   // (Filled in below, once selectedCategoryId is declared.)
   const surveyBarLiveRef = useRef(null);
   const handleSwitchSurveyTemplateById = useCallback((templateId) => {
     const live = surveyBarLiveRef.current;
-    if (!templateId || templateId === live.selectedTemplate?.id) return;
+    if (!templateId) return;
     const template = (live.appTemplates || []).find((entry) => entry?.id === templateId);
+    if (templateId === live.selectedTemplate?.id) {
+      if (template && templateFingerprint(template) !== templateFingerprint(live.selectedTemplate)) handleSelectSurveyTemplate(template, { forceVersionChoice: true });
+      return;
+    }
     if (template) handleSelectSurveyTemplate(template);
   }, [handleSelectSurveyTemplate]);
 
@@ -18891,6 +18917,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Helper: Modify the current template and persist to Supabase
   const handleModifyCurrentTemplate = useCallback(async (newColumnsByCategory) => {
+    if (!requireCurrentSurveyTemplate()) return;
     // Deep clone the current template's modules
     const updatedModules = deepClone(selectedTemplate.modules || selectedTemplate.spaces || []);
 
@@ -18980,7 +19007,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
 
     return updatedTemplate;
-  }, [selectedTemplate, updateSupabaseTemplate, sanitizeTemplateConfig, handleTemplatesChange, appTemplates]);
+  }, [requireCurrentSurveyTemplate, selectedTemplate, updateSupabaseTemplate, sanitizeTemplateConfig, handleTemplatesChange, appTemplates]);
 
   // Survey-rail "Create category" plumbing (CreateCategoryModal, opened by the
   // desktop plus button in the Categories heading row).
@@ -18989,6 +19016,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   //     Category shape matches the canonical template config produced by the
   //     templates editor / Excel import: { id, name, checklist: [] }.
   const handleAddCategoryToCurrentTemplate = useCallback(async (moduleId, categoryName) => {
+    if (!requireCurrentSurveyTemplate()) return;
     if (!selectedTemplate || !moduleId || !categoryName) return null;
 
     const newCategory = {
@@ -19037,7 +19065,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
 
     return updatedTemplate;
-  }, [selectedTemplate, updateSupabaseTemplate, sanitizeTemplateConfig, handleTemplatesChange, appTemplates]);
+  }, [requireCurrentSurveyTemplate, selectedTemplate, updateSupabaseTemplate, sanitizeTemplateConfig, handleTemplatesChange, appTemplates]);
 
   // (b) Clone the current template with the category appended, persist it as a
   //     NEW template, and switch this document to it — mirrors
@@ -31184,6 +31212,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [surveyMarkers, handleSurveyMarkerDeleted]);
 
   const handleReorderSurveyCategories = useCallback((moduleId, activeId, overId) => {
+    if (!requireCurrentSurveyTemplate()) return;
     if (!selectedTemplate || !moduleId || !activeId || !overId || activeId === overId) return;
 
     const sourceModules = selectedTemplate.modules || selectedTemplate.spaces || [];
@@ -31232,9 +31261,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         console.warn('Failed to persist survey category order:', err);
       });
     }
-  }, [selectedTemplate, handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig]);
+  }, [requireCurrentSurveyTemplate, selectedTemplate, handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig]);
 
   const handleMoveSurveyCategories = useCallback((categoryIds, destinationId) => {
+    if (!requireCurrentSurveyTemplate()) return { ok: false, reason: 'Use the latest template before changing its categories.' };
     if (documentLocked || yjsDocRole === 'viewer') return { ok: false, reason: 'This document is read-only.' };
     const selected = new Set(categoryIds || []);
     const affected = Object.values(surveyMarkers || {}).filter((marker) => marker.moduleId === selectedModuleId && selected.has(marker.categoryId));
@@ -31265,9 +31295,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setCategorySelectModeActive(false);
     setSelectedCategories({});
     return { ok: true };
-  }, [selectedTemplate, surveyMarkers, selectedModuleId, handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig, documentLocked, yjsDocRole, user?.id, documentOwnerId]);
+  }, [requireCurrentSurveyTemplate, selectedTemplate, surveyMarkers, selectedModuleId, handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig, documentLocked, yjsDocRole, user?.id, documentOwnerId]);
 
   const handleDeleteSurveyCategoryDefinition = useCallback((moduleId, categoryId) => {
+    if (!requireCurrentSurveyTemplate()) return;
     if (!selectedTemplate || !moduleId || !categoryId) return;
     const sourceModules = selectedTemplate.modules || selectedTemplate.spaces || [];
     let changed = false;
@@ -31307,7 +31338,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         showToast('Category deleted locally but could not be saved to the cloud.', 'error');
       });
     }
-  }, [selectedTemplate, handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig, showToast]);
+  }, [requireCurrentSurveyTemplate, selectedTemplate, handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig, showToast]);
 
   // The eraser previews only markers this viewer can actually delete. Saved
   // markers use the canonical source-owned permission adapter; a marker absent
@@ -35199,7 +35230,7 @@ ${pageBlocks}
       deleteAnnotations,
       deleteCategory: handleDeleteSurveyCategoryDefinition,
       handleMoveSurveyCategories,
-      canEditSurveyCategories: !documentLocked && yjsDocRole !== 'viewer',
+      canEditSurveyCategories: !documentLocked && yjsDocRole !== 'viewer' && !surveyTemplateIsRetained,
       canModifySurveyMarkerItem: (id) => !documentLocked && yjsDocRole !== 'viewer' && canModifySurveyMarker({ surveyMarker: surveyMarkers[id], viewerId: user?.id, documentOwnerId }),
       duplicateSurveyMarker: (id) => { const marker = surveyMarkers[id]; if (marker?.pageNumber) duplicateFamilySelection(marker.pageNumber, { markerIds: [id] }); },
       documentSyncEnabled,
@@ -35356,6 +35387,7 @@ ${pageBlocks}
     deleteAnnotations,
     handleDeleteSurveyCategoryDefinition,
     handleMoveSurveyCategories,
+    surveyTemplateIsRetained,
     documentLocked,
     yjsDocRole,
     documentOwnerId,

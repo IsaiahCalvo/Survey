@@ -2620,6 +2620,7 @@ const SurveySpacesRail = ({
                                         // destination picker rejects missing/conflicting modules.
                                         total={categoriesForModule.length}
                                         can={{
+                                          delete: canEditSurveyCategories || 'Use the latest template in an editable document to delete categories',
                                           move: canEditSurveyCategories && ((selectedTemplate.modules || selectedTemplate.spaces || []).length > 1) || 'Choose an editable document with another module',
                                           // Copy copies the categories' Survey Markers, so a
                                           // selection with none has nothing to copy.
@@ -2648,7 +2649,7 @@ const SurveySpacesRail = ({
                                           setSelectedCategories({});
                                         }}
                                       />
-                                      <SectionIconButton action="add" label="Add category" onClick={openCreateCategoryModal} />
+                                      <SectionIconButton action="add" label="Add category" disabled={!canEditSurveyCategories} onClick={openCreateCategoryModal} />
                                     </>
                                   )}
                                 </SectionIconActions>
@@ -3014,7 +3015,7 @@ const SurveySpacesRail = ({
                               <span>Categories</span>
                               {!mobileMode && (
                                 <SectionIconActions className="survey-rail__cats-actions">
-                                  <SectionIconButton action="add" label="Add category" onClick={openCreateCategoryModal} />
+                                  <SectionIconButton action="add" label="Add category" disabled={!canEditSurveyCategories} onClick={openCreateCategoryModal} />
                                 </SectionIconActions>
                               )}
                             </CategoriesHeadingTag>

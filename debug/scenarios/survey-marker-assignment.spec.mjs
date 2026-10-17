@@ -66,6 +66,19 @@ test('Survey placement chooses module, category and entity and Reuse keeps them'
   await expect(version).toBeVisible();
   await version.getByRole('button', { name: 'Keep previous version' }).click();
   await expect(page.locator('.survey-subrow').getByRole('button', { name: /^Survey template: Work Survey/ })).toBeVisible();
+  const panelToggle = page.getByRole('toolbar', { name: 'Survey panel', exact: true }).getByRole('button', { name: 'Survey', exact: true });
+  if (await panelToggle.getAttribute('aria-expanded') === 'false') await panelToggle.click();
+  await page.locator('.survey-rail .survey-marker-category-row').filter({ hasText: 'Walls' }).click({ button: 'right' });
+  await expect(page.getByRole('menuitem', { name: 'Move', exact: true })).toBeDisabled();
+  await expect(page.getByRole('menuitem', { name: 'Delete', exact: true })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  // Keeping an old version is reversible from the template menu, even when
+  // this revision was already reviewed.
+  await page.locator('.survey-subrow').getByRole('button', { name: /^Survey template: Work Survey/ }).click();
+  await page.getByRole('option', { name: 'Updated Work Survey', exact: true }).click();
+  await expect(version).toBeVisible();
+  await version.getByRole('button', { name: 'Keep previous version' }).click();
+
   await page.locator('.survey-subrow').getByRole('button', { name: 'Leave Survey' }).click();
   await page.evaluate(() => { const value = JSON.parse(localStorage.getItem('mobileWorkflowTemplates')); value[0].name = 'Latest Work Survey'; localStorage.setItem('mobileWorkflowTemplates', JSON.stringify(value)); });
   await page.reload();
