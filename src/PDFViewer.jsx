@@ -348,6 +348,8 @@ import { useUndoToast } from './hooks/useUndoToast.js';
 import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBookmarks } from './utils/bookmarkDeleteUndo.js';
 import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
+import { PAGE_PRESENTATION_META_KEY, normalizePagePresentations } from './utils/pagePresentation.js';
+import { normalizePresentationPdf } from './utils/pdfPagePresentation.js';
 import { useConfirmDialog } from './components/dialogPrompts';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
@@ -11512,6 +11514,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Page transformations state: { [pageNumber]: { rotation: 0|90|180|270, mirrorH: boolean, mirrorV: boolean } }
   const [pageTransformations, setPageTransformations] = useState({});
+  const pagePresentationMetaSetRef = useRef(null);
+  const pagePresentationMetaGetRef = useRef(null);
+  const pagePresentationStateRef = useRef(pageTransformations);
+  pagePresentationStateRef.current = pageTransformations;
 
   // Helper function to get transform CSS for a page
   const getPageTransform = useCallback((pageNumber) => {
@@ -14633,6 +14639,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setAnnotations(next.annotations);
     setPageNames(next.pageNames);
     setPageTransformations(next.pageTransformations);
+    pagePresentationMetaSetRef.current?.(PAGE_PRESENTATION_META_KEY, normalizePagePresentations(next.pageTransformations), 'local');
     setBookmarks(next.bookmarks);
     setSpaces(next.spaces);
     setRegionOverlayDisabled(next.regionOverlayDisabled);
@@ -21331,6 +21338,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // KAL-309: durable Y.Doc META accessors for the excelSyncFrontier cursor + review set.
     metaGet: excelSyncMetaGet,
     metaSet: excelSyncMetaSet,
+    metaSubscribe: subscribeDocumentMeta,
     hasStoredMarks: annotationDocHasStoredMarks,
     beginBulkImport: annotationDocBeginBulkImport,
     whenBulkImportSaved: annotationDocWhenBulkImportSaved,
@@ -21394,6 +21402,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       ? acceptTemplateVersion(binding, selectedTemplate, true)
       : bindUsedTemplate(selectedTemplate, binding));
   }, [selectedTemplate, surveyMarkers, annotationsByPage, appTemplates, normalAnnotationHydration?.ready, storeSurveyTemplateBinding, readSurveyTemplateBinding]);
+  pagePresentationMetaSetRef.current = normalAnnotationHydration?.ready ? excelSyncMetaSet : null;
+  pagePresentationMetaGetRef.current = normalAnnotationHydration?.ready ? excelSyncMetaGet : null;
+  useEffect(() => {
+    if (!normalAnnotationHydration?.ready || normalAnnotationHydration.documentId !== pdfFile?.id) return undefined;
+    const apply = (value) => { if (value != null) setPageTransformations(normalizePagePresentations(value)); };
+    const saved = excelSyncMetaGet(PAGE_PRESENTATION_META_KEY);
+    apply(saved);
+    if (saved == null && Object.keys(pagePresentationStateRef.current).length > 0) excelSyncMetaSet(PAGE_PRESENTATION_META_KEY, normalizePagePresentations(pagePresentationStateRef.current), 'local');
+    return subscribeDocumentMeta(PAGE_PRESENTATION_META_KEY, apply);
+  }, [normalAnnotationHydration, pdfFile?.id, excelSyncMetaGet, excelSyncMetaSet, subscribeDocumentMeta]);
+
   const deletedPdfAnnotations = useMemo(() => filterRestoredPdfAnnotationTombstones([
     ...new Map(
       [...durableDeletedPdfAnnotations, ...locallyDeletedPdfAnnotations]
@@ -23474,6 +23493,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           returnBytes: true,
           actionType: 'pdf-export',
           documentId: pdfFile?.id || null,
+          pageTransformations,
           callouts,
           // Owner ruling 2026-09-02: export = regular markup + the open
           // module's Survey Markers (same set and paint the screen shows).
@@ -23555,6 +23575,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     callouts,
     deletedPdfAnnotations,
     flushPageOperations,
+    pageTransformations,
     pageSizes,
     pdfFile,
     spaces,
@@ -24002,6 +24023,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           throw new Error('Invalid file object: missing arrayBuffer and filePath');
         }
 
+        const presentationSource = await normalizePresentationPdf(arrayBuffer);
+        if (presentationSource.presentations) {
+          arrayBuffer = presentationSource.bytes.buffer.slice(presentationSource.bytes.byteOffset, presentationSource.bytes.byteOffset + presentationSource.bytes.byteLength);
+          const durablePresentation = pagePresentationMetaGetRef.current?.(PAGE_PRESENTATION_META_KEY);
+          const nextPresentation = durablePresentation != null ? normalizePagePresentations(durablePresentation) : presentationSource.presentations;
+          pagePresentationStateRef.current = nextPresentation;
+          setPageTransformations(nextPresentation);
+          if (durablePresentation == null) pagePresentationMetaSetRef.current?.(PAGE_PRESENTATION_META_KEY, nextPresentation, 'local');
+        }
         const loadedByteLength = arrayBuffer.byteLength;
         const byteSizeBucket = loadedByteLength < 1024 * 1024
           ? 'under-1mb'
@@ -34510,6 +34540,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 pageSizes,
                 {
                   returnBytes: true,
+                  pageTransformations,
                   actionType: 'pdf-print-flattened-regular-annotations',
                   documentId: pdfFile?.id || pdfFile?.name || null,
                   callouts: printableRegularPayload.callouts,
@@ -34642,7 +34673,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // capture froze numPages at 0 from the very first render, which
     // made Cmd/Ctrl+P log "no pages to print" forever after).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [numPages, pageSizes, pdfFile]);
+  }, [numPages, pageSizes, pdfFile, pageTransformations]);
 
   // Pages data fed to the PrintPanel — derived from the Pdfjs-reported
   // pageSizes map. Falls back to Letter portrait if sizes aren't populated yet
@@ -34742,8 +34773,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const printPanelGetThumbnail = useCallback(async (pageNumber, opts = {}) => {
     const targetWidth = Math.max(40, Math.round(opts?.targetWidth || 140));
     const rotation = ((opts?.rotation || 0) % 360 + 360) % 360;
-    const mirrorH = !!opts?.mirrorH;
-    const mirrorV = !!opts?.mirrorV;
+    const mirrorH = !!pageTransformations?.[pageNumber]?.mirrorH !== !!opts?.mirrorH;
+    const mirrorV = !!pageTransformations?.[pageNumber]?.mirrorV !== !!opts?.mirrorV;
     const withAnnotations = opts?.withAnnotations !== false; // default true
     const key = `${pageNumber}:${targetWidth}:r${rotation}:mh${mirrorH ? 1 : 0}:mv${mirrorV ? 1 : 0}:a${withAnnotations ? 1 : 0}`;
     const cache = printPanelRenderCacheRef.current;
@@ -34823,7 +34854,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     })();
     inflight.set(key, job);
     return job;
-  }, [pdfDoc]);
+  }, [pdfDoc, pageTransformations]);
 
   // UX 2026-04-24: full custom print pipeline. Accepts a jobSpec with
   // per-page resolved settings (rotation, mirror, markups, BW, paper size,
@@ -35626,6 +35657,7 @@ ${pageBlocks}
       surveyMarkers={printableSurveyMarkers}
       spaces={spaces}
       pageSizes={pageSizes}
+      pageTransformations={pageTransformations}
       deletedPdfAnnotations={deletedPdfAnnotations}
     />
   );
@@ -36166,6 +36198,7 @@ ${pageBlocks}
                     className={`survey-pdfjs-viewer ${activeTool === 'select' ? 'survey-pdfjs-select-mode' : 'survey-pdfjs-standard-mode'}`}
                     documentSource={pdfDoc}
                     visiblePageNumbers={activeSpacePages}
+                    pageTransformations={pageTransformations}
                     style={{ width: '100%', height: '100%' }}
                     initialRenderPages={PDFJS_INITIAL_RENDER_PAGES}
                     scrollDelayMs={PDFJS_SCROLL_DELAY_MS}

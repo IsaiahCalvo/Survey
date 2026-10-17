@@ -1377,6 +1377,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   panTextHoverSelect = false,
   className = '',
   style = {},
+  pageTransformations = {},
   // eslint-disable-next-line no-unused-vars
   formDesignerEnabled = false,
   onDocumentLoaded,
@@ -5299,6 +5300,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       <div
         key={i}
         data-page-number={i + 1}
+        data-page-mirror-h={pageTransformations[i + 1]?.mirrorH ? 'true' : undefined}
+        data-page-mirror-v={pageTransformations[i + 1]?.mirrorV ? 'true' : undefined}
         data-page-mounted={mounted ? 'true' : 'false'}
         className="survey-pdfjs-page-div"
         id={`${viewerId}_pageDiv_${i}`}
@@ -5310,6 +5313,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
           width: dim.w * scale,
           height: dim.h * scale,
           background: '#fff',
+          transform: pageTransformations[i + 1]?.mirrorH || pageTransformations[i + 1]?.mirrorV
+            ? `scale(${pageTransformations[i + 1]?.mirrorH ? -1 : 1}, ${pageTransformations[i + 1]?.mirrorV ? -1 : 1})`
+            : undefined,
           boxShadow: phoneLayout
             ? '0 0 0 1px var(--text-2), 0 10px 28px rgba(0,0,0,0.35)'
             : undefined,
@@ -5368,7 +5374,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         />
       </div>
     );
-  }), [pageSizes, layout, scale, range, viewerId, isMobileSurface, phoneLayout, onRaster, rotation,
+  }), [pageSizes, layout, scale, range, pageTransformations, viewerId, isMobileSurface, phoneLayout, onRaster, rotation,
     textSelectionLayerActive, textSelectionLayerInteractive, panTextHoverSelect, onTextAvailability, tileLiveZoomSignal,
     getPageLeftAtScale]);
 

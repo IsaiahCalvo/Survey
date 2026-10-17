@@ -1091,6 +1091,15 @@ export function useAnnotationDoc({
     return setMetaValueOnDoc(h.doc, key, value, origin);
   }, []);
 
+  const metaSubscribe = useCallback((key, listener) => {
+    const doc = handleRef.current?.doc;
+    if (!doc || typeof listener !== 'function') return () => {};
+    const meta = doc.getMap(META_MAP);
+    const observe = (event) => { if (event.keysChanged.has(key)) listener(meta.get(key)); };
+    meta.observe(observe);
+    return () => meta.unobserve(observe);
+  }, []);
+
   // 2026-10-07: the embedded import names its marks before saving them (see
   // bulkImportKeysRef), then waits for them to be stored in the cloud before
   // writing its once-only marker: true once they are, false if this screen
@@ -1246,6 +1255,7 @@ export function useAnnotationDoc({
     commitEraserMutation,
     metaGet,
     metaSet,
+    metaSubscribe,
     hasStoredMarks,
     beginBulkImport,
     whenBulkImportSaved,

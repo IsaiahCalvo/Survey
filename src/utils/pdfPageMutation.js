@@ -1,4 +1,5 @@
 import { PDFDocument, degrees } from 'pdf-lib';
+import { normalizePresentationPdf } from './pdfPagePresentation.js';
 import { blankPageReferencePage, blankPageSize } from './blankPageSize.js';
 
 const pageNumber = (value, count, label) => {
@@ -55,7 +56,8 @@ async function applyOperation(pdf, operation) {
       page.setRotation(degrees(((extra % 360) + 360) % 360));
     } else {
       if (!operation.baseBytes) throw new Error('restore needs the document as first opened');
-      const base = await PDFDocument.load(operation.baseBytes);
+      const baseSource = await normalizePresentationPdf(operation.baseBytes);
+      const base = await PDFDocument.load(baseSource.bytes);
       const [copied] = await pdf.copyPages(base, [Number(entry.src) - 1]);
       copied.setRotation(degrees((((copied.getRotation().angle + extra) % 360) + 360) % 360));
       pdf.insertPage(afterPage, copied);
@@ -80,7 +82,8 @@ async function applyOperation(pdf, operation) {
 }
 
 async function mutateOnce(inputBytes, operation) {
-  const pdf = await PDFDocument.load(inputBytes);
+  const source = await normalizePresentationPdf(inputBytes);
+  const pdf = await PDFDocument.load(source.bytes);
   await applyOperation(pdf, operation);
   return pdf.save();
 }
