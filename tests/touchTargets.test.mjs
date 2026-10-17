@@ -102,12 +102,13 @@ test('the tool bar plan keeps the wider loadout clear of Export', () => {
   assert.equal(widestSubtoolsWidth(Number.NaN), 249);
   // An iPad mini (744px) with the 12px gutter: Undo/Redo end at 78, Pan /
   // Select 85px, the icons 108px, Export at 706.
-  const reserve = widestSubtoolsWidth(12);
+  const reserve = widestSubtoolsWidth(12) + 28 + 12;
   const plan = planTopBar({ barWidth: 744, startRight: 78, leftBlockWidth: 85, exportLeft: 706, clusterWidth: 108, loadoutReserve: reserve });
   assert.ok(plan.clusterLeft + 108 + reserve + EDGE_CLEARANCE <= 706 + 0.5, `loadout clears Export (${plan.clusterLeft})`);
   assert.ok(plan.clusterLeft >= 78 + 12 + 85, 'and Pan / Select stay clear of Undo / Redo');
   const hook = read('src/hooks/useResponsiveToolbar.js');
-  assert.match(hook, /loadoutReserve: widestSubtoolsWidth\(parseFloat\(window\.getComputedStyle\(host\)\.getPropertyValue\('--chrome-tool-gap'\)\)\)/);
+  assert.match(hook, /getPropertyValue\('--chrome-tool-gap'\)/);
+  assert.match(hook, /loadoutReserve: widestSubtoolsWidth\(toolGap\) \+ surveyRoom/);
 });
 
 test('the fit menu is a menu (so its rows take the 44px touch rows)', () => {

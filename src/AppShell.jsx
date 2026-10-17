@@ -32,6 +32,7 @@ import useResponsiveToolbar from './hooks/useResponsiveToolbar.js';
 import usePhoneLayout from './hooks/usePhoneLayout.js';
 import { hasTouchInput, isElectronApp } from './utils/layoutMode.js';
 import useLoadoutTransition, { useDropInRow, useLeavingRow, useRowCrossfade } from './hooks/useLoadoutTransition.js';
+import { LOADOUT_MOTION } from './utils/loadoutTransition.js';
 import { placeUnderOpenerAvoiding, slotDefinition, TEXT_ROW_CAPTION_ROOM, TEXT_ROW_PARTS, textRowLook, TIGHT_SPACING } from './utils/responsiveToolbar.js';
 import { recentPressedControl, registerLightPopover } from './components/dismissRules.js';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from './utils/annotationSize';
@@ -87,7 +88,7 @@ import DismissBarrier from './components/DismissBarrier.jsx';
 import PencilModeControl, { usePencilMode } from './components/PencilModeControl.jsx';
 import { sanitizeZoomInput } from './utils/pageNavigationMath.js';
 import { showsColourRule, showsPaintSwatch, showsQuickColourDots } from './utils/toolbarColourGroup.js';
-import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, showsFormatRow } from './utils/toolbarRows.js';
+import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, showsFormatRow, showsSurveyRow } from './utils/toolbarRows.js';
 import { LINE_STYLE_OPTIONS, LINE_STYLE_SAMPLE_ICONS } from './utils/lineStyleOptions.js';
 import SelectionQuickBar from './components/SelectionQuickBar.jsx';
 
@@ -1942,6 +1943,8 @@ export default function App({ devPreviewReturnTab = null }) {
     ? resolveToolBarGroup({ ...bottomToolbarApi, contextTool: bottomToolbarApi.toolBarContextTool ?? bottomToolbarApi.contextTool })
     : null;
   const formatRowShown = !isMobileViewer && !!isViewerVisible && showsFormatRow(bottomToolbarApi);
+  const surveyRowShown = !isMobileViewer && Boolean(bottomToolbarApi?.surveyToolbar) && showsSurveyRow(bottomToolbarApi);
+  const surveyToolAvailable = Boolean(bottomToolbarApi?.showSurveyPanel && bottomToolbarApi?.surveyToolbar);
   // RULED 2026-09-26 owner: fixed centred groups + animated loadouts (w47).
   // The loadout (the tools right of the group icons) and row 2's settings
   // crossfade when their set of controls changes, and row 2 fades out when it
@@ -2869,6 +2872,39 @@ export default function App({ devPreviewReturnTab = null }) {
                 <Icon name="textGroup" size={CHROME_GLYPH} />
               </button>
 
+              {/* Keep Text fixed. Survey grows beside it; the loadout slides
+                  over by one button and gutter. It never morphs into a tool. */}
+              <div
+                data-survey-tool-slot="true"
+                data-shown={surveyToolAvailable ? 'true' : 'false'}
+                aria-hidden={surveyToolAvailable ? undefined : true}
+                inert={surveyToolAvailable ? undefined : ''}
+                style={{
+                  position: 'absolute', left: '100%', top: '50%',
+                  transform: 'translateY(-50%)',
+                  display: 'flex', alignItems: 'center',
+                  paddingLeft: 'var(--chrome-tool-gap)',
+                  '--toolbar-insert-duration': `${LOADOUT_MOTION.durationMs}ms`,
+                  '--toolbar-insert-easing': LOADOUT_MOTION.easing,
+                  '--toolbar-insert-scale': LOADOUT_MOTION.growFrom,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => bottomToolbarApi.surveyToolbar?.onArmMarker()}
+                  {...chromeTip('Survey', 'below')}
+                  className={`btn chrome-control ${surveyRowShown ? 'btn-active' : 'btn-default'}`}
+                  data-tool-group="true"
+                  data-tool-switch="true"
+                  data-survey-tool="true"
+                  aria-label="Survey"
+                  aria-pressed={surveyRowShown}
+                  disabled={!surveyToolAvailable || areasMode}
+                >
+                  <Icon name="survey" size={CHROME_GLYPH} />
+                </button>
+              </div>
+
               {/* KAL-47: Forms category. Opens the form-field subtoolbar
                   (Textbox / Checkbox / Radio / Signature) and routes
                   activeTool through the FORM_TOOL_IDS set. We do not
@@ -2933,7 +2969,9 @@ export default function App({ devPreviewReturnTab = null }) {
                     ? { position: 'static' }
                     : {
                         position: 'absolute',
-                        left: '100%',
+                        left: surveyToolAvailable
+                          ? 'calc(100% + var(--chrome-control-w) + var(--chrome-tool-gap))'
+                          : '100%',
                         top: '50%',
                         transform: 'translateY(-50%)',
                         width: 'max-content',
@@ -2942,6 +2980,8 @@ export default function App({ devPreviewReturnTab = null }) {
                   alignItems: 'center',
                   gap: 'var(--chrome-tool-gap)',
                   '--chrome-row-gap': 'var(--chrome-tool-gap)',
+                  '--toolbar-insert-duration': `${LOADOUT_MOTION.durationMs}ms`,
+                  '--toolbar-insert-easing': LOADOUT_MOTION.easing,
                   whiteSpace: 'nowrap'
                 }}
               >
@@ -3062,7 +3102,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   rectangle swatch until they migrate. */}
               <div data-toolbar-settings-row="true" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-settings-gap, var(--chrome-gap))', position: 'relative' }}>
                 {areasMode && renderAreaActions()}
-                {showTextFormatting && textFormatRowEl && createPortal(
+                {showTextFormatting && !surveyRowShown && textFormatRowEl && createPortal(
                   /* 2026-05-26: the formatting controls drop into the sub-row
                      beneath the top strip (mirrors the Draw / Shape category
                      sub-rows). The inline strip's swatch, width input and Aa
@@ -4396,13 +4436,9 @@ export default function App({ devPreviewReturnTab = null }) {
                   hidden and row 3 empty, 0px tall), so they are never re-added
                   after the Survey row or the text-selection bar that drop into
                   this host too — the rows always stack in this order. */}
-              {/* w46 (owner 2026-09-26: select modes in top bar): the Survey
-                  row's slot comes FIRST, right under the tool bar. In Select
-                  mode row 2 now comes and goes as a mark is picked and dropped
-                  (it has nothing to show for Box / Lasso with nothing picked);
-                  drawn above it, the Survey row never moves when it does. The
-                  two only share the screen in Select mode — any drawing tool
-                  closes the Survey row. */}
+              {/* Survey and annotation formatting take turns in this band.
+                  Keep the Survey slot for its entity row and touch targets;
+                  hide outgoing annotation rows as soon as Survey returns. */}
               <div id="chrome-survey-row-slot" data-chrome-survey-row-slot="true" />
               {/* RULED 2026-09-26 owner: fixed centred groups + animated
                   loadouts (w47). Row 2 drops in with the 140ms fade it always
@@ -4428,7 +4464,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   data-leaving={formatRowLeaving ? 'true' : undefined}
                   className="chrome-row-drop-in"
                   style={{
-                    display: formatRowShown || formatRowLeaving ? 'block' : 'none',
+                    display: !surveyRowShown && (formatRowShown || formatRowLeaving) ? 'block' : 'none',
                     position: 'relative',
                     width: '100%',
                     height: 'var(--chrome-bar-h)',
