@@ -55,3 +55,7 @@ test('a previous document hydration never writes the new document presentation',
   const { calls, scope } = simulate({ normalAnnotationHydration: { ready: true, documentId: 'previous' } });
   assert.equal(scope.pagePresentationMetaSetRef.current, null); assert.equal(scope.pagePresentationMetaGetRef.current, null); assert.equal(calls.writes.length, 0); assert.equal(calls.subscriptions, 0);
 });
+
+test('template binding writes use the same current document authority as mirror writes', () => {
+  assert.match(source, /templateBindingAccessRef\.current = \{[\s\S]*?set: \(\.\.\.args\) => canRestoreFromHistory && excelSyncMetaSet\(\.\.\.args\)/);
+});

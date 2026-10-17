@@ -21397,7 +21397,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   });
   templateBindingAccessRef.current = {
     get: excelSyncMetaGet,
-    set: (...args) => !documentLocked && yjsDocRole !== 'viewer' && excelSyncMetaSet(...args),
+    set: (...args) => canRestoreFromHistory && excelSyncMetaSet(...args),
   };
   const surveyTemplateRestorationReady = isSurveyTemplateRestorationReady({
     isLoadingPDF, loadFailed: Boolean(pdfLoadError), documentId: pdfFile?.id, hydration: normalAnnotationHydration,
