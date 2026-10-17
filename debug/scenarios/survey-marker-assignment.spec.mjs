@@ -165,3 +165,34 @@ test('template list right-click opens the existing item actions without Select m
   await expect(page.getByRole('menuitem', { name: 'Delete', exact: true })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: 'Share', exact: true })).toBeVisible();
 });
+
+
+test.describe('phone Survey assignment', () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1' });
+  test('module/category/entity dialog fits and saves on a phone', async ({ page, context }) => {
+    await context.route(/^https?:\/\/(?!localhost|127\.0\.0\.1)/, (route) => route.abort());
+    await context.addInitScript((value) => localStorage.setItem('mobileWorkflowTemplates', JSON.stringify(value)), templates);
+    const errors = []; page.on('pageerror', (error) => errors.push(error.message));
+    await page.goto('/?testPdf=clickable-link-test.pdf&surveyTemplateWorkflowE2E=1&mobileNav=tabs&nativeShell=expo');
+    await page.getByRole('button', { name: 'Open survey', exact: true }).tap();
+    await page.getByRole('button', { name: /Work Survey/ }).filter({ visible: true }).first().tap();
+    await page.getByRole('button', { name: 'Open survey', exact: true }).tap();
+    await expect.poll(() => page.locator('.mobile-survey-sheet').filter({ visible: true }).count()).toBe(0);
+    await page.getByRole('button', { name: 'Survey category Walls', exact: true }).tap();
+    const bounds = await page.locator('[data-svg-annotation-layer]').first().boundingBox();
+    const x = Math.max(60, bounds.x + 50), y = Math.max(100, bounds.y + 100);
+    await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x + 100, y + 70, { steps: 8 }); await page.mouse.up();
+    const modal = page.getByRole('dialog', { name: 'Categorize Survey Marker' });
+    await expect(modal).toBeVisible();
+    const rect = await modal.boundingBox();
+    expect(rect.x).toBeGreaterThanOrEqual(0); expect(rect.x + rect.width).toBeLessThanOrEqual(390);
+    expect(rect.y + rect.height).toBeLessThanOrEqual(844);
+    await modal.getByRole('combobox', { name: 'Module', exact: true }).selectOption('proposed');
+    await modal.getByRole('combobox', { name: 'Category', exact: true }).selectOption('doors');
+    await modal.getByRole('combobox', { name: 'Entity', exact: true }).selectOption('new');
+    await modal.getByRole('button', { name: 'Add Survey Marker' }).tap();
+    await expect(modal).toBeHidden();
+    await expect(page.locator('[data-survey-marker-id]')).toHaveCount(1);
+    expect(errors).toEqual([]);
+  });
+});
