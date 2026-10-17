@@ -37,7 +37,7 @@ await page.evaluate(async () => {
   const { writePanelLayout } = await import('/src/sidebar/panelLayoutStore.js');
   writePanelLayout(localStorage, 'session-test-user', { open: true, panel: 'spaces' }, 'doc-a');
   window.Sidebar = Sidebar;
-  window.renderSidebar = id => window.checkRoot.render(window.checkReact.createElement(Sidebar, { key: id, documentId: id, currentUserId: 'session-test-user', numPages: 1, pageNum: 1, spaces: [], bookmarks: [], features: {}, onNavigateToPage() {}, onPanelStateChange: state => { window.lastPanel = state; } }));
+  window.renderSidebar = id => window.checkRoot.render(window.checkReact.createElement(Sidebar, { key: id, documentId: id.startsWith('local-') ? null : id, tabId: id, currentUserId: 'session-test-user', numPages: 1, pageNum: 1, spaces: [], bookmarks: [], features: {}, onNavigateToPage() {}, onPanelStateChange: state => { window.lastPanel = state; } }));
   window.renderSidebar('doc-a');
 });
 await page.waitForTimeout(300);
@@ -48,6 +48,37 @@ assert.ok(!await page.getByRole('heading', { name: 'Spaces', exact: true }).isVi
 await page.evaluate(() => window.renderSidebar('doc-a'));
 await page.waitForTimeout(300);
 assert.ok(await page.getByRole('heading', { name: 'Spaces', exact: true }).isVisible());
+await page.evaluate(() => window.renderSidebar('local-a'));
+await page.waitForTimeout(200);
+await page.locator('#session-check').getByRole('button', {name:'Spaces', exact:true}).click();
+await page.waitForTimeout(300);
+assert.ok(await page.getByRole('heading', {name:'Spaces', exact:true}).isVisible());
+await page.evaluate(() => window.renderSidebar('local-b'));
+await page.waitForTimeout(300);
+assert.ok(!await page.getByRole('heading', {name:'Spaces', exact:true}).isVisible());
+await page.evaluate(() => window.renderSidebar('local-a'));
+await page.waitForTimeout(300);
+assert.ok(await page.getByRole('heading', {name:'Spaces', exact:true}).isVisible());
+await page.evaluate(async () => {
+  window.RightRail = (await import('/src/SurveySpacesRail.jsx')).default;
+  window.rightStates = {};
+  window.renderRight = (id, collapsed) => window.checkRoot.render(window.checkReact.createElement(window.RightRail, {
+    key: id, pdfFile: {id}, initialCollapsed: collapsed, expandRequestKey: 4,
+    selectedTemplate: {id:'session-template',name:'Work Survey',modules:[],entities:[]}, selectedModuleId: null,
+    showSurveyPanel: true, surveyMarkers: {}, annotationsByPage: {}, spaces: [], items: {}, features: {},
+    expandedCategories: {}, expandedSurveyMarkers: {}, selectedCategories: new Set(), selectedItemsInCategory: {},
+    onCollapseChange: value => { window.rightStates[id] = value; },
+  }));
+  window.renderRight('right-a', false);
+});
+await page.waitForTimeout(300);
+assert.equal(await page.locator('#session-check button[aria-label="Survey"]').getAttribute('aria-expanded'), 'true');
+await page.evaluate(() => window.renderRight('right-b', true));
+await page.waitForTimeout(300);
+assert.equal(await page.locator('#session-check button[aria-label="Survey"]').getAttribute('aria-expanded'), 'false');
+await page.evaluate(() => window.renderRight('right-a', window.rightStates['right-a']));
+await page.waitForTimeout(300);
+assert.equal(await page.locator('#session-check button[aria-label="Survey"]').getAttribute('aria-expanded'), 'true');
 await page.evaluate(async () => {
   const mod = await import('/src/components/QuietLoading.jsx');
   window.checkRender(mod.default, { label: 'Opening Site plan…' });

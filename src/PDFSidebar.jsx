@@ -244,9 +244,10 @@ const PDFSidebar = React.forwardRef(({
   // which panel and whether it was open - per user
   // (sidebar/panelLayoutStore.js). The phone's sheet always starts closed.
   const layoutUserKey = currentUserId || user?.id || null;
+  const layoutDocumentKey = documentId || tabId || pdfDocumentKey || 'unbound';
   const initialLayoutRef = React.useRef(null);
   if (initialLayoutRef.current === null) {
-    const stored = mobileMode ? DEFAULT_PANEL_LAYOUT : readPanelLayout(browserStorage(), layoutUserKey, documentId);
+    const stored = mobileMode ? DEFAULT_PANEL_LAYOUT : readPanelLayout(browserStorage(), layoutUserKey, layoutDocumentKey);
     initialLayoutRef.current = stored.panel === 'history' && !documentId
       ? { ...stored, panel: 'pages' }
       : stored;
@@ -311,7 +312,7 @@ const PDFSidebar = React.forwardRef(({
   React.useEffect(() => {
     if (mobileMode || loadedLayoutKeyRef.current === layoutUserKey) return;
     loadedLayoutKeyRef.current = layoutUserKey;
-    const stored = readPanelLayout(browserStorage(), layoutUserKey, documentId);
+    const stored = readPanelLayout(browserStorage(), layoutUserKey, layoutDocumentKey);
     if (!userTouchedLayoutRef.current) {
       setIsCollapsed(!stored.open);
       setActiveTab(stored.panel === 'history' && !documentId ? 'pages' : stored.panel);
@@ -327,8 +328,8 @@ const PDFSidebar = React.forwardRef(({
       persistLayoutKeyRef.current = layoutUserKey;
       return;
     }
-    writePanelLayout(browserStorage(), layoutUserKey, { open: !isCollapsed, panel: activeTab }, documentId);
-  }, [isCollapsed, activeTab, mobileMode, layoutUserKey]);
+    writePanelLayout(browserStorage(), layoutUserKey, { open: !isCollapsed, panel: activeTab }, layoutDocumentKey);
+  }, [isCollapsed, activeTab, mobileMode, layoutUserKey, layoutDocumentKey]);
   const footerPresence = withDevFakePresence({ presence, currentUserId, currentUserEmail, currentUserDisplayName });
   const tip = useTooltip();
   // RULED 2026-09-23 (coordinator: auto refits keep the view; fits use the

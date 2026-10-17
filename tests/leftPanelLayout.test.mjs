@@ -173,13 +173,13 @@ test('wiring: no resize edge, no remembered width; the phone keeps its sheet', (
   assert.doesNotMatch(sidebar, /left-rail__resize|role="separator"|onDoubleClick=\{resetPanelWidth\}|is-resizing-side-panel|panelWidths/);
   assert.doesNotMatch(css, /\.left-rail__resize|is-resizing-side-panel/);
   // Only which panel and whether it was open are saved.
-  assert.match(sidebar, /writePanelLayout\(browserStorage\(\), layoutUserKey, \{ open: !isCollapsed, panel: activeTab \}, documentId\);/);
+  assert.match(sidebar, /writePanelLayout\(browserStorage\(\), layoutUserKey, \{ open: !isCollapsed, panel: activeTab \}, layoutDocumentKey\);/);
   // The rail is the 48px column plus the one panel width while laid out open,
   // and --app-sidebar-width (the storage notice's left edge) says the same.
   assert.match(sidebar, /'--left-panel-w': mobileMode \? undefined : `\$\{panelWidth\}px`,/);
   assert.match(sidebar, /setProperty\('--app-sidebar-width', mobileMode \? '44px' : `\$\{layoutOpen \? LEFT_RAIL_W \+ panelWidth : LEFT_RAIL_W\}px`\)/);
   // The phone keeps its sheet: no stored open state.
-  assert.match(sidebar, /const stored = mobileMode \? DEFAULT_PANEL_LAYOUT : readPanelLayout\(browserStorage\(\), layoutUserKey, documentId\);/);
+  assert.match(sidebar, /const stored = mobileMode \? DEFAULT_PANEL_LAYOUT : readPanelLayout\(browserStorage\(\), layoutUserKey, layoutDocumentKey\);/);
 });
 
 test('Esc in the search box hands focus back to the page and keeps the search', () => {

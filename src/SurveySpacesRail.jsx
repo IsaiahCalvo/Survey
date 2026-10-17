@@ -918,6 +918,9 @@ const SurveySpacesRail = ({
     const wasOn = surveyWasOnRef.current;
     surveyWasOnRef.current = Boolean(showSurveyPanel);
     if (showSurveyPanel) {
+      // A document switch remounts the shared rail with its saved collapse
+      // state. Only entering Survey opens it; an already-on mode restores it.
+      if (wasOn) return;
       // Owner 2026-10-07 (survey bar round): an Undo of "Left Survey" puts
       // the panel back the way it was - closed, when it was closed.
       if (surveyReenterCollapsedRef?.current) {
