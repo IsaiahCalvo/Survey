@@ -20,6 +20,26 @@
  * hook lives in useAnnotationPreference.js.
  */
 
+export const ANNOTATION_SNAPPING_KEY = 'survey:annotation-snapping';
+let snappingMemo = null;
+
+export function readAnnotationSnapping() {
+  try {
+    const raw = storage()?.getItem(ANNOTATION_SNAPPING_KEY);
+    if (raw === 'off') return false;
+    if (raw === 'on') return true;
+  } catch { /* blocked storage */ }
+  return snappingMemo ?? true;
+}
+
+export function writeAnnotationSnapping(value) {
+  const on = !!value;
+  snappingMemo = on;
+  try { storage()?.setItem(ANNOTATION_SNAPPING_KEY, on ? 'on' : 'off'); } catch { /* blocked storage */ }
+  try { window.dispatchEvent(new CustomEvent(ANNOTATION_PREFERENCES_EVENT, { detail: { key: ANNOTATION_SNAPPING_KEY, value: on } })); } catch { /* no window */ }
+  return on;
+}
+
 export const TEXTBOX_AUTO_FIT_KEY = 'survey:textbox-auto-fit';
 export const TEXTBOX_AUTO_FIT_DEFAULT = true;
 export const ANNOTATION_PREFERENCES_EVENT = 'survey:annotation-preferences-changed';
@@ -66,7 +86,7 @@ export function subscribeAnnotationPreferences(listener) {
   if (typeof window === 'undefined' || typeof listener !== 'function') return () => {};
   const onLocal = () => listener();
   const onStorage = (event) => {
-    if (!event || event.key == null || event.key === TEXTBOX_AUTO_FIT_KEY) listener();
+    if (!event || event.key == null || event.key === TEXTBOX_AUTO_FIT_KEY || event.key === ANNOTATION_SNAPPING_KEY) listener();
   };
   window.addEventListener(ANNOTATION_PREFERENCES_EVENT, onLocal);
   window.addEventListener('storage', onStorage);

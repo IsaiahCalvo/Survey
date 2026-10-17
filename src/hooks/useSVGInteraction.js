@@ -57,6 +57,7 @@ import { cloudPolyEnginePoints } from '../utils/cloudAnnotationGeometry.js';
 import { resizeGrabOffset, rotationGrabOffsetDeg } from '../utils/offsetPreservingResize.js';
 import {
   isSnapFreeModifier,
+  isAnnotationSnapFree,
   snapThreshold,
   shiftBox,
   unionBox,
@@ -897,13 +898,13 @@ export function useSVGInteraction({
   // for the delta that is really shown (`shownDelta`, after the page clamp).
   // `ds.snapBox` / `ds.snapTargets` are filled once per drag by the caller.
   const snapMoveDelta = useCallback((ds, dx, dy, e) => {
-    if (!ds?.snapBox || isSnapFreeModifier(e)) return { dx, dy };
+    if (!ds?.snapBox || isAnnotationSnapFree(e)) return { dx, dy };
     const env = snapEnvRef.current || {};
     const off = snapMoveBox(shiftBox(ds.snapBox, dx, dy), ds.snapTargets, snapThreshold(env.inverseScale));
     return { dx: dx + off.dx, dy: dy + off.dy };
   }, []);
   const showMoveGuides = useCallback((ds, shownDx, shownDy, e) => {
-    if (!ds?.snapBox || isSnapFreeModifier(e)) {
+    if (!ds?.snapBox || isAnnotationSnapFree(e)) {
       applySnapGuides(null);
       return;
     }
@@ -2550,7 +2551,7 @@ export function useSVGInteraction({
       // Canvas audit chunk 3: the same feel as one mark — the group's turn
       // (from where the drag began) pulls to quarter turns within 4°; Shift
       // = hard 15° steps; Alt = free.
-      delta = snapRotationDegrees(delta, { shift: e.shiftKey, free: e.altKey });
+      delta = snapRotationDegrees(delta, { shift: e.shiftKey, free: isSnapFreeModifier(e) });
       const rad = (delta * Math.PI) / 180;
       const cos = Math.cos(rad);
       const sin = Math.sin(rad);
@@ -3447,7 +3448,7 @@ export function useSVGInteraction({
       // (proportions win), Alt (free), a counter, a tilted mark, ink, or a
       // photo's corner (it keeps its proportions).
       const resizeAngleMod = ((origAngleDeg % 360) + 360) % 360;
-      const resizeSnapOn = !e.shiftKey && !e.altKey && !resizeIsCounter
+      const resizeSnapOn = !e.shiftKey && !isAnnotationSnapFree(e) && !resizeIsCounter
         && (resizeAngleMod < 0.01 || resizeAngleMod > 359.99)
         && isSnappableMark(resizeObj)
         && !(keepsProportions(resizeObj) && affectsX && affectsY);
@@ -3756,7 +3757,7 @@ export function useSVGInteraction({
       // Canvas audit chunk 3 (Drawboard): whole degrees, pulled to 0 / 90 /
       // 180 / 270 within 4°; Shift = hard 15° steps (was a soft 45° snap
       // that only caught within 3°); Alt = free.
-      newAngle = snapRotationDegrees(newAngle, { shift: e.shiftKey, free: e.altKey });
+      newAngle = snapRotationDegrees(newAngle, { shift: e.shiftKey, free: isSnapFreeModifier(e) });
       newAngle = ((newAngle % 360) + 360) % 360;
 
       // UX 2026-04-20: counters don't rotate their bubble or number — the
@@ -3941,7 +3942,7 @@ export function useSVGInteraction({
         default:
           return;
       }
-      if ((ds.partType === 'textBox' || ds.partType === 'whole') && ds.snapBox && !isSnapFreeModifier(e)) {
+      if ((ds.partType === 'textBox' || ds.partType === 'whole') && ds.snapBox && !isAnnotationSnapFree(e)) {
         const shownBox = calloutSnapBox({ ...original, textBoxPosition: proposed.textBoxPosition }, W, H);
         applySnapGuides(shownBox ? buildSnapGuides(shownBox, snapFeatures(shownBox), ds.snapTargets) : null);
       } else {
@@ -4528,7 +4529,7 @@ export function useSVGInteraction({
         roundCommittedAnnotationsGeometry(merged.annotations, merged.indexes);
         onSaveAnnotations(merged.annotations, {
           source: 'object:modified',
-          action: 'vertex-move',
+          action: ds.insertedVertex ? 'vertex-add' : 'vertex-move',
           checkpointPolicy: 'normal',
         });
       }
@@ -5307,7 +5308,7 @@ export function useSVGInteraction({
       originalMidpoint: null, currentMidpoint: null,
       // UX 2026-04-20: vertex-drag fields (polygon/polyline per-point drag).
       // Reset alongside the rest so the next drag starts clean.
-      originalPoints: null, vertexIndex: null,
+      originalPoints: null, vertexIndex: null, insertedVertex: false,
       originalTextMarkup: null, currentTextMarkup: null, fixedTextOffset: null,
       currentAnnotations: null,
       diagGestureId: null,
@@ -5722,10 +5723,25 @@ export function useSVGInteraction({
 
     const selectedIndex = Array.from(selectedIds)[0]; // Single-select resize only
     if (selectedIndex === undefined) return;
-    const obj = annotations?.objects?.[selectedIndex];
+    let obj = annotations?.objects?.[selectedIndex];
     if (!obj) return;
 
     if (isUserLocked(obj) || isAnnotationTransformHandleLocked(obj, handleId)) return;
+    const beforeVertexInsert = obj;
+    const insertion = typeof handleId === 'string' && handleId.startsWith('insert-vertex-');
+    if (insertion) {
+      const segmentIndex = Number(handleId.slice('insert-vertex-'.length));
+      const count = obj.points?.length || 0;
+      const closed = String(obj.type).toLowerCase() === 'polygon';
+      if (!Number.isInteger(segmentIndex) || segmentIndex < 0 || segmentIndex >= count - (closed ? 0 : 1)) return;
+      obj = deepClone(obj);
+      const from = obj.points[segmentIndex];
+      const to = obj.points[(segmentIndex + 1) % count];
+      obj.points.splice(segmentIndex + 1, 0, { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 });
+      if (obj.data?.pdfCloudVertexState) delete obj.data.pdfCloudVertexState;
+      handleId = `vertex-${segmentIndex + 1}`;
+      try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch { /* optional */ }
+    }
 
     const ctm = svgRef.current?.getScreenCTM();
     const ctmInverse = ctm ? ctm.inverse() : null;
@@ -5843,7 +5859,9 @@ export function useSVGInteraction({
           cloudVertexEdit,
           // Per-field sync (2026-09-24): the release writes only this mark's
           // own change (drag start → last frame) onto the page as it is then.
-          startObjects: { [selectedIndex]: deepClone(obj) },
+          startObjects: { [selectedIndex]: deepClone(beforeVertexInsert) },
+          insertedVertex: insertion,
+          currentAnnotations: insertion ? { ...annotations, objects: annotations.objects.map((mark, index) => index === selectedIndex ? obj : mark) } : null,
           // Snapshot the full transform chain so the move handler can invert
           // it on each tick. We copy obj.points so we don't mutate the real
           // annotation until pointerup.

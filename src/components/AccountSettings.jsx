@@ -22,6 +22,8 @@ import TurnstileWidget, { TURNSTILE_ENABLED } from './TurnstileWidget';
 import Icon from '../Icons';
 import CrashReportsPanel from './CrashReportsPanel';
 import {
+  readAnnotationSnapping,
+  writeAnnotationSnapping,
   readTextboxAutoFit,
   writeTextboxAutoFit,
   subscribeAnnotationPreferences,
@@ -61,11 +63,13 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   // KAL-397 — Annotations tab. This device's setting (localStorage), read on
   // open and kept in step with other windows; an open document reads it at
   // the next text edit, so a change applies without a reload.
+  const [annotationSnapping, setAnnotationSnapping] = useState(() => readAnnotationSnapping());
   const [textboxAutoFit, setTextboxAutoFit] = useState(() => readTextboxAutoFit());
   useEffect(() => {
     if (!isOpen) return undefined;
-    setTextboxAutoFit(readTextboxAutoFit());
-    return subscribeAnnotationPreferences(() => setTextboxAutoFit(readTextboxAutoFit()));
+    const refresh = () => { setTextboxAutoFit(readTextboxAutoFit()); setAnnotationSnapping(readAnnotationSnapping()); };
+    refresh();
+    return subscribeAnnotationPreferences(refresh);
   }, [isOpen]);
 
   // Accessibility: the shared focus trap keeps Tab inside the dialog, closes
@@ -1055,6 +1059,16 @@ export const AccountSettings = ({ isOpen, onClose }) => {
             {/* KAL-397 — Settings -> Annotations (Acrobat's name for it). */}
             {activeTab === 'annotations' && (
               <section className="account-section" aria-labelledby="account-annotations-text-boxes">
+                <h3>Snapping</h3>
+                <div className="account-pref-row">
+                  <div className="account-pref-copy">
+                    <div className="account-pref-title" id="account-pref-annotation-snapping">Snap to annotations</div>
+                    <p className="account-pref-description">Align marks with nearby annotations when you move or resize them. Hold Alt to move freely.</p>
+                  </div>
+                  <button type="button" className="account-switch" role="switch" aria-checked={annotationSnapping} aria-labelledby="account-pref-annotation-snapping" data-pref="annotation-snapping" onClick={() => setAnnotationSnapping(writeAnnotationSnapping(!annotationSnapping))}>
+                    <span className="account-switch-track" aria-hidden="true" />
+                  </button>
+                </div>
                 <h3 id="account-annotations-text-boxes">Text boxes</h3>
                 <div className="account-pref-row">
                   <div className="account-pref-copy">

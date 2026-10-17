@@ -7,7 +7,7 @@
  * Phase 15 contract: LINE-01/02/03 + ARROW-01/02/03.
  */
 
-import { shouldSnapToLinear, getMidpoint } from './lineGeometry.js';
+import { shouldSnapToLinear, getMidpoint, getControlPoint, getPointOnCurve } from './lineGeometry.js';
 
 /**
  * Translate the original midpoint by the drag delta.
@@ -87,9 +87,8 @@ export function clearMidpointFromAnnotation(annotation) {
  * Used by SVGAnnotationLayer.jsx to position the 3rd handle <circle>.
  *
  * - Straight (dataMidpoint falsy): geometric midpoint via getMidpoint(start, end).
- * - Curved (dataMidpoint truthy): the saved data.midpoint, which is the point
- *   the bezier passes through at t=0.5 by construction (see getCurvedPath in
- *   lineGeometry.js).
+ * - Curved: the point of maximum curvature, which may sit away from t=0.5
+ *   after an off-centre bend. Saved data.midpoint still defines the curve.
  *
  * @param {{x:number,y:number}} start
  * @param {{x:number,y:number}} end
@@ -97,6 +96,15 @@ export function clearMidpointFromAnnotation(annotation) {
  * @returns {{x:number,y:number}}
  */
 export function resolveMidpointHandlePosition(start, end, dataMidpoint) {
-  if (dataMidpoint) return { x: dataMidpoint.x, y: dataMidpoint.y };
-  return getMidpoint(start, end);
+  if (!dataMidpoint) return getMidpoint(start, end);
+  // The sharpest part of a quadratic is where its tangent is shortest.
+  // t=0.5 is only the peak for a symmetric bend; an off-centre drag shifts it.
+  const control = getControlPoint(start, end, dataMidpoint);
+  const vx = control.x - start.x;
+  const vy = control.y - start.y;
+  const ax = end.x - 2 * control.x + start.x;
+  const ay = end.y - 2 * control.y + start.y;
+  const denominator = ax * ax + ay * ay;
+  const t = denominator > 1e-12 ? Math.max(0, Math.min(1, -(vx * ax + vy * ay) / denominator)) : 0.5;
+  return getPointOnCurve(start, end, dataMidpoint, t);
 }

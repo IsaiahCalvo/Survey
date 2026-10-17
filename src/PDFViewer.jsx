@@ -340,6 +340,7 @@ import { useUndoToast } from './hooks/useUndoToast.js';
 import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBookmarks } from './utils/bookmarkDeleteUndo.js';
 import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
+import { useConfirmDialog } from './components/dialogPrompts';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
@@ -11445,6 +11446,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [regionOverlayDisabled, setRegionOverlayDisabled] = useRegionOverlayVisibility(pdfId);
 
   // Clipboard state for cut/copy operations
+  const [askPageDelete, pageDeleteDialog] = useConfirmDialog();
   const [clipboardPage, setClipboardPage] = useState(null);
   const [clipboardType, setClipboardType] = useState(null); // 'cut' | 'copy'
 
@@ -35500,6 +35502,7 @@ ${pageBlocks}
       {/* Annotation right-click menu. State + lifecycle live in
           useAnnotationContextMenu; this render builder (renderAnnotationContextMenu)
           is a pure view that takes the viewer's action handlers as a bundle. */}
+      {pageDeleteDialog}
       {renderAnnotationContextMenu(annotationContextMenu, closeAnnotationContextMenu, {
         pasteAnnotationAt,
         pdfjsViewerRef,
@@ -35570,7 +35573,7 @@ ${pageBlocks}
             rotate: handleRotatePage,
             mirror: handleMirrorPage,
             reset: handleResetPage,
-            delete: (page) => { if (window.confirm(`Delete page ${page}?`)) handleDeletePage(page); },
+            delete: async (page) => { if (await askPageDelete({ title: `Delete page ${page}?`, message: 'You can restore it with Undo.', confirmLabel: 'Delete page', danger: true })) handleDeletePage(page); },
           },
         },
       })}
@@ -41073,6 +41076,7 @@ ${pageBlocks}
         document.getElementById('chrome-sub-toolbar-host'),
       )}
       <TextSelectionQuickMenu
+        active={isActive}
         selection={isTextSelectionCaptureTool(activeTool) && !selectedTextMarkupActionSelection && !showAnnotationColorPicker && !textLinkEditorOpen
           ? liveTextSelectionActionSelection
           : null}

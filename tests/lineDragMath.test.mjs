@@ -92,7 +92,7 @@ test('clearMidpointFromAnnotation: no-op when data.midpoint absent', () => {
   assert.equal(annotation.data.midpoint, undefined);
 });
 
-test('resolveMidpointHandlePosition: curved line returns saved midpoint', () => {
+test('resolveMidpointHandlePosition: symmetric curved line returns its middle peak', () => {
   const result = resolveMidpointHandlePosition(
     { x: 0, y: 0 },
     { x: 100, y: 0 },
@@ -110,4 +110,22 @@ test('resolveMidpointHandlePosition: straight line returns geometric midpoint', 
   );
   assert.equal(result.x, 50);
   assert.equal(result.y, 100);
+});
+
+// An off-centre bend reaches its tightest turn away from t=0.5.
+test('curve handle follows the peak when pulled near an endpoint', () => {
+  const start = { x: 0, y: 0 };
+  const end = { x: 100, y: 0 };
+  const midpoint = { x: 95, y: 35 };
+  const peak = resolveMidpointHandlePosition(start, end, midpoint);
+  assert.ok(Math.hypot(peak.x - midpoint.x, peak.y - midpoint.y) > 5);
+  const control = { x: 2 * midpoint.x - 50, y: 2 * midpoint.y };
+  const ax = end.x - 2 * control.x;
+  const ay = -2 * control.y;
+  const t = -(control.x * ax + control.y * ay) / (ax * ax + ay * ay);
+  assert.ok(t > 0 && t < 1);
+  const vx = control.x + ax * t;
+  const vy = control.y + ay * t;
+  assert.ok(Math.abs(vx * ax + vy * ay) < 1e-8);
+  assert.ok(Math.abs(peak.x - (2 * (1 - t) * t * control.x + t * t * end.x)) < 1e-8);
 });
