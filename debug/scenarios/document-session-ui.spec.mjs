@@ -1,11 +1,41 @@
-import { test } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import assert from 'node:assert/strict';
 test.use({ baseURL: process.env.SURVEY_UI_URL || 'http://127.0.0.1:5204', headless: true, viewport: { width: 1000, height: 800 } });
 test('document rails, shrinking tabs, history paging, and safe account access', async ({ page }) => {
   test.setTimeout(90000);
 const errors = [];
 page.on('pageerror', e => errors.push(e.message));
-await page.route('**/*', r => new URL(r.request().url()).hostname === '127.0.0.1' ? r.continue() : r.abort());
+let olderAttemptsA = 0;
+let heldOlderA = null;
+let heldOlderB = null;
+let holdFirstOlderB = true;
+await page.route('**/*', async (route) => {
+  const url = new URL(route.request().url());
+  if (route.request().method() === 'GET'
+    && url.pathname === '/rest/v1/document_history_events'
+    && ['eq.session-history', 'eq.history-error-a', 'eq.history-error-b'].includes(url.searchParams.get('document_id'))) {
+    const doc = url.searchParams.get('document_id');
+    const older = url.searchParams.has('occurred_at') || url.searchParams.has('or');
+    if (doc === 'eq.history-error-a' && older) {
+      olderAttemptsA++;
+      if (olderAttemptsA > 1) { heldOlderA = route; return; }
+      await route.fulfill({ status: 500, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ code: 'XX000', message: 'Synthetic older page failure' }) });
+      return;
+    }
+    if (doc === 'eq.history-error-b' && older && holdFirstOlderB) {
+      holdFirstOlderB = false; heldOlderB = route; return;
+    }
+    await route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      headers: { 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify({ code: '42P01', message: 'relation "public.document_history_events" does not exist' }),
+    });
+    return;
+  }
+  if (url.hostname === '127.0.0.1') await route.continue();
+  else await route.abort();
+});
 await page.goto('/?testPdf=clickable-link-test.pdf');
 await page.waitForSelector('[data-app-tab]');
 await page.evaluate(async () => {
@@ -91,7 +121,8 @@ await page.evaluate(async () => {
   const rows = Array.from({length: 110}, (_, i) => ({ id: `test-history-${i}`, client_event_id: `test-history-${i}`, __local: true, document_id: 'session-history', user_id: 'session-user', annotation_id: `mark-${i}`, page_number: 1, event_type: i % 4 === 2 ? 'annotation_deleted' : 'local_annotation_history_added', summary: `Test User changed mark ${i}`, payload: { actionType: ['create','move','delete','restore'][i % 4], annotationType: 'rect', restoredFromHistory: i % 4 === 3 }, occurred_at: new Date(now - i * 1000).toISOString(), created_at: new Date(now - i * 1000).toISOString() }));
   localStorage.setItem('survey_document_history_events_v1', JSON.stringify({'session-history': rows}));
   const { default: History } = await import('/src/components/revisions/RevisionsPanel.jsx');
-  window.checkRoot.render(window.checkReact.createElement('div', { style: { width: 260, height: 700 } }, window.checkReact.createElement(History, { documentId: 'session-history', user: { id: 'session-user' }, embedded: true, isActive: true, getHistoryMarkIndex: () => new Map() })));
+  window.renderHistory = id => window.checkRoot.render(window.checkReact.createElement('div', { style: { width: 260, height: 700 } }, window.checkReact.createElement(History, { documentId: id, user: { id: 'session-user' }, embedded: true, isActive: true, getHistoryMarkIndex: () => new Map() })));
+  window.renderHistory('session-history');
 });
 await page.waitForSelector('[data-testid="document-history-legend"] button');
 const top = await page.locator('[data-testid="document-history-legend"] button').evaluateAll(els => els.map(el => el.getBoundingClientRect().top));
@@ -108,6 +139,32 @@ for (let i = 0; i < 4; i++) {
 const count = await page.locator('.dh-row').count();
 assert.ok(count >= 110, `history rows=${count}`);
 await page.screenshot({path:'/tmp/survey-session-history.png'});
+// A real older-page error exposes Retry. A subsequent stale error/finally
+// must not stop the next document's pending page or leave it in error.
+await page.evaluate(() => {
+  const store = JSON.parse(localStorage.getItem('survey_document_history_events_v1'));
+  for (const id of ['history-error-a', 'history-error-b']) store[id] = store['session-history'].map(row => ({...row, document_id:id}));
+  localStorage.setItem('survey_document_history_events_v1', JSON.stringify(store));
+  window.renderHistory('history-error-a');
+});
+await expect.poll(() => page.locator('.dh-row').count()).toBe(50);
+await page.getByTestId('document-history-list').evaluate(el => { el.scrollTop = el.scrollHeight; });
+await expect(page.getByTestId('document-history-load-older')).toBeVisible();
+await page.getByTestId('document-history-load-older').click();
+await expect.poll(() => Boolean(heldOlderA)).toBe(true);
+await page.evaluate(() => window.renderHistory('history-error-b'));
+await expect.poll(() => page.locator('.dh-row').count()).toBe(50);
+await page.getByTestId('document-history-list').evaluate(el => { el.scrollTop = el.scrollHeight; });
+await expect.poll(() => Boolean(heldOlderB)).toBe(true);
+await heldOlderA.fulfill({ status:500, contentType:'application/json', headers:{'Access-Control-Allow-Origin':'*'}, body:JSON.stringify({code:'XX000',message:'Synthetic stale page failure'}) });
+await page.waitForTimeout(100);
+await expect(page.getByTestId('document-history-load-older')).toHaveCount(0);
+await expect(page.locator('.dh-more[role="status"]')).toHaveText('Loading…');
+await heldOlderB.fulfill({ status:404, contentType:'application/json', headers:{'Access-Control-Allow-Origin':'*'}, body:JSON.stringify({code:'42P01',message:'relation "public.document_history_events" does not exist'}) });
+await expect.poll(() => page.locator('.dh-row').count()).toBe(100);
+await page.getByTestId('document-history-list').evaluate(el => { el.scrollTop = el.scrollHeight; });
+await expect.poll(() => page.locator('.dh-row').count()).toBe(110);
+await expect(page.getByTestId('document-history-load-older')).toHaveCount(0);
 await page.evaluate(async () => {
   const { AccountSettings } = await import('/src/components/AccountSettings.jsx');
   const { AuthContext } = await import('/src/contexts/AuthContext.jsx');
