@@ -23238,7 +23238,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [pdfFile, pdfId, annotationsByPage, callouts, entities, scale, pageNum, uploadDataFile, updateSupabaseDocument]);
 
   // Load survey data from Supabase Storage
-  const loadSurveyDataFromSupabase = useCallback(async (doc, prefetchedDataBlob) => {
+  const loadSurveyDataFromSupabase = useCallback(async (doc, prefetchedDataBlob, { restoreViewState = true, isCurrent = () => true } = {}) => {
     if (!doc || !doc.projectId) return;
 
     try {
@@ -23247,7 +23247,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // Check if file exists by trying to get URL (or just try download and catch error)
       // We'll just try to download. Open speed (2026-10-04): the PDF load starts
       // this same download alongside the PDF's own and hands its promise in,
-      // so it no longer adds a round trip before the first page.
+      // so local restores overlap the PDF read. Cloud documents apply this
+      // optional legacy data in the background without holding the first page.
       const dataBlob = prefetchedDataBlob !== undefined
         ? await prefetchedDataBlob
         : await downloadFromStorage(filePath);
@@ -23255,7 +23256,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       const text = await dataBlob.text();
       const data = JSON.parse(text);
-
+      if (!isCurrent()) return;
 
       // Verify it matches this PDF
       if (data.pdfId && data.pdfId !== getPDFId(pdfFile)) {
@@ -23297,9 +23298,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (data.entities) setEntities(data.entities);
 
       // Restore view state if available
-      if (data.zoomLevel) setScale(data.zoomLevel);
-      const restoredPage = coercePageNumber(data.currentPage, numPages || Number.POSITIVE_INFINITY);
-      if (restoredPage) setPageNum(restoredPage);
+      if (restoreViewState) {
+        if (data.zoomLevel) setScale(data.zoomLevel);
+        const restoredPage = coercePageNumber(data.currentPage, numPages || Number.POSITIVE_INFINITY);
+        if (restoredPage) setPageNum(restoredPage);
+      }
 
       // Template restoration is handled by the document's template_id usually, 
       // but we can fallback to data.templateId if needed.
@@ -23857,9 +23860,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // Open speed (2026-10-04): the project sidecar read below used to start
         // only after the PDF was downloaded and parsed, holding the first page
         // back by one more round trip. Start it now, alongside the PDF download
-        // (the same one read, just earlier); it is still applied at the same
-        // point as before.
-        const surveyDataBlobPromise = pdfFile.projectId && !pdfFile.id
+        // (the same read, just earlier). Local imports await its restore; cloud
+        // documents apply optional entities in the background.
+        const surveyDataBlobPromise = pdfFile.projectId
           ? Promise.resolve()
             .then(() => downloadFromStorage(`${pdfFile.projectId}/${pdfFile.id}_data.json`))
             .catch(() => null)
@@ -24001,8 +24004,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setPageNum(1);
 
         // Load project data from Supabase if available
-        if (pdfFile.projectId && !pdfFile.id) {
-          await loadSurveyDataFromSupabase(pdfFile, surveyDataBlobPromise);
+        if (pdfFile.projectId) {
+          // Cloud marks/spaces come from Y.Doc. Keep custom legacy entities,
+          // but do not hold page paint behind this optional sidecar request or
+          // let its old zoom/page override this document's current view.
+          const sidecarRestore = loadSurveyDataFromSupabase(pdfFile, surveyDataBlobPromise, {
+            restoreViewState: !pdfFile.id,
+            isCurrent: () => !isCancelled,
+          });
+          if (!pdfFile.id) await sidecarRestore;
         }
         if (isCancelled) return;
 
