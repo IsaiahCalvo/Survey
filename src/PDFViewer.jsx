@@ -110,6 +110,10 @@ import ApplyRedactionsModal from './components/ApplyRedactionsModal';
 import OcrTextLayer from './components/OcrTextLayer';
 import SpaceRegionOverlay from './SpaceRegionOverlay';
 import PdfjsViewerContainer from './components/PdfjsViewerContainer';
+import SurveyTemplateVersionDialog from './components/SurveyTemplateVersionDialog';
+import { acceptTemplateVersion, bindUsedTemplate, needsTemplateVersionChoice, readTemplateBinding, templateBindingKey, templateFingerprint, writeTemplateBinding } from './utils/surveyTemplateBinding';
+import { moveSurveyCategories } from './utils/surveyCategoryMove';
+import SurveyMarkerPlacementDialog from './components/SurveyMarkerPlacementDialog';
 import TemplateOverwriteWarningModal from './components/TemplateOverwriteWarningModal';
 import TextLayer from './TextLayer';
 import UnsupportedAnnotationsNotice from './components/UnsupportedAnnotationsNotice';
@@ -5258,6 +5262,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Region annotation visibility state
   const [activeRegionId, setActiveRegionId] = useState(null);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [pendingTemplateVersion, setPendingTemplateVersion] = useState(null);
+  const templateBindingAccessRef = useRef({ get: () => null, set: () => false });
+  const readSurveyTemplateBinding = useCallback((templateId) => {
+    const durable = templateBindingAccessRef.current.get(`surveyTemplateBinding:${templateId}`);
+    if (durable?.used) return durable;
+    try { return readTemplateBinding(templateBindingKey(surveyMemoryDocumentKey(pdfFile, pdfFilePath), user?.id, templateId), window.localStorage); } catch { return null; }
+  }, [pdfFile?.id, pdfFile?.name, pdfFilePath, user?.id]);
+  const storeSurveyTemplateBinding = useCallback((templateId, binding) => {
+    if (!binding) return;
+    templateBindingAccessRef.current.set(`surveyTemplateBinding:${templateId}`, binding, 'survey-template-binding');
+    try { writeTemplateBinding(templateBindingKey(surveyMemoryDocumentKey(pdfFile, pdfFilePath), user?.id, templateId), binding, window.localStorage); } catch { /* device storage may be disabled */ }
+  }, [pdfFile?.id, pdfFile?.name, pdfFilePath, user?.id]);
   const [selectedModuleId, setSelectedModuleId] = useState(null);
   useEffect(() => {
     pdfjsSelectedModuleIdRef.current = selectedModuleId;
@@ -6052,7 +6068,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const appTemplates = templates;
   const handleTemplatesChange = onTemplatesChange;
 
-  const handleSelectSurveyTemplate = useCallback((template) => {
+  const enterSurveyTemplateVersion = useCallback((template) => {
     if (!template) return;
     const firstModuleId = (template.modules || template.spaces || [])?.[0]?.id || null;
     setSelectedTemplate(template);
@@ -6062,6 +6078,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setActiveTool('survey-marker');
     setShowSurveyPanel(true);
   }, []);
+  const handleSelectSurveyTemplate = useCallback((template) => {
+    if (!template) return;
+    const binding = readSurveyTemplateBinding(template.id);
+    if (needsTemplateVersionChoice(binding, template)) {
+      setPendingTemplateVersion({ binding, latest: template });
+      return;
+    }
+    enterSurveyTemplateVersion(binding?.used ? binding.snapshot : template);
+  }, [readSurveyTemplateBinding, enterSurveyTemplateVersion]);
 
   // UX 2026-05-29: Survey entry now belongs to the always-visible right rail.
   // The handler stays in PDFViewer because it owns the survey/template state.
@@ -20734,40 +20759,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   } = useUndoToast();
   bookmarkUndoToastRef.current = enqueueUndoToast;
 
-  // Owner 2026-10-07 (survey bar round): "Done" at the right end of the survey
-  // bar leaves Survey at once - no confirmation - and the app's undo toast
-  // offers it back: "Left Survey  Undo" re-enters the same template, module,
-  // category and panel (open or closed). Escape never leaves Survey.
+  // Leaving Survey changes mode; it does not need a status or Undo toast.
   const handleLeaveSurvey = useCallback(() => {
-    const live = surveyBarLiveRef.current;
-    const template = live.selectedTemplate;
-    if (!template) {
-      handleCloseSurveyMode();
-      return;
-    }
-    const snapshot = {
-      templateId: template.id,
-      moduleId: live.selectedModuleId,
-      categoryId: live.selectedCategoryId,
-      panelCollapsed: live.rightRailCollapsed,
-    };
-    const templatesAtLeave = live.appTemplates;
     handleCloseSurveyMode();
-    enqueueUndoToast({
-      kind: 'single',
-      message: 'Left Survey',
-      onUndo: () => {
-        const again = (templatesAtLeave || []).find((entry) => entry?.id === snapshot.templateId) || template;
-        surveyReenterCollapsedRef.current = Boolean(snapshot.panelCollapsed);
-        handleSelectSurveyTemplate(again);
-        const modules = again.modules || again.spaces || [];
-        if (snapshot.moduleId && modules.some((module) => module?.id === snapshot.moduleId)) {
-          setSelectedModuleId(snapshot.moduleId);
-          if (snapshot.categoryId) setSelectedCategoryId(snapshot.categoryId);
-        }
-      },
-    });
-  }, [handleCloseSurveyMode, handleSelectSurveyTemplate, enqueueUndoToast]);
+  }, [handleCloseSurveyMode]);
 
   const [pendingDeletePlan, setPendingDeletePlan] = useState(null);
   const pendingDeleteRunnerRef = useRef(null);
@@ -21294,6 +21289,27 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // w33: no one-time store compaction write while the document is locked.
     documentLocked,
   });
+  templateBindingAccessRef.current = {
+    get: excelSyncMetaGet,
+    set: (...args) => !documentLocked && yjsDocRole !== 'viewer' && excelSyncMetaSet(...args),
+  };
+  useEffect(() => {
+    if (!selectedTemplate || !normalAnnotationHydration?.ready) return;
+    const modules = new Set((selectedTemplate.modules || selectedTemplate.spaces || []).map((module) => module.id));
+    const used = Object.values(surveyMarkers || {}).some((marker) => modules.has(marker?.moduleId))
+      || Object.values(annotationsByPage || {}).some((page) => (page?.objects || []).some((mark) => modules.has(mark?.moduleId)));
+    if (!used) return;
+    const binding = readSurveyTemplateBinding(selectedTemplate.id);
+    const latest = appTemplates.find((template) => template.id === selectedTemplate.id);
+    // Edits made in this viewer (e.g. moving its category) are already an
+    // explicit choice. Keep that document binding in step with the edit.
+    const activeEdit = binding?.used && latest
+      && templateFingerprint(selectedTemplate) !== binding.fingerprint
+      && templateFingerprint(selectedTemplate) === templateFingerprint(latest);
+    storeSurveyTemplateBinding(selectedTemplate.id, activeEdit
+      ? acceptTemplateVersion(binding, selectedTemplate, true)
+      : bindUsedTemplate(selectedTemplate, binding));
+  }, [selectedTemplate, surveyMarkers, annotationsByPage, appTemplates, normalAnnotationHydration?.ready, storeSurveyTemplateBinding, readSurveyTemplateBinding]);
   const deletedPdfAnnotations = useMemo(() => filterRestoredPdfAnnotationTombstones([
     ...new Map(
       [...durableDeletedPdfAnnotations, ...locallyDeletedPdfAnnotations]
@@ -31218,6 +31234,39 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [selectedTemplate, handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig]);
 
+  const handleMoveSurveyCategories = useCallback((categoryIds, destinationId) => {
+    if (documentLocked || yjsDocRole === 'viewer') return { ok: false, reason: 'This document is read-only.' };
+    const selected = new Set(categoryIds || []);
+    const affected = Object.values(surveyMarkers || {}).filter((marker) => marker.moduleId === selectedModuleId && selected.has(marker.categoryId));
+    if (affected.some((surveyMarker) => !canModifySurveyMarker({ surveyMarker, viewerId: user?.id, documentOwnerId }))) return { ok: false, reason: 'Unlock the affected Survey Markers before moving this category.' };
+    const result = moveSurveyCategories(selectedTemplate, surveyMarkers, selectedModuleId, destinationId, categoryIds);
+    if (!result.ok) return result;
+    const updatedTemplate = { ...result.template, updatedAt: new Date().toISOString() };
+    setSelectedTemplate(updatedTemplate);
+    setSurveyMarkers(result.markers);
+    setNewSurveyMarkersByPage((pages) => Object.fromEntries(Object.entries(pages).map(([page, entries]) => [page,
+      entries.map((entry) => result.markers[entry.annotationId]
+        ? { ...entry, moduleId: result.markers[entry.annotationId].moduleId } : entry),
+    ])));
+    const movedNames = new Set(result.categories.map((category) => category.name));
+    const sourceKey = getModuleDataKey(getModuleName(selectedTemplate, selectedModuleId));
+    const destinationKey = getModuleDataKey(getModuleName(selectedTemplate, destinationId));
+    setItems((current) => Object.fromEntries(Object.entries(current).map(([id, item]) => [id,
+      movedNames.has(item.itemType) && item[sourceKey] && !item[destinationKey]
+        ? { ...item, [destinationKey]: { ...item[sourceKey] } } : item,
+    ])));
+    handleTemplatesChange?.(appTemplates.map((template) => template.id === updatedTemplate.id ? updatedTemplate : template));
+    if (updatedTemplate.supabaseId) updateSupabaseTemplate(updatedTemplate.supabaseId, { config: sanitizeTemplateConfig(updatedTemplate), updated_at: updatedTemplate.updatedAt }).catch((error) => {
+      console.warn('Could not save category move:', error);
+      showToast('Category moved locally. Could not save the template to the cloud; try again.', 'error');
+    });
+    setSelectedModuleId(destinationId);
+    setSelectedCategoryId(null);
+    setCategorySelectModeActive(false);
+    setSelectedCategories({});
+    return { ok: true };
+  }, [selectedTemplate, surveyMarkers, selectedModuleId, handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig, documentLocked, yjsDocRole, user?.id, documentOwnerId]);
+
   const handleDeleteSurveyCategoryDefinition = useCallback((moduleId, categoryId) => {
     if (!selectedTemplate || !moduleId || !categoryId) return;
     const sourceModules = selectedTemplate.modules || selectedTemplate.spaces || [];
@@ -32027,6 +32076,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // prompt's save path so sync sees identical operations.
   const commitMobileSurveyMarker = useCallback((surveyMarker, categoryId) => {
     if (!selectedTemplate || !surveyMarker?.id || !categoryId) return;
+    storeSurveyTemplateBinding(selectedTemplate.id, bindUsedTemplate(selectedTemplate, readSurveyTemplateBinding(selectedTemplate.id)));
     const moduleId = surveyMarker.moduleId || selectedModuleId;
     const categoryName = getCategoryName(selectedTemplate, moduleId, categoryId);
     const existingSurveyMarkers = Object.values(surveyMarkers).filter(h => h.categoryId === categoryId);
@@ -32121,7 +32171,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setExpandedSurveyMarkers({ [surveyMarker.id]: true });
     setShowSurveyPanel(true);
     requestRightRailExpand();
-  }, [selectedTemplate, selectedModuleId, surveyMarkers, items, selectedSpaceId, normalizeSurveyMarkerColor, buildSurveyMarkerPreview, requestRightRailExpand]);
+  }, [selectedTemplate, selectedModuleId, surveyMarkers, items, selectedSpaceId, normalizeSurveyMarkerColor, buildSurveyMarkerPreview, requestRightRailExpand, storeSurveyTemplateBinding, readSurveyTemplateBinding]);
 
   // Handle surveyMarker creation from annotation tool
   const handleSurveyMarkerCreated = useCallback((pageNumber, bounds) => {
@@ -32278,7 +32328,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     // If a category is already selected, place the Survey Marker straight
     // away with its default name and open it in the Survey panel.
-    if (selectedCategoryId) {
+    const chosenEntity = mobileSelectedEntity || (!mobileMode
+      ? (selectedTemplate?.entities || []).find((entity) => entity.id === lastSurveyEntityIdRef.current) || null
+      : null);
+    if (selectedCategoryId && (chosenEntity || !(selectedTemplate.entities || []).length)) {
       // UX (mobile demo parity): commit instantly with the default name and
       // open the marker (demo App.tsx:1155). Owner 2026-10-01 ("Yes, inline
       // like phone"): desktop too - the Entity and Name pop-ups are gone; the
@@ -32333,10 +32386,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           bounds,
           moduleId: effectiveModuleId,
           regionId: pageRegionId,
-          ...(mobileSelectedEntity ? {
-            entityId: mobileSelectedEntity.id,
-            entityName: mobileSelectedEntity.name,
-            entityColor: mobileSelectedEntityColor,
+          ...(chosenEntity ? {
+            entityId: chosenEntity.id,
+            entityName: chosenEntity.name,
+            entityColor: chosenEntity.color,
           } : {})
         });
       }
@@ -35145,6 +35198,10 @@ ${pageBlocks}
       DEFAULT_SURVEY_MARKER_OPACITY,
       deleteAnnotations,
       deleteCategory: handleDeleteSurveyCategoryDefinition,
+      handleMoveSurveyCategories,
+      canEditSurveyCategories: !documentLocked && yjsDocRole !== 'viewer',
+      canModifySurveyMarkerItem: (id) => !documentLocked && yjsDocRole !== 'viewer' && canModifySurveyMarker({ surveyMarker: surveyMarkers[id], viewerId: user?.id, documentOwnerId }),
+      duplicateSurveyMarker: (id) => { const marker = surveyMarkers[id]; if (marker?.pageNumber) duplicateFamilySelection(marker.pageNumber, { markerIds: [id] }); },
       documentSyncEnabled,
       expandedCategories,
       expandedSurveyMarkers,
@@ -35298,6 +35355,11 @@ ${pageBlocks}
     DEFAULT_SURVEY_MARKER_OPACITY,
     deleteAnnotations,
     handleDeleteSurveyCategoryDefinition,
+    handleMoveSurveyCategories,
+    documentLocked,
+    yjsDocRole,
+    documentOwnerId,
+    duplicateFamilySelection,
     documentSyncEnabled,
     expandedCategories,
     expandedSurveyMarkers,
@@ -39511,170 +39573,34 @@ ${pageBlocks}
                 })()}
         </SpaceSelectionDialog>)}
 
-        {/* Category Selection Modal (after highlighting) */}
-        {
-          pendingSurveyMarker && selectedTemplate && selectedModuleId && (
-            <>
-              <div
-                onClick={() => {
-                  // Survey audit P1-2: a click off the dialog takes the marker
-                  // back as one Undo step.
-                  cancelSurveyMarkerPlacement(pendingSurveyMarker.id);
-                }}
-                style={{
-                  position: 'fixed',
-                  top: 0,
-                  // Survey audit P1-3: on the phone the tool rail lies over the
-                  // left edge of the page, so the dialog centres in the area
-                  // beside it instead of sliding under it.
-                  left: mobileMode ? 'var(--mobile-rail-w, 36px)' : 0,
-                  right: 0,
-                  bottom: 0,
-                  background: COLORS.modal.overlay,
-                  backdropFilter: 'blur(8px)',
-                  WebkitBackdropFilter: 'blur(8px)',
-                  zIndex: 10001,
-                  animation: 'fadeIn 0.2s ease-out',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                <div
-                  role="dialog"
-                  aria-modal="true"
-                  aria-labelledby="survey-marker-categorize-dialog-title"
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    background: COLORS.modal.surface,
-                    border: `1px solid ${COLORS.modal.border}`,
-                    borderRadius: '8px',
-                    padding: '24px',
-                    width: '500px',
-                    maxWidth: mobileMode ? 'calc(100% - 24px)' : '90vw',
-                    maxHeight: '80vh',
-                    overflow: 'auto',
-                    boxShadow: SHADOWS.xl,
-                    animation: 'fadeIn 0.2s ease-out'
-                  }}
-                >
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    marginBottom: '20px'
-                  }}>
-                    <h3 id="survey-marker-categorize-dialog-title" style={{
-                      margin: 0,
-                      fontSize: '18px',
-                      fontWeight: '600',
-                      color: COLORS.modal.textPrimary,
-                      fontFamily: FONT_FAMILY
-                    }}>
-                      {/* Vocabulary rule: the product term is "Survey Marker" —
-                          never bare "highlight"/"marker" in user-facing copy. */}
-                      Categorize Survey Marker
-                    </h3>
-                    <button
-                      type="button"
-                      aria-label="Cancel Survey Marker"
-                      onClick={() => {
-                        // Survey audit P1-2: X takes the marker back as one
-                        // Undo step.
-                        cancelSurveyMarkerPlacement(pendingSurveyMarker.id);
-                      }}
-                      className="btn btn-icon btn-icon-sm"
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--text-3)'
-                      }}
-                    >
-                      <Icon name="close" size={18} />
-                    </button>
-                  </div>
-
-                  <p style={{ color: COLORS.modal.textMuted, fontSize: '14px', marginBottom: '20px' }}>
-                    Select a category for this Survey Marker:
-                  </p>
-
-                  {(() => {
-                    const module = ((selectedTemplate.modules || selectedTemplate.spaces) || [])?.find(m => m.id === selectedModuleId);
-                    if (!module || !module.categories || module.categories.length === 0) {
-                      return (
-                        <div style={{ textAlign: 'center', padding: '40px', color: COLORS.modal.textMuted }}>
-                          <p>No categories available for this module.</p>
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {module.categories.map(category => (
-                          <button
-                            key={category.id}
-                            onClick={() => {
-                              // UX (mobile demo parity): once categorized, commit
-                              // with the default name and open the marker in the
-                              // panel (demo App.tsx:1155). Owner 2026-10-01
-                              // ("Yes, inline like phone"): desktop too - no
-                              // Entity / Name pop-ups; desktop focuses the name.
-                              const placementEntity = (pendingSurveyMarker.entityId || mobileMode)
-                                ? null
-                                : (selectedTemplate?.entities || []).find((entity) => entity.id === lastSurveyEntityIdRef.current) || null;
-                              commitMobileSurveyMarker(placementEntity ? {
-                                ...pendingSurveyMarker,
-                                entityId: placementEntity.id,
-                                entityName: placementEntity.name,
-                                entityColor: normalizeSurveyMarkerColor(placementEntity.color) || placementEntity.color,
-                              } : pendingSurveyMarker, category.id);
-                              if (!mobileMode) {
-                                setSurveyMarkerNameFocusRequest({ id: pendingSurveyMarker.id, tick: Date.now() });
-                              }
-                              setPendingSurveyMarker(null);
-                            }}
-                            className="btn btn-default btn-md"
-                            style={{
-                              textAlign: 'left',
-                              justifyContent: 'flex-start',
-                              padding: '12px 16px',
-                              background: COLORS.modal.panel,
-                              border: `1px solid ${COLORS.modal.borderStrong}`,
-                              transition: 'background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease'
-                            }}
-                            onMouseEnter={handleModalOptionMouseEnter}
-                            onMouseLeave={handleModalOptionMouseLeave}
-                          >
-                            <div style={{ fontWeight: '500', color: COLORS.modal.textPrimary }}>
-                              {category.name || 'Untitled category'}
-                            </div>
-                            {(() => {
-                              /* KAL-44: count only active (non-archived) items here so the
-                                 "N checklist items" preview reflects what a new marker would
-                                 actually see. */
-                              const activeCount = (category.checklist || []).filter(it => it && it.archived !== true).length;
-                              if (activeCount === 0) return null;
-                              return (
-                                <div style={{ fontSize: '12px', color: COLORS.modal.textMuted, marginTop: '4px' }}>
-                                  {activeCount} checklist item{activeCount !== 1 ? 's' : ''}
-                                </div>
-                              );
-                            })()}
-                          </button>
-                        ))}
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-            </>
-          )
-        }
-
-        {/* Owner 2026-10-01 ("Yes, inline like phone"): the desktop Entity and
-            Name placement pop-ups that stood here are gone. A new Survey
-            Marker opens in the Survey rail with its name focused and its Entity
-            menu beside it (handleSurveyMarkerCreated / commitMobileSurveyMarker). */}
+        {pendingTemplateVersion && <SurveyTemplateVersionDialog
+          latest={pendingTemplateVersion.latest}
+          onCancel={() => setPendingTemplateVersion(null)}
+          onChoose={(useLatest) => {
+            const binding = acceptTemplateVersion(pendingTemplateVersion.binding, pendingTemplateVersion.latest, useLatest);
+            storeSurveyTemplateBinding(pendingTemplateVersion.latest.id, binding);
+            enterSurveyTemplateVersion(binding.snapshot);
+            setPendingTemplateVersion(null);
+          }}
+        />}
+        {pendingSurveyMarker && selectedTemplate && (
+          <SurveyMarkerPlacementDialog
+            key={pendingSurveyMarker.id}
+            marker={pendingSurveyMarker}
+            template={selectedTemplate}
+            categoryId={selectedCategoryId}
+            onCancel={() => cancelSurveyMarkerPlacement(pendingSurveyMarker.id)}
+            onConfirm={(marker, categoryId) => {
+              commitMobileSurveyMarker(marker, categoryId);
+              rememberSurveyEntity(marker.entityId);
+              setSelectedModuleId(marker.moduleId);
+              setSelectedCategoryId(surveyKeepCategoryActive ? categoryId : null);
+              if (!mobileMode) setSurveyMarkerNameFocusRequest({ id: marker.id, tick: Date.now() });
+              else if (!surveyKeepCategoryActive) setActiveTool('pan');
+              setPendingSurveyMarker(null);
+            }}
+          />
+        )}
 
         {/* Item Transfer - Destination Selection Modal */}
         {
