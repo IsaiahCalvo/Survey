@@ -34111,6 +34111,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       addHistoryCheckpoint('space:transfer-region', {
         spaceIds: [...new Set([request.sourceSpaceId, request.targetSpaceId])],
         transferIds: plan.movedIds,
+        transferState: plan.transferState,
       });
       clearAnnotationSelectionForContextChange('region-transfer');
       if (plan.changedPages.length) {

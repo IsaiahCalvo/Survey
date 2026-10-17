@@ -1,3 +1,4 @@
+import { restoreSpaceRegionTransfer } from './spaceRegionTransfer.js';
 /**
  * historyStacks.js — orders undo/redo between the local Fabric history and the
  * legacy (Pdfjs) history so the two stacks interleave correctly.
@@ -272,17 +273,10 @@ export function scopeLegacyRestoreToOwnSlices(meta, currentState, target, { dire
     return out;
   }
   if (reason === 'space:transfer-region') {
-    for (const ownedSpaceId of context.spaceIds || []) out.spaces = mergeSpaces(out.spaces, target.spaces, ownedSpaceId);
-    const ids = new Set((context.transferIds || []).map(String));
-    // Relocation owns these IDs on both pages; restore their position while
-    // leaving every unrelated mark, including newer collaborator work, intact.
-    out.annotationsByPage = mergeCascadeMarks(out.annotationsByPage, target.annotationsByPage, ids, 'redo');
-    out.annotationsByPage = mergeCascadeMarks(out.annotationsByPage, target.annotationsByPage, ids, 'undo');
-    out.surveyMarkers = { ...out.surveyMarkers };
-    for (const id of ids) {
-      if (hasOwnKey(target.surveyMarkers, id)) out.surveyMarkers[id] = target.surveyMarkers[id];
-      else delete out.surveyMarkers[id];
-    }
+    const restored = restoreSpaceRegionTransfer(out, context.transferState, { direction });
+    out.spaces = restored.spaces;
+    out.annotationsByPage = restored.annotationsByPage;
+    out.surveyMarkers = restored.surveyMarkers;
     if (typeof deriveCallouts === 'function') out.callouts = deriveCallouts(out.annotationsByPage);
     return out;
   }

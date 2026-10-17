@@ -1,6 +1,7 @@
 import { calloutToAnnotationObject } from './calloutAnnotationBridge.js';
 import { translateMovedMark } from './crossPageMove.js';
 
+const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 const clone = (value) => structuredClone(value);
 const idOf = (mark) => String(mark?.data?.id ?? mark?.id ?? mark?.annotationId ?? '');
 const regionOf = (mark) => mark?.regionId ?? mark?.data?.regionId;
@@ -48,6 +49,15 @@ export function planSpaceRegionTransfer({ spaces, annotationsByPage = {}, survey
     const moved = { ...mark, pageNumber: Number(targetPageId), spaceId: targetSpaceId };
     if ('pageId' in moved) moved.pageId = Number(targetPageId);
     if (mark.data) moved.data = { ...mark.data, spaceId: targetSpaceId, ...('pageNumber' in mark.data ? { pageNumber: Number(targetPageId) } : {}), ...('pageId' in mark.data ? { pageId: Number(targetPageId) } : {}) };
+    if (Array.isArray(moved.data?.quads)) {
+      moved.data = { ...moved.data, quads: moved.data.quads.map((quad) => Object.fromEntries(Object.entries(quad).map(([key, value]) => [key, /^x[1-4]$/.test(key) ? value + dx : /^y[1-4]$/.test(key) ? value + dy : value]))) };
+      // The geometry travels, but a source PDF's character indices cannot
+      // identify words on a different page. Endpoint edits use the new quads.
+      if (Number(sourcePageId) !== Number(targetPageId)) {
+        delete moved.data.textRange;
+        delete moved.data.textRangeModel;
+      }
+    }
     if (moved.data?.legacyCallout && targetSize?.width > 0 && targetSize?.height > 0) {
       const original = moved.data.legacyCallout;
       const width = sourceSize?.width || targetSize.width;
@@ -84,5 +94,122 @@ export function planSpaceRegionTransfer({ spaces, annotationsByPage = {}, survey
       nextMarkers[id] = moveScope({ ...marker, ...(marker.bounds ? { bounds: { ...marker.bounds, x: marker.bounds.x + dx, y: marker.bounds.y + dy } } : {}) });
     }
   }
-  return { spaces: nextSpaces, annotationsByPage: nextPages, surveyMarkers: nextMarkers, movedIds: [...new Set(movedIds)], changedPages: [...new Set(movedIds.length ? [Number(sourcePageId), Number(targetPageId)] : [])] };
+  const pageChanges = [];
+  for (const [spaceId, pageId] of [[sourceSpaceId, Number(sourcePageId)], [targetSpaceId, Number(targetPageId)]]) {
+    const before = spaces.find((space) => space.id === spaceId)?.assignedPages?.find((page) => Number(page.pageId) === pageId) || null;
+    const after = nextSpaces.find((space) => space.id === spaceId)?.assignedPages?.find((page) => Number(page.pageId) === pageId) || null;
+    if (!same(before, after)) pageChanges.push({ spaceId, pageId, before: clone(before), after: clone(after) });
+  }
+  const findMark = (pages, id) => {
+    for (const [pageNumber, page] of Object.entries(pages)) {
+      const index = (page.objects || []).findIndex((mark) => idOf(mark) === id);
+      if (index >= 0) return { pageNumber: Number(pageNumber), object: clone(page.objects[index]), index };
+    }
+    return null;
+  };
+  const transferState = {
+    pages: pageChanges,
+    annotations: movedIds.filter((id) => findMark(annotationsByPage, id)).map((id) => ({ id, before: findMark(annotationsByPage, id), after: findMark(nextPages, id) })),
+    markers: movedIds.filter((id) => surveyMarkers[id]).map((id) => ({ id, before: clone(surveyMarkers[id]), after: clone(nextMarkers[id]) })),
+  };
+  return { transferState, spaces: nextSpaces, annotationsByPage: nextPages, surveyMarkers: nextMarkers, movedIds: [...new Set(movedIds)], changedPages: [...new Set(movedIds.length ? [Number(sourcePageId), Number(targetPageId)] : [])] };
+}
+
+
+const regionKey = (region) => region?.regionId ? `id:${region.regionId}` : `legacy:${JSON.stringify(region)}`;
+const regionMap = (page) => new Map((page?.regions || []).map((region) => [regionKey(region), region]));
+
+/** Reverse only this transfer's associations; newer edits stay authoritative. */
+export function restoreSpaceRegionTransfer(current, transferState, { direction = 'undo' } = {}) {
+  if (!transferState) return current;
+  const expectedKey = direction === 'undo' ? 'after' : 'before';
+  const desiredKey = direction === 'undo' ? 'before' : 'after';
+  const pages = transferState.pages || [];
+  const blockedRegions = new Set();
+  let blockedWholePage = false;
+  const changes = pages.map((change) => {
+    const expected = change[expectedKey], desired = change[desiredKey];
+    const liveSpace = current.spaces?.find((space) => space.id === change.spaceId);
+    if (!liveSpace && expected?.wholePageIncluded === true) blockedWholePage = true;
+    const live = liveSpace?.assignedPages?.find((page) => Number(page.pageId) === change.pageId) || null;
+    const expectedRegions = regionMap(expected), desiredRegions = regionMap(desired), liveRegions = regionMap(live);
+    const owned = [...new Set([...expectedRegions.keys(), ...desiredRegions.keys()])].filter((key) => !same(expectedRegions.get(key), desiredRegions.get(key)));
+    for (const key of owned) if (!same(liveRegions.get(key), expectedRegions.get(key))) blockedRegions.add(key);
+    return { ...change, expected, desired, live, expectedRegions, desiredRegions, liveRegions, owned };
+  });
+  const markState = (pages, id) => Object.entries(pages || {}).flatMap(([pageNumber, page]) => (page.objects || []).filter((mark) => idOf(mark) === id).map((object) => ({ pageNumber: Number(pageNumber), object })));
+  const expectedMarkState = (value) => value ? { pageNumber: value.pageNumber, object: value.object } : undefined;
+  // Keep a region and its marks together. If a later edit changed a moved
+  // mark, skipping its relocation must also keep its region on that page.
+  for (const change of transferState.annotations || []) {
+    const expected = change[expectedKey], desired = change[desiredKey];
+    const live = markState(current.annotationsByPage, change.id);
+    if (live.length !== (expected ? 1 : 0) || !same(live[0], expectedMarkState(expected))) {
+      const regionId = regionOf(expected?.object) || regionOf(desired?.object);
+      if (regionId) blockedRegions.add(`id:${regionId}`);
+      else blockedWholePage = true;
+    }
+  }
+  for (const change of transferState.markers || []) {
+    const expected = change[expectedKey], desired = change[desiredKey];
+    if (!same(current.surveyMarkers?.[change.id], expected)) {
+      const regionId = regionOf(expected) || regionOf(desired);
+      if (regionId) blockedRegions.add(`id:${regionId}`);
+      else blockedWholePage = true;
+    }
+  }
+  let spaces = current.spaces || [];
+  for (const change of changes) {
+    if (blockedWholePage) continue;
+    // A removed space is a later decision. Undo never brings its full snapshot back.
+    const index = spaces.findIndex((space) => space.id === change.spaceId);
+    if (index < 0) continue;
+    const currentSpace = spaces[index];
+    let regions = [...(change.live?.regions || [])];
+    for (const key of change.owned) {
+      if (blockedRegions.has(key)) continue;
+      const desiredRegion = change.desiredRegions.get(key);
+      regions = regions.filter((region) => regionKey(region) !== key);
+      if (desiredRegion) regions.push(clone(desiredRegion));
+    }
+    const expectedWhole = change.expected?.wholePageIncluded === true;
+    const desiredWhole = change.desired?.wholePageIncluded === true;
+    let whole = change.live?.wholePageIncluded === true;
+    if (whole === expectedWhole) whole = desiredWhole;
+    // Keep later labels and visibility changes. A newly restored assignment
+    // starts from its original metadata, without replacing an existing one.
+    let nextPage = change.live ? { ...change.live, regions } : regions.length || whole ? { ...clone(change.desired), pageId: change.pageId, regions } : null;
+    if (nextPage && (change.live?.wholePageIncluded !== undefined || change.desired?.wholePageIncluded !== undefined)) nextPage.wholePageIncluded = whole;
+    if (nextPage && !regions.length && !whole && change.desired === null && same(change.live, change.expected)) nextPage = null;
+    const assignedPages = [];
+    let found = false;
+    for (const page of currentSpace.assignedPages || []) {
+      if (Number(page.pageId) !== change.pageId) assignedPages.push(page);
+      else { found = true; if (nextPage) assignedPages.push(nextPage); }
+    }
+    if (!found && nextPage) assignedPages.push(nextPage);
+    spaces = spaces.map((space, position) => position === index ? { ...space, assignedPages } : space);
+  }
+  let annotationsByPage = current.annotationsByPage || {};
+  for (const change of transferState.annotations || []) {
+    const expected = change[expectedKey], desired = change[desiredKey];
+    if (blockedWholePage || blockedRegions.has(`id:${regionOf(expected?.object) || regionOf(desired?.object)}`)) continue;
+    const entries = Object.entries(annotationsByPage).flatMap(([pageNumber, page]) => (page.objects || []).filter((mark) => idOf(mark) === change.id).map((object) => ({ pageNumber: Number(pageNumber), object })));
+    if (entries.length !== (expected ? 1 : 0) || !same(entries[0], expectedMarkState(expected))) continue;
+    annotationsByPage = Object.fromEntries(Object.entries(annotationsByPage).map(([pageNumber, page]) => [pageNumber, { ...page, objects: (page.objects || []).filter((mark) => idOf(mark) !== change.id) }]));
+    if (desired) {
+      const page = annotationsByPage[desired.pageNumber] || { objects: [] };
+      const objects = [...page.objects];
+      objects.splice(Math.min(desired.index ?? objects.length, objects.length), 0, clone(desired.object));
+      annotationsByPage[desired.pageNumber] = { ...page, objects };
+    }
+  }
+  const surveyMarkers = { ...(current.surveyMarkers || {}) };
+  for (const change of transferState.markers || []) {
+    const expected = change[expectedKey], desired = change[desiredKey];
+    if (blockedWholePage || blockedRegions.has(`id:${regionOf(expected) || regionOf(desired)}`) || !same(surveyMarkers[change.id], expected)) continue;
+    if (desired) surveyMarkers[change.id] = clone(desired);
+    else delete surveyMarkers[change.id];
+  }
+  return { ...current, spaces, annotationsByPage, surveyMarkers };
 }
