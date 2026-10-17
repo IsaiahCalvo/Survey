@@ -23349,9 +23349,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [isActive, pendingLegacyEntities, setEntities]);
 
   // Load survey data from Supabase Storage
-  const loadSurveyDataFromSupabase = useCallback(async (doc, prefetchedDataBlob, { restoreViewState = true, isCurrent = () => true } = {}) => {
+  const loadSurveyDataFromSupabase = useCallback(async (doc, prefetchedDataBlob, { restoreViewState = true, isCurrent = () => true, initialEntityIds = (sidecarEntitiesRef.current || []).map((entity) => entity?.id).filter((id) => id != null) } = {}) => {
     if (!doc || !doc.projectId) return;
-    const initialEntityIds = (sidecarEntitiesRef.current || []).map((entity) => entity?.id).filter((id) => id != null);
 
     try {
       const filePath = `${doc.projectId}/${doc.id}_data.json`;
@@ -23974,6 +23973,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // back by one more round trip. Start it now, alongside the PDF download
         // (the same read, just earlier). Local imports await its restore; cloud
         // documents apply optional entities in the background.
+        const initialSidecarEntityIds = (sidecarEntitiesRef.current || []).map((entity) => entity?.id).filter((id) => id != null);
         const surveyDataBlobPromise = pdfFile.projectId
           ? Promise.resolve()
             .then(() => downloadFromStorage(`${pdfFile.projectId}/${pdfFile.id}_data.json`))
@@ -24122,6 +24122,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // let its old zoom/page override this document's current view.
           const sidecarRestore = loadSurveyDataFromSupabase(pdfFile, surveyDataBlobPromise, {
             restoreViewState: !pdfFile.id,
+            initialEntityIds: initialSidecarEntityIds,
             isCurrent: () => !isCancelled,
           });
           if (!pdfFile.id) await sidecarRestore;
