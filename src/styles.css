@@ -1708,7 +1708,7 @@ input[type="text"].space-card__name:focus-visible {
 }
 
 .spaces-switch[aria-checked='true']::before {
-  background: var(--text-2);
+  background: var(--success);
   box-shadow: none;
 }
 
@@ -1785,6 +1785,14 @@ input[type="text"].space-card__name:focus-visible {
 
 .space-card__delete {
   color: var(--danger);
+}
+
+.spaces-region__marks.is-on:not([aria-disabled='true']) {
+  color: var(--accent);
+}
+
+.spaces-panel input[readonly] {
+  cursor: default;
 }
 
 /* ---- an open space: the Add pages line, then one line per page ---------

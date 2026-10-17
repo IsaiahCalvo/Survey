@@ -2370,30 +2370,30 @@ export default function App({ devPreviewReturnTab = null }) {
     if (regionApi.fullPageConfirmPending) {
       return (
         <div data-area-actions="confirm-full-page" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-gap)' }}>
-          <span style={{ color: 'var(--text-2)', fontSize: '12px' }}>Replace these areas with the full page?</span>
-          <button type="button" className="btn btn-sm btn-default" onClick={regionApi.cancelFullPage}>Keep areas</button>
+          <span style={{ color: 'var(--text-2)', fontSize: '12px' }}>Replace these regions with the full page?</span>
+          <button type="button" className="btn btn-sm btn-default" onClick={regionApi.cancelFullPage}>Keep regions</button>
           <button type="button" className="btn btn-sm btn-secondary" style={AREA_CONFIRM_STYLE} onClick={regionApi.confirmFullPage}>Use full page</button>
         </div>
       );
     }
     return (
       <div data-area-actions="true" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-gap)' }}>
-        <span style={{ color: 'var(--text-2)', fontSize: '12px', fontWeight: 600, marginRight: '4px' }}>Areas</span>
+        <span style={{ color: 'var(--text-2)', fontSize: '12px', fontWeight: 600, marginRight: '4px' }}>Regions</span>
         <button
           type="button"
           className="btn btn-sm btn-default"
           disabled={!regionApi.canDelete}
           onClick={regionApi.deleteSelected}
-          {...chromeTip(regionApi.canDelete ? 'Delete the picked areas' : 'Pick an area with Select to delete it', 'below')}
+          {...chromeTip(regionApi.canDelete ? 'Delete the picked regions' : 'Pick a region with Select to delete it', 'below')}
         >
-          Delete area
+          Delete region
         </button>
         {regionApi.canSetFullPage && (
           <button
             type="button"
             className="btn btn-sm btn-default"
             onClick={regionApi.setFullPage}
-            {...chromeTip('Use the whole page as the area', 'below')}
+            {...chromeTip('Use the whole page as the region', 'below')}
           >
             Full page
           </button>
@@ -2402,7 +2402,7 @@ export default function App({ devPreviewReturnTab = null }) {
         <button type="button" className="btn btn-sm btn-default" onClick={regionApi.cancel} {...chromeTip('Leave without saving', 'below')}>
           Cancel
         </button>
-        <button type="button" className="btn btn-sm btn-secondary" style={AREA_CONFIRM_STYLE} onClick={regionApi.confirm} {...chromeTip('Save the areas (Enter)', 'below')}>
+        <button type="button" className="btn btn-sm btn-secondary" style={AREA_CONFIRM_STYLE} onClick={regionApi.confirm} {...chromeTip('Save the regions (Enter)', 'below')}>
           Done
         </button>
       </div>

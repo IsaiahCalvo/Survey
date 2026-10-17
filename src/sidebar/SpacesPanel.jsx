@@ -77,6 +77,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   showSurveyPanel = false,
   selectedModuleId = null,
   mobileMode = false,
+  editMode = false,
 }) {
   // KAL-65: sidebar controls use the app's instant shared tooltip, never a
   // native title= (the OS tooltip takes ~1.5s and is OS-styled, so mixing the
@@ -227,7 +228,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
           aria-expanded={isExpanded}
           onClick={() => onToggleExpand(space.id)}
         >
-          <DragRearrangeHandle
+          {editMode && <DragRearrangeHandle
             {...dragHandleProps}
             className="space-card__grip"
             data-space-drag-handle
@@ -235,7 +236,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             title="Drag to rearrange"
             onClick={(e) => e.stopPropagation()}
             style={{ width: undefined, height: undefined, color: 'var(--text-3)' }}
-          />
+          />}
 
           {/* The page count, a plain muted figure (no circle). Its name and
               tooltip say "3 pages · 2 areas". */}
@@ -270,10 +271,11 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               type="text"
               size={1}
               className="space-card__name"
+              readOnly={!editMode}
               defaultValue={space.name}
               key={`${space.id}:${space.name}`}
-              aria-label={`Rename ${spaceName}`}
-              {...tip('Click to rename', 'below')}
+              aria-label={editMode ? `Rename ${spaceName}` : spaceName}
+              {...tip(editMode ? 'Click to rename' : spaceName, 'below')}
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
               onInput={(e) => {
@@ -318,7 +320,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             <span className="spaces-switch__knob" />
           </div>
 
-          <button
+          {editMode && <button
             type="button"
             className="space-card__icon space-card__delete"
             data-glyph-only=""
@@ -330,12 +332,12 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             }}
           >
             <Icon name="trash" size={14} color="currentColor" />
-          </button>
+          </button>}
         </div>
 
         {isExpanded && (
           <div className="space-card__body">
-            <div className="space-card__add-line">
+            {editMode && <div className="space-card__add-line">
               <div className="space-card__add">
                 <input
                   type="text"
@@ -368,7 +370,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                   <Icon name="plus" size={14} color="currentColor" />
                 </button>
               </div>
-            </div>
+            </div>}
             {pageError && (
               <div className="space-card__error" role="alert">
                 {pageError}
@@ -397,7 +399,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                       : !isActive
                         ? 'Turn the space on to show its outline'
                         : !isOverlayToggleEnabled
-                          ? 'Draw an area first to show its outline'
+                          ? 'Draw a region first to show its outline'
                           : (isOverlayEnabled ? 'Hide the outline' : 'Show the outline');
                     const toggleOverlay = () => {
                       if (!isOverlayToggleEnabled) return;
@@ -413,8 +415,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                       activeSpaceId === space.id;
                     const areaCount = Array.isArray(page.regions) ? page.regions.length : 0;
                     const regionEditLabel = isActiveRegionEdit
-                      ? 'Stop editing areas'
-                      : (areaCount > 0 ? `Edit the areas on page ${page.pageId}` : `Draw an area on page ${page.pageId}`);
+                      ? 'Stop editing regions'
+                      : (areaCount > 0 ? `Edit the regions on page ${page.pageId}` : `Draw a region on page ${page.pageId}`);
 
                     // One visible control, separate canvas/survey features in code.
                     const hasVisibility = Boolean(getVisibilityState && onToggleVisibility);
@@ -493,11 +495,12 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                               type="button"
                               className="spaces-region__label"
                               {...tip('Click to rename', 'below')}
-                              aria-label={`Rename ${regionLabel}`}
+                              aria-label={editMode ? `Rename ${regionLabel}` : regionLabel}
                               onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                handleRegionEditClick(page.pageId, regionLabel);
+                                if (editMode) handleRegionEditClick(page.pageId, regionLabel);
+                                else onNavigateToPage?.(page.pageId);
                               }}
                             >
                               {regionLabel}
@@ -505,7 +508,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                           )}
                         </div>
 
-                        <button
+                        {editMode && <button
                           type="button"
                           className={`space-card__icon spaces-region__edit${isActiveRegionEdit ? ' is-on' : ''}`}
                           data-glyph-only=""
@@ -523,7 +526,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                           }}
                         >
                           <Icon name="regionEdit" size={14} color="currentColor" />
-                        </button>
+                        </button>}
 
                         {hasVisibility && (
                           <button
@@ -549,7 +552,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                           </button>
                         )}
 
-                        <button
+                        {editMode && <button
                           type="button"
                           className="space-card__icon space-card__delete"
                           data-glyph-only=""
@@ -562,7 +565,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                           }}
                         >
                           <Icon name="trash" size={14} color="currentColor" />
-                        </button>
+                        </button>}
                       </li>
                     );
                   })}
@@ -696,6 +699,7 @@ const SpacesPanel = ({
     if (expandedSpacesStoreRef) expandedSpacesStoreRef.current = expandedSpaces;
   }, [expandedSpaces, expandedSpacesStoreRef]);
   const [selectedSpaceId, setSelectedSpaceId] = useState(null);
+  const [editMode, setEditMode] = useState(false);
   const [isRearrangingSpaces, setIsRearrangingSpaces] = useState(false);
   const [optimisticSpaceIds, setOptimisticSpaceIds] = useState(() => spaces.map(space => space.id));
   // Spaces chunk B: the space the Export menu / sheet is open for (null =
@@ -1366,17 +1370,15 @@ const SpacesPanel = ({
       onClick={handleCreateSpace}
     />
   );
-  const exitSpaceChip = !mobileMode && activeSpace && (
-    <button
-      type="button"
-      className="spaces-panel__exit-chip"
-      onClick={() => handleExitSpace(activeSpace.id)}
-      {...tip(`Turn off ${activeSpace.name || 'the space'} and show every page`, 'below')}
-      aria-label={`Exit ${activeSpace.name || 'space'}`}
-    >
-      <span>Exit space</span>
-      <Icon name="close" size={10} color="currentColor" />
-    </button>
+  const editControl = canManageSpaces && (
+    <SectionIconButton
+      phone={mobileMode}
+      action="edit"
+      active={editMode}
+      aria-pressed={editMode}
+      label={editMode ? 'Done editing Spaces' : 'Edit Spaces'}
+      onClick={() => setEditMode((current) => !current)}
+    />
   );
 
   return (
@@ -1412,7 +1414,7 @@ const SpacesPanel = ({
         <>
           {exportControl}
           {addControl}
-          {exitSpaceChip}
+          {editControl}
         </>,
         headActionsHost
       ) : (
@@ -1421,7 +1423,7 @@ const SpacesPanel = ({
 
         {!mobileMode && <span className="spaces-panel__head-fill" aria-hidden="true" />}
 
-        {exitSpaceChip}
+        {editControl}
         {exportControl}
         {addControl}
 
@@ -1466,7 +1468,7 @@ const SpacesPanel = ({
                 <SortableRearrangeRow
                   key={space.id}
                   id={space.id}
-                  disabled={!canManageSpaces || !onReorderSpaces}
+                  disabled={!editMode || !canManageSpaces || !onReorderSpaces}
                   animateLayoutChanges={animateSpaceLayoutChanges}
                   draggingOpacity={1}
                   transition={null}
@@ -1474,6 +1476,7 @@ const SpacesPanel = ({
                   {({ attributes, listeners, isDragging }) => (
                     <SpaceSortableCard
                       space={space}
+                      editMode={editMode}
                       dragHandleProps={{ ...attributes, ...listeners }}
                       isDragging={isDragging}
                       isRearranging={isRearrangingSpaces}
