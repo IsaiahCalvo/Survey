@@ -5,7 +5,7 @@ const templates = [{ id: 'work', name: 'Work Survey', entities: [
   { id: 'new', name: 'New', color: '#ef4444' },
 ], modules: [
   { id: 'module', name: 'Existing', categories: [{ id: 'walls', name: 'Walls', checklist: [] }] },
-  { id: 'proposed', name: 'Proposed', categories: [{ id: 'doors', name: 'Doors', checklist: [] }] },
+  { id: 'proposed', name: 'Proposed', categories: [{ id: 'doors', name: 'Doors', checklist: [{ id: 'door-check', text: 'Door checked?' }] }] },
 ] }];
 
 test('Survey placement chooses module, category and entity and Reuse keeps them', async ({ page, context }) => {
@@ -30,6 +30,10 @@ test('Survey placement chooses module, category and entity and Reuse keeps them'
   await expect(modal).toBeHidden();
   await expect(page.locator('.survey-rail__entity-caret')).toHaveCount(0);
   const rail = page.locator('.survey-rail');
+  const originalMarkerId = await rail.locator('[id^="highlight-item-"]').first().getAttribute('id');
+  const originalMarker = page.locator(`[id="${originalMarkerId}"]`);
+  await originalMarker.getByRole('group', { name: 'Door checked?' }).getByRole('button', { name: 'Y', exact: true }).click();
+  const checkAnswer = async () => { const expand = originalMarker.getByRole('button', { name: 'Expand marker details' }); if (await expand.isVisible()) await expand.click(); await expect(originalMarker.getByRole('group', { name: 'Door checked?' }).getByRole('button', { name: 'Y', exact: true })).toHaveAttribute('aria-pressed', 'true'); };
   await expect(rail.getByRole('button', { name: 'New. Change entity' })).toBeVisible();
   await rail.getByRole('button', { name: 'New. Change entity' }).click();
   await expect(rail.getByRole('listbox', { name: 'Entity' })).toBeVisible();
@@ -51,6 +55,18 @@ test('Survey placement chooses module, category and entity and Reuse keeps them'
   await move.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(move).toBeHidden();
   await expect(row.getByRole('button', { name: 'Doors', exact: true })).toBeVisible();
+  await expect(rail.getByRole('button', { name: 'New. Change entity' })).toHaveCount(3);
+  await checkAnswer();
+  const markerCount = await page.locator('[data-survey-marker-id]').count();
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(page.locator('[data-survey-marker-id]')).toHaveCount(markerCount);
+  await expect(row.locator('.survey-subrow__fit > span:not(.is-ghost)')).toHaveText('Proposed');
+  await checkAnswer();
+  await expect(rail.getByRole('button', { name: 'New. Change entity' })).toHaveCount(3);
+  await page.getByRole('button', { name: 'Redo', exact: true }).click();
+  await expect(page.locator('[data-survey-marker-id]')).toHaveCount(markerCount);
+  await expect(row.locator('.survey-subrow__fit > span:not(.is-ghost)')).toHaveText('Existing');
+  await checkAnswer();
   await expect(rail.getByRole('button', { name: 'New. Change entity' })).toHaveCount(3);
   await row.getByRole('button', { name: 'Leave Survey' }).click();
   await expect(page.getByText('Left Survey', { exact: true })).toBeHidden();

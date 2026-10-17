@@ -113,6 +113,7 @@ import SpaceRegionOverlay from './SpaceRegionOverlay';
 import PdfjsViewerContainer from './components/PdfjsViewerContainer';
 import SurveyTemplateVersionDialog from './components/SurveyTemplateVersionDialog';
 import { acceptTemplateVersion, bindUsedTemplate, needsTemplateVersionChoice, readTemplateBinding, templateBindingKey, templateFingerprint, writeTemplateBinding } from './utils/surveyTemplateBinding';
+import { planSurveyCategoryTransferRestore, surveyCategoryTransferCheckpoint, surveyCategoryTransferStepId } from './utils/surveyCategoryTransferHistory';
 import { moveSurveyCategories } from './utils/surveyCategoryMove';
 import SurveyMarkerPlacementDialog from './components/SurveyMarkerPlacementDialog';
 import TemplateOverwriteWarningModal from './components/TemplateOverwriteWarningModal';
@@ -5264,6 +5265,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [activeRegionId, setActiveRegionId] = useState(null);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [pendingTemplateVersion, setPendingTemplateVersion] = useState(null);
+  const surveyCategoryTransfersRef = useRef(new Map());
+  const applySurveyCategoryTransferRef = useRef(null);
+  const surveyCategoryTransferItemsRef = useRef({});
   const templateBindingAccessRef = useRef({ get: () => null, set: () => false });
   const readSurveyTemplateBinding = useCallback((templateId) => {
     const durable = templateBindingAccessRef.current.get(`surveyTemplateBinding:${templateId}`);
@@ -8426,6 +8430,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     clearAnnotationSelectionForContextChange,
   ]);
   const [items, setItems] = useState({}); // { [itemId]: Item }
+  surveyCategoryTransferItemsRef.current = items;
   const [annotations, setAnnotations] = useState({}); // { [annotationId]: Annotation }
 
   // Per-document, per-tool preferences hook
@@ -12273,6 +12278,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     pushHistoryDebugEvent('checkpoint_added_page_operation', { reason: meta.reason, checkpointId, pageOperationId: id });
   }, [clearLocalRedoForNewStep, pushHistoryDebugEvent]);
 
+  const recordSurveyCategoryTransfer = useCallback((transfer) => {
+    const id = crypto.randomUUID();
+    surveyCategoryTransfersRef.current.set(id, transfer);
+    if (surveyCategoryTransfersRef.current.size > 100) surveyCategoryTransfersRef.current.delete(surveyCategoryTransfersRef.current.keys().next().value);
+    const checkpointId = ++historyCheckpointSeqRef.current;
+    const { state, meta } = surveyCategoryTransferCheckpoint(id, checkpointId);
+    undoHistoryRef.current = [...undoHistoryRef.current, state].slice(-50);
+    undoHistoryMetaRef.current = [...undoHistoryMetaRef.current, meta].slice(-50);
+    setUndoHistory(undoHistoryRef.current);
+    redoHistoryRef.current = []; redoHistoryMetaRef.current = []; setRedoHistory([]);
+    clearLocalRedoForNewStep(meta.reason);
+    lastCheckpointHashRef.current = null;
+    pushHistoryDebugEvent('checkpoint_added_survey_category_transfer', { reason: meta.reason, checkpointId, context: meta.context });
+  }, [clearLocalRedoForNewStep, pushHistoryDebugEvent]);
+
   // A page change that can no longer be taken back (its save failed and was
   // rolled back, or another version of the document was opened): every older
   // step names pages by the old numbers, so the whole timeline goes.
@@ -13827,6 +13847,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     }
 
+    const categoryTransferId = surveyCategoryTransferStepId(legacyUndoMeta);
+    if (categoryTransferId) {
+      isUndoingRef.current = true;
+      let restored;
+      try { restored = applySurveyCategoryTransferRef.current?.(categoryTransferId, 'undo'); }
+      finally { isUndoingRef.current = false; }
+      if (!restored?.ok) { showToast('That category move cannot be undone while its scope or locks have changed.', 'info'); return 'none'; }
+      const state = undoHistoryRef.current.at(-1);
+      undoHistoryRef.current = undoHistoryRef.current.slice(0, -1);
+      undoHistoryMetaRef.current = undoHistoryMetaRef.current.slice(0, -1);
+      setUndoHistory(undoHistoryRef.current);
+      redoHistoryRef.current = [state, ...redoHistoryRef.current].slice(0, 50);
+      redoHistoryMetaRef.current = [legacyUndoMeta, ...redoHistoryMetaRef.current].slice(0, 50);
+      setRedoHistory(redoHistoryRef.current);
+      lastCheckpointHashRef.current = null;
+      return 'applied';
+    }
+
     // A page change (utils/pageOperationHistory.js): its inverse runs through
     // the page operations (instant view + one background save), never a
     // snapshot restore.
@@ -14205,6 +14243,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       } finally {
         isUndoingRef.current = false;
       }
+    }
+
+    const categoryTransferRedoId = surveyCategoryTransferStepId(legacyRedoMeta);
+    if (legacyRedoState && categoryTransferRedoId) {
+      isUndoingRef.current = true;
+      let restored;
+      try { restored = applySurveyCategoryTransferRef.current?.(categoryTransferRedoId, 'redo'); }
+      finally { isUndoingRef.current = false; }
+      if (!restored?.ok) { showToast('That category move cannot be redone while its scope or locks have changed.', 'info'); return 'none'; }
+      redoHistoryRef.current = redoHistoryRef.current.slice(1);
+      redoHistoryMetaRef.current = redoHistoryMetaRef.current.slice(1);
+      setRedoHistory(redoHistoryRef.current);
+      undoHistoryRef.current = [...undoHistoryRef.current, legacyRedoState].slice(-50);
+      undoHistoryMetaRef.current = [...undoHistoryMetaRef.current, legacyRedoMeta].slice(-50);
+      setUndoHistory(undoHistoryRef.current);
+      lastCheckpointHashRef.current = null;
+      return 'applied';
     }
 
     // A page change: run it again (utils/pageOperationHistory.js).
@@ -31285,19 +31340,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const result = moveSurveyCategories(selectedTemplate, surveyMarkers, selectedModuleId, destinationId, categoryIds);
     if (!result.ok) return result;
     const updatedTemplate = { ...result.template, updatedAt: new Date().toISOString() };
-    setSelectedTemplate(updatedTemplate);
-    setSurveyMarkers(result.markers);
-    setNewSurveyMarkersByPage((pages) => Object.fromEntries(Object.entries(pages).map(([page, entries]) => [page,
-      entries.map((entry) => result.markers[entry.annotationId]
-        ? { ...entry, moduleId: result.markers[entry.annotationId].moduleId } : entry),
-    ])));
     const movedNames = new Set(result.categories.map((category) => category.name));
     const sourceKey = getModuleDataKey(getModuleName(selectedTemplate, selectedModuleId));
     const destinationKey = getModuleDataKey(getModuleName(selectedTemplate, destinationId));
-    setItems((current) => Object.fromEntries(Object.entries(current).map(([id, item]) => [id,
-      movedNames.has(item.itemType) && item[sourceKey] && !item[destinationKey]
-        ? { ...item, [destinationKey]: { ...item[sourceKey] } } : item,
+    const currentItems = surveyCategoryTransferItemsRef.current;
+    const itemScopes = Object.entries(currentItems).filter(([, item]) => movedNames.has(item.itemType) && item[sourceKey] && !item[destinationKey]).map(([id, item]) => ({
+      id, sourceKey, destinationKey, keys: [sourceKey, destinationKey], before: { [sourceKey]: { ...item[sourceKey] } }, after: { [sourceKey]: { ...item[sourceKey] }, [destinationKey]: { ...item[sourceKey] } },
+    }));
+    const nextItems = { ...currentItems };
+    itemScopes.forEach((scope) => { nextItems[scope.id] = { ...currentItems[scope.id], ...scope.after }; });
+    recordSurveyCategoryTransfer({
+      before: { template: selectedTemplate, moduleId: selectedModuleId, categoryId: selectedCategoryId },
+      after: { template: updatedTemplate, moduleId: destinationId, categoryId: null },
+      categoryIds: [...categoryIds], markerIds: Object.keys(surveyMarkers).filter((id) => surveyMarkers[id].moduleId === selectedModuleId && selected.has(surveyMarkers[id].categoryId)), itemScopes,
+    });
+    setSelectedTemplate(updatedTemplate);
+    surveyMarkersRef.current = result.markers;
+    setSurveyMarkers(result.markers);
+    surveyCategoryTransferItemsRef.current = nextItems; setItems(nextItems);
+    setNewSurveyMarkersByPage((pages) => Object.fromEntries(Object.entries(pages).map(([page, entries]) => [page,
+      entries.map((entry) => result.markers[entry.annotationId] ? { ...entry, moduleId: result.markers[entry.annotationId].moduleId } : entry),
     ])));
+    const binding = readSurveyTemplateBinding(updatedTemplate.id);
+    if (binding?.used) storeSurveyTemplateBinding(updatedTemplate.id, acceptTemplateVersion(binding, updatedTemplate, true));
     handleTemplatesChange?.(appTemplates.map((template) => template.id === updatedTemplate.id ? updatedTemplate : template));
     if (updatedTemplate.supabaseId) updateSupabaseTemplate(updatedTemplate.supabaseId, { config: sanitizeTemplateConfig(updatedTemplate), updated_at: updatedTemplate.updatedAt }).catch((error) => {
       console.warn('Could not save category move:', error);
@@ -31308,7 +31373,38 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setCategorySelectModeActive(false);
     setSelectedCategories({});
     return { ok: true };
-  }, [requireCurrentSurveyTemplate, selectedTemplate, surveyMarkers, selectedModuleId, handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig, documentLocked, yjsDocRole, user?.id, documentOwnerId]);
+  }, [requireCurrentSurveyTemplate, selectedTemplate, surveyMarkers, selectedModuleId, handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig, documentLocked, yjsDocRole, user?.id, documentOwnerId, selectedCategoryId, recordSurveyCategoryTransfer, readSurveyTemplateBinding, storeSurveyTemplateBinding]);
+
+  const applySurveyCategoryTransfer = useCallback((id, direction) => {
+    if (documentLocked || yjsDocRole === 'viewer') return { ok: false };
+    const transfer = surveyCategoryTransfersRef.current.get(id);
+    if (!transfer) return { ok: false };
+    const currentMarkers = surveyMarkersRef.current || {};
+    if (transfer.markerIds.some((markerId) => currentMarkers[markerId] && !canModifySurveyMarker({ surveyMarker: currentMarkers[markerId], viewerId: user?.id, documentOwnerId }))) return { ok: false };
+    const latest = appTemplates.find((template) => template.id === transfer.before.template.id);
+    const plan = planSurveyCategoryTransferRestore({ transfer, direction, markers: currentMarkers, items: surveyCategoryTransferItemsRef.current, latestTemplate: latest });
+    if (!plan.ok) return plan;
+    const apply = () => {
+      setSelectedTemplate(plan.template); setSelectedModuleId(plan.moduleId); setSelectedCategoryId(plan.categoryId);
+      surveyMarkersRef.current = plan.markers; setSurveyMarkers(plan.markers);
+      surveyCategoryTransferItemsRef.current = plan.items; setItems(plan.items);
+      setExpandedCategories((current) => ({ ...current, ...Object.fromEntries(transfer.categoryIds.map((categoryId) => [categoryId, true])) }));
+      setNewSurveyMarkersByPage((pages) => Object.fromEntries(Object.entries(pages).map(([page, entries]) => [page,
+        entries.map((entry) => plan.markers[entry.annotationId] ? { ...entry, moduleId: plan.markers[entry.annotationId].moduleId } : entry),
+      ])));
+      storeSurveyTemplateBinding(plan.template.id, acceptTemplateVersion(readSurveyTemplateBinding(plan.template.id), plan.template, true));
+    };
+    flushSync(apply);
+    // Only reverse the global definition while it still equals this transfer's
+    // expected side. A later global edit stays intact; this doc keeps its snapshot.
+    if (plan.writeGlobalTemplate) {
+      const next = { ...plan.template, updatedAt: new Date().toISOString() };
+      onTemplatesChange?.(appTemplates.map((template) => template.id === next.id ? next : template));
+      if (next.supabaseId) updateSupabaseTemplateRow(next.supabaseId, { config: sanitizeTemplateConfig(next), updated_at: next.updatedAt }).catch((error) => { console.warn('Could not save category history:', error); showToast('Category restored here. Could not save its shared template.', 'error'); });
+    }
+    return { ok: true };
+  }, [documentLocked, yjsDocRole, user?.id, documentOwnerId, appTemplates, onTemplatesChange, updateSupabaseTemplateRow, sanitizeTemplateConfig, storeSurveyTemplateBinding, readSurveyTemplateBinding]);
+  applySurveyCategoryTransferRef.current = applySurveyCategoryTransfer;
 
   const handleDeleteSurveyCategoryDefinition = useCallback((moduleId, categoryId) => {
     if (!requireCurrentSurveyTemplate()) return;
