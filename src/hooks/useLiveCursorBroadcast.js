@@ -1,3 +1,4 @@
+import { pagePresentationFrame } from '../utils/pagePresentation.js';
 // src/hooks/useLiveCursorBroadcast.js
 //
 // KAL-399: tell the other people in this document where this screen points
@@ -45,9 +46,9 @@ function pagesOnScreen(documentId) {
     const width = Number(el.getAttribute('data-page-width'));
     const height = Number(el.getAttribute('data-page-height'));
     if (!Number.isInteger(page) || !(width > 0) || !(height > 0)) continue;
-    const r = el.getBoundingClientRect();
+    const r = pagePresentationFrame(el);
     if (!(r.width > 0) || !(r.height > 0)) continue;
-    out.push({ page, rect: { left: r.left, top: r.top, width: r.width, height: r.height }, size: { width, height } });
+    out.push({ page, rect: r, size: { width, height } });
   }
   return out;
 }

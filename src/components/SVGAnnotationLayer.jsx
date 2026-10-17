@@ -7782,14 +7782,9 @@ const SVGAnnotationLayerBody = memo(({
                   if (!drag || drag.annotationIndex !== selectedIndex) return;
                   const svgEl = svgRef.current;
                   if (!svgEl) return;
-                  // Convert client coords to viewBox (page-space) coords.
-                  // The SVG viewBox is "0 0 width height" with preserveAspectRatio:'none',
-                  // so a simple linear mapping works.
-                  const rect = svgEl.getBoundingClientRect();
-                  if (rect.width === 0 || rect.height === 0) return;
-                  const px = ((e.clientX - rect.left) / rect.width) * width;
-                  const py = ((e.clientY - rect.top) / rect.height) * height;
-                  const newAngleDeg = Math.atan2(py - drag.centerY, px - drag.centerX) * 180 / Math.PI;
+                  const point = screenToSVG(svgEl, e.clientX, e.clientY);
+                  if (!point) return;
+                  const newAngleDeg = Math.atan2(point.y - drag.centerY, point.x - drag.centerX) * 180 / Math.PI;
                   const preview = {
                     annotationIndex: selectedIndex,
                     pointerAngle: newAngleDeg,

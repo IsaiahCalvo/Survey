@@ -348,8 +348,9 @@ import { useUndoToast } from './hooks/useUndoToast.js';
 import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBookmarks } from './utils/bookmarkDeleteUndo.js';
 import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
-import { PAGE_PRESENTATION_META_KEY, normalizePagePresentations } from './utils/pagePresentation.js';
+import { PAGE_PRESENTATION_META_KEY, normalizePagePresentations, pagePresentationFrame, clientPointInPageFrame, clientPastePointInPageFrame } from './utils/pagePresentation.js';
 import { normalizePresentationPdf } from './utils/pdfPagePresentation.js';
+import { getAnnotationBBox, getGroupBBox } from './utils/svgBoundingBox.js';
 import { useConfirmDialog } from './components/dialogPrompts';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
@@ -29645,7 +29646,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (!clones.length) { showToast('That mark is already here', 'info'); return false; }
       // Compute the group's top-left from the stored source bbox (falls
       // back to scanning clones if missing).
-      const srcBBox = clipboardAnnotation.bbox || (() => {
+      const srcBBox = getGroupBBox(clones.map(getAnnotationBBox).filter(Boolean)) || clipboardAnnotation.bbox || (() => {
         let minL = Infinity, minT = Infinity;
         for (const c of clones) {
           const l = typeof c.left === 'number' ? c.left : 0;
@@ -29657,8 +29658,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       })();
 
       // Resolve cursor-in-viewbox coords same as the single-paste path.
-      let dx = 20;
-      let dy = 20;
+      let dx = 20 + repeatOffset;
+      let dy = 20 + repeatOffset;
       try {
         const svgWrap = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
         const palRoot = document.querySelector(`[data-pal-root="${pageNumber}"]`);
@@ -29667,18 +29668,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const vb = svgEl?.getAttribute?.('viewBox')?.split(/\s+/) || null;
         const viewBoxW = vb && vb.length === 4 ? parseFloat(vb[2]) : NaN;
         const viewBoxH = vb && vb.length === 4 ? parseFloat(vb[3]) : NaN;
-        const pageRect = pageDiv?.getBoundingClientRect?.() || null;
-        const scaleX = (pageDiv?.offsetWidth && viewBoxW) ? pageDiv.offsetWidth / viewBoxW : null;
-        const scaleY = (pageDiv?.offsetHeight && viewBoxH) ? pageDiv.offsetHeight / viewBoxH : null;
-        if (pageRect && scaleX && scaleY) {
-          const cursorX = (clientX - pageRect.left) / scaleX;
-          const cursorY = (clientY - pageRect.top) / scaleY;
-          dx = cursorX - srcBBox.left;
-          dy = cursorY - srcBBox.top;
+        const pageRect = pagePresentationFrame(pageDiv);
+        const point = clientPastePointInPageFrame({ clientX, clientY }, pageRect, { width: viewBoxW, height: viewBoxH }, { extent: srcBBox, repeatOffset });
+        if (point) {
+          dx = point.x - srcBBox.left;
+          dy = point.y - srcBBox.top;
         }
       } catch (_) { /* fallthrough to +20 offset */ }
-      dx += repeatOffset;
-      dy += repeatOffset;
 
       const pasteScope = currentPasteScope(pageNumber);
       const firstPastedIndex = next.objects.length;
@@ -29730,8 +29726,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const originalTop = typeof pasted.top === 'number' ? pasted.top : 0;
 
     let resolvedVia = 'fallback:original+20';
-    let pastedLeft = originalLeft + 20;
-    let pastedTop = originalTop + 20;
+    let pastedLeft = originalLeft + 20 + repeatOffset;
+    let pastedTop = originalTop + 20 + repeatOffset;
     try {
       const svgWrap = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
       const palRoot = document.querySelector(`[data-pal-root="${pageNumber}"]`);
@@ -29740,14 +29736,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const vb = svgEl?.getAttribute?.('viewBox')?.split(/\s+/) || null;
       const viewBoxW = vb && vb.length === 4 ? parseFloat(vb[2]) : NaN;
       const viewBoxH = vb && vb.length === 4 ? parseFloat(vb[3]) : NaN;
-      const pageRect = pageDiv?.getBoundingClientRect?.() || null;
-      const pageOffsetW = pageDiv?.offsetWidth ?? pageRect?.width ?? null;
-      const pageOffsetH = pageDiv?.offsetHeight ?? pageRect?.height ?? null;
-      const scaleX = (pageOffsetW && viewBoxW) ? pageOffsetW / viewBoxW : null;
-      const scaleY = (pageOffsetH && viewBoxH) ? pageOffsetH / viewBoxH : null;
-      if (pageRect && scaleX && scaleY) {
-        const cursorStoredX = (clientX - pageRect.left) / scaleX;
-        const cursorStoredY = (clientY - pageRect.top) / scaleY;
+      const pageRect = pagePresentationFrame(pageDiv);
+      const point = clientPastePointInPageFrame({ clientX, clientY }, pageRect, { width: viewBoxW, height: viewBoxH }, { repeatOffset });
+      if (point) {
+        const cursorStoredX = point.x;
+        const cursorStoredY = point.y;
         const halfW = (typeof pasted.width === 'number' ? pasted.width
           : (typeof pasted.radius === 'number' ? pasted.radius * 2 : 0)) / 2;
         const halfH = (typeof pasted.height === 'number' ? pasted.height
@@ -29760,8 +29753,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       console.warn('[Paste] coord transform failed, using original+20', err?.message || err);
     }
 
-    pasted.left = pastedLeft + repeatOffset;
-    pasted.top = pastedTop + repeatOffset;
+    pasted.left = pastedLeft;
+    pasted.top = pastedTop;
     const pastedIndex = next.objects.length;
     next.objects.push(pasted);
 
@@ -31964,8 +31957,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const repeatOffset = resolvePasteRepeatCount(clientX, clientY) * PASTE_REPEAT_OFFSET_PAGE_UNITS;
     // The group's top-left lands at the pointer (same page-unit transform as
     // the shape paste); without a page under it, +20 like the shape paste.
-    let dx = 20;
-    let dy = 20;
+    let dx = 20 + repeatOffset;
+    let dy = 20 + repeatOffset;
     try {
       const svgWrap = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
       const pageDiv = svgWrap?.closest?.('.survey-pdfjs-page-div') || null;
@@ -31973,19 +31966,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const vb = svgEl?.getAttribute?.('viewBox')?.split(/\s+/) || null;
       const viewBoxW = vb && vb.length === 4 ? parseFloat(vb[2]) : NaN;
       const viewBoxH = vb && vb.length === 4 ? parseFloat(vb[3]) : NaN;
-      const rect = (pageDiv || svgEl)?.getBoundingClientRect?.() || null;
-      const w = pageDiv?.offsetWidth || rect?.width;
-      const h = pageDiv?.offsetHeight || rect?.height;
-      if (rect && w && h && viewBoxW && viewBoxH) {
-        dx = (clientX - rect.left) / (w / viewBoxW) - clipboard.origin.left;
-        dy = (clientY - rect.top) / (h / viewBoxH) - clipboard.origin.top;
+      const rect = pagePresentationFrame(pageDiv || svgEl);
+      const point = clientPastePointInPageFrame({ clientX, clientY }, rect, { width: viewBoxW, height: viewBoxH }, { extent: clipboard.extent, repeatOffset });
+      if (point) {
+        dx = point.x - clipboard.origin.left;
+        dy = point.y - clipboard.origin.top;
       }
     } catch (_) { /* +20 fallback */ }
     // The whole group stays on the page (it slides in from an edge).
     const { width: pageW, height: pageH } = pageSizeFor(pageNumber);
     const held = clipboard.extent
-      ? clampNudgeDelta([clipboard.extent], dx + repeatOffset, dy + repeatOffset, pageW, pageH)
-      : { dx: dx + repeatOffset, dy: dy + repeatOffset };
+      ? clampNudgeDelta([clipboard.extent], dx, dy, pageW, pageH)
+      : { dx, dy };
     const done = commitFamilyPaste(pageNumber, clipboard, held.dx, held.dy);
     if (done && clipboard.mode === 'cut') setFamilyClipboard(null);
     return done;
@@ -33411,13 +33403,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!['select', 'text-select'].includes(activeTool)) return false;
     const target = event?.currentTarget;
     if (!target || !pageSize?.width || !pageSize?.height) return false;
-    const rect = target.getBoundingClientRect();
+    const rect = pagePresentationFrame(target);
     if (!rect.width || !rect.height) return false;
 
-    const point = {
-      x: ((event.clientX - rect.left) / rect.width) * pageSize.width,
-      y: ((event.clientY - rect.top) / rect.height) * pageSize.height
-    };
+    const point = clientPointInPageFrame(event, rect, pageSize);
     const pdfjsTolerance = Math.max(4, 8 / Math.max(Number(scale) || 1, 0.1));
     const importedTextMarkupTolerance = Math.max(1, 1.25 / Math.max(Number(scale) || 1, 0.1));
     const importedHit = getImportedSelectDeleteOnlyTextMarkupHitAtPoint(pageNumber, point, importedTextMarkupTolerance);
@@ -33487,7 +33476,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const pageNumber = Number(pageKey);
       const pageSize = pageSizes[pageNumber];
       if (!pageSize?.width || !pageSize?.height) continue;
-      const rect = pageElement.getBoundingClientRect();
+      const rect = pagePresentationFrame(pageElement);
       if (
         event.clientX < rect.left ||
         event.clientX > rect.right ||
@@ -33496,10 +33485,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       ) {
         continue;
       }
-      const point = {
-        x: ((event.clientX - rect.left) / rect.width) * pageSize.width,
-        y: ((event.clientY - rect.top) / rect.height) * pageSize.height
-      };
+      const point = clientPointInPageFrame(event, rect, pageSize);
       const importedHit = getImportedSelectDeleteOnlyTextMarkupHitAtPoint(pageNumber, point, importedTextMarkupTolerance);
       if (importedHit) {
         return selectImportedSelectDeleteOnlyTextMarkup(importedHit, event);
@@ -33520,12 +33506,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const pageSize = selectedPageNumber ? pageSizes[selectedPageNumber] : null;
       let point = null;
       if (pageElement?.getBoundingClientRect && pageSize?.width && pageSize?.height) {
-        const rect = pageElement.getBoundingClientRect();
+        const rect = pagePresentationFrame(pageElement);
         if (rect.width && rect.height) {
-          point = {
-            x: ((event.clientX - rect.left) / rect.width) * pageSize.width,
-            y: ((event.clientY - rect.top) / rect.height) * pageSize.height
-          };
+          point = clientPointInPageFrame(event, rect, pageSize);
         }
       }
       if (
@@ -33556,7 +33539,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const pageNumber = Number(pageKey);
       const pageSize = pageSizes[pageNumber];
       if (!pageSize?.width || !pageSize?.height) continue;
-      const rect = pageElement.getBoundingClientRect();
+      const rect = pagePresentationFrame(pageElement);
       if (
         event.clientX < rect.left ||
         event.clientX > rect.right ||
@@ -33566,10 +33549,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         continue;
       }
 
-      const point = {
-        x: ((event.clientX - rect.left) / rect.width) * pageSize.width,
-        y: ((event.clientY - rect.top) / rect.height) * pageSize.height
-      };
+      const point = clientPointInPageFrame(event, rect, pageSize);
       const selected = pdfjsViewerRef.current?.selectTextMarkupAtPoint?.(
         pageNumber,
         point,
@@ -37409,11 +37389,11 @@ ${pageBlocks}
                                     }
                                     e.stopPropagation();
                                     e.currentTarget.setPointerCapture(e.pointerId);
-                                    const rect = e.currentTarget.getBoundingClientRect();
-                                    const effectiveScale = rect.width / resolvedPageSize.width;
+                                    const rect = pagePresentationFrame(e.currentTarget);
                                     textToolDragRef.current = {
                                       startX: e.clientX, startY: e.clientY,
-                                      rect, effectiveScale, pageNumber,
+                                      rect, pageNumber, pageSize: resolvedPageSize,
+                                      startPoint: clientPointInPageFrame(e, rect, resolvedPageSize),
                                     };
 
                                   }}
@@ -37426,8 +37406,10 @@ ${pageBlocks}
                                     const dy = Math.abs(e.clientY - drag.startY);
                                     if (dx > 10 || dy > 10) {
                                       el.style.display = 'block';
-                                      el.style.left = (Math.min(e.clientX, drag.startX) - drag.rect.left) + 'px';
-                                      el.style.top = (Math.min(e.clientY, drag.startY) - drag.rect.top) + 'px';
+                                      const point = clientPointInPageFrame(e, drag.rect, drag.pageSize);
+                                      if (!point || !drag.startPoint) return;
+                                      el.style.left = Math.min(point.x, drag.startPoint.x) * drag.rect.width / drag.pageSize.width + 'px';
+                                      el.style.top = Math.min(point.y, drag.startPoint.y) * drag.rect.height / drag.pageSize.height + 'px';
                                       el.style.width = dx + 'px';
                                       el.style.height = dy + 'px';
                                     } else {
@@ -37440,11 +37422,13 @@ ${pageBlocks}
                                     const previewEl = e.currentTarget.querySelector('[data-text-preview]');
                                     if (previewEl) previewEl.style.display = 'none';
                                     textToolDragRef.current = null;
-                                    const { rect, effectiveScale, startX, startY } = drag;
+                                    const { rect, startPoint, startX, startY, pageSize } = drag;
+                                    const point = clientPointInPageFrame(e, rect, pageSize);
+                                    if (!point || !startPoint) return;
                                     const dx = Math.abs(e.clientX - startX);
                                     const dy = Math.abs(e.clientY - startY);
-                                    const x = (Math.min(startX, e.clientX) - rect.left) / effectiveScale;
-                                    const y = (Math.min(startY, e.clientY) - rect.top) / effectiveScale;
+                                    const x = Math.min(startPoint.x, point.x);
+                                    const y = Math.min(startPoint.y, point.y);
                                     const isDrag = dx > 10 || dy > 10;
                                     // Drawboard rule 6: with nothing selected a click makes a NEW
                                     // box in edit mode, even on top of existing text (editing
@@ -37458,8 +37442,8 @@ ${pageBlocks}
                                       data: null,
                                       isNewText: true,
                                       clickPosition: { x, y },
-                                      textBoxWidth: isDrag ? dx / effectiveScale : undefined,
-                                      textBoxHeight: isDrag ? dy / effectiveScale : undefined,
+                                      textBoxWidth: isDrag ? Math.abs(point.x - startPoint.x) : undefined,
+                                      textBoxHeight: isDrag ? Math.abs(point.y - startPoint.y) : undefined,
                                     });
                                   }}
                                 >
@@ -37543,15 +37527,16 @@ ${pageBlocks}
                                     counterPointerDownCooldownRef.current = Date.now();
                                     counterDragRef.current = { active: true, _claiming: true };
                                     e.stopPropagation();
-                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    const rect = pagePresentationFrame(e.currentTarget);
                                     const pageW = resolvedPageSize.width;
                                     if (!pageW || rect.width === 0) {
                                       counterDragRef.current = null;
                                       return;
                                     }
                                     const effectiveScale = rect.width / pageW;
-                                    const x = (e.clientX - rect.left) / effectiveScale;
-                                    const y = (e.clientY - rect.top) / effectiveScale;
+                                    const point = clientPointInPageFrame(e, rect, resolvedPageSize);
+                                    if (!point) { counterDragRef.current = null; return; }
+                                    const { x, y } = point;
                                     // UX: Counter radius driven by the bottom toolbar Size input.
                                     // useDocumentToolPreferences persists strokeWidth per-tool, so each
                                     // tool (counter, pen, etc.) gets its own remembered size automatically.
@@ -37673,7 +37658,7 @@ ${pageBlocks}
                                       activeRegionId,
                                     });
                                     appDebug(`[Counter p${pageNumber}] drag-start — x=${x.toFixed(1)}, y=${y.toFixed(1)}, fill=${counter.fill}, dragCreatedAt=${dragCreatedAt}, seriesId=${seriesId}, seriesStart=${seriesStart}, autoCreated=${seriesAutoCreated}`);
-                                    const pageHeight = rect.height / effectiveScale;
+                                    const pageHeight = resolvedPageSize.height;
                                     const dragState = {
                                       active: true,
                                       pageKey: pageNumber,
@@ -37719,9 +37704,8 @@ ${pageBlocks}
                                     // Convert client coords → page coords using the rect and
                                     // scale captured at pointerdown. We trust those because
                                     // the user is mid-drag; they're not zooming.
-                                    const cursorPageX = (e.clientX - drag.rect.left) / drag.effectiveScale;
-                                    const cursorPageY = (e.clientY - drag.rect.top) / drag.effectiveScale;
-                                    applyCounterDragMove(cursorPageX, cursorPageY);
+                                    const point = clientPointInPageFrame(e, drag.rect, { width: drag.pageWidth, height: drag.pageHeight });
+                                    if (point) applyCounterDragMove(point.x, point.y);
                                   }}
                                   onPointerUp={(e) => {
                                     const drag = counterDragRef.current;
