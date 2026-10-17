@@ -126,8 +126,9 @@ function ensureHistoryPanelStyle() {
     .dh-chip { flex: 1; border: 0; background: none; color: var(--text-3); padding: 5px 6px; border-radius: 6px; font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }
     .dh-chip:hover { color: var(--text-1); }
     .dh-chip.on { background: var(--surface-3); color: var(--text-1); }
-    .dh-legend { display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; row-gap: 2px; color: var(--text-3); font-size: 11px; line-height: 16px; }
-    .dh-legend > span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+    .dh-legend { display: flex; flex-wrap: nowrap; align-items: center; column-gap: 4px; row-gap: 2px; color: var(--text-3); font-size: 11px; line-height: 16px; }
+    .dh-legend > button { border: 0; padding: 3px 2px; background: transparent; color: inherit; font: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+    .dh-legend > button[aria-pressed='true'] { color: var(--text-1); background: var(--surface-3); border-radius: 4px; }
     .dh-legend i, .dh-st { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: none; background: var(--dh-c, var(--dh-c-other)); }
     .dh-legend i { width: 6px; height: 6px; }
     .dh-panel [data-status="created"] { --dh-c: var(--dh-c-created); }
@@ -295,8 +296,11 @@ export default function RevisionsPanel({
   const [cascadePending, setCascadePending] = useState(null);
   const [hasOlder, setHasOlder] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [olderError, setOlderError] = useState(false);
+  const olderSentinelRef = useRef(null);
   // Option A view state.
   const [filter, setFilter] = useState('all');
+  const [statuses, setStatuses] = useState([]);
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [selectedKey, setSelectedKey] = useState(null);
@@ -435,28 +439,48 @@ export default function RevisionsPanel({
 
   // w55: "Load older" — the next page below the oldest row shown. Deleted
   // items older than the first page stay reachable (and restorable).
+  const olderRequestRef = useRef(false);
   const loadOlder = useCallback(async () => {
-    if (!documentId || loadingOlder) return;
+    if (!documentId || olderRequestRef.current) return;
     // The cursor is the oldest SERVER row (device-only rows have no server id).
     const serverRows = historyEventsRef.current.filter((row) => !row?.__local);
     const oldest = serverRows[serverRows.length - 1] || historyEventsRef.current[historyEventsRef.current.length - 1];
     if (!oldest) return;
+    olderRequestRef.current = true;
+    setOlderError(false);
     setLoadingOlder(true);
     try {
       const older = await listDocumentHistoryEvents(documentId, {
         limit: HISTORY_PAGE_SIZE,
         before: oldest.occurred_at || oldest.created_at,
         beforeId: oldest.__local ? null : oldest.id,
+        beforeClientEventId: oldest.client_event_id,
+        loadedClientEventIds: historyEventsRef.current.map((row) => row.client_event_id).filter(Boolean),
       });
       if (currentDocumentIdRef.current !== documentId) return;
       setHistoryEvents((prev) => mergeHistoryRowLists(prev, older));
       setHasOlder(Array.isArray(older) && older.length >= HISTORY_PAGE_SIZE);
     } catch (e) {
+      setOlderError(true);
       setStatusMsg('Couldn’t load older changes. Try again.');
     } finally {
+      olderRequestRef.current = false;
       setLoadingOlder(false);
     }
-  }, [documentId, loadingOlder]);
+  }, [documentId]);
+
+  // The next page loads near the bottom, including when a status filter leaves
+  // the current page empty. The observer stays inside this panel's scroll box.
+  useEffect(() => {
+    if (!shouldLoadHistory || !hasOlder || loadingOlder || olderError || typeof IntersectionObserver === 'undefined') return undefined;
+    const sentinel = olderSentinelRef.current;
+    if (!sentinel) return undefined;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) void loadOlder();
+    }, { root: listRef.current, rootMargin: '180px' });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [shouldLoadHistory, hasOlder, loadingOlder, olderError, loadOlder, statuses, filter]);
 
   // A new document starts from an empty list and a fresh first page.
   useEffect(() => {
@@ -643,11 +667,12 @@ export default function RevisionsPanel({
     () => buildHistoryFeed(historyEvents, {
       currentUserId,
       filter,
+      statuses,
       query,
       now: nowMs,
       markIds: markFilter ? markFilter.items.map((item) => item.id) : null,
     }),
-    [historyEvents, currentUserId, filter, query, nowMs, markFilter],
+    [historyEvents, currentUserId, filter, statuses, query, nowMs, markFilter],
   );
   const latestDeleteByMark = useMemo(() => latestDeleteRowByMark(historyEvents), [historyEvents]);
   const groupsByKey = useMemo(() => {
@@ -1364,8 +1389,8 @@ export default function RevisionsPanel({
       if (state === 'back') actions.push(<span key="back" className="dh-note">Back on the page now</span>);
       else if (state === 'restore' && canRestoreDeleted) actions.push(<span key="restore">{restoreButton(e.row)}</span>);
     } else if (selected && present === false && markId) {
-      actions.push(<span key="later" className="dh-note">This mark was deleted later.</span>);
       const trash = restoreRowForMark(markId);
+      actions.push(<span key="later" className="dh-note">{trash ? 'This mark was deleted later.' : 'This mark is no longer on the page. Its deletion is not in the loaded history.'}</span>);
       if (trash && canRestore && Boolean(onRestoreHistoryActivity) && hasRestoreData(trash)) {
         actions.push(<span key="restore">{restoreButton(trash)}</span>);
       }
@@ -1592,7 +1617,7 @@ export default function RevisionsPanel({
           // What the dots mean (the words on each line say it too).
           <div className="dh-legend" data-testid="document-history-legend">
             {HISTORY_STATUS_LEGEND.map((item) => (
-              <span key={item.id} data-status={item.id}><i aria-hidden="true" />{item.label}</span>
+              <button type="button" key={item.id} data-status={item.id} aria-pressed={statuses.includes(item.id)} onClick={() => { setStatuses((prev) => prev.includes(item.id) ? prev.filter((id) => id !== item.id) : [...prev, item.id]); clearSelection(); }}><i aria-hidden="true" />{item.label}</button>
             ))}
           </div>
         )}
@@ -1606,6 +1631,7 @@ export default function RevisionsPanel({
         aria-activedescendant={selectedKey ? `dh-line-${selectedKey}` : undefined}
         tabIndex={0}
         data-testid="document-history-list"
+        onScroll={(event) => { const el = event.currentTarget; if (hasOlder && !olderError && el.scrollHeight - el.scrollTop - el.clientHeight < 180) void loadOlder(); }}
         onKeyDown={handleListKeyDown}
         onFocus={() => setListFocused(true)}
         onBlur={() => setListFocused(false)}
@@ -1644,8 +1670,9 @@ export default function RevisionsPanel({
             </div>
           </div>
         ))}
-        {hasOlder && (
-          // One quiet link at the end of the list.
+        {hasOlder && !olderError && <div ref={olderSentinelRef} role="status" className="dh-more" style={{ minHeight: 1 }} aria-label="Loading older history">{loadingOlder ? 'Loading…' : ''}</div>}
+        {hasOlder && olderError && (
+          // A failed request needs an explicit retry, never a fetch loop.
           <button
             type="button"
             className="dh-more"

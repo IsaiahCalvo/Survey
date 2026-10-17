@@ -540,6 +540,7 @@ export function historyGroupMatchesQuery(group, query) {
 export function buildHistoryFeed(rows, {
   currentUserId = null,
   filter = 'all',
+  statuses = null,
   query = '',
   now = Date.now(),
   // w64: the marks picked on the page. When set, the feed shows every line
@@ -553,7 +554,7 @@ export function buildHistoryFeed(rows, {
   const groups = buildHistoryGroups(rows, { currentUserId })
     .filter((group) => (markSet
       ? group.entries.some((entry) => entry.markIds.some((id) => markSet.has(id)))
-      : historyGroupPassesFilter(group, filter, { currentUserId }) && historyGroupMatchesQuery(group, query)));
+      : historyGroupPassesFilter(group, filter, { currentUserId }) && (!statuses?.length || statuses.includes(historyStatusOf(group.last.kind))) && historyGroupMatchesQuery(group, query)));
   const items = [];
   let lastDay = null;
   for (const group of groups) {

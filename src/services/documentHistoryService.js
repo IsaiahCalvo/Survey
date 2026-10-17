@@ -558,15 +558,18 @@ export async function listDocumentHistoryEvents(documentId, {
   before = null,
   beforeId = null,
   beforeClientEventId = null,
+  loadedClientEventIds = null,
   arrivedSince = null,
 } = {}) {
   const safeLimit = Math.max(1, Math.min(500, Number(limit) || HISTORY_EVENT_LIMIT));
   const beforeMs = before ? Date.parse(before) : NaN;
   const arrivedMs = arrivedSince ? Date.parse(arrivedSince) : NaN;
+  const alreadyLoaded = Array.isArray(loadedClientEventIds) ? new Set(loadedClientEventIds) : null;
   const cachedRows = listLocalHistoryRows(documentId).sort((a, b) => rowTimeMs(b) - rowTimeMs(a));
   const localCursor = beforeClientEventId ? cachedRows.findIndex((row) => row.client_event_id === beforeClientEventId) : -1;
   const localRows = cachedRows.filter((row, index) => {
-    if (localCursor >= 0 && index <= localCursor) return false;
+    if (alreadyLoaded?.has(row.client_event_id)) return false;
+    if (!alreadyLoaded && localCursor >= 0 && index <= localCursor) return false;
     const at = rowTimeMs(row);
     if (Number.isFinite(beforeMs) && !(at <= beforeMs)) return false;
     if (Number.isFinite(arrivedMs) && !(at >= arrivedMs)) return false;

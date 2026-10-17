@@ -270,6 +270,8 @@ import { buildSurveyMarkerDeleteHistoryRow, applySurveyMarkerRestore } from './s
 // KAL-313: trash / history / restore for shapes, ink, text, callouts, regions, bulk, spaces.
 import {
   buildAnnotationDeleteHistoryRow,
+  buildAnnotationDeleteHistoryRowsForAction,
+  isAnnotationRemovalOnlyHistoryAction,
   isAnnotationRestoreAction,
   isFabricAnnotationHistoryAction,
   isCalloutRestoreAction,
@@ -26893,7 +26895,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       && Array.isArray(scopedAction.changes) && scopedAction.changes.length > 0
       && scopedAction.changes.every((change) => change?.after == null);
     const suppressActivityHistoryRow = surveyMarkerRemovalOnly || (deletedIdsForJournal.length > 0
-      && (scopedAction.type === 'fabric:delete' || journaledByBulkPath));
+      && (isAnnotationRemovalOnlyHistoryAction(scopedAction) || journaledByBulkPath));
 
 	    const historyPushSummary = summarizeHistoryActionForLog(actionWithMeta);
 	    pushHistoryDebugEvent('local_annotation_history_added', {
@@ -26915,29 +26917,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       restoredFromHistory: pushIsHistoryRestore,
     });
 
-    // KAL-313: emit a durable trash event for single-annotation deletes so the
-    // History panel can offer Restore for 30 days (multi-device, cross-user).
-    // Skipped when the bulk-delete path already journaled this id (F2 dedupe).
-    if (scopedAction.type === 'fabric:delete' && !journaledByBulkPath) {
-      const documentId = pdfFile?.id || null;
-      if (documentId) {
-        const deletedAt = actionWithMeta.__historyMeta.createdAt;
-        const actorName = user?.user_metadata?.full_name
-          || user?.user_metadata?.name
-          || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ')
-          || user?.email
-          || 'Someone';
-        const trashRow = buildAnnotationDeleteHistoryRow({
-          deleteAction: scopedAction,
-          documentId,
-          userId: user?.id || null,
-          actorName,
-          deletedAt,
-        });
-        if (trashRow) {
-          void recordAndNotifyDocumentHistoryEvent(trashRow);
-        }
-      }
+    // Journal every removed mark, including multi-page and eraser batches.
+    // Re-created ids (cross-page moves) and bulk-journaled ids are excluded.
+    const documentId = pdfFile?.id || null;
+    if (documentId && !journaledByBulkPath) {
+      const actorName = user?.user_metadata?.full_name
+        || user?.user_metadata?.name
+        || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ')
+        || user?.email
+        || 'Someone';
+      const rows = buildAnnotationDeleteHistoryRowsForAction({
+        action: scopedAction,
+        documentId,
+        userId: user?.id || null,
+        actorName,
+        deletedAt: actionWithMeta.__historyMeta.createdAt,
+        isAlreadyJournaled: isBulkJournaledAnnotationId,
+      });
+      rows.forEach((row) => { void recordAndNotifyDocumentHistoryEvent(row); });
     }
   }, [clearLegacyRedoForNewStep, documentOwnerId, pushHistoryDebugEvent, user, pdfFile?.id, yjsUndoCtx?.userId, isBulkJournaledAnnotationId]);
 
