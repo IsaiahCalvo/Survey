@@ -1258,6 +1258,7 @@ export default function App({ devPreviewReturnTab = null }) {
   const [mobileSurveyRequestKey, setMobileSurveyRequestKey] = useState(0);
   const [mobileSurveyCollapseRequestKey, setMobileSurveyCollapseRequestKey] = useState(0);
   const [mobileSurveyPanelOpen, setMobileSurveyPanelOpen] = useState(false);
+  const pendingMobilePanelRequestRef = useRef(null);
   const [mobileDocumentPanelState, setMobileDocumentPanelState] = useState({ isOpen: false, activePanel: 'pages' });
   const [mobileAuxPanel, setMobileAuxPanel] = useState(null);
 
@@ -2083,10 +2084,17 @@ export default function App({ devPreviewReturnTab = null }) {
   const [mobileAuxCloseRequestKey, setMobileAuxCloseRequestKey] = useState(0);
 
   const openMobileDocumentPanel = useCallback((panelId) => {
+    if (rightRailApi?.pdfFile !== activeTab?.file || typeof leftRailApi?.ref?.current?.togglePanel !== 'function') {
+      const pending = pendingMobilePanelRequestRef.current;
+      pendingMobilePanelRequestRef.current = pending?.tabId === activeTabId && pending.panelId === panelId
+        ? null : { tabId: activeTabId, panelId };
+      return;
+    }
+    pendingMobilePanelRequestRef.current = null;
     setMobileSurveyCollapseRequestKey((key) => key + 1);
     setMobileAuxCloseRequestKey((key) => key + 1);
-    leftRailApi?.ref?.current?.togglePanel?.(panelId);
-  }, [leftRailApi]);
+    leftRailApi.ref.current.togglePanel(panelId);
+  }, [leftRailApi, rightRailApi, activeTabId, activeTab?.file]);
 
   const toggleMobileDocumentHub = useCallback(() => {
     const activePanel = ['pages', 'search', 'bookmarks'].includes(mobileDocumentPanelState.activePanel)
@@ -2096,6 +2104,15 @@ export default function App({ devPreviewReturnTab = null }) {
   }, [mobileDocumentPanelState.activePanel, openMobileDocumentPanel]);
 
   const openMobileSurveyPanel = useCallback(() => {
+    // The dock is visible while PDFViewer still loads. Keep that tap for this
+    // document only; a second tap cancels it before the viewer registers.
+    if (rightRailApi?.pdfFile !== activeTab?.file || typeof rightRailApi?.handleSurveyToggle !== 'function') {
+      const pending = pendingMobilePanelRequestRef.current;
+      pendingMobilePanelRequestRef.current = pending?.tabId === activeTabId && pending.panelId === 'survey'
+        ? null : { tabId: activeTabId, panelId: 'survey' };
+      return;
+    }
+    pendingMobilePanelRequestRef.current = null;
     // Opening Survey over an open Pages / Spaces sheet: that sheet holds still
     // until Survey takes its place (a dock switch keeps the sheet standing and
     // fades the content, see useMobileSheetMotion PANEL TO PANEL). Survey opens
@@ -2110,7 +2127,31 @@ export default function App({ devPreviewReturnTab = null }) {
     if (!rightRailApi?.showSurveyPanel) {
       rightRailApi?.handleSurveyToggle?.();
     }
-  }, [leftRailApi, mobileSurveyPanelOpen, rightRailApi]);
+  }, [leftRailApi, mobileSurveyPanelOpen, rightRailApi, activeTabId, activeTab?.file]);
+
+  useEffect(() => {
+    const pending = pendingMobilePanelRequestRef.current;
+    if (!pending) return;
+    if (!isMobileViewer || pending.tabId !== activeTabId) {
+      pendingMobilePanelRequestRef.current = null;
+      return;
+    }
+    if (rightRailApi?.pdfFile !== activeTab?.file) return;
+    if (pending.panelId !== 'survey') {
+      if (typeof leftRailApi?.ref?.current?.togglePanel !== 'function') return;
+      pendingMobilePanelRequestRef.current = null;
+      setMobileSurveyCollapseRequestKey((key) => key + 1);
+      setMobileAuxCloseRequestKey((key) => key + 1);
+      leftRailApi.ref.current.togglePanel(pending.panelId);
+      return;
+    }
+    if (typeof rightRailApi?.handleSurveyToggle !== 'function') return;
+    pendingMobilePanelRequestRef.current = null;
+    leftRailApi?.ref?.current?.closePanel?.({ handover: true });
+    setMobileAuxCloseRequestKey((key) => key + 1);
+    setMobileSurveyRequestKey((key) => key + 1);
+    if (!rightRailApi.showSurveyPanel) rightRailApi.handleSurveyToggle();
+  }, [isMobileViewer, activeTabId, activeTab?.file, leftRailApi, rightRailApi]);
 
   // Spaces chunk B: the active space, named outside the Spaces panel - a chip
   // in the desktop tool bar and under the phone's top bar. Its words open the
@@ -2147,6 +2188,7 @@ export default function App({ devPreviewReturnTab = null }) {
 
   useEffect(() => {
     if (!mobileAuxPanel) return;
+    pendingMobilePanelRequestRef.current = null;
     leftRailApi?.ref?.current?.closePanel?.();
     setMobileSurveyCollapseRequestKey((key) => key + 1);
   }, [mobileAuxPanel]);
