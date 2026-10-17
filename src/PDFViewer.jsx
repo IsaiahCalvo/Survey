@@ -14703,8 +14703,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handlePastePageHere,
     handleReorderPages,
     handleRotatePage,
-    handleMirrorPage,
-    handleResetPage,
+    handleMirrorPage: applyMirrorPage,
+    handleResetPage: applyResetPage,
     handleRotatePageCW,
     handleRotatePageCCW,
     handleInsertBlankPage,
@@ -14725,6 +14725,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     clipboardType,
     setClipboardType,
   });
+  const handleMirrorPage = useCallback((...args) => {
+    if (!canRestoreFromHistoryRef.current) {
+      showToast('This document is read-only.', 'info');
+      return false;
+    }
+    return applyMirrorPage(...args);
+  }, [applyMirrorPage]);
+  const handleResetPage = useCallback((...args) => {
+    if (!canRestoreFromHistoryRef.current) {
+      showToast('This document is read-only.', 'info');
+      return false;
+    }
+    return applyResetPage(...args);
+  }, [applyResetPage]);
   pageOperationHistoryRef.current = { undo: undoPageOperation, redo: redoPageOperation };
 
   const importPdfBookmarksIntoSidebar = useCallback((incomingBookmarks = []) => {
@@ -21402,16 +21416,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       ? acceptTemplateVersion(binding, selectedTemplate, true)
       : bindUsedTemplate(selectedTemplate, binding));
   }, [selectedTemplate, surveyMarkers, annotationsByPage, appTemplates, normalAnnotationHydration?.ready, storeSurveyTemplateBinding, readSurveyTemplateBinding]);
-  pagePresentationMetaSetRef.current = normalAnnotationHydration?.ready ? excelSyncMetaSet : null;
-  pagePresentationMetaGetRef.current = normalAnnotationHydration?.ready ? excelSyncMetaGet : null;
+  pagePresentationMetaSetRef.current = normalAnnotationHydration?.ready
+    && normalAnnotationHydration.documentId === pdfFile?.id
+    && canRestoreFromHistory ? excelSyncMetaSet : null;
+  pagePresentationMetaGetRef.current = normalAnnotationHydration?.ready
+    && normalAnnotationHydration.documentId === pdfFile?.id ? excelSyncMetaGet : null;
   useEffect(() => {
     if (!normalAnnotationHydration?.ready || normalAnnotationHydration.documentId !== pdfFile?.id) return undefined;
     const apply = (value) => { if (value != null) setPageTransformations(normalizePagePresentations(value)); };
     const saved = excelSyncMetaGet(PAGE_PRESENTATION_META_KEY);
     apply(saved);
-    if (saved == null && Object.keys(pagePresentationStateRef.current).length > 0) excelSyncMetaSet(PAGE_PRESENTATION_META_KEY, normalizePagePresentations(pagePresentationStateRef.current), 'local');
+    if (canRestoreFromHistory && saved == null && Object.keys(pagePresentationStateRef.current).length > 0) excelSyncMetaSet(PAGE_PRESENTATION_META_KEY, normalizePagePresentations(pagePresentationStateRef.current), 'local');
     return subscribeDocumentMeta(PAGE_PRESENTATION_META_KEY, apply);
-  }, [normalAnnotationHydration, pdfFile?.id, excelSyncMetaGet, excelSyncMetaSet, subscribeDocumentMeta]);
+  }, [normalAnnotationHydration, pdfFile?.id, canRestoreFromHistory, excelSyncMetaGet, excelSyncMetaSet, subscribeDocumentMeta]);
 
   const deletedPdfAnnotations = useMemo(() => filterRestoredPdfAnnotationTombstones([
     ...new Map(
