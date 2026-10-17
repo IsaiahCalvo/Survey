@@ -23854,7 +23854,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // back by one more round trip. Start it now, alongside the PDF download
         // (the same one read, just earlier); it is still applied at the same
         // point as before.
-        const surveyDataBlobPromise = pdfFile.projectId
+        const surveyDataBlobPromise = pdfFile.projectId && !pdfFile.id
           ? Promise.resolve()
             .then(() => downloadFromStorage(`${pdfFile.projectId}/${pdfFile.id}_data.json`))
             .catch(() => null)
@@ -23996,7 +23996,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setPageNum(1);
 
         // Load project data from Supabase if available
-        if (pdfFile.projectId) {
+        if (pdfFile.projectId && !pdfFile.id) {
           await loadSurveyDataFromSupabase(pdfFile, surveyDataBlobPromise);
         }
         if (isCancelled) return;
@@ -35188,6 +35188,7 @@ ${pageBlocks}
       // Survey media: owner or editor (same rule as Restore in History).
       canEditSurveyMarkers: canRestoreFromHistory,
       user,
+      initialCollapsed: rightRailCollapsed,
       expandRequestKey: rightRailExpandRequestKey,
       onCollapseChange: handleRightRailCollapseChange,
     };
@@ -35326,6 +35327,7 @@ ${pageBlocks}
     handleResolveExcelConflict,
     canRestoreFromHistory,
     user,
+    rightRailCollapsed,
     rightRailExpandRequestKey,
     handleRightRailCollapseChange,
   ]);

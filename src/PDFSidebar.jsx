@@ -245,7 +245,7 @@ const PDFSidebar = React.forwardRef(({
   const layoutUserKey = currentUserId || user?.id || null;
   const initialLayoutRef = React.useRef(null);
   if (initialLayoutRef.current === null) {
-    const stored = mobileMode ? DEFAULT_PANEL_LAYOUT : readPanelLayout(browserStorage(), layoutUserKey);
+    const stored = mobileMode ? DEFAULT_PANEL_LAYOUT : readPanelLayout(browserStorage(), layoutUserKey, documentId);
     initialLayoutRef.current = stored.panel === 'history' && !documentId
       ? { ...stored, panel: 'pages' }
       : stored;
@@ -310,7 +310,7 @@ const PDFSidebar = React.forwardRef(({
   React.useEffect(() => {
     if (mobileMode || loadedLayoutKeyRef.current === layoutUserKey) return;
     loadedLayoutKeyRef.current = layoutUserKey;
-    const stored = readPanelLayout(browserStorage(), layoutUserKey);
+    const stored = readPanelLayout(browserStorage(), layoutUserKey, documentId);
     if (!userTouchedLayoutRef.current) {
       setIsCollapsed(!stored.open);
       setActiveTab(stored.panel === 'history' && !documentId ? 'pages' : stored.panel);
@@ -326,7 +326,7 @@ const PDFSidebar = React.forwardRef(({
       persistLayoutKeyRef.current = layoutUserKey;
       return;
     }
-    writePanelLayout(browserStorage(), layoutUserKey, { open: !isCollapsed, panel: activeTab });
+    writePanelLayout(browserStorage(), layoutUserKey, { open: !isCollapsed, panel: activeTab }, documentId);
   }, [isCollapsed, activeTab, mobileMode, layoutUserKey]);
   const footerPresence = withDevFakePresence({ presence, currentUserId, currentUserEmail, currentUserDisplayName });
   const tip = useTooltip();

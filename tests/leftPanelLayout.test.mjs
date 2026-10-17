@@ -173,13 +173,13 @@ test('wiring: no resize edge, no remembered width; the phone keeps its sheet', (
   assert.doesNotMatch(sidebar, /left-rail__resize|role="separator"|onDoubleClick=\{resetPanelWidth\}|is-resizing-side-panel|panelWidths/);
   assert.doesNotMatch(css, /\.left-rail__resize|is-resizing-side-panel/);
   // Only which panel and whether it was open are saved.
-  assert.match(sidebar, /writePanelLayout\(browserStorage\(\), layoutUserKey, \{ open: !isCollapsed, panel: activeTab \}\);/);
+  assert.match(sidebar, /writePanelLayout\(browserStorage\(\), layoutUserKey, \{ open: !isCollapsed, panel: activeTab \}, documentId\);/);
   // The rail is the 48px column plus the one panel width while laid out open,
   // and --app-sidebar-width (the storage notice's left edge) says the same.
   assert.match(sidebar, /'--left-panel-w': mobileMode \? undefined : `\$\{panelWidth\}px`,/);
   assert.match(sidebar, /setProperty\('--app-sidebar-width', mobileMode \? '44px' : `\$\{layoutOpen \? LEFT_RAIL_W \+ panelWidth : LEFT_RAIL_W\}px`\)/);
   // The phone keeps its sheet: no stored open state.
-  assert.match(sidebar, /const stored = mobileMode \? DEFAULT_PANEL_LAYOUT : readPanelLayout\(browserStorage\(\), layoutUserKey\);/);
+  assert.match(sidebar, /const stored = mobileMode \? DEFAULT_PANEL_LAYOUT : readPanelLayout\(browserStorage\(\), layoutUserKey, documentId\);/);
 });
 
 test('Esc in the search box hands focus back to the page and keeps the search', () => {
@@ -187,4 +187,15 @@ test('Esc in the search box hands focus back to the page and keeps the search', 
   const esc = panel.slice(panel.indexOf("if (e.key === 'Escape' && isInputFocused)"));
   assert.match(esc, /^if \(e\.key === 'Escape' && isInputFocused\) \{\s*e\.preventDefault\(\);\s*e\.stopPropagation\(\);\s*searchInputRef\.current\.blur\(\);\s*\}/);
   assert.doesNotMatch(panel, /clearSearchRef/);
+});
+
+
+test('document panels start closed and restore only their own saved layout', () => {
+  const mem = memoryStorage();
+  writePanelLayout(mem, 'owner', { open: true, panel: 'spaces' }, 'doc-a');
+  assert.deepEqual(readPanelLayout(mem, 'owner', 'doc-a'), { open: true, panel: 'spaces' });
+  assert.equal(readPanelLayout(mem, 'owner', 'doc-b'), DEFAULT_PANEL_LAYOUT);
+  assert.equal(readPanelLayout(mem, 'other-user', 'doc-a'), DEFAULT_PANEL_LAYOUT);
+  writePanelLayout(mem, 'owner', { open: true, panel: 'history' });
+  assert.equal(readPanelLayout(mem, 'owner', 'doc-new'), DEFAULT_PANEL_LAYOUT);
 });

@@ -4378,6 +4378,7 @@ export default function App({ devPreviewReturnTab = null }) {
             )}
             {leftRailApi && (
               <PDFSidebar
+                key={leftRailApi.documentId || activeTabId}
                 {...leftRailApi}
                 mobileMode={isMobileViewer}
                 onPanelStateChange={setMobileDocumentPanelState}
@@ -4620,6 +4621,7 @@ export default function App({ devPreviewReturnTab = null }) {
           >
             {rightRailApi && (
               <SurveySpacesRail
+                key={rightRailApi.pdfFile?.id || activeTabId}
                 {...rightRailApi}
                 mobileMode={isMobileViewer}
                 expandRequestKey={(rightRailApi.expandRequestKey || 0) + mobileSurveyRequestKey}

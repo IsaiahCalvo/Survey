@@ -556,6 +556,7 @@ const SurveySpacesRail = ({
   onDismissAllUnplacedRows = null,
   onResolveExcelConflict = null,
   user,
+  initialCollapsed = true,
   expandRequestKey = 0,
   collapseRequestKey = 0,
   onCollapseChange = null,
@@ -582,7 +583,7 @@ const SurveySpacesRail = ({
   // items). Promise-based so each handler keeps its original
   // `if (!confirmed) return;` shape and nothing deletes before the user answers.
   const [askConfirm, confirmDialogElement] = useConfirmDialog();
-  const [isSurveyPanelCollapsed, setIsSurveyPanelCollapsed] = useState(true);
+  const [isSurveyPanelCollapsed, setIsSurveyPanelCollapsed] = useState(initialCollapsed);
   // Desktop panel motion (owner 2026-09-30 "the expand animation isn't
   // smooth"; 2026-10-07 Drawboard rail): the open panel slides out from under
   // the Survey rail (surveyRailExpand) and, once closed, stays drawn for the
@@ -983,10 +984,12 @@ const SurveySpacesRail = ({
     />
   );
 
+  const lastExpandRequestRef = useRef(expandRequestKey);
   useEffect(() => {
-    if (expandRequestKey > 0) {
+    if (expandRequestKey !== lastExpandRequestRef.current && expandRequestKey > 0) {
       setIsSurveyPanelCollapsed(false);
     }
+    lastExpandRequestRef.current = expandRequestKey;
   }, [expandRequestKey]);
 
   useEffect(() => {
