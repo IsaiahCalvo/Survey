@@ -9,7 +9,7 @@ import { PAGE_PRESENTATION_META_KEY, normalizePagePresentations } from '../src/u
 // when an editor's rights have become read-only; reading still works.
 const source = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
 const access = source.slice(source.indexOf('  const canRestoreFromHistory = useMemo'), source.indexOf('  const requireSpaceManagement = useCallback'));
-const metadata = source.slice(source.indexOf('  pagePresentationMetaSetRef.current ='), source.indexOf('\n  const deletedPdfAnnotations = useMemo'));
+const metadata = source.slice(source.indexOf('  pagePresentationMetaSetRef.current ='), source.indexOf('\n  const deletedPdfAnnotations = useMemo')).split('\n  useLayoutEffect')[0];
 const actions = source.slice(source.indexOf('  const handleMirrorPage = useCallback'), source.indexOf('  pageOperationHistoryRef.current ='));
 function simulate(overrides = {}) {
   const calls = { writes: [], reads: 0, subscriptions: 0, mirrors: 0, resets: 0, renders: [] };
