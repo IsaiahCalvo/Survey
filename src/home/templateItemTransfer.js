@@ -1,6 +1,6 @@
 // The destination dialog operates on the editor's rich model. Keep a moved
 // item's IDs; a copied item's entire child tree gets new IDs.
-export function transferTemplateItems(templates, { kind, mode, sourceTemplateId, sourceModuleId, destinationTemplateId, destinationModuleId, ids }, mintId) {
+export function transferTemplateItems(templates, { kind, mode, sourceTemplateId, sourceModuleId, destinationTemplateId, destinationModuleId, ids }, mintId, resolveEntityStyle) {
   const source = templates.find((entry) => entry.id === sourceTemplateId);
   const destination = templates.find((entry) => entry.id === destinationTemplateId);
   if (!source || !destination || !['category', 'module', 'entity'].includes(kind) || !['move', 'copy'].includes(mode)) return { ok: false, reason: 'Choose a destination.' };
@@ -18,7 +18,11 @@ export function transferTemplateItems(templates, { kind, mode, sourceTemplateId,
   if (mode === 'move' && picked.some((item) => (targetItems || []).some((other) => other.id === item.id || name(other) === name(item)))) return { ok: false, reason: 'The destination already has an item with this name.' };
   const copyCategory = (item) => ({ ...item, id: mintId('c'), items: (item.items || []).map((child) => ({ ...child, id: mintId('i') })) });
   const usedNames = new Set((targetItems || []).map(name));
-  const added = picked.map((item) => {
+  const added = picked.map((original) => {
+    // Picker edits stay outside the roster until save. Carry the live style
+    // before copying IDs or moving the entity to another template.
+    const item = kind === 'entity' && resolveEntityStyle
+      ? { ...original, ...resolveEntityStyle(original) } : original;
     if (mode === 'move') return item;
     const copy = kind === 'category' ? copyCategory(item) : kind === 'module'
       ? { ...item, id: mintId('m'), categories: (item.categories || []).map(copyCategory) }
@@ -38,5 +42,5 @@ export function transferTemplateItems(templates, { kind, mode, sourceTemplateId,
       : { ...updated, [field]: [...updated[field], ...added] };
     return updated;
   });
-  return { ok: true, templates: next };
+  return { ok: true, templates: next, entities: kind === 'entity' ? added : [] };
 }

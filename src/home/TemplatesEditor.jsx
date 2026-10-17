@@ -3896,9 +3896,10 @@ export default function TemplatesEditor({
             <button onClick={closeMoveModal} className="hub-btn">Cancel</button>
             <button onClick={() => {
               const ids = moveModal.kind === 'category' ? selCats : moveModal.kind === 'module' ? selMods : selEntities;
-              const result = transferTemplateItems(rich, { kind: moveModal.kind, mode: moveModal.mode, sourceTemplateId: tpl.id, sourceModuleId: orderedMods[openMod]?.id, destinationTemplateId: moveDestTpl, destinationModuleId: moveDestMod, ids: [...ids] }, newId);
+              const result = transferTemplateItems(rich, { kind: moveModal.kind, mode: moveModal.mode, sourceTemplateId: tpl.id, sourceModuleId: orderedMods[openMod]?.id, destinationTemplateId: moveDestTpl, destinationModuleId: moveDestMod, ids: [...ids] }, newId, liveEntityStyle);
               if (!result.ok) { setMoveError(result.reason); return; }
               setRich(result.templates); markEdited();
+              seedClonedEntityStyles(result.entities.map((entity) => ({ id: entity.id, style: entity })));
               setSelCats(new Set()); setSelMods(new Set()); setSelEntities(new Set());
               setOpenCat(-1); closeMoveModal();
             }} className="hub-btn hub-btn--primary">{moveModal.mode === 'copy' ? 'Copy' : 'Move'}</button>

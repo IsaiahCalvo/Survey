@@ -8,3 +8,23 @@ const plan = (options) => transferTemplateItems(initial,{kind:'category',mode:'m
 test('moving a category removes it from source and carries its IDs/checklist to destination',()=>{const r=plan({});assert.equal(r.ok,true);assert.equal(r.templates[0].modules[0].categories.length,0);assert.strictEqual(r.templates[0].modules[1].categories[0],item);assert.equal(initial[0].modules[0].categories.length,1);});
 test('copy creates new IDs for the category and its checklist and keeps source',()=>{const r=plan({mode:'copy'});assert.equal(r.ok,true);assert.equal(r.templates[0].modules[0].categories.length,1);const copy=r.templates[0].modules[1].categories[0];assert.notEqual(copy.id,item.id);assert.notEqual(copy.items[0].id,item.items[0].id);assert.equal(copy.items[0].archived,true);});
 test('modules and entities transfer too; same-source moves and missing selections do nothing',()=>{const m=plan({kind:'module',destinationTemplateId:'u',ids:['a']});assert.equal(m.ok,true);assert.equal(m.templates[0].modules.length,1);assert.equal(m.templates[1].modules[0].id,'a');const e=plan({kind:'entity',destinationTemplateId:'u',ids:['e']});assert.equal(e.ok,true);assert.equal(e.templates[0].roster.length,0);assert.equal(e.templates[1].roster[0].id,'e');assert.equal(plan({destinationModuleId:'a'}).ok,false);assert.equal(plan({ids:['gone']}).ok,false);});
+
+test('entity copy and move carry unsaved picker styles and provide destination IDs for picker state', () => {
+  for (const mode of ['copy', 'move']) {
+    for (const matched of [false, true]) {
+      const live = { color: '#112233', opacity: 0.61, borderColor: matched ? '#112233' : '#445566', borderOpacity: matched ? 0.61 : 0.83, matchFill: matched };
+      const result = transferTemplateItems(initial, { kind: 'entity', mode, sourceTemplateId: 't', destinationTemplateId: 'u', ids: ['e'] }, mint, (entity) => {
+        assert.equal(entity.id, 'e');
+        return live;
+      });
+      assert.equal(result.ok, true);
+      const entity = result.templates[1].roster[0];
+      for (const [key, value] of Object.entries(live)) assert.equal(entity[key], value, `${mode}: ${key}`);
+      assert.deepEqual(result.entities, [entity]);
+      assert.equal(entity.role, mode === 'copy' ? 'Existing copy' : 'Existing');
+      assert.equal(entity.id === 'e', mode === 'move');
+      assert.equal(initial[0].roster[0].color, 'blue');
+      assert.equal(result.templates[0].roster.length, mode === 'copy' ? 1 : 0);
+    }
+  }
+});
