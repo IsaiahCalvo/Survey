@@ -2047,7 +2047,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // ---- which pages are mounted ---------------------------------------------
   const recomputeWindow = useCallback(() => {
     const el = scrollerRef.current;
-    if (!el || !layout.tops.length) return;
+    if (!el || !el.clientWidth || !el.clientHeight || !layout.tops.length) return;
     // layout.tops are raw-content-space; padTop shifts pages down relative to
     // scroll, so the visibility window is expressed in raw space by subtracting it.
     const padTop = layout.padTop;
@@ -2097,7 +2097,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const el = scrollerRef.current;
     if (!el) return undefined;
     const update = () => {
-      setContainerW(el.clientWidth);
+      // A hidden tab has no viewport; keep its last measured page window.
+      if (el.clientWidth > 0) setContainerW(el.clientWidth);
       // containerH drives padTop (vertical centering). Guard against a 0 height
       // during mount/teardown so padTop doesn't transiently center against nothing.
       const h = el.clientHeight;
@@ -2138,6 +2139,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const observed = new Set();
     const measure = () => {
       raf = 0;
+      if (!el.clientWidth || !el.clientHeight) return;
       const strips = getViewerTopOverlays().filter((node) => node?.isConnected);
       const inset = computeTopOverlayInset(
         el.getBoundingClientRect(),
@@ -2233,6 +2235,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const observed = new Set();
     const measure = () => {
       raf = 0;
+      if (!el.clientWidth || !el.clientHeight) return;
       const panels = getViewerSideOccluders()
         .filter((node) => node?.isConnected && node.getAttribute?.('data-viewer-occluder') === 'side');
       const next = computeSideOverlayInsets(

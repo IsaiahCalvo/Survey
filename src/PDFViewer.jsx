@@ -14593,7 +14593,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // KAL-301 follow-up: while region editing is active the buttons reflect and
   // drive the REGION undo/redo stacks instead of the annotation history.
   useEffect(() => {
-    if (!isActive || typeof onTopToolbarApiChange !== 'function') return;
+    if (typeof onTopToolbarApiChange !== 'function') return;
     const useRegionHistory = showRegionSelection && regionHistoryApi;
     onTopToolbarApiChange({
       canUndo: useRegionHistory ? regionHistoryApi.canUndo : canUndo,
@@ -14690,6 +14690,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setRegionOverlayDisabled,
   ]);
 
+  // Resolve the supplied source, including an inactive tab's queued page edit.
+  const readPageMutationPdfBytes = useCallback(async (file) => {
+    const path = file?.supabaseFilePath || file?.filePath;
+    if (!path) throw new Error('PDF source is unavailable.');
+    const blob = await downloadFromStorage(path);
+    return blob.arrayBuffer();
+  }, [downloadFromStorage]);
+
   // Sidebar handlers — page add / delete / duplicate / physical reorder /
   // rotate / cut-copy-paste / insert-blank. Mirror remains a presentation-only
   // page transformation because PDF pages have no native mirror primitive.
@@ -14714,6 +14722,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     flushPageOperations,
   } = usePageOperations({
     pdfFile,
+    readPdfBytes: readPageMutationPdfBytes,
     onUpdatePDFFile: persistPageMutationFile,
     getPageState: getPageStructureState,
     commitPageState: commitPageStructureState,
@@ -21362,7 +21371,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   } = useAnnotationDoc({
     documentId: pdfFile?.id || null,
     userId: user?.id || null,
-    enabled: isActive && cloudSyncEnabled && !!pdfFile?.id && !!user?.id,
+    // The viewer remains mounted on a warm switch; keep its durable store and
+    // unsaved capture live until the tab actually closes.
+    enabled: cloudSyncEnabled && !!pdfFile?.id && !!user?.id,
+    isActive,
     // Slice 6 (2026-07-17): annotationsByPage carries callouts as projected
     // data.type==='callout' groups (R2.2 flip), and the hook persists them
     // per-id in the same `annotations` Y.Map as every other object — so the
@@ -25972,7 +25984,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // is active. Keep this effect below every value in the API object to avoid
   // temporal-dead-zone crashes during PDFViewer's first render.
   useEffect(() => {
-    if (!isActive || typeof onBottomToolbarApiChange !== 'function') return;
+    if (typeof onBottomToolbarApiChange !== 'function') return;
     // Resolve the live saved object instead of relying only on the selection
     // payload captured when the user clicked it. Saves, undo/redo, series
     // updates, and remote sync can replace that object while it stays selected.
@@ -35176,7 +35188,7 @@ ${pageBlocks}
   // active. Placed immediately before the loading/full render branches so every
   // sidebar prop and handler in the API has already been declared.
   useEffect(() => {
-    if (!isActive || typeof onLeftRailApiChange !== 'function') return;
+    if (typeof onLeftRailApiChange !== 'function') return;
     const nextLeftRailApi = {
       ref: pdfSidebarRef,
       features,
@@ -35375,7 +35387,7 @@ ${pageBlocks}
   // UX 2026-05-29: Publish the active PDF viewer's right-rail data to the App
   // shell, matching the left rail's App-owned rendering boundary.
   useEffect(() => {
-    if (!isActive || typeof onRightRailApiChange !== 'function') return;
+    if (typeof onRightRailApiChange !== 'function') return;
     const nextRightRailApi = {
       activeSpaceId,
       // Create Category modal plumbing (survey rail plus button). The modal's

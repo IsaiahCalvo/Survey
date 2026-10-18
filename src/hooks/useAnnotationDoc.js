@@ -281,6 +281,7 @@ export function useAnnotationDoc({
   documentId,
   userId,
   enabled,
+  isActive = true,
   annotationsByPage,
   setAnnotationsByPage,
   spaces,
@@ -751,9 +752,9 @@ export function useAnnotationDoc({
   const storeUnavailable = initialHydration?.source === ANNOTATION_HYDRATION_UNAVAILABLE_SOURCE
     && initialHydration?.documentId === documentId;
   useEffect(() => {
-    if (!storeUnavailable) return undefined;
+    if (!storeUnavailable || !isActive) return undefined;
     return claimBodyReadOnly(`annotation-store-unavailable:${documentId}`);
-  }, [storeUnavailable, documentId]);
+  }, [storeUnavailable, documentId, isActive]);
 
   // UX (w29, open speed): while early-painted marks are showing and the store
   // is still opening, nothing drawn could be saved (the capture waits for
@@ -764,9 +765,9 @@ export function useAnnotationDoc({
     && initialHydration?.ready !== true
     && initialHydration?.documentId === documentId;
   useEffect(() => {
-    if (!storePreviewing) return undefined;
+    if (!storePreviewing || !isActive) return undefined;
     return claimBodyReadOnly(`annotation-store-opening:${documentId}`);
-  }, [storePreviewing, documentId]);
+  }, [storePreviewing, documentId, isActive]);
 
   // The executor closes over document/template/user state and can legitimately
   // change after the durable handle opened. Reinstalling it also triggers an

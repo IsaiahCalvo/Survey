@@ -14,6 +14,8 @@
 // (Note: CLAUDE.md still says the guard lives in AppShell; that line is stale.)
 
 import Dashboard from './Dashboard';
+import { createTabChromeCache } from './utils/tabChromeCache.js';
+import { captureTabSource, isCurrentTabSource } from './utils/tabSourceIdentity.js';
 import DocumentLockBanner from './components/DocumentLockBanner.jsx';
 import Icon from './Icons';
 import SurveyMarkerModeTools from './survey/SurveyMarkerModeTools.jsx';
@@ -742,6 +744,8 @@ export default function App({ devPreviewReturnTab = null }) {
   }, []);
 
   const [currentView, setCurrentView] = useState('dashboard');
+  const currentViewRef = useRef(currentView);
+  currentViewRef.current = currentView;
   const [selectedPDF, setSelectedPDF] = useState(null);
   const [documents, setDocuments] = useState(() => {
     if (
@@ -1266,6 +1270,19 @@ export default function App({ devPreviewReturnTab = null }) {
   const HOME_TAB_ID = 'home-tab';
   const [tabs, setTabs] = useState([{ id: HOME_TAB_ID, name: 'Home', file: null, isHome: true }]); // Array of { id, name, file, isHome? }
   const [activeTabId, setActiveTabId] = useState(HOME_TAB_ID);
+  const activeTabIdRef = useRef(activeTabId);
+  activeTabIdRef.current = activeTabId;
+  const chromeCache = useMemo(() => createTabChromeCache(id => activeTabIdRef.current === id && currentViewRef.current === 'viewer'), []);
+  const chromeSetters = useMemo(() => ({
+    top: setTopToolbarApi, bottom: setBottomToolbarApi,
+    left: setLeftRailApi, right: setRightRailApi,
+  }), []);
+  useLayoutEffect(() => {
+    chromeCache.retain(tabs.filter(tab => !tab.isHome).map(tab => tab.id));
+  }, [tabs, chromeCache]);
+  useLayoutEffect(() => {
+    chromeCache.activate(activeTabId, chromeSetters);
+  }, [activeTabId, currentView, chromeCache, chromeSetters]);
   const [documentLockedByTab, setDocumentLockedByTab] = useState({});
   // Track PDFs that are currently being opened to prevent duplicate opens
   const openingPdfsRef = useRef(new Set());
@@ -1425,10 +1442,11 @@ export default function App({ devPreviewReturnTab = null }) {
 
   // DEV-ONLY: Auto-open test PDF when loaded via dev test route
   useEffect(() => {
-    if (import.meta.env.DEV && window.__devTestPdf) {
-      const file = window.__devTestPdf;
-      window.__devTestPdf = null; // consume so it only fires once
-      handleDocumentSelect(file);
+    if (import.meta.env.DEV && (window.__devTestPdf || window.__devTestPdfs)) {
+      const files = window.__devTestPdfs || [window.__devTestPdf];
+      window.__devTestPdf = null;
+      window.__devTestPdfs = null;
+      files.forEach((file) => handleDocumentSelect(file));
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1487,6 +1505,7 @@ export default function App({ devPreviewReturnTab = null }) {
         dashboardRef.current.exitSelectionMode();
       }
 
+      activeTabIdRef.current = tabId;
       setActiveTabId(tabId);
       if (tab.isHome) {
         if (returnToDevHubPreview()) return;
@@ -1589,6 +1608,9 @@ export default function App({ devPreviewReturnTab = null }) {
 
   // Memoized callback to update PDF file
   const handleUpdatePDFFile = useCallback(async (newFile, targetTabId) => {
+    const origin = captureTabSource(targetTabId
+      ? tabsRef.current.find(tab => tab.id === targetTabId)?.file
+      : selectedPDF);
     const durablePath = newFile?.supabaseFilePath || newFile?.filePath || null;
     let saved = null;
     if (newFile?.id && durablePath) {
@@ -1599,10 +1621,15 @@ export default function App({ devPreviewReturnTab = null }) {
       if (saved.filePath !== durablePath) newFile.supabaseFilePath = saved.filePath;
       newFile.contentSha256 = saved.contentSha256;
     }
+    const currentFile = targetTabId
+      ? tabsRef.current.find(tab => tab.id === targetTabId)?.file
+      : selectedPDF;
+    if (!isCurrentTabSource(origin, currentFile)) return newFile;
     setTabs(prev => {
       if (targetTabId) {
         return prev.map(tab =>
-          tab.id === targetTabId ? { ...tab, file: newFile } : tab
+          tab.id === targetTabId && isCurrentTabSource(origin, tab.file)
+            ? { ...tab, file: newFile } : tab
         );
       }
 
@@ -1613,8 +1640,8 @@ export default function App({ devPreviewReturnTab = null }) {
       );
     });
     // Only update selectedPDF if the updated tab is the active one
-    if (!targetTabId || targetTabId === activeTabId) {
-      setSelectedPDF(newFile);
+    if (!targetTabId || targetTabId === activeTabIdRef.current) {
+      setSelectedPDF(current => isCurrentTabSource(origin, current) ? newFile : current);
     }
     setDocuments((prev) => prev.map((document) => (
       document?.id === newFile?.id
@@ -1641,8 +1668,6 @@ export default function App({ devPreviewReturnTab = null }) {
   // it directly (onCloseAfterFailure): there is nothing to protect.
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
-  const activeTabIdRef = useRef(activeTabId);
-  activeTabIdRef.current = activeTabId;
   const bottomToolbarApiRef = useRef(bottomToolbarApi);
   bottomToolbarApiRef.current = bottomToolbarApi;
   const [askTabConfirm, tabConfirmDialog] = useConfirmDialog();
@@ -2655,10 +2680,10 @@ export default function App({ devPreviewReturnTab = null }) {
             alignItems: 'center',
             gap: 'var(--chrome-tool-gap)'
           }}>
-            <span {...chromeTip(topToolbarApi.canUndo ? 'Undo' : 'Nothing to undo', 'below')} style={{ display: 'inline-flex' }}>
+            <span {...chromeTip(topToolbarApi?.canUndo ? 'Undo' : 'Nothing to undo', 'below')} style={{ display: 'inline-flex' }}>
               <button
-                onClick={topToolbarApi.onUndo || (() => {})}
-                disabled={!topToolbarApi.canUndo}
+                onClick={topToolbarApi?.onUndo || (() => {})}
+                disabled={!topToolbarApi?.canUndo}
                 // UX 2026-09-16: Undo/Redo take the shared top-bar control
                 // size and glyph like every other button in this row. They
                 // were a one-off 32x26 with a 14px glyph — the smallest pair
@@ -2669,23 +2694,23 @@ export default function App({ devPreviewReturnTab = null }) {
                 className="btn chrome-control chrome-history"
                 aria-label="Undo"
                 style={{
-                  cursor: topToolbarApi.canUndo ? 'pointer' : 'not-allowed',
-                  pointerEvents: topToolbarApi.canUndo ? 'auto' : 'none'
+                  cursor: topToolbarApi?.canUndo ? 'pointer' : 'not-allowed',
+                  pointerEvents: topToolbarApi?.canUndo ? 'auto' : 'none'
                 }}
               >
                 <Icon name="undo" size={HISTORY_GLYPH} />
               </button>
             </span>
-            <span {...chromeTip(topToolbarApi.canRedo ? 'Redo' : 'Nothing to redo', 'below')} style={{ display: 'inline-flex' }}>
+            <span {...chromeTip(topToolbarApi?.canRedo ? 'Redo' : 'Nothing to redo', 'below')} style={{ display: 'inline-flex' }}>
               <button
-                onClick={topToolbarApi.onRedo || (() => {})}
-                disabled={!topToolbarApi.canRedo}
+                onClick={topToolbarApi?.onRedo || (() => {})}
+                disabled={!topToolbarApi?.canRedo}
                 // UX 2026-09-16: see Undo — shared top-bar control size + glyph.
                 className="btn chrome-control chrome-history"
                 aria-label="Redo"
                 style={{
-                  cursor: topToolbarApi.canRedo ? 'pointer' : 'not-allowed',
-                  pointerEvents: topToolbarApi.canRedo ? 'auto' : 'none'
+                  cursor: topToolbarApi?.canRedo ? 'pointer' : 'not-allowed',
+                  pointerEvents: topToolbarApi?.canRedo ? 'auto' : 'none'
                   // UX 2026-09-16: the old -0.591158px ink-centre nudge is
                   // gone. It was measured against the 14px Redo glyph; at the
                   // shared 18px size the Undo and Redo glyphs share an ink
@@ -4554,6 +4579,7 @@ export default function App({ devPreviewReturnTab = null }) {
 
               const isVisible = tab.id === activeTabId && currentView === 'viewer';
               const tabViewState = tab.viewState;
+              const chrome = chromeCache.callbacks(tab.id, chromeSetters);
 
               return (
                 <div
@@ -4592,10 +4618,10 @@ export default function App({ devPreviewReturnTab = null }) {
                       isActive={isVisible}
                       documentLocked={documentLockedByTab[tab.id] === true}
                       mobileMode={isNarrowShell}
-                      onTopToolbarApiChange={setTopToolbarApi}
-                      onBottomToolbarApiChange={setBottomToolbarApi}
-                      onLeftRailApiChange={setLeftRailApi}
-                      onRightRailApiChange={setRightRailApi}
+                      onTopToolbarApiChange={chrome.top}
+                      onBottomToolbarApiChange={chrome.bottom}
+                      onLeftRailApiChange={chrome.left}
+                      onRightRailApiChange={chrome.right}
                       onUpdatePDFFile={stableUpdatePDFFile}
                       onCloseAfterFailure={stableTabClose}
                       onUnsavedAnnotationsChange={stableUnsavedAnnotationsChange}
