@@ -9,6 +9,19 @@ function setup() {
  const cache=createTabChromeCache(id=>active===id);
  return {cache,state,setters,activate:id=>{active=id;cache.activate(id,setters);}};
 }
+test('publisher callbacks keep one identity per mounted tab across state changes',()=>{
+ const {cache,setters,activate}=setup();
+ const a=cache.callbacks('A',setters);
+ for(const kind of ['top','bottom','left','right']) a[kind]({name:'first'});
+ activate('B');
+ for(const kind of ['top','bottom','left','right']) a[kind]({name:'latest'});
+ activate('A');
+ const again=cache.callbacks('A',setters);
+ assert.equal(again,a);
+ for(const kind of ['top','bottom','left','right']) assert.equal(again[kind],a[kind]);
+ cache.retain(['B']);
+ assert.notEqual(cache.callbacks('A',setters),a,'a closed tab releases its publishers');
+});
 test('warm activation restores all four APIs before a click and stale methods cannot target another tab',()=>{
  const {cache,state,setters,activate}=setup();const calls=[];
  const a=cache.callbacks('A',setters),b=cache.callbacks('B',setters);

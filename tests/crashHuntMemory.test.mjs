@@ -103,7 +103,19 @@ test('every callback AppShell hands to PDFViewer keeps one identity', () => {
   const block = src.slice(start, src.indexOf('/>', start));
   const props = [...block.matchAll(/\s(on[A-Z]\w*)=\{([^}]+)\}/g)].map(([, name, value]) => [name, value.trim()]);
   assert.ok(props.length >= 10, 'found the callback props');
-  const unstable = props.filter(([, value]) => !/^(stable[A-Z]\w*|set[A-Z]\w*|refetchTemplates)$/.test(value));
+  // The tab cache creates each publisher once, then reuses it for that tab.
+  // Keep the allowlist tied to the exact prop and its memoized factory.
+  const cached = new Map([
+    ['onTopToolbarApiChange', 'chrome.top'],
+    ['onBottomToolbarApiChange', 'chrome.bottom'],
+    ['onLeftRailApiChange', 'chrome.left'],
+    ['onRightRailApiChange', 'chrome.right'],
+  ]);
+  assert.match(src, /const chromeCache = useMemo\(\(\) => createTabChromeCache\([^\n]+, \[\]\)/);
+  assert.match(src, /const chromeSetters = useMemo\(\(\) => \(\{[\s\S]*?\}\), \[\]\)/);
+  assert.match(src, /const chrome = chromeCache\.callbacks\(tab\.id, chromeSetters\);/);
+  const unstable = props.filter(([name, value]) =>
+    !/^(stable[A-Z]\w*|set[A-Z]\w*|refetchTemplates)$/.test(value) && cached.get(name) !== value);
   assert.deepEqual(unstable, [], 'callback props that are not stable handlers');
 });
 
