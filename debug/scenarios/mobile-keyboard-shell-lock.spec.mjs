@@ -14,9 +14,9 @@
  *      header, rail and dock rectangles are byte-identical afterwards. With the
  *      shell pinned there is no scroll range to give, so nothing moves.
  *
- *   2. THE INSET. It then writes exactly what src/mobile/keyboardViewport.js
- *      writes for a 336px keyboard — `--keyboard-inset` plus `data-keyboard-open`
- *      on <html> — and asserts (a) the chrome still has not moved and (b) the
+ *   2. THE INSET. It sends the keyboard show/hide events to the real
+ *      src/mobile/keyboardViewport.js controller for a 336px keyboard and
+ *      asserts (a) the chrome still has not moved and (b) the
  *      PDF scroller gained 336px of range, which is what lets a caret on the
  *      last line of the last page scroll clear of the keyboard.
  *
@@ -42,9 +42,12 @@ const chromeRects = (page) => page.evaluate(() => {
   };
 });
 
-test('the on-screen keyboard never moves the phone chrome', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(TEST_PDF);
+for (const [layout, height, query] of [
+  ['mobile Safari', 664, ''],
+  ['native app', 844, '&mobileNav=tabs&nativeShell=expo'],
+]) test(`the on-screen keyboard never moves the ${layout} chrome`, async ({ page }) => {
+  await page.setViewportSize({ width: 390, height });
+  await page.goto(TEST_PDF + query);
 
   await page.locator('[data-mobile-pdf-header="true"]').waitFor({ timeout: 60_000 });
   await page.locator('.mobile-pdf-dock').waitFor();
@@ -55,9 +58,9 @@ test('the on-screen keyboard never moves the phone chrome', async ({ page }) => 
   expect(before.rail).not.toBeNull();
   expect(before.dock).not.toBeNull();
   // The chrome is where the phone layout puts it: header at the top, dock at
-  // the bottom of an 844px screen.
+  // the bottom of the viewport.
   expect(before.header.top).toBe(0);
-  expect(before.dock.top + before.dock.height).toBeCloseTo(844, 0);
+  expect(before.dock.top + before.dock.height).toBeCloseTo(height, 0);
 
   // The shell is pinned: the document itself cannot scroll.
   const shell = await page.evaluate(() => ({
@@ -82,27 +85,23 @@ test('the on-screen keyboard never moves the phone chrome', async ({ page }) => 
   });
 
   await page.evaluate((kb) => {
-    document.documentElement.style.setProperty('--keyboard-inset', `${kb}px`);
-    document.documentElement.setAttribute('data-keyboard-open', 'true');
+    window.dispatchEvent(new CustomEvent('keyboardWillShow', { detail: { keyboardHeight: kb } }));
   }, KEYBOARD_H);
 
   expect(await chromeRects(page)).toEqual(before);
 
-  const scrollRangeAfter = await page.evaluate(() => {
+  await expect.poll(() => page.evaluate(() => {
     const s = document.querySelector('[data-mobile-pdf-surface="true"]');
     return s.scrollHeight - s.clientHeight;
-  });
-  expect(scrollRangeAfter - scrollRangeBefore).toBeCloseTo(KEYBOARD_H, 0);
+  })).toBeCloseTo(scrollRangeBefore + KEYBOARD_H, 0);
 
   // 3. EVERYTHING RETURNS when the keyboard closes.
   await page.evaluate(() => {
-    document.documentElement.style.setProperty('--keyboard-inset', '0px');
-    document.documentElement.removeAttribute('data-keyboard-open');
+    window.dispatchEvent(new CustomEvent('keyboardWillHide'));
   });
   expect(await chromeRects(page)).toEqual(before);
-  const scrollRangeClosed = await page.evaluate(() => {
+  await expect.poll(() => page.evaluate(() => {
     const s = document.querySelector('[data-mobile-pdf-surface="true"]');
     return s.scrollHeight - s.clientHeight;
-  });
-  expect(scrollRangeClosed).toBeCloseTo(scrollRangeBefore, 0);
+  })).toBeCloseTo(scrollRangeBefore, 0);
 });

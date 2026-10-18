@@ -169,11 +169,15 @@ test('template list right-click opens the existing item actions without Select m
 
 test.describe('phone Survey assignment', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1' });
-  test('module/category/entity dialog fits and saves on a phone', async ({ page, context }) => {
+  for (const [layout, route, viewport] of [
+    ['mobile Safari', '/mobile', { width: 390, height: 664 }],
+    ['native app', '/mobile', { width: 390, height: 844 }],
+  ]) test(`module/category/entity dialog fits and saves in ${layout}`, async ({ page, context }) => {
+    await page.setViewportSize(viewport);
     await context.route(/^https?:\/\/(?!localhost|127\.0\.0\.1)/, (route) => route.abort());
     await context.addInitScript((value) => localStorage.setItem('mobileWorkflowTemplates', JSON.stringify(value)), templates);
     const errors = []; page.on('pageerror', (error) => errors.push(error.message));
-    await page.goto('/?testPdf=clickable-link-test.pdf&surveyTemplateWorkflowE2E=1&mobileNav=tabs&nativeShell=expo');
+    await page.goto(`${route}?testPdf=clickable-link-test.pdf&surveyTemplateWorkflowE2E=1${layout === 'native app' ? '&mobileNav=tabs&nativeShell=expo' : ''}`);
     await page.getByRole('button', { name: 'Open survey', exact: true }).tap();
     await page.getByRole('button', { name: /Work Survey/ }).filter({ visible: true }).first().tap();
     await page.getByRole('button', { name: 'Open survey', exact: true }).tap();
@@ -186,7 +190,7 @@ test.describe('phone Survey assignment', () => {
     await expect(modal).toBeVisible();
     const rect = await modal.boundingBox();
     expect(rect.x).toBeGreaterThanOrEqual(0); expect(rect.x + rect.width).toBeLessThanOrEqual(390);
-    expect(rect.y + rect.height).toBeLessThanOrEqual(844);
+    expect(rect.y + rect.height).toBeLessThanOrEqual(viewport.height);
     await modal.getByRole('combobox', { name: 'Module', exact: true }).selectOption('proposed');
     await modal.getByRole('combobox', { name: 'Category', exact: true }).selectOption('doors');
     await modal.getByRole('combobox', { name: 'Entity', exact: true }).selectOption('new');
