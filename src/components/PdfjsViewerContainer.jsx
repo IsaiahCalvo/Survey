@@ -1425,6 +1425,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const nativePanCoastMarkerRef = useRef(null);
   const nativeLiveZoomFloorRef = useRef(null);
   const pdfRef = useRef(null);
+  const pendingViewportFitRef = useRef(null);
 
   const [numPages, setNumPages] = useState(0);
   const [pageSizes, setPageSizes] = useState([]);
@@ -1449,6 +1450,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const [range, setRange] = useState([0, -1]);
   const [containerW, setContainerW] = useState(800);
   const [containerH, setContainerH] = useState(600);
+  const [viewportFitRevision, setViewportFitRevision] = useState(0);
   // Three separate questions (owner 2026-10-13: touch must never pick the
   // phone layout):
   //  - phoneLayout: the phone's page layout (narrow gaps, the 390px page cap,
@@ -1780,6 +1782,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       cb.current.onDocumentUnload?.();
     };
     if (externalPdf && pdfRef.current === externalPdf) return unload;
+    pendingViewportFitRef.current = null;
     setPageSizes([]); setNumPages(0); setRange([0, -1]);
     pageContainerMapRef.current = {};
     if (!externalPdf && !params) return undefined;
@@ -1808,6 +1811,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
 
         const el = scrollerRef.current;
         const cw = el ? el.clientWidth : 800;
+        const hasViewport = el && cw > 0 && el.clientHeight > 0;
+        // Inactive tabs can finish loading with display:none. Fit once the real
+        // viewport appears, rather than fitting a zero-sized box to the zoom floor.
+        if (!hasViewport) pendingViewportFitRef.current = { source: activeSource, target: 'fit' };
         // A fresh open lands on Fit page (PDFViewer asks for it right after
         // onDocumentLoaded). Start at that same scale, measured the way
         // zoomToScale('fit') measures it, so page 1 is drawn once at its final
@@ -1815,7 +1822,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         // 2026-10-04: one draw, nothing jumps).
         const metrics = layoutMetricsRef.current;
         const side = sideInsetRef.current;
-        const fitPageScale = el ? computeFitScale({
+        const fitPageScale = hasViewport ? computeFitScale({
           mode: 'fitPage',
           pageW: firstSize.w,
           pageH: firstSize.h,
@@ -1827,7 +1834,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
           padBottom: metrics.padBottom,
           maxPageWidth: metrics.maxPageWidth,
         }) : NaN;
-        const fit = Number.isFinite(fitPageScale) && fitPageScale > 0
+        const fit = !hasViewport ? scaleRef.current : Number.isFinite(fitPageScale) && fitPageScale > 0
           ? Math.min(isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE, Math.max(
             getMinimumScaleForLayout(sizes, el.clientHeight, metrics, cw),
             fitPageScale,
@@ -2103,6 +2110,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       // during mount/teardown so padTop doesn't transiently center against nothing.
       const h = el.clientHeight;
       if (h > 0) setContainerH(h);
+      // Showing a tab may match the cached dimensions exactly; still resume its fit.
+      if (el.clientWidth > 0 && h > 0 && pendingViewportFitRef.current) {
+        setViewportFitRevision((revision) => revision + 1);
+      }
     };
     update();
     const ro = new ResizeObserver(update);
@@ -4640,6 +4651,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (!el) return;
     let newScale = target;
     const isFit = target === 'fit' || target === 'fitw' || target === 'fith';
+    if (isFit && !(el.clientWidth > 0 && el.clientHeight > 0)) {
+      pendingViewportFitRef.current = { source: latestActiveSourceRef.current, target, options };
+      return;
+    }
+    // A manual zoom supersedes a pending initial fit, including saved-view restores.
+    pendingViewportFitRef.current = null;
     // RULED 2026-09-23 (coordinator: auto refits keep the view; fits use the
     // band between panels). `auto` = a re-fit the app runs by itself after a
     // layout change (panel open/close, window resize, tab switch, template
@@ -4739,6 +4756,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       el.scrollLeft = landLeft;
     }
   }, [applyAnchoredScale, getPageLeftAtScale, getHorizontalScrollMax]);
+
+  useLayoutEffect(() => {
+    const pending = pendingViewportFitRef.current;
+    const el = scrollerRef.current;
+    if (!pending || pending.source !== activeSource || !pageSizes.length
+      || !(el?.clientWidth > 0 && el.clientHeight > 0)) return;
+    zoomToScale(pending.target, pending.options);
+  }, [activeSource, containerW, containerH, pageSizes, viewportFitRevision, zoomToScale]);
 
   // RULED 2026-09-28 owner: History option A — clicking a History row takes
   // you to the mark: its page, zoomed so the mark fills about 40% of the part
