@@ -8,10 +8,11 @@ import '../../src/styles/tokens.css';
 import '../../src/styles/states.css';
 const noop = () => {};
 const cloud = new URLSearchParams(location.search).has('cloud');
+const nativeWarm = new URLSearchParams(location.search).get('nativeWarmTabsQa') === '1';
 const user = {id:'dev-test-user',email:'warm-tabs@example.invalid',user_metadata:{full_name:'Warm Tab Test',first_name:'Warm',last_name:'Tab Test'}};
 const auth = {user,session:null,loading:false,isAuthenticated:false,isSupabaseAvailable:false,tier:'developer',plan:'developer',features:{cloudSync:cloud,advancedSurvey:true,excelExport:true},signOut:noop};
 const ms = {isAuthenticated:false,isLoading:false,account:null,graphClient:null,connectionRestored:true,needsReconnect:false,login:noop,logout:noop,ensureFreshToken:async()=>true};
-const blob = await (await fetch('/debug-fixtures/e2e/prog-02-text-markup.pdf')).blob();
+const blob = await (await fetch(nativeWarm ? '/debug-fixtures/order-pages.pdf' : '/debug-fixtures/e2e/prog-02-text-markup.pdf')).blob();
 window.warmReads = {A:0,B:0};
 const files = ['A','B'].map(name => {
  const file = new File([blob], `${name}.pdf`, {type:'application/pdf'});
@@ -20,6 +21,14 @@ const files = ['A','B'].map(name => {
  file.arrayBuffer = () => { window.warmReads[name]++; return read(); };
  return file;
 });
+if (nativeWarm) {
+ window.__nativeWarmDocuments = files.map((file,index) => ({
+  id:`native-warm-${index}`,name:file.name,file_size:file.size,size:file.size,
+  user_id:user.id,page_count:8,created_at:'2026-10-17T00:00:00Z',__localFile:file,
+ }));
+ window.__documentDeepLinkE2EDocuments = window.__nativeWarmDocuments;
+ try { window.__surveyTransitionE2ETemplates = JSON.parse(localStorage.getItem('mobileWorkflowTemplates') || '[]'); } catch {}
+}
 window.__devTestPdfs = files;
 window.__devTestPdf = files[0];
 createRoot(document.getElementById('root')).render(<AuthContext.Provider value={auth}><MSGraphContext.Provider value={ms}><App /></MSGraphContext.Provider></AuthContext.Provider>);
