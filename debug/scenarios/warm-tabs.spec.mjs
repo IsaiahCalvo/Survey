@@ -22,8 +22,13 @@ for (const cloud of [false, true]) test(`warm ${cloud ? 'cloud-shaped' : 'local'
  await expect(page.getByRole('button',{name:'Draw',exact:true})).toHaveClass(/btn-active/);
  await page.waitForTimeout(300);
  const box=await layer.boundingBox();
- await page.mouse.move(box.x+box.width*.4,box.y+box.height*.5);await page.mouse.down();
- await page.mouse.move(box.x+box.width*.6,box.y+box.height*.55,{steps:8});await page.mouse.up();
+ const viewport=await page.locator('.survey-pdfjs-viewer:visible').boundingBox();
+ const top=Math.max(box.y,viewport.y),bottom=Math.min(box.y+box.height,viewport.y+viewport.height);
+ const start={x:box.x+box.width*.4,y:top+(bottom-top)*.5};
+ const end={x:box.x+box.width*.6,y:top+(bottom-top)*.55};
+ expect(await layer.evaluate((svg,point)=>svg.closest('.survey-pdfjs-page-div')?.contains(document.elementFromPoint(point.x,point.y)),start)).toBe(true);
+ await page.mouse.move(start.x,start.y);await page.mouse.down();
+ await page.mouse.move(end.x,end.y,{steps:8});await page.mouse.up();
  await expect.poll(()=>layer.locator('[data-annotation-index]').count()).toBeGreaterThan(marksBefore);
  await page.getByRole('button',{name:'Pan',exact:true}).click();
  await page.locator('.survey-pdfjs-viewer:visible').evaluate(viewer=>{viewer.scrollTop=120;});
