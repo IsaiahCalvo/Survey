@@ -306,6 +306,7 @@ export default function TextEditOverlay({
   // Immutable-per-mount edit context (the mount key remounts per target).
   // ---------------------------------------------------------------------
   const originalRef = useRef(null);
+  const bridgeSourceKeyRef = useRef({});
   const styleRef = useRef(null);
   // Read at the moment of drawing: the box keeps the style it was drawn with.
   const newTextCloudIntensityRef = useRef(isNewText ? newTextCloudIntensity : null);
@@ -531,6 +532,7 @@ export default function TextEditOverlay({
     // callout's text colour drag previews per frame and records one undo step
     // on release (PDFViewer handleCalloutTextStyleChange).
     const applyStyle = (key, val, meta) => {
+      if (committedRef.current) return;
       styleRef.current = { ...styleRef.current, [key]: val };
       if (isCallout && typeof onCalloutTextStyleChange === 'function') {
         const patch = calloutStylePatch(key, val);
@@ -569,6 +571,7 @@ export default function TextEditOverlay({
       focus: () => editableRef.current?.focus({ preventScroll: true }),
     };
     onRichTextEditorChange({
+      sourceKey: bridgeSourceKeyRef.current,
       api,
       state: {
         bold: s.fontWeight === 'bold',

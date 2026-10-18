@@ -73,3 +73,48 @@ test('nested Survey actions reject inactive snapshots and read updated hidden ca
  activate('A');stale.onArmMarker();state.bottom.surveyToolbar.onSelectTemplate();
  assert.deepEqual(calls,['latest','new-template']);
 });
+
+test('rich editor API stays active and current within one editor, while hidden callbacks are inert',()=>{
+ const {cache,state,setters,activate}=setup();const calls=[];
+ const a=cache.callbacks('A',setters),sourceKey={};
+ const sharedState={fontColor:'#000000'};
+ a.bottom({richTextEditor:{sourceKey,state:sharedState,api:{setFontColor:color=>calls.push(`old:${color}`)}}});
+ const first=state.bottom.richTextEditor;
+ first.api.setFontColor('red');
+ a.bottom({richTextEditor:{sourceKey,state:sharedState,api:{setFontColor:color=>calls.push(`latest:${color}`)}}});
+ assert.equal(state.bottom.richTextEditor,first,'nested function-only refresh preserves the full bridge');
+ assert.equal(state.bottom.richTextEditor.api,first.api,'path-based equality preserves the nested API');
+ first.api.setFontColor('blue');
+ activate('B');first.api.setFontColor('hidden');
+ a.bottom({richTextEditor:{sourceKey,state:sharedState,api:{setFontColor:color=>calls.push(`hidden-refresh:${color}`)}}});
+ activate('A');first.api.setFontColor('green');
+ assert.deepEqual(calls,['old:red','latest:blue','hidden-refresh:green']);
+});
+test('committed, replaced and closed rich editors cannot redirect stale cleanup into a new editor',()=>{
+ const {cache,state,setters}=setup();const calls=[];const a=cache.callbacks('A',setters);
+ const firstKey={};
+ a.bottom({richTextEditor:{sourceKey:firstKey,api:{setFontColor:()=>calls.push('first')}}});
+ const stale=state.bottom.richTextEditor.api;
+ a.bottom({richTextEditor:null});stale.setFontColor('after-clear');
+ a.bottom({richTextEditor:{sourceKey:{},api:{setFontColor:()=>calls.push('second')}}});
+ stale.setFontColor('after-replacement');state.bottom.richTextEditor.api.setFontColor('active-second');
+ const second=state.bottom.richTextEditor.api;
+ cache.retain([]);second.setFontColor('after-tab-close');
+ assert.deepEqual(calls,['second']);
+});
+test('an unkeyed editor API uses exact identity instead of redirecting stale methods',()=>{
+ const {cache,state,setters}=setup();const calls=[];const a=cache.callbacks('A',setters);
+ a.bottom({richTextEditor:{api:{setFontColor:()=>calls.push('first')}}});
+ const stale=state.bottom.richTextEditor.api;
+ a.bottom({richTextEditor:{api:{setFontColor:()=>calls.push('second')}}});
+ stale.setFontColor('old');state.bottom.richTextEditor.api.setFontColor('new');
+ assert.deepEqual(calls,['second']);
+});
+test('rich wrapping leaves editor state and unrelated opaque objects untouched',()=>{
+ const {cache,state,setters}=setup();const a=cache.callbacks('A',setters);
+ const sourceKey={},editorState={fontColor:'#123456'},editorDom={focus(){throw Error('must stay opaque');}};
+ a.bottom({richTextEditor:{sourceKey,state:editorState,api:{focus(){}}},editorDom});
+ assert.equal(state.bottom.richTextEditor.sourceKey,sourceKey);
+ assert.equal(state.bottom.richTextEditor.state,editorState);
+ assert.equal(state.bottom.editorDom,editorDom);
+});

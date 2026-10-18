@@ -7,25 +7,30 @@ export function createTabChromeCache(isActive) {
     && Object.keys(a).length === Object.keys(b).length
     && Object.keys(b).every(key => a[key] === b[key]));
   function entryFor(id) {
-    if (!tabs.has(id)) tabs.set(id, { apis: {}, callbacks: {}, methods: new Map() });
+    if (!tabs.has(id)) tabs.set(id, { apis: {}, callbacks: {}, methods: new Map(), editorKey: null, editorMethods: new Map() });
     return tabs.get(id);
   }
-  function wrap(id, kind, raw, entry, prefix = '') {
+  const atPath = (value, path) => path.split('.').reduce((current, part) => current?.[part], value);
+  function wrap(id, kind, raw, entry, prefix = '', editorKey = null) {
     if (!raw) return raw;
     const wrapped = { ...raw };
     for (const key of Object.keys(raw)) {
       const path = prefix ? `${prefix}.${key}` : key;
       if (typeof raw[key] === 'function') {
         const methodKey = `${kind}:${path}`;
-        if (!entry.methods.has(methodKey)) entry.methods.set(methodKey, (...args) => {
-          if (tabs.get(id) !== entry || !isActive(id)) return undefined;
-          const latest = path.split('.').reduce((value, part) => value?.[part], entry.apis[kind]?.raw);
+        const methods = editorKey ? entry.editorMethods : entry.methods;
+        if (!methods.has(methodKey)) methods.set(methodKey, (...args) => {
+          if (tabs.get(id) !== entry || !isActive(id)
+            || (editorKey && entry.editorKey !== editorKey)) return undefined;
+          const latest = atPath(entry.apis[kind]?.raw, path);
           return typeof latest === 'function' ? latest(...args) : undefined;
         });
-        wrapped[key] = entry.methods.get(methodKey);
-      } else if (key === 'regionToolbarApi' || key === 'surveyToolbar') {
-        const next = wrap(id, kind, raw[key], entry, path);
-        const prev = entry.apis[kind]?.wrapped?.[key];
+        wrapped[key] = methods.get(methodKey);
+      } else if (path === 'regionToolbarApi' || path === 'surveyToolbar'
+        || path === 'richTextEditor' || path === 'richTextEditor.api') {
+        const scope = path.startsWith('richTextEditor') ? entry.editorKey : null;
+        const next = wrap(id, kind, raw[key], entry, path, scope);
+        const prev = atPath(entry.apis[kind]?.wrapped, path);
         wrapped[key] = equal(prev, next) ? prev : next;
       }
     }
@@ -40,6 +45,13 @@ export function createTabChromeCache(isActive) {
           if (tabs.get(id) !== entry) return;
           const previous = entry.apis[kind];
           const raw = typeof update === 'function' ? update(previous?.raw ?? null) : update;
+          if (kind === 'bottom') {
+            const editorKey = raw?.richTextEditor?.sourceKey || raw?.richTextEditor?.api || null;
+            if (entry.editorKey !== editorKey) {
+              entry.editorKey = editorKey;
+              entry.editorMethods.clear();
+            }
+          }
           const next = wrap(id, kind, raw, entry);
           const wrapped = equal(previous?.wrapped, next) ? previous.wrapped : next;
           entry.apis[kind] = { raw, wrapped };
@@ -56,6 +68,8 @@ export function createTabChromeCache(isActive) {
       for (const [id, entry] of tabs) if (!open.has(id)) {
         entry.apis = {};
         entry.methods.clear();
+        entry.editorMethods.clear();
+        entry.editorKey = null;
         tabs.delete(id);
       }
     },
