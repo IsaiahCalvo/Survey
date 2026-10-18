@@ -5,6 +5,13 @@ for (const cloud of [false, true]) test(`warm ${cloud ? 'cloud-shaped' : 'local'
  test.setTimeout(90000);
  const errors=[];page.on('pageerror', error=>{errors.push(error.message);console.error(error.message);});
  await page.route('**/*', route=>new URL(route.request().url()).hostname==='127.0.0.1' ? route.continue() : route.abort());
+ // Observe the app's own emitted per-tab view state; leave its update intact.
+ await page.route('**/src/AppShell.jsx*', async route=>{
+  const response=await route.fetch();const source=await response.text();
+  const needle='const handleViewStateChange = useCallback((viewState, targetTabId) => {';
+  expect(source).toContain(needle);
+  await route.fulfill({response,body:source.replace(needle,needle+' window.warmViewStates ||= {}; window.warmViewStates[targetTabId] = viewState;')});
+ });
  if(cloud) await installCloudMocks(page);
  await page.goto(`/debug/scenarios/warm-tabs-harness.html${cloud ? '?cloud=1' : ''}`);
  const dismiss=page.getByRole('button',{name:'Continue without an account',exact:true});
@@ -15,6 +22,13 @@ for (const cloud of [false, true]) test(`warm ${cloud ? 'cloud-shaped' : 'local'
  await page.getByRole('button',{name:'A.pdf',exact:true}).click();
  await page.locator('[data-svg-annotation-layer]:visible').first().waitFor();
  if(cloud) await expect.poll(()=>page.evaluate(()=>window.warmReads)).toEqual({A:2,B:2});
+ await page.getByRole('button',{name:'Edit zoom percentage',exact:true}).click();
+ await page.getByRole('textbox',{name:'Zoom percentage',exact:true}).fill('150');
+ await page.getByRole('textbox',{name:'Zoom percentage',exact:true}).press('Enter');
+ await expect(page.getByRole('button',{name:'Edit zoom percentage',exact:true}).locator('[data-footer-slot] > span:not([aria-hidden])')).toHaveText('150%');
+ const activeTabId=await page.locator('[data-app-tab][data-tab-active="true"]').getAttribute('data-pdf-tab-id');
+ await expect.poll(()=>page.evaluate(id=>window.warmViewStates?.[id]?.scale,activeTabId)).toBe(1.5);
+ await expect.poll(()=>page.locator('.survey-pdfjs-viewer:visible').evaluate(viewer=>viewer.scrollHeight-viewer.clientHeight)).toBeGreaterThan(300);
  const readsBeforeSwitch=await page.evaluate(()=>({...window.warmReads}));
  const marksBefore=await page.locator('[data-svg-annotation-layer]:visible').first().locator('[data-annotation-index]').count();
  await page.getByRole('button',{name:'Draw',exact:true}).click();
@@ -31,8 +45,10 @@ for (const cloud of [false, true]) test(`warm ${cloud ? 'cloud-shaped' : 'local'
  await page.mouse.move(end.x,end.y,{steps:8});await page.mouse.up();
  await expect.poll(()=>layer.locator('[data-annotation-index]').count()).toBeGreaterThan(marksBefore);
  await page.getByRole('button',{name:'Pan',exact:true}).click();
+ await expect(page.locator('[data-chrome-format-row="true"]')).not.toBeVisible();
  await page.locator('.survey-pdfjs-viewer:visible').evaluate(viewer=>{viewer.scrollTop=120;});
- await page.waitForTimeout(80);
+ await expect.poll(()=>page.locator('.survey-pdfjs-viewer:visible').evaluate(viewer=>viewer.scrollTop)).toBe(120);
+ await expect.poll(()=>page.evaluate(id=>window.warmViewStates?.[id]?.scrollTop,activeTabId)).toBe(120);
  await page.evaluate(()=>{
   window.warmNodes=[...document.querySelectorAll('.survey-pdfjs-viewer')].map(viewer=>({viewer,page:viewer.querySelector('.survey-pdfjs-page-div'),svg:viewer.querySelector('[data-svg-annotation-layer]'),canvas:viewer.querySelector('canvas'),scrollTop:viewer.scrollTop}));
  });
@@ -44,6 +60,8 @@ for (const cloud of [false, true]) test(`warm ${cloud ? 'cloud-shaped' : 'local'
   await expect(page.getByRole('button',{name:'Pan',exact:true})).toHaveClass(/btn-active/);
   expect(await page.evaluate(()=>document.body.getAttribute('data-readonly'))).toBe(null);
  }
+ await expect.poll(()=>page.locator('.survey-pdfjs-viewer:visible').evaluate(viewer=>viewer.scrollTop)).toBe(120);
+ await expect.poll(()=>page.evaluate(id=>window.warmViewStates?.[id]?.scrollTop,activeTabId)).toBe(120);
  expect(await page.evaluate(()=>window.warmReads)).toEqual(readsBeforeSwitch);
  expect(await page.evaluate(()=>window.warmNodes.map(node=>({svg:node.svg?.isConnected,canvas:node.canvas?.isConnected,page:node.page.isConnected,scroll:node.viewer.scrollTop===node.scrollTop})))).toEqual([{svg:true,canvas:true,page:true,scroll:true},{svg:true,canvas:true,page:true,scroll:true}]);
  await expect(page.locator('[data-svg-annotation-layer]:visible').first().locator('[data-annotation-index]')).not.toHaveCount(0);
