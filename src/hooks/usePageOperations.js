@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { showToast } from '../utils/toast';
 import { createPageMutationFile } from '../utils/pageMutationFile.js';
+import { readPageMutationBytes, isSamePageMutationVersion } from '../utils/pageMutationSource.js';
 import { transformPageState } from '../utils/pageAnnotationReindex.js';
 // PERF (KAL-384): pdfPageMutation pulls in pdf-lib (~429 kB). It is loaded in
 // a worker (or, as a fallback, imported dynamically) only when a page
@@ -85,6 +86,7 @@ function freshCopyOfPageState(state) {
 
 export function usePageOperations({
   pdfFile,
+  readPdfBytes,
   onUpdatePDFFile,
   getPageState,
   commitPageState,
@@ -111,15 +113,21 @@ export function usePageOperations({
   const pdfFileRef = useRef(pdfFile);
   const renderedPdfFileRef = useRef(pdfFile);
   const ownFilesRef = useRef(new WeakSet());
+  const ownVersionRef = useRef(null);
   const pageStateRef = useRef(null);
   // The bytes the viewer's document was opened from: a deleted page is put
   // back from them on Undo (its page view entry names its page there).
   const baseFileRef = useRef(pdfFile);
+  const baseBytesRef = useRef(null);
   if (renderedPdfFileRef.current !== pdfFile) {
     renderedPdfFileRef.current = pdfFile;
-    if (!pdfFile || !ownFilesRef.current.has(pdfFile)) {
+    if (!pdfFile || (!ownFilesRef.current.has(pdfFile)
+      && !isSamePageMutationVersion(pdfFileRef.current, pdfFile)
+      && !isSamePageMutationVersion(ownVersionRef.current, pdfFile))) {
       pdfFileRef.current = pdfFile;
       baseFileRef.current = pdfFile;
+      baseBytesRef.current = null;
+      ownVersionRef.current = null;
       pageStateRef.current = null;
       // A different document (or someone else's version) is open now: the
       // page steps kept for the old one can no longer be undone.
@@ -135,7 +143,7 @@ export function usePageOperations({
   const statusRef = useRef({ pending: 0, savedCount: 0, failedCount: 0 });
   const mountedRef = useRef(true);
   const callbacksRef = useRef({});
-  callbacksRef.current = { onUpdatePDFFile, commitPageState, restorePageView };
+  callbacksRef.current = { onUpdatePDFFile, commitPageState, restorePageView, readPdfBytes };
 
   const publishStatus = useCallback(() => {
     statusRef.current.pending = pendingRef.current.length;
@@ -172,6 +180,9 @@ export function usePageOperations({
     const records = pendingRef.current.slice();
     if (records.length === 0) return;
     const currentPdfFile = pdfFileRef.current;
+    const basePdfFile = baseFileRef.current;
+    const callbacks = callbacksRef.current;
+    let producedFile = null;
     try {
       // An Undo of a delete copies the page back from the document as first
       // opened; those bytes are read only when such a step is saved.
@@ -182,11 +193,19 @@ export function usePageOperations({
         publishStatus();
         return;
       }
-      if (!currentPdfFile || !callbacksRef.current.onUpdatePDFFile) {
+      if (!currentPdfFile || !callbacks.onUpdatePDFFile) {
         throw new Error('PDF file not available for manipulation');
       }
+      const inputBytes = await readPageMutationBytes(currentPdfFile, callbacks.readPdfBytes);
+      // Storage replaces the same path on save. Capture what was opened
+      // before the first overwrite; Undo cannot re-download a deleted page.
+      if (!baseBytesRef.current) {
+        baseBytesRef.current = currentPdfFile === basePdfFile
+          ? inputBytes.slice(0)
+          : await readPageMutationBytes(basePdfFile, callbacks.readPdfBytes);
+      }
       const needsBase = steps.some((step) => step?.type === 'restore' && !step.entry?.blank);
-      const baseBytes = needsBase && baseFileRef.current ? await baseFileRef.current.arrayBuffer() : null;
+      const baseBytes = needsBase ? baseBytesRef.current : null;
       const operations = steps.map((step) => (
         step?.type === 'restore' && baseBytes
           ? { ...step, baseBytes: baseBytes.slice(0) }
@@ -194,7 +213,7 @@ export function usePageOperations({
       ));
       // pdf-lib runs in a worker: the rewrite never janks the UI it follows.
       const pdfBytes = await mutatePdfPagesOffThread(
-        () => currentPdfFile.arrayBuffer(),
+        () => inputBytes.slice(0),
         operations,
       );
       const newFile = createPageMutationFile(pdfBytes, currentPdfFile);
@@ -210,12 +229,15 @@ export function usePageOperations({
       newFile.user_id = currentPdfFile.user_id || null;
       newFile.filePath = currentPdfFile.filePath || null;
       ownFilesRef.current.add(newFile);
-      await callbacksRef.current.onUpdatePDFFile(newFile);
+      producedFile = newFile;
+      ownVersionRef.current = newFile;
+      await callbacks.onUpdatePDFFile(newFile);
       pdfFileRef.current = newFile;
       pendingRef.current = pendingRef.current.slice(records.length);
       statusRef.current.savedCount += 1;
       publishStatus();
     } catch (error) {
+      if (ownVersionRef.current === producedFile) ownVersionRef.current = null;
       console.error('Error saving page change:', error);
       // Everything still pending was applied on top of this batch, so it goes
       // too: back to the state and view before the first unsaved operation.
