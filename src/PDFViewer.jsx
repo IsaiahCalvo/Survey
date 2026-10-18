@@ -1,3 +1,4 @@
+import { checkCounterSeriesEdit } from './utils/counterSeriesActions.js';
 // PDFViewer — the document viewer (pdf.js canvas, annotation overlays,
 // zoom/scroll lifecycle, save/sync, history). Extracted verbatim from App.jsx.
 //
@@ -3458,6 +3459,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // declaration order without introducing a first-render TDZ crash.
   const handleCounterGroupUpdateRef = useRef(null);
   const handleDeleteCounterSeriesRef = useRef(null);
+  const handleRenameCounterSeriesRef = useRef(null);
+  const counterSeriesActiveRef = useRef(isActive);
+  counterSeriesActiveRef.current = isActive;
   const commitTextMarkupDocumentTransactionRef = useRef(null);
   // UX 2026-09-23 (owner: "dragging this is laggy" — the colour picker's
   // sliders). The phase of the paint change being applied right now: 'preview'
@@ -3486,6 +3490,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     clearTimeout(annotationCapturePauseRef.current.timer);
     annotationCapturePauseRef.current = { until: 0, timer: null };
   }, [pdfFile?.id]);
+  const handleRenameCounterSeriesFromToolbar = useCallback((...args) => (
+    handleRenameCounterSeriesRef.current?.(...args) || { ok: false, reason: 'unavailable' }
+  ), []);
   const handleDeleteCounterSeriesFromToolbar = useCallback((seriesId) => (
     handleDeleteCounterSeriesRef.current?.(seriesId) || { ok: false, reason: 'unavailable' }
   ), []);
@@ -26340,6 +26347,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       onNewCounterSeries: handleNewCounterSeries,
       onSwitchCounterSeries: handleSwitchCounterSeries,
       onDeleteCounterSeries: handleDeleteCounterSeriesFromToolbar,
+      onRenameCounterSeries: handleRenameCounterSeriesFromToolbar,
       selectedCounterSeriesId,
       selectedCounterSeriesSize: selectedCounterSeries?.count || 0,
       selectedCounterSeriesStart: selectedCounterSeriesId
@@ -26461,6 +26469,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleNewCounterSeries,
     handleSwitchCounterSeries,
     handleDeleteCounterSeriesFromToolbar,
+    handleRenameCounterSeriesFromToolbar,
     handleSelectedCounterSeriesStartChange,
     fillColor,
     fillOpacity,
@@ -29329,11 +29338,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         if (
           Object.prototype.hasOwnProperty.call(patch, 'numberColor')
           || Object.prototype.hasOwnProperty.call(patch, 'seriesStart')
+          || Object.prototype.hasOwnProperty.call(patch, 'seriesName')
         ) {
           next.data = { ...obj.data };
           if (Object.prototype.hasOwnProperty.call(patch, 'numberColor')) {
             next.data.numberColor = patch.numberColor;
           }
+          if (Object.prototype.hasOwnProperty.call(patch, 'seriesName')) next.data.seriesName = patch.seriesName;
           if (Object.prototype.hasOwnProperty.call(patch, 'seriesStart')) {
             next.data.seriesStart = patch.seriesStart;
           }
@@ -29418,12 +29429,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     appDebug(`[CSeries group-update] seriesId=${seriesId} patch=${JSON.stringify(patch)} -> updated ${updates.length} page(s)`);
   }, [documentOwnerId, handleSaveAnnotations, pushLocalAnnotationHistoryAction, user?.id, yjsUndoCtx?.userId]);
   handleCounterGroupUpdateRef.current = handleCounterGroupUpdate;
+  const handleRenameCounterSeries = useCallback((seriesId, name) => {
+    if (!counterSeriesActiveRef.current || !canRestoreFromHistoryRef.current) return { ok: false, reason: 'forbidden' };
+    const seriesName = String(name || '').trim().slice(0, 80);
+    if (!seriesName || !getCounterSeriesList(annotationsByPageRef.current).some(series => series.seriesId === seriesId)) return { ok: false, reason: 'invalid-series' };
+    const permission = checkCounterSeriesEdit(annotationsByPageRef.current, seriesId, { viewerId: user?.id || null, documentOwnerId });
+    if (!permission.ok) return permission;
+    handleCounterGroupUpdateRef.current?.(seriesId, { seriesName });
+    return { ok: true };
+  }, [user?.id, documentOwnerId]);
+  handleRenameCounterSeriesRef.current = handleRenameCounterSeries;
 
   // Request deletion of one complete counter series. The existing shared
   // confirmation modal handles both ordinary and cross-author series. The
   // confirmed runner revalidates the exact pin ids before mutating, then saves
   // every page while pushing one document-batch Undo/Redo action.
   const handleDeleteCounterSeries = useCallback((seriesId) => {
+    if (!counterSeriesActiveRef.current || !canRestoreFromHistoryRef.current) return { ok: false, reason: 'forbidden' };
     if (!seriesId) return { ok: false, reason: 'missing-series' };
     const viewerId = yjsUndoCtx?.userId || user?.id || null;
     const collectSeriesPins = (byPage) => Object.entries(byPage || {}).flatMap(([pageKey, page]) => (
@@ -29469,6 +29491,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const requestedIdsSorted = [...requestedIds].sort();
     const seriesMeta = counterSeriesList.find((series) => series.seriesId === seriesId);
     const executeConfirmedDelete = () => {
+      if (!counterSeriesActiveRef.current || !canRestoreFromHistoryRef.current) {
+        showToast('This document is no longer editable. The count was not deleted.', 'warn');
+        return { ok: false, reason: 'forbidden' };
+      }
       const liveByPage = annotationsByPageRef.current || {};
       const livePins = collectSeriesPins(liveByPage);
       const liveSeriesList = getCounterSeriesList(liveByPage);
@@ -29483,6 +29509,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return { ok: false, reason: 'series-changed' };
       }
 
+      const livePermission = checkCounterSeriesEdit(liveByPage, seriesId, { viewerId, documentOwnerId });
+      if (!livePermission.ok) {
+        showToast(livePermission.reason === 'locked' ? 'Unlock all pins in this count before deleting it.' : 'This count can no longer be edited.', 'warn');
+        return livePermission;
+      }
       const { updates, removedCount } = buildCounterSeriesDeletionUpdates(liveByPage, seriesId);
       const pageActions = updates.map(({ pageKey, json }) => {
         const numericKey = Number(pageKey);
@@ -37618,6 +37649,7 @@ ${pageBlocks}
                                     // stroke change "reverted" once you drop the next pin.
                                     let seriesStart = 1;
                                     let inheritedNumberColor;
+                                    let inheritedSeriesName;
                                     let existingSeriesCounterCount = 0;
                                     if (!seriesAutoCreated) {
                                       const allCounters = [];
@@ -37634,6 +37666,7 @@ ${pageBlocks}
                                       if (allCounters.length > 0) {
                                         allCounters.sort((a, b) => (a.data.createdAt || 0) - (b.data.createdAt || 0));
                                         seriesStart = Number(allCounters[0].data.seriesStart) || 1;
+                                        inheritedSeriesName = allCounters.find(counter => counter.data.seriesName)?.data.seriesName;
                                         if (allCounters[0].data.numberColor) {
                                           inheritedNumberColor = allCounters[0].data.numberColor;
                                         }
@@ -37665,6 +37698,7 @@ ${pageBlocks}
                                         displayNumber,
                                         seriesId,
                                         seriesStart,
+                                        ...(inheritedSeriesName ? { seriesName: inheritedSeriesName } : {}),
                                         numberColor,
                                       },
                                     };

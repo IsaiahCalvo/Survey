@@ -148,11 +148,13 @@ export function getCounterSeriesList(annotationsByPage) {
           color: obj.fill || '#ef4444',
           numberColor: obj.data.numberColor || '#ffffff',
           firstCreatedAt: Number(obj.data.createdAt) || 0,
+          name: String(obj.data.seriesName || '').trim(),
           count: 0,
         });
       }
       const entry = groups.get(key);
       entry.count += 1;
+      if (!entry.name && obj.data.seriesName) entry.name = String(obj.data.seriesName).trim();
       const ts = Number(obj.data.createdAt) || 0;
       if (ts && ts < entry.firstCreatedAt) entry.firstCreatedAt = ts;
       // Fabric copies fill onto every pin, so any non-empty fill is valid.
@@ -167,7 +169,7 @@ export function getCounterSeriesList(annotationsByPage) {
 
   return sorted.map((entry, i) => ({
     ...entry,
-    label: `Count ${i + 1}`,
+    label: entry.name || `Count ${i + 1}`,
   }));
 }
 
