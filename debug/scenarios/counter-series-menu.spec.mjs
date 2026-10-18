@@ -73,6 +73,7 @@ for (const phone of [false, true]) test(`count continue rename delete and Undo o
   await open();
   const menu=page.locator('[data-counter-series-menu][role=dialog]');
   const bounds=await menu.boundingBox(); expect(bounds.x).toBeGreaterThanOrEqual(0); expect(bounds.x+bounds.width).toBeLessThanOrEqual(phone?390:1400);
+  await expect(menu).toHaveCSS('opacity','1');
   await page.screenshot({path:test.info().outputPath(`counts-${phone?'phone':'desktop'}.png`)});
   await page.getByRole('button',{name:'New count',exact:true}).click();
   await place(2); await expect.poll(async()=> (await snapshot()).length).toBe(3);
