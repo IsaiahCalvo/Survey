@@ -121,9 +121,9 @@ async function mountHarness({ persist, sourceFile = null, readPdfBytes }) {
       // Deliberately stale until React re-renders: the hook must chain the
       // committed state internally just as it already chains the PDF File.
       getPageState: () => getter.current,
-      commitPageState: (next, operation, step) => committed.push({ state: next, operation, step }),
+      commitPageState: Harness.commit,
       applyPageView: (operation) => { views.push(operation); return `view-before-${views.length}`; },
-      restorePageView: (view) => restored.push(view),
+      restorePageView: Harness.restore,
       setPageNames: setState,
       setPageTransformations: setState,
       clipboardPage: null,
@@ -136,6 +136,8 @@ async function mountHarness({ persist, sourceFile = null, readPdfBytes }) {
   }
   Harness.pdfFile = sourceFile || await pdfFixture();
   Harness.persist = persist;
+  Harness.commit = (next, operation, step) => committed.push({ state: next, operation, step });
+  Harness.restore = (view) => restored.push(view);
   await act(async () => root.render(React.createElement(Harness)));
   return {
     get api() { return api; },
@@ -144,7 +146,7 @@ async function mountHarness({ persist, sourceFile = null, readPdfBytes }) {
     restored,
     state,
     getter,
-    renderFile: async (file, persistCallback = Harness.persist) => { Harness.pdfFile = file; Harness.persist = persistCallback; await act(async () => root.render(React.createElement(Harness))); },
+    renderFile: async (file, persistCallback = Harness.persist, callbacks = {}) => { Harness.pdfFile = file; Harness.persist = persistCallback; Harness.commit = callbacks.commit || Harness.commit; Harness.restore = callbacks.restore || Harness.restore; await act(async () => root.render(React.createElement(Harness))); },
     teardown: async () => {
       await act(async () => root.unmount());
       await cleanup();
@@ -298,5 +300,41 @@ test('own metadata refresh during an upload keeps the original delete Undo step 
     release();await act(async()=>await flushed);
     await act(async()=>{assert.equal(harness.api.undoPageOperation(step),true);await harness.api.flushPageOperations();});
     assert.deepEqual(await pageWidths(persisted[1]),[100,200,300]);assert.deepEqual(harness.restored,[]);
+  }finally{release();await harness.teardown();teardownDom();}
+});
+
+
+const replacementState = () => ({...initialState(),pageNames:{1:'Remote A',2:'Remote B'},annotationsByPage:{1:{objects:[{id:'remote-mark'}]}}});
+async function replacementFile() {
+  const pdf=await PDFDocument.create();pdf.addPage([444,600]);pdf.addPage([555,600]);
+  const file=new File([await pdf.save()],'replacement.pdf',{type:'application/pdf'});file.id='same-doc';file.contentSha256='remote-version';return file;
+}
+for(const phase of ['read','upload','upload-error'])test(`true source replacement during ${phase} drops old queued work without overwriting or rolling back the replacement`,async()=>{
+  const teardownDom=setupDom(),original=await pdfFixture(),bytes=await original.arrayBuffer();let entered,release;const enteredPromise=new Promise(resolve=>entered=resolve),releasedPromise=new Promise(resolve=>release=resolve),oldWrites=[],newWrites=[];
+  const descriptor={id:'same-doc',name:'cloud.pdf',size:bytes.byteLength,filePath:'same.pdf',contentSha256:'old-version'};
+  const harness=await mountHarness({sourceFile:descriptor,readPdfBytes:async()=>{if(phase==='read'){entered();await releasedPromise;}return bytes;},persist:async file=>{oldWrites.push(file);if(phase!=='read'){entered();await releasedPromise;if(phase==='upload-error')throw Error('old upload failed');}}});
+  try {
+    let flushed;
+    await act(async()=>{await harness.api.handleDeletePage(1);flushed=harness.api.flushPageOperations();await enteredPromise;});
+    const oldStep=harness.committed.at(-1).step.id,replacement=await replacementFile(),state=replacementState();harness.getter.current=state;
+    await harness.renderFile(replacement,async file=>newWrites.push(file));
+    let newFlushed;await act(async()=>{await harness.api.handleRotatePage(2);newFlushed=harness.api.flushPageOperations();});
+    release();let current;await act(async()=>{current=await flushed;await newFlushed;});
+    assert.equal(current,replacement);assert.equal(oldWrites.length,phase==='read'?0:1);assert.deepEqual(harness.restored,[]);
+    assert.equal(harness.committed.length,2,'only the old and replacement gestures, no stale rollback');assert.equal(harness.api.undoPageOperation(oldStep),false);
+    assert.equal(newWrites.length,1);assert.deepEqual(await pageWidths(newWrites[0]),[444,555]);
+    assert.equal(harness.committed.at(-1).state.annotationsByPage[1].objects[0].id,'remote-mark');
+  }finally{release();await harness.teardown();teardownDom();}
+});
+
+test('a genuine save error rolls back through its captured tab owner callbacks',async()=>{
+  const teardownDom=setupDom(),original=await pdfFixture();let entered,release;const enteredPromise=new Promise(resolve=>entered=resolve),releasedPromise=new Promise(resolve=>release=resolve),otherCommits=[],otherRestores=[];
+  const harness=await mountHarness({sourceFile:original,persist:async()=>{entered();await releasedPromise;throw Error('genuine offline error');}});
+  try {
+    let flushed;await act(async()=>{await harness.api.handleDeletePage(1);flushed=harness.api.flushPageOperations();await enteredPromise;});
+    await harness.renderFile(original,async()=>{}, {commit: (...args)=>otherCommits.push(args),restore:view=>otherRestores.push(view)});
+    release();await act(async()=>await flushed);
+    assert.equal(harness.committed.at(-1).operation.type,'rollback');assert.deepEqual(harness.committed.at(-1).state.pageNames,harness.state.pageNames);
+    assert.deepEqual(harness.restored,['view-before-1']);assert.deepEqual(otherCommits,[]);assert.deepEqual(otherRestores,[]);
   }finally{release();await harness.teardown();teardownDom();}
 });

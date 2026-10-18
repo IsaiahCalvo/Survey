@@ -8,7 +8,9 @@ async function cloudFixture(page, {secondTab=false}={}) {
   await page.route('**/src/DevTestRoute.jsx*',async route=>{
     const response=await route.fetch();let body=await response.text();
     expect(body).toContain('window.__devTestPdf = file;');
-    body=body.replace('window.__devTestPdf = file;',`${secondTab?"window.__pageCutSecondPdf=new File([await (await fetch('/debug-fixtures/clickable-link-test.pdf')).blob()],'Synthetic B.pdf',{type:'application/pdf'});":""}window.__pageCutStorage={stored:blob,saves:[],block:false};window.__devTestPdf={id:'synthetic-cloud-document',name:file.name,size:file.size,filePath:'synthetic/cloud.pdf',supabaseFilePath:'synthetic/cloud.pdf',user_id:'dev-test-user',contentSha256:'synthetic-original',_surveyPdfId:'synthetic-cloud-pdf'};`);
+    // Only storage is synthetic; this fixture has no collaboration session.
+    expect(body).toMatch(/cloudSync:\s*true/);body=body.replace(/cloudSync:\s*true,/, 'cloudSync: false,');
+    body=body.replace('window.__devTestPdf = file;',`${secondTab?"window.__pageCutSecondPdf=new File([await (await fetch('/debug-fixtures/clickable-link-test.pdf')).blob()],'Synthetic B.pdf',{type:'application/pdf'});":""}window.__pageCutStorage={stored:blob,saves:[],block:false};window.__devTestPdf={id:'synthetic-cloud-document',name:file.name,size:file.size,filePath:'synthetic/cloud.pdf',supabaseFilePath:'synthetic/cloud.pdf',user_id:'dev-test-user',contentSha256:'synthetic-original',_surveyPdfId:'synthetic-cloud-pdf'};${secondTab?'window.__devTestPdfs=[window.__devTestPdf,window.__pageCutSecondPdf];':''}`);
     await route.fulfill({response,body});
   });
   await page.route('**/src/hooks/useDatabase.js*',async route=>{
@@ -19,17 +21,8 @@ async function cloudFixture(page, {secondTab=false}={}) {
   });
   await page.route('**/src/PDFViewer.jsx*',async route=>{
     const response=await route.fetch();let body=await response.text();
-    if(!body.includes('readPdfBytes: readPageMutationPdfBytes')){
-      expect(body).toContain('onUpdatePDFFile: persistPageMutationFile,');
-      body=body.replace('onUpdatePDFFile: persistPageMutationFile,','onUpdatePDFFile: persistPageMutationFile, readPdfBytes: async file => { const blob=await downloadFromStorage(file.filePath || file.supabaseFilePath); return blob.arrayBuffer(); },');
-    }
-    await route.fulfill({response,body});
-  });
-  if(secondTab) await page.route('**/src/AppShell.jsx*',async route=>{
-    const response=await route.fetch();let body=await response.text();
-    const start=body.indexOf('const file = window.__devTestPdf;'),at=body.indexOf('handleDocumentSelect(file);',start);expect(start).toBeGreaterThan(0);expect(at).toBeGreaterThan(start);
-    const end=at+'handleDocumentSelect(file);'.length;
-    body=body.slice(0,end)+' if(window.__pageCutSecondPdf)handleDocumentSelect(window.__pageCutSecondPdf);'+body.slice(end);
+    expect(body).toContain('readPageMutationPdfBytes');
+    expect(body).toMatch(/readPdfBytes:\s*readPageMutationPdfBytes/);
     await route.fulfill({response,body});
   });
   await page.goto('/?testPdf=order-pages.pdf');

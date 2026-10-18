@@ -119,6 +119,8 @@ export function usePageOperations({
   // back from them on Undo (its page view entry names its page there).
   const baseFileRef = useRef(pdfFile);
   const baseBytesRef = useRef(null);
+  const sourceGenerationRef = useRef(0);
+  let sourceChanged = false;
   if (renderedPdfFileRef.current !== pdfFile) {
     renderedPdfFileRef.current = pdfFile;
     if (!pdfFile || (!ownFilesRef.current.has(pdfFile)
@@ -128,6 +130,9 @@ export function usePageOperations({
       baseFileRef.current = pdfFile;
       baseBytesRef.current = null;
       ownVersionRef.current = null;
+      ownFilesRef.current = new WeakSet();
+      sourceGenerationRef.current += 1;
+      sourceChanged = true;
       pageStateRef.current = null;
       // A different document (or someone else's version) is open now: the
       // page steps kept for the old one can no longer be undone.
@@ -144,6 +149,12 @@ export function usePageOperations({
   const mountedRef = useRef(true);
   const callbacksRef = useRef({});
   callbacksRef.current = { onUpdatePDFFile, commitPageState, restorePageView, readPdfBytes };
+  if (sourceChanged) {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = null;
+    pendingRef.current = [];
+    statusRef.current.pending = 0;
+  }
 
   const publishStatus = useCallback(() => {
     statusRef.current.pending = pendingRef.current.length;
@@ -153,13 +164,13 @@ export function usePageOperations({
     }
   }, []);
 
-  const rollback = useCallback((records, error) => {
+  const rollback = useCallback((records, error, ownerCallbacks) => {
     const first = records[0];
     if (!first) return;
     // The steps that failed to save are gone, and the viewer clears its
     // timeline on this rollback commit: nothing kept here refers to it.
     historyRef.current = new Map();
-    const { commitPageState: commit, restorePageView: restore } = callbacksRef.current;
+    const { commitPageState: commit, restorePageView: restore } = ownerCallbacks;
     if (first.viewBefore !== undefined) restore?.(first.viewBefore);
     if (first.stateBefore) {
       const restored = freshCopyOfPageState(first.stateBefore);
@@ -182,6 +193,8 @@ export function usePageOperations({
     const currentPdfFile = pdfFileRef.current;
     const basePdfFile = baseFileRef.current;
     const callbacks = callbacksRef.current;
+    const generation = sourceGenerationRef.current;
+    const isCurrent = () => generation === sourceGenerationRef.current;
     let producedFile = null;
     try {
       // An Undo of a delete copies the page back from the document as first
@@ -197,12 +210,15 @@ export function usePageOperations({
         throw new Error('PDF file not available for manipulation');
       }
       const inputBytes = await readPageMutationBytes(currentPdfFile, callbacks.readPdfBytes);
+      if (!isCurrent()) return;
       // Storage replaces the same path on save. Capture what was opened
       // before the first overwrite; Undo cannot re-download a deleted page.
       if (!baseBytesRef.current) {
-        baseBytesRef.current = currentPdfFile === basePdfFile
+        const originalBytes = currentPdfFile === basePdfFile
           ? inputBytes.slice(0)
           : await readPageMutationBytes(basePdfFile, callbacks.readPdfBytes);
+        if (!isCurrent()) return;
+        baseBytesRef.current = originalBytes;
       }
       const needsBase = steps.some((step) => step?.type === 'restore' && !step.entry?.blank);
       const baseBytes = needsBase ? baseBytesRef.current : null;
@@ -216,6 +232,7 @@ export function usePageOperations({
         () => inputBytes.slice(0),
         operations,
       );
+      if (!isCurrent()) return;
       const newFile = createPageMutationFile(pdfBytes, currentPdfFile);
       // 2026-04-30 fix: preserve all Supabase metadata across page-mutation
       // round-trips so the per-user delete authority gate keeps resolving
@@ -232,11 +249,13 @@ export function usePageOperations({
       producedFile = newFile;
       ownVersionRef.current = newFile;
       await callbacks.onUpdatePDFFile(newFile);
+      if (!isCurrent()) return;
       pdfFileRef.current = newFile;
       pendingRef.current = pendingRef.current.slice(records.length);
       statusRef.current.savedCount += 1;
       publishStatus();
     } catch (error) {
+      if (!isCurrent()) return;
       if (ownVersionRef.current === producedFile) ownVersionRef.current = null;
       console.error('Error saving page change:', error);
       // Everything still pending was applied on top of this batch, so it goes
@@ -244,7 +263,7 @@ export function usePageOperations({
       const dropped = pendingRef.current.slice();
       pendingRef.current = [];
       publishStatus();
-      if (mountedRef.current) rollback(dropped, error);
+      if (mountedRef.current) rollback(dropped, error, callbacks);
     }
   }, [publishStatus, rollback]);
 

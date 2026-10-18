@@ -22,6 +22,7 @@ test('only same-document, same-version metadata refresh keeps the opened baselin
   assert.equal(isSamePageMutationVersion(saved,{...saved,contentSha256:'remote-new-sha'}),false);
   assert.equal(isSamePageMutationVersion(saved,{...saved,id:'other'}),false);
   assert.equal(isSamePageMutationVersion(saved,{...saved,contentSha256:null}),false);
-  assert.equal(isSamePageMutationVersion({id:'a',filePath:'same',size:100},{id:'a',filePath:'same',size:100}),true);
+  assert.equal(isSamePageMutationVersion({id:'a',filePath:'same',size:100},{id:'a',filePath:'same',size:100}),false);
+  assert.equal(isSamePageMutationVersion(saved,{id:'a',content_sha256:'new-sha'}),true);
   assert.equal(isSamePageMutationVersion({id:'a',filePath:'same',size:100},{id:'a',filePath:'same',size:101}),false);
 });

@@ -15,7 +15,6 @@ export async function readPageMutationBytes(file, readPdfBytes) {
 // Metadata-only refreshes of our saved cloud version keep its Undo baseline.
 export function isSamePageMutationVersion(left, right) {
   if (!left?.id || left.id !== right?.id) return false;
-  if (left.contentSha256 || right.contentSha256) return Boolean(left.contentSha256 && left.contentSha256 === right.contentSha256);
-  const path = file => file.supabaseFilePath || file.filePath;
-  return Boolean(path(left) && path(left) === path(right) && left.size === right.size);
+  const sha = file => file.contentSha256 || file.content_sha256;
+  return Boolean(sha(left) && sha(left) === sha(right));
 }
