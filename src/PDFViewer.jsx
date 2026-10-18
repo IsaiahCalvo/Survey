@@ -29433,11 +29433,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!counterSeriesActiveRef.current || !canRestoreFromHistoryRef.current) return { ok: false, reason: 'forbidden' };
     const seriesName = String(name || '').trim().slice(0, 80);
     if (!seriesName || !getCounterSeriesList(annotationsByPageRef.current).some(series => series.seriesId === seriesId)) return { ok: false, reason: 'invalid-series' };
-    const permission = checkCounterSeriesEdit(annotationsByPageRef.current, seriesId, { viewerId: user?.id || null, documentOwnerId });
+    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const permission = checkCounterSeriesEdit(annotationsByPageRef.current, seriesId, { viewerId, documentOwnerId });
     if (!permission.ok) return permission;
     handleCounterGroupUpdateRef.current?.(seriesId, { seriesName });
     return { ok: true };
-  }, [user?.id, documentOwnerId]);
+  }, [user?.id, documentOwnerId, yjsUndoCtx?.userId]);
   handleRenameCounterSeriesRef.current = handleRenameCounterSeries;
 
   // Request deletion of one complete counter series. The existing shared

@@ -1625,6 +1625,20 @@ export default function App({ devPreviewReturnTab = null }) {
     const currentFile = targetTabId
       ? tabsRef.current.find(tab => tab.id === targetTabId)?.file
       : selectedPDF;
+    // Storage already moved on (replaceDocument may have forked a new path).
+    // Keep the dashboard row in sync even if the tab closed or swapped source
+    // so a later open does not reload the previous object.
+    setDocuments((prev) => prev.map((document) => (
+      document?.id === newFile?.id
+        ? {
+          ...document,
+          size: newFile.size,
+          file_size: newFile.size,
+          ...(saved ? { file_path: saved.filePath, content_sha256: saved.contentSha256 } : {}),
+          updated_at: new Date().toISOString(),
+        }
+        : document
+    )));
     if (!isCurrentTabSource(origin, currentFile)) return newFile;
     setTabs(prev => {
       if (targetTabId) {
@@ -1644,17 +1658,6 @@ export default function App({ devPreviewReturnTab = null }) {
     if (!targetTabId || targetTabId === activeTabIdRef.current) {
       setSelectedPDF(current => isCurrentTabSource(origin, current) ? newFile : current);
     }
-    setDocuments((prev) => prev.map((document) => (
-      document?.id === newFile?.id
-        ? {
-          ...document,
-          size: newFile.size,
-          file_size: newFile.size,
-          ...(saved ? { file_path: saved.filePath, content_sha256: saved.contentSha256 } : {}),
-          updated_at: new Date().toISOString(),
-        }
-        : document
-    )));
     return newFile;
   }, [selectedPDF, activeTabId, replaceDocument]);
 
