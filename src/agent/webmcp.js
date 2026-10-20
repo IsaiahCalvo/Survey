@@ -7,20 +7,54 @@
 
 const viewers = new Set();
 
-// The viewer calls this on mount; the newest still-mounted viewer answers.
+// The viewer calls this on mount. AppShell keeps every visited tab mounted
+// behind display:none, so the handle on screen is the one with isActive.
 export function registerAgentViewer(handle) {
   viewers.add(handle);
   return () => viewers.delete(handle);
 }
 
-function activeViewer() {
+// Prefer the tab the user can see. A missing isActive flag still counts as
+// on-screen so a single unmarked viewer keeps working.
+export function pickActiveViewer(handles) {
   let last = null;
-  for (const v of viewers) last = v;
+  for (const viewer of handles) {
+    const flag = viewer?.isActive;
+    const active = typeof flag === 'function' ? flag() : flag !== false;
+    if (active) last = viewer;
+  }
   return last;
+}
+
+function activeViewer() {
+  return pickActiveViewer(viewers);
 }
 
 function text(value) {
   return typeof value === 'string' ? value : JSON.stringify(value);
+}
+
+function spacePages(viewer) {
+  const pages = viewer.getVisiblePages?.();
+  return Array.isArray(pages) ? pages : null;
+}
+
+function agentPageCount(viewer) {
+  const pages = spacePages(viewer);
+  return pages ? pages.length : viewer.getPageCount();
+}
+
+function agentCurrentPage(viewer) {
+  const physical = viewer.getCurrentPage();
+  const pages = spacePages(viewer);
+  if (!pages) return physical;
+  const index = pages.indexOf(physical);
+  return index >= 0 ? index + 1 : 0;
+}
+
+function agentTargetPage(viewer, n) {
+  const pages = spacePages(viewer);
+  return pages ? pages[n - 1] : n;
 }
 
 export function buildAgentTools(getViewer = activeViewer) {
@@ -37,7 +71,7 @@ export function buildAgentTools(getViewer = activeViewer) {
       annotations: { readOnlyHint: true },
       execute: async () => {
         const viewer = need();
-        return text({ pageCount: viewer.getPageCount(), currentPage: viewer.getCurrentPage() });
+        return text({ pageCount: agentPageCount(viewer), currentPage: agentCurrentPage(viewer) });
       },
     },
     {
@@ -50,12 +84,21 @@ export function buildAgentTools(getViewer = activeViewer) {
       },
       execute: async ({ page } = {}) => {
         const viewer = need();
-        const count = viewer.getPageCount();
+        const count = agentPageCount(viewer);
         const n = Number(page);
+        if (count < 1) {
+          throw new Error('The active Space has no pages.');
+        }
         if (!Number.isInteger(n) || n < 1 || n > count) {
           throw new Error(`Page must be a whole number from 1 to ${count}.`);
         }
-        viewer.goToPage(n);
+        const target = agentTargetPage(viewer, n);
+        if (target == null) {
+          throw new Error(`Page must be a whole number from 1 to ${count}.`);
+        }
+        if (viewer.goToPage(target) === false) {
+          throw new Error('The document is still opening. Try again in a moment.');
+        }
         return `Went to page ${n} of ${count}.`;
       },
     },

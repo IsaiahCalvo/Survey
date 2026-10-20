@@ -1341,6 +1341,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   resourceUrl,
   documentSource,
   visiblePageNumbers = null,
+  isActive = true,
   // The following props are accepted for compatibility with older PDFViewer callsites.
   // pdf.js handles these concerns differently; do not crash on a forwarded prop.
   // interactionMode === 'Pan' drives the drag-to-pan handler below (Pdfjs
@@ -1476,6 +1477,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   scaleRef.current = scale; // keep in sync during render so same-frame reads aren't stale
   const numPagesRef = useRef(0);
   const currentPageRef = useRef(1);
+  const agentActiveRef = useRef(isActive);
+  agentActiveRef.current = isActive;
+  const visiblePageNumbersRef = useRef(visiblePageNumbers);
+  visiblePageNumbersRef.current = visiblePageNumbers;
   const prevScaleRef = useRef(null);
   const bookmarksRef = useRef([]);
   const thumbCacheRef = useRef(new Map());
@@ -5215,9 +5220,16 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   }, [pageSizes, rotation, isMobileSurface]);
 
   // WebMCP: let a browser AI agent read the page count and move pages.
+  // isActive / visible pages live on refs so a tab switch or Space change
+  // does not delete-and-readd this handle (Set order is not "the tab on screen").
   useEffect(() => registerAgentViewer({
+    isActive: () => agentActiveRef.current !== false,
     getPageCount: () => numPagesRef.current,
     getCurrentPage: () => currentPageRef.current || 1,
+    getVisiblePages: () => {
+      const pages = visiblePageNumbersRef.current;
+      return Array.isArray(pages) ? pages : null;
+    },
     goToPage,
   }), [goToPage]);
 

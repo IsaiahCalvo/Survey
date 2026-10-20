@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildAgentTools, installWebMcp } from '../src/agent/webmcp.js';
+import { buildAgentTools, installWebMcp, pickActiveViewer } from '../src/agent/webmcp.js';
 
 const viewer = (count = 5) => {
   const v = { page: 1, getPageCount: () => count, getCurrentPage: () => v.page, goToPage: (n) => { v.page = n; } };
@@ -36,4 +36,42 @@ test('install only when the browser offers WebMCP and not turned off', () => {
   assert.deepEqual(names, ['survey_get_open_document', 'survey_go_to_page']);
   const off = { ...win, localStorage: { getItem: () => 'off' } };
   assert.equal(installWebMcp(off), null);
+});
+
+test('tools drive the tab on screen, not the last registered viewer', async () => {
+  const hidden = viewer(4);
+  hidden.page = 2;
+  hidden.isActive = () => false;
+  const shown = viewer(9);
+  shown.page = 7;
+  shown.isActive = () => true;
+  const [get, go] = buildAgentTools(() => pickActiveViewer([hidden, shown]));
+  assert.deepEqual(JSON.parse(await get.execute({})), { pageCount: 9, currentPage: 7 });
+  assert.match(await go.execute({ page: 3 }), /page 3 of 9/);
+  assert.equal(shown.page, 3);
+  assert.equal(hidden.page, 2);
+  assert.equal(pickActiveViewer([shown, hidden]), shown);
+  assert.equal(pickActiveViewer([hidden, hidden]), null);
+});
+
+test('go_to_page does not claim success when the viewer cannot move', async () => {
+  const v = viewer();
+  v.goToPage = () => false;
+  const go = buildAgentTools(() => v)[1];
+  await assert.rejects(go.execute({ page: 3 }), /still opening/);
+  assert.equal(v.page, 1);
+});
+
+test('page tools stay inside the active Space', async () => {
+  const v = viewer(10);
+  v.page = 5;
+  v.getVisiblePages = () => [2, 5, 8];
+  const [get, go] = buildAgentTools(() => v);
+  assert.deepEqual(JSON.parse(await get.execute({})), { pageCount: 3, currentPage: 2 });
+  assert.match(await go.execute({ page: 3 }), /page 3 of 3/);
+  assert.equal(v.page, 8);
+  await assert.rejects(go.execute({ page: 4 }), /1 to 3/);
+  v.getVisiblePages = () => [];
+  assert.deepEqual(JSON.parse(await get.execute({})), { pageCount: 0, currentPage: 0 });
+  await assert.rejects(go.execute({ page: 1 }), /no pages/);
 });

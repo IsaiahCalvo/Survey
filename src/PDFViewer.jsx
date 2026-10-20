@@ -36262,6 +36262,7 @@ ${pageBlocks}
                     className={`survey-pdfjs-viewer ${activeTool === 'select' ? 'survey-pdfjs-select-mode' : 'survey-pdfjs-standard-mode'}`}
                     documentSource={pdfDoc}
                     visiblePageNumbers={activeSpacePages}
+                    isActive={isActive}
                     pageTransformations={pageTransformations}
                     style={{ width: '100%', height: '100%' }}
                     initialRenderPages={PDFJS_INITIAL_RENDER_PAGES}
