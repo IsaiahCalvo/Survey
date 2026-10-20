@@ -113,12 +113,14 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
 
   // The field shows a ⌘K / Ctrl K hint, so the chord has to work. Skip a
   // field that is hidden (another tab's copy) so only the visible one wins.
+  // Home stays mounted under an open document (`inert` + overlay, not
+  // display:none), so offsetParent is still set — skip that copy too.
   useEffect(() => {
     const onKeyDown = (event) => {
       if (event.key?.toLowerCase() !== 'k' || event.altKey || event.shiftKey) return;
       if (!(IS_MAC ? event.metaKey : event.ctrlKey)) return;
       const input = inputRef.current;
-      if (!input || !input.offsetParent) return;
+      if (!input || !input.offsetParent || input.closest('[inert]')) return;
       event.preventDefault();
       input.focus();
       input.select();
