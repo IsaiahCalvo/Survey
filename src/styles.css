@@ -3400,7 +3400,8 @@ svg[data-svg-annotation-layer][data-selection-hover="move"] {
    100ms ease-in-out). Pads are drawn before the dots in the same group
    (SVGSelectionOverlay), so a hovered pad reaches its dot with `~`; the
    rotate grabber's pad sits inside its own group. */
-.svg-selection-overlay :is([data-resize-handle], [data-rotation-handle] > circle, [data-rotation-handle] > image) {
+.svg-selection-overlay :is([data-resize-handle], [data-rotation-handle] > circle, [data-rotation-handle] > image),
+[data-svg-annotation-layer] :is([data-resize-handle^="vertex-"], [data-add-vertex] > *) {
   transform-box: fill-box;
   transform-origin: center;
   transition: transform 100ms ease-in-out;
@@ -3414,8 +3415,26 @@ svg[data-svg-annotation-layer][data-selection-hover="move"] {
 .svg-selection-overlay [data-handle-hit-pad="mb"]:is(:hover, :active) ~ [data-resize-handle="mb"],
 .svg-selection-overlay [data-handle-hit-pad="ml"]:is(:hover, :active) ~ g > [data-resize-handle="ml"],
 .svg-selection-overlay [data-handle-hit-pad="mr"]:is(:hover, :active) ~ g > [data-resize-handle="mr"],
-.svg-selection-overlay [data-rotation-handle]:is(:hover, :active) > :is(circle, image) {
-  transform: scale(1.1);
+.svg-selection-overlay [data-rotation-handle]:is(:hover, :active) > :is(circle, image),
+[data-svg-annotation-layer] [data-resize-handle^="vertex-"]:is(:hover, :active),
+[data-svg-annotation-layer] [data-handle-hit-pad^="vertex-"]:is(:hover, :active) ~ [data-resize-handle^="vertex-"],
+[data-svg-annotation-layer] [data-add-vertex]:is(:hover, :active) > * {
+  transform: scale(calc(1.1 * var(--handle-zoom-k, 1)));
+}
+/* Grabbers keep one screen size while the page zooms: utils/liveHandleZoom.js
+   writes --handle-zoom-k on the layer's svg until the layer re-renders them
+   at the new zoom. Each scales about its own centre, so it stays on its
+   point. None of these carry an SVG transform attribute (CSS would replace
+   it); their groups do, and compose as usual. */
+[data-svg-annotation-layer] :is([data-resize-handle], [data-handle-hit-pad], [data-rotation-handle] > :is(circle, image), [data-handle="midpoint"], [data-add-vertex] > *) {
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(var(--handle-zoom-k, 1));
+}
+/* No hover-grow easing while that factor moves, or the grabbers trail the
+   pinch by 100 ms and blink when the re-render takes over. */
+[data-handle-zooming] * {
+  transition: none !important;
 }
 @media (prefers-reduced-motion: reduce) {
   .svg-selection-overlay :is([data-resize-handle], [data-rotation-handle] > circle, [data-rotation-handle] > image) {

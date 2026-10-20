@@ -14,8 +14,13 @@
  */
 const SELECTOR = 'button, [role="button"]';
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
 const mark = (el) => {
-  const glyphOnly = (el.textContent || '').trim() === '';
+  // A role="button" drawn inside an svg (a polygon's "add point" grabber) is
+  // left alone: the 88% press shrinks its shapes toward the svg's top-left
+  // corner, not their own centre, so the grabber jumped away under the finger.
+  const glyphOnly = el.namespaceURI !== SVG_NS && (el.textContent || '').trim() === '';
   if (glyphOnly) {
     if (!el.hasAttribute('data-glyph-only')) el.setAttribute('data-glyph-only', '');
   } else if (el.hasAttribute('data-glyph-only')) {

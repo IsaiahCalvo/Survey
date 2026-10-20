@@ -2456,6 +2456,8 @@ const SVGAnnotationLayerBody = memo(({
   }, [clearSmartFillPreview, height, onSurveyMarkerCreated, pageNumber, width]);
 
   const findMoreLikeThisRef = useRef(null);
+  const surveyMarkersRef = useRef(surveyMarkers);
+  surveyMarkersRef.current = surveyMarkers;
   findMoreLikeThisRef.current = (sample, skipBounds = null, { quietIfNone = false } = {}) => {
     if (!sample || !smartFillLiveRef.current) return;
     smartFillScanAbortRef.current?.abort?.();
@@ -2476,7 +2478,10 @@ const SVGAnnotationLayerBody = memo(({
       const inside = (pt, b) => b && pt.x >= b.x && pt.x <= b.x + b.width && pt.y >= b.y && pt.y <= b.y + b.height;
       const matches = res.polygons
         .map((polygon) => buildPolygonMarkerBounds(polygon))
-        .filter((b) => b && !inside(centre(b), skipBounds));
+        .filter((b) => b && !inside(centre(b), skipBounds))
+        // A tag that already has a marker here is not "more" (the tool-bar
+        // search has no skipBounds, so it re-offered the tag just applied).
+        .filter((b) => !(surveyMarkersRef.current || []).some((m) => m && inside(centre(b), m)));
       setSmartFillMatches(matches);
       // From the tool bar every page in view looks; only pages with matches speak.
       if (quietIfNone && !matches.length) return;
@@ -8412,9 +8417,13 @@ const SVGAnnotationLayerBody = memo(({
                   style={{ pointerEvents: 'none' }}
                 />
               )}
-              {/* Midsegment handles insert one point, then use the normal vertex drag. */}
-              {!modifierMoveActive && worldPoints.slice(0, String(obj.type).toLowerCase() === 'polygon' ? worldPoints.length : -1).map((wp, i) => {
+              {/* Midsegment handles insert one point, then use the normal vertex drag.
+                  Hidden while a corner is being dragged (they would trail the
+                  old outline) and on sides too short to fit one beside the
+                  corner dots. */}
+              {!modifierMoveActive && interactionState === 'idle' && worldPoints.slice(0, String(obj.type).toLowerCase() === 'polygon' ? worldPoints.length : -1).map((wp, i) => {
                 const next = worldPoints[(i + 1) % worldPoints.length];
+                if (Math.hypot(next.x - wp.x, next.y - wp.y) < vHandleR * 6) return null;
                 const x = (wp.x + next.x) / 2;
                 const y = (wp.y + next.y) / 2;
                 return <g key={`insert-vertex-${i}`} role="button" aria-label="Add vertex" data-add-vertex={i} onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, `insert-vertex-${i}`); }} style={{ cursor: 'crosshair', pointerEvents: 'auto' }}>

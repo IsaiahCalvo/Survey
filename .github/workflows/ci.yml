@@ -180,9 +180,15 @@ run-name: >-
 permissions:
   contents: read
 
+# 2026-10-20 — main runs are never cancelled. Cancelling them starved
+# production: every merge killed the running main CI, so no main run reached
+# "success" and deploy-production.yml never fired while merges kept coming.
+# A newer main run now waits for the running one (GitHub keeps only the
+# newest pending run); branch and PR runs still cancel, since only their
+# latest push matters.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   NODE_VERSION: '24'

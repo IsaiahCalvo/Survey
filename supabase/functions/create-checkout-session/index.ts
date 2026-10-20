@@ -4,6 +4,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2.110.8'
 import { resolveBillingReturnUrl, withBillingResult } from '../_shared/billingReturn.ts';
 import { deleteStripeCustomer } from '../_shared/accountDeletion.ts';
 import { ensurePersistedStripeCustomer } from '../_shared/stripeCustomerPersistence.ts';
+import { isAgentSession, AGENT_REFUSED_MESSAGE } from '../_shared/agentSession.ts';
 
 const corsHeaders = {
     // ⚠️ INTENTIONAL — do NOT tighten to an origin allowlist (false positive if an
@@ -54,6 +55,13 @@ Deno.serve(async (req) => {
 
         if (userError || !user) {
             throw new Error('Invalid user token');
+        }
+
+        if (isAgentSession(authHeader)) {
+            return new Response(
+                JSON.stringify({ error: AGENT_REFUSED_MESSAGE }),
+                { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
         }
 
         // Parse request body

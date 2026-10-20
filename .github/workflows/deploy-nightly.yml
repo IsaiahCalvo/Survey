@@ -1,0 +1,116 @@
+name: Deploy nightly
+
+# Nightly is a second copy of the web app with every feature flag turned on
+# (VITE_RELEASE_CHANNEL=nightly, see src/featureFlags.js). It is built from the
+# same main commit as surveytool.app, right after the production deploy, so it
+# shares the one production database whose migrations that deploy just
+# applied. Stable people see only flags turned on at /flags; nightly people
+# see everything. How work moves from nightly to stable: docs/RELEASE-CHANNELS.md.
+#
+# Address: https://surveytool-nightly.vercel.app (its own Vercel project, so
+# it needs no new domain and is not behind Vercel's preview login).
+on:
+  workflow_run:
+    workflows: ["Deploy production"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    concurrency:
+      group: nightly-deploy
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NIGHTLY_HOST: surveytool-nightly.vercel.app
+      NIGHTLY_PROJECT: surveytool-nightly
+      VERCEL_SCOPE: team_uLSMMTmD4LhtDBm9qJ8DV59v
+
+    steps:
+      - name: Checkout the revision production just shipped
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --include=optional --no-audit --no-fund
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: Build the nightly web bundle (every flag on)
+        run: npm run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+          VITE_RELEASE_CHANNEL: nightly
+          VERCEL_GIT_COMMIT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+      - name: Ship the same routes and headers as production
+        # Static deploy of dist/: the app's page routes and security headers
+        # come from the root vercel.json. The /api analytics proxy stays on
+        # production only, so nightly use does not count as real usage.
+        run: cp vercel.json dist/vercel.json
+
+      - name: Deploy dist to the nightly Vercel project
+        id: deploy
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          npm install -g vercel@latest
+          cd dist
+          # Creates the project the first time; links to it after that.
+          vercel link --yes --project "$NIGHTLY_PROJECT" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+          url="$(vercel deploy --prod --yes --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN")"
+          echo "Deployed $url"
+          vercel alias set "$url" "$NIGHTLY_HOST" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+
+      - name: Let sign-in links come back to nightly
+        # Adds the nightly address to Supabase Auth's redirect allow list once,
+        # so Google sign-in and email links return to nightly, not production.
+        shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: ${{ vars.SUPABASE_PROJECT_ID }}
+        run: |
+          api="https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_ID/config/auth"
+          current="$(curl --fail --silent --show-error -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "$api" | jq -r '.uri_allow_list // ""')"
+          entry="https://$NIGHTLY_HOST/**"
+          case ",$current," in
+            *",$entry,"*) echo "Already allowed: $entry"; exit 0 ;;
+          esac
+          next="$(printf '%s' "$current" | sed 's/,*$//')"
+          next="${next:+$next,}$entry"
+          jq -n --arg list "$next" '{uri_allow_list: $list}' \
+            | curl --fail --silent --show-error -X PATCH -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+                -H 'Content-Type: application/json' --data @- "$api" > /dev/null
+          echo "Allowed: $entry"
+
+      - name: Verify nightly serves this revision
+        shell: bash
+        run: |
+          tested_sha="${{ github.event.workflow_run.head_sha || github.sha }}"
+          for attempt in $(seq 1 60); do
+            live_sha="$(curl --fail --silent "https://$NIGHTLY_HOST/release.json?attempt=$attempt" | jq -r '.commit // empty' 2>/dev/null || true)"
+            if [ "$live_sha" = "$tested_sha" ]; then
+              echo "### Nightly is live at https://$NIGHTLY_HOST (\`$tested_sha\`)" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "$NIGHTLY_HOST did not reach revision $tested_sha" >&2
+          exit 1

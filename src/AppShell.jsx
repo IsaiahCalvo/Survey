@@ -832,9 +832,6 @@ export default function App({ devPreviewReturnTab = null }) {
     () => [bottomToolbarApi?.zoomMenuRef].filter(Boolean),
     [bottomToolbarApi?.zoomMenuRef]
   );
-  const dismissRailFitMenu = useCallback(() => {
-    if (bottomToolbarApi?.isZoomMenuOpen) bottomToolbarApi.toggleZoomMenu?.();
-  }, [bottomToolbarApi]);
 
   // PASS 7 (board 14, owner ruling 2026-09-22): the Select tool has NO caret and
   // NO selection-mode pop-up on either platform. Clicking Select arms the family
@@ -4758,7 +4755,10 @@ export default function App({ devPreviewReturnTab = null }) {
                   {/* KAL-66: `menu` — opened from the keyboard, focus goes to
                       the current fit, arrows move, and focus returns to the
                       Fit options button when it closes. */}
-                  <DismissBarrier active insideRefs={railFitMenuRefs} onDismiss={dismissRailFitMenu} menu />
+                  {/* Focus handling only: PDFViewer's watchLightPopover already closes this
+                      menu on an outside press / Escape. A second onDismiss here
+                      toggled it back open on the same press. */}
+                  <DismissBarrier active insideRefs={railFitMenuRefs} menu />
                   {ZOOM_MODE_OPTIONS.map((option) => {
                     if (option.id === ZOOM_MODES.MANUAL) return null;
                     const isActive = option.id === api.zoomMode;

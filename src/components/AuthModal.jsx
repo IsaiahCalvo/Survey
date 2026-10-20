@@ -1,7 +1,7 @@
 /**
  * AuthModal.jsx — sign-in / sign-up / SSO / password-reset modal.
  *
- * Named export `AuthModal` ({ isOpen, onClose, onDismiss }); a single-form modal
+ * Named export `AuthModal` ({ isOpen, onClose, onDismiss, initialMode }); a single-form modal
  * with a `mode` switch (login / signup / confirm / sso / reset) wired to useAuth
  * (signIn, signUp, signInWithGoogle, signInWithSSO, resetPassword,
  * resendConfirmation). onDismiss (when present) lets unauthenticated users
@@ -18,8 +18,8 @@ import TurnstileWidget, { TURNSTILE_ENABLED } from './TurnstileWidget';
 import Icon from '../Icons';
 import './AuthModal.css';
 
-export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
-  const [mode, setMode] = useState('login'); // 'login', 'signup', 'confirm', 'sso', 'reset'
+export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' }) => {
+  const [mode, setMode] = useState(initialMode); // 'login', 'signup', 'confirm', 'sso', 'reset'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');

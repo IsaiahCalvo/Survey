@@ -41,6 +41,7 @@ import './surveyRailPanel.css';
 import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH } from './viewerShared';
 import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
 import { resolveAutoCompleteEntity } from './utils/surveyAutoEntity.js';
+import { answerSetFor, answerTone } from './services/answerSets.js';
 import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt.js';
 import { captureMorph, playMorph, prefersReducedMotion } from './surveyRailMorph.js';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from './components/SectionIconButton.jsx';
@@ -1427,6 +1428,7 @@ const SurveySpacesRail = ({
 
     const { moduleData } = findMarkerMatchingItem(annotationId, markerModuleId, category);
     const completeEntity = resolveAutoCompleteEntity({
+      answerSet: answerSetFor(selectedTemplate),
       checklist: category?.checklist,
       responses: nextResponses,
       entities: selectedTemplate?.entities,
@@ -1645,11 +1647,11 @@ const SurveySpacesRail = ({
                 <div key={item.id} className="mobile-survey-check-item">
                   <span className="mobile-survey-check-text">{item.text}</span>
                   <div className="mobile-survey-check-group">
-                    {['Y', 'N', 'N/A'].map(option => (
+                    {answerSetFor(selectedTemplate).map(({ value: option, tone: answerToneName }) => (
                       <button
                         key={option}
                         type="button"
-                        className={`mobile-survey-check-btn${response === option ? ` is-active is-${option === 'Y' ? 'yes' : option === 'N' ? 'no' : 'na'}` : ''}`}
+                        className={`mobile-survey-check-btn${response === option ? ` is-active is-${answerToneName === 'good' ? 'yes' : answerToneName === 'bad' ? 'no' : 'na'}` : ''}`}
                         aria-pressed={response === option}
                         aria-label={`${item.text} ${option}`}
                         onClick={() => applyChecklistResponseSelection(annotationId, markerModuleId, category, surveyMarker.name || '', item.id, option)}
@@ -3817,9 +3819,9 @@ const SurveySpacesRail = ({
                                                           {item.text}
                                                         </span>
                                                         <div className="survey-rail__answers" role="group" aria-label={item.text || 'Checklist answer'}>
-                                                          {['Y', 'N', 'N/A'].map(option => {
+                                                          {answerSetFor(selectedTemplate).map(({ value: option, tone: answerToneName }) => {
                                                             const isAnswer = isSelected === option;
-                                                            const tone = option === 'Y' ? 'is-yes' : option === 'N' ? 'is-no' : 'is-na';
+                                                            const tone = answerToneName === 'good' ? 'is-yes' : answerToneName === 'bad' ? 'is-no' : 'is-na';
                                                             return (
                                                               <button
                                                                 key={option}
@@ -3882,6 +3884,7 @@ const SurveySpacesRail = ({
                                                         {archivedWithResponses.map(item => {
                                                           const response = responses[item.id] || {};
                                                           const sel = response.selection;
+                                                          const selTone = answerTone(answerSetFor(selectedTemplate), sel);
                                                           const label = item.lastKnownLabel || item.text || 'Archived item';
                                                           return (
                                                             <div
@@ -3918,18 +3921,18 @@ const SurveySpacesRail = ({
                                                                   /* Same chips as the chosen Y / N / N/A answer above
                                                                      (owner 2026-10-01): Y green, N red, N/A neutral grey -
                                                                      a near-white word on a solid plate of its hue. */
-                                                                  background: sel === 'Y'
+                                                                  background: selTone === 'good'
                                                                     ? 'var(--success-plate)'
-                                                                    : sel === 'N'
+                                                                    : selTone === 'bad'
                                                                       ? 'var(--danger-plate)'
-                                                                      : sel === 'N/A'
+                                                                      : selTone === 'neutral'
                                                                         ? 'var(--border)'
                                                                         : 'var(--surface-3)',
-                                                                  color: sel === 'Y'
+                                                                  color: selTone === 'good'
                                                                     ? 'var(--on-success-plate)'
-                                                                    : sel === 'N'
+                                                                    : selTone === 'bad'
                                                                       ? 'var(--on-danger-plate)'
-                                                                      : sel === 'N/A'
+                                                                      : selTone === 'neutral'
                                                                         ? 'var(--text-1)'
                                                                         : 'var(--text-3)',
                                                                   textAlign: 'center',

@@ -527,7 +527,8 @@ import { carryMarkerShape } from './survey/markerShapes.js';
 import { setMarkerShapePdfDocument } from './survey/markerShapeProviders.js';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
 import { getExportKit, DEFAULT_EXPORT_KIT_ID } from './services/exportFormats/registry.js';
-import { buildSheetLayout } from './services/exportFormats/sheetLayout.js';
+import { buildSheetLayout, buildSheetRow, toStandardHeaders } from './services/exportFormats/sheetLayout.js';
+import { answerSetFor, excelAnswerListFormula, DEFAULT_ANSWER_SET } from './services/answerSets.js';
 import { createTextMarkupAnnotation, getExcludedPdfTextMarkupIds, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection, TEXT_MARKUP_DEFAULT_PAINT } from './utils/pdfTextMarkup.js';
 import {
   buildOcrCacheKey,
@@ -14753,6 +14754,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     clipboardType,
     setClipboardType,
   });
+  // Export, print and redaction writers read bytes with source.arrayBuffer().
+  // A cloud document's pdfFile is only metadata (filePath, no bytes), so
+  // download it first; a local File or a page-edited file passes through.
+  const getExportSourcePdf = useCallback(async () => {
+    const source = (await flushPageOperations()) || pdfFile;
+    if (typeof source?.arrayBuffer === 'function') return source;
+    const bytes = await readPageMutationPdfBytes(source);
+    return new File([bytes], source?.name || 'document.pdf', { type: 'application/pdf' });
+  }, [flushPageOperations, pdfFile, readPageMutationPdfBytes]);
   const handleMirrorPage = useCallback((...args) => {
     if (!canRestoreFromHistoryRef.current) {
       showToast('This document is read-only.', 'info');
@@ -15874,7 +15884,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
             // Header row + add-in column mapping come from the export kit
             // (src/services/exportFormats); the default kit is today's layout.
-            const { headerRow, columnMapping } = buildSheetLayout(getExportKit(DEFAULT_EXPORT_KIT_ID), checklistItems);
+            const exportKit = getExportKit(selectedTemplate?.exportKitId) || getExportKit(DEFAULT_EXPORT_KIT_ID);
+            const { headerRow, columnMapping, colOf, firstChecklistCol, lastChecklistCol } = buildSheetLayout(exportKit, checklistItems);
 
             // Add to schema mappings
             schemaMappings.push({
@@ -15919,15 +15930,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
               // Row ID - signed scoped identity token (first column). Blank when signing was
               // unavailable; import then recovers identity by fingerprint.
-              row.push(rowIdTokensByMarkerId.get(annotationId) || '');
-              row.push(values.changedBy);    // Changed By (initials)
-              row.push(values.changedDate);  // Changed Date (MM/DD/YYYY)
-              row.push(values.item);         // Item name
-              // Checklist responses (Y/N/N/A), in checklist order.
-              checklistItems.forEach((checklistItem) => {
-                row.push(values.answers[checklistItem.id] ?? '');
-              });
-              row.push(values.entity);       // Entity
+              // Cells go in the export kit's column order; checklist answers (Y/N/N/A) in checklist order.
+              row.push(...buildSheetRow(exportKit, checklistItems, {
+                row_id: rowIdTokensByMarkerId.get(annotationId) || '',
+                changed_by: values.changedBy,     // initials
+                changed_date: values.changedDate, // MM/DD/YYYY
+                name: values.item,
+                entity_name: values.entity,
+                notes: values.notes,
+              }, values.answers));
 
               // Get entity color - try multiple sources (used by any cell styling below).
               const entityId = actualSurveyMarker?.entityId || moduleData.entityId;
@@ -15944,8 +15955,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               if (!entityColor && moduleData.entityColor) {
                 entityColor = getHexFromColor(moduleData.entityColor);
               }
-
-              row.push(values.notes);        // Notes
 
               // Capture the exact visible values written to this row, keyed by marker id, so
               // we fingerprint them identically on import. Skip rows with no marker id.
@@ -15978,8 +15987,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 });
               } else {
                 // Add borders and alignment to data cells
-                const lastChecklistCol = headerRow.length - 2; // -2 for Entity and Notes
-                const entityColIndex = headerRow.length - 1; // Second to last column
+                const entityColIndex = colOf.entity_name;
 
                 excelRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
                   cell.border = {
@@ -15989,25 +15997,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                     right: { style: 'thin' }
                   };
 
-                  // Center align specific columns:
-                  // Column 1: Row ID; Columns 2-4: Changed By, Changed Date, Item names
-                  // Columns 5 to lastChecklistCol: Checklist items (Y/N/N/A)
-                  // Column entityColIndex: Entities
-                  if (colNumber >= 1 && colNumber <= 4) {
+                  // Center align Row ID, Changed By, Changed Date, Item, the checklist
+                  // answers (Y/N/N/A) and Entity; Notes stays left.
+                  if (colNumber === colOf.row_id || colNumber === colOf.changed_by || colNumber === colOf.changed_date || colNumber === colOf.name) {
                     cell.alignment = { horizontal: 'center', vertical: 'middle' };
-                  } else if ((colNumber >= 5 && colNumber <= lastChecklistCol) || colNumber === entityColIndex) {
+                  } else if ((colNumber >= firstChecklistCol && colNumber <= lastChecklistCol) || colNumber === entityColIndex) {
                     cell.alignment = { horizontal: 'center', vertical: 'middle' };
                   }
                 });
               }
             });
 
-            // Calculate column indices
-            // Header structure: Row ID (1), Changed By (2), Changed Date (3), Item (4), Checklist items (5...N), Entity (N+1), Notes (N+2)
-            const firstChecklistCol = 5; // Checklist items start at column 5 (after Row ID)
-            const lastChecklistCol = headerRow.length - 2; // -2 for Entity and Notes
-            const entityColIndex = headerRow.length - 1; // Second to last column
-            const itemColIndex = 4; // Item column (1-indexed in ExcelJS)
+            // Column positions (1-indexed in ExcelJS) come from the export kit.
+            const entityColIndex = colOf.entity_name;
+            const itemColIndex = colOf.name;
 
             // Add Data Validation for Checklist Items
             if (lastChecklistCol >= firstChecklistCol) { // At least one checklist column exists
@@ -16018,11 +16021,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                     cell.dataValidation = {
                       type: 'list',
                       allowBlank: true,
-                      formulae: ['"Y,N,N/A"'],
+                      formulae: [excelAnswerListFormula(answerSetFor(selectedTemplate))],
                       showErrorMessage: true,
                       errorStyle: 'error',
                       errorTitle: 'Invalid selection',
-                      error: 'Please select Y, N, or N/A'
+                      error: answerSetFor(selectedTemplate) === DEFAULT_ANSWER_SET
+                        ? 'Please select Y, N, or N/A'
+                        : `Please select ${answerSetFor(selectedTemplate).map((a) => a.value).join(', ')}`
                     };
                   }
                 });
@@ -16187,14 +16192,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             rowIdColumn.hidden = true;
             rowIdColumn.numFmt = '@'; // text — never coerced to a number/date
 
-            // Column 2: Changed By (width 15)
-            worksheet.getColumn(2).width = 15;
-
-            // Column 3: Changed Date (width 15)
-            worksheet.getColumn(3).width = 15;
-
-            // Column 4: Item (width 15)
-            worksheet.getColumn(4).width = 15;
+            // Changed By, Changed Date, Item (width 15)
+            worksheet.getColumn(colOf.changed_by).width = 15;
+            worksheet.getColumn(colOf.changed_date).width = 15;
+            worksheet.getColumn(itemColIndex).width = 15;
 
             // Columns 5 to lastChecklistCol: Checklist items (width 15 each)
             for (let col = firstChecklistCol; col <= lastChecklistCol; col++) {
@@ -16205,7 +16206,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             worksheet.getColumn(entityColIndex).width = 15;
 
             // Notes column (width 50)
-            const notesColIndex = headerRow.length; // Last column
+            const notesColIndex = colOf.notes;
             worksheet.getColumn(notesColIndex).width = 50;
           });
         });
@@ -19318,6 +19319,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
           if (jsonData.length < 1) return; // No header row at all
 
+          // A kit may rename system columns (Item -> Door); import reads the standard names.
+          jsonData[0] = toStandardHeaders(jsonData[0], getExportKit(selectedTemplate?.exportKitId), getExportKit(DEFAULT_EXPORT_KIT_ID));
           const headerRow = jsonData[0];
 
           // Iterate all modules and categories in selectedTemplate to find match
@@ -19549,6 +19552,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
           if (jsonData.length < 1) return; // No header row at all
 
+          // A kit may rename system columns (Item -> Door); import reads the standard names.
+          jsonData[0] = toStandardHeaders(jsonData[0], getExportKit(selectedTemplate?.exportKitId), getExportKit(DEFAULT_EXPORT_KIT_ID));
           const headerRow = jsonData[0];
 
           let matchedCategory = null;
@@ -23519,7 +23524,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }));
       // Page operations save in the background; export the bytes that match
       // the pages on screen.
-      const sourcePdfForExport = (await flushPageOperations()) || pdfFile;
+      const sourcePdfForExport = await getExportSourcePdf();
       if (typeof pdfjsViewerRef.current?.saveAsBlob === 'function') {
         console.log('[PDFSaveExport] source PDF selection ' + JSON.stringify({
           actionType: 'pdf-export',
@@ -23621,7 +23626,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     annotationsByPage,
     callouts,
     deletedPdfAnnotations,
-    flushPageOperations,
+    getExportSourcePdf,
     pageTransformations,
     pageSizes,
     pdfFile,
@@ -23641,7 +23646,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     try {
       const { runXfdfExport, xfdfResultMessage } = await import('./utils/xfdfExport/runXfdfExport.js');
       const result = await runXfdfExport({
-        sourcePdf: (await flushPageOperations()) || pdfFile,
+        sourcePdf: await getExportSourcePdf(),
         pdfName: pdfFile.name || 'document.pdf',
         annotationsByPage,
         pageSizes,
@@ -23666,7 +23671,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     annotationsByPage,
     callouts,
     deletedPdfAnnotations,
-    flushPageOperations,
+    getExportSourcePdf,
     pageTransformations,
     pageSizes,
     pdfFile,
@@ -23687,7 +23692,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       showToast('Making the review package…', 'info');
       const { runAnnotationBundleExport, bundleResultMessage } = await import('./utils/annotationBundle/runAnnotationBundleExport.js');
       const result = await runAnnotationBundleExport({
-        sourcePdf: (await flushPageOperations()) || pdfFile,
+        sourcePdf: await getExportSourcePdf(),
         pdfName: pdfFile.name || 'document.pdf',
         documentId: pdfFile?.id || null,
         annotationsByPage,
@@ -23713,7 +23718,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     annotationsByPage,
     callouts,
     deletedPdfAnnotations,
-    flushPageOperations,
+    getExportSourcePdf,
     pageTransformations,
     pageSizes,
     pdfFile,
@@ -23747,7 +23752,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         import('./utils/permanentPdfRedaction.js'),
       ]);
       const annotatedBytes = await savePDFWithAnnotationsPdfLib(
-        (await flushPageOperations()) || pdfFile,
+        await getExportSourcePdf(),
         redactionAnnotationsByPage,
         pageSizes,
         null,
@@ -23805,7 +23810,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     applyRedactionsBusy,
     callouts,
     deletedPdfAnnotations,
-    flushPageOperations,
+    getExportSourcePdf,
     numPages,
     pageSizes,
     pdfFile,
@@ -34750,7 +34755,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 spaces,
               });
               const annotatedBytes = await savePDFWithFlattenedRegularAnnotationsForPrint(
-                (await flushPageOperations()) || pdfFile,
+                await getExportSourcePdf(),
                 printableRegularPayload.annotationsByPage,
                 pageSizes,
                 {
@@ -35867,6 +35872,7 @@ ${pageBlocks}
       key="browser-print-document"
       ref={browserPrintDocumentRef}
       pdfFile={pdfFile}
+      getSourcePdf={getExportSourcePdf}
       annotationsByPage={printableAnnotationsByPage}
       callouts={printableCallouts}
       surveyMarkers={printableSurveyMarkers}

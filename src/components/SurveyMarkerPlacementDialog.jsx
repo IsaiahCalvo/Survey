@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { COLORS, SHADOWS } from '../theme';
@@ -18,7 +19,10 @@ export default function SurveyMarkerPlacementDialog({ marker, template, category
     && (!entities.length || entities.some((entry) => entry.id === entityId));
   const field = { display: 'grid', gap: 6, marginTop: 14, fontSize: 13 };
   const input = { boxSizing: 'border-box', minWidth: 0, width: '100%', padding: '10px 12px', background: COLORS.modal.panel, color: COLORS.modal.textPrimary, border: `1px solid ${COLORS.modal.borderStrong}`, borderRadius: 6 };
-  return <div onClick={onCancel} style={{ position: 'fixed', inset: 0, zIndex: 10001, background: COLORS.modal.overlay, backdropFilter: 'blur(8px)', display: 'grid', placeItems: 'center', padding: 20 }}>
+  // Portalled to <body>: inside the viewer's z 5000 stacking context the
+  // desktop rails (5600) painted over the scrim and stayed clickable, so a
+  // category could be deleted from the rail under this open dialog.
+  const node = <div onClick={onCancel} style={{ position: 'fixed', inset: 0, zIndex: 10001, background: COLORS.modal.overlay, backdropFilter: 'blur(8px)', display: 'grid', placeItems: 'center', padding: 20 }}>
     <form ref={ref} role="dialog" aria-modal="true" aria-labelledby="survey-marker-categorize-dialog-title" onClick={(event) => event.stopPropagation()} onSubmit={(event) => {
       event.preventDefault();
       if (!valid) return;
@@ -47,4 +51,5 @@ export default function SurveyMarkerPlacementDialog({ marker, template, category
       </div>
     </form>
   </div>;
+  return typeof document !== 'undefined' && document.body ? createPortal(node, document.body) : node;
 }
