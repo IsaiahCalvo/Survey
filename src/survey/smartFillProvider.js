@@ -83,12 +83,17 @@ export async function renderCropFromPdf({ point, pageSize, pdfPage, signal }) {
     const ctx = work.getContext('2d', { willReadFrequently: true });
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, width, height);
-    const task = pdfPage.render({ canvasContext: ctx, viewport, transform: [1, 0, 0, 1, -left * k, -top * k], background: 'white' });
+    // Page content only — stamps/widgets would read as ink (same as the viewer raster).
+    const task = pdfPage.render({ canvasContext: ctx, viewport, transform: [1, 0, 0, 1, -left * k, -top * k], background: 'white', annotationMode: 0 });
+    // Yield between slices so the tap timer can fire and the UI stays live.
+    task.onContinue = (resume) => (typeof requestAnimationFrame === 'function' ? requestAnimationFrame(resume) : resume());
     const onAbort = () => task.cancel?.();
     signal?.addEventListener?.('abort', onAbort);
+    const timer = setTimeout(onAbort, TIME_LIMIT_MS);
     try {
       await task.promise;
     } finally {
+      clearTimeout(timer);
       signal?.removeEventListener?.('abort', onAbort);
     }
     const { data } = ctx.getImageData(0, 0, width, height);
@@ -133,10 +138,13 @@ function getWorker() {
   return worker;
 }
 
-/** Off-thread run with a time limit; falls back to same-thread. */
+/** Off-thread run with a time limit (includes the PDF crop); falls back to same-thread. */
 export async function readSmartFillOutlineAsync(context) {
+  const started = Date.now();
   const crop = (await renderCropFromPdf(context)) || cropAroundTap(context);
   if (context.signal?.aborted) return { ok: false, reason: 'aborted' };
+  const remaining = TIME_LIMIT_MS - (Date.now() - started);
+  if (remaining <= 0) return { ok: false, reason: 'timeout' };
   if (!crop) return Promise.resolve({ ok: false, reason: 'not-ready' });
   const w = typeof Worker !== 'undefined' ? getWorker() : null;
   if (!w) {
@@ -158,7 +166,7 @@ export async function readSmartFillOutlineAsync(context) {
       if (event.data?.id === id) finish(toPolygons(event.data.result, crop));
     };
     const onAbort = () => finish({ ok: false, reason: 'aborted' });
-    const timer = setTimeout(() => finish({ ok: false, reason: 'timeout' }), TIME_LIMIT_MS);
+    const timer = setTimeout(() => finish({ ok: false, reason: 'timeout' }), remaining);
     w.addEventListener('message', onMessage);
     context.signal?.addEventListener?.('abort', onAbort);
     const buffer = crop.rgba.buffer.slice(0);
