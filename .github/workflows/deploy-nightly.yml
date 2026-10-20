@@ -7,8 +7,8 @@ name: Deploy nightly
 # applied. Stable people see only flags turned on at /flags; nightly people
 # see everything. How work moves from nightly to stable: docs/RELEASE-CHANNELS.md.
 #
-# Address: https://surveytool-nightly.vercel.app (its own Vercel project, so
-# it needs no new domain and is not behind Vercel's preview login).
+# Address: https://surveytool-nightly.vercel.app (a preview deployment of the
+# production Vercel project, aliased; no new domain).
 on:
   workflow_run:
     workflows: ["Deploy production"]
@@ -30,7 +30,6 @@ jobs:
     timeout-minutes: 30
     env:
       NIGHTLY_HOST: surveytool-nightly.vercel.app
-      NIGHTLY_PROJECT: surveytool-nightly
       VERCEL_SCOPE: team_uLSMMTmD4LhtDBm9qJ8DV59v
 
     steps:
@@ -43,54 +42,29 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: '24'
-          cache: npm
 
-      - name: Install dependencies
-        run: npm install --include=optional --no-audit --no-fund
-        env:
-          NODE_OPTIONS: --max-old-space-size=8192
-
-      - name: Build the nightly web bundle (every flag on)
-        run: npm run build
-        env:
-          NODE_OPTIONS: --max-old-space-size=8192
-          VITE_RELEASE_CHANNEL: nightly
-          VERCEL_GIT_COMMIT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-
-      - name: Ship the same routes and headers as production
-        # Static deploy of dist/: the app's page routes and security headers
-        # come from the root vercel.json. The /api analytics proxy stays on
-        # production only, so nightly use does not count as real usage.
-        run: cp vercel.json dist/vercel.json
-
-      - name: Deploy dist to the nightly Vercel project
-        # Same token-based CLI deploy as production (no `vercel link`: the
-        # token cannot load a user, so link and --scope fail with "User not
-        # found"). The project is found or created through the REST API.
+      - name: Deploy a nightly preview of the production project
+        # The Vercel token can reach only the production project (creating a
+        # separate nightly project returned 403), so nightly is a preview
+        # deployment of that project, built by Vercel from this checkout the
+        # same way production is, then aliased to the nightly address.
         shell: bash
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: team_uLSMMTmD4LhtDBm9qJ8DV59v
+          VERCEL_PROJECT_ID: prj_ix7x9o7mg5Xi5XXVra0kzP3X7o3p
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: |
-          api="https://api.vercel.com"
-          auth=(-H "Authorization: Bearer $VERCEL_TOKEN")
-          project_id="$(curl --silent "${auth[@]}" "$api/v9/projects/$NIGHTLY_PROJECT?teamId=$VERCEL_SCOPE" | jq -r '.id // empty')"
-          if [ -z "$project_id" ]; then
-            project_id="$(jq -n --arg name "$NIGHTLY_PROJECT" '{name: $name, framework: null}' \
-              | curl --fail-with-body --silent --show-error -X POST "${auth[@]}" -H 'Content-Type: application/json' \
-                  --data @- "$api/v11/projects?teamId=$VERCEL_SCOPE" | jq -r '.id')"
-            echo "Created Vercel project $NIGHTLY_PROJECT ($project_id)"
-          fi
+          tested_sha="${{ github.event.workflow_run.head_sha || github.sha }}"
           npm install -g vercel@latest
-          cd dist
-          url="$(VERCEL_ORG_ID="$VERCEL_SCOPE" VERCEL_PROJECT_ID="$project_id" vercel deploy --prod --yes --token "$VERCEL_TOKEN")"
+          url="$(vercel deploy --yes --token "$VERCEL_TOKEN" \
+            --build-env VITE_RELEASE_CHANNEL=nightly \
+            --build-env VITE_SUPABASE_URL="$VITE_SUPABASE_URL" \
+            --build-env VITE_SUPABASE_ANON_KEY="$VITE_SUPABASE_ANON_KEY" \
+            --build-env VERCEL_GIT_COMMIT_SHA="$tested_sha")"
           echo "Deployed $url"
-          deployment_id="$(curl --fail --silent --show-error "${auth[@]}" "$api/v13/deployments/${url#https://}?teamId=$VERCEL_SCOPE" | jq -r '.id')"
-          jq -n --arg alias "$NIGHTLY_HOST" '{alias: $alias}' \
-            | curl --fail-with-body --silent --show-error -X POST "${auth[@]}" -H 'Content-Type: application/json' \
-                --data @- "$api/v2/deployments/$deployment_id/aliases?teamId=$VERCEL_SCOPE" > /dev/null
-          echo "Aliased $NIGHTLY_HOST"
+          vercel alias set "$url" "$NIGHTLY_HOST" --token "$VERCEL_TOKEN"
 
       - name: Let sign-in links come back to nightly
         # Adds the nightly address to Supabase Auth's redirect allow list once,
