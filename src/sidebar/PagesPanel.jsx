@@ -34,7 +34,7 @@ import { CALM_LIST_AUTO_SCROLL } from '../reorder/dragAutoScroll.js';
 import { restrictToVerticalAxis } from '../reorder/axisLock.js';
 import { pageHasTransform } from '../utils/disabledActions.js';
 import Icon from '../Icons';
-import Spinner from '../components/Spinner';
+import { PageThumbsSkeleton } from '../components/Skeleton';
 import { useConfirmDialog } from '../components/dialogPrompts';
 import { useTooltip } from '../components/Tooltip';
 import { watchLightPopover } from '../components/dismissRules.js';
@@ -1776,10 +1776,11 @@ const PagesPanel = ({
                       transformOrigin: 'center center'
                     }}
                   />
-                ) : null}
+                ) : <span className="sk-paper-sweep" aria-hidden="true" />}
                 {/* Owner 2026-10-01: no "Loading..." text. A page not drawn
-                    yet is the plain paper box above, in the page's own shape;
-                    its low-res image lands in it a moment later. */}
+                    yet is the plain paper box above, in the page's own shape,
+                    with a faint skeleton sweep (owner 2026-10-20); its low-res
+                    image lands in it a moment later. */}
                 {/* The page's "..." menu button, bottom-right on the page.
                     Owner 2026-10-07 ("the three dots ... should be visible on
                     all pages, whether it's selected or not"): always shown,
@@ -1860,23 +1861,12 @@ const PagesPanel = ({
         })}
         {/* UX (KAL-73): two distinct empty-looking states, deliberately kept apart.
             Before the document reports a page count the panel is still LOADING —
-            it shows the shared 18px ring with "Loading pages…" so a slow PDF never
+            it shows page-shaped skeleton cards (owner 2026-10-20) so a slow PDF never
             looks like an empty or broken panel. Only once the page count exists
             does a zero-length list mean the active space genuinely filters
             everything out, which is the real empty state below. */}
         {!numPages ? (
-          <div style={{
-            padding: '32px 16px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            color: 'var(--text-3)',
-            fontSize: '12px'
-          }}>
-            <Spinner size={18} />
-            Loading pages…
-          </div>
+          <PageThumbsSkeleton count={4} width={mobileMode ? 132 : 120} />
         ) : allowedPages.length === 0 && (
           <div style={{
             padding: '32px 16px',

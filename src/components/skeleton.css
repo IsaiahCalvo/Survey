@@ -1,0 +1,107 @@
+/* Shared loading skeletons (owner 2026-10-20: "study the loading skeletons
+   Drawboard uses ... it's way better"; supersedes the 2026-10-04 one-quiet-line
+   decision). Placeholders are shaped like the real rows so nothing moves when
+   the data lands. The whole group waits SKELETON_SHOW_AFTER_MS (fast loads
+   show nothing) and fades in; then one soft highlight sweeps across the
+   blocks. Reduced motion: still blocks, no sweep. */
+.sk {
+  --sk-base: var(--surface-3);
+  --sk-glow: color-mix(in srgb, var(--text-3) 16%, var(--surface-3));
+  opacity: 0;
+  animation: skIn 240ms ease-out both;
+  animation-delay: 300ms;
+}
+.sk[data-sk-immediate='true'] { animation-delay: 0ms; }
+.sk-block {
+  display: block;
+  flex: none;
+  border-radius: 4px;
+  background-color: var(--sk-base, var(--surface-3));
+  background-image: linear-gradient(90deg, transparent 0%, var(--sk-glow, rgba(255, 255, 255, 0.06)) 50%, transparent 100%);
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  background-position: 150% 0;
+  animation: skSweep 1.6s ease-in-out infinite;
+}
+.sk-block.is-round { border-radius: 50%; }
+.sk-block.is-paper { background-color: color-mix(in srgb, var(--text-3) 12%, var(--surface-3)); border-radius: 2px; }
+.sk-visually-hidden {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+@keyframes skIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes skSweep {
+  0% { background-position: 150% 0; }
+  100% { background-position: -50% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sk { animation-duration: 1ms; }
+  .sk-block { animation: none; background-image: none; }
+}
+
+/* ── Home: Documents ledger ─────────────────────────────────────────── */
+.sk-hub { display: flex; flex: 1; min-width: 0; min-height: 0; gap: 8px; padding: 0 8px 8px 8px; box-sizing: border-box; }
+.sk-card {
+  position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; box-sizing: border-box;
+}
+.sk-docs { flex: 1; flex-direction: row; }
+.sk-docs-list { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.sk-docs-head, .sk-docs-row {
+  display: grid; grid-template-columns: 32px 54px minmax(0, 1fr) 124px 124px 72px 36px; align-items: center;
+}
+.sk-docs-head { height: 32px; border-bottom: 1px solid var(--border); }
+.sk-docs-row { height: 51px; border-bottom: 1px solid var(--border); box-sizing: border-box; }
+.sk-docs-row > :nth-child(2) { justify-self: center; }
+.sk-docs-row .sk-stack { display: flex; flex-direction: column; gap: 6px; }
+.sk-docs-aside { width: clamp(200px, 31%, 398px); flex: none; border-left: 1px solid var(--border); padding: 18px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; }
+.sk-docs-aside .sk-preview { width: 100%; aspect-ratio: 1 / 1; margin-top: 10px; }
+@media (max-width: 1100px) {
+  .sk-docs-head, .sk-docs-row { grid-template-columns: 32px 54px minmax(0, 1fr) 124px 100px 0 0; }
+}
+
+/* ── Home: Projects / Templates panes ───────────────────────────────── */
+.sk-pane-left { width: 260px; flex: none; }
+.sk-pane-right { width: clamp(190px, 20.8%, 268px); flex: none; }
+.sk-pane-left.is-narrow { width: clamp(200px, 20.2%, 260px); }
+.sk-pane-main { flex: 1 1 0; }
+.sk-main-head > .sk-block { flex-shrink: 1; min-width: 0; }
+.sk-pane-top { height: 49px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid var(--border); box-sizing: border-box; }
+.sk-list-row { height: 51px; display: flex; flex-direction: column; justify-content: center; gap: 7px; padding: 0 16px 0 54px; border-bottom: 1px solid var(--border); box-sizing: border-box; }
+.sk-dots { display: flex; gap: 3px; }
+.sk-main-head { height: 65px; display: flex; align-items: center; gap: 16px; padding: 0 18px; border-bottom: 1px solid var(--border); box-sizing: border-box; }
+.sk-main-head .sk-spacer { flex: 1; }
+.sk-main-body { padding: 18px 14px; display: flex; flex-direction: column; gap: 10px; }
+.sk-file-row { height: 43px; display: flex; align-items: center; gap: 18px; padding: 0 12px 0 46px; box-sizing: border-box; }
+.sk-file-row .sk-grow { flex: 1; display: flex; }
+.sk-chip-row { height: 42px; display: flex; align-items: center; gap: 12px; padding: 0 14px 0 34px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; }
+
+/* ── Phone home: card rows ──────────────────────────────────────────── */
+.sk-phone { display: none; flex-direction: column; flex: 1; padding: 0 16px; }
+.sk-phone-row { height: 68px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border); }
+.sk-phone-row .sk-stack { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
+  .sk-hub { display: none; }
+  .sk-phone { display: flex; }
+}
+
+/* ── Viewer: Pages panel thumbnails ─────────────────────────────────── */
+.sk-thumbs { display: flex; flex-direction: column; align-items: center; gap: 20px; padding: 16px 0; }
+.sk-thumb { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+
+/* ── Viewer: Search results ─────────────────────────────────────────── */
+.sk-search { padding: 8px 12px; display: flex; flex-direction: column; gap: 0; }
+.sk-search-head { height: 26px; display: flex; align-items: center; }
+.sk-search-row { padding: 9px 0; display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--border); }
+
+/* A page not drawn yet: the real page-shaped white paper keeps its size, and
+   a faint sweep says it is coming (Pages panel thumbnails). */
+.sk-paper-sweep {
+  position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(90deg, transparent 0%, rgba(20, 24, 32, 0.07) 50%, transparent 100%) no-repeat;
+  background-size: 200% 100%; background-position: 150% 0;
+  animation: skSweep 1.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sk-paper-sweep { animation: none; background: rgba(20, 24, 32, 0.04); }
+}

@@ -421,9 +421,9 @@
 .survey-hub .card { background: var(--ink-700); border: 1px solid var(--ink-500); border-radius: 10px; }
 .survey-hub .card.ghost { background: transparent; }
 
-/* First load (owner 2026-10-04: one calm loading state everywhere): the list
-   area holds the app's one quiet line (QuietLoading) — no grey placeholder
-   rows. The header keeps the real controls' room with invisible spacers
+/* First load (owner 2026-10-20, supersedes the 2026-10-04 quiet line): the
+   list area holds skeleton rows shaped like the real tab
+   (components/Skeleton.jsx). The header keeps the real controls' room with invisible spacers
    (.hub-loading-space), so nothing moves when the data lands. Existing data
    is never replaced by this during a refetch. */
 .survey-hub .hub-loading-region {
