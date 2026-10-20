@@ -34,6 +34,7 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
   pageSizes,
   pageTransformations,
   deletedPdfAnnotations,
+  getSourcePdf,
 }, ref) {
   const currentInputs = { pdfFile, annotationsByPage, callouts, surveyMarkers, spaces, pageSizes, pageTransformations, deletedPdfAnnotations };
   const latestInputsRef = useRef(currentInputs);
@@ -76,8 +77,11 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
           surveyMarkers,
           spaces,
         });
+        // A cloud document's pdfFile has no bytes; the viewer downloads them.
+        const sourcePdf = getSourcePdf ? await getSourcePdf() : pdfFile;
+        if (!mountedRef.current) return false;
         const bytes = await savePDFWithFlattenedRegularAnnotationsForPrint(
-          pdfFile,
+          sourcePdf,
           printablePayload.annotationsByPage,
           pageSizes,
           {
@@ -181,7 +185,7 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
       if (preparingPromiseRef.current === promise) preparingPromiseRef.current = null;
     });
     return promise;
-  }, [annotationsByPage, callouts, deletedPdfAnnotations, pageSizes, pageTransformations, pdfFile, spaces, surveyMarkers]);
+  }, [annotationsByPage, callouts, deletedPdfAnnotations, getSourcePdf, pageSizes, pageTransformations, pdfFile, spaces, surveyMarkers]);
 
   preparePrintRef.current = preparePrint;
 
