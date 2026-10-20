@@ -171,17 +171,27 @@ export function buildAgentTools({ getViewer = activeViewer, getDocument = active
       },
       access: { signIn: true, minRole: 'editor' },
       documentScoped: true,
-      execute: async ({ page, x, y, width, height }, _ctx) => {
-        const doc = getDocument();
+      execute: async ({ page, x, y, width, height }, ctx) => {
+        // The wrapper authorized this handle; do not ask getDocument() again
+        // after readAccess — a tab switch would write a different document.
+        const doc = ctx.document;
+        if (!doc) throw new Error('No document is open in Survey.');
         if (!doc.surveyReady()) throw new Error('Turn on Survey mode and pick a template first.');
-        const size = doc.getPageSize(Number(page));
+        const n = Number(page);
+        const count = doc.getPageCount();
+        if (!Number.isInteger(n) || n < 1 || n > count) {
+          throw new Error('That page is not in the open document.');
+        }
+        // Remaining pages size in the background after page 1; use page 1's
+        // size for the fit check until that page's own measurement lands.
+        const size = doc.getPageSize(n) || doc.getPageSize(1);
         if (!size) throw new Error('That page is not in the open document.');
         const box = [x, y, width, height].map(Number);
         if (box.some((n) => !Number.isFinite(n)) || box[2] <= 2 || box[3] <= 2
           || box[0] < 0 || box[1] < 0 || box[0] + box[2] > size.width || box[1] + box[3] > size.height) {
           throw new Error(`The box must fit inside the page (${size.width} x ${size.height} points).`);
         }
-        doc.addSurveyMarker(Number(page), { x: box[0], y: box[1], width: box[2], height: box[3] });
+        doc.addSurveyMarker(n, { x: box[0], y: box[1], width: box[2], height: box[3] });
         return `Added a Survey marker on page ${page}.`;
       },
     },
@@ -189,16 +199,18 @@ export function buildAgentTools({ getViewer = activeViewer, getDocument = active
   return tools.map((tool) => ({
     ...tool,
     execute: async (args = {}, options) => {
+      let scopedDoc = null;
       if (tool.documentScoped) {
-        const doc = getDocument();
-        if (!doc) throw new Error('No document is open in Survey.');
+        scopedDoc = getDocument();
+        if (!scopedDoc) throw new Error('No document is open in Survey.');
         // A file never saved to the cloud belongs to this person alone.
-        args = { ...args, document_id: doc.documentId || undefined };
+        args = { ...args, document_id: scopedDoc.documentId || undefined };
       }
       const ctx = await readAccess(args);
       if (tool.documentScoped && !args.document_id && ctx.signedIn) ctx.role = 'owner';
       const denied = checkAgentAccess(tool.access, ctx);
       if (denied) throw new Error(denied);
+      if (scopedDoc) ctx.document = scopedDoc;
       return tool.execute(args, ctx, options);
     },
   }));

@@ -32705,12 +32705,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // WebMCP: an agent adds Survey markers through the same path as a drawn
   // box (history, sync, server role check). Only the active tab answers.
   const agentMarkerStateRef = useRef(null);
-  agentMarkerStateRef.current = { handleSurveyMarkerCreated, surveyReady: Boolean(showSurveyPanel && selectedTemplate), pageSizes };
+  agentMarkerStateRef.current = { handleSurveyMarkerCreated, surveyReady: Boolean(showSurveyPanel && selectedTemplate), pageSizes, numPages };
   useEffect(() => {
     if (isActive === false) return undefined;
     return registerAgentDocument({
       documentId: pdfFile?.id || null,
       surveyReady: () => agentMarkerStateRef.current.surveyReady,
+      getPageCount: () => agentMarkerStateRef.current.numPages || 0,
       getPageSize: (page) => agentMarkerStateRef.current.pageSizes?.[page] || null,
       addSurveyMarker: (page, bounds) => {
         recordAnnotationCommit({ surface: 'webmcp', source: 'survey-marker:create', action: 'survey-marker-agent', pageNumber: page });

@@ -120,13 +120,14 @@ test('install only when the browser offers WebMCP and not turned off', () => {
 });
 
 const DOC_ID = '0b6f2a52-1d1f-4a35-9a43-1a2b3c4d5e6f';
-const fakeDoc = (ready = true) => {
+const fakeDoc = (ready = true, { pageCount = 1, sizes = { 1: { width: 612, height: 792 } } } = {}) => {
   const added = [];
   return {
     added,
     documentId: DOC_ID,
     surveyReady: () => ready,
-    getPageSize: (p) => (p === 1 ? { width: 612, height: 792 } : null),
+    getPageCount: () => pageCount,
+    getPageSize: (p) => sizes[p] || null,
     addSurveyMarker: (page, b) => added.push({ page, ...b }),
   };
 };
@@ -166,4 +167,58 @@ test('agent cannot pick another document id to borrow its role', async () => {
   const add = tool(buildAgentTools({ supabase: sb, getDocument: () => doc, readAccess: makeAccessReader(sb, TIERS) }), 'survey_add_marker');
   await add.execute({ ...box, document_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' });
   assert.deepEqual(sb.calls.at(-1), { rpc: 'get_my_document_role', args: { doc_id: DOC_ID } });
+});
+
+test('add_marker writes the authorized document if the tab changes during access', async () => {
+  const authorized = fakeDoc();
+  const other = fakeDoc();
+  other.documentId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  let current = authorized;
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const sb = fakeSupabase({ role: 'editor' });
+  const add = tool(buildAgentTools({
+    supabase: sb,
+    getDocument: () => current,
+    readAccess: async (args) => {
+      const ctx = await makeAccessReader(sb, TIERS)(args);
+      await held;
+      return ctx;
+    },
+  }), 'survey_add_marker');
+  const pending = add.execute(box);
+  current = other;
+  release();
+  assert.match(await pending, /Added/);
+  assert.deepEqual(authorized.added, [{ page: 1, x: 10, y: 20, width: 100, height: 50 }]);
+  assert.equal(other.added.length, 0);
+});
+
+test('add_marker does not throw if the open document closes during access', async () => {
+  const authorized = fakeDoc();
+  let current = authorized;
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const sb = fakeSupabase({ role: 'editor' });
+  const add = tool(buildAgentTools({
+    supabase: sb,
+    getDocument: () => current,
+    readAccess: async (args) => {
+      const ctx = await makeAccessReader(sb, TIERS)(args);
+      await held;
+      return ctx;
+    },
+  }), 'survey_add_marker');
+  const pending = add.execute(box);
+  current = null;
+  release();
+  assert.match(await pending, /Added/);
+  assert.deepEqual(authorized.added, [{ page: 1, x: 10, y: 20, width: 100, height: 50 }]);
+});
+
+test('add_marker accepts a later page before its own size is measured', async () => {
+  const doc = fakeDoc(true, { pageCount: 5 });
+  assert.match(await markerTools('editor', doc).execute({ ...box, page: 2 }), /Added/);
+  assert.deepEqual(doc.added, [{ page: 2, x: 10, y: 20, width: 100, height: 50 }]);
+  await assert.rejects(markerTools('editor', doc).execute({ ...box, page: 6 }), /not in the open document/);
 });
