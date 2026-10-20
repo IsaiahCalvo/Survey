@@ -2502,10 +2502,21 @@ const SVGAnnotationLayerBody = memo(({
     return () => window.removeEventListener('smart-fill-find-similar', onFind);
   }, []);
   // A tap on a found match adds it; returns true when the tap was used.
+  // A match stays offered until a Survey marker actually lands on it, so a
+  // tap whose "Categorize Survey Marker" dialog is cancelled keeps it.
+  const offeredSmartFillMatches = useMemo(() => {
+    if (!smartFillMatches.length) return smartFillMatches;
+    const markers = (surveyMarkers || []).filter(Boolean);
+    if (!markers.length) return smartFillMatches;
+    return smartFillMatches.filter((b) => {
+      const cx = b.x + b.width / 2;
+      const cy = b.y + b.height / 2;
+      return !markers.some((m) => cx >= m.x && cx <= m.x + m.width && cy >= m.y && cy <= m.y + m.height);
+    });
+  }, [smartFillMatches, surveyMarkers]);
   const applySmartFillMatchAt = useCallback((point) => {
-    const hit = smartFillMatches.find((b) => markerShapeHitTest(b.shape, point, 0));
+    const hit = offeredSmartFillMatches.find((b) => markerShapeHitTest(b.shape, point, 0));
     if (!hit || typeof onSurveyMarkerCreated !== 'function') return false;
-    setSmartFillMatches((list) => list.filter((b) => b !== hit));
     recordAnnotationCommit({
       surface: 'SVGAnnotationLayer',
       source: 'survey-marker:create',
@@ -2514,7 +2525,7 @@ const SVGAnnotationLayerBody = memo(({
     });
     onSurveyMarkerCreated(hit, { smartFill: true });
     return true;
-  }, [onSurveyMarkerCreated, pageNumber, smartFillMatches]);
+  }, [offeredSmartFillMatches, onSurveyMarkerCreated, pageNumber]);
 
   // ---------------------------------------------------------------------------
   // Polygon / polyline click-to-place commit + cancel.
@@ -7717,7 +7728,7 @@ const SVGAnnotationLayerBody = memo(({
         />
       )}
       {/* Smart fill beta: tags that match the sample, waiting for a tap. */}
-      {smartFillMatches.map((b, k) => (
+      {offeredSmartFillMatches.map((b, k) => (
         <path
           key={`smart-fill-match-${k}`}
           data-smart-fill-match="true"

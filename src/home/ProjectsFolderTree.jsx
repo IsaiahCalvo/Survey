@@ -1097,7 +1097,7 @@ export default function ProjectsFolderTree({
         </div>
 
         {/* RIGHT — open project */}
-        <div ref={openPaneRef} data-project-drop-pane className="card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div ref={openPaneRef} data-project-drop-pane className="card projects-open-pane" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           {open && (
             <>
               <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--ink-500)', display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -1135,7 +1135,7 @@ export default function ProjectsFolderTree({
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 148px', gap: 0, flex: 1, overflow: 'hidden' }}>
+              <div className="projects-open-body" style={{ display: 'grid', gap: 0, flex: 1, overflow: 'hidden' }}>
                 {/* Files */}
                 <div className="slim-scroll" style={{ padding: '10px 14px', overflow: 'auto', position: 'relative' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, height: 28, marginBottom: 4, overflow: 'hidden', flexWrap: 'nowrap', justifyContent: 'space-between' }}>
@@ -1176,8 +1176,8 @@ export default function ProjectsFolderTree({
                       />
                     </div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 90px 90px 28px', gap: 12, padding: '0 10px 6px', fontSize: 11, color: 'var(--ink-200)', letterSpacing: 0 }}>
-                    <span></span><span>Name</span><span>Last edited by</span><span>Edited</span><span></span>
+                  <div className="projects-file-grid" style={{ display: 'grid', gap: 12, padding: '0 10px 6px', fontSize: 11, color: 'var(--ink-200)', letterSpacing: 0 }}>
+                    <span></span><span>Name</span><span className="projects-file-editor-head"><span className="projects-file-editor-label">Last edited by</span><span className="projects-file-editor-label-short" aria-label="Last edited by">By</span></span><span>Edited</span><span></span>
                   </div>
                   {openFiles.length === 0 ? (
                     <div className="meta" style={{ fontSize: 12, padding: '12px 10px' }}>No files in this project yet.</div>
@@ -1202,6 +1202,7 @@ export default function ProjectsFolderTree({
                           <div
                             data-drag-rearrange-row
                             data-document-id={f.id}
+                            className="projects-file-grid"
         onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setFileMenu({ id: f.id, rect: { left: event.clientX, right: event.clientX + 168, top: event.clientY, bottom: event.clientY } }); setTeamMenu(null); }}
                             onClick={() => { if (fileSelect) { toggleFileSel(f.id); return; } onOpenDocument && onOpenDocument(f); }}
                             style={{
@@ -1215,7 +1216,7 @@ export default function ProjectsFolderTree({
                               // token, which is a palette decision, not a rename.
                               background: fileSelect && isChecked ? 'var(--ink-600)' : (i % 2 ? 'transparent' : 'rgba(255,255,255,0.02)'),
                               borderRadius: 6,
-                              display: 'grid', gridTemplateColumns: '24px 1fr 90px 90px 28px',
+                              display: 'grid',
                               gap: 12, alignItems: 'center', padding: '8px 10px', fontSize: 12,
                               height: 42, boxSizing: 'border-box',
                               cursor: isDragging ? 'grabbing' : 'pointer',
@@ -1233,7 +1234,7 @@ export default function ProjectsFolderTree({
                                 the member directory: avatar + first name. */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                               <Avatar initials={ownerInitials} size={18} id={ownerId} />
-                              <span className="meta" style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ownerFirst}</span>
+                              <span className="meta projects-file-editor-name" style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ownerFirst}</span>
                             </div>
                             {/* 16px line: the mono glyph box is 14px, so an even
                                 leading keeps it on the row's centre line (an
@@ -1274,7 +1275,7 @@ export default function ProjectsFolderTree({
 
                 {/* Team — project members resolved against the member
                     directory: avatar + name + role + online status dot. */}
-                <div className="slim-scroll" style={{ borderLeft: '1px solid var(--ink-500)', padding: '12px 12px', background: 'var(--ink-800)', overflow: 'auto' }}>
+                <div className="slim-scroll projects-open-team" style={{ padding: '12px 12px', background: 'var(--ink-800)', overflow: 'auto' }}>
                   <div className="section-label" style={{ marginBottom: 10 }}>Team</div>
                   {(() => {
                     // The team is always non-empty: a project owns at least

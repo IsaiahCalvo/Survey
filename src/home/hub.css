@@ -5615,3 +5615,24 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
     padding: 4px 8px !important;
   }
 }
+
+/* Project files table. The open-project pane is only ~300-420px wide on a
+   tablet (beside the 260px project list), so the fixed 90px "Last edited by"
+   column squeezed Name to nothing. Narrow panes show the editor as an avatar
+   and give Name the room; wide (desktop) panes keep the original columns. */
+.projects-open-pane { container-type: inline-size; }
+.projects-open-body { grid-template-columns: minmax(0, 1fr) 148px; }
+.projects-open-team { border-left: 1px solid var(--ink-500); }
+/* Tablet: the Team column moves under the files so Files gets the width. */
+@container (max-width: 600px) {
+  .projects-open-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .projects-open-team { border-left: 0; border-top: 1px solid var(--ink-500); max-height: 240px; }
+}
+.projects-file-grid { grid-template-columns: 24px minmax(0, 1fr) 90px 90px 28px; }
+.projects-file-editor-label-short { display: none; }
+@container (max-width: 480px) {
+  .projects-file-grid { grid-template-columns: 24px minmax(0, 1fr) 28px 64px 28px; }
+  .projects-file-editor-label { display: none; }
+  .projects-file-editor-label-short { display: inline; }
+  .projects-file-editor-name { display: none; }
+}

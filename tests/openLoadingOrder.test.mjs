@@ -158,7 +158,8 @@ test('one opening state: a short wait, a page skeleton and its caption, no spinn
   assert.match(QUIET, /export const QUIET_LOADING_SHOW_AFTER_MS = 300;/);
   assert.match(QUIET, /animationDelay: `\$\{delayMs\}ms`/);
   assert.doesNotMatch(QUIET, /import Spinner|role="progressbar"/);
-  assert.match(QUIET, /className="quiet-loading-page"[\s\S]*?<SkeletonBlock/);
+  assert.match(QUIET, /className="quiet-loading-bar"/);
+  assert.doesNotMatch(QUIET, /quiet-loading-page/);
   assert.match(VIEWER, /<QuietLoading label=\{openingLabel\(pdfFile\?\.name\)\} \/>/);
   assert.doesNotMatch(VIEWER, /Loading PDF\.\.\./);
   assert.match(SHELL, /<Suspense fallback=\{<QuietLoading label=\{openingLabel\(tab\.file\?\.name\)\}/);
