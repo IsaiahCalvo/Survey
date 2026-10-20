@@ -221,7 +221,10 @@ function onPointer(event) {
 function onClick(event) {
   if (now() - lastGatedUpAt > CLICK_AFTER_GATED_TAP_MS) return;
   const fromTouch = event.pointerType === 'touch' || event.sourceCapabilities?.firesTouchEvents === true;
-  if (!fromTouch || !isGatedFingerTarget(event.target)) return;
+  // lastGatedUpAt already means this finger was gated. Do not re-read live
+  // pen state: the pen has usually lifted by the time the leftover click
+  // arrives, and isGatedFingerTarget defaults penDown to false.
+  if (!fromTouch || !isGatedFingerTarget(event.target, state.drawMode, true)) return;
   event.preventDefault();
   event.stopImmediatePropagation();
 }

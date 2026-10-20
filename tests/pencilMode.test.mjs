@@ -206,8 +206,16 @@ test('P3 in Pencil-or-Touch mode: while the pen writes, a finger never reaches t
   pointer('pointerdown', $('anno'), { pointerId: 22 });
   pointer('pointermove', $('anno'), { pointerId: 22 });
   pointer('pointerup', $('anno'), { pointerId: 22 });
+  const clickWhilePenDown = new window.MouseEvent('click', { bubbles: true, cancelable: true });
+  Object.defineProperty(clickWhilePenDown, 'pointerType', { value: 'touch' });
+  $('anno').dispatchEvent(clickWhilePenDown);
   pointer('pointerup', $('anno'), { pointerType: 'pen', pointerId: 21 });
+  const clickAfterPenUp = new window.MouseEvent('click', { bubbles: true, cancelable: true });
+  Object.defineProperty(clickAfterPenUp, 'pointerType', { value: 'touch' });
+  $('anno').dispatchEvent(clickAfterPenUp);
   assert.deepEqual(spy.seen, ['pointerdown:pen', 'pointerup:pen']);
+  assert.equal(clickWhilePenDown.defaultPrevented, true);
+  assert.equal(clickAfterPenUp.defaultPrevented, true, 'the leftover click is still gated after the pen lifts');
   // Pen lifted: the finger runs the tool again.
   pointer('pointerdown', $('anno'), { pointerId: 23 });
   pointer('pointerup', $('anno'), { pointerId: 23 });
