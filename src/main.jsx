@@ -4,8 +4,10 @@ import './utils/blobArrayBuffer';
 import { sanitizeConsoleLogText, shouldCaptureConsoleLine } from './utils/consoleLogFilter';
 import { installSurveyAnalytics } from './utils/surveyAnalytics';
 import { installCrashLog, setCrashLogBuild } from './utils/crashLog';
+import { installWebMcp } from './agent/webmcp';
 
 installSurveyAnalytics();
+installWebMcp();
 // Crash reports (Settings -> Crash reports): kept on this device only.
 installCrashLog({
   build: [

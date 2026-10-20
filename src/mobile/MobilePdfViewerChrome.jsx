@@ -148,6 +148,8 @@ const TOOL_GROUPS = {
     tools: [
       { id: 'text', label: 'Text', icon: 'textBox' },
       { id: 'callout', label: 'Callout', icon: 'callout' },
+      // KAL-407: engineering symbols (opens the Symbols sheet).
+      { id: 'symbol', label: 'Symbols', icon: 'library' },
     ],
   },
 };
@@ -3017,6 +3019,18 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
               >
                 <Icon name="download" size={16} color="currentColor" />
                 Export annotated PDF
+              </button>
+              {/* KAL-393: the marks alone as an XFDF file; the PDF stays the same. */}
+              <button
+                type="button"
+                disabled={!bottomToolbarApi?.exportXfdf}
+                onClick={() => {
+                  setMoreOpen(false);
+                  bottomToolbarApi?.exportXfdf?.();
+                }}
+              >
+                <Icon name="download" size={16} color="currentColor" />
+                Export markup (XFDF)
               </button>
               {/* RULED 2026-09-22 (owner): "More = Export + Save log". Save log
                   used to be gated on window.Capacitor.isNativePlatform(), so the

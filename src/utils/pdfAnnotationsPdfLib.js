@@ -143,6 +143,9 @@ import {
 import { calculateCalloutConnection } from './calloutGeometry.js';
 import { computeLineBboxCenter, getLineEndpoints } from './svgBoundingBox.js';
 import { isPdfStampProxy, pngDataUrlToBytes } from './pdfStampProxy.js';
+import {
+  getSymbol, isSymbolStamp, symbolStampBox, symbolStampStrokeWidth, transformSymbolPath,
+} from './symbolLibrary.js';
 
 // ---------------------------------------------------------------------------
 // Linear operator append (2026-09-10).
@@ -2755,7 +2758,8 @@ const createStampAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}
   try {
     const stampImages = options.stampImages;
     const source = fabricObj?.src || fabricObj?.dataUrl;
-    if (!stampImages?.get?.(source)) return null;
+    // A library symbol (KAL-407) draws from its own paths, not an embedded PNG.
+    if (!isSymbolStamp(fabricObj) && !stampImages?.get?.(source)) return null;
     const left = getObjNumber(fabricObj, 'left');
     const top = getObjNumber(fabricObj, 'top');
     const width = Math.max(0, getObjNumber(fabricObj, 'width') * Math.abs(Number(fabricObj?.scaleX ?? 1) || 1));
@@ -6329,6 +6333,31 @@ const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
   return true;
 };
 
+// KAL-407: a library symbol prints and exports as vector line art from its
+// own paths (utils/symbolLibrary.js), in the same box and rotation the screen
+// draws it, so it stays crisp at any print size. Coordinates are app space
+// (y down); drawSvgPath flips them about the origin {x: 0, y: pageHeight}.
+const drawFlattenedSymbolStamp = (page, obj, pageHeight) => {
+  const symbol = getSymbol(obj?.data?.symbolStamp?.id);
+  const box = symbolStampBox(obj);
+  if (!symbol || !(box.width > 0 && box.height > 0)) return 0;
+  const paint = parsePdfDrawColor(obj.data.symbolStamp.color || '#000000') || parsePdfDrawColor('#000000');
+  const opacity = Number.isFinite(Number(obj.opacity)) ? Math.max(0, Math.min(1, Number(obj.opacity))) : 1;
+  const borderWidth = symbolStampStrokeWidth(symbol, box);
+  for (const path of symbol.paths) {
+    drawSvgPathLinear(page, transformSymbolPath(path.d, symbol.viewBox, box), {
+      x: 0,
+      y: pageHeight,
+      borderColor: paint.color,
+      borderWidth,
+      borderLineCap: LineCapStyle.Round,
+      borderOpacity: opacity,
+      ...(path.fill ? { color: paint.color, opacity } : {}),
+    });
+  }
+  return 1;
+};
+
 const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0 }, stampImages = new Map()) => {
   if (!obj || typeof obj !== 'object') return 0;
   if (obj?.data?.type === 'text-markup' && Array.isArray(obj?.data?.quads)) {
@@ -6442,6 +6471,7 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
   const height = Math.max(0, getObjNumber(shifted, 'height') * scaleY);
   const strokeWidth = stroke ? Math.max(0, Number(shifted?.strokeWidth) || 1) : 0;
 
+  if (isSymbolStamp(shifted)) return drawFlattenedSymbolStamp(page, shifted, pageHeight);
   if (isPdfStampProxy(shifted)) {
     const image = stampImages.get(shifted.src || shifted.dataUrl);
     if (!image || width <= 0 || height <= 0) return 0;

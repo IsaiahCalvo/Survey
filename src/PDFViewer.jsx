@@ -27,6 +27,7 @@ import { sanitizeTemplateConfig } from './utils/templateConfig.js';
 import useSharedDocumentTemplates from './hooks/useSharedDocumentTemplates.js';
 import { migrateSidebarData } from './utils/sidebarPersistence.js';
 import { resolveMarkerEntityFromName } from './utils/surveyMarkerEntityResolver.js';
+import { removeCategoriesFromModules, toCategoryIdList } from './utils/surveyCategoryDelete.js';
 import {
   capturePendingSurveyMarkerUi,
   deletePendingSurveyMarkerUi,
@@ -110,6 +111,7 @@ import { deviceCanHover, isTextSelectionCaptureTool, shouldMountPanTextLayer } f
 import { copyTextSelection } from './utils/textSelectionQuickMenu.js';
 import ApplyRedactionsModal from './components/ApplyRedactionsModal';
 import OcrTextLayer from './components/OcrTextLayer';
+import SchematicModeBadge from './components/SchematicModeBadge';
 import SpaceRegionOverlay from './SpaceRegionOverlay';
 import PdfjsViewerContainer from './components/PdfjsViewerContainer';
 import SurveyTemplateVersionDialog from './components/SurveyTemplateVersionDialog';
@@ -185,6 +187,8 @@ import { toolSupportsCloudBorderStyle } from './utils/pdfAnnotationAppearance.js
 import { toolOffersCloudLineStyle } from './utils/textCloudBorder.js';
 import { trackSurveyAnalyticsEvent } from './utils/surveyAnalytics';
 import { mintPastedCloneIdentity } from './utils/pasteCloneIdentity';
+import SymbolStampTool from './components/SymbolStampTool';
+import { createSymbolStampObject } from './utils/symbolLibrary';
 import { areViewStatesEqual, normalizeViewState } from './utils/viewState';
 import { arrayMove } from '@dnd-kit/sortable';
 import { buildAnnotationSelectionContextKey, didAnnotationSelectionContextChange } from './utils/annotationSelectionContext';
@@ -5490,6 +5494,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       try {
         localStorage.setItem('lastShapeTool', activeTool);
       } catch (e) { }
+    } else if (activeTool === 'symbol') {
+      // KAL-407: Symbols sits in the Text group's row; it opens a panel, so
+      // it does not become the group's remembered tool.
+      setActiveCategoryDropdown((prev) => (prev === 'review' ? prev : 'review'));
     } else if (REVIEW_TOOL_IDS.includes(activeTool)) {
       setLastReviewTool(activeTool);
       setActiveCategoryDropdown((prev) => (prev === 'review' ? prev : 'review'));
@@ -23641,6 +23649,49 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     selectedModuleId,
   ]);
 
+  // KAL-393: "Export markup (XFDF)" — a sidecar built from the same
+  // inputs and writer as Export annotated PDF. The source PDF is not changed.
+  const handleExportXfdf = useCallback(async () => {
+    if (!pdfFile) {
+      showToast('Open a PDF first.', 'warn');
+      return;
+    }
+    try {
+      const { runXfdfExport, xfdfResultMessage } = await import('./utils/xfdfExport/runXfdfExport.js');
+      const result = await runXfdfExport({
+        sourcePdf: (await flushPageOperations()) || pdfFile,
+        pdfName: pdfFile.name || 'document.pdf',
+        annotationsByPage,
+        pageSizes,
+        exportOptions: {
+          documentId: pdfFile?.id || null,
+          callouts,
+          surveyMarkers: printableSurveyMarkers,
+          activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
+          spaces,
+          deletedPdfAnnotations,
+        },
+      });
+      console.log('[XfdfExport] ' + JSON.stringify({ status: result.status, summary: result.summary }));
+      const message = xfdfResultMessage(result);
+      if (message) showToast(message.text, message.kind);
+    } catch (err) {
+      console.error('[XfdfExport] failed:', err);
+      showToast(`Export failed: ${err?.message || err}`, 'error');
+    }
+  }, [
+    annotationsByPage,
+    callouts,
+    deletedPdfAnnotations,
+    flushPageOperations,
+    pageSizes,
+    pdfFile,
+    spaces,
+    printableSurveyMarkers,
+    showSurveyPanel,
+    selectedModuleId,
+  ]);
+
   const queuePermanentRedactionConfirmation = useCallback((transaction) => {
     if (!transaction?.nextByPage || !transaction?.created?.length) return false;
     setPendingRedactionRequest({
@@ -23744,6 +23795,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (typeof unsubscribe === 'function') unsubscribe();
     };
   }, [handleExportAnnotatedPDF]);
+
+  // KAL-393: File menu → Export markup (XFDF).
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.electronAPI?.onExportXfdfMenu) return undefined;
+    const unsubscribe = window.electronAPI.onExportXfdfMenu(() => { handleExportXfdf(); });
+    return () => { if (typeof unsubscribe === 'function') unsubscribe(); };
+  }, [handleExportXfdf]);
 
   // Save function for annotations (triggered by Cmd/Ctrl+S or auto-save)
   // silent=true skips alerts (for auto-save)
@@ -24046,6 +24104,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
         setIsLoadingPDF(true);
 
+        // Open speed: start pdf.js/worker setup now so it overlaps the PDF
+        // download; awaited below. Rejection is surfaced at that await.
+        const pdfjsReadyPromise = loadPdfjs();
+        pdfjsReadyPromise.catch(() => {});
+
         // Open speed (2026-10-04): the project sidecar read below used to start
         // only after the PDF was downloaded and parsed, holding the first page
         // back by one more round trip. Start it now, alongside the PDF download
@@ -24117,7 +24180,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         let pdf;
         // Ensure the pdf.js worker is configured (no longer set globally at boot).
         loadTrace('configuring pdf.js worker (loadPdfjs)');
-        await loadPdfjs();
+        await pdfjsReadyPromise;
         loadTrace('pdf.js worker ready');
         perfLoad.mark(docName, 'Starting PDF.js getDocument');
         try {
@@ -26398,7 +26461,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       handlePageInputBlur,
       // Browser-visible entry point for File → Export Annotated PDF… (the
       // Electron menu drives the same handler on desktop).
-      exportAnnotatedPdf: handleExportAnnotatedPDF
+      exportAnnotatedPdf: handleExportAnnotatedPDF,
+      // KAL-393: XFDF sidecar ("Export markup").
+      exportXfdf: handleExportXfdf
     });
   }, [
     isActive,
@@ -26507,7 +26572,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handlePageInputChange,
     handlePageInputKeyDown,
     handlePageInputBlur,
-    handleExportAnnotatedPDF
+    handleExportAnnotatedPDF,
+    handleExportXfdf
   ]);
 
   // UX 2026-07-12: clear this instance's published bottom-toolbar API on unmount.
@@ -29840,6 +29906,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // pasteAnnotationAt) can call it without TDZ'ing on the dep array.
   pasteAnnotationAtRef.current = pasteAnnotationAt;
 
+  // KAL-407: the Symbols tool places a library symbol where the page was
+  // clicked — one new mark, saved and undoable like a paste, with the same
+  // scope and author a paste gets.
+  const handlePlaceSymbol = useCallback(({ pageNumber, x, y, symbolId, color }) => {
+    const mark = createSymbolStampObject({ symbolId, color, centerX: x, centerY: y });
+    if (!mark || pageNumber == null) return;
+    makePastedMarkOwn(mark, user?.id || null);
+    applyPasteScope(mark, currentPasteScope(pageNumber));
+    const next = deepClone(annotationsByPageRef.current?.[pageNumber] || { objects: [] });
+    if (!Array.isArray(next.objects)) next.objects = [];
+    next.objects.push(mark);
+    handleSaveAnnotations(pageNumber, next, {
+      source: 'object:modified',
+      action: 'symbol-stamp',
+      checkpointPolicy: 'normal',
+    });
+  }, [handleSaveAnnotations, selectedModuleId, activeRegionId, annotationSpaceId, spaces, isRegionOverlayEnabled, user?.id]);
+
   // UX: Shared annotation Copy handler — called by the Cmd+C hotkey wired
   // from SVGAnnotationLayer's per-page keydown useEffect (and available for
   // future reuse). Deep-clones the targeted shape onto clipboardAnnotation
@@ -31511,19 +31595,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [documentLocked, yjsDocRole, user?.id, documentOwnerId, appTemplates, onTemplatesChange, updateSupabaseTemplateRow, sanitizeTemplateConfig, storeSurveyTemplateBinding, readSurveyTemplateBinding]);
   applySurveyCategoryTransferRef.current = applySurveyCategoryTransfer;
 
-  const handleDeleteSurveyCategoryDefinition = useCallback((moduleId, categoryId) => {
+  // Takes one category id or a list. The rail deletes every ticked category in
+  // ONE call: separate calls each started from the same old template, so the
+  // last one won and the earlier categories came back.
+  const handleDeleteSurveyCategoryDefinition = useCallback((moduleId, categoryIdOrIds) => {
     if (!requireCurrentSurveyTemplate()) return;
-    if (!selectedTemplate || !moduleId || !categoryId) return;
+    const categoryIds = toCategoryIdList(categoryIdOrIds);
+    if (!selectedTemplate || !moduleId || categoryIds.length === 0) return;
     const sourceModules = selectedTemplate.modules || selectedTemplate.spaces || [];
-    let changed = false;
-    const updatedModules = sourceModules.map((module) => {
-      if (module.id !== moduleId) return module;
-      const categories = module.categories || [];
-      const nextCategories = categories.filter((category) => category.id !== categoryId);
-      if (nextCategories.length === categories.length) return module;
-      changed = true;
-      return { ...module, categories: nextCategories };
-    });
+    const { modules: updatedModules, changed } = removeCategoriesFromModules(sourceModules, moduleId, categoryIds);
     if (!changed) return;
 
     const updatedAt = new Date().toISOString();
@@ -31535,7 +31615,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
     const templateId = selectedTemplate.supabaseId || selectedTemplate.id;
     setSelectedTemplate(updatedTemplate);
-    setSelectedCategoryId((current) => current === categoryId ? null : current);
+    setSelectedCategoryId((current) => categoryIds.includes(current) ? null : current);
 
     if (handleTemplatesChange && appTemplates) {
       handleTemplatesChange(appTemplates.map((template) => (
@@ -32856,6 +32936,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (['running', 'complete', 'cancelled', 'error'].includes(ocrStateByPage[pageNum]?.status)) return;
     recognizeTextOnPage(pageNum);
   }, [activeTool, ocrStateByPage, pageNum, recognizeTextOnPage, textAvailabilityByPage]);
+
+  // KAL-402 Schematic Mode: the badge's quick tools. Cloud is the Rectangle
+  // with the Cloud line style, as the Style picker sets it.
+  const handleSchematicPickTool = useCallback((tool) => {
+    if (tool === 'cloud') {
+      setLineBorderStyle('cloud');
+      setActiveToolLogged('rect', { source: 'schematic-badge' });
+      return;
+    }
+    setActiveToolLogged(tool, { source: 'schematic-badge' });
+  }, [setActiveToolLogged]);
 
   const cancelTextRecognition = useCallback((pageNumber) => {
     ocrAbortByPageRef.current.get(pageNumber)?.abort?.();
@@ -35953,6 +36044,13 @@ ${pageBlocks}
         },
       })}
 
+      {/* KAL-407: the Symbols panel; a click on the page places the symbol. */}
+      <SymbolStampTool
+        active={activeTool === 'symbol'}
+        onPlace={handlePlaceSymbol}
+        onClose={() => setActiveToolLogged('pan', { source: 'symbol-panel-close' })}
+      />
+
       {/* Unsupported Annotations Notice — see UnsupportedAnnotationsNotice.jsx
           for the owner-approved UX (friendly names, once per document open,
           dismissible, non-blocking). */}
@@ -36620,6 +36718,16 @@ ${pageBlocks}
                             <style>
                               {nativePdfAnnotationLayerHideCss}
                             </style>
+                          )}
+                          {pdfDoc && !pageTinyOnScreen && (
+                            <SchematicModeBadge
+                              pdfDoc={pdfDoc}
+                              pageNumber={pageNumber}
+                              fingerprint={pdfDoc?.fingerprints?.[0] || pdfFile?.id || pdfFile?.name}
+                              activeTool={activeTool}
+                              lineBorderStyle={lineBorderStyle}
+                              onPickTool={handleSchematicPickTool}
+                            />
                           )}
                           {activeTool === 'text-select' && ocrStateByPage[pageNumber]?.status === 'complete' && (
                             <OcrTextLayer
@@ -38774,7 +38882,11 @@ ${pageBlocks}
               <>
                 {[
                   { id: 'text', label: 'Text', iconName: 'textBox' },
-                  { id: 'callout', label: 'Callout', iconName: 'callout' }
+                  { id: 'callout', label: 'Callout', iconName: 'callout' },
+                  // KAL-407: engineering symbols (opens the Symbols panel).
+                  // In the Text group, which has room: a Shapes row of eight
+                  // would outgrow the loadout space kept on desktop and phone.
+                  { id: 'symbol', label: 'Symbols', iconName: 'library' }
                   // TODO: Revisit the user-created Note tool later. Imported
                   // PDF Text/sticky-note annotations still render through
                   // pdfAnnotationImporter + the normal PDF annotation layers.
