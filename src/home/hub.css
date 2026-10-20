@@ -1240,7 +1240,10 @@
   .survey-hub .templates-mobile-count,
   .survey-hub .archive-mobile-count {
     order: 1;
-    flex: 1 1 auto;
+    /* Zero basis: in this wrapping row a full-width basis pushed the avatar /
+       Sign in down to its own line on 320px phones before the count could
+       shrink. */
+    flex: 1 1 0;
     min-width: 0;
     align-self: baseline;
     white-space: nowrap;

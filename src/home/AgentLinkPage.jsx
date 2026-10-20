@@ -18,12 +18,13 @@ function codeFromUrl() {
 }
 
 const card = {
-  maxWidth: 440, margin: '64px auto', padding: 24, borderRadius: 12,
-  background: C?.panel || '#fff', color: C?.text || '#111', fontFamily: 'system-ui, sans-serif',
+  // The width calc keeps a 16px gutter on phones instead of touching the edges.
+  maxWidth: 440, width: 'calc(100% - 32px)', boxSizing: 'border-box', margin: '64px auto', padding: 24, borderRadius: 12,
+  background: C.card, color: C.ink, border: `1px solid ${C.rule}`, fontFamily: 'system-ui, sans-serif',
   boxShadow: '0 4px 24px rgba(0,0,0,0.12)',
 };
-const btn = { padding: '10px 16px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', cursor: 'pointer', fontSize: 14 };
-const ghost = { ...btn, background: 'transparent', color: '#b91c1c', border: '1px solid #e5e7eb', padding: '4px 10px', fontSize: 12 };
+const btn = { padding: '10px 16px', borderRadius: 8, border: 'none', background: C.gold, color: C.onGold, cursor: 'pointer', fontSize: 14, fontWeight: 600, minHeight: 44 };
+const ghost = { ...btn, background: 'transparent', color: C.dangerText, border: `1px solid ${C.rule}`, padding: '4px 10px', fontSize: 12, fontWeight: 400 };
 
 export default function AgentLinkPage() {
   const auth = useContext(AuthContext) || {};
@@ -63,7 +64,7 @@ export default function AgentLinkPage() {
     return (
       <div style={card}>
         <h2 style={{ marginTop: 0 }}>Sign in to let an agent in</h2>
-        <p>Sign in to Survey, then open this link again.</p>
+        <p style={{ margin: '8px 0 16px', color: C.inkSoft }}>Sign in to Survey, then open this link again.</p>
         <button style={btn} onClick={() => window.location.assign(buildAppDestination({ params: { signIn: '1' } }))}>Sign in</button>
       </div>
     );
@@ -72,14 +73,14 @@ export default function AgentLinkPage() {
   return (
     <div style={card}>
       <h2 style={{ marginTop: 0 }}>Let an AI agent use Survey</h2>
-      <p style={{ fontSize: 14 }}>Type the code your agent showed you. It gets read-only access to your account for one hour. Only enter codes from agents you started.</p>
+      <p style={{ fontSize: 14, margin: '8px 0 16px', color: C.inkSoft }}>Type the code your agent showed you. It gets read-only access to your account for one hour. Only enter codes from agents you started.</p>
       <div style={{ display: 'flex', gap: 8 }}>
         <input
           aria-label="Agent code"
           value={code}
           onChange={(e) => setCode(normalizeAgentCode(e.target.value))}
           placeholder="ABCD2345"
-          style={{ flex: 1, padding: 10, fontSize: 18, letterSpacing: 2, borderRadius: 8, border: '1px solid #d1d5db' }}
+          style={{ flex: 1, minWidth: 0, padding: 10, fontSize: 18, letterSpacing: 2, borderRadius: 8, border: `1px solid ${C.ruleStrong}`, background: C.bg, color: C.ink }}
         />
         <button style={btn} disabled={busy} onClick={approve}>Allow</button>
       </div>
@@ -95,7 +96,7 @@ export default function AgentLinkPage() {
           ))}
         </>
       )}
-      <p style={{ marginTop: 24 }}><a href={buildAppDestination()}>Back to Survey</a></p>
+      <p style={{ marginTop: 24 }}><a href={buildAppDestination()} style={{ color: C.gold }}>Back to Survey</a></p>
     </div>
   );
 }
