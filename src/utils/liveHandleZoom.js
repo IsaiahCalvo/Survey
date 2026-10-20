@@ -88,7 +88,7 @@ const wake = () => {
 };
 
 const attach = () => {
-  if (typeof window === 'undefined') return () => {};
+  if (typeof window === 'undefined') return { watchAncestors() {}, off() {} };
   const options = { capture: true, passive: true };
   const events = ['wheel', 'touchmove', 'gesturechange', 'scroll', 'resize', 'survey-pdfjs-pinch-start'];
   events.forEach((name) => window.addEventListener(name, wake, options));
