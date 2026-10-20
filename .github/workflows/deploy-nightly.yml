@@ -48,6 +48,10 @@ jobs:
         # separate nightly project returned 403), so nightly is a preview
         # deployment of that project, built by Vercel from this checkout the
         # same way production is, then aliased to the nightly address.
+        # Alias via REST, not `vercel alias set`: that command calls GET
+        # /v2/user first, and this token cannot load a user (same reason we
+        # skip vercel link / --scope). VERCEL_ORG_ID + VERCEL_PROJECT_ID let
+        # `vercel deploy` skip that lookup.
         shell: bash
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -64,7 +68,13 @@ jobs:
             --build-env VITE_SUPABASE_ANON_KEY="$VITE_SUPABASE_ANON_KEY" \
             --build-env VERCEL_GIT_COMMIT_SHA="$tested_sha")"
           echo "Deployed $url"
-          vercel alias set "$url" "$NIGHTLY_HOST" --token "$VERCEL_TOKEN"
+          api="https://api.vercel.com"
+          auth=(-H "Authorization: Bearer $VERCEL_TOKEN")
+          deployment_id="$(curl --fail --silent --show-error "${auth[@]}" "$api/v13/deployments/${url#https://}?teamId=$VERCEL_SCOPE" | jq -r '.id')"
+          jq -n --arg alias "$NIGHTLY_HOST" '{alias: $alias}' \
+            | curl --fail-with-body --silent --show-error -X POST "${auth[@]}" -H 'Content-Type: application/json' \
+                --data @- "$api/v2/deployments/$deployment_id/aliases?teamId=$VERCEL_SCOPE" > /dev/null
+          echo "Aliased $NIGHTLY_HOST"
 
       - name: Let sign-in links come back to nightly
         # Adds the nightly address to Supabase Auth's redirect allow list once,
