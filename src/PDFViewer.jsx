@@ -328,6 +328,7 @@ import { perfLoad, perfZoom, setDebugEnabled as setPerfDebugEnabled } from './ut
 import { loadTrace } from './utils/loadTrace';
 import { preserveExistingCountersOnPage, shouldRenumberCountersForSave, summarizeCounterRenumberEffect } from './utils/counterRenumberSavePolicy';
 import { recordAnnotationCommit, recordAnnotationSyncPush, recordAnnotationUndoRedo } from './utils/annotationPreviewDiag';
+import { registerAgentDocument } from './agent/webmcp';
 import { resolveAnnotationAt } from './utils/annotationHitTest';
 import { watchLightPopover } from './components/dismissRules.js';
 import { resolveEditTypeForAnnotation } from './utils/annotationEditRoute';
@@ -32700,6 +32701,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     }
   }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, surveyKeepCategoryActive, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyMarkerPreview, mobileSurveyEntityId, normalizeSurveyMarkerColor, hexToRgba, DEFAULT_SURVEY_MARKER_OPACITY, mobileMode, commitMobileSurveyMarker, requestRightRailExpand, user?.id]);
+
+  // WebMCP: an agent adds Survey markers through the same path as a drawn
+  // box (history, sync, server role check). Only the active tab answers.
+  const agentMarkerStateRef = useRef(null);
+  agentMarkerStateRef.current = { handleSurveyMarkerCreated, surveyReady: Boolean(showSurveyPanel && selectedTemplate), pageSizes };
+  useEffect(() => {
+    if (isActive === false) return undefined;
+    return registerAgentDocument({
+      documentId: pdfFile?.id || null,
+      surveyReady: () => agentMarkerStateRef.current.surveyReady,
+      getPageSize: (page) => agentMarkerStateRef.current.pageSizes?.[page] || null,
+      addSurveyMarker: (page, bounds) => {
+        recordAnnotationCommit({ surface: 'webmcp', source: 'survey-marker:create', action: 'survey-marker-agent', pageNumber: page });
+        agentMarkerStateRef.current.handleSurveyMarkerCreated(page, bounds);
+      },
+    });
+  }, [isActive, pdfFile?.id]);
 
   // Perf (2026-09-30): SVGAnnotationLayer is memo()'d, but it was handed
   // per-render inline lambdas and survey-marker delete callbacks whose deps
