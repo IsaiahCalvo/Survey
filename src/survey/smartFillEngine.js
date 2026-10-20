@@ -373,21 +373,14 @@ export function signaturesMatch(a, b) {
   return either > 0 && both / either >= MATCH_MIN_OVERLAP;
 }
 
-/**
- * Find every tag on a whole-page ink mask that matches `sample` (a signature
- * in mask pixels). Each closed paper cell about the right size is a candidate;
- * the normal tap engine runs on a crop around it and the answer is compared to
- * the sample. Returns rings in mask pixels, de-duplicated. Bounded: at most
- * `maxCandidates` crops are tried.
- */
-export function findSimilarTags(mask, width, height, sample, { maxCandidates = 400 } = {}) {
-  if (!sample?.width) return [];
+function candidateCells(mask, width, height, sample) {
   const label = new Int32Array(width * height).fill(-1);
   const queue = new Int32Array(width * height);
   const cells = [];
+  let id = 0;
   for (let start = 0; start < mask.length; start += 1) {
     if (mask[start] || label[start] !== -1) continue;
-    const id = cells.length;
+    id += 1;
     let head = 0; let tail = 0; let touches = false;
     let minX = width; let minY = height; let maxX = 0; let maxY = 0;
     label[start] = id; queue[tail++] = start;
@@ -408,7 +401,27 @@ export function findSimilarTags(mask, width, height, sample, { maxCandidates = 4
     // (a tag split by a divider has cells about half its size).
     if (w > sample.width * 1.2 || h > sample.height * 1.2) continue;
     if (w < sample.width * 0.2 && h < sample.height * 0.2) continue;
-    cells.push({ seed: start, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 });
+    cells.push({ seed: start });
+  }
+  return cells;
+}
+
+/**
+ * Find every tag on a whole-page ink mask that matches `sample` (a signature
+ * in mask pixels). Each closed paper cell about the right size is a candidate;
+ * the normal tap engine runs on a crop around it and the answer is compared to
+ * the sample. Returns rings in mask pixels, de-duplicated. Bounded: at most
+ * `maxCandidates` crops are tried.
+ */
+export function findSimilarTags(mask, width, height, sample, { maxCandidates = 400 } = {}) {
+  if (!sample?.width) return [];
+  // Cells come from the plain mask and from the gap-closed masks too, so a tag
+  // whose border has a small break (which a tap closes, closedGaps 1-2) is
+  // still a candidate. Paper in a grown mask is paper in the plain one, so the
+  // seed is valid for the normal engine below, which re-verifies every cell.
+  const cells = [];
+  for (const r of [0, 1, 2]) {
+    cells.push(...candidateCells(r ? dilateMask(mask, width, height, r) : mask, width, height, sample));
   }
   const found = [];
   const pad = Math.ceil(Math.max(sample.width, sample.height) * 1.5) + 8;

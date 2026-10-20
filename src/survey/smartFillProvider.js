@@ -118,8 +118,22 @@ export function readSmartFillOutlineAsync(context) {
 const MAX_SCAN_PX = 2400;
 const SCAN_TIME_LIMIT_MS = 15000;
 
+// Page scans get their own worker so a tap (2.5s limit) never waits behind a
+// scan (up to 15s); an aborted or timed-out scan terminates it to free the CPU.
+let scanWorker = null;
+function getScanWorker() {
+  if (scanWorker || workerBroken) return scanWorker;
+  try {
+    scanWorker = new Worker(new URL('./smartFillWorker.js', import.meta.url), { type: 'module' });
+    scanWorker.addEventListener('error', () => { scanWorker = null; });
+  } catch {
+    scanWorker = null;
+  }
+  return scanWorker;
+}
+
 function postToWorker(message, transfer, signal, limitMs) {
-  const w = typeof Worker !== 'undefined' ? getWorker() : null;
+  const w = typeof Worker !== 'undefined' ? getScanWorker() : null;
   if (!w) return null;
   const id = nextId++;
   return new Promise((resolve) => {
@@ -130,6 +144,10 @@ function postToWorker(message, transfer, signal, limitMs) {
       clearTimeout(timer);
       w.removeEventListener('message', onMessage);
       signal?.removeEventListener?.('abort', onAbort);
+      if (value?.reason === 'aborted' || value?.reason === 'timeout') {
+        w.terminate();
+        if (scanWorker === w) scanWorker = null;
+      }
       resolve(value);
     };
     const onMessage = (event) => { if (event.data?.id === id) finish(event.data.result); };

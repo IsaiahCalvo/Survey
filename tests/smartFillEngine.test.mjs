@@ -112,6 +112,16 @@ test('find more like this: same-size boxes match, a different shape does not', (
   assert.equal(rings.length, 3);
 });
 
+test('find more like this: a box with a 2px border gap is still found', () => {
+  const { mask, rect } = canvas(300, 200);
+  rect(20, 20, 50, 40);   // sample
+  rect(120, 30, 150, 50); // same kind, but with a gap in its top edge
+  mask[30 * 300 + 134] = 0; mask[30 * 300 + 135] = 0;
+  const sample = outlineSignature([[20, 20], [51, 20], [51, 41], [20, 41]]);
+  const rings = findSimilarTags(mask, 300, 200, sample);
+  assert.equal(rings.length, 2);
+});
+
 test('signatures: a circle does not match a square of the same size', () => {
   const square = outlineSignature([[0, 0], [20, 0], [20, 20], [0, 20]]);
   const circle = outlineSignature(Array.from({ length: 40 }, (_, i) => [10 + 10 * Math.cos(i / 40 * 2 * Math.PI), 10 + 10 * Math.sin(i / 40 * 2 * Math.PI)]));

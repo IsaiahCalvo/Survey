@@ -2391,9 +2391,14 @@ const SVGAnnotationLayerBody = memo(({
     if (!smartFillLive) {
       smartFillScanAbortRef.current?.abort?.();
       setSmartFillMatches([]);
+      dismissToast('smart-fill-find');
     }
   }, [clearSmartFillPreview, smartFillLive]);
-  useEffect(() => () => dismissToast('smart-fill-preview'), []);
+  useEffect(() => () => {
+    smartFillScanAbortRef.current?.abort?.();
+    dismissToast('smart-fill-preview');
+    dismissToast('smart-fill-find');
+  }, []);
   const startSmartFill = useCallback((point) => {
     smartFillAbortRef.current?.abort?.();
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
