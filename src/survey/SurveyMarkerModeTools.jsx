@@ -9,7 +9,7 @@
  * .chrome-subcontrol buttons, same gutter and gold armed glyph as the Draw
  * group's tools and the Areas tools. The last pick is remembered.
  */
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import Icon from '../Icons';
 import {
   setMarkerDrawMode,
@@ -17,6 +17,8 @@ import {
   useShownMarkerDrawMode,
 } from './markerDrawMode.js';
 import { getMarkerShapeProviders, subscribeMarkerShapeProviders } from './markerShapeProviders.js';
+import { latestSmartFillSample } from './smartFillSamples.js';
+import { showToast } from '../utils/toast';
 
 // Test-only fake Smart fill (dev server + ?fakeSmartFill=1). Never in a
 // production build: Vite folds import.meta.env.DEV to false and drops this.
@@ -43,6 +45,16 @@ export default function SurveyMarkerModeTools({ chromeTip, glyphSize }) {
     setMarkerModeToolsShown(true);
     return () => setMarkerModeToolsShown(false);
   }, []);
+  // Owner 2026-10-20 (beta): once a Smart fill tag has been applied, a search
+  // button next to the modes finds tags like it on the pages in view — on
+  // this drawing or any other (the sample is remembered in this browser).
+  const [hasSample, setHasSample] = useState(() => Boolean(latestSmartFillSample()));
+  useEffect(() => {
+    const refresh = () => setHasSample(Boolean(latestSmartFillSample()));
+    window.addEventListener('smart-fill-samples-changed', refresh);
+    return () => window.removeEventListener('smart-fill-samples-changed', refresh);
+  }, []);
+  const showFindSimilar = Boolean(smartFill) && shown === 'smartFill' && hasSample;
   const modes = smartFill
     ? [...BUILT_IN_MODES, { mode: 'smartFill', label: smartFill.label, icon: smartFill.icon }]
     : BUILT_IN_MODES;
@@ -72,6 +84,22 @@ export default function SurveyMarkerModeTools({ chromeTip, glyphSize }) {
           </button>
         );
       })}
+      {showFindSimilar && (
+        <button
+          type="button"
+          className="btn chrome-subcontrol btn-ghost"
+          data-smart-fill-find-similar="true"
+          onClick={() => {
+            // Pages that find matches replace this with their count.
+            showToast('Looking for tags like your last Smart fill on the pages in view…', 'info', { id: 'smart-fill-find' });
+            window.dispatchEvent(new CustomEvent('smart-fill-find-similar'));
+          }}
+          {...(chromeTip ? chromeTip('Find tags like your last Smart fill', 'below') : {})}
+          aria-label="Find tags like your last Smart fill"
+        >
+          <Icon name="search" size={glyphSize} />
+        </button>
+      )}
     </div>
   );
 }
