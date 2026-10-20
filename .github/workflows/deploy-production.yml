@@ -65,6 +65,9 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # Full history, so the freshness check below can tell which of two
+          # revisions is newer.
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -122,14 +125,36 @@ jobs:
       - name: Verify database, functions, Stripe, and endpoint health
         run: node scripts/release-integrity.mjs --remote
 
-      - name: Confirm main still points to the tested revision
+      - name: Ship only if this revision is newer than what is live
+        # 2026-10-20 — this step used to fail whenever main had moved since CI
+        # started. With merges every few minutes main nearly always had moved,
+        # so the frontend deploy never ran and merged work stayed off
+        # surveytool.app. What the check is really for: never put an OLDER
+        # revision over a newer one (two CI runs can finish out of order).
+        # So: ship when main still points here, or when what is live is older
+        # than this revision; skip, green, when live is already this or newer.
+        id: freshness
         shell: bash
         run: |
           tested_sha="${{ github.event.workflow_run.head_sha || github.sha }}"
           remote_sha="$(git ls-remote origin refs/heads/main | cut -f1)"
-          test "$remote_sha" = "$tested_sha"
+          if [ "$remote_sha" = "$tested_sha" ]; then
+            echo "ship=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          git fetch --quiet origin main
+          live_sha="$(curl --fail --silent https://surveytool.app/release.json | jq -r '.commit // empty' 2>/dev/null || true)"
+          if [ -n "$live_sha" ] && git cat-file -e "$live_sha^{commit}" 2>/dev/null \
+            && git merge-base --is-ancestor "$tested_sha" "$live_sha"; then
+            echo "Live ($live_sha) already includes $tested_sha; nothing to ship."
+            echo "ship=false" >> "$GITHUB_OUTPUT"
+            echo "### Skipped: production already runs \`$live_sha\`, which includes this revision" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "Main moved on to $remote_sha, but live ($live_sha) is older than $tested_sha: shipping it."
+          echo "ship=true" >> "$GITHUB_OUTPUT"
 
       - name: Deploy frontend to Vercel only after backend success
+        if: steps.freshness.outputs.ship == 'true'
         shell: bash
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -145,6 +170,7 @@ jobs:
             --build-env VERCEL_GIT_COMMIT_SHA="$tested_sha"
 
       - name: Verify the exact revision reached production
+        if: steps.freshness.outputs.ship == 'true'
         shell: bash
         run: |
           tested_sha="${{ github.event.workflow_run.head_sha || github.sha }}"
@@ -161,6 +187,7 @@ jobs:
           exit 1
 
       - name: Record deployment
+        if: steps.freshness.outputs.ship == 'true'
         run: |
           {
             echo "### Production deployment complete"
