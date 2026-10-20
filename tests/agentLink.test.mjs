@@ -37,3 +37,13 @@ test('agent-auth stores only hashes and is wired to deploy', () => {
   assert.match(read('public/auth.md'), /functions\/v1\/agent-auth/);
   assert.match(read('supabase/functions/agent-auth/index.ts'), /agent-link\?user_code=/);
 });
+
+test('refresh keys: hashed, one use, cleared on remove', () => {
+  const fn = read('supabase/functions/agent-auth/index.ts');
+  assert.match(fn, /refresh_token_hash: await sha256\(refresh\)/);
+  assert.match(fn, /\.eq\('refresh_token_hash', oldHash\)\s*\n\s*\.select\('id'\)/, 'swap only if the old key is still current');
+  assert.match(fn, /REFRESH_TTL_SECONDS = 30 \* 24 \* 3600/);
+  const sql = read('supabase/migrations/20261020220000_agent_link_refresh.sql');
+  assert.match(sql, /refresh_token_hash = null/);
+  assert.ok(!/grant select[^;]*refresh_token_hash/.test(sql), 'users never read refresh hashes');
+});

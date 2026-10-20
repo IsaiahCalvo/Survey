@@ -14,6 +14,7 @@ const json = (status: number, body: Record<string, unknown>) => new Response(JSO
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const TOKEN_TTL_SECONDS = 3600;
+const REFRESH_TTL_SECONDS = 30 * 24 * 3600;
 const POLL_INTERVAL_SECONDS = 5;
 
 function randomCode(length: number) {
@@ -30,6 +31,27 @@ function randomSecret(prefix: string) {
 async function sha256(value: string) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// A fresh one-hour key and 30-day refresh key; only their hashes are stored.
+async function newKeys() {
+  const token = randomSecret('sat_');
+  const refresh = randomSecret('srt_');
+  return {
+    row: {
+      token_hash: await sha256(token),
+      token_expires_at: new Date(Date.now() + TOKEN_TTL_SECONDS * 1000).toISOString(),
+      refresh_token_hash: await sha256(refresh),
+      refresh_expires_at: new Date(Date.now() + REFRESH_TTL_SECONDS * 1000).toISOString(),
+    },
+    reply: (scopes: string[] | null) => ({
+      access_token: token,
+      token_type: 'Bearer',
+      expires_in: TOKEN_TTL_SECONDS,
+      refresh_token: refresh,
+      scope: (scopes || []).join(' '),
+    }),
+  };
 }
 
 const siteUrl = () => (Deno.env.get('SITE_URL') || 'https://surveytool.app').replace(/\/$/, '');
@@ -86,19 +108,35 @@ Deno.serve(async (req) => {
     }
     // A device code buys one token; asking again cannot mint a second.
     if (link.token_hash) return json(400, { error: 'access_denied' });
-    const token = randomSecret('sat_');
-    const expiresAt = new Date(Date.now() + TOKEN_TTL_SECONDS * 1000).toISOString();
+    const keys = await newKeys();
     const { data: issued, error } = await admin.from('agent_links')
-      .update({ token_hash: await sha256(token), token_expires_at: expiresAt })
+      .update(keys.row)
       .eq('id', link.id).eq('status', 'approved').is('token_hash', null)
       .select('id');
     if (error || !issued?.length) return json(400, { error: 'access_denied' });
-    return json(200, {
-      access_token: token,
-      token_type: 'Bearer',
-      expires_in: TOKEN_TTL_SECONDS,
-      scope: (link.scopes || []).join(' '),
-    });
+    return json(200, keys.reply(link.scopes));
+  }
+
+  if (action === 'refresh') {
+    // Each refresh key works once: using it swaps both keys for new ones.
+    const refreshToken = String(body.refresh_token || '');
+    if (!/^srt_[0-9a-f]{64}$/.test(refreshToken)) return json(400, { error: 'invalid_grant' });
+    const oldHash = await sha256(refreshToken);
+    const { data: link } = await admin.from('agent_links')
+      .select('id, status, scopes, refresh_expires_at')
+      .eq('refresh_token_hash', oldHash)
+      .maybeSingle();
+    if (!link || link.status !== 'approved' || !link.refresh_expires_at
+      || new Date(link.refresh_expires_at) < new Date()) {
+      return json(400, { error: 'invalid_grant' });
+    }
+    const keys = await newKeys();
+    const { data: swapped, error } = await admin.from('agent_links')
+      .update(keys.row)
+      .eq('id', link.id).eq('status', 'approved').eq('refresh_token_hash', oldHash)
+      .select('id');
+    if (error || !swapped?.length) return json(400, { error: 'invalid_grant' });
+    return json(200, keys.reply(link.scopes));
   }
 
   if (action === 'whoami') {

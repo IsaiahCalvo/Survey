@@ -13,7 +13,7 @@ No extra sign-in is needed: tools act as that user.
 Supported flows: `user_claimed` (the user confirms a code). Agent-verified
 flows are not supported yet.
 
-Scopes: `read` (one hour, read-only, the user can remove it at any time).
+Scopes: `read` (read-only; the user can remove the agent at any time).
 
 Endpoint: `POST https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/agent-auth`
 with a JSON body.
@@ -27,8 +27,12 @@ with a JSON body.
    person: agents never get an account of their own.
 3. Every `interval` seconds: `{"action": "token", "device_code": "<device_code>"}`.
    Until the user allows it you get `authorization_pending`. After that you get
-   `access_token` (starts with `sat_`), `token_type: Bearer`, `expires_in`, `scope`.
+   `access_token` (starts with `sat_`, lasts one hour), `refresh_token` (starts
+   with `srt_`, lasts 30 days), `token_type: Bearer`, `expires_in`, `scope`.
    Each device code gives one token. `expired_token` or `access_denied` means start over.
+   When the access token runs out: `{"action": "refresh", "refresh_token": "<refresh_token>"}`
+   returns a new pair. Each refresh token works once. `invalid_grant` means the
+   person removed the agent or 30 days passed: start over.
 4. Check the token: `{"action": "whoami"}` with header
    `Authorization: Bearer <access_token>`.
 
