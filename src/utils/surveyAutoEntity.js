@@ -1,3 +1,4 @@
+import { DEFAULT_ANSWER_SET, isDoneAnswer } from '../services/answerSets.js';
 // Auto "Complete" entity for a Survey Marker (owner ruling 2026-10-01).
 //
 // Owner: "When every checklist answer is Y or N/A, set the entity to Complete
@@ -36,13 +37,16 @@ export function findCompleteEntity(entities) {
   }) || null;
 }
 
-/** True when every active checklist item is answered Y or N/A (none N, none blank). */
-export function isChecklistAllYesOrNA(checklist, responses) {
+/**
+ * True when every active checklist item has a "done" answer: Y or N/A by
+ * default, or a good / neutral answer of the template's answer set.
+ */
+export function isChecklistAllYesOrNA(checklist, responses, answerSet = DEFAULT_ANSWER_SET) {
   const active = (Array.isArray(checklist) ? checklist : []).filter((item) => item && item.archived !== true);
   if (active.length === 0) return false;
   return active.every((item) => {
     const selection = responses?.[item.id]?.selection;
-    return selection === 'Y' || selection === 'N/A';
+    return isDoneAnswer(answerSet, selection);
   });
 }
 
@@ -51,8 +55,8 @@ export function isChecklistAllYesOrNA(checklist, responses) {
  * alone". Only ever returns the Complete entity, and only when the marker is
  * not already on it - so it never clears or downgrades an entity.
  */
-export function resolveAutoCompleteEntity({ checklist, responses, entities, currentEntityId } = {}) {
-  if (!isChecklistAllYesOrNA(checklist, responses)) return null;
+export function resolveAutoCompleteEntity({ checklist, responses, entities, currentEntityId, answerSet } = {}) {
+  if (!isChecklistAllYesOrNA(checklist, responses, answerSet)) return null;
   const complete = findCompleteEntity(entities);
   if (!complete) return null;
   if (currentEntityId && String(currentEntityId) === String(complete.id)) return null;

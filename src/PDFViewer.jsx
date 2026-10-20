@@ -528,6 +528,7 @@ import { setMarkerShapePdfDocument } from './survey/markerShapeProviders.js';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
 import { getExportKit, DEFAULT_EXPORT_KIT_ID } from './services/exportFormats/registry.js';
 import { buildSheetLayout, buildSheetRow } from './services/exportFormats/sheetLayout.js';
+import { answerSetFor, excelAnswerListFormula, DEFAULT_ANSWER_SET } from './services/answerSets.js';
 import { createTextMarkupAnnotation, getExcludedPdfTextMarkupIds, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection, TEXT_MARKUP_DEFAULT_PAINT } from './utils/pdfTextMarkup.js';
 import {
   buildOcrCacheKey,
@@ -16011,11 +16012,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                     cell.dataValidation = {
                       type: 'list',
                       allowBlank: true,
-                      formulae: ['"Y,N,N/A"'],
+                      formulae: [excelAnswerListFormula(answerSetFor(selectedTemplate))],
                       showErrorMessage: true,
                       errorStyle: 'error',
                       errorTitle: 'Invalid selection',
-                      error: 'Please select Y, N, or N/A'
+                      error: answerSetFor(selectedTemplate) === DEFAULT_ANSWER_SET
+                        ? 'Please select Y, N, or N/A'
+                        : `Please select ${answerSetFor(selectedTemplate).map((a) => a.value).join(', ')}`
                     };
                   }
                 });
