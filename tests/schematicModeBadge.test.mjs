@@ -63,6 +63,7 @@ test('badge: drawing page shows it, text page does not; tools arm; turn off and 
   globalThis.HTMLElement = dom.window.HTMLElement;
   globalThis.Node = dom.window.Node;
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  Object.defineProperty(globalThis, 'localStorage', { value: dom.window.localStorage, configurable: true });
   const { createRoot } = await import('react-dom/client');
   const { mod, cleanup } = await loadBadge();
   t.after(cleanup);
@@ -75,7 +76,18 @@ test('badge: drawing page shows it, text page does not; tools arm; turn off and 
   });
   const settle = async () => { await act(async () => { await store.waitForSchematicQueue(); }); };
 
+  // Flag off (the default): no badge and no detection, even on a drawing page.
+  assert.equal(mod.SCHEMATIC_MODE_ENABLED, false);
+  assert.equal(mod.isSchematicModeEnabled(), false);
   await act(async () => { root.render(React.createElement('div', null, render(1), render(2))); });
+  await settle();
+  assert.equal(document.querySelectorAll('[data-schematic-badge]').length, 0, 'flag off renders nothing');
+  assert.equal(store.getSchematicResult(fakeDoc, 1), undefined, 'flag off runs no detection');
+
+  // Flag on (localStorage opt-in).
+  window.localStorage.setItem(mod.SCHEMATIC_MODE_OPT_IN_KEY, '1');
+  assert.equal(mod.isSchematicModeEnabled(), true);
+  await act(async () => { root.render(React.createElement('div', { key: 'on' }, render(1), render(2))); });
   await settle();
   const badges = document.querySelectorAll('[data-schematic-badge]');
   assert.equal(badges.length, 1, 'only the drawing page has a badge');

@@ -1,6 +1,7 @@
 import Stripe from 'npm:stripe@20.4.1';
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { deleteStripeCustomer, runAccountDeletionStages } from '../_shared/accountDeletion.ts';
+import { isAgentSession, AGENT_REFUSED_MESSAGE } from '../_shared/agentSession.ts';
 
 type AdminClient = ReturnType<typeof createClient<any>>;
 
@@ -74,6 +75,7 @@ Deno.serve(async (req) => {
     });
     const { data: { user }, error: userError } = await caller.auth.getUser();
     if (userError || !user) return json(401, { error: 'Unauthorized' });
+    if (isAgentSession(authHeader)) return json(403, { error: AGENT_REFUSED_MESSAGE });
 
     const admin = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },

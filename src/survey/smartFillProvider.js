@@ -54,6 +54,62 @@ export function cropAroundTap({ point, pageSize, pageCanvas }) {
   };
 }
 
+// Fixed detail for a tap: 3 px per page unit, whatever the zoom. A tag is
+// often 10-30 units, so it gets 30-90 px to work with even on a phone at 15%.
+const RENDER_PX_PER_UNIT = 3;
+
+/**
+ * Draw the window around the tap straight from the PDF at a fixed detail, so
+ * Smart fill works the same at every zoom (the screen canvas at phone zoom
+ * can leave a tag only a few pixels wide). Null when pdf.js isn't available;
+ * the caller then reads the screen canvas instead.
+ */
+export async function renderCropFromPdf({ point, pageSize, pdfPage, signal, deadline = null }) {
+  if (!pdfPage || typeof pdfPage.getViewport !== 'function' || !pageSize?.width || typeof document === 'undefined') return null;
+  const half = WINDOW_PAGE_UNITS / 2;
+  const left = Math.max(0, point.x - half);
+  const top = Math.max(0, point.y - half);
+  const right = Math.min(pageSize.width, point.x + half);
+  const bottom = Math.min(pageSize.height, point.y + half);
+  if (!(right > left && bottom > top)) return null;
+  const k = RENDER_PX_PER_UNIT;
+  const width = Math.max(1, Math.round((right - left) * k));
+  const height = Math.max(1, Math.round((bottom - top) * k));
+  try {
+    const viewport = pdfPage.getViewport({ scale: k });
+    const work = document.createElement('canvas');
+    work.width = width;
+    work.height = height;
+    const ctx = work.getContext('2d', { willReadFrequently: true });
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, width, height);
+    const task = pdfPage.render({ canvasContext: ctx, viewport, transform: [1, 0, 0, 1, -left * k, -top * k], background: 'white',
+      // pdf.js AnnotationMode.DISABLE: leave imported markups out of the
+      // crop, like the page render in PdfjsViewerContainer.
+      annotationMode: 0 });
+    const onAbort = () => task.cancel?.();
+    signal?.addEventListener?.('abort', onAbort);
+    const expiry = deadline != null ? setTimeout(onAbort, Math.max(0, deadline - Date.now())) : null;
+    try {
+      await task.promise;
+    } finally {
+      clearTimeout(expiry);
+      signal?.removeEventListener?.('abort', onAbort);
+    }
+    const { data } = ctx.getImageData(0, 0, width, height);
+    return {
+      rgba: data,
+      width,
+      height,
+      seedX: (point.x - left) * k,
+      seedY: (point.y - top) * k,
+      toPage: ([x, y]) => [left + x / k, top + y / k],
+    };
+  } catch {
+    return null;
+  }
+}
+
 function toPolygons(found, crop) {
   if (!found?.ok) return { ok: false, reason: found?.reason || 'open' };
   return { ok: true, polygons: { type: 'Polygon', coordinates: [found.ring.map(crop.toPage)] } };
@@ -83,8 +139,12 @@ function getWorker() {
 }
 
 /** Off-thread run with a time limit; falls back to same-thread. */
-export function readSmartFillOutlineAsync(context) {
-  const crop = cropAroundTap(context);
+export async function readSmartFillOutlineAsync(context) {
+  // The time limit covers the PDF render too.
+  const deadline = Date.now() + TIME_LIMIT_MS;
+  const crop = (await renderCropFromPdf({ ...context, deadline })) || cropAroundTap(context);
+  if (context.signal?.aborted) return { ok: false, reason: 'aborted' };
+  if (Date.now() >= deadline) return { ok: false, reason: 'timeout' };
   if (!crop) return Promise.resolve({ ok: false, reason: 'not-ready' });
   const w = typeof Worker !== 'undefined' ? getWorker() : null;
   if (!w) {
@@ -106,7 +166,7 @@ export function readSmartFillOutlineAsync(context) {
       if (event.data?.id === id) finish(toPolygons(event.data.result, crop));
     };
     const onAbort = () => finish({ ok: false, reason: 'aborted' });
-    const timer = setTimeout(() => finish({ ok: false, reason: 'timeout' }), TIME_LIMIT_MS);
+    const timer = setTimeout(() => finish({ ok: false, reason: 'timeout' }), Math.max(0, deadline - Date.now()));
     w.addEventListener('message', onMessage);
     context.signal?.addEventListener?.('abort', onAbort);
     const buffer = crop.rgba.buffer.slice(0);

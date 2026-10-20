@@ -51,6 +51,12 @@ export function validateExportKit(kit) {
       else seen.add(col.field);
       if (col?.field !== 'checklist' && typeof col?.header !== 'string') errors.push(`columns[${i}].header required`);
     });
+    // The export engine and two-way sync need every field once, with the
+    // sync identity columns first (Row ID is hidden; import matches on it).
+    EXPORT_KIT_FIELDS.forEach((f) => { if (!seen.has(f)) errors.push(`columns missing "${f}"`); });
+    if (kit.columns.slice(0, 3).map((c) => c?.field).join() !== 'row_id,changed_by,changed_date') {
+      errors.push('columns must start with row_id, changed_by, changed_date');
+    }
   }
   return errors;
 }

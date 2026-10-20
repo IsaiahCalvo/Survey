@@ -148,6 +148,10 @@ export const templateFingerprint = (template, maps = {}, ignoreItemIds = null) =
     const s = resolveEntityStyle(e, maps);
     return [e.id, e.role, lower(s.color), roundOpacity(s.opacity), lower(s.borderColor), roundOpacity(s.borderOpacity), s.matchFill];
   }),
+  // Excel layout (export kit); left out when unset so older prints are unchanged.
+  ...(template?.exportKitId ? [template.exportKitId] : []),
+  // Checklist answer set; left out when unset (Y / N / N/A).
+  ...(template?.answerSet ? [['answers', template.answerSet.map((a) => [a.value, a.tone])]] : []),
 ]);
 
 export const fingerprintTemplates = (templates, maps = {}, ignoreItemIds = null) => {

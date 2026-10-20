@@ -433,13 +433,14 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   inset-inline: 0;
 }
 
-/* The two controls INSIDE the pill are 26px tall, not 28 - the pill's 1px
-   border is not theirs - so the shared -8px reached only 42. -9px puts them on
-   the same 44px as every other header control (owner 2026-09-22: "keep 44px hit
-   boxes"). Measured at 375 and 390: 44.0 for all six. */
+/* The two controls INSIDE the pill are 20px tall (the 22px pill,
+   --mobile-page-pill-h, minus its 1px border), so the shared -8px reached only
+   36. -12px puts them on the same 44px as every other header control (owner
+   2026-09-22: "keep 44px hit boxes"). -9px was sized for the old 28px pill and
+   left a 38px box once the pill shrank to 22. */
 .mobile-pdf-header__page-frac::after,
 .mobile-pdf-header__page-chevron::after {
-  inset-block: -9px;
+  inset-block: -12px;
 }
 
 /* OWNER DECISION 2 (2026-07-12): centred page cluster = prev-page ‹ + split

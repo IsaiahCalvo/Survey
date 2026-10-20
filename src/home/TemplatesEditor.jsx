@@ -39,6 +39,8 @@
    the parent panels' `overflow: hidden` can never clip them or spawn
    scrollbars.
 */
+import { listExportKits, DEFAULT_EXPORT_KIT_ID } from '../services/exportFormats/registry.js';
+import { ANSWER_SET_PRESETS, DEFAULT_ANSWER_SET } from '../services/answerSets.js';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { hoverOnly, useTooltip, withOwnHandlers } from '../components/Tooltip';
 import { createPortal, flushSync } from 'react-dom';
@@ -103,6 +105,13 @@ import './TemplatesEditor.css';
 import DismissBarrier from '../components/DismissBarrier';
 import { checkboxProps } from '../utils/keyActivate';
 import SharedTemplateBadge from '../components/SharedTemplateBadge.jsx';
+
+// The preset id a template's answer set matches ('' when it is custom).
+const answerPresetIdOf = (set) => {
+  if (!set) return 'yes-no-na';
+  const key = JSON.stringify(set.map((a) => [a.value, a.tone]));
+  return ANSWER_SET_PRESETS.find((p) => JSON.stringify(p.answers.map((a) => [a.value, a.tone])) === key)?.id || '';
+};
 
 /* Desktop/web already use this quiet chevron for category disclosure. Keep
    one shared glyph so mobile cannot drift to a different arrow treatment.
@@ -286,6 +295,8 @@ const buildRich = (templates, mint = (_key, prefix) => newId(prefix)) => templat
     roster,
     // A template someone shared with me: its owner's face shows on the row.
     ...(t?.sharedFrom ? { sharedFrom: t.sharedFrom } : {}),
+    ...(t?.exportKitId ? { exportKitId: t.exportKitId } : {}),
+    ...(t?.answerSet ? { answerSet: t.answerSet } : {}),
   };
 });
 
@@ -975,6 +986,7 @@ export default function TemplatesEditor({
   );
   const dirty = editFlag && workingCopyDiffers(workingFingerprint, baseline);
   /* The baseline a save makes once it lands: exactly the copy it sent. */
+  const exportKitOptions = useMemo(() => listExportKits(), []);
   const fingerprintOf = (list) => fingerprintTemplates(list, { roleColors, borderColors, matchFill }, freshBlankItemsRef.current);
 
   const closeMobileTemplate = useCallback(() => {
@@ -1920,8 +1932,13 @@ export default function TemplatesEditor({
         }),
       })),
     }));
+    const { exportKitId: _oldKit, answerSet: _oldAnswers, ...originalRest } = original;
     return {
-      ...original,
+      ...originalRest,
+      // Excel layout; unset means the standard export.
+      ...(r.exportKitId ? { exportKitId: r.exportKitId } : {}),
+      // Checklist answers; unset means Y / N / N/A.
+      ...(r.answerSet ? { answerSet: r.answerSet.map((a) => ({ value: a.value, tone: a.tone })) } : {}),
       id: r.id,
       name: r.name,
       modules: mods,
@@ -2415,8 +2432,47 @@ export default function TemplatesEditor({
                   />
                 </span>
               </div>
-              <div className="micro" style={{ textAlign: 'right' }}>
+              {/* minWidth/maxWidth: the two layout pickers must shrink with a
+                  narrow middle column (portrait tablet) instead of overflowing it. */}
+              <div className="micro" style={{ textAlign: 'right', flex: '0 1 auto', minWidth: 72, maxWidth: '50%' }}>
                 <div>{orderedMods.length} {orderedMods.length === 1 ? 'module' : 'modules'}</div>
+                {/* Excel layout (export kit). Only shown once there is a choice. */}
+                {exportKitOptions.length > 1 && (
+                  <select
+                    className="hub-export-kit"
+                    aria-label="Excel layout"
+                    value={tpl.exportKitId || DEFAULT_EXPORT_KIT_ID}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      mutateTpl(tpl.id, (t) => {
+                        const { exportKitId: _k, ...rest } = t;
+                        return v === DEFAULT_EXPORT_KIT_ID ? rest : { ...rest, exportKitId: v };
+                      });
+                    }}
+                    {...hoverOnly(tip('Excel layout for this template. A linked workbook picks it up on its next full export.'))}
+                    style={{ display: 'block', marginTop: 4, marginLeft: 'auto', maxWidth: '100%', font: 'inherit', fontSize: 11, color: 'var(--text-2)', background: 'transparent', border: '1px solid var(--rule)', borderRadius: 4, padding: '1px 4px' }}
+                  >
+                    {exportKitOptions.map((k) => <option key={k.id} value={k.id}>{k.label || k.id}</option>)}
+                  </select>
+                )}
+                {/* Checklist answers for this template (default Y / N / N/A). */}
+                <select
+                  className="hub-answer-set"
+                  aria-label="Checklist answers"
+                  value={answerPresetIdOf(tpl.answerSet)}
+                  onChange={(e) => {
+                    const preset = ANSWER_SET_PRESETS.find((p) => p.id === e.target.value);
+                    mutateTpl(tpl.id, (t) => {
+                      const { answerSet: _a, ...rest } = t;
+                      return !preset || preset.answers === DEFAULT_ANSWER_SET ? rest : { ...rest, answerSet: preset.answers };
+                    });
+                  }}
+                  {...hoverOnly(tip('Answers for this template\'s checklist items. Answers already given keep their text.'))}
+                  style={{ display: 'block', marginTop: 4, marginLeft: 'auto', maxWidth: '100%', font: 'inherit', fontSize: 11, color: 'var(--text-2)', background: 'transparent', border: '1px solid var(--rule)', borderRadius: 4, padding: '1px 4px' }}
+                >
+                  {!answerPresetIdOf(tpl.answerSet) && <option value="">Custom</option>}
+                  {ANSWER_SET_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                </select>
               </div>
             </div>
 
