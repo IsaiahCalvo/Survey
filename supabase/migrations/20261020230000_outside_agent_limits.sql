@@ -69,6 +69,27 @@ $$;
 revoke all on function public.approve_agent_link(text) from public, anon;
 grant execute on function public.approve_agent_link(text) to authenticated;
 
+-- Nor remove the person's other agents (the update runs as definer, so the
+-- restrictive policy above doesn't reach it).
+create or replace function public.revoke_agent_link(p_id uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  with done as (
+    update public.agent_links
+       set status = 'revoked', token_hash = null, refresh_token_hash = null
+     where id = p_id and user_id = auth.uid() and status <> 'revoked'
+       and not public.is_agent_session()
+    returning 1
+  )
+  select exists (select 1 from done);
+$$;
+
+revoke all on function public.revoke_agent_link(uuid) from public, anon;
+grant execute on function public.revoke_agent_link(uuid) to authenticated;
+
 -- Plan-downgrade housekeeping takes any user id and archives that user's
 -- extra projects and documents. Only the Stripe webhook (service role) runs
 -- it; signed-in callers (people or their agents) could aim it at someone

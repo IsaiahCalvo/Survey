@@ -35,6 +35,8 @@ test('consent route and rules are wired', () => {
   assert.match(page, /approveAuthorization\(authorizationId, \{ skipBrowserRedirect: true \}\)/);
   assert.match(page, /where you can only view, it can only view/);
   assert.match(page, /revokeGrant\(\{ clientId \}\)/);
+  // An agent-code link starts that flow, never an older saved consent.
+  assert.match(page, /if \(params\.get\('user_code'\) \|\| \/\^\\\/agent-link/);
 });
 
 test('database keeps outside agents to their person, minus money, linked accounts and other agents', () => {
@@ -44,6 +46,7 @@ test('database keeps outside agents to their person, minus money, linked account
     assert.match(sql, new RegExp(`on public\\.${table}\\s+as restrictive\\s+for all\\s+to authenticated\\s+using \\(not public\\.is_agent_session\\(\\)\\)`));
   }
   assert.match(sql, /if public\.is_agent_session\(\) then\s+raise exception 'agents cannot approve agents'/);
+  assert.match(sql, /function public\.revoke_agent_link[\s\S]*?and not public\.is_agent_session\(\)/, 'agents cannot remove other agents');
   for (const fn of ['handle_downgrade_to_free\\(uuid\\)', 'archive_excess_documents\\(uuid, integer\\)', 'archive_excess_projects\\(uuid, integer\\)', 'archive_excess_projects\\(uuid, uuid\\)']) {
     assert.match(sql, new RegExp(`revoke execute on function public\\.${fn} from public, anon, authenticated`));
   }

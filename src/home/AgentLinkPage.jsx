@@ -36,8 +36,11 @@ function codeFromUrl() {
 
 function consentIdFromUrl() {
   if (typeof window === 'undefined') return '';
-  const id = new URLSearchParams(window.location.search).get('authorization_id');
+  const params = new URLSearchParams(window.location.search);
+  const id = params.get('authorization_id');
   if (isConsentId(id)) return id;
+  // A link carrying an agent code starts that flow, not an older consent.
+  if (params.get('user_code') || /^\/agent-link(?:\/|$)/.test(window.location.pathname)) return '';
   try { return readPendingConsent(window.localStorage); } catch { return ''; }
 }
 
