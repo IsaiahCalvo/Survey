@@ -369,6 +369,16 @@ jobs:
       - name: Verify release contract
         run: node scripts/release-integrity.mjs --static
 
+      # 2026-10-20 — a new migration numbered before the newest one on main
+      # makes `supabase db push` refuse it, which stops every production
+      # deploy (#879 did this). Pull requests only: on main it has already
+      # landed.
+      - name: New migrations sort after the newest on the base branch
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+          node scripts/check-migration-order.mjs "origin/${{ github.base_ref }}"
+
       - name: Install dependencies
         # Use `install` (not `ci`) to sidestep the npm optional-deps bug
         # (npm/cli#4828), matching the release workflow.
