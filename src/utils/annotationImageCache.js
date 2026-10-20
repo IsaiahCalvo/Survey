@@ -16,6 +16,7 @@
  * resolve to null and the painter simply skips them.
  */
 import { isPdfStampProxy } from './pdfStampProxy.js';
+import { isSymbolStamp } from './symbolLibrary.js';
 
 const MAX_CACHED_IMAGES = 48;
 // src -> { image, promise }; insertion order doubles as LRU order.
@@ -84,8 +85,10 @@ export function getAnnotationImage(src) {
   return entry.image;
 }
 
+// KAL-407: a library symbol paints from its vector paths, so it never waits
+// on an image decode (an SVG picture cannot be decoded in the worker).
 export const annotationImageSource = (object) => (
-  isPdfStampProxy(object) ? (object.src || object.dataUrl) : null
+  isPdfStampProxy(object) && !isSymbolStamp(object) ? (object.src || object.dataUrl) : null
 );
 
 /** Whether every image mark in `objects` is ready to draw. */

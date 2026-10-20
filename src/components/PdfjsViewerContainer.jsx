@@ -23,6 +23,7 @@
  * zoomGeneration signal (Stage 3 wires that); never throws out of a contract
  * method or callback (PDFViewer assumes the handle never throws).
  */
+import { registerAgentViewer } from '../agent/webmcp';
 import {
   forwardRef,
   memo,
@@ -41,6 +42,7 @@ import { extractPdfOutlineBookmarks } from '../utils/bookmarkOutline';
 import { resolvePinchCommitCursor, resolvePinchEndTransition } from '../utils/mobilePinchGesture';
 import { isPalmContact, withoutPalmTouches } from '../utils/touchContact';
 import { isSpaceTap, isSpaceTapBlockedTarget } from '../utils/spaceTapToggle';
+import { createFocusModalityTracker, spaceBelongsToFocusedControl } from '../utils/spaceKeyControls';
 import { createPanMomentumRunner, createPanVelocityTracker, isGlideSlowEnoughToSharpen, PAN_MOMENTUM_DEFAULTS, panEventTime } from '../utils/panMomentum';
 import {
   ELASTIC_ZOOM_EASE_MS,
@@ -3656,9 +3658,17 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   }, [flushPan, releaseElasticPan, setPanInteraction, startPanInertia, updatePanPresentation]);
 
   useEffect(() => {
+    // KAL-503: Space presses a focused button, tab, switch or menu item in a
+    // dialog or menu, or a button reached with Tab (spaceKeyControls.js).
+    const focusModality = createFocusModalityTracker();
+    let spaceForControl = false;
     const activateSpacePan = (event) => {
       if (!isSpaceKey(event)) return;
       if (isEditableTarget(event.target) || isEditableTarget(document.activeElement)) return;
+      if (!spacePanRef.current && spaceBelongsToFocusedControl(document.activeElement, { tabbedTo: focusModality.tabbedTo() })) {
+        spaceForControl = true;
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       if (spacePanRef.current) return;
@@ -3675,7 +3685,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
     const releaseSpacePan = (event) => {
       if (event?.type === 'keyup' && !isSpaceKey(event)) return;
-      if (event?.type === 'keyup') {
+      const passedToControl = spaceForControl;
+      spaceForControl = false;
+      if (event?.type === 'keyup' && !passedToControl) {
         event.preventDefault();
         event.stopPropagation();
       }
@@ -3694,12 +3706,16 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
     window.addEventListener('keydown', activateSpacePan, true);
     window.addEventListener('keyup', releaseSpacePan, true);
+    window.addEventListener('pointerdown', focusModality.onPointerDown, true);
+    window.addEventListener('keydown', focusModality.onKeyDown, true);
     window.addEventListener('blur', releaseSpacePan);
     window.addEventListener('pagehide', releaseSpacePan);
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       window.removeEventListener('keydown', activateSpacePan, true);
       window.removeEventListener('keyup', releaseSpacePan, true);
+      window.removeEventListener('pointerdown', focusModality.onPointerDown, true);
+      window.removeEventListener('keydown', focusModality.onKeyDown, true);
       window.removeEventListener('blur', releaseSpacePan);
       window.removeEventListener('pagehide', releaseSpacePan);
       document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -5212,6 +5228,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       turn?.release();
     };
   }, [pageSizes, rotation, isMobileSurface]);
+
+  // WebMCP: let a browser AI agent read the page count and move pages.
+  useEffect(() => registerAgentViewer({
+    getPageCount: () => numPagesRef.current,
+    getCurrentPage: () => currentPageRef.current || 1,
+    goToPage,
+  }), [goToPage]);
 
   // DEV only: the zoom-perf scenario (debug/scenarios/zoom-perf.mjs) sets
   // exact zoom levels through this; never present in a production build.

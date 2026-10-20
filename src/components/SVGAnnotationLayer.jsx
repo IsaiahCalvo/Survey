@@ -177,6 +177,7 @@ import {
 // w58: hold Cmd (Mac) / Ctrl (Windows) to move the selection from anywhere in its box.
 import { useMoveModifierHeld, resolveModifierMoveZone, isPointInBoxes } from '../utils/moveModifier.js';
 import { getPdfStampProxySvgProps, isPdfStampProxy } from '../utils/pdfStampProxy.js';
+import { isSymbolStamp } from '../utils/symbolLibrary.js';
 import { isClientPointNearRect } from '../utils/selectionPointerOwnership.js';
 import { forwardClickToFormWidget, liveFormWidgetAtPoint } from '../utils/formWidgetPointerTargets.js';
 import { beginLiveStroke } from '../services/annotationLiveStrokes.js';
@@ -189,6 +190,12 @@ import { findSimilarOnPage } from '../survey/smartFillProvider.js';
 import { latestSmartFillSample, saveSmartFillSample } from '../survey/smartFillSamples.js';
 import { markerShapeHitTest } from '../survey/markerShapes.js';
 import { showToast, dismissToast } from '../utils/toast';
+// The toast store renames a toast whose id is still showing, so a later
+// dismissToast(id) would miss it; clear the old one first.
+const showSmartFillFindToast = (message, type, options) => {
+  dismissToast('smart-fill-find');
+  return showToast(message, type, options);
+};
 import { useEffectiveMarkerDrawMode } from '../survey/markerDrawMode.js';
 import { isSmartFillPressLive, runMarkerShapeProvider } from '../survey/markerShapeProviders.js';
 import {
@@ -2390,9 +2397,14 @@ const SVGAnnotationLayerBody = memo(({
     if (!smartFillLive) {
       smartFillScanAbortRef.current?.abort?.();
       setSmartFillMatches([]);
+      dismissToast('smart-fill-find');
     }
   }, [clearSmartFillPreview, smartFillLive]);
-  useEffect(() => () => dismissToast('smart-fill-preview'), []);
+  useEffect(() => () => {
+    smartFillScanAbortRef.current?.abort?.();
+    dismissToast('smart-fill-preview');
+    dismissToast('smart-fill-find');
+  }, []);
   const startSmartFill = useCallback((point) => {
     smartFillAbortRef.current?.abort?.();
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -2423,8 +2435,9 @@ const SVGAnnotationLayerBody = memo(({
         onSurveyMarkerCreated(markerBounds);
         const sample = saveSmartFillSample(markerBounds.shape.polygons[0][0]);
         if (sample) {
-          showToast('Survey Marker added. Want Smart fill to find more tags like it on this page?', 'success', {
+          showSmartFillFindToast('Survey Marker added. Want Smart fill to find more tags like it on this page?', 'success', {
             id: 'smart-fill-find',
+            duration: Infinity,
             action: { label: 'Find more', onClick: () => findMoreLikeThisRef.current?.(sample, markerBounds) },
           });
         }
@@ -2449,14 +2462,14 @@ const SVGAnnotationLayerBody = memo(({
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     smartFillScanAbortRef.current = controller;
     const pageCanvas = svgRef.current?.closest?.('[data-page-number]')?.querySelector?.('canvas') || null;
-    if (!quietIfNone) showToast('Smart fill is looking for matching tags…', 'info', { id: 'smart-fill-find' });
+    if (!quietIfNone) showSmartFillFindToast('Smart fill is looking for matching tags…', 'info', { id: 'smart-fill-find', duration: Infinity });
     findSimilarOnPage({ pageCanvas, pageSize: { width, height }, sample, signal: controller?.signal || null }).then((res) => {
       if (controller?.signal?.aborted || !smartFillLiveRef.current) return;
       if (!res.ok) {
         if (quietIfNone) return;
-        showToast(res.reason === 'not-ready'
+        showSmartFillFindToast(res.reason === 'not-ready'
           ? 'Smart fill: the page is still loading. Try again.'
-          : 'Smart fill couldn’t finish looking on this page.', 'info', { id: 'smart-fill-find' });
+          : 'Smart fill couldn’t finish looking on this page.', 'info', { id: 'smart-fill-find', duration: 10000 });
         return;
       }
       const centre = (b) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
@@ -2467,9 +2480,9 @@ const SVGAnnotationLayerBody = memo(({
       setSmartFillMatches(matches);
       // From the tool bar every page in view looks; only pages with matches speak.
       if (quietIfNone && !matches.length) return;
-      showToast(matches.length
+      showSmartFillFindToast(matches.length
         ? `Found ${matches.length} more like it. Tap each blue outline to add it.`
-        : 'No other tags like it on this page.', 'info', { id: 'smart-fill-find' });
+        : 'No other tags like it on this page.', 'info', { id: 'smart-fill-find', duration: 10000 });
     });
   };
   // "Find tags like my sample" from the tool bar (any page in view, any drawing).
@@ -3800,7 +3813,7 @@ const SVGAnnotationLayerBody = memo(({
       } else if (objectType === 'path' && Array.isArray(obj.path) && obj.path.length > 0) {
         element = renderPath(obj, i);
       } else if (isPdfStampProxy(obj)) {
-        element = <image {...getPdfStampProxySvgProps(obj)} data-pdf-stamp-proxy="true" />;
+        element = <image {...getPdfStampProxySvgProps(obj)} data-pdf-stamp-proxy="true" data-symbol-stamp={isSymbolStamp(obj) ? obj.data.symbolStamp.id : undefined} />;
       } else if (objectType === 'rect') {
         element = renderRect(obj, i);
       } else if (objectType === 'line') {
@@ -7984,7 +7997,9 @@ const SVGAnnotationLayerBody = memo(({
         }
 
         const textMarkupSelectionChrome = getTextMarkupSelectionChrome(selectionObj);
-        const isLockedStampProxy = isPdfStampProxy(selectionObj);
+        // KAL-407: a library symbol is a stamp you placed, so it resizes and
+        // rotates like a shape; only stamps imported from the PDF stay locked.
+        const isLockedStampProxy = isPdfStampProxy(selectionObj) && !isSymbolStamp(selectionObj);
 
         // Apply visualTransform to bbox so overlay follows annotation live during drag/resize/rotate
         // UX 2026-09-09: the object the selection chrome (cloud cusps / hull)
