@@ -24727,7 +24727,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         perfLoad.end(docName);
         loadTrace('❌ LOAD ERROR', String(error?.message || error));
         if (isCancelled) return;
-        if (shouldRetryStreamedOpenWithDownload({ openedByStream, filePath: pdfFile?.filePath, forced: streamNeedsBytesPathsRef.current })) {
+        if (shouldRetryStreamedOpenWithDownload({ openedByStream, filePath: pdfFile?.filePath, forced: streamNeedsBytesPathsRef.current, stillCurrent: latestPdfFileRef.current === pdfFile })) {
           streamNeedsBytesPathsRef.current.add(pdfFile.filePath);
           setLoadRetryToken((t) => t + 1);
           return;

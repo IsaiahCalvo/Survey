@@ -108,6 +108,7 @@ export async function tryOpenCloudPdfStream({
  * or page sizing) reloads once through the full download rather than showing
  * a load error. Once per path: the retry is a download, so it cannot loop.
  */
-export function shouldRetryStreamedOpenWithDownload({ openedByStream, filePath, forced }) {
-  return Boolean(openedByStream && filePath && !forced?.has?.(filePath));
+export function shouldRetryStreamedOpenWithDownload({ openedByStream, filePath, forced, stillCurrent = true }) {
+  // stillCurrent: a page view may have replaced this file; never reload it.
+  return Boolean(openedByStream && stillCurrent && filePath && !forced?.has?.(filePath));
 }

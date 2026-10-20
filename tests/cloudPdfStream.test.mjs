@@ -116,3 +116,7 @@ test('a timed-out open leaves no unhandled rejection', async () => {
   process.off('unhandledRejection', onUnhandled);
   assert.equal(unhandled.length, 0);
 });
+
+test('no late-failure reload once a page view replaced the file', () => {
+  assert.equal(shouldRetryStreamedOpenWithDownload({ openedByStream: true, filePath: 'a.pdf', forced: new Set(), stillCurrent: false }), false);
+});
