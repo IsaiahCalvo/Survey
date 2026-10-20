@@ -165,3 +165,60 @@ jobs:
           name: android-native-results
           path: android-native-out
           retention-days: 7
+
+  android-signed-in:
+    name: Android signed-in walk (local Supabase, export to share sheet)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      OUT: ${{ github.workspace }}/android-flow-out
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      # Throwaway local Supabase with seeded accounts; writes .env.e2e.
+      - run: npm run e2e:stack:up
+      # --mode e2e reads .env.e2e: local API URL and no captcha. The emulator
+      # reaches the host's 127.0.0.1 through `adb reverse` below.
+      - name: Build web bundle against the local stack
+        run: npx vite build --mode e2e
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+      - run: npx cap sync android
+        env:
+          CAPACITOR_E2E_LOCAL_HTTP: '1'
+      - run: cd android && ./gradlew --no-daemon assembleDebug
+      - name: Install Maestro
+        run: |
+          curl -fsSL https://get.maestro.mobile.dev | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Walk the app on a Pixel emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          disable-animations: true
+          script: |
+            mkdir -p "$OUT"
+            adb reverse tcp:54421 tcp:54421
+            adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+            maestro test --format junit --output "$OUT/report.xml" --test-output-dir "$OUT" .github/native-flows/android-signed-in.yaml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-signed-in-results
+          path: android-flow-out
+          retention-days: 7
