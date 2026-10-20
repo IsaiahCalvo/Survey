@@ -141,6 +141,18 @@ test('exit time 0 (reduced motion) removes at once; de-dupe; the stack keeps at 
   assert.equal(store2.getToasts().filter((t) => t.message === 'N1').length, 2);
 });
 
+test('a new toast takes back its id from a toast still playing its exit, so dismiss(id) reaches it', () => {
+  const clock = fakeClock();
+  const store = storeWith(clock);
+  store.add({ message: 'Marker added', id: 'find', action: { label: 'Find more', onClick: () => {} } });
+  store.runAction('find'); // leaving
+  const id = store.add({ message: 'Looking…', id: 'find', duration: Infinity });
+  assert.equal(id, 'find');
+  store.dismiss('find');
+  clock.advance(MOTION_MS.toastExit);
+  assert.deepEqual(ids(store), []);
+});
+
 test('subscribe / dispose: listeners see every change and dispose clears every timer', () => {
   const clock = fakeClock();
   const store = storeWith(clock);

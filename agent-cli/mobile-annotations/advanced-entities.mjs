@@ -108,7 +108,7 @@ const markerProjection = (marker) => marker?.bounds ? {
 
 async function openSurveyCategory(page, touch) {
   await page.getByRole('button', { name: 'Open survey' }).click();
-  const chooser = page.getByRole('heading', { name: 'Choose survey template' });
+  const chooser = page.getByRole('heading', { name: 'Choose a survey template' });
   if (await chooser.isVisible().catch(() => false)) {
     await page.getByRole('button', { name: /KAL-436 Preservation Template/ }).click();
   }
@@ -172,7 +172,7 @@ async function selectMarker(page, touch, id) {
 
 async function hydrateSurveyMarkerOverlay(page, id) {
   await page.getByRole('button', { name: 'Open survey' }).click();
-  const chooser = page.getByRole('heading', { name: 'Choose survey template' });
+  const chooser = page.getByRole('heading', { name: 'Choose a survey template' });
   if (await chooser.isVisible().catch(() => false)) {
     await page.getByRole('button', { name: /KAL-436 Preservation Template/ }).click();
   }
