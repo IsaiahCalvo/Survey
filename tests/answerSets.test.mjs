@@ -48,3 +48,11 @@ test('template fingerprint changes when an answer set is picked', async () => {
   assert.equal(templateFingerprint(t), JSON.stringify(['Doors', [], []]));
   assert.notEqual(templateFingerprint({ ...t, answerSet: ANSWER_SET_PRESETS[1].answers }), templateFingerprint(t));
 });
+
+test('used-survey binding fingerprint changes when an answer set is picked', async () => {
+  const { templateFingerprint, bindUsedTemplate, needsTemplateVersionChoice } = await import('../src/utils/surveyTemplateBinding.js');
+  const t = { id: 't', name: 'Doors', modules: [], entities: [] };
+  const withAnswers = { ...t, answerSet: ANSWER_SET_PRESETS[1].answers };
+  assert.notEqual(templateFingerprint(withAnswers), templateFingerprint(t));
+  assert.equal(needsTemplateVersionChoice(bindUsedTemplate(t), withAnswers), true);
+});

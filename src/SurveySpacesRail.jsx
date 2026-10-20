@@ -1517,14 +1517,15 @@ const SurveySpacesRail = ({
     const active = (category?.checklist || []).filter((item) => item && item.archived !== true);
     const responses = surveyMarkers?.[annotationId]?.checklistResponses || {};
     const answered = active.filter((item) => Boolean(responses[item.id]?.selection)).length;
-    const no = active.filter((item) => responses[item.id]?.selection === 'N').length;
+    const set = answerSetFor(selectedTemplate);
+    const no = active.filter((item) => answerTone(set, responses[item.id]?.selection) === 'bad').length;
     return { answered, total: active.length, no };
   };
   // The "answered/total" count. Owner 2026-10-01 (after a design debate):
-  // green with a check only when every item is answered Y or N/A (the same
-  // rule that marks the PDF marker Complete); red as soon as any item is N,
-  // finished or not; grey otherwise. The check keeps "done" readable without
-  // telling red from green.
+  // green with a check only when every item is a done answer (the same
+  // rule that marks the PDF marker Complete); red as soon as any item is
+  // a bad-tone answer, finished or not; grey otherwise. The check keeps
+  // "done" readable without telling red from green.
   const renderSurveyMarkerProgress = ({ answered, total, no }) => {
     const done = total > 0 && answered === total && no === 0;
     const state = no > 0 ? ' is-no' : done ? ' is-done' : '';

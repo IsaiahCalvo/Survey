@@ -2,7 +2,7 @@ const PREFIX = 'survey:templateBinding:';
 const stable = (value) => Array.isArray(value) ? value.map(stable) : value && typeof value === 'object'
   ? Object.fromEntries(Object.keys(value).sort().filter((key) => value[key] !== undefined && typeof value[key] !== 'function').map((key) => [key, stable(value[key])])) : value;
 export function templateFingerprint(template) {
-  return JSON.stringify(stable({ name: template?.name, modules: template?.modules || template?.spaces || [], entities: template?.entities || [] }));
+  return JSON.stringify(stable({ name: template?.name, modules: template?.modules || template?.spaces || [], entities: template?.entities || [], answerSet: template?.answerSet }));
 }
 export function templateBindingKey(documentKey, userId, templateId) { return `${PREFIX}${userId || 'local'}:${documentKey}:${templateId}`; }
 export function readTemplateBinding(key, storage) { try { return JSON.parse(storage?.getItem(key) || 'null'); } catch { return null; } }

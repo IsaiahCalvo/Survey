@@ -10,6 +10,14 @@ test('never used templates do not prompt, meaningful used versions do',()=>{
   assert.equal(needsTemplateVersionChoice(binding,revised),true);
   assert.equal(templateFingerprint({...original,updatedAt:'later'}),templateFingerprint(original));
 });
+test('an answer-set edit on a used template prompts a version choice',()=>{
+  const binding=bindUsedTemplate(original);
+  const withAnswers={...original,answerSet:[{value:'Pass',tone:'good'},{value:'Fail',tone:'bad'},{value:'N/A',tone:'neutral'}]};
+  assert.equal(templateFingerprint(original),templateFingerprint({...original,updatedAt:'later'}));
+  assert.notEqual(templateFingerprint(withAnswers),templateFingerprint(original));
+  assert.equal(needsTemplateVersionChoice(binding,original),false);
+  assert.equal(needsTemplateVersionChoice(binding,withAnswers),true);
+});
 test('keeping a version keeps its definitions; only a later new edit prompts again',()=>{
   const binding=acceptTemplateVersion(bindUsedTemplate(original),revised,false);
   assert.deepEqual(binding.snapshot,original);
