@@ -99,32 +99,6 @@ jobs:
       - name: Type-check Supabase functions before production
         run: deno check --config supabase/functions/deno.json supabase/functions/*/index.ts
 
-      - name: Link production database
-        run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
-
-      - name: Apply every pending database migration
-        run: supabase db push --linked --yes
-
-      - name: Deploy shared email renderer first
-        run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID" --use-api send-email
-
-      - name: Deploy invite handler after its database and email dependencies
-        run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID" --use-api send-invite-email
-
-      - name: Deploy remaining Supabase functions
-        run: >-
-          supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID" --use-api --jobs 4
-          agent-auth
-          create-checkout-session
-          create-portal-session
-          delete-account
-          excel-apply-changeset
-          send-profile-change-notification
-          stripe-webhook
-
-      - name: Verify database, functions, Stripe, and endpoint health
-        run: node scripts/release-integrity.mjs --remote
-
       - name: Ship only if this revision is newer than what is live
         # 2026-10-20 — this step used to fail whenever main had moved since CI
         # started. With merges every few minutes main nearly always had moved,
@@ -133,6 +107,9 @@ jobs:
         # revision over a newer one (two CI runs can finish out of order).
         # So: ship when main still points here, or when what is live is older
         # than this revision; skip, green, when live is already this or newer.
+        # Backend deploys must sit behind this gate too: an older SHA that
+        # already lost the race would otherwise overwrite production functions
+        # and then skip only Vercel.
         id: freshness
         shell: bash
         run: |
@@ -152,6 +129,38 @@ jobs:
           fi
           echo "Main moved on to $remote_sha, but live ($live_sha) is older than $tested_sha: shipping it."
           echo "ship=true" >> "$GITHUB_OUTPUT"
+
+      - name: Link production database
+        if: steps.freshness.outputs.ship == 'true'
+        run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
+
+      - name: Apply every pending database migration
+        if: steps.freshness.outputs.ship == 'true'
+        run: supabase db push --linked --yes
+
+      - name: Deploy shared email renderer first
+        if: steps.freshness.outputs.ship == 'true'
+        run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID" --use-api send-email
+
+      - name: Deploy invite handler after its database and email dependencies
+        if: steps.freshness.outputs.ship == 'true'
+        run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID" --use-api send-invite-email
+
+      - name: Deploy remaining Supabase functions
+        if: steps.freshness.outputs.ship == 'true'
+        run: >-
+          supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID" --use-api --jobs 4
+          agent-auth
+          create-checkout-session
+          create-portal-session
+          delete-account
+          excel-apply-changeset
+          send-profile-change-notification
+          stripe-webhook
+
+      - name: Verify database, functions, Stripe, and endpoint health
+        if: steps.freshness.outputs.ship == 'true'
+        run: node scripts/release-integrity.mjs --remote
 
       - name: Deploy frontend to Vercel only after backend success
         if: steps.freshness.outputs.ship == 'true'

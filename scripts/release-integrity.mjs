@@ -175,10 +175,10 @@ export function assertStaticReleaseContract(root = process.cwd()) {
   const deployWorkflow = readFileSync(join(root, '.github', 'workflows', 'deploy-production.yml'), 'utf8');
   assert.match(deployWorkflow, /workflow_run:/);
   assertOrdered(deployWorkflow, [
+    'git ls-remote',
     'supabase db push --linked --yes',
     'supabase functions deploy --project-ref',
     'node scripts/release-integrity.mjs --remote',
-    'git ls-remote',
     // 2026-08-18 — the Vercel git deploy hook was replaced by a token-based CLI
     // deploy (Hobby cannot git-connect the private Kal-Voe repo). The contract
     // still pins the same ordering: frontend ships only after the backend gate
