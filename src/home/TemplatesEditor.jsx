@@ -39,6 +39,7 @@
    the parent panels' `overflow: hidden` can never clip them or spawn
    scrollbars.
 */
+import { listExportKits, DEFAULT_EXPORT_KIT_ID } from '../services/exportFormats/registry.js';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { hoverOnly, useTooltip, withOwnHandlers } from '../components/Tooltip';
 import { createPortal, flushSync } from 'react-dom';
@@ -286,6 +287,7 @@ const buildRich = (templates, mint = (_key, prefix) => newId(prefix)) => templat
     roster,
     // A template someone shared with me: its owner's face shows on the row.
     ...(t?.sharedFrom ? { sharedFrom: t.sharedFrom } : {}),
+    ...(t?.exportKitId ? { exportKitId: t.exportKitId } : {}),
   };
 });
 
@@ -975,6 +977,7 @@ export default function TemplatesEditor({
   );
   const dirty = editFlag && workingCopyDiffers(workingFingerprint, baseline);
   /* The baseline a save makes once it lands: exactly the copy it sent. */
+  const exportKitOptions = useMemo(() => listExportKits(), []);
   const fingerprintOf = (list) => fingerprintTemplates(list, { roleColors, borderColors, matchFill }, freshBlankItemsRef.current);
 
   const closeMobileTemplate = useCallback(() => {
@@ -1920,8 +1923,11 @@ export default function TemplatesEditor({
         }),
       })),
     }));
+    const { exportKitId: _oldKit, ...originalRest } = original;
     return {
-      ...original,
+      ...originalRest,
+      // Excel layout; unset means the standard export.
+      ...(r.exportKitId ? { exportKitId: r.exportKitId } : {}),
       id: r.id,
       name: r.name,
       modules: mods,
@@ -2417,6 +2423,25 @@ export default function TemplatesEditor({
               </div>
               <div className="micro" style={{ textAlign: 'right' }}>
                 <div>{orderedMods.length} {orderedMods.length === 1 ? 'module' : 'modules'}</div>
+                {/* Excel layout (export kit). Only shown once there is a choice. */}
+                {exportKitOptions.length > 1 && (
+                  <select
+                    className="hub-export-kit"
+                    aria-label="Excel layout"
+                    value={tpl.exportKitId || DEFAULT_EXPORT_KIT_ID}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      mutateTpl(tpl.id, (t) => {
+                        const { exportKitId: _k, ...rest } = t;
+                        return v === DEFAULT_EXPORT_KIT_ID ? rest : { ...rest, exportKitId: v };
+                      });
+                    }}
+                    {...hoverOnly(tip('Excel layout for this template. A linked workbook picks it up on its next full export.'))}
+                    style={{ marginTop: 4, font: 'inherit', fontSize: 11, color: 'var(--text-2)', background: 'transparent', border: '1px solid var(--rule)', borderRadius: 4, padding: '1px 4px' }}
+                  >
+                    {exportKitOptions.map((k) => <option key={k.id} value={k.id}>{k.label || k.id}</option>)}
+                  </select>
+                )}
               </div>
             </div>
 

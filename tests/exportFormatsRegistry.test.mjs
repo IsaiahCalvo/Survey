@@ -112,3 +112,10 @@ test('wireless-lock schedule kit: door, gateway, then the door checklist', () =>
   // Sync identity columns stay first, as in the default kit.
   assert.deepEqual([columnMapping.A, columnMapping.B, columnMapping.C], ['row_id', 'changed_by', 'changed_date']);
 });
+
+test('template fingerprint: unchanged without an Excel layout, changes when one is picked', async () => {
+  const { templateFingerprint } = await import('../src/home/templatesEditorReload.js');
+  const t = { name: 'Doors', modules: [], roster: [] };
+  assert.equal(templateFingerprint(t), JSON.stringify(['Doors', [], []]));
+  assert.notEqual(templateFingerprint({ ...t, exportKitId: 'wireless-lock-schedule' }), templateFingerprint(t));
+});
