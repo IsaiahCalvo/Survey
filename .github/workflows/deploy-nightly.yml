@@ -17,15 +17,95 @@ on:
 
 permissions:
   contents: read
+  # Needed to read the production run's jobs. A skipped-job success (see
+  # `revision` below) cannot be told apart from a real ship using the
+  # workflow_run payload alone.
+  actions: read
 
 jobs:
-  deploy:
+  # 2026-10-20 — Deploy production is itself a workflow_run consumer. It starts
+  # on every CI completion and skips its only job unless the branch is main.
+  # A workflow whose only job is skipped still finishes with
+  # conclusion == 'success', and production runs that set ship=false are
+  # success too. Nightly used to treat that as "production just shipped" and
+  # check out github.event.workflow_run.head_sha.
+  #
+  # That SHA is the production RUN's head — main's tip when production
+  # started — not the CI commit production actually checked out and shipped
+  # (production's own github.event.workflow_run.head_sha). Nightly then built
+  # a different revision than surveytool.app, and could ship main before that
+  # revision's migrations had landed. Those extra runs also joined the
+  # nightly-deploy concurrency group; with cancel-in-progress they aborted a
+  # real nightly, and even without it GitHub cancels a previously pending run
+  # when a newer one queues (the same race production documented on 2026-09-15).
+  #
+  # So: this job only decides. It has no concurrency group. Deploy runs only
+  # after production actually shipped a frontend, and it builds the revision
+  # that is live on surveytool.app — the one that run verified — not the
+  # production run's head_sha.
+  revision:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      ship: ${{ steps.revision.outputs.ship }}
+      sha: ${{ steps.revision.outputs.sha }}
+    steps:
+      - name: Find the revision production actually shipped
+        id: revision
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          PRODUCTION_RUN: ${{ github.event.workflow_run.id }}
+          DISPATCH_SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "ship=true" >> "$GITHUB_OUTPUT"
+            echo "sha=$DISPATCH_SHA" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          jobs_json="$(gh api "repos/$REPO/actions/runs/$PRODUCTION_RUN/jobs")"
+          shipped="$(printf '%s' "$jobs_json" | jq -r '
+            [.jobs[].steps[]?
+             | select(.conclusion == "success")
+             | select(.name == "Record deployment"
+                   or .name == "Deploy frontend to Vercel only after backend success"
+                   or .name == "Verify the exact revision reached production")]
+            | length')"
+          if [ "$shipped" = "0" ]; then
+            echo "Production did not ship a frontend; skipping nightly."
+            echo "ship=false" >> "$GITHUB_OUTPUT"
+            echo "sha=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Live release.json is the commit production just verified. The
+          # production run's head_sha is main's tip, not that commit.
+          sha="$(curl --fail --silent --show-error \
+            "https://surveytool.app/release.json?nightly=$(date +%s)" \
+            | jq -r '.commit // empty')"
+          if [ -z "$sha" ]; then
+            echo "Could not read the live production revision" >&2
+            exit 1
+          fi
+          echo "ship=true" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: revision
+    if: needs.revision.outputs.ship == 'true'
+    # Job-level, under the `if:` — see the note above `jobs:`. A skipped
+    # production run must never enter this group, or it cancels a pending
+    # real nightly. cancel-in-progress stays false: a nightly in flight is
+    # never interrupted.
     concurrency:
       group: nightly-deploy
-      cancel-in-progress: true
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -37,7 +117,7 @@ jobs:
       - name: Checkout the revision production just shipped
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ needs.revision.outputs.sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -55,7 +135,7 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=8192
           VITE_RELEASE_CHANNEL: nightly
-          VERCEL_GIT_COMMIT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          VERCEL_GIT_COMMIT_SHA: ${{ needs.revision.outputs.sha }}
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
@@ -103,7 +183,7 @@ jobs:
       - name: Verify nightly serves this revision
         shell: bash
         run: |
-          tested_sha="${{ github.event.workflow_run.head_sha || github.sha }}"
+          tested_sha="${{ needs.revision.outputs.sha }}"
           for attempt in $(seq 1 60); do
             live_sha="$(curl --fail --silent "https://$NIGHTLY_HOST/release.json?attempt=$attempt" | jq -r '.commit // empty' 2>/dev/null || true)"
             if [ "$live_sha" = "$tested_sha" ]; then
