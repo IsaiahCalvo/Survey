@@ -32,8 +32,10 @@ const nodeFs = require('fs');
 
 function isWithin(candidate, root, pathApi = nodePath) {
   if (candidate === root) return true;
-  const prefix = root.endsWith(pathApi.sep) ? root : root + pathApi.sep;
-  return candidate.startsWith(prefix);
+  // path.resolve() keeps a trailing sep only on a drive/filesystem root
+  // (`/` or `C:\`). Using that as a raw prefix would match every absolute
+  // path on the volume, so always require root + sep.
+  return candidate.startsWith(root + pathApi.sep);
 }
 
 function resolveRealPath(target, { fsApi = nodeFs, pathApi = nodePath } = {}) {

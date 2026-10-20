@@ -8,7 +8,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { isClearableDirectory, isPathAllowed, resolveRealPath } = require('../src/electron/fsPathGuard.cjs');
+const { isClearableDirectory, isPathAllowed, isWithin, resolveRealPath } = require('../src/electron/fsPathGuard.cjs');
 
 const base = fs.mkdtempSync(path.join(os.tmpdir(), 'kal369-guard-'));
 const root = path.join(base, 'root');          // a trusted root (like userData)
@@ -87,6 +87,24 @@ linkTest('a file the user picked in a dialog still opens when it is a link', () 
   assert.equal(isPathAllowed(picked, { entries: [...entries, picked] }), true);
   // Picking one file does not open its target's neighbours.
   assert.equal(isPathAllowed(path.join(root, 'escape', 'other.txt'), { entries: [...entries, picked] }), false);
+});
+
+test('a drive-root allowlist entry does not trust the whole volume', () => {
+  // recordDialogPath stores path.dirname of a pick. Opening /file.pdf or
+  // C:\file.pdf would persist `/` or `C:\`. Those must not unlock every path.
+  assert.equal(isWithin('/etc/passwd', '/'), false);
+  assert.equal(isWithin('/file.pdf', '/'), false);
+  assert.equal(isWithin('/', '/'), true);
+  assert.equal(isPathAllowed('/etc/passwd', { entries: ['/'] }), false);
+  assert.equal(isPathAllowed(path.join(outside, 'secret.txt'), { entries: ['/'] }), false);
+  assert.equal(isPathAllowed('/file.pdf', { entries: ['/file.pdf', '/'] }), true);
+  assert.equal(isPathAllowed('/other.pdf', { entries: ['/file.pdf', '/'] }), false);
+
+  const win32 = path.win32;
+  assert.equal(isWithin('C:\\Windows\\secret.txt', 'C:\\', win32), false);
+  assert.equal(isWithin('C:\\file.pdf', 'C:\\', win32), false);
+  assert.equal(isWithin('C:\\', 'C:\\', win32), true);
+  assert.equal(isWithin('C:\\Users\\me\\doc.pdf', 'C:\\Users\\me', win32), true);
 });
 
 test('only the exact diagnostics folder may be cleared', () => {
