@@ -3159,6 +3159,46 @@ export default function TemplatesEditor({
                   <Icon name="users" size={12} />Entities
                 </button>
               </div>
+              {/* Phone: the same two per-template choices as the desktop
+                  header (Excel layout, checklist answers), as full-width
+                  44px rows - the desktop header holding them is not rendered here. */}
+              <div className="templates-mobile-template-options">
+                {exportKitOptions.length > 1 && (
+                  <label className="templates-mobile-option">
+                    <span>Excel layout</span>
+                    <select
+                      aria-label="Excel layout"
+                      value={tpl.exportKitId || DEFAULT_EXPORT_KIT_ID}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        mutateTpl(tpl.id, (t) => {
+                          const { exportKitId: _k, ...rest } = t;
+                          return v === DEFAULT_EXPORT_KIT_ID ? rest : { ...rest, exportKitId: v };
+                        });
+                      }}
+                    >
+                      {exportKitOptions.map((k) => <option key={k.id} value={k.id}>{k.label || k.id}</option>)}
+                    </select>
+                  </label>
+                )}
+                <label className="templates-mobile-option">
+                  <span>Answers</span>
+                  <select
+                    aria-label="Checklist answers"
+                    value={answerPresetIdOf(tpl.answerSet)}
+                    onChange={(e) => {
+                      const preset = ANSWER_SET_PRESETS.find((p) => p.id === e.target.value);
+                      mutateTpl(tpl.id, (t) => {
+                        const { answerSet: _a, ...rest } = t;
+                        return !preset || preset.answers === DEFAULT_ANSWER_SET ? rest : { ...rest, answerSet: preset.answers };
+                      });
+                    }}
+                  >
+                    {!answerPresetIdOf(tpl.answerSet) && <option value="">Custom</option>}
+                    {ANSWER_SET_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                  </select>
+                </label>
+              </div>
 
               <section className="templates-mobile-section templates-mobile-modules-section">
                 <div className="templates-mobile-section-head">
