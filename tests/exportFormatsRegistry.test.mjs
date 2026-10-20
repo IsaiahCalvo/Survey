@@ -75,3 +75,13 @@ test('the Survey Excel export takes its layout from the default kit', async () =
   assert.match(viewer, /buildSheetLayout\(getExportKit\(DEFAULT_EXPORT_KIT_ID\), checklistItems\)/);
   assert.doesNotMatch(viewer, /const headerRow = \['Row ID', 'Changed By', 'Changed Date', 'Item'\]/);
 });
+
+test('wireless-lock schedule kit: door, gateway, then the door checklist', () => {
+  const kit = getExportKit('wireless-lock-schedule');
+  assert.ok(kit);
+  assert.equal(kit.extends, 'default-survey@1.0.0');
+  const { headerRow, columnMapping } = buildSheetLayout(kit, [{ id: 'lt', text: 'Lock type' }, { id: 'ir', text: 'Gateway in range' }]);
+  assert.deepEqual(headerRow, ['Row ID', 'Changed By', 'Changed Date', 'Door', 'Gateway', 'Lock type', 'Gateway in range', 'Notes']);
+  // Sync identity columns stay first, as in the default kit.
+  assert.deepEqual([columnMapping.A, columnMapping.B, columnMapping.C], ['row_id', 'changed_by', 'changed_date']);
+});

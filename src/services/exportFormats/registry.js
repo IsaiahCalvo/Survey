@@ -22,6 +22,7 @@
  *   }
  */
 import defaultSurveyKit from './kits/defaultSurvey.js';
+import wirelessLockScheduleKit from './kits/wirelessLockSchedule.js';
 
 export const EXPORT_ENGINE_VERSION = 1;
 
@@ -79,3 +80,4 @@ export function getExportKit(id) {
 
 export const DEFAULT_EXPORT_KIT_ID = defaultSurveyKit.id;
 registerExportKit(defaultSurveyKit);
+registerExportKit(wirelessLockScheduleKit);
