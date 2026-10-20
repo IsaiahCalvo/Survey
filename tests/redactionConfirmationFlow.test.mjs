@@ -21,7 +21,7 @@ test('cancelling redaction confirms that the document was not changed', () => {
 test('permanent export uses only the confirmed pending document and clears it on cancel or success', () => {
   assert.match(viewer, /const redactionAnnotationsByPage = pendingRedactionRequest\.annotationsByPage/);
   // The document's bytes once any background page-operation save has landed.
-  assert.match(viewer, /savePDFWithAnnotationsPdfLib\(\s*\(await flushPageOperations\(\)\) \|\| pdfFile,\s*redactionAnnotationsByPage/);
+  assert.match(viewer, /savePDFWithAnnotationsPdfLib\(\s*await getExportSourcePdf\(\),\s*redactionAnnotationsByPage/);
   assert.match(viewer, /applyPermanentPdfRedactions\(\{[\s\S]{0,240}annotationsByPage: redactionAnnotationsByPage/);
   assert.match(viewer, /setPendingRedactionRequest\(null\)/);
 });
