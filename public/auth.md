@@ -22,7 +22,9 @@ with a JSON body.
    Returns `device_code` (keep it secret), `user_code`, `verification_uri`,
    `verification_uri_complete`, `expires_in` (600) and `interval` (5).
 2. Show the user `user_code` and send them to `verification_uri_complete`.
-   They sign in to Survey and press Allow.
+   They sign in, or create a free account there if they have none (Survey
+   checks their email), and press Allow. The account always belongs to the
+   person: agents never get an account of their own.
 3. Every `interval` seconds: `{"action": "token", "device_code": "<device_code>"}`.
    Until the user allows it you get `authorization_pending`. After that you get
    `access_token` (starts with `sat_`), `token_type: Bearer`, `expires_in`, `scope`.
@@ -31,3 +33,9 @@ with a JSON body.
    `Authorization: Bearer <access_token>`.
 
 Users see and remove agents at https://surveytool.app/agent-link.
+
+## Rules for agents
+
+- An agent acts for one person and has exactly that person's rights: the same
+  role on each document (a viewer's agent can only read) and the same plan.
+- Agents cannot pay, change plans, or change the person's email or password.
