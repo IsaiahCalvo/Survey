@@ -141,6 +141,12 @@ test('P2-P5: touchstart routing on the phone/tablet surface', () => {
   assert.equal(r({ drawMode: 'pen', touches: [finger], changedTouches: [finger], penDown: true }), 'ignore');
   // ...and the pen landing on a resting finger still draws.
   assert.equal(r({ drawMode: 'pen', touches: [finger, stylus], changedTouches: [stylus] }), 'pen-tool');
+  // Pencil or Touch too (Codex: drawing panned the page in the native app):
+  // a finger/knuckle landing beside a writing pen is set aside, never a pinch.
+  assert.equal(r({ touches: [stylus], changedTouches: [stylus] }), 'pen-tool');
+  assert.equal(r({ touches: [stylus, finger], changedTouches: [finger] }), 'ignore');
+  assert.equal(r({ touches: [finger], changedTouches: [finger], penDown: true }), 'ignore');
+  assert.equal(r({ touches: [finger, finger], changedTouches: [finger], penDown: true }), 'ignore');
   assert.equal(hasStylusTouch([finger, stylus]), true);
   assert.equal(hasStylusTouch(undefined), false);
 });
@@ -193,7 +199,26 @@ test('P1: in Pencil-or-Touch mode the gate does nothing', () => {
   spy.stop();
 });
 
+test('P3 in Pencil-or-Touch mode: while the pen writes, a finger never reaches the tools', () => {
+  __resetPencilModeForTests({ drawMode: 'touch', penSeen: true });
+  const spy = toolSpy();
+  pointer('pointerdown', $('anno'), { pointerType: 'pen', pointerId: 21 });
+  pointer('pointerdown', $('anno'), { pointerId: 22 });
+  pointer('pointermove', $('anno'), { pointerId: 22 });
+  pointer('pointerup', $('anno'), { pointerId: 22 });
+  pointer('pointerup', $('anno'), { pointerType: 'pen', pointerId: 21 });
+  assert.deepEqual(spy.seen, ['pointerdown:pen', 'pointerup:pen']);
+  // Pen lifted: the finger runs the tool again.
+  pointer('pointerdown', $('anno'), { pointerId: 23 });
+  pointer('pointerup', $('anno'), { pointerId: 23 });
+  assert.deepEqual(spy.seen.slice(2), ['pointerdown:touch', 'pointerup:touch']);
+  spy.stop();
+});
+
 test('the viewer wires the rules in (source contract)', async () => {
+  const viewerSrc = await readFile(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
+  assert.match(viewerSrc, /if \(isPencilOnly\(\) \|\| isPenDown\(\) \|\| hasStylusTouch\(event\.touches\)\) \{/,
+    'a pen on the glass routes touchstart in Pencil-or-Touch mode too (no pinch/pan from a resting finger)');
   const src = await readFile(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
   assert.match(src, /resolveViewerPressRoute\(\{/, 'desktop onPointerDown routes through the shared rule');
   assert.match(src, /isGutterPress = \(event\) => event\.target === el/, 'the gutter is the scroller or the content node only');

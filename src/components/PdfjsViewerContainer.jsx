@@ -4174,7 +4174,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         }
         return;
       }
-      if (isPencilOnly()) {
+      if (isPencilOnly() || isPenDown() || hasStylusTouch(event.touches)) {
         const route = resolveTouchStartRoute({
           touches: event.touches,
           changedTouches: event.changedTouches,
@@ -4273,11 +4273,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       }
       if (isNativeInteractionTarget(event.target, event) && !widgetTapPromotedToPan) return;
       event.preventDefault();
-      // Pencil-only: while the pen is on the glass (or a resting finger was
-      // set aside) no finger pans or pinches - the pen's own contact keeps
+      // While the pen is on the glass (either mode, P3) or a resting finger
+      // was set aside, no finger pans or pinches - the pen's own contact keeps
       // going to the tool below.
-      if (isPencilOnly() && mobileTouchRef.current?.mode !== 'pinch'
-        && (mobileTouchRef.current?.mode === 'ignore' || hasStylusTouch(touches))) return;
+      if (mobileTouchRef.current?.mode !== 'pinch'
+        && (mobileTouchRef.current?.mode === 'ignore' || hasStylusTouch(touches) || isPenDown())) return;
       if (touches.length >= 2) {
         event.stopPropagation();
         if (mobileTouchRef.current?.mode !== 'pinch') startPinch(touches);
@@ -4469,11 +4469,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     window.addEventListener('blur', abortTouch);
     window.addEventListener('pagehide', abortTouch);
     document.addEventListener('visibilitychange', onVisibilityAbort);
-    // Pencil-only: a pen landing while a finger pans (a pen that sends no
+    // A pen landing while a finger pans (either mode, P3) (a pen that sends no
     // stylus touches - Android, Windows, tests) stops the pan where it is and
     // sets that finger aside, so the page never slides under the pen.
     const unsubscribePenDown = subscribeGatedPointers((_event, kind) => {
-      if (kind !== 'pen-down' || !isPencilOnly() || mobileTouchRef.current?.mode !== 'pan') return;
+      if (kind !== 'pen-down' || mobileTouchRef.current?.mode !== 'pan') return;
       panVelocityRef.current.reset();
       endTouchPan(0, 0);
       mobileTouchRef.current = { mode: 'ignore' };
